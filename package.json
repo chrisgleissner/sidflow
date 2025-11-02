@@ -6,9 +6,10 @@
   "packageManager": "bun@1.1.10",
   "workspaces": ["packages/*"],
   "scripts": {
-  "build": "tsc -b",
-  "test": "bun run build && bun test --coverage",
-    "validate:config": "bun run scripts/validate-config.ts"
+    "build": "tsc -b",
+    "test": "bun run build && bun test --coverage",
+    "validate:config": "bun run scripts/validate-config.ts",
+    "fetch:sample": "bun run scripts/run-fetch-sample.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

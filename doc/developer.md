@@ -39,6 +39,8 @@ Validate edits with `bun run validate:config`.
 | `bun run build` | Compile all packages with project references. |
 | `bun run test` | Build then run the Bun test suite with coverage (≥90% enforced). |
 | `bun run validate:config` | Smoke-test the active configuration file. |
+| `./scripts/sidflow-fetch` | Run the fetch CLI with Bun hidden behind a repo-local shim. |
+| `bun run fetch:sample` | Spin up a local mirror and run the `sidflow fetch` CLI end-to-end (used in CI). |
 
 CI mirrors these steps before uploading coverage to Codecov.
 
@@ -49,7 +51,7 @@ CI mirrors these steps before uploading coverage to Codecov.
 | Package | Responsibility |
 | --- | --- |
 | `@sidflow/common` | Shared config loader, deterministic JSON serializer, logging, filesystem helpers. |
-| `@sidflow/fetch` | HVSC sync logic and CLI (`bun packages/sidflow-fetch/src/cli.ts`). |
+| `@sidflow/fetch` | HVSC sync logic and CLI (`./scripts/sidflow-fetch`). |
 | `@sidflow/tag` | Tagging session planner (interactive CLI landing in Phase 3). |
 | `@sidflow/classify` | Classification planner (feature extraction + ML pipeline scheduled for Phase 4). |
 
@@ -70,7 +72,7 @@ All packages share `tsconfig.base.json` and strict TypeScript settings; avoid in
 
 ## 6. Developing CLIs
 
-- The fetch CLI is live; run `bun packages/sidflow-fetch/src/cli.ts --help` to inspect options.
+- The fetch CLI is live; run `./scripts/sidflow-fetch --help` to inspect options.
 - Upcoming CLIs for tagging and classification should follow the same pattern: parse args in a dedicated `cli.ts`, expose a testable `run*Cli` function, and guard the executable entry point with `import.meta.main`.
 - Keep option parsing minimal and dependency-free; write focused tests similar to `packages/sidflow-fetch/test/cli.test.ts`.
 
@@ -85,14 +87,16 @@ All packages share `tsconfig.base.json` and strict TypeScript settings; avoid in
 
 ---
 
-## 8. Data Locations
+## 8. Workspace
 
 ```text
-data/
+workspace/
   hvsc/          # HVSC mirror maintained by fetch CLI
   wav-cache/     # WAV renders and audio features (future phases)
   tags/          # Manual and auto-generated tags
 hvsc-version.json  # Version manifest stored alongside hvscPath
+
+The entire `workspace/` directory is git-ignored; keep long-lived local mirrors and experiments there without touching version control.
 ```
 
 Generated content can be reproduced; avoid committing large artefacts unless explicitly required.

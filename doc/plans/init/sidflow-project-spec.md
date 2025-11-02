@@ -16,7 +16,7 @@ sidflow/
  │    ├── sidflow-tag/          # manual classification & playback
  │    ├── sidflow-classify/     # automated classification
  │    └── sidflow-common/       # shared utilities, config, logging, types
- ├── data/
+ ├── workspace/
  │    ├── hvsc/                 # local HVSC tree
  │    ├── wav-cache/            # converted WAVs
  │    └── tags/                 # aggregated tag files
@@ -39,9 +39,9 @@ Create `.sidflow.json` at the repo root:
 
 ```json
 {
-  "hvscPath": "./data/hvsc",
-  "wavCachePath": "./data/wav-cache",
-  "tagsPath": "./data/tags",
+  "hvscPath": "./workspace/hvsc",
+  "wavCachePath": "./workspace/wav-cache",
+  "tagsPath": "./workspace/tags",
   "sidplayPath": "sidplayfp",
   "threads": 0,
   "classificationDepth": 3
@@ -146,7 +146,7 @@ File structure:
 ```
 
 **CLI:**
-- `sidflow classify --dir ./data/hvsc`
+- `sidflow classify --dir ./workspace/hvsc`
 - Implied flow: ensure WAVs → extract features → train from manual tags → predict missing `(s,m,c)` → write aggregated files.
 
 ---
@@ -164,15 +164,15 @@ File structure:
 
 | Type | Location | Notes |
 |------|----------|-------|
-| HVSC tree | `hvscPath` (e.g., `./data/hvsc`) | Mirrors original HVSC layout |
+| HVSC tree | `hvscPath` (e.g., `./workspace/hvsc`) | Mirrors original HVSC layout |
 | Manual tags | Adjacent `*.sid.tags.json` | Git‑tracked, tiny diffs |
 | Auto tags | `auto-tags.json` aggregated per folder at `classificationDepth` | Generated, re‑creatable |
-| WAV cache | `wavCachePath` (e.g., `./data/wav-cache/…`) | Skipped if present & fresh |
+| WAV cache | `wavCachePath` (e.g., `./workspace/wav-cache/…`) | Skipped if present & fresh |
 | Version state | `hvsc-version.json` | base/delta versions, checksums, timestamps |
 
 Example (depth=3):
 ```
-data/
+workspace/
  ├── hvsc/C64Music/MUSICIANS/B/Berry_Vic/Atonal_Music.sid
  ├── hvsc/C64Music/MUSICIANS/B/Berry_Vic/Atonal_Music.sid.tags.json
  ├── hvsc/C64Music/MUSICIANS/B/auto-tags.json

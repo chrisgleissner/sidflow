@@ -5,3 +5,5 @@ coverage/
 dist/
 packages/*/dist/
 packages/*/.tsbuildinfo
+workspace/
+!workspace/.gitkeep

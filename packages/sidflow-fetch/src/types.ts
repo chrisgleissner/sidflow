@@ -11,9 +11,20 @@ export interface HvscManifest {
   deltas: HvscArchiveDescriptor[];
 }
 
+export interface DownloadProgress {
+  downloadedBytes: number;
+  totalBytes?: number;
+}
+
+export type DownloadProgressHandler = (progress: DownloadProgress) => void;
+
 export interface HvscSyncDependencies {
   fetchManifest?: (baseUrl: string) => Promise<HvscManifest>;
-  downloadArchive?: (descriptor: HvscArchiveDescriptor, destination: string) => Promise<void>;
+  downloadArchive?: (
+    descriptor: HvscArchiveDescriptor,
+    destination: string,
+    onProgress?: DownloadProgressHandler
+  ) => Promise<void>;
   extractArchive?: (archivePath: string, destination: string) => Promise<void>;
   computeChecksum?: (archivePath: string) => Promise<string>;
   logger?: SidflowLogger;
@@ -30,6 +41,8 @@ export interface HvscSyncOptions {
 export interface HvscSyncResult {
   baseUpdated: boolean;
   appliedDeltas: number[];
+  baseVersion: number;
+  baseSyncedAt: string;
 }
 
 export interface HvscVersionRecord {

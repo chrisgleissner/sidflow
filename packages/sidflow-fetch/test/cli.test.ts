@@ -46,7 +46,12 @@ describe("sidflow-fetch CLI", () => {
   });
 
   it("runs the sync workflow and reports success", async () => {
-    const runner: SyncRunner = async () => ({ baseUpdated: true, appliedDeltas: [83, 84] });
+    const runner: SyncRunner = async () => ({
+      baseUpdated: true,
+      appliedDeltas: [83, 84],
+      baseVersion: 83,
+      baseSyncedAt: "2025-01-01T00:00:00.000Z"
+    });
 
     process.stdout.write = (chunk: string | Uint8Array) => {
       capturedStdout += typeof chunk === "string" ? chunk : chunk.toString();
@@ -63,7 +68,8 @@ describe("sidflow-fetch CLI", () => {
     expect(exitCode).toBe(0);
     expect(capturedStdout).toContain("HVSC sync completed.");
     expect(capturedStdout).toContain("Base archive updated: yes");
-    expect(capturedStdout).toContain("Applied deltas: 83, 84");
+  expect(capturedStdout).toContain("Applied deltas: 83, 84");
+  expect(capturedStdout).toContain("Base version: 83 (last synced 2025-01-01T00:00:00.000Z)");
   });
 
   it("fails fast on unknown options", async () => {
@@ -72,7 +78,12 @@ describe("sidflow-fetch CLI", () => {
       return true;
     };
 
-    const exitCode = await runFetchCli(["--unknown"], async () => ({ baseUpdated: false, appliedDeltas: [] }));
+    const exitCode = await runFetchCli(["--unknown"], async () => ({
+      baseUpdated: false,
+      appliedDeltas: [],
+      baseVersion: 83,
+      baseSyncedAt: "2025-01-01T00:00:00.000Z"
+    }));
 
     expect(exitCode).toBe(1);
     expect(capturedStderr).toContain("Unknown option: --unknown");
@@ -85,7 +96,12 @@ describe("sidflow-fetch CLI", () => {
       return true;
     };
 
-    const exitCode = await runFetchCli(["--help"], async () => ({ baseUpdated: false, appliedDeltas: [] }));
+    const exitCode = await runFetchCli(["--help"], async () => ({
+      baseUpdated: false,
+      appliedDeltas: [],
+      baseVersion: 0,
+      baseSyncedAt: ""
+    }));
 
     expect(exitCode).toBe(0);
     expect(capturedStdout).toContain("Usage: sidflow fetch");
@@ -97,7 +113,12 @@ describe("sidflow-fetch CLI", () => {
       return true;
     };
 
-    const exitCode = await runFetchCli(["--config"], async () => ({ baseUpdated: false, appliedDeltas: [] }));
+    const exitCode = await runFetchCli(["--config"], async () => ({
+      baseUpdated: false,
+      appliedDeltas: [],
+      baseVersion: 0,
+      baseSyncedAt: ""
+    }));
 
     expect(exitCode).toBe(1);
     expect(capturedStderr).toContain("--config requires a value");

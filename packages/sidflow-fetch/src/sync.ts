@@ -1,15 +1,17 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, opendir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 
 import { createLogger, ensureDir, loadConfig, retry, type SidflowConfig } from "@sidflow/common";
 
 import { fetchHvscManifest, DEFAULT_BASE_URL } from "./manifest.js";
 import { loadHvscVersion, saveHvscVersion } from "./version.js";
 import type {
+  DownloadProgressHandler,
   HvscArchiveDescriptor,
   HvscManifest,
   HvscSyncDependencies,
@@ -56,7 +58,9 @@ export async function syncHvsc(options: HvscSyncOptions = {}): Promise<HvscSyncR
 
   return {
     baseUpdated: baseResult.updated,
-    appliedDeltas
+    appliedDeltas,
+    baseVersion: baseResult.record.baseVersion,
+    baseSyncedAt: baseResult.record.baseAppliedAt
   };
 }
 
@@ -86,6 +90,9 @@ async function syncBase(context: SyncBaseContext): Promise<SyncBaseResult> {
     if (!currentVersion) {
       throw new Error("HVSC metadata is missing for existing archive");
     }
+    logger.info(
+      `HVSC base archive already up to date (v${currentVersion.baseVersion}) last downloaded ${currentVersion.baseAppliedAt}`
+    );
     return {
       updated: false,
       record: currentVersion
@@ -97,7 +104,10 @@ async function syncBase(context: SyncBaseContext): Promise<SyncBaseResult> {
   await rm(hvscPath, { recursive: true, force: true });
   await mkdir(hvscPath, { recursive: true });
 
-  const archivePath = await downloadArchive(manifest.base, dependencies);
+  logger.info(`Downloading base archive ${manifest.base.filename}`);
+  const baseProgress = createProgressReporter(logger, manifest.base.filename);
+  const archivePath = await downloadArchive(manifest.base, dependencies, baseProgress);
+  logger.info(`Download complete: ${manifest.base.filename}`);
   await dependencies.extractArchive(archivePath, hvscPath);
   const checksum = await dependencies.computeChecksum(archivePath);
 
@@ -144,8 +154,11 @@ async function syncDeltas(context: SyncDeltasContext): Promise<number[]> {
       continue;
     }
 
-    logger.info(`Applying HVSC delta ${descriptor.filename}`);
-    const archivePath = await downloadArchive(descriptor, dependencies);
+  logger.info(`Applying HVSC delta ${descriptor.filename}`);
+  logger.info(`Downloading delta ${descriptor.filename}`);
+  const progress = createProgressReporter(logger, descriptor.filename);
+  const archivePath = await downloadArchive(descriptor, dependencies, progress);
+  logger.info(`Download complete: ${descriptor.filename}`);
     await dependencies.extractArchive(archivePath, hvscPath);
     const checksum = await dependencies.computeChecksum(archivePath);
 
@@ -171,10 +184,14 @@ async function syncDeltas(context: SyncDeltasContext): Promise<number[]> {
   return appliedNow;
 }
 
-async function downloadArchive(descriptor: HvscArchiveDescriptor, dependencies: ResolvedDependencies): Promise<string> {
+async function downloadArchive(
+  descriptor: HvscArchiveDescriptor,
+  dependencies: ResolvedDependencies,
+  onProgress?: DownloadProgressHandler
+): Promise<string> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "sidflow-hvsc-"));
   const destination = path.join(tempDir, descriptor.filename);
-  await dependencies.downloadArchive(descriptor, destination);
+  await dependencies.downloadArchive(descriptor, destination, onProgress);
   return destination;
 }
 
@@ -203,7 +220,11 @@ async function isDirectoryEmpty(dir: string): Promise<boolean> {
 
 interface ResolvedDependencies {
   fetchManifest: (baseUrl: string) => Promise<HvscManifest>;
-  downloadArchive: (descriptor: HvscArchiveDescriptor, destination: string) => Promise<void>;
+  downloadArchive: (
+    descriptor: HvscArchiveDescriptor,
+    destination: string,
+    onProgress?: DownloadProgressHandler
+  ) => Promise<void>;
   extractArchive: (archivePath: string, destination: string) => Promise<void>;
   computeChecksum: (archivePath: string) => Promise<string>;
   now: () => Date;
@@ -219,7 +240,11 @@ function withDefaultDependencies(dependencies: HvscSyncDependencies = {}): Resol
   };
 }
 
-async function defaultDownloadArchive(descriptor: HvscArchiveDescriptor, destination: string): Promise<void> {
+async function defaultDownloadArchive(
+  descriptor: HvscArchiveDescriptor,
+  destination: string,
+  onProgress?: DownloadProgressHandler
+): Promise<void> {
   const response = await retry(async () => {
     try {
       const result = await fetch(descriptor.url);
@@ -232,8 +257,57 @@ async function defaultDownloadArchive(descriptor: HvscArchiveDescriptor, destina
     }
   });
 
-  const arrayBuffer = await response.arrayBuffer();
-  await writeFile(destination, Buffer.from(arrayBuffer));
+  const contentLength = response.headers.get("content-length");
+  const totalBytes = contentLength ? Number(contentLength) : undefined;
+
+  if (!response.body) {
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    await writeFile(destination, buffer);
+    onProgress?.({ downloadedBytes: buffer.length, totalBytes: buffer.length });
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const fileStream = createWriteStream(destination, { flags: "w" });
+  let downloaded = 0;
+  if (totalBytes !== undefined && !Number.isNaN(totalBytes)) {
+    onProgress?.({ downloadedBytes: 0, totalBytes });
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    fileStream.once("error", reject);
+    fileStream.once("finish", resolve);
+
+    const pump = async (): Promise<void> => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          if (value) {
+            const chunk = Buffer.from(value);
+            downloaded += chunk.length;
+            if (!fileStream.write(chunk)) {
+              await once(fileStream, "drain");
+            }
+            onProgress?.({ downloadedBytes: downloaded, totalBytes });
+          }
+        }
+        fileStream.end();
+      } catch (error) {
+        fileStream.destroy(error as Error);
+        reject(error as Error);
+      }
+    };
+
+    void pump();
+  });
+
+  if (downloaded > 0) {
+    onProgress?.({ downloadedBytes: downloaded, totalBytes });
+  }
 }
 
 async function defaultChecksum(filePath: string): Promise<string> {
@@ -268,6 +342,55 @@ async function defaultExtractArchive(archivePath: string, destination: string): 
 }
 /* c8 ignore stop */
 
+function createProgressReporter(
+  logger: ReturnType<typeof createLogger>,
+  filename: string
+): DownloadProgressHandler {
+  let lastPercentLogged = -10;
+  let lastBytesLogged = 0;
+  const threshold = 50 * 1024 * 1024;
+
+  return ({ downloadedBytes, totalBytes }) => {
+    if (totalBytes && totalBytes > 0 && !Number.isNaN(totalBytes)) {
+      if (totalBytes <= 0) {
+        return;
+      }
+      const percent = Math.floor((downloadedBytes / totalBytes) * 100);
+      if (percent <= 0) {
+        return;
+      }
+      if (percent >= lastPercentLogged + 10 || percent >= 100) {
+        logger.info(
+          `Downloading ${filename}: ${percent}% (${formatBytes(downloadedBytes)} of ${formatBytes(totalBytes)})`
+        );
+        lastPercentLogged = Math.min(100, Math.floor(percent / 10) * 10);
+      }
+      return;
+    }
+
+    if (downloadedBytes === 0) {
+      return;
+    }
+
+    if (downloadedBytes - lastBytesLogged >= threshold) {
+      logger.info(`Downloading ${filename}: ${formatBytes(downloadedBytes)} downloaded`);
+      lastBytesLogged = downloadedBytes;
+    }
+  };
+}
+
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  const formatted = value >= 10 || value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${formatted} ${units[index]}`;
+}
+
 function resolveVersionPath(config: SidflowConfig, override?: string): string {
   if (override) {
     return path.resolve(override);
@@ -285,5 +408,6 @@ export const __internal = {
   defaultDownloadArchive,
   defaultChecksum,
   defaultExtractArchive,
+  createProgressReporter,
   resolveVersionPath
 };

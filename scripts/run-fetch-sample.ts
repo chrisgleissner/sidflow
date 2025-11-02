@@ -4,6 +4,8 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
+import type { SidflowConfig } from "../packages/sidflow-common/src/config.js";
+
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-fetch-sample-");
 
 interface ArchiveFixture {
@@ -85,63 +87,64 @@ async function main(): Promise<void> {
     response.end();
   });
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, resolve);
-  });
+  try {
+    await new Promise<void>((resolve) => {
+      server.listen(0, resolve);
+    });
 
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("Failed to determine server address");
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Failed to determine server address");
+    }
+
+    const baseUrl = `http://127.0.0.1:${address.port}/`;
+
+    const configPath = path.join(working, "sample.sidflow.json");
+    const config: SidflowConfig = {
+      hvscPath: hvscDir,
+      wavCachePath: wavCache,
+      tagsPath,
+      sidplayPath: "sidplayfp",
+      threads: 0,
+      classificationDepth: 1
+    };
+    await writeFile(configPath, JSON.stringify(config), "utf8");
+
+    const cli = Bun.spawn([
+      path.join(".", "scripts", "sidflow-fetch"),
+      "--config",
+      configPath,
+      "--remote",
+      baseUrl,
+      "--version-file",
+      versionPath
+    ], { stdout: "pipe", stderr: "pipe" });
+
+    const exitCode = await cli.exited;
+    const stdout = await new Response(cli.stdout).text();
+    const stderr = await new Response(cli.stderr).text();
+
+    if (exitCode !== 0) {
+      throw new Error(`sample fetch failed\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    }
+
+    const version = JSON.parse(await readFile(versionPath, "utf8")) as {
+      baseVersion: number;
+      deltas: Array<{ version: number }>;
+    };
+
+    console.log("Sample fetch completed:");
+    console.log(stdout.trim());
+    console.log(`Recorded base version: ${version.baseVersion}`);
+    console.log(`Applied deltas: ${version.deltas.map((delta) => delta.version).join(", ")}`);
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+    await rm(working, { recursive: true, force: true });
+    await rm(baseArchive.baseDir, { recursive: true, force: true });
+    await rm(deltaArchive.baseDir, { recursive: true, force: true });
   }
-
-  const baseUrl = `http://127.0.0.1:${address.port}/`;
-
-  const configPath = path.join(working, "sample.sidflow.json");
-  const config = {
-    hvscPath: hvscDir,
-    wavCachePath: wavCache,
-    tagsPath,
-    sidplayPath: "sidplayfp",
-    threads: 0,
-    classificationDepth: 1
-  } satisfies Record<string, unknown>;
-  await writeFile(configPath, JSON.stringify(config), "utf8");
-
-  const cli = Bun.spawn([
-    "bun",
-    "packages/sidflow-fetch/src/cli.ts",
-    "--config",
-    configPath,
-    "--remote",
-    baseUrl,
-    "--version-file",
-    versionPath
-  ], { stdout: "pipe", stderr: "pipe" });
-
-  const exitCode = await cli.exited;
-  const stdout = await new Response(cli.stdout).text();
-  const stderr = await new Response(cli.stderr).text();
-
-  if (exitCode !== 0) {
-    throw new Error(`sample fetch failed\nstdout:\n${stdout}\nstderr:\n${stderr}`);
-  }
-
-  const version = JSON.parse(await readFile(versionPath, "utf8")) as {
-    baseVersion: number;
-    deltas: Array<{ version: number }>;
-  };
-
-  console.log("Sample fetch completed:");
-  console.log(stdout.trim());
-  console.log(`Recorded base version: ${version.baseVersion}`);
-  console.log(`Applied deltas: ${version.deltas.map((delta) => delta.version).join(", ")}`);
-
-  await new Promise<void>((resolve) => {
-    server.close(() => resolve());
-  });
-  await rm(working, { recursive: true, force: true });
-  await rm(baseArchive.baseDir, { recursive: true, force: true });
-  await rm(deltaArchive.baseDir, { recursive: true, force: true });
 }
 
 main().catch((error) => {

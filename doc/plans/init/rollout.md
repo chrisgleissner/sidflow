@@ -23,13 +23,13 @@
 
 ### Phase 2 Checklist
 
-- [ ] Implement smart HVSC base/delta downloader with retry logic and checksum validation.
-- [ ] Persist `hvsc-version.json` with last applied versions, timestamps, and checksums.
-- [ ] Ensure idempotent behavior: re-running across empty or current trees leaves data consistent.
-- [ ] Abstract archive handling and `sidplayfp` discovery via `sidflow-common` utilities.
-- [ ] CLI command `sidflow fetch` syncs a sample HVSC subtree end-to-end in CI.
-- [ ] Unit/integration tests cover success, delta updates, and failure scenarios (network, checksum mismatch).
-- [ ] Documentation includes troubleshooting for network outages and checksum mismatches.
+- [x] Implement smart HVSC base/delta downloader with retry logic and checksum validation.
+- [x] Persist `hvsc-version.json` with last applied versions, timestamps, and checksums.
+- [x] Ensure idempotent behavior: re-running across empty or current trees leaves data consistent.
+- [x] Abstract archive handling and `sidplayfp` discovery via `sidflow-common` utilities.
+- [x] CLI command `sidflow fetch` syncs a sample HVSC subtree end-to-end in CI.
+- [x] Unit/integration tests cover success, delta updates, and failure scenarios (network, checksum mismatch).
+- [x] Documentation includes troubleshooting for network outages and checksum mismatches.
 
 ## Phase 3 — Manual Tagging (`sidflow-tag`)
 

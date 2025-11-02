@@ -118,7 +118,8 @@ export async function runFetchCli(argv: string[], runner: typeof syncHvsc = sync
     const summaryLines = [
       "HVSC sync completed.",
       `Base archive updated: ${result.baseUpdated ? "yes" : "no"}`,
-      `Applied deltas: ${result.appliedDeltas.length > 0 ? result.appliedDeltas.join(", ") : "none"}`
+      `Applied deltas: ${result.appliedDeltas.length > 0 ? result.appliedDeltas.join(", ") : "none"}`,
+      `Base version: ${result.baseVersion} (last synced ${result.baseSyncedAt})`
     ];
     process.stdout.write(`${summaryLines.join("\n")}\n`);
     return 0;

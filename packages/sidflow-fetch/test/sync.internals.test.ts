@@ -67,7 +67,7 @@ describe("sync internals", () => {
     expect(await isDirectoryEmpty(missing)).toBeTrue();
 
     const filePath = path.join(dir, "file.txt");
-    await writeFile(filePath, "data", "utf8");
+    await writeFile(filePath, "workspace", "utf8");
     expect(await isDirectoryEmpty(filePath)).toBeTrue();
 
     const emptyDir = path.join(dir, "empty");
@@ -144,13 +144,21 @@ describe("sync internals", () => {
       if (attempts < 2) {
         return new Response("", { status: 503, statusText: "Service Unavailable" });
       }
-      return new Response("archive-bytes", { status: 200 });
+      return new Response("archive-bytes", {
+        status: 200,
+        headers: { "Content-Length": String("archive-bytes".length) }
+      });
     });
 
-  const destination = path.join(dir, descriptor.filename);
-  await defaultDownloadArchive(descriptor, destination);
-  expect(await readFile(destination, "utf8")).toBe("archive-bytes");
-  expect(attempts).toBe(2);
+    const destination = path.join(dir, descriptor.filename);
+    const progress: Array<{ downloadedBytes: number; totalBytes?: number }> = [];
+    await defaultDownloadArchive(descriptor, destination, (event) => {
+      progress.push(event);
+    });
+    expect(await readFile(destination, "utf8")).toBe("archive-bytes");
+    expect(attempts).toBe(2);
+    expect(progress.at(-1)?.downloadedBytes).toBe("archive-bytes".length);
+    expect(progress[0]?.totalBytes).toBe("archive-bytes".length);
   });
 
   it("fails the default downloader on HTTP errors", async () => {

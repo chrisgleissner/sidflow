@@ -1,7 +1,7 @@
 {
-  "hvscPath": "./data/hvsc",
-  "wavCachePath": "./data/wav-cache",
-  "tagsPath": "./data/tags",
+  "hvscPath": "./workspace/hvsc",
+  "wavCachePath": "./workspace/wav-cache",
+  "tagsPath": "./workspace/tags",
   "sidplayPath": "sidplayfp",
   "threads": 0,
   "classificationDepth": 3
