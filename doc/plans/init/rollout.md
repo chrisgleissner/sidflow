@@ -55,3 +55,14 @@
 - [ ] CLI processes a curated HVSC sample, producing WAV cache, metadata, and aggregated auto-tag files.
 - [ ] Regression tests ensure manual tags take precedence and feature extraction/model steps are repeatable.
 - [ ] Performance metrics recorded (runtime, cache reuse) and documented for future scaling.
+
+## Phase 5 — Personal Radio (`sidflow-play`)
+
+### Phase 5 Checklist
+
+- [ ] Expose playlist builder that consumes manual and auto tags to score tracks against user mood profiles.
+- [ ] Support filter syntax (tempo, mood, complexity ranges) and weighted blends for on-the-fly sessions.
+- [ ] Stream selected tracks through `sidplayfp` with queue controls (skip, pause, resume) and graceful fallbacks.
+- [ ] Persist session history and allow exporting deterministic playlist manifests (JSON + M3U).
+- [ ] Provide CLI help, examples, and integration tests covering playlist generation and playback orchestration.
+- [ ] Document radio workflows in README, emphasising how classification feeds personalised queues.

@@ -54,7 +54,18 @@ Each tool exposes a simple CLI. Run them from the repository root, for example `
   - `--help` – print usage
 - **Outputs:** refreshed HVSC tree under `hvscPath`, updated version metadata beside it.
 
-### 2. `sidflow classify`
+### 2. `sidflow tag`
+
+- **Status:** in development.
+- **Why:** supplies the human mood labels the classifier learns from.
+- **What it will do:** queue untagged `.sid` files for playback through `sidplayfp`, capture your `s/m/c` ratings (Speed, Mood, Complexity), and write deterministic `*.sid.tags.json` right beside the source tune.
+- **Key controls (planned):**
+  - `s1-5`, `m1-5`, `c1-5` – set sliders; default to level 3 when omitted
+  - `Enter` – save ratings and advance
+  - `Q` – exit gracefully while persisting progress
+- **Outputs (planned):** clearly versioned manual tag files with timestamps and source markers.
+
+### 3. `sidflow classify`
 
 - **Status:** under active development.
 - **Why:** converts your HVSC mirror into mood-aware insight—tempo, emotion, intensity—and assembles curated playlists.
@@ -64,6 +75,17 @@ Each tool exposes a simple CLI. Run them from the repository root, for example `
   - `--sidplay <path>` – override the renderer binary for WAV outputs
 - **Outputs (planned):** mood-segmented playlists and companion metadata alongside `wavCachePath` and `tagsPath`.
 
+### 4. `sidflow play`
+
+- **Status:** planned.
+- **Why:** turns your classified library into a personal SID radio tailored to moment-by-moment preferences.
+- **What it will do:** blend manual and automatic tags to build adaptive queues (e.g., "bright + energetic"), stream them through `sidplayfp`, and export queue manifests for later reuse.
+- **Key knobs (planned):**
+  - `--mood <profile>` – shorthand for saved blends (e.g., `focus`, `sunrise`)
+  - `--filters <expr>` – ad-hoc ranges like `s>=4,m>=3`
+  - `--export <path>` – write deterministic playlist JSON/M3U for external players
+- **Outputs (planned):** live playback session management plus portable playlist files under `tagsPath`.
+
 > Manual seed labels remain supported through the library APIs, but the mainline workflow focuses on automated classification for mood-first listening.
 
 ---
@@ -72,14 +94,18 @@ Each tool exposes a simple CLI. Run them from the repository root, for example `
 
 1. `bun run validate:config` – confirm your config.
 2. `./scripts/sidflow-fetch` – sync or resync HVSC.
-3. The classification CLI is landing next; planning helpers already live in `packages/sidflow-classify` for early adopters who want to experiment with feature extraction.
+3. `sidflow tag` (coming soon) – capture seed labels for the moods you care about.
+4. `sidflow classify` (coming soon) – generate features, train models, and broaden coverage.
+5. `sidflow play` (planned) – stream mood-matched sets or export playlists on demand.
 
 HVSC content lives under `hvscPath`; WAVs and generated tags mirror the same folder structure beneath `wavCachePath` and `tagsPath`.
 The repository git-ignores the `workspace/` directory so your local HVSC mirror and derived assets stay out of version control.
 
 ---
 
-## Troubleshooting Fetches
+## Troubleshooting
+
+### Fetching HVSC
 
 - SID Flow automatically retries manifest lookups and archive downloads three times. If you continue to see `Failed to fetch HVSC manifest`, verify your network/firewall and try `--remote` with a different mirror.
 - On repeated download failures, delete the partially created archive in your temp directory (reported in the error) and rerun `sidflow fetch`.
@@ -88,7 +114,7 @@ The repository git-ignores the `workspace/` directory so your local HVSC mirror 
 
 ---
 
-## Need to Contribute?
+## Development
 
 Developer setup, project layout, and testing expectations now live in `doc/developer.md`.
 
