@@ -2,7 +2,7 @@
 
 # SID Flow
 
-Analyse, classify, and organise any SID collection — from raw tunes to mood-driven playlists.
+Classify any C64 song collection: from raw SID tunes to mood-driven playlists.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yaml)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
@@ -10,17 +10,18 @@ Analyse, classify, and organise any SID collection — from raw tunes to mood-dr
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
 **SID Flow** processes any SID library — such as the High Voltage SID Collection ([HVSC](https://www.hvsc.c64.org/)) or your own archive — to extract structure, mood, and complexity.  
+
 It builds deterministic playlists that you can play directly or integrate into existing workflows.
 
-All tools are simple, scriptable CLIs powered by **Bun** and **TypeScript**.
+All CLI tools are powered by [Bun](https://bun.com/) and [TypeScript](https://www.typescriptlang.org/).
 
 ---
 
 ## Requirements
 
-- **Bun** ≥ 1.1.10  
-- **sidplayfp** in your `PATH` (or specify with `--sidplay <path>`)  
-- **7-Zip (`7z`)** available for archive extraction  
+- [Bun](https://bun.com/docs/installation) ≥ 1.1.10 - for executing Typescript
+- [sidplayfp](https://github.com/libsidplayfp/sidplayfp) in your `PATH` (or specify with `--sidplay <path>`) - for SID playback and WAV rendering
+- [7-Zip](https://www.7-zip.org/download.html) - for archive extraction  
 
 Place a `.sidflow.json` configuration file beside this README before running any tool.  
 Default structure:

@@ -47,7 +47,7 @@
 
 ### Phase 4 Checklist
 
-- [ ] Implement WAV caching pipeline using `sidplayfp -w`, respecting `threads` and cache freshness.
+- [x] Implement WAV caching pipeline using `sidplayfp -w`, respecting `threads` and cache freshness.
 - [ ] Integrate Essentia.js for feature extraction and a lightweight TF.js regressor producing `(s,m,c)`.
 - [ ] Merge manual and auto tags without overwriting manual values; fill gaps only.
 - [ ] Generate `auto-tags.json` per folder level defined by `classificationDepth`, with deterministic ordering.
