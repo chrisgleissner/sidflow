@@ -2,25 +2,28 @@
 
 # SID Flow
 
+Analyse, classify, and organise any SID collection — from raw tunes to mood-driven playlists.
+
 [![Build](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yaml)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
+**SID Flow** processes any SID library — such as the High Voltage SID Collection ([HVSC](https://www.hvsc.c64.org/)) or your own archive — to extract structure, mood, and complexity.  
+It builds deterministic playlists that you can play directly or integrate into existing workflows.
 
-SID Flow mirrors the High Voltage SID Collection (HVSC), analyses every tune, and builds mood-driven playlists you can drop straight into your listening pipeline.
-
-Everything runs from simple CLIs powered by Bun and TypeScript.
+All tools are simple, scriptable CLIs powered by **Bun** and **TypeScript**.
 
 ---
 
-## What You Need
+## Requirements
 
-- Bun ≥ 1.1.10
-- `sidplayfp` on your `PATH` (or pass `--sidplay <path>` per command)
-- A working 7-Zip (`7z`) binary for extracting HVSC archives
+- **Bun** ≥ 1.1.10  
+- **sidplayfp** in your `PATH` (or specify with `--sidplay <path>`)  
+- **7-Zip (`7z`)** available for archive extraction  
 
-Drop a `.sidflow.json` next to this README before running any tool. The default shape is:
+Place a `.sidflow.json` configuration file beside this README before running any tool.  
+Default structure:
 
 ```json
 {
@@ -33,73 +36,116 @@ Drop a `.sidflow.json` next to this README before running any tool. The default 
 }
 ```
 
-Run `bun run validate:config` anytime to confirm the file is well formed.
+Validate configuration anytime:
+
+```bash
+bun run validate:config
+```
 
 ---
 
-## SID Flow Tools
+## CLI Tools
 
-Each tool exposes a simple CLI. Run them from the repository root, for example `./scripts/sidflow-fetch --help`.
+Each command can be run via the command line interface from the repository root.
 
-### 1. `sidflow fetch`
+### 1. `sidflow-fetch`
 
-- **Status:** production ready.
-- **Why:** keeps a reproducible HVSC mirror for downstream analysis.
-- **What it does:** downloads the latest HVSC base archive, applies any missing deltas, and records progress in `hvsc-version.json`.
-- **Key flags:**
-  - `--remote <url>` – mirror root to scrape (defaults to `https://hvsc.brona.dk/HVSC/`)
-  - `--version-file <path>` – custom location for `hvsc-version.json`
-- **Shared flags:**
-  - `--config <path>` – load an alternate `.sidflow.json`
-  - `--help` – print usage
-- **Outputs:** refreshed HVSC tree under `hvscPath`, updated version metadata beside it.
+```sh
+./scripts/sidflow-fetch [--remote <url>] [--version-file <path>] [--config <path>] [--help]
+```
 
-### 2. `sidflow tag`
+**Status:** Done  
+**Purpose:** Keep a reproducible HVSC or custom SID mirror for downstream processing.  
+**Operation:** Downloads the latest base archive, applies missing deltas, and records version metadata in `hvsc-version.json`.
 
-- **Status:** in development.
-- **Why:** supplies the human mood labels the classifier learns from.
-- **What it will do:** queue untagged `.sid` files for playback through `sidplayfp`, capture your `s/m/c` ratings (Speed, Mood, Complexity), and write deterministic `*.sid.tags.json` right beside the source tune.
-- **Key controls (planned):**
-  - `s1-5`, `m1-5`, `c1-5` – set sliders; default to level 3 when omitted
-  - `Enter` – save ratings and advance
-  - `Q` – exit gracefully while persisting progress
-- **Outputs (planned):** clearly versioned manual tag files with timestamps and source markers.
+**Key flags**
 
-### 3. `sidflow classify`
+- `--remote <url>` — mirror root (default: `https://hvsc.brona.dk/HVSC/`)  
+- `--version-file <path>` — custom location for version metadata  
+- `--config <path>` — alternate configuration file  
+- `--help` — show usage  
 
-- **Status:** under active development.
-- **Why:** converts your HVSC mirror into mood-aware insight—tempo, emotion, intensity—and assembles curated playlists.
-- **What it will do:** render SIDs to WAV, extract audio features, score each track against trained mood models, and emit deterministic playlist manifests you can sync with players.
-- **Key knobs (planned):**
-  - `--force-rebuild` – discard cached features/models and recompute from scratch
-  - `--sidplay <path>` – override the renderer binary for WAV outputs
-- **Outputs (planned):** mood-segmented playlists and companion metadata alongside `wavCachePath` and `tagsPath`.
+**Outputs**
 
-### 4. `sidflow play`
-
-- **Status:** planned.
-- **Why:** turns your classified library into a personal SID radio tailored to moment-by-moment preferences.
-- **What it will do:** blend manual and automatic tags to build adaptive queues (e.g., "bright + energetic"), stream them through `sidplayfp`, and export queue manifests for later reuse.
-- **Key knobs (planned):**
-  - `--mood <profile>` – shorthand for saved blends (e.g., `focus`, `sunrise`)
-  - `--filters <expr>` – ad-hoc ranges like `s>=4,m>=3`
-  - `--export <path>` – write deterministic playlist JSON/M3U for external players
-- **Outputs (planned):** live playback session management plus portable playlist files under `tagsPath`.
-
-> Manual seed labels remain supported through the library APIs, but the mainline workflow focuses on automated classification for mood-first listening.
+- Updated SID tree under `hvscPath`  
+- Refreshed `hvsc-version.json` containing version and checksum data  
 
 ---
 
-## Typical Flow
+### 2. `sidflow-tag` (planned)
 
-1. `bun run validate:config` – confirm your config.
-2. `./scripts/sidflow-fetch` – sync or resync HVSC.
-3. `sidflow tag` (coming soon) – capture seed labels for the moods you care about.
-4. `sidflow classify` (coming soon) – generate features, train models, and broaden coverage.
-5. `sidflow play` (planned) – stream mood-matched sets or export playlists on demand.
+```sh
+./scripts/sidflow-tag [--sidplay <path>] [--config <path>]
+```
 
-HVSC content lives under `hvscPath`; WAVs and generated tags mirror the same folder structure beneath `wavCachePath` and `tagsPath`.
-The repository git-ignores the `workspace/` directory so your local HVSC mirror and derived assets stay out of version control.
+**Status:** In development  
+**Purpose:** Provide human-readable mood labels for supervised classification.  
+**Operation:** Plays untagged `.sid` files via `sidplayfp`, records speed/mood/complexity (`s/m/c`) ratings, and stores results beside each track.
+
+**Controls**
+
+- `s1-5`, `m1-5`, `c1-5` — set values (default 3)  
+- `Enter` — save and advance  
+- `Q` — quit safely while saving progress  
+
+**Outputs**
+
+- Deterministic `*.sid.tags.json` files with timestamps and version markers  
+
+---
+
+### 3. `sidflow-classify` (planned)
+
+```sh
+./scripts/sidflow-classify [--force-rebuild] [--sidplay <path>] [--config <path>]
+```
+
+**Status:** Planned  
+**Purpose:** Analyse audio, extract features, and generate mood-aware playlists.  
+**Operation:** Converts `.sid` to WAV, computes feature vectors, compares against learned patterns, and emits playlists grouped by tempo, mood, and complexity.
+
+**Flags**
+
+- `--force-rebuild` — ignore cache and recompute  
+- `--sidplay <path>` — override player binary  
+
+**Outputs**
+
+- Playlists and metadata under `wavCachePath` and `tagsPath`  
+
+---
+
+### 4. `sidflow-play` (planned)
+
+```sh
+./scripts/sidflow-play [--mood <profile>] [--filters <expr>] [--export <path>]
+```
+
+**Status:** Planned  
+**Purpose:** Turn your classified collection into a dynamic SID playlist experience.  
+**Operation:** Combines manual and automatic tags to build thematic queues (e.g., “bright + energetic”), streams through `sidplayfp`, and exports deterministic manifests.
+
+**Flags**
+
+- `--mood <profile>` — predefined blend (e.g., `focus`, `sunrise`)  
+- `--filters <expr>` — range expressions like `s>=4,m>=3`  
+- `--export <path>` — write playlists (JSON/M3U)  
+
+**Outputs**
+
+- Portable playlist files and live playback session state  
+
+---
+
+## Typical Workflow
+
+1. `bun run validate:config` — verify configuration  
+2. `./scripts/sidflow-fetch` — download or refresh your SID mirror  
+3. `sidflow tag` — collect seed tags (when available)  
+4. `sidflow classify` — build features and generate playlists  
+5. `sidflow play` — filter and play curated sets  
+
+All generated data (HVSC mirror, WAVs, tags) stays under `workspace/` and is git-ignored by default.
 
 ---
 
@@ -107,19 +153,20 @@ The repository git-ignores the `workspace/` directory so your local HVSC mirror 
 
 ### Fetching HVSC
 
-- SID Flow automatically retries manifest lookups and archive downloads three times. If you continue to see `Failed to fetch HVSC manifest`, verify your network/firewall and try `--remote` with a different mirror.
-- On repeated download failures, delete the partially created archive in your temp directory (reported in the error) and rerun `sidflow fetch`.
-- The file `hvsc-version.json` records the SHA-256 checksum for the base archive and every applied delta. If your local tree drifts (e.g., manual edits), remove that file to force a clean re-sync and compare the stored checksums afterward.
-- Extract errors typically mean `7z` is missing—install it or ensure it is on your `PATH`.
+- Retries manifest and archive downloads up to three times.  
+- On persistent errors, use `--remote` with an alternate mirror.  
+- Delete partial archives if extraction fails and rerun.  
+- Ensure `7z` is installed and accessible on your `PATH`.  
+- If `hvsc-version.json` drifts from actual content, remove it to trigger a clean re-sync.
 
 ---
 
 ## Development
 
-Developer setup, project layout, and testing expectations now live in `doc/developer.md`.
+Setup details, structure, and testing are described in [`doc/developer.md`](doc/developer.md).
 
 ---
 
 ## License
 
-GPL v2 – see `LICENSE`.
+GPL v2 — see `LICENSE`.

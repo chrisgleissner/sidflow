@@ -35,13 +35,13 @@
 
 ### Phase 3 Checklist
 
-- [ ] Build interactive CLI that cycles through untagged `.sid` files with sequential/random modes.
-- [ ] Wire keyboard controls for speed (`s1-5`), mood (`m1-5`), complexity (`c1-5`), save (`Enter`), quit (`Q`).
-- [ ] Serialize deterministic `*.sid.tags.json` files adjacent to source SIDs with timestamps and source markers.
-- [ ] Integrate `sidplayfp` playback management with graceful error handling and overrides.
-- [ ] CLI demo covers default flow, override flags, and tag persistence with deterministic ordering.
-- [ ] Automated tests validate key bindings, file output, and configuration fallbacks (mocked players/filesystem).
-- [ ] README and in-tool help explain tagging semantics (`s/m/c`) and workflow expectations.
+- [x] Build interactive CLI that cycles through untagged `.sid` files with sequential/random modes.
+- [x] Wire keyboard controls for speed (`s1-5`), mood (`m1-5`), complexity (`c1-5`), save (`Enter`), quit (`Q`).
+- [x] Serialize deterministic `*.sid.tags.json` files adjacent to source SIDs with timestamps and source markers.
+- [x] Integrate `sidplayfp` playback management with graceful error handling and overrides.
+- [x] CLI demo covers default flow, override flags, and tag persistence with deterministic ordering.
+- [x] Automated tests validate key bindings, file output, and configuration fallbacks (mocked players/filesystem).
+- [x] README and in-tool help explain tagging semantics (`s/m/c`) and workflow expectations.
 
 ## Phase 4 — Automated Classification (`sidflow-classify`)
 

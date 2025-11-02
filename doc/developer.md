@@ -40,6 +40,7 @@ Validate edits with `bun run validate:config`.
 | `bun run test` | Build then run the Bun test suite with coverage (≥90% enforced). |
 | `bun run validate:config` | Smoke-test the active configuration file. |
 | `./scripts/sidflow-fetch` | Run the fetch CLI with Bun hidden behind a repo-local shim. |
+| `./scripts/sidflow-tag` | Launch the interactive tagging CLI (TTY required). |
 | `bun run fetch:sample` | Spin up a local mirror and run the `sidflow fetch` CLI end-to-end (used in CI). |
 
 CI mirrors these steps before uploading coverage to Codecov.
@@ -73,6 +74,7 @@ All packages share `tsconfig.base.json` and strict TypeScript settings; avoid in
 ## 6. Developing CLIs
 
 - The fetch CLI is live; run `./scripts/sidflow-fetch --help` to inspect options.
+- The tagging CLI requires a TTY; run `./scripts/sidflow-tag --help` for controls and flags.
 - Upcoming CLIs for tagging and classification should follow the same pattern: parse args in a dedicated `cli.ts`, expose a testable `run*Cli` function, and guard the executable entry point with `import.meta.main`.
 - Keep option parsing minimal and dependency-free; write focused tests similar to `packages/sidflow-fetch/test/cli.test.ts`.
 
