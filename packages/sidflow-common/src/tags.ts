@@ -38,7 +38,8 @@ function determineFolderDepth(relativeSidPath: string, depth: number): number {
 }
 
 function splitPathSegments(relativePath: string): string[] {
-  return relativePath.split(path.sep).filter(Boolean);
+  const normalised = toPosixRelative(relativePath);
+  return normalised.split("/").filter(Boolean);
 }
 
 export function resolveAutoTagDirectory(
@@ -74,5 +75,6 @@ export function toPosixRelative(relativePath: string): string {
   if (!relativePath) {
     return "";
   }
-  return relativePath.split(path.sep).join("/");
+  const replaced = relativePath.replace(/\\/g, "/");
+  return replaced.replace(/\/+/g, "/");
 }

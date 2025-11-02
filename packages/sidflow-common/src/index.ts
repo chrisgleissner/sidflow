@@ -4,3 +4,4 @@ export * from "./json.js";
 export * from "./retry.js";
 export { ensureDir, pathExists } from "./fs.js";
 export * from "./tags.js";
+export * from "./ratings.js";

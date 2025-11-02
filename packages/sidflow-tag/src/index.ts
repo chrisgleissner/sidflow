@@ -1,16 +1,18 @@
-import { createLogger, loadConfig, stringifyDeterministic, type JsonValue, type SidflowConfig } from "@sidflow/common";
-import { access, mkdir, readdir, stat, writeFile } from "fs/promises";
-import path from "path";
-
-const TAG_FILE_SUFFIX = ".sid.tags.json";
-const RATING_MIN = 1;
-const RATING_MAX = 5;
-
-export interface TagRatings {
-  s: number;
-  m: number;
-  c: number;
-}
+import {
+  createLogger,
+  ensureDir,
+  clampRating,
+  DEFAULT_RATINGS,
+  loadConfig,
+  pathExists,
+  resolveManualTagPath,
+  stringifyDeterministic,
+  type TagRatings,
+  type JsonValue,
+  type SidflowConfig
+} from "@sidflow/common";
+import { readdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 export interface KeyState {
   ratings: TagRatings;
@@ -48,13 +50,16 @@ export async function planTagSession(
   };
 }
 
-export const DEFAULT_RATINGS: TagRatings = { s: 3, m: 3, c: 3 } as const;
+export function createTagFilePath(hvscPath: string, tagsPath: string, sidFile: string): string {
+  return resolveManualTagPath(hvscPath, tagsPath, sidFile);
+}
 
-export function clampRating(value: number): number {
-  if (Number.isNaN(value)) {
-    return DEFAULT_RATINGS.s;
-  }
-  return Math.min(RATING_MAX, Math.max(RATING_MIN, value));
+export async function ensureDirectory(filePath: string): Promise<void> {
+  await ensureDir(path.dirname(filePath));
+}
+
+export async function tagFileExists(tagFilePath: string): Promise<boolean> {
+  return pathExists(tagFilePath);
 }
 
 export function interpretKey(key: string, state: KeyState): { state: KeyState; action: KeyAction } {
@@ -83,33 +88,6 @@ export function interpretKey(key: string, state: KeyState): { state: KeyState; a
   }
 
   return { state: { ...state, pendingDimension: undefined }, action: "none" };
-}
-
-export function createTagFilePath(hvscPath: string, tagsPath: string, sidFile: string): string {
-  const relative = path.relative(hvscPath, sidFile);
-  if (relative.startsWith("..")) {
-    throw new Error(`SID file ${sidFile} is not within HVSC path ${hvscPath}`);
-  }
-  const directory = path.dirname(relative);
-  const filename = `${path.basename(sidFile)}${TAG_FILE_SUFFIX}`;
-  return path.join(tagsPath, directory, filename);
-}
-
-export async function ensureDirectory(filePath: string): Promise<void> {
-  const directory = path.dirname(filePath);
-  await mkdir(directory, { recursive: true });
-}
-
-export async function tagFileExists(tagFilePath: string): Promise<boolean> {
-  try {
-    await access(tagFilePath);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
 }
 
 export async function writeManualTag(
@@ -145,7 +123,7 @@ export async function findUntaggedSids(hvscPath: string, tagsPath: string): Prom
       if (!fullPath.toLowerCase().endsWith(".sid")) {
         continue;
       }
-      const tagPath = createTagFilePath(hvscPath, tagsPath, fullPath);
+      const tagPath = resolveManualTagPath(hvscPath, tagsPath, fullPath);
       if (!(await tagFileExists(tagPath))) {
         results.push(fullPath);
       }
@@ -168,3 +146,5 @@ export function shuffleInPlace(values: string[], random: () => number = Math.ran
     [values[index], values[swapIndex]] = [values[swapIndex], values[index]];
   }
 }
+
+export { DEFAULT_RATINGS, clampRating, type TagRatings } from "@sidflow/common";
