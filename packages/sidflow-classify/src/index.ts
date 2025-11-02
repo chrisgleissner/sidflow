@@ -1,6 +1,22 @@
-import { ensureDir, loadConfig, pathExists, stringifyDeterministic, type SidflowConfig } from "@sidflow/common";
+import {
+  DEFAULT_RATINGS,
+  clampRating,
+  ensureDir,
+  loadConfig,
+  pathExists,
+  resolveAutoTagFilePath,
+  resolveAutoTagKey,
+  resolveManualTagPath,
+  resolveMetadataPath,
+  resolveRelativeSidPath,
+  stringifyDeterministic,
+  toPosixRelative,
+  type JsonValue,
+  type SidflowConfig,
+  type TagRatings
+} from "@sidflow/common";
 import { spawn } from "node:child_process";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface ClassifyOptions {
@@ -154,3 +170,398 @@ export async function buildWavCache(
 
   return { rendered, skipped };
 }
+
+const RATING_DIMENSIONS: Array<keyof TagRatings> = ["s", "m", "c"];
+
+export interface SidMetadata {
+  title?: string;
+  author?: string;
+  released?: string;
+}
+
+export interface ExtractMetadataOptions {
+  sidFile: string;
+  sidplayPath: string;
+  relativePath: string;
+}
+
+export type ExtractMetadata = (options: ExtractMetadataOptions) => Promise<SidMetadata>;
+
+const SIDPLAY_METADATA_ARGS = ["-t1", "--none"] as const;
+
+export const defaultExtractMetadata: ExtractMetadata = async ({ sidFile, sidplayPath, relativePath }) => {
+  try {
+    const output = await runSidplayForMetadata(sidFile, sidplayPath);
+    return parseSidMetadataOutput(output);
+  } catch (error) {
+    return fallbackMetadataFromPath(relativePath, error);
+  }
+};
+
+async function runSidplayForMetadata(sidFile: string, sidplayPath: string): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const child = spawn(sidplayPath, [...SIDPLAY_METADATA_ARGS, sidFile], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string | Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on("data", (chunk: string | Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        const message = stderr.trim() ? `: ${stderr.trim()}` : "";
+        reject(new Error(`sidplayfp metadata extraction failed with code ${code}${message}`));
+      }
+    });
+  });
+}
+
+const METADATA_FIELD_MAP = new Map<string, keyof SidMetadata>([
+  ["title", "title"],
+  ["author", "author"],
+  ["released", "released"]
+]);
+
+export function parseSidMetadataOutput(output: string): SidMetadata {
+  const metadata: SidMetadata = {};
+  const lines = output.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) {
+      continue;
+    }
+    const match = trimmed.match(/^\|\s*(Title|Author|Released)\s*:\s*(.*?)\s*\|?$/i);
+    if (!match) {
+      continue;
+    }
+    const [, field, rawValue] = match;
+    const value = rawValue.trim();
+    if (!value) {
+      continue;
+    }
+    const key = METADATA_FIELD_MAP.get(field.toLowerCase());
+    if (key) {
+      metadata[key] = value;
+    }
+  }
+  return metadata;
+}
+
+export function fallbackMetadataFromPath(relativePath: string, _error?: unknown): SidMetadata {
+  const segments = toPosixRelative(relativePath).split("/").filter(Boolean);
+  const lastSegment = segments.at(-1) ?? "";
+  const baseName = lastSegment.replace(/\.sid$/i, "");
+  const title = baseName.replace(/[_\-]+/g, " ").trim();
+  const author = segments.length >= 2 ? segments.at(-2) : undefined;
+  return {
+    title: title || undefined,
+    author: author ? author.replace(/[_\-]+/g, " ").trim() || undefined : undefined
+  };
+}
+
+type PartialTagRatings = Partial<TagRatings>;
+
+interface ManualTagRecord {
+  ratings: PartialTagRatings;
+  timestamp?: string;
+  source: string;
+}
+
+async function loadManualTagRecord(
+  hvscPath: string,
+  tagsPath: string,
+  sidFile: string
+): Promise<ManualTagRecord | null> {
+  const tagPath = resolveManualTagPath(hvscPath, tagsPath, sidFile);
+  if (!(await pathExists(tagPath))) {
+    return null;
+  }
+
+  let fileContents: string;
+  try {
+    fileContents = await readFile(tagPath, "utf8");
+  } catch (error) {
+    throw new Error(`Unable to read manual tag at ${tagPath}`, { cause: error as Error });
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(fileContents);
+  } catch (error) {
+    throw new Error(`Invalid JSON in manual tag at ${tagPath}`, { cause: error as Error });
+  }
+
+  if (!data || typeof data !== "object") {
+    throw new Error(`Manual tag at ${tagPath} must be a JSON object`);
+  }
+
+  const record = data as Record<string, unknown>;
+  const ratings: PartialTagRatings = {};
+  for (const dimension of RATING_DIMENSIONS) {
+    const raw = record[dimension];
+    if (typeof raw === "number" && !Number.isNaN(raw)) {
+      ratings[dimension] = clampRating(raw);
+    }
+  }
+
+  const timestamp = typeof record.timestamp === "string" ? record.timestamp : undefined;
+  const source = typeof record.source === "string" ? record.source : "manual";
+
+  return { ratings, timestamp, source };
+}
+
+function hasMissingDimensions(ratings: PartialTagRatings): boolean {
+  return RATING_DIMENSIONS.some((dimension) => ratings[dimension] === undefined);
+}
+
+type ClassificationSource = "manual" | "auto" | "mixed";
+
+interface AutoTagEntry extends TagRatings {
+  source: ClassificationSource;
+}
+
+function combineRatings(
+  manual: PartialTagRatings | null,
+  auto: TagRatings | null
+): { ratings: TagRatings; source: ClassificationSource } {
+  const ratings: TagRatings = { ...DEFAULT_RATINGS };
+  let manualCount = 0;
+  let autoCount = 0;
+
+  for (const dimension of RATING_DIMENSIONS) {
+    if (manual && manual[dimension] !== undefined) {
+      ratings[dimension] = clampRating(manual[dimension] as number);
+      manualCount += 1;
+      continue;
+    }
+
+    if (auto) {
+      ratings[dimension] = clampRating(auto[dimension]);
+      autoCount += 1;
+      continue;
+    }
+
+    ratings[dimension] = DEFAULT_RATINGS[dimension];
+  }
+
+  if (manualCount === 0 && autoCount > 0) {
+    return { ratings, source: "auto" };
+  }
+  if (manualCount > 0 && autoCount > 0) {
+    return { ratings, source: "mixed" };
+  }
+  return { ratings, source: "manual" };
+}
+
+export interface FeatureVector {
+  [feature: string]: number;
+}
+
+export interface ExtractFeaturesOptions {
+  wavFile: string;
+  sidFile: string;
+}
+
+export type FeatureExtractor = (options: ExtractFeaturesOptions) => Promise<FeatureVector>;
+
+export interface PredictRatingsOptions {
+  features: FeatureVector;
+  sidFile: string;
+  relativePath: string;
+  metadata: SidMetadata;
+}
+
+export type PredictRatings = (options: PredictRatingsOptions) => Promise<TagRatings>;
+
+export const defaultFeatureExtractor: FeatureExtractor = async () => {
+  throw new Error(
+    "Feature extraction requires Essentia.js. Provide a custom featureExtractor implementation."
+  );
+};
+
+export const defaultPredictRatings: PredictRatings = async () => {
+  throw new Error(
+    "Prediction requires a trained TensorFlow.js model. Provide a custom predictRatings implementation."
+  );
+};
+
+function metadataToJson(metadata: SidMetadata): Record<string, JsonValue> {
+  const record: Record<string, JsonValue> = {};
+  if (metadata.title) {
+    record.title = metadata.title;
+  }
+  if (metadata.author) {
+    record.author = metadata.author;
+  }
+  if (metadata.released) {
+    record.released = metadata.released;
+  }
+  return record;
+}
+
+async function writeMetadataRecord(
+  plan: ClassificationPlan,
+  sidFile: string,
+  metadata: SidMetadata
+): Promise<string> {
+  const metadataPath = resolveMetadataPath(plan.hvscPath, plan.tagsPath, sidFile);
+  await ensureDir(path.dirname(metadataPath));
+  await writeFile(metadataPath, stringifyDeterministic(metadataToJson(metadata)));
+  return metadataPath;
+}
+
+export interface GenerateAutoTagsOptions {
+  extractMetadata?: ExtractMetadata;
+  featureExtractor?: FeatureExtractor;
+  predictRatings?: PredictRatings;
+}
+
+export interface GenerateAutoTagsResult {
+  autoTagged: string[];
+  manualEntries: string[];
+  mixedEntries: string[];
+  metadataFiles: string[];
+  tagFiles: string[];
+}
+
+export async function generateAutoTags(
+  plan: ClassificationPlan,
+  options: GenerateAutoTagsOptions = {}
+): Promise<GenerateAutoTagsResult> {
+  const sidFiles = await collectSidFiles(plan.hvscPath);
+  const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
+  const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
+  const predictRatings = options.predictRatings ?? defaultPredictRatings;
+
+  const autoTagged: string[] = [];
+  const manualEntries: string[] = [];
+  const mixedEntries: string[] = [];
+  const metadataFiles: string[] = [];
+  const tagFiles: string[] = [];
+
+  const grouped = new Map<string, Map<string, AutoTagEntry>>();
+
+  for (const sidFile of sidFiles) {
+    const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
+    const posixRelative = toPosixRelative(relativePath);
+
+    const metadata = await extractMetadata({
+      sidFile,
+      sidplayPath: plan.sidplayPath,
+      relativePath: posixRelative
+    });
+    const metadataPath = await writeMetadataRecord(plan, sidFile, metadata);
+    metadataFiles.push(metadataPath);
+
+    const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
+    const needsAuto = !manualRecord || hasMissingDimensions(manualRecord.ratings);
+    let autoRatings: TagRatings | null = null;
+
+    if (needsAuto) {
+      const wavPath = resolveWavPath(plan, sidFile);
+      if (!(await pathExists(wavPath))) {
+        throw new Error(
+          `Missing WAV cache for ${posixRelative}. Run buildWavCache before generateAutoTags.`
+        );
+      }
+      const features = await featureExtractor({ wavFile: wavPath, sidFile });
+      autoRatings = await predictRatings({
+        features,
+        sidFile,
+        relativePath: posixRelative,
+        metadata
+      });
+    }
+
+    const { ratings, source } = combineRatings(manualRecord?.ratings ?? null, autoRatings);
+
+    if (source === "auto") {
+      autoTagged.push(posixRelative);
+    } else if (source === "manual") {
+      manualEntries.push(posixRelative);
+    } else {
+      mixedEntries.push(posixRelative);
+    }
+
+    const autoFilePath = resolveAutoTagFilePath(
+      plan.tagsPath,
+      relativePath,
+      plan.classificationDepth
+    );
+    const key = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
+    const entry: AutoTagEntry = { ...ratings, source };
+    const existingEntries = grouped.get(autoFilePath);
+    if (existingEntries) {
+      existingEntries.set(key, entry);
+    } else {
+      grouped.set(autoFilePath, new Map([[key, entry]]));
+    }
+  }
+
+  for (const [autoFilePath, entries] of grouped) {
+    const sorted = [...entries.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const record: Record<string, JsonValue> = {};
+    for (const [key, entry] of sorted) {
+      record[key] = {
+        s: entry.s,
+        m: entry.m,
+        c: entry.c,
+        source: entry.source
+      };
+    }
+    await ensureDir(path.dirname(autoFilePath));
+    await writeFile(autoFilePath, stringifyDeterministic(record));
+    tagFiles.push(autoFilePath);
+  }
+
+  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles };
+}
+
+function computeSeed(value: string): number {
+  let seed = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    seed = (seed * 31 + value.charCodeAt(index)) % 1_000_000;
+  }
+  return seed;
+}
+
+function toRating(seed: number): number {
+  const value = ((Math.floor(seed) % 5) + 5) % 5;
+  return value + 1;
+}
+
+export const heuristicFeatureExtractor: FeatureExtractor = async ({ wavFile, sidFile }) => {
+  const [wavStats, sidStats] = await Promise.all([stat(wavFile), stat(sidFile)]);
+  const baseName = path.basename(sidFile);
+  return {
+    wavBytes: wavStats.size,
+    sidBytes: sidStats.size,
+    nameSeed: computeSeed(baseName)
+  } satisfies FeatureVector;
+};
+
+export const heuristicPredictRatings: PredictRatings = async ({
+  features,
+  relativePath,
+  metadata
+}) => {
+  const baseSeed = computeSeed(relativePath + (metadata.title ?? ""));
+  const tempoSeed = baseSeed + (features.wavBytes ?? 0);
+  const moodSeed = baseSeed + (metadata.author ? computeSeed(metadata.author) : 0);
+  const complexitySeed = baseSeed + (features.sidBytes ?? 0) + (features.nameSeed ?? 0);
+
+  return {
+    s: clampRating(toRating(tempoSeed)),
+    m: clampRating(toRating(moodSeed)),
+    c: clampRating(toRating(complexitySeed))
+  };
+};

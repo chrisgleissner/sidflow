@@ -42,6 +42,7 @@ Validate edits with `bun run validate:config`.
 | `./scripts/sidflow-fetch` | Run the fetch CLI with Bun hidden behind a repo-local shim. |
 | `./scripts/sidflow-tag` | Launch the interactive tagging CLI (TTY required). |
 | `bun run fetch:sample` | Spin up a local mirror and run the `sidflow fetch` CLI end-to-end (used in CI). |
+| `bun run classify:sample` | Execute the end-to-end classification sample, including metadata extraction and auto-tag heuristics. |
 
 CI mirrors these steps before uploading coverage to Codecov.
 

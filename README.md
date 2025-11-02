@@ -94,24 +94,37 @@ Each command can be run via the command line interface from the repository root.
 
 ---
 
-### 3. `sidflow-classify` (planned)
+### 3. `sidflow-classify`
 
 ```sh
-./scripts/sidflow-classify [--force-rebuild] [--sidplay <path>] [--config <path>]
+./scripts/sidflow-classify [--config <path>] [--sidplay <path>] [--force-rebuild]
+                            [--feature-module <path>] [--predictor-module <path>]
+                            [--metadata-module <path>] [--render-module <path>]
 ```
 
-**Status:** Planned  
-**Purpose:** Analyse audio, extract features, and generate mood-aware playlists.  
-**Operation:** Converts `.sid` to WAV, computes feature vectors, compares against learned patterns, and emits playlists grouped by tempo, mood, and complexity.
+**Status:** In development (heuristic defaults available)  
+**Purpose:** Convert SIDs to WAV, extract features, merge manual tags, and publish deterministic `auto-tags.json` summaries.  
+**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors, and predicts `(s/m/c)` ratings for untagged dimensions without overwriting manual values.
 
-**Flags**
+#### Flags (classification)
 
-- `--force-rebuild` — ignore cache and recompute  
-- `--sidplay <path>` — override player binary  
+- `--config <path>` — alternate `.sidflow.json`
+- `--sidplay <path>` — override `sidplayfp` binary for WAV + metadata extraction
+- `--force-rebuild` — re-render WAV cache even if fresh
+- `--feature-module <path>` — custom Bun/ESM module exporting `featureExtractor`
+- `--predictor-module <path>` — custom module exporting `predictRatings`
+- `--metadata-module <path>` — custom module exporting `extractMetadata`
+- `--render-module <path>` — custom module exporting `render` hook (handy for tests)
 
-**Outputs**
+#### Outputs (classification)
 
-- Playlists and metadata under `wavCachePath` and `tagsPath`  
+- Deterministic WAV cache under `wavCachePath`
+- Per-SID metadata files (`*.sid.meta.json`)
+- Aggregated `auto-tags.json` files respecting `classificationDepth`
+- Summary of auto/manual/mixed tag coverage on stdout  
+
+> [!TIP]
+> Without custom modules, the CLI uses built-in heuristics for features and predictions. Plug in Essentia.js + TensorFlow.js wrappers via `--feature-module` and `--predictor-module` when ready for production models.
 
 ---
 
@@ -125,13 +138,13 @@ Each command can be run via the command line interface from the repository root.
 **Purpose:** Turn your classified collection into a dynamic SID playlist experience.  
 **Operation:** Combines manual and automatic tags to build thematic queues (e.g., “bright + energetic”), streams through `sidplayfp`, and exports deterministic manifests.
 
-**Flags**
+#### Flags (play)
 
 - `--mood <profile>` — predefined blend (e.g., `focus`, `sunrise`)  
 - `--filters <expr>` — range expressions like `s>=4,m>=3`  
 - `--export <path>` — write playlists (JSON/M3U)  
 
-**Outputs**
+#### Outputs (play)
 
 - Portable playlist files and live playback session state  
 

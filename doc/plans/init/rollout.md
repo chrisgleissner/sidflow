@@ -49,12 +49,14 @@
 
 - [x] Implement WAV caching pipeline using `sidplayfp -w`, respecting `threads` and cache freshness.
 - [ ] Integrate Essentia.js for feature extraction and a lightweight TF.js regressor producing `(s,m,c)`.
-- [ ] Merge manual and auto tags without overwriting manual values; fill gaps only.
-- [ ] Generate `auto-tags.json` per folder level defined by `classificationDepth`, with deterministic ordering.
-- [ ] Capture metadata via `sidplayfp -t1 --none` for use in tagging and future features.
-- [ ] CLI processes a curated HVSC sample, producing WAV cache, metadata, and aggregated auto-tag files.
-- [ ] Regression tests ensure manual tags take precedence and feature extraction/model steps are repeatable.
+- [x] Merge manual and auto tags without overwriting manual values; fill gaps only.
+- [x] Generate `auto-tags.json` per folder level defined by `classificationDepth`, with deterministic ordering.
+- [x] Capture metadata via `sidplayfp -t1 --none` for use in tagging and future features.
+- [x] CLI processes a curated HVSC sample, producing WAV cache, metadata, and aggregated auto-tag files.
+- [x] Regression tests ensure manual tags take precedence and feature extraction/model steps are repeatable.
 - [ ] Performance metrics recorded (runtime, cache reuse) and documented for future scaling.
+
+Current status: the classify CLI, metadata capture, WAV cache, and auto-tag generation are live and covered by tests. Essentia.js + TF.js integration remains outstanding, so the pipeline defaults to heuristic feature and prediction helpers. We still need to capture performance metrics once the model work lands.
 
 ## Phase 5 — Personal Radio (`sidflow-play`)
 
