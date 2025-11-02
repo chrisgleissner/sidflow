@@ -9,11 +9,7 @@ Classify any C64 song collection: from raw SID tunes to mood-driven playlists.
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
-**SID Flow** processes any SID library — such as the High Voltage SID Collection ([HVSC](https://www.hvsc.c64.org/)) or your own archive — to extract structure, mood, and complexity.  
-
-It builds deterministic playlists that you can play directly or integrate into existing workflows.
-
-All CLI tools are powered by [Bun](https://bun.com/) and [TypeScript](https://www.typescriptlang.org/).
+**SID Flow** contains various CLI scripts to process any SID library - such as the High Voltage SID Collection ([HVSC](https://www.hvsc.c64.org/)) or your own archive - to extract structure, mood, and complexity. It builds deterministic playlists that you can play directly or integrate into existing workflows.
 
 > [!NOTE]
 > This project is in active development. Several features mentioned below are planned but not yet implemented.

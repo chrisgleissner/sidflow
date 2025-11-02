@@ -7,7 +7,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "build": "tsc -b",
-    "test": "bun run build && bun test --coverage",
+  "test": "bun run build && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov",
     "validate:config": "bun run scripts/validate-config.ts",
     "fetch:sample": "bun run scripts/run-fetch-sample.ts"
   },
