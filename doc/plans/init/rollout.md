@@ -16,7 +16,7 @@
 - [x] Add GitHub Actions CI with Bun setup, build, test with coverage, and Codecov upload.
 - [x] Publish `.github/copilot-instructions.md` to guide contributions and enforce strict TypeScript practices.
 - [x] Bun workspace builds cleanly; `bun test --coverage` reports ≥90% coverage for foundation modules.
-- [ ] CI pipeline green on default branch with Codecov gate configured.
+- [x] CI pipeline green on default branch with Codecov gate configured.
 - [x] README updated with repository structure and first-run guidance referencing the spec.
 
 ## Phase 2 — HVSC Synchronization (`sidflow-fetch`)

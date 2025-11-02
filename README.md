@@ -2,6 +2,12 @@
 
 # SID Flow
 
+[![Build](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yaml)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yaml)
+[![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
+
+
 SID Flow mirrors the High Voltage SID Collection (HVSC), analyses every tune, and builds mood-driven playlists you can drop straight into your listening pipeline.
 
 Everything runs from simple CLIs powered by Bun and TypeScript.
