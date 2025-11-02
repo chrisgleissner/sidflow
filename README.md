@@ -5,7 +5,7 @@
 Classify any C64 song collection: from raw SID tunes to mood-driven playlists.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yml?branch=main&logo=github&label=CI)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yml)
-[![Codecov](https://img.shields.io/codecov/c/github/chrisgleissner/sidflow?label=Codecov&logo=codecov)](https://app.codecov.io/gh/chrisgleissner/sidflow)
+[![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
