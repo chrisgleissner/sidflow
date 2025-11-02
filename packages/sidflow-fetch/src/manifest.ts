@@ -1,3 +1,5 @@
+import { retry } from "@sidflow/common";
+
 import { HvscManifest } from "./types.js";
 
 const DEFAULT_BASE_URL = "https://hvsc.brona.dk/HVSC/";
@@ -5,10 +7,20 @@ const DEFAULT_BASE_URL = "https://hvsc.brona.dk/HVSC/";
 export { DEFAULT_BASE_URL };
 
 export async function fetchHvscManifest(baseUrl: string = DEFAULT_BASE_URL): Promise<HvscManifest> {
-  const response = await fetch(baseUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch HVSC manifest from ${baseUrl}: ${response.status} ${response.statusText}`);
-  }
+  const response = await retry(async () => {
+    let result: Response;
+    try {
+      result = await fetch(baseUrl);
+    } catch (error) {
+      throw new Error(`Failed to fetch HVSC manifest from ${baseUrl}: ${(error as Error).message}`);
+    }
+
+    if (!result.ok) {
+      throw new Error(`Failed to fetch HVSC manifest from ${baseUrl}: ${result.status} ${result.statusText}`);
+    }
+
+    return result;
+  });
 
   const listing = await response.text();
   const baseMatches = [...listing.matchAll(/HVSC_(\d+)-all-of-them\.7z/gi)];

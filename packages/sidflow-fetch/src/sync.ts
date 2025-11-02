@@ -5,7 +5,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 
-import { createLogger, ensureDir, loadConfig, type SidflowConfig } from "@sidflow/common";
+import { createLogger, ensureDir, loadConfig, retry, type SidflowConfig } from "@sidflow/common";
 
 import { fetchHvscManifest, DEFAULT_BASE_URL } from "./manifest.js";
 import { loadHvscVersion, saveHvscVersion } from "./version.js";
@@ -220,10 +220,17 @@ function withDefaultDependencies(dependencies: HvscSyncDependencies = {}): Resol
 }
 
 async function defaultDownloadArchive(descriptor: HvscArchiveDescriptor, destination: string): Promise<void> {
-  const response = await fetch(descriptor.url);
-  if (!response.ok) {
-    throw new Error(`Failed to download ${descriptor.url}: ${response.status} ${response.statusText}`);
-  }
+  const response = await retry(async () => {
+    try {
+      const result = await fetch(descriptor.url);
+      if (!result.ok) {
+        throw new Error(`Failed to download ${descriptor.url}: ${result.status} ${result.statusText}`);
+      }
+      return result;
+    } catch (error) {
+      throw new Error(`Failed to download ${descriptor.url}: ${(error as Error).message}`);
+    }
+  });
 
   const arrayBuffer = await response.arrayBuffer();
   await writeFile(destination, Buffer.from(arrayBuffer));

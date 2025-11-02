@@ -1,47 +1,95 @@
 # SID Flow
 
-SID Flow is a CLI toolkit for tagging, classifying and playing Commodore 64 SID music.
+SID Flow keeps your High Voltage SID Collection (HVSC) current, helps you tag favourites, and can auto-classify the rest. Everything runs from simple CLIs powered by Bun and TypeScript.
 
-Built on Bun and TypeScript.
+---
 
-## Required Reading
+## What You Need
 
-- `doc/plans/init/sidflow-project-spec.md`
-- `doc/plans/init/plan.md`
-- `doc/plans/init/rollout.md`
+- Bun ≥ 1.1.10
+- `sidplayfp` on your `PATH` (or pass `--sidplay <path>` per command)
+- A working 7-Zip (`7z`) binary for extracting HVSC archives
 
-## Prerequisites
+Drop a `.sidflow.json` next to this README before running any tool. The default shape is:
 
-- [Bun](https://bun.sh/) `>= 1.1.10`
-- `sidplayfp` available on your `PATH` (override via `--sidplay` when needed)
-- 7-Zip capable of extracting `.7z` archives
-
-## Quick Start
-
-1. `bun install`
-2. `bun run test`
-3. `bun run validate:config`
-
-The default configuration lives in `.sidflow.json`. Each CLI also accepts `--sidplay` to override the SID player binary.
-
-## Workspace Layout
-
-```text
-packages/
-  sidflow-common/    # shared config loader, logging, deterministic JSON helpers
-  sidflow-fetch/     # HVSC downloader + updater (Phase 2)
-  sidflow-tag/       # manual tagging workflow (Phase 3)
-  sidflow-classify/  # automated classification pipeline (Phase 4)
+```json
+{
+  "hvscPath": "./data/hvsc",
+  "wavCachePath": "./data/wav-cache",
+  "tagsPath": "./data/tags",
+  "sidplayPath": "sidplayfp",
+  "threads": 0,
+  "classificationDepth": 3
+}
 ```
 
-Additional directories under `data/` will be created by the CLIs during runtime for HVSC content, WAV caches, and tag outputs.
+Run `bun run validate:config` anytime to confirm the file is well formed.
 
-## Development Standards
+---
 
-- Write strict TypeScript with explicit types and deterministic JSON serialization via `@sidflow/common`.
-- Keep test coverage ≥90% (enforced in CI with Codecov).
-- Run `bun run build` before packaging artifacts; run `bun run test` to execute tests with coverage locally.
-- Use `stringifyDeterministic` for all JSON emission to keep diffs clean.
+## The Three SID Flow Tools
+
+Each tool exposes a simple CLI. Run them from the repository root with Bun, for example `bun packages/sidflow-fetch/src/cli.ts --help`.
+
+### 1. `sidflow fetch`
+
+- **Status:** available today.
+- **Run when:** setting up a new machine or refreshing HVSC after releases.
+- **What it does:** downloads the latest HVSC base archive, applies any missing deltas, and records progress in `hvsc-version.json`.
+- **Key flags:**
+  - `--remote <url>` – mirror root to scrape (defaults to `https://hvsc.brona.dk/HVSC/`)
+  - `--version-file <path>` – custom location for `hvsc-version.json`
+- **Shared flags:**
+  - `--config <path>` – load an alternate `.sidflow.json`
+  - `--help` – print usage
+- **Outputs:** refreshed HVSC tree under `hvscPath`, updated version metadata beside it.
+
+### 2. `sidflow tag`
+
+- **Status:** CLI under construction (Phase 3). Library helpers already expose the planning API.
+- **Run when:** you want to manually review and tag tracks, usually after a fetch.
+- **What it does:** queues untagged `.sid` files for playback via `sidplayfp`, lets you assign the three `s/m/c` sliders (Speed, Mood, Complexity), and writes deterministic `*.sid.tags.json` files next to the music.
+- **Key flags:**
+  - `--random` – shuffle the queue instead of walking directories alphabetically
+  - `--sidplay <path>` – override the player binary
+- **Outputs:** human-authored tag files living right beside their matching `.sid` source files.
+
+### 3. `sidflow classify`
+
+- **Status:** CLI under construction (Phase 4). Planning API is ready for experimentation.
+- **Run when:** you have a reasonably tagged seed library and want the rest auto-labelled.
+- **What it does:** trains on manual tags, renders WAVs into the cache, extracts features, predicts missing `s/m/c` values, and writes aggregated `auto-tags.json` files using `classificationDepth`.
+- **Key flags:**
+  - `--force-rebuild` – discard cached models and recompute features from scratch
+  - `--sidplay <path>` – override the player binary for WAV renders
+- **Outputs:** updated WAV cache, regenerated `auto-tags.json`, and merged tag data within each HVSC folder depth.
+
+---
+
+## Typical Flow
+
+1. `bun run validate:config` – confirm your config.
+2. `bun packages/sidflow-fetch/src/cli.ts` – sync or resync HVSC.
+3. Tag and classify CLIs will land next; until then the planning helpers live in `packages/sidflow-tag` and `packages/sidflow-classify` for early adopters.
+
+HVSC content lives under `hvscPath`; WAVs and generated tags mirror the same folder structure beneath `wavCachePath` and `tagsPath`.
+
+---
+
+## Troubleshooting Fetches
+
+- SID Flow automatically retries manifest lookups and archive downloads three times. If you continue to see `Failed to fetch HVSC manifest`, verify your network/firewall and try `--remote` with a different mirror.
+- On repeated download failures, delete the partially created archive in your temp directory (reported in the error) and rerun `sidflow fetch`.
+- The file `hvsc-version.json` records the SHA-256 checksum for the base archive and every applied delta. If your local tree drifts (e.g., manual edits), remove that file to force a clean re-sync and compare the stored checksums afterward.
+- Extract errors typically mean `7z` is missing—install it or ensure it is on your `PATH`.
+
+---
+
+## Need to Contribute?
+
+Developer setup, project layout, and testing expectations now live in `doc/developer.md`.
+
+---
 
 ## License
 

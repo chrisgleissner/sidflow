@@ -102,7 +102,7 @@ describe("sync internals", () => {
     const archivePath = await downloadArchive(descriptor, dependencies);
     expect(path.basename(archivePath)).toBe("archive.7z");
     expect(destinations).toHaveLength(1);
-  expect(await readFile(archivePath, "utf8")).toBe("payload");
+    expect(await readFile(archivePath, "utf8")).toBe("payload");
 
     const tempDir = path.dirname(archivePath);
     await cleanupTemp(tempDir);
@@ -138,11 +138,19 @@ describe("sync internals", () => {
       url: "https://example.invalid/HVSC_101-all-of-them.7z"
     };
 
-  setFetchStub(async () => new Response("archive-bytes", { status: 200 }));
+    let attempts = 0;
+    setFetchStub(async () => {
+      attempts += 1;
+      if (attempts < 2) {
+        return new Response("", { status: 503, statusText: "Service Unavailable" });
+      }
+      return new Response("archive-bytes", { status: 200 });
+    });
 
-    const destination = path.join(dir, descriptor.filename);
+  const destination = path.join(dir, descriptor.filename);
   await defaultDownloadArchive(descriptor, destination);
-    expect(await readFile(destination, "utf8")).toBe("archive-bytes");
+  expect(await readFile(destination, "utf8")).toBe("archive-bytes");
+  expect(attempts).toBe(2);
   });
 
   it("fails the default downloader on HTTP errors", async () => {
@@ -152,11 +160,35 @@ describe("sync internals", () => {
       url: "https://example.invalid/HVSC_102-all-of-them.7z"
     };
 
-  setFetchStub(async () => new Response("", { status: 404, statusText: "Not Found" }));
+    let attempts = 0;
+    setFetchStub(async () => {
+      attempts += 1;
+      return new Response("", { status: 404, statusText: "Not Found" });
+    });
 
-    await expect(defaultDownloadArchive(descriptor, path.join(await createTempDir(), descriptor.filename))).rejects.toThrow(
-      "Failed to download"
-    );
+    await expect(
+      defaultDownloadArchive(descriptor, path.join(await createTempDir(), descriptor.filename))
+    ).rejects.toThrow("Failed to download");
+    expect(attempts).toBeGreaterThan(1);
+  });
+
+  it("fails the default downloader on network errors", async () => {
+    const descriptor: HvscArchiveDescriptor = {
+      version: 103,
+      filename: "HVSC_103-all-of-them.7z",
+      url: "https://example.invalid/HVSC_103-all-of-them.7z"
+    };
+
+    let attempts = 0;
+    setFetchStub(async () => {
+      attempts += 1;
+      throw new Error("socket hang up");
+    });
+
+    await expect(
+      defaultDownloadArchive(descriptor, path.join(await createTempDir(), descriptor.filename))
+    ).rejects.toThrow("Failed to download");
+    expect(attempts).toBeGreaterThan(1);
   });
 
   it("computes deterministic checksums", async () => {

@@ -27,7 +27,14 @@ describe("fetchHvscManifest", () => {
       "<a href=\"HVSC_Update_85.7z\">HVSC_Update_85.7z</a>"
     ].join("\n");
 
-  setFetchStub(async () => new Response(listing, { status: 200 }));
+    let attempts = 0;
+    setFetchStub(async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return new Response("", { status: 503, statusText: "Service Unavailable" });
+      }
+      return new Response(listing, { status: 200 });
+    });
 
     const manifest = await fetchHvscManifest("https://mirror.example/HVSC/");
     expect(manifest.base).toEqual({
@@ -41,10 +48,11 @@ describe("fetchHvscManifest", () => {
       "HVSC_Update_84.7z",
       "HVSC_Update_85.7z"
     ]);
+    expect(attempts).toBe(2);
   });
 
   it("throws when the manifest does not include a base archive", async () => {
-  setFetchStub(async () => new Response("<html>empty</html>", { status: 200 }));
+    setFetchStub(async () => new Response("<html>empty</html>", { status: 200 }));
 
     await expect(fetchHvscManifest("https://mirror.example/HVSC/")).rejects.toThrow(
       "Unable to locate HVSC base archive in remote manifest"
@@ -52,10 +60,25 @@ describe("fetchHvscManifest", () => {
   });
 
   it("throws when the remote request fails", async () => {
-  setFetchStub(async () => new Response("", { status: 503, statusText: "Service Unavailable" }));
+    setFetchStub(async () => new Response("", { status: 503, statusText: "Service Unavailable" }));
 
     await expect(fetchHvscManifest("https://mirror.example/HVSC/")).rejects.toThrow(
       "Failed to fetch HVSC manifest"
     );
+  });
+
+  it("retries when the network request rejects", async () => {
+    let attempts = 0;
+    setFetchStub(async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw new Error("socket hang up");
+      }
+      return new Response("<a href=\"HVSC_01-all-of-them.7z\">HVSC_01-all-of-them.7z</a>", { status: 200 });
+    });
+
+    const manifest = await fetchHvscManifest("https://mirror.example/HVSC/");
+    expect(manifest.base.version).toBe(1);
+    expect(attempts).toBe(3);
   });
 });
