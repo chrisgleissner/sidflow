@@ -4,8 +4,8 @@
 
 Classify any C64 song collection: from raw SID tunes to mood-driven playlists.
 
-[![Build](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yaml)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yaml)
-[![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
+[![CI](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yml?branch=main&logo=github&label=CI)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yml)
+[![Codecov](https://img.shields.io/codecov/c/github/chrisgleissner/sidflow?label=Codecov&logo=codecov)](https://app.codecov.io/gh/chrisgleissner/sidflow)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
@@ -15,7 +15,8 @@ It builds deterministic playlists that you can play directly or integrate into e
 
 All CLI tools are powered by [Bun](https://bun.com/) and [TypeScript](https://www.typescriptlang.org/).
 
->[!NOTE] This project is in active development. Several features mentioned below are planned but not yet implemented.
+> [!NOTE]
+> This project is in active development. Several features mentioned below are planned but not yet implemented.
 
 ---
 
