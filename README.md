@@ -15,6 +15,8 @@ It builds deterministic playlists that you can play directly or integrate into e
 
 All CLI tools are powered by [Bun](https://bun.com/) and [TypeScript](https://www.typescriptlang.org/).
 
+>[!NOTE] This project is in active development. Several features mentioned below are planned but not yet implemented.
+
 ---
 
 ## Requirements
