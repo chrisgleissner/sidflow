@@ -18,25 +18,17 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "latest"
-          
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Test with coverage
         run: bun run test
 
-      - name: Inspect coverage outputs
-        run: |
-          ls -R coverage
-          head -n 5 coverage/lcov.info
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/lcov.info
-          fail_ci_if_error: true
-          verbose: true
 
       - name: Validate SIDFlow config
         run: bun run validate:config
