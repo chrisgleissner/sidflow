@@ -1,0 +1,18 @@
+{
+  "name": "sidflow",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-2.0-only",
+  "packageManager": "bun@1.1.10",
+  "workspaces": ["packages/*"],
+  "scripts": {
+  "build": "tsc -b",
+  "test": "bun run build && bun test --coverage",
+    "validate:config": "bun run scripts/validate-config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "bun-types": "^1.1.10",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/sidflow-common" },
+    { "path": "./packages/sidflow-fetch" },
+    { "path": "./packages/sidflow-tag" },
+    { "path": "./packages/sidflow-classify" }
+  ]
+}

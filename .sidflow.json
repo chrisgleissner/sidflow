@@ -1,0 +1,8 @@
+{
+  "hvscPath": "./data/hvsc",
+  "wavCachePath": "./data/wav-cache",
+  "tagsPath": "./data/tags",
+  "sidplayPath": "sidplayfp",
+  "threads": 0,
+  "classificationDepth": 3
+}

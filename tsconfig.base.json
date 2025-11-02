@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["bun-types", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@sidflow/common": ["packages/sidflow-common/src/index.ts"],
+      "@sidflow/fetch": ["packages/sidflow-fetch/src/index.ts"],
+      "@sidflow/tag": ["packages/sidflow-tag/src/index.ts"],
+      "@sidflow/classify": ["packages/sidflow-classify/src/index.ts"]
+    }
+  }
+}
