@@ -15,9 +15,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.1.10"
+          bun-version: "latest"
 
       - name: Install 7-Zip
         run: |
@@ -29,6 +29,11 @@ jobs:
 
       - name: Test with coverage
         run: bun run test
+
+      - name: Inspect coverage outputs
+        run: |
+          ls -R coverage
+          head -n 5 coverage/lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
