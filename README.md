@@ -141,9 +141,9 @@ Each command can be run via the command line interface from the repository root.
 
 1. `bun run validate:config` — verify configuration  
 2. `./scripts/sidflow-fetch` — download or refresh your SID mirror  
-3. `sidflow tag` — collect seed tags (when available)  
-4. `sidflow classify` — build features and generate playlists  
-5. `sidflow play` — filter and play curated sets  
+3. `./scripts/sidflow-tag` — manually tag songs to provide seeds for classification
+4. `./scripts/sidflow-classify` — automatically classify all songs based on tags
+5. `./scripts/sidflow-play` — filter and play curated sets  
 
 All generated data (HVSC mirror, WAVs, tags) stays under `workspace/` and is git-ignored by default.
 
