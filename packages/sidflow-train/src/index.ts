@@ -131,6 +131,12 @@ export async function loadFeedback(feedbackPath: string): Promise<FeedbackRecord
 }
 
 /**
+ * Minimum feedback count threshold for creating implicit training samples.
+ * Only songs with at least this many feedback events will be used for implicit training.
+ */
+const MIN_FEEDBACK_COUNT = 2;
+
+/**
  * Merge explicit ratings and implicit feedback into training samples.
  * 
  * @param classifications - Classification records with features
@@ -204,7 +210,6 @@ export function mergeTrainingData(
       
       // Determine weight based on feedback strength
       const totalFeedback = likeCount + dislikeCount + skipCount;
-      const positiveRatio = likeCount / (likeCount + dislikeCount);
       
       let weight = 0;
       if (likeCount > dislikeCount) {
@@ -215,8 +220,8 @@ export function mergeTrainingData(
         weight = FEEDBACK_WEIGHTS.skip;
       }
 
-      // Only add if we have a meaningful weight
-      if (weight > 0 && totalFeedback >= 2) {
+      // Only add if we have a meaningful weight and sufficient feedback
+      if (weight > 0 && totalFeedback >= MIN_FEEDBACK_COUNT) {
         samples.push({
           features: classification.features as FeatureVector,
           ratings: baseRatings,
@@ -352,7 +357,7 @@ export async function trainModel(
     classifiedPath = "data/classified",
     feedbackPath = "data/feedback",
     trainingPath = "data/training",
-    modelPath = "data",
+    modelPath = "data/model",  // Use consistent default with getModelPath
     trainOptions = {},
     evaluate: shouldEvaluate = true,
     testSplit = 0.2

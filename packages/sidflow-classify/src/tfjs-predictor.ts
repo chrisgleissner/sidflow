@@ -112,8 +112,9 @@ export function getModelPath(basePath?: string): string {
   if (!basePath) {
     return path.join("data", "model");
   }
-  // If the base path already ends with "model", use it as-is
-  if (path.basename(basePath) === "model") {
+  // If the base path ends with "/model", use it as-is
+  const normalized = path.normalize(basePath);
+  if (normalized.endsWith(path.sep + "model") || normalized.endsWith("/model")) {
     return basePath;
   }
   return path.join(basePath, "model");
@@ -373,9 +374,10 @@ export function computeFeatureStats(
       }
     }
     stds[featureName] = count > 1 ? Math.sqrt(sumSquaredDiff / (count - 1)) : 1;
-    // Ensure std is never zero to avoid division by zero
-    if (stds[featureName] === 0) {
-      stds[featureName] = 1;
+    // Ensure std is never zero to avoid division by zero during normalization
+    const MIN_STD = 1e-6; // Minimum standard deviation threshold
+    if (stds[featureName] < MIN_STD) {
+      stds[featureName] = 1; // Fallback to unit variance
     }
   }
   
