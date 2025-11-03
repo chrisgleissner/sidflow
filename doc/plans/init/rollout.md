@@ -62,12 +62,12 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 4.5 Checklist
 
-- [ ] Rename `s` field to `e` (energy) in all data structures and interfaces (TagRatings, etc.).
-- [ ] Update documentation to use "energy" instead of "speed" throughout.
-- [ ] Update CLI help text and keyboard shortcuts from `s1-5` to `e1-5`.
-- [ ] Update all source code comments referencing speed/tempo to use energy.
-- [ ] Update README and specification documents to reflect energy terminology.
-- [ ] Ensure backwards compatibility or migration path for existing tagged files.
+- [x] Rename `s` field to `e` (energy) in all data structures and interfaces (TagRatings, etc.).
+- [x] Update documentation to use "energy" instead of "speed" throughout.
+- [x] Update CLI help text and keyboard shortcuts from `s1-5` to `e1-5`.
+- [x] Update all source code comments referencing speed/tempo to use energy.
+- [x] Update README and specification documents to reflect energy terminology.
+- [x] Ensure backwards compatibility or migration path for existing tagged files.
 
 **Rationale:**  
 "Energy" is more technically accurate than "speed" for describing the intensity and drive of a musical piece. While "speed" might suggest tempo (BPM), "energy" better captures the combined effect of dynamics, rhythmic intensity, and overall drive that the rating system measures.
