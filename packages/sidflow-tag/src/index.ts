@@ -71,7 +71,7 @@ export function interpretKey(key: string, state: KeyState): { state: KeyState; a
     return { state, action: "save" };
   }
 
-  if (key === "s" || key === "m" || key === "c") {
+  if (key === "e" || key === "m" || key === "c") {
     return { state: { ...state, pendingDimension: key as keyof TagRatings }, action: "none" };
   }
 
@@ -96,7 +96,7 @@ export async function writeManualTag(
   timestamp: Date
 ): Promise<void> {
   const record: Record<string, JsonValue> = {
-    s: ratings.s,
+    e: ratings.e,
     m: ratings.m,
     c: ratings.c,
     source: "manual",

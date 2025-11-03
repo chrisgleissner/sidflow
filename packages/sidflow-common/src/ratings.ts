@@ -3,13 +3,13 @@ export const RATING_MAX = 5;
 export const DEFAULT_RATING = 3;
 
 export interface TagRatings {
-  s: number;
+  e: number;
   m: number;
   c: number;
 }
 
 export const DEFAULT_RATINGS: TagRatings = {
-  s: DEFAULT_RATING,
+  e: DEFAULT_RATING,
   m: DEFAULT_RATING,
   c: DEFAULT_RATING
 } as const;

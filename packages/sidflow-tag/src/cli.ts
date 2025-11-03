@@ -30,7 +30,7 @@ function printHelp(): void {
   const lines = [
     "Usage: sidflow tag [options]",
     "",
-    "Interactively label SID tunes with speed, mood, and complexity sliders.",
+    "Interactively label SID tunes with energy, mood, and complexity sliders.",
     "",
     "Options:",
     "  --config <path>   Load an alternate .sidflow.json",
@@ -94,7 +94,7 @@ export function parseTagArgs(argv: string[]): ParseResult {
 function printInstructions(): void {
   const lines = [
     "Controls:",
-    "  s1-5: set speed",
+    "  e1-5: set energy",
     "  m1-5: set mood",
     "  c1-5: set complexity",
     "  Enter: save and advance",
@@ -106,7 +106,7 @@ function printInstructions(): void {
 }
 
 function formatRatings(ratings: TagRatings): string {
-  return `s=${ratings.s} m=${ratings.m} c=${ratings.c}`;
+  return `e=${ratings.e} m=${ratings.m} c=${ratings.c}`;
 }
 
 export async function runTagCli(argv: string[]): Promise<number> {

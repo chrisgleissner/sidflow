@@ -3,13 +3,13 @@ import { clampRating, type TagRatings } from "@sidflow/common";
 import type { FeatureVector, PredictRatings } from "./index.js";
 
 /**
- * Simple lightweight TensorFlow.js regressor for predicting (s,m,c) ratings.
+ * Simple lightweight TensorFlow.js regressor for predicting (e,m,c) ratings.
  * 
  * This is a minimal demonstration model with a simple feedforward architecture.
  * In production, this should be replaced with a properly trained model.
  * 
  * The model takes extracted features as input and predicts three ratings:
- * - s (speed/tempo): 1-5 scale
+ * - e (energy/intensity): 1-5 scale
  * - m (mood): 1-5 scale
  * - c (complexity): 1-5 scale
  */
@@ -127,7 +127,7 @@ function scaleToRating(value: number): number {
  * @param options.sidFile - Path to SID file (currently unused, reserved for future enhancements)
  * @param options.relativePath - Relative path (currently unused, reserved for future enhancements)
  * @param options.metadata - Song metadata (currently unused, reserved for future enhancements)
- * @returns Predicted ratings object with s, m, c values (1-5 scale)
+ * @returns Predicted ratings object with e, m, c values (1-5 scale)
  */
 export const tfjsPredictRatings: PredictRatings = async ({ features }) => {
   const model = getModel();
@@ -143,14 +143,14 @@ export const tfjsPredictRatings: PredictRatings = async ({ features }) => {
     const predictionData = await prediction.data();
 
     // Extract and scale the three ratings
-    const s = scaleToRating(predictionData[0]);
+    const e = scaleToRating(predictionData[0]);
     const m = scaleToRating(predictionData[1]);
     const c = scaleToRating(predictionData[2]);
 
     // Cleanup tensors
     prediction.dispose();
 
-    return { s, m, c };
+    return { e, m, c };
   } finally {
     inputTensor.dispose();
   }

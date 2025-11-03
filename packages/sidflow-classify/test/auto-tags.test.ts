@@ -56,7 +56,7 @@ describe("generateAutoTags", () => {
     await writeFile(
       manualTagPath,
       stringifyDeterministic({
-        s: 2,
+        e: 2,
         m: 5,
         c: 3,
         source: "manual",
@@ -84,7 +84,7 @@ describe("generateAutoTags", () => {
         expect(wavFile).toBe(autoWav);
         return { energy: 0.5 };
       },
-      predictRatings: async (_options: PredictRatingsOptions) => ({ s: 4, m: 2, c: 5 })
+      predictRatings: async (_options: PredictRatingsOptions) => ({ e: 4, m: 2, c: 5 })
     });
 
     expect(result.manualEntries).toEqual(["C64Music/MUSICIANS/A/Manual.sid"]);
@@ -109,13 +109,13 @@ describe("generateAutoTags", () => {
     const manualAggregatedPath = path.join(tagsPath, "C64Music", "MUSICIANS", "A", "auto-tags.json");
     const manualAggregated = JSON.parse(await readFile(manualAggregatedPath, "utf8")) as Record<string, unknown>;
     expect(manualAggregated).toEqual({
-      "Manual.sid": { s: 2, m: 5, c: 3, source: "manual" }
+      "Manual.sid": { e: 2, m: 5, c: 3, source: "manual" }
     });
 
     const autoAggregatedPath = path.join(tagsPath, "C64Music", "MUSICIANS", "B", "auto-tags.json");
     const autoAggregated = JSON.parse(await readFile(autoAggregatedPath, "utf8")) as Record<string, unknown>;
     expect(autoAggregated).toEqual({
-      "Auto.sid": { s: 4, m: 2, c: 5, source: "auto" }
+      "Auto.sid": { e: 4, m: 2, c: 5, source: "auto" }
     });
 
     await rm(root, { recursive: true, force: true });
@@ -141,7 +141,7 @@ describe("generateAutoTags", () => {
     await writeFile(
       tagPath,
       stringifyDeterministic({
-        s: 5,
+        e: 5,
         source: "manual",
         timestamp: "2025-01-02T00:00:00.000Z"
       })
@@ -154,7 +154,7 @@ describe("generateAutoTags", () => {
     const result = await generateAutoTags(plan, {
       extractMetadata: async (_options: ExtractMetadataOptions) => ({ title: "Mixed" }),
       featureExtractor: async (_options: ExtractFeaturesOptions) => ({ tempo: 123 }),
-      predictRatings: async (_options: PredictRatingsOptions) => ({ s: 2, m: 4, c: 1 })
+      predictRatings: async (_options: PredictRatingsOptions) => ({ e: 2, m: 4, c: 1 })
     });
 
     expect(result.mixedEntries).toEqual(["C64Music/MUSICIANS/C/Mixed.sid"]);
@@ -168,7 +168,7 @@ describe("generateAutoTags", () => {
     const aggregatedPath = path.join(tagsPath, "C64Music", "MUSICIANS", "C", "auto-tags.json");
     const aggregated = JSON.parse(await readFile(aggregatedPath, "utf8")) as Record<string, { [key: string]: unknown }>;
     expect(aggregated).toEqual({
-      "Mixed.sid": { s: 5, m: 4, c: 1, source: "mixed" }
+      "Mixed.sid": { e: 5, m: 4, c: 1, source: "mixed" }
     });
 
     await rm(root, { recursive: true, force: true });

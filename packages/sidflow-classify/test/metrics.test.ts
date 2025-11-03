@@ -108,7 +108,7 @@ describe("performance metrics", () => {
     await writeFile(
       manualTagPath,
       stringifyDeterministic({
-        s: 3,
+        e: 3,
         m: 4,
         c: 5,
         source: "manual",
@@ -122,7 +122,7 @@ describe("performance metrics", () => {
     await writeFile(
       mixedTagPath,
       stringifyDeterministic({
-        s: 2,
+        e: 2,
         source: "manual",
         timestamp: "2025-01-02T00:00:00.000Z"
       })
@@ -139,7 +139,7 @@ describe("performance metrics", () => {
     const result = await generateAutoTags(plan, {
       extractMetadata: async (_options: ExtractMetadataOptions) => ({ title: "Test" }),
       featureExtractor: async (_options: ExtractFeaturesOptions) => ({ energy: 0.5 }),
-      predictRatings: async (_options: PredictRatingsOptions) => ({ s: 3, m: 3, c: 3 })
+      predictRatings: async (_options: PredictRatingsOptions) => ({ e: 3, m: 3, c: 3 })
     });
     const endTime = Date.now();
 
@@ -176,7 +176,7 @@ describe("performance metrics", () => {
     await writeFile(
       tagPath,
       stringifyDeterministic({
-        s: 1,
+        e: 1,
         m: 2,
         c: 3,
         source: "manual",
@@ -234,7 +234,7 @@ describe("performance metrics", () => {
     const autoTagResult = await generateAutoTags(plan, {
       extractMetadata: async (_options: ExtractMetadataOptions) => ({}),
       featureExtractor: async (_options: ExtractFeaturesOptions) => ({}),
-      predictRatings: async (_options: PredictRatingsOptions) => ({ s: 3, m: 3, c: 3 })
+      predictRatings: async (_options: PredictRatingsOptions) => ({ e: 3, m: 3, c: 3 })
     });
 
     expect(autoTagResult.metrics.totalFiles).toBe(0);

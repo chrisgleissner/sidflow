@@ -308,7 +308,7 @@ export async function buildWavCache(
   return { rendered, skipped, metrics };
 }
 
-const RATING_DIMENSIONS: Array<keyof TagRatings> = ["s", "m", "c"];
+const RATING_DIMENSIONS: Array<keyof TagRatings> = ["e", "m", "c"];
 
 export interface SidMetadata {
   title?: string;
@@ -700,7 +700,7 @@ export async function generateAutoTags(
     const record: Record<string, JsonValue> = {};
     for (const [key, entry] of sorted) {
       record[key] = {
-        s: entry.s,
+        e: entry.e,
         m: entry.m,
         c: entry.c,
         source: entry.source
@@ -760,7 +760,7 @@ export const heuristicPredictRatings: PredictRatings = async ({
   const complexitySeed = baseSeed + (features.sidBytes ?? 0) + (features.nameSeed ?? 0);
 
   return {
-    s: clampRating(toRating(tempoSeed)),
+    e: clampRating(toRating(tempoSeed)),
     m: clampRating(toRating(moodSeed)),
     c: clampRating(toRating(complexitySeed))
   };

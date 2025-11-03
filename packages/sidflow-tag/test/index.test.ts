@@ -70,11 +70,11 @@ describe("tagging workflow helpers", () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const target = path.join(root, "tag.json");
 
-    await writeManualTag(target, { s: 5, m: 2, c: 4 }, new Date("2025-01-01T00:00:00.000Z"));
+    await writeManualTag(target, { e: 5, m: 2, c: 4 }, new Date("2025-01-01T00:00:00.000Z"));
 
     const contents = await readFile(target, "utf8");
     const parsed = JSON.parse(contents) as Record<string, unknown>;
-    expect(parsed).toEqual({ s: 5, m: 2, c: 4, source: "manual", timestamp: "2025-01-01T00:00:00.000Z" });
+    expect(parsed).toEqual({ e: 5, m: 2, c: 4, source: "manual", timestamp: "2025-01-01T00:00:00.000Z" });
 
     await rm(root, { recursive: true, force: true });
   });
@@ -82,14 +82,14 @@ describe("tagging workflow helpers", () => {
   it("interprets keyboard sequences for slider updates and actions", () => {
     let state: KeyState = { ratings: { ...DEFAULT_RATINGS } };
 
-    let result = interpretKey("s", state);
+    let result = interpretKey("e", state);
     state = result.state;
-    expect(state.pendingDimension).toBe("s");
+    expect(state.pendingDimension).toBe("e");
 
     result = interpretKey("5", state);
     state = result.state;
     expect(state.pendingDimension).toBeUndefined();
-    expect(state.ratings.s).toBe(5);
+    expect(state.ratings.e).toBe(5);
 
     result = interpretKey("\n", state);
     expect(result.action).toBe("save");
