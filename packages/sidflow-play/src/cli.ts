@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import process from "node:process";
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadConfig, type SIDFlowConfig } from "@sidflow/common";
 import {
