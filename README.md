@@ -11,9 +11,6 @@ Classify any C64 song collection: from raw SID tunes to mood-driven playlists.
 
 **SID Flow** contains various CLI scripts to process any SID library - such as the High Voltage SID Collection ([HVSC](https://www.hvsc.c64.org/)) or your own archive - to extract structure, mood, and complexity. It builds deterministic playlists that you can play directly or integrate into existing workflows.
 
-> [!NOTE]
-> This project is in active development. Several features mentioned below are planned but not yet implemented.
-
 ---
 
 ## Requirements
@@ -67,7 +64,7 @@ SID Flow uses three main technical components for song analysis, classification,
   - **c** – complexity/melodic & structural sophistication (1-5)
   - plus an optional confidence value
 - **Usage**: Converts objective signal descriptors into human-meaningful perception ratings and adapts over time as more feedback is collected
-- **Training**: Periodically retrained via `sidflow-train` CLI command or automatically during playback (future)
+- **Training**: Periodically retrained via `sidflow-train` CLI command
 
 ### 3. LanceDB (Vector Store / Clustering / Retrieval)
 
@@ -99,78 +96,52 @@ The diagram below shows how the SIDFlow tools work together to process SID files
 ```mermaid
 graph TB
     subgraph "Phase 1: Fetch SID Files"
-        A[HVSC Mirror<br/>hvsc.brona.dk] -->|sidflow-fetch| B[SID Files<br/>*.sid]
-        B --> C[hvsc-version.json]
+        A[HVSC Mirror] -->|sidflow-fetch| B[SID Files *.sid]
     end
     
     subgraph "Phase 2: Manual Rating"
-        B -->|User plays & rates| D[sidflow-rate]
-        D -->|sidplayfp playback| E[Manual Rating Files<br/>*.sid.tags.json]
-        E --> F[Energy e, Mood m,<br/>Complexity c, Preference p<br/>ratings 1-5]
+        B -->|sidflow-rate| D[Manual Ratings<br/>*.sid.tags.json<br/>e,m,c,p 1-5]
     end
     
     subgraph "Phase 3: Automated Classification"
-        B -->|sidflow-classify| G[WAV Conversion]
-        G -->|sidplayfp -w| H[WAV Cache<br/>*.wav]
-        H -->|Essentia.js| I[Feature Extraction]
-        I --> J[Audio Features<br/>energy, RMS, BPM,<br/>spectral analysis]
-        J -->|TensorFlow.js| K[Prediction Model]
-        E -.->|Manual ratings<br/>take precedence| K
-        K --> L[Auto-tag Files<br/>auto-tags.json]
-        L --> JSONL[Classification JSONL<br/>classified/*.jsonl]
-        B -->|sidplayfp -t1| M[Metadata Files<br/>*.sid.meta.json]
-        M --> N[Title, Author,<br/>Released]
+        B -->|sidflow-classify| G[WAV Cache]
+        G -->|Essentia.js| I[Audio Features]
+        I -->|TensorFlow.js| K[Auto-ratings<br/>auto-tags.json]
+        D -.->|Manual priority| K
+        K --> JSONL[Classification JSONL]
+        B -->|sidplayfp -t1| M[Metadata JSON]
     end
     
-    subgraph "Phase 3.5: Model Training"
-        E -->|Explicit ratings| T[sidflow-train]
-        R -.->|Implicit feedback<br/>like/dislike/skip| T
+    subgraph "Phase 4: Model Training"
+        D -->|Explicit ratings| T[sidflow-train]
         JSONL -->|Features + ratings| T
-        T -->|TensorFlow.js<br/>training| K
-        T --> TL[Training Log<br/>training-log.jsonl]
-        T --> TS[Feature Stats<br/>feature-stats.json]
+        T -->|Update model| K
     end
     
-    subgraph "Phase 4: Database Integration (Future)"
-        JSONL -->|Aggregate| O[(LanceDB)]
-        M -->|Aggregate| O
-        E -->|Aggregate| O
-        N -.-> O
-        R -.->|Feedback logs| FB[Feedback JSONL<br/>feedback/**/*.jsonl]
-        FB --> O
-    end
-    
-    subgraph "Phase 5: Playlist Generation & Playback"
-        O -->|Vector similarity<br/>+ clustering| P[sidflow-play]
-        P -->|Filter & score| Q[Playlist<br/>*.json, *.m3u]
-        Q -->|sidplayfp| R[🎵 Playback]
-        P -.->|Session history| S[Playback State]
+    subgraph "Phase 5: Playback"
+        JSONL -->|Build| O[(LanceDB)]
+        M -->|Build| O
+        O -->|Generate| P[sidflow-play]
+        P -->|Stream| R[🎵 Playback]
     end
     
     style B fill:#e1f5ff
-    style E fill:#ffe1e1
-    style H fill:#f0f0f0
-    style L fill:#e1ffe1
+    style D fill:#ffe1e1
+    style K fill:#e1ffe1
+    style JSONL fill:#e1ffe1
     style M fill:#fff4e1
     style T fill:#ffe8cc
-    style TL fill:#ffe8cc
-    style TS fill:#ffe8cc
-    style JSONL fill:#e1ffe1
-    style FB fill:#e1ffe1
     style O fill:#f0e1ff
-    style Q fill:#ffe1f5
     style R fill:#ffd700
 ```
 
 **Legend:**
 - **Blue boxes**: SID source files
-- **Red boxes**: Manual rating files (user-created)
-- **Gray boxes**: WAV cache (intermediate format)
+- **Red boxes**: Manual rating files
 - **Green boxes**: Auto-generated rating files and JSONL data
-- **Orange boxes**: Training outputs (model training phase)
+- **Orange boxes**: Model training
 - **Tan boxes**: Metadata files
-- **Purple boxes**: Database (future)
-- **Pink boxes**: Playlists
+- **Purple boxes**: Database
 - **Gold boxes**: Playback
 
 ---
@@ -185,7 +156,6 @@ Each command can be run via the command line interface from the repository root.
 ./scripts/sidflow-fetch [--remote <url>] [--version-file <path>] [--config <path>] [--help]
 ```
 
-**Status:** Done  
 **Purpose:** Keep a reproducible HVSC or custom SID mirror for downstream processing.  
 **Operation:** Downloads the latest base archive, applies missing deltas, and records version metadata in `hvsc-version.json`.
 
@@ -209,7 +179,6 @@ Each command can be run via the command line interface from the repository root.
 ./scripts/sidflow-rate [--sidplay <path>] [--config <path>]
 ```
 
-**Status:** Available  
 **Purpose:** Capture user ratings across multiple dimensions for supervised classification and preference learning.  
 **Operation:** Plays unrated `.sid` files via `sidplayfp`, records energy/mood/complexity/preference (`e/m/c/p`) ratings, and stores results beside each track.
 
@@ -235,7 +204,6 @@ Each command can be run via the command line interface from the repository root.
                             [--metadata-module <path>] [--render-module <path>]
 ```
 
-**Status:** In development with Essentia.js + TensorFlow.js integration available  
 **Purpose:** Convert SIDs to WAV, extract features, merge manual ratings, and publish deterministic `auto-tags.json` summaries.  
 **Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(e/m/c/p)` ratings using TensorFlow.js for unrated dimensions without overwriting manual values.
 
@@ -259,7 +227,7 @@ Each command can be run via the command line interface from the repository root.
 - **JSONL classification output** — structured data format for further processing
 
 > [!TIP]
-> The CLI now includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`packages/sidflow-classify/README-INTEGRATION.md`](packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
+> The CLI includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`packages/sidflow-classify/README-INTEGRATION.md`](packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
 
 #### JSONL Classification Output
 
@@ -305,7 +273,6 @@ Install the "JSON Lines" extension for syntax highlighting and validation of `.j
                           [--evaluate] [--no-evaluate] [--force] [--config <path>]
 ```
 
-**Status:** Available  
 **Purpose:** Train the ML model on explicit ratings and implicit feedback to improve predictions.  
 **Operation:** Loads classification records and feedback events, merges them with weighted samples (explicit=1.0, like=0.7, dislike=0.5, skip=0.3), computes feature normalization statistics, trains the TensorFlow.js model, and saves results in Git-friendly formats.
 
@@ -358,7 +325,7 @@ Each training run appends a summary to `data/training/training-log.jsonl`:
 ```
 
 > [!TIP]
-> The model improves as you collect more ratings and feedback. Run training periodically after rating sessions to update predictions. Future versions will support automatic periodic retraining during playback.
+> The model improves as you collect more ratings and feedback. Run training periodically after rating sessions to update predictions.
 
 ---
 
@@ -368,7 +335,6 @@ Each training run appends a summary to `data/training/training-log.jsonl`:
 ./scripts/sidflow-play [--mood <preset>] [--filters <expr>] [--export <path>] [--export-format <fmt>]
 ```
 
-**Status:** Available  
 **Purpose:** Turn your classified collection into a dynamic SID playlist experience with mood-based recommendations.  
 **Operation:** Uses LanceDB vector similarity and the recommendation engine to generate personalized playlists based on mood presets or custom filters. Streams through `sidplayfp` with queue controls and exports deterministic manifests.
 

@@ -415,18 +415,18 @@ workspace/wav-cache/
 
 ### Phase 11 Checklist
 
-- [ ] Refactor `tfjs-predictor.ts` to implement production model lifecycle with `loadModel()`, `saveModel()`, `createModel()`, and maintain version constants (`MODEL_VERSION`, `FEATURE_SET_VERSION`).
-- [ ] Add `trainOnFeedback()` function supporting explicit and implicit feedback training with configurable epochs, batch size, and learning rate.
-- [ ] Implement `evaluateModel()` function returning MAE and R² metrics on test datasets.
-- [ ] Create textual normalization stats file (`data/model/feature-stats.json`) storing means/stds for Git-friendly versioning.
-- [ ] Persist model metadata as JSON (`data/model/model-metadata.json`) with version, feature set version, training date, and architecture details.
-- [ ] Save training summaries as append-only JSON records (`data/training/training-log.jsonl`) with timestamp, sample count, metrics, and notes.
-- [ ] Create new `sidflow-train` package with CLI command implementing training data loading, sample weighting (explicit=1.0, like=0.7, dislike=0.5, skip=0.3), and model training.
-- [ ] Add CLI flags: `--epochs` (default 5), `--batch-size` (default 8), `--evaluate`, `--force` for complete retraining.
-- [ ] Design optional periodic retraining integration strategy for future `sidflow-play` package with configurable intervals and minimum feedback thresholds.
-- [ ] Store all training artefacts in textual, Git-friendly formats under `data/training/` and `data/model/` subdirectories.
-- [ ] Add comprehensive tests covering model lifecycle, training, evaluation, and CLI functionality with ≥90% coverage.
-- [ ] Update documentation with training workflow, data format specifications, and retraining strategies.
+- [x] Refactor `tfjs-predictor.ts` to implement production model lifecycle with `loadModel()`, `saveModel()`, `createModel()`, and maintain version constants (`MODEL_VERSION`, `FEATURE_SET_VERSION`).
+- [x] Add `trainOnFeedback()` function supporting explicit and implicit feedback training with configurable epochs, batch size, and learning rate.
+- [x] Implement `evaluateModel()` function returning MAE and R² metrics on test datasets.
+- [x] Create textual normalization stats file (`data/model/feature-stats.json`) storing means/stds for Git-friendly versioning.
+- [x] Persist model metadata as JSON (`data/model/model-metadata.json`) with version, feature set version, training date, and architecture details.
+- [x] Save training summaries as append-only JSON records (`data/training/training-log.jsonl`) with timestamp, sample count, metrics, and notes.
+- [x] Create new `sidflow-train` package with CLI command implementing training data loading, sample weighting (explicit=1.0, like=0.7, dislike=0.5, skip=0.3), and model training.
+- [x] Add CLI flags: `--epochs` (default 5), `--batch-size` (default 8), `--evaluate`, `--force` for complete retraining.
+- [x] Design optional periodic retraining integration strategy for future `sidflow-play` package with configurable intervals and minimum feedback thresholds.
+- [x] Store all training artefacts in textual, Git-friendly formats under `data/training/` and `data/model/` subdirectories.
+- [x] Add comprehensive tests covering model lifecycle, training, evaluation, and CLI functionality with ≥90% coverage.
+- [x] Update documentation with training workflow, data format specifications, and retraining strategies.
 
 **Core Implementation Requirements:**
 
