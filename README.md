@@ -102,9 +102,9 @@ Each command can be run via the command line interface from the repository root.
                             [--metadata-module <path>] [--render-module <path>]
 ```
 
-**Status:** In development (heuristic defaults available)  
+**Status:** In development with Essentia.js + TensorFlow.js integration available  
 **Purpose:** Convert SIDs to WAV, extract features, merge manual tags, and publish deterministic `auto-tags.json` summaries.  
-**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors, and predicts `(s/m/c)` ratings for untagged dimensions without overwriting manual values.
+**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(s/m/c)` ratings using TensorFlow.js for untagged dimensions without overwriting manual values.
 
 #### Flags (classification)
 
@@ -125,7 +125,7 @@ Each command can be run via the command line interface from the repository root.
 - **Performance metrics** (runtime, cache hit rate, predictions generated) — see [`doc/performance-metrics.md`](doc/performance-metrics.md)
 
 > [!TIP]
-> Without custom modules, the CLI uses built-in heuristics for features and predictions. Plug in Essentia.js + TensorFlow.js wrappers via `--feature-module` and `--predictor-module` when ready for production models.
+> The CLI now includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`packages/sidflow-classify/README-INTEGRATION.md`](packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
 
 ---
 
