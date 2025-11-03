@@ -885,7 +885,8 @@ export async function generateJsonlOutput(
     }
 
     // Append as JSONL (one JSON object per line)
-    records.push(JSON.stringify(record));
+    // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
+    records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
   }
 
   // Write all records to file
