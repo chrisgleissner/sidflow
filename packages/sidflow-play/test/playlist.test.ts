@@ -5,7 +5,6 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { stringifyDeterministic } from "@sidflow/common";
 import { createPlaylistBuilder } from "../src/playlist.js";
 
 const TEST_DB_PATH = "/tmp/sidflow-play-test-db";
