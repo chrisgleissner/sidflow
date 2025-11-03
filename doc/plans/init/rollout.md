@@ -81,21 +81,22 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 5 Checklist
 
-- [ ] Define and implement extensible JSONL schema for classification output with core fields (`sid_path`, `e`, `m`, `c`) and optional classifier features, storing one record per line.
+- [ ] Define and implement extensible JSONL schema for classification output with `sid_path`, nested `tags` object (`e`, `m`, `c`), and `features` object, storing one record per line.
 - [ ] Update classification pipeline to output `classified/*.jsonl` files preserving all extracted features (energy, rms, spectralCentroid, bpm, etc.) with deterministic ordering and VS Code "JSON Lines" extension support.
 - [ ] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
 
-**JSONL Schema (Core + Extended Features):**
+**JSONL Schema (Nested Tags + Extended Features):**
 ```jsonl
-{"sid_path":"Rob_Hubbard/Delta.sid","e":3,"m":4,"c":5,"features":{"energy":0.42,"rms":0.15,"spectralCentroid":2150,"spectralRolloff":4200,"zeroCrossingRate":0.08,"bpm":128,"confidence":0.85,"duration":180}}
-{"sid_path":"Martin_Galway/Parallax.sid","e":2,"m":5,"c":4,"features":{"energy":0.18,"rms":0.09,"spectralCentroid":1850,"spectralRolloff":3800,"zeroCrossingRate":0.05,"bpm":96,"confidence":0.72,"duration":210}}
+{"sid_path":"Rob_Hubbard/Delta.sid","tags":{"e":3,"m":4,"c":5},"features":{"energy":0.42,"rms":0.15,"spectralCentroid":2150,"spectralRolloff":4200,"zeroCrossingRate":0.08,"bpm":128,"confidence":0.85,"duration":180}}
+{"sid_path":"Martin_Galway/Parallax.sid","tags":{"e":2,"m":5,"c":4},"features":{"energy":0.18,"rms":0.09,"spectralCentroid":1850,"spectralRolloff":3800,"zeroCrossingRate":0.05,"bpm":96,"confidence":0.72,"duration":210}}
 ```
 
 **Core Fields:**
 - `sid_path` — Full relative path within HVSC or local folders (ensures uniqueness)
-- `e` — Energy/Drive rating (1-5)
-- `m` — Mood/Tone rating (1-5)
-- `c` — Complexity/Texture rating (1-5)
+- `tags` — Rating dimensions (may originate from manual tagging or classifier prediction)
+  - `e` — Energy/Drive rating (1-5)
+  - `m` — Mood/Tone rating (1-5)
+  - `c` — Complexity/Texture rating (1-5)
 
 **Extended Fields (Classifier Output):**
 - `features` — Object containing all extracted audio features from classifier
@@ -110,7 +111,7 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
   - Additional features as extracted by classifier (extensible)
 
 **Rationale:**
-Preserving all classifier features enables future music stream selections based on diverse criteria (tempo matching, spectral similarity, etc.) without requiring re-classification. The extensible schema allows new features to be added as classification algorithms improve.
+Grouping `e`, `m`, `c` ratings in a `tags` object keeps the schema extensible and logically separates rating dimensions (which may come from manual tagging or classifier prediction) from raw audio features. Preserving all classifier features enables future music stream selections based on diverse criteria (tempo matching, spectral similarity, etc.) without requiring re-classification.
 
 **Benefits:**
 - **Small diffs:** Line-based format produces minimal Git diffs
@@ -202,7 +203,7 @@ bun run build:db
 1. Read all `classified/*.jsonl` files
 2. Aggregate all `feedback/**/*.jsonl` events by `sid_path`
 3. Compute feedback statistics (likes, dislikes, skips, plays)
-4. Generate vector embeddings from `[e, m, c]` values
+4. Extract `[e, m, c]` values from nested `tags` object and generate vector embeddings
 5. Write to `data/sidflow.lance/`
 6. Generate manifest with checksums and metadata
 
