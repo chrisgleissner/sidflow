@@ -39,6 +39,15 @@
         "@sidflow/common": "workspace:*",
       },
     },
+    "packages/sidflow-train": {
+      "name": "@sidflow/train",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sidflow/classify": "workspace:*",
+        "@sidflow/common": "workspace:*",
+        "@tensorflow/tfjs": "^4.22.0",
+      },
+    },
   },
   "packages": {
     "@75lb/deep-merge": ["@75lb/deep-merge@1.1.2", "", { "dependencies": { "lodash": "^4.17.21", "typical": "^7.1.1" } }, "sha512-08K9ou5VNbheZFxM5tDWoqjA3ImC50DiuuJ2tj1yEPRfkp8lLLg6XAaJ4On+a0yAXor/8ay5gHnAIshRM44Kpw=="],
@@ -64,6 +73,8 @@
     "@sidflow/fetch": ["@sidflow/fetch@workspace:packages/sidflow-fetch"],
 
     "@sidflow/rate": ["@sidflow/rate@workspace:packages/sidflow-rate"],
+
+    "@sidflow/train": ["@sidflow/train@workspace:packages/sidflow-train"],
 
     "@tensorflow/tfjs": ["@tensorflow/tfjs@4.22.0", "", { "dependencies": { "@tensorflow/tfjs-backend-cpu": "4.22.0", "@tensorflow/tfjs-backend-webgl": "4.22.0", "@tensorflow/tfjs-converter": "4.22.0", "@tensorflow/tfjs-core": "4.22.0", "@tensorflow/tfjs-data": "4.22.0", "@tensorflow/tfjs-layers": "4.22.0", "argparse": "^1.0.10", "chalk": "^4.1.0", "core-js": "3.29.1", "regenerator-runtime": "^0.13.5", "yargs": "^16.0.3" }, "bin": { "tfjs-custom-module": "dist/tools/custom_module/cli.js" } }, "sha512-0TrIrXs6/b7FLhLVNmfh8Sah6JgjBPH4mZ8JGb7NU6WW+cx00qK5BcAZxw7NCzxj6N8MRAIfHq+oNbPUNG5VAg=="],
 

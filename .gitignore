@@ -11,7 +11,15 @@ workspace/
 # Derived artifacts (not committed)
 data/sidflow.lance/
 
+# Binary model artifacts (regenerated from training)
+data/model/model.json
+data/model/*.bin
+data/model/*.pb
+
 # Manifests and canonical data ARE committed
 !data/sidflow.lance.manifest.json
 !data/classified/*.jsonl
 !data/feedback/**/*.jsonl
+!data/training/*.jsonl
+!data/model/feature-stats.json
+!data/model/model-metadata.json

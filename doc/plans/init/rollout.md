@@ -410,3 +410,114 @@ workspace/wav-cache/
 - [ ] Persist session history and allow exporting deterministic playlist manifests (JSON + M3U).
 - [ ] Provide CLI help, examples, and integration tests covering playlist generation and playback orchestration.
 - [ ] Document radio workflows in README, emphasising how classification feeds personalised queues.
+
+## Phase 11 — Production-Ready ML Training System (`sidflow-train`)
+
+### Phase 11 Checklist
+
+- [ ] Refactor `tfjs-predictor.ts` to implement production model lifecycle with `loadModel()`, `saveModel()`, `createModel()`, and maintain version constants (`MODEL_VERSION`, `FEATURE_SET_VERSION`).
+- [ ] Add `trainOnFeedback()` function supporting explicit and implicit feedback training with configurable epochs, batch size, and learning rate.
+- [ ] Implement `evaluateModel()` function returning MAE and R² metrics on test datasets.
+- [ ] Create textual normalization stats file (`data/model/feature-stats.json`) storing means/stds for Git-friendly versioning.
+- [ ] Persist model metadata as JSON (`data/model/model-metadata.json`) with version, feature set version, training date, and architecture details.
+- [ ] Save training summaries as append-only JSON records (`data/training/training-log.jsonl`) with timestamp, sample count, metrics, and notes.
+- [ ] Create new `sidflow-train` package with CLI command implementing training data loading, sample weighting (explicit=1.0, like=0.7, dislike=0.5, skip=0.3), and model training.
+- [ ] Add CLI flags: `--epochs` (default 5), `--batch-size` (default 8), `--evaluate`, `--force` for complete retraining.
+- [ ] Design optional periodic retraining integration strategy for future `sidflow-play` package with configurable intervals and minimum feedback thresholds.
+- [ ] Store all training artefacts in textual, Git-friendly formats under `data/training/` and `data/model/` subdirectories.
+- [ ] Add comprehensive tests covering model lifecycle, training, evaluation, and CLI functionality with ≥90% coverage.
+- [ ] Update documentation with training workflow, data format specifications, and retraining strategies.
+
+**Core Implementation Requirements:**
+
+**Model Lifecycle Functions:**
+```typescript
+async function loadModel(): Promise<tf.LayersModel>;
+async function saveModel(model: tf.LayersModel): Promise<void>;
+async function createModel(inputDim: number): Promise<tf.LayersModel>;
+```
+
+**Training & Evaluation:**
+```typescript
+async function trainOnFeedback(
+  samples: Array<{ features: FeatureVector; ratings: TagRatings }>,
+  options?: { epochs?: number; batchSize?: number; learningRate?: number }
+): Promise<void>;
+
+async function evaluateModel(
+  testSet: Array<{ features: FeatureVector; ratings: TagRatings }>
+): Promise<{ mae: number; r2: number }>;
+```
+
+**Prediction Enhancement:**
+- Keep `tfjsPredictRatings()` as main API
+- Add `confidence` score to return type: `{ e, m, c, confidence }`
+- Load normalization stats from versioned JSON
+- Use bounded activation (tanh mapped to 1-5 range)
+- Ensure all tensors disposed after use
+
+**Data Organization:**
+```
+data/
+  ├── training/
+  │   ├── training-log.jsonl          (Append-only training history, in Git)
+  │   └── training-samples.jsonl      (Aggregated feedback samples, in Git)
+  ├── model/
+  │   ├── feature-stats.json          (Normalization means/stds, in Git)
+  │   ├── model-metadata.json         (Version & architecture, in Git)
+  │   ├── model.json                  (TF.js model topology, NOT in Git)
+  │   └── weights.bin                 (TF.js model weights, NOT in Git)
+  ├── classified/*.jsonl              (Classification outputs, in Git)
+  └── feedback/YYYY/MM/DD/*.jsonl     (User feedback, in Git)
+```
+
+**.gitignore Rules:**
+```gitignore
+# Binary model artifacts (regenerated from training)
+data/model/model.json
+data/model/*.bin
+data/model/*.pb
+```
+
+**Training Summary Schema:**
+```json
+{
+  "modelVersion": "0.2.3",
+  "trainedAt": "2025-11-03T18:30:00Z",
+  "samples": 842,
+  "metrics": { "mae": 0.41, "r2": 0.86 },
+  "featureSetVersion": "2025-10-30",
+  "notes": "Auto-retrained from 150 new feedback samples"
+}
+```
+
+**Sample Weighting Strategy:**
+- Explicit ratings (from `sidflow-rate`): weight = 1.0
+- Like events: weight = 0.7
+- Dislike events: weight = 0.5
+- Skip events: weight = 0.3
+
+**Periodic Retraining Design (Future `sidflow-play` Integration):**
+- Configurable via `.sidflow.json`:
+  ```json
+  {
+    "retrain": {
+      "enabled": true,
+      "intervalHours": 24,
+      "minNewFeedback": 50
+    }
+  }
+  ```
+- Trigger during playback idle periods or low CPU usage
+- Incremental training using `trainOnFeedback()` with new samples only
+- Append training summary to `training-log.jsonl`
+- Prevent concurrent retraining with simple in-process lock
+- Log retraining events to feedback system for audit trail
+
+**Benefits:**
+- All training data and metadata version-controlled in Git
+- Binary model weights excluded (large, reproducible from data)
+- Deterministic training enables reproducibility
+- Textual formats facilitate code review and merge resolution
+- Supports both manual training and automatic periodic retraining
+- Clear separation between canonical data (in Git) and derived artifacts (local)
