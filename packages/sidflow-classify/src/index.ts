@@ -15,9 +15,14 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+// Progress reporting configuration
+const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
+const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
 
 export interface ClassifyOptions {
   configPath?: string;
@@ -51,6 +56,11 @@ export async function planClassification(
 }
 
 const SID_EXTENSION = ".sid";
+
+async function computeFileHash(filePath: string): Promise<string> {
+  const content = await readFile(filePath);
+  return createHash("sha256").update(content).digest("hex");
+}
 
 export function resolveWavPath(plan: ClassificationPlan, sidFile: string): string {
   const relative = path.relative(plan.hvscPath, sidFile);
@@ -107,7 +117,28 @@ export async function needsWavRefresh(
   }
 
   const [sidStats, wavStats] = await Promise.all([stat(sidFile), stat(wavFile)]);
-  return sidStats.mtimeMs > wavStats.mtimeMs;
+  
+  // If SID file is older than WAV, no refresh needed
+  if (sidStats.mtimeMs <= wavStats.mtimeMs) {
+    return false;
+  }
+
+  // Timestamp changed - check if content actually changed by comparing hashes
+  // Store hash in a sidecar file to avoid re-computing on every check
+  const hashFile = `${wavFile}.hash`;
+  if (await pathExists(hashFile)) {
+    try {
+      const storedHash = await readFile(hashFile, "utf8");
+      const currentHash = await computeFileHash(sidFile);
+      return storedHash.trim() !== currentHash.trim();
+    } catch {
+      // If hash file is corrupted, rebuild
+      return true;
+    }
+  }
+
+  // No hash file exists, need to rebuild
+  return true;
 }
 
 export interface RenderWavOptions {
@@ -133,42 +164,148 @@ export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, sidplayPat
       }
     });
   });
+
+  // Store hash of SID file after successful WAV render
+  const hashFile = `${wavFile}.hash`;
+  try {
+    const hash = await computeFileHash(sidFile);
+    await writeFile(hashFile, hash, "utf8");
+  } catch {
+    // Hash storage is optional, continue even if it fails
+  }
 };
+
+export interface WavCacheProgress {
+  phase: "analyzing" | "building";
+  totalFiles: number;
+  processedFiles: number;
+  renderedFiles: number;
+  skippedFiles: number;
+  percentComplete: number;
+  elapsedMs: number;
+  currentFile?: string;
+}
+
+export type ProgressCallback = (progress: WavCacheProgress) => void;
 
 export interface BuildWavCacheOptions {
   sidplayPath?: string;
   render?: RenderWav;
   forceRebuild?: boolean;
+  onProgress?: ProgressCallback;
+  threads?: number; // Reserved for future parallel processing implementation
+}
+
+export interface PerformanceMetrics {
+  startTime: number;
+  endTime: number;
+  durationMs: number;
+}
+
+export interface BuildWavCacheMetrics extends PerformanceMetrics {
+  totalFiles: number;
+  rendered: number;
+  skipped: number;
+  cacheHitRate: number;
 }
 
 export interface BuildWavCacheResult {
   rendered: string[];
   skipped: string[];
+  metrics: BuildWavCacheMetrics;
 }
 
 export async function buildWavCache(
   plan: ClassificationPlan,
   options: BuildWavCacheOptions = {}
 ): Promise<BuildWavCacheResult> {
+  const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
+  const totalFiles = sidFiles.length;
   const rendered: string[] = [];
   const skipped: string[] = [];
   const sidplayPath = options.sidplayPath ?? plan.sidplayPath;
   const render = options.render ?? defaultRenderWav;
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
+  const onProgress = options.onProgress;
 
-  for (const sidFile of sidFiles) {
+  // Analysis phase: determine which files need rendering
+  if (onProgress && totalFiles > 0) {
+    onProgress({
+      phase: "analyzing",
+      totalFiles,
+      processedFiles: 0,
+      renderedFiles: 0,
+      skippedFiles: 0,
+      percentComplete: 0,
+      elapsedMs: Date.now() - startTime
+    });
+  }
+
+  const filesToRender: string[] = [];
+  const filesToSkip: string[] = [];
+
+  for (let i = 0; i < sidFiles.length; i++) {
+    const sidFile = sidFiles[i];
     const wavFile = resolveWavPath(plan, sidFile);
-    if (!(await needsWavRefresh(sidFile, wavFile, shouldForce))) {
+    if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
+      filesToRender.push(sidFile);
+    } else {
+      filesToSkip.push(sidFile);
       skipped.push(wavFile);
-      continue;
     }
+
+    // Report analysis progress periodically
+    if (onProgress && (i + 1) % ANALYSIS_PROGRESS_INTERVAL === 0) {
+      onProgress({
+        phase: "analyzing",
+        totalFiles,
+        processedFiles: i + 1,
+        renderedFiles: 0,
+        skippedFiles: filesToSkip.length,
+        percentComplete: ((i + 1) / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime
+      });
+    }
+  }
+
+  // Building phase: render WAV files
+  for (let i = 0; i < filesToRender.length; i++) {
+    const sidFile = filesToRender[i];
+    const wavFile = resolveWavPath(plan, sidFile);
 
     await render({ sidFile, wavFile, sidplayPath });
     rendered.push(wavFile);
+
+    // Report progress after rendering completes
+    if (onProgress) {
+      onProgress({
+        phase: "building",
+        totalFiles,
+        processedFiles: skipped.length + rendered.length,
+        renderedFiles: rendered.length,
+        skippedFiles: skipped.length,
+        percentComplete: ((skipped.length + rendered.length) / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime,
+        currentFile: path.basename(sidFile)
+      });
+    }
   }
 
-  return { rendered, skipped };
+  const endTime = Date.now();
+  const cacheHitRate = totalFiles > 0 ? skipped.length / totalFiles : 0;
+
+  const metrics: BuildWavCacheMetrics = {
+    startTime,
+    endTime,
+    durationMs: endTime - startTime,
+    totalFiles,
+    rendered: rendered.length,
+    skipped: skipped.length,
+    cacheHitRate
+  };
+
+  return { rendered, skipped, metrics };
 }
 
 const RATING_DIMENSIONS: Array<keyof TagRatings> = ["s", "m", "c"];
@@ -419,10 +556,30 @@ async function writeMetadataRecord(
   return metadataPath;
 }
 
+export interface AutoTagProgress {
+  phase: "metadata" | "tagging";
+  totalFiles: number;
+  processedFiles: number;
+  percentComplete: number;
+  elapsedMs: number;
+  currentFile?: string;
+}
+
+export type AutoTagProgressCallback = (progress: AutoTagProgress) => void;
+
 export interface GenerateAutoTagsOptions {
   extractMetadata?: ExtractMetadata;
   featureExtractor?: FeatureExtractor;
   predictRatings?: PredictRatings;
+  onProgress?: AutoTagProgressCallback;
+}
+
+export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
+  totalFiles: number;
+  autoTaggedCount: number;
+  manualOnlyCount: number;
+  mixedCount: number;
+  predictionsGenerated: number;
 }
 
 export interface GenerateAutoTagsResult {
@@ -431,28 +588,46 @@ export interface GenerateAutoTagsResult {
   mixedEntries: string[];
   metadataFiles: string[];
   tagFiles: string[];
+  metrics: GenerateAutoTagsMetrics;
 }
 
 export async function generateAutoTags(
   plan: ClassificationPlan,
   options: GenerateAutoTagsOptions = {}
 ): Promise<GenerateAutoTagsResult> {
+  const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
+  const totalFiles = sidFiles.length;
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
+  const onProgress = options.onProgress;
 
   const autoTagged: string[] = [];
   const manualEntries: string[] = [];
   const mixedEntries: string[] = [];
   const metadataFiles: string[] = [];
   const tagFiles: string[] = [];
+  let predictionsGenerated = 0;
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
 
-  for (const sidFile of sidFiles) {
+  for (let i = 0; i < sidFiles.length; i++) {
+    const sidFile = sidFiles[i];
     const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
     const posixRelative = toPosixRelative(relativePath);
+
+    // Report progress periodically
+    if (onProgress && i % AUTOTAG_PROGRESS_INTERVAL === 0) {
+      onProgress({
+        phase: "metadata",
+        totalFiles,
+        processedFiles: i,
+        percentComplete: (i / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime,
+        currentFile: path.basename(sidFile)
+      });
+    }
 
     const metadata = await extractMetadata({
       sidFile,
@@ -473,6 +648,18 @@ export async function generateAutoTags(
           `Missing WAV cache for ${posixRelative}. Run buildWavCache before generateAutoTags.`
         );
       }
+
+      if (onProgress) {
+        onProgress({
+          phase: "tagging",
+          totalFiles,
+          processedFiles: i,
+          percentComplete: (i / totalFiles) * 100,
+          elapsedMs: Date.now() - startTime,
+          currentFile: path.basename(sidFile)
+        });
+      }
+
       const features = await featureExtractor({ wavFile: wavPath, sidFile });
       autoRatings = await predictRatings({
         features,
@@ -480,6 +667,7 @@ export async function generateAutoTags(
         relativePath: posixRelative,
         metadata
       });
+      predictionsGenerated += 1;
     }
 
     const { ratings, source } = combineRatings(manualRecord?.ratings ?? null, autoRatings);
@@ -523,7 +711,19 @@ export async function generateAutoTags(
     tagFiles.push(autoFilePath);
   }
 
-  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles };
+  const endTime = Date.now();
+  const metrics: GenerateAutoTagsMetrics = {
+    startTime,
+    endTime,
+    durationMs: endTime - startTime,
+    totalFiles: sidFiles.length,
+    autoTaggedCount: autoTagged.length,
+    manualOnlyCount: manualEntries.length,
+    mixedCount: mixedEntries.length,
+    predictionsGenerated
+  };
+
+  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, metrics };
 }
 
 function computeSeed(value: string): number {

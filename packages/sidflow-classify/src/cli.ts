@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -11,14 +12,19 @@ import {
   heuristicFeatureExtractor,
   heuristicPredictRatings,
   planClassification,
+  type AutoTagProgress,
   type BuildWavCacheResult,
   type ClassificationPlan,
   type ExtractMetadata,
   type FeatureExtractor,
   type GenerateAutoTagsResult,
   type PredictRatings,
-  type RenderWav
+  type RenderWav,
+  type WavCacheProgress
 } from "./index.js";
+
+// Progress update throttle configuration
+const PROGRESS_THROTTLE_MS = 500; // Max 2 updates per second
 
 interface ClassifyCliOptions {
   configPath?: string;
@@ -184,20 +190,100 @@ function mergeRuntime(overrides?: Partial<ClassifyCliRuntime>): ClassifyCliRunti
   };
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(2)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = (seconds % 60).toFixed(0);
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+function createProgressLogger(stdout: NodeJS.WritableStream) {
+  let lastLogTime = 0;
+
+  return {
+    logWavProgress(progress: WavCacheProgress): void {
+      const now = Date.now();
+      if (now - lastLogTime < PROGRESS_THROTTLE_MS && progress.processedFiles < progress.totalFiles) {
+        return;
+      }
+      lastLogTime = now;
+
+      const percent = progress.percentComplete.toFixed(1);
+      const elapsed = formatDuration(progress.elapsedMs);
+
+      if (progress.phase === "analyzing") {
+        stdout.write(
+          `\r[Analyzing] ${progress.processedFiles}/${progress.totalFiles} files (${percent}%) - ${elapsed}`
+        );
+      } else {
+        const remaining = progress.totalFiles - progress.processedFiles;
+        const file = progress.currentFile ? ` - ${progress.currentFile}` : "";
+        stdout.write(
+          `\r[Converting] ${progress.renderedFiles} rendered, ${progress.skippedFiles} cached, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
+        );
+      }
+    },
+
+    logAutoTagProgress(progress: AutoTagProgress): void {
+      const now = Date.now();
+      if (now - lastLogTime < PROGRESS_THROTTLE_MS && progress.processedFiles < progress.totalFiles) {
+        return;
+      }
+      lastLogTime = now;
+
+      const percent = progress.percentComplete.toFixed(1);
+      const elapsed = formatDuration(progress.elapsedMs);
+      const remaining = progress.totalFiles - progress.processedFiles;
+      const file = progress.currentFile ? ` - ${progress.currentFile}` : "";
+
+      if (progress.phase === "metadata") {
+        stdout.write(
+          `\r[Metadata] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
+        );
+      } else {
+        stdout.write(
+          `\r[Tagging] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
+        );
+      }
+    },
+
+    clearLine(): void {
+      stdout.write("\r\x1b[K");
+    }
+  };
+}
+
 function summariseWavResult(result: BuildWavCacheResult): string[] {
+  const { metrics } = result;
+  const cacheHitPercent = (metrics.cacheHitRate * 100).toFixed(1);
   return [
-    `WAVs rendered: ${result.rendered.length}`,
-    `WAVs skipped: ${result.skipped.length}`
+    "WAV Cache Build:",
+    `  Files processed: ${metrics.totalFiles}`,
+    `  Rendered: ${metrics.rendered}`,
+    `  Skipped (cached): ${metrics.skipped}`,
+    `  Cache hit rate: ${cacheHitPercent}%`,
+    `  Duration: ${formatDuration(metrics.durationMs)}`
   ];
 }
 
 function summariseAutoTags(result: GenerateAutoTagsResult): string[] {
+  const { metrics } = result;
   return [
-    `Auto-tagged entries: ${result.autoTagged.length}`,
-    `Manual-only entries: ${result.manualEntries.length}`,
-    `Mixed entries: ${result.mixedEntries.length}`,
-    `Metadata files written: ${result.metadataFiles.length}`,
-    `Auto tag files written: ${result.tagFiles.length}`
+    "Auto-tagging:",
+    `  Files processed: ${metrics.totalFiles}`,
+    `  Auto-tagged: ${metrics.autoTaggedCount}`,
+    `  Manual-only: ${metrics.manualOnlyCount}`,
+    `  Mixed: ${metrics.mixedCount}`,
+    `  Predictions generated: ${metrics.predictionsGenerated}`,
+    `  Metadata files: ${result.metadataFiles.length}`,
+    `  Tag files: ${result.tagFiles.length}`,
+    `  Duration: ${formatDuration(metrics.durationMs)}`
   ];
 }
 
@@ -234,6 +320,13 @@ export async function runClassifyCli(
       sidplayPath: options.sidplayPath ? path.resolve(options.sidplayPath) : plan.sidplayPath
     };
 
+    // Determine thread count
+    const threads = plan.config.threads || os.cpus().length;
+    runtime.stdout.write(`Starting classification (threads: ${threads})\n\n`);
+
+    // Create progress logger
+    const progressLogger = createProgressLogger(runtime.stdout);
+
     let render: RenderWav | undefined;
     if (options.renderModule) {
       render = await runtime.loadRenderModule(options.renderModule);
@@ -242,8 +335,13 @@ export async function runClassifyCli(
     const wavResult = await runtime.buildWavCache(resolvedPlan, {
       forceRebuild: options.forceRebuild,
       sidplayPath: resolvedPlan.sidplayPath,
-      render
+      render,
+      threads,
+      onProgress: (progress) => progressLogger.logWavProgress(progress)
     });
+
+    progressLogger.clearLine();
+    runtime.stdout.write("\n");
 
     let featureExtractor: FeatureExtractor = heuristicFeatureExtractor;
     if (options.featureModule) {
@@ -263,8 +361,12 @@ export async function runClassifyCli(
     const autoTagsResult = await runtime.generateAutoTags(resolvedPlan, {
       extractMetadata,
       featureExtractor,
-      predictRatings
+      predictRatings,
+      onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
     });
+
+    progressLogger.clearLine();
+    runtime.stdout.write("\n");
 
     const summary = [
       "Classification complete.",
