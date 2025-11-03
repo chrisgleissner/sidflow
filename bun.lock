@@ -32,6 +32,13 @@
         "@sidflow/common": "workspace:*",
       },
     },
+    "packages/sidflow-play": {
+      "name": "@sidflow/play",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sidflow/common": "workspace:*",
+      },
+    },
     "packages/sidflow-rate": {
       "name": "@sidflow/rate",
       "version": "0.1.0",
@@ -71,6 +78,8 @@
     "@sidflow/common": ["@sidflow/common@workspace:packages/sidflow-common"],
 
     "@sidflow/fetch": ["@sidflow/fetch@workspace:packages/sidflow-fetch"],
+
+    "@sidflow/play": ["@sidflow/play@workspace:packages/sidflow-play"],
 
     "@sidflow/rate": ["@sidflow/rate@workspace:packages/sidflow-rate"],
 
