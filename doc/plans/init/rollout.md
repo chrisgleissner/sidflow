@@ -81,22 +81,36 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 5 Checklist
 
-- [ ] Define and implement JSONL schema for classification output with fields: `sid_path` (full relative path), `e` (energy), `m` (mood), `c` (complexity), `mood` (text label), storing one record per line.
-- [ ] Update classification pipeline to output `classified/*.jsonl` files with deterministic ordering and VS Code "JSON Lines" extension support.
+- [ ] Define and implement extensible JSONL schema for classification output with core fields (`sid_path`, `e`, `m`, `c`) and optional classifier features, storing one record per line.
+- [ ] Update classification pipeline to output `classified/*.jsonl` files preserving all extracted features (energy, rms, spectralCentroid, bpm, etc.) with deterministic ordering and VS Code "JSON Lines" extension support.
 - [ ] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
 
-**JSONL Schema:**
+**JSONL Schema (Core + Extended Features):**
 ```jsonl
-{"sid_path":"Rob_Hubbard/Delta.sid","e":3,"m":4,"c":5,"mood":"energetic"}
-{"sid_path":"Martin_Galway/Parallax.sid","e":2,"m":5,"c":4,"mood":"ambient"}
+{"sid_path":"Rob_Hubbard/Delta.sid","e":3,"m":4,"c":5,"features":{"energy":0.42,"rms":0.15,"spectralCentroid":2150,"spectralRolloff":4200,"zeroCrossingRate":0.08,"bpm":128,"confidence":0.85,"duration":180}}
+{"sid_path":"Martin_Galway/Parallax.sid","e":2,"m":5,"c":4,"features":{"energy":0.18,"rms":0.09,"spectralCentroid":1850,"spectralRolloff":3800,"zeroCrossingRate":0.05,"bpm":96,"confidence":0.72,"duration":210}}
 ```
 
-**Fields:**
+**Core Fields:**
 - `sid_path` — Full relative path within HVSC or local folders (ensures uniqueness)
 - `e` — Energy/Drive rating (1-5)
 - `m` — Mood/Tone rating (1-5)
 - `c` — Complexity/Texture rating (1-5)
-- `mood` — Textual mood label (e.g., "energetic", "ambient", "dark", "bright")
+
+**Extended Fields (Classifier Output):**
+- `features` — Object containing all extracted audio features from classifier
+  - `energy` — Signal energy (float)
+  - `rms` — Root mean square amplitude (float)
+  - `spectralCentroid` — Spectral center of mass in Hz (float)
+  - `spectralRolloff` — Frequency below which 85% of spectrum energy is contained (float)
+  - `zeroCrossingRate` — Rate of sign changes in signal (float)
+  - `bpm` — Estimated tempo in beats per minute (float)
+  - `confidence` — Confidence score for tempo estimation (0-1)
+  - `duration` — Audio duration in seconds (float)
+  - Additional features as extracted by classifier (extensible)
+
+**Rationale:**
+Preserving all classifier features enables future music stream selections based on diverse criteria (tempo matching, spectral similarity, etc.) without requiring re-classification. The extensible schema allows new features to be added as classification algorithms improve.
 
 **Benefits:**
 - **Small diffs:** Line-based format produces minimal Git diffs
@@ -150,8 +164,8 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 7 Checklist
 
-- [ ] Design LanceDB schema combining classification vectors `[e,m,c]` and feedback aggregates, then implement deterministic rebuild command (`bun run build:db`).
-- [ ] Combine `classified/*.jsonl` + `feedback/**/*.jsonl` into unified `data/sidflow.lance/` with composer, title, mood, and aggregated feedback counts.
+- [ ] Design LanceDB schema combining classification vectors `[e,m,c]`, extended features, and feedback aggregates, then implement deterministic rebuild command (`bun run build:db`).
+- [ ] Combine `classified/*.jsonl` (with all extracted features) + `feedback/**/*.jsonl` into unified `data/sidflow.lance/` preserving classifier output for flexible querying.
 - [ ] Add `.lance/` directory to `.gitignore` and generate manifest file `sidflow.lance.manifest.json` with checksums, schema version, and record counts for Git.
 
 **LanceDB Structure:**
@@ -170,7 +184,9 @@ data/
 - `vector` — `[e, m, c]` as float array for similarity search
 - `composer` — Artist/composer name (string)
 - `title` — Song title (string)
-- `mood` — Mood label (string)
+- `features` — All extracted classifier features (JSON object)
+  - Includes: `energy`, `rms`, `spectralCentroid`, `spectralRolloff`, `zeroCrossingRate`, `bpm`, `confidence`, `duration`
+  - Enables future queries based on any audio characteristic
 - `likes` — Aggregated like count (integer)
 - `dislikes` — Aggregated dislike count (integer)
 - `skips` — Aggregated skip count (integer)
@@ -221,7 +237,7 @@ bun run build:db
 
 - [ ] Define scoring formula (`score = α·similarity + β·song_feedback + γ·user_affinity`) with default weights (0.6/0.3/0.1) and implement mood-based seed search using LanceDB vector similarity.
 - [ ] Create mood presets (quiet, energetic, dark, bright, complex) and apply feedback weighting to re-rank recommendations with diversity filters.
-- [ ] Implement feedback loop where new JSONL events adjust future recommendations on rebuild, and document tuning parameters.
+- [ ] Implement feedback loop where new JSONL events adjust future recommendations on rebuild, and support extended feature-based queries (BPM matching, spectral similarity).
 
 **Scoring Formula:**
 ```
@@ -256,6 +272,13 @@ score = α·similarity + β·song_feedback + γ·user_affinity
 3. Re-rank results using feedback weighting and user affinity
 4. Apply diversity filters to avoid repetition
 5. Return scored playlist with metadata
+
+**Extended Feature-Based Queries:**
+Beyond basic `[e, m, c]` similarity, the preserved classifier features enable:
+- **BPM matching**: Find songs within ±10 BPM for seamless transitions
+- **Spectral similarity**: Match spectral characteristics for timbral coherence
+- **Energy profiling**: Build dynamic playlists that gradually increase/decrease energy
+- **Complexity progression**: Create learning paths from simple to complex arrangements
 
 **Feedback Loop:**
 - New `like`/`dislike`/`skip` events append to feedback logs
