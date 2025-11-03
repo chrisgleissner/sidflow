@@ -266,10 +266,10 @@ bun run build:db
 
 ### Phase 8 Checklist
 
-- [ ] Define scoring formula (`score = α·similarity + β·song_feedback + γ·user_affinity`) with default weights (0.6/0.3/0.1) and implement mood-based seed search using LanceDB vector similarity.
-- [ ] Create mood presets (quiet, energetic, dark, bright, complex) and apply feedback weighting to re-rank recommendations with diversity filters.
-- [ ] Implement feedback loop where new JSONL events adjust future recommendations on rebuild, and support extended feature-based queries (BPM matching, spectral similarity).
-- [ ] Add exploration parameter (0-1 scale) to control exploration vs. exploitation balance, preventing preference bubbles while respecting user intent.
+- [x] Define scoring formula (`score = α·similarity + β·song_feedback + γ·user_affinity`) with default weights (0.6/0.3/0.1) and implement mood-based seed search using LanceDB vector similarity.
+- [x] Create mood presets (quiet, energetic, dark, bright, complex) and apply feedback weighting to re-rank recommendations with diversity filters.
+- [x] Implement feedback loop where new JSONL events adjust future recommendations on rebuild, and support extended feature-based queries (BPM matching, spectral similarity).
+- [x] Add exploration parameter (0-1 scale) to control exploration vs. exploitation balance, preventing preference bubbles while respecting user intent.
 
 **Scoring Formula:**
 ```
