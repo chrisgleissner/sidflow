@@ -55,10 +55,10 @@ graph TB
         B --> C[hvsc-version.json]
     end
     
-    subgraph "Phase 2: Manual Tagging"
-        B -->|User plays & tags| D[sidflow-tag]
-        D -->|sidplayfp playback| E[Manual Tag Files<br/>*.sid.tags.json]
-        E --> F[Energy e, Mood m,<br/>Complexity c<br/>ratings 1-5]
+    subgraph "Phase 2: Manual Rating"
+        B -->|User plays & rates| D[sidflow-rate]
+        D -->|sidplayfp playback| E[Manual Rating Files<br/>*.sid.tags.json]
+        E --> F[Energy e, Mood m,<br/>Complexity c, Preference p<br/>ratings 1-5]
     end
     
     subgraph "Phase 3: Automated Classification"
@@ -67,7 +67,7 @@ graph TB
         H -->|Essentia.js| I[Feature Extraction]
         I --> J[Audio Features<br/>energy, RMS, BPM,<br/>spectral analysis]
         J -->|TensorFlow.js| K[Prediction Model]
-        E -.->|Manual tags<br/>take precedence| K
+        E -.->|Manual ratings<br/>take precedence| K
         K --> L[Auto-tag Files<br/>auto-tags.json]
         B -->|sidplayfp -t1| M[Metadata Files<br/>*.sid.meta.json]
         M --> N[Title, Author,<br/>Released]
@@ -99,9 +99,9 @@ graph TB
 
 **Legend:**
 - **Blue boxes**: SID source files
-- **Red boxes**: Manual tag files (user-created)
+- **Red boxes**: Manual rating files (user-created)
 - **Gray boxes**: WAV cache (intermediate format)
-- **Green boxes**: Auto-generated tag files
+- **Green boxes**: Auto-generated rating files
 - **Orange boxes**: Metadata files
 - **Purple boxes**: Database (future)
 - **Pink boxes**: Playlists
@@ -137,25 +137,27 @@ Each command can be run via the command line interface from the repository root.
 
 ---
 
-### 2. `sidflow-tag` (planned)
+### 2. `sidflow-rate` (planned, formerly `sidflow-tag`)
 
 ```sh
-./scripts/sidflow-tag [--sidplay <path>] [--config <path>]
+./scripts/sidflow-rate [--sidplay <path>] [--config <path>]
 ```
 
 **Status:** In development  
-**Purpose:** Provide human-readable mood labels for supervised classification.  
-**Operation:** Plays untagged `.sid` files via `sidplayfp`, records energy/mood/complexity (`e/m/c`) ratings, and stores results beside each track.
+**Purpose:** Capture user ratings across multiple dimensions for supervised classification and preference learning.  
+**Operation:** Plays unrated `.sid` files via `sidplayfp`, records energy/mood/complexity/preference (`e/m/c/p`) ratings, and stores results beside each track.
 
 **Controls**
 
-- `e1-5`, `m1-5`, `c1-5` — set values (default 3)  
+- `e1-5`, `m1-5`, `c1-5`, `p1-5` — set dimension values (default 3)  
 - `Enter` — save and advance  
 - `Q` — quit safely while saving progress  
 
 **Outputs**
 
 - Deterministic `*.sid.tags.json` files with timestamps and version markers  
+
+**Note:** The tool was renamed from `sidflow-tag` to `sidflow-rate` to better reflect its purpose of capturing numerical ratings rather than categorical tags. The new `p` (preference) dimension captures overall user preference/enjoyment.
 
 ---
 
@@ -168,8 +170,8 @@ Each command can be run via the command line interface from the repository root.
 ```
 
 **Status:** In development with Essentia.js + TensorFlow.js integration available  
-**Purpose:** Convert SIDs to WAV, extract features, merge manual tags, and publish deterministic `auto-tags.json` summaries.  
-**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(e/m/c)` ratings using TensorFlow.js for untagged dimensions without overwriting manual values.
+**Purpose:** Convert SIDs to WAV, extract features, merge manual ratings, and publish deterministic `auto-tags.json` summaries.  
+**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(e/m/c/p)` ratings using TensorFlow.js for unrated dimensions without overwriting manual values.
 
 #### Flags (classification)
 
@@ -186,7 +188,7 @@ Each command can be run via the command line interface from the repository root.
 - Deterministic WAV cache under `wavCachePath`
 - Per-SID metadata files (`*.sid.meta.json`)
 - Aggregated `auto-tags.json` files respecting `classificationDepth`
-- Summary of auto/manual/mixed tag coverage on stdout
+- Summary of auto/manual/mixed rating coverage on stdout
 - **Performance metrics** (runtime, cache hit rate, predictions generated) — see [`doc/performance-metrics.md`](doc/performance-metrics.md)
 
 > [!TIP]
@@ -202,12 +204,12 @@ Each command can be run via the command line interface from the repository root.
 
 **Status:** Planned  
 **Purpose:** Turn your classified collection into a dynamic SID playlist experience.  
-**Operation:** Combines manual and automatic tags to build thematic queues (e.g., “bright + energetic”), streams through `sidplayfp`, and exports deterministic manifests.
+**Operation:** Combines manual and automatic ratings to build thematic queues (e.g., “bright + energetic”), streams through `sidplayfp`, and exports deterministic manifests.
 
 #### Flags (play)
 
 - `--mood <profile>` — predefined blend (e.g., `focus`, `sunrise`)  
-- `--filters <expr>` — range expressions like `s>=4,m>=3`  
+- `--filters <expr>` — range expressions like `e>=4,m>=3,p>=4`  
 - `--export <path>` — write playlists (JSON/M3U)  
 
 #### Outputs (play)
@@ -220,11 +222,11 @@ Each command can be run via the command line interface from the repository root.
 
 1. `bun run validate:config` — verify configuration  
 2. `./scripts/sidflow-fetch` — download or refresh your SID mirror  
-3. `./scripts/sidflow-tag` — manually tag songs to provide seeds for classification
-4. `./scripts/sidflow-classify` — automatically classify all songs based on tags
+3. `./scripts/sidflow-rate` — manually rate songs to provide seeds for classification
+4. `./scripts/sidflow-classify` — automatically classify all songs based on ratings
 5. `./scripts/sidflow-play` — filter and play curated sets  
 
-All generated data (HVSC mirror, WAVs, tags) stays under `workspace/` and is git-ignored by default.
+All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default.
 
 ---
 

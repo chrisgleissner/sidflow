@@ -77,26 +77,56 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 - New files written with `"e":` field
 - Documentation updated to explain the terminology change
 
+## Phase 4.6 — Terminology Update: Tag → Rating
+
+### Phase 4.6 Checklist
+
+- [ ] Rename `sidflow-tag` tool to `sidflow-rate` to better reflect its purpose of capturing user ratings.
+- [ ] Update CLI help text, documentation, and user-facing messages from "tag/tagging" to "rate/rating".
+- [ ] Add support for new `p` (preference) rating (1-5) capturing overall user preference for a song.
+- [ ] Update keyboard controls to include `p1-5` for preference rating alongside `e1-5`, `m1-5`, `c1-5`.
+- [ ] Update workflow diagram in README.md to reflect "Rating" terminology (Phase 2: Manual Rating, sidflow-rate).
+- [ ] Ensure backwards compatibility with existing `*.sid.tags.json` files during transition period.
+
+**Rationale:**  
+"Rating" more accurately describes the user activity than "tagging" - users are assigning numerical ratings (1-5) across multiple dimensions (energy, mood, complexity, preference) rather than applying categorical tags. The new `p` (preference) dimension captures holistic user preference independent of individual rating dimensions.
+
+**New Rating Dimension:**
+- `p` — Preference rating (1-5): User's overall preference/enjoyment of the song
+  - 1 = Strongly dislike
+  - 2 = Dislike
+  - 3 = Neutral
+  - 4 = Like
+  - 5 = Strongly like
+
+**Migration Steps:**
+1. Update `sidflow-tag` command name to `sidflow-rate`
+2. Add `p` dimension to rating input handling
+3. Update help text and control descriptions
+4. Modify README workflow diagram (Phase 2 section)
+5. Update all user-facing documentation references
+
 ## Phase 5 — JSONL Classification Output & Data Formats
 
 ### Phase 5 Checklist
 
-- [ ] Define and implement extensible JSONL schema for classification output with `sid_path`, nested `tags` object (`e`, `m`, `c`), and `features` object, storing one record per line.
+- [ ] Define and implement extensible JSONL schema for classification output with `sid_path`, nested `ratings` object (`e`, `m`, `c`, `p`), and `features` object, storing one record per line.
 - [ ] Update classification pipeline to output `classified/*.jsonl` files preserving all extracted features (energy, rms, spectralCentroid, bpm, etc.) with deterministic ordering and VS Code "JSON Lines" extension support.
 - [ ] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
 
-**JSONL Schema (Nested Tags + Extended Features):**
+**JSONL Schema (Nested Ratings + Extended Features):**
 ```jsonl
-{"sid_path":"Rob_Hubbard/Delta.sid","tags":{"e":3,"m":4,"c":5},"features":{"energy":0.42,"rms":0.15,"spectralCentroid":2150,"spectralRolloff":4200,"zeroCrossingRate":0.08,"bpm":128,"confidence":0.85,"duration":180}}
-{"sid_path":"Martin_Galway/Parallax.sid","tags":{"e":2,"m":5,"c":4},"features":{"energy":0.18,"rms":0.09,"spectralCentroid":1850,"spectralRolloff":3800,"zeroCrossingRate":0.05,"bpm":96,"confidence":0.72,"duration":210}}
+{"sid_path":"Rob_Hubbard/Delta.sid","ratings":{"e":3,"m":4,"c":5,"p":4},"features":{"energy":0.42,"rms":0.15,"spectralCentroid":2150,"spectralRolloff":4200,"zeroCrossingRate":0.08,"bpm":128,"confidence":0.85,"duration":180}}
+{"sid_path":"Martin_Galway/Parallax.sid","ratings":{"e":2,"m":5,"c":4,"p":5},"features":{"energy":0.18,"rms":0.09,"spectralCentroid":1850,"spectralRolloff":3800,"zeroCrossingRate":0.05,"bpm":96,"confidence":0.72,"duration":210}}
 ```
 
 **Core Fields:**
 - `sid_path` — Full relative path within HVSC or local folders (ensures uniqueness)
-- `tags` — Rating dimensions (may originate from manual tagging or classifier prediction)
+- `ratings` — Rating dimensions (may originate from manual rating or classifier prediction)
   - `e` — Energy/Drive rating (1-5)
   - `m` — Mood/Tone rating (1-5)
   - `c` — Complexity/Texture rating (1-5)
+  - `p` — Preference rating (1-5): User's overall preference/enjoyment
 
 **Extended Fields (Classifier Output):**
 - `features` — Object containing all extracted audio features from classifier
@@ -111,7 +141,7 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
   - Additional features as extracted by classifier (extensible)
 
 **Rationale:**
-Grouping `e`, `m`, `c` ratings in a `tags` object keeps the schema extensible and logically separates rating dimensions (which may come from manual tagging or classifier prediction) from raw audio features. Preserving all classifier features enables future music stream selections based on diverse criteria (tempo matching, spectral similarity, etc.) without requiring re-classification.
+Grouping `e`, `m`, `c`, `p` ratings in a `ratings` object keeps the schema extensible and logically separates rating dimensions (which may come from manual rating or classifier prediction) from raw audio features. The `p` (preference) dimension captures holistic user preference independent of individual characteristics. Preserving all classifier features enables future music stream selections based on diverse criteria (tempo matching, spectral similarity, etc.) without requiring re-classification.
 
 **Benefits:**
 - **Small diffs:** Line-based format produces minimal Git diffs
@@ -165,8 +195,8 @@ Grouping `e`, `m`, `c` ratings in a `tags` object keeps the schema extensible an
 
 ### Phase 7 Checklist
 
-- [ ] Design LanceDB schema combining classification vectors `[e,m,c]`, extended features, and feedback aggregates, then implement deterministic rebuild command (`bun run build:db`).
-- [ ] Combine `classified/*.jsonl` (with all extracted features) + `feedback/**/*.jsonl` into unified `data/sidflow.lance/` preserving classifier output for flexible querying.
+- [ ] Design LanceDB schema combining classification vectors `[e,m,c,p]`, extended features, and feedback aggregates, then implement deterministic rebuild command (`bun run build:db`).
+- [ ] Combine `classified/*.jsonl` (with all extracted features and ratings) + `feedback/**/*.jsonl` into unified `data/sidflow.lance/` preserving classifier output for flexible querying.
 - [ ] Add `.lance/` directory to `.gitignore` and generate manifest file `sidflow.lance.manifest.json` with checksums, schema version, and record counts for Git.
 
 **LanceDB Structure:**
@@ -182,7 +212,7 @@ data/
 
 **Database Schema:**
 - `sid_path` — Primary identifier (string)
-- `vector` — `[e, m, c]` as float array for similarity search
+- `vector` — `[e, m, c, p]` as float array for similarity search
 - `composer` — Artist/composer name (string)
 - `title` — Song title (string)
 - `features` — All extracted classifier features (JSON object)
@@ -203,7 +233,7 @@ bun run build:db
 1. Read all `classified/*.jsonl` files
 2. Aggregate all `feedback/**/*.jsonl` events by `sid_path`
 3. Compute feedback statistics (likes, dislikes, skips, plays)
-4. Extract `[e, m, c]` values from nested `tags` object and generate vector embeddings
+4. Extract `[e, m, c, p]` values from nested `ratings` object and generate vector embeddings
 5. Write to `data/sidflow.lance/`
 6. Generate manifest with checksums and metadata
 
@@ -246,14 +276,14 @@ score = α·similarity + β·song_feedback + γ·user_affinity
 ```
 
 **Components:**
-- `similarity` — Cosine similarity between query vector and song vector `[e, m, c]`
+- `similarity` — Cosine similarity between query vector and song vector `[e, m, c, p]`
 - `song_feedback` — Aggregated feedback score: `(likes - dislikes - 0.3·skips) / plays`
-- `user_affinity` — Personalized boost based on user's historical preferences
+- `user_affinity` — Personalized boost based on user's historical preferences (leverages `p` ratings)
 
 **Default Weights:**
 - `α = 0.6` — Similarity weight (primary factor)
 - `β = 0.3` — Song feedback weight (community signal)
-- `γ = 0.1` — User affinity weight (personalization)
+- `γ = 0.1` — User affinity weight (personalization, uses preference ratings)
 
 **Mood Presets:**
 ```json
@@ -270,14 +300,16 @@ score = α·similarity + β·song_feedback + γ·user_affinity
 **Recommendation Flow:**
 1. User selects mood seed (e.g., "quiet") or custom `[e, m, c]` vector
 2. Query LanceDB for nearest neighbors using vector similarity
-3. Re-rank results using feedback weighting and user affinity
+3. Re-rank results using feedback weighting and user affinity (incorporating `p` ratings)
 4. Apply diversity filters to avoid repetition
 5. Return scored playlist with metadata
 
 **Extended Feature-Based Queries:**
-Beyond basic `[e, m, c]` similarity, the preserved classifier features enable:
+Beyond basic `[e, m, c]` similarity, the preserved classifier features and preference ratings enable:
 - **BPM matching**: Find songs within ±10 BPM for seamless transitions
 - **Spectral similarity**: Match spectral characteristics for timbral coherence
+- **Preference-based filtering**: Prioritize songs with high `p` ratings from the user
+- **Preference learning**: Use historical `p` ratings to refine recommendations over time
 - **Energy profiling**: Build dynamic playlists that gradually increase/decrease energy
 - **Complexity progression**: Create learning paths from simple to complex arrangements
 
