@@ -44,6 +44,71 @@ bun run validate:config
 
 ---
 
+## Workflow Overview
+
+The diagram below shows how the SIDFlow tools work together to process SID files, create classifications, and generate playlists:
+
+```mermaid
+graph TB
+    subgraph "Phase 1: Fetch SID Files"
+        A[HVSC Mirror<br/>hvsc.brona.dk] -->|sidflow-fetch| B[SID Files<br/>*.sid]
+        B --> C[hvsc-version.json]
+    end
+    
+    subgraph "Phase 2: Manual Tagging"
+        B -->|User plays & tags| D[sidflow-tag]
+        D -->|sidplayfp playback| E[Manual Tag Files<br/>*.sid.tags.json]
+        E --> F[Speed s, Mood m,<br/>Complexity c<br/>ratings 1-5]
+    end
+    
+    subgraph "Phase 3: Automated Classification"
+        B -->|sidflow-classify| G[WAV Conversion]
+        G -->|sidplayfp -w| H[WAV Cache<br/>*.wav]
+        H -->|Essentia.js| I[Feature Extraction]
+        I --> J[Audio Features<br/>energy, RMS, BPM,<br/>spectral analysis]
+        J -->|TensorFlow.js| K[Prediction Model]
+        E -.->|Manual tags<br/>take precedence| K
+        K --> L[Auto-tag Files<br/>auto-tags.json]
+        B -->|sidplayfp -t1| M[Metadata Files<br/>*.sid.meta.json]
+        M --> N[Title, Author,<br/>Released]
+    end
+    
+    subgraph "Phase 4: Database Integration (Future)"
+        L -->|Aggregate| O[(SIDFlow Database)]
+        M -->|Aggregate| O
+        E -->|Aggregate| O
+        N -.-> O
+    end
+    
+    subgraph "Phase 5: Playlist Generation & Playback"
+        O -->|Query by mood,<br/>tempo, complexity| P[sidflow-play]
+        P -->|Filter & score| Q[Playlist<br/>*.json, *.m3u]
+        Q -->|sidplayfp| R[🎵 Playback]
+        P -.->|Session history| S[Playback State]
+    end
+    
+    style B fill:#e1f5ff
+    style E fill:#ffe1e1
+    style H fill:#f0f0f0
+    style L fill:#e1ffe1
+    style M fill:#fff4e1
+    style O fill:#f0e1ff
+    style Q fill:#ffe1f5
+    style R fill:#ffd700
+```
+
+**Legend:**
+- **Blue boxes**: SID source files
+- **Red boxes**: Manual tag files (user-created)
+- **Gray boxes**: WAV cache (intermediate format)
+- **Green boxes**: Auto-generated tag files
+- **Orange boxes**: Metadata files
+- **Purple boxes**: Database (future)
+- **Pink boxes**: Playlists
+- **Gold boxes**: Playback
+
+---
+
 ## CLI Tools
 
 Each command can be run via the command line interface from the repository root.
@@ -102,9 +167,9 @@ Each command can be run via the command line interface from the repository root.
                             [--metadata-module <path>] [--render-module <path>]
 ```
 
-**Status:** In development (heuristic defaults available)  
+**Status:** In development with Essentia.js + TensorFlow.js integration available  
 **Purpose:** Convert SIDs to WAV, extract features, merge manual tags, and publish deterministic `auto-tags.json` summaries.  
-**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors, and predicts `(s/m/c)` ratings for untagged dimensions without overwriting manual values.
+**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(s/m/c)` ratings using TensorFlow.js for untagged dimensions without overwriting manual values.
 
 #### Flags (classification)
 
@@ -125,7 +190,7 @@ Each command can be run via the command line interface from the repository root.
 - **Performance metrics** (runtime, cache hit rate, predictions generated) — see [`doc/performance-metrics.md`](doc/performance-metrics.md)
 
 > [!TIP]
-> Without custom modules, the CLI uses built-in heuristics for features and predictions. Plug in Essentia.js + TensorFlow.js wrappers via `--feature-module` and `--predictor-module` when ready for production models.
+> The CLI now includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`packages/sidflow-classify/README-INTEGRATION.md`](packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
 
 ---
 

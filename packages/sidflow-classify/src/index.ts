@@ -765,3 +765,7 @@ export const heuristicPredictRatings: PredictRatings = async ({
     c: clampRating(toRating(complexitySeed))
   };
 };
+
+// Re-export Essentia.js and TensorFlow.js implementations
+export { essentiaFeatureExtractor } from "./essentia-features.js";
+export { tfjsPredictRatings, disposeModel } from "./tfjs-predictor.js";
