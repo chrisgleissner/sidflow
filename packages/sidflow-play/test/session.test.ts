@@ -4,7 +4,6 @@
 
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { createSessionManager, type PlaybackEvent } from "../src/index.js";
 
 const TEST_SESSION_PATH = "/tmp/sidflow-play-test-sessions";
