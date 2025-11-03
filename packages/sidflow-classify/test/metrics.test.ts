@@ -91,7 +91,7 @@ describe("performance metrics", () => {
 
     const plan = createPlan(hvscPath, wavCachePath, tagsPath);
 
-    // Create 3 SID filee: 1 manual, 1 auto, 1 mixed
+    // Create 3 SID files: 1 manual, 1 auto, 1 mixed
     const manualSid = path.join(hvscPath, "Music", "manual.sid");
     const autoSid = path.join(hvscPath, "Music", "auto.sid");
     const mixedSid = path.join(hvscPath, "Music", "mixed.sid");

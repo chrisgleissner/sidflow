@@ -269,6 +269,7 @@ bun run build:db
 - [ ] Define scoring formula (`score = α·similarity + β·song_feedback + γ·user_affinity`) with default weights (0.6/0.3/0.1) and implement mood-based seed search using LanceDB vector similarity.
 - [ ] Create mood presets (quiet, energetic, dark, bright, complex) and apply feedback weighting to re-rank recommendations with diversity filters.
 - [ ] Implement feedback loop where new JSONL events adjust future recommendations on rebuild, and support extended feature-based queries (BPM matching, spectral similarity).
+- [ ] Add exploration parameter (0-1 scale) to control exploration vs. exploitation balance, preventing preference bubbles while respecting user intent.
 
 **Scoring Formula:**
 ```
@@ -324,6 +325,24 @@ Beyond basic `[e, m, c]` similarity, the preserved classifier features and prefe
 - `diversity_threshold` — Minimum vector distance between consecutive songs (default: 0.2)
 - `recency_boost` — Weight for recently released songs (default: 0.0)
 - `exploration_rate` — Probability of including lower-ranked songs (default: 0.1)
+- `exploration_factor` — Exploration vs. exploitation balance (0-1, default: 0.2)
+  - 0.0 = Pure exploitation: Only serve songs matching user preferences (safe choices)
+  - 0.5 = Balanced: Mix of familiar and novel selections
+  - 1.0 = Pure exploration: Maximize diversity and introduce unexpected choices
+
+**Exploration Strategy:**
+The `exploration_factor` prevents users from staying in a "preference bubble" by introducing variety:
+- **Low exploration (0.0-0.3)**: Prioritize songs with high `p` ratings and similar characteristics
+- **Medium exploration (0.3-0.7)**: Balance between user preferences and novel discoveries
+- **High exploration (0.7-1.0)**: Actively seek songs with different characteristics to broaden horizons
+
+The exploration mechanism works by:
+1. Adjusting similarity thresholds to include more diverse candidates
+2. Downweighting preference scores to allow lower-rated but interesting songs
+3. Introducing controlled randomness in ranking to surface unexpected gems
+4. Maintaining a discovery history to avoid repetitive exploration
+
+This enables adaptive playlist generation that can shift from "comfort zone" to "adventure mode" based on user intent.
 
 ## Phase 9 — Artifact Governance
 
