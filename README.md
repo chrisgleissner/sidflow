@@ -254,6 +254,63 @@ Install the "JSON Lines" extension for syntax highlighting and validation of `.j
 
 ---
 
+## User Feedback Logging
+
+SIDFlow includes an append-only feedback logging system for tracking user interactions with SID files. This enables personalized recommendations and usage analytics.
+
+### Feedback Actions
+
+Four action types are supported with defined weights for recommendation scoring:
+
+- `play` — Neutral observation (weight: 0.0)
+- `like` — Strong positive signal (weight: +1.0)
+- `skip` — Mild negative signal (weight: -0.3)
+- `dislike` — Strong negative signal (weight: -1.0)
+
+### Storage Format
+
+Feedback events are stored in **date-partitioned JSONL files**:
+
+```
+data/feedback/
+├── 2025/
+│   └── 11/
+│       └── 03/
+│           └── events.jsonl
+```
+
+**Example feedback log:**
+
+```jsonl
+{"ts":"2025-11-03T12:10:05Z","sid_path":"Rob_Hubbard/Delta.sid","action":"play"}
+{"ts":"2025-11-03T12:11:10Z","sid_path":"Martin_Galway/Parallax.sid","action":"skip"}
+{"ts":"2025-11-03T12:12:22Z","sid_path":"Rob_Hubbard/Delta.sid","action":"like"}
+```
+
+### Validation
+
+Validate feedback logs for correctness and detect duplicate UUIDs:
+
+```bash
+bun run validate:feedback [feedback-path]
+```
+
+The validator checks:
+- JSON syntax correctness
+- Required fields presence
+- Valid action types
+- Duplicate UUID detection
+
+### Merge-Friendly Design
+
+The append-only structure and date partitioning minimize Git merge conflicts:
+- Each event is a single line
+- Files are organized by date (YYYY/MM/DD)
+- Optional UUIDs enable deduplication across devices
+- Chronological ordering preserved within files
+
+---
+
 ## Typical Workflow
 
 1. `bun run validate:config` — verify configuration  

@@ -157,9 +157,9 @@ Grouping `e`, `m`, `c`, `p` ratings in a `ratings` object keeps the schema exten
 
 ### Phase 6 Checklist
 
-- [ ] Implement append-only JSONL feedback logging with schema (timestamp, sid_path, action) and date-based partitioning (`data/feedback/YYYY/MM/DD/events.jsonl`).
-- [ ] Support feedback actions with defined weighting: `like` (+1.0), `skip` (-0.3), `dislike` (-1.0), `play` (0.0), and document merge-friendly properties.
-- [ ] Add optional UUID deduplication strategy for multi-device scenarios and create tooling for feedback log validation.
+- [x] Implement append-only JSONL feedback logging with schema (timestamp, sid_path, action) and date-based partitioning (`data/feedback/YYYY/MM/DD/events.jsonl`).
+- [x] Support feedback actions with defined weighting: `like` (+1.0), `skip` (-0.3), `dislike` (-1.0), `play` (0.0), and document merge-friendly properties.
+- [x] Add optional UUID deduplication strategy for multi-device scenarios and create tooling for feedback log validation.
 
 **JSONL Feedback Schema:**
 ```jsonl

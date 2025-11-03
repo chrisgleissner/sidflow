@@ -6,3 +6,4 @@ export { ensureDir, pathExists } from "./fs.js";
 export * from "./tags.js";
 export * from "./ratings.js";
 export * from "./jsonl-schema.js";
+export * from "./feedback.js";
