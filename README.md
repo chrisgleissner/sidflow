@@ -609,6 +609,21 @@ Setup details, structure, and testing are described in [`doc/developer.md`](doc/
 
 Artifact governance policies (canonical vs. derived data, Git policies, rebuild procedures) are documented in [`doc/artifact-governance.md`](doc/artifact-governance.md).
 
+### Testing
+
+SIDFlow includes comprehensive test coverage:
+
+- **Unit Tests**: `bun run test` runs all unit tests with coverage reporting (≥90% enforced)
+- **End-to-End Test**: `bun run test:e2e` exercises the complete pipeline from SID files to playback using real SID samples from HVSC Update #83
+- **CI Verification**: `bun run ci:verify` runs configuration validation, sample fetch/classify, and end-to-end tests
+
+The end-to-end test validates the full workflow:
+1. Load SID files from `test-data/` directory
+2. Build WAV cache (with mock renderer for CI compatibility)
+3. Extract audio features using Essentia.js
+4. Classify and predict ratings using TensorFlow.js
+5. Generate playlists and test playback flow
+
 ---
 
 ## License

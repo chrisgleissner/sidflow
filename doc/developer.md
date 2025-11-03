@@ -38,6 +38,7 @@ Validate edits with `bun run validate:config`.
 | --- | --- |
 | `bun run build` | Compile all packages with project references. |
 | `bun run test` | Build then run the Bun test suite with coverage (≥90% enforced). |
+| `bun run test:e2e` | Run end-to-end integration test with real SID files. |
 | `bun run validate:config` | Smoke-test the active configuration file. |
 | `./scripts/sidflow-fetch` | Run the fetch CLI with Bun hidden behind a repo-local shim. |
 | `./scripts/sidflow-tag` | Launch the interactive tagging CLI (TTY required). |
@@ -106,10 +107,43 @@ Generated content can be reproduced; avoid committing large artefacts unless exp
 
 ---
 
-## 9. Pull Request Checklist
+## 9. Test Data
+
+The `test-data/` directory contains sample SID files from HVSC Update #83 for end-to-end testing:
+
+```text
+test-data/
+└── C64Music/
+    └── MUSICIANS/
+        ├── Test_Artist/
+        │   ├── test1.sid
+        │   └── test2.sid
+        └── Another_Artist/
+            └── test3.sid
+```
+
+These SID files are committed to the repository and used by the end-to-end test (`bun run test:e2e`) to validate the complete SIDFlow pipeline including:
+- WAV cache building
+- Feature extraction
+- Classification and rating prediction
+- Playlist generation
+- Playback flow
+
+The test SID files are minimal valid PSID v2 files created for testing purposes. To use real SID files from HVSC Update #83:
+
+1. Download `HVSC_Update_83.7z` from https://hvsc.brona.dk/HVSC/
+2. Extract 3 SID files with their folder hierarchy
+3. Replace the files in `test-data/C64Music/MUSICIANS/`
+
+See `test-data/README.md` for detailed instructions.
+
+---
+
+## 10. Pull Request Checklist
 
 - `bun run build`
 - `bun run test`
+- `bun run test:e2e`
 - `bun run validate:config`
 - Ensure new features have accompanying tests and keep coverage ≥90%.
 - Update `README.md` or `doc/developer.md` when behaviour changes.
