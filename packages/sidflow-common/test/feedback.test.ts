@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, readdir, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -202,15 +202,13 @@ describe("feedback logging", () => {
 
     // Create a log file with invalid JSON
     const logDir = path.join(feedbackPath, "2025/11/03");
-    await import("node:fs/promises").then(fs => fs.mkdir(logDir, { recursive: true }));
+    await mkdir(logDir, { recursive: true });
 
     const logFile = path.join(logDir, "events.jsonl");
-    await import("node:fs/promises").then(fs => 
-      fs.writeFile(logFile, '{"ts":"2025-11-03T12:00:00Z","sid_path":"Song.sid","action":"play"}\n' +
+    await writeFile(logFile, '{"ts":"2025-11-03T12:00:00Z","sid_path":"Song.sid","action":"play"}\n' +
                              '{"invalid json\n' +
                              '{"ts":"2025-11-03T13:00:00Z","sid_path":"Song2.sid","action":"invalid_action"}\n',
-                    "utf8")
-    );
+                    "utf8");
 
     const result = await validateFeedbackLogs({ feedbackPath });
 

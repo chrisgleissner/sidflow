@@ -5,11 +5,11 @@
  * for tracking user interactions with SID files (play, like, dislike, skip).
  */
 
-import { ensureDir } from "@sidflow/common";
+import { ensureDir } from "./fs.js";
 import { writeFile, appendFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { FeedbackRecord, FeedbackAction } from "@sidflow/common";
+import type { FeedbackRecord, FeedbackAction } from "./jsonl-schema.js";
 
 /**
  * Options for logging feedback events.
