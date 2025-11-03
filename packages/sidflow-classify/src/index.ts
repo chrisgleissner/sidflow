@@ -998,7 +998,7 @@ export async function generateJsonlOutput(
           ratings = manualRecord.ratings as TagRatings;
         } else {
           // Use heuristic prediction based on metadata and song index
-          const seed = computeSeed(posixRelative + (metadata.title ?? "") + songIndex);
+          const seed = computeSeed(posixRelative + (metadata.title ?? "") + songIndex.toString());
           ratings = {
             e: clampRating(toRating(seed)),
             m: clampRating(toRating(seed + 1)),
