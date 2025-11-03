@@ -362,25 +362,142 @@ Each training run appends a summary to `data/training/training-log.jsonl`:
 
 ---
 
-### 5. `sidflow-play` (planned)
+### 5. `sidflow-play`
 
 ```sh
-./scripts/sidflow-play [--mood <profile>] [--filters <expr>] [--export <path>]
+./scripts/sidflow-play [--mood <preset>] [--filters <expr>] [--export <path>] [--export-format <fmt>]
 ```
 
-**Status:** Planned  
-**Purpose:** Turn your classified collection into a dynamic SID playlist experience.  
-**Operation:** Combines manual and automatic ratings to build thematic queues (e.g., “bright + energetic”), streams through `sidplayfp`, and exports deterministic manifests.
+**Status:** Available  
+**Purpose:** Turn your classified collection into a dynamic SID playlist experience with mood-based recommendations.  
+**Operation:** Uses LanceDB vector similarity and the recommendation engine to generate personalized playlists based on mood presets or custom filters. Streams through `sidplayfp` with queue controls and exports deterministic manifests.
 
-#### Flags (play)
+#### Key Flags
 
-- `--mood <profile>` — predefined blend (e.g., `focus`, `sunrise`)  
-- `--filters <expr>` — range expressions like `e>=4,m>=3,p>=4`  
-- `--export <path>` — write playlists (JSON/M3U)  
+- `--mood <preset>` — Mood preset: quiet, ambient, energetic, dark, bright, complex
+- `--filters <expr>` — Filter expression (e.g., `e>=4,m>=3,bpm=120-140`)
+- `--limit <n>` — Number of songs in playlist (default: 20)
+- `--exploration <0-1>` — Exploration factor (default: 0.2, higher = more diversity)
+- `--diversity <0-1>` — Diversity threshold (default: 0.2, minimum distance between consecutive songs)
+- `--sidplay <path>` — Override sidplayfp executable
+- `--export <path>` — Export playlist to file
+- `--export-format <fmt>` — Export format: json, m3u, m3u8 (default: json)
+- `--export-only` — Export playlist without playing
+- `--play-only` — Play without interactive controls
+- `--config <path>` — Alternate configuration file
 
-#### Outputs (play)
+#### Filter Syntax
 
-- Portable playlist files and live playback session state  
+Build complex filters using dimension ranges:
+
+- `e>=4` — Energy >= 4 (high energy songs)
+- `m<=2` — Mood <= 2 (somber/dark mood)
+- `c=5` — Complexity = 5 (exactly 5)
+- `p>=4` — Preference >= 4 (highly preferred songs)
+- `bpm=120-140` — BPM between 120 and 140
+- `e>=4,m>=3,c<=2` — Multiple filters (comma-separated)
+
+#### Mood Presets
+
+Quick mood-based playlist generation:
+
+| Preset | Energy | Mood | Complexity | Description |
+|--------|--------|------|------------|-------------|
+| quiet | 1 | 2 | 1 | Low energy, calm mood, simple arrangements |
+| ambient | 2 | 3 | 2 | Moderate energy, neutral mood |
+| energetic | 5 | 5 | 4 | High energy, upbeat mood |
+| dark | 3 | 1 | 3 | Moderate energy, somber mood |
+| bright | 4 | 5 | 3 | High energy, upbeat mood |
+| complex | 3 | 3 | 5 | High complexity focus |
+
+#### Playback Features
+
+- **Queue Management**: Load and play songs sequentially
+- **Playback Controls**: Skip, pause, resume (via graceful shutdown)
+- **Session History**: Automatic tracking of played songs
+- **Graceful Fallbacks**: Continues playback even if some files fail
+
+#### Export Formats
+
+**JSON** — Full playlist with metadata and ratings:
+```json
+{
+  "metadata": {
+    "createdAt": "2025-11-03T12:00:00Z",
+    "seed": "energetic",
+    "count": 20
+  },
+  "songs": [
+    {
+      "sid_path": "Rob_Hubbard/Delta.sid",
+      "score": 0.95,
+      "ratings": { "e": 5, "m": 5, "c": 4, "p": 5 },
+      "features": { "bpm": 140, "energy": 0.8 }
+    }
+  ]
+}
+```
+
+**M3U** — Simple playlist for external players:
+```
+Test/Song1.sid
+Test/Song2.sid
+```
+
+**M3U8** — Extended M3U with metadata:
+```
+#EXTM3U
+#EXTINF:180,Song1.sid
+Test/Song1.sid
+#EXTINF:210,Song2.sid
+Test/Song2.sid
+```
+
+#### Session Persistence
+
+Each playback session is automatically tracked and persisted:
+
+- Session ID with timestamp
+- Playlist seed (mood or custom)
+- History of played songs
+- Statistics (total played, skipped, errors)
+- Deterministic JSON format in `data/sessions/`
+
+#### Examples
+
+**Generate and play an energetic playlist:**
+```bash
+./scripts/sidflow-play --mood energetic --limit 30
+```
+
+**Export a quiet playlist without playing:**
+```bash
+./scripts/sidflow-play --mood quiet --export quiet-playlist.json --export-only
+```
+
+**High-energy songs with BPM matching:**
+```bash
+./scripts/sidflow-play --filters "e>=4,m>=4,bpm=130-150" --limit 25
+```
+
+**Export M3U playlist with custom filters:**
+```bash
+./scripts/sidflow-play --filters "e>=3,p>=4" --export playlist.m3u --export-format m3u
+```
+
+**Balanced exploration mode:**
+```bash
+./scripts/sidflow-play --mood ambient --exploration 0.5 --diversity 0.3
+```
+
+#### Outputs
+
+- **Live Playback**: Streams selected tracks through sidplayfp
+- **Playlist Files**: JSON (with metadata) or M3U/M3U8 (for external players)
+- **Session History**: Persisted in `data/sessions/session-*.json`
+
+> [!TIP]
+> Use `--exploration` to control the balance between familiar favorites and discovering new songs. Higher values (0.5-1.0) introduce more diversity, while lower values (0.0-0.3) stick closer to your known preferences.
 
 ---
 
@@ -502,7 +619,7 @@ The append-only structure and date partitioning minimize Git merge conflicts:
 4. `./scripts/sidflow-classify` — automatically classify all songs based on ratings
 5. `./scripts/sidflow-train` — train the ML model on ratings and feedback to improve predictions
 6. `bun run build:db` — rebuild vector database from classifications and feedback
-7. `./scripts/sidflow-play` — filter and play curated sets (planned)
+7. `./scripts/sidflow-play` — generate mood-based playlists and play curated sets
 
 All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default. The LanceDB database (`data/sidflow.lance/`) and trained model weights (`data/model/*.bin`, `data/model/model.json`) are also git-ignored but can be rebuilt deterministically from source data.
 

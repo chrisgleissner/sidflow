@@ -404,12 +404,12 @@ workspace/wav-cache/
 
 ### Phase 10 Checklist
 
-- [ ] Expose playlist builder that consumes manual and auto tags to score tracks against user mood profiles.
-- [ ] Support filter syntax (tempo, mood, complexity ranges) and weighted blends for on-the-fly sessions.
-- [ ] Stream selected tracks through `sidplayfp` with queue controls (skip, pause, resume) and graceful fallbacks.
-- [ ] Persist session history and allow exporting deterministic playlist manifests (JSON + M3U).
-- [ ] Provide CLI help, examples, and integration tests covering playlist generation and playback orchestration.
-- [ ] Document radio workflows in README, emphasising how classification feeds personalised queues.
+- [x] Expose playlist builder that consumes manual and auto tags to score tracks against user mood profiles.
+- [x] Support filter syntax (tempo, mood, complexity ranges) and weighted blends for on-the-fly sessions.
+- [x] Stream selected tracks through `sidplayfp` with queue controls (skip, pause, resume) and graceful fallbacks.
+- [x] Persist session history and allow exporting deterministic playlist manifests (JSON + M3U).
+- [x] Provide CLI help, examples, and integration tests covering playlist generation and playback orchestration.
+- [x] Document radio workflows in README, emphasising how classification feeds personalised queues.
 
 ## Phase 11 — Production-Ready ML Training System (`sidflow-train`)
 
