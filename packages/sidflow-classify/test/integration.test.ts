@@ -64,16 +64,23 @@ describe("Essentia.js + TF.js integration", () => {
     await writeFile(sidFile1, Buffer.from("dummy sid 1"));
     await writeFile(sidFile2, Buffer.from("dummy sid 2"));
 
-    // Create a mock plan
+    // Create a mock plan - using proper type construction
     const plan: ClassificationPlan = {
-      config: {} as ClassificationPlan["config"],
+      config: {
+        hvscPath,
+        wavCachePath,
+        tagsPath,
+        sidplayPath: "sidplayfp",
+        threads: 0,
+        classificationDepth: 3
+      } as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
       hvscPath,
       wavCachePath,
       tagsPath,
       sidplayPath: "sidplayfp"
-    } as unknown as ClassificationPlan;
+    };
 
     // Mock WAV renderer
     const mockRender = async ({ wavFile }: { wavFile: string }) => {

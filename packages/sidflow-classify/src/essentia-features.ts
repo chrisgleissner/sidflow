@@ -229,54 +229,61 @@ async function extractEssentiaFeatures(wavFile: string, EssentiaWASMClass: any):
  * Provides a fallback when Essentia.js is unavailable.
  */
 async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<FeatureVector> {
-  // Read WAV file for basic analysis
-  const wavBuffer = await readFile(wavFile);
-  const header = parseWavHeader(wavBuffer);
-  const audioData = extractAudioData(wavBuffer, header);
-  
-  // Get file stats
-  const [wavStats, sidStats] = await Promise.all([
-    stat(wavFile),
-    stat(sidFile)
-  ]);
-
-  // Calculate basic features
-  let sumSquares = 0;
-  let zeroCrossings = 0;
-  let prevSample = audioData[0];
-
-  for (let i = 0; i < audioData.length; i++) {
-    const sample = audioData[i];
-    sumSquares += sample * sample;
+  try {
+    // Read WAV file for basic analysis
+    const wavBuffer = await readFile(wavFile);
+    const header = parseWavHeader(wavBuffer);
+    const audioData = extractAudioData(wavBuffer, header);
     
-    if ((prevSample >= 0 && sample < 0) || (prevSample < 0 && sample >= 0)) {
-      zeroCrossings++;
+    // Get file stats
+    const [wavStats, sidStats] = await Promise.all([
+      stat(wavFile),
+      stat(sidFile)
+    ]);
+
+    // Calculate basic features
+    let sumSquares = 0;
+    let zeroCrossings = 0;
+    let prevSample = audioData[0];
+
+    for (let i = 0; i < audioData.length; i++) {
+      const sample = audioData[i];
+      sumSquares += sample * sample;
+      
+      if ((prevSample >= 0 && sample < 0) || (prevSample < 0 && sample >= 0)) {
+        zeroCrossings++;
+      }
+      prevSample = sample;
     }
-    prevSample = sample;
+
+    const rms = Math.sqrt(sumSquares / audioData.length);
+    const energy = sumSquares / audioData.length;
+    const zeroCrossingRate = zeroCrossings / audioData.length;
+
+    // Estimate tempo from zero crossing rate (rough heuristic)
+    const estimatedBpm = Math.min(200, Math.max(60, zeroCrossingRate * 5000));
+
+    return {
+      energy,
+      rms,
+      zeroCrossingRate,
+      bpm: estimatedBpm,
+      confidence: 0.3, // Low confidence for heuristic
+      spectralCentroid: 2000, // Placeholder
+      spectralRolloff: 4000, // Placeholder
+      sampleRate: header.sampleRate,
+      duration: audioData.length / header.sampleRate,
+      numSamples: audioData.length,
+      wavBytes: wavStats.size,
+      sidBytes: sidStats.size,
+      nameSeed: computeSeed(path.basename(sidFile))
+    };
+  } catch (error) {
+    // If basic feature extraction fails, re-throw with context
+    throw new Error(`Failed to extract basic features from ${wavFile}: ${(error as Error).message}`, {
+      cause: error as Error
+    });
   }
-
-  const rms = Math.sqrt(sumSquares / audioData.length);
-  const energy = sumSquares / audioData.length;
-  const zeroCrossingRate = zeroCrossings / audioData.length;
-
-  // Estimate tempo from zero crossing rate (rough heuristic)
-  const estimatedBpm = Math.min(200, Math.max(60, zeroCrossingRate * 5000));
-
-  return {
-    energy,
-    rms,
-    zeroCrossingRate,
-    bpm: estimatedBpm,
-    confidence: 0.3, // Low confidence for heuristic
-    spectralCentroid: 2000, // Placeholder
-    spectralRolloff: 4000, // Placeholder
-    sampleRate: header.sampleRate,
-    duration: audioData.length / header.sampleRate,
-    numSamples: audioData.length,
-    wavBytes: wavStats.size,
-    sidBytes: sidStats.size,
-    nameSeed: computeSeed(path.basename(sidFile))
-  };
 }
 
 function computeSeed(value: string): number {

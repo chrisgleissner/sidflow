@@ -122,6 +122,12 @@ function scaleToRating(value: number): number {
  * 1. Trained on actual labeled data (manual tags)
  * 2. Saved to disk and loaded at runtime
  * 3. Evaluated for accuracy before deployment
+ * 
+ * @param options.features - The extracted audio features to use for prediction
+ * @param options.sidFile - Path to SID file (currently unused, reserved for future enhancements)
+ * @param options.relativePath - Relative path (currently unused, reserved for future enhancements)
+ * @param options.metadata - Song metadata (currently unused, reserved for future enhancements)
+ * @returns Predicted ratings object with s, m, c values (1-5 scale)
  */
 export const tfjsPredictRatings: PredictRatings = async ({ features }) => {
   const model = getModel();
