@@ -348,9 +348,9 @@ This enables adaptive playlist generation that can shift from "comfort zone" to 
 
 ### Phase 9 Checklist
 
-- [ ] Document artifact classification (canonical vs. derived) and define Git policies for each type, creating `.gitignore` rules for derived artifacts.
-- [ ] Establish manifest file standards for reproducibility and document rebuild procedures for derived artifacts.
-- [ ] Provide troubleshooting guide for artifact inconsistencies (checksum mismatches, corrupt databases, feedback conflicts).
+- [x] Document artifact classification (canonical vs. derived) and define Git policies for each type, creating `.gitignore` rules for derived artifacts.
+- [x] Establish manifest file standards for reproducibility and document rebuild procedures for derived artifacts.
+- [x] Provide troubleshooting guide for artifact inconsistencies (checksum mismatches, corrupt databases, feedback conflicts).
 
 **Artifact Classification:**
 
