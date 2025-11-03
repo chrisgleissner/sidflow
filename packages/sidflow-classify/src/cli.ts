@@ -23,6 +23,9 @@ import {
   type WavCacheProgress
 } from "./index.js";
 
+// Progress update throttle configuration
+const PROGRESS_THROTTLE_MS = 500; // Max 2 updates per second
+
 interface ClassifyCliOptions {
   configPath?: string;
   forceRebuild?: boolean;
@@ -202,12 +205,11 @@ function formatDuration(ms: number): string {
 
 function createProgressLogger(stdout: NodeJS.WritableStream) {
   let lastLogTime = 0;
-  const minLogIntervalMs = 500; // Throttle to max 2 updates per second
 
   return {
     logWavProgress(progress: WavCacheProgress): void {
       const now = Date.now();
-      if (now - lastLogTime < minLogIntervalMs && progress.processedFiles < progress.totalFiles) {
+      if (now - lastLogTime < PROGRESS_THROTTLE_MS && progress.processedFiles < progress.totalFiles) {
         return;
       }
       lastLogTime = now;
@@ -230,7 +232,7 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
 
     logAutoTagProgress(progress: AutoTagProgress): void {
       const now = Date.now();
-      if (now - lastLogTime < minLogIntervalMs && progress.processedFiles < progress.totalFiles) {
+      if (now - lastLogTime < PROGRESS_THROTTLE_MS && progress.processedFiles < progress.totalFiles) {
         return;
       }
       lastLogTime = now;

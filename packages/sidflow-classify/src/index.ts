@@ -20,6 +20,10 @@ import { spawn } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+// Progress reporting configuration
+const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
+const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
+
 export interface ClassifyOptions {
   configPath?: string;
   forceRebuild?: boolean;
@@ -252,7 +256,7 @@ export async function buildWavCache(
     }
 
     // Report analysis progress periodically
-    if (onProgress && (i + 1) % 50 === 0) {
+    if (onProgress && (i + 1) % ANALYSIS_PROGRESS_INTERVAL === 0) {
       onProgress({
         phase: "analyzing",
         totalFiles,
@@ -270,6 +274,10 @@ export async function buildWavCache(
     const sidFile = filesToRender[i];
     const wavFile = resolveWavPath(plan, sidFile);
 
+    await render({ sidFile, wavFile, sidplayPath });
+    rendered.push(wavFile);
+
+    // Report progress after rendering completes
     if (onProgress) {
       onProgress({
         phase: "building",
@@ -282,9 +290,6 @@ export async function buildWavCache(
         currentFile: path.basename(sidFile)
       });
     }
-
-    await render({ sidFile, wavFile, sidplayPath });
-    rendered.push(wavFile);
   }
 
   const endTime = Date.now();
@@ -613,7 +618,7 @@ export async function generateAutoTags(
     const posixRelative = toPosixRelative(relativePath);
 
     // Report progress periodically
-    if (onProgress && i % 10 === 0) {
+    if (onProgress && i % AUTOTAG_PROGRESS_INTERVAL === 0) {
       onProgress({
         phase: "metadata",
         totalFiles,
