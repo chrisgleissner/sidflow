@@ -44,6 +44,71 @@ bun run validate:config
 
 ---
 
+## Workflow Overview
+
+The diagram below shows how the SIDFlow tools work together to process SID files, create classifications, and generate playlists:
+
+```mermaid
+graph TB
+    subgraph "Phase 1: Fetch SID Files"
+        A[HVSC Mirror<br/>hvsc.brona.dk] -->|sidflow-fetch| B[SID Files<br/>*.sid]
+        B --> C[hvsc-version.json]
+    end
+    
+    subgraph "Phase 2: Manual Tagging"
+        B -->|User plays & tags| D[sidflow-tag]
+        D -->|sidplayfp playback| E[Manual Tag Files<br/>*.sid.tags.json]
+        E --> F[Speed s, Mood m,<br/>Complexity c<br/>ratings 1-5]
+    end
+    
+    subgraph "Phase 3: Automated Classification"
+        B -->|sidflow-classify| G[WAV Conversion]
+        G -->|sidplayfp -w| H[WAV Cache<br/>*.wav]
+        H -->|Essentia.js| I[Feature Extraction]
+        I --> J[Audio Features<br/>energy, RMS, BPM,<br/>spectral analysis]
+        J -->|TensorFlow.js| K[Prediction Model]
+        E -.->|Manual tags<br/>take precedence| K
+        K --> L[Auto-tag Files<br/>auto-tags.json]
+        B -->|sidplayfp -t1| M[Metadata Files<br/>*.sid.meta.json]
+        M --> N[Title, Author,<br/>Released]
+    end
+    
+    subgraph "Phase 4: Database Integration (Future)"
+        L -->|Aggregate| O[(SIDFlow Database)]
+        M -->|Aggregate| O
+        E -->|Aggregate| O
+        N -.-> O
+    end
+    
+    subgraph "Phase 5: Playlist Generation & Playback"
+        O -->|Query by mood,<br/>tempo, complexity| P[sidflow-play]
+        P -->|Filter & score| Q[Playlist<br/>*.json, *.m3u]
+        Q -->|sidplayfp| R[🎵 Playback]
+        P -.->|Session history| S[Playback State]
+    end
+    
+    style B fill:#e1f5ff
+    style E fill:#ffe1e1
+    style H fill:#f0f0f0
+    style L fill:#e1ffe1
+    style M fill:#fff4e1
+    style O fill:#f0e1ff
+    style Q fill:#ffe1f5
+    style R fill:#ffd700
+```
+
+**Legend:**
+- **Blue boxes**: SID source files
+- **Red boxes**: Manual tag files (user-created)
+- **Gray boxes**: WAV cache (intermediate format)
+- **Green boxes**: Auto-generated tag files
+- **Orange boxes**: Metadata files
+- **Purple boxes**: Database (future)
+- **Pink boxes**: Playlists
+- **Gold boxes**: Playback
+
+---
+
 ## CLI Tools
 
 Each command can be run via the command line interface from the repository root.
