@@ -44,6 +44,54 @@ bun run validate:config
 
 ---
 
+## Technical Components
+
+SID Flow uses three main technical components for song analysis, classification, and recommendation:
+
+### 1. Essentia.js (Feature Extraction)
+
+- **Purpose**: Extracts low-level and mid-level audio descriptors from WAV files converted from SID songs
+- **Type**: Deterministic DSP library (non-learned)
+- **Input**: WAV audio signal of a SID tune
+- **Output**: Numeric feature vector per song — e.g. energy, RMS, spectral centroid, rolloff, zero-crossing rate, BPM, and duration
+- **Usage**: Provides the raw measurable properties of each song; these values form the input to all later stages
+
+### 2. TensorFlow.js (Supervised Prediction / Learning)
+
+- **Purpose**: Learns the subjective relationship between extracted features and how users perceive songs
+- **Type**: Supervised regression model trained on user feedback (explicit ratings and implicit likes/dislikes/skips)
+- **Input**: Feature vectors + labelled training data
+- **Output**: Predicted ratings for:
+  - **e** – energy/intensity (1-5)
+  - **m** – mood/optimism vs somberness (1-5)
+  - **c** – complexity/melodic & structural sophistication (1-5)
+  - plus an optional confidence value
+- **Usage**: Converts objective signal descriptors into human-meaningful perception ratings and adapts over time as more feedback is collected
+- **Training**: Periodically retrained via `sidflow-train` CLI command or automatically during playback (future)
+
+### 3. LanceDB (Vector Store / Clustering / Retrieval)
+
+- **Purpose**: Stores all song feature vectors and predicted ratings in a searchable vector database
+- **Type**: Unsupervised / similarity-based retrieval engine
+- **Input**: Combined numeric representation of each song (Essentia features + TensorFlow-predicted ratings)
+- **Output**: Clusters and nearest-neighbour queries that identify related or similar songs
+- **Usage**:
+  - Builds k-means clusters for mood/energy spaces
+  - Generates personalized "radio stations" or playlists based on user profiles and exploration settings
+  - Supports fast similarity lookups when a user wants "songs like this one"
+
+### Overall Relationship
+
+```
+Essentia.js → Extracts objective features
+     ↓
+TensorFlow.js → Learns and predicts subjective ratings from those features
+     ↓
+LanceDB → Organizes, clusters, and retrieves songs based on combined feature + rating vectors
+```
+
+---
+
 ## Workflow Overview
 
 The diagram below shows how the SIDFlow tools work together to process SID files, create classifications, and generate playlists:
@@ -69,19 +117,31 @@ graph TB
         J -->|TensorFlow.js| K[Prediction Model]
         E -.->|Manual ratings<br/>take precedence| K
         K --> L[Auto-tag Files<br/>auto-tags.json]
+        L --> JSONL[Classification JSONL<br/>classified/*.jsonl]
         B -->|sidplayfp -t1| M[Metadata Files<br/>*.sid.meta.json]
         M --> N[Title, Author,<br/>Released]
     end
     
+    subgraph "Phase 3.5: Model Training"
+        E -->|Explicit ratings| T[sidflow-train]
+        R -.->|Implicit feedback<br/>like/dislike/skip| T
+        JSONL -->|Features + ratings| T
+        T -->|TensorFlow.js<br/>training| K
+        T --> TL[Training Log<br/>training-log.jsonl]
+        T --> TS[Feature Stats<br/>feature-stats.json]
+    end
+    
     subgraph "Phase 4: Database Integration (Future)"
-        L -->|Aggregate| O[(SIDFlow Database)]
+        JSONL -->|Aggregate| O[(LanceDB)]
         M -->|Aggregate| O
         E -->|Aggregate| O
         N -.-> O
+        R -.->|Feedback logs| FB[Feedback JSONL<br/>feedback/**/*.jsonl]
+        FB --> O
     end
     
     subgraph "Phase 5: Playlist Generation & Playback"
-        O -->|Query by mood,<br/>tempo, complexity| P[sidflow-play]
+        O -->|Vector similarity<br/>+ clustering| P[sidflow-play]
         P -->|Filter & score| Q[Playlist<br/>*.json, *.m3u]
         Q -->|sidplayfp| R[🎵 Playback]
         P -.->|Session history| S[Playback State]
@@ -92,6 +152,11 @@ graph TB
     style H fill:#f0f0f0
     style L fill:#e1ffe1
     style M fill:#fff4e1
+    style T fill:#ffe8cc
+    style TL fill:#ffe8cc
+    style TS fill:#ffe8cc
+    style JSONL fill:#e1ffe1
+    style FB fill:#e1ffe1
     style O fill:#f0e1ff
     style Q fill:#ffe1f5
     style R fill:#ffd700
@@ -101,8 +166,9 @@ graph TB
 - **Blue boxes**: SID source files
 - **Red boxes**: Manual rating files (user-created)
 - **Gray boxes**: WAV cache (intermediate format)
-- **Green boxes**: Auto-generated rating files
-- **Orange boxes**: Metadata files
+- **Green boxes**: Auto-generated rating files and JSONL data
+- **Orange boxes**: Training outputs (model training phase)
+- **Tan boxes**: Metadata files
 - **Purple boxes**: Database (future)
 - **Pink boxes**: Playlists
 - **Gold boxes**: Playback
