@@ -28,14 +28,14 @@ interface ParseResult {
 
 function printHelp(): void {
   const lines = [
-    "Usage: sidflow tag [options]",
+    "Usage: sidflow rate [options]",
     "",
-    "Interactively label SID tunes with energy, mood, and complexity sliders.",
+    "Interactively rate SID tunes with energy, mood, complexity, and preference ratings.",
     "",
     "Options:",
     "  --config <path>   Load an alternate .sidflow.json",
     "  --sidplay <path>  Override the sidplayfp executable",
-    "  --random          Shuffle the untagged queue",
+    "  --random          Shuffle the unrated queue",
     "  --help            Show this message and exit"
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
@@ -97,16 +97,21 @@ function printInstructions(): void {
     "  e1-5: set energy",
     "  m1-5: set mood",
     "  c1-5: set complexity",
+    "  p1-5: set preference",
     "  Enter: save and advance",
     "  Q: quit",
     "",
-    "Default slider level is 3."
+    "Default rating level is 3."
   ];
   process.stdout.write(`${lines.join("\n")}\n\n`);
 }
 
 function formatRatings(ratings: TagRatings): string {
-  return `e=${ratings.e} m=${ratings.m} c=${ratings.c}`;
+  const parts = [`e=${ratings.e}`, `m=${ratings.m}`, `c=${ratings.c}`];
+  if (ratings.p !== undefined) {
+    parts.push(`p=${ratings.p}`);
+  }
+  return parts.join(" ");
 }
 
 export async function runTagCli(argv: string[]): Promise<number> {
