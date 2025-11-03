@@ -39,9 +39,9 @@ export async function exportPlaylistM3U(
   for (const song of playlist.songs) {
     if (options?.extended) {
       // Add EXTINF line with duration and title
-      const duration = song.features?.duration || -1;
+      const duration = (song.features?.duration as number | undefined) || -1;
       const title = song.sid_path.split("/").pop() || song.sid_path;
-      lines.push(`#EXTINF:${Math.floor(duration as number)},${title}`);
+      lines.push(`#EXTINF:${Math.floor(duration)},${title}`);
     }
     
     // Add file path

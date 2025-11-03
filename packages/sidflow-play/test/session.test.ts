@@ -76,7 +76,7 @@ describe("SessionManager", () => {
         similarity: 0.95,
         songFeedback: 0.8,
         userAffinity: 0.7,
-        ratings: { e: 5, m: 5, c: 4 },
+        ratings: { e: 5, m: 5, c: 4, p: 5 },
         feedback: { likes: 10, dislikes: 1, skips: 2, plays: 20 }
       },
       timestamp: new Date().toISOString()
@@ -100,7 +100,7 @@ describe("SessionManager", () => {
         similarity: 0.95,
         songFeedback: 0.8,
         userAffinity: 0.7,
-        ratings: { e: 1, m: 2, c: 1 },
+        ratings: { e: 1, m: 2, c: 1, p: 3 },
         feedback: { likes: 5, dislikes: 0, skips: 1, plays: 10 }
       },
       timestamp: new Date().toISOString()
