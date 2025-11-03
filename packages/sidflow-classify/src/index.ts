@@ -18,7 +18,6 @@ import {
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
 export interface ClassifyOptions {
