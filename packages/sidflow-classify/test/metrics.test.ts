@@ -39,11 +39,10 @@ describe("performance metrics", () => {
     const plan = createPlan(hvscPath, wavCachePath, tagsPath);
 
     // Create 5 SID files
-    const sidFiles = await Promise.all(
+    await Promise.all(
       [1, 2, 3, 4, 5].map(async (i) => {
         const sidFile = path.join(hvscPath, `song${i}.sid`);
         await writeFile(sidFile, `content${i}`);
-        return sidFile;
       })
     );
 
