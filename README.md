@@ -232,7 +232,71 @@ Install the "JSON Lines" extension for syntax highlighting and validation of `.j
 
 ---
 
-### 4. `sidflow-play` (planned)
+### 4. `sidflow-train`
+
+```sh
+../scripts/sidflow-train [--epochs <n>] [--batch-size <n>] [--learning-rate <n>]
+                          [--evaluate] [--no-evaluate] [--force] [--config <path>]
+```
+
+**Status:** Available  
+**Purpose:** Train the ML model on explicit ratings and implicit feedback to improve predictions.  
+**Operation:** Loads classification records and feedback events, merges them with weighted samples (explicit=1.0, like=0.7, dislike=0.5, skip=0.3), computes feature normalization statistics, trains the TensorFlow.js model, and saves results in Git-friendly formats.
+
+#### Key Flags
+
+- `--epochs <n>` — Number of training epochs (default: 5)
+- `--batch-size <n>` — Training batch size (default: 8)
+- `--learning-rate <n>` — Learning rate (default: 0.001)
+- `--evaluate` — Evaluate on test set (default: true)
+- `--no-evaluate` — Skip test set evaluation
+- `--force` — Force complete retraining from scratch
+- `--config <path>` — Alternate configuration file
+
+#### Outputs
+
+- Updated model weights (`data/model/model.json`, `data/model/weights.bin` — not in Git)
+- Feature normalization statistics (`data/model/feature-stats.json` — in Git)
+- Model metadata with architecture and metrics (`data/model/model-metadata.json` — in Git)
+- Training history log (`data/training/training-log.jsonl` — in Git)
+- Aggregated training samples (`data/training/training-samples.jsonl` — in Git)
+
+#### Training Process
+
+1. **Load Data**: Read classification records from `data/classified/*.jsonl` and feedback events from `data/feedback/YYYY/MM/DD/*.jsonl`
+2. **Merge Samples**: Combine explicit ratings (manual) and implicit feedback (play/like/dislike/skip) with appropriate weights
+3. **Feature Stats**: Compute and save normalization statistics (means/stds) for all audio features
+4. **Train Model**: Use Adam optimizer with MSE loss to train the neural network
+5. **Evaluate**: Compute MAE and R² metrics on held-out test set (20% by default)
+6. **Persist**: Save model weights (binary, not committed), metadata, and training summary (JSON, committed)
+
+#### Model Architecture
+
+- **Input**: 8 features (energy, rms, spectralCentroid, spectralRolloff, zeroCrossingRate, bpm, confidence, duration)
+- **Hidden**: Dense(32, ReLU) → Dropout(0.2) → Dense(16, ReLU)
+- **Output**: Dense(3, tanh) → mapped to [1-5] for energy, mood, complexity
+
+#### Training Summary Example
+
+Each training run appends a summary to `data/training/training-log.jsonl`:
+
+```json
+{
+  "modelVersion": "0.2.0",
+  "trainedAt": "2025-11-03T18:30:00Z",
+  "samples": 842,
+  "metrics": { "mae": 0.41, "r2": 0.86 },
+  "featureSetVersion": "2025-11-03",
+  "notes": "Trained on 750 samples (500 explicit, 250 implicit)"
+}
+```
+
+> [!TIP]
+> The model improves as you collect more ratings and feedback. Run training periodically after rating sessions to update predictions. Future versions will support automatic periodic retraining during playback.
+
+---
+
+### 5. `sidflow-play` (planned)
 
 ```sh
 ./scripts/sidflow-play [--mood <profile>] [--filters <expr>] [--export <path>]
@@ -370,10 +434,11 @@ The append-only structure and date partitioning minimize Git merge conflicts:
 2. `./scripts/sidflow-fetch` — download or refresh your SID mirror  
 3. `./scripts/sidflow-rate` — manually rate songs to provide seeds for classification
 4. `./scripts/sidflow-classify` — automatically classify all songs based on ratings
-5. `bun run build:db` — rebuild vector database from classifications and feedback
-6. `./scripts/sidflow-play` — filter and play curated sets (planned)
+5. `./scripts/sidflow-train` — train the ML model on ratings and feedback to improve predictions
+6. `bun run build:db` — rebuild vector database from classifications and feedback
+7. `./scripts/sidflow-play` — filter and play curated sets (planned)
 
-All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default. The LanceDB database (`data/sidflow.lance/`) is also git-ignored but can be rebuilt deterministically from source data.
+All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default. The LanceDB database (`data/sidflow.lance/`) and trained model weights (`data/model/*.bin`, `data/model/model.json`) are also git-ignored but can be rebuilt deterministically from source data.
 
 ---
 
