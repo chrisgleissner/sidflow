@@ -289,7 +289,6 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(sidFileCount).toBeGreaterThanOrEqual(3);
     
     // Verify WAV cache was built
-    const wavCount = await countSidFiles(wavCachePath.replace(/sid$/, "wav"));
     expect(existsSync(wavCachePath)).toBe(true);
     
     // Verify tags were generated
