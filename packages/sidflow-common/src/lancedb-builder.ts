@@ -12,7 +12,14 @@ import { createHash } from "node:crypto";
 import { connect, type Table } from "vectordb";
 import type { ClassificationRecord, FeedbackRecord, FeedbackAction } from "./jsonl-schema.js";
 import { FEEDBACK_WEIGHTS } from "./jsonl-schema.js";
+import { DEFAULT_RATING } from "./ratings.js";
 import { ensureDir } from "./fs.js";
+
+/**
+ * Average number of records per JSONL file (used for estimating file count).
+ * This is an approximation and doesn't affect functionality.
+ */
+const RECORDS_PER_JSONL_FILE = 100;
 
 /**
  * Database record combining classification and feedback data.
@@ -126,6 +133,7 @@ export interface GenerateManifestOptions {
  */
 async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
   const records: T[] = [];
+  let invalidLineCount = 0;
   
   if (!existsSync(dirPath)) {
     return records;
@@ -143,12 +151,15 @@ async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
         const content = await readFile(fullPath, "utf8");
         const lines = content.split("\n").filter(line => line.trim());
         
-        for (const line of lines) {
+        for (let i = 0; i < lines.length; i++) {
           try {
-            records.push(JSON.parse(line) as T);
+            records.push(JSON.parse(lines[i]) as T);
           } catch (error) {
-            // Skip invalid JSON lines
-            console.warn(`Skipping invalid JSON in ${fullPath}`);
+            // Skip invalid JSON lines and track count
+            invalidLineCount++;
+            console.warn(
+              `Skipping invalid JSON in ${fullPath} line ${i + 1}: ${(error as Error).message}`
+            );
           }
         }
       }
@@ -156,6 +167,11 @@ async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
   }
   
   await walk(dirPath);
+  
+  if (invalidLineCount > 0) {
+    console.warn(`Total invalid JSON lines skipped: ${invalidLineCount}`);
+  }
+  
   return records;
 }
 
@@ -212,7 +228,8 @@ function toDatabaseRecord(
   const { e, m, c, p } = classification.ratings;
   
   // Create rating vector [e, m, c, p] for similarity search
-  const vector = p !== undefined ? [e, m, c, p] : [e, m, c, 3]; // Default p=3 if not present
+  // Use DEFAULT_RATING (3) if preference is not specified
+  const vector = p !== undefined ? [e, m, c, p] : [e, m, c, DEFAULT_RATING];
   
   const record: DatabaseRecord = {
     sid_path: classification.sid_path,
@@ -312,8 +329,8 @@ export async function buildDatabase(
   // Connect to LanceDB and create/replace table
   const db = await connect(dbPath);
   
-  // Count unique classification files (approximate based on record count)
-  const classificationFiles = Math.ceil(classifications.length / 100);
+  // Count unique classification files (approximate based on average records per file)
+  const classificationFiles = Math.ceil(classifications.length / RECORDS_PER_JSONL_FILE);
   
   if (records.length > 0) {
     // Create or replace the table - LanceDB will handle vector indexing
