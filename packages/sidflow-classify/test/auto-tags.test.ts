@@ -90,6 +90,13 @@ describe("generateAutoTags", () => {
     expect(result.manualEntries).toEqual(["C64Music/MUSICIANS/A/Manual.sid"]);
     expect(result.autoTagged).toEqual(["C64Music/MUSICIANS/B/Auto.sid"]);
     expect(result.mixedEntries).toHaveLength(0);
+    expect(result.metrics).toBeDefined();
+    expect(result.metrics.totalFiles).toBe(2);
+    expect(result.metrics.autoTaggedCount).toBe(1);
+    expect(result.metrics.manualOnlyCount).toBe(1);
+    expect(result.metrics.mixedCount).toBe(0);
+    expect(result.metrics.predictionsGenerated).toBe(1);
+    expect(result.metrics.durationMs).toBeGreaterThanOrEqual(0);
 
     const manualMetadataPath = resolveMetadataPath(hvscPath, tagsPath, manualSid);
     const manualMetadata = JSON.parse(await readFile(manualMetadataPath, "utf8")) as Record<string, unknown>;
@@ -153,6 +160,10 @@ describe("generateAutoTags", () => {
     expect(result.mixedEntries).toEqual(["C64Music/MUSICIANS/C/Mixed.sid"]);
     expect(result.autoTagged).toHaveLength(0);
     expect(result.manualEntries).toHaveLength(0);
+    expect(result.metrics).toBeDefined();
+    expect(result.metrics.totalFiles).toBe(1);
+    expect(result.metrics.mixedCount).toBe(1);
+    expect(result.metrics.predictionsGenerated).toBe(1);
 
     const aggregatedPath = path.join(tagsPath, "C64Music", "MUSICIANS", "C", "auto-tags.json");
     const aggregated = JSON.parse(await readFile(aggregatedPath, "utf8")) as Record<string, { [key: string]: unknown }>;

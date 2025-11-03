@@ -23,9 +23,31 @@ interface TestClassificationPlan {
   sidplayPath: string;
 }
 
+interface TestBuildWavCacheMetrics {
+  startTime: number;
+  endTime: number;
+  durationMs: number;
+  totalFiles: number;
+  rendered: number;
+  skipped: number;
+  cacheHitRate: number;
+}
+
 interface TestBuildWavCacheResult {
   rendered: string[];
   skipped: string[];
+  metrics: TestBuildWavCacheMetrics;
+}
+
+interface TestGenerateAutoTagsMetrics {
+  startTime: number;
+  endTime: number;
+  durationMs: number;
+  totalFiles: number;
+  autoTaggedCount: number;
+  manualOnlyCount: number;
+  mixedCount: number;
+  predictionsGenerated: number;
 }
 
 interface TestGenerateAutoTagsResult {
@@ -34,6 +56,7 @@ interface TestGenerateAutoTagsResult {
   mixedEntries: string[];
   metadataFiles: string[];
   tagFiles: string[];
+  metrics: TestGenerateAutoTagsMetrics;
 }
 
 function createPlan(): TestClassificationPlan {
@@ -116,13 +139,35 @@ describe("runClassifyCli", () => {
       stdout,
       stderr,
   planClassification: (async (_options: unknown) => plan) as any,
-      buildWavCache: (async () => ({ rendered: ["a"], skipped: ["b"] } satisfies TestBuildWavCacheResult)) as any,
+      buildWavCache: (async () => ({ 
+        rendered: ["a"], 
+        skipped: ["b"],
+        metrics: {
+          startTime: 0,
+          endTime: 100,
+          durationMs: 100,
+          totalFiles: 2,
+          rendered: 1,
+          skipped: 1,
+          cacheHitRate: 0.5
+        }
+      } satisfies TestBuildWavCacheResult)) as any,
       generateAutoTags: (async () => ({
         autoTagged: ["auto"],
         manualEntries: ["manual"],
         mixedEntries: [],
         metadataFiles: ["meta.json"],
-        tagFiles: [path.join(plan.tagsPath, "auto-tags.json")]
+        tagFiles: [path.join(plan.tagsPath, "auto-tags.json")],
+        metrics: {
+          startTime: 100,
+          endTime: 200,
+          durationMs: 100,
+          totalFiles: 2,
+          autoTaggedCount: 1,
+          manualOnlyCount: 1,
+          mixedCount: 0,
+          predictionsGenerated: 1
+        }
       } satisfies TestGenerateAutoTagsResult)) as any
     });
 
@@ -130,8 +175,8 @@ describe("runClassifyCli", () => {
     expect(captured.stderr).toHaveLength(0);
     const output = captured.stdout.join("\n");
     expect(output).toContain("Classification complete.");
-    expect(output).toContain("WAVs rendered: 1");
-    expect(output).toContain("Auto-tagged entries: 1");
+    expect(output).toContain("Rendered: 1");
+    expect(output).toContain("Auto-tagged: 1");
   });
 
   it("reports failures", async () => {

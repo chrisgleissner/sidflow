@@ -121,7 +121,8 @@ Each command can be run via the command line interface from the repository root.
 - Deterministic WAV cache under `wavCachePath`
 - Per-SID metadata files (`*.sid.meta.json`)
 - Aggregated `auto-tags.json` files respecting `classificationDepth`
-- Summary of auto/manual/mixed tag coverage on stdout  
+- Summary of auto/manual/mixed tag coverage on stdout
+- **Performance metrics** (runtime, cache hit rate, predictions generated) — see [`doc/performance-metrics.md`](doc/performance-metrics.md)
 
 > [!TIP]
 > Without custom modules, the CLI uses built-in heuristics for features and predictions. Plug in Essentia.js + TensorFlow.js wrappers via `--feature-module` and `--predictor-module` when ready for production models.

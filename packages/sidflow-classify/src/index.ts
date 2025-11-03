@@ -141,15 +141,30 @@ export interface BuildWavCacheOptions {
   forceRebuild?: boolean;
 }
 
+export interface PerformanceMetrics {
+  startTime: number;
+  endTime: number;
+  durationMs: number;
+}
+
+export interface BuildWavCacheMetrics extends PerformanceMetrics {
+  totalFiles: number;
+  rendered: number;
+  skipped: number;
+  cacheHitRate: number;
+}
+
 export interface BuildWavCacheResult {
   rendered: string[];
   skipped: string[];
+  metrics: BuildWavCacheMetrics;
 }
 
 export async function buildWavCache(
   plan: ClassificationPlan,
   options: BuildWavCacheOptions = {}
 ): Promise<BuildWavCacheResult> {
+  const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
   const rendered: string[] = [];
   const skipped: string[] = [];
@@ -168,7 +183,21 @@ export async function buildWavCache(
     rendered.push(wavFile);
   }
 
-  return { rendered, skipped };
+  const endTime = Date.now();
+  const totalFiles = rendered.length + skipped.length;
+  const cacheHitRate = totalFiles > 0 ? skipped.length / totalFiles : 0;
+
+  const metrics: BuildWavCacheMetrics = {
+    startTime,
+    endTime,
+    durationMs: endTime - startTime,
+    totalFiles,
+    rendered: rendered.length,
+    skipped: skipped.length,
+    cacheHitRate
+  };
+
+  return { rendered, skipped, metrics };
 }
 
 const RATING_DIMENSIONS: Array<keyof TagRatings> = ["s", "m", "c"];
@@ -425,18 +454,28 @@ export interface GenerateAutoTagsOptions {
   predictRatings?: PredictRatings;
 }
 
+export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
+  totalFiles: number;
+  autoTaggedCount: number;
+  manualOnlyCount: number;
+  mixedCount: number;
+  predictionsGenerated: number;
+}
+
 export interface GenerateAutoTagsResult {
   autoTagged: string[];
   manualEntries: string[];
   mixedEntries: string[];
   metadataFiles: string[];
   tagFiles: string[];
+  metrics: GenerateAutoTagsMetrics;
 }
 
 export async function generateAutoTags(
   plan: ClassificationPlan,
   options: GenerateAutoTagsOptions = {}
 ): Promise<GenerateAutoTagsResult> {
+  const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
@@ -447,6 +486,7 @@ export async function generateAutoTags(
   const mixedEntries: string[] = [];
   const metadataFiles: string[] = [];
   const tagFiles: string[] = [];
+  let predictionsGenerated = 0;
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
 
@@ -480,6 +520,7 @@ export async function generateAutoTags(
         relativePath: posixRelative,
         metadata
       });
+      predictionsGenerated += 1;
     }
 
     const { ratings, source } = combineRatings(manualRecord?.ratings ?? null, autoRatings);
@@ -523,7 +564,19 @@ export async function generateAutoTags(
     tagFiles.push(autoFilePath);
   }
 
-  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles };
+  const endTime = Date.now();
+  const metrics: GenerateAutoTagsMetrics = {
+    startTime,
+    endTime,
+    durationMs: endTime - startTime,
+    totalFiles: sidFiles.length,
+    autoTaggedCount: autoTagged.length,
+    manualOnlyCount: manualEntries.length,
+    mixedCount: mixedEntries.length,
+    predictionsGenerated
+  };
+
+  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, metrics };
 }
 
 function computeSeed(value: string): number {

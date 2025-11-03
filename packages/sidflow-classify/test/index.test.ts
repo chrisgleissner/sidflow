@@ -118,6 +118,12 @@ describe("planClassification", () => {
       expect(rendered).toHaveLength(1);
       expect(result.rendered).toEqual(rendered);
       expect(result.skipped).toHaveLength(0);
+      expect(result.metrics).toBeDefined();
+      expect(result.metrics.totalFiles).toBe(1);
+      expect(result.metrics.rendered).toBe(1);
+      expect(result.metrics.skipped).toBe(0);
+      expect(result.metrics.cacheHitRate).toBe(0);
+      expect(result.metrics.durationMs).toBeGreaterThanOrEqual(0);
 
       let invoked = false;
       const resultSecond = await buildWavCache(plan, {
@@ -131,6 +137,11 @@ describe("planClassification", () => {
       expect(resultSecond.rendered).toHaveLength(0);
       expect(resultSecond.skipped).toHaveLength(1);
       expect(invoked).toBeFalse();
+      expect(resultSecond.metrics).toBeDefined();
+      expect(resultSecond.metrics.totalFiles).toBe(1);
+      expect(resultSecond.metrics.rendered).toBe(0);
+      expect(resultSecond.metrics.skipped).toBe(1);
+      expect(resultSecond.metrics.cacheHitRate).toBe(1);
 
       await rm(root, { recursive: true, force: true });
     });
