@@ -13,11 +13,15 @@
     "fetch:sample": "bun run scripts/run-fetch-sample.ts",
     "classify:sample": "bun run scripts/run-classify-sample.ts",
     "ci:verify": "bun run validate:config && bun run fetch:sample && bun run classify:sample",
-    "format:json": "bun run scripts/format-json.ts"
+    "format:json": "bun run scripts/format-json.ts",
+    "build:db": "bun run scripts/build-db.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "bun-types": "^1.3.1",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "vectordb": "^0.21.2"
   }
 }

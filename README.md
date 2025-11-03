@@ -254,6 +254,59 @@ Install the "JSON Lines" extension for syntax highlighting and validation of `.j
 
 ---
 
+## LanceDB Vector Database
+
+SIDFlow uses LanceDB to combine classification data and user feedback into a unified vector database for efficient similarity search and recommendation queries.
+
+### Building the Database
+
+```sh
+bun run build:db [--config <path>] [--update-manifest]
+```
+
+**Purpose:** Rebuild the LanceDB vector database from canonical JSONL source files  
+**Operation:** Combines `classified/*.jsonl` and `feedback/**/*.jsonl` files, aggregates feedback statistics, and creates a searchable vector database with manifest.
+
+#### How it works
+
+1. Reads all classification records from `data/classified/*.jsonl`
+2. Reads all feedback events from `data/feedback/YYYY/MM/DD/events.jsonl`
+3. Aggregates feedback by SID path (likes, dislikes, skips, plays, last_played)
+4. Creates rating vectors `[e, m, c, p]` for similarity search
+5. Writes `data/sidflow.lance/` database (binary, excluded from Git)
+6. Generates `data/sidflow.lance.manifest.json` with checksums and statistics (committed to Git)
+
+#### Database Schema
+
+Each record in the database contains:
+
+- `sid_path` — Primary identifier (string)
+- `vector` — Rating vector `[e, m, c, p]` for similarity search (float array)
+- `e`, `m`, `c`, `p` — Individual rating dimensions (1-5)
+- `features_json` — All audio features as JSON string (energy, RMS, BPM, spectral analysis, etc.)
+- `likes`, `dislikes`, `skips`, `plays` — Aggregated feedback counts
+- `last_played` — Most recent play timestamp (ISO 8601)
+
+#### Manifest File
+
+The manifest (`data/sidflow.lance.manifest.json`) tracks:
+
+- Schema version and creation timestamp
+- Record count and statistics
+- SHA256 checksums of source data (classified and feedback)
+- Enables verification and reproducibility
+
+#### Rebuild Policy
+
+- Database is **derived** (not committed to Git) - rebuild after cloning
+- Rebuild is **deterministic** - same inputs produce same database
+- Run `bun run build:db` after:
+  - Cloning the repository
+  - Pulling new classification or feedback data
+  - Adding new classifications or feedback events
+
+---
+
 ## User Feedback Logging
 
 SIDFlow includes an append-only feedback logging system for tracking user interactions with SID files. This enables personalized recommendations and usage analytics.
@@ -317,9 +370,10 @@ The append-only structure and date partitioning minimize Git merge conflicts:
 2. `./scripts/sidflow-fetch` — download or refresh your SID mirror  
 3. `./scripts/sidflow-rate` — manually rate songs to provide seeds for classification
 4. `./scripts/sidflow-classify` — automatically classify all songs based on ratings
-5. `./scripts/sidflow-play` — filter and play curated sets  
+5. `bun run build:db` — rebuild vector database from classifications and feedback
+6. `./scripts/sidflow-play` — filter and play curated sets (planned)
 
-All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default.
+All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default. The LanceDB database (`data/sidflow.lance/`) is also git-ignored but can be rebuilt deterministically from source data.
 
 ---
 

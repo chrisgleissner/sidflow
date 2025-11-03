@@ -195,9 +195,9 @@ Grouping `e`, `m`, `c`, `p` ratings in a `ratings` object keeps the schema exten
 
 ### Phase 7 Checklist
 
-- [ ] Design LanceDB schema combining classification vectors `[e,m,c,p]`, extended features, and feedback aggregates, then implement deterministic rebuild command (`bun run build:db`).
-- [ ] Combine `classified/*.jsonl` (with all extracted features and ratings) + `feedback/**/*.jsonl` into unified `data/sidflow.lance/` preserving classifier output for flexible querying.
-- [ ] Add `.lance/` directory to `.gitignore` and generate manifest file `sidflow.lance.manifest.json` with checksums, schema version, and record counts for Git.
+- [x] Design LanceDB schema combining classification vectors `[e,m,c,p]`, extended features, and feedback aggregates, then implement deterministic rebuild command (`bun run build:db`).
+- [x] Combine `classified/*.jsonl` (with all extracted features and ratings) + `feedback/**/*.jsonl` into unified `data/sidflow.lance/` preserving classifier output for flexible querying.
+- [x] Add `.lance/` directory to `.gitignore` and generate manifest file `sidflow.lance.manifest.json` with checksums, schema version, and record counts for Git.
 
 **LanceDB Structure:**
 ```
