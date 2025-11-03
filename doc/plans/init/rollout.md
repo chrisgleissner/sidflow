@@ -48,7 +48,7 @@
 ### Phase 4 Checklist
 
 - [x] Implement WAV caching pipeline using `sidplayfp -w`, respecting `threads` and cache freshness.
-- [ ] Integrate Essentia.js for feature extraction and a lightweight TF.js regressor producing `(e,m,c)`.
+- [x] Integrate Essentia.js for feature extraction and a lightweight TF.js regressor producing `(e,m,c)`.
 - [x] Merge manual and auto tags without overwriting manual values; fill gaps only.
 - [x] Generate `auto-tags.json` per folder level defined by `classificationDepth`, with deterministic ordering.
 - [x] Capture metadata via `sidplayfp -t1 --none` for use in tagging and future features.
@@ -62,12 +62,12 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 4.5 Checklist
 
-- [ ] Rename `s` field to `e` (energy) in all data structures and interfaces (TagRatings, etc.).
-- [ ] Update documentation to use "energy" instead of "speed" throughout.
-- [ ] Update CLI help text and keyboard shortcuts from `s1-5` to `e1-5`.
-- [ ] Update all source code comments referencing speed/tempo to use energy.
-- [ ] Update README and specification documents to reflect energy terminology.
-- [ ] Ensure backwards compatibility or migration path for existing tagged files.
+- [x] Rename `s` field to `e` (energy) in all data structures and interfaces (TagRatings, etc.).
+- [x] Update documentation to use "energy" instead of "speed" throughout.
+- [x] Update CLI help text and keyboard shortcuts from `s1-5` to `e1-5`.
+- [x] Update all source code comments referencing speed/tempo to use energy.
+- [x] Update README and specification documents to reflect energy terminology.
+- [x] Ensure backwards compatibility or migration path for existing tagged files.
 
 **Rationale:**  
 "Energy" is more technically accurate than "speed" for describing the intensity and drive of a musical piece. While "speed" might suggest tempo (BPM), "energy" better captures the combined effect of dynamics, rhythmic intensity, and overall drive that the rating system measures.
@@ -81,12 +81,12 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 4.6 Checklist
 
-- [ ] Rename `sidflow-tag` tool to `sidflow-rate` to better reflect its purpose of capturing user ratings.
-- [ ] Update CLI help text, documentation, and user-facing messages from "tag/tagging" to "rate/rating".
-- [ ] Add support for new `p` (preference) rating (1-5) capturing overall user preference for a song.
-- [ ] Update keyboard controls to include `p1-5` for preference rating alongside `e1-5`, `m1-5`, `c1-5`.
-- [ ] Update workflow diagram in README.md to reflect "Rating" terminology (Phase 2: Manual Rating, sidflow-rate).
-- [ ] Ensure backwards compatibility with existing `*.sid.tags.json` files during transition period.
+- [x] Rename `sidflow-tag` tool to `sidflow-rate` to better reflect its purpose of capturing user ratings.
+- [x] Update CLI help text, documentation, and user-facing messages from "tag/tagging" to "rate/rating".
+- [x] Add support for new `p` (preference) rating (1-5) capturing overall user preference for a song.
+- [x] Update keyboard controls to include `p1-5` for preference rating alongside `e1-5`, `m1-5`, `c1-5`.
+- [x] Update workflow diagram in README.md to reflect "Rating" terminology (Phase 2: Manual Rating, sidflow-rate).
+- [x] Ensure backwards compatibility with existing `*.sid.tags.json` files during transition period.
 
 **Rationale:**  
 "Rating" more accurately describes the user activity than "tagging" - users are assigning numerical ratings (1-5) across multiple dimensions (energy, mood, complexity, preference) rather than applying categorical tags. The new `p` (preference) dimension captures holistic user preference independent of individual rating dimensions.

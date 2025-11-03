@@ -11,9 +11,9 @@ import {
   planTagSession,
   writeManualTag,
   type KeyState
-} from "@sidflow/tag";
+} from "@sidflow/rate";
 
-const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-tag-");
+const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-rate-");
 
 describe("planTagSession", () => {
   it("creates tagging plan with defaults", async () => {

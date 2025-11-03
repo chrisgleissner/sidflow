@@ -137,13 +137,13 @@ Each command can be run via the command line interface from the repository root.
 
 ---
 
-### 2. `sidflow-rate` (planned, formerly `sidflow-tag`)
+### 2. `sidflow-rate` (formerly `sidflow-tag`)
 
 ```sh
 ./scripts/sidflow-rate [--sidplay <path>] [--config <path>]
 ```
 
-**Status:** In development  
+**Status:** Available  
 **Purpose:** Capture user ratings across multiple dimensions for supervised classification and preference learning.  
 **Operation:** Plays unrated `.sid` files via `sidplayfp`, records energy/mood/complexity/preference (`e/m/c/p`) ratings, and stores results beside each track.
 

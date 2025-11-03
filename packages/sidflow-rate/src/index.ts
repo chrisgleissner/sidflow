@@ -38,7 +38,7 @@ export async function planTagSession(
   options: TagCliOptions = {}
 ): Promise<TagSessionPlan> {
   const config = await loadConfig(options.configPath);
-  const logger = createLogger("sidflow-tag");
+  const logger = createLogger("sidflow-rate");
   logger.debug("Loaded configuration for tagging session");
 
   return {
@@ -71,7 +71,7 @@ export function interpretKey(key: string, state: KeyState): { state: KeyState; a
     return { state, action: "save" };
   }
 
-  if (key === "e" || key === "m" || key === "c") {
+  if (key === "e" || key === "m" || key === "c" || key === "p") {
     return { state: { ...state, pendingDimension: key as keyof TagRatings }, action: "none" };
   }
 
@@ -102,6 +102,12 @@ export async function writeManualTag(
     source: "manual",
     timestamp: timestamp.toISOString()
   };
+  
+  // Include preference rating if present
+  if (ratings.p !== undefined) {
+    record.p = ratings.p;
+  }
+  
   await ensureDirectory(tagFilePath);
   await writeFile(tagFilePath, stringifyDeterministic(record));
 }

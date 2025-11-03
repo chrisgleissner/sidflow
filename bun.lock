@@ -29,8 +29,8 @@
         "@sidflow/common": "workspace:*",
       },
     },
-    "packages/sidflow-tag": {
-      "name": "@sidflow/tag",
+    "packages/sidflow-rate": {
+      "name": "@sidflow/rate",
       "version": "0.1.0",
       "dependencies": {
         "@sidflow/common": "workspace:*",
@@ -44,7 +44,7 @@
 
     "@sidflow/fetch": ["@sidflow/fetch@workspace:packages/sidflow-fetch"],
 
-    "@sidflow/tag": ["@sidflow/tag@workspace:packages/sidflow-tag"],
+    "@sidflow/rate": ["@sidflow/rate@workspace:packages/sidflow-rate"],
 
     "@tensorflow/tfjs": ["@tensorflow/tfjs@4.22.0", "", { "dependencies": { "@tensorflow/tfjs-backend-cpu": "4.22.0", "@tensorflow/tfjs-backend-webgl": "4.22.0", "@tensorflow/tfjs-converter": "4.22.0", "@tensorflow/tfjs-core": "4.22.0", "@tensorflow/tfjs-data": "4.22.0", "@tensorflow/tfjs-layers": "4.22.0", "argparse": "^1.0.10", "chalk": "^4.1.0", "core-js": "3.29.1", "regenerator-runtime": "^0.13.5", "yargs": "^16.0.3" }, "bin": { "tfjs-custom-module": "dist/tools/custom_module/cli.js" } }, "sha512-0TrIrXs6/b7FLhLVNmfh8Sah6JgjBPH4mZ8JGb7NU6WW+cx00qK5BcAZxw7NCzxj6N8MRAIfHq+oNbPUNG5VAg=="],
 
