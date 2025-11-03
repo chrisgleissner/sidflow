@@ -15,8 +15,10 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 export interface ClassifyOptions {
@@ -51,6 +53,11 @@ export async function planClassification(
 }
 
 const SID_EXTENSION = ".sid";
+
+async function computeFileHash(filePath: string): Promise<string> {
+  const content = await readFile(filePath);
+  return createHash("sha256").update(content).digest("hex");
+}
 
 export function resolveWavPath(plan: ClassificationPlan, sidFile: string): string {
   const relative = path.relative(plan.hvscPath, sidFile);
@@ -107,7 +114,28 @@ export async function needsWavRefresh(
   }
 
   const [sidStats, wavStats] = await Promise.all([stat(sidFile), stat(wavFile)]);
-  return sidStats.mtimeMs > wavStats.mtimeMs;
+  
+  // If SID file is older than WAV, no refresh needed
+  if (sidStats.mtimeMs <= wavStats.mtimeMs) {
+    return false;
+  }
+
+  // Timestamp changed - check if content actually changed by comparing hashes
+  // Store hash in a sidecar file to avoid re-computing on every check
+  const hashFile = `${wavFile}.hash`;
+  if (await pathExists(hashFile)) {
+    try {
+      const storedHash = await readFile(hashFile, "utf8");
+      const currentHash = await computeFileHash(sidFile);
+      return storedHash.trim() !== currentHash.trim();
+    } catch {
+      // If hash file is corrupted, rebuild
+      return true;
+    }
+  }
+
+  // No hash file exists, need to rebuild
+  return true;
 }
 
 export interface RenderWavOptions {
@@ -133,12 +161,36 @@ export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, sidplayPat
       }
     });
   });
+
+  // Store hash of SID file after successful WAV render
+  const hashFile = `${wavFile}.hash`;
+  try {
+    const hash = await computeFileHash(sidFile);
+    await writeFile(hashFile, hash, "utf8");
+  } catch {
+    // Hash storage is optional, continue even if it fails
+  }
 };
+
+export interface WavCacheProgress {
+  phase: "analyzing" | "building";
+  totalFiles: number;
+  processedFiles: number;
+  renderedFiles: number;
+  skippedFiles: number;
+  percentComplete: number;
+  elapsedMs: number;
+  currentFile?: string;
+}
+
+export type ProgressCallback = (progress: WavCacheProgress) => void;
 
 export interface BuildWavCacheOptions {
   sidplayPath?: string;
   render?: RenderWav;
   forceRebuild?: boolean;
+  onProgress?: ProgressCallback;
+  threads?: number;
 }
 
 export interface PerformanceMetrics {
@@ -166,17 +218,70 @@ export async function buildWavCache(
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
+  const totalFiles = sidFiles.length;
   const rendered: string[] = [];
   const skipped: string[] = [];
   const sidplayPath = options.sidplayPath ?? plan.sidplayPath;
   const render = options.render ?? defaultRenderWav;
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
+  const onProgress = options.onProgress;
 
-  for (const sidFile of sidFiles) {
+  // Analysis phase: determine which files need rendering
+  if (onProgress && totalFiles > 0) {
+    onProgress({
+      phase: "analyzing",
+      totalFiles,
+      processedFiles: 0,
+      renderedFiles: 0,
+      skippedFiles: 0,
+      percentComplete: 0,
+      elapsedMs: Date.now() - startTime
+    });
+  }
+
+  const filesToRender: string[] = [];
+  const filesToSkip: string[] = [];
+
+  for (let i = 0; i < sidFiles.length; i++) {
+    const sidFile = sidFiles[i];
     const wavFile = resolveWavPath(plan, sidFile);
-    if (!(await needsWavRefresh(sidFile, wavFile, shouldForce))) {
+    if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
+      filesToRender.push(sidFile);
+    } else {
+      filesToSkip.push(sidFile);
       skipped.push(wavFile);
-      continue;
+    }
+
+    // Report analysis progress periodically
+    if (onProgress && (i + 1) % 50 === 0) {
+      onProgress({
+        phase: "analyzing",
+        totalFiles,
+        processedFiles: i + 1,
+        renderedFiles: 0,
+        skippedFiles: filesToSkip.length,
+        percentComplete: ((i + 1) / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime
+      });
+    }
+  }
+
+  // Building phase: render WAV files
+  for (let i = 0; i < filesToRender.length; i++) {
+    const sidFile = filesToRender[i];
+    const wavFile = resolveWavPath(plan, sidFile);
+
+    if (onProgress) {
+      onProgress({
+        phase: "building",
+        totalFiles,
+        processedFiles: skipped.length + rendered.length,
+        renderedFiles: rendered.length,
+        skippedFiles: skipped.length,
+        percentComplete: ((skipped.length + rendered.length) / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime,
+        currentFile: path.basename(sidFile)
+      });
     }
 
     await render({ sidFile, wavFile, sidplayPath });
@@ -184,7 +289,6 @@ export async function buildWavCache(
   }
 
   const endTime = Date.now();
-  const totalFiles = rendered.length + skipped.length;
   const cacheHitRate = totalFiles > 0 ? skipped.length / totalFiles : 0;
 
   const metrics: BuildWavCacheMetrics = {
@@ -448,10 +552,22 @@ async function writeMetadataRecord(
   return metadataPath;
 }
 
+export interface AutoTagProgress {
+  phase: "metadata" | "tagging";
+  totalFiles: number;
+  processedFiles: number;
+  percentComplete: number;
+  elapsedMs: number;
+  currentFile?: string;
+}
+
+export type AutoTagProgressCallback = (progress: AutoTagProgress) => void;
+
 export interface GenerateAutoTagsOptions {
   extractMetadata?: ExtractMetadata;
   featureExtractor?: FeatureExtractor;
   predictRatings?: PredictRatings;
+  onProgress?: AutoTagProgressCallback;
 }
 
 export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
@@ -477,9 +593,11 @@ export async function generateAutoTags(
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
+  const totalFiles = sidFiles.length;
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
+  const onProgress = options.onProgress;
 
   const autoTagged: string[] = [];
   const manualEntries: string[] = [];
@@ -490,9 +608,22 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
 
-  for (const sidFile of sidFiles) {
+  for (let i = 0; i < sidFiles.length; i++) {
+    const sidFile = sidFiles[i];
     const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
     const posixRelative = toPosixRelative(relativePath);
+
+    // Report progress periodically
+    if (onProgress && i % 10 === 0) {
+      onProgress({
+        phase: "metadata",
+        totalFiles,
+        processedFiles: i,
+        percentComplete: (i / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime,
+        currentFile: path.basename(sidFile)
+      });
+    }
 
     const metadata = await extractMetadata({
       sidFile,
@@ -513,6 +644,18 @@ export async function generateAutoTags(
           `Missing WAV cache for ${posixRelative}. Run buildWavCache before generateAutoTags.`
         );
       }
+
+      if (onProgress) {
+        onProgress({
+          phase: "tagging",
+          totalFiles,
+          processedFiles: i,
+          percentComplete: (i / totalFiles) * 100,
+          elapsedMs: Date.now() - startTime,
+          currentFile: path.basename(sidFile)
+        });
+      }
+
       const features = await featureExtractor({ wavFile: wavPath, sidFile });
       autoRatings = await predictRatings({
         features,

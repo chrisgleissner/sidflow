@@ -1,6 +1,41 @@
-# Performance Metrics
+# Performance Metrics and Progress Reporting
 
-SIDFlow's `sidflow-classify` command tracks detailed performance metrics for both WAV cache building and auto-tagging operations. These metrics help you understand the efficiency of classification runs and identify opportunities for optimization.
+SIDFlow's `sidflow-classify` command provides real-time progress updates and detailed performance metrics for both WAV cache building and auto-tagging operations. These features help you understand the efficiency of classification runs and monitor progress during long-running operations.
+
+## Real-Time Progress Updates
+
+During classification, SIDFlow displays concise progress information on stdout:
+
+### Initial Information
+- **Thread count**: Displayed once at startup (e.g., "Starting classification (threads: 4)")
+
+### WAV Cache Build Progress
+- **Analysis phase**: Quick scan to determine which files need conversion
+  - Shows files analyzed, total files, percentage complete, elapsed time
+  - Example: `[Analyzing] 150/500 files (30.0%) - 0.52s`
+
+- **Building phase**: Actual WAV file conversion
+  - Shows files rendered, files cached, files remaining, percentage complete, current file, elapsed time
+  - Example: `[Converting] 50 rendered, 100 cached, 350 remaining (30.0%) - song.sid - 15.23s`
+  - Progress updates are throttled to avoid overwhelming output (max 2 updates/second)
+
+### Auto-Tagging Progress
+- **Metadata phase**: Extracting metadata from SID files
+  - Example: `[Metadata] 75/150 files, 75 remaining (50.0%) - track.sid - 5.12s`
+
+- **Tagging phase**: Generating predictions for untagged dimensions
+  - Example: `[Tagging] 75/150 files, 75 remaining (50.0%) - track.sid - 8.45s`
+
+## File Hash-Based Caching
+
+SIDFlow uses intelligent caching to avoid unnecessary WAV conversions:
+
+1. **Timestamp check**: If the SID file's timestamp is older than the WAV file, skip conversion
+2. **Hash-based verification**: If timestamp changed but file content is identical (verified via SHA-256 hash), skip conversion
+3. **Hash storage**: SHA-256 hash of each SID file is stored in `{wavfile}.hash` after successful conversion
+4. **Smart updates**: Only files with actual content changes trigger WAV regeneration
+
+This ensures that operations like git checkouts or file system moves don't trigger unnecessary reconversions.
 
 ## Metrics Types
 

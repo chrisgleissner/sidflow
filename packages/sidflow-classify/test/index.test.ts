@@ -74,6 +74,7 @@ describe("planClassification", () => {
       const root = await mkdtemp(TEMP_PREFIX);
       const sidFile = path.join(root, "track.sid");
       const wavFile = path.join(root, "track.wav");
+      const hashFile = `${wavFile}.hash`;
       await writeFile(sidFile, "initial");
 
       expect(await needsWavRefresh(sidFile, wavFile, false)).toBeTrue();
@@ -83,6 +84,26 @@ describe("planClassification", () => {
 
       await new Promise((resolve) => setTimeout(resolve, 5));
       await writeFile(sidFile, "updated");
+      // Without hash file, should trigger refresh
+      expect(await needsWavRefresh(sidFile, wavFile, false)).toBeTrue();
+
+      // Now simulate having a hash file
+      const crypto = await import("node:crypto");
+      const currentHash = crypto.createHash("sha256").update("updated").digest("hex");
+      await writeFile(hashFile, currentHash);
+
+      // Touch the SID file to change timestamp but keep same content
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const now = new Date();
+      const { utimes } = await import("node:fs/promises");
+      await utimes(sidFile, now, now);
+
+      // Should not trigger refresh because hash matches
+      expect(await needsWavRefresh(sidFile, wavFile, false)).toBeFalse();
+
+      // Change content again
+      await writeFile(sidFile, "changed-content");
+      // Should trigger refresh because hash doesn't match
       expect(await needsWavRefresh(sidFile, wavFile, false)).toBeTrue();
 
       await rm(root, { recursive: true, force: true });
@@ -142,6 +163,57 @@ describe("planClassification", () => {
       expect(resultSecond.metrics.rendered).toBe(0);
       expect(resultSecond.metrics.skipped).toBe(1);
       expect(resultSecond.metrics.cacheHitRate).toBe(1);
+
+      await rm(root, { recursive: true, force: true });
+    });
+
+    it("reports progress during WAV cache building", async () => {
+      const root = await mkdtemp(TEMP_PREFIX);
+      const hvscPath = path.join(root, "hvsc");
+      const wavCachePath = path.join(root, "wav");
+      await mkdir(hvscPath, { recursive: true });
+
+      // Create multiple SID files to test progress
+      for (let i = 0; i < 5; i++) {
+        await writeFile(path.join(hvscPath, `song${i}.sid`), `content${i}`);
+      }
+
+      const plan = {
+        config: {} as ClassificationPlan["config"],
+        forceRebuild: false,
+        classificationDepth: 3,
+        hvscPath,
+        wavCachePath,
+        tagsPath: path.join(root, "tags"),
+        sidplayPath: "sidplayfp"
+      } as unknown as ClassificationPlan;
+
+      const progressUpdates: any[] = [];
+      await buildWavCache(plan, {
+        render: async ({ wavFile }: { wavFile: string }) => {
+          await mkdir(path.dirname(wavFile), { recursive: true });
+          await writeFile(wavFile, "wav");
+        },
+        onProgress: (progress) => {
+          progressUpdates.push({ ...progress });
+        }
+      });
+
+      // Should have received progress updates
+      expect(progressUpdates.length).toBeGreaterThan(0);
+
+      // Should have both analyzing and building phases
+      const analyzingUpdates = progressUpdates.filter((p) => p.phase === "analyzing");
+      const buildingUpdates = progressUpdates.filter((p) => p.phase === "building");
+      expect(analyzingUpdates.length).toBeGreaterThan(0);
+      expect(buildingUpdates.length).toBeGreaterThan(0);
+
+      // Progress should increase
+      for (let i = 1; i < progressUpdates.length; i++) {
+        expect(progressUpdates[i].processedFiles).toBeGreaterThanOrEqual(
+          progressUpdates[i - 1].processedFiles
+        );
+      }
 
       await rm(root, { recursive: true, force: true });
     });
