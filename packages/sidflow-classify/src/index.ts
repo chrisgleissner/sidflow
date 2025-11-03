@@ -11,6 +11,8 @@ import {
   resolveRelativeSidPath,
   stringifyDeterministic,
   toPosixRelative,
+  type AudioFeatures,
+  type ClassificationRecord,
   type JsonValue,
   type SidflowConfig,
   type TagRatings
@@ -571,7 +573,7 @@ async function writeMetadataRecord(
 }
 
 export interface AutoTagProgress {
-  phase: "metadata" | "tagging";
+  phase: "metadata" | "tagging" | "jsonl";
   totalFiles: number;
   processedFiles: number;
   percentComplete: number;
@@ -745,6 +747,157 @@ export async function generateAutoTags(
   };
 
   return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, metrics };
+}
+
+/**
+ * Options for generating JSONL classification output.
+ */
+export interface GenerateJsonlOptions {
+  /** Feature extractor to use for extracting audio features */
+  featureExtractor?: FeatureExtractor;
+  /** Rating predictor to use for generating ratings */
+  predictRatings?: PredictRatings;
+  /** Metadata extractor to use for extracting SID metadata */
+  extractMetadata?: ExtractMetadata;
+  /** Progress callback */
+  onProgress?: AutoTagProgressCallback;
+}
+
+/**
+ * Result from generating JSONL classification output.
+ */
+export interface GenerateJsonlResult {
+  /** Path to generated JSONL file */
+  jsonlFile: string;
+  /** Total number of records written */
+  recordCount: number;
+  /** Time taken in milliseconds */
+  durationMs: number;
+}
+
+/**
+ * Generates JSONL classification output with ratings and features.
+ * Outputs one JSON record per line to classified/*.jsonl files.
+ * 
+ * @param plan - Classification plan with paths and config
+ * @param options - Options for feature extraction and rating prediction
+ * @returns Result with output file path and metrics
+ */
+export async function generateJsonlOutput(
+  plan: ClassificationPlan,
+  options: GenerateJsonlOptions = {}
+): Promise<GenerateJsonlResult> {
+  const startTime = Date.now();
+  const sidFiles = await collectSidFiles(plan.hvscPath);
+  const totalFiles = sidFiles.length;
+  const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
+  const featureExtractor = options.featureExtractor ?? heuristicFeatureExtractor;
+  const predictRatings = options.predictRatings ?? heuristicPredictRatings;
+  const onProgress = options.onProgress;
+
+  // Use classifiedPath from config or default to tags path
+  const classifiedPath = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
+  await ensureDir(classifiedPath);
+
+  // Generate output filename with timestamp
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
+  const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
+
+  const records: string[] = [];
+
+  for (let i = 0; i < sidFiles.length; i++) {
+    const sidFile = sidFiles[i];
+    const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
+    const posixRelative = toPosixRelative(relativePath);
+
+    // Report progress periodically
+    if (onProgress && i % AUTOTAG_PROGRESS_INTERVAL === 0) {
+      onProgress({
+        phase: "jsonl",
+        totalFiles,
+        processedFiles: i,
+        percentComplete: (i / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime,
+        currentFile: path.basename(sidFile)
+      });
+    }
+
+    // Load metadata
+    const metadata = await extractMetadata({
+      sidFile,
+      sidplayPath: plan.sidplayPath,
+      relativePath: posixRelative
+    });
+
+    // Load manual ratings if available
+    const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
+    
+    // Extract features and generate ratings
+    const wavPath = resolveWavPath(plan, sidFile);
+    let features: AudioFeatures | undefined;
+    let ratings: TagRatings;
+
+    if (await pathExists(wavPath)) {
+      // Extract features from WAV file
+      const rawFeatures = await featureExtractor({ wavFile: wavPath, sidFile });
+      features = rawFeatures as AudioFeatures;
+
+      // If we have manual ratings with all dimensions, use them; otherwise predict
+      if (manualRecord && !hasMissingDimensions(manualRecord.ratings)) {
+        // All dimensions present, safe to use as TagRatings
+        ratings = manualRecord.ratings as TagRatings;
+      } else {
+        // Generate predictions
+        const autoRatings = await predictRatings({
+          features: rawFeatures,
+          sidFile,
+          relativePath: posixRelative,
+          metadata
+        });
+        // Merge with manual ratings if available
+        const combined = combineRatings(manualRecord?.ratings ?? null, autoRatings);
+        ratings = combined.ratings;
+      }
+    } else {
+      // No WAV file, use manual ratings or defaults
+      if (manualRecord && !hasMissingDimensions(manualRecord.ratings)) {
+        ratings = manualRecord.ratings as TagRatings;
+      } else {
+        // Use heuristic prediction based on metadata
+        const seed = computeSeed(posixRelative + (metadata.title ?? ""));
+        ratings = {
+          e: clampRating(toRating(seed)),
+          m: clampRating(toRating(seed + 1)),
+          c: clampRating(toRating(seed + 2))
+        };
+      }
+    }
+
+    // Create classification record
+    const record: ClassificationRecord = {
+      sid_path: posixRelative,
+      ratings
+    };
+
+    // Include features if available
+    if (features) {
+      record.features = features;
+    }
+
+    // Append as JSONL (one JSON object per line)
+    // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
+    records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
+  }
+
+  // Write all records to file
+  await writeFile(jsonlFile, records.join("\n") + "\n", "utf8");
+
+  const endTime = Date.now();
+  return {
+    jsonlFile,
+    recordCount: records.length,
+    durationMs: endTime - startTime
+  };
 }
 
 function computeSeed(value: string): number {

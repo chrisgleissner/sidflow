@@ -110,9 +110,9 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 5 Checklist
 
-- [ ] Define and implement extensible JSONL schema for classification output with `sid_path`, nested `ratings` object (`e`, `m`, `c`, `p`), and `features` object, storing one record per line.
-- [ ] Update classification pipeline to output `classified/*.jsonl` files preserving all extracted features (energy, rms, spectralCentroid, bpm, etc.) with deterministic ordering and VS Code "JSON Lines" extension support.
-- [ ] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
+- [x] Define and implement extensible JSONL schema for classification output with `sid_path`, nested `ratings` object (`e`, `m`, `c`, `p`), and `features` object, storing one record per line.
+- [x] Update classification pipeline to output `classified/*.jsonl` files preserving all extracted features (energy, rms, spectralCentroid, bpm, etc.) with deterministic ordering and VS Code "JSON Lines" extension support.
+- [x] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
 
 **JSONL Schema (Nested Ratings + Extended Features):**
 ```jsonl
@@ -157,9 +157,9 @@ Grouping `e`, `m`, `c`, `p` ratings in a `ratings` object keeps the schema exten
 
 ### Phase 6 Checklist
 
-- [ ] Implement append-only JSONL feedback logging with schema (timestamp, sid_path, action) and date-based partitioning (`data/feedback/YYYY/MM/DD/events.jsonl`).
-- [ ] Support feedback actions with defined weighting: `like` (+1.0), `skip` (-0.3), `dislike` (-1.0), `play` (0.0), and document merge-friendly properties.
-- [ ] Add optional UUID deduplication strategy for multi-device scenarios and create tooling for feedback log validation.
+- [x] Implement append-only JSONL feedback logging with schema (timestamp, sid_path, action) and date-based partitioning (`data/feedback/YYYY/MM/DD/events.jsonl`).
+- [x] Support feedback actions with defined weighting: `like` (+1.0), `skip` (-0.3), `dislike` (-1.0), `play` (0.0), and document merge-friendly properties.
+- [x] Add optional UUID deduplication strategy for multi-device scenarios and create tooling for feedback log validation.
 
 **JSONL Feedback Schema:**
 ```jsonl

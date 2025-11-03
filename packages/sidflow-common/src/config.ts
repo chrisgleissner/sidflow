@@ -6,6 +6,7 @@ export interface SidflowConfig {
   hvscPath: string;
   wavCachePath: string;
   tagsPath: string;
+  classifiedPath?: string;
   sidplayPath: string;
   threads: number;
   classificationDepth: number;
@@ -113,10 +114,24 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     return raw;
   };
 
+  const optionalString = (key: keyof SidflowConfig): string | undefined => {
+    const raw = record[key as string];
+    if (raw === undefined) {
+      return undefined;
+    }
+    if (typeof raw !== "string" || raw.trim() === "") {
+      throw new SidflowConfigError(
+        `Config key \"${String(key)}\" must be a non-empty string`
+      );
+    }
+    return path.normalize(raw);
+  };
+
   return {
     hvscPath: requiredString("hvscPath"),
     wavCachePath: requiredString("wavCachePath"),
     tagsPath: requiredString("tagsPath"),
+    classifiedPath: optionalString("classifiedPath"),
     sidplayPath: requiredString("sidplayPath"),
     threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
     classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0)
