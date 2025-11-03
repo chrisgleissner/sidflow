@@ -7,3 +7,11 @@ packages/*/dist/
 packages/*/.tsbuildinfo
 workspace/
 !workspace/.gitkeep
+
+# Derived artifacts (not committed)
+data/sidflow.lance/
+
+# Manifests and canonical data ARE committed
+!data/sidflow.lance.manifest.json
+!data/classified/*.jsonl
+!data/feedback/**/*.jsonl

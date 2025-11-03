@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "schema_version": "1.0",
+  "created_at": "2025-11-03T18:37:49.823Z",
+  "record_count": 3,
+  "source_checksums": {
+    "classified": "330aa1f83389719de5b47c7d9d7b4ec0432f275f66757fffe27a73743a4de142",
+    "feedback": "d644f0ad043a4cb34f8aac5810092e8585761b72c1f3fcd4485574b80a379fd3"
+  },
+  "stats": {
+    "total_classifications": 3,
+    "total_feedback_events": 5,
+    "unique_songs": 3
+  }
+}

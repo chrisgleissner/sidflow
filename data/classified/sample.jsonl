@@ -1,0 +1,3 @@
+{"sid_path":"Rob_Hubbard/Delta.sid","ratings":{"e":3,"m":4,"c":5,"p":4},"features":{"energy":0.42,"rms":0.15,"spectralCentroid":2150,"bpm":128}}
+{"sid_path":"Martin_Galway/Parallax.sid","ratings":{"e":2,"m":5,"c":4,"p":5},"features":{"energy":0.18,"rms":0.09,"spectralCentroid":1850,"bpm":96}}
+{"sid_path":"Rob_Hubbard/Monty_on_the_Run.sid","ratings":{"e":5,"m":5,"c":5,"p":5},"features":{"energy":0.68,"rms":0.22,"spectralCentroid":2400,"bpm":140}}
