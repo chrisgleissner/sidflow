@@ -2,7 +2,7 @@
  * Session history and persistence.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { stringifyDeterministic } from "@sidflow/common";
 import type { PlaybackEvent } from "./playback.js";
@@ -167,7 +167,6 @@ export class SessionManager {
    */
   async listSessions(): Promise<string[]> {
     try {
-      const { readdir } = await import("node:fs/promises");
       const files = await readdir(this.sessionPath);
       return files
         .filter(f => f.endsWith(".json"))
