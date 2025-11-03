@@ -449,6 +449,12 @@ async function loadManualTagRecord(
       ratings[dimension] = clampRating(raw);
     }
   }
+  
+  // Also load preference rating if present (not predicted by classifier)
+  const pRaw = record.p;
+  if (typeof pRaw === "number" && !Number.isNaN(pRaw)) {
+    ratings.p = clampRating(pRaw);
+  }
 
   const timestamp = typeof record.timestamp === "string" ? record.timestamp : undefined;
   const source = typeof record.source === "string" ? record.source : "manual";
@@ -481,13 +487,21 @@ function combineRatings(
       continue;
     }
 
-    if (auto) {
+    if (auto && auto[dimension] !== undefined) {
       ratings[dimension] = clampRating(auto[dimension]);
       autoCount += 1;
       continue;
     }
 
-    ratings[dimension] = DEFAULT_RATINGS[dimension];
+    const defaultValue = DEFAULT_RATINGS[dimension];
+    if (defaultValue !== undefined) {
+      ratings[dimension] = defaultValue;
+    }
+  }
+  
+  // Preserve manual preference rating if present (not predicted by classifier)
+  if (manual && manual.p !== undefined) {
+    ratings.p = clampRating(manual.p);
   }
 
   if (manualCount === 0 && autoCount > 0) {
@@ -699,12 +713,19 @@ export async function generateAutoTags(
     const sorted = [...entries.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     const record: Record<string, JsonValue> = {};
     for (const [key, entry] of sorted) {
-      record[key] = {
+      const entryData: Record<string, JsonValue> = {
         e: entry.e,
         m: entry.m,
         c: entry.c,
         source: entry.source
       };
+      
+      // Include preference rating if present
+      if (entry.p !== undefined) {
+        entryData.p = entry.p;
+      }
+      
+      record[key] = entryData;
     }
     await ensureDir(path.dirname(autoFilePath));
     await writeFile(autoFilePath, stringifyDeterministic(record));

@@ -6,12 +6,14 @@ export interface TagRatings {
   e: number;
   m: number;
   c: number;
+  p?: number; // Preference rating (optional for backwards compatibility)
 }
 
 export const DEFAULT_RATINGS: TagRatings = {
   e: DEFAULT_RATING,
   m: DEFAULT_RATING,
   c: DEFAULT_RATING
+  // p is optional and not included by default
 } as const;
 
 export function clampRating(value: number): number {
