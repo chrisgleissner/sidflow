@@ -193,7 +193,7 @@ export interface BuildWavCacheOptions {
   render?: RenderWav;
   forceRebuild?: boolean;
   onProgress?: ProgressCallback;
-  threads?: number;
+  threads?: number; // Reserved for future parallel processing implementation
 }
 
 export interface PerformanceMetrics {
