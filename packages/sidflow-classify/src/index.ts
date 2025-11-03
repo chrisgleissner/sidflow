@@ -4,16 +4,19 @@ import {
   ensureDir,
   loadConfig,
   pathExists,
+  parseSidFile,
   resolveAutoTagFilePath,
   resolveAutoTagKey,
   resolveManualTagPath,
   resolveMetadataPath,
   resolveRelativeSidPath,
+  sidMetadataToJson,
   stringifyDeterministic,
   toPosixRelative,
   type AudioFeatures,
   type ClassificationRecord,
   type JsonValue,
+  type SidFileMetadata,
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
@@ -64,7 +67,11 @@ async function computeFileHash(filePath: string): Promise<string> {
   return createHash("sha256").update(content).digest("hex");
 }
 
-export function resolveWavPath(plan: ClassificationPlan, sidFile: string): string {
+export function resolveWavPath(
+  plan: ClassificationPlan, 
+  sidFile: string, 
+  songIndex?: number
+): string {
   const relative = path.relative(plan.hvscPath, sidFile);
   if (relative.startsWith("..")) {
     throw new Error(`SID file ${sidFile} is not within HVSC path ${plan.hvscPath}`);
@@ -72,7 +79,9 @@ export function resolveWavPath(plan: ClassificationPlan, sidFile: string): strin
 
   const directory = path.dirname(relative);
   const baseName = path.basename(relative, path.extname(relative));
-  const wavName = `${baseName}.wav`;
+  const wavName = songIndex !== undefined 
+    ? `${baseName}-${songIndex}.wav`
+    : `${baseName}.wav`;
   return path.join(plan.wavCachePath, directory, wavName);
 }
 
@@ -147,14 +156,26 @@ export interface RenderWavOptions {
   sidFile: string;
   wavFile: string;
   sidplayPath: string;
+  songIndex?: number;
 }
 
 export type RenderWav = (options: RenderWavOptions) => Promise<void>;
 
-export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, sidplayPath }) => {
+export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, sidplayPath, songIndex }) => {
   await ensureDir(path.dirname(wavFile));
+  
+  // Build sidplayfp command arguments
+  const args = ["-w", wavFile];
+  
+  // Add song selection if specified (1-based index)
+  if (songIndex !== undefined) {
+    args.push(`-o${songIndex}`);
+  }
+  
+  args.push(sidFile);
+  
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(sidplayPath, ["-w", wavFile, sidFile], {
+    const child = spawn(sidplayPath, args, {
       stdio: "ignore"
     });
     child.once("error", reject);
@@ -223,13 +244,29 @@ export async function buildWavCache(
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
-  const totalFiles = sidFiles.length;
   const rendered: string[] = [];
   const skipped: string[] = [];
   const sidplayPath = options.sidplayPath ?? plan.sidplayPath;
   const render = options.render ?? defaultRenderWav;
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
+
+  // First pass: count total songs to render
+  const sidMetadataCache = new Map<string, SidFileMetadata>();
+  let totalSongs = 0;
+  
+  for (const sidFile of sidFiles) {
+    try {
+      const metadata = await parseSidFile(sidFile);
+      sidMetadataCache.set(sidFile, metadata);
+      totalSongs += metadata.songs;
+    } catch (error) {
+      // If we can't parse the file, assume 1 song
+      totalSongs += 1;
+    }
+  }
+
+  const totalFiles = totalSongs;
 
   // Analysis phase: determine which files need rendering
   if (onProgress && totalFiles > 0) {
@@ -244,39 +281,52 @@ export async function buildWavCache(
     });
   }
 
-  const filesToRender: string[] = [];
-  const filesToSkip: string[] = [];
+  interface SongToRender {
+    sidFile: string;
+    songIndex: number;
+    wavFile: string;
+  }
 
-  for (let i = 0; i < sidFiles.length; i++) {
-    const sidFile = sidFiles[i];
-    const wavFile = resolveWavPath(plan, sidFile);
-    if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
-      filesToRender.push(sidFile);
-    } else {
-      filesToSkip.push(sidFile);
-      skipped.push(wavFile);
-    }
+  const songsToRender: SongToRender[] = [];
+  const songsToSkip: SongToRender[] = [];
+  let processedSongs = 0;
 
-    // Report analysis progress periodically
-    if (onProgress && (i + 1) % ANALYSIS_PROGRESS_INTERVAL === 0) {
-      onProgress({
-        phase: "analyzing",
-        totalFiles,
-        processedFiles: i + 1,
-        renderedFiles: 0,
-        skippedFiles: filesToSkip.length,
-        percentComplete: ((i + 1) / totalFiles) * 100,
-        elapsedMs: Date.now() - startTime
-      });
+  for (const sidFile of sidFiles) {
+    const metadata = sidMetadataCache.get(sidFile);
+    const songCount = metadata?.songs ?? 1;
+
+    for (let songIndex = 1; songIndex <= songCount; songIndex++) {
+      const wavFile = resolveWavPath(plan, sidFile, songIndex);
+      
+      if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
+        songsToRender.push({ sidFile, songIndex, wavFile });
+      } else {
+        songsToSkip.push({ sidFile, songIndex, wavFile });
+        skipped.push(wavFile);
+      }
+
+      processedSongs++;
+
+      // Report analysis progress periodically
+      if (onProgress && processedSongs % ANALYSIS_PROGRESS_INTERVAL === 0) {
+        onProgress({
+          phase: "analyzing",
+          totalFiles,
+          processedFiles: processedSongs,
+          renderedFiles: 0,
+          skippedFiles: songsToSkip.length,
+          percentComplete: (processedSongs / totalFiles) * 100,
+          elapsedMs: Date.now() - startTime
+        });
+      }
     }
   }
 
-  // Building phase: render WAV files
-  for (let i = 0; i < filesToRender.length; i++) {
-    const sidFile = filesToRender[i];
-    const wavFile = resolveWavPath(plan, sidFile);
+  // Building phase: render WAV files for each song
+  for (let i = 0; i < songsToRender.length; i++) {
+    const { sidFile, songIndex, wavFile } = songsToRender[i];
 
-    await render({ sidFile, wavFile, sidplayPath });
+    await render({ sidFile, wavFile, sidplayPath, songIndex });
     rendered.push(wavFile);
 
     // Report progress after rendering completes
@@ -289,7 +339,7 @@ export async function buildWavCache(
         skippedFiles: skipped.length,
         percentComplete: ((skipped.length + rendered.length) / totalFiles) * 100,
         elapsedMs: Date.now() - startTime,
-        currentFile: path.basename(sidFile)
+        currentFile: `${path.basename(sidFile)} [${songIndex}]`
       });
     }
   }
@@ -330,10 +380,21 @@ const SIDPLAY_METADATA_ARGS = ["-t1", "--none"] as const;
 
 export const defaultExtractMetadata: ExtractMetadata = async ({ sidFile, sidplayPath, relativePath }) => {
   try {
-    const output = await runSidplayForMetadata(sidFile, sidplayPath);
-    return parseSidMetadataOutput(output);
-  } catch (error) {
-    return fallbackMetadataFromPath(relativePath, error);
+    // Try to parse SID file directly for complete metadata
+    const fullMetadata = await parseSidFile(sidFile);
+    return {
+      title: fullMetadata.title,
+      author: fullMetadata.author,
+      released: fullMetadata.released
+    };
+  } catch (parseError) {
+    // Fall back to sidplayfp output parsing
+    try {
+      const output = await runSidplayForMetadata(sidFile, sidplayPath);
+      return parseSidMetadataOutput(output);
+    } catch (error) {
+      return fallbackMetadataFromPath(relativePath, error);
+    }
   }
 };
 
@@ -568,7 +629,25 @@ async function writeMetadataRecord(
 ): Promise<string> {
   const metadataPath = resolveMetadataPath(plan.hvscPath, plan.tagsPath, sidFile);
   await ensureDir(path.dirname(metadataPath));
-  await writeFile(metadataPath, stringifyDeterministic(metadataToJson(metadata)));
+  
+  // Build metadata object with simple fields
+  const metadataJson = metadataToJson(metadata);
+  
+  // Try to get full SID file metadata and merge it
+  try {
+    const fullMetadata = await parseSidFile(sidFile);
+    const fullJson = sidMetadataToJson(fullMetadata);
+    // Merge full metadata with the simple metadata (simple metadata takes precedence for basic fields)
+    Object.assign(metadataJson, fullJson, {
+      title: metadata.title || fullMetadata.title,
+      author: metadata.author || fullMetadata.author,
+      released: metadata.released || fullMetadata.released
+    });
+  } catch {
+    // If we can't parse the SID file, just use the simple metadata
+  }
+  
+  await writeFile(metadataPath, stringifyDeterministic(metadataJson));
   return metadataPath;
 }
 
