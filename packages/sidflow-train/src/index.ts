@@ -21,7 +21,7 @@ import {
   evaluateModel,
   type TrainOptions,
   type TrainingSummary
-} from "@sidflow/classify/dist/tfjs-predictor.js";
+} from "@sidflow/classify";
 
 /**
  * Training sample with features and target ratings.

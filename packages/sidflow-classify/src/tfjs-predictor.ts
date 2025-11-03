@@ -109,7 +109,14 @@ let cachedMetadata: ModelMetadata | null = null;
  * Get the default model directory path.
  */
 export function getModelPath(basePath?: string): string {
-  return path.join(basePath ?? "data", "model");
+  if (!basePath) {
+    return path.join("data", "model");
+  }
+  // If the base path already ends with "model", use it as-is
+  if (path.basename(basePath) === "model") {
+    return basePath;
+  }
+  return path.join(basePath, "model");
 }
 
 /**

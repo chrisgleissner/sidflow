@@ -942,4 +942,26 @@ export const heuristicPredictRatings: PredictRatings = async ({
 
 // Re-export Essentia.js and TensorFlow.js implementations
 export { essentiaFeatureExtractor } from "./essentia-features.js";
-export { tfjsPredictRatings, disposeModel } from "./tfjs-predictor.js";
+export {
+  tfjsPredictRatings,
+  tfjsPredictRatingsWithConfidence,
+  disposeModel,
+  createModel,
+  loadModel,
+  saveModel,
+  loadFeatureStats,
+  saveFeatureStats,
+  loadModelMetadata,
+  saveModelMetadata,
+  computeFeatureStats,
+  trainOnFeedback,
+  evaluateModel,
+  getModelPath,
+  MODEL_VERSION,
+  FEATURE_SET_VERSION,
+  EXPECTED_FEATURES,
+  type FeatureStats,
+  type ModelMetadata,
+  type TrainingSummary,
+  type TrainOptions
+} from "./tfjs-predictor.js";
