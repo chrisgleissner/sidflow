@@ -5,7 +5,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { stringifyDeterministic } from "@sidflow/common";
-import type { Recommendation } from "@sidflow/common";
 import type { PlaybackEvent } from "./playback.js";
 
 /**
