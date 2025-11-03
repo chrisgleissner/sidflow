@@ -99,7 +99,7 @@ describe("Essentia.js + TF.js integration", () => {
     expect(wavResult.skipped).toHaveLength(0);
 
     // Step 2: Extract features using Essentia.js
-    const wavFile1 = path.join(wavCachePath, "MUSICIANS", "Test", "song1.wav");
+    const wavFile1 = path.join(wavCachePath, "MUSICIANS", "Test", "song1-1.wav");
     const features1 = await essentiaFeatureExtractor({
       wavFile: wavFile1,
       sidFile: sidFile1

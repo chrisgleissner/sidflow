@@ -37,8 +37,10 @@ export interface AudioFeatures {
  * One record per line in classified/*.jsonl files.
  */
 export interface ClassificationRecord {
-  /** Full relative path within HVSC or local folders (ensures uniqueness) */
+  /** Full relative path within HVSC or local folders */
   sid_path: string;
+  /** Song index within the SID file (1-based, optional for backwards compatibility) */
+  song_index?: number;
   /** Rating dimensions (may originate from manual rating or classifier prediction) */
   ratings: TagRatings;
   /** All extracted audio features from classifier (optional, classifier output only) */
@@ -59,6 +61,8 @@ export interface FeedbackRecord {
   ts: string;
   /** Full relative path matching classification records */
   sid_path: string;
+  /** Song index within the SID file (1-based, optional for backwards compatibility) */
+  song_index?: number;
   /** User interaction type */
   action: FeedbackAction;
   /** Optional unique event ID for deduplication */

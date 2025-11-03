@@ -130,7 +130,7 @@ describe("performance metrics", () => {
 
     // Create WAV cache for all files
     for (const sid of [manualSid, autoSid, mixedSid]) {
-      const wavPath = resolveWavPath(plan, sid);
+      const wavPath = resolveWavPath(plan, sid, 1);
       await ensureDir(path.dirname(wavPath));
       await writeFile(wavPath, "wav");
     }

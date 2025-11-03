@@ -692,7 +692,6 @@ export async function generateAutoTags(
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
-  const totalFiles = sidFiles.length;
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
@@ -707,23 +706,29 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
 
-  for (let i = 0; i < sidFiles.length; i++) {
-    const sidFile = sidFiles[i];
+  // First pass: count total songs
+  const sidMetadataCache = new Map<string, SidFileMetadata>();
+  let totalSongs = 0;
+  
+  for (const sidFile of sidFiles) {
+    try {
+      const fullMetadata = await parseSidFile(sidFile);
+      sidMetadataCache.set(sidFile, fullMetadata);
+      totalSongs += fullMetadata.songs;
+    } catch {
+      // If we can't parse the file, assume 1 song
+      totalSongs += 1;
+    }
+  }
+
+  const totalFiles = totalSongs;
+  let processedSongs = 0;
+
+  for (const sidFile of sidFiles) {
     const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
     const posixRelative = toPosixRelative(relativePath);
 
-    // Report progress periodically
-    if (onProgress && i % AUTOTAG_PROGRESS_INTERVAL === 0) {
-      onProgress({
-        phase: "metadata",
-        totalFiles,
-        processedFiles: i,
-        percentComplete: (i / totalFiles) * 100,
-        elapsedMs: Date.now() - startTime,
-        currentFile: path.basename(sidFile)
-      });
-    }
-
+    // Extract metadata once per SID file
     const metadata = await extractMetadata({
       sidFile,
       sidplayPath: plan.sidplayPath,
@@ -732,61 +737,89 @@ export async function generateAutoTags(
     const metadataPath = await writeMetadataRecord(plan, sidFile, metadata);
     metadataFiles.push(metadataPath);
 
-    const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
-    const needsAuto = !manualRecord || hasMissingDimensions(manualRecord.ratings);
-    let autoRatings: TagRatings | null = null;
+    // Get song count from parsed metadata
+    const fullMetadata = sidMetadataCache.get(sidFile);
+    const songCount = fullMetadata?.songs ?? 1;
 
-    if (needsAuto) {
-      const wavPath = resolveWavPath(plan, sidFile);
-      if (!(await pathExists(wavPath))) {
-        throw new Error(
-          `Missing WAV cache for ${posixRelative}. Run buildWavCache before generateAutoTags.`
-        );
-      }
-
-      if (onProgress) {
+    // Process each song within the SID file
+    for (let songIndex = 1; songIndex <= songCount; songIndex++) {
+      // Report progress periodically
+      if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
         onProgress({
-          phase: "tagging",
+          phase: "metadata",
           totalFiles,
-          processedFiles: i,
-          percentComplete: (i / totalFiles) * 100,
+          processedFiles: processedSongs,
+          percentComplete: (processedSongs / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
-          currentFile: path.basename(sidFile)
+          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
         });
       }
 
-      const features = await featureExtractor({ wavFile: wavPath, sidFile });
-      autoRatings = await predictRatings({
-        features,
-        sidFile,
-        relativePath: posixRelative,
-        metadata
-      });
-      predictionsGenerated += 1;
-    }
+      const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
+      const needsAuto = !manualRecord || hasMissingDimensions(manualRecord.ratings);
+      let autoRatings: TagRatings | null = null;
 
-    const { ratings, source } = combineRatings(manualRecord?.ratings ?? null, autoRatings);
+      if (needsAuto) {
+        const wavPath = resolveWavPath(plan, sidFile, songIndex);
+        if (!(await pathExists(wavPath))) {
+          throw new Error(
+            `Missing WAV cache for ${posixRelative} song ${songIndex}. Run buildWavCache before generateAutoTags.`
+          );
+        }
 
-    if (source === "auto") {
-      autoTagged.push(posixRelative);
-    } else if (source === "manual") {
-      manualEntries.push(posixRelative);
-    } else {
-      mixedEntries.push(posixRelative);
-    }
+        if (onProgress) {
+          onProgress({
+            phase: "tagging",
+            totalFiles,
+            processedFiles: processedSongs,
+            percentComplete: (processedSongs / totalFiles) * 100,
+            elapsedMs: Date.now() - startTime,
+            currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
+          });
+        }
 
-    const autoFilePath = resolveAutoTagFilePath(
-      plan.tagsPath,
-      relativePath,
-      plan.classificationDepth
-    );
-    const key = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
-    const entry: AutoTagEntry = { ...ratings, source };
-    const existingEntries = grouped.get(autoFilePath);
-    if (existingEntries) {
-      existingEntries.set(key, entry);
-    } else {
-      grouped.set(autoFilePath, new Map([[key, entry]]));
+        const features = await featureExtractor({ wavFile: wavPath, sidFile });
+        autoRatings = await predictRatings({
+          features,
+          sidFile,
+          relativePath: posixRelative,
+          metadata
+        });
+        predictionsGenerated += 1;
+      }
+
+      const { ratings, source } = combineRatings(manualRecord?.ratings ?? null, autoRatings);
+
+      // Create a unique key for this song
+      // For single-song files, use just the path (backwards compatible)
+      // For multi-song files, use "path:songIndex" format
+      const songKey = songCount > 1 ? `${posixRelative}:${songIndex}` : posixRelative;
+
+      if (source === "auto") {
+        autoTagged.push(songKey);
+      } else if (source === "manual") {
+        manualEntries.push(songKey);
+      } else {
+        mixedEntries.push(songKey);
+      }
+
+      const autoFilePath = resolveAutoTagFilePath(
+        plan.tagsPath,
+        relativePath,
+        plan.classificationDepth
+      );
+      const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
+      const key = songCount > 1 ? `${baseKey}:${songIndex}` : baseKey;
+      
+      const entry: AutoTagEntry = { ...ratings, source };
+      const existingEntries = grouped.get(autoFilePath);
+      if (existingEntries) {
+        existingEntries.set(key, entry);
+      } else {
+        grouped.set(autoFilePath, new Map([[key, entry]]));
+      }
+
+      processedSongs++;
     }
   }
 
@@ -868,7 +901,6 @@ export async function generateJsonlOutput(
 ): Promise<GenerateJsonlResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
-  const totalFiles = sidFiles.length;
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? heuristicFeatureExtractor;
   const predictRatings = options.predictRatings ?? heuristicPredictRatings;
@@ -884,88 +916,119 @@ export async function generateJsonlOutput(
 
   const records: string[] = [];
 
-  for (let i = 0; i < sidFiles.length; i++) {
-    const sidFile = sidFiles[i];
+  // First pass: count total songs
+  const sidMetadataCache = new Map<string, SidFileMetadata>();
+  let totalSongs = 0;
+  
+  for (const sidFile of sidFiles) {
+    try {
+      const fullMetadata = await parseSidFile(sidFile);
+      sidMetadataCache.set(sidFile, fullMetadata);
+      totalSongs += fullMetadata.songs;
+    } catch {
+      // If we can't parse the file, assume 1 song
+      totalSongs += 1;
+    }
+  }
+
+  const totalFiles = totalSongs;
+  let processedSongs = 0;
+
+  for (const sidFile of sidFiles) {
     const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
     const posixRelative = toPosixRelative(relativePath);
 
-    // Report progress periodically
-    if (onProgress && i % AUTOTAG_PROGRESS_INTERVAL === 0) {
-      onProgress({
-        phase: "jsonl",
-        totalFiles,
-        processedFiles: i,
-        percentComplete: (i / totalFiles) * 100,
-        elapsedMs: Date.now() - startTime,
-        currentFile: path.basename(sidFile)
-      });
-    }
-
-    // Load metadata
+    // Load metadata once per SID file
     const metadata = await extractMetadata({
       sidFile,
       sidplayPath: plan.sidplayPath,
       relativePath: posixRelative
     });
 
-    // Load manual ratings if available
-    const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
-    
-    // Extract features and generate ratings
-    const wavPath = resolveWavPath(plan, sidFile);
-    let features: AudioFeatures | undefined;
-    let ratings: TagRatings;
+    // Get song count from parsed metadata
+    const fullMetadata = sidMetadataCache.get(sidFile);
+    const songCount = fullMetadata?.songs ?? 1;
 
-    if (await pathExists(wavPath)) {
-      // Extract features from WAV file
-      const rawFeatures = await featureExtractor({ wavFile: wavPath, sidFile });
-      features = rawFeatures as AudioFeatures;
-
-      // If we have manual ratings with all dimensions, use them; otherwise predict
-      if (manualRecord && !hasMissingDimensions(manualRecord.ratings)) {
-        // All dimensions present, safe to use as TagRatings
-        ratings = manualRecord.ratings as TagRatings;
-      } else {
-        // Generate predictions
-        const autoRatings = await predictRatings({
-          features: rawFeatures,
-          sidFile,
-          relativePath: posixRelative,
-          metadata
+    // Process each song within the SID file
+    for (let songIndex = 1; songIndex <= songCount; songIndex++) {
+      // Report progress periodically
+      if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
+        onProgress({
+          phase: "jsonl",
+          totalFiles,
+          processedFiles: processedSongs,
+          percentComplete: (processedSongs / totalFiles) * 100,
+          elapsedMs: Date.now() - startTime,
+          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
         });
-        // Merge with manual ratings if available
-        const combined = combineRatings(manualRecord?.ratings ?? null, autoRatings);
-        ratings = combined.ratings;
       }
-    } else {
-      // No WAV file, use manual ratings or defaults
-      if (manualRecord && !hasMissingDimensions(manualRecord.ratings)) {
-        ratings = manualRecord.ratings as TagRatings;
+
+      // Load manual ratings if available
+      const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
+      
+      // Extract features and generate ratings for this song
+      const wavPath = resolveWavPath(plan, sidFile, songIndex);
+      let features: AudioFeatures | undefined;
+      let ratings: TagRatings;
+
+      if (await pathExists(wavPath)) {
+        // Extract features from WAV file
+        const rawFeatures = await featureExtractor({ wavFile: wavPath, sidFile });
+        features = rawFeatures as AudioFeatures;
+
+        // If we have manual ratings with all dimensions, use them; otherwise predict
+        if (manualRecord && !hasMissingDimensions(manualRecord.ratings)) {
+          // All dimensions present, safe to use as TagRatings
+          ratings = manualRecord.ratings as TagRatings;
+        } else {
+          // Generate predictions
+          const autoRatings = await predictRatings({
+            features: rawFeatures,
+            sidFile,
+            relativePath: posixRelative,
+            metadata
+          });
+          // Merge with manual ratings if available
+          const combined = combineRatings(manualRecord?.ratings ?? null, autoRatings);
+          ratings = combined.ratings;
+        }
       } else {
-        // Use heuristic prediction based on metadata
-        const seed = computeSeed(posixRelative + (metadata.title ?? ""));
-        ratings = {
-          e: clampRating(toRating(seed)),
-          m: clampRating(toRating(seed + 1)),
-          c: clampRating(toRating(seed + 2))
-        };
+        // No WAV file, use manual ratings or defaults
+        if (manualRecord && !hasMissingDimensions(manualRecord.ratings)) {
+          ratings = manualRecord.ratings as TagRatings;
+        } else {
+          // Use heuristic prediction based on metadata and song index
+          const seed = computeSeed(posixRelative + (metadata.title ?? "") + songIndex);
+          ratings = {
+            e: clampRating(toRating(seed)),
+            m: clampRating(toRating(seed + 1)),
+            c: clampRating(toRating(seed + 2))
+          };
+        }
       }
+
+      // Create classification record with song index
+      const record: ClassificationRecord = {
+        sid_path: posixRelative,
+        ratings
+      };
+
+      // Include song index if there are multiple songs
+      if (songCount > 1) {
+        record.song_index = songIndex;
+      }
+
+      // Include features if available
+      if (features) {
+        record.features = features;
+      }
+
+      // Append as JSONL (one JSON object per line)
+      // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
+      records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
+      
+      processedSongs++;
     }
-
-    // Create classification record
-    const record: ClassificationRecord = {
-      sid_path: posixRelative,
-      ratings
-    };
-
-    // Include features if available
-    if (features) {
-      record.features = features;
-    }
-
-    // Append as JSONL (one JSON object per line)
-    // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
-    records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
   }
 
   // Write all records to file
