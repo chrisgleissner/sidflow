@@ -105,7 +105,7 @@ Durations are formatted as:
 
 1. **Avoid `--force-rebuild`**: Only use this flag when necessary, as it invalidates the entire cache
 2. **Incremental Updates**: Run `sidflow fetch` before `sidflow classify` to minimize the number of new/changed SID files
-3. **Parallel Processing**: Future versions may support parallel WAV rendering using the `threads` configuration option
+3. **Parallel Processing**: The `threads` configuration option is available and displayed by the CLI, but parallel WAV rendering is not yet implemented. Future versions will enable this feature.
 
 ### Improving Auto-Tagging Performance
 
