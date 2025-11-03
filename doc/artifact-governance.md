@@ -16,14 +16,14 @@ This separation keeps the repository lightweight while enabling deterministic re
 
 | Artifact | Type | In Git | Notes |
 |----------|------|--------|-------|
-| `classified/*.jsonl` | Canonical | ✅ | Classification outputs, text-based, produces small diffs |
-| `feedback/**/*.jsonl` | Canonical | ✅ | Append-only user feedback logs, merge-friendly |
-| `sidflow.lance/` | Derived | ❌ | Binary vector database, rebuilt locally via `bun run build:db` |
-| `sidflow.lance.manifest.json` | Manifest | ✅ | Database metadata, checksums, and schema version |
+| `data/classified/*.jsonl` | Canonical | ✅ | Classification outputs, text-based, produces small diffs |
+| `data/feedback/**/*.jsonl` | Canonical | ✅ | Append-only user feedback logs, merge-friendly |
+| `data/sidflow.lance/` | Derived | ❌ | Binary vector database, rebuilt locally via `bun run build:db` |
+| `data/sidflow.lance.manifest.json` | Manifest | ✅ | Database metadata, checksums, and schema version |
 | `*.sid.tags.json` | Canonical | ✅ | Manual rating files, colocated with SID files |
 | `auto-tags.json` | Canonical | ✅ | Aggregated auto-tags at classification depth |
-| `wav-cache/` | Derived | ❌ | WAV files rendered from SIDs, rebuilt via `sidflow-classify` |
-| `hvsc-version.json` | Manifest | ✅ | HVSC sync state tracking and checksums |
+| `workspace/wav-cache/` | Derived | ❌ | WAV files rendered from SIDs, rebuilt via `sidflow-classify` |
+| `workspace/hvsc-version.json` | Manifest | ✅ | HVSC sync state tracking and checksums |
 | `data/model/model.json` | Derived | ❌ | TensorFlow.js model topology, rebuilt via `sidflow-train` |
 | `data/model/*.bin` | Derived | ❌ | TensorFlow.js model weights, rebuilt via `sidflow-train` |
 | `data/model/feature-stats.json` | Manifest | ✅ | Normalization statistics for features |
