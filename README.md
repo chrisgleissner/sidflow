@@ -524,6 +524,8 @@ All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is 
 
 Setup details, structure, and testing are described in [`doc/developer.md`](doc/developer.md).
 
+Artifact governance policies (canonical vs. derived data, Git policies, rebuild procedures) are documented in [`doc/artifact-governance.md`](doc/artifact-governance.md).
+
 ---
 
 ## License
