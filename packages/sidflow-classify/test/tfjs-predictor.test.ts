@@ -28,20 +28,20 @@ describe("tfjsPredictRatings", () => {
 
     // Verify that ratings are returned
     expect(ratings).toBeDefined();
-    expect(typeof ratings.s).toBe("number");
+    expect(typeof ratings.e).toBe("number");
     expect(typeof ratings.m).toBe("number");
     expect(typeof ratings.c).toBe("number");
 
     // Verify ratings are in valid range (1-5)
-    expect(ratings.s).toBeGreaterThanOrEqual(1);
-    expect(ratings.s).toBeLessThanOrEqual(5);
+    expect(ratings.e).toBeGreaterThanOrEqual(1);
+    expect(ratings.e).toBeLessThanOrEqual(5);
     expect(ratings.m).toBeGreaterThanOrEqual(1);
     expect(ratings.m).toBeLessThanOrEqual(5);
     expect(ratings.c).toBeGreaterThanOrEqual(1);
     expect(ratings.c).toBeLessThanOrEqual(5);
 
     // Verify ratings are integers
-    expect(Number.isInteger(ratings.s)).toBe(true);
+    expect(Number.isInteger(ratings.e)).toBe(true);
     expect(Number.isInteger(ratings.m)).toBe(true);
     expect(Number.isInteger(ratings.c)).toBe(true);
   });
@@ -90,8 +90,8 @@ describe("tfjsPredictRatings", () => {
     });
 
     // Should still produce valid ratings
-    expect(ratings.s).toBeGreaterThanOrEqual(1);
-    expect(ratings.s).toBeLessThanOrEqual(5);
+    expect(ratings.e).toBeGreaterThanOrEqual(1);
+    expect(ratings.e).toBeLessThanOrEqual(5);
     expect(ratings.m).toBeGreaterThanOrEqual(1);
     expect(ratings.m).toBeLessThanOrEqual(5);
     expect(ratings.c).toBeGreaterThanOrEqual(1);
@@ -171,8 +171,8 @@ describe("tfjsPredictRatings", () => {
     });
 
     // Should still clamp to valid range
-    expect(ratings.s).toBeGreaterThanOrEqual(1);
-    expect(ratings.s).toBeLessThanOrEqual(5);
+    expect(ratings.e).toBeGreaterThanOrEqual(1);
+    expect(ratings.e).toBeLessThanOrEqual(5);
     expect(ratings.m).toBeGreaterThanOrEqual(1);
     expect(ratings.m).toBeLessThanOrEqual(5);
     expect(ratings.c).toBeGreaterThanOrEqual(1);

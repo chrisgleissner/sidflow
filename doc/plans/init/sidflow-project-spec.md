@@ -84,7 +84,7 @@ Create `.sidflow.json` at the repo root:
 - Uses `sidplayfp` for playback found via `sidplayPath` (default PATH); can be overridden with `--sidplay`.
 - Sequential or random mode over files without manual tag files.
 - Key bindings:
-  - `s1–5`: Speed (1 slow … 5 fast/intense)
+  - `e1–5`: Energy (1 calm … 5 intense/driven)
   - `m1–5`: Mood (1 dark … 5 bright/uplifting)
   - `c1–5`: Complexity (1 minimal … 5 layered)
   - `Enter`: save tags and advance to next
@@ -96,7 +96,7 @@ For each `.sid`, write adjacent `*.sid.tags.json`:
 
 ```json
 {
-  "s": 2,
+  "e": 2,
   "m": 4,
   "c": 3,
   "source": "manual",
@@ -124,8 +124,8 @@ Use `sidplayfp <path>.sid -w` to emit `<basename>.wav` in the current directory;
 
 **Feature Extraction & Model:**  
 - Library: **Essentia.js** (open‑source MIR toolkit) for descriptors like RMS, tempo, spectral centroid, harmonic ratio, onset rate, etc.
-- Learn a lightweight multi‑output regressor (e.g., TensorFlow.js MLP or regression trees) mapping features → `(s,m,c)` where:
-  - `s` = Speed/Drive (1–5),
+- Learn a lightweight multi‑output regressor (e.g., TensorFlow.js MLP or regression trees) mapping features → `(e,m,c)` where:
+  - `e` = Energy/Drive (1–5),
   - `m` = Mood/Tone (1–5),
   - `c` = Complexity/Texture (1–5).
 - Manual tags are the ground truth; **auto never overwrites manual**. Only fill missing dimensions or untagged songs.
@@ -140,20 +140,20 @@ Example (`classificationDepth = 3`):
 File structure:
 ```json
 {
-  "Berry_Vic/Atonal_Music.sid": {"s":3,"m":4,"c":2,"source":"auto"},
-  "Ben_Daglish/Trap.sid": {"s":2,"m":5,"c":3,"source":"manual"}
+  "Berry_Vic/Atonal_Music.sid": {"e":3,"m":4,"c":2,"source":"auto"},
+  "Ben_Daglish/Trap.sid": {"e":2,"m":5,"c":3,"source":"manual"}
 }
 ```
 
 **CLI:**
 - `sidflow classify --dir ./workspace/hvsc`
-- Implied flow: ensure WAVs → extract features → train from manual tags → predict missing `(s,m,c)` → write aggregated files.
+- Implied flow: ensure WAVs → extract features → train from manual tags → predict missing `(e,m,c)` → write aggregated files.
 
 ---
 
 ## 4. 🧠 Tag & Classification Model
 
-- **Tags:** `s` (Speed), `m` (Mood), `c` (Complexity), each in `1..5`, default `3` when not specified.
+- **Tags:** `e` (Energy), `m` (Mood), `c` (Complexity), each in `1..5`, default `3` when not specified.
 - **Manual precedence:** manual tags in `*.sid.tags.json` always win; auto fills gaps only.
 - **Auto inference:** uses Essentia.js features + small TF.js model; internal floats mapped to 1–5 (round or quantize with calibrated thresholds).
 - **Metadata:** extracted from `sidplayfp -t1 --none` and stored alongside tags for better UX and potential model features.

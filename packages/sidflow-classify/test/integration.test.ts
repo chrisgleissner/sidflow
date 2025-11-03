@@ -119,8 +119,8 @@ describe("Essentia.js + TF.js integration", () => {
     });
 
     expect(ratings1).toBeDefined();
-    expect(ratings1.s).toBeGreaterThanOrEqual(1);
-    expect(ratings1.s).toBeLessThanOrEqual(5);
+    expect(ratings1.e).toBeGreaterThanOrEqual(1);
+    expect(ratings1.e).toBeLessThanOrEqual(5);
     expect(ratings1.m).toBeGreaterThanOrEqual(1);
     expect(ratings1.m).toBeLessThanOrEqual(5);
     expect(ratings1.c).toBeGreaterThanOrEqual(1);
@@ -169,8 +169,8 @@ describe("Essentia.js + TF.js integration", () => {
       metadata: {}
     });
 
-    expect(ratings.s).toBeGreaterThanOrEqual(1);
-    expect(ratings.s).toBeLessThanOrEqual(5);
+    expect(ratings.e).toBeGreaterThanOrEqual(1);
+    expect(ratings.e).toBeLessThanOrEqual(5);
 
     await rm(root, { recursive: true, force: true });
   });

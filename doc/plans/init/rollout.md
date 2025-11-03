@@ -36,19 +36,19 @@
 ### Phase 3 Checklist
 
 - [x] Build interactive CLI that cycles through untagged `.sid` files with sequential/random modes.
-- [x] Wire keyboard controls for speed (`s1-5`), mood (`m1-5`), complexity (`c1-5`), save (`Enter`), quit (`Q`).
+- [x] Wire keyboard controls for energy (`e1-5`), mood (`m1-5`), complexity (`c1-5`), save (`Enter`), quit (`Q`).
 - [x] Serialize deterministic `*.sid.tags.json` files adjacent to source SIDs with timestamps and source markers.
 - [x] Integrate `sidplayfp` playback management with graceful error handling and overrides.
 - [x] CLI demo covers default flow, override flags, and tag persistence with deterministic ordering.
 - [x] Automated tests validate key bindings, file output, and configuration fallbacks (mocked players/filesystem).
-- [x] README and in-tool help explain tagging semantics (`s/m/c`) and workflow expectations.
+- [x] README and in-tool help explain tagging semantics (`e/m/c`) and workflow expectations.
 
 ## Phase 4 — Automated Classification (`sidflow-classify`)
 
 ### Phase 4 Checklist
 
 - [x] Implement WAV caching pipeline using `sidplayfp -w`, respecting `threads` and cache freshness.
-- [ ] Integrate Essentia.js for feature extraction and a lightweight TF.js regressor producing `(s,m,c)`.
+- [ ] Integrate Essentia.js for feature extraction and a lightweight TF.js regressor producing `(e,m,c)`.
 - [x] Merge manual and auto tags without overwriting manual values; fill gaps only.
 - [x] Generate `auto-tags.json` per folder level defined by `classificationDepth`, with deterministic ordering.
 - [x] Capture metadata via `sidplayfp -t1 --none` for use in tagging and future features.
@@ -58,27 +58,42 @@
 
 Current status: the classify CLI, metadata capture, WAV cache, auto-tag generation, and performance metrics are live and covered by tests. Essentia.js + TF.js integration remains outstanding, so the pipeline defaults to heuristic feature and prediction helpers.
 
-## Phase 5 — JSONL Classification Output
+## Phase 4.5 — Rename Speed to Energy
+
+### Phase 4.5 Checklist
+
+- [ ] Rename `s` field to `e` (energy) in all data structures and interfaces (TagRatings, etc.).
+- [ ] Update documentation to use "energy" instead of "speed" throughout.
+- [ ] Update CLI help text and keyboard shortcuts from `s1-5` to `e1-5`.
+- [ ] Update all source code comments referencing speed/tempo to use energy.
+- [ ] Update README and specification documents to reflect energy terminology.
+- [ ] Ensure backwards compatibility or migration path for existing tagged files.
+
+**Rationale:**  
+"Energy" is more technically accurate than "speed" for describing the intensity and drive of a musical piece. While "speed" might suggest tempo (BPM), "energy" better captures the combined effect of dynamics, rhythmic intensity, and overall drive that the rating system measures.
+
+**Migration:**
+- Existing `*.sid.tags.json` files with `"s":` field should be readable as `"e":` via compatibility layer
+- New files written with `"e":` field
+- Documentation updated to explain the terminology change
+
+## Phase 5 — JSONL Classification Output & Data Formats
 
 ### Phase 5 Checklist
 
-- [ ] Define schema for JSONL classification output with fields: `sid_path` (full relative path), `s` (speed), `m` (mood), `c` (complexity), `mood` (text label).
-- [ ] Store classification results in JSONL format with one record per line for easy diffing and merging.
-- [ ] Use `sid_path` as full relative path within HVSC or local folders to ensure uniqueness.
-- [ ] Document JSONL format advantages: small diffs, easy merges, stream ingestion, LanceDB compatibility.
-- [ ] Mention VS Code "JSON Lines" extension for viewing/editing JSONL files.
-- [ ] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON.
-- [ ] Update classification pipeline to output `classified/*.jsonl` files instead of or alongside existing formats.
+- [ ] Define and implement JSONL schema for classification output with fields: `sid_path` (full relative path), `e` (energy), `m` (mood), `c` (complexity), `mood` (text label), storing one record per line.
+- [ ] Update classification pipeline to output `classified/*.jsonl` files with deterministic ordering and VS Code "JSON Lines" extension support.
+- [ ] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
 
 **JSONL Schema:**
 ```jsonl
-{"sid_path":"Rob_Hubbard/Delta.sid","s":3,"m":4,"c":5,"mood":"energetic"}
-{"sid_path":"Martin_Galway/Parallax.sid","s":2,"m":5,"c":4,"mood":"ambient"}
+{"sid_path":"Rob_Hubbard/Delta.sid","e":3,"m":4,"c":5,"mood":"energetic"}
+{"sid_path":"Martin_Galway/Parallax.sid","e":2,"m":5,"c":4,"mood":"ambient"}
 ```
 
 **Fields:**
 - `sid_path` — Full relative path within HVSC or local folders (ensures uniqueness)
-- `s` — Speed/Drive rating (1-5)
+- `e` — Energy/Drive rating (1-5)
 - `m` — Mood/Tone rating (1-5)
 - `c` — Complexity/Texture rating (1-5)
 - `mood` — Textual mood label (e.g., "energetic", "ambient", "dark", "bright")
@@ -97,13 +112,9 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 6 Checklist
 
-- [ ] Define append-only JSONL feedback schema with timestamp, sid_path, and action fields.
-- [ ] Implement date-based partitioning: `data/feedback/YYYY/MM/DD/events.jsonl`.
-- [ ] Support feedback actions: `like` (strong positive), `dislike` (strong negative), `skip` (mild negative), `play` (neutral).
-- [ ] Define action weighting rules: `like > skip > dislike` for scoring.
-- [ ] Document merge-friendly properties of append-only logs.
-- [ ] Specify optional UUID deduplication strategy for multi-device scenarios.
-- [ ] Create tooling for feedback log validation and replay.
+- [ ] Implement append-only JSONL feedback logging with schema (timestamp, sid_path, action) and date-based partitioning (`data/feedback/YYYY/MM/DD/events.jsonl`).
+- [ ] Support feedback actions with defined weighting: `like` (+1.0), `skip` (-0.3), `dislike` (-1.0), `play` (0.0), and document merge-friendly properties.
+- [ ] Add optional UUID deduplication strategy for multi-device scenarios and create tooling for feedback log validation.
 
 **JSONL Feedback Schema:**
 ```jsonl
@@ -139,14 +150,9 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 7 Checklist
 
-- [ ] Design LanceDB schema combining classification vectors and feedback aggregates.
-- [ ] Implement deterministic rebuild command: `bun run build:db`.
-- [ ] Combine `classified/*.jsonl` + `feedback/**/*.jsonl` into unified `data/sidflow.lance/`.
-- [ ] Store vector embeddings `[s,m,c]`, composer, title, mood, and aggregated feedback counts.
-- [ ] Add `.lance/` directory to `.gitignore` (binary diffs too large for Git).
-- [ ] Generate manifest file `sidflow.lance.manifest.json` with checksums, schema version, and record counts.
-- [ ] Commit only manifest to Git, not the binary `.lance/` database.
-- [ ] Document rebuild workflow and manifest schema.
+- [ ] Design LanceDB schema combining classification vectors `[e,m,c]` and feedback aggregates, then implement deterministic rebuild command (`bun run build:db`).
+- [ ] Combine `classified/*.jsonl` + `feedback/**/*.jsonl` into unified `data/sidflow.lance/` with composer, title, mood, and aggregated feedback counts.
+- [ ] Add `.lance/` directory to `.gitignore` and generate manifest file `sidflow.lance.manifest.json` with checksums, schema version, and record counts for Git.
 
 **LanceDB Structure:**
 ```
@@ -161,7 +167,7 @@ data/
 
 **Database Schema:**
 - `sid_path` — Primary identifier (string)
-- `vector` — `[s, m, c]` as float array for similarity search
+- `vector` — `[e, m, c]` as float array for similarity search
 - `composer` — Artist/composer name (string)
 - `title` — Song title (string)
 - `mood` — Mood label (string)
@@ -180,7 +186,7 @@ bun run build:db
 1. Read all `classified/*.jsonl` files
 2. Aggregate all `feedback/**/*.jsonl` events by `sid_path`
 3. Compute feedback statistics (likes, dislikes, skips, plays)
-4. Generate vector embeddings from `[s, m, c]` values
+4. Generate vector embeddings from `[e, m, c]` values
 5. Write to `data/sidflow.lance/`
 6. Generate manifest with checksums and metadata
 
@@ -213,13 +219,9 @@ bun run build:db
 
 ### Phase 8 Checklist
 
-- [ ] Define scoring formula: `score = α·similarity + β·song_feedback + γ·user_affinity`.
-- [ ] Implement mood-based seed search using LanceDB vector similarity.
-- [ ] Apply feedback weighting to re-rank initial recommendations.
-- [ ] Create mood presets (e.g., "quiet", "energetic", "dark", "bright").
-- [ ] Define default scoring weights and allow user customization.
-- [ ] Implement feedback loop: new JSONL events adjust future recommendations on rebuild.
-- [ ] Document recommendation algorithm and tuning parameters.
+- [ ] Define scoring formula (`score = α·similarity + β·song_feedback + γ·user_affinity`) with default weights (0.6/0.3/0.1) and implement mood-based seed search using LanceDB vector similarity.
+- [ ] Create mood presets (quiet, energetic, dark, bright, complex) and apply feedback weighting to re-rank recommendations with diversity filters.
+- [ ] Implement feedback loop where new JSONL events adjust future recommendations on rebuild, and document tuning parameters.
 
 **Scoring Formula:**
 ```
@@ -227,7 +229,7 @@ score = α·similarity + β·song_feedback + γ·user_affinity
 ```
 
 **Components:**
-- `similarity` — Cosine similarity between query vector and song vector `[s, m, c]`
+- `similarity` — Cosine similarity between query vector and song vector `[e, m, c]`
 - `song_feedback` — Aggregated feedback score: `(likes - dislikes - 0.3·skips) / plays`
 - `user_affinity` — Personalized boost based on user's historical preferences
 
@@ -239,17 +241,17 @@ score = α·similarity + β·song_feedback + γ·user_affinity
 **Mood Presets:**
 ```json
 {
-  "quiet": {"s": 1, "m": 2, "c": 1},
-  "ambient": {"s": 2, "m": 3, "c": 2},
-  "energetic": {"s": 5, "m": 5, "c": 4},
-  "dark": {"s": 3, "m": 1, "c": 3},
-  "bright": {"s": 4, "m": 5, "c": 3},
-  "complex": {"s": 3, "m": 3, "c": 5}
+  "quiet": {"e": 1, "m": 2, "c": 1},
+  "ambient": {"e": 2, "m": 3, "c": 2},
+  "energetic": {"e": 5, "m": 5, "c": 4},
+  "dark": {"e": 3, "m": 1, "c": 3},
+  "bright": {"e": 4, "m": 5, "c": 3},
+  "complex": {"e": 3, "m": 3, "c": 5}
 }
 ```
 
 **Recommendation Flow:**
-1. User selects mood seed (e.g., "quiet") or custom `[s, m, c]` vector
+1. User selects mood seed (e.g., "quiet") or custom `[e, m, c]` vector
 2. Query LanceDB for nearest neighbors using vector similarity
 3. Re-rank results using feedback weighting and user affinity
 4. Apply diversity filters to avoid repetition
@@ -271,12 +273,9 @@ score = α·similarity + β·song_feedback + γ·user_affinity
 
 ### Phase 9 Checklist
 
-- [ ] Document artifact classification: canonical vs. derived data.
-- [ ] Define Git policies for each artifact type.
-- [ ] Create `.gitignore` rules for derived artifacts.
-- [ ] Document rebuild procedures for derived artifacts.
-- [ ] Establish manifest file standards for reproducibility.
-- [ ] Provide troubleshooting guide for artifact inconsistencies.
+- [ ] Document artifact classification (canonical vs. derived) and define Git policies for each type, creating `.gitignore` rules for derived artifacts.
+- [ ] Establish manifest file standards for reproducibility and document rebuild procedures for derived artifacts.
+- [ ] Provide troubleshooting guide for artifact inconsistencies (checksum mismatches, corrupt databases, feedback conflicts).
 
 **Artifact Classification:**
 

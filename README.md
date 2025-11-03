@@ -58,7 +58,7 @@ graph TB
     subgraph "Phase 2: Manual Tagging"
         B -->|User plays & tags| D[sidflow-tag]
         D -->|sidplayfp playback| E[Manual Tag Files<br/>*.sid.tags.json]
-        E --> F[Speed s, Mood m,<br/>Complexity c<br/>ratings 1-5]
+        E --> F[Energy e, Mood m,<br/>Complexity c<br/>ratings 1-5]
     end
     
     subgraph "Phase 3: Automated Classification"
@@ -145,11 +145,11 @@ Each command can be run via the command line interface from the repository root.
 
 **Status:** In development  
 **Purpose:** Provide human-readable mood labels for supervised classification.  
-**Operation:** Plays untagged `.sid` files via `sidplayfp`, records speed/mood/complexity (`s/m/c`) ratings, and stores results beside each track.
+**Operation:** Plays untagged `.sid` files via `sidplayfp`, records energy/mood/complexity (`e/m/c`) ratings, and stores results beside each track.
 
 **Controls**
 
-- `s1-5`, `m1-5`, `c1-5` — set values (default 3)  
+- `e1-5`, `m1-5`, `c1-5` — set values (default 3)  
 - `Enter` — save and advance  
 - `Q` — quit safely while saving progress  
 
@@ -169,7 +169,7 @@ Each command can be run via the command line interface from the repository root.
 
 **Status:** In development with Essentia.js + TensorFlow.js integration available  
 **Purpose:** Convert SIDs to WAV, extract features, merge manual tags, and publish deterministic `auto-tags.json` summaries.  
-**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(s/m/c)` ratings using TensorFlow.js for untagged dimensions without overwriting manual values.
+**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(e/m/c)` ratings using TensorFlow.js for untagged dimensions without overwriting manual values.
 
 #### Flags (classification)
 
