@@ -110,9 +110,9 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 5 Checklist
 
-- [ ] Define and implement extensible JSONL schema for classification output with `sid_path`, nested `ratings` object (`e`, `m`, `c`, `p`), and `features` object, storing one record per line.
-- [ ] Update classification pipeline to output `classified/*.jsonl` files preserving all extracted features (energy, rms, spectralCentroid, bpm, etc.) with deterministic ordering and VS Code "JSON Lines" extension support.
-- [ ] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
+- [x] Define and implement extensible JSONL schema for classification output with `sid_path`, nested `ratings` object (`e`, `m`, `c`, `p`), and `features` object, storing one record per line.
+- [x] Update classification pipeline to output `classified/*.jsonl` files preserving all extracted features (energy, rms, spectralCentroid, bpm, etc.) with deterministic ordering and VS Code "JSON Lines" extension support.
+- [x] Provide optional converter `bun run format:json` for pretty-printing JSONL to readable JSON for human review.
 
 **JSONL Schema (Nested Ratings + Extended Features):**
 ```jsonl

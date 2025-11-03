@@ -190,9 +190,45 @@ Each command can be run via the command line interface from the repository root.
 - Aggregated `auto-tags.json` files respecting `classificationDepth`
 - Summary of auto/manual/mixed rating coverage on stdout
 - **Performance metrics** (runtime, cache hit rate, predictions generated) — see [`doc/performance-metrics.md`](doc/performance-metrics.md)
+- **JSONL classification output** — structured data format for further processing
 
 > [!TIP]
 > The CLI now includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`packages/sidflow-classify/README-INTEGRATION.md`](packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
+
+#### JSONL Classification Output
+
+The classification pipeline can output results in **JSONL** (JSON Lines) format, with one classification record per line. This format is ideal for:
+
+- **Small diffs** — Line-based format produces minimal Git diffs
+- **Easy merges** — Append-only structure reduces merge conflicts  
+- **Stream processing** — Can be read line-by-line for large datasets
+- **Database import** — Direct import into vector databases like LanceDB
+
+**JSONL Schema:**
+
+Each line contains a JSON object with:
+- `sid_path` — Full relative path within HVSC (e.g., `"Rob_Hubbard/Delta.sid"`)
+- `ratings` — Nested object with dimensions: `e` (energy), `m` (mood), `c` (complexity), `p` (preference)
+- `features` — Optional nested object with all extracted audio features (energy, rms, spectralCentroid, spectralRolloff, zeroCrossingRate, bpm, confidence, duration)
+
+**Example JSONL:**
+
+```jsonl
+{"sid_path":"Rob_Hubbard/Delta.sid","ratings":{"e":3,"m":4,"c":5,"p":4},"features":{"energy":0.42,"rms":0.15,"spectralCentroid":2150,"bpm":128}}
+{"sid_path":"Martin_Galway/Parallax.sid","ratings":{"e":2,"m":5,"c":4,"p":5},"features":{"energy":0.18,"rms":0.09,"spectralCentroid":1850,"bpm":96}}
+```
+
+**Pretty-print JSONL for human review:**
+
+```bash
+bun run format:json data/classified/classification.jsonl output.json
+```
+
+The `format:json` command converts JSONL to indented JSON. Omit the output path to print to stdout.
+
+**VS Code Support:**
+
+Install the "JSON Lines" extension for syntax highlighting and validation of `.jsonl` files.
 
 ---
 
