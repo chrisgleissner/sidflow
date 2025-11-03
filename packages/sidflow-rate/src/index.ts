@@ -38,7 +38,7 @@ export async function planTagSession(
   options: TagCliOptions = {}
 ): Promise<TagSessionPlan> {
   const config = await loadConfig(options.configPath);
-  const logger = createLogger("sidflow-tag");
+  const logger = createLogger("sidflow-rate");
   logger.debug("Loaded configuration for tagging session");
 
   return {

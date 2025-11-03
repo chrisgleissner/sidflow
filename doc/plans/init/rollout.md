@@ -81,12 +81,12 @@ Current status: the classify CLI, metadata capture, WAV cache, auto-tag generati
 
 ### Phase 4.6 Checklist
 
-- [ ] Rename `sidflow-tag` tool to `sidflow-rate` to better reflect its purpose of capturing user ratings.
-- [ ] Update CLI help text, documentation, and user-facing messages from "tag/tagging" to "rate/rating".
-- [ ] Add support for new `p` (preference) rating (1-5) capturing overall user preference for a song.
-- [ ] Update keyboard controls to include `p1-5` for preference rating alongside `e1-5`, `m1-5`, `c1-5`.
-- [ ] Update workflow diagram in README.md to reflect "Rating" terminology (Phase 2: Manual Rating, sidflow-rate).
-- [ ] Ensure backwards compatibility with existing `*.sid.tags.json` files during transition period.
+- [x] Rename `sidflow-tag` tool to `sidflow-rate` to better reflect its purpose of capturing user ratings.
+- [x] Update CLI help text, documentation, and user-facing messages from "tag/tagging" to "rate/rating".
+- [x] Add support for new `p` (preference) rating (1-5) capturing overall user preference for a song.
+- [x] Update keyboard controls to include `p1-5` for preference rating alongside `e1-5`, `m1-5`, `c1-5`.
+- [x] Update workflow diagram in README.md to reflect "Rating" terminology (Phase 2: Manual Rating, sidflow-rate).
+- [x] Ensure backwards compatibility with existing `*.sid.tags.json` files during transition period.
 
 **Rationale:**  
 "Rating" more accurately describes the user activity than "tagging" - users are assigning numerical ratings (1-5) across multiple dimensions (energy, mood, complexity, preference) rather than applying categorical tags. The new `p` (preference) dimension captures holistic user preference independent of individual rating dimensions.
