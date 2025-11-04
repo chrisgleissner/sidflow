@@ -13,7 +13,9 @@ Listen to C64 music based on your mood – automatically classified and ready to
 
 ## What is SID Flow?
 
-**SID Flow** helps you rediscover your C64 music collection by automatically organizing songs by energy, mood, and complexity. Whether you have thousands of SID files from the [High Voltage SID Collection](https://www.hvsc.c64.org/) or your own archive, SID Flow creates personalized playlists that match exactly how you feel.
+**SID Flow** helps you rediscover your C64 music collection by automatically organizing songs by energy, mood, and complexity. 
+
+Whether you have thousands of SID files from the [High Voltage SID Collection](https://www.hvsc.c64.org/) or your own archive, SID Flow creates personalized playlists that match exactly how you feel.
 
 No more random browsing – just tell it what kind of music you want, and it plays the perfect songs.
 
