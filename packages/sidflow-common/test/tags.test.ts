@@ -74,4 +74,8 @@ describe("tag path helpers", () => {
     const windowsStyle = "C64Music\\MUSICIANS\\B\\Berry\\Song.sid";
     expect(toPosixRelative(windowsStyle)).toBe("C64Music/MUSICIANS/B/Berry/Song.sid");
   });
+
+  it("handles empty path in toPosixRelative", () => {
+    expect(toPosixRelative("")).toBe("");
+  });
 });

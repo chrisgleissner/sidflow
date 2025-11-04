@@ -142,6 +142,40 @@ describe("Training data loading", () => {
     expect(classifications).toEqual([]);
     expect(feedback).toEqual([]);
   });
+
+  it("handles invalid JSON in classification files", async () => {
+    const testClassifiedDir = path.join(TEST_DIR, "invalid-json-test");
+    await mkdir(testClassifiedDir, { recursive: true });
+    
+    const jsonl = 
+      '{"sid_path":"song1.sid","ratings":{"e":3,"m":4,"c":5}}\n' +
+      'invalid json line\n' +
+      '{"sid_path":"song2.sid","ratings":{"e":2,"m":3,"c":4}}';
+    
+    await writeFile(path.join(testClassifiedDir, "test.jsonl"), jsonl, "utf8");
+    
+    const classifications = await loadClassifications(testClassifiedDir);
+    
+    // Should load 2 valid records, skipping the invalid line
+    expect(classifications.length).toBe(2);
+  });
+
+  it("handles invalid JSON in feedback files", async () => {
+    const testFeedbackDir = path.join(TEST_DIR, "invalid-feedback-test");
+    await mkdir(path.join(testFeedbackDir, "2025/11/03"), { recursive: true });
+    
+    const jsonl = 
+      '{"ts":"2025-11-03T10:00:00Z","sid_path":"song1.sid","action":"like"}\n' +
+      'invalid json\n' +
+      '{"ts":"2025-11-03T10:01:00Z","sid_path":"song2.sid","action":"skip"}';
+    
+    await writeFile(path.join(testFeedbackDir, "2025/11/03/events.jsonl"), jsonl, "utf8");
+    
+    const feedback = await loadFeedback(testFeedbackDir);
+    
+    // Should load 2 valid records, skipping the invalid line
+    expect(feedback.length).toBe(2);
+  });
 });
 
 describe("Training data merging", () => {

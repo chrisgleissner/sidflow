@@ -10,38 +10,45 @@ The folder hierarchy mirrors the original HVSC structure:
 test-data/
 └── C64Music/
     └── MUSICIANS/
-        └── [Artist]/
-            └── [SID files]
+        ├── G/
+        │   ├── Garvalf/
+        │   │   └── Lully_Marche_Ceremonie_Turcs_Wip.sid
+        │   └── Greenlee_Michael/
+        │       └── Foreign_Carols.sid
+        └── S/
+            └── Szepatowski_Brian/
+                └── Superman_Pt02_Theme.sid
 ```
 
 ## Source
 
-These SID files are from **HVSC Update #83** (released June 28, 2025).
+These SID files are from **HVSC Update #83**, downloaded from:
+https://hvsc.brona.dk/HVSC/HVSC_Update_83.7z
 
-Download the full update from: https://hvsc.brona.dk/HVSC/HVSC_Update_83.7z
+## Current Test Files
 
-## Adding SID Files
+All three SID files are confirmed to **NOT require C64 Kernal or Basic ROM**, making them suitable for testing without additional ROM files:
 
-To add the 3 required SID files from HVSC_Update_83.7z:
+1. **Lully_Marche_Ceremonie_Turcs_Wip.sid**
+   - Artist: Eric F. (Garvalf)
+   - Copyright: 2016 Garvalf
+   - Size: ~1.1 KB
 
-1. Download HVSC_Update_83.7z from https://hvsc.brona.dk/HVSC/HVSC_Update_83.7z
-2. Extract the archive
-3. Copy 3 SID files from `C64Music/MUSICIANS/` subdirectories
-4. Place them in the corresponding `test-data/C64Music/MUSICIANS/` subdirectory
-5. Preserve the exact folder hierarchy from the archive
+2. **Superman_Pt02_Theme.sid**
+   - Artist: Brian M. Szepatowski
+   - Copyright: 1985 Brian M. Szepatowski
+   - Size: ~8.4 KB
 
-Example:
-```bash
-# Extract the archive
-7z x HVSC_Update_83.7z
+3. **Foreign_Carols.sid**
+   - Artist: Michael Greenlee
+   - Copyright: 198? Michael Greenlee
+   - Size: ~8.8 KB
 
-# Copy files preserving directory structure
-# (Replace these paths with actual files from the archive)
-mkdir -p test-data/C64Music/MUSICIANS/Example_Artist
-cp C64Music/MUSICIANS/Example_Artist/song1.sid test-data/C64Music/MUSICIANS/Example_Artist/
-cp C64Music/MUSICIANS/Example_Artist/song2.sid test-data/C64Music/MUSICIANS/Example_Artist/
-cp C64Music/MUSICIANS/Another_Artist/song3.sid test-data/C64Music/MUSICIANS/Another_Artist/
-```
+These files were selected by:
+1. Extracting HVSC_Update_83.7z
+2. Scanning for newly added SID files
+3. Checking PSID headers to verify no BASIC/Kernal ROM requirements (flag bit analysis)
+4. Selecting three diverse files from different artists
 
 ## Purpose
 
@@ -49,6 +56,7 @@ These SID files are used for:
 - End-to-end integration testing
 - CI/CD pipeline validation
 - Demonstration of the full SIDFlow workflow
+- Coverage testing without requiring ROM files
 
 ## License
 
