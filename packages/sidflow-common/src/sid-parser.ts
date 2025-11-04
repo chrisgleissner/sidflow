@@ -142,9 +142,10 @@ export async function parseSidFile(filePath: string): Promise<SidFileMetadata> {
  * Parse SID file metadata from buffer
  */
 export function parseSidFileFromBuffer(buffer: Buffer): SidFileMetadata {
-  // Minimum header size is 0x76 (118 bytes) for v1
+  // Minimum header size is 0x76 (118 bytes) for v1, 0x7C (124 bytes) for v2+
+  // Check for v1 minimum first to be able to read the version
   if (buffer.length < 0x76) {
-    throw new Error("SID file too small - minimum 118 bytes required");
+    throw new Error("SID file too small - minimum 118 bytes required for v1 header");
   }
 
   // Parse magic ID (PSID or RSID)
@@ -158,6 +159,16 @@ export function parseSidFileFromBuffer(buffer: Buffer): SidFileMetadata {
   const version = readWord(buffer, 0x04);
   if (version < 1 || version > 4) {
     throw new Error(`Invalid SID version: ${version} (must be 1-4)`);
+  }
+
+  // Verify buffer is large enough for this version
+  const requiredSize = version >= 2 ? 0x7c : 0x76;
+  if (buffer.length < requiredSize) {
+    throw new Error(
+      `SID file too small for version ${version} - requires ${requiredSize} bytes (${
+        version >= 2 ? '124' : '118'
+      }), got ${buffer.length}`
+    );
   }
 
   // Parse data offset
@@ -204,7 +215,7 @@ export function parseSidFileFromBuffer(buffer: Buffer): SidFileMetadata {
   };
 
   // Parse extended header fields (v2+)
-  if (version >= 2 && buffer.length >= 0x7c) {
+  if (version >= 2) {
     const flags = readWord(buffer, 0x76);
 
     // Decode clock (bits 2-3)

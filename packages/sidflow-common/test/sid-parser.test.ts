@@ -256,6 +256,16 @@ describe("SID parser", () => {
     expect(() => parseSidFileFromBuffer(buffer)).toThrow("SID file too small");
   });
 
+  it("rejects v2+ files that are too small", () => {
+    const buffer = Buffer.alloc(118); // Big enough for v1, but not v2
+    buffer.write("PSID", 0, "ascii");
+    buffer.writeUInt16BE(2, 0x04); // Version 2
+    buffer.writeUInt16BE(0x007c, 0x06);
+    expect(() => parseSidFileFromBuffer(buffer)).toThrow(
+      "SID file too small for version 2 - requires 124 bytes"
+    );
+  });
+
   it("rejects invalid magic IDs", () => {
     const buffer = Buffer.alloc(118);
     buffer.write("XXXX", 0, "ascii");
