@@ -26,9 +26,39 @@ describe("parseFilters", () => {
     expect(filters.complexityRange).toEqual([5, 5]);
   });
 
+  test("parses single > expression", () => {
+    const filters = parseFilters("e>3");
+    expect(filters.energyRange).toEqual([4, 999]);
+  });
+
+  test("parses single < expression", () => {
+    const filters = parseFilters("m<3");
+    expect(filters.moodRange).toEqual([0, 2]);
+  });
+
   test("parses BPM range", () => {
     const filters = parseFilters("bpm=120-140");
     expect(filters.bpmRange).toEqual([120, 140]);
+  });
+
+  test("parses energy range", () => {
+    const filters = parseFilters("e=2-4");
+    expect(filters.energyRange).toEqual([2, 4]);
+  });
+
+  test("parses mood range", () => {
+    const filters = parseFilters("m=1-3");
+    expect(filters.moodRange).toEqual([1, 3]);
+  });
+
+  test("parses complexity range", () => {
+    const filters = parseFilters("c=2-5");
+    expect(filters.complexityRange).toEqual([2, 5]);
+  });
+
+  test("parses preference range", () => {
+    const filters = parseFilters("p=3-5");
+    expect(filters.preferenceRange).toEqual([3, 5]);
   });
 
   test("parses multiple filters", () => {
@@ -84,6 +114,26 @@ describe("formatFilters", () => {
   test("formats range expression", () => {
     const expr = formatFilters({ bpmRange: [120, 140] });
     expect(expr).toBe("bpm=120-140");
+  });
+
+  test("formats preference range", () => {
+    const expr = formatFilters({ preferenceRange: [4, 999] });
+    expect(expr).toBe("p>=4");
+  });
+
+  test("formats preference exact value", () => {
+    const expr = formatFilters({ preferenceRange: [5, 5] });
+    expect(expr).toBe("p=5");
+  });
+
+  test("formats preference with upper bound", () => {
+    const expr = formatFilters({ preferenceRange: [0, 3] });
+    expect(expr).toBe("p<=3");
+  });
+
+  test("formats preference range", () => {
+    const expr = formatFilters({ preferenceRange: [2, 4] });
+    expect(expr).toBe("p=2-4");
   });
 
   test("formats multiple filters", () => {

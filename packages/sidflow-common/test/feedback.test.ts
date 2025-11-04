@@ -226,4 +226,22 @@ describe("feedback logging", () => {
     expect(result.duplicates).toBe(0);
     expect(result.invalidRecords).toBe(0);
   });
+
+  test("validateFeedbackLogs detects missing required fields", async () => {
+    const feedbackPath = path.join(testDir, "feedback");
+
+    // Create a log file with records missing required fields
+    const logDir = path.join(feedbackPath, "2025/11/03");
+    await mkdir(logDir, { recursive: true });
+
+    const logFile = path.join(logDir, "events.jsonl");
+    await writeFile(logFile, '{"ts":"2025-11-03T12:00:00Z","action":"play"}\n' +  // Missing sid_path
+                             '{"sid_path":"Song2.sid","action":"like"}\n',  // Missing ts
+                    "utf8");
+
+    const result = await validateFeedbackLogs({ feedbackPath });
+
+    expect(result.invalidRecords).toBe(2);
+    expect(result.errorsByDate.size).toBeGreaterThan(0);
+  });
 });

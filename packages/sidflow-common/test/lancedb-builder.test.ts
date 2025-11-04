@@ -163,6 +163,35 @@ describe("buildDatabase", () => {
 
     expect(result.recordCount).toBe(2);
   });
+
+  test("handles JSONL files with invalid JSON lines", async () => {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(classifiedPath, { recursive: true });
+
+    // Create a JSONL file with some invalid lines
+    const jsonl = 
+      '{"sid_path":"Song1.sid","ratings":{"e":3,"m":4,"c":5}}\n' +
+      'this is not valid json\n' +
+      '{"sid_path":"Song2.sid","ratings":{"e":2,"m":3,"c":4}}\n' +
+      '{"invalid": json}\n' +
+      '{"sid_path":"Song3.sid","ratings":{"e":4,"m":5,"c":3}}';
+
+    await writeFile(
+      path.join(classifiedPath, "classification.jsonl"),
+      jsonl,
+      "utf8"
+    );
+
+    const result = await buildDatabase({
+      classifiedPath,
+      feedbackPath,
+      dbPath,
+      forceRebuild: false
+    });
+
+    // Should successfully import 3 valid records, skipping 2 invalid ones
+    expect(result.recordCount).toBe(3);
+  });
 });
 
 describe("generateManifest", () => {

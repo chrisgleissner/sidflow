@@ -49,7 +49,7 @@ console.log(features.energy); // 0.12
 
 ## Rating Prediction (`tfjs-predictor.ts`)
 
-The `tfjsPredictRatings` function uses a lightweight TensorFlow.js neural network to predict (s,m,c) ratings from extracted features.
+The `tfjsPredictRatings` function uses a lightweight TensorFlow.js neural network to predict (e,m,c) ratings from extracted features.
 
 ### Model Architecture
 
@@ -64,7 +64,7 @@ Dense Layer (16 units, ReLU)
   ↓
 Dense Layer (3 units, Linear)
   ↓
-Output: [s, m, c] ratings (1-5 scale)
+Output: [e, m, c] ratings (1-5 scale)
 ```
 
 ### Features Used for Prediction
@@ -109,7 +109,7 @@ const ratings = await tfjsPredictRatings({
   metadata: { title: "Song Title", author: "Artist" }
 });
 
-console.log(ratings); // { s: 4, m: 3, c: 5 }
+console.log(ratings); // { e: 4, m: 3, c: 5 }
 ```
 
 ## CLI Integration
@@ -144,7 +144,7 @@ import * as tf from "@tensorflow/tfjs";
 
 // Prepare training data
 const features = [...]; // Array of feature vectors
-const labels = [...];   // Array of [s, m, c] labels
+const labels = [...];   // Array of [e, m, c] labels
 
 const model = tf.sequential({
   layers: [

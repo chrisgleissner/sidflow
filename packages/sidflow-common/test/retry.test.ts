@@ -56,4 +56,15 @@ describe("retry", () => {
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("does not delay when delayMs is 0", async () => {
+    const spy = spyOn(globalThis, "setTimeout");
+
+    await expect(retry(async () => {
+      throw new Error("no delay");
+    }, { retries: 1, delayMs: 0 })).rejects.toThrow("no delay");
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
 });

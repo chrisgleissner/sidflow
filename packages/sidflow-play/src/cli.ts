@@ -27,6 +27,7 @@ interface CliOptions {
   sidplayPath?: string;
   playOnly?: boolean;
   exportOnly?: boolean;
+  minDuration?: number;
 }
 
 interface ParseResult {
@@ -48,6 +49,7 @@ function printHelp(): void {
     "  --limit <n>                  Number of songs in playlist (default: 20)",
     "  --exploration <0-1>          Exploration factor (default: 0.2)",
     "  --diversity <0-1>            Diversity threshold (default: 0.2)",
+    "  --min-duration <seconds>     Minimum song duration in seconds (default: 15)",
     "  --sidplay <path>             Override sidplayfp executable",
     "  --export <path>              Export playlist to file",
     "  --export-format <fmt>        Export format: json, m3u, m3u8 (default: json)",
@@ -74,6 +76,7 @@ function printHelp(): void {
     "  sidflow play --mood energetic --limit 30",
     "  sidflow play --filters 'e>=4,m>=4' --export playlist.json",
     "  sidflow play --mood dark --export-format m3u --export playlist.m3u",
+    "  sidflow play --mood quiet --min-duration 30",
     ""
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
@@ -172,6 +175,21 @@ export function parsePlayArgs(argv: string[]): ParseResult {
         } else {
           options.sidplayPath = next;
           index += 1;
+        }
+        break;
+      }
+      case "--min-duration": {
+        const next = argv[index + 1];
+        if (!next) {
+          errors.push("--min-duration requires a value");
+        } else {
+          const num = Number(next);
+          if (Number.isNaN(num) || num < 1) {
+            errors.push("--min-duration must be at least 1 second");
+          } else {
+            options.minDuration = num;
+            index += 1;
+          }
         }
         break;
       }
@@ -305,6 +323,7 @@ async function main(): Promise<void> {
     const controller = createPlaybackController({
       rootPath: config.hvscPath,
       sidplayPath: options.sidplayPath || config.sidplayPath,
+      minDuration: options.minDuration,
       onEvent: (event: PlaybackEvent) => {
         sessionManager.recordEvent(event);
         
