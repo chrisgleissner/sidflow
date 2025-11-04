@@ -37,7 +37,7 @@ if (!sidPath) {
 }
 
 if (!energy || !mood || !complexity || !preference) {
-  console.error('Error: All rating dimensions (e, m, c, p) are required');
+  console.error('Error: All rating dimensions (energy, mood, complexity, preference) are required');
   process.exit(1);
 }
 
