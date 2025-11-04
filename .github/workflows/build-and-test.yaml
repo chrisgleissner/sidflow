@@ -36,6 +36,25 @@ jobs:
       - name: Run tests with coverage
         run: bun run test
 
+      - name: Install Playwright browsers
+        working-directory: packages/sidflow-web
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run E2E tests for web server
+        working-directory: packages/sidflow-web
+        env:
+          # Add stub CLI tools to PATH for E2E testing
+          PATH: ${{ github.workspace }}/packages/sidflow-web/tests/stubs:${{ env.PATH }}
+        run: bunx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: packages/sidflow-web/playwright-report/
+          retention-days: 7
+
       - name: Upload coverage reports to Codecov
         if: ${{ github.event_name == 'push' }}
         uses: codecov/codecov-action@v5

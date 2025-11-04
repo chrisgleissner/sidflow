@@ -249,12 +249,54 @@ HTTP status codes:
 - Mock external dependencies for isolation
 - Target: ≥90% code coverage
 
+Located in `tests/unit/`:
+- `cli-executor.test.ts` - Tests for command execution utility
+- `validation.test.ts` - Schema validation tests
+- `api-routes.test.ts` - API route structure tests
+- `api-client.test.ts` - Client-side API function tests
+
 ### E2E Tests
 
 - Test full user workflows with Playwright
 - Verify API endpoints respond correctly
 - Test error handling and edge cases
 - Run against local dev server
+
+Located in `tests/e2e/`:
+- `homepage.spec.ts` - Basic page load and structure
+- `play.spec.ts` - Play workflow with mood presets
+- `rate.spec.ts` - Rating submission and sliders
+- `ui.spec.ts` - Status display, queue, and layout
+
+### Stub CLI Tools
+
+For CI/CD testing without actual `sidplayfp` binary or long-running operations, stub scripts are provided in `tests/stubs/`:
+- `sidflow-play` - Simulates playback
+- `sidflow-rate` - Simulates rating submission
+- `sidflow-classify` - Simulates classification
+- `sidflow-fetch` - Simulates HVSC fetch
+- `sidflow-train` - Simulates model training
+
+These stubs are automatically added to PATH during E2E tests via Playwright configuration.
+
+### Running Tests
+
+```bash
+# Unit tests
+bun run test
+
+# E2E tests (starts dev server automatically)
+bun run test:e2e
+
+# Unit tests with coverage
+bun test tests/unit/ --coverage
+
+# Run specific E2E test
+bunx playwright test tests/e2e/play.spec.ts
+
+# Debug E2E tests with UI
+bunx playwright test --ui
+```
 
 ## Configuration
 
@@ -286,12 +328,66 @@ which sidflow-rate
 which sidflow-classify
 ```
 
+If running locally, build the project first:
+```bash
+cd /path/to/sidflow
+bun run build
+```
+
+The CLI scripts are in the `scripts/` directory at the repository root.
+
 ### Tests failing
 
 Ensure all dependencies are installed:
 ```bash
 bun install
 bunx playwright install chromium
+```
+
+### E2E tests fail in CI
+
+The E2E tests use stub CLI tools to avoid dependencies on `sidplayfp` and long-running operations. These stubs are in `tests/stubs/` and are automatically added to PATH during tests.
+
+If tests fail:
+1. Verify stub scripts are executable: `ls -la tests/stubs/`
+2. Check Playwright configuration includes stub PATH
+3. Review Playwright report artifact in CI
+
+### Platform-Specific Issues
+
+**Linux:**
+- Ensure `sidplayfp` is installed: `sudo apt install sidplayfp`
+- Check audio device permissions if playback fails
+
+**macOS:**
+- Install `sidplayfp` via Homebrew: `brew install sidplayfp`
+- Grant microphone/audio permissions if prompted
+
+**Windows:**
+- Download `sidplayfp` from [releases page](https://github.com/libsidplayfp/sidplayfp/releases)
+- Add `sidplayfp.exe` to PATH or use absolute path in `.sidflow.json`
+- Use WSL2 for best compatibility
+
+### Development Issues
+
+**Next.js build errors:**
+```bash
+# Clear Next.js cache
+rm -rf .next/
+bun run build
+```
+
+**TypeScript errors:**
+```bash
+# Rebuild TypeScript project references
+cd /path/to/sidflow
+bun run build
+```
+
+**Stale node_modules:**
+```bash
+rm -rf node_modules/
+bun install
 ```
 
 ## License

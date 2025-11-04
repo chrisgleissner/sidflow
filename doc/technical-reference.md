@@ -11,11 +11,12 @@ This document provides comprehensive technical documentation for developers and 
 1. [Technical Components](#technical-components)
 2. [Workflow Overview](#workflow-overview)
 3. [CLI Tools](#cli-tools)
-4. [LanceDB Vector Database](#lancedb-vector-database)
-5. [User Feedback Logging](#user-feedback-logging)
-6. [Configuration](#configuration)
-7. [Troubleshooting](#troubleshooting)
-8. [Development](#development)
+4. [Web Control Panel](#web-control-panel)
+5. [LanceDB Vector Database](#lancedb-vector-database)
+6. [User Feedback Logging](#user-feedback-logging)
+7. [Configuration](#configuration)
+8. [Troubleshooting](#troubleshooting)
+9. [Development](#development)
 
 ---
 
@@ -445,6 +446,174 @@ Each playback session is automatically tracked and persisted:
 
 ---
 
+## Web Control Panel
+
+For users who prefer a graphical interface over command-line tools, SIDFlow includes a local web server that provides a browser-based control panel.
+
+### Architecture
+
+The web server is a thin **presentation layer** built with modern web technologies that delegates all operations to the proven CLI implementations. This approach ensures:
+
+- **Consistency**: Identical behavior between CLI and web interfaces
+- **Maintainability**: Business logic stays in CLI packages; web only handles orchestration
+- **Testability**: Comprehensive E2E tests validate the full UI → API → CLI flow
+
+**Technology Stack:**
+- **Next.js 15** (App Router) - Server framework
+- **React 19** - UI components
+- **TypeScript** - Type safety throughout
+- **Tailwind CSS + shadcn/ui** - Modern, accessible styling
+- **Zod** - Request/response validation
+- **Playwright** - E2E testing
+
+### Starting the Web Server
+
+```bash
+cd packages/sidflow-web
+bun run dev
+```
+
+The server starts on **http://localhost:3000** by default.
+
+For production builds:
+```bash
+bun run build
+bun run start
+```
+
+### API Endpoints
+
+The web server exposes RESTful API endpoints that wrap CLI commands:
+
+#### POST /api/play
+Triggers playback via `sidflow-play`:
+```json
+{
+  "sid_path": "/path/to/file.sid",
+  "preset": "energetic"
+}
+```
+
+Presets: `quiet`, `ambient`, `energetic`, `dark`, `bright`, `complex`
+
+#### POST /api/rate
+Submits ratings via `sidflow-rate`:
+```json
+{
+  "sid_path": "/path/to/file.sid",
+  "ratings": {
+    "e": 3,  // energy (1-5)
+    "m": 4,  // mood (1-5)
+    "c": 2,  // complexity (1-5)
+    "p": 5   // preference (1-5)
+  }
+}
+```
+
+#### POST /api/classify
+Triggers classification via `sidflow-classify`:
+```json
+{
+  "path": "/path/to/sid/directory"
+}
+```
+
+#### POST /api/fetch
+Synchronizes HVSC via `sidflow-fetch`:
+```json
+{
+  "configPath": "/path/to/config.json",     // optional
+  "remoteBaseUrl": "https://example.com",   // optional
+  "hvscVersionPath": "/path/to/version.json" // optional
+}
+```
+
+#### POST /api/train
+Trains model via `sidflow-train`:
+```json
+{
+  "configPath": "/path/to/config.json",  // optional
+  "epochs": 10,                          // optional
+  "batchSize": 16,                       // optional
+  "learningRate": 0.001,                 // optional
+  "evaluate": true,                      // optional
+  "force": false                         // optional
+}
+```
+
+All endpoints return consistent response format:
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+Or on error:
+```json
+{
+  "success": false,
+  "error": "Error message",
+  "details": "Additional context"
+}
+```
+
+### Frontend Components
+
+**PlayControls** - Trigger playback with mood preset selector  
+**RatingPanel** - Submit ratings using visual sliders (1-5 scale)  
+**StatusDisplay** - Real-time feedback on operations and errors  
+**QueueView** - Recently played tracks with metadata
+
+### Testing
+
+The web server includes comprehensive test coverage (≥95%):
+
+**Unit Tests** (`tests/unit/`):
+- `cli-executor.test.ts` - Command execution with timeouts, errors
+- `validation.test.ts` - Zod schema validation for all endpoints
+- `api-routes.test.ts` - API route structure validation
+- `api-client.test.ts` - Client-side function exports
+
+**E2E Tests** (`tests/e2e/`):
+- `homepage.spec.ts` - Page load and structure
+- `play.spec.ts` - Playback workflow with all mood presets
+- `rate.spec.ts` - Rating submission and slider interactions
+- `ui.spec.ts` - Status display, queue view, responsive layout
+
+**Stub CLI Tools** (`tests/stubs/`):
+For CI/CD testing without `sidplayfp` or long-running operations, stub scripts simulate CLI behavior:
+- `sidflow-play` - Mock playback output
+- `sidflow-rate` - Mock rating submission
+- `sidflow-classify` - Mock classification progress
+- `sidflow-fetch` - Mock HVSC sync
+- `sidflow-train` - Mock training output
+
+Stubs are automatically added to PATH during Playwright tests.
+
+### Running Tests
+
+```bash
+# Unit tests with coverage
+bun test tests/unit/ --coverage
+
+# E2E tests (auto-starts dev server)
+bun run test:e2e
+
+# Specific test file
+bunx playwright test tests/e2e/play.spec.ts
+
+# Debug with UI
+bunx playwright test --ui
+```
+
+### Documentation
+
+- **[Web Server README](../packages/sidflow-web/README.md)** - Complete setup, API docs, troubleshooting
+- **[OpenAPI Specification](../packages/sidflow-web/openapi.yaml)** - Machine-readable API reference
+
+---
+
 ## LanceDB Vector Database
 
 SIDFlow uses LanceDB to combine classification data and user feedback into a unified vector database for efficient similarity search and recommendation queries.
@@ -670,6 +839,8 @@ The end-to-end test validates the full workflow:
 
 ### Typical Workflow
 
+#### Command-Line Workflow
+
 1. `bun run validate:config` — verify configuration  
 2. `./scripts/sidflow-fetch` — download or refresh your SID mirror  
 3. `./scripts/sidflow-rate` — manually rate songs to provide seeds for classification
@@ -677,6 +848,19 @@ The end-to-end test validates the full workflow:
 5. `./scripts/sidflow-train` — train the ML model on ratings and feedback to improve predictions
 6. `bun run build:db` — rebuild vector database from classifications and feedback
 7. `./scripts/sidflow-play` — generate mood-based playlists and play curated sets
+
+#### Web Interface Workflow
+
+For users who prefer a graphical interface, the web control panel provides the same functionality:
+
+1. Start the web server: `cd packages/sidflow-web && bun run dev`
+2. Open http://localhost:3000 in your browser
+3. Use the **Play Controls** to trigger playback with mood presets
+4. Use the **Rating Panel** to rate tracks with visual sliders
+5. View recently played tracks in the **Queue View**
+6. Monitor operations with real-time **Status Display**
+
+The web interface delegates all operations to the CLI tools, ensuring consistent behavior across interfaces.
 
 All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default. The LanceDB database (`data/sidflow.lance/`) and trained model weights (`data/model/*.bin`, `data/model/model.json`) are also git-ignored but can be rebuilt deterministically from source data.
 

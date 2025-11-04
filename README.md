@@ -280,6 +280,56 @@ bun run validate:config
 
 ---
 
+## Web Control Panel
+
+For users who prefer a graphical interface, SIDFlow includes a local web control panel built with Next.js and React.
+
+### Quick Start
+
+```bash
+# Start the web server
+cd packages/sidflow-web
+bun run dev
+```
+
+Open your browser to **http://localhost:3000** to access the control panel.
+
+### Features
+
+- **Play Control** – Trigger playback with mood presets (quiet, energetic, dark, bright, complex)
+- **Rating Interface** – Submit manual ratings using intuitive sliders for all dimensions
+- **Status Display** – Real-time feedback on operations and errors
+- **Queue View** – See recently played tracks
+- **API Endpoints** – RESTful API for all CLI operations
+
+### What You Can Do
+
+The web interface provides a thin orchestration layer over the CLI tools:
+
+1. **Play SID files** with mood presets
+2. **Rate tracks** using visual sliders (energy, mood, complexity, preference)
+3. **Trigger classification** on directories
+4. **Sync HVSC** without command line
+5. **Train models** on your feedback
+
+All operations delegate to the proven CLI implementations, so behavior is identical to using command-line tools directly.
+
+### Documentation
+
+- **[Web Server README](packages/sidflow-web/README.md)** – Detailed setup, API documentation, troubleshooting
+- **[OpenAPI Spec](packages/sidflow-web/openapi.yaml)** – Complete API reference
+
+### Development & Testing
+
+The web server includes comprehensive test coverage:
+- **Unit tests** for validation and CLI execution (100% coverage)
+- **E2E tests** with Playwright for all workflows
+- **Stub tools** for CI/CD testing without dependencies
+
+See [packages/sidflow-web/README.md](packages/sidflow-web/README.md) for developer documentation.
+
+---
+
 ## Next Steps
 
 - **Rate more songs** – Run `./scripts/sidflow-rate` regularly to improve recommendations
