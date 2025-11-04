@@ -717,21 +717,26 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
 
-  // First pass: count total songs
-  const sidMetadataCache = new Map<string, SidFileMetadata>();
-  let totalSongs = 0;
-  
-  for (const sidFile of sidFiles) {
-    try {
-      const fullMetadata = await parseSidFile(sidFile);
-      sidMetadataCache.set(sidFile, fullMetadata);
-      totalSongs += fullMetadata.songs;
-    } catch {
-      // If we can't parse the file, assume 1 song
-      totalSongs += 1;
+  // First pass: parse files and count total songs in a single pass
+  async function collectSidMetadataAndSongCount(
+    sidFiles: string[]
+  ): Promise<{ sidMetadataCache: Map<string, SidFileMetadata>; totalSongs: number }> {
+    const sidMetadataCache = new Map<string, SidFileMetadata>();
+    let totalSongs = 0;
+    for (const sidFile of sidFiles) {
+      try {
+        const fullMetadata = await parseSidFile(sidFile);
+        sidMetadataCache.set(sidFile, fullMetadata);
+        totalSongs += fullMetadata.songs;
+      } catch {
+        // If we can't parse the file, assume 1 song
+        totalSongs += 1;
+      }
     }
+    return { sidMetadataCache, totalSongs };
   }
 
+  const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const totalFiles = totalSongs;
   let processedSongs = 0;
 
