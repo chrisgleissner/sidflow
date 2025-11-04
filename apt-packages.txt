@@ -7,3 +7,4 @@ npm
 python3
 sidplayfp
 7zip
+unzip
