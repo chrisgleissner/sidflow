@@ -56,8 +56,6 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.context.outputs.hash }}
             ${{ env.IMAGE_NAME }}:latest
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
           cache-from: |
             type=registry,ref=${{ env.IMAGE_NAME }}:latest
           cache-to: type=inline
