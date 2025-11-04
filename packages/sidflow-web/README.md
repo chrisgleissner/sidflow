@@ -14,6 +14,8 @@ The SIDFlow web server is a thin presentation layer built on Next.js 15 and Reac
   - `/api/play` - Trigger playback with mood presets
   - `/api/rate` - Submit manual ratings for tracks
   - `/api/classify` - Trigger classification on file paths
+  - `/api/fetch` - Synchronize HVSC collection
+  - `/api/train` - Train ML models on feedback data
 
 - **CLI Executor** (`lib/cli-executor.ts`): Utility for spawning and managing CLI processes using Bun.spawn
   - Captures stdout, stderr, and exit codes
@@ -55,6 +57,13 @@ bun run dev
 ```
 
 The server will start on http://localhost:3000
+
+### API Documentation
+
+OpenAPI 3.0 specification is available in `openapi.yaml`. View it using:
+- [Swagger UI](https://petstore.swagger.io/?url=https://raw.githubusercontent.com/chrisgleissner/sidflow/main/packages/sidflow-web/openapi.yaml)
+- [Redoc](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/chrisgleissner/sidflow/main/packages/sidflow-web/openapi.yaml)
+- Or open `openapi.yaml` in any OpenAPI-compatible tool
 
 ### Building
 
