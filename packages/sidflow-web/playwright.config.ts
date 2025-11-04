@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as path from 'path';
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -27,5 +28,9 @@ export default defineConfig({
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    env: {
+      // Add stub CLI tools to PATH for testing
+      PATH: `${path.resolve(__dirname, 'tests/stubs')}:${process.env.PATH}`,
+    },
   },
 });
