@@ -1,0 +1,62 @@
+name: Check Packages
+
+on:
+  workflow_call:
+    inputs:
+      package_source:
+        type: string
+        default: local
+        description: "Source package to validate (local|npm)"
+      package_version:
+        type: string
+        required: false
+        description: "Package version when package_source=npm"
+      image:
+        type: string
+        required: false
+        description: "Container image to use for validation"
+  workflow_dispatch:
+    inputs:
+      package_source:
+        description: "Source package to validate (local|npm)"
+        required: true
+        default: local
+        type: choice
+        options:
+          - local
+          - npm
+      package_version:
+        description: "Package version when package_source=npm"
+        required: false
+        type: string
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
+    env:
+      PACKAGE_SOURCE: ${{ inputs.package_source }}
+      PACKAGE_VERSION: ${{ inputs.package_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (local source)
+        if: ${{ env.PACKAGE_SOURCE == 'local' }}
+        run: bun install --frozen-lockfile
+
+      - name: Build workspace (local source)
+        if: ${{ env.PACKAGE_SOURCE == 'local' }}
+        run: bun run build
+
+      - name: Validate packages
+        run: |
+          if [ "${PACKAGE_SOURCE}" = "npm" ] && [ -n "${PACKAGE_VERSION}" ]; then
+            bun run check:packages --source npm --version "${PACKAGE_VERSION}"
+          elif [ "${PACKAGE_SOURCE}" = "npm" ]; then
+            echo "::error::package_version is required when package_source=npm" >&2
+            exit 1
+          else
+            bun run check:packages --source local
+          fi

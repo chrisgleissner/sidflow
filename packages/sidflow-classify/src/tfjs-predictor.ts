@@ -1,11 +1,11 @@
-import type * as TfJsNode from "@tensorflow/tfjs-node";
+import type * as TfJs from "@tensorflow/tfjs";
 import { clampRating, pathExists, type TagRatings } from "@sidflow/common";
 import type { FeatureVector, PredictRatings } from "./index.js";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureDir } from "@sidflow/common";
 
-type TfModule = typeof import("@tensorflow/tfjs-node");
+type TfModule = typeof import("@tensorflow/tfjs");
 
 async function loadTensorFlow(): Promise<TfModule> {
   try {
@@ -17,15 +17,14 @@ async function loadTensorFlow(): Promise<TfModule> {
     }
 
     console.warn("Falling back to @tensorflow/tfjs (pure JS backend):", (error as Error).message);
-    const fallbackModule: string = "@tensorflow/tfjs";
-    return (await import(fallbackModule)) as TfModule;
+    return (await import("@tensorflow/tfjs")) as TfModule;
   }
 }
 
 const tf: TfModule = await loadTensorFlow();
 
-type LayersModel = TfJsNode.LayersModel;
-type Tensor = TfJsNode.Tensor;
+type LayersModel = TfJs.LayersModel;
+type Tensor = TfJs.Tensor;
 
 /**
  * Production-ready TensorFlow.js regressor for predicting (e,m,c) ratings.
@@ -126,6 +125,34 @@ let FEATURE_STDS: Record<string, number> = {
 let cachedModel: LayersModel | null = null;
 let cachedStats: FeatureStats | null = null;
 let cachedMetadata: ModelMetadata | null = null;
+
+const MODEL_FILENAME = "model.json";
+const MODEL_SAVE_DIR = "model";
+const LEGACY_MODEL_DIR = "model.json";
+
+async function resolveModelJsonFile(basePath: string): Promise<string | null> {
+  const candidates = [
+    path.join(basePath, MODEL_SAVE_DIR, MODEL_FILENAME),
+    path.join(basePath, MODEL_FILENAME),
+    path.join(basePath, LEGACY_MODEL_DIR, MODEL_FILENAME)
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const fileStat = await stat(candidate);
+      if (fileStat.isFile()) {
+        return candidate;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Get the default model directory path.
@@ -251,10 +278,10 @@ export function createModel(inputDim: number): LayersModel {
  */
 export async function loadModel(modelPath?: string): Promise<LayersModel> {
   const dirPath = getModelPath(modelPath);
-  const modelJsonPath = path.join(dirPath, "model.json");
+  const modelJsonPath = await resolveModelJsonFile(dirPath);
   
   // Try to load existing model
-  if (await pathExists(modelJsonPath)) {
+  if (modelJsonPath) {
     try {
       const model = await tf.loadLayersModel(`file://${modelJsonPath}`);
       
@@ -307,8 +334,9 @@ export async function saveModel(model: LayersModel, modelPath?: string): Promise
   await ensureDir(dirPath);
   
   // Save model weights and topology
-  const modelJsonPath = `file://${path.join(dirPath, "model.json")}`;
-  await model.save(modelJsonPath);
+  const modelDirPath = path.join(dirPath, MODEL_SAVE_DIR);
+  await ensureDir(modelDirPath);
+  await model.save(`file://${modelDirPath}`);
   
   // Update and save metadata
   if (cachedMetadata) {
