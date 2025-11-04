@@ -29,6 +29,31 @@ import path from "node:path";
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
 
+/**
+ * Shared utility to collect SID file metadata and count total songs.
+ * This function parses all SID files once and caches the metadata to avoid redundant I/O.
+ * Used by buildWavCache, generateAutoTags, and generateJsonlOutput.
+ */
+async function collectSidMetadataAndSongCount(
+  sidFiles: string[]
+): Promise<{ sidMetadataCache: Map<string, SidFileMetadata>; totalSongs: number }> {
+  const sidMetadataCache = new Map<string, SidFileMetadata>();
+  let totalSongs = 0;
+  
+  for (const sidFile of sidFiles) {
+    try {
+      const fullMetadata = await parseSidFile(sidFile);
+      sidMetadataCache.set(sidFile, fullMetadata);
+      totalSongs += fullMetadata.songs;
+    } catch {
+      // If we can't parse the file, assume 1 song
+      totalSongs += 1;
+    }
+  }
+  
+  return { sidMetadataCache, totalSongs };
+}
+
 export interface ClassifyOptions {
   configPath?: string;
   forceRebuild?: boolean;
@@ -251,21 +276,8 @@ export async function buildWavCache(
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
 
-  // First pass: count total songs to render
-  const sidMetadataCache = new Map<string, SidFileMetadata>();
-  let totalSongs = 0;
-  
-  for (const sidFile of sidFiles) {
-    try {
-      const metadata = await parseSidFile(sidFile);
-      sidMetadataCache.set(sidFile, metadata);
-      totalSongs += metadata.songs;
-    } catch (error) {
-      // If we can't parse the file, assume 1 song
-      totalSongs += 1;
-    }
-  }
-
+  // Collect SID metadata and count total songs using shared utility
+  const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const totalFiles = totalSongs;
 
   // Analysis phase: determine which files need rendering
@@ -717,25 +729,7 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
 
-  // First pass: parse files and count total songs in a single pass
-  async function collectSidMetadataAndSongCount(
-    sidFiles: string[]
-  ): Promise<{ sidMetadataCache: Map<string, SidFileMetadata>; totalSongs: number }> {
-    const sidMetadataCache = new Map<string, SidFileMetadata>();
-    let totalSongs = 0;
-    for (const sidFile of sidFiles) {
-      try {
-        const fullMetadata = await parseSidFile(sidFile);
-        sidMetadataCache.set(sidFile, fullMetadata);
-        totalSongs += fullMetadata.songs;
-      } catch {
-        // If we can't parse the file, assume 1 song
-        totalSongs += 1;
-      }
-    }
-    return { sidMetadataCache, totalSongs };
-  }
-
+  // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const totalFiles = totalSongs;
   let processedSongs = 0;
@@ -933,21 +927,8 @@ export async function generateJsonlOutput(
 
   const records: string[] = [];
 
-  // First pass: count total songs
-  const sidMetadataCache = new Map<string, SidFileMetadata>();
-  let totalSongs = 0;
-  
-  for (const sidFile of sidFiles) {
-    try {
-      const fullMetadata = await parseSidFile(sidFile);
-      sidMetadataCache.set(sidFile, fullMetadata);
-      totalSongs += fullMetadata.songs;
-    } catch {
-      // If we can't parse the file, assume 1 song
-      totalSongs += 1;
-    }
-  }
-
+  // Collect SID metadata and count total songs using shared utility
+  const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const totalFiles = totalSongs;
   let processedSongs = 0;
 
