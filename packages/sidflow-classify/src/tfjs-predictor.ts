@@ -1,11 +1,11 @@
-import type * as TfJs from "@tensorflow/tfjs";
+import type * as TfJsNode from "@tensorflow/tfjs-node";
 import { clampRating, pathExists, type TagRatings } from "@sidflow/common";
 import type { FeatureVector, PredictRatings } from "./index.js";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ensureDir } from "@sidflow/common";
 
-type TfModule = typeof import("@tensorflow/tfjs");
+type TfModule = typeof import("@tensorflow/tfjs-node");
 
 async function loadTensorFlow(): Promise<TfModule> {
   try {
@@ -17,14 +17,15 @@ async function loadTensorFlow(): Promise<TfModule> {
     }
 
     console.warn("Falling back to @tensorflow/tfjs (pure JS backend):", (error as Error).message);
-    return (await import("@tensorflow/tfjs")) as TfModule;
+    const fallbackModule: string = "@tensorflow/tfjs";
+    return (await import(fallbackModule)) as TfModule;
   }
 }
 
 const tf: TfModule = await loadTensorFlow();
 
-type LayersModel = TfJs.LayersModel;
-type Tensor = TfJs.Tensor;
+type LayersModel = TfJsNode.LayersModel;
+type Tensor = TfJsNode.Tensor;
 
 /**
  * Production-ready TensorFlow.js regressor for predicting (e,m,c) ratings.

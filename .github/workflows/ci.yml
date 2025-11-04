@@ -5,14 +5,19 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/sidflow-ci
+
 jobs:
-  build:
+  build-image:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
-    env:
-      IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/sidflow-ci
+    outputs:
+      hash: ${{ steps.dockerfile.outputs.hash }}
+      image: ${{ steps.image.outputs.image }}
+      image_available: ${{ steps.image_status.outputs.available }}
 
     steps:
       - uses: actions/checkout@v4
@@ -73,17 +78,51 @@ jobs:
             ${{ env.IMAGE_REPO }}:${{ steps.dockerfile.outputs.hash }}
             ${{ env.IMAGE_REPO }}:latest
 
-      - name: Install dependencies in container
-        run: |
-          IMAGE="${{ env.IMAGE_REPO }}:${{ steps.dockerfile.outputs.hash }}"
-          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace "$IMAGE" \
-            sh -c "bun install --frozen-lockfile"
+      - name: Record image reference
+        id: image
+        run: echo "image=${IMAGE_REPO}:${HASH}" >> "$GITHUB_OUTPUT"
+        env:
+          IMAGE_REPO: ${{ env.IMAGE_REPO }}
+          HASH: ${{ steps.dockerfile.outputs.hash }}
 
-      - name: Run tests with verbose output in container
+      - name: Determine image availability
+        id: image_status
         run: |
-          IMAGE="${{ env.IMAGE_REPO }}:${{ steps.dockerfile.outputs.hash }}"
-          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace "$IMAGE" \
-            sh -c "bun run build && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov"
+          if [ "${PULL_OUTCOME}" = "success" ] || [ "${CAN_PUSH}" = "true" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          PULL_OUTCOME: ${{ steps.pull_image.outcome }}
+          CAN_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+
+  ci:
+    needs: build-image
+    if: needs.build-image.outputs.image_available == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ${{ needs.build-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build project
+        run: bun run build
+
+      - name: Run tests with coverage
+        run: bun test --coverage --coverage-reporter=text --coverage-reporter=lcov
 
       - name: Upload coverage to Codecov
         if: ${{ github.event_name == 'push' }}
@@ -91,8 +130,46 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Verify sample config in container
+      - name: Verify sample config
+        run: bun run ci:verify
+
+  ci-fallback:
+    needs: build-image
+    if: needs.build-image.outputs.image_available != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      IMAGE_TAG: ${{ needs.build-image.outputs.hash }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build CI image locally
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: .github/Dockerfile
+          load: true
+          push: false
+          tags: |
+            ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_REPO }}:latest
+
+      - name: Run CI commands in container
+        env:
+          IMAGE: ${{ env.IMAGE_REPO }}:${{ env.IMAGE_TAG }}
         run: |
-          IMAGE="${{ env.IMAGE_REPO }}:${{ steps.dockerfile.outputs.hash }}"
-          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace "$IMAGE" \
-            sh -c "bun run ci:verify"
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace "$IMAGE" \
+            sh -c "bun install --frozen-lockfile && bun run build && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov && bun run ci:verify"
+
+      - name: Upload coverage to Codecov
+        if: ${{ github.event_name == 'push' }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
