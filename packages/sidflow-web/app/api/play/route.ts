@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
     const args = [validatedData.sid_path];
     if (validatedData.preset) {
-      args.push('--sidplay', validatedData.preset);
+      args.push('--preset', validatedData.preset);
     }
 
     const result = await executeCli('sidflow-play', args, {
