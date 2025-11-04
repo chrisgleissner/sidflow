@@ -48,8 +48,8 @@ function generateTestWav(durationSeconds: number, frequency: number, sampleRate:
   return buffer;
 }
 
-describe("Essentia.js + TF.js integration", () => {
-  it("end-to-end workflow: feature extraction and prediction", async () => {
+describe("End-to-End SIDFlow Pipeline", () => {
+  it("extracts features from WAV files", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const hvscPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
@@ -100,12 +100,26 @@ describe("Essentia.js + TF.js integration", () => {
 
     // Step 1: Build WAV cache
     console.log(`[TEST] Starting buildWavCache...`);
-    const wavResult = await buildWavCache(plan, {
-      render: mockRender,
-      forceRebuild: false
-    });
+    console.log(`[TEST] Plan configuration:`, JSON.stringify({
+      hvscPath: plan.hvscPath,
+      wavCachePath: plan.wavCachePath,
+      tagsPath: plan.tagsPath,
+      sidplayPath: plan.sidplayPath
+    }, null, 2));
+    
+    let wavResult;
+    try {
+      wavResult = await buildWavCache(plan, {
+        render: mockRender,
+        forceRebuild: false
+      });
+    } catch (error) {
+      console.error(`[TEST] buildWavCache failed with error:`, error);
+      console.error(`[TEST] Error stack:`, (error as Error).stack);
+      throw error;
+    }
 
-    console.log(`[TEST] buildWavCache completed:`);
+    console.log(`[TEST] buildWavCache completed successfully`);
     console.log(`[TEST]   rendered.length: ${wavResult.rendered.length}`);
     console.log(`[TEST]   rendered: ${JSON.stringify(wavResult.rendered)}`);
     console.log(`[TEST]   skipped.length: ${wavResult.skipped.length}`);
