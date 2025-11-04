@@ -90,10 +90,10 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-      const exitCode = await runTrainCli(["--epochs", "10"]);
-      
-      // It will fail because there's no data, but shouldn't fail on option parsing
-      expect(exitCode).toBe(1);
+  const exitCode = await runTrainCli(["--epochs", "10"]);
+
+  // Training should complete successfully when options parse correctly
+  expect(exitCode).toBe(0);
       expect(errorOutput).not.toContain("--epochs must be a positive integer");
     } finally {
       process.stderr.write = originalWrite;
@@ -109,10 +109,10 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-      const exitCode = await runTrainCli(["--batch-size", "16"]);
-      
-      expect(exitCode).toBe(1);
-      expect(errorOutput).not.toContain("--batch-size must be a positive integer");
+  const exitCode = await runTrainCli(["--batch-size", "16"]);
+
+  expect(exitCode).toBe(0);
+  expect(errorOutput).not.toContain("--batch-size must be a positive integer");
     } finally {
       process.stderr.write = originalWrite;
     }
@@ -127,10 +127,10 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-      const exitCode = await runTrainCli(["--learning-rate", "0.01"]);
-      
-      expect(exitCode).toBe(1);
-      expect(errorOutput).not.toContain("--learning-rate must be a positive number");
+  const exitCode = await runTrainCli(["--learning-rate", "0.01"]);
+
+  expect(exitCode).toBe(0);
+  expect(errorOutput).not.toContain("--learning-rate must be a positive number");
     } finally {
       process.stderr.write = originalWrite;
     }
@@ -145,11 +145,11 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-      const exitCode = await runTrainCli(["--no-evaluate"]);
-      
-      expect(exitCode).toBe(1);
-      // Should fail due to no data, not due to option parsing
-      expect(errorOutput).not.toContain("Unknown option");
+  const exitCode = await runTrainCli(["--no-evaluate"]);
+
+  expect(exitCode).toBe(0);
+  // Ensure option parsing still reports helpful errors when necessary
+  expect(errorOutput).not.toContain("Unknown option");
     } finally {
       process.stderr.write = originalWrite;
     }
@@ -164,10 +164,10 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-      const exitCode = await runTrainCli(["--force"]);
-      
-      expect(exitCode).toBe(1);
-      expect(errorOutput).not.toContain("Unknown option");
+  const exitCode = await runTrainCli(["--force"]);
+
+  expect(exitCode).toBe(0);
+  expect(errorOutput).not.toContain("Unknown option");
     } finally {
       process.stderr.write = originalWrite;
     }

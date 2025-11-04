@@ -1,0 +1,10 @@
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:14:33.231Z","samples":3,"metrics":{"mae":0.5673850774765015,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:14:33.271Z","samples":3,"metrics":{"mae":0.5058801770210266,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:14:33.310Z","samples":3,"metrics":{"mae":0.21706801652908325,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:14:33.349Z","samples":3,"metrics":{"mae":0.1764671504497528,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:14:33.387Z","samples":3,"metrics":{"mae":0.1221652552485466,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:15:34.971Z","samples":3,"metrics":{"mae":0.48815202713012695,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:15:35.012Z","samples":3,"metrics":{"mae":0.45312076807022095,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:15:35.051Z","samples":3,"metrics":{"mae":0.34219494462013245,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:15:35.092Z","samples":3,"metrics":{"mae":0.23083455860614777,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-04T17:15:35.134Z","samples":3,"metrics":{"mae":0.31590694189071655,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
