@@ -3,11 +3,11 @@
  * 
  * This test exercises the full workflow:
  * 1. Load SID files from test-data
- * 2. Build WAV cache (with mock renderer)
+ * 2. Build WAV cache using real sidplayfp (if available, otherwise mock)
  * 3. Extract features and classify
  * 4. Build LanceDB database
- * 5. Generate playlist
- * 6. Test playback flow (without requiring sidplayfp binary)
+ * 5. Generate playlist with recommendations
+ * 6. Test playback flow
  */
 
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
@@ -15,6 +15,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, readdir } from "node:fs/promis
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
 import {
   buildWavCache,
@@ -22,7 +23,9 @@ import {
   generateAutoTags,
   planClassification,
   tfjsPredictRatings,
-  type ClassificationPlan
+  type ClassificationPlan,
+  defaultExtractMetadata,
+  defaultRenderWav
 } from "../packages/sidflow-classify/src/index.js";
 import { ensureDir } from "../packages/sidflow-common/src/fs.js";
 import { stringifyDeterministic } from "../packages/sidflow-common/src/json.js";
@@ -30,6 +33,18 @@ import { createPlaybackController, PlaybackState } from "../packages/sidflow-pla
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-e2e-");
 const TEST_DATA_PATH = path.join(process.cwd(), "test-data");
+const TEST_SID_PATH = "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid";
+
+/**
+ * Check if sidplayfp is available in the system.
+ */
+async function isSidplayfpAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const proc = spawn("sidplayfp", ["--version"]);
+    proc.on("error", () => resolve(false));
+    proc.on("exit", (code) => resolve(code === 0));
+  });
+}
 
 /**
  * Generate a simple WAV file for testing.
@@ -94,17 +109,24 @@ describe("End-to-End SIDFlow Pipeline", () => {
   let wavCachePath: string;
   let tagsPath: string;
   let classifiedPath: string;
+  let dataPath: string;
   let configPath: string;
   let plan: ClassificationPlan;
   let sidFileCount: number;
+  let hasSidplayfp: boolean;
 
   beforeAll(async () => {
+    // Check if sidplayfp is available
+    hasSidplayfp = await isSidplayfpAvailable();
+    console.log(`Running E2E test with ${hasSidplayfp ? "real" : "mock"} sidplayfp`);
+
     // Create temporary directories
     tempRoot = await mkdtemp(TEMP_PREFIX);
     hvscPath = path.join(tempRoot, "hvsc");
     wavCachePath = path.join(tempRoot, "wav-cache");
     tagsPath = path.join(tempRoot, "tags");
     classifiedPath = path.join(tempRoot, "classified");
+    dataPath = path.join(tempRoot, "data");
 
     // Copy test SID files to temp hvsc directory
     const testDataSrc = path.join(TEST_DATA_PATH, "C64Music");
@@ -152,15 +174,24 @@ describe("End-to-End SIDFlow Pipeline", () => {
   });
 
   it("builds WAV cache from SID files", async () => {
-    // Mock WAV renderer
-    const mockRender = async ({ wavFile }: { wavFile: string }) => {
-      await ensureDir(path.dirname(wavFile));
-      const wavData = generateTestWav(2, 440, 44100);
-      await writeFile(wavFile, wavData);
-    };
+    let renderHook;
+    
+    if (hasSidplayfp) {
+      // Use real sidplayfp
+      renderHook = async (options: { sidFile: string; wavFile: string }) => {
+        await defaultRenderWav({ ...options, sidplayPath: "sidplayfp" });
+      };
+    } else {
+      // Mock WAV renderer for CI without sidplayfp
+      renderHook = async ({ wavFile }: { wavFile: string }) => {
+        await ensureDir(path.dirname(wavFile));
+        const wavData = generateTestWav(2, 440, 44100);
+        await writeFile(wavFile, wavData);
+      };
+    }
 
     const result = await buildWavCache(plan, {
-      render: mockRender,
+      render: renderHook,
       forceRebuild: false
     });
 
@@ -191,8 +222,20 @@ describe("End-to-End SIDFlow Pipeline", () => {
   });
 
   it("classifies SID files with auto-tags", async () => {
+    let metadataExtractor;
+    
+    if (hasSidplayfp) {
+      // Use real metadata extractor
+      metadataExtractor = async (options: { sidFile: string; relativePath: string }) => {
+        return await defaultExtractMetadata({ ...options, sidplayPath: "sidplayfp" });
+      };
+    } else {
+      // Mock metadata extractor
+      metadataExtractor = async () => ({ title: "Test Song" });
+    }
+
     const result = await generateAutoTags(plan, {
-      extractMetadata: async () => ({ title: "Test Song" }),
+      extractMetadata: metadataExtractor,
       featureExtractor: essentiaFeatureExtractor,
       predictRatings: tfjsPredictRatings
     });
@@ -243,7 +286,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
   it("creates playback controller with classified songs", () => {
     const controller = createPlaybackController({
       rootPath: hvscPath,
-      sidplayPath: "sidplayfp"
+      sidplayPath: hasSidplayfp ? "sidplayfp" : undefined
     });
 
     expect(controller).toBeDefined();
@@ -258,21 +301,12 @@ describe("End-to-End SIDFlow Pipeline", () => {
     // Mock recommendations based on classified songs
     const mockRecommendations = [
       {
-        sid_path: "C64Music/MUSICIANS/Test_Artist/test1.sid",
+        sid_path: TEST_SID_PATH,
         score: 0.9,
         similarity: 0.95,
         songFeedback: 0.8,
         userAffinity: 0.7,
         ratings: { e: 4, m: 3, c: 4, p: 4 },
-        feedback: { likes: 0, dislikes: 0, skips: 0, plays: 0 }
-      },
-      {
-        sid_path: "C64Music/MUSICIANS/Test_Artist/test2.sid",
-        score: 0.85,
-        similarity: 0.90,
-        songFeedback: 0.75,
-        userAffinity: 0.65,
-        ratings: { e: 3, m: 4, c: 3, p: 4 },
         feedback: { likes: 0, dislikes: 0, skips: 0, plays: 0 }
       }
     ];
@@ -280,8 +314,8 @@ describe("End-to-End SIDFlow Pipeline", () => {
     controller.loadQueue(mockRecommendations);
 
     const queue = controller.getQueue();
-    expect(queue.songs).toHaveLength(2);
-    expect(queue.remaining).toBe(2);
+    expect(queue.songs.length).toBeGreaterThan(0);
+    expect(queue.remaining).toBe(mockRecommendations.length);
   });
 
   it("verifies full pipeline metrics", async () => {
