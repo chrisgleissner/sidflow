@@ -33,6 +33,8 @@ export interface PlaybackOptions {
   sidplayPath?: string;
   /** Root path for resolving SID files */
   rootPath: string;
+  /** Minimum song duration in seconds (default: 15) */
+  minDuration?: number;
   /** Callback for playback events */
   onEvent?: (event: PlaybackEvent) => void;
 }
@@ -47,11 +49,13 @@ export class PlaybackController {
   private process?: ChildProcess;
   private sidplayPath: string;
   private rootPath: string;
+  private minDuration: number;
   private onEvent?: (event: PlaybackEvent) => void;
 
   constructor(options: PlaybackOptions) {
     this.sidplayPath = options.sidplayPath || "sidplayfp";
     this.rootPath = options.rootPath;
+    this.minDuration = options.minDuration ?? 15; // Default 15 seconds
     this.onEvent = options.onEvent;
   }
 
@@ -123,6 +127,26 @@ export class PlaybackController {
     const song = this.getCurrentSong();
     if (!song) {
       this.state = PlaybackState.IDLE;
+      return;
+    }
+
+    // Check if song duration meets minimum requirement
+    const duration = song.features?.duration as number | undefined;
+    if (duration !== undefined && duration < this.minDuration) {
+      // Skip songs that are too short
+      this.emitEvent({ 
+        type: "skipped", 
+        song, 
+        timestamp: new Date().toISOString() 
+      });
+      
+      // Move to next song
+      this.currentIndex += 1;
+      if (this.currentIndex < this.queue.length) {
+        await this.playCurrentSong();
+      } else {
+        this.state = PlaybackState.IDLE;
+      }
       return;
     }
 
