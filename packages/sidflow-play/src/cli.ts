@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 
 import process from "node:process";
+import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadConfig, type SIDFlowConfig } from "@sidflow/common";
+import { loadConfig, MOOD_PRESETS, type MoodPresetName, type SidflowConfig } from "@sidflow/common";
+import type { Stats } from "node:fs";
 import {
   createPlaylistBuilder,
   createPlaybackController,
@@ -10,6 +12,7 @@ import {
   exportPlaylist,
   parseFilters,
   ExportFormat,
+  type Playlist,
   type PlaylistConfig,
   type PlaybackEvent,
   PlaybackState
@@ -36,7 +39,7 @@ interface ParseResult {
   helpRequested: boolean;
 }
 
-function printHelp(): void {
+function printHelp(stream: NodeJS.WritableStream = process.stdout): void {
   const lines = [
     "Usage: sidflow play [options]",
     "",
@@ -79,7 +82,11 @@ function printHelp(): void {
     "  sidflow play --mood quiet --min-duration 30",
     ""
   ];
-  process.stdout.write(`${lines.join("\n")}\n`);
+  stream.write(`${lines.join("\n")}\n`);
+}
+
+function isMoodPreset(value: string): value is MoodPresetName {
+  return Object.hasOwn(MOOD_PRESETS, value);
 }
 
 export function parsePlayArgs(argv: string[]): ParseResult {
@@ -239,106 +246,184 @@ export function parsePlayArgs(argv: string[]): ParseResult {
   return { options, errors, helpRequested };
 }
 
-async function main(): Promise<void> {
-  const { options, errors, helpRequested } = parsePlayArgs(process.argv.slice(2));
+interface PlaylistBuilderLike {
+  connect(): Promise<void>;
+  build(config: PlaylistConfig): Promise<Playlist>;
+  disconnect(): Promise<void>;
+}
+
+interface SessionManagerLike {
+  startSession(seed?: PlaylistConfig["seed"]): Promise<void>;
+  recordEvent(event: PlaybackEvent): void;
+  endSession(): Promise<void>;
+}
+
+interface PlaybackControllerLike {
+  loadQueue(songs: Playlist["songs"]): void;
+  play(): Promise<void>;
+  stop(): Promise<void>;
+  getState(): PlaybackState;
+}
+
+interface PlayCliRuntime {
+  loadConfig: (configPath?: string) => Promise<SidflowConfig>;
+  createPlaylistBuilder: (options: Parameters<typeof createPlaylistBuilder>[0]) => PlaylistBuilderLike;
+  createPlaybackController: (options: Parameters<typeof createPlaybackController>[0]) => PlaybackControllerLike;
+  createSessionManager: (sessionPath: Parameters<typeof createSessionManager>[0]) => SessionManagerLike;
+  exportPlaylist: typeof exportPlaylist;
+  parseFilters: typeof parseFilters;
+  stat: (path: string) => Promise<Stats>;
+  stdout: NodeJS.WritableStream;
+  stderr: NodeJS.WritableStream;
+  cwd: () => string;
+  onSignal: (signal: NodeJS.Signals, handler: () => void) => void;
+  offSignal: (signal: NodeJS.Signals, handler: () => void) => void;
+  sleep: (ms: number) => Promise<void>;
+}
+
+const defaultRuntime: PlayCliRuntime = {
+  loadConfig,
+  createPlaylistBuilder: (options) => createPlaylistBuilder(options),
+  createPlaybackController: (options) => createPlaybackController(options),
+  createSessionManager: (sessionPath) => createSessionManager(sessionPath),
+  exportPlaylist,
+  parseFilters,
+  stat,
+  stdout: process.stdout,
+  stderr: process.stderr,
+  cwd: () => process.cwd(),
+  onSignal: (signal, handler) => {
+    process.on(signal, handler);
+  },
+  offSignal: (signal, handler) => {
+    process.off(signal, handler);
+  },
+  sleep: async (ms: number) => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+};
+
+function mergeRuntime(overrides?: Partial<PlayCliRuntime>): PlayCliRuntime {
+  if (!overrides) {
+    return defaultRuntime;
+  }
+  return {
+    ...defaultRuntime,
+    ...overrides,
+    stdout: overrides.stdout ?? process.stdout,
+    stderr: overrides.stderr ?? process.stderr
+  };
+}
+
+export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRuntime>): Promise<number> {
+  const { options, errors, helpRequested } = parsePlayArgs(argv);
+  const runtime = mergeRuntime(overrides);
 
   if (helpRequested) {
-    printHelp();
-    process.exit(0);
+    printHelp(runtime.stdout);
+    return errors.length > 0 ? 1 : 0;
   }
 
   if (errors.length > 0) {
     for (const error of errors) {
-      process.stderr.write(`Error: ${error}\n`);
+      runtime.stderr.write(`Error: ${error}\n`);
     }
-    process.exit(1);
+    return 1;
   }
 
-  // Load configuration
-  const config = await loadConfig(options.configPath);
-
-  // Validate database exists
-  const dbPath = resolve(process.cwd(), "data/sidflow.lance");
-  
+  let config: SidflowConfig;
   try {
-    // Check if database directory exists
-    const { stat } = await import("node:fs/promises");
-    await stat(dbPath);
-  } catch {
-    process.stderr.write("Error: LanceDB database not found. Run 'bun run build:db' first.\n");
-    process.exit(1);
+    config = await runtime.loadConfig(options.configPath);
+  } catch (error) {
+    runtime.stderr.write(`Error: ${(error as Error).message}\n`);
+    return 1;
   }
 
-  // Build playlist configuration
+  const dbPath = resolve(runtime.cwd(), "data/sidflow.lance");
+
+  try {
+    await runtime.stat(dbPath);
+  } catch {
+    runtime.stderr.write("Error: LanceDB database not found. Run 'bun run build:db' first.\n");
+    return 1;
+  }
+
+  const mood = options.mood;
+
+  let seed: PlaylistConfig["seed"] = "ambient";
+  if (mood) {
+    if (isMoodPreset(mood)) {
+      seed = mood;
+    } else {
+      runtime.stderr.write(`Error: Unknown mood preset: ${mood}\n`);
+      return 1;
+    }
+  }
+
   const playlistConfig: PlaylistConfig = {
-    seed: options.mood || "ambient",
+    seed,
     limit: options.limit,
     explorationFactor: options.explorationFactor,
     diversityThreshold: options.diversityThreshold
   };
 
-  // Parse filters if provided
   if (options.filters) {
     try {
-      playlistConfig.filters = parseFilters(options.filters);
+      playlistConfig.filters = runtime.parseFilters(options.filters);
     } catch (error) {
-      process.stderr.write(`Error: ${(error as Error).message}\n`);
-      process.exit(1);
+      runtime.stderr.write(`Error: ${(error as Error).message}\n`);
+      return 1;
     }
   }
 
-  // Create playlist builder
-  const builder = createPlaylistBuilder({ dbPath });
-  
+  const builder = runtime.createPlaylistBuilder({ dbPath });
+  let connected = false;
+  let signalHandler: (() => void) | null = null;
+
   try {
     await builder.connect();
-    
-    // Generate playlist
-    process.stdout.write("Generating playlist...\n");
-    const playlist = await builder.build(playlistConfig);
-    
-    process.stdout.write(`Generated playlist with ${playlist.songs.length} songs\n\n`);
+    connected = true;
 
-    // Export if requested
+    runtime.stdout.write("Generating playlist...\n");
+    const playlist = await builder.build(playlistConfig);
+    runtime.stdout.write(`Generated playlist with ${playlist.songs.length} songs\n\n`);
+
     if (options.export) {
       const format = (options.exportFormat || "json") as ExportFormat;
-      await exportPlaylist(playlist, {
+      await runtime.exportPlaylist(playlist, {
         outputPath: options.export,
         format,
         rootPath: config.hvscPath
       });
-      process.stdout.write(`Playlist exported to ${options.export}\n`);
+      runtime.stdout.write(`Playlist exported to ${options.export}\n`);
     }
 
-    // Exit if export-only
     if (options.exportOnly) {
-      await builder.disconnect();
-      process.exit(0);
+      return 0;
     }
 
-    // Start playback
-    const sessionManager = createSessionManager("data/sessions");
+    const sessionManager = runtime.createSessionManager("data/sessions");
     await sessionManager.startSession(playlistConfig.seed);
 
-    const controller = createPlaybackController({
+    const controller = runtime.createPlaybackController({
       rootPath: config.hvscPath,
       sidplayPath: options.sidplayPath || config.sidplayPath,
       minDuration: options.minDuration,
       onEvent: (event: PlaybackEvent) => {
         sessionManager.recordEvent(event);
-        
+
         switch (event.type) {
           case "started":
-            process.stdout.write(`▶️  Playing: ${event.song?.sid_path}\n`);
+            runtime.stdout.write(`▶️  Playing: ${event.song?.sid_path}\n`);
             break;
           case "finished":
-            process.stdout.write(`✅ Finished: ${event.song?.sid_path}\n`);
+            runtime.stdout.write(`✅ Finished: ${event.song?.sid_path}\n`);
             break;
           case "skipped":
-            process.stdout.write(`⏭️  Skipped: ${event.song?.sid_path}\n`);
+            runtime.stdout.write(`⏭️  Skipped: ${event.song?.sid_path}\n`);
             break;
           case "error":
-            process.stderr.write(`❌ Error: ${event.error?.message}\n`);
+            runtime.stderr.write(`❌ Error: ${event.error?.message}\n`);
             break;
         }
       }
@@ -346,41 +431,48 @@ async function main(): Promise<void> {
 
     controller.loadQueue(playlist.songs);
 
-    // Setup graceful shutdown
     const shutdown = async () => {
-      process.stdout.write("\n\nStopping playback...\n");
+      runtime.stdout.write("\n\nStopping playback...\n");
       await controller.stop();
       await sessionManager.endSession();
-      await builder.disconnect();
-      process.exit(0);
     };
 
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    const handleSignal = () => {
+      void shutdown();
+    };
 
-    // Start playback
-    process.stdout.write("\nStarting playback... (Press Ctrl+C to stop)\n\n");
+    signalHandler = handleSignal;
+    runtime.onSignal("SIGINT", handleSignal);
+    runtime.onSignal("SIGTERM", handleSignal);
+
+    runtime.stdout.write("\nStarting playback... (Press Ctrl+C to stop)\n\n");
     await controller.play();
 
-    // Wait for playback to finish
     while (controller.getState() !== PlaybackState.IDLE) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await runtime.sleep(1000);
     }
 
     await sessionManager.endSession();
-    await builder.disconnect();
-    
+    return 0;
   } catch (error) {
-    process.stderr.write(`Error: ${(error as Error).message}\n`);
-    await builder.disconnect();
-    process.exit(1);
+    runtime.stderr.write(`Error: ${(error as Error).message}\n`);
+    return 1;
+  } finally {
+    if (signalHandler) {
+      runtime.offSignal("SIGINT", signalHandler);
+      runtime.offSignal("SIGTERM", signalHandler);
+    }
+    if (connected) {
+      await builder.disconnect();
+    }
   }
 }
 
-// Run if executed directly
 if (import.meta.main) {
-  main().catch(error => {
+  runPlayCli(process.argv.slice(2)).then((code) => {
+    process.exitCode = code;
+  }).catch((error) => {
     process.stderr.write(`Fatal error: ${error.message}\n`);
-    process.exit(1);
+    process.exitCode = 1;
   });
 }

@@ -128,7 +128,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(wavResult.skipped).toHaveLength(0);
 
     // Step 2: Extract features using Essentia.js
-    const wavFile1 = path.join(wavCachePath, "MUSICIANS", "Test", "song1-1.wav");
+  const wavFile1 = path.join(wavCachePath, "MUSICIANS", "Test", "song1.wav");
     console.log(`[TEST] Checking for WAV file: ${wavFile1}`);
     
     // Check if file exists

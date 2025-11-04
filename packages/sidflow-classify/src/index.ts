@@ -308,7 +308,7 @@ export async function buildWavCache(
     const songCount = metadata?.songs ?? 1;
 
     for (let songIndex = 1; songIndex <= songCount; songIndex++) {
-      const wavFile = resolveWavPath(plan, sidFile, songIndex);
+  const wavFile = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
       
       if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
         songsToRender.push({ sidFile, songIndex, wavFile });
@@ -338,7 +338,7 @@ export async function buildWavCache(
   for (let i = 0; i < songsToRender.length; i++) {
     const { sidFile, songIndex, wavFile } = songsToRender[i];
 
-    await render({ sidFile, wavFile, sidplayPath, songIndex });
+  await render({ sidFile, wavFile, sidplayPath, songIndex });
     rendered.push(wavFile);
 
     // Report progress after rendering completes
@@ -771,7 +771,7 @@ export async function generateAutoTags(
       let autoRatings: TagRatings | null = null;
 
       if (needsAuto) {
-        const wavPath = resolveWavPath(plan, sidFile, songIndex);
+  const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
         if (!(await pathExists(wavPath))) {
           throw new Error(
             `Missing WAV cache for ${posixRelative} song ${songIndex}. Run buildWavCache before generateAutoTags.`
@@ -965,7 +965,7 @@ export async function generateJsonlOutput(
       const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
       
       // Extract features and generate ratings for this song
-      const wavPath = resolveWavPath(plan, sidFile, songIndex);
+  const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
       let features: AudioFeatures | undefined;
       let ratings: TagRatings;
 
