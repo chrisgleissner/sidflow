@@ -65,9 +65,9 @@ describe("CLI argument parsing", () => {
   });
 
   test("returns error for invalid min-duration", () => {
-    const result = parsePlayArgs(["--min-duration", "invalid"]);
+    const result = parsePlayArgs(["--min-duration", "0"]);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0]).toContain("must be a non-negative number");
+    expect(result.errors[0]).toContain("must be at least 1 second");
   });
 
   test("parses export-only flag", () => {

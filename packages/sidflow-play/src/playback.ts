@@ -131,8 +131,8 @@ export class PlaybackController {
     }
 
     // Check if song duration meets minimum requirement
-    const duration = song.features?.duration as number | undefined;
-    if (duration !== undefined && duration < this.minDuration) {
+    const duration = song.features?.duration;
+    if (typeof duration === 'number' && duration < this.minDuration) {
       // Skip songs that are too short
       this.emitEvent({ 
         type: "skipped", 

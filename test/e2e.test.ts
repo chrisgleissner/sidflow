@@ -33,6 +33,7 @@ import { createPlaybackController, PlaybackState } from "../packages/sidflow-pla
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-e2e-");
 const TEST_DATA_PATH = path.join(process.cwd(), "test-data");
+const TEST_SID_PATH = "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid";
 
 /**
  * Check if sidplayfp is available in the system.
@@ -300,7 +301,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     // Mock recommendations based on classified songs
     const mockRecommendations = [
       {
-        sid_path: "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        sid_path: TEST_SID_PATH,
         score: 0.9,
         similarity: 0.95,
         songFeedback: 0.8,

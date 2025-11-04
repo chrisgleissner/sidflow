@@ -184,8 +184,8 @@ export function parsePlayArgs(argv: string[]): ParseResult {
           errors.push("--min-duration requires a value");
         } else {
           const num = Number(next);
-          if (Number.isNaN(num) || num < 0) {
-            errors.push("--min-duration must be a non-negative number");
+          if (Number.isNaN(num) || num < 1) {
+            errors.push("--min-duration must be at least 1 second");
           } else {
             options.minDuration = num;
             index += 1;
