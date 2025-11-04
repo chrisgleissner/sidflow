@@ -155,6 +155,65 @@ Trigger classification via `sidflow-classify` CLI.
 }
 ```
 
+### POST /api/fetch
+
+Synchronize HVSC collection via `sidflow-fetch` CLI.
+
+**Request:**
+```json
+{
+  "configPath": "/path/to/config.json",
+  "remoteBaseUrl": "https://example.com/hvsc",
+  "hvscVersionPath": "/path/to/version.json"
+}
+```
+
+All fields are optional.
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "data": {
+    "output": "..."
+  }
+}
+```
+
+### POST /api/train
+
+Train ML model via `sidflow-train` CLI.
+
+**Request:**
+```json
+{
+  "configPath": "/path/to/config.json",
+  "epochs": 10,
+  "batchSize": 16,
+  "learningRate": 0.001,
+  "evaluate": true,
+  "force": false
+}
+```
+
+All fields are optional.
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "data": {
+    "output": "..."
+  }
+}
+```
+  "success": true,
+  "data": {
+    "output": "..."
+  }
+}
+```
+
 ## Error Handling
 
 All API endpoints return consistent error responses:

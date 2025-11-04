@@ -2,7 +2,13 @@
  * Unit tests for API validation schemas
  */
 import { describe, test, expect } from 'bun:test';
-import { PlayRequestSchema, RateRequestSchema, ClassifyRequestSchema } from '../../lib/validation';
+import { 
+  PlayRequestSchema, 
+  RateRequestSchema, 
+  ClassifyRequestSchema, 
+  FetchRequestSchema, 
+  TrainRequestSchema 
+} from '../../lib/validation';
 
 describe('PlayRequestSchema', () => {
   test('validates valid play request', () => {
@@ -103,5 +109,86 @@ describe('ClassifyRequestSchema', () => {
     const invalid = {};
     const result = ClassifyRequestSchema.safeParse(invalid);
     expect(result.success).toBe(false);
+  });
+});
+
+describe('FetchRequestSchema', () => {
+  test('validates empty fetch request', () => {
+    const valid = {};
+    const result = FetchRequestSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  test('validates fetch request with all options', () => {
+    const valid = {
+      configPath: '/path/to/config.json',
+      remoteBaseUrl: 'https://example.com/hvsc',
+      hvscVersionPath: '/path/to/version.json'
+    };
+    const result = FetchRequestSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects invalid URL', () => {
+    const invalid = { remoteBaseUrl: 'not-a-url' };
+    const result = FetchRequestSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
+  });
+
+  test('validates partial fetch request', () => {
+    const valid = { configPath: '/path/to/config.json' };
+    const result = FetchRequestSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('TrainRequestSchema', () => {
+  test('validates empty train request', () => {
+    const valid = {};
+    const result = TrainRequestSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  test('validates train request with all options', () => {
+    const valid = {
+      configPath: '/path/to/config.json',
+      epochs: 10,
+      batchSize: 16,
+      learningRate: 0.001,
+      evaluate: true,
+      force: false
+    };
+    const result = TrainRequestSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects negative epochs', () => {
+    const invalid = { epochs: -5 };
+    const result = TrainRequestSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects zero batch size', () => {
+    const invalid = { batchSize: 0 };
+    const result = TrainRequestSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects negative learning rate', () => {
+    const invalid = { learningRate: -0.01 };
+    const result = TrainRequestSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects non-integer epochs', () => {
+    const invalid = { epochs: 5.5 };
+    const result = TrainRequestSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
+  });
+
+  test('validates partial train request', () => {
+    const valid = { epochs: 20, force: true };
+    const result = TrainRequestSchema.safeParse(valid);
+    expect(result.success).toBe(true);
   });
 });

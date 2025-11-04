@@ -31,6 +31,27 @@ export const ClassifyRequestSchema = z.object({
 
 export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;
 
+// Fetch endpoint schema
+export const FetchRequestSchema = z.object({
+  configPath: z.string().optional(),
+  remoteBaseUrl: z.string().url().optional(),
+  hvscVersionPath: z.string().optional(),
+});
+
+export type FetchRequest = z.infer<typeof FetchRequestSchema>;
+
+// Train endpoint schema
+export const TrainRequestSchema = z.object({
+  configPath: z.string().optional(),
+  epochs: z.number().int().positive().optional(),
+  batchSize: z.number().int().positive().optional(),
+  learningRate: z.number().positive().optional(),
+  evaluate: z.boolean().optional(),
+  force: z.boolean().optional(),
+});
+
+export type TrainRequest = z.infer<typeof TrainRequestSchema>;
+
 // Generic API response types
 export interface ApiSuccessResponse<T = unknown> {
   success: true;

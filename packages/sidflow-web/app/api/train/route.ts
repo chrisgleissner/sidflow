@@ -1,24 +1,38 @@
 /**
- * Play API endpoint - triggers SID playback via sidflow-play CLI
+ * Train API endpoint - trains ML model via sidflow-train CLI
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { executeCli } from '@/lib/cli-executor';
-import { PlayRequestSchema, type ApiResponse } from '@/lib/validation';
+import { TrainRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const validatedData = PlayRequestSchema.parse(body);
+    const validatedData = TrainRequestSchema.parse(body);
 
-    const args = [];
-    if (validatedData.preset) {
-      args.push('--mood', validatedData.preset);
+    const args: string[] = [];
+    if (validatedData.configPath) {
+      args.push('--config', validatedData.configPath);
     }
-    args.push(validatedData.sid_path);
+    if (validatedData.epochs !== undefined) {
+      args.push('--epochs', String(validatedData.epochs));
+    }
+    if (validatedData.batchSize !== undefined) {
+      args.push('--batch-size', String(validatedData.batchSize));
+    }
+    if (validatedData.learningRate !== undefined) {
+      args.push('--learning-rate', String(validatedData.learningRate));
+    }
+    if (validatedData.evaluate === false) {
+      args.push('--no-evaluate');
+    }
+    if (validatedData.force === true) {
+      args.push('--force');
+    }
 
-    const result = await executeCli('sidflow-play', args, {
-      timeout: 60000, // 60 seconds for playback
+    const result = await executeCli('sidflow-train', args, {
+      timeout: 600000, // 10 minutes for training (can be long-running)
     });
 
     if (result.success) {
@@ -32,7 +46,7 @@ export async function POST(request: NextRequest) {
     } else {
       const response: ApiResponse = {
         success: false,
-        error: 'Playback command failed',
+        error: 'Training command failed',
         details: result.stderr || result.stdout,
       };
       return NextResponse.json(response, { status: 500 });

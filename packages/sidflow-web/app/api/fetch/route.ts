@@ -1,24 +1,29 @@
 /**
- * Play API endpoint - triggers SID playback via sidflow-play CLI
+ * Fetch API endpoint - synchronizes HVSC via sidflow-fetch CLI
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { executeCli } from '@/lib/cli-executor';
-import { PlayRequestSchema, type ApiResponse } from '@/lib/validation';
+import { FetchRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const validatedData = PlayRequestSchema.parse(body);
+    const validatedData = FetchRequestSchema.parse(body);
 
-    const args = [];
-    if (validatedData.preset) {
-      args.push('--mood', validatedData.preset);
+    const args: string[] = [];
+    if (validatedData.configPath) {
+      args.push('--config', validatedData.configPath);
     }
-    args.push(validatedData.sid_path);
+    if (validatedData.remoteBaseUrl) {
+      args.push('--remote', validatedData.remoteBaseUrl);
+    }
+    if (validatedData.hvscVersionPath) {
+      args.push('--version-file', validatedData.hvscVersionPath);
+    }
 
-    const result = await executeCli('sidflow-play', args, {
-      timeout: 60000, // 60 seconds for playback
+    const result = await executeCli('sidflow-fetch', args, {
+      timeout: 600000, // 10 minutes for HVSC sync (can be long-running)
     });
 
     if (result.success) {
@@ -32,7 +37,7 @@ export async function POST(request: NextRequest) {
     } else {
       const response: ApiResponse = {
         success: false,
-        error: 'Playback command failed',
+        error: 'Fetch command failed',
         details: result.stderr || result.stdout,
       };
       return NextResponse.json(response, { status: 500 });
