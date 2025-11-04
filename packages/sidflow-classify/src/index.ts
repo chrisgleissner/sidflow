@@ -625,7 +625,8 @@ function metadataToJson(metadata: SidMetadata): Record<string, JsonValue> {
 async function writeMetadataRecord(
   plan: ClassificationPlan,
   sidFile: string,
-  metadata: SidMetadata
+  metadata: SidMetadata,
+  cachedFullMetadata?: SidFileMetadata
 ): Promise<string> {
   const metadataPath = resolveMetadataPath(plan.hvscPath, plan.tagsPath, sidFile);
   await ensureDir(path.dirname(metadataPath));
@@ -633,18 +634,28 @@ async function writeMetadataRecord(
   // Build metadata object with simple fields
   const metadataJson = metadataToJson(metadata);
   
-  // Try to get full SID file metadata and merge it
-  try {
-    const fullMetadata = await parseSidFile(sidFile);
-    const fullJson = sidMetadataToJson(fullMetadata);
+  // Use cached metadata if available, otherwise try to parse
+  if (cachedFullMetadata) {
+    const fullJson = sidMetadataToJson(cachedFullMetadata);
     // Merge full metadata with the simple metadata (simple metadata takes precedence for basic fields)
     Object.assign(metadataJson, fullJson, {
-      title: metadata.title || fullMetadata.title,
-      author: metadata.author || fullMetadata.author,
-      released: metadata.released || fullMetadata.released
+      title: metadata.title || cachedFullMetadata.title,
+      author: metadata.author || cachedFullMetadata.author,
+      released: metadata.released || cachedFullMetadata.released
     });
-  } catch {
-    // If we can't parse the SID file, just use the simple metadata
+  } else {
+    // Fallback: try to parse if no cache provided (backward compatibility)
+    try {
+      const fullMetadata = await parseSidFile(sidFile);
+      const fullJson = sidMetadataToJson(fullMetadata);
+      Object.assign(metadataJson, fullJson, {
+        title: metadata.title || fullMetadata.title,
+        author: metadata.author || fullMetadata.author,
+        released: metadata.released || fullMetadata.released
+      });
+    } catch {
+      // If we can't parse the SID file, just use the simple metadata
+    }
   }
   
   await writeFile(metadataPath, stringifyDeterministic(metadataJson));
@@ -734,11 +745,12 @@ export async function generateAutoTags(
       sidplayPath: plan.sidplayPath,
       relativePath: posixRelative
     });
-    const metadataPath = await writeMetadataRecord(plan, sidFile, metadata);
-    metadataFiles.push(metadataPath);
-
+    
     // Get song count from parsed metadata
     const fullMetadata = sidMetadataCache.get(sidFile);
+    const metadataPath = await writeMetadataRecord(plan, sidFile, metadata, fullMetadata);
+    metadataFiles.push(metadataPath);
+
     const songCount = fullMetadata?.songs ?? 1;
 
     // Process each song within the SID file

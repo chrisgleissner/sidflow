@@ -66,13 +66,6 @@ function readWord(buffer: Buffer, offset: number): number {
 }
 
 /**
- * Parse a 32-bit big-endian longword from buffer
- */
-function readLongWord(buffer: Buffer, offset: number): number {
-  return buffer.readUInt32BE(offset);
-}
-
-/**
  * Parse a null-terminated or fixed-length string from buffer
  * Converts from Windows-1252 to UTF-8
  */
