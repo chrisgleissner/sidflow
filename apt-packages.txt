@@ -1,0 +1,10 @@
+build-essential
+ca-certificates
+curl
+jq
+nodejs
+npm
+python3
+sidplayfp
+7zip
+unzip

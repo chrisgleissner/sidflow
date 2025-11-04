@@ -13,6 +13,8 @@ Designed for contributors maintaining or extending the SID Flow toolchain.
 
 Install dependencies once: `bun install`.
 
+> `bun run build` now runs `bun install --frozen-lockfile` automatically, so vectordb and other runtime dependencies are always present before compilation. As long as `7z` and `sidplayfp` are on your PATH, a clean checkout can run `bun run build` followed by `bun run test` without extra setup.
+
 ---
 
 ## 2. Configuration
@@ -36,12 +38,12 @@ Validate edits with `bun run validate:config`.
 
 | Command | Result |
 | --- | --- |
-| `bun run build` | Compile all packages with project references. |
+| `bun run build` | Install dependencies (frozen-lockfile) and compile all packages with project references. |
 | `bun run test` | Build then run the Bun test suite with coverage (≥90% enforced). |
 | `bun run test:e2e` | Run end-to-end integration test with real SID files. |
 | `bun run validate:config` | Smoke-test the active configuration file. |
 | `./scripts/sidflow-fetch` | Run the fetch CLI with Bun hidden behind a repo-local shim. |
-| `./scripts/sidflow-tag` | Launch the interactive tagging CLI (TTY required). |
+| `./scripts/sidflow-rate` | Launch the interactive rating CLI (TTY required). |
 | `bun run fetch:sample` | Spin up a local mirror and run the `sidflow fetch` CLI end-to-end (used in CI). |
 | `bun run classify:sample` | Execute the end-to-end classification sample, including metadata extraction and auto-tag heuristics. |
 
@@ -55,7 +57,7 @@ CI mirrors these steps before uploading coverage to Codecov.
 | --- | --- |
 | `@sidflow/common` | Shared config loader, deterministic JSON serializer, logging, filesystem helpers. |
 | `@sidflow/fetch` | HVSC sync logic and CLI (`./scripts/sidflow-fetch`). |
-| `@sidflow/tag` | Tagging session planner (interactive CLI landing in Phase 3). |
+| `@sidflow/rate` | Rating session planner (`sidflow-rate` CLI). |
 | `@sidflow/classify` | Classification planner (feature extraction + ML pipeline scheduled for Phase 4). |
 
 All packages share `tsconfig.base.json` and strict TypeScript settings; avoid introducing `any`.
@@ -76,7 +78,7 @@ All packages share `tsconfig.base.json` and strict TypeScript settings; avoid in
 ## 6. Developing CLIs
 
 - The fetch CLI is live; run `./scripts/sidflow-fetch --help` to inspect options.
-- The tagging CLI requires a TTY; run `./scripts/sidflow-tag --help` for controls and flags.
+- The rating CLI requires a TTY; run `./scripts/sidflow-rate --help` for controls and flags.
 - Upcoming CLIs for tagging and classification should follow the same pattern: parse args in a dedicated `cli.ts`, expose a testable `run*Cli` function, and guard the executable entry point with `import.meta.main`.
 - Keep option parsing minimal and dependency-free; write focused tests similar to `packages/sidflow-fetch/test/cli.test.ts`.
 

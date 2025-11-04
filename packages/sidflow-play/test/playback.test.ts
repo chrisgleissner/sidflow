@@ -3,11 +3,8 @@
  */
 
 import { describe, expect, test, mock } from "bun:test";
-import {
-  createPlaybackController,
-  PlaybackState,
-  type Recommendation
-} from "../src/index.js";
+import { createPlaybackController, PlaybackState } from "../src/index.js";
+import type { Recommendation } from "@sidflow/common";
 
 const mockSongs: Recommendation[] = [
   {
@@ -93,8 +90,13 @@ describe("PlaybackController", () => {
     });
     controller.loadQueue(mockSongs);
 
+    const kill = mock(() => {});
+    (controller as unknown as { process?: { kill: () => void } }).process = { kill };
+
     await controller.stop();
     expect(controller.getState()).toBe(PlaybackState.STOPPED);
+    expect(kill).toHaveBeenCalled();
+    expect(controller.getQueue().currentIndex).toBe(-1);
   });
 
   test("calls onEvent callback on events", () => {
@@ -147,6 +149,91 @@ describe("PlaybackController", () => {
     
     // The controller should skip the short song, but we can't test actual playback
     // in unit tests without mocking spawn. Just verify the controller is configured.
-    expect(controller.getQueue().songs).toHaveLength(1);
+    await controller.play();
+    expect(events).toContain("skipped");
+    expect(controller.getState()).toBe(PlaybackState.IDLE);
+  });
+
+  test("pause emits paused event when playing", async () => {
+    const events: string[] = [];
+    const kill = mock(() => {});
+    const controller = createPlaybackController({
+      rootPath: "/tmp/test",
+      onEvent: (event) => events.push(event.type)
+    });
+
+    controller.loadQueue(mockSongs);
+    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PLAYING;
+    (controller as unknown as { currentIndex: number }).currentIndex = 0;
+    (controller as unknown as { process?: { kill: (signal?: string) => void } }).process = {
+      kill
+    };
+
+    await controller.pause();
+    expect(kill).toHaveBeenCalledWith("SIGSTOP");
+    expect(events).toContain("paused");
+    expect(controller.getState()).toBe(PlaybackState.PAUSED);
+  });
+
+  test("resume emits resumed event when paused", async () => {
+    const events: string[] = [];
+    const kill = mock(() => {});
+    const controller = createPlaybackController({
+      rootPath: "/tmp/test",
+      onEvent: (event) => events.push(event.type)
+    });
+
+    controller.loadQueue(mockSongs);
+    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PAUSED;
+    (controller as unknown as { currentIndex: number }).currentIndex = 0;
+    (controller as unknown as { process?: { kill: (signal?: string) => void } }).process = {
+      kill
+    };
+
+    await controller.resume();
+    expect(kill).toHaveBeenCalledWith("SIGCONT");
+    expect(events).toContain("resumed");
+    expect(controller.getState()).toBe(PlaybackState.PLAYING);
+  });
+
+  test("play resumes from paused state", async () => {
+    const kill = mock(() => {});
+    const controller = createPlaybackController({
+      rootPath: "/tmp/test"
+    });
+
+    controller.loadQueue(mockSongs);
+    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PAUSED;
+    (controller as unknown as { currentIndex: number }).currentIndex = 0;
+    (controller as unknown as { process?: { kill: (signal?: string) => void } }).process = {
+      kill
+    };
+
+    await controller.play();
+    expect(kill).toHaveBeenCalledWith("SIGCONT");
+    expect(controller.getState()).toBe(PlaybackState.PLAYING);
+  });
+
+  test("skip emits skipped event and advances queue", async () => {
+    const events: string[] = [];
+    const kill = mock(() => {});
+    const next = mock(async () => {
+      (controller as unknown as { state: PlaybackState }).state = PlaybackState.IDLE;
+    });
+    const controller = createPlaybackController({
+      rootPath: "/tmp/test",
+      onEvent: (event) => events.push(event.type)
+    });
+
+    controller.loadQueue(mockSongs);
+    (controller as unknown as { currentIndex: number }).currentIndex = 0;
+    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PLAYING;
+    (controller as unknown as { process?: { kill: () => void } }).process = { kill };
+    (controller as unknown as { next: () => Promise<void> }).next = next;
+
+    await controller.skip();
+    expect(kill).toHaveBeenCalled();
+    expect(events).toContain("skipped");
+    expect(next).toHaveBeenCalled();
   });
 });

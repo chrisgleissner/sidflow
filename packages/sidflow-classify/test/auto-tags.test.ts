@@ -64,11 +64,11 @@ describe("generateAutoTags", () => {
       })
     );
 
-    const autoWav = resolveWavPath(plan, autoSid);
+  const autoWav = resolveWavPath(plan, autoSid);
     await ensureDir(path.dirname(autoWav));
     await writeFile(autoWav, "auto-wav");
 
-    const manualWav = resolveWavPath(plan, manualSid);
+  const manualWav = resolveWavPath(plan, manualSid);
     await ensureDir(path.dirname(manualWav));
     await writeFile(manualWav, "manual-wav");
 
@@ -147,7 +147,7 @@ describe("generateAutoTags", () => {
       })
     );
 
-    const wavPath = resolveWavPath(plan, sidFile);
+  const wavPath = resolveWavPath(plan, sidFile);
     await ensureDir(path.dirname(wavPath));
     await writeFile(wavPath, "mixed-wav");
 

@@ -207,7 +207,19 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(wavFile).toBeDefined();
 
     const fullWavPath = path.join(wavCachePath, wavFile!);
-    const sidFile = fullWavPath.replace(wavCachePath, hvscPath).replace(".wav", ".sid");
+    const relativeWavPath = wavFile!;
+    const sidRelativeWithIndex = relativeWavPath.replace(/\.wav$/i, ".sid");
+    let sidFile = path.join(hvscPath, sidRelativeWithIndex);
+
+    if (!existsSync(sidFile)) {
+      const sidRelativeWithoutIndex = sidRelativeWithIndex.replace(/-(\d+)\.sid$/i, ".sid");
+      const fallback = path.join(hvscPath, sidRelativeWithoutIndex);
+      if (existsSync(fallback)) {
+        sidFile = fallback;
+      } else {
+        throw new Error(`Unable to locate SID file for ${relativeWavPath}`);
+      }
+    }
 
     const features = await essentiaFeatureExtractor({
       wavFile: fullWavPath,

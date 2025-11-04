@@ -6,7 +6,7 @@
   "packageManager": "bun@1.3.1",
   "workspaces": ["packages/*"],
   "scripts": {
-    "build": "tsc -b",
+    "build": "bun install --frozen-lockfile && tsc -b",
     "test": "bun run build && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov",
     "test:e2e": "bun run build && bun test test/e2e.test.ts",
     "validate:config": "bun run scripts/validate-config.ts",
@@ -15,7 +15,10 @@
     "classify:sample": "bun run scripts/run-classify-sample.ts",
     "ci:verify": "bun run validate:config && bun run fetch:sample && bun run classify:sample && bun run test:e2e",
     "format:json": "bun run scripts/format-json.ts",
-    "build:db": "bun run scripts/build-db.ts"
+    "build:db": "bun run scripts/build-db.ts",
+    "release:prepare": "bun run scripts/ci/release-prepare.ts --",
+    "changes:entry": "bun run scripts/ci/extract-changes-entry.ts",
+    "check:packages": "bun run scripts/ci/check-packages.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

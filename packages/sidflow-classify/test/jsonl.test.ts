@@ -76,10 +76,10 @@ describe("generateJsonlOutput", () => {
     await mkdir(sidDir, { recursive: true });
     await writeFile(path.join(sidDir, "test.sid"), Buffer.from("test content"));
 
-    // Create a mock WAV file
-    const wavCacheDir = path.join(testDir, "wav-cache", "test-artist");
+  // Create a mock WAV file
+  const wavCacheDir = path.join(testDir, "wav-cache", "test-artist");
     await mkdir(wavCacheDir, { recursive: true });
-    await writeFile(path.join(wavCacheDir, "test.wav"), Buffer.from("mock wav data"));
+  await writeFile(path.join(wavCacheDir, "test.wav"), Buffer.from("mock wav data"));
 
     const plan: ClassificationPlan = {
       config: {

@@ -1,9 +1,30 @@
-import * as tf from "@tensorflow/tfjs";
+import type * as TfJs from "@tensorflow/tfjs";
 import { clampRating, pathExists, type TagRatings } from "@sidflow/common";
 import type { FeatureVector, PredictRatings } from "./index.js";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureDir } from "@sidflow/common";
+
+type TfModule = typeof import("@tensorflow/tfjs");
+
+async function loadTensorFlow(): Promise<TfModule> {
+  try {
+    // Prefer the native TensorFlow backend when available.
+    return (await import("@tensorflow/tfjs-node")) as TfModule;
+  } catch (error) {
+    if (process.env.SIDFLOW_TFJS_STRICT === "1") {
+      throw new Error("@tensorflow/tfjs-node failed to load and strict mode is enabled.");
+    }
+
+    console.warn("Falling back to @tensorflow/tfjs (pure JS backend):", (error as Error).message);
+    return (await import("@tensorflow/tfjs")) as TfModule;
+  }
+}
+
+const tf: TfModule = await loadTensorFlow();
+
+type LayersModel = TfJs.LayersModel;
+type Tensor = TfJs.Tensor;
 
 /**
  * Production-ready TensorFlow.js regressor for predicting (e,m,c) ratings.
@@ -101,9 +122,37 @@ let FEATURE_STDS: Record<string, number> = {
   duration: 60
 };
 
-let cachedModel: tf.LayersModel | null = null;
+let cachedModel: LayersModel | null = null;
 let cachedStats: FeatureStats | null = null;
 let cachedMetadata: ModelMetadata | null = null;
+
+const MODEL_FILENAME = "model.json";
+const MODEL_SAVE_DIR = "model";
+const LEGACY_MODEL_DIR = "model.json";
+
+async function resolveModelJsonFile(basePath: string): Promise<string | null> {
+  const candidates = [
+    path.join(basePath, MODEL_SAVE_DIR, MODEL_FILENAME),
+    path.join(basePath, MODEL_FILENAME),
+    path.join(basePath, LEGACY_MODEL_DIR, MODEL_FILENAME)
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const fileStat = await stat(candidate);
+      if (fileStat.isFile()) {
+        return candidate;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Get the default model directory path.
@@ -195,7 +244,7 @@ export async function saveModelMetadata(metadata: ModelMetadata, modelPath?: str
  * @param inputDim - Number of input features
  * @returns Untrained TensorFlow.js model
  */
-export function createModel(inputDim: number): tf.LayersModel {
+export function createModel(inputDim: number): LayersModel {
   const model = tf.sequential({
     layers: [
       tf.layers.dense({
@@ -227,12 +276,12 @@ export function createModel(inputDim: number): tf.LayersModel {
  * @param modelPath - Base path for model directory (defaults to "data")
  * @returns Loaded or newly created model
  */
-export async function loadModel(modelPath?: string): Promise<tf.LayersModel> {
+export async function loadModel(modelPath?: string): Promise<LayersModel> {
   const dirPath = getModelPath(modelPath);
-  const modelJsonPath = path.join(dirPath, "model.json");
+  const modelJsonPath = await resolveModelJsonFile(dirPath);
   
   // Try to load existing model
-  if (await pathExists(modelJsonPath)) {
+  if (modelJsonPath) {
     try {
       const model = await tf.loadLayersModel(`file://${modelJsonPath}`);
       
@@ -280,13 +329,14 @@ export async function loadModel(modelPath?: string): Promise<tf.LayersModel> {
  * @param model - TensorFlow.js model to save
  * @param modelPath - Base path for model directory (defaults to "data")
  */
-export async function saveModel(model: tf.LayersModel, modelPath?: string): Promise<void> {
+export async function saveModel(model: LayersModel, modelPath?: string): Promise<void> {
   const dirPath = getModelPath(modelPath);
   await ensureDir(dirPath);
   
   // Save model weights and topology
-  const modelJsonPath = `file://${path.join(dirPath, "model.json")}`;
-  await model.save(modelJsonPath);
+  const modelDirPath = path.join(dirPath, MODEL_SAVE_DIR);
+  await ensureDir(modelDirPath);
+  await model.save(`file://${modelDirPath}`);
   
   // Update and save metadata
   if (cachedMetadata) {
@@ -534,7 +584,7 @@ export async function evaluateModel(
     const inputTensor = tf.tensor2d([normalizedFeatures]);
     
     try {
-      const prediction = model.predict(inputTensor) as tf.Tensor;
+  const prediction = model.predict(inputTensor) as Tensor;
       const predData = await prediction.data();
       
       predictions.push([
@@ -628,7 +678,7 @@ export const tfjsPredictRatings: PredictRatings = async ({ features }) => {
   const inputTensor = tf.tensor2d([normalizedFeatures], [1, EXPECTED_FEATURES.length]);
 
   try {
-    const prediction = model.predict(inputTensor) as tf.Tensor;
+  const prediction = model.predict(inputTensor) as Tensor;
     const predictionData = await prediction.data();
 
     // Extract and scale the three ratings (from tanh range [-1, 1])
@@ -672,7 +722,7 @@ export async function tfjsPredictRatingsWithConfidence(
   const inputTensor = tf.tensor2d([normalizedFeatures], [1, EXPECTED_FEATURES.length]);
 
   try {
-    const prediction = model.predict(inputTensor) as tf.Tensor;
+  const prediction = model.predict(inputTensor) as Tensor;
     const predictionData = await prediction.data();
 
     // Extract and scale the three ratings (from tanh range [-1, 1])
