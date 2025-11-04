@@ -14,6 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sidplayfp p7zip-full
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "latest"
