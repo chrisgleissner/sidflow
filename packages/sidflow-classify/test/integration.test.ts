@@ -90,8 +90,8 @@ describe("Essentia.js + TF.js integration", () => {
     };
 
     // Mock WAV renderer
-    const mockRender = async ({ wavFile, songIndex }: { wavFile: string; songIndex?: number }) => {
-      console.log(`[TEST] Rendering WAV: ${wavFile} (songIndex: ${songIndex})`);
+    const mockRender = async ({ sidFile, wavFile, sidplayPath, songIndex }: { sidFile: string; wavFile: string; sidplayPath: string; songIndex?: number }) => {
+      console.log(`[TEST] Rendering WAV: ${wavFile} from ${sidFile} (songIndex: ${songIndex}, sidplayPath: ${sidplayPath})`);
       await ensureDir(path.dirname(wavFile));
       const wavData = generateTestWav(2, 440, 44100);
       await writeFile(wavFile, wavData);
