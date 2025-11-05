@@ -13,7 +13,7 @@ on:
         description: "Container image to use for the job"
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
@@ -33,7 +33,7 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Run tests with coverage
+      - name: Run unit tests with coverage
         run: bun run test
 
       - name: Upload coverage reports to Codecov
@@ -44,28 +44,6 @@ jobs:
           files: coverage/lcov.info
           fail_ci_if_error: true
           verbose: true
-
-  e2e-tests:
-    runs-on: ubuntu-latest
-    # Run E2E tests on host (not in container) to avoid shell and browser installation issues
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          fetch-depth: 0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install Playwright browsers
-        working-directory: packages/sidflow-web
-        run: bunx playwright install --with-deps chromium
 
       - name: Run E2E tests for web server
         working-directory: packages/sidflow-web

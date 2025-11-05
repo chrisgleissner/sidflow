@@ -1,0 +1,67 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV BUN_VERSION=1.3.1
+
+# Copy apt packages list
+COPY apt-packages.txt /tmp/apt-packages.txt
+
+# Install base packages and Playwright dependencies
+RUN set -eux; \
+    apt-get update; \
+    # Install packages from apt-packages.txt
+    if [ -s /tmp/apt-packages.txt ]; then \
+      xargs -r apt-get install -y --no-install-recommends < /tmp/apt-packages.txt; \
+    fi; \
+    # Install Playwright/Chromium dependencies for E2E tests
+    apt-get install -y --no-install-recommends \
+      # Shell and basic utilities
+      bash \
+      # Playwright browser dependencies
+      libnss3 \
+      libnspr4 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libdrm2 \
+      libdbus-1-3 \
+      libxkbcommon0 \
+      libatspi2.0-0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxrandr2 \
+      libgbm1 \
+      libpango-1.0-0 \
+      libcairo2 \
+      libasound2 \
+      libxshmfence1 \
+      # Fonts
+      fonts-liberation \
+      fonts-noto-color-emoji \
+      # Additional utilities
+      wget \
+      unzip; \
+    rm -rf /var/lib/apt/lists/* /tmp/apt-packages.txt
+
+# Install Bun
+RUN set -eux; \
+    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" -o /tmp/bun.zip; \
+    unzip /tmp/bun.zip -d /tmp/bun; \
+    install -m 0755 /tmp/bun/bun-linux-x64/bun /usr/local/bin/bun; \
+    ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
+    rm -rf /tmp/bun /tmp/bun.zip
+
+# Set up workspace
+WORKDIR /workspace
+
+# Pre-install Playwright browser (Chromium only to save space)
+# This will be done in the image to speed up CI builds
+RUN set -eux; \
+    # Create a temporary package.json to install Playwright
+    echo '{"dependencies":{"@playwright/test":"^1.40.0"}}' > /tmp/package.json; \
+    cd /tmp && bun install && bunx playwright install --with-deps chromium; \
+    rm -rf /tmp/package.json /tmp/node_modules
+
+# Set shell to bash for compatibility
+SHELL ["/bin/bash", "-c"]

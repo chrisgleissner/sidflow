@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { playTrack, rateTrack } from '@/lib/api-client';
+import { extractSidMetadata, formatTime, getUpcomingSongs, type SidMetadata, type UpcomingSong } from '@/lib/sid-metadata';
 import type { PlayRequest } from '@/lib/validation';
 import { 
   Play, Pause, Square, SkipForward, SkipBack, 
@@ -28,26 +29,6 @@ const MOOD_PRESETS = [
   { value: 'complex', label: 'Complex' },
 ] as const;
 
-interface SidMetadata {
-  title?: string;
-  artist?: string;
-  year?: string;
-  length?: string;
-  format?: string;
-  version?: string;
-  songs?: number;
-  startSong?: number;
-  sidModel?: string;
-  clockSpeed?: string;
-}
-
-interface UpcomingSong {
-  title: string;
-  artist: string;
-  year: string;
-  length: string;
-}
-
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
   onTrackPlayed: (sidPath: string) => void;
@@ -59,16 +40,16 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [position, setPosition] = useState([0]);
-  const [duration, setDuration] = useState(180); // 3 minutes default
+  const [duration] = useState(180); // 3 minutes default
   const [currentTrack, setCurrentTrack] = useState<any>(null);
   const [sidMetadata, setSidMetadata] = useState<SidMetadata | null>(null);
   const [upcomingSongs, setUpcomingSongs] = useState<UpcomingSong[]>([]);
   
   // Ratings state
-  const [energy, setEnergy] = useState([3]);
-  const [mood, setMood] = useState([3]);
-  const [complexity, setComplexity] = useState([3]);
-  const [preference, setPreference] = useState([3]);
+  const [energy] = useState([3]);
+  const [mood] = useState([3]);
+  const [complexity] = useState([3]);
+  const [preference] = useState([3]);
 
   // Simulate playback progress
   useEffect(() => {
@@ -119,7 +100,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isPlaying, sidPath]);
+  }, [isPlaying, sidPath, currentTrack, preference]);
 
   const handlePlay = async () => {
     if (!sidPath.trim()) {
@@ -144,10 +125,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         setIsPlaying(true);
         setPosition([0]);
         
-        // Extract metadata from path (simulated)
+        // Extract metadata from path
         const filename = sidPath.split('/').pop() || sidPath;
-        const parts = sidPath.split('/');
-        const artist = parts.length >= 3 ? parts[parts.length - 2].replace(/_/g, ' ') : 'Unknown Artist';
         
         setCurrentTrack({
           path: sidPath,
@@ -155,41 +134,11 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           preset,
         });
 
-        // Simulate SID metadata (in real implementation, this would parse the .sid file)
-        setSidMetadata({
-          title: filename.replace('.sid', '').replace(/_/g, ' '),
-          artist: artist,
-          year: '1984',
-          length: formatTime(duration),
-          format: 'PSID v2',
-          version: '2',
-          songs: 3,
-          startSong: 1,
-          sidModel: '6581',
-          clockSpeed: 'PAL (50Hz)',
-        });
+        // Extract SID metadata using shared utility
+        setSidMetadata(extractSidMetadata(sidPath, duration));
 
-        // Simulate upcoming songs
-        setUpcomingSongs([
-          {
-            title: 'Last Ninja 2',
-            artist: 'Matt Gray',
-            year: '1988',
-            length: '3:45',
-          },
-          {
-            title: 'International Karate',
-            artist: 'Rob Hubbard',
-            year: '1986',
-            length: '2:30',
-          },
-          {
-            title: 'Monty on the Run',
-            artist: 'Rob Hubbard',
-            year: '1985',
-            length: '4:12',
-          },
-        ]);
+        // Get upcoming songs using shared utility
+        setUpcomingSongs(getUpcomingSongs());
       } else {
         onStatusChange(`Error: ${response.error}`, true);
       }
@@ -259,12 +208,6 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     } catch (error) {
       onStatusChange(`Failed to rate: ${error}`, true);
     }
-  };
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (

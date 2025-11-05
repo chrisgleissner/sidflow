@@ -1,7 +1,7 @@
 /**
  * Unit tests for API client functions
  */
-import { describe, test, expect, mock } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 
 describe('API Client', () => {
   test('should export all required functions', async () => {

@@ -5,26 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { rateTrack } from '@/lib/api-client';
+import { extractSidMetadata, getUpcomingSongs, type SidMetadata, type UpcomingSong } from '@/lib/sid-metadata';
 import type { RateRequest } from '@/lib/validation';
 import { Star, ThumbsUp, ThumbsDown } from 'lucide-react';
-
-interface SidMetadata {
-  title?: string;
-  artist?: string;
-  year?: string;
-  length?: string;
-  format?: string;
-  songs?: number;
-  sidModel?: string;
-  clockSpeed?: string;
-}
-
-interface UpcomingSong {
-  title: string;
-  artist: string;
-  year: string;
-  length: string;
-}
 
 interface RateTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -43,43 +26,11 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   // Load metadata when path changes
   useEffect(() => {
     if (sidPath.trim()) {
-      // Extract metadata from path (simulated)
-      const filename = sidPath.split('/').pop() || sidPath;
-      const parts = sidPath.split('/');
-      const artist = parts.length >= 3 ? parts[parts.length - 2].replace(/_/g, ' ') : 'Unknown Artist';
-      
-      setSidMetadata({
-        title: filename.replace('.sid', '').replace(/_/g, ' '),
-        artist: artist,
-        year: '1984',
-        length: '3:00',
-        format: 'PSID v2',
-        songs: 3,
-        sidModel: '6581',
-        clockSpeed: 'PAL (50Hz)',
-      });
+      // Extract SID metadata using shared utility
+      setSidMetadata(extractSidMetadata(sidPath));
 
-      // Simulate upcoming songs
-      setUpcomingSongs([
-        {
-          title: 'Arkanoid',
-          artist: 'Martin Galway',
-          year: '1987',
-          length: '2:45',
-        },
-        {
-          title: 'Thing on a Spring',
-          artist: 'Rob Hubbard',
-          year: '1985',
-          length: '3:20',
-        },
-        {
-          title: 'Wizball',
-          artist: 'Martin Galway',
-          year: '1987',
-          length: '4:05',
-        },
-      ]);
+      // Get upcoming songs using shared utility
+      setUpcomingSongs(getUpcomingSongs());
     } else {
       setSidMetadata(null);
       setUpcomingSongs([]);
