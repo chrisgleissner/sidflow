@@ -1,8 +1,88 @@
 @import "tailwindcss";
 
-/* C64-inspired color palette */
+/* Authentic Commodore 64 color palette */
 :root {
-  /* Dark mode by default - C64 blue screen */
+  /* Light mode - authentic C64 colors */
+  --background: #6C5EB5; /* C64 Light Blue */
+  --foreground: #352879; /* C64 Dark Blue */
+  --primary: #352879;
+  --primary-foreground: #ffffff;
+  --secondary: #5048A5;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D; /* C64 Light Green */
+  --accent-foreground: #000000;
+  --muted: #8078C5;
+  --muted-foreground: #352879;
+  --border: #352879;
+  --input: #9088D5;
+  --ring: #50E89D;
+  --destructive: #E64646;
+  --destructive-foreground: #ffffff;
+  --card: #7C6EC5;
+  --card-foreground: #ffffff;
+}
+
+/* Dark mode - black background with C64 dark blue for text */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000; /* Black instead of dark blue */
+    --foreground: #6C5EB5; /* Light blue for text */
+    --primary: #6C5EB5;
+    --primary-foreground: #000000;
+    --secondary: #352879;
+    --secondary-foreground: #ffffff;
+    --accent: #50E89D; /* C64 Light Green */
+    --accent-foreground: #000000;
+    --muted: #1a1440;
+    --muted-foreground: #8078C5;
+    --border: #352879;
+    --input: #1a1440;
+    --ring: #50E89D;
+    --destructive: #E64646;
+    --destructive-foreground: #ffffff;
+    --card: #0d0820;
+    --card-foreground: #6C5EB5;
+  }
+}
+
+/* Theme overrides via data attributes */
+[data-theme="c64-light"] {
+  --background: #6C5EB5;
+  --foreground: #352879;
+  --primary: #352879;
+  --primary-foreground: #ffffff;
+  --secondary: #5048A5;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D;
+  --accent-foreground: #000000;
+  --muted: #8078C5;
+  --muted-foreground: #352879;
+  --border: #352879;
+  --input: #9088D5;
+  --ring: #50E89D;
+  --card: #7C6EC5;
+  --card-foreground: #ffffff;
+}
+
+[data-theme="c64-dark"] {
+  --background: #000000;
+  --foreground: #6C5EB5;
+  --primary: #6C5EB5;
+  --primary-foreground: #000000;
+  --secondary: #352879;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D;
+  --accent-foreground: #000000;
+  --muted: #1a1440;
+  --muted-foreground: #8078C5;
+  --border: #352879;
+  --input: #1a1440;
+  --ring: #50E89D;
+  --card: #0d0820;
+  --card-foreground: #6C5EB5;
+}
+
+[data-theme="classic"] {
   --background: #3e31a2;
   --foreground: #7c71da;
   --primary: #7c71da;
@@ -16,33 +96,8 @@
   --border: #7c71da;
   --input: #5542c4;
   --ring: #a5fc86;
-  --destructive: #d25085;
-  --destructive-foreground: #ffffff;
   --card: #4a3fc7;
   --card-foreground: #d0cdff;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    /* Light mode - keep C64 aesthetic with inverted colors */
-    --background: #c9c8f4;
-    --foreground: #3e31a2;
-    --primary: #3e31a2;
-    --primary-foreground: #ffffff;
-    --secondary: #7c71da;
-    --secondary-foreground: #ffffff;
-    --accent: #5cb800;
-    --accent-foreground: #ffffff;
-    --muted: #b0aee0;
-    --muted-foreground: #5542c4;
-    --border: #7c71da;
-    --input: #ffffff;
-    --ring: #5cb800;
-    --destructive: #d25085;
-    --destructive-foreground: #ffffff;
-    --card: #d8d7f7;
-    --card-foreground: #3e31a2;
-  }
 }
 
 @theme inline {
@@ -63,6 +118,21 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+}
+
+/* Font family classes - Press Start 2P loaded via layout.tsx */
+.font-c64 {
+  font-family: 'Press Start 2P', 'Courier New', monospace;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+.font-mono {
+  font-family: 'Courier New', 'Courier', monospace;
+}
+
+.font-sans {
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 body {
@@ -92,5 +162,5 @@ body {
   box-shadow: 
     0 0 10px var(--accent),
     0 0 20px var(--accent),
-    inset 0 0 10px rgba(165, 252, 134, 0.1);
+    inset 0 0 10px rgba(80, 232, 157, 0.1);
 }

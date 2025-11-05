@@ -1,14 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusDisplay } from '@/components/StatusDisplay';
-import { PlayTab } from '@/components/PlayTab';
+import { WizardTab } from '@/components/WizardTab';
+import { PrefsTab } from '@/components/PrefsTab';
+import { FetchTab } from '@/components/FetchTab';
 import { RateTab } from '@/components/RateTab';
 import { ClassifyTab } from '@/components/ClassifyTab';
-import { FetchTab } from '@/components/FetchTab';
 import { TrainTab } from '@/components/TrainTab';
-import { WizardTab } from '@/components/WizardTab';
+import { PlayTab } from '@/components/PlayTab';
 import { QueueView } from '@/components/QueueView';
 
 interface QueueItem {
@@ -42,11 +44,18 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <main className="max-w-6xl mx-auto space-y-6">
-        {/* Header with C64 aesthetic */}
-        <div className="text-center space-y-2 py-6">
-          <h1 className="text-5xl md:text-6xl font-bold petscii-text text-accent tracking-wider">
-            ★ SIDFLOW ★
-          </h1>
+        {/* Header with logo */}
+        <div className="text-center space-y-4 py-6">
+          <div className="flex justify-center">
+            <Image
+              src="/logo.png"
+              alt="SIDFlow Logo"
+              width={200}
+              height={200}
+              className="w-48 h-auto"
+              priority
+            />
+          </div>
           <p className="text-lg text-foreground font-mono">
             » COMMODORE 64 MUSIC CONTROL PANEL «
           </p>
@@ -60,9 +69,9 @@ export default function Home() {
           <StatusDisplay status={status} isError={isError} onClear={clearStatus} />
         )}
 
-        {/* Main Tabs */}
+        {/* Main Tabs - reordered: wizard, prefs, fetch, rate, classify, train, play */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 gap-1 h-auto p-1 bg-card/50 border-2 border-border">
+          <TabsList className="grid w-full grid-cols-4 md:grid-cols-7 gap-1 h-auto p-1 bg-card/50 border-2 border-border">
             <TabsTrigger 
               value="wizard" 
               className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
@@ -70,10 +79,16 @@ export default function Home() {
               WIZARD
             </TabsTrigger>
             <TabsTrigger 
-              value="play"
+              value="prefs" 
               className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
             >
-              PLAY
+              PREFS
+            </TabsTrigger>
+            <TabsTrigger 
+              value="fetch"
+              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
+            >
+              FETCH
             </TabsTrigger>
             <TabsTrigger 
               value="rate"
@@ -88,16 +103,16 @@ export default function Home() {
               CLASSIFY
             </TabsTrigger>
             <TabsTrigger 
-              value="fetch"
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              FETCH
-            </TabsTrigger>
-            <TabsTrigger 
               value="train"
               className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
             >
               TRAIN
+            </TabsTrigger>
+            <TabsTrigger 
+              value="play"
+              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
+            >
+              PLAY
             </TabsTrigger>
           </TabsList>
 
@@ -109,11 +124,12 @@ export default function Home() {
               />
             </TabsContent>
 
-            <TabsContent value="play" className="mt-0">
-              <PlayTab
-                onStatusChange={handleStatusChange}
-                onTrackPlayed={handleTrackPlayed}
-              />
+            <TabsContent value="prefs" className="mt-0">
+              <PrefsTab onStatusChange={handleStatusChange} />
+            </TabsContent>
+
+            <TabsContent value="fetch" className="mt-0">
+              <FetchTab onStatusChange={handleStatusChange} />
             </TabsContent>
 
             <TabsContent value="rate" className="mt-0">
@@ -124,12 +140,15 @@ export default function Home() {
               <ClassifyTab onStatusChange={handleStatusChange} />
             </TabsContent>
 
-            <TabsContent value="fetch" className="mt-0">
-              <FetchTab onStatusChange={handleStatusChange} />
-            </TabsContent>
-
             <TabsContent value="train" className="mt-0">
               <TrainTab onStatusChange={handleStatusChange} />
+            </TabsContent>
+
+            <TabsContent value="play" className="mt-0">
+              <PlayTab
+                onStatusChange={handleStatusChange}
+                onTrackPlayed={handleTrackPlayed}
+              />
             </TabsContent>
           </div>
         </Tabs>
