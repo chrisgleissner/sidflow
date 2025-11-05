@@ -35,3 +35,6 @@ RUN set -eux; \
 
 # Set shell to bash for compatibility
 SHELL ["/bin/bash", "-c"]
+
+# Set bash as default shell (required for Playwright)
+RUN ln -sf /bin/bash /bin/sh

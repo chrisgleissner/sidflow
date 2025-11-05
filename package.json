@@ -8,7 +8,8 @@
   "scripts": {
     "build": "bun install --frozen-lockfile && tsc -b",
     "test": "bun run build && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov $(find packages -name '*.test.ts' -not -path '*/node_modules/*')",
-    "test:e2e": "bun run build && bun test test/e2e.test.ts",
+    "test:e2e": "bun run build && bun test test/e2e.test.ts && cd packages/sidflow-web && bun run test:e2e",
+    "test:all": "bun run test && cd packages/sidflow-web && bun run test:e2e",
     "validate:config": "bun run scripts/validate-config.ts",
     "validate:feedback": "bun run scripts/validate-feedback.ts",
     "fetch:sample": "bun run scripts/run-fetch-sample.ts",

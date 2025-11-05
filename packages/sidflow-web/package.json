@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "bun test tests/unit/",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:all": "bun test tests/unit/ && playwright test"
   },
   "dependencies": {
     "@radix-ui/react-icons": "^1.3.2",

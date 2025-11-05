@@ -33,8 +33,11 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Run unit tests with coverage
-        run: bun run test
+      - name: Run all tests (unit + E2E with coverage)
+        env:
+          # Add stub CLI tools to PATH for E2E testing
+          PATH: ${{ github.workspace }}/packages/sidflow-web/tests/stubs:${{ env.PATH }}
+        run: bun run test:all
 
       - name: Upload coverage reports to Codecov
         if: ${{ github.event_name == 'push' }}
@@ -44,13 +47,6 @@ jobs:
           files: coverage/lcov.info
           fail_ci_if_error: true
           verbose: true
-
-      - name: Run E2E tests for web server
-        working-directory: packages/sidflow-web
-        env:
-          # Add stub CLI tools to PATH for E2E testing
-          PATH: ${{ github.workspace }}/packages/sidflow-web/tests/stubs:${{ env.PATH }}
-        run: bunx playwright test
 
       - name: Upload Playwright report
         if: always()
