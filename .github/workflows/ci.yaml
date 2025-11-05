@@ -14,6 +14,8 @@ jobs:
   detect-changes:
     name: Detect Docker changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       docker: ${{ steps.filter.outputs.docker }}
     steps:
