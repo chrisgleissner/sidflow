@@ -4,21 +4,18 @@
  * Used in testing to avoid downloading HVSC
  */
 
-// Parse command line arguments
+// Parse command line arguments (for compatibility, but not used in stub)
 const args = process.argv.slice(2);
-let configPath = null;
-let remoteBaseUrl = null;
-let versionFile = null;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--config' && i + 1 < args.length) {
-    configPath = args[i + 1];
+    // Skip config argument
     i++;
   } else if (args[i] === '--remote' && i + 1 < args.length) {
-    remoteBaseUrl = args[i + 1];
+    // Skip remote argument
     i++;
   } else if (args[i] === '--version-file' && i + 1 < args.length) {
-    versionFile = args[i + 1];
+    // Skip version-file argument
     i++;
   }
 }

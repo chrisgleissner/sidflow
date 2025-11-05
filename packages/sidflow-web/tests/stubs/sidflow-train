@@ -6,14 +6,13 @@
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-let configPath = null;
 let epochs = null;
 let batchSize = null;
 let learningRate = null;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--config' && i + 1 < args.length) {
-    configPath = args[i + 1];
+    // Skip config argument (not used in stub)
     i++;
   } else if (args[i] === '--epochs' && i + 1 < args.length) {
     epochs = args[i + 1];

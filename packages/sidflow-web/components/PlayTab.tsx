@@ -69,38 +69,72 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     return () => clearInterval(interval);
   }, [isPlaying, duration]);
 
-  // Keyboard controls
+  // Keyboard controls - define handlers inside useEffect to avoid stale closures
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
+    const handleKeyPress = async (e: KeyboardEvent) => {
       // Only handle if not typing in an input
       if (e.target instanceof HTMLInputElement) return;
 
       switch(e.key.toLowerCase()) {
         case ' ':
           e.preventDefault();
-          handlePlayPause();
+          // Play/Pause logic
+          if (isPlaying) {
+            setIsPlaying(false);
+            onStatusChange('Playback paused');
+          } else if (currentTrack) {
+            setIsPlaying(true);
+            onStatusChange('Playback resumed');
+          }
           break;
         case 's':
-          handleStop();
+          // Stop logic
+          setIsPlaying(false);
+          setPosition([0]);
+          onStatusChange('Playback stopped');
           break;
         case 'n':
-          handleNext();
+          // Next track
+          onStatusChange('Next track (not implemented in API)');
           break;
         case 'p':
-          handlePrevious();
+          // Previous track
+          onStatusChange('Previous track (not implemented in API)');
           break;
         case 'l':
-          handleLike();
+          // Like - rate 5/5
+          if (currentTrack) {
+            try {
+              await rateTrack({
+                sid_path: currentTrack.path,
+                ratings: { e: 5, m: 5, c: preference[0], p: 5 },
+              });
+              onStatusChange('Rating submitted');
+            } catch (error) {
+              onStatusChange(`Failed to rate: ${error}`, true);
+            }
+          }
           break;
         case 'd':
-          handleDislike();
+          // Dislike - rate 1/1
+          if (currentTrack) {
+            try {
+              await rateTrack({
+                sid_path: currentTrack.path,
+                ratings: { e: 1, m: 1, c: preference[0], p: 1 },
+              });
+              onStatusChange('Rating submitted');
+            } catch (error) {
+              onStatusChange(`Failed to rate: ${error}`, true);
+            }
+          }
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isPlaying, sidPath, currentTrack, preference]);
+  }, [isPlaying, sidPath, currentTrack, preference, onStatusChange]);
 
   const handlePlay = async () => {
     if (!sidPath.trim()) {
