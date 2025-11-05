@@ -1,11 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { rateTrack } from '@/lib/api-client';
 import type { RateRequest } from '@/lib/validation';
+import { Star, ThumbsUp, ThumbsDown } from 'lucide-react';
+
+interface SidMetadata {
+  title?: string;
+  artist?: string;
+  year?: string;
+  length?: string;
+  format?: string;
+  songs?: number;
+  sidModel?: string;
+  clockSpeed?: string;
+}
+
+interface UpcomingSong {
+  title: string;
+  artist: string;
+  year: string;
+  length: string;
+}
 
 interface RateTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -18,6 +37,68 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const [complexity, setComplexity] = useState([3]);
   const [preference, setPreference] = useState([3]);
   const [isLoading, setIsLoading] = useState(false);
+  const [sidMetadata, setSidMetadata] = useState<SidMetadata | null>(null);
+  const [upcomingSongs, setUpcomingSongs] = useState<UpcomingSong[]>([]);
+
+  // Load metadata when path changes
+  useEffect(() => {
+    if (sidPath.trim()) {
+      // Extract metadata from path (simulated)
+      const filename = sidPath.split('/').pop() || sidPath;
+      const parts = sidPath.split('/');
+      const artist = parts.length >= 3 ? parts[parts.length - 2].replace(/_/g, ' ') : 'Unknown Artist';
+      
+      setSidMetadata({
+        title: filename.replace('.sid', '').replace(/_/g, ' '),
+        artist: artist,
+        year: '1984',
+        length: '3:00',
+        format: 'PSID v2',
+        songs: 3,
+        sidModel: '6581',
+        clockSpeed: 'PAL (50Hz)',
+      });
+
+      // Simulate upcoming songs
+      setUpcomingSongs([
+        {
+          title: 'Arkanoid',
+          artist: 'Martin Galway',
+          year: '1987',
+          length: '2:45',
+        },
+        {
+          title: 'Thing on a Spring',
+          artist: 'Rob Hubbard',
+          year: '1985',
+          length: '3:20',
+        },
+        {
+          title: 'Wizball',
+          artist: 'Martin Galway',
+          year: '1987',
+          length: '4:05',
+        },
+      ]);
+    } else {
+      setSidMetadata(null);
+      setUpcomingSongs([]);
+    }
+  }, [sidPath]);
+
+  const handleLike = () => {
+    setEnergy([5]);
+    setMood([5]);
+    setComplexity([5]);
+    setPreference([5]);
+  };
+
+  const handleDislike = () => {
+    setEnergy([1]);
+    setMood([1]);
+    setComplexity([1]);
+    setPreference([1]);
+  };
 
   const handleSubmit = async () => {
     if (!sidPath.trim()) {
@@ -43,12 +124,6 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
       if (response.success) {
         onStatusChange('Rating submitted successfully');
-        // Reset form
-        setSidPath('');
-        setEnergy([3]);
-        setMood([3]);
-        setComplexity([3]);
-        setPreference([3]);
       } else {
         onStatusChange(`Error: ${response.error}`, true);
       }
@@ -83,14 +158,189 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               disabled={isLoading}
             />
           </div>
+
+          {/* SID Metadata */}
+          {sidMetadata && (
+            <div className="pt-3 border-t-2 border-border">
+              <p className="text-sm font-medium mb-2">TRACK INFORMATION:</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-muted-foreground">Title:</span>
+                  <span className="ml-2 font-bold">{sidMetadata.title}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Artist:</span>
+                  <span className="ml-2 font-bold">{sidMetadata.artist}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Year:</span>
+                  <span className="ml-2 font-bold">{sidMetadata.year}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Length:</span>
+                  <span className="ml-2 font-bold">{sidMetadata.length}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Format:</span>
+                  <span className="ml-2 font-bold">{sidMetadata.format}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">SID Model:</span>
+                  <span className="ml-2 font-bold">{sidMetadata.sidModel}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
+      {/* Quick Rating Buttons for Each Dimension */}
       <Card className="c64-border">
         <CardHeader>
-          <CardTitle className="petscii-text text-accent">RATING DIMENSIONS</CardTitle>
+          <CardTitle className="text-sm petscii-text text-accent">QUICK RATING BUTTONS</CardTitle>
+          <CardDescription className="text-muted-foreground text-xs">
+            Click to quickly set ratings for each dimension
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Energy Quick Rating */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-sm font-medium">ENERGY</label>
+              <span className="text-lg font-bold text-accent">{energy[0]}/5</span>
+            </div>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <Button
+                  key={rating}
+                  size="sm"
+                  variant={energy[0] === rating ? "default" : "outline"}
+                  onClick={() => setEnergy([rating])}
+                  className="flex-1 gap-1"
+                  disabled={isLoading}
+                >
+                  <Star className={`h-3 w-3 ${energy[0] >= rating ? 'fill-current' : ''}`} />
+                  {rating}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              1 = Quiet/Ambient • 5 = High-energy/Intense
+            </p>
+          </div>
+
+          {/* Mood Quick Rating */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-sm font-medium">MOOD</label>
+              <span className="text-lg font-bold text-accent">{mood[0]}/5</span>
+            </div>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <Button
+                  key={rating}
+                  size="sm"
+                  variant={mood[0] === rating ? "default" : "outline"}
+                  onClick={() => setMood([rating])}
+                  className="flex-1 gap-1"
+                  disabled={isLoading}
+                >
+                  <Star className={`h-3 w-3 ${mood[0] >= rating ? 'fill-current' : ''}`} />
+                  {rating}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              1 = Dark/Melancholic • 5 = Bright/Cheerful
+            </p>
+          </div>
+
+          {/* Complexity Quick Rating */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-sm font-medium">COMPLEXITY</label>
+              <span className="text-lg font-bold text-accent">{complexity[0]}/5</span>
+            </div>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <Button
+                  key={rating}
+                  size="sm"
+                  variant={complexity[0] === rating ? "default" : "outline"}
+                  onClick={() => setComplexity([rating])}
+                  className="flex-1 gap-1"
+                  disabled={isLoading}
+                >
+                  <Star className={`h-3 w-3 ${complexity[0] >= rating ? 'fill-current' : ''}`} />
+                  {rating}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              1 = Simple Patterns • 5 = Complex Arrangements
+            </p>
+          </div>
+
+          {/* Preference Quick Rating */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-sm font-medium">PREFERENCE</label>
+              <span className="text-lg font-bold text-accent">{preference[0]}/5</span>
+            </div>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <Button
+                  key={rating}
+                  size="sm"
+                  variant={preference[0] === rating ? "default" : "outline"}
+                  onClick={() => setPreference([rating])}
+                  className="flex-1 gap-1"
+                  disabled={isLoading}
+                >
+                  <Star className={`h-3 w-3 ${preference[0] >= rating ? 'fill-current' : ''}`} />
+                  {rating}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              1 = Not My Style • 5 = Love It!
+            </p>
+          </div>
+
+          {/* Overall Like/Dislike */}
+          <div className="flex justify-center gap-4 pt-2 border-t-2 border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLike}
+              className="gap-2"
+              disabled={isLoading}
+              title="Set all ratings to 5"
+            >
+              <ThumbsUp className="h-4 w-4" />
+              LIKE ALL
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDislike}
+              className="gap-2"
+              disabled={isLoading}
+              title="Set all ratings to 1"
+            >
+              <ThumbsDown className="h-4 w-4" />
+              DISLIKE ALL
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Detailed Sliders */}
+      <Card className="c64-border">
+        <CardHeader>
+          <CardTitle className="petscii-text text-accent">FINE-TUNE WITH SLIDERS</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Rate from 1 (low) to 5 (high)
+            Adjust ratings precisely with sliders
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -179,6 +429,41 @@ export function RateTab({ onStatusChange }: RateTabProps) {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Upcoming Songs */}
+      {upcomingSongs.length > 0 && (
+        <Card className="c64-border">
+          <CardHeader>
+            <CardTitle className="text-sm petscii-text text-accent">UPCOMING SONGS TO RATE</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {upcomingSongs.map((song, idx) => (
+                <div key={idx} className="p-3 bg-muted rounded border border-border">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Title:</span>
+                      <span className="ml-2 font-bold">{song.title}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Artist:</span>
+                      <span className="ml-2">{song.artist}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Year:</span>
+                      <span className="ml-2">{song.year}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Length:</span>
+                      <span className="ml-2">{song.length}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Rating Guide */}
       <Card className="c64-border">

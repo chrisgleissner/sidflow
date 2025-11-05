@@ -15,7 +15,8 @@ import { playTrack, rateTrack } from '@/lib/api-client';
 import type { PlayRequest } from '@/lib/validation';
 import { 
   Play, Pause, Square, SkipForward, SkipBack, 
-  FastForward, Rewind, ThumbsUp, ThumbsDown 
+  FastForward, Rewind, ThumbsUp, ThumbsDown,
+  Star
 } from 'lucide-react';
 
 const MOOD_PRESETS = [
@@ -26,6 +27,26 @@ const MOOD_PRESETS = [
   { value: 'bright', label: 'Bright' },
   { value: 'complex', label: 'Complex' },
 ] as const;
+
+interface SidMetadata {
+  title?: string;
+  artist?: string;
+  year?: string;
+  length?: string;
+  format?: string;
+  version?: string;
+  songs?: number;
+  startSong?: number;
+  sidModel?: string;
+  clockSpeed?: string;
+}
+
+interface UpcomingSong {
+  title: string;
+  artist: string;
+  year: string;
+  length: string;
+}
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -40,6 +61,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [position, setPosition] = useState([0]);
   const [duration, setDuration] = useState(180); // 3 minutes default
   const [currentTrack, setCurrentTrack] = useState<any>(null);
+  const [sidMetadata, setSidMetadata] = useState<SidMetadata | null>(null);
+  const [upcomingSongs, setUpcomingSongs] = useState<UpcomingSong[]>([]);
   
   // Ratings state
   const [energy, setEnergy] = useState([3]);
@@ -121,13 +144,52 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         setIsPlaying(true);
         setPosition([0]);
         
-        // Extract metadata from path
+        // Extract metadata from path (simulated)
         const filename = sidPath.split('/').pop() || sidPath;
+        const parts = sidPath.split('/');
+        const artist = parts.length >= 3 ? parts[parts.length - 2].replace(/_/g, ' ') : 'Unknown Artist';
+        
         setCurrentTrack({
           path: sidPath,
           filename,
           preset,
         });
+
+        // Simulate SID metadata (in real implementation, this would parse the .sid file)
+        setSidMetadata({
+          title: filename.replace('.sid', '').replace(/_/g, ' '),
+          artist: artist,
+          year: '1984',
+          length: formatTime(duration),
+          format: 'PSID v2',
+          version: '2',
+          songs: 3,
+          startSong: 1,
+          sidModel: '6581',
+          clockSpeed: 'PAL (50Hz)',
+        });
+
+        // Simulate upcoming songs
+        setUpcomingSongs([
+          {
+            title: 'Last Ninja 2',
+            artist: 'Matt Gray',
+            year: '1988',
+            length: '3:45',
+          },
+          {
+            title: 'International Karate',
+            artist: 'Rob Hubbard',
+            year: '1986',
+            length: '2:30',
+          },
+          {
+            title: 'Monty on the Run',
+            artist: 'Rob Hubbard',
+            year: '1985',
+            length: '4:12',
+          },
+        ]);
       } else {
         onStatusChange(`Error: ${response.error}`, true);
       }
@@ -253,138 +315,233 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
 
       {/* Current Track Info */}
       {currentTrack && (
-        <Card className="c64-border">
-          <CardHeader>
-            <CardTitle className="petscii-text text-accent">NOW PLAYING</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1">
-              <p className="text-lg font-bold">{currentTrack.filename}</p>
-              <p className="text-sm text-muted-foreground">{currentTrack.path}</p>
-              {currentTrack.preset && (
-                <p className="text-sm text-accent">Preset: {currentTrack.preset.toUpperCase()}</p>
+        <>
+          <Card className="c64-border">
+            <CardHeader>
+              <CardTitle className="petscii-text text-accent">NOW PLAYING</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* SID Metadata */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Title:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.title || currentTrack.filename}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Artist:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.artist || 'Unknown'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Year:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.year || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Length:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.length || formatTime(duration)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Format:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.format || 'PSID'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Songs:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.songs || '1'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">SID Model:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.sidModel || '6581'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Clock:</span>
+                    <span className="ml-2 font-bold">{sidMetadata?.clockSpeed || 'PAL'}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground pt-2 border-t border-border">
+                  {currentTrack.path}
+                </p>
+                {currentTrack.preset && (
+                  <p className="text-sm text-accent">Preset: {currentTrack.preset.toUpperCase()}</p>
+                )}
+              </div>
+
+              {/* Playback Position */}
+              <div className="space-y-2">
+                <Slider
+                  value={position}
+                  onValueChange={setPosition}
+                  min={0}
+                  max={duration}
+                  step={1}
+                  className="cursor-pointer"
+                />
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{formatTime(position[0])}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+
+              {/* Playback Controls */}
+              <div className="flex justify-center items-center gap-2">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleRewind}
+                  disabled={!isPlaying}
+                  title="Rewind 10s (←)"
+                >
+                  <Rewind className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handlePrevious}
+                  title="Previous (P)"
+                >
+                  <SkipBack className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  className="h-12 w-12 retro-glow"
+                  onClick={handlePlayPause}
+                  disabled={isLoading}
+                  title="Play/Pause (Space)"
+                >
+                  {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleStop}
+                  title="Stop (S)"
+                >
+                  <Square className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleNext}
+                  title="Next (N)"
+                >
+                  <SkipForward className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleFastForward}
+                  disabled={!isPlaying}
+                  title="Fast Forward 10s (→)"
+                >
+                  <FastForward className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Quick Rating Buttons */}
+              <div className="space-y-3 pt-4 border-t-2 border-border">
+                <p className="text-sm font-medium">QUICK RATING:</p>
+                <div className="flex justify-center gap-2">
+                  {[1, 2, 3, 4, 5].map((rating) => (
+                    <Button
+                      key={rating}
+                      size="sm"
+                      variant={preference[0] === rating ? "default" : "outline"}
+                      onClick={() => handleQuickRate(rating, rating, rating, rating)}
+                      className="gap-1"
+                      title={`Rate ${rating} stars`}
+                    >
+                      <Star className={`h-4 w-4 ${preference[0] >= rating ? 'fill-current' : ''}`} />
+                      {rating}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex justify-center gap-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleLike}
+                    className="gap-2"
+                    title="Like (L)"
+                  >
+                    <ThumbsUp className="h-4 w-4" />
+                    LIKE
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDislike}
+                    className="gap-2"
+                    title="Dislike (D)"
+                  >
+                    <ThumbsDown className="h-4 w-4" />
+                    DISLIKE
+                  </Button>
+                </div>
+              </div>
+
+              {/* Detailed Ratings */}
+              <div className="space-y-3 pt-4 border-t-2 border-border">
+                <p className="text-sm font-medium">CURRENT RATINGS:</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Energy:</span>
+                    <span className="ml-2 font-bold text-accent">{energy[0]}/5</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Mood:</span>
+                    <span className="ml-2 font-bold text-accent">{mood[0]}/5</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Complexity:</span>
+                    <span className="ml-2 font-bold text-accent">{complexity[0]}/5</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Preference:</span>
+                    <span className="ml-2 font-bold text-accent">{preference[0]}/5</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Upcoming Songs */}
+          <Card className="c64-border">
+            <CardHeader>
+              <CardTitle className="text-sm petscii-text text-accent">UPCOMING SONGS</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {upcomingSongs.length > 0 ? (
+                <div className="space-y-2">
+                  {upcomingSongs.map((song, idx) => (
+                    <div key={idx} className="p-3 bg-muted rounded border border-border">
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-muted-foreground">Title:</span>
+                          <span className="ml-2 font-bold">{song.title}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Artist:</span>
+                          <span className="ml-2">{song.artist}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Year:</span>
+                          <span className="ml-2">{song.year}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Length:</span>
+                          <span className="ml-2">{song.length}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No upcoming songs in queue
+                </p>
               )}
-            </div>
-
-            {/* Playback Position */}
-            <div className="space-y-2">
-              <Slider
-                value={position}
-                onValueChange={setPosition}
-                min={0}
-                max={duration}
-                step={1}
-                className="cursor-pointer"
-              />
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>{formatTime(position[0])}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-
-            {/* Playback Controls */}
-            <div className="flex justify-center items-center gap-2">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={handleRewind}
-                disabled={!isPlaying}
-                title="Rewind 10s (←)"
-              >
-                <Rewind className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={handlePrevious}
-                title="Previous (P)"
-              >
-                <SkipBack className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                className="h-12 w-12 retro-glow"
-                onClick={handlePlayPause}
-                disabled={isLoading}
-                title="Play/Pause (Space)"
-              >
-                {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={handleStop}
-                title="Stop (S)"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={handleNext}
-                title="Next (N)"
-              >
-                <SkipForward className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={handleFastForward}
-                disabled={!isPlaying}
-                title="Fast Forward 10s (→)"
-              >
-                <FastForward className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Quick Rating */}
-            <div className="flex justify-center gap-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLike}
-                className="gap-2"
-                title="Like (L)"
-              >
-                <ThumbsUp className="h-4 w-4" />
-                LIKE
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDislike}
-                className="gap-2"
-                title="Dislike (D)"
-              >
-                <ThumbsDown className="h-4 w-4" />
-                DISLIKE
-              </Button>
-            </div>
-
-            {/* Detailed Ratings */}
-            <div className="space-y-3 pt-4 border-t-2 border-border">
-              <p className="text-sm font-medium">CURRENT RATINGS:</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Energy:</span>
-                  <span className="ml-2 font-bold text-accent">{energy[0]}/5</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Mood:</span>
-                  <span className="ml-2 font-bold text-accent">{mood[0]}/5</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Complexity:</span>
-                  <span className="ml-2 font-bold text-accent">{complexity[0]}/5</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Preference:</span>
-                  <span className="ml-2 font-bold text-accent">{preference[0]}/5</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       {/* Keyboard Shortcuts */}
