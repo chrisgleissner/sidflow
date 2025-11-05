@@ -6,42 +6,12 @@ ENV BUN_VERSION=1.3.1
 # Copy apt packages list
 COPY apt-packages.txt /tmp/apt-packages.txt
 
-# Install base packages and Playwright dependencies
+# Install all packages from apt-packages.txt (excluding nodejs/npm since we use Bun)
 RUN set -eux; \
     apt-get update; \
-    # Install packages from apt-packages.txt
     if [ -s /tmp/apt-packages.txt ]; then \
-      xargs -r apt-get install -y --no-install-recommends < /tmp/apt-packages.txt; \
+      grep -v -E '^(nodejs|npm)$' /tmp/apt-packages.txt | xargs -r apt-get install -y --no-install-recommends; \
     fi; \
-    # Install Playwright/Chromium dependencies for E2E tests
-    apt-get install -y --no-install-recommends \
-      # Shell and basic utilities
-      bash \
-      # Playwright browser dependencies
-      libnss3 \
-      libnspr4 \
-      libatk1.0-0 \
-      libatk-bridge2.0-0 \
-      libcups2 \
-      libdrm2 \
-      libdbus-1-3 \
-      libxkbcommon0 \
-      libatspi2.0-0 \
-      libxcomposite1 \
-      libxdamage1 \
-      libxfixes3 \
-      libxrandr2 \
-      libgbm1 \
-      libpango-1.0-0 \
-      libcairo2 \
-      libasound2 \
-      libxshmfence1 \
-      # Fonts
-      fonts-liberation \
-      fonts-noto-color-emoji \
-      # Additional utilities
-      wget \
-      unzip; \
     rm -rf /var/lib/apt/lists/* /tmp/apt-packages.txt
 
 # Install Bun
