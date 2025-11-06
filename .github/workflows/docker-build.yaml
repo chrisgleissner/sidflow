@@ -33,8 +33,8 @@ jobs:
       - name: Determine Docker context hash
         id: context
         run: |
-         HASH=$(git ls-files Dockerfile.ci apt-packages.txt | xargs cat | sha256sum | cut -d' ' -f1)
-         echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
+          HASH=$(git ls-files Dockerfile.ci apt-packages.txt | xargs cat | sha256sum | cut -d' ' -f1)
+          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
