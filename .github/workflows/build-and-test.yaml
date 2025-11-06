@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
