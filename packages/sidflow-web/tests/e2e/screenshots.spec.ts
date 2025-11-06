@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 
 test.describe('UI Screenshots', () => {
-  const screenshotDir = path.resolve(__dirname, '../../..', '..', 'doc/web-screenshots');
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'doc/web-screenshots');
 
   test.beforeAll(() => {
     // Ensure screenshot directory exists

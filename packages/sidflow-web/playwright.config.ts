@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const stubToolsPath = path.resolve(configDir, 'tests/stubs');
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -24,13 +28,14 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'bun run dev',
+    command: 'node ./scripts/start-test-server.mjs',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
     env: {
       // Add stub CLI tools to PATH for testing
-      PATH: `${path.resolve(__dirname, 'tests/stubs')}:${process.env.PATH}`,
+      PATH: `${stubToolsPath}${path.delimiter}${process.env.PATH ?? ''}`,
+      NODE_ENV: 'development',
     },
   },
 });
