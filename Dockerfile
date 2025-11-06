@@ -7,9 +7,7 @@ COPY apt-packages.txt /tmp/apt-packages.txt
 
 RUN set -eux; \
     apt-get update; \
-    if [ -s /tmp/apt-packages.txt ]; then \
-      xargs -r apt-get install -y < /tmp/apt-packages.txt; \
-    fi; \
+    xargs -a /tmp/apt-packages.txt apt-get install -y --no-install-recommends; \
     rm -rf /var/lib/apt/lists/* /tmp/apt-packages.txt
 
 RUN set -eux; \
