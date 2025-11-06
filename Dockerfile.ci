@@ -7,10 +7,27 @@ ENV BUN_VERSION=1.3.1
 COPY apt-packages.txt /tmp/apt-packages.txt
 
 # Install all packages from apt-packages.txt (excluding nodejs/npm since we use Bun)
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
     apt-get update; \
+    install_pkgs=""; \
     if [ -s /tmp/apt-packages.txt ]; then \
-      grep -v -E '^(nodejs|npm)$' /tmp/apt-packages.txt | xargs -r apt-get install -y --no-install-recommends; \
+      while IFS= read -r pkg; do \
+        case "$pkg" in \
+          ''|\#*|nodejs|npm) \
+            continue; \
+            ;; \
+        esac; \
+        if apt-cache show "$pkg" >/dev/null 2>&1; then \
+          install_pkgs="$install_pkgs $pkg"; \
+        else \
+          echo "Skipping unavailable package: $pkg" >&2; \
+        fi; \
+      done < /tmp/apt-packages.txt; \
+    fi; \
+    if [ -n "$install_pkgs" ]; then \
+      apt-get install -y --no-install-recommends $install_pkgs; \
     fi; \
     rm -rf /var/lib/apt/lists/* /tmp/apt-packages.txt
 
