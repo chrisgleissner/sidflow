@@ -2,14 +2,27 @@ import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 
 const stubBinDir = path.resolve(__dirname, 'tests/stubs');
-const defaultSystemPath = [
-  '/usr/local/sbin',
-  '/usr/local/bin',
-  '/usr/sbin',
-  '/usr/bin',
-  '/sbin',
-  '/bin',
-].join(path.delimiter);
+function getDefaultSystemPath(): string {
+  if (process.platform === 'win32') {
+    // Typical Windows system paths
+    return [
+      'C:\\Windows\\System32',
+      'C:\\Windows',
+      'C:\\Windows\\System32\\Wbem',
+    ].join(path.delimiter);
+  }
+  // Unix-like system paths
+  return [
+    '/usr/local/sbin',
+    '/usr/local/bin',
+    '/usr/sbin',
+    '/usr/bin',
+    '/sbin',
+    '/bin',
+  ].join(path.delimiter);
+}
+
+const defaultSystemPath = getDefaultSystemPath();
 const existingPath =
   process.env.PLAYWRIGHT_ORIGINAL_PATH ||
   process.env.PATH ||
