@@ -8,7 +8,7 @@ nodejs
 npm
 python3
 sidplayfp
-7zip
+p7zip-full
 unzip
 bash
 wget
