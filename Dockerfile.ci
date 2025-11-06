@@ -11,7 +11,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eux; \
     apt-get update; \
-    install_pkgs=""; \
+    set --; \
     if [ -s /tmp/apt-packages.txt ]; then \
       while IFS= read -r pkg; do \
         case "$pkg" in \
@@ -19,17 +19,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             continue; \
             ;; \
         esac; \
-        if apt-cache show "$pkg" >/dev/null 2>&1; then \
-          install_pkgs="$install_pkgs $pkg"; \
-        else \
-          echo "Skipping unavailable package: $pkg" >&2; \
-        fi; \
+        set -- "$@" "$pkg"; \
       done < /tmp/apt-packages.txt; \
     fi; \
-    if [ -n "$install_pkgs" ]; then \
-      apt-get install -y --no-install-recommends $install_pkgs; \
+    if [ "$#" -gt 0 ]; then \
+      if ! apt-get install -y --no-install-recommends "$@"; then \
+        echo "Falling back to installing packages individually" >&2; \
+        for pkg in "$@"; do \
+          if ! apt-get install -y --no-install-recommends "$pkg"; then \
+            echo "Skipping unavailable package: $pkg" >&2; \
+          fi; \
+        done; \
+      fi; \
     fi; \
     rm -rf /var/lib/apt/lists/* /tmp/apt-packages.txt
+
+# Verify bash is available for downstream docker exec sessions
+RUN command -v bash >/dev/null 2>&1
 
 # Install Bun
 RUN set -eux; \
