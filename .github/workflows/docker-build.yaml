@@ -29,7 +29,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-  
+
+      # Compute a deterministic hash over Dockerfile.ci and apt-packages.txt
+      # This ensures that cache is invalidated when either file changes
       - name: Determine Docker context hash
         id: context
         run: |
@@ -53,6 +55,9 @@ jobs:
           context: .
           file: Dockerfile.ci
           push: true
+          # Pass the hash to the Dockerfile as build arg to force rebuild when context changes
+          build-args: |
+            CONTEXT_HASH=${{ steps.context.outputs.hash }}
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.context.outputs.hash }}
             ${{ env.IMAGE_NAME }}:latest
