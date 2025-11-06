@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import next from 'next';
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
-const hostname = process.env.HOSTNAME ?? '127.0.0.1';
+const hostname = process.env.HOSTNAME ?? '0.0.0.0';
 
 async function start() {
   try {

@@ -28,14 +28,15 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'node ./scripts/start-test-server.mjs',
-    url: 'http://localhost:3000',
+    command: 'bun ./scripts/start-test-server.mjs',
+    url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
+    timeout: 180 * 1000,
     env: {
       // Add stub CLI tools to PATH for testing
       PATH: `${stubToolsPath}${path.delimiter}${process.env.PATH ?? ''}`,
       NODE_ENV: 'development',
+      HOSTNAME: '0.0.0.0',
     },
   },
 });
