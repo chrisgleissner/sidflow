@@ -31,7 +31,23 @@ RUN set -euxo pipefail; \
     rm -rf /tmp/bun /tmp/bun.zip
 
 # ---------------------------------------------------------------------------
-# 3. Set working directory and defaults
+# 3. Install Google Chrome for Playwright
+# ---------------------------------------------------------------------------
+RUN set -euxo pipefail; \
+        install -d -m 0755 /etc/apt/keyrings; \
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+            | gpg --dearmor -o /etc/apt/keyrings/google-linux.gpg; \
+        echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
+            > /etc/apt/sources.list.d/google-chrome.list; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends google-chrome-stable; \
+        npx --yes playwright@1.48.0 install-deps chromium; \
+        rm -rf /var/lib/apt/lists/*
+
+ENV PLAYWRIGHT_CHROME_PATH=/usr/bin/google-chrome
+
+# ---------------------------------------------------------------------------
+# 4. Set working directory and defaults
 # ---------------------------------------------------------------------------
 WORKDIR /workspace
 

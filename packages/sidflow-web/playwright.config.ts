@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -8,6 +9,29 @@ const stubToolsPath = path.resolve(configDir, 'tests/stubs');
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
+const chromeExecutable = process.env.PLAYWRIGHT_CHROME_PATH;
+const hasSystemChrome = Boolean(chromeExecutable && existsSync(chromeExecutable));
+
+const baseUse = {
+  baseURL: 'http://localhost:3000',
+  trace: 'on-first-retry' as const,
+  headless: true
+};
+
+const desktopChrome = devices['Desktop Chrome'];
+
+function sanitizeDevice(device: typeof desktopChrome): typeof desktopChrome {
+  const cloned = { ...device } as Record<string, unknown>;
+  delete cloned.channel;
+  return cloned as typeof desktopChrome;
+}
+
+const projectDevice = hasSystemChrome ? sanitizeDevice(desktopChrome) : desktopChrome;
+
+const projectUse = hasSystemChrome
+  ? { ...projectDevice, executablePath: chromeExecutable }
+  : projectDevice;
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -15,15 +39,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
-  use: {
-    baseURL: 'http://localhost:3000',
-    trace: 'on-first-retry',
-  },
+  use: baseUse,
 
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...projectUse },
     },
   ],
 
