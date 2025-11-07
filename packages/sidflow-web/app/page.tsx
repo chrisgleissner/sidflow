@@ -56,6 +56,12 @@ export default function Home() {
               priority
             />
           </div>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">
+            SIDFlow Control Panel
+          </h1>
+          <p className="text-base text-muted-foreground">
+            Local web interface for orchestrating SID workflows
+          </p>
           <p className="text-lg text-foreground font-mono">
             » COMMODORE 64 MUSIC CONTROL PANEL «
           </p>

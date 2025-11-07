@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -22,6 +22,14 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [sidMetadata, setSidMetadata] = useState<SidMetadata | null>(null);
   const [upcomingSongs, setUpcomingSongs] = useState<UpcomingSong[]>([]);
+  const energyLabelId = useId();
+  const energyValueId = useId();
+  const moodLabelId = useId();
+  const moodValueId = useId();
+  const complexityLabelId = useId();
+  const complexityValueId = useId();
+  const preferenceLabelId = useId();
+  const preferenceValueId = useId();
 
   // Load metadata when path changes
   useEffect(() => {
@@ -297,10 +305,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium">ENERGY</label>
-              <span className="text-lg font-bold text-accent">{energy[0]}/5</span>
+              <label id={energyLabelId} className="text-sm font-medium">
+                ENERGY
+              </label>
+              <span
+                id={energyValueId}
+                data-testid="energy-value"
+                className="text-lg font-bold text-accent"
+              >
+                {energy[0]}/5
+              </span>
             </div>
             <Slider
+              aria-labelledby={energyLabelId}
+              aria-describedby={energyValueId}
               value={energy}
               onValueChange={setEnergy}
               min={1}
@@ -316,10 +334,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium">MOOD</label>
-              <span className="text-lg font-bold text-accent">{mood[0]}/5</span>
+              <label id={moodLabelId} className="text-sm font-medium">
+                MOOD
+              </label>
+              <span
+                id={moodValueId}
+                data-testid="mood-value"
+                className="text-lg font-bold text-accent"
+              >
+                {mood[0]}/5
+              </span>
             </div>
             <Slider
+              aria-labelledby={moodLabelId}
+              aria-describedby={moodValueId}
               value={mood}
               onValueChange={setMood}
               min={1}
@@ -335,10 +363,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium">COMPLEXITY</label>
-              <span className="text-lg font-bold text-accent">{complexity[0]}/5</span>
+              <label id={complexityLabelId} className="text-sm font-medium">
+                COMPLEXITY
+              </label>
+              <span
+                id={complexityValueId}
+                data-testid="complexity-value"
+                className="text-lg font-bold text-accent"
+              >
+                {complexity[0]}/5
+              </span>
             </div>
             <Slider
+              aria-labelledby={complexityLabelId}
+              aria-describedby={complexityValueId}
               value={complexity}
               onValueChange={setComplexity}
               min={1}
@@ -354,10 +392,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
           <div className="space-y-3">
             <div className="flex justify-between items-center">
-              <label className="text-sm font-medium">PREFERENCE</label>
-              <span className="text-lg font-bold text-accent">{preference[0]}/5</span>
+              <label id={preferenceLabelId} className="text-sm font-medium">
+                PREFERENCE
+              </label>
+              <span
+                id={preferenceValueId}
+                data-testid="preference-value"
+                className="text-lg font-bold text-accent"
+              >
+                {preference[0]}/5
+              </span>
             </div>
             <Slider
+              aria-labelledby={preferenceLabelId}
+              aria-describedby={preferenceValueId}
               value={preference}
               onValueChange={setPreference}
               min={1}

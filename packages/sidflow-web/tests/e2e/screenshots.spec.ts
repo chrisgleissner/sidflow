@@ -1,116 +1,102 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 
-test.describe('UI Screenshots', () => {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'doc/web-screenshots');
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'doc/web-screenshots');
 
+interface TabScenario {
+  label: string;
+  screenshot: string;
+  setup?: (page: Page) => Promise<void>;
+  verify: (page: Page) => Promise<void>;
+}
+
+async function activateTab(page: Page, label: string) {
+  const tabTrigger = page.getByRole('tab', { name: label });
+  await tabTrigger.click();
+  await expect(tabTrigger).toHaveAttribute('data-state', 'active');
+}
+
+const TABS: TabScenario[] = [
+  {
+    label: 'WIZARD',
+    screenshot: '01-wizard.png',
+    verify: async (page) => {
+      await expect(page.getByRole('heading', { name: /setup wizard/i })).toBeVisible();
+    },
+  },
+  {
+    label: 'PREFS',
+    screenshot: '02-prefs.png',
+    verify: async (page) => {
+      await expect(page.getByRole('heading', { name: /preferences/i })).toBeVisible();
+    },
+  },
+  {
+    label: 'FETCH',
+    screenshot: '03-fetch.png',
+    verify: async (page) => {
+      await expect(page.getByRole('heading', { name: /fetch hvsc/i })).toBeVisible();
+    },
+  },
+  {
+    label: 'RATE',
+    screenshot: '04-rate.png',
+    setup: async (page) => {
+      await page.locator('#rate-path').fill('/test/hvsc/MUSICIANS/H/Hubbard_Rob/Commando.sid');
+    },
+    verify: async (page) => {
+      await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
+      await expect(page.locator('#rate-path')).toHaveValue(/Commando\.sid$/);
+    },
+  },
+  {
+    label: 'CLASSIFY',
+    screenshot: '05-classify.png',
+    setup: async (page) => {
+      await page.locator('#classify-path').fill('/tmp/hvsc');
+    },
+    verify: async (page) => {
+      await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible();
+    },
+  },
+  {
+    label: 'TRAIN',
+    screenshot: '06-train.png',
+    verify: async (page) => {
+      await expect(page.getByRole('heading', { name: /train model/i })).toBeVisible();
+    },
+  },
+  {
+    label: 'PLAY',
+    screenshot: '07-play.png',
+    verify: async (page) => {
+      await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
+    },
+  },
+];
+
+test.describe('Tab Screenshots', () => {
   test.beforeAll(() => {
-    // Ensure screenshot directory exists
     if (!fs.existsSync(screenshotDir)) {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
   });
 
-  test('capture wizard tab', async ({ page }) => {
-    await page.goto('/');
-    
-    // Click Wizard tab
-    await page.click('text=WIZARD');
-    await page.waitForTimeout(500);
-    
-    await page.screenshot({
-      path: path.join(screenshotDir, '01-wizard.png'),
-      fullPage: true,
+  for (const tab of TABS) {
+    test(`${tab.label} tab screenshot`, async ({ page }) => {
+      await page.goto('/');
+      await activateTab(page, tab.label);
+      if (tab.setup) {
+        await tab.setup(page);
+      }
+      await tab.verify(page);
+      await page.screenshot({
+        path: path.join(screenshotDir, tab.screenshot),
+        fullPage: true,
+      });
     });
-  });
-
-  test('capture prefs tab', async ({ page }) => {
-    await page.goto('/');
-    
-    // Click Prefs tab
-    await page.click('text=PREFS');
-    await page.waitForTimeout(500);
-    
-    await page.screenshot({
-      path: path.join(screenshotDir, '02-prefs.png'),
-      fullPage: true,
-    });
-  });
-
-  test('capture fetch tab', async ({ page }) => {
-    await page.goto('/');
-    
-    // Click Fetch tab
-    await page.click('text=FETCH');
-    await page.waitForTimeout(500);
-    
-    await page.screenshot({
-      path: path.join(screenshotDir, '03-fetch.png'),
-      fullPage: true,
-    });
-  });
-
-  test('capture rate tab', async ({ page }) => {
-    await page.goto('/');
-    
-    // Click Rate tab
-    await page.click('text=RATE');
-    await page.waitForTimeout(500);
-    
-    // Fill in a sample path to show metadata
-    await page.fill('input[placeholder*="music.sid"]', '/test/hvsc/MUSICIANS/H/Hubbard_Rob/Commando.sid');
-    await page.waitForTimeout(500);
-    
-    await page.screenshot({
-      path: path.join(screenshotDir, '04-rate.png'),
-      fullPage: true,
-    });
-  });
-
-  test('capture classify tab', async ({ page }) => {
-    await page.goto('/');
-    
-    // Click Classify tab
-    await page.click('text=CLASSIFY');
-    await page.waitForTimeout(500);
-    
-    await page.screenshot({
-      path: path.join(screenshotDir, '05-classify.png'),
-      fullPage: true,
-    });
-  });
-
-  test('capture train tab', async ({ page }) => {
-    await page.goto('/');
-    
-    // Click Train tab
-    await page.click('text=TRAIN');
-    await page.waitForTimeout(500);
-    
-    await page.screenshot({
-      path: path.join(screenshotDir, '06-train.png'),
-      fullPage: true,
-    });
-  });
-
-  test('capture play tab with metadata', async ({ page }) => {
-    await page.goto('/');
-    
-    // Click Play tab
-    await page.click('text=PLAY');
-    await page.waitForTimeout(500);
-    
-    // Fill in a sample path and start playback to show metadata
-    await page.fill('input[placeholder*="music.sid"]', '/test/hvsc/MUSICIANS/H/Hubbard_Rob/Commando.sid');
-    await page.click('button:has-text("Play")');
-    await page.waitForTimeout(1000);
-    
-    await page.screenshot({
-      path: path.join(screenshotDir, '07-play.png'),
-      fullPage: true,
-    });
-  });
+  }
 });

@@ -17,7 +17,7 @@ import type { PlayRequest } from '@/lib/validation';
 import { 
   Play, Pause, Square, SkipForward, SkipBack, 
   FastForward, Rewind, ThumbsUp, ThumbsDown,
-  Star
+  Star, Loader2
 } from 'lucide-react';
 
 const MOOD_PRESETS = [
@@ -244,6 +244,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     }
   };
 
+  const playButtonLabel = isLoading ? 'Playing...' : isPlaying ? 'Pause' : 'Play';
+
   return (
     <div className="space-y-4">
       {/* Track Selection */}
@@ -382,9 +384,17 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   className="h-12 w-12 retro-glow"
                   onClick={handlePlayPause}
                   disabled={isLoading}
-                  title="Play/Pause (Space)"
+                  aria-label={playButtonLabel}
+                  title={`${playButtonLabel} (Space)`}
                 >
-                  {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+                  {isLoading ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause className="h-6 w-6" />
+                  ) : (
+                    <Play className="h-6 w-6" />
+                  )}
+                  <span className="sr-only">{playButtonLabel}</span>
                 </Button>
                 <Button
                   size="icon"

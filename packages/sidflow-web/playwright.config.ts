@@ -15,7 +15,8 @@ const hasSystemChrome = Boolean(chromeExecutable && existsSync(chromeExecutable)
 const baseUse = {
   baseURL: 'http://localhost:3000',
   trace: 'on-first-retry' as const,
-  headless: true
+  headless: true,
+  video: process.env.CI ? 'retain-on-failure' : 'on',
 };
 
 const desktopChrome = devices['Desktop Chrome'];
@@ -34,6 +35,7 @@ const projectUse = hasSystemChrome
 
 export default defineConfig({
   testDir: './tests/e2e',
+  timeout: 10 * 1000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
