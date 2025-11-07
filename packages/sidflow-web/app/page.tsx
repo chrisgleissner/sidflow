@@ -54,6 +54,7 @@ export default function Home() {
               height={200}
               className="w-48 h-auto"
               priority
+              unoptimized
             />
           </div>
           <h1 className="text-3xl font-bold text-foreground tracking-tight">
