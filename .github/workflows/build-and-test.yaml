@@ -102,29 +102,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  publish-playwright-report:
-    needs: test
-    if: ${{ always() && needs.test.outputs.playwright-report-ready == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-      contents: read
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - name: Download Playwright HTML report artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: playwright-html-report
-          path: playwright-html
+  # publish-playwright-report:
+  #   needs: test
+  #   if: ${{ always() && needs.test.outputs.playwright-report-ready == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     pages: write
+  #     id-token: write
+  #     contents: read
+  #   environment:
+  #     name: github-pages
+  #     url: ${{ steps.deploy.outputs.page_url }}
+  #   steps:
+  #     - name: Download Playwright HTML report artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: playwright-html-report
+  #         path: playwright-html
 
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: playwright-html
+  #     - name: Upload GitHub Pages artifact
+  #       uses: actions/upload-pages-artifact@v3
+  #       with:
+  #         path: playwright-html
 
-      - name: Deploy Playwright report
-        id: deploy
-        uses: actions/deploy-pages@v4
+  #     - name: Deploy Playwright report
+  #       id: deploy
+  #       uses: actions/deploy-pages@v4
