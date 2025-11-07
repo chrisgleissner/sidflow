@@ -51,10 +51,29 @@ jobs:
           fail_ci_if_error: true
           verbose: true
 
-      - name: Upload Playwright report
+      - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-html-report
           path: packages/sidflow-web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Playwright test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: packages/sidflow-web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload tab screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tab-screenshots
+          path: doc/web-screenshots/
+          if-no-files-found: ignore
           retention-days: 7

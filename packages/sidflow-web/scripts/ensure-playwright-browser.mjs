@@ -26,18 +26,17 @@ for (const chromePath of preferredPaths) {
   }
 }
 
-if (process.env.CI) {
-  console.error(
-    "Playwright expected Chrome via PLAYWRIGHT_CHROME_PATH, but none was found in the container."
-  );
-  process.exit(1);
-}
+const installArgs = process.env.CI
+  ? ["install", "--with-deps", "chromium"]
+  : ["install", "chromium"];
 
 console.warn(
-  "System Chrome was not found; installing Playwright-managed Chromium for local testing..."
+  process.env.CI
+    ? "System Chrome was not found; installing Playwright-managed Chromium (CI mode)."
+    : "System Chrome was not found; installing Playwright-managed Chromium for local testing..."
 );
 
-const child = spawn("playwright", ["install", "chromium"], { stdio: "inherit" });
+const child = spawn("playwright", installArgs, { stdio: "inherit" });
 child.on("exit", (code) => {
   process.exit(code ?? 1);
 });
