@@ -1,26 +1,166 @@
 @import "tailwindcss";
 
+/* Authentic Commodore 64 color palette */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light mode - authentic C64 colors */
+  --background: #6C5EB5; /* C64 Light Blue */
+  --foreground: #352879; /* C64 Dark Blue */
+  --primary: #352879;
+  --primary-foreground: #ffffff;
+  --secondary: #5048A5;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D; /* C64 Light Green */
+  --accent-foreground: #000000;
+  --muted: #8078C5;
+  --muted-foreground: #352879;
+  --border: #352879;
+  --input: #9088D5;
+  --ring: #50E89D;
+  --destructive: #E64646;
+  --destructive-foreground: #ffffff;
+  --card: #7C6EC5;
+  --card-foreground: #ffffff;
+}
+
+/* Dark mode - black background with C64 dark blue for text */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000; /* Black instead of dark blue */
+    --foreground: #6C5EB5; /* Light blue for text */
+    --primary: #6C5EB5;
+    --primary-foreground: #000000;
+    --secondary: #352879;
+    --secondary-foreground: #ffffff;
+    --accent: #50E89D; /* C64 Light Green */
+    --accent-foreground: #000000;
+    --muted: #1a1440;
+    --muted-foreground: #8078C5;
+    --border: #352879;
+    --input: #1a1440;
+    --ring: #50E89D;
+    --destructive: #E64646;
+    --destructive-foreground: #ffffff;
+    --card: #0d0820;
+    --card-foreground: #6C5EB5;
+  }
+}
+
+/* Theme overrides via data attributes */
+[data-theme="c64-light"] {
+  --background: #6C5EB5;
+  --foreground: #352879;
+  --primary: #352879;
+  --primary-foreground: #ffffff;
+  --secondary: #5048A5;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D;
+  --accent-foreground: #000000;
+  --muted: #8078C5;
+  --muted-foreground: #352879;
+  --border: #352879;
+  --input: #9088D5;
+  --ring: #50E89D;
+  --card: #7C6EC5;
+  --card-foreground: #ffffff;
+}
+
+[data-theme="c64-dark"] {
+  --background: #000000;
+  --foreground: #6C5EB5;
+  --primary: #6C5EB5;
+  --primary-foreground: #000000;
+  --secondary: #352879;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D;
+  --accent-foreground: #000000;
+  --muted: #1a1440;
+  --muted-foreground: #8078C5;
+  --border: #352879;
+  --input: #1a1440;
+  --ring: #50E89D;
+  --card: #0d0820;
+  --card-foreground: #6C5EB5;
+}
+
+[data-theme="classic"] {
+  --background: #3e31a2;
+  --foreground: #7c71da;
+  --primary: #7c71da;
+  --primary-foreground: #3e31a2;
+  --secondary: #5b55d0;
+  --secondary-foreground: #ffffff;
+  --accent: #a5fc86;
+  --accent-foreground: #3e31a2;
+  --muted: #5542c4;
+  --muted-foreground: #a5a0d8;
+  --border: #7c71da;
+  --input: #5542c4;
+  --ring: #a5fc86;
+  --card: #4a3fc7;
+  --card-foreground: #d0cdff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Font family classes - Press Start 2P loaded via layout.tsx */
+.font-c64 {
+  font-family: 'Press Start 2P', 'Courier New', monospace;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+.font-mono {
+  font-family: 'Courier New', 'Courier', monospace;
+}
+
+.font-sans {
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Courier New', 'Courier', monospace;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* C64-style border effect */
+.c64-border {
+  border: 3px solid var(--border);
+  box-shadow: 
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* PETSCII-style text shadow */
+.petscii-text {
+  text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.3);
+  font-weight: bold;
+}
+
+/* Retro glow effect */
+.retro-glow {
+  box-shadow: 
+    0 0 10px var(--accent),
+    0 0 20px var(--accent),
+    inset 0 0 10px rgba(80, 232, 157, 0.1);
 }

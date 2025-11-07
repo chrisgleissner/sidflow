@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+/**
+ * Stub for sidflow-rate CLI tool
+ * Used in testing to avoid requiring real file operations
+ */
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+let sidPath = null;
+let energy = null;
+let mood = null;
+let complexity = null;
+let preference = null;
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--energy' && i + 1 < args.length) {
+    energy = args[i + 1];
+    i++;
+  } else if (args[i] === '--mood' && i + 1 < args.length) {
+    mood = args[i + 1];
+    i++;
+  } else if (args[i] === '--complexity' && i + 1 < args.length) {
+    complexity = args[i + 1];
+    i++;
+  } else if (args[i] === '--preference' && i + 1 < args.length) {
+    preference = args[i + 1];
+    i++;
+  } else if (!args[i].startsWith('--')) {
+    sidPath = args[i];
+  }
+}
+
+// Validate inputs
+if (!sidPath) {
+  console.error('Error: No SID file path provided');
+  process.exit(1);
+}
+
+if (!energy || !mood || !complexity || !preference) {
+  console.error('Error: All rating dimensions (energy, mood, complexity, preference) are required');
+  process.exit(1);
+}
+
+// Simulate successful rating
+console.log(`Rating submitted for: ${sidPath}`);
+console.log(`Energy: ${energy}, Mood: ${mood}, Complexity: ${complexity}, Preference: ${preference}`);
+console.log('Rating saved successfully');
+process.exit(0);

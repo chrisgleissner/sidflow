@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+/**
+ * Stub for sidflow-fetch CLI tool
+ * Used in testing to avoid downloading HVSC
+ */
+
+// Parse command line arguments (for compatibility, but not used in stub)
+const args = process.argv.slice(2);
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--config' && i + 1 < args.length) {
+    // Skip config argument
+    i++;
+  } else if (args[i] === '--remote' && i + 1 < args.length) {
+    // Skip remote argument
+    i++;
+  } else if (args[i] === '--version-file' && i + 1 < args.length) {
+    // Skip version-file argument
+    i++;
+  }
+}
+
+// Simulate fetch operation
+console.log('Checking HVSC version...');
+console.log('HVSC is up to date');
+console.log('Fetch completed successfully');
+process.exit(0);

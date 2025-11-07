@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+/**
+ * Stub for sidflow-play CLI tool
+ * Used in testing to avoid requiring real sidplayfp binary
+ */
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+let mood = null;
+let sidPath = null;
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--mood' && i + 1 < args.length) {
+    mood = args[i + 1];
+    i++;
+  } else if (!args[i].startsWith('--')) {
+    sidPath = args[i];
+  }
+}
+
+// Simulate successful playback
+if (sidPath) {
+  console.log(`Playing: ${sidPath}`);
+  if (mood) {
+    console.log(`Mood preset: ${mood}`);
+  }
+  console.log('Playback completed successfully');
+  process.exit(0);
+} else {
+  console.error('Error: No SID file path provided');
+  process.exit(1);
+}

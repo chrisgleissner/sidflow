@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+/**
+ * Stub for sidflow-classify CLI tool
+ * Used in testing to avoid long-running classification
+ */
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const path = args[0];
+
+if (!path) {
+  console.error('Error: No path provided');
+  process.exit(1);
+}
+
+// Simulate classification progress
+console.log(`Starting classification for: ${path}`);
+console.log('Analyzing audio features...');
+console.log('Processing: 10 files');
+console.log('Classification completed successfully');
+console.log('Results saved to workspace/classifications/');
+process.exit(0);

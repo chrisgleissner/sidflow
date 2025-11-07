@@ -10,10 +10,18 @@ on:
     branches:
       - '**'
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   detect-changes:
     name: Detect Docker changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       docker: ${{ steps.filter.outputs.docker }}
     steps:
