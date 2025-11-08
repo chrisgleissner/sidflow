@@ -1,3 +1,5 @@
+"use client";
+
 import {
   createContext,
   useCallback,
@@ -6,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { v4 as uuid } from 'uuid';
 
 export interface Toast {
   id: string;
@@ -28,7 +29,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const showToast = useCallback(
     (message: string, options?: { variant?: Toast['variant']; duration?: number }) => {
       const toast: Toast = {
-        id: uuid(),
+        id: crypto.randomUUID(),
         message,
         variant: options?.variant ?? 'info',
         duration: options?.duration ?? 5000,
