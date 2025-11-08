@@ -27,7 +27,7 @@ export type RateRequest = z.infer<typeof RateRequestSchema>;
 
 // Classify endpoint schema
 export const ClassifyRequestSchema = z.object({
-  path: z.string().min(1, 'Path is required'),
+  path: z.string().optional(),
 });
 
 export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;
@@ -52,6 +52,13 @@ export const TrainRequestSchema = z.object({
 });
 
 export type TrainRequest = z.infer<typeof TrainRequestSchema>;
+
+export const RateControlRequestSchema = z.object({
+  action: z.enum(['pause', 'resume', 'stop', 'seek']),
+  positionSeconds: z.number().nonnegative().optional(),
+});
+
+export type RateControlRequest = z.infer<typeof RateControlRequestSchema>;
 
 // Generic API response types
 export interface ApiSuccessResponse<T = unknown> {

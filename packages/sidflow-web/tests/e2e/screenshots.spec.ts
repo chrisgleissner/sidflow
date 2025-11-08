@@ -44,20 +44,13 @@ const TABS: TabScenario[] = [
   {
     label: 'RATE',
     screenshot: '04-rate.png',
-    setup: async (page) => {
-      await page.locator('#rate-path').fill('/test/hvsc/MUSICIANS/H/Hubbard_Rob/Commando.sid');
-    },
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
-      await expect(page.locator('#rate-path')).toHaveValue(/Commando\.sid$/);
     },
   },
   {
     label: 'CLASSIFY',
     screenshot: '05-classify.png',
-    setup: async (page) => {
-      await page.locator('#classify-path').fill('/tmp/hvsc');
-    },
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible();
     },

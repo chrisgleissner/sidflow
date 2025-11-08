@@ -3,7 +3,7 @@
 import process from "node:process";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadConfig, MOOD_PRESETS, type MoodPresetName, type SidflowConfig } from "@sidflow/common";
+import { loadConfig, MOOD_PRESETS, type MoodPresetName, type SidflowConfig, createPlaybackLock } from "@sidflow/common";
 import type { Stats } from "node:fs";
 import {
   createPlaylistBuilder,
@@ -379,6 +379,7 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
   const builder = runtime.createPlaylistBuilder({ dbPath });
   let connected = false;
   let signalHandler: (() => void) | null = null;
+  const playbackLock = await createPlaybackLock(config);
 
   try {
     await builder.connect();
@@ -405,10 +406,14 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
     const sessionManager = runtime.createSessionManager("data/sessions");
     await sessionManager.startSession(playlistConfig.seed);
 
+    await playbackLock.stopExistingPlayback("sidflow-play");
+
     const controller = runtime.createPlaybackController({
       rootPath: config.hvscPath,
       sidplayPath: options.sidplayPath || config.sidplayPath,
       minDuration: options.minDuration,
+      playbackLock,
+      playbackSource: "sidflow-play",
       onEvent: (event: PlaybackEvent) => {
         sessionManager.recordEvent(event);
 
@@ -434,6 +439,7 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
     const shutdown = async () => {
       runtime.stdout.write("\n\nStopping playback...\n");
       await controller.stop();
+      await playbackLock.forceRelease();
       await sessionManager.endSession();
     };
 

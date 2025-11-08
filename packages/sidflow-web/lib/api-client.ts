@@ -8,9 +8,11 @@ import type {
   ClassifyRequest,
   FetchRequest,
   TrainRequest,
+  RateControlRequest,
   ApiResponse,
 } from './validation';
 import type { FetchProgressSnapshot } from './types/fetch-progress';
+import type { ClassifyProgressSnapshot } from './types/classify-progress';
 
 export interface RateTrackMetadata {
   title?: string;
@@ -35,6 +37,15 @@ export interface RateTrackInfo {
   displayName: string;
   selectedSong: number;
   metadata: RateTrackMetadata;
+  durationSeconds: number;
+}
+
+export interface RatePlaybackStatus {
+  active: boolean;
+  isPaused: boolean;
+  positionSeconds: number;
+  durationSeconds?: number;
+  sidPath?: string;
 }
 
 const API_BASE = '/api';
@@ -58,11 +69,11 @@ export async function playTrack(request: PlayRequest): Promise<ApiResponse<{ out
   return apiRequest('/play', request);
 }
 
-export async function rateTrack(request: RateRequest): Promise<ApiResponse<{ message: string }>> {
+export async function rateTrack(request: RateRequest): Promise<ApiResponse<{ message: string; tagPath?: string }>> {
   return apiRequest('/rate', request);
 }
 
-export async function classifyPath(request: ClassifyRequest): Promise<ApiResponse<{ output: string }>> {
+export async function classifyPath(request: ClassifyRequest = {}): Promise<ApiResponse<{ output: string; logs: string; progress: ClassifyProgressSnapshot }>> {
   return apiRequest('/classify', request);
 }
 
@@ -93,4 +104,38 @@ export async function requestRandomRateTrack(): Promise<ApiResponse<{ track: Rat
     body: JSON.stringify({}),
   });
   return response.json();
+}
+
+export async function getHvscPaths(): Promise<ApiResponse<{ hvscPath: string; musicPath: string }>> {
+  const response = await fetch(`${API_BASE}/config/hvsc`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function getClassifyProgress(): Promise<ApiResponse<ClassifyProgressSnapshot>> {
+  const response = await fetch(`${API_BASE}/classify/progress`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function getRatePlaybackStatus(): Promise<ApiResponse<RatePlaybackStatus>> {
+  const response = await fetch(`${API_BASE}/rate/status`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function controlRatePlayback(request: RateControlRequest): Promise<ApiResponse<{ message: string }>> {
+  return apiRequest('/rate/control', request);
 }

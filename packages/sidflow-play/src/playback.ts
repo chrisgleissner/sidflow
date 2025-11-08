@@ -3,7 +3,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import type { Recommendation } from "@sidflow/common";
+import type { Recommendation, PlaybackLock } from "@sidflow/common";
 
 /**
  * Playback state enum.
@@ -37,6 +37,10 @@ export interface PlaybackOptions {
   minDuration?: number;
   /** Callback for playback events */
   onEvent?: (event: PlaybackEvent) => void;
+  /** Playback lock for enforcing single playback */
+  playbackLock?: PlaybackLock;
+  /** Identifier for playback source */
+  playbackSource?: string;
 }
 
 /**
@@ -51,12 +55,16 @@ export class PlaybackController {
   private rootPath: string;
   private minDuration: number;
   private onEvent?: (event: PlaybackEvent) => void;
+  private playbackLock?: PlaybackLock;
+  private playbackSource: string;
 
   constructor(options: PlaybackOptions) {
     this.sidplayPath = options.sidplayPath || "sidplayfp";
     this.rootPath = options.rootPath;
     this.minDuration = options.minDuration ?? 15; // Default 15 seconds
     this.onEvent = options.onEvent;
+    this.playbackLock = options.playbackLock;
+    this.playbackSource = options.playbackSource ?? "sidflow-play";
   }
 
   /**
@@ -153,6 +161,7 @@ export class PlaybackController {
     const sidPath = `${this.rootPath}/${song.sid_path}`;
     
     try {
+      await this.playbackLock?.stopExistingPlayback(this.playbackSource);
       this.state = PlaybackState.PLAYING;
       this.emitEvent({ type: "started", song, timestamp: new Date().toISOString() });
 
@@ -160,6 +169,23 @@ export class PlaybackController {
       this.process = spawn(this.sidplayPath, [sidPath], {
         stdio: ["ignore", "pipe", "pipe"]
       });
+      if (this.process?.pid) {
+        const metadata = {
+          pid: this.process.pid,
+          command: this.playbackSource,
+          sidPath,
+          source: this.playbackSource,
+          startedAt: new Date().toISOString()
+        };
+        await this.playbackLock?.registerProcess(metadata);
+        const pid = this.process.pid;
+        this.process.once("close", () => {
+          void this.playbackLock?.releaseIfMatches(pid);
+        });
+        this.process.once("error", () => {
+          void this.playbackLock?.releaseIfMatches(pid);
+        });
+      }
 
       // Handle process completion
       this.process.on("close", (code) => {
