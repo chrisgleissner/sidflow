@@ -129,3 +129,4 @@
 {"modelVersion":"0.2.0","trainedAt":"2025-11-08T11:29:33.612Z","samples":3,"metrics":{"mae":0.011453433893620968,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
 {"modelVersion":"0.2.0","trainedAt":"2025-11-08T11:29:33.669Z","samples":3,"metrics":{"mae":0.009895405732095242,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
 {"modelVersion":"0.2.0","trainedAt":"2025-11-08T13:08:08.965Z","samples":3,"metrics":{"mae":0.02851855754852295,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-08T15:04:42.631Z","samples":3,"metrics":{"mae":0.029425054788589478,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
