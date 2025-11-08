@@ -198,7 +198,7 @@ export default function Home() {
             </div>
           </Tabs>
 
-          {queue.length > 0 && activeTab !== 'rate' && <QueueView queue={queue} />}
+          {queue.length > 0 && <QueueView queue={queue} />}
 
           <div className="text-center text-xs text-muted-foreground py-3 font-mono border-t border-border/50 mt-6">
             <p>READY.</p>
