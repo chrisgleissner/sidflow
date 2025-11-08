@@ -2,12 +2,15 @@
 
 # SID Flow
 
-Listen to C64 music based on your mood – automatically classified and ready to play.
+Listen to C64 music based on your mood – automatically classified (*) and ready to play.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yaml?branch=main&logo=github&label=CI)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
+
+> [!NOTE]
+> (*) Please note that the classification functionality is still under development.
 
 ---
 
