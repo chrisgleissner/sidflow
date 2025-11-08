@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { classifyPath } from '@/lib/api-client';
+import { formatApiError } from '@/lib/format-error';
 
 interface ClassifyTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -28,7 +29,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
       if (response.success) {
         onStatusChange('Classification completed successfully');
       } else {
-        onStatusChange(`Error: ${response.error}`, true);
+        onStatusChange(`Classification failed: ${formatApiError(response)}`, true);
       }
     } catch (error) {
       onStatusChange(`Failed to classify: ${error}`, true);

@@ -22,7 +22,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "@sidflow/common": ["../sidflow-common/src/index.ts"]
+      "@sidflow/common": ["../sidflow-common/dist/index.js"],
+      "@sidflow/rate": ["../sidflow-rate/dist/index.js"]
     }
   },
   "include": [

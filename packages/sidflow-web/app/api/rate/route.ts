@@ -1,59 +1,89 @@
 /**
- * Rate API endpoint - submits ratings via sidflow-rate CLI
+ * Rate API endpoint - writes manual rating files without invoking interactive CLI
  */
+import path from 'node:path';
+import { stat } from 'node:fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
-import { executeCli } from '@/lib/cli-executor';
-import { RateRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
+import { RateRequestSchema, type ApiResponse } from '@/lib/validation';
+import { getRepoRoot, getSidflowConfig } from '@/lib/server-env';
+import { createTagFilePath, writeManualTag } from '@sidflow/rate';
+
+function formatError(message: string, details?: string): ApiResponse {
+  return {
+    success: false,
+    error: message,
+    details,
+  };
+}
+
+async function ensureSidExists(sidPath: string): Promise<void> {
+  try {
+    const information = await stat(sidPath);
+    if (!information.isFile()) {
+      throw new Error('Path exists but is not a file');
+    }
+  } catch (error) {
+    throw new Error(`SID file not found at ${sidPath}`, { cause: error as Error });
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validatedData = RateRequestSchema.parse(body);
 
-    const args = [
-      validatedData.sid_path,
-      '--energy', String(validatedData.ratings.e),
-      '--mood', String(validatedData.ratings.m),
-      '--complexity', String(validatedData.ratings.c),
-      '--preference', String(validatedData.ratings.p),
-    ];
+    const repoRoot = getRepoRoot();
+    const config = await getSidflowConfig();
 
-    const result = await executeCli('sidflow-rate', args, {
-      timeout: 10000, // 10 seconds for rating
-    });
+    const hvscPath = path.resolve(repoRoot, config.hvscPath);
+    const tagsPath = path.resolve(repoRoot, config.tagsPath);
+    const sidAbsolutePath = path.isAbsolute(validatedData.sid_path)
+      ? validatedData.sid_path
+      : path.resolve(hvscPath, validatedData.sid_path);
 
-    if (result.success) {
-      const response: ApiResponse<{ message: string }> = {
-        success: true,
-        data: {
-          message: 'Rating submitted successfully',
-        },
-      };
-      return NextResponse.json(response, { status: 200 });
-    } else {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Rating command failed',
-        details: result.stderr || result.stdout,
-      };
-      return NextResponse.json(response, { status: 500 });
-    }
-  } catch (error) {
-    if (error instanceof ZodError) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Validation error',
-        details: error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', '),
-      };
-      return NextResponse.json(response, { status: 400 });
+    if (!sidAbsolutePath.startsWith(hvscPath)) {
+      return NextResponse.json(
+        formatError(
+          'SID path outside HVSC mirror',
+          `Expected file within ${hvscPath}, received ${sidAbsolutePath}`
+        ),
+        { status: 400 }
+      );
     }
 
-    const response: ApiResponse = {
-      success: false,
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : String(error),
+    await ensureSidExists(sidAbsolutePath);
+
+    const tagFilePath = createTagFilePath(hvscPath, tagsPath, sidAbsolutePath);
+    await writeManualTag(tagFilePath, validatedData.ratings, new Date());
+
+    const response: ApiResponse<{ message: string; tagPath: string }> = {
+      success: true,
+      data: {
+        message: `Saved rating for ${path.relative(hvscPath, sidAbsolutePath)}`,
+        tagPath: tagFilePath,
+      },
     };
-    return NextResponse.json(response, { status: 500 });
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    console.error('[api/rate] Failed to save rating', error);
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        formatError(
+          'Validation error',
+          error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')
+        ),
+        { status: 400 }
+      );
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    const cause =
+      error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined;
+    const detailText = [message, cause].filter(Boolean).join(' | ') || undefined;
+
+    return NextResponse.json(formatError('Failed to save rating', detailText), {
+      status: 500,
+    });
   }
 }

@@ -2,6 +2,7 @@
  * Zod schemas for API request validation
  */
 import { z } from 'zod';
+import type { FetchProgressSnapshot } from './types/fetch-progress';
 
 // Play endpoint schema
 export const PlayRequestSchema = z.object({
@@ -62,6 +63,8 @@ export interface ApiErrorResponse {
   success: false;
   error: string;
   details?: string;
+  logs?: string;
+  progress?: FetchProgressSnapshot;
 }
 
 export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;

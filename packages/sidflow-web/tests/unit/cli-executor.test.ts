@@ -1,6 +1,9 @@
 /**
  * Unit tests for CLI executor
  */
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, test, expect } from 'bun:test';
 import { executeCli } from '../../lib/cli-executor';
 
@@ -67,5 +70,24 @@ describe('executeCli', () => {
     expect(result.stdout).toContain('line1');
     expect(result.stdout).toContain('line2');
     expect(result.stdout).toContain('line3');
+  });
+
+  test('falls back to SIDFLOW_CLI_DIR when command is not in PATH', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sidflow-cli-'));
+    const scriptPath = path.join(tempDir, 'sidflow-test');
+    await fs.writeFile(scriptPath, '#!/usr/bin/env bash\necho cli-works\n', { mode: 0o755 });
+    await fs.chmod(scriptPath, 0o755);
+
+    const originalCliDir = process.env.SIDFLOW_CLI_DIR;
+    process.env.SIDFLOW_CLI_DIR = tempDir;
+
+    try {
+      const result = await executeCli('sidflow-test', []);
+      expect(result.success).toBe(true);
+      expect(result.stdout.trim()).toBe('cli-works');
+    } finally {
+      process.env.SIDFLOW_CLI_DIR = originalCliDir;
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

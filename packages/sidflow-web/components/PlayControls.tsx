@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { playTrack } from '@/lib/api-client';
 import type { PlayRequest } from '@/lib/validation';
+import { formatApiError } from '@/lib/format-error';
 
 const MOOD_PRESETS = [
   { value: 'quiet', label: 'Quiet - Low energy, calm mood' },
@@ -53,7 +54,7 @@ export function PlayControls({ onStatusChange, onTrackPlayed }: PlayControlsProp
         onStatusChange('Playback started successfully');
         onTrackPlayed(sidPath);
       } else {
-        onStatusChange(`Error: ${response.error}`, true);
+        onStatusChange(`Playback failed: ${formatApiError(response)}`, true);
       }
     } catch (error) {
       onStatusChange(`Failed to start playback: ${error}`, true);

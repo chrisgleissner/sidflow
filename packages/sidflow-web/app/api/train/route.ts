@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { executeCli } from '@/lib/cli-executor';
 import { TrainRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
+import { describeCliFailure, describeCliSuccess } from '@/lib/cli-logs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,23 +32,28 @@ export async function POST(request: NextRequest) {
       args.push('--force');
     }
 
-    const result = await executeCli('sidflow-train', args, {
+    const command = 'sidflow-train';
+    const result = await executeCli(command, args, {
       timeout: 600000, // 10 minutes for training (can be long-running)
     });
 
     if (result.success) {
-      const response: ApiResponse<{ output: string }> = {
+      const { logs } = describeCliSuccess(command, result);
+      const response: ApiResponse<{ output: string; logs: string }> = {
         success: true,
         data: {
           output: result.stdout,
+          logs,
         },
       };
       return NextResponse.json(response, { status: 200 });
     } else {
+      const { details, logs } = describeCliFailure(command, result);
       const response: ApiResponse = {
         success: false,
         error: 'Training command failed',
-        details: result.stderr || result.stdout,
+        details,
+        logs,
       };
       return NextResponse.json(response, { status: 500 });
     }

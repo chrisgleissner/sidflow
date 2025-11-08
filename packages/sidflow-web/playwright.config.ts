@@ -12,11 +12,13 @@ const stubToolsPath = path.resolve(configDir, 'tests/stubs');
 const chromeExecutable = process.env.PLAYWRIGHT_CHROME_PATH;
 const hasSystemChrome = Boolean(chromeExecutable && existsSync(chromeExecutable));
 
+const videoMode: 'on' | 'off' | 'retain-on-failure' = process.env.CI ? 'retain-on-failure' : 'on';
+
 const baseUse = {
   baseURL: 'http://localhost:3000',
   trace: 'on-first-retry' as const,
   headless: true,
-  video: process.env.CI ? 'retain-on-failure' : 'on',
+  video: videoMode,
 };
 
 const desktopChrome = devices['Desktop Chrome'];

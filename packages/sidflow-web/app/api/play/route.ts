@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { executeCli } from '@/lib/cli-executor';
 import { PlayRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
+import { describeCliFailure, describeCliSuccess } from '@/lib/cli-logs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,23 +18,28 @@ export async function POST(request: NextRequest) {
     }
     args.push(validatedData.sid_path);
 
-    const result = await executeCli('sidflow-play', args, {
+    const command = 'sidflow-play';
+    const result = await executeCli(command, args, {
       timeout: 60000, // 60 seconds for playback
     });
 
     if (result.success) {
-      const response: ApiResponse<{ output: string }> = {
+      const { logs } = describeCliSuccess(command, result);
+      const response: ApiResponse<{ output: string; logs: string }> = {
         success: true,
         data: {
           output: result.stdout,
+          logs,
         },
       };
       return NextResponse.json(response, { status: 200 });
     } else {
+      const { details, logs } = describeCliFailure(command, result);
       const response: ApiResponse = {
         success: false,
         error: 'Playback command failed',
-        details: result.stderr || result.stdout,
+        details,
+        logs,
       };
       return NextResponse.json(response, { status: 500 });
     }

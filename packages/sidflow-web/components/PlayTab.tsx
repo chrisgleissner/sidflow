@@ -14,6 +14,7 @@ import {
 import { playTrack, rateTrack } from '@/lib/api-client';
 import { extractSidMetadata, formatTime, getUpcomingSongs, type SidMetadata, type UpcomingSong } from '@/lib/sid-metadata';
 import type { PlayRequest } from '@/lib/validation';
+import { formatApiError } from '@/lib/format-error';
 import { 
   Play, Pause, Square, SkipForward, SkipBack, 
   FastForward, Rewind, ThumbsUp, ThumbsDown,
@@ -174,7 +175,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         // Get upcoming songs using shared utility
         setUpcomingSongs(getUpcomingSongs());
       } else {
-        onStatusChange(`Error: ${response.error}`, true);
+        onStatusChange(`Playback failed: ${formatApiError(response)}`, true);
       }
     } catch (error) {
       onStatusChange(`Failed to start playback: ${error}`, true);
@@ -238,6 +239,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
 
       if (response.success) {
         onStatusChange('Rating submitted');
+      } else {
+        onStatusChange(`Rating failed: ${formatApiError(response)}`, true);
       }
     } catch (error) {
       onStatusChange(`Failed to rate: ${error}`, true);

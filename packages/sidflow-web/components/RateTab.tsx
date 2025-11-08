@@ -1,27 +1,58 @@
 'use client';
 
-import { useState, useEffect, useId } from 'react';
+import { useState, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { rateTrack } from '@/lib/api-client';
-import { extractSidMetadata, getUpcomingSongs, type SidMetadata, type UpcomingSong } from '@/lib/sid-metadata';
+import { rateTrack, requestRandomRateTrack, type RateTrackInfo } from '@/lib/api-client';
+import { getUpcomingSongs, type SidMetadata, type UpcomingSong } from '@/lib/sid-metadata';
 import type { RateRequest } from '@/lib/validation';
-import { Star, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Shuffle, Music2, FileAudio2, Star, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { formatApiError } from '@/lib/format-error';
 
 interface RateTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '—';
+  }
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function toSidMetadata(track: RateTrackInfo): SidMetadata {
+  return {
+    title: track.metadata.title ?? track.displayName,
+    artist: track.metadata.author ?? 'Unknown Artist',
+    year: track.metadata.released ?? 'Unknown',
+    length: track.metadata.length ?? 'Unknown',
+    format: track.metadata.sidType,
+    version: String(track.metadata.version),
+    songs: track.metadata.songs,
+    startSong: track.metadata.startSong,
+    sidModel: track.metadata.sidModel,
+    clockSpeed: track.metadata.clock,
+  };
+}
+
 export function RateTab({ onStatusChange }: RateTabProps) {
-  const [sidPath, setSidPath] = useState('');
+  const [currentTrack, setCurrentTrack] = useState<RateTrackInfo | null>(null);
+  const [sidMetadata, setSidMetadata] = useState<SidMetadata | null>(null);
+  const [upcomingSongs, setUpcomingSongs] = useState<UpcomingSong[]>([]);
+  const [isFetchingTrack, setIsFetchingTrack] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [energy, setEnergy] = useState([3]);
   const [mood, setMood] = useState([3]);
   const [complexity, setComplexity] = useState([3]);
   const [preference, setPreference] = useState([3]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [sidMetadata, setSidMetadata] = useState<SidMetadata | null>(null);
-  const [upcomingSongs, setUpcomingSongs] = useState<UpcomingSong[]>([]);
   const energyLabelId = useId();
   const energyValueId = useId();
   const moodLabelId = useId();
@@ -30,20 +61,6 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const complexityValueId = useId();
   const preferenceLabelId = useId();
   const preferenceValueId = useId();
-
-  // Load metadata when path changes
-  useEffect(() => {
-    if (sidPath.trim()) {
-      // Extract SID metadata using shared utility
-      setSidMetadata(extractSidMetadata(sidPath));
-
-      // Get upcoming songs using shared utility
-      setUpcomingSongs(getUpcomingSongs());
-    } else {
-      setSidMetadata(null);
-      setUpcomingSongs([]);
-    }
-  }, [sidPath]);
 
   const handleLike = () => {
     setEnergy([5]);
@@ -59,18 +76,45 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     setPreference([1]);
   };
 
+  const handlePlayRandom = async () => {
+    setIsFetchingTrack(true);
+    onStatusChange('Selecting a random SID and starting playback...');
+
+    try {
+      const response = await requestRandomRateTrack();
+      if (!response.success) {
+        onStatusChange(`Unable to start playback: ${formatApiError(response)}`, true);
+        setIsFetchingTrack(false);
+        return;
+      }
+
+      const track = response.data.track;
+      setCurrentTrack(track);
+      setSidMetadata(toSidMetadata(track));
+      setUpcomingSongs(getUpcomingSongs());
+      onStatusChange(
+        `Now playing "${track.displayName}" (song ${track.selectedSong}/${track.metadata.songs})`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      onStatusChange(`Failed to start playback: ${message}`, true);
+    } finally {
+      setIsFetchingTrack(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!sidPath.trim()) {
-      onStatusChange('Please enter a SID file path', true);
+    if (!currentTrack) {
+      onStatusChange('Load and play a SID before submitting a rating', true);
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     onStatusChange('Submitting rating...');
 
     try {
       const request: RateRequest = {
-        sid_path: sidPath,
+        sid_path: currentTrack.sidPath,
         ratings: {
           e: energy[0],
           m: mood[0],
@@ -84,70 +128,103 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       if (response.success) {
         onStatusChange('Rating submitted successfully');
       } else {
-        onStatusChange(`Error: ${response.error}`, true);
+        onStatusChange(`Rating failed: ${formatApiError(response)}`, true);
       }
     } catch (error) {
-      onStatusChange(`Failed to submit rating: ${error}`, true);
+      onStatusChange(`Failed to submit rating: ${error instanceof Error ? error.message : String(error)}`, true);
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
+
+  const hasTrack = Boolean(currentTrack);
 
   return (
     <div className="space-y-4">
       <Card className="c64-border">
         <CardHeader>
-          <CardTitle className="petscii-text text-accent">RATE TRACK</CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Submit manual ratings for a SID track
-          </CardDescription>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="petscii-text text-accent">RATE TRACK</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Let SIDFlow pick an unrated SID, play it, then capture your feedback
+              </CardDescription>
+            </div>
+            <Button
+              onClick={handlePlayRandom}
+              disabled={isFetchingTrack || isSubmitting}
+              className="w-full md:w-auto retro-glow gap-2"
+            >
+              {isFetchingTrack ? (
+                <>
+                  <Music2 className="h-4 w-4 animate-spin" />
+                  Finding SID...
+                </>
+              ) : (
+                <>
+                  <Shuffle className="h-4 w-4" />
+                  Play Random SID
+                </>
+              )}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="rate-path" className="text-sm font-medium">
-              SID FILE PATH
-            </label>
-            <input
-              id="rate-path"
-              type="text"
-              value={sidPath}
-              onChange={(e) => setSidPath(e.target.value)}
-              placeholder="/path/to/music.sid"
-              className="w-full px-3 py-2 bg-input border-2 border-border rounded text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              disabled={isLoading}
-            />
-          </div>
-
-          {/* SID Metadata */}
-          {sidMetadata && (
-            <div className="pt-3 border-t-2 border-border">
-              <p className="text-sm font-medium mb-2">TRACK INFORMATION:</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-muted-foreground">Title:</span>
-                  <span className="ml-2 font-bold">{sidMetadata.title}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Artist:</span>
-                  <span className="ml-2 font-bold">{sidMetadata.artist}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Year:</span>
-                  <span className="ml-2 font-bold">{sidMetadata.year}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Length:</span>
-                  <span className="ml-2 font-bold">{sidMetadata.length}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Format:</span>
-                  <span className="ml-2 font-bold">{sidMetadata.format}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">SID Model:</span>
-                  <span className="ml-2 font-bold">{sidMetadata.sidModel}</span>
+          {currentTrack ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                <span className="rounded bg-muted px-2 py-1 text-muted-foreground">
+                  Song {currentTrack.selectedSong}/{currentTrack.metadata.songs}
+                </span>
+                <span className="rounded bg-muted px-2 py-1 text-muted-foreground">
+                  {currentTrack.metadata.sidType} v{currentTrack.metadata.version}
+                </span>
+                <span className="text-muted-foreground">{currentTrack.relativePath}</span>
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="font-semibold text-foreground">{sidMetadata?.title}</div>
+                <div className="text-muted-foreground">
+                  {sidMetadata?.artist} • {sidMetadata?.year}
                 </div>
               </div>
+              <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
+                <div className="rounded border border-border/70 bg-muted/20 p-2">
+                  <p className="text-muted-foreground">File Path</p>
+                  <code className="block break-all text-foreground">{currentTrack.sidPath}</code>
+                </div>
+                <div className="rounded border border-border/70 bg-muted/20 p-2">
+                  <p className="text-muted-foreground">Length</p>
+                  <p className="font-semibold text-foreground">
+                    {sidMetadata?.length ?? 'Unknown'}
+                  </p>
+                </div>
+                <div className="rounded border border-border/70 bg-muted/20 p-2">
+                  <p className="text-muted-foreground">SID Model</p>
+                  <p className="font-semibold text-foreground">
+                    {currentTrack.metadata.sidModel}
+                    {currentTrack.metadata.sidModelSecondary
+                      ? ` + ${currentTrack.metadata.sidModelSecondary}`
+                      : ''}
+                  </p>
+                </div>
+                <div className="rounded border border-border/70 bg-muted/20 p-2">
+                  <p className="text-muted-foreground">Clock</p>
+                  <p className="font-semibold text-foreground">
+                    {currentTrack.metadata.clock}
+                  </p>
+                </div>
+                <div className="rounded border border-border/70 bg-muted/20 p-2">
+                  <p className="text-muted-foreground">File Size</p>
+                  <p className="font-semibold text-foreground">
+                    {formatBytes(currentTrack.metadata.fileSizeBytes)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
+              <FileAudio2 className="h-4 w-4" />
+              Press "Play Random SID" to load the next unrated track from your HVSC mirror.
             </div>
           )}
         </CardContent>
@@ -168,21 +245,21 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               <label className="text-sm font-medium">ENERGY</label>
               <span className="text-lg font-bold text-accent">{energy[0]}/5</span>
             </div>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((rating) => (
-                <Button
-                  key={rating}
-                  size="sm"
-                  variant={energy[0] === rating ? "default" : "outline"}
-                  onClick={() => setEnergy([rating])}
-                  className="flex-1 gap-1"
-                  disabled={isLoading}
-                >
-                  <Star className={`h-3 w-3 ${energy[0] >= rating ? 'fill-current' : ''}`} />
-                  {rating}
-                </Button>
-              ))}
-            </div>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <Button
+                    key={rating}
+                    size="sm"
+                    variant={energy[0] === rating ? 'default' : 'outline'}
+                    onClick={() => setEnergy([rating])}
+                    className="flex-1 gap-1"
+                    disabled={isSubmitting || !hasTrack}
+                  >
+                    <Star className={`h-3 w-3 ${energy[0] >= rating ? 'fill-current' : ''}`} />
+                    {rating}
+                  </Button>
+                ))}
+              </div>
             <p className="text-xs text-muted-foreground">
               1 = Quiet/Ambient • 5 = High-energy/Intense
             </p>
@@ -199,10 +276,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 <Button
                   key={rating}
                   size="sm"
-                  variant={mood[0] === rating ? "default" : "outline"}
+                  variant={mood[0] === rating ? 'default' : 'outline'}
                   onClick={() => setMood([rating])}
                   className="flex-1 gap-1"
-                  disabled={isLoading}
+                  disabled={isSubmitting || !hasTrack}
                 >
                   <Star className={`h-3 w-3 ${mood[0] >= rating ? 'fill-current' : ''}`} />
                   {rating}
@@ -210,7 +287,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              1 = Dark/Melancholic • 5 = Bright/Cheerful
+              1 = Dark/Somber • 5 = Bright/Upbeat
             </p>
           </div>
 
@@ -225,10 +302,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 <Button
                   key={rating}
                   size="sm"
-                  variant={complexity[0] === rating ? "default" : "outline"}
+                  variant={complexity[0] === rating ? 'default' : 'outline'}
                   onClick={() => setComplexity([rating])}
                   className="flex-1 gap-1"
-                  disabled={isLoading}
+                  disabled={isSubmitting || !hasTrack}
                 >
                   <Star className={`h-3 w-3 ${complexity[0] >= rating ? 'fill-current' : ''}`} />
                   {rating}
@@ -236,7 +313,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              1 = Simple Patterns • 5 = Complex Arrangements
+              1 = Simple Grooves • 5 = Dense Arrangements
             </p>
           </div>
 
@@ -251,10 +328,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 <Button
                   key={rating}
                   size="sm"
-                  variant={preference[0] === rating ? "default" : "outline"}
+                  variant={preference[0] === rating ? 'default' : 'outline'}
                   onClick={() => setPreference([rating])}
                   className="flex-1 gap-1"
-                  disabled={isLoading}
+                  disabled={isSubmitting || !hasTrack}
                 >
                   <Star className={`h-3 w-3 ${preference[0] >= rating ? 'fill-current' : ''}`} />
                   {rating}
@@ -262,18 +339,17 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              1 = Not My Style • 5 = Love It!
+              1 = Not my style • 5 = Instant favorite
             </p>
           </div>
 
-          {/* Overall Like/Dislike */}
-          <div className="flex justify-center gap-4 pt-2 border-t-2 border-border">
+          <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleLike}
               className="gap-2"
-              disabled={isLoading}
+              disabled={isSubmitting || !hasTrack}
               title="Set all ratings to 5"
             >
               <ThumbsUp className="h-4 w-4" />
@@ -284,7 +360,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               size="sm"
               onClick={handleDislike}
               className="gap-2"
-              disabled={isLoading}
+              disabled={isSubmitting || !hasTrack}
               title="Set all ratings to 1"
             >
               <ThumbsDown className="h-4 w-4" />
@@ -324,7 +400,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               min={1}
               max={5}
               step={1}
-              disabled={isLoading}
+              disabled={isSubmitting || !hasTrack}
               className="cursor-pointer"
             />
             <p className="text-xs text-muted-foreground">
@@ -353,7 +429,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               min={1}
               max={5}
               step={1}
-              disabled={isLoading}
+              disabled={isSubmitting || !hasTrack}
               className="cursor-pointer"
             />
             <p className="text-xs text-muted-foreground">
@@ -382,7 +458,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               min={1}
               max={5}
               step={1}
-              disabled={isLoading}
+              disabled={isSubmitting || !hasTrack}
               className="cursor-pointer"
             />
             <p className="text-xs text-muted-foreground">
@@ -411,7 +487,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               min={1}
               max={5}
               step={1}
-              disabled={isLoading}
+              disabled={isSubmitting || !hasTrack}
               className="cursor-pointer"
             />
             <p className="text-xs text-muted-foreground">
@@ -421,10 +497,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
           <Button 
             onClick={handleSubmit} 
-            disabled={isLoading} 
+            disabled={isSubmitting || !hasTrack} 
             className="w-full retro-glow"
           >
-            {isLoading ? 'SUBMITTING...' : 'SUBMIT RATING'}
+            {isSubmitting ? 'SUBMITTING...' : 'SUBMIT RATING'}
           </Button>
         </CardContent>
       </Card>

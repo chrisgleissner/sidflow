@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { trainModel } from '@/lib/api-client';
+import { formatApiError } from '@/lib/format-error';
 
 interface TrainTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -28,7 +29,7 @@ export function TrainTab({ onStatusChange }: TrainTabProps) {
       if (response.success) {
         onStatusChange('Model training completed successfully');
       } else {
-        onStatusChange(`Error: ${response.error}`, true);
+        onStatusChange(`Training failed: ${formatApiError(response)}`, true);
       }
     } catch (error) {
       onStatusChange(`Failed to train model: ${error}`, true);

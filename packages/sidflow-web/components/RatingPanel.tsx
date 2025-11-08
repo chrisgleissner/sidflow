@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Slider } from '@/components/ui/slider';
 import { rateTrack } from '@/lib/api-client';
 import type { RateRequest } from '@/lib/validation';
+import { formatApiError } from '@/lib/format-error';
 
 interface RatingPanelProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -50,7 +51,7 @@ export function RatingPanel({ onStatusChange }: RatingPanelProps) {
         setComplexity([3]);
         setPreference([3]);
       } else {
-        onStatusChange(`Error: ${response.error}`, true);
+        onStatusChange(`Rating failed: ${formatApiError(response)}`, true);
       }
     } catch (error) {
       onStatusChange(`Failed to submit rating: ${error}`, true);

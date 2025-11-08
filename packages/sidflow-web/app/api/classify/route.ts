@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { executeCli } from '@/lib/cli-executor';
 import { ClassifyRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
+import { describeCliFailure, describeCliSuccess } from '@/lib/cli-logs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,23 +14,28 @@ export async function POST(request: NextRequest) {
 
     const args = [validatedData.path];
 
-    const result = await executeCli('sidflow-classify', args, {
+    const command = 'sidflow-classify';
+    const result = await executeCli(command, args, {
       timeout: 300000, // 5 minutes for classification (can be long-running)
     });
 
     if (result.success) {
-      const response: ApiResponse<{ output: string }> = {
+      const { logs } = describeCliSuccess(command, result);
+      const response: ApiResponse<{ output: string; logs: string }> = {
         success: true,
         data: {
           output: result.stdout,
+          logs,
         },
       };
       return NextResponse.json(response, { status: 200 });
     } else {
+      const { details, logs } = describeCliFailure(command, result);
       const response: ApiResponse = {
         success: false,
         error: 'Classification command failed',
-        details: result.stderr || result.stdout,
+        details,
+        logs,
       };
       return NextResponse.json(response, { status: 500 });
     }
