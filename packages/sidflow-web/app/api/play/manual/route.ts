@@ -57,16 +57,7 @@ export async function POST(request: NextRequest) {
 
     const metadata = await parseSidFile(sidPath);
     const durationSeconds = parseDurationSeconds(metadata.length);
-
-    await startSidPlayback({
-      env,
-      playbackLock,
-      sidPath,
-      offsetSeconds: 0,
-      durationSeconds,
-      source: 'play/manual',
-    });
-
+    const fileSize = (await stat(sidPath)).size;
     const payload: RateTrackInfo = {
       sidPath,
       relativePath: path.relative(env.hvscPath, sidPath),
@@ -87,9 +78,19 @@ export async function POST(request: NextRequest) {
         sidModelTertiary: metadata.sidModel3,
         clock: metadata.clock,
         length: metadata.length,
-        fileSizeBytes: (await stat(sidPath)).size,
+        fileSizeBytes: fileSize,
       },
     };
+
+    await startSidPlayback({
+      env,
+      playbackLock,
+      sidPath,
+      offsetSeconds: 0,
+      durationSeconds,
+      source: 'play/manual',
+      track: payload,
+    });
 
     const response: ApiResponse<{ track: RateTrackInfo }> = {
       success: true,

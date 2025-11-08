@@ -13,6 +13,7 @@ export interface PlaybackLockMetadata {
   offsetSeconds?: number;
   durationSeconds?: number;
   isPaused?: boolean;
+  track?: Record<string, unknown>;
 }
 
 const LOCK_FILENAME = ".sidflow-playback.lock";

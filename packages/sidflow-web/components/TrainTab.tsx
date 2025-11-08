@@ -48,12 +48,12 @@ export function TrainTab({ onStatusChange }: TrainTabProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium">
+          <label
+            className="text-sm font-medium cursor-help"
+            title="Full passes over the training set. Higher values increase accuracy at the cost of longer runs."
+          >
             EPOCHS: {epochs[0]}
           </label>
-          <p className="text-xs text-muted-foreground">
-            Full passes over the training set. Raise this for better accuracy at the cost of longer runs.
-          </p>
           <Slider
             value={epochs}
             onValueChange={setEpochs}
@@ -66,12 +66,12 @@ export function TrainTab({ onStatusChange }: TrainTabProps) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">
+          <label
+            className="text-sm font-medium cursor-help"
+            title="Number of SIDs processed per gradient update. Larger batches train faster but need more memory."
+          >
             BATCH SIZE: {batchSize[0]}
           </label>
-          <p className="text-xs text-muted-foreground">
-            Number of SIDs processed per gradient update. Larger batches are faster but need more memory.
-          </p>
           <Slider
             value={batchSize}
             onValueChange={setBatchSize}
@@ -83,19 +83,18 @@ export function TrainTab({ onStatusChange }: TrainTabProps) {
           />
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Training improves prediction accuracy based on your manual ratings and feedback.
-          </p>
+        <div className="relative">
+          <Button 
+            onClick={handleTrain} 
+            disabled={isLoading} 
+            className="w-full retro-glow peer"
+          >
+            {isLoading ? 'TRAINING...' : 'START TRAINING'}
+          </Button>
+          <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-max -translate-x-1/2 rounded bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow peer-hover:block">
+            Improves the recommender by learning from your existing ratings and feedback
+          </div>
         </div>
-
-        <Button 
-          onClick={handleTrain} 
-          disabled={isLoading} 
-          className="w-full retro-glow"
-        >
-          {isLoading ? 'TRAINING...' : 'START TRAINING'}
-        </Button>
       </CardContent>
     </Card>
   );

@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import { RateControlRequestSchema, type ApiResponse } from '@/lib/validation';
 import { resolvePlaybackEnvironment, startSidPlayback, computePlaybackPosition } from '@/lib/rate-playback';
 import { createPlaybackLock } from '@sidflow/common';
+import type { RateTrackInfo } from '@/lib/types/rate-track';
 
 export async function POST(request: NextRequest) {
   try {
@@ -124,6 +125,7 @@ export async function POST(request: NextRequest) {
           offsetSeconds: validated.positionSeconds,
           durationSeconds: metadata.durationSeconds,
           source: metadata.source ?? 'api/rate/random',
+          track: metadata.track as RateTrackInfo | undefined,
         });
         return NextResponse.json(successResponse('Seeked to new position'), { status: 200 });
       }

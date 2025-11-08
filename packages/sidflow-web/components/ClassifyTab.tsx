@@ -207,19 +207,24 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
               disabled={isLoading || isRunning}
             />
             <div className="flex flex-col gap-2">
-              <Button
-                onClick={handleClassify}
-                disabled={isLoading || isRunning}
-                className="w-full retro-glow"
-              >
-                {isLoading
-                  ? 'CLASSIFYING...'
-                  : isRunning
-                    ? 'CLASSIFICATION IN PROGRESS'
-                    : progress?.isPaused
-                      ? 'RESUME CLASSIFICATION'
-                      : 'START CLASSIFICATION'}
-              </Button>
+              <div className="relative">
+                <Button
+                  onClick={handleClassify}
+                  disabled={isLoading || isRunning}
+                  className="w-full retro-glow peer"
+                >
+                  {isLoading
+                    ? 'CLASSIFYING...'
+                    : isRunning
+                      ? 'CLASSIFICATION IN PROGRESS'
+                      : progress?.isPaused
+                        ? 'RESUME CLASSIFICATION'
+                        : 'START CLASSIFICATION'}
+                </Button>
+                <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-max -translate-x-1/2 rounded bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow peer-hover:block">
+                  Uses your preferred SID folder; adjust the path above if you need a different target
+                </div>
+              </div>
               {isRunning && !progress?.isPaused && (
                 <Button
                   onClick={handlePause}
@@ -231,9 +236,6 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              SIDFlow auto-detects your HVSC mirror. Adjust the path if you keep SIDs elsewhere.
-            </p>
           </div>
 
           <div className="space-y-2 rounded border border-border/60 bg-muted/30 p-3">

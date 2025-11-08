@@ -23,6 +23,7 @@ export interface RatePlaybackStatus {
   positionSeconds: number;
   durationSeconds?: number;
   sidPath?: string;
+  track?: RateTrackInfo;
 }
 
 export interface PreferencesPayload {
@@ -32,6 +33,15 @@ export interface PreferencesPayload {
   preferenceSource: 'default' | 'custom';
   preferences: {
     sidBasePath?: string | null;
+    kernalRomPath?: string | null;
+    basicRomPath?: string | null;
+  };
+  sidplayfpConfig: {
+    path: string;
+    exists: boolean;
+    contents: string;
+    kernalRomPath: string | null;
+    basicRomPath: string | null;
   };
 }
 
@@ -66,7 +76,7 @@ export async function playTrack(request: PlayRequest): Promise<ApiResponse<{ out
   return apiRequest('/play', request);
 }
 
-export async function playManualTrack(request: PlayRequest): Promise<ApiResponse<{ sidPath: string; durationSeconds: number }>> {
+export async function playManualTrack(request: PlayRequest): Promise<ApiResponse<{ track: RateTrackInfo }>> {
   return apiRequest('/play/manual', request);
 }
 
@@ -88,7 +98,11 @@ export async function getPreferences(): Promise<ApiResponse<PreferencesPayload>>
   return response.json();
 }
 
-export async function updatePreferences(payload: { sidBasePath: string | null }): Promise<ApiResponse<PreferencesPayload>> {
+export async function updatePreferences(payload: {
+  sidBasePath?: string | null;
+  kernalRomPath?: string | null;
+  basicRomPath?: string | null;
+}): Promise<ApiResponse<PreferencesPayload>> {
   return apiRequest('/prefs', payload);
 }
 

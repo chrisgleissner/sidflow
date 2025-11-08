@@ -1,10 +1,11 @@
 import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
-import { getWebPreferences, updateWebPreferences } from '@/lib/preferences-store';
+import { getWebPreferences, updateWebPreferences, type WebPreferences } from '@/lib/preferences-store';
 import { resolveSidCollectionContext } from '@/lib/sid-collection';
 import { getRepoRoot } from '@/lib/server-env';
 import type { ApiResponse } from '@/lib/validation';
 import { promises as fs } from 'node:fs';
+import { readSidplayfpConfig, updateSidplayfpConfig } from '@/lib/sidplayfp-config';
 
 interface PreferencesResponse {
   hvscRoot: string;
@@ -12,11 +13,13 @@ interface PreferencesResponse {
   activeCollectionPath: string;
   preferenceSource: 'default' | 'custom';
   preferences: Awaited<ReturnType<typeof getWebPreferences>>;
+  sidplayfpConfig: Awaited<ReturnType<typeof readSidplayfpConfig>>;
 }
 
 function buildResponsePayload(
   context: Awaited<ReturnType<typeof resolveSidCollectionContext>>,
-  preferences: Awaited<ReturnType<typeof getWebPreferences>>
+  preferences: Awaited<ReturnType<typeof getWebPreferences>>,
+  configSnapshot: Awaited<ReturnType<typeof readSidplayfpConfig>>
 ): PreferencesResponse {
   return {
     hvscRoot: context.hvscRoot,
@@ -24,15 +27,17 @@ function buildResponsePayload(
     activeCollectionPath: context.collectionRoot,
     preferenceSource: context.preferenceSource,
     preferences,
+    sidplayfpConfig: configSnapshot,
   };
 }
 
 export async function GET() {
   const context = await resolveSidCollectionContext();
   const preferences = await getWebPreferences();
+  const configSnapshot = await readSidplayfpConfig();
   const response: ApiResponse<PreferencesResponse> = {
     success: true,
-    data: buildResponsePayload(context, preferences),
+    data: buildResponsePayload(context, preferences, configSnapshot),
   };
   return NextResponse.json(response, { status: 200 });
 }
@@ -40,31 +45,105 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const rawPath: unknown = body?.sidBasePath ?? null;
-    let normalizedPath: string | null = null;
+    const repoRoot = getRepoRoot();
 
-    if (typeof rawPath === 'string' && rawPath.trim().length > 0) {
-      const repoRoot = getRepoRoot();
-      const targetPath = path.isAbsolute(rawPath)
-        ? path.normalize(rawPath)
-        : path.resolve(repoRoot, rawPath);
+    const normalizeDirectory = async (
+      value: unknown,
+      label: string
+    ): Promise<string | null | undefined> => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+      if (typeof value !== 'string') {
+        throw new Error(`${label} must be a string or null`);
+      }
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        return null;
+      }
+      const targetPath = path.isAbsolute(trimmed)
+        ? path.normalize(trimmed)
+        : path.resolve(repoRoot, trimmed);
       const stats = await fs.stat(targetPath);
       if (!stats.isDirectory()) {
-        throw new Error('Provided path is not a directory');
+        throw new Error(`${label} must be a directory`);
       }
-      normalizedPath = targetPath;
-    } else if (rawPath !== null) {
-      throw new Error('sidBasePath must be a string or null');
+      return targetPath;
+    };
+
+    const normalizeFile = async (
+      value: unknown,
+      label: string
+    ): Promise<string | null | undefined> => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+      if (typeof value !== 'string') {
+        throw new Error(`${label} must be a string or null`);
+      }
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        return null;
+      }
+      const targetPath = path.isAbsolute(trimmed)
+        ? path.normalize(trimmed)
+        : path.resolve(repoRoot, trimmed);
+      const stats = await fs.stat(targetPath);
+      if (!stats.isFile()) {
+        throw new Error(`${label} must be a file`);
+      }
+      return targetPath;
+    };
+
+    const normalizedSidBasePath = await normalizeDirectory(body?.sidBasePath ?? undefined, 'sidBasePath');
+    const normalizedKernalRomPath = await normalizeFile(body?.kernalRomPath ?? undefined, 'kernalRomPath');
+    const normalizedBasicRomPath = await normalizeFile(body?.basicRomPath ?? undefined, 'basicRomPath');
+
+    if (
+      normalizedSidBasePath === undefined &&
+      normalizedKernalRomPath === undefined &&
+      normalizedBasicRomPath === undefined
+    ) {
+      throw new Error('No preferences provided');
     }
 
-    const updatedPrefs = await updateWebPreferences({
-      sidBasePath: normalizedPath,
-    });
+    const preferenceUpdates: Partial<Record<keyof WebPreferences, string | null>> = {};
+    if (normalizedSidBasePath !== undefined) {
+      preferenceUpdates.sidBasePath = normalizedSidBasePath;
+    }
+    if (normalizedKernalRomPath !== undefined) {
+      preferenceUpdates.kernalRomPath = normalizedKernalRomPath;
+    }
+    if (normalizedBasicRomPath !== undefined) {
+      preferenceUpdates.basicRomPath = normalizedBasicRomPath;
+    }
+
+    const romOverrides =
+      normalizedKernalRomPath !== undefined || normalizedBasicRomPath !== undefined
+        ? {
+            kernalRomPath: normalizedKernalRomPath ?? null,
+            basicRomPath: normalizedBasicRomPath ?? null,
+          }
+        : null;
+
+    const updatedPrefs = Object.keys(preferenceUpdates).length
+      ? await updateWebPreferences(preferenceUpdates)
+      : await getWebPreferences();
+
+    const configSnapshot = romOverrides
+      ? await updateSidplayfpConfig(romOverrides)
+      : await readSidplayfpConfig();
 
     const context = await resolveSidCollectionContext();
     const response: ApiResponse<PreferencesResponse> = {
       success: true,
-      data: buildResponsePayload(context, updatedPrefs),
+      data: buildResponsePayload(context, updatedPrefs, configSnapshot),
     };
     return NextResponse.json(response, { status: 200 });
   } catch (error) {

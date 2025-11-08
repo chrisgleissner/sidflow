@@ -6,10 +6,14 @@ const PREFERENCES_FILENAME = '.sidflow-preferences.json';
 
 export interface WebPreferences {
   sidBasePath?: string | null;
+  kernalRomPath?: string | null;
+  basicRomPath?: string | null;
 }
 
 const DEFAULT_PREFERENCES: WebPreferences = {
   sidBasePath: null,
+  kernalRomPath: null,
+  basicRomPath: null,
 };
 
 function resolvePreferencesPath(): string {

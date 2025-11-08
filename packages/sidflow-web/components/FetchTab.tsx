@@ -138,15 +138,6 @@ export function FetchTab({ onStatusChange }: FetchTabProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <p className="text-sm">
-            This will synchronize your local HVSC mirror with the latest version from the remote repository.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Note: This may take several minutes on first run.
-          </p>
-        </div>
-
         {progress && (
           <div className="space-y-2 rounded border border-border bg-muted/40 p-3">
             <div className="flex items-center justify-between text-xs font-mono">
@@ -161,14 +152,19 @@ export function FetchTab({ onStatusChange }: FetchTabProps) {
           </div>
         )}
 
-        <Button 
-          onClick={handleFetch} 
-          disabled={isLoading} 
-          className="w-full retro-glow"
-          variant="default"
-        >
-          {isLoading ? 'FETCHING...' : 'START FETCH'}
-        </Button>
+        <div className="relative">
+          <Button 
+            onClick={handleFetch} 
+            disabled={isLoading} 
+            className="w-full retro-glow peer"
+            variant="default"
+          >
+            {isLoading ? 'FETCHING...' : 'START FETCH'}
+          </Button>
+          <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-max -translate-x-1/2 rounded bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow peer-hover:block">
+            Synchronizes your local HVSC mirror with the latest release (the first run can take several minutes)
+          </div>
+        </div>
 
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">Latest CLI output</p>

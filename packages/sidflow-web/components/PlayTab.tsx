@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -54,6 +54,15 @@ function formatSeconds(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-muted-foreground uppercase tracking-tight">{label}</span>
+      <span className="font-semibold text-foreground text-right break-words">{value}</span>
+    </div>
+  );
+}
+
 export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [preset, setPreset] = useState<MoodPreset>('energetic');
   const [currentTrack, setCurrentTrack] = useState<RateTrackInfo | null>(null);
@@ -87,8 +96,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     if (typeof status.positionSeconds === 'number') {
       setPosition(status.positionSeconds);
     }
-    if (typeof status.durationSeconds === 'number') {
-      setDuration(status.durationSeconds);
+    const durationOverride = status.track?.durationSeconds ?? status.durationSeconds;
+    if (typeof durationOverride === 'number') {
+      setDuration(durationOverride);
+    }
+    if (status.track) {
+      setCurrentTrack(status.track);
     }
   }, []);
 
@@ -340,29 +353,18 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
             <p className="text-base font-semibold text-foreground">{currentTrack.displayName}</p>
             <p className="text-muted-foreground">{currentTrack.metadata.author ?? 'Unknown'}</p>
           </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div>
-                <span className="text-muted-foreground">Year</span>
-                <p>{currentTrack.metadata.released ?? '—'}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Length</span>
-                <p>{currentTrack.metadata.length ?? '—'}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Song</span>
-                <p>
-                  {currentTrack.selectedSong}/{currentTrack.metadata.songs}
-                </p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">SID Model</span>
-                <p>{currentTrack.metadata.sidModel}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Size</span>
-                <p>{(currentTrack.metadata.fileSizeBytes / 1024).toFixed(1)} KB</p>
-              </div>
+            <div className="grid gap-1 text-xs">
+              <InfoRow label="Year" value={currentTrack.metadata.released ?? '—'} />
+              <InfoRow label="Length" value={currentTrack.metadata.length ?? '—'} />
+              <InfoRow
+                label="Song"
+                value={`${currentTrack.selectedSong}/${currentTrack.metadata.songs}`}
+              />
+              <InfoRow label="SID Model" value={currentTrack.metadata.sidModel} />
+              <InfoRow
+                label="Size"
+                value={`${(currentTrack.metadata.fileSizeBytes / 1024).toFixed(1)} KB`}
+              />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button

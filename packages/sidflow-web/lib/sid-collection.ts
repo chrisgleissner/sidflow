@@ -12,6 +12,8 @@ export interface SidCollectionContext {
   tagsPath: string;
   wavCachePath: string;
   preferenceSource: 'default' | 'custom';
+  kernalRomPath?: string | null;
+  basicRomPath?: string | null;
 }
 
 function resolvePath(value: string, repoRoot: string): string {
@@ -33,6 +35,14 @@ export async function resolveSidCollectionContext(): Promise<SidCollectionContex
     preferencePath && preferencePath.trim().length > 0
       ? resolvePath(preferencePath, repoRoot)
       : defaultCollectionRoot;
+  const kernalRomPath =
+    prefs.kernalRomPath && prefs.kernalRomPath.trim().length > 0
+      ? resolvePath(prefs.kernalRomPath, repoRoot)
+      : null;
+  const basicRomPath =
+    prefs.basicRomPath && prefs.basicRomPath.trim().length > 0
+      ? resolvePath(prefs.basicRomPath, repoRoot)
+      : null;
 
   return {
     config,
@@ -44,6 +54,8 @@ export async function resolveSidCollectionContext(): Promise<SidCollectionContex
     wavCachePath: resolvePath(config.wavCachePath, repoRoot),
     preferenceSource:
       preferencePath && preferencePath.trim().length > 0 ? 'custom' : 'default',
+    kernalRomPath,
+    basicRomPath,
   };
 }
 

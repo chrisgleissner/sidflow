@@ -11,12 +11,9 @@ import {
 } from '@/lib/rate-playback';
 import { createPlaybackLock } from '@sidflow/common';
 import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
-import type { RateTrackInfo, RateTrackMetadata } from '@/lib/types/rate-track';
+import type { RateTrackInfo } from '@/lib/types/rate-track';
 
 type RateTrackPayload = RateTrackInfo;
-
-type RateTrackMetadata = TrackMetadata;
-type RateTrackPayload = TrackPayload;
 
 function resolveExecutable(executable: string, root: string): string {
   if (path.isAbsolute(executable)) {
@@ -165,15 +162,6 @@ export async function POST() {
     const selectedSong = metadata.startSong;
     const durationSeconds = parseDurationSeconds(metadata.length ?? length);
 
-    await startSidPlayback({
-      env,
-      playbackLock,
-      sidPath,
-      offsetSeconds: 0,
-      durationSeconds,
-      source: 'api/rate/random',
-    });
-
     const payload: RateTrackPayload = {
       sidPath,
       relativePath,
@@ -197,6 +185,16 @@ export async function POST() {
         fileSizeBytes: fileStats.size,
       },
     };
+
+    await startSidPlayback({
+      env,
+      playbackLock,
+      sidPath,
+      offsetSeconds: 0,
+      durationSeconds,
+      source: 'api/rate/random',
+      track: payload,
+    });
 
     return NextResponse.json(buildResponse(payload), { status: 200 });
   } catch (error) {

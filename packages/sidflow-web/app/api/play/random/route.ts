@@ -132,15 +132,6 @@ export async function POST(request: NextRequest) {
     const selectedSong = metadata.startSong;
     const durationSeconds = parseDurationSeconds(metadata.length ?? length);
 
-    await startSidPlayback({
-      env,
-      playbackLock,
-      sidPath,
-      offsetSeconds: 0,
-      durationSeconds,
-      source: 'api/play/random',
-    });
-
     const payload: RateTrackInfo = {
       sidPath,
       relativePath,
@@ -164,6 +155,16 @@ export async function POST(request: NextRequest) {
       },
       durationSeconds,
     };
+
+    await startSidPlayback({
+      env,
+      playbackLock,
+      sidPath,
+      offsetSeconds: 0,
+      durationSeconds,
+      source: 'api/play/random',
+      track: payload,
+    });
 
     const response: ApiResponse<{ track: RateTrackInfo }> = {
       success: true,

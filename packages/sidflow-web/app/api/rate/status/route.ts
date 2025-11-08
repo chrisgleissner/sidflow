@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { ApiResponse } from '@/lib/validation';
 import { resolvePlaybackEnvironment, computePlaybackPosition } from '@/lib/rate-playback';
 import { createPlaybackLock } from '@sidflow/common';
+import type { RateTrackInfo } from '@/lib/types/rate-track';
 
 interface RatePlaybackStatus {
   active: boolean;
@@ -9,6 +10,7 @@ interface RatePlaybackStatus {
   positionSeconds: number;
   durationSeconds?: number;
   sidPath?: string;
+  track?: RateTrackInfo;
 }
 
 export async function GET() {
@@ -31,6 +33,7 @@ export async function GET() {
 
     const position = computePlaybackPosition(metadata);
 
+    const trackInfo = metadata.track as RateTrackInfo | undefined;
     const response: ApiResponse<RatePlaybackStatus> = {
       success: true,
       data: {
@@ -39,6 +42,7 @@ export async function GET() {
         positionSeconds: position,
         durationSeconds: metadata.durationSeconds,
         sidPath: metadata.sidPath,
+        track: trackInfo,
       },
     };
     return NextResponse.json(response, { status: 200 });

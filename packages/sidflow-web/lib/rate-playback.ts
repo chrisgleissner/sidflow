@@ -8,6 +8,7 @@ import {
 } from '@sidflow/common';
 import { getRepoRoot } from '@/lib/server-env';
 import { resolveSidCollectionContext } from '@/lib/sid-collection';
+import type { RateTrackInfo } from '@/lib/types/rate-track';
 
 export interface PlaybackEnvironment {
   config: SidflowConfig;
@@ -44,8 +45,17 @@ export async function startSidPlayback(options: {
   offsetSeconds?: number;
   durationSeconds?: number;
   source: string;
+  track?: RateTrackInfo;
 }): Promise<void> {
-  const { env, playbackLock, sidPath, offsetSeconds = 0, durationSeconds, source } = options;
+  const {
+    env,
+    playbackLock,
+    sidPath,
+    offsetSeconds = 0,
+    durationSeconds,
+    source,
+    track,
+  } = options;
   await playbackLock.stopExistingPlayback(source);
 
   const args: string[] = [];
@@ -70,6 +80,7 @@ export async function startSidPlayback(options: {
         offsetSeconds,
         durationSeconds,
         isPaused: false,
+        track,
       };
       await playbackLock.registerProcess(metadata);
       const pid = child.pid;

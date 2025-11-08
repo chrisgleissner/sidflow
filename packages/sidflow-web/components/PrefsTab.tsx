@@ -43,7 +43,10 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
   const [prefsInfo, setPrefsInfo] = useState<PreferencesPayload | null>(null);
   const [folderListing, setFolderListing] = useState<FolderListing | null>(null);
   const [customPath, setCustomPath] = useState('');
+  const [kernalPath, setKernalPath] = useState('');
+  const [basicPath, setBasicPath] = useState('');
   const [isSavingCollection, setIsSavingCollection] = useState(false);
+  const [isSavingRom, setIsSavingRom] = useState(false);
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
 
@@ -92,6 +95,16 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
     if (response.success) {
       setPrefsInfo(response.data);
       setCustomPath(response.data.preferences.sidBasePath ?? '');
+      setKernalPath(
+        response.data.preferences.kernalRomPath ??
+          response.data.sidplayfpConfig.kernalRomPath ??
+          ''
+      );
+      setBasicPath(
+        response.data.preferences.basicRomPath ??
+          response.data.sidplayfpConfig.basicRomPath ??
+          ''
+      );
     } else {
       onStatusChange(`Failed to load preferences: ${formatApiError(response)}`, true);
     }
@@ -153,6 +166,43 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
         );
       } finally {
         setIsSavingCollection(false);
+      }
+    },
+    [onStatusChange]
+  );
+
+  const saveRomPath = useCallback(
+    async (key: 'kernal' | 'basic', rawValue: string | null) => {
+      setIsSavingRom(true);
+      const trimmed = rawValue?.trim() ?? '';
+      const normalized = trimmed.length > 0 ? trimmed : null;
+      const payload =
+        key === 'kernal' ? { kernalRomPath: normalized } : { basicRomPath: normalized };
+      try {
+        const response = await updatePreferences(payload);
+        if (response.success) {
+          setPrefsInfo(response.data);
+          setKernalPath(
+            response.data.preferences.kernalRomPath ?? response.data.sidplayfpConfig.kernalRomPath ?? ''
+          );
+          setBasicPath(
+            response.data.preferences.basicRomPath ?? response.data.sidplayfpConfig.basicRomPath ?? ''
+          );
+          const label = key === 'kernal' ? 'KERNAL' : 'BASIC';
+          const message = normalized
+            ? `${label} ROM path set to ${normalized}`
+            : `${label} ROM path cleared`;
+          onStatusChange(message);
+        } else {
+          onStatusChange(`Unable to save ROM path: ${formatApiError(response)}`, true);
+        }
+      } catch (error) {
+        onStatusChange(
+          `Unable to save ROM path: ${error instanceof Error ? error.message : String(error)}`,
+          true
+        );
+      } finally {
+        setIsSavingRom(false);
       }
     },
     [onStatusChange]
@@ -299,6 +349,89 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
               Enter an absolute path to any SID directory. Reset to go back to the default HVSC
               mirror.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="c64-border">
+        <CardHeader>
+          <CardTitle className="petscii-text text-accent">SIDPLAY ROMS</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Point sidplayfp to the correct KERNAL and BASIC ROM dumps.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">KERNAL ROM</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={kernalPath}
+                  onChange={(event) => setKernalPath(event.target.value)}
+                  placeholder="/path/to/kernal"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => saveRomPath('kernal', kernalPath)}
+                  disabled={isSavingRom}
+                >
+                  Save
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => saveRomPath('kernal', null)}
+                  disabled={isSavingRom}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">BASIC ROM</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  value={basicPath}
+                  onChange={(event) => setBasicPath(event.target.value)}
+                  placeholder="/path/to/basic"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => saveRomPath('basic', basicPath)}
+                  disabled={isSavingRom}
+                >
+                  Save
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => saveRomPath('basic', null)}
+                  disabled={isSavingRom}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground">
+              Config file:{' '}
+              <span className="font-mono text-foreground">
+                {prefsInfo?.sidplayfpConfig.path ?? 'Not detected'}
+              </span>
+            </p>
+            {!prefsInfo?.sidplayfpConfig.exists && (
+              <p className="text-xs text-muted-foreground">
+                The file will be created automatically the next time you save a ROM path.
+              </p>
+            )}
+            <textarea
+              readOnly
+              value={
+                prefsInfo?.sidplayfpConfig.contents?.length
+                  ? prefsInfo.sidplayfpConfig.contents
+                  : '(sidplayfp.ini not found)'
+              }
+              className="h-48 w-full resize-y rounded border border-border/60 bg-background/70 p-3 font-mono text-xs text-foreground"
+            />
           </div>
         </CardContent>
       </Card>

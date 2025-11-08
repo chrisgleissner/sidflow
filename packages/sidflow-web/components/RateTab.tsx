@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -73,6 +73,15 @@ function formatSeconds(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+function MetaRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-muted-foreground uppercase tracking-tight">{label}</span>
+      <span className="font-semibold text-foreground text-right break-words">{value}</span>
+    </div>
+  );
+}
+
 const DEFAULT_DURATION = 180;
 
 export function RateTab({ onStatusChange }: RateTabProps) {
@@ -107,45 +116,53 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     try {
       const response = await getRatePlaybackStatus();
       if (!response.success) {
-        return;
+        return null;
       }
       const status = response.data;
       if (!status.active) {
         setIsPlaying(false);
-        return;
+        return status;
       }
-      if (typeof status.positionSeconds === 'number') {
-        setPosition(status.positionSeconds);
-      }
-      if (status.durationSeconds) {
-        setDuration(status.durationSeconds);
+      const nextPosition =
+        typeof status.positionSeconds === 'number' ? status.positionSeconds : 0;
+      setPosition(nextPosition);
+      const durationOverride = status.track?.durationSeconds ?? status.durationSeconds;
+      if (typeof durationOverride === 'number' && Number.isFinite(durationOverride)) {
+        setDuration(durationOverride);
       }
       setIsPlaying(!status.isPaused);
+      if (status.track) {
+        setCurrentTrack(status.track);
+      }
+      return status;
     } catch (error) {
       console.error('[RateTab] Failed to poll playback status', error);
+      return null;
     }
   }, []);
 
   useEffect(() => {
-    if (!currentTrack) {
-      return;
-    }
     let cancelled = false;
+    let timer: NodeJS.Timeout | null = null;
+
     const tick = async () => {
       if (cancelled) {
         return;
       }
-      await pollPlaybackStatus();
-      if (!cancelled) {
-        timer = setTimeout(tick, 1000);
-      }
+      const status = await pollPlaybackStatus();
+      const delay = status?.active ? 1000 : 4000;
+      timer = setTimeout(tick, delay);
     };
-    let timer = setTimeout(tick, 250);
+
+    void tick();
+
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
     };
-  }, [currentTrack, pollPlaybackStatus]);
+  }, [pollPlaybackStatus]);
 
   const seekTimeout = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
@@ -397,7 +414,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 {isFetchingTrack ? 'FINDING SID...' : 'PLAY RANDOM SID'}
               </Button>
               <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-max -translate-x-1/2 rounded bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow peer-hover:block">
-                Play Random SID to load the next unrated track
+                Load an unrated SID from your collection and start playback instantly
               </div>
             </div>
           </div>
@@ -461,30 +478,27 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                   <span className="font-semibold text-foreground">{currentTrack.filename}</span>
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                <MetadataRow label="Title" value={currentTrack.metadata.title ?? 'Unknown'} />
-                <MetadataRow
-                  label="Artist"
-                  value={currentTrack.metadata.author ?? 'Unknown'}
-                />
-                <MetadataRow label="Year" value={currentTrack.metadata.released ?? 'Unknown'} />
-                <MetadataRow label="Length" value={currentTrack.metadata.length ?? 'Unknown'} />
-                <MetadataRow
+              <div className="grid gap-1 text-xs">
+                <MetaRow label="Title" value={currentTrack.metadata.title ?? 'Unknown'} />
+                <MetaRow label="Artist" value={currentTrack.metadata.author ?? 'Unknown'} />
+                <MetaRow label="Year" value={currentTrack.metadata.released ?? 'Unknown'} />
+                <MetaRow label="Length" value={currentTrack.metadata.length ?? 'Unknown'} />
+                <MetaRow
                   label="Song"
                   value={`${currentTrack.selectedSong}/${currentTrack.metadata.songs}`}
                 />
-                <MetadataRow label="SID Model" value={currentTrack.metadata.sidModel} />
-                <MetadataRow
+                <MetaRow label="SID Model" value={currentTrack.metadata.sidModel} />
+                <MetaRow
                   label="File Size"
                   value={formatBytes(currentTrack.metadata.fileSizeBytes)}
                 />
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
-              <FileAudio2 className="h-4 w-4" />
-              Ready when you are—hover over “Play Random SID” to see how it works.
-            </div>
+          <div className="flex items-center gap-2 rounded border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+            <FileAudio2 className="h-4 w-4" />
+            No track loaded yet.
+          </div>
           )}
         </CardContent>
       </Card>
@@ -492,18 +506,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       <Card className="c64-border">
         <CardHeader>
           <CardTitle className="text-sm petscii-text text-accent">RATINGS</CardTitle>
-          <CardDescription className="text-muted-foreground">
-            Tap once per dimension, then submit.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !hasTrack}
-            className="w-full retro-glow"
-          >
-            {isSubmitting ? 'SUBMITTING...' : 'SUBMIT RATING'}
-          </Button>
+          <div className="relative">
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || !hasTrack}
+              className="w-full retro-glow peer"
+            >
+              {isSubmitting ? 'SUBMITTING...' : 'SUBMIT RATING'}
+            </Button>
+            <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-max -translate-x-1/2 rounded bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow peer-hover:block">
+              Pick a value in each row, then submit to store the rating
+            </div>
+          </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             {ratingBlocks.map((block) => (
