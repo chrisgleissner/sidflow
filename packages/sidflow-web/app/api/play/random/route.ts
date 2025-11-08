@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { readdir, stat } from 'node:fs/promises';
 import { parseSidFile } from '@sidflow/common';
 import type { ApiResponse } from '@/lib/validation';
 import {
@@ -61,7 +62,7 @@ async function pickRandomSid(
 ): Promise<string | null> {
   const { paths } = await loadSonglengthsData(hvscRoot);
   if (paths.length === 0) {
-    return null;
+    return await pickRandomSidFromFilesystem(collectionRoot);
   }
   const baseRelative = path.relative(hvscRoot, collectionRoot);
   const normalizedBase = baseRelative
@@ -101,7 +102,39 @@ async function pickRandomSid(
     }
     return absolutePath;
   }
-  return null;
+  return await pickRandomSidFromFilesystem(collectionRoot);
+}
+
+async function pickRandomSidFromFilesystem(collectionRoot: string): Promise<string | null> {
+  let choice: string | null = null;
+  let seen = 0;
+  const stack = [collectionRoot];
+
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let entries: Dirent[];
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile() || !fullPath.toLowerCase().endsWith('.sid')) {
+        continue;
+      }
+      seen += 1;
+      if (Math.random() < 1 / seen) {
+        choice = fullPath;
+      }
+    }
+  }
+
+  return choice;
 }
 
 export async function POST(request: NextRequest) {

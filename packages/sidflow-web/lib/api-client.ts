@@ -206,3 +206,48 @@ export async function controlRatePlayback(request: RateControlRequest): Promise<
 export async function controlClassification(action: 'pause'): Promise<ApiResponse<{ progress: ClassifyProgressWithStorage }>> {
   return apiRequest('/classify/control', { action });
 }
+
+export interface RatingHistoryEntry {
+  id: string;
+  sidPath: string;
+  relativePath: string;
+  filename: string;
+  ratings: {
+    e?: number;
+    m?: number;
+    c?: number;
+    p?: number;
+  };
+  timestamp?: string;
+}
+
+export interface RatingHistoryResponse {
+  total: number;
+  page: number;
+  pageSize: number;
+  items: RatingHistoryEntry[];
+}
+
+export async function getRatingHistory(params: {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+} = {}): Promise<ApiResponse<RatingHistoryResponse>> {
+  const searchParams = new URLSearchParams();
+  if (params.page) {
+    searchParams.set('page', String(params.page));
+  }
+  if (params.pageSize) {
+    searchParams.set('pageSize', String(params.pageSize));
+  }
+  if (params.query) {
+    searchParams.set('query', params.query);
+  }
+  const response = await fetch(`${API_BASE}/rate/history?${searchParams.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}

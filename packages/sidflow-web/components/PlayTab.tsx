@@ -56,7 +56,7 @@ function formatSeconds(seconds: number): string {
 
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground uppercase tracking-tight">{label}</span>
       <span className="font-semibold text-foreground text-right break-words">{value}</span>
     </div>
@@ -282,52 +282,50 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           <CardTitle className="text-sm petscii-text text-accent">TRANSPORT</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <Slider
-                  value={[position]}
-                  onValueChange={handleSeek}
-                  min={0}
-                  max={Math.max(duration, 1)}
-                  step={1}
-                  disabled={!currentTrack}
-                  className="cursor-pointer"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleRestart}
-                  disabled={!currentTrack}
-                  title="Restart track"
-                >
-                  <SkipBack className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleTransport(isPlaying ? 'pause' : 'resume')}
-                  disabled={!currentTrack}
-                  title={isPlaying ? 'Pause' : 'Play'}
-                >
-                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleQuickSeek(10)}
-                  disabled={!currentTrack}
-                  title="Skip ahead 10s"
-                >
-                  <SkipForward className="h-4 w-4" />
-                </Button>
-              </div>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-8">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleRestart}
+                disabled={!currentTrack}
+                title="Restart track"
+              >
+                <SkipBack className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handleTransport(isPlaying ? 'pause' : 'resume')}
+                disabled={!currentTrack}
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handleQuickSeek(10)}
+                disabled={!currentTrack}
+                title="Skip ahead 10s"
+              >
+                <SkipForward className="h-4 w-4" />
+              </Button>
             </div>
-            <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
-              <span>{formatSeconds(position)}</span>
-              <span>{formatSeconds(duration)}</span>
+            <div className="flex-1 w-full">
+              <Slider
+                value={[position]}
+                onValueChange={handleSeek}
+                min={0}
+                max={Math.max(duration, 1)}
+                step={1}
+                disabled={!currentTrack}
+                className="cursor-pointer"
+              />
+              <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
+                <span>{formatSeconds(position)}</span>
+                <span>{formatSeconds(duration)}</span>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -353,18 +351,28 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
             <p className="text-base font-semibold text-foreground">{currentTrack.displayName}</p>
             <p className="text-muted-foreground">{currentTrack.metadata.author ?? 'Unknown'}</p>
           </div>
-            <div className="grid gap-1 text-xs">
-              <InfoRow label="Year" value={currentTrack.metadata.released ?? '—'} />
-              <InfoRow label="Length" value={currentTrack.metadata.length ?? '—'} />
-              <InfoRow
-                label="Song"
-                value={`${currentTrack.selectedSong}/${currentTrack.metadata.songs}`}
-              />
-              <InfoRow label="SID Model" value={currentTrack.metadata.sidModel} />
-              <InfoRow
-                label="Size"
-                value={`${(currentTrack.metadata.fileSizeBytes / 1024).toFixed(1)} KB`}
-              />
+            <div className="flex flex-col gap-4 text-xs md:flex-row md:items-stretch md:gap-12">
+              <div className="flex-1 space-y-2">
+                <InfoRow
+                  label="Title"
+                  value={currentTrack.metadata.title ?? currentTrack.displayName}
+                />
+                <InfoRow label="Artist" value={currentTrack.metadata.author ?? '—'} />
+                <InfoRow label="Year" value={currentTrack.metadata.released ?? '—'} />
+                <InfoRow
+                  label="Song"
+                  value={`${currentTrack.selectedSong}/${currentTrack.metadata.songs}`}
+                />
+              </div>
+              <div className="hidden md:block w-px bg-border/60 md:mx-6 lg:mx-10" aria-hidden="true" />
+              <div className="flex-1 space-y-2">
+                <InfoRow label="Length" value={currentTrack.metadata.length ?? '—'} />
+                <InfoRow
+                  label="File Size"
+                  value={`${(currentTrack.metadata.fileSizeBytes / 1024).toFixed(1)} KB`}
+                />
+                <InfoRow label="SID Model" value={currentTrack.metadata.sidModel} />
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button

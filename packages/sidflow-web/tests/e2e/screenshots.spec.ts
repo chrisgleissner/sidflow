@@ -8,20 +8,16 @@ const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'doc/web-screens
 
 interface TabScenario {
   label: string;
+  value: string;
   screenshot: string;
   setup?: (page: Page) => Promise<void>;
   verify: (page: Page) => Promise<void>;
 }
 
-async function activateTab(page: Page, label: string) {
-  const tabTrigger = page.getByRole('tab', { name: label });
-  await tabTrigger.click();
-  await expect(tabTrigger).toHaveAttribute('data-state', 'active');
-}
-
 const TABS: TabScenario[] = [
   {
     label: 'WIZARD',
+    value: 'wizard',
     screenshot: '01-wizard.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /setup wizard/i })).toBeVisible();
@@ -29,6 +25,7 @@ const TABS: TabScenario[] = [
   },
   {
     label: 'PREFS',
+    value: 'prefs',
     screenshot: '02-prefs.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /preferences/i })).toBeVisible();
@@ -36,6 +33,7 @@ const TABS: TabScenario[] = [
   },
   {
     label: 'FETCH',
+    value: 'fetch',
     screenshot: '03-fetch.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /fetch hvsc/i })).toBeVisible();
@@ -43,6 +41,7 @@ const TABS: TabScenario[] = [
   },
   {
     label: 'RATE',
+    value: 'rate',
     screenshot: '04-rate.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
@@ -50,6 +49,7 @@ const TABS: TabScenario[] = [
   },
   {
     label: 'CLASSIFY',
+    value: 'classify',
     screenshot: '05-classify.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible();
@@ -57,6 +57,7 @@ const TABS: TabScenario[] = [
   },
   {
     label: 'TRAIN',
+    value: 'train',
     screenshot: '06-train.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /train model/i })).toBeVisible();
@@ -64,6 +65,7 @@ const TABS: TabScenario[] = [
   },
   {
     label: 'PLAY',
+    value: 'play',
     screenshot: '07-play.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
@@ -80,8 +82,7 @@ test.describe('Tab Screenshots', () => {
 
   for (const tab of TABS) {
     test(`${tab.label} tab screenshot`, async ({ page }) => {
-      await page.goto('/');
-      await activateTab(page, tab.label);
+      await page.goto(`/?tab=${tab.value}`);
       if (tab.setup) {
         await tab.setup(page);
       }
