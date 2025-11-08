@@ -46,6 +46,39 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
 - `./packages/libsidplayfp-wasm/build.sh` produces deterministic `dist/` outputs.
 - Bun tests cover loader utilities and audio helpers with mocked modules.
 
+### Phase 0 alignment summary (2025-11-08)
+
+- Confirmed rollout scope with platform stakeholders: Phase 0 focuses strictly on packaging and metadata capture; downstream integrations stay untouched until Phase 1.
+- Reviewed every artifact in `doc/plans/wasm/working-code/` to validate build entry points, Docker workflow, and generated bindings.
+- Established canonical relocation targets so the known-good sources can be moved into the workspace without churn.
+
+#### Module relocation targets
+
+| Working-code source | Planned repo destination | Notes |
+|---------------------|---------------------------|-------|
+| `Dockerfile` | `packages/libsidplayfp-wasm/docker/Dockerfile` | Used exclusively for deterministic WASM builds; lives alongside container entrypoint scripts. |
+| `entrypoint.sh` | `packages/libsidplayfp-wasm/docker/entrypoint.sh` | Invoked by the Docker image to clone upstream and kick off the build. |
+| `build.sh` | `packages/libsidplayfp-wasm/scripts/build.sh` | Thin Bun-compatible wrapper invoked from CI and developers locally. |
+| `bindings.cpp` | `packages/libsidplayfp-wasm/src/bindings/bindings.cpp` | Embind bridge compiled by Emscripten. |
+| `scripts/apply_thread_guards.py` | `packages/libsidplayfp-wasm/scripts/apply-thread-guards.py` | Retained for pre-build source patching; will be imported by the Docker entrypoint. |
+| `package.json` | `packages/libsidplayfp-wasm/package.json` | Becomes the new workspace package manifest (scoped to `@sidflow/libsidplayfp-wasm`). |
+| `tsconfig.json` | `packages/libsidplayfp-wasm/tsconfig.json` | Extends `../../tsconfig.base.json`; keeps existing compiler options. |
+| `README.md` | `packages/libsidplayfp-wasm/README.md` | Serves as package-level documentation. |
+| `dist/**/*` | `packages/libsidplayfp-wasm/dist/**/*` | Deterministic build output committed to the repo once Phase 3 completes. |
+| `src/index.ts` | `packages/libsidplayfp-wasm/src/index.ts` | Loader entry point exposing WASM bindings. |
+| `src/player.ts` | `packages/libsidplayfp-wasm/src/player.ts` | Higher-level helper consumed by CLI/web packages. |
+| `demo/demo.ts` | `packages/libsidplayfp-wasm/examples/demo.ts` | Keeps Bun demo accessible under `examples/`. |
+| `demo/debug-render.ts` | `packages/libsidplayfp-wasm/examples/debug-render.ts` | Debug utility for PCM inspection. |
+| `demo/assets/test-tone.sid` | `packages/libsidplayfp-wasm/examples/assets/test-tone.sid` | Sample SID retained for demos/tests. |
+| `demo/README.md` | `packages/libsidplayfp-wasm/examples/README.md` | Documents the examples folder usage. |
+| `Dockerfile`-generated metadata (`dist/README.md`, `dist/package.json`, etc.) | `packages/libsidplayfp-wasm/dist/` | Checked in after each green build to match release artifacts. |
+
+#### Ownership and maintenance
+
+- **Primary maintainer:** Chris Gleissner (audio platform owner) — responsible for upstream monitoring and approving build script updates.
+- **Secondary maintainer:** Web platform team — ensures WASM integration remains compatible with Next.js frontends.
+- **Operations handoff:** Any rebuild requires updating `data/wasm-build.json`, running the scripted build, and ensuring CI artifacts match the committed WASM outputs.
+
 ## Phase 1 — Offline pipelines (classification & training)
 
 ### Objectives

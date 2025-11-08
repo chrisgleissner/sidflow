@@ -1,0 +1,11 @@
+{
+  "upstreamRepo": "https://github.com/libsidplayfp/libsidplayfp",
+  "latestUpstreamCommit": "7284e97bda67a838dadd3c2e361798b4f5b6ab30",
+  "lastChecked": "2025-11-08T00:00:00Z",
+  "lastSuccessfulBuild": {
+    "commit": null,
+    "timestamp": null,
+    "artifact": null,
+    "notes": "Initial Phase 0 record; no repository-managed WASM build has completed yet."
+  }
+}

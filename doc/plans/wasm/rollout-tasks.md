@@ -16,11 +16,11 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 
 ### Phase 0 Checklist
 
-- [ ] Read `doc/plans/wasm/refactor-plan.md` and align scope with stakeholders.
-- [ ] Review every file in `doc/plans/wasm/working-code/` to understand entry points, expected inputs, and current integration assumptions.
-- [ ] Document target destinations for each working-code module (package, directory, filename).
-- [ ] Capture current upstream `libsidplayfp` commit hash and last-successful WASM build metadata in a shared location (e.g., `data/wasm-build.json`).
-- [ ] Define ownership for ongoing maintenance and upstream synchronisation.
+- [x] Read `doc/plans/wasm/refactor-plan.md` and align scope with stakeholders.
+- [x] Review every file in `doc/plans/wasm/working-code/` to understand entry points, expected inputs, and current integration assumptions.
+- [x] Document target destinations for each working-code module (package, directory, filename).
+- [x] Capture current upstream `libsidplayfp` commit hash and last-successful WASM build metadata in a shared location (e.g., `data/wasm-build.json`).
+- [x] Define ownership for ongoing maintenance and upstream synchronisation.
 
 ## Phase 1 — Upstream Monitoring & Tooling
 
@@ -69,7 +69,7 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 
 ## Current Status
 
-Phase 0: Not started  
+Phase 0: Complete  
 Phase 1: Not started  
 Phase 2: Not started  
 Phase 3: Not started  
