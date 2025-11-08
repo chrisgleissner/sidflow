@@ -12,7 +12,8 @@ import { resolveSidCollectionContext } from '@/lib/sid-collection';
 export interface PlaybackEnvironment {
   config: SidflowConfig;
   root: string;
-  hvscPath: string;
+  hvscPath: string; // physical HVSC root
+  collectionRoot: string;
   musicRoot: string;
   tagsPath: string;
 }
@@ -24,6 +25,7 @@ export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment>
     config: context.config,
     root,
     hvscPath: context.hvscRoot,
+    collectionRoot: context.collectionRoot,
     musicRoot: context.collectionRoot,
     tagsPath: context.tagsPath,
   };

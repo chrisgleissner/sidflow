@@ -17,6 +17,11 @@ function formatError(message: string, details?: string): ApiResponse {
   };
 }
 
+function isWithinRoot(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
 async function ensureSidExists(sidPath: string): Promise<void> {
   try {
     const information = await stat(sidPath);
@@ -34,17 +39,18 @@ export async function POST(request: NextRequest) {
     const validatedData = RateRequestSchema.parse(body);
 
     const collection = await resolveSidCollectionContext();
-    const hvscPath = collection.collectionRoot;
+    const baseRoot = collection.collectionRoot;
+    const hvscRoot = collection.hvscRoot;
     const tagsPath = collection.tagsPath;
     const sidAbsolutePath = path.isAbsolute(validatedData.sid_path)
       ? validatedData.sid_path
-      : path.resolve(hvscPath, validatedData.sid_path);
+      : path.resolve(baseRoot, validatedData.sid_path);
 
-    if (!sidAbsolutePath.startsWith(hvscPath)) {
+    if (!isWithinRoot(baseRoot, sidAbsolutePath)) {
       return NextResponse.json(
         formatError(
-          'SID path outside HVSC mirror',
-          `Expected file within ${hvscPath}, received ${sidAbsolutePath}`
+          'SID path outside allowed collection',
+          `Expected file within ${baseRoot}, received ${sidAbsolutePath}`
         ),
         { status: 400 }
       );
@@ -52,13 +58,14 @@ export async function POST(request: NextRequest) {
 
     await ensureSidExists(sidAbsolutePath);
 
-    const tagFilePath = createTagFilePath(hvscPath, tagsPath, sidAbsolutePath);
+    const taggingBase = isWithinRoot(hvscRoot, sidAbsolutePath) ? hvscRoot : baseRoot;
+    const tagFilePath = createTagFilePath(taggingBase, tagsPath, sidAbsolutePath);
     await writeManualTag(tagFilePath, validatedData.ratings, new Date());
 
     const response: ApiResponse<{ message: string; tagPath: string }> = {
       success: true,
       data: {
-        message: `Saved rating for ${path.relative(hvscPath, sidAbsolutePath)}`,
+        message: `Saved rating for ${path.relative(baseRoot, sidAbsolutePath)}`,
         tagPath: tagFilePath,
       },
     };

@@ -8,6 +8,9 @@ packages/*/.tsbuildinfo
 workspace/
 !workspace/.gitkeep
 
+# Preferences
+.sidflow-preferences.json
+
 # Derived artifacts (not committed)
 data/sidflow.lance/
 
