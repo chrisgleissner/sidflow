@@ -1,0 +1,58 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Modern bold C64-inspired logo -->
+  <!-- Background square with C64 border style -->
+  <rect x="2" y="2" width="60" height="60" fill="#352879" stroke="#6C5EB5" stroke-width="2"/>
+  
+  <!-- "SID" text in retro blocky style -->
+  <g fill="#50E89D">
+    <!-- S -->
+    <rect x="8" y="12" width="4" height="4"/>
+    <rect x="12" y="12" width="4" height="4"/>
+    <rect x="16" y="12" width="4" height="4"/>
+    <rect x="8" y="16" width="4" height="4"/>
+    <rect x="8" y="20" width="4" height="4"/>
+    <rect x="12" y="20" width="4" height="4"/>
+    <rect x="16" y="20" width="4" height="4"/>
+    <rect x="16" y="24" width="4" height="4"/>
+    <rect x="16" y="28" width="4" height="4"/>
+    <rect x="8" y="28" width="4" height="4"/>
+    <rect x="12" y="28" width="4" height="4"/>
+    
+    <!-- I -->
+    <rect x="24" y="12" width="4" height="4"/>
+    <rect x="28" y="12" width="4" height="4"/>
+    <rect x="32" y="12" width="4" height="4"/>
+    <rect x="28" y="16" width="4" height="4"/>
+    <rect x="28" y="20" width="4" height="4"/>
+    <rect x="28" y="24" width="4" height="4"/>
+    <rect x="24" y="28" width="4" height="4"/>
+    <rect x="28" y="28" width="4" height="4"/>
+    <rect x="32" y="28" width="4" height="4"/>
+    
+    <!-- D -->
+    <rect x="40" y="12" width="4" height="4"/>
+    <rect x="44" y="12" width="4" height="4"/>
+    <rect x="48" y="12" width="4" height="4"/>
+    <rect x="40" y="16" width="4" height="4"/>
+    <rect x="52" y="16" width="4" height="4"/>
+    <rect x="40" y="20" width="4" height="4"/>
+    <rect x="52" y="20" width="4" height="4"/>
+    <rect x="40" y="24" width="4" height="4"/>
+    <rect x="52" y="24" width="4" height="4"/>
+    <rect x="40" y="28" width="4" height="4"/>
+    <rect x="44" y="28" width="4" height="4"/>
+    <rect x="48" y="28" width="4" height="4"/>
+  </g>
+  
+  <!-- "FLOW" text below in smaller style -->
+  <g fill="#6C5EB5">
+    <!-- Simplified flow text -->
+    <text x="32" y="50" font-family="monospace" font-size="12" font-weight="bold" text-anchor="middle" fill="#50E89D">FLOW</text>
+  </g>
+  
+  <!-- Decorative corner brackets (C64 style) -->
+  <path d="M 6 6 L 6 10 M 6 6 L 10 6" stroke="#50E89D" stroke-width="1.5" stroke-linecap="square"/>
+  <path d="M 58 6 L 58 10 M 58 6 L 54 6" stroke="#50E89D" stroke-width="1.5" stroke-linecap="square"/>
+  <path d="M 6 58 L 6 54 M 6 58 L 10 58" stroke="#50E89D" stroke-width="1.5" stroke-linecap="square"/>
+  <path d="M 58 58 L 58 54 M 58 58 L 54 58" stroke="#50E89D" stroke-width="1.5" stroke-linecap="square"/>
+</svg>

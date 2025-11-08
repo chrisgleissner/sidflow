@@ -42,132 +42,142 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <main className="max-w-6xl mx-auto space-y-6">
-        {/* Header with logo */}
-        <div className="text-center space-y-4 py-6">
-          <div className="flex justify-center">
+    <div className="min-h-screen bg-background">
+      <main className="max-w-7xl mx-auto">
+        {/* Modern Compact Header */}
+        <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
+          <div className="flex items-center gap-4">
             <Image
-              src="/logo.png"
-              alt="SIDFlow Logo"
-              width={200}
-              height={200}
-              className="w-48 h-auto"
+              src="/logo-modern.svg"
+              alt="SIDFlow"
+              width={48}
+              height={48}
+              className="w-12 h-12"
               priority
               unoptimized
             />
+            <div className="flex-1">
+              <h1 className="text-xl font-bold text-foreground tracking-tight leading-tight">
+                SIDFlow
+              </h1>
+              <p className="text-xs text-muted-foreground leading-tight">
+                COMMODORE 64 MUSIC CONTROL
+              </p>
+            </div>
+            <div className="hidden md:flex items-center gap-3 text-xs font-mono text-muted-foreground">
+              <span className="px-2 py-1 bg-accent/20 rounded">PLAY</span>
+              <span>•</span>
+              <span className="px-2 py-1 bg-accent/20 rounded">RATE</span>
+              <span>•</span>
+              <span className="px-2 py-1 bg-accent/20 rounded">CLASSIFY</span>
+              <span>•</span>
+              <span className="px-2 py-1 bg-accent/20 rounded">TRAIN</span>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">
-            SIDFlow Control Panel
-          </h1>
-          <p className="text-base text-muted-foreground">
-            Local web interface for orchestrating SID workflows
-          </p>
-          <p className="text-lg text-foreground font-mono">
-            » COMMODORE 64 MUSIC CONTROL PANEL «
-          </p>
-          <p className="text-sm text-muted-foreground">
-            PLAY • RATE • CLASSIFY • TRAIN
-          </p>
-        </div>
+        </header>
 
-        {/* Status Display */}
-        {status && (
-          <StatusDisplay status={status} isError={isError} onClear={clearStatus} />
-        )}
+        <div className="p-4 md:p-6 space-y-4">
 
-        {/* Main Tabs - reordered: wizard, prefs, fetch, rate, classify, train, play */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 md:grid-cols-7 gap-1 h-auto p-1 bg-card/50 border-2 border-border">
-            <TabsTrigger 
-              value="wizard" 
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              WIZARD
-            </TabsTrigger>
-            <TabsTrigger 
-              value="prefs" 
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              PREFS
-            </TabsTrigger>
-            <TabsTrigger 
-              value="fetch"
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              FETCH
-            </TabsTrigger>
-            <TabsTrigger 
-              value="rate"
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              RATE
-            </TabsTrigger>
-            <TabsTrigger 
-              value="classify"
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              CLASSIFY
-            </TabsTrigger>
-            <TabsTrigger 
-              value="train"
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              TRAIN
-            </TabsTrigger>
-            <TabsTrigger 
-              value="play"
-              className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold"
-            >
-              PLAY
-            </TabsTrigger>
-          </TabsList>
+          {/* Status Display */}
+          {status && (
+            <StatusDisplay status={status} isError={isError} onClear={clearStatus} />
+          )}
 
-          <div className="mt-6">
-            <TabsContent value="wizard" className="mt-0">
-              <WizardTab 
-                onStatusChange={handleStatusChange}
-                onSwitchTab={setActiveTab}
-              />
-            </TabsContent>
+          {/* Modern Tab Layout with Side Navigation for Wide Screens */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Sidebar Navigation for Large Screens / Scrollable Top Tabs for Mobile */}
+              <TabsList className="flex flex-row lg:flex-col lg:w-48 justify-start gap-2 h-auto p-2 bg-card border-2 border-border overflow-x-auto lg:overflow-x-visible flex-nowrap lg:flex-wrap">
+                <TabsTrigger 
+                  value="wizard" 
+                  className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold justify-start lg:w-full text-xs lg:text-sm py-2 whitespace-nowrap flex-shrink-0"
+                >
+                  🧙 WIZARD
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="prefs" 
+                  className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold justify-start lg:w-full text-xs lg:text-sm py-2 whitespace-nowrap flex-shrink-0"
+                >
+                  ⚙️ PREFS
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="fetch"
+                  className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold justify-start lg:w-full text-xs lg:text-sm py-2 whitespace-nowrap flex-shrink-0"
+                >
+                  📥 FETCH
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="rate"
+                  className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold justify-start lg:w-full text-xs lg:text-sm py-2 whitespace-nowrap flex-shrink-0"
+                >
+                  ⭐ RATE
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="classify"
+                  className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold justify-start lg:w-full text-xs lg:text-sm py-2 whitespace-nowrap flex-shrink-0"
+                >
+                  🔍 CLASSIFY
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="train"
+                  className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold justify-start lg:w-full text-xs lg:text-sm py-2 whitespace-nowrap flex-shrink-0"
+                >
+                  🎓 TRAIN
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="play"
+                  className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground font-bold justify-start lg:w-full text-xs lg:text-sm py-2 whitespace-nowrap flex-shrink-0"
+                >
+                  ▶️ PLAY
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="prefs" className="mt-0">
-              <PrefsTab onStatusChange={handleStatusChange} />
-            </TabsContent>
+              {/* Tab Content Area */}
+              <div className="flex-1">
+                <TabsContent value="wizard" className="mt-0">
+                  <WizardTab 
+                    onStatusChange={handleStatusChange}
+                    onSwitchTab={setActiveTab}
+                  />
+                </TabsContent>
 
-            <TabsContent value="fetch" className="mt-0">
-              <FetchTab onStatusChange={handleStatusChange} />
-            </TabsContent>
+                <TabsContent value="prefs" className="mt-0">
+                  <PrefsTab onStatusChange={handleStatusChange} />
+                </TabsContent>
 
-            <TabsContent value="rate" className="mt-0">
-              <RateTab onStatusChange={handleStatusChange} />
-            </TabsContent>
+                <TabsContent value="fetch" className="mt-0">
+                  <FetchTab onStatusChange={handleStatusChange} />
+                </TabsContent>
 
-            <TabsContent value="classify" className="mt-0">
-              <ClassifyTab onStatusChange={handleStatusChange} />
-            </TabsContent>
+                <TabsContent value="rate" className="mt-0">
+                  <RateTab onStatusChange={handleStatusChange} />
+                </TabsContent>
 
-            <TabsContent value="train" className="mt-0">
-              <TrainTab onStatusChange={handleStatusChange} />
-            </TabsContent>
+                <TabsContent value="classify" className="mt-0">
+                  <ClassifyTab onStatusChange={handleStatusChange} />
+                </TabsContent>
 
-            <TabsContent value="play" className="mt-0">
-              <PlayTab
-                onStatusChange={handleStatusChange}
-                onTrackPlayed={handleTrackPlayed}
-              />
-            </TabsContent>
+                <TabsContent value="train" className="mt-0">
+                  <TrainTab onStatusChange={handleStatusChange} />
+                </TabsContent>
+
+                <TabsContent value="play" className="mt-0">
+                  <PlayTab
+                    onStatusChange={handleStatusChange}
+                    onTrackPlayed={handleTrackPlayed}
+                  />
+                </TabsContent>
+              </div>
+            </div>
+          </Tabs>
+
+          {/* Queue View */}
+          {queue.length > 0 && <QueueView queue={queue} />}
+
+          {/* Compact Footer */}
+          <div className="text-center text-xs text-muted-foreground py-3 font-mono border-t border-border/50 mt-6">
+            <p>READY.</p>
           </div>
-        </Tabs>
-
-        {/* Queue View */}
-        {queue.length > 0 && <QueueView queue={queue} />}
-
-        {/* Footer */}
-        <div className="text-center text-xs text-muted-foreground py-4 font-mono">
-          <p>═══════════════════════════════════════</p>
-          <p>READY.</p>
-          <p>═══════════════════════════════════════</p>
         </div>
       </main>
     </div>
