@@ -269,8 +269,6 @@ function buildResponse(track: RateTrackPayload): ApiResponse<{ track: RateTrackP
 export async function POST() {
   try {
     const env = await resolveRatePlaybackEnvironment();
-    const playbackLock = await createPlaybackLock(env.config);
-
     const sidPath = await pickRandomUntaggedSid(env.hvscPath, env.musicRoot, env.tagsPath);
     if (!sidPath) {
       const response: ApiResponse = {
@@ -280,8 +278,7 @@ export async function POST() {
       };
       return NextResponse.json(response, { status: 404 });
     }
-
-    const playbackLock = await createPlaybackLock(config);
+    const playbackLock = await createPlaybackLock(env.config);
     await playbackLock.stopExistingPlayback('api/rate/random');
 
     if (!(await pathExists(sidPath))) {
