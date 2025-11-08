@@ -1,3 +1,5 @@
+"use client";
+
 import { useToastContext } from '@/context/toast-context';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 
