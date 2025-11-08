@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { CliResult } from '@/lib/cli-executor';
 
 interface RunOptions {
@@ -28,6 +30,42 @@ const runnerState: RunnerState = {
   intent: 'none',
 };
 
+function collectSearchRoots(baseDir: string): string[] {
+  const roots = new Set<string>();
+  if (process.env.SIDFLOW_CLI_DIR) {
+    roots.add(process.env.SIDFLOW_CLI_DIR);
+  }
+  let currentDir = baseDir;
+  for (let depth = 0; depth < 5; depth += 1) {
+    roots.add(path.join(currentDir, 'scripts'));
+    const parent = path.dirname(currentDir);
+    if (parent === currentDir) {
+      break;
+    }
+    currentDir = parent;
+  }
+  return Array.from(roots);
+}
+
+function resolveCommandPath(command: string, baseDir: string): string {
+  if (
+    path.isAbsolute(command) ||
+    command.startsWith('./') ||
+    command.startsWith('../') ||
+    command.includes('/') ||
+    command.includes('\\')
+  ) {
+    return command;
+  }
+  for (const root of collectSearchRoots(baseDir)) {
+    const candidate = path.join(root, command);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return command;
+}
+
 export function getClassificationRunnerPid(): number | null {
   return runnerState.child?.pid ?? null;
 }
@@ -54,6 +92,12 @@ export async function runClassificationProcess(options: RunOptions): Promise<Run
 
   const timeout = options.timeout ?? 0; // 0 = no timeout
   const args = options.args ?? [];
+  const cwd = options.cwd ?? process.cwd();
+  const resolvedCommand = resolveCommandPath(options.command, cwd);
+  const env = {
+    ...process.env,
+    ...options.env,
+  };
 
   return await new Promise<RunResult>((resolve) => {
     const stdoutChunks: Buffer[] = [];
@@ -81,12 +125,9 @@ export async function runClassificationProcess(options: RunOptions): Promise<Run
       resolve({ result, reason });
     };
 
-    const child = spawn(options.command, args, {
-      cwd: options.cwd,
-      env: {
-        ...process.env,
-        ...options.env,
-      },
+    const child = spawn(resolvedCommand, args, {
+      cwd,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

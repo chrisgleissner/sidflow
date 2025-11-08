@@ -49,16 +49,39 @@ function moodMatchesPath(mood: MoodPreset | undefined, relativePath: string): bo
   }
 }
 
+function isWithin(baseRoot: string, target: string): boolean {
+  const relative = path.relative(baseRoot, target);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
 async function pickRandomSid(
-  hvscPath: string,
-  musicRoot: string,
+  hvscRoot: string,
+  collectionRoot: string,
   preset?: MoodPreset
 ): Promise<string | null> {
-  const { paths } = await loadSonglengthsData(hvscPath);
+  const { paths } = await loadSonglengthsData(hvscRoot);
   if (paths.length === 0) {
     return null;
   }
-  const filtered = paths.filter((p) => moodMatchesPath(preset, p));
+  const baseRelative = path.relative(hvscRoot, collectionRoot);
+  const normalizedBase = baseRelative
+    .split(path.sep)
+    .filter(Boolean)
+    .join('/');
+  const subsetSupported =
+    normalizedBase === '' || (!normalizedBase.startsWith('..') && !path.isAbsolute(baseRelative));
+  const basePrefix = normalizedBase ? `${normalizedBase.replace(/\/+$/, '')}/` : '';
+
+  const filtered = paths.filter((p) => {
+    if (!subsetSupported) {
+      return true;
+    }
+    if (normalizedBase === '') {
+      return moodMatchesPath(preset, p);
+    }
+    const matchesSubset = p === normalizedBase || p.startsWith(basePrefix);
+    return matchesSubset && moodMatchesPath(preset, p);
+  });
   const candidates = filtered.length > 0 ? filtered : paths;
   const maxAttempts = Math.min(candidates.length, 2000);
   const seen = new Set<number>();
@@ -72,7 +95,10 @@ async function pickRandomSid(
     }
     seen.add(index);
     const relativePosix = candidates[index].replace(/^\//, '');
-    const absolutePath = path.join(musicRoot, ...relativePosix.split('/'));
+    const absolutePath = path.join(hvscRoot, ...relativePosix.split('/'));
+    if (!isWithin(collectionRoot, absolutePath)) {
+      continue;
+    }
     return absolutePath;
   }
   return null;
@@ -84,7 +110,7 @@ export async function POST(request: NextRequest) {
     const preset = normalizePreset(body?.preset);
 
     const env = await resolvePlaybackEnvironment();
-    const sidPath = await pickRandomSid(env.hvscPath, env.musicRoot, preset);
+    const sidPath = await pickRandomSid(env.hvscPath, env.collectionRoot, preset);
 
     if (!sidPath || !(await pathExists(sidPath))) {
       const response: ApiResponse = {
@@ -101,7 +127,7 @@ export async function POST(request: NextRequest) {
     const metadata = await parseSidFile(sidPath);
     const fileStats = await stat(sidPath);
     const length = await lookupSongLength(sidPath, env.hvscPath, env.musicRoot);
-    const relativePath = path.relative(env.hvscPath, sidPath);
+    const relativePath = path.relative(env.collectionRoot, sidPath);
     const filename = path.basename(sidPath);
     const selectedSong = metadata.startSong;
     const durationSeconds = parseDurationSeconds(metadata.length ?? length);
@@ -139,7 +165,7 @@ export async function POST(request: NextRequest) {
       durationSeconds,
     };
 
-    const response: ApiResponse<{ track: TrackPayload }> = {
+    const response: ApiResponse<{ track: RateTrackInfo }> = {
       success: true,
       data: { track: payload },
     };

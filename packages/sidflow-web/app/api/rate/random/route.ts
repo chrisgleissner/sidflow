@@ -29,37 +29,53 @@ function resolveExecutable(executable: string, root: string): string {
 }
 
 async function pickRandomUntaggedSid(
-  hvscPath: string,
-  musicRoot: string,
+  hvscRoot: string,
+  collectionRoot: string,
   tagsPath: string
 ): Promise<string | null> {
-  const { paths } = await loadSonglengthsData(hvscPath);
-  if (paths.length > 0) {
-    const maxAttempts = Math.min(paths.length, 2000);
+  const { paths } = await loadSonglengthsData(hvscRoot);
+  const baseRelative = path.relative(hvscRoot, collectionRoot);
+  const normalizedBase = baseRelative
+    .split(path.sep)
+    .filter(Boolean)
+    .join('/');
+  const basePrefix = normalizedBase ? `${normalizedBase.replace(/\/+$/, '')}/` : '';
+  const subsetSupported =
+    normalizedBase === '' || (!normalizedBase.startsWith('..') && !path.isAbsolute(baseRelative));
+
+  if (paths.length > 0 && subsetSupported) {
+    const filtered = normalizedBase
+      ? paths.filter((relative) => relative === normalizedBase || relative.startsWith(basePrefix))
+      : paths;
+    const maxAttempts = Math.min(filtered.length, 2000);
     const seen = new Set<number>();
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      let index = Math.floor(Math.random() * paths.length);
-      while (seen.has(index) && seen.size < paths.length) {
-        index = (index + 1) % paths.length;
+      let index = Math.floor(Math.random() * filtered.length);
+      while (seen.has(index) && seen.size < filtered.length) {
+        index = (index + 1) % filtered.length;
       }
       if (seen.has(index)) {
         break;
       }
       seen.add(index);
-      const relativePosix = paths[index].replace(/^\//, '');
-      const absolutePath = path.join(musicRoot, ...relativePosix.split('/'));
-      if (!(await pathExists(absolutePath))) {
+      const relativePosix = filtered[index].replace(/^\//, '');
+      const absolutePath = path.join(hvscRoot, ...relativePosix.split('/'));
+      if (
+        !(await pathExists(absolutePath)) ||
+        !absolutePath.startsWith(collectionRoot)
+      ) {
         continue;
       }
-      const tagPath = createTagFilePath(hvscPath, tagsPath, absolutePath);
+      const tagBase = absolutePath.startsWith(hvscRoot) ? hvscRoot : collectionRoot;
+      const tagPath = createTagFilePath(tagBase, tagsPath, absolutePath);
       if (!(await pathExists(tagPath))) {
         return absolutePath;
       }
     }
   }
 
-  const fallback = await findUntaggedSids(hvscPath, tagsPath);
+  const fallback = await findUntaggedSids(collectionRoot, tagsPath);
   if (fallback.length === 0) {
     return null;
   }

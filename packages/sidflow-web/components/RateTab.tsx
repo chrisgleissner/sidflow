@@ -387,14 +387,19 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 Load an unrated SID, hear it instantly, and capture your feedback
               </CardDescription>
             </div>
-            <Button
-              onClick={handlePlayRandom}
-              disabled={isFetchingTrack || isSubmitting}
-              className="w-full md:w-auto retro-glow gap-2"
-            >
-              <Shuffle className="h-4 w-4" />
-              {isFetchingTrack ? 'FINDING SID...' : 'PLAY RANDOM SID'}
-            </Button>
+            <div className="relative">
+              <Button
+                onClick={handlePlayRandom}
+                disabled={isFetchingTrack || isSubmitting}
+                className="w-full md:w-auto retro-glow gap-2 peer"
+              >
+                <Shuffle className="h-4 w-4" />
+                {isFetchingTrack ? 'FINDING SID...' : 'PLAY RANDOM SID'}
+              </Button>
+              <div className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-max -translate-x-1/2 rounded bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow peer-hover:block">
+                Play Random SID to load the next unrated track
+              </div>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -448,41 +453,37 @@ export function RateTab({ onStatusChange }: RateTabProps) {
             <div className="rounded border border-border/60 bg-muted/30 p-3 space-y-2">
               <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
                 <Music2 className="h-4 w-4" />
-                <span className="break-all">{currentTrack.relativePath}</span>
+                <span className="break-all">
+                  {currentTrack.sidPath.slice(
+                    0,
+                    currentTrack.sidPath.length - currentTrack.filename.length
+                  )}
+                  <span className="font-semibold text-foreground">{currentTrack.filename}</span>
+                </span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                <div>
-                  <span className="text-muted-foreground">Title</span>
-                  <p className="font-semibold text-foreground">{currentTrack.metadata.title}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Artist</span>
-                  <p className="font-semibold text-foreground">
-                    {currentTrack.metadata.author ?? 'Unknown'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Year</span>
-                  <p>{currentTrack.metadata.released ?? 'Unknown'}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Length</span>
-                  <p>{currentTrack.metadata.length ?? 'Unknown'}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">SID Model</span>
-                  <p>{currentTrack.metadata.sidModel}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">File Size</span>
-                  <p>{formatBytes(currentTrack.metadata.fileSizeBytes)}</p>
-                </div>
+                <MetadataRow label="Title" value={currentTrack.metadata.title ?? 'Unknown'} />
+                <MetadataRow
+                  label="Artist"
+                  value={currentTrack.metadata.author ?? 'Unknown'}
+                />
+                <MetadataRow label="Year" value={currentTrack.metadata.released ?? 'Unknown'} />
+                <MetadataRow label="Length" value={currentTrack.metadata.length ?? 'Unknown'} />
+                <MetadataRow
+                  label="Song"
+                  value={`${currentTrack.selectedSong}/${currentTrack.metadata.songs}`}
+                />
+                <MetadataRow label="SID Model" value={currentTrack.metadata.sidModel} />
+                <MetadataRow
+                  label="File Size"
+                  value={formatBytes(currentTrack.metadata.fileSizeBytes)}
+                />
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
               <FileAudio2 className="h-4 w-4" />
-              Press “Play Random SID” to load the next unrated track.
+              Ready when you are—hover over “Play Random SID” to see how it works.
             </div>
           )}
         </CardContent>

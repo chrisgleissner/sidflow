@@ -22,6 +22,7 @@ import {
   ThumbsDown,
   Shuffle,
   Forward,
+  Music2,
 } from 'lucide-react';
 import {
   Select,
@@ -268,53 +269,77 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           <CardTitle className="text-sm petscii-text text-accent">TRANSPORT</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Slider
-            value={[position]}
-            onValueChange={handleSeek}
-            min={0}
-            max={Math.max(duration, 1)}
-            step={1}
-            disabled={!currentTrack}
-            className="cursor-pointer"
-          />
-          <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
-            <span>{formatSeconds(position)}</span>
-            <span>{formatSeconds(duration)}</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="icon" onClick={handleRestart} disabled={!currentTrack}>
-              <SkipBack className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => handleTransport(isPlaying ? 'pause' : 'resume')}
-              disabled={!currentTrack}
-            >
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => handleQuickSeek(10)}
-              disabled={!currentTrack}
-            >
-              <SkipForward className="h-4 w-4" />
-            </Button>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <Slider
+                  value={[position]}
+                  onValueChange={handleSeek}
+                  min={0}
+                  max={Math.max(duration, 1)}
+                  step={1}
+                  disabled={!currentTrack}
+                  className="cursor-pointer"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleRestart}
+                  disabled={!currentTrack}
+                  title="Restart track"
+                >
+                  <SkipBack className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleTransport(isPlaying ? 'pause' : 'resume')}
+                  disabled={!currentTrack}
+                  title={isPlaying ? 'Pause' : 'Play'}
+                >
+                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleQuickSeek(10)}
+                  disabled={!currentTrack}
+                  title="Skip ahead 10s"
+                >
+                  <SkipForward className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
+              <span>{formatSeconds(position)}</span>
+              <span>{formatSeconds(duration)}</span>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {currentTrack && (
         <Card className="c64-border">
-          <CardHeader>
-            <CardTitle className="text-sm petscii-text text-accent">NOW PLAYING</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-xs">
-            <div>
-              <p className="text-base font-semibold text-foreground">{currentTrack.displayName}</p>
-              <p className="text-muted-foreground">{currentTrack.metadata.author ?? 'Unknown'}</p>
-            </div>
+        <CardHeader>
+          <CardTitle className="text-sm petscii-text text-accent">NOW PLAYING</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-xs">
+          <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+            <Music2 className="h-4 w-4" />
+            <span className="break-all">
+              {currentTrack.sidPath.slice(
+                0,
+                currentTrack.sidPath.length - currentTrack.filename.length
+              )}
+              <span className="font-semibold text-foreground">{currentTrack.filename}</span>
+            </span>
+          </div>
+          <div>
+            <p className="text-base font-semibold text-foreground">{currentTrack.displayName}</p>
+            <p className="text-muted-foreground">{currentTrack.metadata.author ?? 'Unknown'}</p>
+          </div>
             <div className="grid gap-2 md:grid-cols-2">
               <div>
                 <span className="text-muted-foreground">Year</span>
@@ -323,6 +348,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
               <div>
                 <span className="text-muted-foreground">Length</span>
                 <p>{currentTrack.metadata.length ?? '—'}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Song</span>
+                <p>
+                  {currentTrack.selectedSong}/{currentTrack.metadata.songs}
+                </p>
               </div>
               <div>
                 <span className="text-muted-foreground">SID Model</span>
