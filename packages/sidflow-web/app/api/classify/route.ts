@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const command = 'sidflow-classify';
     const result = await executeCli(command, [], {
       timeout: 300000, // 5 minutes for classification (can be long-running)
-      cwd: env.root,
+      cwd: root,
       onStdout: ingestClassifyStdout,
     });
 

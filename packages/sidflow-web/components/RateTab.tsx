@@ -24,7 +24,6 @@ import {
   Pause,
   SkipForward,
   SkipBack,
-  Square,
 } from 'lucide-react';
 
 interface RateTabProps {
@@ -201,20 +200,6 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       onStatusChange(`Playback control failed: ${formatApiError(response)}`, true);
     }
   }, [hasTrack, onStatusChange, pollPlaybackStatus]);
-
-  const handleStop = useCallback(async () => {
-    if (!hasTrack) {
-      return;
-    }
-    const response = await controlRatePlayback({ action: 'stop' });
-    if (response.success) {
-      setIsPlaying(false);
-      setPosition(0);
-      onStatusChange('Playback stopped');
-    } else {
-      onStatusChange(`Playback control failed: ${formatApiError(response)}`, true);
-    }
-  }, [hasTrack, onStatusChange]);
 
   const handleSkipForward = useCallback(async () => {
     if (isFetchingTrack) {
@@ -416,15 +401,6 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 aria-label={isPlaying ? 'Pause playback' : 'Resume playback'}
               >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleStop}
-                disabled={!hasTrack}
-                aria-label="Stop playback"
-              >
-                <Square className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
