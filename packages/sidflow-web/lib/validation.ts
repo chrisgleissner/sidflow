@@ -27,7 +27,11 @@ export type RateRequest = z.infer<typeof RateRequestSchema>;
 
 // Classify endpoint schema
 export const ClassifyRequestSchema = z.object({
-  path: z.string().optional(),
+  path: z
+    .string()
+    .trim()
+    .min(1, 'Path must not be empty')
+    .optional(),
 });
 
 export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;

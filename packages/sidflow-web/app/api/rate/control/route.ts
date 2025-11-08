@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { RateControlRequestSchema, type ApiResponse } from '@/lib/validation';
-import { resolveRatePlaybackEnvironment, startSidPlayback, computePlaybackPosition } from '@/lib/rate-playback';
+import { resolvePlaybackEnvironment, startSidPlayback, computePlaybackPosition } from '@/lib/rate-playback';
 import { createPlaybackLock } from '@sidflow/common';
 
 export async function POST(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = RateControlRequestSchema.parse(body);
 
-    const env = await resolveRatePlaybackEnvironment();
+    const env = await resolvePlaybackEnvironment();
     const playbackLock = await createPlaybackLock(env.config);
     const metadata = await playbackLock.getMetadata();
 

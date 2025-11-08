@@ -8,7 +8,7 @@ import {
 } from '@sidflow/common';
 import { getRepoRoot, getSidflowConfig } from '@/lib/server-env';
 
-export interface RatePlaybackEnvironment {
+export interface PlaybackEnvironment {
   config: SidflowConfig;
   root: string;
   hvscPath: string;
@@ -16,7 +16,7 @@ export interface RatePlaybackEnvironment {
   tagsPath: string;
 }
 
-export async function resolveRatePlaybackEnvironment(): Promise<RatePlaybackEnvironment> {
+export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment> {
   const config = await getSidflowConfig();
   const root = getRepoRoot();
   const hvscPath = path.resolve(root, config.hvscPath);
@@ -36,7 +36,7 @@ function formatSidplayOffset(seconds: number): string {
 }
 
 export async function startSidPlayback(options: {
-  env: RatePlaybackEnvironment;
+  env: PlaybackEnvironment;
   playbackLock: PlaybackLock;
   sidPath: string;
   offsetSeconds?: number;
@@ -93,4 +93,26 @@ export function computePlaybackPosition(metadata: PlaybackLockMetadata): number 
   const startedAt = metadata.startedAt ? Date.parse(metadata.startedAt) : Date.now();
   const elapsed = Math.max(0, (Date.now() - startedAt) / 1000);
   return offset + elapsed;
+}
+
+export function parseDurationSeconds(length?: string): number {
+  if (!length) {
+    return 180;
+  }
+
+  if (length.includes(':')) {
+    const [minutes, secondsPart] = length.split(':');
+    const mins = Number(minutes);
+    const secs = Number(secondsPart);
+    if (!Number.isNaN(mins) && !Number.isNaN(secs)) {
+      return Math.max(15, mins * 60 + secs);
+    }
+  }
+
+  const numeric = Number(length);
+  if (!Number.isNaN(numeric) && numeric > 0) {
+    return Math.max(15, numeric);
+  }
+
+  return 180;
 }

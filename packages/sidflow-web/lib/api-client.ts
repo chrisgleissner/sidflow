@@ -13,32 +13,9 @@ import type {
 } from './validation';
 import type { FetchProgressSnapshot } from './types/fetch-progress';
 import type { ClassifyProgressSnapshot } from './types/classify-progress';
+import type { RateTrackInfo, RateTrackMetadata } from './types/rate-track';
 
-export interface RateTrackMetadata {
-  title?: string;
-  author?: string;
-  released?: string;
-  songs: number;
-  startSong: number;
-  sidType: string;
-  version: number;
-  sidModel: string;
-  sidModelSecondary?: string;
-  sidModelTertiary?: string;
-  clock: string;
-  length?: string;
-  fileSizeBytes: number;
-}
-
-export interface RateTrackInfo {
-  sidPath: string;
-  relativePath: string;
-  filename: string;
-  displayName: string;
-  selectedSong: number;
-  metadata: RateTrackMetadata;
-  durationSeconds: number;
-}
+export type { RateTrackInfo, RateTrackMetadata };
 
 export interface RatePlaybackStatus {
   active: boolean;
@@ -67,6 +44,10 @@ async function apiRequest<T>(
 
 export async function playTrack(request: PlayRequest): Promise<ApiResponse<{ output: string }>> {
   return apiRequest('/play', request);
+}
+
+export async function playManualTrack(request: PlayRequest): Promise<ApiResponse<{ sidPath: string; durationSeconds: number }>> {
+  return apiRequest('/play/manual', request);
 }
 
 export async function rateTrack(request: RateRequest): Promise<ApiResponse<{ message: string; tagPath?: string }>> {

@@ -8,8 +8,9 @@ import { parseSidFile, pathExists } from '@sidflow/common';
 import { createTagFilePath, findUntaggedSids } from '@sidflow/rate';
 import type { ApiResponse } from '@/lib/validation';
 import {
-  resolveRatePlaybackEnvironment,
+  resolvePlaybackEnvironment,
   startSidPlayback,
+  parseDurationSeconds,
 } from '@/lib/rate-playback';
 import { createPlaybackLock } from '@sidflow/common';
 
@@ -47,25 +48,6 @@ interface SonglengthsData {
 
 const songlengthsCache = new Map<string, Promise<SonglengthsData>>();
 const lengthCache = new Map<string, string | null>();
-
-function parseDurationSeconds(length?: string): number {
-  if (!length) {
-    return 180;
-  }
-  if (length.includes(':')) {
-    const [minutes, secondsPart] = length.split(':');
-    const mins = Number(minutes);
-    const secs = Number(secondsPart);
-    if (!Number.isNaN(mins) && !Number.isNaN(secs)) {
-      return Math.max(15, mins * 60 + secs);
-    }
-  }
-  const numeric = Number(length);
-  if (!Number.isNaN(numeric) && numeric > 0) {
-    return Math.max(15, numeric);
-  }
-  return 180;
-}
 
 async function loadSonglengthsData(hvscPath: string): Promise<SonglengthsData> {
   if (songlengthsCache.has(hvscPath)) {
@@ -268,7 +250,7 @@ function buildResponse(track: RateTrackPayload): ApiResponse<{ track: RateTrackP
 
 export async function POST() {
   try {
-    const env = await resolveRatePlaybackEnvironment();
+    const env = await resolvePlaybackEnvironment();
     const sidPath = await pickRandomUntaggedSid(env.hvscPath, env.musicRoot, env.tagsPath);
     if (!sidPath) {
       const response: ApiResponse = {

@@ -105,10 +105,10 @@ describe('ClassifyRequestSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects missing path', () => {
-    const invalid = {};
-    const result = ClassifyRequestSchema.safeParse(invalid);
-    expect(result.success).toBe(false);
+  test('allows missing path for auto-detection', () => {
+    const valid = {};
+    const result = ClassifyRequestSchema.safeParse(valid);
+    expect(result.success).toBe(true);
   });
 });
 

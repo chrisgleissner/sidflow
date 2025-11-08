@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { ApiResponse } from '@/lib/validation';
-import { resolveRatePlaybackEnvironment, computePlaybackPosition } from '@/lib/rate-playback';
+import { resolvePlaybackEnvironment, computePlaybackPosition } from '@/lib/rate-playback';
 import { createPlaybackLock } from '@sidflow/common';
 
 interface RatePlaybackStatus {
@@ -13,7 +13,7 @@ interface RatePlaybackStatus {
 
 export async function GET() {
   try {
-    const env = await resolveRatePlaybackEnvironment();
+    const env = await resolvePlaybackEnvironment();
     const playbackLock = await createPlaybackLock(env.config);
     const metadata = await playbackLock.getMetadata();
 
