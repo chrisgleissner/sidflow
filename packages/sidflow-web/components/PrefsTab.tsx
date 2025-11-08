@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +19,7 @@ import {
   type PreferencesPayload,
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
+import { FolderOpen } from 'lucide-react';
 
 interface PrefsTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -49,6 +50,8 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
   const [isSavingRom, setIsSavingRom] = useState(false);
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const kernalFileInputRef = useRef<HTMLInputElement | null>(null);
+  const basicFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load preferences from localStorage on mount
   useEffect(() => {
@@ -237,6 +240,33 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
     await saveCollectionPath(value.length > 0 ? value : null);
   }, [customPath, saveCollectionPath]);
 
+  const handleBrowseFile = useCallback((kind: 'kernal' | 'basic') => {
+    const target = kind === 'kernal' ? kernalFileInputRef.current : basicFileInputRef.current;
+    target?.click();
+  }, []);
+
+  const handleFileSelected = useCallback(
+    (kind: 'kernal' | 'basic', event: ChangeEvent<HTMLInputElement>) => {
+      const input = event.target;
+      const [file] = input.files ?? [];
+      const withPath = file as File & { path?: string; webkitRelativePath?: string };
+
+      const resolvedPath =
+        (withPath && (withPath.path || withPath.webkitRelativePath || withPath.name)) ||
+        input.value ||
+        '';
+
+      if (kind === 'kernal') {
+        setKernalPath(resolvedPath);
+      } else {
+        setBasicPath(resolvedPath);
+      }
+
+      input.value = '';
+    },
+    []
+  );
+
   return (
     <div className="space-y-6">
       <Card className="c64-border">
@@ -361,15 +391,38 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
+          <input
+            ref={kernalFileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(event) => handleFileSelected('kernal', event)}
+          />
+          <input
+            ref={basicFileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(event) => handleFileSelected('basic', event)}
+          />
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground">KERNAL ROM</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={kernalPath}
-                  onChange={(event) => setKernalPath(event.target.value)}
-                  placeholder="/path/to/kernal"
-                />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-1 items-center gap-2">
+                  <Input
+                    value={kernalPath}
+                    onChange={(event) => setKernalPath(event.target.value)}
+                    placeholder="/path/to/kernal"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Browse for KERNAL ROM"
+                    onClick={() => handleBrowseFile('kernal')}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                </div>
                 <Button
                   variant="secondary"
                   onClick={() => saveRomPath('kernal', kernalPath)}
@@ -388,12 +441,23 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
             </div>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground">BASIC ROM</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={basicPath}
-                  onChange={(event) => setBasicPath(event.target.value)}
-                  placeholder="/path/to/basic"
-                />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-1 items-center gap-2">
+                  <Input
+                    value={basicPath}
+                    onChange={(event) => setBasicPath(event.target.value)}
+                    placeholder="/path/to/basic"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Browse for BASIC ROM"
+                    onClick={() => handleBrowseFile('basic')}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                </div>
                 <Button
                   variant="secondary"
                   onClick={() => saveRomPath('basic', basicPath)}

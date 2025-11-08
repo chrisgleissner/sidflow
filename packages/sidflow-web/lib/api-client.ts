@@ -138,13 +138,19 @@ export async function trainModel(request: TrainRequest = {}): Promise<ApiRespons
   return apiRequest('/train', request);
 }
 
-export async function requestRandomPlayTrack(preset?: string): Promise<ApiResponse<{ track: RateTrackInfo }>> {
+export async function requestRandomPlayTrack(
+  preset?: string,
+  options: { preview?: boolean } = {}
+): Promise<ApiResponse<{ track: RateTrackInfo }>> {
   const response = await fetch(`${API_BASE}/play/random`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(preset ? { preset } : {}),
+    body: JSON.stringify({
+      ...(preset ? { preset } : {}),
+      ...(options.preview ? { preview: true } : {}),
+    }),
   });
   return response.json();
 }

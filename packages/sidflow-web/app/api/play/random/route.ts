@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const preset = normalizePreset(body?.preset);
+    const preview = Boolean(body?.preview);
 
     const env = await resolvePlaybackEnvironment();
     const sidPath = await pickRandomSid(env.hvscPath, env.collectionRoot, preset);
@@ -154,8 +155,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 404 });
     }
 
-    const playbackLock = await createPlaybackLock(env.config);
-    await playbackLock.stopExistingPlayback('api/play/random');
+    const playbackLock = preview ? null : await createPlaybackLock(env.config);
+    if (playbackLock) {
+      await playbackLock.stopExistingPlayback('api/play/random');
+    }
 
     const metadata = await parseSidFile(sidPath);
     const fileStats = await stat(sidPath);
@@ -189,15 +192,17 @@ export async function POST(request: NextRequest) {
       durationSeconds,
     };
 
-    await startSidPlayback({
-      env,
-      playbackLock,
-      sidPath,
-      offsetSeconds: 0,
-      durationSeconds,
-      source: 'api/play/random',
-      track: payload,
-    });
+    if (!preview && playbackLock) {
+      await startSidPlayback({
+        env,
+        playbackLock,
+        sidPath,
+        offsetSeconds: 0,
+        durationSeconds,
+        source: 'api/play/random',
+        track: payload,
+      });
+    }
 
     const response: ApiResponse<{ track: RateTrackInfo }> = {
       success: true,

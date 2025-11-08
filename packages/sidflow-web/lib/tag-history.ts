@@ -72,7 +72,12 @@ async function readJson(filePath: string): Promise<Record<string, unknown> | nul
 
 function resolveRelativeSidPath(tagsPath: string, filePath: string): string {
   const relative = path.relative(tagsPath, filePath);
-  return relative.replace(new RegExp(`${TAG_EXTENSION.replace('.', '\\.')}$`, 'i'), '.sid');
+  const withoutExtension = relative.replace(
+    new RegExp(`${TAG_EXTENSION.replace('.', '\\.')}$`, 'i'),
+    ''
+  );
+  const normalized = withoutExtension.replace(/\\/g, '/');
+  return normalized.toLowerCase().endsWith('.sid') ? normalized : `${normalized}.sid`;
 }
 
 async function locateSidPath(
@@ -86,6 +91,15 @@ async function locateSidPath(
   }
   const collectionCandidate = path.join(collectionRoot, relativePath);
   return collectionCandidate;
+}
+
+function stripHvscFolderPrefix(relativePath: string, hvscRoot: string): string {
+  const hvscFolder = path.basename(hvscRoot);
+  const normalized = relativePath.replace(/^\/+/, '');
+  if (normalized.toLowerCase().startsWith(`${hvscFolder.toLowerCase()}/`)) {
+    return normalized.slice(hvscFolder.length + 1);
+  }
+  return normalized;
 }
 
 export async function listManualRatings(options: ListRatingsOptions): Promise<{
@@ -107,20 +121,21 @@ export async function listManualRatings(options: ListRatingsOptions): Promise<{
     }
     const relativePath = resolveRelativeSidPath(tagsPath, filePath);
     const relativeNormalized = relativePath.replace(/\\/g, '/');
+    const relativeTrimmed = stripHvscFolderPrefix(relativeNormalized, hvscRoot);
     if (normalizedQuery.length > 0) {
       if (
-        !relativeNormalized.toLowerCase().includes(normalizedQuery) &&
-        !path.basename(relativePath).toLowerCase().includes(normalizedQuery)
+        !relativeTrimmed.toLowerCase().includes(normalizedQuery) &&
+        !path.basename(relativeTrimmed).toLowerCase().includes(normalizedQuery)
       ) {
         continue;
       }
     }
-    const sidPath = await locateSidPath(hvscRoot, collectionRoot, relativePath);
+    const sidPath = await locateSidPath(hvscRoot, collectionRoot, relativeTrimmed);
     const entry: ManualRatingRecord = {
       id: filePath,
       sidPath,
-      relativePath: relativeNormalized,
-      filename: path.basename(relativePath),
+      relativePath: relativeTrimmed,
+      filename: path.basename(relativeTrimmed),
       ratings: {
         e: typeof payload.e === 'number' ? payload.e : undefined,
         m: typeof payload.m === 'number' ? payload.m : undefined,

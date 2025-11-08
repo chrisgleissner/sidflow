@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -47,7 +47,8 @@ const RATING_DIMENSIONS: Array<{ key: RatingDimension; label: string; title: str
   { key: 'p', label: 'P', title: 'Preference' },
 ];
 
-const HISTORY_PAGE_SIZE = 8;
+const HISTORY_PAGE_SIZE = 15;
+type RatingValues = { e: number; m: number; c: number; p: number };
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -226,10 +227,30 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       }
     };
   }, []);
+  const ratingCacheRef = useRef<Map<string, RatingValues>>(new Map());
+
+  const applyCachedRatings = useCallback(
+    (sidPath?: string | null) => {
+      if (!sidPath) {
+        setEnergy(3);
+        setMood(3);
+        setComplexity(3);
+        setPreference(3);
+        return;
+      }
+      const cached = ratingCacheRef.current.get(sidPath);
+      setEnergy(cached?.e ?? 3);
+      setMood(cached?.m ?? 3);
+      setComplexity(cached?.c ?? 3);
+      setPreference(cached?.p ?? 3);
+    },
+    []
+  );
 
   const updateTrackStateFromResponse = useCallback(
     async (track: RateTrackInfo, announcement?: string) => {
       setCurrentTrack(track);
+      applyCachedRatings(track.sidPath);
       setDuration(track.durationSeconds ?? parseDurationSeconds(track.metadata.length));
       setPosition(0);
       setIsPlaying(true);
@@ -238,7 +259,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       }
       await pollPlaybackStatus();
     },
-    [onStatusChange, pollPlaybackStatus]
+    [applyCachedRatings, onStatusChange, pollPlaybackStatus]
   );
 
   const playSidFile = useCallback(
@@ -271,26 +292,17 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
       const track = response.data.track;
       pushCurrentTrackToHistory();
-      setCurrentTrack(track);
-      setEnergy(3);
-      setMood(3);
-      setComplexity(3);
-      setPreference(3);
-      setDuration(track.durationSeconds ?? parseDurationSeconds(track.metadata.length));
-      setPosition(0);
-      setIsPlaying(true);
-
-      onStatusChange(
+      await updateTrackStateFromResponse(
+        track,
         `Now playing "${track.displayName}" (song ${track.selectedSong}/${track.metadata.songs})`
       );
-      await pollPlaybackStatus();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       onStatusChange(`Failed to start playback: ${message}`, true);
     } finally {
       setIsFetchingTrack(false);
     }
-  }, [onStatusChange, pollPlaybackStatus, pushCurrentTrackToHistory]);
+  }, [onStatusChange, pushCurrentTrackToHistory, updateTrackStateFromResponse]);
 
   const handlePlayPause = useCallback(async () => {
     if (!hasTrack) {
@@ -412,7 +424,39 @@ export function RateTab({ onStatusChange }: RateTabProps) {
           query: query.length > 0 ? query : undefined,
         });
         if (response.success) {
-          setHistoryData(response.data);
+          setHistoryData((prev) => {
+            if (prev && response.data.page === prev.page && response.data.pageSize === prev.pageSize) {
+              const existing = prev.items.reduce<Record<string, RatingHistoryEntry>>((acc, item) => {
+                acc[item.sidPath] = item;
+                return acc;
+              }, {});
+              const mergedItems = response.data.items.map((item) => {
+                ratingCacheRef.current.set(item.sidPath, {
+                  e: clampRatingValue(item.ratings.e),
+                  m: clampRatingValue(item.ratings.m),
+                  c: clampRatingValue(item.ratings.c),
+                  p: clampRatingValue(item.ratings.p),
+                });
+                if (existing[item.sidPath] && existing[item.sidPath].timestamp === item.timestamp) {
+                  return existing[item.sidPath];
+                }
+                return item;
+              });
+              return {
+                ...response.data,
+                items: mergedItems,
+              };
+            }
+            response.data.items.forEach((entry) => {
+              ratingCacheRef.current.set(entry.sidPath, {
+                e: clampRatingValue(entry.ratings.e),
+                m: clampRatingValue(entry.ratings.m),
+                c: clampRatingValue(entry.ratings.c),
+                p: clampRatingValue(entry.ratings.p),
+              });
+            });
+            return response.data;
+          });
           if (response.data.page !== page) {
             setHistoryPage(response.data.page);
           }
@@ -444,35 +488,35 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     value: number;
     setter: (value: number) => void;
   }> = [
-    {
-      label: 'ENERGY',
-      description: '1 = Quiet • 5 = Intense',
-      hints: ['Quiet', 'Chill', 'Balanced', 'Driving', 'Intense'],
-      value: energy,
-      setter: setEnergy,
-    },
-    {
-      label: 'MOOD',
-      description: '1 = Dark • 5 = Bright',
-      hints: ['Gloomy', 'Dark', 'Neutral', 'Upbeat', 'Bright'],
-      value: mood,
-      setter: setMood,
-    },
-    {
-      label: 'COMPLEXITY',
-      description: '1 = Simple • 5 = Dense',
-      hints: ['Minimal', 'Light', 'Layered', 'Busy', 'Dense'],
-      value: complexity,
-      setter: setComplexity,
-    },
-    {
-      label: 'PREFERENCE',
-      description: '1 = Not my style • 5 = Love it',
-      hints: ['Skip it', 'Meh', 'Okay', 'Like it', 'Love it'],
-      value: preference,
-      setter: setPreference,
-    },
-  ];
+      {
+        label: 'ENERGY',
+        description: '1 = Quiet • 5 = Intense',
+        hints: ['Quiet', 'Chill', 'Balanced', 'Driving', 'Intense'],
+        value: energy,
+        setter: setEnergy,
+      },
+      {
+        label: 'MOOD',
+        description: '1 = Dark • 5 = Bright',
+        hints: ['Gloomy', 'Dark', 'Neutral', 'Upbeat', 'Bright'],
+        value: mood,
+        setter: setMood,
+      },
+      {
+        label: 'COMPLEXITY',
+        description: '1 = Simple • 5 = Dense',
+        hints: ['Minimal', 'Light', 'Layered', 'Busy', 'Dense'],
+        value: complexity,
+        setter: setComplexity,
+      },
+      {
+        label: 'PREFERENCE',
+        description: '1 = Not my style • 5 = Love it',
+        hints: ['Skip it', 'Meh', 'Okay', 'Like it', 'Love it'],
+        value: preference,
+        setter: setPreference,
+      },
+    ];
 
   const historyItems = historyData?.items ?? [];
   const historyTotalPages = historyData
@@ -507,10 +551,16 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
       const response = await rateTrack(request);
 
-      if (response.success) {
-        onStatusChange('Rating submitted! Loading the next SID...');
-        refreshRatingHistory();
-        await handlePlayRandom();
+    if (response.success) {
+      onStatusChange('Rating submitted! Loading the next SID...');
+      ratingCacheRef.current.set(currentTrack.sidPath, {
+        e: energy,
+        m: mood,
+        c: complexity,
+        p: preference,
+      });
+      refreshRatingHistory();
+      await handlePlayRandom();
       } else {
         onStatusChange(`Rating failed: ${formatApiError(response)}`, true);
       }
@@ -621,7 +671,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 </span>
               </div>
               <div className="flex flex-col gap-4 text-xs md:flex-row md:items-stretch md:gap-12">
-                  <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-2">
                   <MetaRow label="Title" value={currentTrack.metadata.title ?? 'Unknown'} />
                   <MetaRow label="Artist" value={currentTrack.metadata.author ?? 'Unknown'} />
                   <MetaRow label="Year" value={currentTrack.metadata.released ?? 'Unknown'} />
@@ -642,10 +692,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               </div>
             </div>
           ) : (
-          <div className="flex items-center gap-2 rounded border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
-            <FileAudio2 className="h-4 w-4" />
-            No track loaded yet.
-          </div>
+            <div className="flex items-center gap-2 rounded border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+              <FileAudio2 className="h-4 w-4" />
+              No track loaded yet.
+            </div>
           )}
         </CardContent>
       </Card>
@@ -738,7 +788,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
             <div>
               <CardTitle className="text-sm petscii-text text-accent">YOUR RATED TRACKS</CardTitle>
               <CardDescription className="text-muted-foreground">
-                Search, replay, and fine-tune previous feedback without leaving the tab.
+                Search, replay, and refine previous feedback.
               </CardDescription>
             </div>
             <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
@@ -784,80 +834,85 @@ export function RateTab({ onStatusChange }: RateTabProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="overflow-x-auto">
-            <div className="min-w-[640px] space-y-1 text-[11px] md:text-xs">
-              <div className="grid items-center gap-2 rounded border border-border/60 bg-muted/30 px-2 py-1 font-semibold uppercase text-muted-foreground grid-cols-[auto,minmax(0,1.6fr),repeat(4,110px),110px]">
-                <span>Play</span>
-                <span>SID FILE</span>
-                {RATING_DIMENSIONS.map((dimension) => (
-                  <span key={dimension.key} title={dimension.title} className="text-center">
-                    {dimension.label}
-                  </span>
-                ))}
-                <span className="text-right">Updated</span>
-              </div>
-              {isHistoryLoading ? (
-                <div className="flex items-center justify-center gap-2 rounded border border-dashed border-border/60 px-3 py-6 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading ratings…
-                </div>
-              ) : historyItems.length === 0 ? (
-                <div className="rounded border border-dashed border-border/60 px-3 py-4 text-muted-foreground">
-                  Once you submit ratings, they will appear here for quick adjustments.
-                </div>
-              ) : (
-                historyItems.map((entry) => {
-                  const isActive = currentTrack?.sidPath === entry.sidPath;
-                  const isEntryPlaying = isActive && isPlaying;
-                  const handlePlayClick = () => {
-                    if (isActive) {
-                      handlePlayPause();
-                    } else {
-                      void playSidFile(entry.sidPath, `Loaded ${entry.filename}`);
-                    }
-                  };
-                  return (
-                    <div
-                      key={entry.id}
-                      className="grid items-center gap-2 rounded border border-border/40 px-2 py-1 grid-cols-[auto,minmax(0,1.6fr),repeat(4,110px),110px]"
-                    >
-                      <Button
-                        size="icon"
-                        variant={isEntryPlaying ? 'default' : 'outline'}
-                        onClick={handlePlayClick}
-                        title={isEntryPlaying ? 'Pause playback' : 'Play this SID'}
-                      >
-                        {isEntryPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                      </Button>
-                      <div className="truncate font-mono" title={entry.relativePath}>
-                        {entry.relativePath}
-                      </div>
-                      {RATING_DIMENSIONS.map((dimension) => {
-                        const currentValue = clampRatingValue(entry.ratings[dimension.key]);
-                        const handleSliderChange = (value: number[]) => {
-                          const next = clampRatingValue(value[0]);
-                          setHistoryData((prev) => {
-                            if (!prev) {
-                              return prev;
-                            }
-                            return {
-                              ...prev,
-                              items: prev.items.map((item) =>
-                                item.id === entry.id
-                                  ? {
+          {isHistoryLoading ? (
+            <div className="flex items-center justify-center gap-2 rounded border border-dashed border-border/60 px-3 py-6 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading ratings…
+            </div>
+          ) : historyItems.length === 0 ? (
+            <div className="rounded border border-dashed border-border/60 px-3 py-4 text-muted-foreground">
+              Once you submit ratings, they will appear here for quick adjustments.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs md:text-sm border border-border/60 rounded table-fixed">
+                <thead className="bg-muted/40 text-muted-foreground uppercase tracking-tight text-[10px] md:text-[11px]">
+                  <tr>
+                    <th className="px-1.5 py-1 text-left">Play</th>
+                    <th className="px-1.5 py-1 text-left">SID Path</th>
+                    {RATING_DIMENSIONS.map((dimension) => (
+                      <th key={dimension.key} className="px-1 py-1 text-center">
+                        {dimension.label}
+                      </th>
+                    ))}
+                    <th className="px-1.5 py-1 text-right">Updated</th>
+                  </tr>
+                </thead>
+                <tbody className="align-middle text-[11px] md:text-xs">
+                  {historyItems.map((entry) => {
+                    const isActive = currentTrack?.sidPath === entry.sidPath;
+                    const isEntryPlaying = isActive && isPlaying;
+                    const handlePlayClick = () => {
+                      if (isActive) {
+                        handlePlayPause();
+                      } else {
+                        void playSidFile(entry.sidPath, `Loaded ${entry.filename}`);
+                      }
+                    };
+                    return (
+                      <tr key={entry.id} className="border-t border-border/40 transition-opacity duration-100 ease-out">
+                        <td className="px-1.5 py-1">
+                          <Button
+                            size="icon"
+                            variant={isEntryPlaying ? 'default' : 'outline'}
+                            onClick={handlePlayClick}
+                            title={isEntryPlaying ? 'Pause playback' : 'Play this SID'}
+                            className="h-6 w-6 rounded-full"
+                          >
+                            {isEntryPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                          </Button>
+                        </td>
+                        <td className="px-1.5 py-1 font-mono">
+                          <div className="truncate" title={entry.relativePath}>
+                            {entry.relativePath}
+                          </div>
+                        </td>
+                        {RATING_DIMENSIONS.map((dimension) => {
+                          const currentValue = clampRatingValue(entry.ratings[dimension.key]);
+                          const handleDropdownChange = async (
+                            event: ChangeEvent<HTMLSelectElement>
+                          ) => {
+                            const next = clampRatingValue(Number(event.target.value));
+                            setHistoryData((prev) => {
+                              if (!prev) {
+                                return prev;
+                              }
+                              return {
+                                ...prev,
+                                items: prev.items.map((item) =>
+                                  item.id === entry.id
+                                    ? {
                                       ...item,
                                       ratings: {
                                         ...item.ratings,
                                         [dimension.key]: next,
                                       },
                                     }
-                                  : item
-                              ),
-                            };
-                          });
-                        };
-                        const handleSliderCommit = async (value: number[]) => {
-                          const next = clampRatingValue(value[0]);
+                                    : item
+                                ),
+                              };
+                            });
+
                           const payload = {
                             sid_path: entry.sidPath,
                             ratings: {
@@ -867,57 +922,58 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                               p: dimension.key === 'p' ? next : clampRatingValue(entry.ratings.p),
                             },
                           };
+                          ratingCacheRef.current.set(entry.sidPath, {
+                            e: payload.ratings.e,
+                            m: payload.ratings.m,
+                            c: payload.ratings.c,
+                            p: payload.ratings.p,
+                          });
                           try {
                             const response = await rateTrack(payload);
-                            if (response.success) {
+                              if (!response.success) {
+                                onStatusChange(
+                                  `Failed to update ${dimension.title}: ${formatApiError(response)}`,
+                                  true
+                                );
+                                refreshRatingHistory();
+                              }
+                            } catch (error) {
+                              const message = error instanceof Error ? error.message : String(error);
                               onStatusChange(
-                                `${dimension.title} updated for ${entry.filename} (${next}/5)`
-                              );
-                              refreshRatingHistory();
-                            } else {
-                              onStatusChange(
-                                `Failed to update ${dimension.title}: ${formatApiError(response)}`,
+                                `Failed to update ${dimension.title}: ${message}`,
                                 true
                               );
                               refreshRatingHistory();
                             }
-                          } catch (error) {
-                            const message = error instanceof Error ? error.message : String(error);
-                            onStatusChange(
-                              `Failed to update ${dimension.title}: ${message}`,
-                              true
-                            );
-                            refreshRatingHistory();
-                          }
-                        };
-                        return (
-                          <div
-                            key={`${entry.id}-${dimension.key}`}
-                            className="flex items-center gap-2"
-                            title={`${dimension.title}: ${currentValue}/5`}
-                          >
-                            <Slider
-                              value={[currentValue]}
-                              onValueChange={handleSliderChange}
-                              onValueCommit={handleSliderCommit}
-                              min={1}
-                              max={5}
-                              step={1}
-                              className="flex-1"
-                            />
-                            <span className="w-6 text-right font-mono">{currentValue}</span>
-                          </div>
-                        );
-                      })}
-                      <div className="text-right text-muted-foreground">
-                        {formatHistoryTimestamp(entry.timestamp)}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+                          };
+
+                          return (
+                            <td key={`${entry.id}-${dimension.key}`} className="px-1 py-1 text-center">
+                              <select
+                                value={currentValue}
+                                onChange={handleDropdownChange}
+                                className="w-12 rounded border border-border/60 bg-card px-1 py-0.5 text-xs font-mono"
+                                title={dimension.title}
+                              >
+                                {[1, 2, 3, 4, 5].map((value) => (
+                                  <option key={value} value={value}>
+                                    {value}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          );
+                        })}
+                        <td className="px-1.5 py-1 text-right text-muted-foreground text-[10px] md:text-[11px]">
+                          {formatHistoryTimestamp(entry.timestamp)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>
