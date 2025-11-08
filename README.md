@@ -103,6 +103,8 @@ bun run dev
 
 Open **http://localhost:3000** in your browser.
 
+![r8ate panel](./doc/web-screenshots/04-rate.png)
+
 ### Features
 
 - Play and control SID playback by mood
