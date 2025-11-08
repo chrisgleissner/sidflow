@@ -26,12 +26,12 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 
 ### Phase 1 Checklist
 
-- [ ] Implement a script (e.g., `scripts/check-libsidplayfp-upstream.ts`) that fetches the upstream repository and records the latest commit hash.
-- [ ] Persist the last-built upstream hash alongside the local WASM artifact metadata.
-- [ ] Update the build pipeline (`bun run build`, CI workflow) to invoke the upstream check before compiling WASM.
-- [ ] Ensure the build step skips compilation when the upstream hash matches the stored last-built hash and exits with a clear log message.
-- [ ] Add unit tests covering the skip-vs-build logic and hash persistence helper functions.
-- [ ] Document manual override procedure for forcing a rebuild despite no upstream changes.
+- [x] Implement a script (e.g., `scripts/check-libsidplayfp-upstream.ts`) that fetches the upstream repository and records the latest commit hash.
+- [x] Persist the last-built upstream hash alongside the local WASM artifact metadata.
+- [x] Update the build pipeline (`bun run build`, CI workflow) to invoke the upstream check before compiling WASM.
+- [x] Ensure the build step skips compilation when the upstream hash matches the stored last-built hash and exits with a clear log message.
+- [x] Add unit tests covering the skip-vs-build logic and hash persistence helper functions.
+- [x] Document manual override procedure for forcing a rebuild despite no upstream changes.
 
 ## Phase 2 — Code Relocation & Integration
 
@@ -70,7 +70,7 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 ## Current Status
 
 Phase 0: Complete  
-Phase 1: Not started  
+Phase 1: Complete  
 Phase 2: Not started  
 Phase 3: Not started  
 Phase 4: Not started
@@ -81,3 +81,4 @@ Phase 4: Not started
 - Maintain parity between native and WASM builds; feature gaps must be explicitly documented.
 - Skipping a rebuild when upstream is unchanged is mandatory to keep CI fast and deterministic.
 - Committed WASM artifacts should be reproducible by rerunning the build with the same upstream hash and toolchain versions.
+- Use `bun run scripts/check-libsidplayfp-upstream.ts -- --force` to override the skip guard when a manual rebuild is required.
