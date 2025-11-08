@@ -2,6 +2,7 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 import type { ApiResponse } from '@/lib/validation';
 import { getRepoRoot, getSidflowConfig } from '@/lib/server-env';
+import { resolveSidCollectionContext } from '@/lib/sid-collection';
 
 export async function GET() {
   try {
@@ -9,11 +10,19 @@ export async function GET() {
     const root = getRepoRoot();
     const hvscPath = path.resolve(root, config.hvscPath);
     const musicPath = path.join(hvscPath, 'C64Music');
-    const response: ApiResponse<{ hvscPath: string; musicPath: string }> = {
+    const collectionContext = await resolveSidCollectionContext();
+    const response: ApiResponse<{
+      hvscPath: string;
+      musicPath: string;
+      activeCollectionPath: string;
+      preferenceSource: 'default' | 'custom';
+    }> = {
       success: true,
       data: {
         hvscPath,
         musicPath,
+        activeCollectionPath: collectionContext.collectionRoot,
+        preferenceSource: collectionContext.preferenceSource,
       },
     };
     return NextResponse.json(response, { status: 200 });

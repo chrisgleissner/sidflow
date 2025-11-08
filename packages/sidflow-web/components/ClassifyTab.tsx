@@ -4,19 +4,65 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { classifyPath, getHvscPaths, getClassifyProgress } from '@/lib/api-client';
-import type { ClassifyProgressSnapshot } from '@/lib/types/classify-progress';
+import { classifyPath, getHvscPaths, getClassifyProgress, controlClassification, type ClassifyProgressWithStorage } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 
 interface ClassifyTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
 }
 
+const CLASSIFICATION_STEPS = [
+  {
+    title: 'Analyze HVSC',
+    detail: 'Scans every SID file and song index to see which WAV renders are missing or stale.',
+  },
+  {
+    title: 'Render WAV cache',
+    detail: 'Runs sidplayfp in parallel (one core per thread) to regenerate audio that downstream tools can reuse.',
+  },
+  {
+    title: 'Metadata & auto-tags',
+    detail: 'Parses SID metadata, extracts audio features, and predicts ratings so tags stay in sync with your feedback.',
+  },
+];
+
+function formatBytes(bytes?: number): string {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) {
+    return '—';
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return '—';
+  }
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h ${remainingMinutes}m`;
+}
+
 export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   const [path, setPath] = useState('');
   const [defaultPath, setDefaultPath] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState<ClassifyProgressSnapshot | null>(null);
+  const [progress, setProgress] = useState<ClassifyProgressWithStorage | null>(null);
 
   const isRunning = progress?.isActive ?? false;
   const percent = progress?.percentComplete ?? 0;
@@ -30,8 +76,9 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
     const loadPaths = async () => {
       const response = await getHvscPaths();
       if (mounted && response.success) {
-        setDefaultPath(response.data.musicPath || response.data.hvscPath);
-        setPath(response.data.musicPath || response.data.hvscPath);
+        const preferred = response.data.activeCollectionPath ?? response.data.musicPath;
+        setDefaultPath(preferred);
+        setPath(preferred);
       }
     };
     void loadPaths();
@@ -78,9 +125,63 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
     }
   }, [path, defaultPath, onStatusChange, refreshProgress]);
 
-  const threadStatuses = useMemo(() => {
-    return progress?.perThread ?? [];
+  const threadStatuses = useMemo(() => progress?.perThread ?? [], [progress]);
+  const storageStats = progress?.storage;
+  const estimatedMsRemaining = useMemo(() => {
+    if (!progress || progress.totalFiles === 0 || progress.processedFiles === 0) {
+      return null;
+    }
+    const remaining = Math.max(progress.totalFiles - progress.processedFiles, 0);
+    if (remaining === 0) {
+      return 0;
+    }
+    const elapsedMs = Math.max(progress.updatedAt - progress.startedAt, 1);
+    const ratePerMs = progress.processedFiles / elapsedMs;
+    if (ratePerMs <= 0) {
+      return null;
+    }
+    return remaining / ratePerMs;
   }, [progress]);
+
+  const formattedEta = useMemo(() => {
+    if (estimatedMsRemaining === null) {
+      return '—';
+    }
+    if (estimatedMsRemaining === 0) {
+      return 'Done';
+    }
+    return formatDuration(Math.round(estimatedMsRemaining));
+  }, [estimatedMsRemaining]);
+
+  const diskSummary = useMemo(() => {
+    if (!storageStats) {
+      return null;
+    }
+    const usedText = formatBytes(storageStats.usedBytes);
+    const totalText = formatBytes(storageStats.totalBytes);
+    const freeText = formatBytes(storageStats.freeBytes);
+    return {
+      headline: `${usedText} / ${totalText} used`,
+      free: `${freeText} free`,
+    };
+  }, [storageStats]);
+
+  const handlePause = useCallback(async () => {
+    try {
+      const response = await controlClassification('pause');
+      if (response.success) {
+        onStatusChange('Pausing classification...');
+        await refreshProgress();
+      } else {
+        onStatusChange(`Unable to pause: ${formatApiError(response)}`, true);
+      }
+    } catch (error) {
+      onStatusChange(
+        `Unable to pause: ${error instanceof Error ? error.message : String(error)}`,
+        true
+      );
+    }
+  }, [onStatusChange, refreshProgress]);
 
   return (
     <Card className="c64-border">
@@ -105,13 +206,31 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
               className="w-full px-3 py-2 bg-input border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isLoading || isRunning}
             />
-            <Button
-              onClick={handleClassify}
-              disabled={isLoading || isRunning}
-              className="w-full retro-glow"
-            >
-              {isLoading ? 'CLASSIFYING...' : isRunning ? 'CLASSIFICATION IN PROGRESS' : 'START CLASSIFICATION'}
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={handleClassify}
+                disabled={isLoading || isRunning}
+                className="w-full retro-glow"
+              >
+                {isLoading
+                  ? 'CLASSIFYING...'
+                  : isRunning
+                    ? 'CLASSIFICATION IN PROGRESS'
+                    : progress?.isPaused
+                      ? 'RESUME CLASSIFICATION'
+                      : 'START CLASSIFICATION'}
+              </Button>
+              {isRunning && !progress?.isPaused && (
+                <Button
+                  onClick={handlePause}
+                  disabled={isLoading}
+                  variant="outline"
+                  className="w-full"
+                >
+                  PAUSE
+                </Button>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               SIDFlow auto-detects your HVSC mirror. Adjust the path if you keep SIDs elsewhere.
             </p>
@@ -137,26 +256,78 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 <p className="font-semibold text-foreground">{progress?.renderedFiles ?? 0}</p>
               </div>
             </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="rounded border border-border/60 bg-card/70 p-2 text-center text-xs">
+                <p className="text-muted-foreground">Time Remaining</p>
+                <p className="font-semibold text-foreground">{formattedEta}</p>
+              </div>
+              <div className="rounded border border-border/60 bg-card/70 p-2 text-center text-xs">
+                <p className="text-muted-foreground">Disk Usage</p>
+                {diskSummary ? (
+                  <>
+                    <p className="font-semibold text-foreground">{diskSummary.headline}</p>
+                    <p className="text-muted-foreground">{diskSummary.free}</p>
+                  </>
+                ) : (
+                  <p className="font-semibold text-foreground">—</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
             <span>THREAD ACTIVITY</span>
-            <span>{threadStatuses.length} threads</span>
+            <span>{progress?.threads ?? threadStatuses.length} threads</span>
           </div>
-          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-            {threadStatuses.map((thread) => (
-              <div
-                key={thread.id}
-                className="rounded border border-border/60 bg-card/80 px-3 py-2 text-xs font-mono text-muted-foreground"
-              >
-                <p className="text-[11px] uppercase tracking-wide text-foreground">Thread {thread.id}</p>
-                <p className="truncate">
-                  {thread.status === 'working' && thread.currentFile
-                    ? thread.currentFile
-                    : 'Idle'}
-                </p>
+          {threadStatuses.length > 0 ? (
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {threadStatuses.map((thread) => {
+                const phaseLabel = thread.phase ? thread.phase.toUpperCase() : 'IDLE';
+                const isWorking = thread.status === 'working';
+                const headline = isWorking
+                  ? thread.currentFile ?? 'Working...'
+                  : 'Waiting for work';
+                return (
+                  <div
+                    key={thread.id}
+                    className="rounded border border-border/60 bg-card/80 px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide">
+                      <span className="text-foreground">Thread {thread.id}</span>
+                      <span className={isWorking ? 'text-accent' : 'text-muted-foreground'}>
+                        {phaseLabel}
+                      </span>
+                    </div>
+                    <p
+                      className={`mt-1 font-mono ${
+                        isWorking ? 'text-foreground' : 'text-muted-foreground'
+                      }`}
+                      title={headline}
+                    >
+                      {headline}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Waiting for classification to start...
+            </div>
+          )}
+        </div>
+
+        <div className="rounded border border-border/60 bg-muted/30 p-3 space-y-3">
+          <p className="text-xs font-semibold tracking-tight text-muted-foreground">
+            WHAT CLASSIFICATION DOES
+          </p>
+          <div className="grid gap-3 md:grid-cols-2">
+            {CLASSIFICATION_STEPS.map((step) => (
+              <div key={step.title}>
+                <p className="text-xs font-semibold text-foreground">{step.title}</p>
+                <p className="text-xs text-muted-foreground">{step.detail}</p>
               </div>
             ))}
           </div>

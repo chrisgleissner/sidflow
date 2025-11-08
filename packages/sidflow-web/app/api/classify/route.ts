@@ -2,12 +2,12 @@
  * Classify API endpoint - triggers classification via sidflow-classify CLI
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { executeCli } from '@/lib/cli-executor';
 import { ClassifyRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
 import { describeCliFailure, describeCliSuccess } from '@/lib/cli-logs';
 import path from 'node:path';
 import os from 'node:os';
+import fs from 'node:fs/promises';
 import { getRepoRoot, getSidflowConfig } from '@/lib/server-env';
 import {
   beginClassifyProgress,
@@ -15,7 +15,10 @@ import {
   failClassifyProgress,
   getClassifyProgressSnapshot,
   ingestClassifyStdout,
+  pauseClassifyProgress,
 } from '@/lib/classify-progress-store';
+import { runClassificationProcess } from '@/lib/classify-runner';
+import { resolveSidCollectionContext, buildCliEnvOverrides } from '@/lib/sid-collection';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,18 +27,41 @@ export async function POST(request: NextRequest) {
 
     const config = await getSidflowConfig();
     const root = getRepoRoot();
-    const hvscPath = path.resolve(root, config.hvscPath);
-    const defaultTarget = path.join(hvscPath, 'C64Music');
-    const targetPath = validatedData.path?.trim() || defaultTarget;
+    const collection = await resolveSidCollectionContext();
+    const requestedPath = validatedData.path?.trim();
+    const classificationPath = requestedPath
+      ? path.isAbsolute(requestedPath)
+        ? path.normalize(requestedPath)
+        : path.resolve(collection.hvscRoot, requestedPath)
+      : collection.collectionRoot;
+    await fs.stat(classificationPath);
     const threads = config.threads && config.threads > 0 ? config.threads : os.cpus().length;
     beginClassifyProgress(threads);
 
     const command = 'sidflow-classify';
-    const result = await executeCli(command, [], {
-      timeout: 300000, // 5 minutes for classification (can be long-running)
+    const cliEnv = {
+      ...buildCliEnvOverrides(collection),
+      SIDFLOW_SID_BASE_PATH: classificationPath,
+    };
+    const { result, reason } = await runClassificationProcess({
+      command,
+      args: [],
       cwd: root,
+      env: cliEnv,
       onStdout: ingestClassifyStdout,
     });
+
+    if (reason === 'paused') {
+      pauseClassifyProgress('Classification paused by user');
+      const response: ApiResponse<{ paused: true; progress: ReturnType<typeof getClassifyProgressSnapshot> }> = {
+        success: true,
+        data: {
+          paused: true,
+          progress: getClassifyProgressSnapshot(),
+        },
+      };
+      return NextResponse.json(response, { status: 200 });
+    }
 
     if (result.success) {
       const { logs } = describeCliSuccess(command, result);

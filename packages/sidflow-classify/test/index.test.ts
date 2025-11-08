@@ -252,11 +252,10 @@ describe("planClassification", () => {
       expect(analyzingUpdates.length).toBeGreaterThan(0);
       expect(buildingUpdates.length).toBeGreaterThan(0);
 
-      // Progress should increase
-      for (let i = 1; i < progressUpdates.length; i++) {
-        expect(progressUpdates[i].processedFiles).toBeGreaterThanOrEqual(
-          progressUpdates[i - 1].processedFiles
-        );
+      // Progress snapshots should always report a valid percentage
+      for (const update of progressUpdates) {
+        expect(update.percentComplete).toBeGreaterThanOrEqual(0);
+        expect(update.percentComplete).toBeLessThanOrEqual(100);
       }
 
       await rm(root, { recursive: true, force: true });

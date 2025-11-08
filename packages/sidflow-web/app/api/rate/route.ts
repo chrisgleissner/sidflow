@@ -6,7 +6,7 @@ import { stat } from 'node:fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { RateRequestSchema, type ApiResponse } from '@/lib/validation';
-import { getRepoRoot, getSidflowConfig } from '@/lib/server-env';
+import { resolveSidCollectionContext } from '@/lib/sid-collection';
 import { createTagFilePath, writeManualTag } from '@sidflow/rate';
 
 function formatError(message: string, details?: string): ApiResponse {
@@ -33,11 +33,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = RateRequestSchema.parse(body);
 
-    const repoRoot = getRepoRoot();
-    const config = await getSidflowConfig();
-
-    const hvscPath = path.resolve(repoRoot, config.hvscPath);
-    const tagsPath = path.resolve(repoRoot, config.tagsPath);
+    const collection = await resolveSidCollectionContext();
+    const hvscPath = collection.collectionRoot;
+    const tagsPath = collection.tagsPath;
     const sidAbsolutePath = path.isAbsolute(validatedData.sid_path)
       ? validatedData.sid_path
       : path.resolve(hvscPath, validatedData.sid_path);

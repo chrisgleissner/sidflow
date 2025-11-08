@@ -6,7 +6,8 @@ import {
   type PlaybackLockMetadata,
   type SidflowConfig,
 } from '@sidflow/common';
-import { getRepoRoot, getSidflowConfig } from '@/lib/server-env';
+import { getRepoRoot } from '@/lib/server-env';
+import { resolveSidCollectionContext } from '@/lib/sid-collection';
 
 export interface PlaybackEnvironment {
   config: SidflowConfig;
@@ -17,15 +18,14 @@ export interface PlaybackEnvironment {
 }
 
 export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment> {
-  const config = await getSidflowConfig();
+  const context = await resolveSidCollectionContext();
   const root = getRepoRoot();
-  const hvscPath = path.resolve(root, config.hvscPath);
   return {
-    config,
+    config: context.config,
     root,
-    hvscPath,
-    musicRoot: path.join(hvscPath, 'C64Music'),
-    tagsPath: path.resolve(root, config.tagsPath),
+    hvscPath: context.hvscRoot,
+    musicRoot: context.collectionRoot,
+    tagsPath: context.tagsPath,
   };
 }
 

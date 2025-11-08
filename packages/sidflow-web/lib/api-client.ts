@@ -12,7 +12,7 @@ import type {
   ApiResponse,
 } from './validation';
 import type { FetchProgressSnapshot } from './types/fetch-progress';
-import type { ClassifyProgressSnapshot } from './types/classify-progress';
+import type { ClassifyProgressSnapshot, ClassifyStorageStats } from './types/classify-progress';
 import type { RateTrackInfo, RateTrackMetadata } from './types/rate-track';
 
 export type { RateTrackInfo, RateTrackMetadata };
@@ -23,6 +23,26 @@ export interface RatePlaybackStatus {
   positionSeconds: number;
   durationSeconds?: number;
   sidPath?: string;
+}
+
+export interface PreferencesPayload {
+  hvscRoot: string;
+  defaultCollectionPath: string;
+  activeCollectionPath: string;
+  preferenceSource: 'default' | 'custom';
+  preferences: {
+    sidBasePath?: string | null;
+  };
+}
+
+export interface FolderListing {
+  relativePath: string;
+  absolutePath: string;
+  entries: Array<{
+    name: string;
+    path: string;
+    hasChildren: boolean;
+  }>;
 }
 
 const API_BASE = '/api';
@@ -58,6 +78,34 @@ export async function classifyPath(request: ClassifyRequest = {}): Promise<ApiRe
   return apiRequest('/classify', request);
 }
 
+export async function getPreferences(): Promise<ApiResponse<PreferencesPayload>> {
+  const response = await fetch(`${API_BASE}/prefs`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function updatePreferences(payload: { sidBasePath: string | null }): Promise<ApiResponse<PreferencesPayload>> {
+  return apiRequest('/prefs', payload);
+}
+
+export async function listHvscFolders(relative: string = ''): Promise<ApiResponse<FolderListing>> {
+  const params = new URLSearchParams();
+  if (relative) {
+    params.set('relative', relative);
+  }
+  const response = await fetch(`${API_BASE}/prefs/folders?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
 export async function fetchHvsc(request: FetchRequest = {}): Promise<ApiResponse<{ output: string; logs: string; progress: FetchProgressSnapshot }>> {
   return apiRequest('/fetch', request);
 }
@@ -76,6 +124,17 @@ export async function trainModel(request: TrainRequest = {}): Promise<ApiRespons
   return apiRequest('/train', request);
 }
 
+export async function requestRandomPlayTrack(preset?: string): Promise<ApiResponse<{ track: RateTrackInfo }>> {
+  const response = await fetch(`${API_BASE}/play/random`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(preset ? { preset } : {}),
+  });
+  return response.json();
+}
+
 export async function requestRandomRateTrack(): Promise<ApiResponse<{ track: RateTrackInfo }>> {
   const response = await fetch(`${API_BASE}/rate/random`, {
     method: 'POST',
@@ -87,7 +146,14 @@ export async function requestRandomRateTrack(): Promise<ApiResponse<{ track: Rat
   return response.json();
 }
 
-export async function getHvscPaths(): Promise<ApiResponse<{ hvscPath: string; musicPath: string }>> {
+export interface HvscPathsPayload {
+  hvscPath: string;
+  musicPath: string;
+  activeCollectionPath: string;
+  preferenceSource: 'default' | 'custom';
+}
+
+export async function getHvscPaths(): Promise<ApiResponse<HvscPathsPayload>> {
   const response = await fetch(`${API_BASE}/config/hvsc`, {
     method: 'GET',
     headers: {
@@ -97,7 +163,9 @@ export async function getHvscPaths(): Promise<ApiResponse<{ hvscPath: string; mu
   return response.json();
 }
 
-export async function getClassifyProgress(): Promise<ApiResponse<ClassifyProgressSnapshot>> {
+export type ClassifyProgressWithStorage = ClassifyProgressSnapshot & { storage?: ClassifyStorageStats };
+
+export async function getClassifyProgress(): Promise<ApiResponse<ClassifyProgressWithStorage>> {
   const response = await fetch(`${API_BASE}/classify/progress`, {
     method: 'GET',
     headers: {
@@ -119,4 +187,8 @@ export async function getRatePlaybackStatus(): Promise<ApiResponse<RatePlaybackS
 
 export async function controlRatePlayback(request: RateControlRequest): Promise<ApiResponse<{ message: string }>> {
   return apiRequest('/rate/control', request);
+}
+
+export async function controlClassification(action: 'pause'): Promise<ApiResponse<{ progress: ClassifyProgressWithStorage }>> {
+  return apiRequest('/classify/control', { action });
 }

@@ -51,6 +51,9 @@ export function TrainTab({ onStatusChange }: TrainTabProps) {
           <label className="text-sm font-medium">
             EPOCHS: {epochs[0]}
           </label>
+          <p className="text-xs text-muted-foreground">
+            Full passes over the training set. Raise this for better accuracy at the cost of longer runs.
+          </p>
           <Slider
             value={epochs}
             onValueChange={setEpochs}
@@ -66,6 +69,9 @@ export function TrainTab({ onStatusChange }: TrainTabProps) {
           <label className="text-sm font-medium">
             BATCH SIZE: {batchSize[0]}
           </label>
+          <p className="text-xs text-muted-foreground">
+            Number of SIDs processed per gradient update. Larger batches are faster but need more memory.
+          </p>
           <Slider
             value={batchSize}
             onValueChange={setBatchSize}

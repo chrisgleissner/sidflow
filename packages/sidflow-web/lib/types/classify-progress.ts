@@ -4,6 +4,7 @@ export type ClassifyPhase =
   | 'building'
   | 'metadata'
   | 'tagging'
+  | 'paused'
   | 'completed'
   | 'error';
 
@@ -11,6 +12,7 @@ export interface ClassifyThreadStatus {
   id: number;
   currentFile?: string;
   status: 'idle' | 'working';
+  phase?: 'analyzing' | 'building' | 'metadata' | 'tagging';
   updatedAt: number;
 }
 
@@ -26,5 +28,13 @@ export interface ClassifyProgressSnapshot {
   message?: string;
   error?: string;
   isActive: boolean;
+  isPaused: boolean;
   updatedAt: number;
+  startedAt: number;
+}
+
+export interface ClassifyStorageStats {
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
 }

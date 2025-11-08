@@ -20,6 +20,7 @@ import {
   type GenerateAutoTagsResult,
   type PredictRatings,
   type RenderWav,
+  type ThreadActivityUpdate,
   type WavCacheProgress
 } from "./index.js";
 
@@ -206,6 +207,10 @@ function formatDuration(ms: number): string {
 function createProgressLogger(stdout: NodeJS.WritableStream) {
   let lastLogTime = 0;
 
+  const writeThreadLine = (line: string) => {
+    stdout.write(`\r\x1b[K${line}\n`);
+  };
+
   return {
     logWavProgress(progress: WavCacheProgress): void {
       const now = Date.now();
@@ -251,6 +256,13 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
           `\r[Tagging] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
         );
       }
+    },
+
+    logThread(update: ThreadActivityUpdate): void {
+      const phase = update.phase.toUpperCase();
+      const status = update.status.toUpperCase();
+      const file = update.file ? ` ${update.file}` : "";
+      writeThreadLine(`[Thread ${update.threadId}][${phase}][${status}]${file}`);
     },
 
     clearLine(): void {
@@ -326,6 +338,7 @@ export async function runClassifyCli(
 
     // Create progress logger
     const progressLogger = createProgressLogger(runtime.stdout);
+    const threadLogger = (update: ThreadActivityUpdate) => progressLogger.logThread(update);
 
     let render: RenderWav | undefined;
     if (options.renderModule) {
@@ -337,6 +350,7 @@ export async function runClassifyCli(
       sidplayPath: resolvedPlan.sidplayPath,
       render,
       threads,
+      onThreadUpdate: threadLogger,
       onProgress: (progress) => progressLogger.logWavProgress(progress)
     });
 
@@ -362,6 +376,8 @@ export async function runClassifyCli(
       extractMetadata,
       featureExtractor,
       predictRatings,
+      threads,
+      onThreadUpdate: threadLogger,
       onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
     });
 

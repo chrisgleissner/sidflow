@@ -1,15 +1,17 @@
 import type { ClassifyPhase, ClassifyProgressSnapshot } from '@/lib/types/classify-progress';
 
+type ThreadPhase = 'analyzing' | 'building' | 'metadata' | 'tagging';
+
 interface ThreadStatusInternal {
   id: number;
   currentFile?: string;
   status: 'idle' | 'working';
+  phase?: ThreadPhase;
   updatedAt: number;
 }
 
-interface ProgressState extends ClassifyProgressSnapshot {
+interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread'> {
   perThread: ThreadStatusInternal[];
-  startedAt: number;
 }
 
 const STALE_THREAD_MS = 5000;
@@ -26,8 +28,9 @@ function createInitialSnapshot(): ProgressState {
     skippedFiles: 0,
     percentComplete: 0,
     threads: 1,
-    perThread: [{ id: 1, status: 'idle', updatedAt: Date.now() }],
+    perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now() }],
     isActive: false,
+    isPaused: false,
     updatedAt: Date.now(),
     startedAt: Date.now(),
     message: undefined,
@@ -51,22 +54,34 @@ function ensureThreads(count: number) {
   snapshot.perThread = Array.from({ length: count }, (_, index) => ({
     id: index + 1,
     status: 'idle',
+    phase: undefined,
     updatedAt: Date.now(),
   }));
 }
 
-function updateThreadStatus(threadIndex: number, currentFile?: string) {
+function applyThreadStatusUpdate(update: {
+  threadId: number;
+  phase?: ThreadPhase;
+  status: 'idle' | 'working';
+  file?: string;
+}) {
+  const index = update.threadId - 1;
+  if (index < 0) {
+    return;
+  }
+  ensureThreads(Math.max(update.threadId, snapshot.threads));
   const now = Date.now();
-  snapshot.perThread = snapshot.perThread.map((thread, index) => {
-    if (index === threadIndex && currentFile) {
+  snapshot.perThread = snapshot.perThread.map((thread, idx) => {
+    if (idx === index) {
       return {
         ...thread,
-        currentFile,
-        status: 'working',
+        status: update.status,
+        phase: update.phase ?? thread.phase,
+        currentFile: update.status === 'working' ? update.file ?? thread.currentFile : undefined,
         updatedAt: now,
       };
     }
-    if (now - thread.updatedAt > STALE_THREAD_MS) {
+    if (now - thread.updatedAt > STALE_THREAD_MS && thread.status !== 'idle') {
       return {
         ...thread,
         status: 'idle',
@@ -81,6 +96,7 @@ function updateThreadStatus(threadIndex: number, currentFile?: string) {
 export function beginClassifyProgress(initialThreads = 1) {
   snapshot = createInitialSnapshot();
   snapshot.isActive = true;
+  snapshot.isPaused = false;
   snapshot.startedAt = Date.now();
   ensureThreads(initialThreads);
 }
@@ -88,6 +104,7 @@ export function beginClassifyProgress(initialThreads = 1) {
 export function completeClassifyProgress(message?: string) {
   setPhase('completed');
   snapshot.isActive = false;
+  snapshot.isPaused = false;
   if (message) {
     snapshot.message = message;
   }
@@ -96,7 +113,17 @@ export function completeClassifyProgress(message?: string) {
 export function failClassifyProgress(message: string) {
   setPhase('error');
   snapshot.isActive = false;
+  snapshot.isPaused = false;
   snapshot.error = message;
+}
+
+export function pauseClassifyProgress(message?: string) {
+  setPhase('paused');
+  snapshot.isActive = false;
+  snapshot.isPaused = true;
+  if (message) {
+    snapshot.message = message;
+  }
 }
 
 export function ingestClassifyStdout(chunk: string) {
@@ -120,6 +147,23 @@ function processLine(line: string) {
   const threadMatch = line.match(/threads:\s*(\d+)/i);
   if (threadMatch) {
     ensureThreads(Number(threadMatch[1]) || 1);
+    return;
+  }
+
+  const threadStatusMatch = line.match(
+    /\[Thread\s+(\d+)\]\[([A-Za-z]+)\]\[(WORKING|IDLE)\](?:\s+(.*))?/i
+  );
+  if (threadStatusMatch) {
+    const threadId = Number(threadStatusMatch[1]);
+    const phase = threadStatusMatch[2].toLowerCase() as ThreadPhase;
+    const status = threadStatusMatch[3].toLowerCase() === 'working' ? 'working' : 'idle';
+    const file = threadStatusMatch[4]?.trim();
+    applyThreadStatusUpdate({
+      threadId,
+      phase,
+      status,
+      file: status === 'working' ? file : undefined,
+    });
     return;
   }
 
@@ -147,11 +191,6 @@ function processLine(line: string) {
     snapshot.skippedFiles = skipped;
     snapshot.processedFiles = rendered + skipped;
     snapshot.percentComplete = Number(convertingMatch[4]);
-    const currentFile = convertingMatch[5];
-    if (currentFile) {
-      const threadIndex = snapshot.processedFiles % snapshot.threads;
-      updateThreadStatus(threadIndex, currentFile);
-    }
     snapshot.updatedAt = Date.now();
     return;
   }
@@ -165,11 +204,6 @@ function processLine(line: string) {
     snapshot.processedFiles = Number(tagMatch[2]);
     snapshot.totalFiles = Number(tagMatch[3]);
     snapshot.percentComplete = Number(tagMatch[4]);
-    const currentFile = tagMatch[5];
-    if (currentFile) {
-      const threadIndex = snapshot.processedFiles % snapshot.threads;
-      updateThreadStatus(threadIndex, currentFile);
-    }
     snapshot.updatedAt = Date.now();
   }
 }
@@ -187,6 +221,8 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     message: snapshot.message,
     error: snapshot.error,
     isActive: snapshot.isActive,
+    isPaused: snapshot.isPaused,
     updatedAt: snapshot.updatedAt,
+    startedAt: snapshot.startedAt,
   };
 }

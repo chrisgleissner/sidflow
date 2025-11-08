@@ -66,6 +66,10 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
   }
 
   const config = validateConfig(data, resolvedPath);
+  const overrideSidBase = process.env.SIDFLOW_SID_BASE_PATH;
+  if (overrideSidBase && overrideSidBase.trim().length > 0) {
+    config.hvscPath = path.normalize(overrideSidBase);
+  }
   cachedConfig = config;
   cachedPath = resolvedPath;
   return config;

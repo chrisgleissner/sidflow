@@ -9,6 +9,7 @@ import {
   requestRandomRateTrack,
   controlRatePlayback,
   getRatePlaybackStatus,
+  playManualTrack,
   type RateTrackInfo,
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
@@ -78,6 +79,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const [currentTrack, setCurrentTrack] = useState<RateTrackInfo | null>(null);
   const [isFetchingTrack, setIsFetchingTrack] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [history, setHistory] = useState<RateTrackInfo[]>([]);
   const [energy, setEnergy] = useState(3);
   const [mood, setMood] = useState(3);
   const [complexity, setComplexity] = useState(3);
@@ -85,6 +87,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const [duration, setDuration] = useState(DEFAULT_DURATION);
   const [position, setPosition] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const canGoBack = history.length > 0;
+
+  const pushCurrentTrackToHistory = useCallback(() => {
+    if (!currentTrack) {
+      return;
+    }
+    setHistory((prev) => {
+      const next = [...prev, currentTrack];
+      if (next.length > 25) {
+        next.shift();
+      }
+      return next;
+    });
+  }, [currentTrack]);
 
   const hasTrack = Boolean(currentTrack);
   const pollPlaybackStatus = useCallback(async () => {
@@ -152,6 +168,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       }
 
       const track = response.data.track;
+      pushCurrentTrackToHistory();
       setCurrentTrack(track);
       setEnergy(3);
       setMood(3);
@@ -171,7 +188,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     } finally {
       setIsFetchingTrack(false);
     }
-  }, [onStatusChange, pollPlaybackStatus]);
+  }, [onStatusChange, pollPlaybackStatus, pushCurrentTrackToHistory]);
 
   const handlePlayPause = useCallback(async () => {
     if (!hasTrack) {
@@ -188,18 +205,30 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     }
   }, [hasTrack, isPlaying, onStatusChange, pollPlaybackStatus]);
 
-  const handleRestart = useCallback(async () => {
-    if (!hasTrack) {
+  const handlePreviousTrack = useCallback(async () => {
+    if (!history.length) {
       return;
     }
-    const response = await controlRatePlayback({ action: 'seek', positionSeconds: 0 });
-    if (response.success) {
-      onStatusChange('Playback restarted');
+    const previous = history[history.length - 1];
+    try {
+      const response = await playManualTrack({ sid_path: previous.sidPath });
+      if (!response.success) {
+        onStatusChange(`Unable to load previous SID: ${formatApiError(response)}`, true);
+        return;
+      }
+      setHistory((prev) => prev.slice(0, -1));
+      const track = response.data.track;
+      setCurrentTrack(track);
+      setDuration(track.durationSeconds ?? parseDurationSeconds(track.metadata.length));
+      setPosition(0);
+      setIsPlaying(true);
+      onStatusChange(`Replaying "${track.displayName}"`);
       await pollPlaybackStatus();
-    } else {
-      onStatusChange(`Playback control failed: ${formatApiError(response)}`, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      onStatusChange(`Unable to load previous SID: ${message}`, true);
     }
-  }, [hasTrack, onStatusChange, pollPlaybackStatus]);
+  }, [history, onStatusChange, pollPlaybackStatus]);
 
   const handleSkipForward = useCallback(async () => {
     if (isFetchingTrack) {
@@ -314,16 +343,16 @@ export function RateTab({ onStatusChange }: RateTabProps) {
           event.preventDefault();
           void handleSkipForward();
           break;
-        case 'r':
+        case 'b':
           event.preventDefault();
-          handleRestart();
+          void handlePreviousTrack();
           break;
       }
     };
 
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handlePlayPause, handleSkipForward, handleRestart]);
+  }, [handlePlayPause, handleSkipForward, handlePreviousTrack]);
 
   const ratingBlocks: Array<{
     label: string;
@@ -387,9 +416,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               <Button
                 variant="outline"
                 size="icon"
-                onClick={handleRestart}
-                disabled={!hasTrack}
-                aria-label="Restart track"
+                onClick={handlePreviousTrack}
+                disabled={!canGoBack || isFetchingTrack}
+                aria-label="Previous track"
+                title={canGoBack ? 'Play the previously rated SID (shortcut: B)' : 'No previous SID'}
               >
                 <SkipBack className="h-4 w-4" />
               </Button>

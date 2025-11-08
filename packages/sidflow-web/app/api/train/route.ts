@@ -6,6 +6,7 @@ import { executeCli } from '@/lib/cli-executor';
 import { TrainRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
 import { describeCliFailure, describeCliSuccess } from '@/lib/cli-logs';
+import { resolveSidCollectionContext, buildCliEnvOverrides } from '@/lib/sid-collection';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,8 +34,11 @@ export async function POST(request: NextRequest) {
     }
 
     const command = 'sidflow-train';
+    const collection = await resolveSidCollectionContext();
+    const envOverrides = buildCliEnvOverrides(collection);
     const result = await executeCli(command, args, {
       timeout: 600000, // 10 minutes for training (can be long-running)
+      env: envOverrides,
     });
 
     if (result.success) {

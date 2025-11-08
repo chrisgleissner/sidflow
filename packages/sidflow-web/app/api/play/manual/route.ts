@@ -4,10 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PlayRequestSchema, type ApiResponse } from '@/lib/validation';
 import { parseSidFile, pathExists, createPlaybackLock } from '@sidflow/common';
 import { resolvePlaybackEnvironment, startSidPlayback, parseDurationSeconds } from '@/lib/rate-playback';
+import { resolveSidCollectionContext } from '@/lib/sid-collection';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { ZodError } from 'zod';
 
-async function resolveSidPath(input: string, env: Awaited<ReturnType<typeof resolvePlaybackEnvironment>>): Promise<string> {
+async function resolveSidPath(
+  input: string,
+  env: Awaited<ReturnType<typeof resolvePlaybackEnvironment>>
+): Promise<string> {
   const trimmed = input.trim();
   if (!trimmed) {
     throw new Error('SID path is required');

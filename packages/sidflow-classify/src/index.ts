@@ -23,11 +23,61 @@ import {
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
+
+export type ThreadPhase = "analyzing" | "building" | "metadata" | "tagging";
+
+export interface ThreadActivityUpdate {
+  threadId: number;
+  phase: ThreadPhase;
+  status: "idle" | "working";
+  file?: string;
+}
+
+interface ConcurrentContext {
+  threadId: number;
+  itemIndex: number;
+}
+
+function resolveThreadCount(requested?: number): number {
+  if (typeof requested === "number" && requested > 0) {
+    return Math.max(1, Math.floor(requested));
+  }
+  const cores = os.cpus().length || 1;
+  return Math.max(1, cores);
+}
+
+async function runConcurrent<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, context: ConcurrentContext) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) {
+    return;
+  }
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  const runners = Array.from({ length: limit }, async (_, workerIndex) => {
+    const threadId = workerIndex + 1;
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      if (currentIndex >= items.length) {
+        break;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
+    }
+  });
+
+  await Promise.all(runners);
+}
 
 /**
  * Shared utility to collect SID file metadata and count total songs.
@@ -52,6 +102,19 @@ async function collectSidMetadataAndSongCount(
   }
   
   return { sidMetadataCache, totalSongs };
+}
+
+function formatSongLabel(
+  plan: ClassificationPlan,
+  sidFile: string,
+  songCount: number,
+  songIndex: number
+): string {
+  const relative = toPosixRelative(path.relative(plan.hvscPath, sidFile));
+  if (songCount > 1) {
+    return `${relative} [${songIndex}]`;
+  }
+  return relative;
 }
 
 export interface ClassifyOptions {
@@ -190,7 +253,7 @@ export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, sidplayPat
   await ensureDir(path.dirname(wavFile));
   
   // Build sidplayfp command arguments
-  const args = ["-w", wavFile];
+  const args = [`-w${wavFile}`];
   
   // Add song selection if specified (1-based index)
   if (songIndex !== undefined) {
@@ -241,7 +304,8 @@ export interface BuildWavCacheOptions {
   render?: RenderWav;
   forceRebuild?: boolean;
   onProgress?: ProgressCallback;
-  threads?: number; // Reserved for future parallel processing implementation
+  onThreadUpdate?: (update: ThreadActivityUpdate) => void;
+  threads?: number;
 }
 
 export interface PerformanceMetrics {
@@ -275,6 +339,7 @@ export async function buildWavCache(
   const render = options.render ?? defaultRenderWav;
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
+  const onThreadUpdate = options.onThreadUpdate;
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
@@ -297,64 +362,104 @@ export async function buildWavCache(
     sidFile: string;
     songIndex: number;
     wavFile: string;
+    songCount: number;
   }
 
   const songsToRender: SongToRender[] = [];
   const songsToSkip: SongToRender[] = [];
-  let processedSongs = 0;
+  let analyzedSongs = 0;
 
-  for (const sidFile of sidFiles) {
-    const metadata = sidMetadataCache.get(sidFile);
-    const songCount = metadata?.songs ?? 1;
+  const analysisConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
+  await runConcurrent(
+    sidFiles,
+    analysisConcurrency,
+    async (sidFile, context) => {
+      const metadata = sidMetadataCache.get(sidFile);
+      const songCount = metadata?.songs ?? 1;
 
-    for (let songIndex = 1; songIndex <= songCount; songIndex++) {
-  const wavFile = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
-      
-      if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
-        songsToRender.push({ sidFile, songIndex, wavFile });
-      } else {
-        songsToSkip.push({ sidFile, songIndex, wavFile });
-        skipped.push(wavFile);
+      for (let songIndex = 1; songIndex <= songCount; songIndex++) {
+        const wavFile = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
+        const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "analyzing",
+          status: "working",
+          file: songLabel
+        });
+
+        if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
+          songsToRender.push({ sidFile, songIndex, wavFile, songCount });
+        } else {
+          songsToSkip.push({ sidFile, songIndex, wavFile, songCount });
+          skipped.push(wavFile);
+        }
+
+        analyzedSongs += 1;
+
+        if (
+          onProgress &&
+          (analyzedSongs % ANALYSIS_PROGRESS_INTERVAL === 0 || analyzedSongs === totalFiles)
+        ) {
+          onProgress({
+            phase: "analyzing",
+            totalFiles,
+            processedFiles: analyzedSongs,
+            renderedFiles: 0,
+            skippedFiles: songsToSkip.length,
+            percentComplete: totalFiles === 0 ? 100 : (analyzedSongs / totalFiles) * 100,
+            elapsedMs: Date.now() - startTime,
+            currentFile: songLabel
+          });
+        }
       }
 
-      processedSongs++;
+      onThreadUpdate?.({
+        threadId: context.threadId,
+        phase: "analyzing",
+        status: "idle"
+      });
+    }
+  );
 
-      // Report analysis progress periodically
-      if (onProgress && processedSongs % ANALYSIS_PROGRESS_INTERVAL === 0) {
-        onProgress({
-          phase: "analyzing",
-          totalFiles,
-          processedFiles: processedSongs,
-          renderedFiles: 0,
-          skippedFiles: songsToSkip.length,
-          percentComplete: (processedSongs / totalFiles) * 100,
-          elapsedMs: Date.now() - startTime
+  // Building phase: render WAV files for each song
+  const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
+  await runConcurrent(
+    songsToRender,
+    buildConcurrency,
+    async ({ sidFile, songIndex, wavFile, songCount }, context) => {
+      const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
+      onThreadUpdate?.({
+        threadId: context.threadId,
+        phase: "building",
+        status: "working",
+        file: songLabel
+      });
+      try {
+        await render({ sidFile, wavFile, sidplayPath, songIndex });
+        rendered.push(wavFile);
+
+        if (onProgress) {
+          const processed = skipped.length + rendered.length;
+          onProgress({
+            phase: "building",
+            totalFiles,
+            processedFiles: processed,
+            renderedFiles: rendered.length,
+            skippedFiles: skipped.length,
+            percentComplete: totalFiles === 0 ? 100 : (processed / totalFiles) * 100,
+            elapsedMs: Date.now() - startTime,
+            currentFile: songLabel
+          });
+        }
+      } finally {
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "building",
+          status: "idle"
         });
       }
     }
-  }
-
-  // Building phase: render WAV files for each song
-  for (let i = 0; i < songsToRender.length; i++) {
-    const { sidFile, songIndex, wavFile } = songsToRender[i];
-
-  await render({ sidFile, wavFile, sidplayPath, songIndex });
-    rendered.push(wavFile);
-
-    // Report progress after rendering completes
-    if (onProgress) {
-      onProgress({
-        phase: "building",
-        totalFiles,
-        processedFiles: skipped.length + rendered.length,
-        renderedFiles: rendered.length,
-        skippedFiles: skipped.length,
-        percentComplete: ((skipped.length + rendered.length) / totalFiles) * 100,
-        elapsedMs: Date.now() - startTime,
-        currentFile: `${path.basename(sidFile)} [${songIndex}]`
-      });
-    }
-  }
+  );
 
   const endTime = Date.now();
   const cacheHitRate = totalFiles > 0 ? skipped.length / totalFiles : 0;
@@ -690,6 +795,8 @@ export interface GenerateAutoTagsOptions {
   featureExtractor?: FeatureExtractor;
   predictRatings?: PredictRatings;
   onProgress?: AutoTagProgressCallback;
+  threads?: number;
+  onThreadUpdate?: (update: ThreadActivityUpdate) => void;
 }
 
 export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
@@ -709,6 +816,17 @@ export interface GenerateAutoTagsResult {
   metrics: GenerateAutoTagsMetrics;
 }
 
+interface AutoTagJob {
+  sidFile: string;
+  relativePath: string;
+  posixRelative: string;
+  songIndex: number;
+  songCount: number;
+  metadata: SidMetadata;
+  manualRecord: ManualTagRecord | null;
+  wavPath: string;
+}
+
 export async function generateAutoTags(
   plan: ClassificationPlan,
   options: GenerateAutoTagsOptions = {}
@@ -719,6 +837,7 @@ export async function generateAutoTags(
   const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
   const onProgress = options.onProgress;
+  const onThreadUpdate = options.onThreadUpdate;
 
   const autoTagged: string[] = [];
   const manualEntries: string[] = [];
@@ -732,106 +851,151 @@ export async function generateAutoTags(
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const totalFiles = totalSongs;
-  let processedSongs = 0;
+  const jobs: AutoTagJob[] = [];
+  let metadataProcessed = 0;
 
   for (const sidFile of sidFiles) {
     const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
     const posixRelative = toPosixRelative(relativePath);
 
-    // Extract metadata once per SID file
     const metadata = await extractMetadata({
       sidFile,
       sidplayPath: plan.sidplayPath,
       relativePath: posixRelative
     });
-    
-    // Get song count from parsed metadata
+
     const fullMetadata = sidMetadataCache.get(sidFile);
     const metadataPath = await writeMetadataRecord(plan, sidFile, metadata, fullMetadata);
     metadataFiles.push(metadataPath);
 
     const songCount = fullMetadata?.songs ?? 1;
+    const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
 
-    // Process each song within the SID file
     for (let songIndex = 1; songIndex <= songCount; songIndex++) {
-      // Report progress periodically
-      if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
+      if (onProgress && metadataProcessed % AUTOTAG_PROGRESS_INTERVAL === 0) {
         onProgress({
           phase: "metadata",
           totalFiles,
-          processedFiles: processedSongs,
-          percentComplete: (processedSongs / totalFiles) * 100,
+          processedFiles: metadataProcessed,
+          percentComplete: totalFiles === 0 ? 100 : (metadataProcessed / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
           currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
         });
       }
+      metadataProcessed += 1;
 
-      const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
-      const needsAuto = !manualRecord || hasMissingDimensions(manualRecord.ratings);
-      let autoRatings: TagRatings | null = null;
-
-      if (needsAuto) {
-  const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
-        if (!(await pathExists(wavPath))) {
-          throw new Error(
-            `Missing WAV cache for ${posixRelative} song ${songIndex}. Run buildWavCache before generateAutoTags.`
-          );
-        }
-
-        if (onProgress) {
-          onProgress({
-            phase: "tagging",
-            totalFiles,
-            processedFiles: processedSongs,
-            percentComplete: (processedSongs / totalFiles) * 100,
-            elapsedMs: Date.now() - startTime,
-            currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
-          });
-        }
-
-        const features = await featureExtractor({ wavFile: wavPath, sidFile });
-        autoRatings = await predictRatings({
-          features,
-          sidFile,
-          relativePath: posixRelative,
-          metadata
-        });
-        predictionsGenerated += 1;
-      }
-
-      const { ratings, source } = combineRatings(manualRecord?.ratings ?? null, autoRatings);
-
-      // Create a unique key for this song
-      // For single-song files, use just the path (backwards compatible)
-      // For multi-song files, use "path:songIndex" format
-      const songKey = songCount > 1 ? `${posixRelative}:${songIndex}` : posixRelative;
-
-      if (source === "auto") {
-        autoTagged.push(songKey);
-      } else if (source === "manual") {
-        manualEntries.push(songKey);
-      } else {
-        mixedEntries.push(songKey);
-      }
-
-      const autoFilePath = resolveAutoTagFilePath(
-        plan.tagsPath,
+      const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
+      jobs.push({
+        sidFile,
         relativePath,
-        plan.classificationDepth
-      );
-      const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
-      const key = songCount > 1 ? `${baseKey}:${songIndex}` : baseKey;
-      
-      const entry: AutoTagEntry = { ...ratings, source };
-      const existingEntries = grouped.get(autoFilePath);
-      if (existingEntries) {
-        existingEntries.set(key, entry);
-      } else {
-        grouped.set(autoFilePath, new Map([[key, entry]]));
+        posixRelative,
+        songIndex,
+        songCount,
+        metadata,
+        manualRecord,
+        wavPath
+      });
+    }
+  }
+
+  const taggingConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
+  let processedSongs = 0;
+
+  await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
+    const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
+    onThreadUpdate?.({
+      threadId: context.threadId,
+      phase: "tagging",
+      status: "working",
+      file: songLabel
+    });
+    const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
+    const needsAuto = !job.manualRecord || hasMissingDimensions(manualRatings ?? {});
+    let autoRatings: TagRatings | null = null;
+
+    if (needsAuto) {
+      if (!(await pathExists(job.wavPath))) {
+        throw new Error(
+          `Missing WAV cache for ${job.posixRelative} song ${job.songIndex}. Run buildWavCache before generateAutoTags.`
+        );
       }
 
-      processedSongs++;
+      if (onProgress) {
+        onProgress({
+          phase: "tagging",
+          totalFiles,
+          processedFiles: processedSongs,
+          percentComplete: totalFiles === 0 ? 0 : (processedSongs / totalFiles) * 100,
+          elapsedMs: Date.now() - startTime,
+          currentFile: songLabel
+        });
+      }
+
+      const features = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+      autoRatings = await predictRatings({
+        features,
+        sidFile: job.sidFile,
+        relativePath: job.posixRelative,
+        metadata: job.metadata
+      });
+      predictionsGenerated += 1;
     }
+
+    const { ratings, source } = combineRatings(manualRatings, autoRatings);
+
+    const songKey = job.songCount > 1 ? `${job.posixRelative}:${job.songIndex}` : job.posixRelative;
+
+    if (source === "auto") {
+      autoTagged.push(songKey);
+    } else if (source === "manual") {
+      manualEntries.push(songKey);
+    } else {
+      mixedEntries.push(songKey);
+    }
+
+    const autoFilePath = resolveAutoTagFilePath(
+      plan.tagsPath,
+      job.relativePath,
+      plan.classificationDepth
+    );
+    const baseKey = toPosixRelative(resolveAutoTagKey(job.relativePath, plan.classificationDepth));
+    const key = job.songCount > 1 ? `${baseKey}:${job.songIndex}` : baseKey;
+
+    const entry: AutoTagEntry = { ...ratings, source };
+    const existingEntries = grouped.get(autoFilePath);
+    if (existingEntries) {
+      existingEntries.set(key, entry);
+    } else {
+      grouped.set(autoFilePath, new Map([[key, entry]]));
+    }
+
+    processedSongs += 1;
+
+    if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
+      onProgress({
+        phase: "tagging",
+        totalFiles,
+        processedFiles: processedSongs,
+        percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
+        elapsedMs: Date.now() - startTime,
+        currentFile: songLabel
+      });
+    }
+    onThreadUpdate?.({
+      threadId: context.threadId,
+      phase: "tagging",
+      status: "idle"
+    });
+  });
+
+  if (onProgress && totalFiles > 0) {
+    onProgress({
+      phase: "tagging",
+      totalFiles,
+      processedFiles: processedSongs,
+      percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
+      elapsedMs: Date.now() - startTime
+    });
   }
 
   for (const [autoFilePath, entries] of grouped) {
