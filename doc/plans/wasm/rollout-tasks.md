@@ -54,6 +54,7 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 - [x] Integrate the relocated code into the existing CLI/runner entry points without duplicating logic.
 - [x] Update bundler/rollup/esbuild configurations to include the relocated WASM glue code.
 - [x] Remove the original files from `doc/plans/wasm/working-code/` only after the relocated versions are referenced and tests pass.
+- [x] Provide a temporary header-patching fallback inside `SidAudioEngine` so individual songs can be targeted while the native `selectSong` binding is revisited.
 
 ## Phase 4 — Build & Verification
 

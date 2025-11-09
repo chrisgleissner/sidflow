@@ -174,6 +174,10 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
 - Updated root TypeScript config references and path aliases so other packages can import `@sidflow/libsidplayfp-wasm` directly.
 - Replaced the `doc/plans/wasm/working-code/` contents with a relocation notice and removed the obsolete source copies to avoid divergence.
 
+### Interim song-selection fallback
+
+The native `SidPlayerContext::selectSong` binding still throws a WASM signature mismatch at runtime. Until we can expose a stable C++ shim, the SidAudioEngine now rewrites the SID header (start-song field) and reloads the buffer to “pin” playback to a specific song. This keeps multi-song playback functional across both CLI and web paths, and the approach is encapsulated so we can swap it out once the binding issue is resolved.
+
 ## Phase 4 — Build & verification
 
 ### Phase 4 Objectives (Build & verification)
