@@ -161,7 +161,7 @@ export class SidAudioEngine {
     this.context.reset();
   }
 
-  renderCycles(cycles = 20000): Int16Array | null {
+  renderCycles(cycles = 100000): Int16Array | null {
     if (!this.context || !this.configured) {
       return null;
     }
@@ -182,7 +182,7 @@ export class SidAudioEngine {
 
   async renderSeconds(
     seconds: number,
-    cyclesPerChunk = 20000,
+    cyclesPerChunk = 100000,
     onProgress?: (samplesWritten: number) => void
   ): Promise<Int16Array> {
     if (seconds <= 0) {
@@ -202,7 +202,7 @@ export class SidAudioEngine {
 
   async renderFrames(
     frames: number,
-    cyclesPerChunk = 2000,
+    cyclesPerChunk = 100000,
     onProgress?: (samplesWritten: number) => void,
     { loop = false }: { loop?: boolean } = {}
   ): Promise<Int16Array> {
@@ -278,7 +278,7 @@ export class SidAudioEngine {
     return { chunk, start: 0 };
   }
 
-  async seekSeconds(seconds: number, cyclesPerChunk = 20000): Promise<number> {
+  async seekSeconds(seconds: number, cyclesPerChunk = 100000): Promise<number> {
     if (seconds <= 0) {
       this.useCachePlayback = this.cacheAvailable();
       this.cacheCursor = 0;
@@ -410,7 +410,7 @@ export class SidAudioEngine {
 
       let chunk: Int16Array | null;
       try {
-        chunk = ctx.render(20000);
+        chunk = ctx.render(100000);
       } catch {
         break;
       }
