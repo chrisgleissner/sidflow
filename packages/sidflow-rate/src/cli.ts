@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
 import process from "node:process";
-import { spawn } from "node:child_process";
+import path from "node:path";
+import { SidPlaybackHarness } from "@sidflow/common";
 
 import {
   DEFAULT_RATINGS,
@@ -31,11 +32,12 @@ function printHelp(): void {
     "Usage: sidflow rate [options]",
     "",
     "Interactively rate SID tunes with energy, mood, complexity, and preference ratings.",
+    "Playback uses the shared WASM harness; ensure ffplay or aplay is available for audio output.",
     "",
     "Options:",
-    "  --config <path>   Load an alternate .sidflow.json",
-    "  --sidplay <path>  Override the sidplayfp executable",
-    "  --random          Shuffle the unrated queue",
+  "  --config <path>   Load an alternate .sidflow.json",
+  "  --sidplay <path>  (deprecated) legacy sidplayfp override (ignored)",
+  "  --random          Shuffle the unrated queue",
     "  --help            Show this message and exit"
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
@@ -136,13 +138,12 @@ export async function runTagCli(argv: string[]): Promise<number> {
   }
 
   const session = await planTagSession({ configPath: options.configPath, random: options.random });
-  const sidplayPath = options.sidplayPath ?? session.sidplayPath;
-  if (!sidplayPath) {
+  if (options.sidplayPath || session.sidplayPath) {
     process.stderr.write(
-      "sidflow-rate requires sidplayfp until the Phase 7 playback harness ships. Provide --sidplay <path> or configure sidplayPath in .sidflow.json.\n"
+      "Warning: sidplayPath is deprecated and ignored. sidflow-rate now uses the WASM playback harness with host audio players.\n"
     );
-    return 1;
   }
+  const playbackHarness = new SidPlaybackHarness();
   const queue = await findUntaggedSids(session.hvscPath, session.tagsPath);
 
   if (queue.length === 0) {
@@ -156,19 +157,110 @@ export async function runTagCli(argv: string[]): Promise<number> {
 
   printInstructions();
 
+  const formatRelativeSid = (sidFile: string): string => {
+    const relative = path.relative(session.hvscPath, sidFile);
+    if (!relative || relative.startsWith("..")) {
+      return sidFile;
+    }
+    return relative;
+  };
+
   return await new Promise<number>((resolve) => {
     let resolved = false;
     let currentIndex = 0;
-    let currentProcess: ReturnType<typeof spawn> | undefined;
     let state: KeyState = { ratings: { ...DEFAULT_RATINGS } };
     let isSaving = false;
+    let handleData: ((chunk: string) => void) | null = null;
+    let handleSigint: (() => void) | null = null;
+
+    const stopPlayback = async (): Promise<void> => {
+      try {
+        await playbackHarness.stop();
+      } catch {
+        // ignore cleanup errors during shutdown
+      }
+    };
+
+    const startPlayback = async (sidFile: string): Promise<void> => {
+      try {
+        await playbackHarness.start({ sidPath: sidFile });
+      } catch (error) {
+        process.stderr.write(
+          `Failed to start playback for ${formatRelativeSid(sidFile)}: ${(error as Error).message}\n`
+        );
+      }
+    };
+
+    const printTrackBanner = (sidFile: string): void => {
+      process.stdout.write(`\n▶ ${formatRelativeSid(sidFile)}\n`);
+      process.stdout.write(`${formatRatings(state.ratings)}\n`);
+    };
+
+    const advance = async (): Promise<void> => {
+      if (isSaving || resolved) {
+        return;
+      }
+      isSaving = true;
+      try {
+        const sidFile = queue[currentIndex];
+        const tagPath = createTagFilePath(session.hvscPath, session.tagsPath, sidFile);
+        await writeManualTag(tagPath, state.ratings, new Date());
+        process.stdout.write(`Saved tags to ${tagPath}\n`);
+        currentIndex += 1;
+
+        if (currentIndex >= queue.length) {
+          finalize(0, "\nAll done – enjoy the playlists!");
+          return;
+        }
+
+        state = { ratings: { ...DEFAULT_RATINGS } };
+        const nextFile = queue[currentIndex];
+        await startPlayback(nextFile);
+        printTrackBanner(nextFile);
+      } finally {
+        isSaving = false;
+      }
+    };
+
+    const quit = (): void => {
+      finalize(0, "\nSession ended without saving.");
+    };
+
+    const handleHarnessFinished = (): void => {
+      if (resolved) {
+        return;
+      }
+      const sidFile = queue[currentIndex];
+      if (!sidFile) {
+        return;
+      }
+      process.stdout.write(
+        `\n⏹ Playback reached the end of ${formatRelativeSid(sidFile)} – restarting for review.\n`
+      );
+      void startPlayback(sidFile);
+    };
+
+    const handleHarnessError = (error: Error): void => {
+      if (resolved) {
+        return;
+      }
+      process.stderr.write(`Playback error: ${error.message}\n`);
+    };
 
     const finalize = (code: number, message?: string): void => {
       if (resolved) {
         return;
       }
       resolved = true;
-      stopPlayback();
+      playbackHarness.off("finished", handleHarnessFinished);
+      playbackHarness.off("error", handleHarnessError);
+      if (handleData) {
+        process.stdin.off("data", handleData);
+      }
+      if (handleSigint) {
+        process.off("SIGINT", handleSigint);
+      }
+      void stopPlayback();
       if (message) {
         process.stdout.write(`${message}\n`);
       }
@@ -179,71 +271,18 @@ export async function runTagCli(argv: string[]): Promise<number> {
       resolve(code);
     };
 
-    const stopPlayback = (): void => {
-      if (currentProcess && !currentProcess.killed) {
-        currentProcess.kill();
-      }
-      currentProcess = undefined;
-    };
-
-    const startPlayback = (sidFile: string): void => {
-      stopPlayback();
-      try {
-        currentProcess = spawn(sidplayPath, [sidFile], { stdio: "ignore" });
-        currentProcess.once("exit", (code) => {
-          if (!resolved && code !== 0) {
-            process.stderr.write(`sidplayfp exited with code ${code} for ${sidFile}\n`);
-          }
-        });
-        currentProcess.once("error", (error) => {
-          process.stderr.write(`Failed to start sidplayfp: ${(error as Error).message}\n`);
-        });
-      } catch (error) {
-        process.stderr.write(`Failed to spawn sidplayfp: ${(error as Error).message}\n`);
-      }
-    };
-
-    const printTrackBanner = (sidFile: string): void => {
-      process.stdout.write(`\n▶ ${sidFile}\n`);
-      process.stdout.write(`${formatRatings(state.ratings)}\n`);
-    };
-
-    const advance = async (): Promise<void> => {
-      if (isSaving || resolved) {
-        return;
-      }
-      isSaving = true;
-      const sidFile = queue[currentIndex];
-      const tagPath = createTagFilePath(session.hvscPath, session.tagsPath, sidFile);
-      await writeManualTag(tagPath, state.ratings, new Date());
-      process.stdout.write(`Saved tags to ${tagPath}\n`);
-      currentIndex += 1;
-
-      if (currentIndex >= queue.length) {
-        finalize(0, "\nAll done – enjoy the playlists!");
-        return;
-      }
-
-      state = { ratings: { ...DEFAULT_RATINGS } };
-      const nextFile = queue[currentIndex];
-      startPlayback(nextFile);
-      printTrackBanner(nextFile);
-      isSaving = false;
-    };
-
-    const quit = (): void => {
-      finalize(0, "\nSession ended without saving.");
-    };
+    playbackHarness.on("finished", handleHarnessFinished);
+    playbackHarness.on("error", handleHarnessError);
 
     const firstFile = queue[currentIndex];
-    startPlayback(firstFile);
+    void startPlayback(firstFile);
     printTrackBanner(firstFile);
 
     process.stdin.setEncoding("utf8");
     process.stdin.setRawMode(true);
     process.stdin.resume();
 
-    process.stdin.on("data", (chunk: string) => {
+    handleData = (chunk: string): void => {
       for (const char of chunk) {
         const previous = state;
         const result = interpretKey(char, state);
@@ -254,9 +293,7 @@ export async function runTagCli(argv: string[]): Promise<number> {
         }
 
         if (result.action === "save") {
-          void advance().finally(() => {
-            isSaving = false;
-          });
+          void advance();
         }
 
         if (result.action === "quit") {
@@ -264,11 +301,14 @@ export async function runTagCli(argv: string[]): Promise<number> {
           return;
         }
       }
-    });
+    };
 
-    process.on("SIGINT", () => {
+    handleSigint = (): void => {
       quit();
-    });
+    };
+
+    process.stdin.on("data", handleData);
+    process.on("SIGINT", handleSigint);
   });
 }
 

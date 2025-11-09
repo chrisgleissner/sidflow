@@ -44,6 +44,7 @@ function printHelp(stream: NodeJS.WritableStream = process.stdout): void {
     "Usage: sidflow play [options]",
     "",
     "Personal radio for SID music with mood-based playlist generation.",
+    "Playback uses the WASM SidPlaybackHarness; ensure either ffplay or aplay is available locally.",
     "",
     "Options:",
     "  --config <path>              Load an alternate .sidflow.json",
@@ -53,7 +54,7 @@ function printHelp(stream: NodeJS.WritableStream = process.stdout): void {
     "  --exploration <0-1>          Exploration factor (default: 0.2)",
     "  --diversity <0-1>            Diversity threshold (default: 0.2)",
     "  --min-duration <seconds>     Minimum song duration in seconds (default: 15)",
-    "  --sidplay <path>             Override sidplayfp executable",
+  "  --sidplay <path>             (deprecated) legacy sidplayfp override (ignored)",
     "  --export <path>              Export playlist to file",
     "  --export-format <fmt>        Export format: json, m3u, m3u8 (default: json)",
     "  --export-only                Export playlist without playing",
@@ -348,6 +349,13 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
     return 1;
   }
 
+  const legacySidplay = options.sidplayPath || config.sidplayPath;
+  if (legacySidplay) {
+    runtime.stderr.write(
+      "Warning: sidplayPath is deprecated and ignored. Playback now uses the WASM renderer with host audio players.\n"
+    );
+  }
+
   const mood = options.mood;
 
   let seed: PlaylistConfig["seed"] = "ambient";
@@ -410,7 +418,6 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
 
     const controller = runtime.createPlaybackController({
       rootPath: config.hvscPath,
-      sidplayPath: options.sidplayPath || config.sidplayPath,
       minDuration: options.minDuration,
       playbackLock,
       playbackSource: "sidflow-play",

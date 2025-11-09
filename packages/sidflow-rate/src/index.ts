@@ -41,9 +41,9 @@ export async function planTagSession(
   const logger = createLogger("sidflow-rate");
   logger.debug("Loaded configuration for tagging session");
 
-  if (!config.sidplayPath) {
+  if (config.sidplayPath) {
     logger.warn(
-      "sidflow-rate currently requires the native sidplayfp binary. Supply --sidplay or add sidplayPath to your config until the playback harness migrates to WASM."
+      "sidplayPath is deprecated and ignored. sidflow-rate now uses the WASM playback harness with host audio players."
     );
   }
 

@@ -113,11 +113,11 @@ Phase 6: Complete
 
 ### Phase 7 Checklist
 
-- [ ] Build a shared playback harness that renders PCM through `SidAudioEngine` and streams it to lightweight native players (`ffplay`/`afplay`/`aplay`), reusing the caching/seeking logic captured in `invocations.md`.
-- [ ] Update playback-lock plumbing so PID/state tracking continues to work when the spawned process is the host player rather than `sidplayfp`.
-- [ ] Preserve CLI UX (keyboard shortcuts, queue management, logging) while emitting deprecation warnings for `--sidplay` until removal in Phase 9.
-- [ ] Provide comprehensive tests/mocks so CI remains deterministic (audio player stubs, playback-lock assertions, seek/pause edge cases).
-- [ ] Revise CLI help text and docs to explain the WASM renderer, list supported host players, and mark legacy flags as deprecated.
+- [x] Build a shared playback harness that renders PCM through `SidAudioEngine` and streams it to lightweight native players (`ffplay`/`afplay`/`aplay`), reusing the caching/seeking logic captured in `invocations.md`.
+- [x] Update playback-lock plumbing so PID/state tracking continues to work when the spawned process is the host player rather than `sidplayfp`.
+- [x] Preserve CLI UX (keyboard shortcuts, queue management, logging) while emitting deprecation warnings for `--sidplay` until removal in Phase 9.
+- [x] Provide comprehensive tests/mocks so CI remains deterministic (audio player stubs, playback-lock assertions, seek/pause edge cases).
+- [x] Revise CLI help text and docs to explain the WASM renderer, list supported host players, and mark legacy flags as deprecated.
 
 ## Phase 8 — Web playback integration
 

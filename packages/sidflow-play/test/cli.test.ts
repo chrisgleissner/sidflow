@@ -295,7 +295,8 @@ describe("runPlayCli", () => {
     expect(stdoutChunks.join("\n")).toContain("Generating playlist");
     expect(stdoutChunks.join("\n")).toContain("Starting playback");
     expect(stdoutChunks.join("\n")).toContain("Stopping playback");
-    expect(stderrChunks).toHaveLength(0);
+    expect(stderrChunks.join("\n")).toContain("sidplayPath is deprecated and ignored");
+    expect(stderrChunks).toHaveLength(1);
     expect(sleepCalls).toHaveLength(0);
   });
 

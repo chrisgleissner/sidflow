@@ -1,13 +1,11 @@
-/**
- * Playback orchestration with sidplayfp.
- */
+import path from "node:path";
+import {
+  SidPlaybackHarness,
+  type PlaybackLock,
+  type PlaybackLockMetadata,
+  type Recommendation
+} from "@sidflow/common";
 
-import { spawn, type ChildProcess } from "node:child_process";
-import type { Recommendation, PlaybackLock } from "@sidflow/common";
-
-/**
- * Playback state enum.
- */
 export enum PlaybackState {
   IDLE = "idle",
   PLAYING = "playing",
@@ -15,9 +13,6 @@ export enum PlaybackState {
   STOPPED = "stopped"
 }
 
-/**
- * Playback event types.
- */
 export interface PlaybackEvent {
   type: "started" | "finished" | "error" | "skipped" | "paused" | "resumed";
   song?: Recommendation;
@@ -25,71 +20,94 @@ export interface PlaybackEvent {
   timestamp: string;
 }
 
-/**
- * Playback options.
- */
 export interface PlaybackOptions {
-  /** Path to sidplayfp executable */
-  sidplayPath?: string;
-  /** Root path for resolving SID files */
   rootPath: string;
-  /** Minimum song duration in seconds (default: 15) */
   minDuration?: number;
-  /** Callback for playback events */
   onEvent?: (event: PlaybackEvent) => void;
-  /** Playback lock for enforcing single playback */
   playbackLock?: PlaybackLock;
-  /** Identifier for playback source */
   playbackSource?: string;
+  createHarness?: () => SidPlaybackHarness;
 }
 
-/**
- * Queue-based playback controller.
- */
+interface PlaybackSession {
+  pid?: number;
+  command: string;
+  sidPath: string;
+  startedAt: Date;
+  offsetSeconds: number;
+  durationSeconds?: number;
+  track: Recommendation;
+}
+
+function resolveDurationSeconds(song: Recommendation | undefined): number | undefined {
+  if (!song || !song.features) {
+    return undefined;
+  }
+  const featureValues = song.features as Record<string, unknown>;
+  const keys = [
+    "duration",
+    "durationSeconds",
+    "duration_seconds",
+    "lengthSeconds",
+    "length_seconds"
+  ];
+  for (const key of keys) {
+    const value = featureValues[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function buildTrackMetadata(song: Recommendation): Record<string, unknown> {
+  return {
+    sid_path: song.sid_path,
+    score: song.score,
+    similarity: song.similarity,
+    songFeedback: song.songFeedback,
+    userAffinity: song.userAffinity,
+    ratings: song.ratings,
+    feedback: song.feedback,
+    features: song.features
+  };
+}
+
 export class PlaybackController {
+  private readonly rootPath: string;
+  private readonly minDuration: number;
+  private readonly onEvent?: (event: PlaybackEvent) => void;
+  private readonly playbackLock?: PlaybackLock;
+  private readonly playbackSource: string;
+  private readonly harness: SidPlaybackHarness;
+
   private queue: Recommendation[] = [];
-  private currentIndex: number = -1;
+  private currentIndex = -1;
   private state: PlaybackState = PlaybackState.IDLE;
-  private process?: ChildProcess;
-  private sidplayPath: string;
-  private rootPath: string;
-  private minDuration: number;
-  private onEvent?: (event: PlaybackEvent) => void;
-  private playbackLock?: PlaybackLock;
-  private playbackSource: string;
+  private currentSession: PlaybackSession | null = null;
+  private currentLockMetadata: PlaybackLockMetadata | null = null;
 
   constructor(options: PlaybackOptions) {
-    this.sidplayPath = options.sidplayPath || "sidplayfp";
     this.rootPath = options.rootPath;
-    this.minDuration = options.minDuration ?? 15; // Default 15 seconds
+    this.minDuration = options.minDuration ?? 15;
     this.onEvent = options.onEvent;
     this.playbackLock = options.playbackLock;
     this.playbackSource = options.playbackSource ?? "sidflow-play";
+    this.harness = options.createHarness ? options.createHarness() : new SidPlaybackHarness();
+
+    this.harness.on("finished", this.handleHarnessFinished);
+    this.harness.on("error", this.handleHarnessError);
   }
 
-  /**
-   * Load songs into the queue.
-   */
   loadQueue(songs: Recommendation[]): void {
     this.queue = [...songs];
     this.currentIndex = -1;
+    this.state = PlaybackState.IDLE;
+    this.currentSession = null;
+    this.currentLockMetadata = null;
   }
 
-  /**
-   * Get current playback state.
-   */
-  getState(): PlaybackState {
-    return this.state;
-  }
-
-  /**
-   * Get queue information.
-   */
-  getQueue(): {
-    songs: Recommendation[];
-    currentIndex: number;
-    remaining: number;
-  } {
+  getQueue(): { songs: Recommendation[]; currentIndex: number; remaining: number } {
     return {
       songs: [...this.queue],
       currentIndex: this.currentIndex,
@@ -97,19 +115,17 @@ export class PlaybackController {
     };
   }
 
-  /**
-   * Get currently playing song.
-   */
   getCurrentSong(): Recommendation | undefined {
-    if (this.currentIndex >= 0 && this.currentIndex < this.queue.length) {
-      return this.queue[this.currentIndex];
+    if (this.currentIndex < 0 || this.currentIndex >= this.queue.length) {
+      return undefined;
     }
-    return undefined;
+    return this.queue[this.currentIndex];
   }
 
-  /**
-   * Start playback from the beginning or resume from current position.
-   */
+  getState(): PlaybackState {
+    return this.state;
+  }
+
   async play(): Promise<void> {
     if (this.state === PlaybackState.PAUSED) {
       await this.resume();
@@ -120,7 +136,6 @@ export class PlaybackController {
       throw new Error("Queue is empty. Load songs first.");
     }
 
-    // Start from beginning if idle
     if (this.currentIndex === -1) {
       this.currentIndex = 0;
     }
@@ -128,189 +143,214 @@ export class PlaybackController {
     await this.playCurrentSong();
   }
 
-  /**
-   * Play the current song in the queue.
-   */
-  private async playCurrentSong(): Promise<void> {
+  async stop(): Promise<void> {
+    if (this.state === PlaybackState.IDLE) {
+      return;
+    }
+    await this.harness.stop();
+    await this.releasePlaybackLock();
+    this.state = PlaybackState.STOPPED;
+    this.currentIndex = -1;
+  }
+
+  async skip(): Promise<void> {
+    const currentSong = this.getCurrentSong();
+    if (!currentSong) {
+      return;
+    }
+    await this.harness.stop();
+    await this.releasePlaybackLock();
+    this.state = PlaybackState.IDLE;
+    this.emitEvent({ type: "skipped", song: currentSong, timestamp: new Date().toISOString() });
+    this.currentIndex += 1;
+    await this.playCurrentSong();
+  }
+
+  async pause(): Promise<void> {
+    if (this.state !== PlaybackState.PLAYING) {
+      return;
+    }
+    await this.harness.pause();
+    const timestamp = new Date();
+    const position = this.harness.getPositionSeconds();
+    if (this.currentSession) {
+      this.currentSession.offsetSeconds = position;
+      this.currentSession.startedAt = timestamp;
+    }
+    await this.updatePlaybackLock({
+      offsetSeconds: position,
+      startedAt: timestamp.toISOString(),
+      isPaused: true
+    });
+    this.state = PlaybackState.PAUSED;
     const song = this.getCurrentSong();
+    this.emitEvent({ type: "paused", song, timestamp: timestamp.toISOString() });
+  }
+
+  async resume(): Promise<void> {
+    if (this.state !== PlaybackState.PAUSED) {
+      return;
+    }
+    await this.harness.resume();
+    const timestamp = new Date();
+    if (this.currentSession) {
+      this.currentSession.startedAt = timestamp;
+    }
+    await this.updatePlaybackLock({
+      startedAt: timestamp.toISOString(),
+      isPaused: false
+    });
+    this.state = PlaybackState.PLAYING;
+    const song = this.getCurrentSong();
+    this.emitEvent({ type: "resumed", song, timestamp: timestamp.toISOString() });
+  }
+
+  private emitEvent(event: PlaybackEvent): void {
+    this.onEvent?.(event);
+  }
+
+  private async playCurrentSong(): Promise<void> {
+    const song = this.advanceToPlayableSong();
     if (!song) {
       this.state = PlaybackState.IDLE;
       return;
     }
 
-    // Check if song duration meets minimum requirement
-    const duration = song.features?.duration;
-    if (typeof duration === 'number' && duration < this.minDuration) {
-      // Skip songs that are too short
-      this.emitEvent({ 
-        type: "skipped", 
-        song, 
-        timestamp: new Date().toISOString() 
-      });
-      
-      // Move to next song
-      this.currentIndex += 1;
-      if (this.currentIndex < this.queue.length) {
-        await this.playCurrentSong();
-      } else {
-        this.state = PlaybackState.IDLE;
-      }
-      return;
-    }
+    const sidPath = path.resolve(this.rootPath, song.sid_path);
+    const durationSeconds = resolveDurationSeconds(song);
 
-    const sidPath = `${this.rootPath}/${song.sid_path}`;
-    
+    await this.playbackLock?.stopExistingPlayback(this.playbackSource);
+
     try {
-      await this.playbackLock?.stopExistingPlayback(this.playbackSource);
+      const startResult = await this.harness.start({
+        sidPath,
+        durationSeconds
+      });
+
+      const session: PlaybackSession = {
+        pid: startResult.pid,
+        command: startResult.command,
+        sidPath,
+        startedAt: startResult.startedAt,
+        offsetSeconds: startResult.offsetSeconds,
+        durationSeconds,
+        track: song
+      };
+      this.currentSession = session;
+      await this.registerPlayback(session);
       this.state = PlaybackState.PLAYING;
-      this.emitEvent({ type: "started", song, timestamp: new Date().toISOString() });
-
-      // Spawn sidplayfp process
-      this.process = spawn(this.sidplayPath, [sidPath], {
-        stdio: ["ignore", "pipe", "pipe"]
-      });
-      if (this.process?.pid) {
-        const metadata = {
-          pid: this.process.pid,
-          command: this.playbackSource,
-          sidPath,
-          source: this.playbackSource,
-          startedAt: new Date().toISOString()
-        };
-        await this.playbackLock?.registerProcess(metadata);
-        const pid = this.process.pid;
-        this.process.once("close", () => {
-          void this.playbackLock?.releaseIfMatches(pid);
-        });
-        this.process.once("error", () => {
-          void this.playbackLock?.releaseIfMatches(pid);
-        });
-      }
-
-      // Handle process completion
-      this.process.on("close", (code) => {
-        if (this.state === PlaybackState.PLAYING) {
-          if (code === 0) {
-            this.emitEvent({ type: "finished", song, timestamp: new Date().toISOString() });
-            this.next();
-          } else {
-            const error = new Error(`sidplayfp exited with code ${code}`);
-            this.emitEvent({ type: "error", song, error, timestamp: new Date().toISOString() });
-            this.state = PlaybackState.STOPPED;
-          }
-        }
-      });
-
-      // Handle process errors
-      this.process.on("error", (error) => {
-        this.emitEvent({ type: "error", song, error, timestamp: new Date().toISOString() });
-        this.state = PlaybackState.STOPPED;
+      this.emitEvent({
+        type: "started",
+        song,
+        timestamp: startResult.startedAt.toISOString()
       });
     } catch (error) {
+      try {
+        await this.harness.stop();
+      } catch {
+        // ignore cleanup failure during error handling
+      }
+      try {
+        await this.releasePlaybackLock();
+      } catch {
+        // ignore cleanup failure during error handling
+      }
+      this.state = PlaybackState.STOPPED;
       this.emitEvent({
         type: "error",
         song,
         error: error instanceof Error ? error : new Error(String(error)),
         timestamp: new Date().toISOString()
       });
-      this.state = PlaybackState.STOPPED;
     }
   }
 
-  /**
-   * Skip to the next song.
-   */
-  async skip(): Promise<void> {
-    const currentSong = this.getCurrentSong();
-    
-    // Stop current playback
-    if (this.process) {
-      this.process.kill();
-      this.process = undefined;
+  private advanceToPlayableSong(): Recommendation | null {
+    while (this.currentIndex >= 0 && this.currentIndex < this.queue.length) {
+      const song = this.queue[this.currentIndex];
+      const durationSeconds = resolveDurationSeconds(song);
+      if (durationSeconds === undefined || durationSeconds >= this.minDuration) {
+        return song;
+      }
+      this.emitEvent({
+        type: "skipped",
+        song,
+        timestamp: new Date().toISOString()
+      });
+      this.currentIndex += 1;
     }
-
-    if (currentSong) {
-      this.emitEvent({ type: "skipped", song: currentSong, timestamp: new Date().toISOString() });
-    }
-
-    await this.next();
+    return null;
   }
 
-  /**
-   * Move to the next song and play it.
-   */
-  private async next(): Promise<void> {
+  private async playNext(): Promise<void> {
     this.currentIndex += 1;
-    
-    if (this.currentIndex < this.queue.length) {
-      await this.playCurrentSong();
-    } else {
+    if (this.currentIndex >= this.queue.length) {
       this.state = PlaybackState.IDLE;
+      this.currentSession = null;
+      this.currentLockMetadata = null;
+      return;
     }
+    await this.playCurrentSong();
   }
 
-  /**
-   * Pause playback.
-   */
-  async pause(): Promise<void> {
-    if (this.state !== PlaybackState.PLAYING) {
+  private async registerPlayback(session: PlaybackSession): Promise<void> {
+    if (!this.playbackLock || session.pid === undefined) {
+      this.currentLockMetadata = null;
       return;
     }
 
-    if (this.process) {
-      this.process.kill("SIGSTOP");
-      this.state = PlaybackState.PAUSED;
-      
-      const song = this.getCurrentSong();
-      this.emitEvent({ type: "paused", song, timestamp: new Date().toISOString() });
-    }
+    const metadata: PlaybackLockMetadata = {
+      pid: session.pid,
+      command: session.command,
+      sidPath: session.sidPath,
+      source: this.playbackSource,
+      startedAt: session.startedAt.toISOString(),
+      offsetSeconds: session.offsetSeconds,
+      durationSeconds: session.durationSeconds,
+      isPaused: false,
+      track: buildTrackMetadata(session.track)
+    };
+
+    await this.playbackLock.registerProcess(metadata);
+    this.currentLockMetadata = metadata;
   }
 
-  /**
-   * Resume playback.
-   */
-  async resume(): Promise<void> {
-    if (this.state !== PlaybackState.PAUSED) {
+  private async updatePlaybackLock(update: Partial<PlaybackLockMetadata>): Promise<void> {
+    if (!this.playbackLock || !this.currentLockMetadata) {
       return;
     }
+    const nextMetadata = { ...this.currentLockMetadata, ...update } as PlaybackLockMetadata;
+    this.currentLockMetadata = nextMetadata;
+    await this.playbackLock.updateMetadata(nextMetadata);
+  }
 
-    if (this.process) {
-      this.process.kill("SIGCONT");
-      this.state = PlaybackState.PLAYING;
-      
-      const song = this.getCurrentSong();
-      this.emitEvent({ type: "resumed", song, timestamp: new Date().toISOString() });
+  private async releasePlaybackLock(): Promise<void> {
+    const metadata = this.currentLockMetadata;
+    this.currentLockMetadata = null;
+    this.currentSession = null;
+    if (this.playbackLock && metadata?.pid) {
+      await this.playbackLock.releaseIfMatches(metadata.pid);
     }
   }
 
-  /**
-   * Stop playback and clear queue.
-   */
-  async stop(): Promise<void> {
-    if (this.process) {
-      this.process.kill();
-      this.process = undefined;
+  private handleHarnessFinished = (): void => {
+    const song = this.getCurrentSong();
+    if (song) {
+      this.emitEvent({ type: "finished", song, timestamp: new Date().toISOString() });
     }
+    void this.releasePlaybackLock();
+    this.state = PlaybackState.IDLE;
+    void this.playNext();
+  };
 
+  private handleHarnessError = (error: Error): void => {
+    const song = this.getCurrentSong();
     this.state = PlaybackState.STOPPED;
-    this.currentIndex = -1;
-  }
-
-  /**
-   * Emit playback event.
-   */
-  private emitEvent(event: PlaybackEvent): void {
-    if (this.onEvent) {
-      this.onEvent(event);
-    }
-  }
+    this.emitEvent({ type: "error", song, error, timestamp: new Date().toISOString() });
+    void this.releasePlaybackLock();
+  };
 }
 
-/**
- * Create a playback controller instance.
- */
-export function createPlaybackController(
-  options: PlaybackOptions
-): PlaybackController {
+export function createPlaybackController(options: PlaybackOptions): PlaybackController {
   return new PlaybackController(options);
 }
