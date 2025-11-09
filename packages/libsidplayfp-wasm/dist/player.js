@@ -125,7 +125,7 @@ export class SidAudioEngine {
         }
         this.context.reset();
     }
-    renderCycles(cycles = 20000) {
+    renderCycles(cycles = 100000) {
         if (!this.context || !this.configured) {
             return null;
         }
@@ -144,7 +144,7 @@ export class SidAudioEngine {
         }
         return chunk.slice();
     }
-    async renderSeconds(seconds, cyclesPerChunk = 20000, onProgress) {
+    async renderSeconds(seconds, cyclesPerChunk = 100000, onProgress) {
         if (seconds <= 0) {
             throw new Error('Duration must be greater than zero');
         }
@@ -158,7 +158,7 @@ export class SidAudioEngine {
         const frames = Math.max(1, Math.floor(sampleRate * seconds));
         return this.renderFrames(frames, cyclesPerChunk, onProgress);
     }
-    async renderFrames(frames, cyclesPerChunk = 2000, onProgress, { loop = false } = {}) {
+    async renderFrames(frames, cyclesPerChunk = 100000, onProgress, { loop = false } = {}) {
         if (frames <= 0) {
             throw new Error('Frame count must be greater than zero');
         }
@@ -221,7 +221,7 @@ export class SidAudioEngine {
         }
         return { chunk, start: 0 };
     }
-    async seekSeconds(seconds, cyclesPerChunk = 20000) {
+    async seekSeconds(seconds, cyclesPerChunk = 100000) {
         if (seconds <= 0) {
             this.useCachePlayback = this.cacheAvailable();
             this.cacheCursor = 0;
@@ -344,7 +344,7 @@ export class SidAudioEngine {
             }
             let chunk;
             try {
-                chunk = ctx.render(20000);
+                chunk = ctx.render(100000);
             }
             catch {
                 break;
