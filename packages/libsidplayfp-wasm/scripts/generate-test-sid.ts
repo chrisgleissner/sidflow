@@ -101,20 +101,14 @@ function generateSidFile(): Uint8Array {
         0xA9, 0xF0,       // LDA #$F0 (S=F, R=0)
         0x8D, 0x06, 0xD4, // STA $D406 (Voice 1 SR)
 
-    // Prime voice control: reset oscillator then enable triangle waveform + gate
-        0xA9, 0x08,       // LDA #$08 (Test bit)
-        0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
-        0xA9, 0x00,       // LDA #$00 (clear gate)
-        0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
-    0xA9, 0x11,       // LDA #$11 (Triangle + Gate)
+        // Prime voice control: enable triangle waveform + gate
+        0xA9, 0x11,       // LDA #$11 (Triangle + Gate)
         0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
 
         0x60,             // RTS (return from init)
 
-    // PLAY routine (0x101F): Reassert gate to avoid accidental releases
-    0xA9, 0x11,       // LDA #$11 (Triangle + Gate)
-    0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
-    0x60              // RTS
+        // PLAY routine (0x101F): Nothing to do, tone sustains automatically
+        0x60              // RTS
     ];
 
     // Write the code
