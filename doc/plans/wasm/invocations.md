@@ -2,6 +2,17 @@
 
 This document analyzes the behavior differences between native libsidplayfp and its WASM port, particularly focusing on the timing gaps observed in WASM audio rendering.
 
+## References
+
+Source code for the native (lib)sidplayfp can be found at:
+
+- [sidplayfp](https://github.com/libsidplayfp/sidplayfp) - CLI wrapper which calls `libsidplayfp`
+- [libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) - library which performs the actual SID to PCM conversion
+
+Source code for the WASM version of `libsidplayfp` can be found in this repo at the relative path from the repo's root:
+
+- `packages/libsidplayfp-wasm`
+
 ## 1. Native libsidplayfp Behavior
 
 ### 1.1 Architecture Overview
