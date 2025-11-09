@@ -30,6 +30,7 @@ import {
 import { ensureDir } from "../packages/sidflow-common/src/fs.js";
 import { stringifyDeterministic } from "../packages/sidflow-common/src/json.js";
 import { createPlaybackController, PlaybackState } from "../packages/sidflow-play/src/index.js";
+import { parseSidFile } from "../packages/sidflow-common/src/sid-parser.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-e2e-");
 const TEST_DATA_PATH = path.join(process.cwd(), "test-data");
@@ -83,24 +84,24 @@ function generateTestWav(durationSeconds: number, frequency: number, sampleRate:
 /**
  * Count SID files in a directory recursively.
  */
-async function countSidFiles(dir: string): Promise<number> {
+async function listSidFiles(dir: string): Promise<string[]> {
   if (!existsSync(dir)) {
-    return 0;
+    return [];
   }
-  
-  let count = 0;
+
+  const files: string[] = [];
   const entries = await readdir(dir, { withFileTypes: true });
-  
+
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      count += await countSidFiles(fullPath);
+      files.push(...(await listSidFiles(fullPath)));
     } else if (entry.isFile() && entry.name.endsWith(".sid")) {
-      count++;
+      files.push(fullPath);
     }
   }
-  
-  return count;
+
+  return files;
 }
 
 describe("End-to-End SIDFlow Pipeline", () => {
@@ -113,6 +114,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
   let configPath: string;
   let plan: ClassificationPlan;
   let sidFileCount: number;
+  let totalSongCount: number;
   let hasSidplayfp: boolean;
 
   beforeAll(async () => {
@@ -141,8 +143,18 @@ describe("End-to-End SIDFlow Pipeline", () => {
       throw new Error("Failed to copy test data");
     }
 
-    // Count SID files
-    sidFileCount = await countSidFiles(hvscPath);
+    const sidFiles = await listSidFiles(hvscPath);
+    sidFileCount = sidFiles.length;
+    totalSongCount = 0;
+
+    for (const sidFile of sidFiles) {
+      try {
+        const metadata = await parseSidFile(sidFile);
+        totalSongCount += Math.max(1, metadata.songs ?? 1);
+      } catch {
+        totalSongCount += 1;
+      }
+    }
     
     // Create config
     const config = {
@@ -179,7 +191,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     if (hasSidplayfp) {
       // Use real sidplayfp
       renderHook = async (options: { sidFile: string; wavFile: string }) => {
-        await defaultRenderWav({ ...options, sidplayPath: "sidplayfp" });
+        await defaultRenderWav(options);
       };
     } else {
       // Mock WAV renderer for CI without sidplayfp
@@ -195,9 +207,9 @@ describe("End-to-End SIDFlow Pipeline", () => {
       forceRebuild: false
     });
 
-    expect(result.rendered).toHaveLength(sidFileCount);
+  expect(result.rendered).toHaveLength(totalSongCount);
     expect(result.skipped).toHaveLength(0);
-    expect(result.metrics.totalFiles).toBe(sidFileCount);
+  expect(result.metrics.totalFiles).toBe(totalSongCount);
     expect(result.metrics.cacheHitRate).toBe(0);
   });
 
@@ -239,7 +251,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     if (hasSidplayfp) {
       // Use real metadata extractor
       metadataExtractor = async (options: { sidFile: string; relativePath: string }) => {
-        return await defaultExtractMetadata({ ...options, sidplayPath: "sidplayfp" });
+        return await defaultExtractMetadata(options);
       };
     } else {
       // Mock metadata extractor
@@ -252,8 +264,8 @@ describe("End-to-End SIDFlow Pipeline", () => {
       predictRatings: tfjsPredictRatings
     });
 
-    expect(result.autoTagged).toHaveLength(sidFileCount);
-    expect(result.metrics.predictionsGenerated).toBe(sidFileCount);
+  expect(result.autoTagged).toHaveLength(totalSongCount);
+  expect(result.metrics.predictionsGenerated).toBe(totalSongCount);
     expect(result.tagFiles.length).toBeGreaterThan(0);
     
     // Verify auto-tags.json files were created
@@ -297,8 +309,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
   it("creates playback controller with classified songs", () => {
     const controller = createPlaybackController({
-      rootPath: hvscPath,
-      sidplayPath: hasSidplayfp ? "sidplayfp" : undefined
+      rootPath: hvscPath
     });
 
     expect(controller).toBeDefined();

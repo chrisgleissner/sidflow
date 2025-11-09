@@ -299,7 +299,7 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
                   </span>
                   <div className="flex gap-2">
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="outline"
                       onClick={handleFolderUp}
                       disabled={folderListing.relativePath.length === 0 || isLoadingFolders}
@@ -307,7 +307,7 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
                       Up
                     </Button>
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="outline"
                       onClick={() => loadFolders('')}
                       disabled={isLoadingFolders}

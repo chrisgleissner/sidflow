@@ -7,7 +7,7 @@ interface RunOptions {
   command: string;
   args?: string[];
   cwd: string;
-  env?: NodeJS.ProcessEnv;
+  env?: Record<string, string>;
   timeout?: number;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;

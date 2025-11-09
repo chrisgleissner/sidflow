@@ -124,8 +124,10 @@ Phase 7: Complete
 
 ### Phase 8 Checklist
 
-- [ ] Convert the Next.js `/api/rate/*` and `/api/play/*` routes into control endpoints only; actual audio rendering must occur in the browser via a shared client-side loader for `@sidflow/libsidplayfp-wasm`.
-- [ ] Wire PlayTab/RateTab components to the browser engine, reusing cache/seek patterns from `invocations.md`, and expose hooks for pause/resume/status polling that scale to many concurrent listeners.
+- [x] Convert the Next.js `/api/rate/*` and `/api/play/*` routes into control endpoints only; actual audio rendering must occur in the browser via a shared client-side loader for `@sidflow/libsidplayfp-wasm`. *(RateTab and PlayTab now consume session descriptors entirely in-browser, leaving the routes responsible solely for session orchestration.)*
+- [x] Wire PlayTab/RateTab components to the browser engine, reusing cache/seek patterns from `invocations.md`, and expose hooks for pause/resume/status polling that scale to many concurrent listeners.
+  - [x] RateTab uses the new `SidflowPlayer` wrapper around `libsidplayfp-wasm`, including local seek/pause and session-based SID fetching.
+  - [x] PlayTab migrated to the browser engine.
 - [ ] Ship the WASM asset through the web build (static asset or dynamic loader), document caching/versioning expectations, and ensure the browser path mirrors the Bun loader semantics.
 - [ ] Extend Playwright E2E coverage to verify real-time updates (position, seek, cache warm-up) without native `sidplayfp`, asserting that no server-side PCM streaming occurs.
 - [ ] Instrument telemetry/logging (client + server) so playback failures surface actionable context, laying groundwork for future multi-user readiness while keeping multi-tenant rollout explicitly out of scope.

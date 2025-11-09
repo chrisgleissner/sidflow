@@ -14,6 +14,7 @@ import type {
 import type { FetchProgressSnapshot } from './types/fetch-progress';
 import type { ClassifyProgressSnapshot, ClassifyStorageStats } from './types/classify-progress';
 import type { RateTrackInfo, RateTrackMetadata } from './types/rate-track';
+import type { PlaybackSessionDescriptor } from './types/playback-session';
 
 export type { RateTrackInfo, RateTrackMetadata };
 
@@ -76,7 +77,12 @@ export async function playTrack(request: PlayRequest): Promise<ApiResponse<{ out
   return apiRequest('/play', request);
 }
 
-export async function playManualTrack(request: PlayRequest): Promise<ApiResponse<{ track: RateTrackInfo }>> {
+export interface RateTrackWithSession {
+  track: RateTrackInfo;
+  session: PlaybackSessionDescriptor;
+}
+
+export async function playManualTrack(request: PlayRequest): Promise<ApiResponse<RateTrackWithSession>> {
   return apiRequest('/play/manual', request);
 }
 
@@ -141,7 +147,7 @@ export async function trainModel(request: TrainRequest = {}): Promise<ApiRespons
 export async function requestRandomPlayTrack(
   preset?: string,
   options: { preview?: boolean } = {}
-): Promise<ApiResponse<{ track: RateTrackInfo }>> {
+): Promise<ApiResponse<{ track: RateTrackInfo; session: PlaybackSessionDescriptor | null }>> {
   const response = await fetch(`${API_BASE}/play/random`, {
     method: 'POST',
     headers: {
@@ -155,7 +161,7 @@ export async function requestRandomPlayTrack(
   return response.json();
 }
 
-export async function requestRandomRateTrack(): Promise<ApiResponse<{ track: RateTrackInfo }>> {
+export async function requestRandomRateTrack(): Promise<ApiResponse<RateTrackWithSession>> {
   const response = await fetch(`${API_BASE}/rate/random`, {
     method: 'POST',
     headers: {

@@ -5,15 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import {
-  controlRatePlayback,
-  getRatePlaybackStatus,
   playManualTrack,
   rateTrack,
   requestRandomPlayTrack,
   type RateTrackInfo,
+  type RateTrackWithSession,
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2 } from 'lucide-react';
+import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -98,6 +98,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [isRating, setIsRating] = useState(false);
   const [playedTracks, setPlayedTracks] = useState<PlaylistTrack[]>([]);
   const [upcomingTracks, setUpcomingTracks] = useState<PlaylistTrack[]>([]);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
 
   const seekTimeout = useRef<NodeJS.Timeout | null>(null);
   const playlistCounterRef = useRef(1);
@@ -105,6 +107,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const playedRef = useRef<PlaylistTrack[]>([]);
   const upcomingRef = useRef<PlaylistTrack[]>([]);
   const currentTrackRef = useRef<PlaylistTrack | null>(null);
+  const playerRef = useRef<SidflowPlayer | null>(null);
+  const pendingLoadAbortRef = useRef<AbortController | null>(null);
+  const playNextHandlerRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     playedRef.current = playedTracks;
@@ -137,6 +142,74 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     trackPlayedHandlerRef.current = onTrackPlayed;
   }, [onTrackPlayed]);
 
+  useEffect(() => {
+    const player = new SidflowPlayer();
+    const handleProgress = (progress: number) => {
+      setLoadProgress(progress);
+    };
+    const handleError = (error: Error) => {
+      statusHandlerRef.current(`Playback error: ${error.message}`, true);
+    };
+    const handleState = (state: SidflowPlayerState) => {
+      if (state === 'ended') {
+        setIsPlaying(false);
+        setPosition((prev) => {
+          const currentPlayer = playerRef.current;
+          if (!currentPlayer) {
+            return prev;
+          }
+          const nextDuration = currentPlayer.getDurationSeconds();
+          return Number.isFinite(nextDuration) && nextDuration > 0 ? nextDuration : prev;
+        });
+        const next = playNextHandlerRef.current;
+        if (next) {
+          void next();
+        }
+      }
+    };
+
+    player.on('loadprogress', handleProgress);
+    player.on('error', handleError);
+    player.on('statechange', handleState);
+    playerRef.current = player;
+
+    return () => {
+      pendingLoadAbortRef.current?.abort();
+      player.off('loadprogress', handleProgress);
+      player.off('error', handleError);
+      player.off('statechange', handleState);
+      player.destroy();
+      playerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    let rafId: number;
+
+    const tick = () => {
+      const player = playerRef.current;
+      if (player) {
+        const durationSeconds = player.getDurationSeconds();
+        if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+          setDuration((prev) => (Math.abs(prev - durationSeconds) < 0.1 ? prev : durationSeconds));
+        }
+        const positionSeconds = player.getPositionSeconds();
+        if (Number.isFinite(positionSeconds)) {
+          setPosition(positionSeconds);
+        }
+        const state = player.getState();
+        const playing = state === 'playing';
+        setIsPlaying((prev) => (prev === playing ? prev : playing));
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, []);
+
   const notifyStatus = useCallback((message: string, isError = false) => {
     statusHandlerRef.current(message, isError);
   }, []);
@@ -155,10 +228,79 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     return { ...track, playlistNumber };
   }, []);
 
+  const loadTrackIntoPlayer = useCallback(
+    async (
+      payload: RateTrackWithSession,
+      playlistNumber: number,
+      announcement?: string
+    ): Promise<boolean> => {
+      const player = playerRef.current;
+      if (!player) {
+        statusHandlerRef.current('Playback engine not ready', true);
+        return false;
+      }
+
+      if (!payload.session) {
+        statusHandlerRef.current('Playback session missing for requested SID', true);
+        return false;
+      }
+
+      pendingLoadAbortRef.current?.abort();
+      const abortController = new AbortController();
+      pendingLoadAbortRef.current = abortController;
+      setIsAudioLoading(true);
+      setLoadProgress(0);
+
+      try {
+        await player.load({
+          track: payload.track,
+          session: payload.session,
+          signal: abortController.signal,
+        });
+
+        const normalized: PlaylistTrack = {
+          ...payload.track,
+          playlistNumber,
+        };
+        trackNumberMapRef.current.set(normalized.sidPath, normalized.playlistNumber);
+        setCurrentTrack(normalized);
+        currentTrackRef.current = normalized;
+        const resolvedDuration =
+          player.getDurationSeconds() ||
+          normalized.durationSeconds ||
+          parseLengthSeconds(normalized.metadata.length);
+        setDuration(resolvedDuration);
+        setPosition(0);
+        await player.play();
+        setIsPlaying(true);
+        if (announcement) {
+          statusHandlerRef.current(announcement);
+        }
+        notifyTrackPlayed(normalized.sidPath);
+        return true;
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          statusHandlerRef.current(
+            `Unable to load SID: ${error instanceof Error ? error.message : String(error)}`,
+            true
+          );
+        }
+        return false;
+      } finally {
+        if (pendingLoadAbortRef.current === abortController) {
+          pendingLoadAbortRef.current = null;
+        }
+        setIsAudioLoading(false);
+      }
+    },
+    [notifyTrackPlayed]
+  );
+
   const rebuildPlaylist = useCallback(async () => {
     setIsLoading(true);
     try {
-      await controlRatePlayback({ action: 'stop' }).catch(() => undefined);
+      pendingLoadAbortRef.current?.abort();
+      playerRef.current?.stop();
       trackNumberMapRef.current.clear();
       playlistCounterRef.current = 1;
       playedRef.current = [];
@@ -167,6 +309,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       setUpcomingTracks([]);
       currentTrackRef.current = null;
       setCurrentTrack(null);
+      setIsAudioLoading(false);
+      setLoadProgress(0);
       setIsPlaying(false);
       setPosition(0);
       setDuration(180);
@@ -185,7 +329,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         notifyStatus('No songs available for this preset.', true);
       }
       upcomingRef.current = seeded;
-        setUpcomingTracks(seeded.slice(0, UPCOMING_DISPLAY_LIMIT));
+      setUpcomingTracks(seeded.slice(0, UPCOMING_DISPLAY_LIMIT));
     } catch (error) {
       notifyStatus(
         `Unable to seed playlist: ${error instanceof Error ? error.message : String(error)}`,
@@ -209,35 +353,21 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           notifyStatus(`Unable to load SID: ${formatApiError(response)}`, true);
           return false;
         }
-        const normalized: PlaylistTrack = {
-          ...response.data.track,
-          playlistNumber: track.playlistNumber,
-        };
-        trackNumberMapRef.current.set(normalized.sidPath, normalized.playlistNumber);
-        setCurrentTrack(normalized);
-        currentTrackRef.current = normalized;
-        setDuration(normalized.durationSeconds ?? parseLengthSeconds(normalized.metadata.length));
-        setPosition(0);
-        setIsPlaying(true);
-        if (announcement) {
-          notifyStatus(announcement);
-        }
-        notifyTrackPlayed(normalized.sidPath);
-        return true;
-      } catch (error) {
-        notifyStatus(
-          `Unable to load SID: ${error instanceof Error ? error.message : String(error)}`,
-          true
-        );
-        return false;
+
+        const payload = response.data;
+        const playlistNumber = track.playlistNumber;
+        return await loadTrackIntoPlayer(payload, playlistNumber, announcement);
       } finally {
         setIsLoading(false);
       }
     },
-    [notifyStatus, notifyTrackPlayed]
+    [loadTrackIntoPlayer, notifyStatus]
   );
 
   const playNextFromQueue = useCallback(async () => {
+    if (isLoading || isAudioLoading) {
+      return;
+    }
     if (upcomingRef.current.length === 0) {
       notifyStatus('No upcoming songs. Change the preset to rebuild the playlist.', true);
       return;
@@ -259,54 +389,33 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     } else {
       setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
     }
-  }, [notifyStatus, startPlayback]);
-
-  const refreshStatus = useCallback(async () => {
-    const response = await getRatePlaybackStatus();
-    if (!response.success) {
-      return;
-    }
-    const status = response.data;
-    if (!status.active) {
-      setIsPlaying(false);
-      return;
-    }
-    setIsPlaying(!status.isPaused);
-    if (typeof status.positionSeconds === 'number') {
-      setPosition(status.positionSeconds);
-    }
-    if (typeof status.durationSeconds === 'number') {
-      setDuration(status.durationSeconds);
-    }
-    if (
-      status.track &&
-      currentTrackRef.current &&
-      status.track.sidPath === currentTrackRef.current.sidPath
-    ) {
-      setCurrentTrack((prev) => (prev ? { ...prev, ...status.track, playlistNumber: prev.playlistNumber } : prev));
-    }
-  }, []);
+  }, [isAudioLoading, isLoading, notifyStatus, startPlayback]);
 
   useEffect(() => {
-    const interval = setInterval(refreshStatus, isPlaying ? 1000 : 4000);
-    void refreshStatus();
-    return () => clearInterval(interval);
-  }, [refreshStatus, isPlaying]);
+    playNextHandlerRef.current = playNextFromQueue;
+  }, [playNextFromQueue]);
 
   const handlePlayPause = useCallback(async () => {
-    if (!currentTrack) {
+    const player = playerRef.current;
+    if (!currentTrack || !player || isAudioLoading) {
       return;
     }
-    const action = isPlaying ? 'pause' : 'resume';
-    const response = await controlRatePlayback({ action });
-    if (response.success) {
-      setIsPlaying(!isPlaying);
-      notifyStatus(isPlaying ? 'Playback paused' : 'Playback resumed');
-      await refreshStatus();
-    } else {
-      notifyStatus(`Playback control failed: ${formatApiError(response)}`, true);
+    const state = player.getState();
+    if (state === 'playing') {
+      player.pause();
+      notifyStatus('Playback paused');
+      return;
     }
-  }, [currentTrack, isPlaying, notifyStatus, refreshStatus]);
+    try {
+      await player.play();
+      notifyStatus('Playback resumed');
+    } catch (error) {
+      notifyStatus(
+        `Unable to resume playback: ${error instanceof Error ? error.message : String(error)}`,
+        true
+      );
+    }
+  }, [currentTrack, isAudioLoading, notifyStatus]);
 
   const handlePreviousTrack = useCallback(async () => {
     if (playedRef.current.length === 0) {
@@ -357,7 +466,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
 
   const handleSeek = useCallback(
     (value: number[]) => {
-      if (!currentTrack) {
+      const player = playerRef.current;
+      if (!currentTrack || !player) {
         return;
       }
       const next = Math.min(Math.max(0, value[0]), duration);
@@ -366,8 +476,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         clearTimeout(seekTimeout.current);
       }
       seekTimeout.current = setTimeout(() => {
-        void controlRatePlayback({ action: 'seek', positionSeconds: next });
-      }, 250);
+        player.seek(next);
+      }, 180);
     },
     [currentTrack, duration]
   );
@@ -482,7 +592,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
               </Select>
               <Button
                 onClick={playNextFromQueue}
-                disabled={isLoading || upcomingTracks.length === 0}
+                disabled={isLoading || isAudioLoading || upcomingTracks.length === 0}
                 className="w-full retro-glow gap-2"
               >
                 <Play className="h-4 w-4" />
@@ -498,7 +608,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 variant="outline"
                 size="icon"
                 onClick={handlePreviousTrack}
-                disabled={!currentTrack || playedTracks.length === 0 || isLoading}
+                disabled={!currentTrack || playedTracks.length === 0 || isLoading || isAudioLoading}
                 title="Previous track"
               >
                 <SkipBack className="h-4 w-4" />
@@ -507,7 +617,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 variant="outline"
                 size="icon"
                 onClick={handlePlayPause}
-                disabled={!currentTrack || isLoading}
+                disabled={!currentTrack || isLoading || isAudioLoading}
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -516,7 +626,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 variant="outline"
                 size="icon"
                 onClick={playNextFromQueue}
-                disabled={upcomingTracks.length === 0 || isLoading}
+                disabled={upcomingTracks.length === 0 || isLoading || isAudioLoading}
                 title="Next track"
               >
                 <SkipForward className="h-4 w-4" />
@@ -529,9 +639,20 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 min={0}
                 max={Math.max(duration, 1)}
                 step={1}
-                disabled={!currentTrack}
+                disabled={!currentTrack || isAudioLoading}
                 className="cursor-pointer"
               />
+              {isAudioLoading && (
+                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>
+                    Loading audio
+                    {loadProgress > 0 && loadProgress < 1
+                      ? ` ${(loadProgress * 100).toFixed(0)}%`
+                      : '…'}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
                 <span>{formatSeconds(position)}</span>
                 <span>{formatSeconds(duration)}</span>

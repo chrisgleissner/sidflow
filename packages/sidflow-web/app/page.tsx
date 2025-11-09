@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WizardTab } from '@/components/WizardTab';
@@ -22,7 +22,7 @@ interface QueueItem {
 const TAB_VALUES = ['wizard', 'prefs', 'fetch', 'rate', 'classify', 'train', 'play'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
-export default function Home() {
+function HomeContent() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -174,7 +174,7 @@ export default function Home() {
 
               <div className="flex-1">
                 <TabsContent value="wizard" className="mt-0">
-                  <WizardTab onStatusChange={handleStatusChange} onSwitchTab={setActiveTab} />
+                  <WizardTab onStatusChange={handleStatusChange} onSwitchTab={(tab) => setActiveTab(tab as typeof activeTab)} />
                 </TabsContent>
                 <TabsContent value="prefs" className="mt-0">
                   <PrefsTab onStatusChange={handleStatusChange} />
@@ -206,5 +206,13 @@ export default function Home() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }

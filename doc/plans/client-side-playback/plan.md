@@ -208,7 +208,7 @@ These are fetched from the same origin under `/assets/`.
 ## Acceptance Checklist
 
 - [ ] `/api/play` no longer spawns CLI commands.
-- [ ] Client plays SIDs via WASM path.
+- [ ] Client plays SIDs via WASM path. *(RateTab and PlayTab now stream via `SidflowPlayer`; HLS fallback remains outstanding.)*
 - [ ] HLS fallback functional in Safari/iOS.
 - [ ] OpenAPI updated with `PlaybackSessionResponse`.
 - [ ] Other APIs remain intact.

@@ -61,7 +61,7 @@ export async function resolveSidCollectionContext(): Promise<SidCollectionContex
 
 export function buildCliEnvOverrides(
   context: SidCollectionContext
-): NodeJS.ProcessEnv {
+): Record<string, string> {
   return {
     SIDFLOW_SID_BASE_PATH: context.collectionRoot,
   };
