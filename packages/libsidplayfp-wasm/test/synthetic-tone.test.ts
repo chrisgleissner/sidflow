@@ -133,7 +133,7 @@ describe('Synthetic C4 Tone Verification', () => {
 
         const sampleRate = engine.getSampleRate();
         const channels = engine.getChannels();
-    console.log('Tune info:', engine.getTuneInfo());
+        console.log('Tune info:', engine.getTuneInfo());
         console.log(`✓ Loaded (${sampleRate}Hz, ${channels}ch)\n`);
 
         // Render the full 3+ seconds
@@ -144,8 +144,8 @@ describe('Synthetic C4 Tone Verification', () => {
 
         const zeroSamples = pcm.reduce((count, value) => count + (value === 0 ? 1 : 0), 0);
         console.log(`Zero sample ratio: ${(zeroSamples / pcm.length * 100).toFixed(2)}%`);
-    const nonZero = pcm.filter(v => v !== 0).slice(0, 20);
-    console.log('First non-zero samples:', nonZero.join(', '));
+        const nonZero = pcm.filter(v => v !== 0).slice(0, 20);
+        console.log('First non-zero samples:', nonZero.join(', '));
 
         // Test 1: Check for silent periods
         console.log('TEST 1: Silence Detection');

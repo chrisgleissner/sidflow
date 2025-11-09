@@ -91,17 +91,17 @@ function generateSidFile(): Uint8Array {
         0xA9, 0x0F,       // LDA #$0F
         0x8D, 0x18, 0xD4, // STA $D418 (Mode/Volume)
 
-    // Voice 1: C4 frequency (0x113E = 4414)
+        // Voice 1: C4 frequency (0x113E = 4414)
         0xA9, 0x3E,       // LDA #$3E (low byte)
         0x8D, 0x00, 0xD4, // STA $D400 (Voice 1 Freq Lo)
         0xA9, 0x11,       // LDA #$11 (high byte)
         0x8D, 0x01, 0xD4, // STA $D401 (Voice 1 Freq Hi)
 
-    // Pulse width 50% (0x0800)
-    0xA9, 0x00,       // LDA #$00 (width lo)
-    0x8D, 0x02, 0xD4, // STA $D402 (Voice 1 PW Lo)
-    0xA9, 0x08,       // LDA #$08 (width hi)
-    0x8D, 0x03, 0xD4, // STA $D403 (Voice 1 PW Hi)
+        // Pulse width 50% (0x0800)
+        0xA9, 0x00,       // LDA #$00 (width lo)
+        0x8D, 0x02, 0xD4, // STA $D402 (Voice 1 PW Lo)
+        0xA9, 0x08,       // LDA #$08 (width hi)
+        0x8D, 0x03, 0xD4, // STA $D403 (Voice 1 PW Hi)
 
         // Set Attack/Decay (instant attack, no decay)
         0xA9, 0x00,       // LDA #$00 (A=0, D=0)
@@ -111,18 +111,18 @@ function generateSidFile(): Uint8Array {
         0xA9, 0xF0,       // LDA #$F0 (S=F, R=0)
         0x8D, 0x06, 0xD4, // STA $D406 (Voice 1 SR)
 
-    // Prime voice control: reset oscillator then enable pulse waveform + gate
-    0xA9, 0x08,       // LDA #$08 (Test bit)
-    0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
-    0xA9, 0x00,       // LDA #$00 (clear gate)
-    0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
-    0xA9, 0x41,       // LDA #$41 (Pulse + Gate)
-    0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
+        // Prime voice control: reset oscillator then enable pulse waveform + gate
+        0xA9, 0x08,       // LDA #$08 (Test bit)
+        0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
+        0xA9, 0x00,       // LDA #$00 (clear gate)
+        0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
+        0xA9, 0x41,       // LDA #$41 (Pulse + Gate)
+        0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
 
         0x60,             // RTS (return from init)
 
         // PLAY routine (0x101F): Re-assert gate every frame to guarantee sustain
-    0xA9, 0x41,       // LDA #$41 (Pulse + Gate)
+        0xA9, 0x41,       // LDA #$41 (Pulse + Gate)
         0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
         0x60              // RTS
     ];
