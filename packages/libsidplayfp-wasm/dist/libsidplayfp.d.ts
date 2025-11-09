@@ -32,7 +32,6 @@ export interface LibsidplayfpWasmModule {
   FS: any;
   PATH: any;
   SidPlayerContext: typeof SidPlayerContext;
-  sidflowSelectSong?: (ctx: SidPlayerContext, song: number) => number;
 }
 
 export default function createLibsidplayfp(moduleConfig?: SidPlayerContextOptions): Promise<LibsidplayfpWasmModule>;
