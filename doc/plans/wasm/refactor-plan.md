@@ -29,10 +29,11 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
 | 2 | Archive tooling modernization | Replace 7-Zip CLI usage with `7zip-min`, update docs/CI tooling |
 | 3 | Code relocation & integration | Migrate working-code assets into the workspace package and wire the loader into the build graph |
 | 4 | Build & verification | Deterministic WASM build script, metadata updates, CI cache, and smoke tests |
-| 5 | Offline pipelines | Classification/WAV cache + metadata extraction powered by WASM |
-| 6 | Interactive CLIs | `sidflow-rate` and `sidflow-play` refactored to stream audio via WASM-generated PCM |
-| 7 | Web playback | Next.js rate/play APIs + UI consuming the WASM engine directly |
-| 8 | Cleanup & QA | Config/docs updates, perf benchmarking, rollout checklist |
+| 5 | Documentation & rollout | Updated plan, runbook, consumer guidance, and changelog notes |
+| 6 | Offline pipelines | Classification/WAV cache + metadata extraction powered by WASM |
+| 7 | Interactive CLIs | `sidflow-rate` and `sidflow-play` refactored to stream audio via WASM-generated PCM |
+| 8 | Web playback | Next.js rate/play APIs + UI consuming the WASM engine directly |
+| 9 | Cleanup & QA | Config/docs updates, perf benchmarking, rollout checklist |
 
 ## Phase 0 — Engine packaging
 
@@ -200,47 +201,82 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
 - Updated `packages/libsidplayfp-wasm/scripts/build.sh` to mount the cache volume and ensured CI restores the directory via `actions/cache`.
 - Added loader smoke tests so future `bun run test` runs cover WASM instantiation alongside the new artifacts.
 
-## Phase 5 — Offline pipelines (classification & training)
+## Phase 5 — Documentation & rollout
 
-### Phase 5 Objectives (Offline pipelines)
+### Phase 5 Objectives (Documentation & rollout)
+
+- Document the deterministic build workflow, metadata lifecycle, and consumer expectations across `refactor-plan`, `rollout-tasks`, and package-level READMEs.
+- Provide an operational runbook describing how to detect when a rebuild is required and how to force one safely.
+- Clarify for downstream packages how to load the committed WASM artifact in both Node/Bun and browser environments.
+- Capture the milestone in `CHANGES.md` and confirm stakeholders understand the new responsibilities.
+
+### Phase 5 Deliverables (Documentation & rollout)
+
+- Updated `doc/plans/wasm/refactor-plan.md` covering the new phase, operational runbook, and validation requirements.
+- `doc/plans/wasm/rollout-tasks.md` checklist with Phase 5 items marked complete once documentation lands.
+- Expanded `packages/libsidplayfp-wasm/README.md` highlighting integration patterns and rebuild steps.
+- Changelog entry summarizing the completed build pipeline and guidance updates.
+
+### Phase 5 Validation (Documentation & rollout)
+
+- Runbook instructions verified against `bun run wasm:check-upstream` and `bun run wasm:build` outputs.
+- Stakeholder review (audio platform + web platform) confirms the documented process covers both CLI and web consumers.
+- All legacy references now point at `packages/libsidplayfp-wasm`, with the working-code folder retained purely as a pointer.
+
+#### Operational runbook (2025-11-09)
+
+1. Execute `bun run wasm:check-upstream` during CI or local builds; if it reports "No upstream changes detected" you may skip the rebuild.
+2. When a rebuild is required (or forced via `--force`), run `bun run wasm:build` to mount the cached upstream clone, execute the Docker toolchain, and refresh `packages/libsidplayfp-wasm/dist/*`.
+3. Review `data/wasm-build.json` to confirm `lastSuccessfulBuild` reflects the new commit hash, artifact path, and timestamp recorded by the script.
+4. Commit the regenerated artifacts together with the metadata update and re-run `bun run test` plus `bun run test:e2e` to ensure the committed outputs load correctly.
+
+### Phase 5 documentation summary (2025-11-09)
+
+- Added integration and rebuild guidance to `packages/libsidplayfp-wasm/README.md`, including asset resolution expectations.
+- Recorded the deterministic build metadata in `data/wasm-build.json` and expanded this plan with runbook instructions.
+- Updated the rollout checklist and changelog so the documentation milestone is visible to release management.
+
+## Phase 6 — Offline pipelines (classification & training)
+
+### Phase 6 Objectives (Offline pipelines)
 
 - Replace `sidplayfp` usage inside `@sidflow/classify` (WAV cache, metadata extraction, auto-tags, JSONL exports) with WASM helpers.
 - Update `@sidflow/common` config schema and dependent docs/tests to drop `sidplayPath`.
 - Ensure CLI flags (`--sidplay`) gracefully no-op or warn, preserving backward compatibility until removal.
 
-### Phase 5 Deliverables (Offline pipelines)
+### Phase 6 Deliverables (Offline pipelines)
 
 - Refactored `buildWavCache`, `defaultRenderWav`, `defaultExtractMetadata` using `renderSidToWav`.
 - Updated tests (unit + integration) covering multi-song renders, hashing, and metadata fallbacks.
 - Documentation updates (`README.md`, `doc/technical-reference.md`) reflecting the new dependency story.
 
-### Phase 5 Validation (Offline pipelines)
+### Phase 6 Validation (Offline pipelines)
 
 - Bun unit + integration suites pass without `sidplayfp` installed.
 - Playwright/web plans remain unaffected because APIs still call the CLI’s stable interface.
 
-## Phase 6 — Interactive CLIs (rate/play)
+## Phase 7 — Interactive CLIs (rate/play)
 
-### Phase 6 Objectives (Interactive CLIs)
+### Phase 7 Objectives (Interactive CLIs)
 
 - Rework `sidflow-rate` and `sidflow-play` to render SID PCM via WASM, manage temp WAV buffers, and stream audio through lightweight native players (`ffplay`, `afplay`, `aplay`).
 - Update playback locks so PID/state tracking continues to work even though the spawned process is an audio player, not `sidplayfp`.
 - Preserve keyboard shortcuts, queue management, and logging semantics.
 
-### Phase 6 Deliverables (Interactive CLIs)
+### Phase 7 Deliverables (Interactive CLIs)
 
 - New playback abstraction inside `@sidflow/common` (PCM renderer + external player harness).
 - Updated CLI help + docs removing `--sidplay`.
 - Tests stubbing the audio player process to keep CI deterministic.
 
-### Phase 6 Validation (Interactive CLIs)
+### Phase 7 Validation (Interactive CLIs)
 
 - Manual smoke tests confirm both CLIs behave identically to the legacy build (pause, seek, quit paths).
 - CI runs with mocked players verifying lock hand-offs and queue history.
 
-## Phase 7 — Web playback integration
+## Phase 8 — Web playback integration
 
-### Phase 7 Objectives (Web playback)
+### Phase 8 Objectives (Web playback)
 
 - Update Next.js API routes (`/api/rate/*`, `/api/play/*`) to use WASM helpers instead of spawning `sidplayfp`.
 - Decide on hosting mode:
@@ -248,32 +284,32 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
   - **Client-side render (preferred):** Ship `.wasm` to the browser, run playback directly in the Rate/Play tabs, and treat the API endpoints as control surfaces only.
 - Align shadcn UI components (PlayTab, RateTab) with the chosen approach, ensuring slider/seek logic taps into live WASM state.
 
-### Phase 7 Deliverables (Web playback)
+### Phase 8 Deliverables (Web playback)
 
 - Shared playback service (either server or client) plus React hooks for polling status.
 - Updated Playwright tests covering real-time position updates, seek, pause/resume.
 - Telemetry/logging so failures surface actionable errors (matching Phase 3 goals from the web plan).
 
-### Phase 7 Validation (Web playback)
+### Phase 8 Validation (Web playback)
 
 - Manual testing verifies seamless transition across CLI and web experiences.
 - Playwright E2E suite runs entirely without native `sidplayfp`.
 
-## Phase 8 — Cleanup, benchmarking, rollout
+## Phase 9 — Cleanup, benchmarking, rollout
 
-### Phase 8 Objectives (Cleanup)
+### Phase 9 Objectives (Cleanup)
 
 - Remove deprecated config keys (`sidplayPath`), CLI flags, and docs.
 - Benchmark CPU/memory usage of the WASM pipeline vs. native `sidplayfp`; document trade-offs.
 - Produce rollout checklist (similar to `rollout-tasks.md`) detailing code freeze, manual QA, and communications.
 
-### Phase 8 Deliverables (Cleanup)
+### Phase 9 Deliverables (Cleanup)
 
 - `doc/plans/wasm/rollout-tasks.md` enumerating final verification steps.
 - README + changelog updates communicating the dependency change.
 - Optional telemetry toggle to detect unsupported browsers/environments.
 
-### Phase 8 Validation (Cleanup)
+### Phase 9 Validation (Cleanup)
 
 - Final CI run (unit + integration + Playwright) green.
 - Manual QA sign-off recorded alongside performance notes.

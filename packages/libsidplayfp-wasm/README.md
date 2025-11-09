@@ -44,6 +44,21 @@ const samples = await engine.renderSeconds(60);
 
 Consumers may override `locateFile` to control how the `.wasm` file is resolved at runtime (useful when bundlers relocate assets).
 
+## Integrating in SIDFlow Packages
+
+- Classification and training flows should import `loadLibsidplayfp` from `@sidflow/libsidplayfp-wasm` at runtime and share a single module instance per process.
+- Prefer the higher-level `SidAudioEngine` helper when you only need PCM buffers or WAV emission; it encapsulates memory management and sample format conversion.
+- The committed artifacts live at `packages/libsidplayfp-wasm/dist/`. When bundling for the web, copy both `libsidplayfp.js` and `libsidplayfp.wasm` or configure your bundler to treat them as assets.
+- CLI utilities can rely on the default `locateFile` implementation, which resolves the `.wasm` beside the generated JS loader using `import.meta.url`.
+- Browser consumers must provide their own `locateFile` that serves the `.wasm` from a static asset path. See `packages/libsidplayfp-wasm/examples/debug-render.ts` for a Bun/Node example that customizes resolution.
+
+## Operational Runbook Snapshot
+
+1. Run `bun run wasm:check-upstream` to compare the recorded upstream commit in `data/wasm-build.json` with the latest `libsidplayfp` default branch.
+2. If the tool reports new commits or you need to refresh the artifact, execute `bun run wasm:build`. This command rebuilds the Docker image, writes refreshed outputs to `dist/`, and updates the metadata file.
+3. After committing new artifacts, re-run `bun run build && bun run test` to confirm the deterministic outputs still load across the workspace.
+4. CI restores the upstream clone cache automatically; if you notice cache misses, clear `.cache/upstream` locally and rerun the build to repopulate it before committing.
+
 ## Demos
 
 Run the Bun demo after building the artifacts:

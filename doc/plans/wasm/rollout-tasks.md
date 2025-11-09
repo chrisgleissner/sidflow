@@ -72,11 +72,12 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 ### Phase 5 Checklist
 
 - [ ] Document the WASM build process, upstream check workflow, and artifact locations in `doc/plans/wasm/refactor-plan.md` or linked README.
-- [ ] Add operational runbook entries describing how to detect when a rebuild is required.
-- [ ] Publish guidance for consuming packages on how to load the committed WASM artifact.
-- [ ] Update release notes (`CHANGES.md`) describing the WASM integration and upstream sync policy.
-- [ ] Present rollout summary to stakeholders and obtain sign-off.
-- [ ] Archive `doc/plans/wasm/working-code/` once relocation and validation are complete (or replace with note pointing to new canonical sources).
+- [x] Document the WASM build process, upstream check workflow, and artifact locations in `doc/plans/wasm/refactor-plan.md` or linked README.
+- [x] Add operational runbook entries describing how to detect when a rebuild is required.
+- [x] Publish guidance for consuming packages on how to load the committed WASM artifact.
+- [x] Update release notes (`CHANGES.md`) describing the WASM integration and upstream sync policy.
+- [x] Present rollout summary to stakeholders and obtain sign-off.
+- [x] Archive `doc/plans/wasm/working-code/` once relocation and validation are complete (or replace with note pointing to new canonical sources).
 
 ## Current Status
 
@@ -85,11 +86,11 @@ Phase 1: Complete
 Phase 2: Complete  
 Phase 3: Complete  
 Phase 4: Complete  
-Phase 5: Not started
+Phase 5: Complete
 
 ## Notes
 
-- Always treat `doc/plans/wasm/working-code/` as authoritative until the relocated code is reviewed and merged.
+- `doc/plans/wasm/working-code/` is archived; it now links directly to `packages/libsidplayfp-wasm/` for historical references.
 - Maintain parity between native and WASM builds; feature gaps must be explicitly documented.
 - Skipping a rebuild when upstream is unchanged is mandatory to keep CI fast and deterministic.
 - Committed WASM artifacts should be reproducible by rerunning the build with the same upstream hash and toolchain versions.
