@@ -54,7 +54,7 @@ All other routes (`/api/rate`, `/api/classify`, `/api/fetch`, `/api/train`) rema
 - Enable immutable caching and Range support.
 - Apply these response headers on HTML and module/WASM responses:
 
-  ```
+  ```text
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   ```

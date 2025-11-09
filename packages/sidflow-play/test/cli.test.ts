@@ -239,8 +239,8 @@ describe("runPlayCli", () => {
           endSession: async () => {
             sessionEnds += 1;
           }
-  }),
-  createPlaybackController: (options: PlaybackOptions) => {
+        }),
+        createPlaybackController: (options: PlaybackOptions) => {
           let state: PlaybackState = PlaybackState.IDLE;
           let queue: Recommendation[] = [];
 
@@ -285,10 +285,10 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     expect(builderConnected).toBe(true);
-  expect(builderDisconnected).toBe(true);
-  expect(exportInvocation).not.toBeNull();
-  const invocation = exportInvocation!;
-  expect(invocation).toEqual({ format: "json", path: "/tmp/list.json" });
+    expect(builderDisconnected).toBe(true);
+    expect(exportInvocation).not.toBeNull();
+    const invocation = exportInvocation!;
+    expect(invocation).toEqual({ format: "json", path: "/tmp/list.json" });
     expect(sessionStarts).toBe(1);
     expect(sessionEnds).toBeGreaterThanOrEqual(1);
     expect(recordedEvents.some((event) => event.type === "started")).toBe(true);

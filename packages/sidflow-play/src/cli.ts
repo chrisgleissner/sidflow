@@ -54,7 +54,7 @@ function printHelp(stream: NodeJS.WritableStream = process.stdout): void {
     "  --exploration <0-1>          Exploration factor (default: 0.2)",
     "  --diversity <0-1>            Diversity threshold (default: 0.2)",
     "  --min-duration <seconds>     Minimum song duration in seconds (default: 15)",
-  "  --sidplay <path>             (deprecated) legacy sidplayfp override (ignored)",
+    "  --sidplay <path>             (deprecated) legacy sidplayfp override (ignored)",
     "  --export <path>              Export playlist to file",
     "  --export-format <fmt>        Export format: json, m3u, m3u8 (default: json)",
     "  --export-only                Export playlist without playing",

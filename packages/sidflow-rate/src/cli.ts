@@ -35,9 +35,9 @@ function printHelp(): void {
     "Playback uses the shared WASM harness; ensure ffplay or aplay is available for audio output.",
     "",
     "Options:",
-  "  --config <path>   Load an alternate .sidflow.json",
-  "  --sidplay <path>  (deprecated) legacy sidplayfp override (ignored)",
-  "  --random          Shuffle the unrated queue",
+    "  --config <path>   Load an alternate .sidflow.json",
+    "  --sidplay <path>  (deprecated) legacy sidplayfp override (ignored)",
+    "  --random          Shuffle the unrated queue",
     "  --help            Show this message and exit"
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
