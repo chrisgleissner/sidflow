@@ -97,3 +97,43 @@ Phase 5: Complete
 - Committed WASM artifacts should be reproducible by rerunning the build with the same upstream hash and toolchain versions.
 - Use `bun run scripts/check-libsidplayfp-upstream.ts -- --force` to override the skip guard when a manual rebuild is required.
 - Archive extraction is handled by `7zip-min`; drop any assumptions that `7z` exists on the host system.
+
+## Phase 6 — Offline pipelines (classification & training)
+
+### Phase 6 Checklist
+
+- [ ] Swap `sidplayfp` usage in `@sidflow/classify` WAV-cache, metadata extraction, auto-tag, and JSONL pipelines with the WASM helpers (`renderSidToWav`, `SidAudioEngine`).
+- [ ] Update `@sidflow/common` config schema/tests/docs to drop the `sidplayPath` requirement (retaining backward-compatible warnings until removal).
+- [ ] Ensure CLI flags such as `--sidplay` warn and fall back to the WASM path without crashing.
+- [ ] Expand unit/integration tests to cover multi-song renders, hashing, and metadata fallbacks with the WASM renderer (no native binary installed).
+- [ ] Refresh documentation (`README.md`, `doc/technical-reference.md`, plan addenda) to reflect the new dependency story for classification workflows.
+
+## Phase 7 — Interactive CLIs (rate/play)
+
+### Phase 7 Checklist
+
+- [ ] Rework `sidflow-rate` and `sidflow-play` to stream PCM rendered via WASM, buffering to temp files and delegating playback to lightweight native players (`ffplay`/`afplay`/`aplay`).
+- [ ] Update playback-lock plumbing so PID/state tracking still works when the spawned process is the audio player instead of `sidplayfp`.
+- [ ] Preserve all CLI UX behaviors (keyboard shortcuts, queue management, logging) when running against the new playback pipeline.
+- [ ] Provide comprehensive tests/mocks so CI remains deterministic (audio player stubs, playback-lock assertions).
+- [ ] Update CLI help text and documentation to remove `--sidplay` guidance once the fallback period ends.
+
+## Phase 8 — Web playback integration
+
+### Phase 8 Checklist
+
+- [ ] Switch the Next.js `/api/rate/*` and `/api/play/*` routes to the WASM playback flow (either server-side streaming or browser-based, per the final hosting decision).
+- [ ] Wire PlayTab/RateTab components to the new playback service, including seek, pause/resume, and status polling hooks.
+- [ ] Ship the WASM asset appropriately (bundle to client or keep server-side) and document the loading strategy for browser consumers.
+- [ ] Extend Playwright E2E coverage to assert real-time updates (position, seek) without native `sidplayfp` present.
+- [ ] Instrument logging/telemetry so any WASM playback failure surfaces actionable context in both server and client logs.
+
+## Phase 9 — Cleanup, benchmarking, rollout
+
+### Phase 9 Checklist
+
+- [ ] Remove the remaining `sidplayPath` config key, CLI flags, and doc references after all consumers migrate to the WASM pipeline.
+- [ ] Benchmark CPU/memory usage of the WASM renderer versus legacy native runs; capture findings in `doc/technical-reference.md` (and any mitigations).
+- [ ] Produce a final rollout checklist (code freeze, QA, comms) so the `sidplayfp` dependency removal is coordinated across teams.
+- [ ] Ensure CI (unit + integration + Playwright) is green with only the WASM path available.
+- [ ] Gather manual QA sign-off and document any residual risk or follow-up tasks before closing the rollout.
