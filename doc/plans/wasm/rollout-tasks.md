@@ -1,6 +1,6 @@
 # SIDFlow libsidplayfp WASM Rollout Tasks
 
-**Required reading:** `refactor-plan.md` and every source file under `working-code/`.
+**Required reading:** `refactor-plan.md`, `invocations.md`, every source file under `working-code/`, and `packages/libsidplayfp-wasm/test/wasm-invocations.test.ts`.
 
 The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be fully understood before any implementation work begins, adopted verbatim, and only relocated to its proper package destinations.
 

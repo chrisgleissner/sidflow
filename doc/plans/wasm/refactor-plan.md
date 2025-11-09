@@ -1,6 +1,6 @@
 # libsidplayfp WASM Migration Plan
 
-**Required reading:** `doc/plans/web/rollout-plan.md`, `doc/plans/web/rollout-tasks.md`
+**Required reading:** `doc/plans/wasm/rollout-tasks.md`, `doc/plans/wasm/invocations.md`.
 
 ## Vision
 
