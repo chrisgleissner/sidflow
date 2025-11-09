@@ -22,21 +22,26 @@ No more random browsing – just tell it what kind of music you want, and it pla
 ## Features
 
 ✨ **Smart Classification**
+
 - Automatically rates songs for energy, mood, and complexity
 - Uses audio analysis and learns from feedback
 
 🎵 **Mood-Based Playlists**
+
 - Create playlists like "energetic," "quiet," or "dark"
 - Filter by BPM, energy, and other traits
 
 🎮 **Easy to Use**
+
 - Simple command-line tools and a web UI
 - Stream directly or export playlists
 
 📊 **Learning System**
+
 - Improves over time based on your ratings
 
 🔄 **Reproducible**
+
 - All data stored in human-readable formats (JSON/JSONL)
 - Version control friendly
 
@@ -48,20 +53,19 @@ No more random browsing – just tell it what kind of music you want, and it pla
 
 Install the following tools first:
 
-1. **[Bun](https://bun.sh/install)** – JavaScript runtime  
-   ```bash
-   curl -fsSL https://bun.sh/install | bash
-   ```
+1. **[Bun](https://bun.sh/install)** – JavaScript runtime
 
-2. **[sidplayfp](https://github.com/libsidplayfp/sidplayfp)** – SID-to-audio converter  
-   - Linux: `sudo apt install sidplayfp`  
-   - macOS: `brew install sidplayfp`  
-   - Windows: download from [releases](https://github.com/libsidplayfp/sidplayfp/releases)
+    ```bash
+    curl -fsSL https://bun.sh/install | bash
+    ```
 
-3. **[7-Zip](https://www.7-zip.org/)** – archive extraction tool  
-   - Linux: `sudo apt install p7zip-full`  
-   - macOS: `brew install p7zip`  
-   - Windows: download from 7-zip.org
+1. **[sidplayfp](https://github.com/libsidplayfp/sidplayfp)** – SID-to-audio converter
+
+    - Linux: `sudo apt install sidplayfp`
+    - macOS: `brew install sidplayfp`
+    - Windows: download from [releases](https://github.com/libsidplayfp/sidplayfp/releases)
+
+1. **Archive extractor** – A cross-platform 7-Zip binary ships with SIDFlow, so no additional installation is required.
 
 ### Setup
 
@@ -86,6 +90,7 @@ Then create `.sidflow.json` in the root directory:
 ```
 
 Validate your setup:
+
 ```bash
 bun run validate:config
 ```
@@ -101,11 +106,11 @@ cd packages/sidflow-web
 bun run dev
 ```
 
-Open **http://localhost:3000** in your browser.
+Open **<http://localhost:3000>** in your browser.
 
 ![r8ate panel](./doc/web-screenshots/04-rate.png)
 
-### Features
+### Control Panel Features
 
 - Play and control SID playback by mood
 - Rate songs visually using sliders
@@ -134,6 +139,7 @@ Downloads and extracts the latest HVSC archive to `workspace/hvsc/`.
 ```bash
 ./scripts/sidflow-rate
 ```
+
 Play songs, rate them on **energy**, **mood**, and **complexity** (1–5).
 
 ### Classify Collection
@@ -141,6 +147,7 @@ Play songs, rate them on **energy**, **mood**, and **complexity** (1–5).
 ```bash
 ./scripts/sidflow-classify
 ```
+
 Analyzes all SIDs, converts to WAV, extracts features, and predicts ratings.
 
 ### Train Model
@@ -168,6 +175,7 @@ Builds a searchable recommendation database.
 
 Playlists stream via `sidplayfp`.  
 Export instead of play:
+
 ```bash
 ./scripts/sidflow-play --mood quiet --export playlist.json --export-only
 ```
@@ -185,18 +193,10 @@ Export instead of play:
 
 ## Acknowledgements
 
-SID Flow builds upon outstanding open-source software and datasets:
+SID Flow is [GPLv2](LICENSE)-licensed and builds upon outstanding open-source software and datasets:
 
 | Component | License | Source |
 |------------|----------|---------|
 | **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) |
-| **libsidplayfp / sidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) |
-| **7-Zip** | LGPL 2.1+ / BSD | [7-zip.org](https://www.7-zip.org/) |
+| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) |
 | **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) |
-
----
-
-## License
-
-**GPL v2** – see [LICENSE](LICENSE).  
-Third-party components retain their respective licenses.

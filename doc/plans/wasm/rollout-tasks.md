@@ -33,9 +33,20 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 - [x] Add unit tests covering the skip-vs-build logic and hash persistence helper functions.
 - [x] Document manual override procedure for forcing a rebuild despite no upstream changes.
 
-## Phase 2 — Code Relocation & Integration
+## Phase 2 — Archive Tooling Modernization
 
 ### Phase 2 Checklist
+
+- [x] Add `7zip-min` as a shared dependency (root `package.json` + relevant packages).
+- [x] Implement archive helper in `@sidflow/common` wrapping `7zip-min` extraction/unpack calls.
+- [x] Replace all direct `7z` CLI invocations (CLIs, scripts, tests) with the new helper.
+- [x] Update CI workflows to drop `p7zip` installation and rely on the bundled binary.
+- [x] Adjust mocks/stubs so tests cover success and failure paths without shelling out.
+- [x] Refresh documentation to state that archive tooling is bundled and no manual 7-Zip installation is required.
+
+## Phase 3 — Code Relocation & Integration
+
+### Phase 3 Checklist
 
 - [ ] Relocate known-good sources from `working-code/` into their designated package directories while preserving functionality.
 - [ ] Replace temporary paths/imports with workspace-relative module imports (prefer `@sidflow/common` helpers where applicable).
@@ -44,9 +55,9 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 - [ ] Update bundler/rollup/esbuild configurations to include the relocated WASM glue code.
 - [ ] Remove the original files from `doc/plans/wasm/working-code/` only after the relocated versions are referenced and tests pass.
 
-## Phase 3 — Build & Verification
+## Phase 4 — Build & Verification
 
-### Phase 3 Checklist
+### Phase 4 Checklist
 
 - [ ] Implement deterministic WASM build script leveraging the relocated code.
 - [ ] Produce `libsidplayfp.wasm` and associated JS glue files into a stable location (e.g., `packages/sidflow-play/wasm/`).
@@ -56,9 +67,9 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 - [ ] Run `bun run test`, `bun run build`, and `bun run test:e2e` to confirm no regressions.
 - [ ] Update CI to cache the upstream repository clone to avoid redundant downloads.
 
-## Phase 4 — Documentation & Rollout
+## Phase 5 — Documentation & Rollout
 
-### Phase 4 Checklist
+### Phase 5 Checklist
 
 - [ ] Document the WASM build process, upstream check workflow, and artifact locations in `doc/plans/wasm/refactor-plan.md` or linked README.
 - [ ] Add operational runbook entries describing how to detect when a rebuild is required.
@@ -71,9 +82,10 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 
 Phase 0: Complete  
 Phase 1: Complete  
-Phase 2: Not started  
+Phase 2: Complete  
 Phase 3: Not started  
-Phase 4: Not started
+Phase 4: Not started  
+Phase 5: Not started
 
 ## Notes
 
@@ -82,3 +94,4 @@ Phase 4: Not started
 - Skipping a rebuild when upstream is unchanged is mandatory to keep CI fast and deterministic.
 - Committed WASM artifacts should be reproducible by rerunning the build with the same upstream hash and toolchain versions.
 - Use `bun run scripts/check-libsidplayfp-upstream.ts -- --force` to override the skip guard when a manual rebuild is required.
+- Archive extraction is handled by `7zip-min`; drop any assumptions that `7z` exists on the host system.

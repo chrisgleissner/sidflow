@@ -48,6 +48,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Display "What to do next" guide
 
 **Acceptance Criteria:**
+
 - Fresh user can complete setup without reading documentation
 - All errors provide actionable solutions
 - Sample playlist plays successfully
@@ -71,6 +72,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Spinner for quick operations (<5s)
 
 **Acceptance Criteria:**
+
 - Users see progress for any operation >10 seconds
 - ETA is reasonably accurate (within 20%)
 - Progress updates at least every second
@@ -86,13 +88,14 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
   - [ ] Link to troubleshooting docs
 - [ ] Add prerequisite checks
   - [ ] sidplayfp availability
-  - [ ] 7-Zip availability
+  - [ ] `7zip-min` runtime availability
   - [ ] Disk space
   - [ ] Write permissions
   - [ ] Network connectivity (for fetch)
 - [ ] Create troubleshooting document with error codes
 
 **Acceptance Criteria:**
+
 - Every error message includes a solution
 - Common errors link to documentation
 - Users can self-diagnose 80% of issues
@@ -113,6 +116,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Quick reference card at end
 
 **Acceptance Criteria:**
+
 - Tutorial completes in under 30 minutes
 - User understands core workflow
 - User can perform basic operations independently
@@ -137,6 +141,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Document backup/restore process
 
 **Acceptance Criteria:**
+
 - No user ratings are ever lost
 - Recovery is simple and documented
 - Backups are space-efficient
@@ -156,6 +161,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Prioritize unclassified in recommendations
 
 **Acceptance Criteria:**
+
 - Subsequent classifications are 10x faster
 - Can safely interrupt classification
 - Multi-core systems see linear speedup
@@ -175,6 +181,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Logging levels (debug, info, warn, error)
 
 **Acceptance Criteria:**
+
 - 99% of operations complete even with partial failures
 - Errors are clearly logged
 - Users understand what failed and why
@@ -195,6 +202,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Generate health report
 
 **Acceptance Criteria:**
+
 - Health check catches 90% of common issues
 - Auto-repair fixes simple problems
 - Users can run health check regularly
@@ -226,6 +234,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Save playback state (resume later)
 
 **Acceptance Criteria:**
+
 - All controls work reliably
 - Keyboard shortcuts are intuitive
 - Metadata display is clear and useful
@@ -248,6 +257,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Share playlists (export to portable format)
 
 **Acceptance Criteria:**
+
 - Playlists adapt to user feedback in real-time
 - Energy curves feel natural
 - Users can easily create custom playlists
@@ -271,6 +281,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Listening trends over time
 
 **Acceptance Criteria:**
+
 - All sessions are tracked automatically
 - Users can review past sessions
 - Session data helps improve recommendations
@@ -302,6 +313,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Auto-open browser on start
 
 **Acceptance Criteria:**
+
 - API is RESTful and well-documented
 - WebSocket updates are real-time
 - Server starts in <2 seconds
@@ -331,6 +343,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Keyboard navigation
 
 **Acceptance Criteria:**
+
 - UI is beautiful and intuitive
 - All CLI features are accessible
 - Responsive and fast (<100ms interactions)
@@ -349,6 +362,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Session tracking
 
 **Acceptance Criteria:**
+
 - Audio streams reliably
 - No noticeable latency
 - All controls work smoothly
@@ -377,6 +391,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Generate reports
 
 **Acceptance Criteria:**
+
 - Analytics are accurate
 - Visualizations are interactive
 - Data can be exported
@@ -396,6 +411,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Compare listening periods
 
 **Acceptance Criteria:**
+
 - Statistics are insightful
 - Trends reveal preferences
 - Metrics help improve recommendations
@@ -418,6 +434,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Admin panel
 
 **Acceptance Criteria:**
+
 - Secure authentication
 - User data is isolated
 - Admin can manage users
@@ -433,6 +450,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Background playback
 
 **Acceptance Criteria:**
+
 - Streams work on mobile networks
 - Quality adapts to bandwidth
 - Works offline with cached songs
@@ -448,6 +466,7 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 - [ ] Activity feed
 
 **Acceptance Criteria:**
+
 - Social features enhance discovery
 - Community engagement is positive
 - Privacy is respected
@@ -474,33 +493,39 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 ## Success Criteria
 
 ### Phase 1
+
 - New user completes onboarding in <5 minutes
 - Error resolution time reduced by 50%
 - Support ticket volume reduced by 30%
 
 ### Phase 2
+
 - Zero data loss incidents
 - 99% operation success rate
 - 10x faster subsequent classifications
 - Multi-core speedup achieved
 
 ### Phase 3
+
 - Playback controls <100ms latency
 - Smart playlists have 80% acceptance rate
 - Session replay feature used regularly
 
 ### Phase 4
+
 - Web UI handles 1000+ song collections
 - Page load <2 seconds
 - Interactions <100ms
 - 90%+ user satisfaction
 
 ### Phase 5
+
 - Analytics provide actionable insights
 - Users discover new patterns
 - 50%+ users view analytics weekly
 
 ### Phase 6
+
 - Remote access works reliably
 - Multi-user isolation is secure
 - Mobile experience is excellent
@@ -509,18 +534,21 @@ Transform SIDFlow from a technical CLI toolkit into a production-grade, user-fri
 ## Risk Management
 
 ### Technical Risks
+
 - **Web UI complexity** → Start with simple MVP, iterate
 - **Streaming performance** → Benchmark early, optimize
 - **Security vulnerabilities** → Regular audits, penetration testing
 - **Data privacy** → Clear policies, user controls
 
 ### User Risks
+
 - **Breaking changes** → Maintain backward compatibility
 - **Data loss** → Comprehensive backups
 - **Poor UX** → Regular user testing
 - **Feature bloat** → Focus on core value
 
 ### Mitigation Strategies
+
 - Beta testing program
 - Phased rollout
 - Feature flags

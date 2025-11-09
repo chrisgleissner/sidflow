@@ -12,3 +12,4 @@ export * from "./recommender.js";
 export * from "./sid-parser.js";
 export * from "./playback-lock.js";
 export * from "./wasm-build.js";
+export * from "./archive.js";

@@ -7,12 +7,14 @@ This document summarizes the production-grade end-to-end testing implementation 
 ### 1. Enhanced CI Infrastructure
 
 **Updated `.github/workflows/ci.yml`:**
+
 - Added system dependency installation step before Bun setup
 - Installs `sidplayfp` for real SID playback and WAV rendering
-- Installs `p7zip-full` for archive extraction
+- Bundles archive extraction through the `7zip-min` npm package (no system install required)
 - Ensures CI runs with actual production tools, not just mocks
 
 **Benefits:**
+
 - CI now tests the complete production flow with real tools
 - Catches integration issues between SIDFlow and external dependencies
 - Validates that instructions in README work on clean Ubuntu systems
@@ -41,6 +43,7 @@ test-data/
 ### 3. Enhanced End-to-End Test (`test/e2e.test.ts`)
 
 **Improvements:**
+
 - Detects if `sidplayfp` is available at runtime
 - Uses real `sidplayfp` for WAV rendering when available (production mode)
 - Falls back to mock WAV generator when `sidplayfp` is missing (development mode)
@@ -81,6 +84,7 @@ No changes to npm scripts – existing commands work seamlessly:
 #### README.md
 
 Complete restructure for non-technical users:
+
 - **Features** section highlighting high-level benefits
 - **Getting Started** section with clear prerequisites and installation steps
 - **Example** section walking through first playlist creation
@@ -91,6 +95,7 @@ Complete restructure for non-technical users:
 #### doc/technical-reference.md (NEW)
 
 New comprehensive technical documentation containing:
+
 - **Technical Components** (Essentia.js, TensorFlow.js, LanceDB)
 - **Workflow Overview** with Mermaid diagram
 - **Detailed CLI documentation** with all flags and options
@@ -109,18 +114,21 @@ Updated references to point to new technical-reference.md where appropriate.
 All tests pass successfully in both modes:
 
 **Development Mode (no sidplayfp):**
+
 - Console: "Running E2E test with mock sidplayfp"
 - 8 tests pass ✅
 - Execution time: ~400ms
 
 **Production Mode (with sidplayfp on CI):**
+
 - Console: "Running E2E test with real sidplayfp"
 - 8 tests pass ✅
 - Uses actual sidplayfp for WAV rendering and metadata extraction
 - Execution time: ~2-3s (WAV rendering is slower with real sidplayfp)
 
 **CI Pipeline:**
-- Installs sidplayfp and p7zip-full automatically
+
+- Installs sidplayfp automatically; archive extraction relies on the bundled `7zip-min` package
 - Runs full test suite including e2e with real tools
 - Coverage maintained at ≥90% ✅
 

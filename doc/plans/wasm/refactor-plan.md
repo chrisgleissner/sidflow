@@ -25,10 +25,12 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
 | Phase | Goal | Primary deliverables |
 |-------|------|----------------------|
 | 0 | Package WASM engine | `@sidflow/libsidplayfp-wasm` workspace, Docker build, typed loader utilities |
-| 1 | Offline pipelines | Classification/WAV cache + metadata extraction powered by WASM |
-| 2 | Interactive CLIs | `sidflow-rate` and `sidflow-play` refactored to stream audio via WASM-generated PCM |
-| 3 | Web playback | Next.js rate/play APIs + UI consuming the WASM engine directly |
-| 4 | Cleanup & QA | Config/docs updates, perf benchmarking, rollout checklist |
+| 1 | Upstream monitoring | Upstream hash tracker, metadata store, build skip guard |
+| 2 | Archive tooling modernization | Replace 7-Zip CLI usage with `7zip-min`, update docs/CI tooling |
+| 3 | Offline pipelines | Classification/WAV cache + metadata extraction powered by WASM |
+| 4 | Interactive CLIs | `sidflow-rate` and `sidflow-play` refactored to stream audio via WASM-generated PCM |
+| 5 | Web playback | Next.js rate/play APIs + UI consuming the WASM engine directly |
+| 6 | Cleanup & QA | Config/docs updates, perf benchmarking, rollout checklist |
 
 ## Phase 0 — Engine packaging
 
@@ -82,24 +84,25 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
 - **Secondary maintainer:** Web platform team — ensures WASM integration remains compatible with Next.js frontends.
 - **Operations handoff:** Any rebuild requires updating `data/wasm-build.json`, running the scripted build, and ensuring CI artifacts match the committed WASM outputs.
 
-## Phase 1 — Offline pipelines (classification & training)
+## Phase 1 — Upstream monitoring & gating
 
 ### Phase 1 Objectives
 
-- Replace `sidplayfp` usage inside `@sidflow/classify` (WAV cache, metadata extraction, auto-tags, JSONL exports) with WASM helpers.
-- Update `@sidflow/common` config schema and dependent docs/tests to drop `sidplayPath`.
-- Ensure CLI flags (`--sidplay`) gracefully no-op or warn, preserving backward compatibility until removal.
+- Create a reusable upstream commit check invoked by CI and local builds.
+- Persist the latest upstream hash, last-checked timestamp, and last successful build metadata in `data/wasm-build.json`.
+- Provide guardrails to skip redundant WASM rebuilds while supporting manual overrides when a rebuild is required.
 
 ### Phase 1 Deliverables
 
-- Refactored `buildWavCache`, `defaultRenderWav`, `defaultExtractMetadata` using `renderSidToWav`.
-- Updated tests (unit + integration) covering multi-song renders, hashing, and metadata fallbacks.
-- Documentation updates (`README.md`, `doc/technical-reference.md`) reflecting the new dependency story.
+- `scripts/check-libsidplayfp-upstream.ts` Bun script plus shared helpers in `@sidflow/common`.
+- Build pipeline updates so `bun run build` (and CI) executes the upstream check before compiling TypeScript packages.
+- Deterministic metadata serialization with unit tests covering read/write, skip, and completion flows.
 
 ### Phase 1 Validation
 
-- Bun unit + integration suites pass without `sidplayfp` installed.
-- Playwright/web plans remain unaffected because APIs still call the CLI’s stable interface.
+- `bun run build` logs the latest upstream hash and whether a rebuild is required.
+- `packages/sidflow-common/test/wasm-build.test.ts` exercises skip and rebuild decision branches.
+- `data/wasm-build.json` changes only when the upstream hash updates or a manual override runs.
 
 ### Phase 1 upstream automation summary (2025-11-08)
 
@@ -113,28 +116,74 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
 - Alternatively, set `lastSuccessfulBuild.commit` to `null` in `data/wasm-build.json` prior to invocation; the next run will treat the build as stale and proceed.
 - After forcing a rebuild, rerun the upstream check to record the newly committed hash and timestamp.
 
-## Phase 2 — Interactive CLIs (rate/play)
+## Phase 2 — Archive tooling modernization
 
 ### Phase 2 Objectives
+
+- Replace all direct `7z` CLI usage with the `7zip-min` library so archive extraction works cross-platform without system dependencies.
+- Ensure fetch pipelines, sample scripts, and supporting utilities consume the shared `7zip-min` helper instead of spawning binaries.
+- Remove documentation and CI steps that instruct users to install 7-Zip manually, replacing them with guidance about the bundled dependency.
+
+### Phase 2 Deliverables
+
+- Shared archive helper in `@sidflow/common` that wraps `7zip-min` for extraction/compression needs.
+- Updated `@sidflow/fetch` implementation, sample scripts, and tests to wire in the new helper.
+- CI workflow adjustments dropping `p7zip` installation while caching the `7zip-min` package artifacts.
+
+### Phase 2 Validation
+
+- `bun run fetch:sample` and `sidflow-fetch` succeed on clean environments without system 7-Zip installed.
+- Unit tests cover success and failure paths of the `7zip-min` integration, including error propagation and logging.
+- Documentation clearly states that archive tooling is bundled and no manual install is required.
+
+### Phase 2 archive tooling summary (2025-11-08)
+
+- Added `7zip-min` dependency at the workspace root and exposed `createSevenZipArchive`/`extractSevenZipArchive` helpers via `@sidflow/common`.
+- Refactored `@sidflow/fetch` pipelines and sample scripts to consume the shared helper, eliminating direct `7z` shell invocations.
+- Updated unit tests (`packages/sidflow-common/test/archive.test.ts`) to exercise happy-path and error-path behaviors without spawning external binaries.
+- Removed `p7zip` installs from CI workflows and refreshed developer/README docs to highlight the bundled extractor.
+
+## Phase 3 — Offline pipelines (classification & training)
+
+### Phase 3 Objectives
+
+- Replace `sidplayfp` usage inside `@sidflow/classify` (WAV cache, metadata extraction, auto-tags, JSONL exports) with WASM helpers.
+- Update `@sidflow/common` config schema and dependent docs/tests to drop `sidplayPath`.
+- Ensure CLI flags (`--sidplay`) gracefully no-op or warn, preserving backward compatibility until removal.
+
+### Phase 3 Deliverables
+
+- Refactored `buildWavCache`, `defaultRenderWav`, `defaultExtractMetadata` using `renderSidToWav`.
+- Updated tests (unit + integration) covering multi-song renders, hashing, and metadata fallbacks.
+- Documentation updates (`README.md`, `doc/technical-reference.md`) reflecting the new dependency story.
+
+### Phase 3 Validation
+
+- Bun unit + integration suites pass without `sidplayfp` installed.
+- Playwright/web plans remain unaffected because APIs still call the CLI’s stable interface.
+
+## Phase 4 — Interactive CLIs (rate/play)
+
+### Phase 4 Objectives
 
 - Rework `sidflow-rate` and `sidflow-play` to render SID PCM via WASM, manage temp WAV buffers, and stream audio through lightweight native players (`ffplay`, `afplay`, `aplay`).
 - Update playback locks so PID/state tracking continues to work even though the spawned process is an audio player, not `sidplayfp`.
 - Preserve keyboard shortcuts, queue management, and logging semantics.
 
-### Phase 2 Deliverables
+### Phase 4 Deliverables
 
 - New playback abstraction inside `@sidflow/common` (PCM renderer + external player harness).
 - Updated CLI help + docs removing `--sidplay`.
 - Tests stubbing the audio player process to keep CI deterministic.
 
-### Phase 2 Validation
+### Phase 4 Validation
 
 - Manual smoke tests confirm both CLIs behave identically to the legacy build (pause, seek, quit paths).
 - CI runs with mocked players verifying lock hand-offs and queue history.
 
-## Phase 3 — Web playback integration
+## Phase 5 — Web playback integration
 
-### Phase 3 Objectives
+### Phase 5 Objectives
 
 - Update Next.js API routes (`/api/rate/*`, `/api/play/*`) to use WASM helpers instead of spawning `sidplayfp`.
 - Decide on hosting mode:
@@ -142,32 +191,32 @@ Replace every legacy `sidplayfp` process invocation with a fully embedded WebAss
   - **Client-side render (preferred):** Ship `.wasm` to the browser, run playback directly in the Rate/Play tabs, and treat the API endpoints as control surfaces only.
 - Align shadcn UI components (PlayTab, RateTab) with the chosen approach, ensuring slider/seek logic taps into live WASM state.
 
-### Phase 3 Deliverables
+### Phase 5 Deliverables
 
 - Shared playback service (either server or client) plus React hooks for polling status.
 - Updated Playwright tests covering real-time position updates, seek, pause/resume.
 - Telemetry/logging so failures surface actionable errors (matching Phase 3 goals from the web plan).
 
-### Phase 3 Validation
+### Phase 5 Validation
 
 - Manual testing verifies seamless transition across CLI and web experiences.
 - Playwright E2E suite runs entirely without native `sidplayfp`.
 
-## Phase 4 — Cleanup, benchmarking, rollout
+## Phase 6 — Cleanup, benchmarking, rollout
 
-### Phase 4 Objectives
+### Phase 6 Objectives
 
 - Remove deprecated config keys (`sidplayPath`), CLI flags, and docs.
 - Benchmark CPU/memory usage of the WASM pipeline vs. native `sidplayfp`; document trade-offs.
 - Produce rollout checklist (similar to `rollout-tasks.md`) detailing code freeze, manual QA, and communications.
 
-### Phase 4 Deliverables
+### Phase 6 Deliverables
 
 - `doc/plans/wasm/rollout-tasks.md` enumerating final verification steps.
 - README + changelog updates communicating the dependency change.
 - Optional telemetry toggle to detect unsupported browsers/environments.
 
-### Phase 4 Validation
+### Phase 6 Validation
 
 - Final CI run (unit + integration + Playwright) green.
 - Manual QA sign-off recorded alongside performance notes.

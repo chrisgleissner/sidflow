@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
+import { createSevenZipArchive } from "../packages/sidflow-common/src/archive.js";
 import type { SidflowConfig } from "../packages/sidflow-common/src/config.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-fetch-sample-");
@@ -24,10 +25,7 @@ async function createHvscFixture(name: string, payload: Record<string, string>):
   );
 
   const archivePath = path.join(baseDir, `${name}.7z`);
-  const command = Bun.spawnSync(["7z", "a", archivePath, "."], { cwd: baseDir, stdout: "pipe", stderr: "pipe" });
-  if (command.exitCode !== 0) {
-    throw new Error(`Failed to build ${name} archive: ${command.stderr.toString()}`);
-  }
+  await createSevenZipArchive(baseDir, archivePath);
 
   return { baseDir, archivePath };
 }

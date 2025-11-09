@@ -15,7 +15,7 @@
 ## CLI Patterns
 - Follow the CLI structure: parse args in `cli.ts`, call a `plan*` function to validate inputs, then run pure helpers that accept explicit dependencies (see `runClassifyCli` and `runFetchCli`).
 - Provide progress reporting via callbacks with throttling (`createProgressLogger` in classify CLI) to keep TTY output smooth.
-- Treat external binaries (`sidplayfp`, `7z`) as user-supplied; surface actionable errors and allow overrides through flags/module injection.
+- Treat external binaries (`sidplayfp`) as user-supplied; archive extraction relies on bundled `7zip-min` helpers that should be injected via shared utilities.
 
 ## Data & Persistence
 - `.sidflow.json` defines `hvscPath`, `wavCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
@@ -26,7 +26,7 @@
 ## Tooling & Dependencies
 - Bun is the runtime: install deps with `bun install`; build with `bun run build`; execute tests and CLIs through `bun run ...`.
 - LanceDB (`vectordb`) powers similarity search; ensure builds call `buildDatabase` before generating manifests.
-- External tools required: `sidplayfp` for audio rendering and `7z` for archive extraction; CI assumes they are available on PATH.
+- External tools required: `sidplayfp` for audio rendering; archive extraction uses the `7zip-min` npm dependency bundled with the workspace.
 
 ## Testing & Quality Gates
 - Use Bun’s test runner (`bun run test`) and keep coverage ≥90% (Codecov enforced); add focused unit tests under `packages/*/test`.
