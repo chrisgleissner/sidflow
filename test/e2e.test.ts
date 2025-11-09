@@ -133,10 +133,10 @@ describe("End-to-End SIDFlow Pipeline", () => {
     // Copy test SID files to temp hvsc directory
     const testDataSrc = path.join(TEST_DATA_PATH, "C64Music");
     const testDataDest = path.join(hvscPath, "C64Music");
-    
+
     // Create hvsc directory first
     await mkdir(hvscPath, { recursive: true });
-    
+
     // Use shell to copy the entire directory structure
     const copyResult = await Bun.spawn(["cp", "-r", testDataSrc, testDataDest]).exited;
     if (copyResult !== 0) {
@@ -155,7 +155,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
         totalSongCount += 1;
       }
     }
-    
+
     // Create config
     const config = {
       hvscPath,
@@ -187,7 +187,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
   it("builds WAV cache from SID files", async () => {
     let renderHook;
-    
+
     if (hasSidplayfp) {
       // Use real sidplayfp
       renderHook = async (options: { sidFile: string; wavFile: string }) => {
@@ -207,9 +207,9 @@ describe("End-to-End SIDFlow Pipeline", () => {
       forceRebuild: false
     });
 
-  expect(result.rendered).toHaveLength(totalSongCount);
+    expect(result.rendered).toHaveLength(totalSongCount);
     expect(result.skipped).toHaveLength(0);
-  expect(result.metrics.totalFiles).toBe(totalSongCount);
+    expect(result.metrics.totalFiles).toBe(totalSongCount);
     expect(result.metrics.cacheHitRate).toBe(0);
   });
 
@@ -247,7 +247,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
   it("classifies SID files with auto-tags", async () => {
     let metadataExtractor;
-    
+
     if (hasSidplayfp) {
       // Use real metadata extractor
       metadataExtractor = async (options: { sidFile: string; relativePath: string }) => {
@@ -264,20 +264,20 @@ describe("End-to-End SIDFlow Pipeline", () => {
       predictRatings: tfjsPredictRatings
     });
 
-  expect(result.autoTagged).toHaveLength(totalSongCount);
-  expect(result.metrics.predictionsGenerated).toBe(totalSongCount);
+    expect(result.autoTagged).toHaveLength(totalSongCount);
+    expect(result.metrics.predictionsGenerated).toBe(totalSongCount);
     expect(result.tagFiles.length).toBeGreaterThan(0);
-    
+
     // Verify auto-tags.json files were created
     const tagFile = result.tagFiles[0];
     expect(existsSync(tagFile)).toBe(true);
-    
+
     const tagContent = await readFile(tagFile, "utf8");
     const tags = JSON.parse(tagContent);
     expect(typeof tags).toBe("object");
     const tagKeys = Object.keys(tags);
     expect(tagKeys.length).toBeGreaterThan(0);
-    
+
     // Verify tag structure
     const firstTagKey = tagKeys[0];
     const firstTag = tags[firstTagKey];
@@ -294,9 +294,9 @@ describe("End-to-End SIDFlow Pipeline", () => {
     if (existsSync(jsonlPath)) {
       const content = await readFile(jsonlPath, "utf8");
       const lines = content.trim().split("\n");
-      
+
       expect(lines.length).toBeGreaterThan(0);
-      
+
       // Parse first line to verify structure
       const firstRecord = JSON.parse(lines[0]);
       expect(firstRecord).toHaveProperty("sid_path");
@@ -344,16 +344,16 @@ describe("End-to-End SIDFlow Pipeline", () => {
   it("verifies full pipeline metrics", async () => {
     // This test verifies the entire pipeline ran successfully
     expect(sidFileCount).toBeGreaterThanOrEqual(3);
-    
+
     // Verify WAV cache was built
     expect(existsSync(wavCachePath)).toBe(true);
-    
+
     // Verify tags were generated
     expect(existsSync(tagsPath)).toBe(true);
-    
+
     // Verify classification outputs exist
     const autoTagsExist = existsSync(path.join(tagsPath, "auto-tags.json")) ||
-                          existsSync(path.join(tagsPath, "C64Music", "auto-tags.json"));
+      existsSync(path.join(tagsPath, "C64Music", "auto-tags.json"));
     expect(autoTagsExist || existsSync(tagsPath)).toBe(true);
   });
 });

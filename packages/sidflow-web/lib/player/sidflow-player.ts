@@ -246,7 +246,9 @@ export class SidflowPlayer {
 
     private async ensureEngine(): Promise<SidAudioEngine> {
         if (!this.enginePromise) {
-            this.enginePromise = loadLibsidplayfp().then(
+            this.enginePromise = loadLibsidplayfp({
+                locateFile: (asset: string) => `/wasm/${asset}`,
+            }).then(
                 (module: WasmModule) => new SidAudioEngine({ module: Promise.resolve(module) })
             );
         }

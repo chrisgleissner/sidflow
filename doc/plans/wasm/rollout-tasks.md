@@ -128,7 +128,7 @@ Phase 7: Complete
 - [x] Wire PlayTab/RateTab components to the browser engine, reusing cache/seek patterns from `invocations.md`, and expose hooks for pause/resume/status polling that scale to many concurrent listeners.
   - [x] RateTab uses the new `SidflowPlayer` wrapper around `libsidplayfp-wasm`, including local seek/pause and session-based SID fetching.
   - [x] PlayTab migrated to the browser engine.
-- [ ] Ship the WASM asset through the web build (static asset or dynamic loader), document caching/versioning expectations, and ensure the browser path mirrors the Bun loader semantics.
+- [x] Ship the WASM asset through the web build (static asset or dynamic loader), document caching/versioning expectations, and ensure the browser path mirrors the Bun loader semantics. *(WASM artifacts copied to `public/wasm/` and served as static assets; `SidflowPlayer` configured to load from `/wasm/` path; Turbopack/webpack configured to prevent SSR bundling of Node-only dependencies.)*
 - [ ] Extend Playwright E2E coverage to verify real-time updates (position, seek, cache warm-up) without native `sidplayfp`, asserting that no server-side PCM streaming occurs.
 - [ ] Instrument telemetry/logging (client + server) so playback failures surface actionable context, laying groundwork for future multi-user readiness while keeping multi-tenant rollout explicitly out of scope.
 

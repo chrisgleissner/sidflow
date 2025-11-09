@@ -57,23 +57,23 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
   useEffect(() => {
     const savedColor = localStorage.getItem('sidflow-color-scheme') || 'system';
     const savedFont = localStorage.getItem('sidflow-font-scheme') || 'mono';
-    
+
     setColorScheme(savedColor);
     setFontScheme(savedFont);
-    
+
     applyTheme(savedColor, savedFont);
   }, []);
 
   const applyTheme = (color: string, font: string) => {
     const html = document.documentElement;
-    
+
     // Apply color scheme
     if (color === 'system') {
       html.removeAttribute('data-theme');
     } else {
       html.setAttribute('data-theme', color);
     }
-    
+
     // Apply font scheme
     html.classList.remove('font-c64', 'font-mono', 'font-sans');
     html.classList.add(`font-${font}`);
@@ -100,13 +100,13 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
       setCustomPath(response.data.preferences.sidBasePath ?? '');
       setKernalPath(
         response.data.preferences.kernalRomPath ??
-          response.data.sidplayfpConfig.kernalRomPath ??
-          ''
+        response.data.sidplayfpConfig.kernalRomPath ??
+        ''
       );
       setBasicPath(
         response.data.preferences.basicRomPath ??
-          response.data.sidplayfpConfig.basicRomPath ??
-          ''
+        response.data.sidplayfpConfig.basicRomPath ??
+        ''
       );
     } else {
       onStatusChange(`Failed to load preferences: ${formatApiError(response)}`, true);

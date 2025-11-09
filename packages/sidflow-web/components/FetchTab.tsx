@@ -154,9 +154,9 @@ export function FetchTab({ onStatusChange }: FetchTabProps) {
         )}
 
         <div className="relative">
-          <Button 
-            onClick={handleFetch} 
-            disabled={isLoading} 
+          <Button
+            onClick={handleFetch}
+            disabled={isLoading}
             className="w-full retro-glow peer"
             variant="default"
           >
