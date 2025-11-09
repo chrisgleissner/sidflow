@@ -137,6 +137,12 @@ export async function runTagCli(argv: string[]): Promise<number> {
 
   const session = await planTagSession({ configPath: options.configPath, random: options.random });
   const sidplayPath = options.sidplayPath ?? session.sidplayPath;
+  if (!sidplayPath) {
+    process.stderr.write(
+      "sidflow-rate requires sidplayfp until the Phase 7 playback harness ships. Provide --sidplay <path> or configure sidplayPath in .sidflow.json.\n"
+    );
+    return 1;
+  }
   const queue = await findUntaggedSids(session.hvscPath, session.tagsPath);
 
   if (queue.length === 0) {

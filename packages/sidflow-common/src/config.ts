@@ -7,7 +7,7 @@ export interface SidflowConfig {
   wavCachePath: string;
   tagsPath: string;
   classifiedPath?: string;
-  sidplayPath: string;
+  sidplayPath?: string;
   threads: number;
   classificationDepth: number;
 }
@@ -16,6 +16,7 @@ export const DEFAULT_CONFIG_FILENAME = ".sidflow.json";
 
 let cachedConfig: SidflowConfig | null = null;
 let cachedPath: string | null = null;
+let sidplayWarningEmitted = false;
 
 export class SidflowConfigError extends Error {
   declare cause?: unknown;
@@ -69,6 +70,12 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
   const overrideSidBase = process.env.SIDFLOW_SID_BASE_PATH;
   if (overrideSidBase && overrideSidBase.trim().length > 0) {
     config.hvscPath = path.normalize(overrideSidBase);
+  }
+  if (config.sidplayPath && !sidplayWarningEmitted) {
+    sidplayWarningEmitted = true;
+    process.stderr.write(
+      "[sidflow] Config key \"sidplayPath\" is deprecated. The WASM renderer is now used by default; remove this key once native fallbacks are retired.\n"
+    );
   }
   cachedConfig = config;
   cachedPath = resolvedPath;
@@ -136,7 +143,7 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     wavCachePath: requiredString("wavCachePath"),
     tagsPath: requiredString("tagsPath"),
     classifiedPath: optionalString("classifiedPath"),
-    sidplayPath: requiredString("sidplayPath"),
+    sidplayPath: optionalString("sidplayPath"),
     threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
     classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0)
   };

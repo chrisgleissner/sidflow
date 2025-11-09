@@ -23,7 +23,6 @@ describe("generateJsonlOutput", () => {
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       },
@@ -31,8 +30,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir,
-      sidplayPath: "sidplayfp"
+      hvscPath: testDir
     };
 
     // Mock feature extractor
@@ -87,7 +85,6 @@ describe("generateJsonlOutput", () => {
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       },
@@ -95,8 +92,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir,
-      sidplayPath: "sidplayfp"
+      hvscPath: testDir
     };
 
     const mockFeatureExtractor = async (): Promise<FeatureVector> => ({
@@ -146,7 +142,6 @@ describe("generateJsonlOutput", () => {
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       },
@@ -154,8 +149,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir,
-      sidplayPath: "sidplayfp"
+      hvscPath: testDir
     };
 
     const result = await generateJsonlOutput(plan, {});

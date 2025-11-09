@@ -29,7 +29,7 @@ export interface TagCliOptions {
 export interface TagSessionPlan {
   config: SidflowConfig;
   random: boolean;
-  sidplayPath: string;
+  sidplayPath?: string;
   tagsPath: string;
   hvscPath: string;
 }
@@ -40,6 +40,12 @@ export async function planTagSession(
   const config = await loadConfig(options.configPath);
   const logger = createLogger("sidflow-rate");
   logger.debug("Loaded configuration for tagging session");
+
+  if (!config.sidplayPath) {
+    logger.warn(
+      "sidflow-rate currently requires the native sidplayfp binary. Supply --sidplay or add sidplayPath to your config until the playback harness migrates to WASM."
+    );
+  }
 
   return {
     config,

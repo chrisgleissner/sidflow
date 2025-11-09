@@ -2,7 +2,7 @@ export interface SidflowConfig {
     hvscPath: string;
     wavCachePath: string;
     tagsPath: string;
-    sidplayPath: string;
+    sidplayPath?: string;
     threads: number;
     classificationDepth: number;
 }

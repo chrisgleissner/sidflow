@@ -53,6 +53,22 @@ describe("config", () => {
     expect(cached).toBe(config);
   });
 
+  it("treats sidplayPath as optional", async () => {
+    const payload = {
+      hvscPath: "./hvsc",
+      wavCachePath: "./wav",
+      tagsPath: "./tags",
+      threads: 1,
+      classificationDepth: 4
+    };
+
+    await writeFile(configPath, JSON.stringify(payload), "utf8");
+
+    const config = await loadConfig(configPath);
+    expect(config.hvscPath).toBe(path.normalize(payload.hvscPath));
+    expect(config.sidplayPath).toBeUndefined();
+  });
+
   it("throws SidflowConfigError for malformed config", async () => {
     await writeFile(configPath, "{}", "utf8");
     await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);

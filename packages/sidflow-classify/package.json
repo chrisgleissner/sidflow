@@ -10,13 +10,16 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "sideEffects": false,
   "dependencies": {
     "@sidflow/common": "workspace:*",
+    "@sidflow/libsidplayfp-wasm": "workspace:*",
     "@tensorflow/tfjs-node": "^4.22.0",
     "essentia.js": "^0.1.3"
   }

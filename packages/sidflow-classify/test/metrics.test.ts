@@ -23,8 +23,7 @@ function createPlan(hvscPath: string, wavCachePath: string, tagsPath: string): C
     classificationDepth: 3,
     hvscPath,
     wavCachePath,
-    tagsPath,
-    sidplayPath: "sidplayfp"
+    tagsPath
   } as unknown as ClassificationPlan;
 }
 

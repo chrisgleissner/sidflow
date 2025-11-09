@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 ![Logo](./doc/img/logo.png)
 
 # SID Flow
@@ -59,11 +60,15 @@ Install the following tools first:
     curl -fsSL https://bun.sh/install | bash
     ```
 
-1. **[sidplayfp](https://github.com/libsidplayfp/sidplayfp)** – SID-to-audio converter
+1. *(Optional for legacy playback CLIs)* **[sidplayfp](https://github.com/libsidplayfp/sidplayfp)** – native SID player
 
-    - Linux: `sudo apt install sidplayfp`
-    - macOS: `brew install sidplayfp`
-    - Windows: download from [releases](https://github.com/libsidplayfp/sidplayfp/releases)
+  The classification and training pipelines now render audio through the bundled WASM engine, so `sidplayfp` is only needed until the playback CLIs migrate in later rollout phases.
+
+Install the native player if you still use those CLIs:
+
+- Linux: `sudo apt install sidplayfp`
+- macOS: `brew install sidplayfp`
+- Windows: download from [releases](https://github.com/libsidplayfp/sidplayfp/releases)
 
 1. **Archive extractor** – A cross-platform 7-Zip binary ships with SIDFlow, so no additional installation is required.
 
@@ -83,11 +88,12 @@ Then create `.sidflow.json` in the root directory:
   "hvscPath": "./workspace/hvsc",
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
-  "sidplayPath": "sidplayfp",
   "threads": 0,
   "classificationDepth": 3
 }
 ```
+
+> `sidplayPath` is deprecated and optional. Keep it only while legacy players depend on the native binary—you will receive a warning when the config loads.
 
 Validate your setup:
 
@@ -148,7 +154,7 @@ Play songs, rate them on **energy**, **mood**, and **complexity** (1–5).
 ./scripts/sidflow-classify
 ```
 
-Analyzes all SIDs, converts to WAV, extracts features, and predicts ratings.
+Analyzes all SIDs, converts to WAV via the WASM renderer, extracts features, and predicts ratings—no native `sidplayfp` binary required.
 
 ### Train Model
 

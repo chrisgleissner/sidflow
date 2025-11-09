@@ -125,7 +125,7 @@ function printHelp(): void {
     "",
     "Options:",
     "  --config <path>           Use an alternate .sidflow.json file",
-    "  --sidplay <path>          Override the sidplayfp binary path",
+    "  --sidplay <path>          Deprecated: ignored; WASM renderer is used",
     "  --force-rebuild           Re-render WAVs even if cache is fresh",
     "  --feature-module <path>   Module exporting a featureExtractor override",
     "  --predictor-module <path> Module exporting a predictRatings override",
@@ -326,10 +326,15 @@ export async function runClassifyCli(
       forceRebuild: options.forceRebuild ?? false
     });
 
+    if (options.sidplayPath) {
+      runtime.stderr.write(
+        "Warning: --sidplay is deprecated and ignored. The WASM renderer is always used.\n"
+      );
+    }
+
     const resolvedPlan: ClassificationPlan = {
       ...plan,
-      forceRebuild: options.forceRebuild ?? plan.forceRebuild,
-      sidplayPath: options.sidplayPath ? path.resolve(options.sidplayPath) : plan.sidplayPath
+      forceRebuild: options.forceRebuild ?? plan.forceRebuild
     };
 
     // Determine thread count
@@ -347,7 +352,6 @@ export async function runClassifyCli(
 
     const wavResult = await runtime.buildWavCache(resolvedPlan, {
       forceRebuild: options.forceRebuild,
-      sidplayPath: resolvedPlan.sidplayPath,
       render,
       threads,
       onThreadUpdate: threadLogger,

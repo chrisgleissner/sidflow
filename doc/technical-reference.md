@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD024 MD036 MD040 -->
 # SID Flow Technical Reference
 
 This document provides comprehensive technical documentation for developers and advanced users of SID Flow.
@@ -765,7 +766,6 @@ The configuration file controls all paths and settings:
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./workspace/classified",
-  "sidplayPath": "sidplayfp",
   "threads": 0,
   "classificationDepth": 3
 }
@@ -777,7 +777,7 @@ The configuration file controls all paths and settings:
 - `wavCachePath` — Cache directory for converted WAV files
 - `tagsPath` — Directory for manual and auto-generated rating tags
 - `classifiedPath` — Output directory for JSONL classification files
-- `sidplayPath` — Path to sidplayfp binary (or just "sidplayfp" if in PATH)
+- `sidplayPath` — Optional path to the legacy sidplayfp binary (deprecated; ignore or remove unless you still rely on the native playback CLIs)
 - `threads` — Number of parallel threads for processing (0 = auto-detect)
 - `classificationDepth` — Directory depth for aggregating auto-tags.json files
 
@@ -794,7 +794,7 @@ This checks:
 - JSON syntax correctness
 - Required fields presence
 - Path accessibility
-- sidplayfp availability (warning if missing)
+- Emits a warning when deprecated keys (e.g., `sidplayPath`) are present
 
 ---
 
@@ -812,9 +812,9 @@ This checks:
 
 **WAV Rendering Fails:**
 
-- Verify `sidplayfp` is installed and in PATH
-- Test manually: `sidplayfp --wav=test.wav yourfile.sid`
-- Check for C64 ROM requirements (most HVSC files don't need ROMs)
+- Ensure `packages/libsidplayfp-wasm/dist/libsidplayfp.wasm` exists; rebuild with `bun run wasm:build` if it is missing or stale
+- Verify `data/wasm-build.json` reflects the latest upstream hash (delete it and rerun the build to regenerate)
+- Confirm you are running on Bun ≥1.3 with WebAssembly SIMD enabled; older runtimes may fail to instantiate the renderer
 
 **Feature Extraction Errors:**
 
@@ -832,7 +832,7 @@ This checks:
 
 **sidplayfp not found:**
 
-- Install via package manager (see Requirements)
+- Install via package manager only if you still rely on the legacy playback CLIs
 - Specify explicit path: `--sidplay /usr/local/bin/sidplayfp`
 
 **No songs match filters:**

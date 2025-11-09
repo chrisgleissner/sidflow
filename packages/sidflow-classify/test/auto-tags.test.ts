@@ -28,8 +28,7 @@ function createPlan(hvscPath: string, wavCachePath: string, tagsPath: string): C
     classificationDepth: 3,
     hvscPath,
     wavCachePath,
-    tagsPath,
-    sidplayPath: "sidplayfp"
+    tagsPath
   } as unknown as ClassificationPlan;
 }
 
@@ -100,11 +99,11 @@ describe("generateAutoTags", () => {
 
     const manualMetadataPath = resolveMetadataPath(hvscPath, tagsPath, manualSid);
     const manualMetadata = JSON.parse(await readFile(manualMetadataPath, "utf8")) as Record<string, unknown>;
-    expect(manualMetadata).toEqual(metadataByFile[manualSid]);
+  expect(manualMetadata).toEqual(metadataByFile[manualSid] as Record<string, unknown>);
 
     const autoMetadataPath = resolveMetadataPath(hvscPath, tagsPath, autoSid);
     const autoMetadata = JSON.parse(await readFile(autoMetadataPath, "utf8")) as Record<string, unknown>;
-    expect(autoMetadata).toEqual(metadataByFile[autoSid]);
+  expect(autoMetadata).toEqual(metadataByFile[autoSid] as Record<string, unknown>);
 
     const manualAggregatedPath = path.join(tagsPath, "C64Music", "MUSICIANS", "A", "auto-tags.json");
     const manualAggregated = JSON.parse(await readFile(manualAggregatedPath, "utf8")) as Record<string, unknown>;

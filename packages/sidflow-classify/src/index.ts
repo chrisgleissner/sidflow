@@ -20,8 +20,12 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
+import loadLibsidplayfp, {
+  SidAudioEngine,
+  type LibsidplayfpWasmModule
+} from "@sidflow/libsidplayfp-wasm";
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -84,15 +88,20 @@ async function runConcurrent<T>(
  * This function parses all SID files once and caches the metadata to avoid redundant I/O.
  * Used by buildWavCache, generateAutoTags, and generateJsonlOutput.
  */
+type EngineFactory = () => Promise<SidAudioEngine>;
+
+let parseSidFileImpl: typeof parseSidFile = parseSidFile;
+let engineFactoryOverride: EngineFactory | null = null;
+
 async function collectSidMetadataAndSongCount(
   sidFiles: string[]
 ): Promise<{ sidMetadataCache: Map<string, SidFileMetadata>; totalSongs: number }> {
   const sidMetadataCache = new Map<string, SidFileMetadata>();
   let totalSongs = 0;
-  
+
   for (const sidFile of sidFiles) {
     try {
-      const fullMetadata = await parseSidFile(sidFile);
+      const fullMetadata = await parseSidFileImpl(sidFile);
       sidMetadataCache.set(sidFile, fullMetadata);
       totalSongs += fullMetadata.songs;
     } catch {
@@ -100,7 +109,7 @@ async function collectSidMetadataAndSongCount(
       totalSongs += 1;
     }
   }
-  
+
   return { sidMetadataCache, totalSongs };
 }
 
@@ -129,7 +138,6 @@ export interface ClassificationPlan {
   forceRebuild: boolean;
   classificationDepth: number;
   hvscPath: string;
-  sidplayPath: string;
 }
 
 export async function planClassification(
@@ -143,8 +151,7 @@ export async function planClassification(
     tagsPath: config.tagsPath,
     forceRebuild: options.forceRebuild ?? false,
     classificationDepth: config.classificationDepth,
-    hvscPath: config.hvscPath,
-    sidplayPath: config.sidplayPath
+    hvscPath: config.hvscPath
   };
 }
 
@@ -155,9 +162,58 @@ async function computeFileHash(filePath: string): Promise<string> {
   return createHash("sha256").update(content).digest("hex");
 }
 
+const RENDER_CYCLES_PER_CHUNK = 20_000;
+const MAX_RENDER_SECONDS = 600;
+const MAX_SILENT_ITERATIONS = 32;
+
+let wasmModulePromise: Promise<LibsidplayfpWasmModule> | null = null;
+
+async function getWasmModule(): Promise<LibsidplayfpWasmModule> {
+  if (!wasmModulePromise) {
+    wasmModulePromise = loadLibsidplayfp();
+  }
+  return wasmModulePromise;
+}
+
+async function createEngine(): Promise<SidAudioEngine> {
+  if (engineFactoryOverride) {
+    return engineFactoryOverride();
+  }
+  const module = await getWasmModule();
+  return new SidAudioEngine({ module: Promise.resolve(module) });
+}
+
+function encodePcmToWav(samples: Int16Array, sampleRate: number, channels: number): Buffer {
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * channels * (bitsPerSample / 8);
+  const blockAlign = channels * (bitsPerSample / 8);
+  const dataSize = samples.length * 2;
+  const buffer = Buffer.allocUnsafe(44 + dataSize);
+  let offset = 0;
+
+  buffer.write("RIFF", offset); offset += 4;
+  buffer.writeUInt32LE(36 + dataSize, offset); offset += 4;
+  buffer.write("WAVE", offset); offset += 4;
+  buffer.write("fmt ", offset); offset += 4;
+  buffer.writeUInt32LE(16, offset); offset += 4;
+  buffer.writeUInt16LE(1, offset); offset += 2;
+  buffer.writeUInt16LE(channels, offset); offset += 2;
+  buffer.writeUInt32LE(sampleRate, offset); offset += 4;
+  buffer.writeUInt32LE(byteRate, offset); offset += 4;
+  buffer.writeUInt16LE(blockAlign, offset); offset += 2;
+  buffer.writeUInt16LE(bitsPerSample, offset); offset += 2;
+  buffer.write("data", offset); offset += 4;
+  buffer.writeUInt32LE(dataSize, offset); offset += 4;
+
+  const pcmBytes = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
+  pcmBytes.copy(buffer, offset);
+
+  return buffer;
+}
+
 export function resolveWavPath(
-  plan: ClassificationPlan, 
-  sidFile: string, 
+  plan: ClassificationPlan,
+  sidFile: string,
   songIndex?: number
 ): string {
   const relative = path.relative(plan.hvscPath, sidFile);
@@ -167,7 +223,7 @@ export function resolveWavPath(
 
   const directory = path.dirname(relative);
   const baseName = path.basename(relative, path.extname(relative));
-  const wavName = songIndex !== undefined 
+  const wavName = songIndex !== undefined
     ? `${baseName}-${songIndex}.wav`
     : `${baseName}.wav`;
   return path.join(plan.wavCachePath, directory, wavName);
@@ -216,7 +272,7 @@ export async function needsWavRefresh(
   }
 
   const [sidStats, wavStats] = await Promise.all([stat(sidFile), stat(wavFile)]);
-  
+
   // If SID file is older than WAV, no refresh needed
   if (sidStats.mtimeMs <= wavStats.mtimeMs) {
     return false;
@@ -243,46 +299,78 @@ export async function needsWavRefresh(
 export interface RenderWavOptions {
   sidFile: string;
   wavFile: string;
-  sidplayPath: string;
   songIndex?: number;
 }
 
 export type RenderWav = (options: RenderWavOptions) => Promise<void>;
 
-export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, sidplayPath, songIndex }) => {
+export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, songIndex }) => {
   await ensureDir(path.dirname(wavFile));
-  
-  // Build sidplayfp command arguments
-  const args = [`-w${wavFile}`];
-  
-  // Add song selection if specified (1-based index)
-  if (songIndex !== undefined) {
-    args.push(`-o${songIndex}`);
-  }
-  
-  args.push(sidFile);
-  
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(sidplayPath, args, {
-      stdio: "ignore"
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`sidplayfp exited with code ${code}`));
-      }
-    });
-  });
 
-  // Store hash of SID file after successful WAV render
+  const engine = await createEngine();
+  const sidBuffer = new Uint8Array(await readFile(sidFile));
+  await engine.loadSidBuffer(sidBuffer);
+
+  if (typeof songIndex === "number") {
+    const zeroBased = Math.max(0, songIndex - 1);
+    await engine.selectSong(zeroBased);
+  }
+
+  const sampleRate = engine.getSampleRate();
+  const channels = engine.getChannels();
+  const maxSamples = Math.floor(sampleRate * channels * MAX_RENDER_SECONDS);
+  const chunks: Int16Array[] = [];
+
+  let collectedSamples = 0;
+  let silentIterations = 0;
+  let iterations = 0;
+  const maxIterations = Math.max(64, Math.ceil(maxSamples / RENDER_CYCLES_PER_CHUNK) * 4);
+
+  while (collectedSamples < maxSamples && iterations < maxIterations) {
+    iterations += 1;
+    const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
+    if (chunk === null) {
+      break;
+    }
+    if (chunk.length === 0) {
+      silentIterations += 1;
+      if (silentIterations >= MAX_SILENT_ITERATIONS) {
+        break;
+      }
+      continue;
+    }
+
+    silentIterations = 0;
+    const copy = chunk.slice();
+    const allowed = Math.min(copy.length, maxSamples - collectedSamples);
+    if (allowed <= 0) {
+      break;
+    }
+    const trimmed = allowed === copy.length ? copy : copy.subarray(0, allowed);
+    chunks.push(trimmed);
+    collectedSamples += allowed;
+  }
+
+  if (collectedSamples === 0) {
+    throw new Error(`WASM renderer produced no audio for ${sidFile}`);
+  }
+
+  const pcm = new Int16Array(collectedSamples);
+  let writeOffset = 0;
+  for (const chunk of chunks) {
+    pcm.set(chunk, writeOffset);
+    writeOffset += chunk.length;
+  }
+
+  const wavBuffer = encodePcmToWav(pcm, sampleRate, channels);
+  await writeFile(wavFile, wavBuffer);
+
   const hashFile = `${wavFile}.hash`;
   try {
     const hash = await computeFileHash(sidFile);
     await writeFile(hashFile, hash, "utf8");
   } catch {
-    // Hash storage is optional, continue even if it fails
+    // Hash storage is best-effort; ignore failures.
   }
 };
 
@@ -300,7 +388,6 @@ export interface WavCacheProgress {
 export type ProgressCallback = (progress: WavCacheProgress) => void;
 
 export interface BuildWavCacheOptions {
-  sidplayPath?: string;
   render?: RenderWav;
   forceRebuild?: boolean;
   onProgress?: ProgressCallback;
@@ -335,7 +422,6 @@ export async function buildWavCache(
   const sidFiles = await collectSidFiles(plan.hvscPath);
   const rendered: string[] = [];
   const skipped: string[] = [];
-  const sidplayPath = options.sidplayPath ?? plan.sidplayPath;
   const render = options.render ?? defaultRenderWav;
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
@@ -435,7 +521,7 @@ export async function buildWavCache(
         file: songLabel
       });
       try {
-        await render({ sidFile, wavFile, sidplayPath, songIndex });
+        await render({ sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined });
         rendered.push(wavFile);
 
         if (onProgress) {
@@ -487,60 +573,53 @@ export interface SidMetadata {
 
 export interface ExtractMetadataOptions {
   sidFile: string;
-  sidplayPath: string;
   relativePath: string;
 }
 
 export type ExtractMetadata = (options: ExtractMetadataOptions) => Promise<SidMetadata>;
 
-const SIDPLAY_METADATA_ARGS = ["-t1", "--none"] as const;
+function metadataFromTuneInfo(info: Record<string, unknown> | null): SidMetadata | null {
+  if (!info) {
+    return null;
+  }
+  const infoStrings = Array.isArray((info as Record<string, unknown>).infoStrings)
+    ? (info as Record<string, unknown>).infoStrings
+    : [];
+  const [titleRaw, authorRaw, releasedRaw] = infoStrings as Array<unknown>;
+  const title = typeof titleRaw === "string" && titleRaw.trim().length > 0 ? titleRaw.trim() : undefined;
+  const author = typeof authorRaw === "string" && authorRaw.trim().length > 0 ? authorRaw.trim() : undefined;
+  const released = typeof releasedRaw === "string" && releasedRaw.trim().length > 0 ? releasedRaw.trim() : undefined;
+  if (!title && !author && !released) {
+    return null;
+  }
+  return { title, author, released };
+}
 
-export const defaultExtractMetadata: ExtractMetadata = async ({ sidFile, sidplayPath, relativePath }) => {
+export const defaultExtractMetadata: ExtractMetadata = async ({ sidFile, relativePath }) => {
   try {
     // Try to parse SID file directly for complete metadata
-    const fullMetadata = await parseSidFile(sidFile);
+    const fullMetadata = await parseSidFileImpl(sidFile);
     return {
       title: fullMetadata.title,
       author: fullMetadata.author,
       released: fullMetadata.released
     };
   } catch (parseError) {
-    // Fall back to sidplayfp output parsing
+    // Fall back to WASM tune info parsing
     try {
-      const output = await runSidplayForMetadata(sidFile, sidplayPath);
-      return parseSidMetadataOutput(output);
+      const engine = await createEngine();
+      const sidBuffer = new Uint8Array(await readFile(sidFile));
+      await engine.loadSidBuffer(sidBuffer);
+      const info = metadataFromTuneInfo(engine.getTuneInfo());
+      if (info) {
+        return info;
+      }
+      return fallbackMetadataFromPath(relativePath, parseError);
     } catch (error) {
       return fallbackMetadataFromPath(relativePath, error);
     }
   }
 };
-
-async function runSidplayForMetadata(sidFile: string, sidplayPath: string): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const child = spawn(sidplayPath, [...SIDPLAY_METADATA_ARGS, sidFile], {
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string | Buffer) => {
-      stdout += chunk.toString();
-    });
-    child.stderr?.on("data", (chunk: string | Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        const message = stderr.trim() ? `: ${stderr.trim()}` : "";
-        reject(new Error(`sidplayfp metadata extraction failed with code ${code}${message}`));
-      }
-    });
-  });
-}
 
 const METADATA_FIELD_MAP = new Map<string, keyof SidMetadata>([
   ["title", "title"],
@@ -629,7 +708,7 @@ async function loadManualTagRecord(
       ratings[dimension] = clampRating(raw);
     }
   }
-  
+
   // Also load preference rating if present (not predicted by classifier)
   const pRaw = record.p;
   if (typeof pRaw === "number" && !Number.isNaN(pRaw)) {
@@ -678,7 +757,7 @@ function combineRatings(
       ratings[dimension] = defaultValue;
     }
   }
-  
+
   // Preserve manual preference rating if present (not predicted by classifier)
   if (manual && manual.p !== undefined) {
     ratings.p = clampRating(manual.p);
@@ -747,10 +826,10 @@ async function writeMetadataRecord(
 ): Promise<string> {
   const metadataPath = resolveMetadataPath(plan.hvscPath, plan.tagsPath, sidFile);
   await ensureDir(path.dirname(metadataPath));
-  
+
   // Build metadata object with simple fields
   const metadataJson = metadataToJson(metadata);
-  
+
   // Use cached metadata if available, otherwise try to parse
   if (cachedFullMetadata) {
     const fullJson = sidMetadataToJson(cachedFullMetadata);
@@ -763,7 +842,7 @@ async function writeMetadataRecord(
   } else {
     // Fallback: try to parse if no cache provided (backward compatibility)
     try {
-      const fullMetadata = await parseSidFile(sidFile);
+      const fullMetadata = await parseSidFileImpl(sidFile);
       const fullJson = sidMetadataToJson(fullMetadata);
       Object.assign(metadataJson, fullJson, {
         title: metadata.title || fullMetadata.title,
@@ -774,7 +853,7 @@ async function writeMetadataRecord(
       // If we can't parse the SID file, just use the simple metadata
     }
   }
-  
+
   await writeFile(metadataPath, stringifyDeterministic(metadataJson));
   return metadataPath;
 }
@@ -860,7 +939,6 @@ export async function generateAutoTags(
 
     const metadata = await extractMetadata({
       sidFile,
-      sidplayPath: plan.sidplayPath,
       relativePath: posixRelative
     });
 
@@ -1008,12 +1086,12 @@ export async function generateAutoTags(
         c: entry.c,
         source: entry.source
       };
-      
+
       // Include preference rating if present
       if (entry.p !== undefined) {
         entryData.p = entry.p;
       }
-      
+
       record[key] = entryData;
     }
     await ensureDir(path.dirname(autoFilePath));
@@ -1103,7 +1181,6 @@ export async function generateJsonlOutput(
     // Load metadata once per SID file
     const metadata = await extractMetadata({
       sidFile,
-      sidplayPath: plan.sidplayPath,
       relativePath: posixRelative
     });
 
@@ -1127,9 +1204,9 @@ export async function generateJsonlOutput(
 
       // Load manual ratings if available
       const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
-      
+
       // Extract features and generate ratings for this song
-  const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
+      const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
       let features: AudioFeatures | undefined;
       let ratings: TagRatings;
 
@@ -1188,7 +1265,7 @@ export async function generateJsonlOutput(
       // Append as JSONL (one JSON object per line)
       // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
       records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
-      
+
       processedSongs++;
     }
   }
@@ -1243,6 +1320,14 @@ export const heuristicPredictRatings: PredictRatings = async ({
     c: clampRating(toRating(complexitySeed))
   };
 };
+
+export function __setClassifyTestOverrides(overrides?: {
+  parseSidFile?: typeof parseSidFile;
+  createEngine?: EngineFactory;
+}): void {
+  parseSidFileImpl = overrides?.parseSidFile ?? parseSidFile;
+  engineFactoryOverride = overrides?.createEngine ?? null;
+}
 
 // Re-export Essentia.js and TensorFlow.js implementations
 export { essentiaFeatureExtractor } from "./essentia-features.js";

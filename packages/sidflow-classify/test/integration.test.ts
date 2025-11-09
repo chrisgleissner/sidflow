@@ -77,7 +77,6 @@ describe("End-to-End SIDFlow Pipeline", () => {
         hvscPath,
         wavCachePath,
         tagsPath,
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       } as ClassificationPlan["config"],
@@ -85,13 +84,12 @@ describe("End-to-End SIDFlow Pipeline", () => {
       classificationDepth: 3,
       hvscPath,
       wavCachePath,
-      tagsPath,
-      sidplayPath: "sidplayfp"
+      tagsPath
     };
 
     // Mock WAV renderer
-    const mockRender = async ({ sidFile, wavFile, sidplayPath, songIndex }: { sidFile: string; wavFile: string; sidplayPath: string; songIndex?: number }) => {
-      console.log(`[TEST] Rendering WAV: ${wavFile} from ${sidFile} (songIndex: ${songIndex}, sidplayPath: ${sidplayPath})`);
+    const mockRender = async ({ sidFile, wavFile, songIndex }: { sidFile: string; wavFile: string; songIndex?: number }) => {
+      console.log(`[TEST] Rendering WAV: ${wavFile} from ${sidFile} (songIndex: ${songIndex})`);
       await ensureDir(path.dirname(wavFile));
       const wavData = generateTestWav(2, 440, 44100);
       await writeFile(wavFile, wavData);
@@ -103,8 +101,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     console.log(`[TEST] Plan configuration:`, JSON.stringify({
       hvscPath: plan.hvscPath,
       wavCachePath: plan.wavCachePath,
-      tagsPath: plan.tagsPath,
-      sidplayPath: plan.sidplayPath
+      tagsPath: plan.tagsPath
     }, null, 2));
     
     let wavResult;

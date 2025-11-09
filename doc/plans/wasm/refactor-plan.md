@@ -244,60 +244,58 @@ The native `SidPlayerContext::selectSong` binding still throws a WASM signature 
 
 ### Phase 6 Objectives (Offline pipelines)
 
-- Replace `sidplayfp` usage inside `@sidflow/classify` (WAV cache, metadata extraction, auto-tags, JSONL exports) with WASM helpers.
-- Update `@sidflow/common` config schema and dependent docs/tests to drop `sidplayPath`.
-- Ensure CLI flags (`--sidplay`) gracefully no-op or warn, preserving backward compatibility until removal.
+- Finish migrating the classification + training toolchain to `SidAudioEngine`, eliminating every remaining dependency on the native `sidplayfp` binary.
+- Remove the hard requirement for `sidplayPath` from configuration files, treating the key as deprecated while emitting clear warnings when it is present.
+- Ensure metadata extraction relies on direct SID parsing with a WASM tune-info fallback so that all metadata continues to resolve even when heuristics fail.
 
 ### Phase 6 Deliverables (Offline pipelines)
 
-- Refactored `buildWavCache`, `defaultRenderWav`, `defaultExtractMetadata` using `renderSidToWav`.
-- Updated tests (unit + integration) covering multi-song renders, hashing, and metadata fallbacks.
-- Documentation updates (`README.md`, `doc/technical-reference.md`) reflecting the new dependency story.
+- `buildWavCache`, `defaultRenderWav`, and related helpers rendering PCM via `SidAudioEngine.renderCycles`/`renderSeconds`, writing deterministic WAV buffers, and preserving existing cache hashes.
+- Updated metadata flow that first calls `parseSidFile`, then `SidAudioEngine.getTuneInfo()`, and finally the existing filename fallback to guarantee titles/authors for problematic files.
+- Config/test/doc updates reflecting that `sidplayPath` is optional today and scheduled for removal after downstream consumers switch to WASM.
 
 ### Phase 6 Validation (Offline pipelines)
 
-- Bun unit + integration suites pass without `sidplayfp` installed.
-- Playwright/web plans remain unaffected because APIs still call the CLI’s stable interface.
+- Bun unit + integration suites execute without `sidplayfp` installed; multi-song renders, hashed outputs, and metadata fallbacks remain stable.
+- CLI warnings confirm `--sidplay` and `sidplayPath` are ignored, guiding users toward the WASM-first flow while keeping legacy scripts functional during the transition.
 
 ## Phase 7 — Interactive CLIs (rate/play)
 
 ### Phase 7 Objectives (Interactive CLIs)
 
-- Rework `sidflow-rate` and `sidflow-play` to render SID PCM via WASM, manage temp WAV buffers, and stream audio through lightweight native players (`ffplay`, `afplay`, `aplay`).
-- Update playback locks so PID/state tracking continues to work even though the spawned process is an audio player, not `sidplayfp`.
-- Preserve keyboard shortcuts, queue management, and logging semantics.
+- Introduce a shared playback harness that feeds WASM-rendered PCM into lightweight host players while retaining lock semantics and queue management.
+- Gradually phase out `--sidplay` overrides from CLI UX, replacing the flag with deprecation messaging until removal in Phase 9.
+- Reuse the `SidAudioEngine` caching and song-selection behavior from offline flows so seeking and multi-song playback behave the same across tools.
 
 ### Phase 7 Deliverables (Interactive CLIs)
 
-- New playback abstraction inside `@sidflow/common` (PCM renderer + external player harness).
-- Updated CLI help + docs removing `--sidplay`.
-- Tests stubbing the audio player process to keep CI deterministic.
+- A new `@sidflow/common` helper that spawns host audio processes (e.g., `aplay`, `afplay`, `ffplay`) using PCM buffers produced by the WASM engine, including retry/error reporting hooks.
+- Updated `sidflow-rate` and `sidflow-play` CLIs plus documentation reflecting the WASM renderer, deprecating `--sidplay`, and outlining OS-level audio prerequisites.
+- Deterministic tests that stub the host process while exercising playback locks, queue transitions, and keyboard shortcuts.
 
 ### Phase 7 Validation (Interactive CLIs)
 
-- Manual smoke tests confirm both CLIs behave identically to the legacy build (pause, seek, quit paths).
-- CI runs with mocked players verifying lock hand-offs and queue history.
+- Manual smoke tests cover pause/resume/seek workflows and confirm no regressions in log output or queue ordering.
+- CI mocks validate that lock files and PID tracking behave correctly when the spawned process is the host player instead of `sidplayfp`.
 
 ## Phase 8 — Web playback integration
 
 ### Phase 8 Objectives (Web playback)
 
-- Update Next.js API routes (`/api/rate/*`, `/api/play/*`) to use WASM helpers instead of spawning `sidplayfp`.
-- Decide on hosting mode:
-  - **Server-side render:** Node runtime loads WASM and streams PCM to a lightweight player (mirrors CLI approach).
-  - **Client-side render (preferred):** Ship `.wasm` to the browser, run playback directly in the Rate/Play tabs, and treat the API endpoints as control surfaces only.
-- Align shadcn UI components (PlayTab, RateTab) with the chosen approach, ensuring slider/seek logic taps into live WASM state.
+- Deliver a browser-first playback experience: the `.wasm` bundle must load on the client, render PCM locally, and stream it through the Web Audio API so every listener hears audio on their own device.
+- Treat Next.js API routes as control surfaces only (enqueue, state sync, metadata); they must never render audio on the server. This aligns the architecture with future multi-user scaling goals.
+- Wire PlayTab/RateTab components to the client-side engine, including warm-up caching, seek/jump operations, and UI feedback consistent with the CLI flows.
 
 ### Phase 8 Deliverables (Web playback)
 
-- Shared playback service (either server or client) plus React hooks for polling status.
-- Updated Playwright tests covering real-time position updates, seek, pause/resume.
-- Telemetry/logging so failures surface actionable errors (matching Phase 3 goals from the web plan).
+- A reusable browser loader that mirrors the Bun/Node `loadLibsidplayfp` semantics, caches module instantiation, and exposes hooks/utilities for React components.
+- Updated Next.js routes sending compact control payloads (e.g., SID bytes, playback commands) while delegating actual rendering to the browser; legacy server-render flags removed.
+- Expanded Playwright coverage verifying that playback, seek, pause/resume, and error-handling operate entirely client side, plus telemetry wiring that surfaces failures to both UI and logs.
 
 ### Phase 8 Validation (Web playback)
 
-- Manual testing verifies seamless transition across CLI and web experiences.
-- Playwright E2E suite runs entirely without native `sidplayfp`.
+- Manual tests confirm that browsers without native audio plugins still play SID tracks via WASM and that the server never streams PCM.
+- Playwright E2E suite passes using only the WASM path, ensuring `sidplayfp` is no longer required in CI or deployment environments.
 
 ## Phase 9 — Cleanup, benchmarking, rollout
 
