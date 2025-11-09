@@ -26,6 +26,7 @@ Unique command-lines that invoke the native `sidplayfp` binary inside this repo,
 
 - Modern clients instantiate `SidAudioEngine`, stream the SID bytes from the server, and issue a tiny `renderSeconds(0.02)` call to obtain the first chunk. The resulting `Int16Array` is queued into the browser’s `AudioContext`, so every listener hears the tune on their own machine even if the SID asset lives on a remote server.
 - `packages/libsidplayfp-wasm/test/wasm-invocations.test.ts:26-42` covers this flow end to end using `10_Orbyte.sid`, ensuring that the initial chunk size matches the sample budget needed for smooth playback.
+
 ## Offset playback for rate UI
 
 - **Command shape:** `sidplayfp -b<MM:SS.mmm> <sidFile>` (the `-b` flag is omitted when no offset is requested)
