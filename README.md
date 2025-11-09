@@ -27,7 +27,6 @@ No more random browsing – just tell it what kind of music you want, and it pla
 
 🎵 **Mood-Based Playlists**
 - Create playlists like "energetic," "quiet," or "dark"
-- Filter by BPM, energy, and other traits
 
 🎮 **Easy to Use**
 - Simple command-line tools and a web UI
