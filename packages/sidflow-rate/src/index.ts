@@ -108,12 +108,12 @@ export async function writeManualTag(
     source: "manual",
     timestamp: timestamp.toISOString()
   };
-  
+
   // Include preference rating if present
   if (ratings.p !== undefined) {
     record.p = ratings.p;
   }
-  
+
   await ensureDirectory(tagFilePath);
   await writeFile(tagFilePath, stringifyDeterministic(record));
 }
