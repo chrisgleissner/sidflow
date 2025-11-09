@@ -107,7 +107,7 @@ Open **http://localhost:3000** in your browser.
 ### Features
 
 - Play and control SID playback by mood
-- Rate songs visually using sliders
+- Rate songs visually using buttons
 - Trigger classification, HVSC sync, and training jobs
 - Real-time system feedback and status display
 - RESTful API and [OpenAPI Spec](packages/sidflow-web/openapi.yaml)
