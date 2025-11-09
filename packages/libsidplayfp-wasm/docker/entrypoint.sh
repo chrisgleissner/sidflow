@@ -14,13 +14,25 @@ fi
 
 BUILD_ROOT=/tmp/libsidplayfp
 OUTPUT_ROOT=/dist
+CACHE_ROOT=/opt/libsidplayfp-cache
+CACHE_REPO="${CACHE_ROOT}/repo"
 
 rm -rf "${BUILD_ROOT}"
-mkdir -p "${BUILD_ROOT}" "${OUTPUT_ROOT}"
+mkdir -p "${BUILD_ROOT}" "${OUTPUT_ROOT}" "${CACHE_ROOT}"
 
 GIT_URL="https://github.com/libsidplayfp/libsidplayfp"
 
-git clone --depth 1 --recurse-submodules "${GIT_URL}" "${BUILD_ROOT}"
+if [[ ! -d "${CACHE_REPO}/.git" ]]; then
+  git clone --depth 1 --recurse-submodules "${GIT_URL}" "${CACHE_REPO}"
+else
+  git -C "${CACHE_REPO}" fetch --depth 1 origin
+  DEFAULT_BRANCH=$(git -C "${CACHE_REPO}" symbolic-ref --quiet --short HEAD || git -C "${CACHE_REPO}" rev-parse --abbrev-ref HEAD || echo "master")
+  git -C "${CACHE_REPO}" reset --hard "origin/${DEFAULT_BRANCH}"
+  git -C "${CACHE_REPO}" submodule update --init --recursive
+fi
+
+rsync -a --delete "${CACHE_REPO}/" "${BUILD_ROOT}/"
+
 cd "${BUILD_ROOT}"
 
 git submodule update --init --recursive

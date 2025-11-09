@@ -1,6 +1,6 @@
 # libsidplayfp WebAssembly Build
 
-This bundle is produced by the Docker build located in `webassembly/`. It exposes
+This bundle is produced by the Docker build located in `packages/libsidplayfp-wasm/`. It exposes
 `SidPlayerContext` through an embind wrapper so you can drive the C64 SID player
 from JavaScript or TypeScript.
 

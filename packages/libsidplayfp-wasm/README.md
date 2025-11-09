@@ -19,6 +19,14 @@ bash ./scripts/build.sh
 
 The script ensures Docker is available, builds the image defined in `docker/Dockerfile`, and stores the resulting artifacts in `dist/`.
 
+From the repository root you can also run:
+
+```bash
+bun run wasm:build
+```
+
+This helper runs the upstream check, executes the Docker build, and updates `data/wasm-build.json` with the new artifact metadata.
+
 ## Using the Loader
 
 The TypeScript entrypoint exports two helpers:

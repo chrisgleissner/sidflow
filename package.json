@@ -10,6 +10,7 @@
   "scripts": {
     "build": "bun install --frozen-lockfile && bun run wasm:check-upstream && tsc -b",
     "wasm:check-upstream": "bun run scripts/check-libsidplayfp-upstream.ts",
+    "wasm:build": "bun run scripts/build-libsidplayfp-wasm.ts",
     "test": "bun run build && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov $(find packages -name '*.test.ts' -not -path '*/node_modules/*')",
     "test:e2e": "bun run build && bun test test/e2e.test.ts && cd packages/sidflow-web && bun run test:e2e",
     "test:all": "bun run test && cd packages/sidflow-web && bun run test:e2e",

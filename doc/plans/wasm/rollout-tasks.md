@@ -59,13 +59,13 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 
 ### Phase 4 Checklist
 
-- [ ] Implement deterministic WASM build script leveraging the relocated code.
-- [ ] Produce `libsidplayfp.wasm` and associated JS glue files into a stable location (e.g., `packages/sidflow-play/wasm/`).
-- [ ] Commit the generated WASM artifact and update `.gitignore` if required.
-- [ ] Verify the build script records the new upstream hash and timestamps in the metadata file.
-- [ ] Add automated tests ensuring the WASM module loads correctly within Bun/Node (smoke test invoking exported entry points).
-- [ ] Run `bun run test`, `bun run build`, and `bun run test:e2e` to confirm no regressions.
-- [ ] Update CI to cache the upstream repository clone to avoid redundant downloads.
+- [x] Implement deterministic WASM build script leveraging the relocated code.
+- [x] Produce `libsidplayfp.wasm` and associated JS glue files into a stable location (e.g., `packages/libsidplayfp-wasm/dist/`).
+- [x] Commit the generated WASM artifact and update `.gitignore` if required.
+- [x] Verify the build script records the new upstream hash and timestamps in the metadata file.
+- [x] Add automated tests ensuring the WASM module loads correctly within Bun/Node (smoke test invoking exported entry points).
+- [x] Run `bun run test`, `bun run build`, and `bun run test:e2e` to confirm no regressions.
+- [x] Update CI to cache the upstream repository clone to avoid redundant downloads.
 
 ## Phase 5 — Documentation & Rollout
 
@@ -84,7 +84,7 @@ Phase 0: Complete
 Phase 1: Complete  
 Phase 2: Complete  
 Phase 3: Complete  
-Phase 4: Not started  
+Phase 4: Complete  
 Phase 5: Not started
 
 ## Notes

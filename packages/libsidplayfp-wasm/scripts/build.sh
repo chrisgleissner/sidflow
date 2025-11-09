@@ -9,11 +9,16 @@ fi
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PACKAGE_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
 DIST_DIR="${PACKAGE_ROOT}/dist"
+CACHE_DIR="${PACKAGE_ROOT}/.cache/upstream"
 IMAGE_NAME="sidflow-libsidplayfp-wasm:latest"
 
-mkdir -p "${DIST_DIR}"
+mkdir -p "${DIST_DIR}" "${CACHE_DIR}"
 
 docker build -f "${PACKAGE_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${PACKAGE_ROOT}"
-docker run --rm -v "${DIST_DIR}:/dist" "${IMAGE_NAME}"
+docker run \
+    --rm \
+    -v "${DIST_DIR}:/dist" \
+    -v "${CACHE_DIR}:/opt/libsidplayfp-cache" \
+    "${IMAGE_NAME}"
 
 echo "Artifacts are available in ${DIST_DIR}"

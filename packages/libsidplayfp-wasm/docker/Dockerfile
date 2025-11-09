@@ -19,6 +19,7 @@ RUN apt-get update \
     xa65 \
     unzip \
     xz-utils \
+    rsync \
     && rm -rf /var/lib/apt/lists/*
 
 RUN emcc --version

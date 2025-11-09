@@ -34,6 +34,14 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
 
+      - name: Restore WASM upstream cache
+        uses: actions/cache@v4
+        with:
+          path: packages/libsidplayfp-wasm/.cache/upstream
+          key: wasm-upstream-${{ runner.os }}-${{ hashFiles('packages/libsidplayfp-wasm/docker/entrypoint.sh', 'packages/libsidplayfp-wasm/scripts/build.sh') }}
+          restore-keys: |
+            wasm-upstream-${{ runner.os }}-
+
       - name: Bun version
         run: bun --version
 
