@@ -1,29 +1,15 @@
 import { NextResponse } from 'next/server';
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
-import { parseSidFile, pathExists } from '@sidflow/common';
+import { pathExists } from '@sidflow/common';
 import { createTagFilePath, findUntaggedSids } from '@sidflow/rate';
 import type { ApiResponse } from '@/lib/validation';
-import {
-  resolvePlaybackEnvironment,
-  startSidPlayback,
-  parseDurationSeconds,
-} from '@/lib/rate-playback';
-import { createPlaybackLock } from '@sidflow/common';
+import { resolvePlaybackEnvironment } from '@/lib/rate-playback';
 import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
+import { createRateTrackInfo } from '@/lib/rate-playback';
+import { createPlaybackSession } from '@/lib/playback-session';
 
 type RateTrackPayload = RateTrackInfo;
-
-function resolveExecutable(executable: string, root: string): string {
-  if (path.isAbsolute(executable)) {
-    return executable;
-  }
-  if (executable.startsWith('./') || executable.startsWith('../')) {
-    return path.resolve(root, executable);
-  }
-  return executable;
-}
 
 async function pickRandomUntaggedSid(
   hvscRoot: string,
@@ -83,51 +69,6 @@ async function pickRandomUntaggedSid(
   }
   return null;
 }
-
-async function startPlayback(
-  sidPath: string,
-  sidplayPath: string,
-  root: string,
-  playbackLock: PlaybackLock,
-  playbackSource: string
-): Promise<void> {
-  try {
-    const child = spawn(resolveExecutable(sidplayPath, root), [sidPath], {
-      stdio: 'ignore',
-      cwd: path.dirname(sidPath),
-    });
-    if (child.pid) {
-      const metadata = {
-        pid: child.pid,
-        command: playbackSource,
-        sidPath,
-        source: playbackSource,
-        startedAt: new Date().toISOString(),
-      };
-      await playbackLock.registerProcess(metadata);
-      const pid = child.pid;
-      child.once('exit', () => {
-        void playbackLock.releaseIfMatches(pid);
-      });
-      child.once('error', () => {
-        void playbackLock.releaseIfMatches(pid);
-      });
-    }
-  } catch (error) {
-    console.error('[api/rate/random] Unable to spawn sidplayfp', error);
-    await playbackLock.stopExistingPlayback(playbackSource);
-  }
-}
-
-function buildResponse(track: RateTrackPayload): ApiResponse<{ track: RateTrackPayload }> {
-  return {
-    success: true,
-    data: {
-      track,
-    },
-  };
-}
-
 export async function POST() {
   try {
     const env = await resolvePlaybackEnvironment();
@@ -140,9 +81,6 @@ export async function POST() {
       };
       return NextResponse.json(response, { status: 404 });
     }
-    const playbackLock = await createPlaybackLock(env.config);
-    await playbackLock.stopExistingPlayback('api/rate/random');
-
     if (!(await pathExists(sidPath))) {
       return NextResponse.json(
         {
@@ -154,49 +92,32 @@ export async function POST() {
       );
     }
 
-    const metadata = await parseSidFile(sidPath);
-    const fileStats = await stat(sidPath);
     const length = await lookupSongLength(sidPath, env.hvscPath, env.musicRoot);
-    const relativePath = path.relative(env.musicRoot, sidPath);
-    const filename = path.basename(sidPath);
-    const selectedSong = metadata.startSong;
-    const durationSeconds = parseDurationSeconds(metadata.length ?? length);
 
-    const payload: RateTrackPayload = {
+    const track = await createRateTrackInfo({
+      env,
       sidPath,
-      relativePath,
-      filename,
-      displayName: metadata.title || filename.replace(/\.sid$/i, ''),
-      selectedSong,
-      durationSeconds,
-      metadata: {
-        title: metadata.title || undefined,
-        author: metadata.author || undefined,
-        released: metadata.released || undefined,
-        songs: metadata.songs,
-        startSong: metadata.startSong,
-        sidType: metadata.type,
-        version: metadata.version,
-        sidModel: metadata.sidModel1,
-        sidModelSecondary: metadata.sidModel2,
-        sidModelTertiary: metadata.sidModel3,
-        clock: metadata.clock,
-        length: length,
-        fileSizeBytes: fileStats.size,
+      relativeBase: 'collection',
+      lengthHint: length,
+    });
+
+    const session = createPlaybackSession({
+      scope: 'rate',
+      sidPath,
+      track,
+      durationSeconds: track.durationSeconds,
+      selectedSong: track.selectedSong,
+    });
+
+    const response: ApiResponse<{ track: RateTrackPayload; session: typeof session }> = {
+      success: true,
+      data: {
+        track,
+        session,
       },
     };
 
-    await startSidPlayback({
-      env,
-      playbackLock,
-      sidPath,
-      offsetSeconds: 0,
-      durationSeconds,
-      source: 'api/rate/random',
-      track: payload,
-    });
-
-    return NextResponse.json(buildResponse(payload), { status: 200 });
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('[api/rate/random] Failed to load random SID', error);
     const response: ApiResponse = {

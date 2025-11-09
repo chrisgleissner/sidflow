@@ -10,16 +10,16 @@
 
 ## Phase 1 – Backend Cleanup and API Update
 
-* [ ] Identify and isolate all code paths invoking `sidflow-play`, `ffplay`, or `aplay`.
-* [ ] Remove or disable subprocess spawning for playback in `/api/play`.
-* [ ] Verify that no CLI-based playback occurs anywhere in the codebase.
-* [ ] Add `PlaybackSessionResponse` schema to the OpenAPI spec under `components/schemas`.
-* [ ] Modify `/api/play` to return a session descriptor (session_id, sid_url, metadata, fallback_hls).
-* [ ] Update the OpenAPI `200` response reference to use the new schema.
-* [ ] Validate OpenAPI generation (lint + spec compliance).
-* [ ] Test with mock request to ensure correct JSON output and schema conformance.
-* [ ] Confirm that unrelated routes (`/api/rate`, `/api/classify`, `/api/fetch`, `/api/train`) remain functional.
-* [ ] Ensure build/test pipeline remains operational after removal of CLI dependencies.
+* [x] Identify and isolate all code paths invoking `sidflow-play`, `ffplay`, or `aplay`.
+* [x] Remove or disable subprocess spawning for playback in `/api/play`.
+* [x] Verify that no CLI-based playback occurs anywhere in the codebase.
+* [x] Add `PlaybackSessionResponse` schema to the OpenAPI spec under `components/schemas`.
+* [x] Modify `/api/play` to return a session descriptor (session_id, sid_url, metadata, fallback_hls).
+* [x] Update the OpenAPI `200` response reference to use the new schema.
+* [x] Validate OpenAPI generation (lint + spec compliance).
+* [x] Test with mock request to ensure correct JSON output and schema conformance.
+* [x] Confirm that unrelated routes (`/api/rate`, `/api/classify`, `/api/fetch`, `/api/train`) remain functional.
+* [x] Ensure build/test pipeline remains operational after removal of CLI dependencies.
 
 ---
 

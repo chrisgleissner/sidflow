@@ -4,8 +4,8 @@ info:
   description: |
     Local web interface for orchestrating SID playback, rating, and classification.
     
-    This API provides endpoints that delegate to existing CLI tools:
-    - `sidflow-play` - Play SID music with mood-based presets
+    This API provides endpoints that delegate to existing CLI tools where applicable:
+    - `sidflow-play` - Create client-side playback sessions with mood-based presets
     - `sidflow-rate` - Submit manual ratings for tracks
     - `sidflow-classify` - Classify SID files using ML models
     - `sidflow-fetch` - Synchronize HVSC collection
@@ -16,8 +16,10 @@ info:
     url: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
 servers:
-  - url: http://localhost:3000
-    description: Local development server
+  - url: https://sidflow.local
+    description: Default SIDFlow web deployment (override per environment)
+
+security: []
 
 tags:
   - name: playback
@@ -36,8 +38,8 @@ paths:
     post:
       tags:
         - playback
-      summary: Play SID music
-      description: Triggers playback of a SID file with optional mood preset via sidflow-play CLI
+      summary: Create playback session
+      description: Creates a session descriptor for client-side SID playback with optional mood preset
       operationId: playSid
       requestBody:
         required: true
@@ -57,11 +59,11 @@ paths:
                   sid_path: /path/to/music.sid
       responses:
         '200':
-          description: Playback started successfully
+          description: Playback session created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: '#/components/schemas/PlaybackSessionResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
         '500':
@@ -231,6 +233,172 @@ components:
             - complex
           example: energetic
 
+    RateTrackMetadata:
+      type: object
+      required:
+        - songs
+        - startSong
+        - sidType
+        - version
+        - sidModel
+        - clock
+        - fileSizeBytes
+      properties:
+        title:
+          type: string
+          description: SID title parsed from metadata
+          example: Commando
+        author:
+          type: string
+          description: Primary author or composer
+          example: Rob Hubbard
+        released:
+          type: string
+          description: Release year or label information
+          example: '1985'
+        songs:
+          type: integer
+          description: Total number of subtunes contained in the SID file
+          example: 3
+        startSong:
+          type: integer
+          description: Default subtune index (1-based)
+          example: 1
+        sidType:
+          type: string
+          description: SID file type identifier (PSID/Rsid)
+          example: PSID
+        version:
+          type: integer
+          description: SID file version
+          example: 2
+        sidModel:
+          type: string
+          description: Primary SID model requested by the tune
+          example: MOS6581
+        sidModelSecondary:
+          type: string
+          description: Optional secondary SID model requirement
+          example: MOS8580
+        sidModelTertiary:
+          type: string
+          description: Optional tertiary SID model requirement
+        clock:
+          type: string
+          description: Target clock configuration (PAL/NTSC)
+          example: PAL
+        length:
+          type: string
+          description: Human-readable track length hint (mm:ss)
+          example: 03:12
+        fileSizeBytes:
+          type: integer
+          format: int64
+          description: Size of the SID file in bytes
+          example: 42518
+
+    RateTrackInfo:
+      type: object
+      required:
+        - sidPath
+        - relativePath
+        - filename
+        - displayName
+        - selectedSong
+        - metadata
+        - durationSeconds
+      properties:
+        sidPath:
+          type: string
+          description: Absolute path to the SID file on disk
+          example: /home/user/hvsc/MUSICIANS/H/Hubbard_Rob/Commando.sid
+        relativePath:
+          type: string
+          description: Path to the SID relative to the configured collection root
+          example: MUSICIANS/H/Hubbard_Rob/Commando.sid
+        filename:
+          type: string
+          description: Filename derived from the SID path
+          example: Commando.sid
+        displayName:
+          type: string
+          description: Friendly display name for UI presentation
+          example: Commando (Rob Hubbard)
+        selectedSong:
+          type: integer
+          description: Currently selected subtune index (1-based)
+          example: 1
+        metadata:
+          $ref: '#/components/schemas/RateTrackMetadata'
+        durationSeconds:
+          type: number
+          format: float
+          description: Estimated duration of the selected subtune in seconds
+          example: 192
+
+    PlaybackSession:
+      type: object
+      required:
+        - sessionId
+        - sidUrl
+        - scope
+        - durationSeconds
+        - selectedSong
+        - expiresAt
+      properties:
+        sessionId:
+          type: string
+          description: Unique identifier for the playback session
+          example: 3f61f45a-1cdf-4f77-9b27-d76f38e5d2c7
+        sidUrl:
+          type: string
+          description: Relative URL used to fetch the SID binary for this session
+          example: /api/playback/3f61f45a-1cdf-4f77-9b27-d76f38e5d2c7/sid
+        scope:
+          type: string
+          description: Context that created the session (rate/play/manual)
+          enum:
+            - rate
+            - play
+            - manual
+          example: play
+        durationSeconds:
+          type: number
+          format: float
+          description: Estimated duration of the selected subtune in seconds
+          example: 192
+        selectedSong:
+          type: integer
+          description: Currently selected subtune index (1-based)
+          example: 1
+        expiresAt:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the session will expire
+          example: 2025-11-09T12:34:56.000Z
+
+    PlaybackSessionResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+          example: true
+        data:
+          type: object
+          required:
+            - track
+            - session
+          properties:
+            track:
+              $ref: '#/components/schemas/RateTrackInfo'
+            session:
+              $ref: '#/components/schemas/PlaybackSession'
+
     RateRequest:
       type: object
       required:
@@ -324,7 +492,6 @@ components:
           type: number
           description: Learning rate for training
           minimum: 0
-          exclusiveMinimum: true
           example: 0.001
         evaluate:
           type: boolean
