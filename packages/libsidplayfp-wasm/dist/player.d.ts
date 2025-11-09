@@ -22,6 +22,8 @@ export declare class SidAudioEngine {
     private cacheCursor;
     private useCachePlayback;
     private cacheToken;
+    private pendingChunk;
+    private pendingChunkOffset;
     constructor(options?: SidAudioEngineOptions);
     private ensureModule;
     private createConfiguredContext;
@@ -37,11 +39,16 @@ export declare class SidAudioEngine {
     reset(): void;
     renderCycles(cycles?: number): Int16Array | null;
     renderSeconds(seconds: number, cyclesPerChunk?: number, onProgress?: (samplesWritten: number) => void): Promise<Int16Array>;
+    renderFrames(frames: number, cyclesPerChunk?: number, onProgress?: (samplesWritten: number) => void, { loop }?: {
+        loop?: boolean;
+    }): Promise<Int16Array>;
+    private consumeChunk;
     seekSeconds(seconds: number, cyclesPerChunk?: number): Promise<number>;
     waitForCacheReady(): Promise<boolean>;
     getCachedSegment(seconds: number, durationSeconds: number): Int16Array | null;
     private fastForwardContext;
     private resetCacheState;
+    private resetPendingChunk;
     private startCache;
     private buildCacheBuffer;
     private cacheAvailable;

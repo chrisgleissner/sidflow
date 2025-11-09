@@ -31,6 +31,8 @@ export class SidAudioEngine {
   private cacheCursor = 0;
   private useCachePlayback = false;
   private cacheToken = 0;
+  private pendingChunk: Int16Array | null = null;
+  private pendingChunkOffset = 0;
 
   constructor(options: SidAudioEngineOptions = {}) {
     const {
@@ -113,6 +115,7 @@ export class SidAudioEngine {
     this.originalSidBuffer = this.cloneInput(data);
     this.currentSongIndex = 0;
     this.resetCacheState();
+    this.resetPendingChunk();
     await this.reloadCurrentSong();
     // Don't start cache during initial load - it conflicts with rendering
     // Cache will be built on-demand for seeking
@@ -124,6 +127,7 @@ export class SidAudioEngine {
     }
     this.currentSongIndex = Math.max(0, Math.trunc(songIndex));
     this.resetCacheState();
+    this.resetPendingChunk();
     const applied = await this.reloadCurrentSong();
     // Don't start cache during song selection - it conflicts with rendering
     return applied;
@@ -192,42 +196,93 @@ export class SidAudioEngine {
     const context = this.context;
     const sampleRate = context.getSampleRate();
     const channels = context.getChannels();
-    const totalSamples = Math.max(1, Math.floor(sampleRate * seconds * channels));
+    const frames = Math.max(1, Math.floor(sampleRate * seconds));
+    return this.renderFrames(frames, cyclesPerChunk, onProgress);
+  }
+
+  async renderFrames(
+    frames: number,
+    cyclesPerChunk = 2000,
+    onProgress?: (samplesWritten: number) => void,
+    { loop = false }: { loop?: boolean } = {}
+  ): Promise<Int16Array> {
+    if (frames <= 0) {
+      throw new Error('Frame count must be greater than zero');
+    }
+    if (!this.context || !this.configured) {
+      return new Int16Array(0);
+    }
+
+    const context = this.context;
+    const channels = context.getChannels();
+    const totalSamples = frames * channels;
     const buffer = new Int16Array(totalSamples);
     let offset = 0;
-    let loopCount = 0;
+    const chunkCycles = Math.max(1, Math.floor(cyclesPerChunk));
+    let emptyReads = 0;
+    const emptyReadLimit = Math.max(32, Math.ceil(frames / Math.max(1, chunkCycles)) * 4);
 
     while (offset < totalSamples) {
-      const chunk = this.renderCycles(cyclesPerChunk);
+      const next = this.consumeChunk(chunkCycles);
+      const chunk = next?.chunk ?? null;
+      const start = next?.start ?? 0;
 
-      // If song ends, loop it by resetting
-      if (chunk === null || chunk.length === 0) {
-        // Reset and continue rendering to fill the buffer
-        if (offset < totalSamples && loopCount < 100) { // Max 100 loops to prevent infinite loop
+      if (!chunk || chunk.length <= start) {
+        emptyReads += 1;
+        if (loop && emptyReads < emptyReadLimit) {
           if (!context.reset()) {
-            // Reset failed, stop here
             break;
           }
-          loopCount += 1;
-          console.log('SidAudioEngine: reset during renderSeconds', { offset, loopCount });
+          this.resetPendingChunk();
           continue;
         }
         break;
       }
 
-      const available = Math.min(chunk.length, totalSamples - offset);
-      buffer.set(chunk.subarray(0, available), offset);
+      emptyReads = 0;
+
+      const available = Math.min(chunk.length - start, totalSamples - offset);
+      if (available <= 0) {
+        break;
+      }
+
+      buffer.set(chunk.subarray(start, start + available), offset);
       offset += available;
       onProgress?.(offset);
+
+      if (start + available < chunk.length) {
+        // Preserve the remainder for the next call
+        this.pendingChunk = chunk;
+        this.pendingChunkOffset = start + available;
+      } else {
+        this.resetPendingChunk();
+      }
     }
 
-    return buffer.subarray(0, offset);
+    return offset === buffer.length ? buffer : buffer.subarray(0, offset);
+  }
+
+  private consumeChunk(cyclesPerChunk: number): { chunk: Int16Array; start: number } | null {
+    if (this.pendingChunk && this.pendingChunkOffset < this.pendingChunk.length) {
+      const chunk = this.pendingChunk;
+      const start = this.pendingChunkOffset;
+      this.pendingChunk = null;
+      this.pendingChunkOffset = 0;
+      return { chunk, start };
+    }
+
+    const chunk = this.renderCycles(cyclesPerChunk);
+    if (!chunk || chunk.length === 0) {
+      return null;
+    }
+    return { chunk, start: 0 };
   }
 
   async seekSeconds(seconds: number, cyclesPerChunk = 20000): Promise<number> {
     if (seconds <= 0) {
       this.useCachePlayback = this.cacheAvailable();
       this.cacheCursor = 0;
+      this.resetPendingChunk();
       await this.reloadCurrentSong();
       return 0;
     }
@@ -243,6 +298,7 @@ export class SidAudioEngine {
     }
 
     this.useCachePlayback = false;
+    this.resetPendingChunk();
     await this.reloadCurrentSong();
     return this.fastForwardContext(seconds, cyclesPerChunk);
   }
@@ -305,6 +361,12 @@ export class SidAudioEngine {
     this.cacheChannels = 0;
     this.cacheCursor = 0;
     this.useCachePlayback = false;
+    this.resetPendingChunk();
+  }
+
+  private resetPendingChunk(): void {
+    this.pendingChunk = null;
+    this.pendingChunkOffset = 0;
   }
 
   private startCache(): void {

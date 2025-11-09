@@ -10,7 +10,7 @@ import { join } from 'path';
 // FREQ = (note_hz * 2^24) / 985248
 // For C4 (261.63 Hz): (261.63 * 16777216) / 985248 = 4456.89 ≈ 0x1169
 
-const C4_FREQ_PAL = 0x113E; // From the frequency table provided (4414 decimal)
+const C4_FREQ_PAL = 0x1167; // Rounded using SID frequency formula (PAL)
 
 function generateSidFile(): Uint8Array {
     // PSID v2 format
@@ -50,11 +50,11 @@ function generateSidFile(): Uint8Array {
     buffer[16] = 0x00;
     buffer[17] = 0x01;
 
-    // Speed flag: 0x0001 -> use default timer (CIA) for play routine
+    // Speed flag (0 = default CIA/50Hz timing)
     buffer[18] = 0x00;
     buffer[19] = 0x00;
     buffer[20] = 0x00;
-    buffer[21] = 0x01;
+    buffer[21] = 0x00;
 
     // Name: "Test Tone C4" (32 bytes at offset 0x16)
     const name = "Test Tone C4";
@@ -83,10 +83,6 @@ function generateSidFile(): Uint8Array {
 
     // INIT routine (0x1000): Set up SID registers for C4 triangle wave
     const code = [
-        // Map SID I/O into memory ($D000-$DFFF)
-        0xA9, 0x35,       // LDA #$35 (I/O, Kernal, Basic)
-        0x85, 0x01,       // STA $01 (memory config)
-
         // Set volume to maximum (15)
         0xA9, 0x0F,       // LDA #$0F
         0x8D, 0x18, 0xD4, // STA $D418 (Mode/Volume)
@@ -97,12 +93,6 @@ function generateSidFile(): Uint8Array {
         0xA9, 0x11,       // LDA #$11 (high byte)
         0x8D, 0x01, 0xD4, // STA $D401 (Voice 1 Freq Hi)
 
-        // Pulse width 50% (0x0800)
-        0xA9, 0x00,       // LDA #$00 (width lo)
-        0x8D, 0x02, 0xD4, // STA $D402 (Voice 1 PW Lo)
-        0xA9, 0x08,       // LDA #$08 (width hi)
-        0x8D, 0x03, 0xD4, // STA $D403 (Voice 1 PW Hi)
-
         // Set Attack/Decay (instant attack, no decay)
         0xA9, 0x00,       // LDA #$00 (A=0, D=0)
         0x8D, 0x05, 0xD4, // STA $D405 (Voice 1 AD)
@@ -111,20 +101,20 @@ function generateSidFile(): Uint8Array {
         0xA9, 0xF0,       // LDA #$F0 (S=F, R=0)
         0x8D, 0x06, 0xD4, // STA $D406 (Voice 1 SR)
 
-        // Prime voice control: reset oscillator then enable pulse waveform + gate
+    // Prime voice control: reset oscillator then enable triangle waveform + gate
         0xA9, 0x08,       // LDA #$08 (Test bit)
         0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
         0xA9, 0x00,       // LDA #$00 (clear gate)
         0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
-        0xA9, 0x41,       // LDA #$41 (Pulse + Gate)
+    0xA9, 0x11,       // LDA #$11 (Triangle + Gate)
         0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
 
         0x60,             // RTS (return from init)
 
-        // PLAY routine (0x101F): Re-assert gate every frame to guarantee sustain
-        0xA9, 0x41,       // LDA #$41 (Pulse + Gate)
-        0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
-        0x60              // RTS
+    // PLAY routine (0x101F): Reassert gate to avoid accidental releases
+    0xA9, 0x11,       // LDA #$11 (Triangle + Gate)
+    0x8D, 0x04, 0xD4, // STA $D404 (Voice 1 Control)
+    0x60              // RTS
     ];
 
     // Write the code
@@ -142,6 +132,6 @@ writeFileSync(outputPath, sidData);
 
 console.log(`✓ Generated synthetic C4 SID file: ${outputPath}`);
 console.log(`  Frequency: ${C4_FREQ_PAL} (0x${C4_FREQ_PAL.toString(16)})`);
-console.log(`  Waveform: Pulse 50%`);
+console.log(`  Waveform: Triangle`);
 console.log(`  Duration: Continuous (until stopped)`);
 console.log(`  File size: ${sidData.length} bytes`);
