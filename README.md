@@ -195,8 +195,8 @@ Export instead of play:
 
 SID Flow is [GPLv2](LICENSE)-licensed and builds upon outstanding open-source software and datasets:
 
-| Component | License | Source |
-|------------|----------|---------|
-| **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) |
-| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) |
-| **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) |
+| Component | License | Source | Credit |
+|------------|----------|---------|-----|
+| **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) | Fastest Typescript runtime |
+| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | Most accurate software SID emulator |
+| **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) | Largest SID collection |

@@ -23,9 +23,9 @@ RUN apt-get update \
 
 RUN emcc --version
 
-COPY bindings.cpp /opt/libsidplayfp-wasm/bindings.cpp
-COPY entrypoint.sh /opt/libsidplayfp-wasm/entrypoint.sh
-COPY scripts /opt/libsidplayfp-wasm/webassembly/scripts
+COPY src/bindings/bindings.cpp /opt/libsidplayfp-wasm/src/bindings/bindings.cpp
+COPY docker/entrypoint.sh /opt/libsidplayfp-wasm/entrypoint.sh
+COPY scripts/apply-thread-guards.py /opt/libsidplayfp-wasm/scripts/apply-thread-guards.py
 
 RUN chmod +x /opt/libsidplayfp-wasm/entrypoint.sh
 

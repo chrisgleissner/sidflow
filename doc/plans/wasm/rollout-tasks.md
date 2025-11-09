@@ -48,12 +48,12 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 
 ### Phase 3 Checklist
 
-- [ ] Relocate known-good sources from `working-code/` into their designated package directories while preserving functionality.
-- [ ] Replace temporary paths/imports with workspace-relative module imports (prefer `@sidflow/common` helpers where applicable).
-- [ ] Ensure configuration loading uses `loadConfig` and respects `--config` overrides.
-- [ ] Integrate the relocated code into the existing CLI/runner entry points without duplicating logic.
-- [ ] Update bundler/rollup/esbuild configurations to include the relocated WASM glue code.
-- [ ] Remove the original files from `doc/plans/wasm/working-code/` only after the relocated versions are referenced and tests pass.
+- [x] Relocate known-good sources from `working-code/` into their designated package directories while preserving functionality.
+- [x] Replace temporary paths/imports with workspace-relative module imports (prefer `@sidflow/common` helpers where applicable).
+- [x] Ensure configuration loading uses `loadConfig` and respects `--config` overrides. *(No new runtime configuration was introduced in this phase.)*
+- [x] Integrate the relocated code into the existing CLI/runner entry points without duplicating logic.
+- [x] Update bundler/rollup/esbuild configurations to include the relocated WASM glue code.
+- [x] Remove the original files from `doc/plans/wasm/working-code/` only after the relocated versions are referenced and tests pass.
 
 ## Phase 4 — Build & Verification
 
@@ -83,7 +83,7 @@ The code in `doc/plans/wasm/working-code/` is a known-good baseline. It must be 
 Phase 0: Complete  
 Phase 1: Complete  
 Phase 2: Complete  
-Phase 3: Not started  
+Phase 3: Complete  
 Phase 4: Not started  
 Phase 5: Not started
 

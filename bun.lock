@@ -12,6 +12,10 @@
         "typescript": "^5.4.0",
       },
     },
+    "packages/libsidplayfp-wasm": {
+      "name": "@sidflow/libsidplayfp-wasm",
+      "version": "0.1.0",
+    },
     "packages/sidflow-classify": {
       "name": "@sidflow/classify",
       "version": "0.1.0",
@@ -347,6 +351,8 @@
     "@sidflow/common": ["@sidflow/common@workspace:packages/sidflow-common"],
 
     "@sidflow/fetch": ["@sidflow/fetch@workspace:packages/sidflow-fetch"],
+
+    "@sidflow/libsidplayfp-wasm": ["@sidflow/libsidplayfp-wasm@workspace:packages/libsidplayfp-wasm"],
 
     "@sidflow/play": ["@sidflow/play@workspace:packages/sidflow-play"],
 

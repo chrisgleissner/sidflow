@@ -1,0 +1,26 @@
+{
+    "name": "@sidflow/libsidplayfp-wasm",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        },
+        "./dist/*": "./dist/*"
+    },
+    "files": [
+        "dist",
+        "docker",
+        "scripts",
+        "src",
+        "examples",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "build:wasm": "bash ./scripts/build.sh"
+    },
+    "sideEffects": false
+}

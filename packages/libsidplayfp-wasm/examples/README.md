@@ -5,15 +5,17 @@ render a SID tune into a WAV file.
 
 ## Prerequisites
 
-- Run `./webassembly/build.sh` so that `webassembly/dist/` contains the latest
+- Build the WASM artifacts via `bash ./scripts/build.sh` so that
+  `packages/libsidplayfp-wasm/dist/` contains the latest
   `libsidplayfp.js/.wasm` bundle.
 - Bun v1.0+ available on your PATH (`bun --version`).
 
 ## Usage
 
 ```bash
-bun run webassembly/demo/demo.ts \
-  /home/chris/dev/c64/sid/hvsc/C64Music/MUSICIANS/B/Blues_Muz/Team_Patrol.sid \
+cd packages/libsidplayfp-wasm
+bun run examples/demo.ts \
+  ../../workspace/hvsc/C64Music/MUSICIANS/B/Blues_Muz/Team_Patrol.sid \
   Team_Patrol.wav \
   90
 ```

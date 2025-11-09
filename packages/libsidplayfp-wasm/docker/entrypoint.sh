@@ -2,14 +2,14 @@
 set -euo pipefail
 
 if [[ -n "${EMSDK:-}" && -f "${EMSDK}/emsdk_env.sh" ]]; then
-  source "${EMSDK}/emsdk_env.sh" >/dev/null
+    source "${EMSDK}/emsdk_env.sh" >/dev/null
 elif [[ -f /emsdk/emsdk_env.sh ]]; then
   source /emsdk/emsdk_env.sh >/dev/null
 elif [[ -f /opt/emsdk/emsdk_env.sh ]]; then
   source /opt/emsdk/emsdk_env.sh >/dev/null
 else
-  echo "emsdk environment script not found" >&2
-  exit 1
+    echo "emsdk environment script not found" >&2
+    exit 1
 fi
 
 BUILD_ROOT=/tmp/libsidplayfp
@@ -25,7 +25,7 @@ cd "${BUILD_ROOT}"
 
 git submodule update --init --recursive
 
-python3 /opt/libsidplayfp-wasm/webassembly/scripts/apply_thread_guards.py "${BUILD_ROOT}"
+python3 /opt/libsidplayfp-wasm/scripts/apply-thread-guards.py "${BUILD_ROOT}"
 
 if grep -q 'AC_MSG_ERROR("pthreads not found")' configure.ac; then
     sed -i 's/AX_PTHREAD(\[\], \[AC_MSG_ERROR("pthreads not found")\])/AX_PTHREAD([], [])/' configure.ac
@@ -45,7 +45,7 @@ emconfigure ./configure \
 
 emmake make -j"$(nproc)"
 
-cp /opt/libsidplayfp-wasm/bindings.cpp "${BUILD_ROOT}/"
+cp /opt/libsidplayfp-wasm/src/bindings/bindings.cpp "${BUILD_ROOT}/"
 
 em++ bindings.cpp src/.libs/libsidplayfp.a \
     -I./src \
@@ -54,7 +54,7 @@ em++ bindings.cpp src/.libs/libsidplayfp.a \
     -I./src/builders/residfp-builder \
     --bind -O3 \
     -sMODULARIZE=1 \
-    -sEXPORT_NAME=\"createLibsidplayfp\" \
+    -sEXPORT_NAME="createLibsidplayfp" \
     -sEXPORT_ES6=1 \
     -sALLOW_MEMORY_GROWTH=1 \
     -sDISABLE_EXCEPTION_CATCHING=0 \
@@ -123,7 +123,7 @@ DTS
 cat <<'MD' >"${OUTPUT_ROOT}/README.md"
 # libsidplayfp WebAssembly Build
 
-This bundle is produced by the Docker build located in `webassembly/`. It exposes
+This bundle is produced by the Docker build located in `packages/libsidplayfp-wasm/`. It exposes
 `SidPlayerContext` through an embind wrapper so you can drive the C64 SID player
 from JavaScript or TypeScript.
 
