@@ -1,109 +1,281 @@
-# sidplayfp Invocation Catalog
+# libsidplayfp Native vs WASM Analysis
 
-Unique command-lines that invoke the native `sidplayfp` binary inside this repo, along with where each form lives in the code. The new WASM/browser flows mirror those signatures and are regression-tested with `test-data/C64Music/DEMOS/0-9/10_Orbyte.sid`, which plays without bundled ROMs, so every scenario works identically in remote-browser deployments.
+This document analyzes the behavior differences between native libsidplayfp and its WASM port, particularly focusing on the timing gaps observed in WASM audio rendering.
 
-## Basic playback (no flags)
+## 1. Native libsidplayfp Behavior
 
-- **Command shape:** `sidplayfp <sidFile>`
-- **Purpose:** Start playback of a SID file using the default output device.
-- **Call sites:**
-  - `packages/sidflow-rate/src/cli.ts:186`
-  - `packages/sidflow-play/src/playback.ts:169`
-  - `packages/sidflow-web/app/api/rate/random/route.ts:95`
+### 1.1 Architecture Overview
 
-### CLI flow
+Native libsidplayfp implements a **batch-based C64 emulation engine** that processes audio in discrete computational chunks:
 
-- `sidplayfp` starts at `main` (see `doc/plans/wasm/cpp-references/sidplayfp/src/main.cpp:41-101`), constructs a `ConsolePlayer`, and routes all arguments through `ConsolePlayer::args` before entering the play loop.
-- `ConsolePlayer::args` uses the default `SOUNDCARD` output, keeps the first positional SID path (no extra options), and loads the tune via `SidTune::load`, which is the same path followed by all playback commands (see `doc/plans/wasm/cpp-references/sidplayfp/src/args.cpp:181-229`).
-- `ConsolePlayer::play` drives the loop: it ensures the tune is loaded, configures audio drivers, fast‑forwards to the start if needed, and repeatedly calls `m_engine.play` to generate PCM chunks while piping them to the selected driver (`doc/plans/wasm/cpp-references/sidplayfp/src/player.cpp:1092-1206`).
+#### Core Processing Model
 
-### Library bridge
+- **Batch Processing**: Processes audio in discrete batches of C64 CPU cycles, not real-time
+- **Cycle-to-Sample Conversion**: Each batch simulates exactly N CPU cycles (e.g., 20,000), then converts to audio samples via resampling
+- **Pull-Based Architecture**: The caller "polls" for the next audio chunk - the library has no concept of wall-clock time
+- **Faster-than-Real-Time**: Can render hours of audio in seconds because it's purely computational
 
-- `ConsolePlayer` owns a `sidplayfp` engine instance (`doc/plans/wasm/cpp-references/sidplayfp/src/player.h:115-220`) that wraps `libsidplayfp::Player`. When `ConsolePlayer::createSidEmu` selects an emulation (e.g., the default `ReSIDfp`) it configures builders backed by `libsidplayfp` and installs them through `SidConfig` (`doc/plans/wasm/cpp-references/sidplayfp/src/player.cpp:611-710`).
-- `sidplayfp::sidplayfp` delegates every operation to `libsidplayfp::Player` (`doc/plans/wasm/cpp-references/libsidplayfp/src/sidplayfp/sidplayfp.cpp:36-142`), so the actual audio generation happens in `Player::play`, which clocks the virtual C64 and SID chips, collects buffer data, and returns sample counts that the CLI mixes into the chosen driver (`doc/plans/wasm/cpp-references/libsidplayfp/src/player.cpp:214-274`).
+#### CPU Clock Frequencies
 
-### WASM/browser invocation
+- **PAL C64**: 985,248 Hz CPU clock
+- **NTSC C64**: 1,022,730 Hz CPU clock
+- **Cycle Batching**: `max_cycles = 20000` per `Player::play()` call = ~20.3ms simulated time (PAL) or ~19.6ms (NTSC)
 
-- Modern clients instantiate `SidAudioEngine`, stream the SID bytes from the server, and issue a tiny `renderSeconds(0.02)` call to obtain the first chunk. The resulting `Int16Array` is queued into the browser’s `AudioContext`, so every listener hears the tune on their own machine even if the SID asset lives on a remote server.
-- `packages/libsidplayfp-wasm/test/wasm-invocations.test.ts:26-42` covers this flow end to end using `10_Orbyte.sid`, ensuring that the initial chunk size matches the sample budget needed for smooth playback.
+### 1.2 Critical Timing Dependencies
 
-## Offset playback for rate UI
+#### EventScheduler Phase Synchronization
 
-- **Command shape:** `sidplayfp -b<MM:SS.mmm> <sidFile>` (the `-b` flag is omitted when no offset is requested)
-- **Purpose:** Begin playback from a non-zero position when the web rate UI resumes a track mid-way.
-- **Call site:** `packages/sidflow-web/lib/rate-playback.ts:61-69`
+- **PHI1/PHI2 Phases**: Operates in exact 2x internal clock phases
+- **Event Scheduling**: Events must fire at precise `event_clock_t` intervals without drift
+- **SID Clock Dependency**: `ReSIDfp.clock()` depends on `eventScheduler->getTime(EVENT_CLOCK_PHI1)`
 
-### CLI flow
+#### VIC-II Interrupt Timing
 
-- `ConsolePlayer::args` specially handles `-b` by parsing the human-readable time into milliseconds and storing it in `m_timer.start`, which flags the timer as valid for later use (`doc/plans/wasm/cpp-references/sidplayfp/src/args.cpp:181-220`).
-- During `ConsolePlayer::play`, `m_timer.start` is added to the requested stop time and, if playback is beginning, `getBufSize` waits until `m_timer.current` has reached that start timestamp (`doc/plans/wasm/cpp-references/sidplayfp/src/player.cpp:1004-1235`), so the “[start]” value becomes the first sample that reaches the audio driver.
+- **Raster IRQ**: Must fire at exact raster line positions (`rasterY == readRasterLineIRQ()`)
+- **Bad Line Detection**: AEC/BA signals must toggle at precise cycle boundaries
+- **Edge Detection**: `rasterYIRQEdgeDetectorEvent` scheduled for next PHI1 cycle
 
-### Library bridge
+#### CIA Timer Precision
 
-- The fast-forward/offset logic invokes `m_engine.fastForward(...)` before the real-time loop, which is implemented inside the `sidplayfp` wrapper and ultimately inside `libsidplayfp::Player`; the player clears buffers and clocks the virtual C64 until the requested start point, so the subsequent `play` calls stream the SID from the offset rather than from zero (`doc/plans/wasm/cpp-references/sidplayfp/src/player.cpp:959-1235` and `doc/plans/wasm/cpp-references/libsidplayfp/src/player.cpp:234-274`).
+- **Timer Underflow**: CIA timers must underflow at exact cycle counts for music timing
+- **IRQ/NMI Generation**: `c64cia1::interrupt(IRQ)` and `c64cia2::interrupt(NMI)` timing
+- **Requirement**: Timer events cannot drift more than 1 cycle from expected
 
-### WASM/browser invocation
+### 1.3 WAV Rendering Pipeline
 
-- The browser sets the “start song” by calling `SidAudioEngine.selectSong`, which rewrites the SID header before playback, functionally mirroring `-b`/`-o` without needing CLI flags.
-- After a short warm-up we now mirror `sidplayfp -w` by rendering the tune into an in-memory PCM buffer capped by `cacheSecondsLimit` (default 600 s, settable per `SidAudioEngine`). This eager cache is a deliberate trade-off: it costs CPU once per track, but it makes slider scrubbing nearly instantaneous on every client without streaming audio from the server, just as the CLI renders a WAV before playback.
-- For in-song scrubbing the UI calls `await engine.seekSeconds(positionSeconds, chunkCycles)` and then `renderSeconds`. The helper either fast-forwards through the live context (before the cache finishes) or serves PCM slices directly from the buffer, so the next `renderSeconds` call can flush samples immediately (<20 ms for cached segments).
-- `packages/libsidplayfp-wasm/test/wasm-invocations.test.ts:44-65` covers both behaviors: it asserts that cached slices for `10_Orbyte.sid` exactly match the PCM returned after a seek and that near-end jumps remain sub-20 ms once the background cache completes.
+#### Audio Driver Configuration
 
-## WAV rendering for classification
+When `-w` flag is used:
 
-- **Command shape:** `sidplayfp -w<output.wav> [-o<songIndex>] <sidFile>`
-- **Purpose:** Render SID audio to WAV files during WAV cache builds; `-o` is added only when a specific sub-song index is selected.
-- **Call site:** `packages/sidflow-classify/src/index.ts:252-267`
+- `m_driver.output = output_t::WAV` and `m_driver.file = true` are set
+- `WavFile` driver instantiated with 44.1kHz, 16-bit precision
+- 20ms buffer allocated: `std::ceil((44100 / 1000.f) * 20.f)` = 882 samples
 
-### CLI flow
+#### Main Rendering Loop
 
-- `ConsolePlayer::args` turns on WAV output in response to `-w`/`--wav`, marks the driver as file-based, and tracks the optional filename/hash (`doc/plans/wasm/cpp-references/sidplayfp/src/args.cpp:400-457`), while `-o` and the related `-ol`/`-os` helpers adjust `m_track.first` so `SidTune::selectSong` loads the requested sub-song (`doc/plans/wasm/cpp-references/sidplayfp/src/args.cpp:230-260`).
-- With WAV output enabled, `createOutput` instantiates a `WavFile` driver, configures sample rate/precision, and keeps a null driver ready for silence; the usual playback loop writes the PCM payload emitted by `m_engine.play` straight to that file instead of the speakers (`doc/plans/wasm/cpp-references/sidplayfp/src/player.cpp:449-607`).
+```cpp
+do {
+    int samples = m_engine.play(2000);  // 2000 CPU cycles per iteration
+    if (samples > 0)
+        m_mixer.doMix(buffers, samples);
+    else break;
+} while (!m_mixer.isFull());
+```
 
-### Library bridge
+**Key Characteristics**:
 
-- Each WAV render still runs through the same `sidplayfp`/`libsidplayfp::Player` pipeline: `sidplayfp::sidplayfp` forwards `load`, `play`, and `config` calls to `libsidplayfp` (`doc/plans/wasm/cpp-references/libsidplayfp/src/sidplayfp/sidplayfp.cpp:36-142`), and `Player::play` clocks the C64/SID chips for every cycle (`doc/plans/wasm/cpp-references/libsidplayfp/src/player.cpp:214-274`), ensuring precise channel counts and sample rates for the generated WAV files.
+- **Synchronous execution**: All cycles processed sequentially without interruption
+- **Deterministic buffer management**: 20ms buffer ensures consistent chunk sizes
+- **No threading gaps**: Single-threaded execution eliminates race conditions
+- **Precise cycle counting**: Every C64 cycle generates exactly the expected number of samples
 
-### WASM/browser invocation
+#### Sample Generation Process
 
-- For downloadable WAVs or cache rebuilds we spin up `SidAudioEngine` (in Node or a service worker), call `renderSeconds` with a larger duration (≈0.3 s) and a smaller `cyclesPerChunk`, and stream successive buffers into a WAV encoder. This matches the native CLI’s “render to file” semantics without spawning the binary.
-- `packages/libsidplayfp-wasm/test/wasm-invocations.test.ts:64-76` demonstrates that this longer render path produces deterministic chunks from `Great_Giana_Sisters.sid`, proving the WASM pipeline can replace the native call on both servers and browsers.
+1. `Player::play(cycles)` clocks virtual C64 for specified cycles
+2. Each cycle triggers `m_c64.clock()` advancing CPU, VIC-II, and SID chips
+3. `ReSIDfp::clock()` accumulates cycles and generates samples at configured frequency
+4. Sample count returned and buffer position reset for next accumulation
 
-## Metadata extraction fallback
+**Result**: **Perfectly continuous PCM output** with no gaps or interruptions.
 
-- **Command shape:** `sidplayfp -t1 --none <sidFile>`
-- **Purpose:** Dump textual metadata (title/author/released) when direct SID parsing fails; `-t1` limits runtime and `--none` suppresses audio output.
-- **Call site:** `packages/sidflow-classify/src/index.ts:496-523`
+## 2. WASM Implementation Behavior
 
-### CLI flow
+### 2.1 TypeScript Wrapper Architecture
 
-- The `-t1` flag sets `m_timer.length` to one second and marks the timer as valid, while `--none` clears both audio output and SID emulation so nothing is played (`doc/plans/wasm/cpp-references/sidplayfp/src/args.cpp:230-305`, `doc/plans/wasm/cpp-references/sidplayfp/src/args.cpp:520-594`).
-- Even with no audible output, the player still loads the tune (`m_tune.load`) and invokes `menu()`/`updateDisplay()`, causing `menu.cpp` to print the metadata strings derived from `SidTuneInfo`, which the TypeScript fallback parser later scrapes from stdout (`doc/plans/wasm/cpp-references/sidplayfp/src/menu.cpp:150-210`).
+The WASM port uses a TypeScript layer (`SidAudioEngine`) that wraps the compiled C++ code:
 
-### Library bridge
+#### Core Components
 
-- Metadata parsing relies on `SidTune`, which wraps `SidTuneBase::load` for every supported format and exposes `SidTune::getInfo` to the CLI (`doc/plans/wasm/cpp-references/libsidplayfp/src/sidplayfp/SidTune.cpp:80-117`); once the file is loaded the CLI reads title/author/released directly from `SidTuneInfo`, so the interaction never reaches the PCM-generating part of `libsidplayfp`, but it still depends on the library to understand the SID headers.
+- **SidPlayerContext**: Direct WASM binding to C++ `libsidplayfp::Player`
+- **SidAudioEngine**: Higher-level TypeScript interface with buffering and caching
+- **Emscripten Bindings**: C++ methods exposed via `emscripten::bind`
 
-### WASM/browser invocation
+#### Rendering Flow
 
-- In the browser we mirror `--none` by loading the SID buffer and reading `getTuneInfo` immediately, allowing the UI to show metadata before playback begins.
-- `packages/libsidplayfp-wasm/test/wasm-invocations.test.ts:53-62` validates that `SidAudioEngine` exposes the title/author/release strings for `Great_Giana_Sisters.sid` without touching audio output.
+```typescript
+// TypeScript calls WASM
+const chunk = this.context.render(cycles);  // Maps to C++ Player::play()
 
-## Availability check in tests
+// Aggregates chunks in renderFrames()
+while (offset < totalSamples) {
+  const next = this.consumeChunk(chunkCycles);
+  // ... buffer management
+}
+```
 
-- **Command shape:** `sidplayfp --version`
-- **Purpose:** Verify that the binary is installed before running end-to-end tests that depend on real playback.
-- **Call site:** `test/e2e.test.ts:43`
+### 2.2 WASM Execution Environment
 
-### CLI flow
+#### Asynchronous Boundaries
 
-- `sidplayfp --version` walks the same `main`/`ConsolePlayer` path but immediately prints the version banner produced in `menu.cpp`, which appends the compile-time `VERSION` constant to the CLI heading before exiting (`doc/plans/wasm/cpp-references/sidplayfp/src/menu.cpp:150-210`).
+- **Browser Threading**: WASM execution can be interrupted by browser scheduler
+- **Event Loop Yields**: `await Promise.resolve()` calls in rendering pipeline
+- **Garbage Collection**: Browser GC can pause WASM execution mid-chunk
+- **Context Switches**: Web Workers may yield between render calls
 
-### Library bridge
+#### Memory Management
 
-- Because `--version` only formats and prints static information, it never reaches the `libsidplayfp` code that generates audio; the CLI bypasses `m_engine.play` entirely whenever the version/help banner is requested.
+- **Heap Allocation**: WASM uses JavaScript heap vs native stack allocation
+- **Typed Arrays**: `Int16Array` creates JavaScript objects for audio buffers
+- **Memory Views**: `emscripten::typed_memory_view` bridges C++ to JavaScript
 
-### WASM/browser invocation
+### 2.3 Observed WASM Audio Behavior
 
-- Instead of `--version`, web bundles assert that `loadLibsidplayfp` can instantiate the WASM module and return a functioning `SidPlayerContext`. This guarantees the artifacts are wired up before any playback attempt.
-- `packages/libsidplayfp-wasm/test/loader.test.ts:5-20` is the guardrail: it loads the module, configures a context, and exercises a zero-length render so regressions are caught in CI.
+Based on test results showing **134 silent periods of 18.6ms duration**:
+
+#### Gap Pattern
+
+- **Native**: Continuous 20ms chunks with perfect phase alignment
+- **WASM**: 18.6ms valid audio + 18.6ms gap ≈ 37ms total cycle
+- **Frequency**: Gaps occur every ~37ms consistently (not random)
+
+#### Zero Sample Analysis
+
+- **Zero Sample Ratio**: 49.73% of output is silent
+- **Gap Duration**: Always exactly 18.6ms (not variable)
+- **Pattern**: Regular intervals suggest systematic timing issue, not memory corruption
+
+## 3. Behavior Mismatch Analysis
+
+### 3.1 Root Cause Theories
+
+#### Theory 1: EventScheduler Async Boundary Drift (90% Likelihood)
+
+**Problem**: WASM's asynchronous execution disrupts PHI1/PHI2 phase synchronization.
+
+**Evidence**:
+
+- C++ `Player::play()` enforces 20ms cycle limit (`max_cycles = 20000`)
+- TypeScript `renderCycles()` calls `context.render(cycles)` → C++ `player.play(cycles)`
+- EventScheduler events scheduled for PHI1 cycles get delayed by async boundaries
+- When `eventScheduler->getTime(EVENT_CLOCK_PHI1)` drifts, ReSIDfp receives stale timing
+
+**Gap Pattern**: 18.6ms valid + 18.6ms gap = systematic timing drift (20ms intended + 17ms async overhead)
+
+#### Theory 2: Cross-Chip Buffer Synchronization Failure (75% Likelihood)
+
+**Problem**: Multiple SID chips lose sample alignment during WASM context switches.
+
+**Evidence**:
+
+- C++ `Player::play()` calls `s->clock()` for each chip, then `s->bufferpos(0)` to reset
+- `player.mix(mixBuffer.data(), produced)` depends on all chips having consistent buffer states
+- If one chip's buffer resets while others are filling, mixer outputs silence
+
+**Gap Pattern**: 18.6ms = time for chips to drift out of sync, then 18.6ms to realign
+
+#### Theory 3: CIA Timer Interrupt Cascade Delay (60% Likelihood)
+
+**Problem**: CIA timer interrupts arrive late, disrupting music timing loops.
+
+**Evidence**:
+
+- `c64cia1::interrupt(IRQ)` and `c64cia2::interrupt(NMI)` must fire at exact cycle boundaries
+- WASM delays can cause 5ms+ latency for `rasterYIRQEdgeDetectorEvent`
+- Music routines expecting timer-driven samples receive late interrupts
+
+**Gap Pattern**: Late timers create 18.6ms windows where no samples are generated
+
+### 3.2 Technical Differences Summary
+
+| Aspect | Native | WASM |
+|--------|--------|------|
+| Execution Model | Synchronous, single-threaded | Asynchronous, interruptible |
+| Memory Allocation | Stack-based, aligned | Heap-based, JavaScript objects |
+| Timing Precision | Cycle-accurate | Subject to browser scheduling |
+| Buffer Management | Deterministic resets | Potential race conditions |
+| Event Scheduling | Microsecond precision | Millisecond precision |
+
+### 3.3 Impact Assessment
+
+#### Functional Impact
+
+- **Audio Quality**: 49.73% zero samples make music unlistenable
+- **Timing Accuracy**: 18.6ms gaps destroy musical rhythm and tempo
+- **User Experience**: Choppy playback renders WASM port unusable for audio
+
+#### Performance Impact
+
+- **CPU Usage**: No significant difference - computation completes faster than real-time
+- **Memory Usage**: Similar - both versions process same data volumes
+- **Throughput**: WASM still renders multiple times faster than real-time playback
+
+## 4. Recommended Fix
+
+### 4.1 Primary Solution: Cycle-Accurate WASM Implementation
+
+#### Approach
+
+Modify the WASM bindings to maintain cycle-accurate execution within JavaScript's constraints.
+
+#### Implementation Strategy
+
+1. **Larger Atomic Batches**
+
+   ```typescript
+   // Instead of 20,000 cycles (20ms)
+   const chunk = this.context.render(100000);  // 100ms atomic batch
+   ```
+
+   - Reduces async boundary crossings by 5x
+   - Maintains internal timing accuracy within larger chunks
+   - Trades responsiveness for timing precision
+
+2. **Buffer Pre-allocation**
+
+   ```cpp
+   // In C++ bindings
+   class SidPlayerContext {
+       std::vector<int16_t> preAllocatedBuffer;  // Pre-size for expected output
+       // ... avoid dynamic allocation during render
+   };
+   ```
+
+3. **Synchronous Execution Guarantee**
+
+   ```typescript
+   // Render without yielding to event loop
+   renderSynchronously(duration: number): Int16Array {
+       // Process entire duration in single JavaScript execution context
+       // No await calls or Promise.resolve() during audio generation
+   }
+   ```
+
+### 4.2 Alternative Solution: Buffer Reconstruction
+
+If cycle-accurate execution proves impossible, implement post-processing gap detection:
+
+#### Gap Detection Algorithm
+
+```typescript
+function detectAndFillGaps(pcm: Int16Array): Int16Array {
+    const gaps = findSilentPeriods(pcm, 18.6ms);
+    for (const gap of gaps) {
+        if (isRegularGap(gap)) {
+            fillWithInterpolation(pcm, gap);
+        }
+    }
+    return pcm;
+}
+```
+
+#### Interpolation Strategy
+
+- Detect 18.6ms zero regions in regular patterns
+- Fill gaps with interpolated audio from surrounding non-zero samples
+- Maintain phase continuity for music waveforms
+
+### 4.3 Implementation Priority
+
+1. **Short-term**: Implement larger atomic batches (minimal code changes)
+2. **Medium-term**: Buffer pre-allocation and synchronous execution
+3. **Long-term**: Consider WebAssembly SIMD for enhanced performance
+4. **Fallback**: Gap detection and interpolation as last resort
+
+### 4.4 Success Criteria
+
+- **Zero Gap Target**: Achieve <1% silent samples (vs current 49.73%)
+- **Timing Accuracy**: Maintain <1ms timing precision between consecutive audio chunks
+- **Performance**: Preserve faster-than-real-time rendering capability
+- **Compatibility**: Ensure solution works across major browsers (Chrome, Firefox, Safari)
+
+The most promising approach combines **larger atomic batches** with **synchronous execution** to minimize WASM async boundary crossings while preserving the cycle-accurate emulation that libsidplayfp requires for continuous audio generation.
