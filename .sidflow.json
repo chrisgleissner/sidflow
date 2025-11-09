@@ -3,7 +3,6 @@
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./data/classified",
-  "sidplayPath": "sidplayfp",
   "threads": 0,
   "classificationDepth": 3
 }

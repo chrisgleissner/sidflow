@@ -70,10 +70,16 @@ async function pickRandomUntaggedSid(
   return null;
 }
 export async function POST() {
+  const startTime = Date.now();
   try {
+    console.log('[API] /api/rate/random - Request:', {
+      timestamp: new Date().toISOString(),
+    });
+
     const env = await resolvePlaybackEnvironment();
     const sidPath = await pickRandomUntaggedSid(env.hvscPath, env.musicRoot, env.tagsPath);
     if (!sidPath) {
+      console.log('[API] /api/rate/random - No untagged SIDs found');
       const response: ApiResponse = {
         success: false,
         error: 'No SID files to rate',
@@ -109,6 +115,15 @@ export async function POST() {
       selectedSong: track.selectedSong,
     });
 
+    const elapsedMs = Date.now() - startTime;
+    console.log('[API] /api/rate/random - Success:', {
+      sessionId: session.sessionId,
+      sidPath,
+      selectedSong: session.selectedSong,
+      durationSeconds: session.durationSeconds,
+      elapsedMs,
+    });
+
     const response: ApiResponse<{ track: RateTrackPayload; session: typeof session }> = {
       success: true,
       data: {
@@ -119,7 +134,11 @@ export async function POST() {
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('[api/rate/random] Failed to load random SID', error);
+    const elapsedMs = Date.now() - startTime;
+    console.error('[API] /api/rate/random - Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      elapsedMs,
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to load random SID',

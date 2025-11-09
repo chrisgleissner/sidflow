@@ -31,14 +31,14 @@ describe("tag path helpers", () => {
   it("resolves manual tag path mirroring hvsc layout", () => {
     const sidFile = path.join(hvscPath, "C64Music", "Authors", "Track.sid");
     expect(resolveManualTagPath(hvscPath, tagsPath, sidFile)).toBe(
-      path.join(tagsPath, "C64Music", "Authors", "Track.sid.sid.tags.json")
+      path.join(tagsPath, "C64Music", "Authors", "Track.sid.tags.json")
     );
   });
 
   it("resolves metadata path beside manual tags", () => {
     const sidFile = path.join(hvscPath, "Track.sid");
     expect(resolveMetadataPath(hvscPath, tagsPath, sidFile)).toBe(
-      path.join(tagsPath, "Track.sid.sid.meta.json")
+      path.join(tagsPath, "Track.sid.meta.json")
     );
   });
 

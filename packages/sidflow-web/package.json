@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "bun test tests/unit/",
-  "pretest:e2e": "node ./scripts/ensure-playwright-browser.mjs",
+    "pretest:e2e": "node ./scripts/ensure-playwright-browser.mjs",
     "test:e2e": "playwright test",
     "test:all": "bun run pretest:e2e && bun test tests/unit/ && playwright test"
   },
@@ -21,6 +21,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "@sidflow/common": "workspace:*",
+    "@sidflow/libsidplayfp-wasm": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.552.0",

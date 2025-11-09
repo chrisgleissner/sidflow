@@ -84,8 +84,6 @@ describe("parseClassifyArgs", () => {
       "--config",
       "./config.json",
       "--force-rebuild",
-      "--sidplay",
-      "./sidplayfp",
       "--feature-module",
       "./feature.js",
       "--predictor-module",
@@ -101,7 +99,6 @@ describe("parseClassifyArgs", () => {
     expect(result.options).toEqual({
       configPath: "./config.json",
       forceRebuild: true,
-      sidplayPath: "./sidplayfp",
       featureModule: "./feature.js",
       predictorModule: "./predictor.js",
       metadataModule: "./metadata.js",
@@ -293,9 +290,7 @@ describe("runClassifyCli", () => {
         "--metadata-module",
         metadataModulePath,
         "--render-module",
-        renderModulePath,
-        "--sidplay",
-        "/custom/sidplay"
+        renderModulePath
       ],
       {
         stdout,
@@ -411,8 +406,6 @@ describe("runClassifyCli", () => {
 
     try {
       expect(exitCode).toBe(0);
-      const stderrOutput = captured.stderr.join("\n");
-      expect(stderrOutput).toContain("--sidplay is deprecated and ignored");
       const output = captured.stdout.join("\n");
       expect(captured.stdout.some((chunk) => chunk.includes("[Analyzing]"))).toBe(true);
       expect(captured.stdout.some((chunk) => chunk.includes("[Converting]"))).toBe(true);

@@ -137,10 +137,17 @@ async function pickRandomSidFromFilesystem(collectionRoot: string): Promise<stri
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const body = await request.json().catch(() => ({}));
     const preset = normalizePreset(body?.preset);
     const preview = Boolean(body?.preview);
+
+    console.log('[API] /api/play/random - Request:', {
+      preset,
+      preview,
+      timestamp: new Date().toISOString(),
+    });
 
     const env = await resolvePlaybackEnvironment();
     const sidPath = await pickRandomSid(env.hvscPath, env.collectionRoot, preset);
@@ -183,13 +190,26 @@ export async function POST(request: NextRequest) {
         selectedSong: enrichedTrack.selectedSong,
       });
 
+    const elapsedMs = Date.now() - startTime;
+    console.log('[API] /api/play/random - Success:', {
+      sessionId: session?.sessionId,
+      sidPath,
+      selectedSong: enrichedTrack.selectedSong,
+      durationSeconds: enrichedTrack.durationSeconds,
+      elapsedMs,
+    });
+
     const response: ApiResponse<{ track: RateTrackInfo; session: typeof session | null }> = {
       success: true,
       data: { track: enrichedTrack, session },
     };
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('[api/play/random] failed', error);
+    const elapsedMs = Date.now() - startTime;
+    console.error('[API] /api/play/random - Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      elapsedMs,
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to load random SID',

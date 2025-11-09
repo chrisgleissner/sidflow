@@ -30,7 +30,6 @@ const PROGRESS_THROTTLE_MS = 500; // Max 2 updates per second
 interface ClassifyCliOptions {
   configPath?: string;
   forceRebuild?: boolean;
-  sidplayPath?: string;
   featureModule?: string;
   predictorModule?: string;
   metadataModule?: string;
@@ -46,7 +45,6 @@ interface ParseResult {
 const KNOWN_FLAGS = new Set([
   "--config",
   "--force-rebuild",
-  "--sidplay",
   "--feature-module",
   "--predictor-module",
   "--metadata-module",
@@ -71,7 +69,6 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
         break;
       }
       case "--config":
-      case "--sidplay":
       case "--feature-module":
       case "--predictor-module":
       case "--metadata-module":
@@ -82,8 +79,6 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
         } else {
           if (token === "--config") {
             options.configPath = next;
-          } else if (token === "--sidplay") {
-            options.sidplayPath = next;
           } else if (token === "--feature-module") {
             options.featureModule = next;
           } else if (token === "--predictor-module") {
@@ -125,7 +120,6 @@ function printHelp(): void {
     "",
     "Options:",
     "  --config <path>           Use an alternate .sidflow.json file",
-    "  --sidplay <path>          Deprecated: ignored; WASM renderer is used",
     "  --force-rebuild           Re-render WAVs even if cache is fresh",
     "  --feature-module <path>   Module exporting a featureExtractor override",
     "  --predictor-module <path> Module exporting a predictRatings override",
@@ -325,12 +319,6 @@ export async function runClassifyCli(
       configPath: options.configPath,
       forceRebuild: options.forceRebuild ?? false
     });
-
-    if (options.sidplayPath) {
-      runtime.stderr.write(
-        "Warning: --sidplay is deprecated and ignored. The WASM renderer is always used.\n"
-      );
-    }
 
     const resolvedPlan: ClassificationPlan = {
       ...plan,

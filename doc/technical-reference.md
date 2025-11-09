@@ -157,11 +157,11 @@ Each command can be run via the command line interface from the repository root.
 ### 2. `sidflow-rate` (formerly `sidflow-tag`)
 
 ```sh
-./scripts/sidflow-rate [--sidplay <path>] [--config <path>]
+./scripts/sidflow-rate [--config <path>]
 ```
 
 **Purpose:** Capture user ratings across multiple dimensions for supervised classification and preference learning.  
-**Operation:** Plays unrated `.sid` files via `sidplayfp`, records energy/mood/complexity/preference (`e/m/c/p`) ratings, and stores results beside each track.
+**Operation:** Plays unrated `.sid` files via WASM renderer, records energy/mood/complexity/preference (`e/m/c/p`) ratings, and stores results beside each track.
 
 **Controls**
 
@@ -180,32 +180,17 @@ Each command can be run via the command line interface from the repository root.
 ### 3. `sidflow-classify`
 
 ```sh
-./scripts/sidflow-classify [--config <path>] [--sidplay <path>] [--force-rebuild]
+./scripts/sidflow-classify [--config <path>] [--force-rebuild]
                             [--feature-module <path>] [--predictor-module <path>]
                             [--metadata-module <path>] [--render-module <path>]
 ```
 
-**Purpose:** Convert SIDs to WAV, extract features, merge manual ratings, and publish deterministic `auto-tags.json` summaries.  
-**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(e/m/c/p)` ratings using TensorFlow.js for unrated dimensions without overwriting manual values.
+**Purpose:** Automate feature extraction and rating prediction for the entire collection.  
+**Operation:** Rebuilds the WAV cache using WASM renderer, captures metadata (falling back to path heuristics when needed), derives feature vectors using Essentia.js, and predicts `(e/m/c/p)` ratings using TensorFlow.js for unrated dimensions without overwriting manual values.
 
-#### Flags (classification)
+**Flags:**
 
-- `--config <path>` — alternate `.sidflow.json`
-- `--sidplay <path>` — override `sidplayfp` binary for WAV + metadata extraction
-- `--force-rebuild` — re-render WAV cache even if fresh
-- `--feature-module <path>` — custom Bun/ESM module exporting `featureExtractor`
-- `--predictor-module <path>` — custom module exporting `predictRatings`
-- `--metadata-module <path>` — custom module exporting `extractMetadata`
-- `--render-module <path>` — custom module exporting `render` hook (handy for tests)
-
-#### Outputs (classification)
-
-- Deterministic WAV cache under `wavCachePath`
-- Per-SID metadata files (`*.sid.meta.json`)
-- Aggregated `auto-tags.json` files respecting `classificationDepth`
-- Summary of auto/manual/mixed rating coverage on stdout
-- **Performance metrics** (runtime, cache hit rate, predictions generated) — see [`performance-metrics.md`](performance-metrics.md)
-- **JSONL classification output** — structured data format for further processing
+- `--config <path>` — override default `.sidflow.json`
 
 > [!TIP]
 > The CLI includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`../packages/sidflow-classify/README-INTEGRATION.md`](../packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
@@ -318,7 +303,7 @@ Each training run appends a summary to `data/training/training-log.jsonl`:
 ```
 
 **Purpose:** Turn your classified collection into a dynamic SID playlist experience with mood-based recommendations.  
-**Operation:** Uses LanceDB vector similarity and the recommendation engine to generate personalized playlists based on mood presets or custom filters. Streams through `sidplayfp` with queue controls and exports deterministic manifests.
+**Operation:** Uses LanceDB vector similarity and the recommendation engine to generate personalized playlists based on mood presets or custom filters. Streams through WASM renderer with queue controls and exports deterministic manifests.
 
 #### Key Flags
 
@@ -327,7 +312,6 @@ Each training run appends a summary to `data/training/training-log.jsonl`:
 - `--limit <n>` — Number of songs in playlist (default: 20)
 - `--exploration <0-1>` — Exploration factor (default: 0.2, higher = more diversity)
 - `--diversity <0-1>` — Diversity threshold (default: 0.2, minimum distance between consecutive songs)
-- `--sidplay <path>` — Override sidplayfp executable
 - `--export <path>` — Export playlist to file
 - `--export-format <fmt>` — Export format: json, m3u, m3u8 (default: json)
 - `--export-only` — Export playlist without playing
@@ -777,7 +761,6 @@ The configuration file controls all paths and settings:
 - `wavCachePath` — Cache directory for converted WAV files
 - `tagsPath` — Directory for manual and auto-generated rating tags
 - `classifiedPath` — Output directory for JSONL classification files
-- `sidplayPath` — Optional path to the legacy sidplayfp binary (deprecated; ignore or remove unless you still rely on the native playback CLIs)
 - `threads` — Number of parallel threads for processing (0 = auto-detect)
 - `classificationDepth` — Directory depth for aggregating auto-tags.json files
 
@@ -794,7 +777,6 @@ This checks:
 - JSON syntax correctness
 - Required fields presence
 - Path accessibility
-- Emits a warning when deprecated keys (e.g., `sidplayPath`) are present
 
 ---
 

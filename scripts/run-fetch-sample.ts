@@ -102,7 +102,6 @@ async function main(): Promise<void> {
       hvscPath: hvscDir,
       wavCachePath: wavCache,
       tagsPath,
-      sidplayPath: "sidplayfp",
       threads: 0,
       classificationDepth: 1
     };

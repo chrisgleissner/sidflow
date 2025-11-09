@@ -17,9 +17,7 @@ import {
   type TagRatings
 } from "./index.js";
 
-interface CliOptions extends TagCliOptions {
-  sidplayPath?: string;
-}
+interface CliOptions extends TagCliOptions { }
 
 interface ParseResult {
   options: CliOptions;
@@ -36,7 +34,6 @@ function printHelp(): void {
     "",
     "Options:",
     "  --config <path>   Load an alternate .sidflow.json",
-    "  --sidplay <path>  (deprecated) legacy sidplayfp override (ignored)",
     "  --random          Shuffle the unrated queue",
     "  --help            Show this message and exit"
   ];
@@ -60,16 +57,6 @@ export function parseTagArgs(argv: string[]): ParseResult {
           errors.push("--config requires a value");
         } else {
           options.configPath = next;
-          index += 1;
-        }
-        break;
-      }
-      case "--sidplay": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--sidplay requires a value");
-        } else {
-          options.sidplayPath = next;
           index += 1;
         }
         break;
@@ -138,11 +125,6 @@ export async function runTagCli(argv: string[]): Promise<number> {
   }
 
   const session = await planTagSession({ configPath: options.configPath, random: options.random });
-  if (options.sidplayPath || session.sidplayPath) {
-    process.stderr.write(
-      "Warning: sidplayPath is deprecated and ignored. sidflow-rate now uses the WASM playback harness with host audio players.\n"
-    );
-  }
   const playbackHarness = new SidPlaybackHarness();
   const queue = await findUntaggedSids(session.hvscPath, session.tagsPath);
 

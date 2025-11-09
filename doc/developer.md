@@ -26,7 +26,6 @@ Install dependencies once: `bun install`.
 | `hvscPath` | Mirrors the HVSC tree produced by `sidflow fetch`. |
 | `wavCachePath` | Receives rendered WAV files. |
 | `tagsPath` | Stores manual and automatic tag files. |
-| `sidplayPath` | (Deprecated) Legacy sidplayfp override. Ignored by interactive CLIs. |
 | `threads` | Worker pool size (`0` = auto). |
 | `classificationDepth` | Folder depth for `auto-tags.json` aggregation. |
 

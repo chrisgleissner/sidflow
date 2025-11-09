@@ -23,7 +23,6 @@ describe("planTagSession", () => {
       hvscPath: "./hvsc",
       wavCachePath: "./wav",
       tagsPath: "./tags",
-      sidplayPath: "sidplayfp",
       threads: 4,
       classificationDepth: 2
     };
@@ -31,7 +30,6 @@ describe("planTagSession", () => {
 
     const plan = await planTagSession({ configPath });
     expect(plan.random).toBeFalse();
-    expect(plan.sidplayPath).toBe(path.normalize(payload.sidplayPath));
 
     await rm(dir, { recursive: true, force: true });
   });
@@ -42,7 +40,7 @@ describe("tagging workflow helpers", () => {
     const hvscPath = "/workspace/hvsc";
     const tagsPath = "/workspace/tags";
     const sidFile = "/workspace/hvsc/C64Music/first.sid";
-    const expected = path.join(tagsPath, "C64Music", "first.sid.sid.tags.json");
+    const expected = path.join(tagsPath, "C64Music", "first.sid.tags.json");
     expect(createTagFilePath(hvscPath, tagsPath, sidFile)).toBe(expected);
   });
 

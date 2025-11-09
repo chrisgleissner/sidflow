@@ -11,9 +11,15 @@ import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { ZodError } from 'zod';
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const body = await request.json();
     const validated = PlayRequestSchema.parse(body);
+
+    console.log('[API] /api/play/manual - Request:', {
+      sidPath: validated.sid_path,
+      timestamp: new Date().toISOString(),
+    });
 
     const env = await resolvePlaybackEnvironment();
 
@@ -42,6 +48,15 @@ export async function POST(request: NextRequest) {
       selectedSong: payload.selectedSong,
     });
 
+    const elapsedMs = Date.now() - startTime;
+    console.log('[API] /api/play/manual - Success:', {
+      sessionId: session.sessionId,
+      sidPath,
+      selectedSong: session.selectedSong,
+      durationSeconds: session.durationSeconds,
+      elapsedMs,
+    });
+
     const response: ApiResponse<{ track: RateTrackInfo; session: typeof session }> = {
       success: true,
       data: {
@@ -51,6 +66,12 @@ export async function POST(request: NextRequest) {
     };
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
+    const elapsedMs = Date.now() - startTime;
+    console.error('[API] /api/play/manual - Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      elapsedMs,
+    });
+
     if (error instanceof ZodError) {
       const response: ApiResponse = {
         success: false,

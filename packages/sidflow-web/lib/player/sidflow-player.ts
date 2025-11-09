@@ -1,6 +1,7 @@
 import loadLibsidplayfp, { SidAudioEngine } from '@sidflow/libsidplayfp-wasm';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
+import { telemetry } from '@/lib/telemetry';
 
 export type SidflowPlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended';
 
@@ -103,6 +104,13 @@ export class SidflowPlayer {
         this.currentTrack = track;
         this.updateState('loading');
 
+        const loadStartTime = performance.now();
+        telemetry.trackPlaybackLoad({
+            sessionId: session.sessionId,
+            sidPath: track.sidPath,
+            status: 'start',
+        });
+
         try {
             const engine = await this.ensureEngine();
             this.throwIfAborted(signal);
@@ -138,13 +146,21 @@ export class SidflowPlayer {
             );
             const totalSamplesEstimate = Math.max(1, Math.floor(sampleRate * channels * targetDuration));
 
+            // Render with minimal progress tracking overhead (throttled updates)
+            // Use larger chunks (40000 cycles) to reduce WASM call overhead
             let lastProgress = 0;
-            const pcm = await engine.renderSeconds(targetDuration, 20000, (samplesWritten: number) => {
+            let lastProgressTime = 0;
+            const pcm = await engine.renderSeconds(targetDuration, 40000, (samplesWritten: number) => {
                 if (!this.audioBuffer && totalSamplesEstimate > 0) {
-                    const progress = clamp(samplesWritten / totalSamplesEstimate, 0, 0.999);
-                    if (progress - lastProgress >= 0.01) {
-                        lastProgress = progress;
-                        this.emit('loadprogress', progress);
+                    const now = performance.now();
+                    // Only emit progress updates every 100ms to reduce overhead
+                    if (now - lastProgressTime >= 100) {
+                        const progress = clamp(samplesWritten / totalSamplesEstimate, 0, 0.999);
+                        if (progress - lastProgress >= 0.01) {
+                            lastProgress = progress;
+                            lastProgressTime = now;
+                            this.emit('loadprogress', progress);
+                        }
                     }
                 }
             });
@@ -153,11 +169,40 @@ export class SidflowPlayer {
             const frames = Math.floor(pcm.length / channels);
             const buffer = this.audioContext.createBuffer(channels, frames, sampleRate);
 
-            for (let channel = 0; channel < channels; channel += 1) {
-                const channelData = buffer.getChannelData(channel);
-                for (let frame = 0; frame < frames; frame += 1) {
-                    const sampleIndex = frame * channels + channel;
-                    channelData[frame] = pcm[sampleIndex] * INT16_SCALE;
+            // Convert with chunked processing to avoid blocking main thread
+            const CHUNK_SIZE = 44100; // Process 1 second at a time
+            if (channels === 2) {
+                // Stereo fast path - most common case
+                const leftChannel = buffer.getChannelData(0);
+                const rightChannel = buffer.getChannelData(1);
+                for (let startFrame = 0; startFrame < frames; startFrame += CHUNK_SIZE) {
+                    const endFrame = Math.min(startFrame + CHUNK_SIZE, frames);
+                    for (let frame = startFrame; frame < endFrame; frame += 1) {
+                        const idx = frame * 2;
+                        leftChannel[frame] = pcm[idx] * INT16_SCALE;
+                        rightChannel[frame] = pcm[idx + 1] * INT16_SCALE;
+                    }
+                    // Yield to event loop every second of audio
+                    if (endFrame < frames) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        this.throwIfAborted(signal);
+                    }
+                }
+            } else {
+                // Mono or multi-channel fallback
+                for (let channel = 0; channel < channels; channel += 1) {
+                    const channelData = buffer.getChannelData(channel);
+                    for (let startFrame = 0; startFrame < frames; startFrame += CHUNK_SIZE) {
+                        const endFrame = Math.min(startFrame + CHUNK_SIZE, frames);
+                        for (let frame = startFrame; frame < endFrame; frame += 1) {
+                            channelData[frame] = pcm[frame * channels + channel] * INT16_SCALE;
+                        }
+                        // Yield to event loop every second of audio
+                        if (endFrame < frames) {
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                            this.throwIfAborted(signal);
+                        }
+                    }
                 }
             }
 
@@ -166,13 +211,34 @@ export class SidflowPlayer {
             this.pauseOffset = 0;
             this.emit('loadprogress', 1);
             this.updateState('ready');
+
+            const loadEndTime = performance.now();
+            telemetry.trackPlaybackLoad({
+                sessionId: session.sessionId,
+                sidPath: track.sidPath,
+                status: 'success',
+                metrics: {
+                    loadDurationMs: loadEndTime - loadStartTime,
+                    trackDurationSeconds: buffer.duration,
+                    fileSizeBytes: sidBytes.length,
+                },
+            });
         } catch (error) {
             if (signal?.aborted) {
                 this.updateState('idle');
                 return;
             }
             this.updateState('idle');
-            this.emit('error', error instanceof Error ? error : new Error(String(error)));
+            const errorObj = error instanceof Error ? error : new Error(String(error));
+            this.emit('error', errorObj);
+
+            telemetry.trackPlaybackLoad({
+                sessionId: session.sessionId,
+                sidPath: track.sidPath,
+                status: 'error',
+                error: errorObj,
+            });
+
             throw error;
         }
     }
@@ -249,7 +315,11 @@ export class SidflowPlayer {
             this.enginePromise = loadLibsidplayfp({
                 locateFile: (asset: string) => `/wasm/${asset}`,
             }).then(
-                (module: WasmModule) => new SidAudioEngine({ module: Promise.resolve(module) })
+                (module: WasmModule) => new SidAudioEngine({ module: Promise.resolve(module) }),
+                (error) => {
+                    console.error('[SidflowPlayer] WASM module load failed:', error);
+                    throw error;
+                }
             );
         }
         return this.enginePromise;
@@ -276,8 +346,17 @@ export class SidflowPlayer {
         if (this.state === next) {
             return;
         }
+        const oldState = this.state;
         this.state = next;
         this.emit('statechange', next);
+
+        telemetry.trackPlaybackStateChange({
+            sessionId: this.currentSession?.sessionId,
+            sidPath: this.currentTrack?.sidPath,
+            oldState,
+            newState: next,
+            positionSeconds: this.getPositionSeconds(),
+        });
     }
 
     private emit<Event extends SidflowPlayerEvent>(event: Event, payload: EventPayloadMap[Event]): void {

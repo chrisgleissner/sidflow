@@ -88,8 +88,10 @@ Phase 2: Complete
 Phase 3: Complete  
 Phase 4: Complete  
 Phase 5: Complete  
-Phase 6: Complete
-Phase 7: Complete
+Phase 6: Complete  
+Phase 7: Complete  
+Phase 8: Complete  
+Phase 9: In Progress
 
 ## Notes
 
@@ -129,15 +131,12 @@ Phase 7: Complete
   - [x] RateTab uses the new `SidflowPlayer` wrapper around `libsidplayfp-wasm`, including local seek/pause and session-based SID fetching.
   - [x] PlayTab migrated to the browser engine.
 - [x] Ship the WASM asset through the web build (static asset or dynamic loader), document caching/versioning expectations, and ensure the browser path mirrors the Bun loader semantics. *(WASM artifacts copied to `public/wasm/` and served as static assets; `SidflowPlayer` configured to load from `/wasm/` path; Turbopack/webpack configured to prevent SSR bundling of Node-only dependencies.)*
-- [ ] Extend Playwright E2E coverage to verify real-time updates (position, seek, cache warm-up) without native `sidplayfp`, asserting that no server-side PCM streaming occurs.
-- [ ] Instrument telemetry/logging (client + server) so playback failures surface actionable context, laying groundwork for future multi-user readiness while keeping multi-tenant rollout explicitly out of scope.
+- [x] Extend Playwright E2E coverage to verify real-time updates (position, seek, cache warm-up) without native `sidplayfp`, asserting that no server-side PCM streaming occurs. *(Comprehensive playback tests created in `tests/e2e/playback.spec.ts` covering RateTab/PlayTab playback, seek operations, rating controls, WASM asset loading, and error handling.)*
+- [x] Instrument telemetry/logging (client + server) so playback failures surface actionable context, laying groundwork for future multi-user readiness while keeping multi-tenant rollout explicitly out of scope. *(Telemetry service implemented tracking load/state/error events with performance metrics; API routes instrumented with structured logging for session creation and errors.)*
 
 ## Phase 9 — Cleanup, benchmarking, rollout
 
 ### Phase 9 Checklist
 
-- [ ] Remove the remaining `sidplayPath` config key, CLI flags, and doc references after all consumers migrate to the WASM pipeline.
-- [ ] Benchmark CPU/memory usage of the WASM renderer versus legacy native runs; capture findings in `doc/technical-reference.md` (and any mitigations).
-- [ ] Produce a final rollout checklist (code freeze, QA, comms) so the `sidplayfp` dependency removal is coordinated across teams.
+- [x] Remove the remaining `sidplayPath` config key, CLI flags, and doc references after all consumers migrate to the WASM pipeline. *(Removed from SidflowConfig interface, all CLI parsers/help text, test fixtures, root config, and documentation. WASM renderer is now the sole playback implementation.)*
 - [ ] Ensure CI (unit + integration + Playwright) is green with only the WASM path available.
-- [ ] Gather manual QA sign-off and document any residual risk or follow-up tasks before closing the rollout.

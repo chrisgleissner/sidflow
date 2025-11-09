@@ -84,7 +84,8 @@ export class SidAudioEngine {
         this.currentSongIndex = 0;
         this.resetCacheState();
         await this.reloadCurrentSong();
-        this.startCache();
+        // Don't start cache during initial load - it conflicts with rendering
+        // Cache will be built on-demand for seeking
     }
     async selectSong(songIndex) {
         if (!this.originalSidBuffer) {
@@ -93,7 +94,7 @@ export class SidAudioEngine {
         this.currentSongIndex = Math.max(0, Math.trunc(songIndex));
         this.resetCacheState();
         const applied = await this.reloadCurrentSong();
-        this.startCache();
+        // Don't start cache during song selection - it conflicts with rendering
         return applied;
     }
     getChannels() {
@@ -146,33 +147,29 @@ export class SidAudioEngine {
         if (!this.context || !this.configured) {
             return new Int16Array(0);
         }
-        const requestedSamples = Math.max(1, Math.floor(this.sampleRate * seconds * (this.stereo ? 2 : 1)));
-        if (this.useCachePlayback && this.cacheAvailable()) {
-            const remaining = this.cachedPcm.length - this.cacheCursor;
-            if (remaining <= 0) {
-                return new Int16Array(0);
-            }
-            const toCopy = Math.min(requestedSamples, remaining);
-            const chunk = this.cachedPcm.subarray(this.cacheCursor, this.cacheCursor + toCopy);
-            this.cacheCursor += toCopy;
-            return chunk.slice();
-        }
+        // Direct rendering using main context (cache is for seeking only)
         const context = this.context;
         const sampleRate = context.getSampleRate();
         const channels = context.getChannels();
         const totalSamples = Math.max(1, Math.floor(sampleRate * seconds * channels));
         const buffer = new Int16Array(totalSamples);
         let offset = 0;
-        const maxIterations = Math.ceil((sampleRate * seconds) / cyclesPerChunk) * 4;
-        let iterations = 0;
-        while (offset < totalSamples && iterations < maxIterations) {
-            iterations += 1;
+        let loopCount = 0;
+        while (offset < totalSamples) {
             const chunk = this.renderCycles(cyclesPerChunk);
-            if (chunk === null) {
+            // If song ends, loop it by resetting
+            if (chunk === null || chunk.length === 0) {
+                // Reset and continue rendering to fill the buffer
+                if (offset < totalSamples && loopCount < 100) { // Max 100 loops to prevent infinite loop
+                    if (!context.reset()) {
+                        // Reset failed, stop here
+                        break;
+                    }
+                    loopCount += 1;
+                    console.log('SidAudioEngine: reset during renderSeconds', { offset, loopCount });
+                    continue;
+                }
                 break;
-            }
-            if (chunk.length === 0) {
-                continue;
             }
             const available = Math.min(chunk.length, totalSamples - offset);
             buffer.set(chunk.subarray(0, available), offset);
@@ -289,7 +286,12 @@ export class SidAudioEngine {
         const maxSamples = Math.floor(this.sampleRate * channels * this.maxCacheSeconds);
         const chunks = [];
         let collected = 0;
+        let iterationCount = 0;
         while (collected < maxSamples) {
+            // Yield to event loop every 20 iterations (balanced for performance and responsiveness)
+            if (++iterationCount % 20 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
             let chunk;
             try {
                 chunk = ctx.render(20000);
@@ -307,6 +309,7 @@ export class SidAudioEngine {
         if (this.cacheToken !== token) {
             return;
         }
+        // Combine all chunks into final cache buffer
         const combined = new Int16Array(collected);
         let offset = 0;
         for (const chunk of chunks) {

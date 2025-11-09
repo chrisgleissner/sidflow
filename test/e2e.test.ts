@@ -162,7 +162,6 @@ describe("End-to-End SIDFlow Pipeline", () => {
       wavCachePath,
       tagsPath,
       classifiedPath,
-      sidplayPath: "sidplayfp",
       threads: 0,
       classificationDepth: 3
     };

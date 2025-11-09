@@ -57,12 +57,6 @@ describe("CLI argument parsing", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  test("parses sidplay option", () => {
-    const result = parsePlayArgs(["--sidplay", "/usr/bin/sidplayfp"]);
-    expect(result.options.sidplayPath).toBe("/usr/bin/sidplayfp");
-    expect(result.errors).toHaveLength(0);
-  });
-
   test("parses min-duration option", () => {
     const result = parsePlayArgs(["--min-duration", "30"]);
     expect(result.options.minDuration).toBe(30);
@@ -167,7 +161,6 @@ describe("runPlayCli", () => {
       hvscPath: "/music",
       wavCachePath: "/wav",
       tagsPath: "/tags",
-      sidplayPath: "/sidplay",
       threads: 4,
       classificationDepth: 2
     };
@@ -295,8 +288,6 @@ describe("runPlayCli", () => {
     expect(stdoutChunks.join("\n")).toContain("Generating playlist");
     expect(stdoutChunks.join("\n")).toContain("Starting playback");
     expect(stdoutChunks.join("\n")).toContain("Stopping playback");
-    expect(stderrChunks.join("\n")).toContain("sidplayPath is deprecated and ignored");
-    expect(stderrChunks).toHaveLength(1);
     expect(sleepCalls).toHaveLength(0);
   });
 
@@ -319,7 +310,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),
@@ -376,7 +366,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),
@@ -425,7 +414,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),
@@ -481,7 +469,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),

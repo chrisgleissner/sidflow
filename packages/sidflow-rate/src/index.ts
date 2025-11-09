@@ -29,7 +29,6 @@ export interface TagCliOptions {
 export interface TagSessionPlan {
   config: SidflowConfig;
   random: boolean;
-  sidplayPath?: string;
   tagsPath: string;
   hvscPath: string;
 }
@@ -41,16 +40,9 @@ export async function planTagSession(
   const logger = createLogger("sidflow-rate");
   logger.debug("Loaded configuration for tagging session");
 
-  if (config.sidplayPath) {
-    logger.warn(
-      "sidplayPath is deprecated and ignored. sidflow-rate now uses the WASM playback harness with host audio players."
-    );
-  }
-
   return {
     config,
     random: options.random ?? false,
-    sidplayPath: config.sidplayPath,
     tagsPath: config.tagsPath,
     hvscPath: config.hvscPath
   };

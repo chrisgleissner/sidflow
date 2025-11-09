@@ -93,8 +93,6 @@ Then create `.sidflow.json` in the root directory:
 }
 ```
 
-> `sidplayPath` is deprecated and optional. Keep it only while legacy players depend on the native binary—you will receive a warning when the config loads.
-
 Validate your setup:
 
 ```bash
