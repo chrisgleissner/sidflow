@@ -34,6 +34,12 @@ interface AudioTelemetry {
   backpressureStalls: number;
   minOccupancy: number;
   maxOccupancy: number;
+  zeroByteFrames: number;
+  missedQuanta: number;
+  avgDriftMs: number;
+  maxDriftMs: number;
+  contextSuspendCount: number;
+  contextResumeCount: number;
 }
 
 interface FidelityReport {
