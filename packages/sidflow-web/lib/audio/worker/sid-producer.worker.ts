@@ -43,6 +43,10 @@ interface ReadyMessage {
   framesProduced: number;
 }
 
+interface LoadedMessage {
+  type: 'loaded';
+}
+
 interface TelemetryMessage {
   type: 'telemetry';
   framesProduced: number;
@@ -62,7 +66,7 @@ interface EndedMessage {
   framesProduced: number;
 }
 
-type WorkerResponse = ReadyMessage | TelemetryMessage | ErrorMessage | EndedMessage;
+type WorkerResponse = ReadyMessage | LoadedMessage | TelemetryMessage | ErrorMessage | EndedMessage;
 
 class SidProducerWorker {
   private producer: SABRingBufferProducer | null = null;
@@ -80,7 +84,7 @@ class SidProducerWorker {
   private shouldStop = false;
   private renderLoopPromise: Promise<void> | null = null;
 
-  private readonly PRE_ROLL_FRAMES = 4096;
+  private readonly PRE_ROLL_FRAMES = 8192;
   private readonly RENDER_CHUNK_FRAMES = 2048; // Render in 2048-frame chunks
 
   async handleMessage(message: WorkerMessage): Promise<void> {
@@ -146,6 +150,8 @@ class SidProducerWorker {
     }
 
     console.log('[SidProducer] ✓ Loaded SID');
+
+    this.postMessage({ type: 'loaded' });
   }
 
   private async handleStart(): Promise<void> {
@@ -248,23 +254,41 @@ class SidProducerWorker {
     }
 
     // Align to blockSize
-    const alignedFrames = Math.floor(frames / this.blockSize) * this.blockSize;
-    if (alignedFrames === 0) {
+    const desiredFrames = Math.floor(frames / this.blockSize) * this.blockSize;
+    if (desiredFrames === 0) {
       return 0;
     }
 
     // Check available space
     const available = this.producer.getAvailableWrite();
-    if (available < alignedFrames) {
+    let writableFrames = Math.min(desiredFrames, Math.floor(available / this.blockSize) * this.blockSize);
+
+    if (writableFrames === 0) {
       this.backpressureStalls++;
+      if (this.backpressureStalls <= 5 || this.backpressureStalls % 100 === 0) {
+        console.warn(
+          `[SidProducer] Backpressure stall: available ${available}, desired ${desiredFrames}, framesProduced ${this.framesProduced}`
+        );
+      }
       return 0; // Backpressure: buffer full
     }
 
     // Render PCM from WASM engine
-    const pcmInt16 = await this.engine.renderFrames(alignedFrames, 40000);
+    const pcmInt16 = await this.engine.renderFrames(writableFrames, 40000);
 
     if (pcmInt16.length === 0) {
-      // Engine stopped producing
+      const errorMessage = JSON.stringify({
+        writableFrames,
+        cyclesPerChunk: 40000,
+        framesProduced: this.framesProduced,
+        available,
+      });
+      this.postMessage({ type: 'error', error: `renderFrames returned 0 samples ${errorMessage}` });
+      console.error('[SidProducer] renderFrames returned 0 samples', {
+        writableFrames,
+        cyclesPerChunk: 40000,
+        framesProduced: this.framesProduced,
+      });
       return 0;
     }
 
@@ -278,6 +302,13 @@ class SidProducerWorker {
 
     // Write to ring buffer
     const written = this.producer.write(pcmFloat);
+    if (written === 0) {
+      console.warn('[SidProducer] write() wrote 0 frames unexpectedly', {
+        requestedFrames: actualFrames,
+        available,
+        framesProduced: this.framesProduced,
+      });
+    }
     this.framesProduced += written;
 
     // Track occupancy

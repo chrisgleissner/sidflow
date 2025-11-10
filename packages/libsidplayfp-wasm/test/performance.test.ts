@@ -55,9 +55,9 @@ describe('WASM Rendering Performance', () => {
         console.log(`Samples rendered: ${samplesRendered} (expected: ${Math.floor(sampleRate * channels * targetSeconds)})`);
 
         // Assert we got reasonable amount of data
-    // Some tunes terminate early, so we only require non-zero output and healthy throughput.
-    expect(samplesRendered).toBeGreaterThan(0);
-    expect(throughputRatio).toBeGreaterThan(1.5); // Maintain a comfortable realtime margin
+        // Some tunes terminate early, so we only require non-zero output and healthy throughput.
+        expect(samplesRendered).toBeGreaterThan(0);
+        expect(throughputRatio).toBeGreaterThan(1.5); // Maintain a comfortable realtime margin
     });
 
     test('measure cache build performance', async () => {
@@ -113,8 +113,8 @@ describe('WASM Rendering Performance', () => {
         console.log(`Calls/sec: ${(1000 / avgCallTime).toFixed(0)}`);
 
         // Each call should be very fast
-    expect(iterations).toBeGreaterThan(0);
-    expect(avgCallTime).toBeLessThan(10); // Keep the overhead small even when tunes end quickly
+        expect(iterations).toBeGreaterThan(0);
+        expect(avgCallTime).toBeLessThan(10); // Keep the overhead small even when tunes end quickly
     });
 });
 

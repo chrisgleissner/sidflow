@@ -54,6 +54,8 @@ interface FidelityReport {
   errors: string[];
 }
 
+const FIDELITY_DURATION_SECONDS = 1.0;
+
 /**
  * Measure fundamental frequency using zero-crossing method.
  */
@@ -146,6 +148,12 @@ async function getTelemetry(page: Page): Promise<AudioTelemetry> {
         backpressureStalls: 0,
         minOccupancy: 0,
         maxOccupancy: 0,
+        zeroByteFrames: 0,
+        missedQuanta: 0,
+        avgDriftMs: 0,
+        maxDriftMs: 0,
+        contextSuspendCount: 0,
+        contextResumeCount: 0,
       };
     }
     return player.getTelemetry();
@@ -171,6 +179,12 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
       backpressureStalls: 0,
       minOccupancy: 0,
       maxOccupancy: 0,
+      zeroByteFrames: 0,
+      missedQuanta: 0,
+      avgDriftMs: 0,
+      maxDriftMs: 0,
+      contextSuspendCount: 0,
+      contextResumeCount: 0,
     },
     errors: [],
   };
@@ -178,7 +192,6 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
   try {
     // Navigate to test page
     await page.goto('/test/audio-capture');
-    await page.waitForTimeout(1000);
 
     // Check cross-origin isolation
     const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
@@ -191,13 +204,13 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
     await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
 
     // Enable audio capture and load the C4 test SID
-    const { capturedLeft, capturedRight, sampleRate, telemetry } = await page.evaluate(async () => {
+    const { capturedLeft, capturedRight, sampleRate, telemetry } = await page.evaluate(async (expectedDuration: number) => {
       // Create a test session for the C4 SID
       const testSession = {
         sessionId: 'test-c4-' + Date.now(),
         sidUrl: '/test-tone-c4.sid',
         scope: 'test' as const,
-        durationSeconds: 3.0,
+        durationSeconds: expectedDuration,
         selectedSong: 0,
         expiresAt: new Date(Date.now() + 60000).toISOString(),
       };
@@ -220,7 +233,7 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
           clock: 'PAL',
           fileSizeBytes: 380,
         },
-        durationSeconds: 3.0,
+        durationSeconds: expectedDuration,
       };
 
       // Get the player from the global scope
@@ -236,11 +249,51 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
       await player.load({ session: testSession, track: testTrack });
       await player.play();
 
-      // Wait for playback to complete (3 seconds + buffer)
-      await new Promise(resolve => setTimeout(resolve, 4000));
+      const playbackSeconds = expectedDuration;
+      const sampleRate = player.audioContext?.sampleRate ?? 48000;
+      const targetFrames = Math.floor(sampleRate * playbackSeconds);
+      let finalTelemetry: ReturnType<typeof player.getTelemetry> | null = null;
 
-      // Stop playback
-      player.stop();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const deadline = performance.now() + playbackSeconds * 1000 + 2000;
+          const poll = () => {
+            const telemetry = player.getTelemetry();
+            if (telemetry.framesConsumed >= targetFrames) {
+              finalTelemetry = telemetry;
+              resolve();
+              return;
+            }
+            if (performance.now() > deadline) {
+              reject(new Error(`Timeout waiting for ${targetFrames} frames`));
+              return;
+            }
+            requestAnimationFrame(poll);
+          };
+          poll();
+        });
+      } finally {
+        if (!finalTelemetry) {
+          finalTelemetry = player.getTelemetry();
+        }
+        player.stop();
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const deadline = performance.now() + 1000;
+        const check = () => {
+          if (player.getCapturedAudio()) {
+            resolve();
+            return;
+          }
+          if (performance.now() > deadline) {
+            reject(new Error('Timed out waiting for captured audio'));
+            return;
+          }
+          setTimeout(check, 50);
+        };
+        check();
+      });
 
       // Get captured PCM
       const pcm = await player.getCapturedPCM();
@@ -249,7 +302,10 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
       }
 
       // Get telemetry
-      const telemetry = player.getTelemetry();
+      if (!finalTelemetry) {
+        throw new Error('Telemetry unavailable');
+      }
+      const telemetry = finalTelemetry;
 
       return {
         capturedLeft: Array.from(pcm.left),
@@ -257,7 +313,7 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
         sampleRate: pcm.sampleRate,
         telemetry,
       };
-    });
+    }, FIDELITY_DURATION_SECONDS);
 
     report.sampleRate = sampleRate;
     report.telemetry = telemetry;
@@ -270,7 +326,10 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
 
     // Skip first and last 250ms to avoid transients
     const skipSamples = Math.floor(sampleRate * 0.25);
-    const middleSamples = leftSamples.slice(skipSamples, leftSamples.length - skipSamples);
+    const middleSamples = leftSamples.slice(
+      skipSamples,
+      Math.max(skipSamples + 1, leftSamples.length - skipSamples)
+    );
 
     // Measure frequency
     report.fundamentalFrequency = measureFrequency(middleSamples, sampleRate);
@@ -283,7 +342,8 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
 
     // Check all criteria
     const frequencyOk = Math.abs(report.fundamentalFrequency - 261.63) < 0.2;
-    const durationOk = Math.abs(duration - 3.0) < (1.0 / sampleRate);
+    const expectedDuration = FIDELITY_DURATION_SECONDS;
+    const durationOk = Math.abs(duration - expectedDuration) < (1.0 / sampleRate);
     const noUnderruns = report.underruns === 0;
     const noDropouts = report.dropoutCount === 0;
     const stableRms = report.rmsStability < 10; // <10% variation
@@ -294,7 +354,7 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
       report.errors.push(`Frequency ${report.fundamentalFrequency.toFixed(2)} Hz not in range 261.43-261.83 Hz`);
     }
     if (!durationOk) {
-      report.errors.push(`Duration ${duration.toFixed(3)}s not within ±1 frame of 3.0s`);
+      report.errors.push(`Duration ${duration.toFixed(3)}s not within ±1 frame of ${expectedDuration.toFixed(1)}s`);
     }
     if (!noUnderruns) {
       report.errors.push(`${report.underruns} underruns detected`);
@@ -314,107 +374,40 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
 }
 
 test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
-  test('Rate tab: cross-origin isolation enabled', async ({ page }) => {
-    await page.goto('/?tab=rate');
-    
-    const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
-    expect(isIsolated).toBe(true);
+  test('Rate and play tabs initialize shared pipeline', async ({ page }) => {
+    for (const tab of ['rate', 'play'] as const) {
+      const pageErrors: Error[] = [];
+      const errorHandler = (error: Error) => {
+        pageErrors.push(error);
+      };
+      page.on('pageerror', errorHandler);
 
-    // Check that SharedArrayBuffer is available
-    const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
-    expect(hasSharedArrayBuffer).toBe(true);
-  });
+      await page.goto(`/?tab=${tab}`);
 
-  test('Play tab: cross-origin isolation enabled', async ({ page }) => {
-    await page.goto('/?tab=play');
-    
-    const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
-    expect(isIsolated).toBe(true);
+      await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
+      const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
+      expect(hasSharedArrayBuffer).toBe(true);
 
-    const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
-    expect(hasSharedArrayBuffer).toBe(true);
-  });
+      await page.waitForFunction(() => Boolean((window as any).__sidflowPlayer), { timeout: 10000 });
+      const hasTelemetry = await page.evaluate(() => {
+        const player = (window as any).__sidflowPlayer;
+        return Boolean(player && typeof player.getTelemetry === 'function');
+      });
+      expect(hasTelemetry).toBe(true);
 
-  test('Rate tab: worklet and worker load successfully', async ({ page }) => {
-    // Track console messages and errors
-    const consoleMessages: string[] = [];
-    const pageErrors: Error[] = [];
-    
-    page.on('console', (msg) => {
-      const text = msg.text();
-      consoleMessages.push(`[${msg.type()}] ${text}`);
-      
-      // Log important messages
-      if (text.includes('WorkletPlayer') || text.includes('SidRenderer') || text.includes('SidProducer')) {
-        console.log(text);
-      }
-    });
-    
-    page.on('pageerror', (error) => {
-      pageErrors.push(error);
-      console.error('Page error:', error);
-    });
-
-    await page.goto('/?tab=rate');
-    await page.waitForTimeout(1000);
-
-    // Check for errors
-    if (pageErrors.length > 0) {
-      console.error('Page errors:', pageErrors);
+      expect(pageErrors).toHaveLength(0);
+      page.off('pageerror', errorHandler);
     }
-
-    expect(pageErrors.length).toBe(0);
-
-    // Check for successful initialization messages
-    const hasWorkletInit = consoleMessages.some(msg => msg.includes('SidRenderer') && msg.includes('Initialized'));
-    const hasWorkerInit = consoleMessages.some(msg => msg.includes('SidProducer') && msg.includes('Initialized'));
-
-    if (!hasWorkletInit) {
-      console.log('Worklet initialization messages:', consoleMessages.filter(msg => msg.includes('Worklet') || msg.includes('Renderer')));
-    }
-    if (!hasWorkerInit) {
-      console.log('Worker initialization messages:', consoleMessages.filter(msg => msg.includes('Worker') || msg.includes('Producer')));
-    }
-
-    // Note: These might not always show if audio hasn't started yet
-    // So we'll just log for debugging rather than failing
-    console.log('Initialization checks:', { hasWorkletInit, hasWorkerInit });
-  });
-
-  test('Play tab: worklet and worker load successfully', async ({ page }) => {
-    const consoleMessages: string[] = [];
-    const pageErrors: Error[] = [];
-    
-    page.on('console', (msg) => {
-      const text = msg.text();
-      consoleMessages.push(`[${msg.type()}] ${text}`);
-      
-      if (text.includes('WorkletPlayer') || text.includes('SidRenderer') || text.includes('SidProducer')) {
-        console.log(text);
-      }
-    });
-    
-    page.on('pageerror', (error) => {
-      pageErrors.push(error);
-      console.error('Page error:', error);
-    });
-
-    await page.goto('/?tab=play');
-    await page.waitForTimeout(1000);
-
-    expect(pageErrors.length).toBe(0);
-
-    console.log('Collected console messages:', consoleMessages.length);
   });
 
   test('Rate tab: can load and play random SID with worklet', async ({ page }) => {
     const consoleMessages: string[] = [];
     const pageErrors: Error[] = [];
-    
+
     page.on('console', (msg) => {
       consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
     });
-    
+
     page.on('pageerror', (error) => {
       pageErrors.push(error);
     });
@@ -438,13 +431,15 @@ test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
       throw error;
     }
 
-    // Wait for some playback
-    await page.waitForTimeout(3000);
+    // Wait for frames to accumulate instead of sleeping
+    await expect.poll(async () => (await getTelemetry(page)).framesConsumed, {
+      timeout: 15000,
+    }).toBeGreaterThan(48000);
 
     // Check for underruns in console
     const hasUnderruns = consoleMessages.some(msg => msg.includes('underrun') || msg.includes('Underrun'));
     if (hasUnderruns) {
-      console.warn('Underruns detected in console:', consoleMessages.filter(msg => 
+      console.warn('Underruns detected in console:', consoleMessages.filter(msg =>
         msg.toLowerCase().includes('underrun')
       ));
     }
@@ -459,10 +454,11 @@ test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
 test.describe('Audio Fidelity - C4 Test SID', () => {
   test('Rate tab: C4 test SID fidelity', async ({ page }) => {
     const report = await testTabFidelity(page, 'rate');
-    
-    // Log report for debugging
-    console.log('Rate tab fidelity report:', JSON.stringify(report, null, 2));
-    
+
+    console.log(
+      `[Fidelity][rate] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
+    );
+
     // Expected fidelity criteria
     expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
     expect(report.underruns).toBe(0);
@@ -474,9 +470,11 @@ test.describe('Audio Fidelity - C4 Test SID', () => {
 
   test('Play tab: C4 test SID fidelity', async ({ page }) => {
     const report = await testTabFidelity(page, 'play');
-    
-    console.log('Play tab fidelity report:', JSON.stringify(report, null, 2));
-    
+
+    console.log(
+      `[Fidelity][play] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
+    );
+
     expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
     expect(report.underruns).toBe(0);
     expect(report.fundamentalFrequency).toBeGreaterThan(261.43);

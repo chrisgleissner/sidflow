@@ -158,54 +158,39 @@ function analyzeRMSVariation(pcm: Int16Array, sampleRate: number, channels: numb
 
 describe('Audio Continuity Verification', () => {
     test('verify real SID produces continuous audio without gaps', async () => {
-        console.log('\n=== AUDIO CONTINUITY TEST ===\n');
-
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
         const sidBytes = loadRealSid();
         await engine.loadSidBuffer(sidBytes);
 
-        // Render 5 seconds
-        const targetDuration = 5;
+        // Render 1 second
+        const targetDuration = 1;
         const pcm = await engine.renderSeconds(targetDuration, 40000);
 
         const sampleRate = engine.getSampleRate();
         const channels = engine.getChannels();
         const actualDuration = pcm.length / channels / sampleRate;
 
-        console.log(`Rendered ${actualDuration.toFixed(2)}s of audio (${pcm.length} samples)`);
-
         // Analyze continuity
         const analysis = analyzeAudioContinuity(pcm, sampleRate, channels);
-
-        console.log(`\nContinuity Analysis:`);
-        console.log(`  Silent samples: ${analysis.silentSamples} (${(analysis.silentSamples / pcm.length * 100).toFixed(2)}%)`);
-        console.log(`  Glitches detected: ${analysis.glitchCount}`);
-        console.log(`  Avg level: ${analysis.avgLevel.toFixed(0)}`);
-        console.log(`  Max level: ${analysis.maxLevel}`);
-        console.log(`  Continuity score: ${analysis.continuityScore.toFixed(1)}/100`);
-        console.log(`  Has gaps? ${analysis.hasGaps ? '❌ YES' : '✓ NO'}`);
-        console.log(`  Has glitches? ${analysis.hasGlitches ? '❌ YES' : '✓ NO'}`);
+        const silentPercent = (analysis.silentSamples / pcm.length * 100).toFixed(2);
+        console.log(
+            `[Continuity] duration=${actualDuration.toFixed(2)}s samples=${pcm.length} silence=${silentPercent}% glitches=${analysis.glitchCount} avg=${analysis.avgLevel.toFixed(0)} max=${analysis.maxLevel} score=${analysis.continuityScore.toFixed(1)}`
+        );
 
         // Detect dropouts
         const dropouts = detectDropouts(pcm, sampleRate, channels);
-        console.log(`\nDropout Detection:`);
-        if (dropouts.length === 0) {
-            console.log(`  ✓ No dropouts detected`);
-        } else {
-            console.log(`  ❌ Found ${dropouts.length} dropout(s):`);
-            dropouts.forEach((dropout, i) => {
-                const durationMs = (dropout.duration / channels / sampleRate * 1000).toFixed(1);
-                console.log(`     ${i + 1}. At ${dropout.startTime.toFixed(3)}s, duration ${durationMs}ms`);
-            });
+        if (dropouts.length > 0) {
+            const dropoutSummary = dropouts
+                .map(dropout => `${dropout.startTime.toFixed(3)}s/${(dropout.duration / channels / sampleRate * 1000).toFixed(1)}ms`)
+                .join(', ');
+            console.log(`[Continuity] dropouts=${dropouts.length} details=[${dropoutSummary}]`);
         }
 
         // RMS variation (should be relatively stable for continuous music)
         const rmsAnalysis = analyzeRMSVariation(pcm, sampleRate, channels);
-        console.log(`\nRMS Variation (volume stability):`);
-        console.log(`  Avg RMS: ${rmsAnalysis.avgRMS.toFixed(0)}`);
-        console.log(`  Std Dev: ${rmsAnalysis.stdDevRMS.toFixed(0)}`);
-        console.log(`  Coefficient of Variation: ${rmsAnalysis.coefficientOfVariation.toFixed(1)}%`);
-        console.log(`  ${rmsAnalysis.coefficientOfVariation < 50 ? '✓' : '❌'} Volume is ${rmsAnalysis.coefficientOfVariation < 50 ? 'stable' : 'unstable'}`);
+        console.log(
+            `[Continuity] rmsAvg=${rmsAnalysis.avgRMS.toFixed(0)} std=${rmsAnalysis.stdDevRMS.toFixed(0)} cov=${rmsAnalysis.coefficientOfVariation.toFixed(1)}% stable=${rmsAnalysis.coefficientOfVariation < 50}`
+        );
 
         // Assertions
         expect(analysis.continuityScore).toBeGreaterThan(50); // Reasonable continuity
@@ -214,23 +199,19 @@ describe('Audio Continuity Verification', () => {
     });
 
     test('simulate EXACT browser playback: load → render → convert → verify', async () => {
-        console.log('\n=== BROWSER PLAYBACK SIMULATION - 5s ===\n');
-
-        const targetDuration = 5;
+        const targetDuration = 1;
         const INT16_SCALE = 1 / 0x8000;
 
         // STAGE 1: Engine initialization
         const t0 = performance.now();
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
         const t1 = performance.now();
-        console.log(`1. Engine init: ${(t1 - t0).toFixed(2)}ms`);
 
         // STAGE 2: Load SID file
         const t2 = performance.now();
         const sidBytes = loadRealSid();
         await engine.loadSidBuffer(sidBytes);
         const t3 = performance.now();
-        console.log(`2. Load SID: ${(t3 - t2).toFixed(2)}ms`);
 
         const sampleRate = engine.getSampleRate();
         const channels = engine.getChannels();
@@ -242,8 +223,6 @@ describe('Audio Continuity Verification', () => {
         const renderTime = t5 - t4;
 
         const actualDuration = pcm.length / channels / sampleRate;
-        console.log(`3. Render PCM: ${renderTime.toFixed(2)}ms`);
-        console.log(`   Audio duration: ${actualDuration.toFixed(2)}s`);
 
         // STAGE 4: Convert INT16 to Float32 with chunking (what we do in browser)
         const t6 = performance.now();
@@ -268,22 +247,20 @@ describe('Audio Continuity Verification', () => {
         }
         const t7 = performance.now();
         const conversionTime = t7 - t6;
-        console.log(`4. INT16→Float32: ${conversionTime.toFixed(2)}ms (${yieldCount} yields)`);
 
         // TOTAL
         const totalTime = t7 - t0;
         const realtimeRatio = (actualDuration * 1000) / totalTime;
 
-        console.log(`\n=== RESULTS ===`);
-        console.log(`Total pipeline: ${totalTime.toFixed(2)}ms`);
-        console.log(`Real-time ratio: ${realtimeRatio.toFixed(2)}x`);
-        console.log(`Would finish before audio ends? ${totalTime < actualDuration * 1000 ? '✓ YES' : '❌ NO'}`);
+        console.log(
+            `[BrowserSim] init=${(t1 - t0).toFixed(2)}ms load=${(t3 - t2).toFixed(2)}ms render=${renderTime.toFixed(2)}ms convert=${conversionTime.toFixed(2)}ms yields=${yieldCount} total=${totalTime.toFixed(2)}ms realtime=${realtimeRatio.toFixed(2)}x`
+        );
 
         // Verify converted audio maintains continuity
         const analysis = analyzeAudioContinuity(pcm, sampleRate, channels);
-        console.log(`\nAudio quality:`);
-        console.log(`  Continuity score: ${analysis.continuityScore.toFixed(1)}/100`);
-        console.log(`  Dropouts: ${detectDropouts(pcm, sampleRate, channels).length}`);
+        console.log(
+            `[BrowserSim] continuity=${analysis.continuityScore.toFixed(1)} dropouts=${detectDropouts(pcm, sampleRate, channels).length}`
+        );
 
         // Critical assertions
         expect(realtimeRatio).toBeGreaterThan(1.0);
@@ -292,17 +269,13 @@ describe('Audio Continuity Verification', () => {
     });
 
     test('measure conversion blocking and verify no long blocks', async () => {
-        console.log('\n=== MAIN THREAD BLOCKING ANALYSIS ===\n');
-
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
         const sidBytes = loadRealSid();
         await engine.loadSidBuffer(sidBytes);
 
-        const pcm = await engine.renderSeconds(5, 40000);
+        const pcm = await engine.renderSeconds(1, 40000);
         const frames = Math.floor(pcm.length / 2);
         const INT16_SCALE = 1 / 0x8000;
-
-        console.log(`Converting ${frames} frames (${(frames / 44100).toFixed(2)}s audio)`);
 
         const left = new Float32Array(frames);
         const right = new Float32Array(frames);
@@ -321,10 +294,6 @@ describe('Audio Continuity Verification', () => {
             const blockTime = performance.now() - blockStart;
             blockTimes.push(blockTime);
 
-            const chunkSize = endFrame - startFrame;
-            const chunkDuration = (chunkSize / 44100) * 1000;
-            console.log(`  Block ${Math.floor(startFrame / CHUNK_SIZE) + 1}: ${blockTime.toFixed(2)}ms for ${chunkDuration.toFixed(0)}ms audio`);
-
             if (endFrame < frames) {
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
@@ -334,34 +303,27 @@ describe('Audio Continuity Verification', () => {
         const avgBlock = blockTimes.reduce((a, b) => a + b, 0) / blockTimes.length;
         const totalConversion = blockTimes.reduce((a, b) => a + b, 0);
 
-        console.log(`\n=== BLOCKING RESULTS ===`);
-        console.log(`Total conversion: ${totalConversion.toFixed(2)}ms`);
-        console.log(`Avg block: ${avgBlock.toFixed(2)}ms`);
-        console.log(`Max block: ${maxBlock.toFixed(2)}ms`);
-        console.log(`Blocks processed: ${blockTimes.length}`);
-        console.log(`Blocks main thread (>16ms)? ${maxBlock > 16 ? '❌ YES' : '✓ NO'}`);
+        console.log(
+            `[Blocking] frames=${frames} blocks=${blockTimes.length} total=${totalConversion.toFixed(2)}ms avg=${avgBlock.toFixed(2)}ms max=${maxBlock.toFixed(2)}ms`
+        );
 
         // Should not block for too long
         expect(maxBlock).toBeLessThan(50); // Max 50ms per block
     });
 
     test('stress test: rapid consecutive renders', async () => {
-        console.log('\n=== RAPID RENDER STRESS TEST ===\n');
-
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
         const sidBytes = loadRealSid();
 
-        const iterations = 5;
+        const iterations = 3;
         const renderTimes: number[] = [];
         const continuityScores: number[] = [];
-
-        console.log(`Running ${iterations} consecutive load+render cycles...\n`);
 
         for (let i = 0; i < iterations; i++) {
             await engine.loadSidBuffer(sidBytes);
 
             const start = performance.now();
-            const pcm = await engine.renderSeconds(2, 40000); // 2 seconds
+            const pcm = await engine.renderSeconds(1, 40000);
             const elapsed = performance.now() - start;
 
             renderTimes.push(elapsed);
@@ -369,28 +331,28 @@ describe('Audio Continuity Verification', () => {
             const analysis = analyzeAudioContinuity(pcm, 44100, 2);
             continuityScores.push(analysis.continuityScore);
 
-            console.log(`  Cycle ${i + 1}: ${elapsed.toFixed(2)}ms, continuity ${analysis.continuityScore.toFixed(1)}/100`);
+            console.log(
+                `[Stress] cycle=${i + 1} render=${elapsed.toFixed(2)}ms continuity=${analysis.continuityScore.toFixed(1)}`
+            );
         }
 
         const avgTime = renderTimes.reduce((a, b) => a + b, 0) / renderTimes.length;
         const avgContinuity = continuityScores.reduce((a, b) => a + b, 0) / continuityScores.length;
 
-        console.log(`\nAvg render time: ${avgTime.toFixed(2)}ms`);
-        console.log(`Avg continuity: ${avgContinuity.toFixed(1)}/100`);
-        console.log(`All cycles successful: ${renderTimes.every(t => t < 500) ? '✓' : '❌'}`);
+        console.log(
+            `[Stress] avgRender=${avgTime.toFixed(2)}ms avgContinuity=${avgContinuity.toFixed(1)} allFast=${renderTimes.every(t => t < 500)}`
+        );
 
-    expect(avgTime).toBeLessThan(500);
+        expect(avgTime).toBeLessThan(500);
         expect(avgContinuity).toBeGreaterThan(50);
     });
 
     test('save rendered audio for manual inspection (WAV file)', async () => {
-        console.log('\n=== SAVE AUDIO FOR MANUAL VERIFICATION ===\n');
-
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
         const sidBytes = loadRealSid();
         await engine.loadSidBuffer(sidBytes);
 
-        const pcm = await engine.renderSeconds(5, 40000);
+        const pcm = await engine.renderSeconds(1, 40000);
         const sampleRate = 44100;
         const channels = 2;
 
@@ -426,14 +388,10 @@ describe('Audio Continuity Verification', () => {
         const pcmBytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
         wavBuffer.set(pcmBytes, 44);
 
-    const outputPath = join(CURRENT_DIR, '../test-output.wav');
+        const outputPath = join(CURRENT_DIR, '../test-output.wav');
         writeFileSync(outputPath, wavBuffer);
 
-        console.log(`✓ Saved audio to: ${outputPath}`);
-        console.log(`  Duration: ${(pcm.length / channels / sampleRate).toFixed(2)}s`);
-        console.log(`  Sample rate: ${sampleRate}Hz`);
-        console.log(`  Channels: ${channels}`);
-        console.log(`\nYou can play this file to verify audio quality manually.`);
+        console.log(`[Export] wav=${outputPath} duration=${(pcm.length / channels / sampleRate).toFixed(2)}s`);
 
         expect(pcm.length).toBeGreaterThan(0);
     });

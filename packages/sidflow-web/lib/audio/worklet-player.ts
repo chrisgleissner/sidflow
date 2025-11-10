@@ -88,8 +88,20 @@ export class WorkletPlayer {
     contextResumeCount: 0,
   };
 
-  private readonly RING_BUFFER_CAPACITY_FRAMES = 16384; // ~370ms at 44.1kHz
+  private readonly RING_BUFFER_CAPACITY_FRAMES = 32768; // ~740ms at 44.1kHz
   private readonly CHANNEL_COUNT = 2; // Stereo
+
+  private workerLoadedResolve: (() => void) | null = null;
+  private workerLoadedReject: ((error: Error) => void) | null = null;
+  private workerLoadedTimeout: ReturnType<typeof setTimeout> | null = null;
+  private workerLoadedAbortSignal: AbortSignal | null = null;
+  private workerLoadedAbortHandler: (() => void) | null = null;
+
+  private workerReadyResolve: (() => void) | null = null;
+  private workerReadyReject: ((error: Error) => void) | null = null;
+  private workerReadyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  private workletConnected = false;
 
   constructor(context?: AudioContext) {
     this.audioContext = context ?? new AudioContext();
@@ -144,6 +156,89 @@ export class WorkletPlayer {
 
   getTelemetry(): TelemetryData {
     return { ...this.telemetry };
+  }
+
+  private clearWorkerLoadedWait(): void {
+    if (this.workerLoadedTimeout) {
+      clearTimeout(this.workerLoadedTimeout);
+      this.workerLoadedTimeout = null;
+    }
+    if (this.workerLoadedAbortSignal && this.workerLoadedAbortHandler) {
+      this.workerLoadedAbortSignal.removeEventListener('abort', this.workerLoadedAbortHandler);
+    }
+    this.workerLoadedAbortSignal = null;
+    this.workerLoadedAbortHandler = null;
+    this.workerLoadedResolve = null;
+    this.workerLoadedReject = null;
+  }
+
+  private waitForWorkerLoaded(signal?: AbortSignal): Promise<void> {
+    this.clearWorkerLoadedWait();
+
+    return new Promise<void>((resolve, reject) => {
+      this.workerLoadedResolve = () => {
+        this.clearWorkerLoadedWait();
+        resolve();
+      };
+
+      this.workerLoadedReject = (error: Error) => {
+        this.clearWorkerLoadedWait();
+        reject(error);
+      };
+
+      this.workerLoadedTimeout = setTimeout(() => {
+        this.workerLoadedReject?.(new Error('Worker load timeout'));
+      }, 10000);
+
+      if (signal) {
+        if (signal.aborted) {
+          this.workerLoadedReject?.(new DOMException('Playback load aborted', 'AbortError'));
+          return;
+        }
+
+        const abortHandler = () => {
+          this.workerLoadedReject?.(new DOMException('Playback load aborted', 'AbortError'));
+        };
+
+        this.workerLoadedAbortSignal = signal;
+        this.workerLoadedAbortHandler = abortHandler;
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+    });
+  }
+
+  private clearWorkerReadyWait(): void {
+    if (this.workerReadyTimeout) {
+      clearTimeout(this.workerReadyTimeout);
+      this.workerReadyTimeout = null;
+    }
+    this.workerReadyResolve = null;
+    this.workerReadyReject = null;
+  }
+
+  private waitForWorkerReady(): Promise<void> {
+    this.clearWorkerReadyWait();
+
+    return new Promise<void>((resolve, reject) => {
+      this.workerReadyResolve = () => {
+        this.clearWorkerReadyWait();
+        resolve();
+      };
+
+      this.workerReadyReject = (error: Error) => {
+        this.clearWorkerReadyWait();
+        reject(error);
+      };
+
+      this.workerReadyTimeout = setTimeout(() => {
+        this.workerReadyReject?.(new Error('Worker ready timeout'));
+      }, 10000);
+    });
+  }
+
+  private rejectWorkerWaits(error: Error): void {
+    this.workerLoadedReject?.(error);
+    this.workerReadyReject?.(error);
   }
 
   /**
@@ -285,14 +380,17 @@ export class WorkletPlayer {
       throw new Error('Player not initialized');
     }
 
-    await this.audioContext.resume();
+    const readyPromise = this.waitForWorkerReady();
 
-    // Set up audio capture if enabled
+    // Start worker rendering (pre-roll happens before resolving ready promise)
+    this.worker.postMessage({ type: 'start' } as WorkerMessage);
+
+    await readyPromise;
+
     if (this.captureEnabled && !this.captureDestination) {
       this.captureDestination = this.audioContext.createMediaStreamDestination();
       this.workletNode.connect(this.captureDestination);
 
-      // Create MediaRecorder to capture the stream
       this.mediaRecorder = new MediaRecorder(this.captureDestination.stream, {
         mimeType: 'audio/webm;codecs=opus',
       });
@@ -302,25 +400,27 @@ export class WorkletPlayer {
           this.capturedChunks.push(event.data);
         }
       };
-
-      this.mediaRecorder.start(100); // Capture in 100ms chunks
     }
 
-    // Connect worklet to destination (for audible playback)
-    if (!this.workletNode.numberOfOutputs) {
+    if (!this.workletConnected) {
       this.workletNode.connect(this.gainNode);
+      this.workletConnected = true;
     }
 
-    // Start worker rendering
-    this.worker.postMessage({ type: 'start' } as WorkerMessage);
+    await this.audioContext.resume();
+
+    if (this.mediaRecorder && this.mediaRecorder.state === 'inactive') {
+      this.mediaRecorder.start(100);
+    }
 
     this.startTime = this.audioContext.currentTime;
+    const previousState = this.state;
     this.updateState('playing');
 
     telemetry.trackPlaybackStateChange({
       sessionId: this.currentSession?.sessionId,
       sidPath: this.currentTrack?.sidPath,
-      oldState: 'ready',
+      oldState: previousState,
       newState: 'playing',
       positionSeconds: 0,
     });
@@ -387,6 +487,7 @@ export class WorkletPlayer {
         channelCount: this.CHANNEL_COUNT,
       },
     });
+    this.workletConnected = false;
 
     // Listen for telemetry from worklet
     this.workletNode.port.onmessage = (event: MessageEvent) => {
@@ -413,7 +514,10 @@ export class WorkletPlayer {
 
     this.worker.onerror = (error) => {
       console.error('[WorkletPlayer] Worker error:', error);
-      this.emit('error', new Error('Worker error: ' + error.message));
+      const workerError = new Error('Worker error: ' + error.message);
+      this.updateState('error');
+      this.rejectWorkerWaits(workerError);
+      this.emit('error', workerError);
     };
 
     // Initialize worker
@@ -442,31 +546,18 @@ export class WorkletPlayer {
       throw new Error('Worker not initialized');
     }
 
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Worker load timeout'));
-      }, 30000);
+    const waitForLoaded = this.waitForWorkerLoaded(signal);
 
-      const loadMessage: WorkerMessage = {
-        type: 'load',
-        sidBytes,
-        selectedSong,
-        durationSeconds,
-      };
+    const loadMessage: WorkerMessage = {
+      type: 'load',
+      sidBytes,
+      selectedSong,
+      durationSeconds,
+    };
 
-      this.worker!.postMessage(loadMessage);
+    this.worker!.postMessage(loadMessage);
 
-      // For now, just wait a bit for the load to complete
-      // In a production system, we'd wait for a 'loaded' message from the worker
-      setTimeout(() => {
-        clearTimeout(timeout);
-        if (signal?.aborted) {
-          reject(new DOMException('Aborted', 'AbortError'));
-        } else {
-          resolve();
-        }
-      }, 500);
-    });
+    await waitForLoaded;
   }
 
   private handleWorkletMessage(data: unknown): void {
@@ -510,7 +601,13 @@ export class WorkletPlayer {
     switch (data.type) {
       case 'ready':
         console.log('[WorkletPlayer] Worker pre-roll complete, ready to play');
+        this.workerReadyResolve?.();
         this.emit('loadprogress', 1);
+        break;
+
+      case 'loaded':
+        console.log('[WorkletPlayer] Worker loaded SID payload');
+        this.workerLoadedResolve?.();
         break;
 
       case 'telemetry':
@@ -527,12 +624,19 @@ export class WorkletPlayer {
 
       case 'error':
         console.error('[WorkletPlayer] Worker error:', data.error);
-        this.emit('error', new Error(data.error));
+        {
+          const error = new Error(data.error);
+          this.updateState('error');
+          this.rejectWorkerWaits(error);
+          this.emit('error', error);
+        }
         break;
     }
   }
 
   private cleanup(): void {
+    this.rejectWorkerWaits(new DOMException('Playback stopped', 'AbortError'));
+
     // Stop worker
     if (this.worker) {
       this.worker.postMessage({ type: 'stop' } as WorkerMessage);
@@ -549,6 +653,8 @@ export class WorkletPlayer {
       }
       this.workletNode = null;
     }
+
+    this.workletConnected = false;
 
     // Clean up capture resources
     if (this.captureDestination) {
