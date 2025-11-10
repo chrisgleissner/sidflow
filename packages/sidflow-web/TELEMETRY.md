@@ -265,11 +265,15 @@ const telemetry = player.getTelemetry();
 - Check browser console for errors
 
 ### Tests failing with high underruns
-- Verify system has enough CPU/memory
-- Check for background processes
-- Increase test timeout if needed
-- Consider running tests serially (`workers: 1`)
+> **Note:** The end-to-end (E2E) tests expect exactly **zero** underruns. Any non-zero underrun count will cause the test to fail.
+>
+> If you are running tests on a resource-constrained system or in a noisy environment, underruns may occur. In such cases, consider:
+- Verifying your system has enough CPU/memory
+- Checking for background processes that may interfere with audio processing
+- Increasing the test timeout if needed
+- Running tests serially (`workers: 1`)
 
+If you believe underruns are unavoidable in your environment and want to relax the test, you may need to adjust the test assertions or consult the test configuration to allow a non-zero underrun threshold.
 ### Beacon sending fails
 - Check `/api/telemetry` endpoint exists
 - Verify CORS settings allow beacons
