@@ -2,8 +2,15 @@ import loadLibsidplayfp, { SidAudioEngine } from '@sidflow/libsidplayfp-wasm';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { telemetry } from '@/lib/telemetry';
+import { WorkletPlayer, type WorkletPlayerState, type TelemetryData } from '@/lib/audio/worklet-player';
 
-export type SidflowPlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended';
+/**
+ * Enable the new AudioWorklet + SharedArrayBuffer pipeline.
+ * When true, uses WorkletPlayer instead of the legacy AudioBuffer approach.
+ */
+const USE_WORKLET_PLAYER = true;
+
+export type SidflowPlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 type SidflowPlayerEvent = 'statechange' | 'loadprogress' | 'error';
 
@@ -31,6 +38,9 @@ function clamp(value: number, min: number, max: number): number {
 /**
  * Thin browser-side controller that loads SID files through SidAudioEngine,
  * converts rendered PCM buffers into AudioBuffers, and exposes basic playback controls.
+ * 
+ * Now delegates to WorkletPlayer when USE_WORKLET_PLAYER is true for real-time
+ * AudioWorklet-based streaming with SharedArrayBuffer.
  */
 export class SidflowPlayer {
     private readonly audioContext: AudioContext;
@@ -47,6 +57,9 @@ export class SidflowPlayer {
     private currentSession: PlaybackSessionDescriptor | null = null;
     private currentTrack: RateTrackInfo | null = null;
 
+    // New worklet-based player
+    private workletPlayer: WorkletPlayer | null = null;
+
     constructor(context?: AudioContext) {
         this.audioContext = context ?? new AudioContext();
         this.gainNode = this.audioContext.createGain();
@@ -54,6 +67,22 @@ export class SidflowPlayer {
         this.listeners.set('statechange', new Set());
         this.listeners.set('loadprogress', new Set());
         this.listeners.set('error', new Set());
+
+        // Initialize worklet player if enabled
+        if (USE_WORKLET_PLAYER) {
+            this.workletPlayer = new WorkletPlayer(this.audioContext);
+            // Forward events from worklet player
+            this.workletPlayer.on('statechange', (state) => {
+                this.state = state as SidflowPlayerState;
+                this.emit('statechange', state as SidflowPlayerState);
+            });
+            this.workletPlayer.on('loadprogress', (progress) => {
+                this.emit('loadprogress', progress);
+            });
+            this.workletPlayer.on('error', (error) => {
+                this.emit('error', error);
+            });
+        }
     }
 
     on<Event extends SidflowPlayerEvent>(event: Event, listener: (payload: EventPayloadMap[Event]) => void): void {
@@ -77,6 +106,12 @@ export class SidflowPlayer {
     }
 
     getDurationSeconds(): number {
+        // Delegate to worklet player if enabled
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getDurationSeconds();
+        }
+
+        // Legacy implementation
         if (this.audioBuffer) {
             return this.audioBuffer.duration;
         }
@@ -84,6 +119,12 @@ export class SidflowPlayer {
     }
 
     getPositionSeconds(): number {
+        // Delegate to worklet player if enabled
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getPositionSeconds();
+        }
+
+        // Legacy implementation
         if (!this.audioBuffer) {
             return 0;
         }
@@ -94,7 +135,62 @@ export class SidflowPlayer {
         return clamp(this.pauseOffset, 0, this.audioBuffer.duration);
     }
 
+    /**
+     * Enable audio capture for testing/analysis (worklet mode only).
+     * Must be called before play().
+     */
+    enableCapture(): void {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            this.workletPlayer.enableCapture();
+        }
+    }
+
+    /**
+     * Get captured audio data (worklet mode only).
+     */
+    getCapturedAudio(): Blob | null {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getCapturedAudio();
+        }
+        return null;
+    }
+
+    /**
+     * Get captured audio as PCM for analysis (worklet mode only).
+     */
+    async getCapturedPCM(): Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | null> {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getCapturedPCM();
+        }
+        return null;
+    }
+
+    /**
+     * Get telemetry data (worklet mode only).
+     */
+    getTelemetry(): TelemetryData {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getTelemetry();
+        }
+        return {
+            underruns: 0,
+            framesConsumed: 0,
+            framesProduced: 0,
+            backpressureStalls: 0,
+            minOccupancy: 0,
+            maxOccupancy: 0,
+        };
+    }
+
     async load(options: LoadOptions): Promise<void> {
+        // Delegate to worklet player if enabled
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            this.currentSession = options.session;
+            this.currentTrack = options.track;
+            return this.workletPlayer.load(options);
+        }
+
+        // Legacy implementation
         const { session, track, signal } = options;
         this.stopPlayback();
         this.audioBuffer = null;
@@ -244,6 +340,12 @@ export class SidflowPlayer {
     }
 
     async play(): Promise<void> {
+        // Delegate to worklet player if enabled
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.play();
+        }
+
+        // Legacy implementation
         if (!this.audioBuffer) {
             return;
         }
@@ -273,6 +375,13 @@ export class SidflowPlayer {
     }
 
     pause(): void {
+        // Delegate to worklet player if enabled
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            this.workletPlayer.pause();
+            return;
+        }
+
+        // Legacy implementation
         if (!this.audioBuffer || !this.bufferSource || this.state !== 'playing') {
             return;
         }
@@ -283,12 +392,26 @@ export class SidflowPlayer {
     }
 
     stop(): void {
+        // Delegate to worklet player if enabled
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            this.workletPlayer.stop();
+            return;
+        }
+
+        // Legacy implementation
         this.pauseOffset = 0;
         this.stopPlayback();
         this.updateState('idle');
     }
 
     seek(seconds: number): void {
+        // Seek disabled in worklet player (as per requirements)
+        if (USE_WORKLET_PLAYER) {
+            console.warn('[SidflowPlayer] Seek not supported in worklet mode');
+            return;
+        }
+
+        // Legacy implementation
         if (!this.audioBuffer) {
             return;
         }
@@ -302,6 +425,13 @@ export class SidflowPlayer {
     }
 
     destroy(): void {
+        // Delegate to worklet player if enabled
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            this.workletPlayer.destroy();
+            return;
+        }
+
+        // Legacy implementation
         this.stopPlayback();
         this.audioBuffer = null;
         this.currentSession = null;

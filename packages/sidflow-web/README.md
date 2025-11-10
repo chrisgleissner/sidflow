@@ -37,6 +37,17 @@ The SIDFlow web server is a thin presentation layer built on Next.js 15 and Reac
 - **Bun** - Runtime and package manager
 - **Playwright** - E2E testing
 
+### Real-Time Audio
+
+The web interface features a high-performance audio pipeline for glitch-free SID playback:
+
+- **AudioWorklet + SharedArrayBuffer** - Zero main-thread audio processing
+- **Web Worker WASM** - libsidplayfp rendering in dedicated thread
+- **Lock-free Ring Buffer** - Real-time streaming with backpressure handling
+- **Pre-roll Buffering** - Guaranteed glitch-free startup
+
+📖 **[Read the complete Audio Pipeline documentation](./AUDIO_PIPELINE.md)**
+
 ## Development
 
 ### Prerequisites
