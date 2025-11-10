@@ -118,7 +118,7 @@ export function TelemetryDashboard({ telemetry, className = '' }: TelemetryDashb
       </div>
 
       <div className="mt-2 pt-2 border-t border-gray-700 text-gray-400">
-        Toggle: localStorage.showTelemetry = true
+        Toggle: localStorage.setItem('showTelemetry', 'true')
       </div>
     </div>
   );
