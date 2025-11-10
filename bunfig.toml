@@ -1,0 +1,9 @@
+[test]
+# Only run test files in packages and integration-tests
+preload = []
+
+# Coverage configuration
+coverage = true
+coverageDir = "coverage"
+coverageReporter = ["text", "lcov"]
+coverageThreshold = 90
