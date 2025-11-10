@@ -46,6 +46,10 @@ interface TelemetryMessage {
   minOccupancy: number;
   maxOccupancy: number;
   currentOccupancy: number;
+  zeroByteFrames: number;
+  missedQuanta: number;
+  totalDriftMs: number;
+  maxDriftMs: number;
 }
 
 class SidRendererProcessor extends AudioWorkletProcessor {
@@ -57,6 +61,14 @@ class SidRendererProcessor extends AudioWorkletProcessor {
   private maxOccupancy = 0;
   private telemetryCounter = 0;
   private readonly TELEMETRY_INTERVAL = 128; // Send telemetry every 128 quanta (~3.6s at 44.1kHz)
+  
+  // Additional telemetry metrics
+  private zeroByteFrames = 0;
+  private missedQuanta = 0;
+  private lastProcessTime = 0;
+  private totalDriftMs = 0;
+  private maxDriftMs = 0;
+  private quantumCount = 0;
 
   constructor(options: AudioWorkletNodeOptions) {
     super();
@@ -89,6 +101,18 @@ class SidRendererProcessor extends AudioWorkletProcessor {
     const frames = output[0].length; // Always 128 for AudioWorklet
     const occupancy = this.consumer.getOccupancy();
 
+    // Track timing drift (using currentTime for high precision)
+    const now = currentTime;
+    if (this.lastProcessTime > 0) {
+      const expectedInterval = frames / sampleRate;
+      const actualInterval = now - this.lastProcessTime;
+      const driftMs = Math.abs(actualInterval - expectedInterval) * 1000;
+      this.totalDriftMs += driftMs;
+      this.maxDriftMs = Math.max(this.maxDriftMs, driftMs);
+    }
+    this.lastProcessTime = now;
+    this.quantumCount++;
+
     // Track occupancy stats
     this.minOccupancy = Math.min(this.minOccupancy, occupancy);
     this.maxOccupancy = Math.max(this.maxOccupancy, occupancy);
@@ -99,9 +123,29 @@ class SidRendererProcessor extends AudioWorkletProcessor {
     if (framesRead === frames) {
       // Success: consumed full quantum
       this.framesConsumed += frames;
+      
+      // Detect zero-byte frames (completely silent)
+      let hasNonZero = false;
+      for (let ch = 0; ch < output.length; ch++) {
+        const channelData = output[ch];
+        for (let i = 0; i < channelData.length; i++) {
+          if (channelData[i] !== 0) {
+            hasNonZero = true;
+            break;
+          }
+        }
+        if (hasNonZero) break;
+      }
+      
+      if (!hasNonZero) {
+        this.zeroByteFrames++;
+      }
     } else {
       // Underrun: output silence for this quantum
       this.underruns++;
+      this.missedQuanta++;
+      this.zeroByteFrames++; // This is a forced zero-byte frame
+      
       for (let ch = 0; ch < output.length; ch++) {
         output[ch].fill(0);
       }
@@ -123,6 +167,8 @@ class SidRendererProcessor extends AudioWorkletProcessor {
   }
 
   private sendTelemetry(): void {
+    const avgDriftMs = this.quantumCount > 0 ? this.totalDriftMs / this.quantumCount : 0;
+    
     const message: TelemetryMessage = {
       type: 'telemetry',
       underruns: this.underruns,
@@ -130,6 +176,10 @@ class SidRendererProcessor extends AudioWorkletProcessor {
       minOccupancy: this.minOccupancy === Number.MAX_SAFE_INTEGER ? 0 : this.minOccupancy,
       maxOccupancy: this.maxOccupancy,
       currentOccupancy: this.consumer.getOccupancy(),
+      zeroByteFrames: this.zeroByteFrames,
+      missedQuanta: this.missedQuanta,
+      totalDriftMs: avgDriftMs,
+      maxDriftMs: this.maxDriftMs,
     };
 
     this.port.postMessage(message);

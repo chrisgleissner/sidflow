@@ -37,6 +37,12 @@ export interface TelemetryData {
   backpressureStalls: number;
   minOccupancy: number;
   maxOccupancy: number;
+  zeroByteFrames: number;
+  missedQuanta: number;
+  avgDriftMs: number;
+  maxDriftMs: number;
+  contextSuspendCount: number;
+  contextResumeCount: number;
 }
 
 /**
@@ -74,6 +80,12 @@ export class WorkletPlayer {
     backpressureStalls: 0,
     minOccupancy: Number.MAX_SAFE_INTEGER,
     maxOccupancy: 0,
+    zeroByteFrames: 0,
+    missedQuanta: 0,
+    avgDriftMs: 0,
+    maxDriftMs: 0,
+    contextSuspendCount: 0,
+    contextResumeCount: 0,
   };
 
   private readonly RING_BUFFER_CAPACITY_FRAMES = 16384; // ~370ms at 44.1kHz
@@ -87,6 +99,15 @@ export class WorkletPlayer {
     this.listeners.set('statechange', new Set());
     this.listeners.set('loadprogress', new Set());
     this.listeners.set('error', new Set());
+
+    // Track audio context state changes
+    this.audioContext.addEventListener('statechange', () => {
+      if (this.audioContext.state === 'suspended') {
+        this.telemetry.contextSuspendCount++;
+      } else if (this.audioContext.state === 'running') {
+        this.telemetry.contextResumeCount++;
+      }
+    });
   }
 
   on<Event extends WorkletPlayerEvent>(event: Event, listener: (payload: EventPayloadMap[Event]) => void): void {
@@ -463,12 +484,20 @@ export class WorkletPlayer {
         minOccupancy: number;
         maxOccupancy: number;
         currentOccupancy: number;
+        zeroByteFrames: number;
+        missedQuanta: number;
+        totalDriftMs: number;
+        maxDriftMs: number;
       };
 
       this.telemetry.underruns = tel.underruns;
       this.telemetry.framesConsumed = tel.framesConsumed;
       this.telemetry.minOccupancy = Math.min(this.telemetry.minOccupancy, tel.minOccupancy);
       this.telemetry.maxOccupancy = Math.max(this.telemetry.maxOccupancy, tel.maxOccupancy);
+      this.telemetry.zeroByteFrames = tel.zeroByteFrames;
+      this.telemetry.missedQuanta = tel.missedQuanta;
+      this.telemetry.avgDriftMs = tel.totalDriftMs;
+      this.telemetry.maxDriftMs = tel.maxDriftMs;
 
       // Log underruns
       if (tel.underruns > 0) {
@@ -548,6 +577,12 @@ export class WorkletPlayer {
       backpressureStalls: 0,
       minOccupancy: Number.MAX_SAFE_INTEGER,
       maxOccupancy: 0,
+      zeroByteFrames: 0,
+      missedQuanta: 0,
+      avgDriftMs: 0,
+      maxDriftMs: 0,
+      contextSuspendCount: 0,
+      contextResumeCount: 0,
     };
   }
 
