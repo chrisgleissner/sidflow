@@ -16,6 +16,36 @@ const workletOutputDir = path.join(projectRoot, 'public/audio/worklet');
 // Worker build
 const workerSource = path.join(projectRoot, 'lib/audio/worker/sid-producer.worker.ts');
 const workerOutputDir = path.join(projectRoot, 'public/audio/worker');
+const wasmDistDir = path.join(projectRoot, '../libsidplayfp-wasm/dist');
+const wasmPublicDir = path.join(projectRoot, 'public/wasm');
+
+async function copyWasmArtifacts(): Promise<void> {
+  console.log('[build-worker] Syncing libsidplayfp WASM artifacts...');
+
+  const wasmBinary = await Bun.file(path.join(wasmDistDir, 'libsidplayfp.wasm')).arrayBuffer();
+  await Bun.write(path.join(wasmPublicDir, 'libsidplayfp.wasm'), wasmBinary);
+
+  const wasmJs = await Bun.file(path.join(wasmDistDir, 'libsidplayfp.js')).text();
+  await Bun.write(path.join(wasmPublicDir, 'libsidplayfp.js'), wasmJs);
+
+  const indexSource = await Bun.file(path.join(wasmDistDir, 'index.js')).text();
+  const indexRewritten = indexSource
+    .replace('../dist/libsidplayfp.js', './libsidplayfp.js')
+    .replace('new URL("../dist/', 'new URL("./');
+  await Bun.write(path.join(wasmPublicDir, 'index.js'), indexRewritten);
+
+  const playerSource = await Bun.file(path.join(wasmDistDir, 'player.js')).text();
+  await Bun.write(path.join(wasmPublicDir, 'player.js'), playerSource);
+}
+
+async function rewriteWorkerImports(): Promise<void> {
+  const workerPath = path.join(workerOutputDir, 'sid-producer.worker.js');
+  const source = await Bun.file(workerPath).text();
+  const rewritten = source.replace(/from "@sidflow\/libsidplayfp-wasm"/g, 'from "../../wasm/index.js"');
+  if (rewritten !== source) {
+    await Bun.write(workerPath, rewritten);
+  }
+}
 
 async function buildWorklet() {
   console.log('[build-worklet] Building AudioWorklet processor...');
@@ -60,7 +90,6 @@ async function buildWorker() {
     minify: false,
     sourcemap: 'inline',
     naming: '[dir]/[name].js',
-    // Mark @sidflow/libsidplayfp-wasm as external so it can be imported at runtime
     external: ['@sidflow/libsidplayfp-wasm'],
   });
 
@@ -78,6 +107,8 @@ async function buildWorker() {
 try {
   await buildWorklet();
   await buildWorker();
+  await copyWasmArtifacts();
+  await rewriteWorkerImports();
   console.log('[build] ✓ All audio components built successfully');
 } catch (error) {
   console.error('[build] Build error:', error);

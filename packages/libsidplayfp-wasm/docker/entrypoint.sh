@@ -72,7 +72,7 @@ em++ bindings.cpp src/.libs/libsidplayfp.a \
     -sDISABLE_EXCEPTION_CATCHING=0 \
     -sFORCE_FILESYSTEM=1 \
     -sASSERTIONS=1 \
-    -sENVIRONMENT=web,node \
+  -sENVIRONMENT=web,worker,node \
     -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE='[$ccall,$cwrap]' \
     -sEXPORTED_RUNTIME_METHODS='[FS,PATH,cwrap,ccall]' \
     -o "${OUTPUT_ROOT}/libsidplayfp.js"

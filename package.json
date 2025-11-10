@@ -13,7 +13,7 @@
     "wasm:build": "bun run scripts/build-libsidplayfp-wasm.ts",
     "test": "bun run build && bun test $(find packages/*/test packages/sidflow-web/tests/unit integration-tests -name '*.test.ts' -type f 2>/dev/null) --coverage --coverage-reporter=text --coverage-reporter=lcov",
     "test:e2e": "bun run build && bun test ./integration-tests/e2e-suite.ts && cd packages/sidflow-web && bun run test:e2e",
-    "test:all": "bun run test; TEST_EXIT=$?; cd packages/sidflow-web && bun run test:e2e; PLAYWRIGHT_EXIT=$?; exit $((TEST_EXIT + PLAYWRIGHT_EXIT))",
+  "test:all": "bun run test; TEST_EXIT=$?; cd packages/sidflow-web && bun run build:worklet && bun run test:e2e; PLAYWRIGHT_EXIT=$?; exit $((TEST_EXIT + PLAYWRIGHT_EXIT))",
     "validate:config": "bun run scripts/validate-config.ts",
     "validate:feedback": "bun run scripts/validate-feedback.ts",
     "fetch:sample": "bun run scripts/run-fetch-sample.ts",
