@@ -131,7 +131,7 @@ describe("formatFilters", () => {
     expect(expr).toBe("p<=3");
   });
 
-  test("formats preference range", () => {
+  test("formats preference bounded range", () => {
     const expr = formatFilters({ preferenceRange: [2, 4] });
     expect(expr).toBe("p=2-4");
   });
