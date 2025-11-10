@@ -74,62 +74,65 @@ async function getTelemetrySink(page: Page): Promise<any[]> {
   });
 }
 
+/**
+ * Setup page and play a test track
+ */
+async function setupAndPlayTrack(page: Page): Promise<void> {
+  await page.goto('/test/audio-capture');
+  await page.waitForTimeout(1000);
+
+  const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
+  expect(isIsolated).toBe(true);
+
+  await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
+
+  await page.evaluate(async () => {
+    const testSession = {
+      sessionId: 'telemetry-test-' + Date.now(),
+      sidUrl: '/test-tone-c4.sid',
+      scope: 'test' as const,
+      durationSeconds: 3.0,
+      selectedSong: 0,
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+    };
+
+    const testTrack = {
+      sidPath: '/test-tone-c4.sid',
+      relativePath: 'test-tone-c4.sid',
+      filename: 'test-tone-c4.sid',
+      displayName: 'Test Tone C4',
+      selectedSong: 0,
+      metadata: {
+        title: 'Test Tone C4',
+        author: 'SIDFlow',
+        released: '2025',
+        songs: 1,
+        startSong: 0,
+        sidType: 'PSID',
+        version: 2,
+        sidModel: 'MOS6581',
+        clock: 'PAL',
+        fileSizeBytes: 380,
+      },
+      durationSeconds: 3.0,
+    };
+
+    const player = (window as any).__testPlayer;
+    if (!player) {
+      throw new Error('Player not available');
+    }
+
+    await player.load({ session: testSession, track: testTrack });
+    await player.play();
+  });
+
+  // Wait for playback to complete
+  await page.waitForTimeout(4000);
+}
+
 test.describe('Telemetry Validation', () => {
   test('verifies no underruns during normal playback', async ({ page }) => {
-    // Navigate to audio capture test page
-    await page.goto('/test/audio-capture');
-    await page.waitForTimeout(1000);
-
-    // Check cross-origin isolation
-    const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
-    expect(isIsolated).toBe(true);
-
-    // Wait for player to be ready
-    await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
-
-    // Play a short track
-    await page.evaluate(async () => {
-      const testSession = {
-        sessionId: 'telemetry-test-' + Date.now(),
-        sidUrl: '/test-tone-c4.sid',
-        scope: 'test' as const,
-        durationSeconds: 3.0,
-        selectedSong: 0,
-        expiresAt: new Date(Date.now() + 60000).toISOString(),
-      };
-
-      const testTrack = {
-        sidPath: '/test-tone-c4.sid',
-        relativePath: 'test-tone-c4.sid',
-        filename: 'test-tone-c4.sid',
-        displayName: 'Test Tone C4',
-        selectedSong: 0,
-        metadata: {
-          title: 'Test Tone C4',
-          author: 'SIDFlow',
-          released: '2025',
-          songs: 1,
-          startSong: 0,
-          sidType: 'PSID',
-          version: 2,
-          sidModel: 'MOS6581',
-          clock: 'PAL',
-          fileSizeBytes: 380,
-        },
-        durationSeconds: 3.0,
-      };
-
-      const player = (window as any).__testPlayer;
-      if (!player) {
-        throw new Error('Player not available');
-      }
-
-      await player.load({ session: testSession, track: testTrack });
-      await player.play();
-    });
-
-    // Wait for playback to complete
-    await page.waitForTimeout(4000);
+    await setupAndPlayTrack(page);
 
     // Get telemetry
     const telemetry = await getTelemetry(page);
@@ -153,52 +156,7 @@ test.describe('Telemetry Validation', () => {
   });
 
   test('verifies zero-byte frames are minimal', async ({ page }) => {
-    await page.goto('/test/audio-capture');
-    await page.waitForTimeout(1000);
-
-    const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
-    expect(isIsolated).toBe(true);
-
-    await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
-
-    // Play a track
-    await page.evaluate(async () => {
-      const testSession = {
-        sessionId: 'telemetry-test-' + Date.now(),
-        sidUrl: '/test-tone-c4.sid',
-        scope: 'test' as const,
-        durationSeconds: 3.0,
-        selectedSong: 0,
-        expiresAt: new Date(Date.now() + 60000).toISOString(),
-      };
-
-      const testTrack = {
-        sidPath: '/test-tone-c4.sid',
-        relativePath: 'test-tone-c4.sid',
-        filename: 'test-tone-c4.sid',
-        displayName: 'Test Tone C4',
-        selectedSong: 0,
-        metadata: {
-          title: 'Test Tone C4',
-          author: 'SIDFlow',
-          released: '2025',
-          songs: 1,
-          startSong: 0,
-          sidType: 'PSID',
-          version: 2,
-          sidModel: 'MOS6581',
-          clock: 'PAL',
-          fileSizeBytes: 380,
-        },
-        durationSeconds: 3.0,
-      };
-
-      const player = (window as any).__testPlayer;
-      await player.load({ session: testSession, track: testTrack });
-      await player.play();
-    });
-
-    await page.waitForTimeout(4000);
+    await setupAndPlayTrack(page);
 
     const telemetry = await getTelemetry(page);
     expect(telemetry).not.toBeNull();
@@ -217,51 +175,7 @@ test.describe('Telemetry Validation', () => {
   });
 
   test('verifies timing drift stays within bounds', async ({ page }) => {
-    await page.goto('/test/audio-capture');
-    await page.waitForTimeout(1000);
-
-    const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
-    expect(isIsolated).toBe(true);
-
-    await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
-
-    await page.evaluate(async () => {
-      const testSession = {
-        sessionId: 'telemetry-test-' + Date.now(),
-        sidUrl: '/test-tone-c4.sid',
-        scope: 'test' as const,
-        durationSeconds: 3.0,
-        selectedSong: 0,
-        expiresAt: new Date(Date.now() + 60000).toISOString(),
-      };
-
-      const testTrack = {
-        sidPath: '/test-tone-c4.sid',
-        relativePath: 'test-tone-c4.sid',
-        filename: 'test-tone-c4.sid',
-        displayName: 'Test Tone C4',
-        selectedSong: 0,
-        metadata: {
-          title: 'Test Tone C4',
-          author: 'SIDFlow',
-          released: '2025',
-          songs: 1,
-          startSong: 0,
-          sidType: 'PSID',
-          version: 2,
-          sidModel: 'MOS6581',
-          clock: 'PAL',
-          fileSizeBytes: 380,
-        },
-        durationSeconds: 3.0,
-      };
-
-      const player = (window as any).__testPlayer;
-      await player.load({ session: testSession, track: testTrack });
-      await player.play();
-    });
-
-    await page.waitForTimeout(4000);
+    await setupAndPlayTrack(page);
 
     const telemetry = await getTelemetry(page);
     expect(telemetry).not.toBeNull();
@@ -279,51 +193,7 @@ test.describe('Telemetry Validation', () => {
   });
 
   test('verifies buffer occupancy is healthy', async ({ page }) => {
-    await page.goto('/test/audio-capture');
-    await page.waitForTimeout(1000);
-
-    const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
-    expect(isIsolated).toBe(true);
-
-    await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
-
-    await page.evaluate(async () => {
-      const testSession = {
-        sessionId: 'telemetry-test-' + Date.now(),
-        sidUrl: '/test-tone-c4.sid',
-        scope: 'test' as const,
-        durationSeconds: 3.0,
-        selectedSong: 0,
-        expiresAt: new Date(Date.now() + 60000).toISOString(),
-      };
-
-      const testTrack = {
-        sidPath: '/test-tone-c4.sid',
-        relativePath: 'test-tone-c4.sid',
-        filename: 'test-tone-c4.sid',
-        displayName: 'Test Tone C4',
-        selectedSong: 0,
-        metadata: {
-          title: 'Test Tone C4',
-          author: 'SIDFlow',
-          released: '2025',
-          songs: 1,
-          startSong: 0,
-          sidType: 'PSID',
-          version: 2,
-          sidModel: 'MOS6581',
-          clock: 'PAL',
-          fileSizeBytes: 380,
-        },
-        durationSeconds: 3.0,
-      };
-
-      const player = (window as any).__testPlayer;
-      await player.load({ session: testSession, track: testTrack });
-      await player.play();
-    });
-
-    await page.waitForTimeout(4000);
+    await setupAndPlayTrack(page);
 
     const telemetry = await getTelemetry(page);
     expect(telemetry).not.toBeNull();

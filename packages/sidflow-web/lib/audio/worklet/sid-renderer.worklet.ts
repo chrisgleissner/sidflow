@@ -69,6 +69,8 @@ class SidRendererProcessor extends AudioWorkletProcessor {
   private totalDriftMs = 0;
   private maxDriftMs = 0;
   private quantumCount = 0;
+  private zeroByteCheckCounter = 0;
+  private readonly ZERO_BYTE_CHECK_INTERVAL = 8; // Check every 8th quantum to reduce CPU overhead
 
   constructor(options: AudioWorkletNodeOptions) {
     super();
@@ -124,21 +126,28 @@ class SidRendererProcessor extends AudioWorkletProcessor {
       // Success: consumed full quantum
       this.framesConsumed += frames;
       
-      // Detect zero-byte frames (completely silent)
-      let hasNonZero = false;
-      for (let ch = 0; ch < output.length; ch++) {
-        const channelData = output[ch];
-        for (let i = 0; i < channelData.length; i++) {
-          if (channelData[i] !== 0) {
-            hasNonZero = true;
-            break;
+      // Detect zero-byte frames (completely silent) - sampled to reduce CPU overhead
+      // Only check every Nth quantum (~43 times/second at 44.1kHz instead of 344 times/second)
+      this.zeroByteCheckCounter++;
+      if (this.zeroByteCheckCounter >= this.ZERO_BYTE_CHECK_INTERVAL) {
+        this.zeroByteCheckCounter = 0;
+        
+        let hasNonZero = false;
+        for (let ch = 0; ch < output.length; ch++) {
+          const channelData = output[ch];
+          for (let i = 0; i < channelData.length; i++) {
+            if (channelData[i] !== 0) {
+              hasNonZero = true;
+              break;
+            }
           }
+          if (hasNonZero) break;
         }
-        if (hasNonZero) break;
-      }
-      
-      if (!hasNonZero) {
-        this.zeroByteFrames++;
+        
+        if (!hasNonZero) {
+          // Scale up by interval since we're sampling
+          this.zeroByteFrames += this.ZERO_BYTE_CHECK_INTERVAL;
+        }
       }
     } else {
       // Underrun: output silence for this quantum

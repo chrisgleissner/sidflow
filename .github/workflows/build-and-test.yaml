@@ -57,22 +57,24 @@ jobs:
       - name: Run all tests (unit + E2E with coverage)
         run: bun run test:all
 
-      - name: Playwright report summary
+      - name: Check for Playwright report
+        id: detect-playwright-report
         if: always()
+        run: |
+          if [ -f packages/sidflow-web/playwright-report/report.json ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Playwright report found"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Playwright report not found"
+          fi
+
+      - name: Playwright report summary
+        if: always() && steps.detect-playwright-report.outputs.available == 'true'
         uses: daun/playwright-report-summary@v3
         with:
           report-file: packages/sidflow-web/playwright-report/report.json
           job-summary: true
-
-      - name: Check for Playwright HTML report
-        id: detect-playwright-report
-        if: always()
-        run: |
-          if [ -d packages/sidflow-web/playwright-report ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Upload coverage reports to Codecov
         if: ${{ github.event_name == 'push' }}
