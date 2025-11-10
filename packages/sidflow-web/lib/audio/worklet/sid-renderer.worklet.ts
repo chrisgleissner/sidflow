@@ -143,8 +143,12 @@ class SidRendererProcessor extends AudioWorkletProcessor {
     } else {
       // Underrun: output silence for this quantum
       this.underruns++;
+      // missedQuanta tracks failed AudioWorklet process() calls (buffer starvation)
       this.missedQuanta++;
-      this.zeroByteFrames++; // This is a forced zero-byte frame
+      // zeroByteFrames tracks all silent output, including forced silence from underruns.
+      // This distinguishes between naturally silent music passages (counted above) and
+      // dropouts due to buffer starvation (counted here). Both contribute to total silence.
+      this.zeroByteFrames++;
       
       for (let ch = 0; ch < output.length; ch++) {
         output[ch].fill(0);
