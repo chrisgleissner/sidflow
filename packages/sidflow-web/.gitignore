@@ -41,3 +41,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated audio worklet and worker
+/public/audio/worklet/*.js
+/public/audio/worklet/*.js.map
+/public/audio/worker/*.js
+/public/audio/worker/*.js.map
