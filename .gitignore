@@ -8,6 +8,9 @@ packages/*/.tsbuildinfo
 workspace/
 !workspace/.gitkeep
 
+# Test artifacts
+packages/libsidplayfp-wasm/test-output.wav
+
 # Preferences
 .sidflow-preferences.json
 

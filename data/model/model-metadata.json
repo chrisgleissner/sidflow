@@ -11,6 +11,6 @@
     "outputDim": 3,
     "activation": "tanh"
   },
-  "trainedAt": "2025-11-10T20:41:57.219Z",
+  "trainedAt": "2025-11-10T21:25:54.115Z",
   "samples": 3
 }
