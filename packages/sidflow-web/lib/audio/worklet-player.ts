@@ -30,7 +30,7 @@ interface LoadOptions {
   signal?: AbortSignal;
 }
 
-interface TelemetryData {
+export interface TelemetryData {
   underruns: number;
   framesConsumed: number;
   framesProduced: number;
@@ -59,6 +59,12 @@ export class WorkletPlayer {
   private currentTrack: RateTrackInfo | null = null;
   private durationSeconds = 0;
   private startTime = 0;
+
+  // Audio capture support
+  private captureDestination: MediaStreamAudioDestinationNode | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private capturedChunks: Blob[] = [];
+  private captureEnabled = false;
 
   // Telemetry
   private telemetry: TelemetryData = {
@@ -117,6 +123,47 @@ export class WorkletPlayer {
 
   getTelemetry(): TelemetryData {
     return { ...this.telemetry };
+  }
+
+  /**
+   * Enable audio capture for testing/analysis.
+   * Must be called before play().
+   */
+  enableCapture(): void {
+    this.captureEnabled = true;
+    this.capturedChunks = [];
+  }
+
+  /**
+   * Get captured audio data as a Blob.
+   * Returns null if capture was not enabled or no data captured.
+   */
+  getCapturedAudio(): Blob | null {
+    if (this.capturedChunks.length === 0) {
+      return null;
+    }
+    return new Blob(this.capturedChunks, { type: 'audio/webm;codecs=opus' });
+  }
+
+  /**
+   * Get captured audio as PCM Float32Array.
+   * This decodes the captured audio back to PCM for analysis.
+   */
+  async getCapturedPCM(): Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | null> {
+    const blob = this.getCapturedAudio();
+    if (!blob) {
+      return null;
+    }
+
+    // Decode the captured audio
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+
+    return {
+      left: audioBuffer.getChannelData(0),
+      right: audioBuffer.getChannelData(1),
+      sampleRate: audioBuffer.sampleRate,
+    };
   }
 
   async load(options: LoadOptions): Promise<void> {
@@ -219,7 +266,26 @@ export class WorkletPlayer {
 
     await this.audioContext.resume();
 
-    // Connect worklet to destination
+    // Set up audio capture if enabled
+    if (this.captureEnabled && !this.captureDestination) {
+      this.captureDestination = this.audioContext.createMediaStreamDestination();
+      this.workletNode.connect(this.captureDestination);
+
+      // Create MediaRecorder to capture the stream
+      this.mediaRecorder = new MediaRecorder(this.captureDestination.stream, {
+        mimeType: 'audio/webm;codecs=opus',
+      });
+
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.capturedChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.start(100); // Capture in 100ms chunks
+    }
+
+    // Connect worklet to destination (for audible playback)
     if (!this.workletNode.numberOfOutputs) {
       this.workletNode.connect(this.gainNode);
     }
@@ -248,15 +314,30 @@ export class WorkletPlayer {
       this.worker.postMessage({ type: 'stop' } as WorkerMessage);
     }
 
+    // Stop capture if active
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+
     this.updateState('paused');
   }
 
   stop(): void {
+    // Stop capture if active
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+
     this.cleanup();
     this.updateState('idle');
   }
 
   destroy(): void {
+    // Stop capture if active
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+
     this.cleanup();
     this.updateState('idle');
     void this.audioContext.close().catch(() => undefined);
@@ -438,6 +519,20 @@ export class WorkletPlayer {
         // Ignore
       }
       this.workletNode = null;
+    }
+
+    // Clean up capture resources
+    if (this.captureDestination) {
+      try {
+        this.captureDestination.disconnect();
+      } catch {
+        // Ignore
+      }
+      this.captureDestination = null;
+    }
+
+    if (this.mediaRecorder) {
+      this.mediaRecorder = null;
     }
 
     this.sabPointers = null;

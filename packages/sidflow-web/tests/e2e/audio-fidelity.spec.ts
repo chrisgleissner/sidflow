@@ -170,8 +170,8 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
   };
 
   try {
-    // Navigate to tab
-    await page.goto(`/?tab=${tabName}`);
+    // Navigate to test page
+    await page.goto('/test/audio-capture');
     await page.waitForTimeout(1000);
 
     // Check cross-origin isolation
@@ -181,14 +181,125 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
       return report;
     }
 
-    // TODO: Load the C4 test SID
-    // For now, this test will need manual setup of the test SID
-    // In a real implementation, we'd upload the test SID via API
-    
-    // Note: Since we don't have a way to directly load the test SID yet,
-    // this test is a structure/framework for when that capability is added
+    // Wait for player to be ready
+    await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
 
-    report.errors.push('Test SID loading not implemented yet');
+    // Enable audio capture and load the C4 test SID
+    const { capturedLeft, capturedRight, sampleRate, telemetry } = await page.evaluate(async () => {
+      // Create a test session for the C4 SID
+      const testSession = {
+        sessionId: 'test-c4-' + Date.now(),
+        sidUrl: '/test-tone-c4.sid',
+        scope: 'test' as const,
+        durationSeconds: 3.0,
+        selectedSong: 0,
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
+      };
+
+      const testTrack = {
+        sidPath: '/test-tone-c4.sid',
+        relativePath: 'test-tone-c4.sid',
+        filename: 'test-tone-c4.sid',
+        displayName: 'Test Tone C4',
+        selectedSong: 0,
+        metadata: {
+          title: 'Test Tone C4',
+          author: 'SIDFlow',
+          released: '2025',
+          songs: 1,
+          startSong: 0,
+          sidType: 'PSID',
+          version: 2,
+          sidModel: 'MOS6581',
+          clock: 'PAL',
+          fileSizeBytes: 380,
+        },
+        durationSeconds: 3.0,
+      };
+
+      // Get the player from the global scope
+      const player = (window as any).__testPlayer;
+      if (!player) {
+        throw new Error('Player not available');
+      }
+
+      // Enable capture
+      player.enableCapture();
+
+      // Load and play
+      await player.load({ session: testSession, track: testTrack });
+      await player.play();
+
+      // Wait for playback to complete (3 seconds + buffer)
+      await new Promise(resolve => setTimeout(resolve, 4000));
+
+      // Stop playback
+      player.stop();
+
+      // Get captured PCM
+      const pcm = await player.getCapturedPCM();
+      if (!pcm) {
+        throw new Error('Failed to capture audio');
+      }
+
+      // Get telemetry
+      const telemetry = player.getTelemetry();
+
+      return {
+        capturedLeft: Array.from(pcm.left),
+        capturedRight: Array.from(pcm.right),
+        sampleRate: pcm.sampleRate,
+        telemetry,
+      };
+    });
+
+    report.sampleRate = sampleRate;
+    report.telemetry = telemetry;
+    report.underruns = telemetry.underruns;
+
+    // Analyze left channel (convert unknown[] to number[])
+    const leftSamples = capturedLeft as number[];
+    const duration = leftSamples.length / sampleRate;
+    report.duration = duration;
+
+    // Skip first and last 250ms to avoid transients
+    const skipSamples = Math.floor(sampleRate * 0.25);
+    const middleSamples = leftSamples.slice(skipSamples, leftSamples.length - skipSamples);
+
+    // Measure frequency
+    report.fundamentalFrequency = measureFrequency(middleSamples, sampleRate);
+
+    // Detect dropouts
+    report.dropoutCount = detectDropouts(middleSamples);
+
+    // Measure RMS stability
+    report.rmsStability = measureRmsStability(middleSamples, sampleRate);
+
+    // Check all criteria
+    const frequencyOk = Math.abs(report.fundamentalFrequency - 261.63) < 0.2;
+    const durationOk = Math.abs(duration - 3.0) < (1.0 / sampleRate);
+    const noUnderruns = report.underruns === 0;
+    const noDropouts = report.dropoutCount === 0;
+    const stableRms = report.rmsStability < 10; // <10% variation
+
+    report.passed = frequencyOk && durationOk && noUnderruns && noDropouts && stableRms;
+
+    if (!frequencyOk) {
+      report.errors.push(`Frequency ${report.fundamentalFrequency.toFixed(2)} Hz not in range 261.43-261.83 Hz`);
+    }
+    if (!durationOk) {
+      report.errors.push(`Duration ${duration.toFixed(3)}s not within ±1 frame of 3.0s`);
+    }
+    if (!noUnderruns) {
+      report.errors.push(`${report.underruns} underruns detected`);
+    }
+    if (!noDropouts) {
+      report.errors.push(`${report.dropoutCount} dropouts detected`);
+    }
+    if (!stableRms) {
+      report.errors.push(`RMS stability ${report.rmsStability.toFixed(1)}% exceeds 10%`);
+    }
+
     return report;
   } catch (error) {
     report.errors.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
@@ -338,13 +449,16 @@ test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
   });
 });
 
-// Placeholder for future full fidelity tests when we can load the C4 test SID
-test.describe('Audio Fidelity - C4 Test SID (placeholder)', () => {
-  test.skip('Rate tab: C4 test SID fidelity', async ({ page }) => {
-    // This test will be implemented when we can programmatically load the test SID
+// Full C4 fidelity tests with audio capture
+test.describe('Audio Fidelity - C4 Test SID', () => {
+  test('Rate tab: C4 test SID fidelity', async ({ page }) => {
     const report = await testTabFidelity(page, 'rate');
     
+    // Log report for debugging
+    console.log('Rate tab fidelity report:', JSON.stringify(report, null, 2));
+    
     // Expected fidelity criteria
+    expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
     expect(report.underruns).toBe(0);
     expect(report.fundamentalFrequency).toBeGreaterThan(261.43); // 261.63 - 0.2
     expect(report.fundamentalFrequency).toBeLessThan(261.83); // 261.63 + 0.2
@@ -352,9 +466,12 @@ test.describe('Audio Fidelity - C4 Test SID (placeholder)', () => {
     expect(report.rmsStability).toBeLessThan(10); // <10% variation
   });
 
-  test.skip('Play tab: C4 test SID fidelity', async ({ page }) => {
+  test('Play tab: C4 test SID fidelity', async ({ page }) => {
     const report = await testTabFidelity(page, 'play');
     
+    console.log('Play tab fidelity report:', JSON.stringify(report, null, 2));
+    
+    expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
     expect(report.underruns).toBe(0);
     expect(report.fundamentalFrequency).toBeGreaterThan(261.43);
     expect(report.fundamentalFrequency).toBeLessThan(261.83);

@@ -2,7 +2,7 @@ import loadLibsidplayfp, { SidAudioEngine } from '@sidflow/libsidplayfp-wasm';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { telemetry } from '@/lib/telemetry';
-import { WorkletPlayer, type WorkletPlayerState } from '@/lib/audio/worklet-player';
+import { WorkletPlayer, type WorkletPlayerState, type TelemetryData } from '@/lib/audio/worklet-player';
 
 /**
  * Enable the new AudioWorklet + SharedArrayBuffer pipeline.
@@ -133,6 +133,53 @@ export class SidflowPlayer {
             return clamp(this.pauseOffset + elapsed, 0, this.audioBuffer.duration);
         }
         return clamp(this.pauseOffset, 0, this.audioBuffer.duration);
+    }
+
+    /**
+     * Enable audio capture for testing/analysis (worklet mode only).
+     * Must be called before play().
+     */
+    enableCapture(): void {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            this.workletPlayer.enableCapture();
+        }
+    }
+
+    /**
+     * Get captured audio data (worklet mode only).
+     */
+    getCapturedAudio(): Blob | null {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getCapturedAudio();
+        }
+        return null;
+    }
+
+    /**
+     * Get captured audio as PCM for analysis (worklet mode only).
+     */
+    async getCapturedPCM(): Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | null> {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getCapturedPCM();
+        }
+        return null;
+    }
+
+    /**
+     * Get telemetry data (worklet mode only).
+     */
+    getTelemetry(): TelemetryData {
+        if (USE_WORKLET_PLAYER && this.workletPlayer) {
+            return this.workletPlayer.getTelemetry();
+        }
+        return {
+            underruns: 0,
+            framesConsumed: 0,
+            framesProduced: 0,
+            backpressureStalls: 0,
+            minOccupancy: 0,
+            maxOccupancy: 0,
+        };
     }
 
     async load(options: LoadOptions): Promise<void> {
