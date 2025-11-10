@@ -10,6 +10,26 @@
  * - Tracks telemetry: underruns, frames consumed, buffer occupancy
  */
 
+// AudioWorklet global types (these exist in the worklet scope)
+declare const AudioWorkletProcessor: {
+  prototype: AudioWorkletProcessor;
+  new (options?: AudioWorkletNodeOptions): AudioWorkletProcessor;
+};
+
+interface AudioWorkletProcessor {
+  readonly port: MessagePort;
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>
+  ): boolean;
+}
+
+declare function registerProcessor(
+  name: string,
+  processorCtor: new (options?: AudioWorkletNodeOptions) => AudioWorkletProcessor
+): void;
+
 // Import SAB ring buffer consumer
 // Note: This will be bundled/transpiled for the worklet context
 import { SABRingBufferConsumer, type SABRingBufferPointers } from '../shared/sab-ring-buffer';
@@ -116,7 +136,7 @@ class SidRendererProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('sid-renderer', SidRendererProcessor);
+registerProcessor('sid-renderer', SidRendererProcessor as unknown as new (options?: AudioWorkletNodeOptions) => AudioWorkletProcessor);
 
 // Export for type checking (won't be used at runtime in worklet context)
 export {};
