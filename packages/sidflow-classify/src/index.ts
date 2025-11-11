@@ -20,15 +20,17 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
-import loadLibsidplayfp, {
-  SidAudioEngine,
-  type LibsidplayfpWasmModule
-} from "@sidflow/libsidplayfp-wasm";
-import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
+import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { WasmRendererPool } from "./render/wasm-render-pool.js";
+import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
+import {
+  computeFileHash,
+  renderWavWithEngine,
+  type RenderWavOptions
+} from "./render/wav-renderer.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -91,7 +93,6 @@ async function runConcurrent<T>(
 type EngineFactory = () => Promise<SidAudioEngine>;
 
 let parseSidFileImpl: typeof parseSidFile = parseSidFile;
-let engineFactoryOverride: EngineFactory | null = null;
 
 async function collectSidMetadataAndSongCount(
   sidFiles: string[]
@@ -157,59 +158,7 @@ export async function planClassification(
 
 const SID_EXTENSION = ".sid";
 
-async function computeFileHash(filePath: string): Promise<string> {
-  const content = await readFile(filePath);
-  return createHash("sha256").update(content).digest("hex");
-}
-
-const RENDER_CYCLES_PER_CHUNK = 20_000;
-const MAX_RENDER_SECONDS = 600;
-const MAX_SILENT_ITERATIONS = 32;
-
-let wasmModulePromise: Promise<LibsidplayfpWasmModule> | null = null;
-
-async function getWasmModule(): Promise<LibsidplayfpWasmModule> {
-  if (!wasmModulePromise) {
-    wasmModulePromise = loadLibsidplayfp();
-  }
-  return wasmModulePromise;
-}
-
-async function createEngine(): Promise<SidAudioEngine> {
-  if (engineFactoryOverride) {
-    return engineFactoryOverride();
-  }
-  const module = await getWasmModule();
-  return new SidAudioEngine({ module: Promise.resolve(module) });
-}
-
-function encodePcmToWav(samples: Int16Array, sampleRate: number, channels: number): Buffer {
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * channels * (bitsPerSample / 8);
-  const blockAlign = channels * (bitsPerSample / 8);
-  const dataSize = samples.length * 2;
-  const buffer = Buffer.allocUnsafe(44 + dataSize);
-  let offset = 0;
-
-  buffer.write("RIFF", offset); offset += 4;
-  buffer.writeUInt32LE(36 + dataSize, offset); offset += 4;
-  buffer.write("WAVE", offset); offset += 4;
-  buffer.write("fmt ", offset); offset += 4;
-  buffer.writeUInt32LE(16, offset); offset += 4;
-  buffer.writeUInt16LE(1, offset); offset += 2;
-  buffer.writeUInt16LE(channels, offset); offset += 2;
-  buffer.writeUInt32LE(sampleRate, offset); offset += 4;
-  buffer.writeUInt32LE(byteRate, offset); offset += 4;
-  buffer.writeUInt16LE(blockAlign, offset); offset += 2;
-  buffer.writeUInt16LE(bitsPerSample, offset); offset += 2;
-  buffer.write("data", offset); offset += 4;
-  buffer.writeUInt32LE(dataSize, offset); offset += 4;
-
-  const pcmBytes = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
-  pcmBytes.copy(buffer, offset);
-
-  return buffer;
-}
+export type { RenderWavOptions } from "./render/wav-renderer.js";
 
 export function resolveWavPath(
   plan: ClassificationPlan,
@@ -296,82 +245,11 @@ export async function needsWavRefresh(
   return true;
 }
 
-export interface RenderWavOptions {
-  sidFile: string;
-  wavFile: string;
-  songIndex?: number;
-}
-
 export type RenderWav = (options: RenderWavOptions) => Promise<void>;
 
-export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, songIndex }) => {
-  await ensureDir(path.dirname(wavFile));
-
+export const defaultRenderWav: RenderWav = async (options) => {
   const engine = await createEngine();
-  const sidBuffer = new Uint8Array(await readFile(sidFile));
-  await engine.loadSidBuffer(sidBuffer);
-
-  if (typeof songIndex === "number") {
-    const zeroBased = Math.max(0, songIndex - 1);
-    await engine.selectSong(zeroBased);
-  }
-
-  const sampleRate = engine.getSampleRate();
-  const channels = engine.getChannels();
-  const maxSamples = Math.floor(sampleRate * channels * MAX_RENDER_SECONDS);
-  const chunks: Int16Array[] = [];
-
-  let collectedSamples = 0;
-  let silentIterations = 0;
-  let iterations = 0;
-  const maxIterations = Math.max(64, Math.ceil(maxSamples / RENDER_CYCLES_PER_CHUNK) * 4);
-
-  while (collectedSamples < maxSamples && iterations < maxIterations) {
-    iterations += 1;
-    const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
-    if (chunk === null) {
-      break;
-    }
-    if (chunk.length === 0) {
-      silentIterations += 1;
-      if (silentIterations >= MAX_SILENT_ITERATIONS) {
-        break;
-      }
-      continue;
-    }
-
-    silentIterations = 0;
-    const copy = chunk.slice();
-    const allowed = Math.min(copy.length, maxSamples - collectedSamples);
-    if (allowed <= 0) {
-      break;
-    }
-    const trimmed = allowed === copy.length ? copy : copy.subarray(0, allowed);
-    chunks.push(trimmed);
-    collectedSamples += allowed;
-  }
-
-  if (collectedSamples === 0) {
-    throw new Error(`WASM renderer produced no audio for ${sidFile}`);
-  }
-
-  const pcm = new Int16Array(collectedSamples);
-  let writeOffset = 0;
-  for (const chunk of chunks) {
-    pcm.set(chunk, writeOffset);
-    writeOffset += chunk.length;
-  }
-
-  const wavBuffer = encodePcmToWav(pcm, sampleRate, channels);
-  await writeFile(wavFile, wavBuffer);
-
-  const hashFile = `${wavFile}.hash`;
-  try {
-    const hash = await computeFileHash(sidFile);
-    await writeFile(hashFile, hash, "utf8");
-  } catch {
-    // Hash storage is best-effort; ignore failures.
-  }
+  await renderWavWithEngine(engine, options);
 };
 
 export interface WavCacheProgress {
@@ -509,43 +387,54 @@ export async function buildWavCache(
 
   // Building phase: render WAV files for each song
   const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
-  await runConcurrent(
-    songsToRender,
-    buildConcurrency,
-    async ({ sidFile, songIndex, wavFile, songCount }, context) => {
-      const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
-      onThreadUpdate?.({
-        threadId: context.threadId,
-        phase: "building",
-        status: "working",
-        file: songLabel
-      });
-      try {
-        await render({ sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined });
-        rendered.push(wavFile);
+  const rendererPool = render === defaultRenderWav ? new WasmRendererPool(buildConcurrency) : null;
 
-        if (onProgress) {
-          const processed = skipped.length + rendered.length;
-          onProgress({
-            phase: "building",
-            totalFiles,
-            processedFiles: processed,
-            renderedFiles: rendered.length,
-            skippedFiles: skipped.length,
-            percentComplete: totalFiles === 0 ? 100 : (processed / totalFiles) * 100,
-            elapsedMs: Date.now() - startTime,
-            currentFile: songLabel
-          });
-        }
-      } finally {
+  try {
+    await runConcurrent(
+      songsToRender,
+      buildConcurrency,
+      async ({ sidFile, songIndex, wavFile, songCount }, context) => {
+        const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "building",
-          status: "idle"
+          status: "working",
+          file: songLabel
         });
+        try {
+          const renderOptions = { sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined };
+          if (rendererPool) {
+            await rendererPool.render(renderOptions);
+          } else {
+            await render(renderOptions);
+          }
+          rendered.push(wavFile);
+
+          if (onProgress) {
+            const processed = skipped.length + rendered.length;
+            onProgress({
+              phase: "building",
+              totalFiles,
+              processedFiles: processed,
+              renderedFiles: rendered.length,
+              skippedFiles: skipped.length,
+              percentComplete: totalFiles === 0 ? 100 : (processed / totalFiles) * 100,
+              elapsedMs: Date.now() - startTime,
+              currentFile: songLabel
+            });
+          }
+        } finally {
+          onThreadUpdate?.({
+            threadId: context.threadId,
+            phase: "building",
+            status: "idle"
+          });
+        }
       }
-    }
-  );
+    );
+  } finally {
+    await rendererPool?.destroy();
+  }
 
   const endTime = Date.now();
   const cacheHitRate = totalFiles > 0 ? skipped.length / totalFiles : 0;
@@ -1326,7 +1215,7 @@ export function __setClassifyTestOverrides(overrides?: {
   createEngine?: EngineFactory;
 }): void {
   parseSidFileImpl = overrides?.parseSidFile ?? parseSidFile;
-  engineFactoryOverride = overrides?.createEngine ?? null;
+  setEngineFactoryOverride(overrides?.createEngine ?? null);
 }
 
 // Re-export Essentia.js and TensorFlow.js implementations
