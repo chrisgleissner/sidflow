@@ -143,7 +143,7 @@ test.describe('Telemetry Validation', () => {
     const telemetry = await getTelemetry(page);
     expect(telemetry).not.toBeNull();
 
-  console.log('Telemetry snapshot (no underruns test):', telemetry);
+    console.log('Telemetry snapshot (no underruns test):', telemetry);
 
     // Verify no underruns
     expect(telemetry!.underruns).toBe(0);
@@ -253,7 +253,7 @@ test.describe('Telemetry Validation', () => {
 
     // Verify events were captured
     expect(sink.length).toBeGreaterThan(0);
-    
+
     // Verify event structure
     const firstEvent = sink[0];
     expect(firstEvent).toHaveProperty('type');

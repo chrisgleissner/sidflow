@@ -56,12 +56,12 @@ class TelemetryService {
 
     constructor() {
         // Determine mode from environment variable
-        const envMode = (typeof window !== 'undefined' 
-            ? (window as any).NEXT_PUBLIC_TELEMETRY_MODE 
+        const envMode = (typeof window !== 'undefined'
+            ? (window as any).NEXT_PUBLIC_TELEMETRY_MODE
             : process.env.NEXT_PUBLIC_TELEMETRY_MODE) || 'production';
-        
-        this.mode = ['production', 'test', 'disabled'].includes(envMode) 
-            ? envMode as TelemetryMode 
+
+        this.mode = ['production', 'test', 'disabled'].includes(envMode)
+            ? envMode as TelemetryMode
             : 'production';
 
         if (typeof window !== 'undefined') {

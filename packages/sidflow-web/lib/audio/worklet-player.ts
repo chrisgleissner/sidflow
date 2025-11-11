@@ -405,7 +405,7 @@ export class WorkletPlayer {
     await readyPromise;
     console.log('[WorkletPlayer] Worker ready resolved, continuing playback setup');
 
-  this.sendWorkletControl({ type: 'start' });
+    this.sendWorkletControl({ type: 'start' });
 
     if (this.captureEnabled && !this.captureDestination) {
       this.captureDestination = this.audioContext.createMediaStreamDestination();

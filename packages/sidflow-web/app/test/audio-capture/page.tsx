@@ -24,7 +24,7 @@ export default function AudioCapturePage() {
     window.__testPlayer = player;
     (window as unknown as { __sidflowPlayer?: SidflowPlayer }).__sidflowPlayer = player;
     window.__testPlayerReady = true;
-    
+
     // Update state to trigger re-render
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsReady(true);

@@ -155,21 +155,14 @@ class SidProducerWorker {
   const romSet = this.prepareRomSet(message.roms);
   const romsToApply = null; // TEMP: disable custom ROMs to isolate load hang
 
-    // Loading SID (verbose logging reduced for test clarity)    await this.engine.setSystemROMs(
+    // Loading SID (verbose logging reduced for test clarity)
+    await this.engine.setSystemROMs(
       romSet?.kernal ?? null,
       romSet?.basic ?? null,
       romSet?.chargen ?? null
     );
-    console.log('[SidProducer] ✓ Applied ROM configuration', {
-      romLengths: romSet
-        ? {
-          kernal: romSet.kernal.length,
-          basic: romSet.basic.length,
-          chargen: romSet.chargen.length,
-        }
-        : 'no-roms',
-    });
-
+    // ROM configuration applied
+    
     await this.engine.loadSidBuffer(message.sidBytes);
     console.log('[SidProducer] ✓ Loaded SID buffer into engine');
 
@@ -180,7 +173,7 @@ class SidProducerWorker {
       });
     }
 
-    console.log('[SidProducer] ✓ Loaded SID');
+    // SID loaded
 
     this.postMessage({ type: 'loaded' });
   }
@@ -193,7 +186,7 @@ class SidProducerWorker {
     }
 
     if (this.isRunning) {
-      console.warn('[SidProducer] Already running');
+      // Already running
       return;
     }
 
@@ -203,11 +196,11 @@ class SidProducerWorker {
     this.backpressureStalls = 0;
     this.minOccupancy = Number.MAX_SAFE_INTEGER;
     this.maxOccupancy = 0;
-  this.maxRenderDurationMs = 0;
-  this.totalRenderDurationMs = 0;
-  this.renderChunkCount = 0;
+    this.maxRenderDurationMs = 0;
+    this.totalRenderDurationMs = 0;
+    this.renderChunkCount = 0;
 
-    console.log('[SidProducer] Starting render loop...');
+    // Starting render loop
 
     // Pre-roll: fill buffer before signaling ready
     await this.preRoll();
@@ -223,7 +216,7 @@ class SidProducerWorker {
   }
 
   private handleStop(): void {
-    console.log('[SidProducer] Stopping...');
+    // Stopping
     this.shouldStop = true;
     this.isRunning = false;
   }
@@ -233,7 +226,7 @@ class SidProducerWorker {
       return;
     }
 
-    console.log(`[SidProducer] Pre-rolling ${this.preRollFrames} frames...`);
+    // Pre-rolling buffer
 
     while (!this.shouldStop) {
       const occupancy = this.producer.getOccupancy();
@@ -254,7 +247,7 @@ class SidProducerWorker {
       }
     }
 
-    console.log(`[SidProducer] ✓ Pre-rolled ${this.framesProduced} frames`);
+    // Pre-roll complete
 
     // Reset occupancy metrics now that buffer is primed
     const finalOccupancy = this.producer.getOccupancy();
@@ -263,8 +256,8 @@ class SidProducerWorker {
   }
 
   private async renderLoop(): Promise<void> {
-  let telemetryCounter = 0;
-  const telemetryInterval = 50; // Send telemetry every 50 chunks
+    let telemetryCounter = 0;
+    const telemetryInterval = 50; // Send telemetry every 50 chunks
 
     while (!this.shouldStop) {
       let produced = 0;
@@ -300,10 +293,7 @@ class SidProducerWorker {
       framesProduced: this.framesProduced,
     });
 
-    console.log('[SidProducer] ✓ Stopped', {
-      framesProduced: this.framesProduced,
-      backpressureStalls: this.backpressureStalls,
-    });
+    // Stopped
   }
 
   private yieldControl(): Promise<void> {
@@ -366,12 +356,12 @@ class SidProducerWorker {
     }
 
     // Render PCM from WASM engine
-  const startTime = performance.now();
-  const pcmInt16 = await this.engine.renderFrames(writableFrames, this.renderCyclesPerChunk);
-  const durationMs = performance.now() - startTime;
-  this.maxRenderDurationMs = Math.max(this.maxRenderDurationMs, durationMs);
-  this.totalRenderDurationMs += durationMs;
-  this.renderChunkCount += 1;
+    const startTime = performance.now();
+    const pcmInt16 = await this.engine.renderFrames(writableFrames, this.renderCyclesPerChunk);
+    const durationMs = performance.now() - startTime;
+    this.maxRenderDurationMs = Math.max(this.maxRenderDurationMs, durationMs);
+    this.totalRenderDurationMs += durationMs;
+    this.renderChunkCount += 1;
 
     if (pcmInt16.length === 0) {
       const errorMessage = JSON.stringify({
@@ -471,7 +461,7 @@ class SidProducerWorker {
 
     const capacityFrames = pointers.capacityFrames;
     const alignedCapacity = Math.floor(capacityFrames / this.blockSize) * this.blockSize;
-  this.capacityFrames = alignedCapacity;
+    this.capacityFrames = alignedCapacity;
 
     const targetPreRoll = Math.floor(
       Math.max(this.MIN_PREROLL_FRAMES, capacityFrames * this.PRE_ROLL_TARGET_RATIO) / this.blockSize
@@ -521,17 +511,17 @@ class SidProducerWorker {
   }
 
   private async initializeEngine(message: InitMessage): Promise<void> {
-    console.log('[SidProducer] Initializing...', message);
+    // Initializing
 
     this.engineInitialized = false;
     this.engine = null;
 
     this.targetSampleRate = message.targetSampleRate;
-  this.producer = new SABRingBufferProducer(message.sabPointers);
-  this.channelCount = message.sabPointers.channelCount;
-  this.blockSize = message.sabPointers.blockSize;
+    this.producer = new SABRingBufferProducer(message.sabPointers);
+    this.channelCount = message.sabPointers.channelCount;
+    this.blockSize = message.sabPointers.blockSize;
 
-  this.configureBufferingStrategy(message.sabPointers);
+    this.configureBufferingStrategy(message.sabPointers);
 
     // Initialize WASM engine
     const locateFile = message.wasmLocateFile ?? ((asset: string) => `/wasm/${asset}`);

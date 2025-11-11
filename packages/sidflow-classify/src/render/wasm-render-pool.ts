@@ -105,7 +105,7 @@ export class WasmRendererPool {
       }
       state.exiting = true;
       this.failJob(state, error instanceof Error ? error : new Error(String(error)));
-      void worker.terminate().catch(() => {});
+      void worker.terminate().catch(() => { });
       this.restartWorker(state);
     });
 
@@ -156,7 +156,7 @@ export class WasmRendererPool {
         error.stack = message.error.stack;
       }
       this.failJob(state, error);
-      void state.worker.terminate().catch(() => {});
+      void state.worker.terminate().catch(() => { });
       this.restartWorker(state);
     }
     this.dispatch();

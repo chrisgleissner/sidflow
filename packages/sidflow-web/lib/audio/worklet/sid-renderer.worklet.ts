@@ -13,7 +13,7 @@
 // AudioWorklet global types (these exist in the worklet scope)
 declare const AudioWorkletProcessor: {
   prototype: AudioWorkletProcessor;
-  new (options?: AudioWorkletNodeOptions): AudioWorkletProcessor;
+  new(options?: AudioWorkletNodeOptions): AudioWorkletProcessor;
 };
 
 interface AudioWorkletProcessor {
@@ -68,7 +68,7 @@ class SidRendererProcessor extends AudioWorkletProcessor {
   private maxOccupancy = 0;
   private telemetryCounter = 0;
   private readonly TELEMETRY_INTERVAL = 128; // Send telemetry every 128 quanta (~3.6s at 44.1kHz)
-  
+
   // Additional telemetry metrics
   private zeroByteFrames = 0;
   private missedQuanta = 0;
@@ -154,13 +154,13 @@ class SidRendererProcessor extends AudioWorkletProcessor {
     if (framesRead === frames) {
       // Success: consumed full quantum
       this.framesConsumed += frames;
-      
+
       // Detect zero-byte frames (completely silent) - sampled to reduce CPU overhead
       // Only check every Nth quantum (~43 times/second at 44.1kHz instead of 344 times/second)
       this.zeroByteCheckCounter++;
       if (this.zeroByteCheckCounter >= this.ZERO_BYTE_CHECK_INTERVAL) {
         this.zeroByteCheckCounter = 0;
-        
+
         let hasNonZero = false;
         for (let ch = 0; ch < output.length; ch++) {
           const channelData = output[ch];
@@ -172,7 +172,7 @@ class SidRendererProcessor extends AudioWorkletProcessor {
           }
           if (hasNonZero) break;
         }
-        
+
         if (!hasNonZero) {
           // Scale up by interval since we're sampling
           this.zeroByteFrames += this.ZERO_BYTE_CHECK_INTERVAL;
@@ -187,7 +187,7 @@ class SidRendererProcessor extends AudioWorkletProcessor {
       // This distinguishes between naturally silent music passages (counted above) and
       // dropouts due to buffer starvation (counted here). Both contribute to total silence.
       this.zeroByteFrames++;
-      
+
       for (let ch = 0; ch < output.length; ch++) {
         output[ch].fill(0);
       }
@@ -210,7 +210,7 @@ class SidRendererProcessor extends AudioWorkletProcessor {
 
   private sendTelemetry(): void {
     const avgDriftMs = this.quantumCount > 0 ? this.totalDriftMs / this.quantumCount : 0;
-    
+
     const message: TelemetryMessage = {
       type: 'telemetry',
       underruns: this.underruns,
@@ -246,4 +246,4 @@ class SidRendererProcessor extends AudioWorkletProcessor {
 registerProcessor('sid-renderer', SidRendererProcessor as unknown as new (options?: AudioWorkletNodeOptions) => AudioWorkletProcessor);
 
 // Export for type checking (won't be used at runtime in worklet context)
-export {};
+export { };
