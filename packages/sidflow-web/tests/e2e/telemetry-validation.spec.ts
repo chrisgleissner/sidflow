@@ -37,6 +37,7 @@ interface TelemetryData {
   maxDriftMs: number;
   contextSuspendCount: number;
   contextResumeCount: number;
+  ringBufferCapacityFrames: number;
 }
 
 /**
@@ -132,11 +133,17 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
 
 test.describe('Telemetry Validation', () => {
   test('verifies no underruns during normal playback', async ({ page }) => {
+    page.on('console', (msg) => {
+      console.log('[browser console]', msg.type(), msg.text());
+    });
+
     await setupAndPlayTrack(page);
 
     // Get telemetry
     const telemetry = await getTelemetry(page);
     expect(telemetry).not.toBeNull();
+
+    console.log('Telemetry snapshot (no underruns test):', telemetry);
 
     // Verify no underruns
     expect(telemetry!.underruns).toBe(0);
@@ -201,9 +208,11 @@ test.describe('Telemetry Validation', () => {
     // Buffer should have had some data (minOccupancy > 0)
     expect(telemetry!.minOccupancy).toBeGreaterThan(0);
 
-    // Buffer should not be constantly full (maxOccupancy < capacity)
-    // Capacity is 16384 frames, so maxOccupancy should be less than 90% of that
-    expect(telemetry!.maxOccupancy).toBeLessThan(16384 * 0.9);
+    // Buffer should reach high occupancy (our pre-roll strategy keeps it near full)
+    const capacityFrames = telemetry!.ringBufferCapacityFrames ?? 0;
+    expect(capacityFrames).toBeGreaterThan(0);
+    expect(telemetry!.maxOccupancy).toBeLessThanOrEqual(capacityFrames);
+    expect(telemetry!.maxOccupancy).toBeGreaterThan(capacityFrames * 0.7);
 
     await page.evaluate(() => {
       const player = (window as any).__testPlayer;
@@ -244,7 +253,7 @@ test.describe('Telemetry Validation', () => {
 
     // Verify events were captured
     expect(sink.length).toBeGreaterThan(0);
-    
+
     // Verify event structure
     const firstEvent = sink[0];
     expect(firstEvent).toHaveProperty('type');

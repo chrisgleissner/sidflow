@@ -1,0 +1,2 @@
+# Auto-resolve wasm-build.json conflicts by choosing the newer timestamp
+data/wasm-build.json merge=wasm-build-merge

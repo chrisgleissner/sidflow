@@ -54,13 +54,8 @@ No more random browsing – just tell it what kind of music you want, and it pla
 
 Install the following tools first:
 
-1. **[Bun](https://bun.sh/install)** – JavaScript runtime
-
-    ```bash
-    curl -fsSL https://bun.sh/install | bash
-    ```
-
-1. *(Optional for legacy playback CLIs)* **[sidplayfp](https://github.com/libsidplayfp/sidplayfp)** – native SID player
+1. **Node.js 18+** – required for the tooling helpers.
+2. *(Optional for legacy playback CLIs)* **[sidplayfp](https://github.com/libsidplayfp/sidplayfp)** – native SID player
 
   The classification and training pipelines now render audio through the bundled WASM engine, so `sidplayfp` is only needed until the playback CLIs migrate in later rollout phases.
 
@@ -77,8 +72,13 @@ Install the native player if you still use those CLIs:
 ```bash
 git clone https://github.com/chrisgleissner/sidflow.git
 cd sidflow
-bun install
-bun run build
+npm run build
+```
+
+To fetch a local Bun toolchain plus Playwright browsers for end-to-end tests, run:
+
+```bash
+npm run setup:tests
 ```
 
 Then create `.sidflow.json` in the root directory:
@@ -96,7 +96,7 @@ Then create `.sidflow.json` in the root directory:
 Validate your setup:
 
 ```bash
-bun run validate:config
+npm run validate:config
 ```
 
 ---
@@ -107,7 +107,7 @@ For those who prefer a graphical interface, SID Flow includes a **Next.js + Reac
 
 ```bash
 cd packages/sidflow-web
-bun run dev
+npm run dev
 ```
 
 Open **<http://localhost:3000>** in your browser.
@@ -165,7 +165,7 @@ Trains the ML model using your ratings.
 ### Build Database
 
 ```bash
-bun run build:db
+npm run build:db
 ```
 
 Builds a searchable recommendation database.

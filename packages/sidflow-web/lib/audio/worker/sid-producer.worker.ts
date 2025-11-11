@@ -59,6 +59,9 @@ interface TelemetryMessage {
   minOccupancy: number;
   maxOccupancy: number;
   currentOccupancy: number;
+  renderMaxDurationMs?: number;
+  renderAvgDurationMs?: number;
+  capacityFrames?: number;
 }
 
 interface ErrorMessage {
@@ -84,13 +87,22 @@ class SidProducerWorker {
   private backpressureStalls = 0;
   private minOccupancy = Number.MAX_SAFE_INTEGER;
   private maxOccupancy = 0;
+  private maxRenderDurationMs = 0;
+  private totalRenderDurationMs = 0;
+  private renderChunkCount = 0;
+  private lastChunkTimestamp = 0;
+  private capacityFrames = 0;
 
   private isRunning = false;
   private shouldStop = false;
   private renderLoopPromise: Promise<void> | null = null;
 
-  private readonly PRE_ROLL_FRAMES = 8192;
-  private readonly RENDER_CHUNK_FRAMES = 2048; // Render in 2048-frame chunks
+  private readonly PRE_ROLL_TARGET_RATIO = 0.8;
+  private readonly MIN_PREROLL_FRAMES = 8192;
+  private preRollFrames = this.MIN_PREROLL_FRAMES;
+
+  private renderChunkFrames = 2048; // Render chunk size in frames (aligned to blockSize)
+  private renderCyclesPerChunk = 120_000;
 
   private engineInitPromise: Promise<void> | null = null;
   private engineInitialized = false;
@@ -141,33 +153,27 @@ class SidProducerWorker {
     }
 
     const romSet = this.prepareRomSet(message.roms);
+    const romsToApply = null; // TEMP: disable custom ROMs to isolate load hang
 
-    console.log('[SidProducer] Loading SID...', {
-      size: message.sidBytes.length,
-      song: message.selectedSong,
-      duration: message.durationSeconds,
-      romStatus: romSet
-        ? {
-          kernal: romSet.kernal.length,
-          basic: romSet.basic.length,
-          chargen: romSet.chargen.length,
-        }
-        : 'no-roms',
-    });
-
+    // Loading SID (verbose logging reduced for test clarity)
     await this.engine.setSystemROMs(
       romSet?.kernal ?? null,
       romSet?.basic ?? null,
       romSet?.chargen ?? null
     );
+    // ROM configuration applied
 
     await this.engine.loadSidBuffer(message.sidBytes);
+    console.log('[SidProducer] ✓ Loaded SID buffer into engine');
 
     if (message.selectedSong !== undefined && message.selectedSong > 0) {
       await this.engine.selectSong(message.selectedSong - 1);
+      console.log('[SidProducer] ✓ Selected song', {
+        selectedSong: message.selectedSong,
+      });
     }
 
-    console.log('[SidProducer] ✓ Loaded SID');
+    // SID loaded
 
     this.postMessage({ type: 'loaded' });
   }
@@ -180,7 +186,7 @@ class SidProducerWorker {
     }
 
     if (this.isRunning) {
-      console.warn('[SidProducer] Already running');
+      // Already running
       return;
     }
 
@@ -190,8 +196,11 @@ class SidProducerWorker {
     this.backpressureStalls = 0;
     this.minOccupancy = Number.MAX_SAFE_INTEGER;
     this.maxOccupancy = 0;
+    this.maxRenderDurationMs = 0;
+    this.totalRenderDurationMs = 0;
+    this.renderChunkCount = 0;
 
-    console.log('[SidProducer] Starting render loop...');
+    // Starting render loop
 
     // Pre-roll: fill buffer before signaling ready
     await this.preRoll();
@@ -207,7 +216,7 @@ class SidProducerWorker {
   }
 
   private handleStop(): void {
-    console.log('[SidProducer] Stopping...');
+    // Stopping
     this.shouldStop = true;
     this.isRunning = false;
   }
@@ -217,42 +226,64 @@ class SidProducerWorker {
       return;
     }
 
-    console.log(`[SidProducer] Pre-rolling ${this.PRE_ROLL_FRAMES} frames...`);
+    // Pre-rolling buffer
 
-    let framesToProduce = this.PRE_ROLL_FRAMES;
-    while (framesToProduce > 0 && !this.shouldStop) {
-      const chunkFrames = Math.min(this.RENDER_CHUNK_FRAMES, framesToProduce);
-      const produced = await this.renderChunk(chunkFrames);
-
-      if (produced === 0) {
-        // Engine stopped producing
+    while (!this.shouldStop) {
+      const occupancy = this.producer.getOccupancy();
+      if (occupancy >= this.preRollFrames) {
         break;
       }
 
-      framesToProduce -= produced;
+      const framesNeeded = this.preRollFrames - occupancy;
+      if (framesNeeded < this.blockSize) {
+        break;
+      }
+      const chunkFrames = Math.min(this.renderChunkFrames, framesNeeded);
+      const produced = await this.renderChunk(chunkFrames);
+
+      if (produced === 0) {
+        // Engine paused or target reached; yield briefly before retrying
+        await this.yieldControl();
+      }
     }
 
-    console.log(`[SidProducer] ✓ Pre-rolled ${this.framesProduced} frames`);
+    // Pre-roll complete
+
+    // Reset occupancy metrics now that buffer is primed
+    const finalOccupancy = this.producer.getOccupancy();
+    this.minOccupancy = finalOccupancy;
+    this.maxOccupancy = Math.max(this.maxOccupancy, finalOccupancy);
   }
 
   private async renderLoop(): Promise<void> {
     let telemetryCounter = 0;
-    const TELEMETRY_INTERVAL = 50; // Send telemetry every 50 chunks
+    const telemetryInterval = 50; // Send telemetry every 50 chunks
 
     while (!this.shouldStop) {
-      const produced = await this.renderChunk(this.RENDER_CHUNK_FRAMES);
+      let produced = 0;
 
-      if (produced === 0) {
-        // Engine stopped or backpressure
-        // Sleep briefly to avoid tight loop
-        await new Promise((resolve) => setTimeout(resolve, 10));
+      do {
+        produced = await this.renderChunk(this.renderChunkFrames);
+
+        // Send periodic telemetry after each render attempt
+        telemetryCounter++;
+        if (telemetryCounter >= telemetryInterval) {
+          telemetryCounter = 0;
+          this.sendTelemetry();
+        }
+
+        if (this.shouldStop) {
+          break;
+        }
+      } while (produced > 0);
+
+      if (this.shouldStop) {
+        break;
       }
 
-      // Send periodic telemetry
-      telemetryCounter++;
-      if (telemetryCounter >= TELEMETRY_INTERVAL) {
-        telemetryCounter = 0;
-        this.sendTelemetry();
+      if (produced === 0) {
+        // Engine stopped or buffer at target threshold; yield briefly to avoid a tight loop
+        await this.yieldControl();
       }
     }
 
@@ -262,10 +293,11 @@ class SidProducerWorker {
       framesProduced: this.framesProduced,
     });
 
-    console.log('[SidProducer] ✓ Stopped', {
-      framesProduced: this.framesProduced,
-      backpressureStalls: this.backpressureStalls,
-    });
+    // Stopped
+  }
+
+  private yieldControl(): Promise<void> {
+    return new Promise((resolve) => queueMicrotask(resolve));
   }
 
   private async renderChunk(frames: number): Promise<number> {
@@ -280,10 +312,27 @@ class SidProducerWorker {
     }
 
     // Check available space
+    const currentOccupancy = this.producer.getOccupancy();
+    this.minOccupancy = Math.min(this.minOccupancy, currentOccupancy);
+    if (currentOccupancy === 0) {
+      console.warn('[SidProducer] Occupancy reached zero before producing new audio', {
+        framesProduced: this.framesProduced,
+      });
+    }
+
     const available = this.producer.getAvailableWrite();
     let writableFrames = Math.min(desiredFrames, Math.floor(available / this.blockSize) * this.blockSize);
 
     if (writableFrames === 0) {
+      const highWatermark = this.capacityFrames > 0
+        ? Math.max(this.preRollFrames, this.capacityFrames - Math.max(this.renderChunkFrames, this.blockSize))
+        : this.preRollFrames;
+
+      if (currentOccupancy >= highWatermark) {
+        await this.yieldControl();
+        return 0; // Buffer intentionally topped up; no need to treat as stall
+      }
+
       this.backpressureStalls++;
       if (this.backpressureStalls <= 5 || this.backpressureStalls % 100 === 0) {
         console.warn(
@@ -293,8 +342,26 @@ class SidProducerWorker {
       return 0; // Backpressure: buffer full
     }
 
+    const deficitFrames = this.preRollFrames - currentOccupancy;
+    const minChunk = Math.min(desiredFrames, this.renderChunkFrames);
+    const deficitAligned = Math.floor(Math.max(0, deficitFrames) / this.blockSize) * this.blockSize;
+    const desiredTopUp = Math.max(minChunk, deficitAligned);
+
+    writableFrames = Math.min(writableFrames, desiredTopUp);
+
+    if (writableFrames === 0) {
+      // Nothing writable after alignment – yield so consumer can drain further
+      await this.yieldControl();
+      return 0;
+    }
+
     // Render PCM from WASM engine
-    const pcmInt16 = await this.engine.renderFrames(writableFrames, 40000);
+    const startTime = performance.now();
+    const pcmInt16 = await this.engine.renderFrames(writableFrames, this.renderCyclesPerChunk);
+    const durationMs = performance.now() - startTime;
+    this.maxRenderDurationMs = Math.max(this.maxRenderDurationMs, durationMs);
+    this.totalRenderDurationMs += durationMs;
+    this.renderChunkCount += 1;
 
     if (pcmInt16.length === 0) {
       const errorMessage = JSON.stringify({
@@ -313,6 +380,13 @@ class SidProducerWorker {
     }
 
     const actualFrames = Math.floor(pcmInt16.length / this.channelCount);
+
+    if (actualFrames !== writableFrames) {
+      console.warn('[SidProducer] renderFrames produced fewer frames than requested', {
+        requestedFrames: writableFrames,
+        actualFrames,
+      });
+    }
 
     // Convert Int16 → Float32 interleaved
     const pcmFloat = new Float32Array(pcmInt16.length);
@@ -336,6 +410,29 @@ class SidProducerWorker {
     this.minOccupancy = Math.min(this.minOccupancy, occupancy);
     this.maxOccupancy = Math.max(this.maxOccupancy, occupancy);
 
+    if (occupancy < this.blockSize) {
+      console.warn('[SidProducer] Occupancy dropped below one quantum', {
+        occupancy,
+        framesProduced: this.framesProduced,
+      });
+    }
+
+    const now = performance.now();
+    if (this.lastChunkTimestamp > 0) {
+      const delta = now - this.lastChunkTimestamp;
+      const lowOccupancy = occupancy < this.preRollFrames / 2;
+      const threshold = lowOccupancy ? 10 : 25;
+      // Only log gaps in low-occupancy situations (potential underrun risk)
+      if (delta > threshold && lowOccupancy) {
+        console.warn('[SidProducer] Detected long gap in low-occupancy state', {
+          gapMs: delta,
+          framesWritten: written,
+          occupancy,
+        });
+      }
+    }
+    this.lastChunkTimestamp = now;
+
     return written;
   }
 
@@ -351,6 +448,52 @@ class SidProducerWorker {
       minOccupancy: this.minOccupancy === Number.MAX_SAFE_INTEGER ? 0 : this.minOccupancy,
       maxOccupancy: this.maxOccupancy,
       currentOccupancy: this.producer.getOccupancy(),
+      renderMaxDurationMs: this.maxRenderDurationMs,
+      renderAvgDurationMs: this.renderChunkCount > 0 ? this.totalRenderDurationMs / this.renderChunkCount : 0,
+      capacityFrames: this.capacityFrames,
+    });
+  }
+
+  private configureBufferingStrategy(pointers: SABRingBufferPointers): void {
+    if (!this.producer) {
+      return;
+    }
+
+    const capacityFrames = pointers.capacityFrames;
+    const alignedCapacity = Math.floor(capacityFrames / this.blockSize) * this.blockSize;
+    this.capacityFrames = alignedCapacity;
+
+    const targetPreRoll = Math.floor(
+      Math.max(this.MIN_PREROLL_FRAMES, capacityFrames * this.PRE_ROLL_TARGET_RATIO) / this.blockSize
+    ) * this.blockSize;
+    const maxPreRoll = Math.max(this.blockSize, alignedCapacity - this.blockSize);
+    this.preRollFrames = Math.min(Math.max(this.MIN_PREROLL_FRAMES, targetPreRoll), maxPreRoll);
+
+    const quarterCapacity = Math.max(
+      this.blockSize,
+      Math.floor(alignedCapacity / 4 / this.blockSize) * this.blockSize
+    );
+    const minChunk = this.blockSize * 8;
+    const maxChunk = this.blockSize * 16;
+    const rawChunk = Math.min(Math.max(minChunk, quarterCapacity), maxChunk);
+    const alignedChunk = Math.max(this.blockSize, Math.floor(rawChunk / this.blockSize) * this.blockSize);
+    this.renderChunkFrames = Math.min(this.preRollFrames, alignedChunk);
+
+    if (this.renderChunkFrames < this.blockSize) {
+      this.renderChunkFrames = this.blockSize;
+    }
+
+    const cyclesPerFrameEstimate = 48; // Conservative cycles per frame for SID playback
+    const baselineCycles = 80_000;
+    const computedCycles = this.renderChunkFrames * cyclesPerFrameEstimate;
+    this.renderCyclesPerChunk = Math.max(baselineCycles, computedCycles);
+
+    console.log('[SidProducer] Buffer strategy configured', {
+      capacityFrames: alignedCapacity,
+      preRollFrames: this.preRollFrames,
+      renderChunkFrames: this.renderChunkFrames,
+      renderCyclesPerChunk: this.renderCyclesPerChunk,
+      blockSize: this.blockSize,
     });
   }
 
@@ -368,7 +511,7 @@ class SidProducerWorker {
   }
 
   private async initializeEngine(message: InitMessage): Promise<void> {
-    console.log('[SidProducer] Initializing...', message);
+    // Initializing
 
     this.engineInitialized = false;
     this.engine = null;
@@ -377,6 +520,8 @@ class SidProducerWorker {
     this.producer = new SABRingBufferProducer(message.sabPointers);
     this.channelCount = message.sabPointers.channelCount;
     this.blockSize = message.sabPointers.blockSize;
+
+    this.configureBufferingStrategy(message.sabPointers);
 
     // Initialize WASM engine
     const locateFile = message.wasmLocateFile ?? ((asset: string) => `/wasm/${asset}`);

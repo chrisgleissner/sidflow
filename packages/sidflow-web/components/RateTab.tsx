@@ -172,12 +172,21 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     player.on('loadprogress', handleProgress);
     player.on('error', handleError);
     playerRef.current = player;
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __sidflowPlayer?: SidflowPlayer }).__sidflowPlayer = player;
+    }
 
     return () => {
       pendingLoadAbortRef.current?.abort();
       player.off('loadprogress', handleProgress);
       player.off('error', handleError);
       player.destroy();
+      if (typeof window !== 'undefined') {
+        const globalWindow = window as unknown as { __sidflowPlayer?: SidflowPlayer };
+        if (globalWindow.__sidflowPlayer === player) {
+          delete globalWindow.__sidflowPlayer;
+        }
+      }
       playerRef.current = null;
     };
   }, []);
