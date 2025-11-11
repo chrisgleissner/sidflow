@@ -72,10 +72,10 @@ export class SidAudioEngine {
 
   private async loadPatchedBuffer(patched: Uint8Array): Promise<SidPlayerContext> {
     const ctx = await this.createConfiguredContext();
-    this.applySystemROMs(ctx);
     if (!ctx.loadSidBuffer(patched)) {
       throw new Error(ctx.getLastError());
     }
+    this.applySystemROMs(ctx);
     if (!ctx.reset()) {
       throw new Error(ctx.getLastError());
     }
@@ -109,6 +109,7 @@ export class SidAudioEngine {
       if (!success) {
         throw new Error(ctx.getLastError());
       }
+      console.log('[SidAudioEngine] ROMs applied successfully');
     } catch (error) {
       this.romSupportDisabled = true;
       if (!this.romFailureLogged) {
@@ -489,12 +490,12 @@ export class SidAudioEngine {
     if (!ctx.configure(this.sampleRate, this.stereo)) {
       return;
     }
+    if (!ctx.loadSidBuffer(buffer)) {
+      return;
+    }
     try {
       this.applySystemROMs(ctx);
     } catch {
-      return;
-    }
-    if (!ctx.loadSidBuffer(buffer)) {
       return;
     }
     if (!ctx.reset()) {

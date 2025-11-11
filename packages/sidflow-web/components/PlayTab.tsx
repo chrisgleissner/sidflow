@@ -172,6 +172,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     player.on('error', handleError);
     player.on('statechange', handleState);
     playerRef.current = player;
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __sidflowPlayer?: SidflowPlayer }).__sidflowPlayer = player;
+    }
 
     return () => {
       pendingLoadAbortRef.current?.abort();
@@ -179,6 +182,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       player.off('error', handleError);
       player.off('statechange', handleState);
       player.destroy();
+      if (typeof window !== 'undefined') {
+        const globalWindow = window as unknown as { __sidflowPlayer?: SidflowPlayer };
+        if (globalWindow.__sidflowPlayer === player) {
+          delete globalWindow.__sidflowPlayer;
+        }
+      }
       playerRef.current = null;
     };
   }, []);

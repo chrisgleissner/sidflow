@@ -348,13 +348,16 @@ public:
 
         player.setRoms(kernalPtr, basicPtr, chargenPtr);
 
-        if (!player.reset())
+        if (tune)
         {
-            lastError = player.error();
-            return false;
-        }
+            if (!player.reset())
+            {
+                lastError = player.error();
+                return false;
+            }
 
-        player.initMixer(stereo);
+            player.initMixer(stereo);
+        }
 
         return true;
     }
