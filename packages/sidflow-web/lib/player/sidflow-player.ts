@@ -3,6 +3,7 @@ import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { telemetry } from '@/lib/telemetry';
 import { WorkletPlayer, type WorkletPlayerState, type TelemetryData } from '@/lib/audio/worklet-player';
+import { fetchRomAssets } from '@/lib/audio/fetch-rom-assets';
 
 /**
  * Enable the new AudioWorklet + SharedArrayBuffer pipeline.
@@ -179,6 +180,12 @@ export class SidflowPlayer {
             backpressureStalls: 0,
             minOccupancy: 0,
             maxOccupancy: 0,
+            zeroByteFrames: 0,
+            missedQuanta: 0,
+            avgDriftMs: 0,
+            maxDriftMs: 0,
+            contextSuspendCount: 0,
+            contextResumeCount: 0,
         };
     }
 
@@ -224,6 +231,16 @@ export class SidflowPlayer {
             }
 
             const sidBytes = new Uint8Array(await response.arrayBuffer());
+            this.throwIfAborted(signal);
+
+            const romAssets = await fetchRomAssets(session, signal);
+            this.throwIfAborted(signal);
+
+            await engine.setSystemROMs(
+                romAssets.kernal ?? null,
+                romAssets.basic ?? null,
+                romAssets.chargen ?? null
+            );
             this.throwIfAborted(signal);
 
             await engine.loadSidBuffer(sidBytes);

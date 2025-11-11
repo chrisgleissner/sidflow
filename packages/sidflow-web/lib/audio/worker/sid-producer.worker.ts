@@ -26,6 +26,11 @@ interface LoadMessage {
   sidBytes: Uint8Array;
   selectedSong?: number;
   durationSeconds: number;
+  roms?: {
+    kernal?: Uint8Array | null;
+    basic?: Uint8Array | null;
+    chargen?: Uint8Array | null;
+  };
 }
 
 interface StartMessage {
@@ -87,6 +92,9 @@ class SidProducerWorker {
   private readonly PRE_ROLL_FRAMES = 8192;
   private readonly RENDER_CHUNK_FRAMES = 2048; // Render in 2048-frame chunks
 
+  private engineInitPromise: Promise<void> | null = null;
+  private engineInitialized = false;
+
   async handleMessage(message: WorkerMessage): Promise<void> {
     try {
       switch (message.type) {
@@ -109,39 +117,49 @@ class SidProducerWorker {
   }
 
   private async handleInit(message: InitMessage): Promise<void> {
-    console.log('[SidProducer] Initializing...', message);
+    if (this.engineInitPromise) {
+      console.warn('[SidProducer] Init requested while previous initialization is still running. Waiting for completion.');
+      await this.engineInitPromise;
+      return;
+    }
 
-    this.targetSampleRate = message.targetSampleRate;
-    this.producer = new SABRingBufferProducer(message.sabPointers);
-    this.channelCount = message.sabPointers.channelCount;
-    this.blockSize = message.sabPointers.blockSize;
+    const initPromise = this.initializeEngine(message);
+    this.engineInitPromise = initPromise;
 
-    // Initialize WASM engine
-    const locateFile = message.wasmLocateFile ?? ((asset: string) => `/wasm/${asset}`);
-    const module = await loadLibsidplayfp({ locateFile });
-    this.engine = new SidAudioEngine({
-      module: Promise.resolve(module),
-      sampleRate: this.targetSampleRate,
-      stereo: this.channelCount === 2,
-    });
-
-    console.log('[SidProducer] ✓ Initialized', {
-      sampleRate: this.targetSampleRate,
-      channels: this.channelCount,
-      blockSize: this.blockSize,
-    });
+    try {
+      await initPromise;
+    } finally {
+      this.engineInitPromise = null;
+    }
   }
 
   private async handleLoad(message: LoadMessage): Promise<void> {
+    await this.ensureEngineReady();
+
     if (!this.engine) {
       throw new Error('Engine not initialized');
     }
+
+    const romSet = this.prepareRomSet(message.roms);
 
     console.log('[SidProducer] Loading SID...', {
       size: message.sidBytes.length,
       song: message.selectedSong,
       duration: message.durationSeconds,
+      romStatus: romSet
+        ? {
+          kernal: romSet.kernal.length,
+          basic: romSet.basic.length,
+          chargen: romSet.chargen.length,
+        }
+        : 'no-roms',
     });
+
+    await this.engine.setSystemROMs(
+      romSet?.kernal ?? null,
+      romSet?.basic ?? null,
+      romSet?.chargen ?? null
+    );
 
     await this.engine.loadSidBuffer(message.sidBytes);
 
@@ -155,6 +173,8 @@ class SidProducerWorker {
   }
 
   private async handleStart(): Promise<void> {
+    await this.ensureEngineReady();
+
     if (!this.engine || !this.producer) {
       throw new Error('Not initialized');
     }
@@ -345,6 +365,104 @@ class SidProducerWorker {
     };
     this.postMessage(message);
     console.error('[SidProducer] Error:', error);
+  }
+
+  private async initializeEngine(message: InitMessage): Promise<void> {
+    console.log('[SidProducer] Initializing...', message);
+
+    this.engineInitialized = false;
+    this.engine = null;
+
+    this.targetSampleRate = message.targetSampleRate;
+    this.producer = new SABRingBufferProducer(message.sabPointers);
+    this.channelCount = message.sabPointers.channelCount;
+    this.blockSize = message.sabPointers.blockSize;
+
+    // Initialize WASM engine
+    const locateFile = message.wasmLocateFile ?? ((asset: string) => `/wasm/${asset}`);
+    const module = await loadLibsidplayfp({ locateFile });
+    this.engine = new SidAudioEngine({
+      module: Promise.resolve(module),
+      sampleRate: this.targetSampleRate,
+      stereo: this.channelCount === 2,
+    });
+
+    this.engineInitialized = true;
+
+    console.log('[SidProducer] ✓ Initialized', {
+      sampleRate: this.targetSampleRate,
+      channels: this.channelCount,
+      blockSize: this.blockSize,
+    });
+  }
+
+  private async ensureEngineReady(): Promise<void> {
+    if (this.engineInitPromise) {
+      await this.engineInitPromise;
+    }
+
+    if (!this.engineInitialized || !this.engine || !this.producer) {
+      throw new Error('Engine not initialized');
+    }
+  }
+
+  private prepareRomSet(roms?: {
+    kernal?: Uint8Array | null;
+    basic?: Uint8Array | null;
+    chargen?: Uint8Array | null;
+  }): { kernal: Uint8Array; basic: Uint8Array; chargen: Uint8Array } | null {
+    if (!roms) {
+      return null;
+    }
+
+    const provided = {
+      kernal: roms.kernal ?? null,
+      basic: roms.basic ?? null,
+      chargen: roms.chargen ?? null,
+    } as const;
+
+    const providedKinds = (Object.keys(provided) as Array<keyof typeof provided>).filter(
+      (key) => provided[key] !== null
+    );
+
+    if (providedKinds.length === 0) {
+      return null;
+    }
+
+    const missingKinds = (Object.keys(provided) as Array<keyof typeof provided>).filter(
+      (key) => provided[key] === null
+    );
+
+    if (missingKinds.length > 0) {
+      console.warn(
+        '[SidProducer] Partial ROM configuration detected – skipping custom ROMs',
+        {
+          provided: providedKinds,
+          missing: missingKinds,
+        }
+      );
+      return null;
+    }
+
+    const expectedSizes: Record<keyof typeof provided, number> = {
+      kernal: 8192,
+      basic: 8192,
+      chargen: 4096,
+    };
+
+    for (const key of providedKinds) {
+      const blob = provided[key]!;
+      const expected = expectedSizes[key];
+      if (blob.length !== expected) {
+        throw new Error(`Invalid ${key.toUpperCase()} ROM size: expected ${expected} bytes, received ${blob.length}`);
+      }
+    }
+
+    return {
+      kernal: provided.kernal!,
+      basic: provided.basic!,
+      chargen: provided.chargen!,
+    };
   }
 }
 

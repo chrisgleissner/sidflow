@@ -36,6 +36,7 @@ export interface PreferencesPayload {
     sidBasePath?: string | null;
     kernalRomPath?: string | null;
     basicRomPath?: string | null;
+    chargenRomPath?: string | null;
   };
   sidplayfpConfig: {
     path: string;
@@ -43,6 +44,7 @@ export interface PreferencesPayload {
     contents: string;
     kernalRomPath: string | null;
     basicRomPath: string | null;
+    chargenRomPath: string | null;
   };
 }
 
@@ -108,6 +110,7 @@ export async function updatePreferences(payload: {
   sidBasePath?: string | null;
   kernalRomPath?: string | null;
   basicRomPath?: string | null;
+  chargenRomPath?: string | null;
 }): Promise<ApiResponse<PreferencesPayload>> {
   return apiRequest('/prefs', payload);
 }

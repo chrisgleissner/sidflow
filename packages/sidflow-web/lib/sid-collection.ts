@@ -14,6 +14,7 @@ export interface SidCollectionContext {
   preferenceSource: 'default' | 'custom';
   kernalRomPath?: string | null;
   basicRomPath?: string | null;
+  chargenRomPath?: string | null;
 }
 
 function resolvePath(value: string, repoRoot: string): string {
@@ -43,6 +44,10 @@ export async function resolveSidCollectionContext(): Promise<SidCollectionContex
     prefs.basicRomPath && prefs.basicRomPath.trim().length > 0
       ? resolvePath(prefs.basicRomPath, repoRoot)
       : null;
+  const chargenRomPath =
+    prefs.chargenRomPath && prefs.chargenRomPath.trim().length > 0
+      ? resolvePath(prefs.chargenRomPath, repoRoot)
+      : null;
 
   return {
     config,
@@ -56,6 +61,7 @@ export async function resolveSidCollectionContext(): Promise<SidCollectionContex
       preferencePath && preferencePath.trim().length > 0 ? 'custom' : 'default',
     kernalRomPath,
     basicRomPath,
+    chargenRomPath,
   };
 }
 

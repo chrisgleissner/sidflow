@@ -104,11 +104,13 @@ export async function POST(request: NextRequest) {
     const normalizedSidBasePath = await normalizeDirectory(body?.sidBasePath ?? undefined, 'sidBasePath');
     const normalizedKernalRomPath = await normalizeFile(body?.kernalRomPath ?? undefined, 'kernalRomPath');
     const normalizedBasicRomPath = await normalizeFile(body?.basicRomPath ?? undefined, 'basicRomPath');
+    const normalizedChargenRomPath = await normalizeFile(body?.chargenRomPath ?? undefined, 'chargenRomPath');
 
     if (
       normalizedSidBasePath === undefined &&
       normalizedKernalRomPath === undefined &&
-      normalizedBasicRomPath === undefined
+      normalizedBasicRomPath === undefined &&
+      normalizedChargenRomPath === undefined
     ) {
       throw new Error('No preferences provided');
     }
@@ -123,13 +125,19 @@ export async function POST(request: NextRequest) {
     if (normalizedBasicRomPath !== undefined) {
       preferenceUpdates.basicRomPath = normalizedBasicRomPath;
     }
+    if (normalizedChargenRomPath !== undefined) {
+      preferenceUpdates.chargenRomPath = normalizedChargenRomPath;
+    }
 
     const romOverrides =
-      normalizedKernalRomPath !== undefined || normalizedBasicRomPath !== undefined
+      normalizedKernalRomPath !== undefined ||
+        normalizedBasicRomPath !== undefined ||
+        normalizedChargenRomPath !== undefined
         ? {
-            kernalRomPath: normalizedKernalRomPath ?? null,
-            basicRomPath: normalizedBasicRomPath ?? null,
-          }
+          kernalRomPath: normalizedKernalRomPath ?? null,
+          basicRomPath: normalizedBasicRomPath ?? null,
+          chargenRomPath: normalizedChargenRomPath ?? null,
+        }
         : null;
 
     const updatedPrefs = Object.keys(preferenceUpdates).length

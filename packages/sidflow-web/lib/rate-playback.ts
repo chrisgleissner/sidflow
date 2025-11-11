@@ -12,6 +12,9 @@ export interface PlaybackEnvironment {
   collectionRoot: string;
   musicRoot: string;
   tagsPath: string;
+  kernalRomPath: string | null;
+  basicRomPath: string | null;
+  chargenRomPath: string | null;
 }
 
 export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment> {
@@ -24,6 +27,9 @@ export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment>
     collectionRoot: context.collectionRoot,
     musicRoot: context.collectionRoot,
     tagsPath: context.tagsPath,
+    kernalRomPath: context.kernalRomPath ?? null,
+    basicRomPath: context.basicRomPath ?? null,
+    chargenRomPath: context.chargenRomPath ?? null,
   };
 }
 

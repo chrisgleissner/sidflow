@@ -46,6 +46,11 @@ export async function POST(request: NextRequest) {
       track: payload,
       durationSeconds: payload.durationSeconds,
       selectedSong: payload.selectedSong,
+      romPaths: {
+        kernal: env.kernalRomPath ?? null,
+        basic: env.basicRomPath ?? null,
+        chargen: env.chargenRomPath ?? null,
+      },
     });
 
     const elapsedMs = Date.now() - startTime;

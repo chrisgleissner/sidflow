@@ -23,23 +23,28 @@ describe('sidplayfp-config helpers', () => {
     const snapshot = await updateSidplayfpConfig({
       kernalRomPath: '/roms/kernal',
       basicRomPath: '/roms/basic',
+      chargenRomPath: '/roms/chargen',
     });
 
     expect(snapshot.exists).toBe(true);
     expect(snapshot.kernalRomPath).toBe('/roms/kernal');
     expect(snapshot.basicRomPath).toBe('/roms/basic');
+    expect(snapshot.chargenRomPath).toBe('/roms/chargen');
     expect(snapshot.contents).toContain('Kernal Rom=/roms/kernal');
     expect(snapshot.contents).toContain('Basic Rom=/roms/basic');
+    expect(snapshot.contents).toContain('Chargen Rom=/roms/chargen');
 
     const readBack = await readSidplayfpConfig();
     expect(readBack.kernalRomPath).toBe('/roms/kernal');
     expect(readBack.basicRomPath).toBe('/roms/basic');
+    expect(readBack.chargenRomPath).toBe('/roms/chargen');
   });
 
   test('removes ROM entry when cleared', async () => {
     await updateSidplayfpConfig({
       kernalRomPath: '/roms/kernal',
       basicRomPath: '/roms/basic',
+      chargenRomPath: '/roms/chargen',
     });
 
     const snapshot = await updateSidplayfpConfig({
@@ -48,7 +53,9 @@ describe('sidplayfp-config helpers', () => {
 
     expect(snapshot.kernalRomPath).toBeNull();
     expect(snapshot.basicRomPath).toBe('/roms/basic');
+    expect(snapshot.chargenRomPath).toBe('/roms/chargen');
     expect(snapshot.contents).not.toContain('Kernal Rom=');
     expect(snapshot.contents).toContain('Basic Rom=/roms/basic');
+    expect(snapshot.contents).toContain('Chargen Rom=/roms/chargen');
   });
 });

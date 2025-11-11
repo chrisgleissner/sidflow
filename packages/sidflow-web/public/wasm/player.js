@@ -19,6 +19,11 @@ export class SidAudioEngine {
     cacheToken = 0;
     pendingChunk = null;
     pendingChunkOffset = 0;
+    kernalRom = null;
+    basicRom = null;
+    chargenRom = null;
+    romSupportDisabled = false;
+    romFailureLogged = false;
     constructor(options = {}) {
         const { module: moduleOverride, sampleRate, stereo, cacheSecondsLimit, ...loaderOptions } = options;
         this.sampleRate = sampleRate ?? 44100;
@@ -43,6 +48,7 @@ export class SidAudioEngine {
     }
     async loadPatchedBuffer(patched) {
         const ctx = await this.createConfiguredContext();
+        this.applySystemROMs(ctx);
         if (!ctx.loadSidBuffer(patched)) {
             throw new Error(ctx.getLastError());
         }
@@ -58,6 +64,39 @@ export class SidAudioEngine {
             return new Uint8Array(data);
         }
         return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+    }
+    applySystemROMs(ctx) {
+        if (this.romSupportDisabled) {
+            return;
+        }
+        if (!this.kernalRom && !this.basicRom && !this.chargenRom) {
+            return;
+        }
+        try {
+            const success = ctx.setSystemROMs(this.kernalRom ?? null, this.basicRom ?? null, this.chargenRom ?? null);
+            if (!success) {
+                throw new Error(ctx.getLastError());
+            }
+        }
+        catch (error) {
+            this.romSupportDisabled = true;
+            if (!this.romFailureLogged) {
+                this.romFailureLogged = true;
+                const reason = error instanceof Error ? error.message : String(error);
+                console.warn('[SidAudioEngine] Custom ROM injection failed; falling back to built-in ROMs', {
+                    reason,
+                });
+            }
+            try {
+                ctx.setSystemROMs(null, null, null);
+            }
+            catch (fallbackError) {
+                const reason = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+                console.error('[SidAudioEngine] Failed to reset ROM configuration after custom ROM failure', {
+                    reason,
+                });
+            }
+        }
     }
     patchStartSong(buffer, songIndex) {
         if (buffer.length < 0x12) {
@@ -80,6 +119,47 @@ export class SidAudioEngine {
         await this.loadPatchedBuffer(data);
         this.currentSongIndex = applied;
         return applied;
+    }
+    async setSystemROMs(kernal, basic, chargen) {
+        this.kernalRom = kernal ? this.cloneInput(kernal) : null;
+        this.basicRom = basic ? this.cloneInput(basic) : null;
+        this.chargenRom = chargen ? this.cloneInput(chargen) : null;
+        this.romSupportDisabled = false;
+        this.resetCacheState();
+        this.resetPendingChunk();
+        if (!this.context) {
+            return;
+        }
+        this.romSupportDisabled = false;
+        this.romFailureLogged = false;
+        try {
+            const applied = this.context.setSystemROMs(this.kernalRom ?? null, this.basicRom ?? null, this.chargenRom ?? null);
+            if (!applied) {
+                throw new Error(this.context.getLastError());
+            }
+        }
+        catch (error) {
+            this.romSupportDisabled = true;
+            if (!this.romFailureLogged) {
+                this.romFailureLogged = true;
+                const reason = error instanceof Error ? error.message : String(error);
+                console.warn('[SidAudioEngine] Custom ROM injection failed; falling back to built-in ROMs', {
+                    reason,
+                });
+            }
+            try {
+                this.context.setSystemROMs(null, null, null);
+            }
+            catch (fallbackError) {
+                const reason = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+                console.error('[SidAudioEngine] Failed to reset ROM configuration after custom ROM failure', {
+                    reason,
+                });
+            }
+        }
+        if (this.originalSidBuffer) {
+            await this.reloadCurrentSong();
+        }
     }
     async loadSidBuffer(data) {
         this.originalSidBuffer = this.cloneInput(data);
@@ -324,6 +404,12 @@ export class SidAudioEngine {
         const module = await this.ensureModule();
         const ctx = new module.SidPlayerContext();
         if (!ctx.configure(this.sampleRate, this.stereo)) {
+            return;
+        }
+        try {
+            this.applySystemROMs(ctx);
+        }
+        catch {
             return;
         }
         if (!ctx.loadSidBuffer(buffer)) {

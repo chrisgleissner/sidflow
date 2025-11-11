@@ -6,6 +6,7 @@ const CONFIG_FILENAME = 'sidplayfp.ini';
 const SECTION_NAME = 'SIDPlayfp';
 const KEY_KERNAL = 'Kernal Rom';
 const KEY_BASIC = 'Basic Rom';
+const KEY_CHARGEN = 'Chargen Rom';
 
 export interface SidplayfpConfigSnapshot {
   path: string;
@@ -13,6 +14,7 @@ export interface SidplayfpConfigSnapshot {
   contents: string;
   kernalRomPath: string | null;
   basicRomPath: string | null;
+  chargenRomPath: string | null;
 }
 
 interface ResolveResult {
@@ -74,11 +76,16 @@ async function resolveConfigPath(): Promise<ResolveResult> {
   return { path: fallback, exists: false };
 }
 
-function extractRomPaths(contents: string): { kernalRomPath: string | null; basicRomPath: string | null } {
+function extractRomPaths(contents: string): {
+  kernalRomPath: string | null;
+  basicRomPath: string | null;
+  chargenRomPath: string | null;
+} {
   const lines = contents.split(/\r?\n/);
   let currentSection = '';
   let kernalRomPath: string | null = null;
   let basicRomPath: string | null = null;
+  let chargenRomPath: string | null = null;
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -102,10 +109,12 @@ function extractRomPaths(contents: string): { kernalRomPath: string | null; basi
       kernalRomPath = value.length > 0 ? value : null;
     } else if (key === KEY_BASIC.toLowerCase()) {
       basicRomPath = value.length > 0 ? value : null;
+    } else if (key === KEY_CHARGEN.toLowerCase()) {
+      chargenRomPath = value.length > 0 ? value : null;
     }
   }
 
-  return { kernalRomPath, basicRomPath };
+  return { kernalRomPath, basicRomPath, chargenRomPath };
 }
 
 function ensureTrailingNewline(text: string): string {
@@ -188,12 +197,13 @@ function setIniValue(
 
 function applyRomOverrides(
   contents: string,
-  overrides: { kernalRomPath?: string | null; basicRomPath?: string | null }
+  overrides: { kernalRomPath?: string | null; basicRomPath?: string | null; chargenRomPath?: string | null }
 ): { text: string; changed: boolean } {
   const lines = contents.length > 0 ? contents.split(/\r?\n/) : [];
   let changed = false;
   changed = setIniValue(lines, KEY_KERNAL, overrides.kernalRomPath) || changed;
   changed = setIniValue(lines, KEY_BASIC, overrides.basicRomPath) || changed;
+  changed = setIniValue(lines, KEY_CHARGEN, overrides.chargenRomPath) || changed;
 
   const joined = lines.join('\n').replace(/\s*$/, '');
   const text = ensureTrailingNewline(joined);
@@ -209,6 +219,7 @@ export async function readSidplayfpConfig(): Promise<SidplayfpConfigSnapshot> {
       contents: '',
       kernalRomPath: null,
       basicRomPath: null,
+      chargenRomPath: null,
     };
   }
   const contents = await fs.readFile(configPath, 'utf8');
@@ -222,7 +233,7 @@ export async function readSidplayfpConfig(): Promise<SidplayfpConfigSnapshot> {
 }
 
 export async function updateSidplayfpConfig(
-  overrides: { kernalRomPath?: string | null; basicRomPath?: string | null }
+  overrides: { kernalRomPath?: string | null; basicRomPath?: string | null; chargenRomPath?: string | null }
 ): Promise<SidplayfpConfigSnapshot> {
   const { path: configPath, exists } = await resolveConfigPath();
   const currentContents = exists ? await fs.readFile(configPath, 'utf8') : '';

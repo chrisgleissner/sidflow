@@ -13,6 +13,7 @@ import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createSABRingBuffer, type SABRingBufferPointers } from './shared/sab-ring-buffer';
 import type { WorkerMessage, WorkerResponse } from './worker/sid-producer.worker';
 import { telemetry } from '@/lib/telemetry';
+import { fetchRomAssets, type RomAssetMap } from './fetch-rom-assets';
 
 export type WorkletPlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
@@ -332,8 +333,11 @@ export class WorkletPlayer {
       const sidBytes = new Uint8Array(await response.arrayBuffer());
       this.throwIfAborted(signal);
 
+      const romAssets = await fetchRomAssets(session, signal);
+      this.throwIfAborted(signal);
+
       // Load SID into worker
-      await this.loadSidIntoWorker(sidBytes, session.selectedSong, this.durationSeconds, signal);
+      await this.loadSidIntoWorker(sidBytes, session.selectedSong, this.durationSeconds, romAssets, signal);
       this.throwIfAborted(signal);
 
       this.updateState('ready');
@@ -540,6 +544,7 @@ export class WorkletPlayer {
     sidBytes: Uint8Array,
     selectedSong: number | undefined,
     durationSeconds: number,
+    romAssets: RomAssetMap,
     signal?: AbortSignal
   ): Promise<void> {
     if (!this.worker) {
@@ -553,9 +558,25 @@ export class WorkletPlayer {
       sidBytes,
       selectedSong,
       durationSeconds,
+      roms: {
+        kernal: romAssets.kernal ?? null,
+        basic: romAssets.basic ?? null,
+        chargen: romAssets.chargen ?? null,
+      },
     };
 
-    this.worker!.postMessage(loadMessage);
+    const transferables: Transferable[] = [sidBytes.buffer];
+    if (romAssets.kernal) {
+      transferables.push(romAssets.kernal.buffer);
+    }
+    if (romAssets.basic) {
+      transferables.push(romAssets.basic.buffer);
+    }
+    if (romAssets.chargen) {
+      transferables.push(romAssets.chargen.buffer);
+    }
+
+    this.worker!.postMessage(loadMessage, transferables);
 
     await waitForLoaded;
   }

@@ -188,6 +188,11 @@ export async function POST(request: NextRequest) {
         track: enrichedTrack,
         durationSeconds: enrichedTrack.durationSeconds,
         selectedSong: enrichedTrack.selectedSong,
+        romPaths: {
+          kernal: env.kernalRomPath ?? null,
+          basic: env.basicRomPath ?? null,
+          chargen: env.chargenRomPath ?? null,
+        },
       });
 
     const elapsedMs = Date.now() - startTime;

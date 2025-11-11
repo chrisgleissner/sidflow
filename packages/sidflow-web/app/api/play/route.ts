@@ -34,6 +34,11 @@ export async function POST(request: NextRequest) {
       track,
       durationSeconds: track.durationSeconds,
       selectedSong: track.selectedSong,
+      romPaths: {
+        kernal: env.kernalRomPath ?? null,
+        basic: env.basicRomPath ?? null,
+        chargen: env.chargenRomPath ?? null,
+      },
     });
 
     const response: ApiResponse<{ track: RateTrackInfo; session: typeof session }> = {
