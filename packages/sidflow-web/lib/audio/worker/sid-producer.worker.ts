@@ -394,8 +394,18 @@ class SidProducerWorker {
       pcmFloat[i] = pcmInt16[i] * INT16_SCALE;
     }
 
-    // Write to ring buffer
-    const written = this.producer.write(pcmFloat);
+    // Ensure we only write aligned frames to avoid ring buffer errors
+    const alignedFrames = Math.floor(actualFrames / this.blockSize) * this.blockSize;
+    if (alignedFrames === 0) {
+      // No complete blocks to write, return the actual frames rendered for accounting
+      return actualFrames;
+    }
+
+    const alignedSamples = alignedFrames * this.channelCount;
+    const alignedPcm = pcmFloat.subarray(0, alignedSamples);
+
+    // Write aligned portion to ring buffer
+    const written = this.producer.write(alignedPcm);
     if (written === 0) {
       console.warn('[SidProducer] write() wrote 0 frames unexpectedly', {
         requestedFrames: actualFrames,
