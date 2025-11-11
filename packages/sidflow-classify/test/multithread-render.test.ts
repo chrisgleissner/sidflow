@@ -12,7 +12,7 @@ import {
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-mt-");
 
 async function copySampleSid(target: string): Promise<void> {
-  const sourcePath = new URL("../../libsidplayfp-wasm/test-tone-c4.sid", import.meta.url);
+  const sourcePath = new URL("../../libsidplayfp-wasm/examples/assets/test-tone.sid", import.meta.url);
   const buffer = await readFile(sourcePath);
   await writeFile(target, buffer);
 }
@@ -20,6 +20,8 @@ async function copySampleSid(target: string): Promise<void> {
 describe("defaultRenderWav with worker pool", () => {
   it("renders multiple SID files to WAV using parallel workers", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
+    const previousMaxSeconds = process.env.SIDFLOW_MAX_RENDER_SECONDS;
+    process.env.SIDFLOW_MAX_RENDER_SECONDS = "0.5";
     try {
       const hvscPath = path.join(root, "hvsc");
       const wavCachePath = path.join(root, "wav");
@@ -54,7 +56,7 @@ describe("defaultRenderWav with worker pool", () => {
         wavCachePath,
         tagsPath,
         hvscPath,
-        forceRebuild: true,
+        forceRebuild: false,
         classificationDepth: 1
       };
 
@@ -76,7 +78,7 @@ describe("defaultRenderWav with worker pool", () => {
           .filter((update) => update.phase === "building")
           .map((update) => update.threadId)
       );
-      expect(uniqueThreads.size).toBeGreaterThanOrEqual(2);
+      expect(uniqueThreads.size).toBe(config.threads);
 
       for (const sidFile of sidFiles) {
         const wavFile = resolveWavPath(plan, sidFile);
@@ -84,7 +86,12 @@ describe("defaultRenderWav with worker pool", () => {
         expect(wavStats.size).toBeGreaterThan(44); // WAV header + samples
       }
     } finally {
+      if (previousMaxSeconds === undefined) {
+        delete process.env.SIDFLOW_MAX_RENDER_SECONDS;
+      } else {
+        process.env.SIDFLOW_MAX_RENDER_SECONDS = previousMaxSeconds;
+      }
       await rm(root, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 30_000);
 });

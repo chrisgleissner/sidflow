@@ -44,6 +44,9 @@ export interface TelemetryData {
   maxDriftMs: number;
   contextSuspendCount: number;
   contextResumeCount: number;
+  renderMaxDurationMs: number;
+  renderAvgDurationMs: number;
+  ringBufferCapacityFrames: number;
 }
 
 /**
@@ -87,9 +90,12 @@ export class WorkletPlayer {
     maxDriftMs: 0,
     contextSuspendCount: 0,
     contextResumeCount: 0,
+    renderMaxDurationMs: 0,
+    renderAvgDurationMs: 0,
+    ringBufferCapacityFrames: 0,
   };
 
-  private readonly RING_BUFFER_CAPACITY_FRAMES = 32768; // ~740ms at 44.1kHz
+  private readonly RING_BUFFER_CAPACITY_FRAMES = 262144; // ~5.9s at 44.1kHz
   private readonly CHANNEL_COUNT = 2; // Stereo
 
   private workerLoadedResolve: (() => void) | null = null;
@@ -242,6 +248,12 @@ export class WorkletPlayer {
     this.workerReadyReject?.(error);
   }
 
+  private sendWorkletControl(message: { type: 'start' } | { type: 'stop' }): void {
+    if (this.workletNode) {
+      this.workletNode.port.postMessage(message);
+    }
+  }
+
   /**
    * Enable audio capture for testing/analysis.
    * Must be called before play().
@@ -375,6 +387,7 @@ export class WorkletPlayer {
   }
 
   async play(): Promise<void> {
+    console.log('[WorkletPlayer] play() invoked', { state: this.state });
     if (this.state !== 'ready' && this.state !== 'paused') {
       console.warn('[WorkletPlayer] Cannot play from state:', this.state);
       return;
@@ -390,6 +403,9 @@ export class WorkletPlayer {
     this.worker.postMessage({ type: 'start' } as WorkerMessage);
 
     await readyPromise;
+    console.log('[WorkletPlayer] Worker ready resolved, continuing playback setup');
+
+  this.sendWorkletControl({ type: 'start' });
 
     if (this.captureEnabled && !this.captureDestination) {
       this.captureDestination = this.audioContext.createMediaStreamDestination();
@@ -438,6 +454,8 @@ export class WorkletPlayer {
     if (this.worker) {
       this.worker.postMessage({ type: 'stop' } as WorkerMessage);
     }
+
+    this.sendWorkletControl({ type: 'stop' });
 
     // Stop capture if active
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
@@ -579,6 +597,7 @@ export class WorkletPlayer {
     this.worker!.postMessage(loadMessage, transferables);
 
     await waitForLoaded;
+    console.log('[WorkletPlayer] Worker load resolved');
   }
 
   private handleWorkletMessage(data: unknown): void {
@@ -636,11 +655,23 @@ export class WorkletPlayer {
         this.telemetry.backpressureStalls = data.backpressureStalls;
         this.telemetry.minOccupancy = Math.min(this.telemetry.minOccupancy, data.minOccupancy);
         this.telemetry.maxOccupancy = Math.max(this.telemetry.maxOccupancy, data.maxOccupancy);
+        this.telemetry.renderMaxDurationMs = Math.max(this.telemetry.renderMaxDurationMs, data.renderMaxDurationMs ?? 0);
+        if (data.renderAvgDurationMs !== undefined) {
+          this.telemetry.renderAvgDurationMs = data.renderAvgDurationMs;
+        }
+        if (data.capacityFrames !== undefined) {
+          this.telemetry.ringBufferCapacityFrames = data.capacityFrames;
+        }
         break;
 
       case 'ended':
         console.log('[WorkletPlayer] Worker finished rendering');
-        this.updateState('ended');
+        this.handleWorkerEnded();
+        if (this.state === 'playing') {
+          this.updateState('ended');
+        } else {
+          console.log('[WorkletPlayer] Ignoring worker "ended" event while state =', this.state);
+        }
         break;
 
       case 'error':
@@ -652,6 +683,32 @@ export class WorkletPlayer {
           this.emit('error', error);
         }
         break;
+    }
+  }
+
+  private handleWorkerEnded(): void {
+    this.sendWorkletControl({ type: 'stop' });
+
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+
+    if (this.captureDestination) {
+      try {
+        this.captureDestination.disconnect();
+      } catch {
+        // Ignore disconnect errors during teardown
+      }
+      this.captureDestination = null;
+    }
+
+    if (this.workletNode && this.workletConnected) {
+      try {
+        this.workletNode.disconnect();
+      } catch {
+        // Ignore disconnect errors
+      }
+      this.workletConnected = false;
     }
   }
 
@@ -667,6 +724,7 @@ export class WorkletPlayer {
 
     // Disconnect worklet
     if (this.workletNode) {
+      this.sendWorkletControl({ type: 'stop' });
       try {
         this.workletNode.disconnect();
       } catch {
@@ -710,6 +768,9 @@ export class WorkletPlayer {
       maxDriftMs: 0,
       contextSuspendCount: 0,
       contextResumeCount: 0,
+      renderMaxDurationMs: 0,
+      renderAvgDurationMs: 0,
+      ringBufferCapacityFrames: 0,
     };
   }
 

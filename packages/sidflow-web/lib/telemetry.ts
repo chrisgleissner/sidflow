@@ -46,6 +46,7 @@ export interface AudioMetrics {
 declare global {
     interface Window {
         telemetrySink?: PlaybackTelemetryEvent[];
+        telemetry?: TelemetryService;
     }
 }
 
@@ -62,6 +63,13 @@ class TelemetryService {
         this.mode = ['production', 'test', 'disabled'].includes(envMode) 
             ? envMode as TelemetryMode 
             : 'production';
+
+        if (typeof window !== 'undefined') {
+            window.telemetry = this;
+            if (this.mode === 'test' && !Array.isArray(window.telemetrySink)) {
+                window.telemetrySink = [];
+            }
+        }
     }
 
     /**
@@ -85,7 +93,10 @@ class TelemetryService {
 
         if (this.mode === 'test') {
             // In test mode, push to window.telemetrySink
-            if (typeof window !== 'undefined' && window.telemetrySink) {
+            if (typeof window !== 'undefined') {
+                if (!Array.isArray(window.telemetrySink)) {
+                    window.telemetrySink = [];
+                }
                 window.telemetrySink.push(event);
             }
             return;
@@ -186,12 +197,13 @@ class TelemetryService {
         sidPath?: string;
         metrics: PerformanceMetrics;
     }): void {
+        const metadata: Record<string, unknown> = { ...params.metrics };
         this.track({
             type: 'playback.performance',
             timestamp: Date.now(),
             sessionId: params.sessionId,
             sidPath: params.sidPath,
-            metadata: params.metrics as Record<string, unknown>,
+            metadata,
         });
     }
 
@@ -200,12 +212,13 @@ class TelemetryService {
         sidPath?: string;
         metrics: AudioMetrics;
     }): void {
+        const metadata: Record<string, unknown> = { ...params.metrics };
         this.track({
             type: 'playback.audio.metrics',
             timestamp: Date.now(),
             sessionId: params.sessionId,
             sidPath: params.sidPath,
-            metadata: params.metrics as Record<string, unknown>,
+            metadata,
         });
     }
 }

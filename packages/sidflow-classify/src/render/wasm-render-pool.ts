@@ -1,4 +1,5 @@
 import { Worker } from "node:worker_threads";
+import type { WorkerOptions } from "node:worker_threads";
 import type { RenderWavOptions } from "./wav-renderer.js";
 
 interface WorkerMessage {
@@ -82,7 +83,11 @@ export class WasmRendererPool {
   }
 
   private createWorkerState(): WorkerState {
-    const worker = new Worker(workerScriptUrl, { type: "module" });
+    const worker = new Worker(
+      workerScriptUrl,
+      // Node's WorkerOptions typing omits module support, so cast to preserve runtime behaviour.
+      { type: "module" } as WorkerOptions & { type: "module" }
+    );
     const state: WorkerState = {
       worker,
       busy: false,

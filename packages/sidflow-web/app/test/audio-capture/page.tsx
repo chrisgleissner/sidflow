@@ -22,11 +22,24 @@ export default function AudioCapturePage() {
     // Create a player and expose it globally for tests
     const player = new SidflowPlayer();
     window.__testPlayer = player;
+    (window as unknown as { __sidflowPlayer?: SidflowPlayer }).__sidflowPlayer = player;
     window.__testPlayerReady = true;
     
     // Update state to trigger re-render
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsReady(true);
+
+    return () => {
+      if (window.__testPlayer === player) {
+        delete window.__testPlayer;
+      }
+      const globalWindow = window as unknown as { __sidflowPlayer?: SidflowPlayer };
+      if (globalWindow.__sidflowPlayer === player) {
+        delete globalWindow.__sidflowPlayer;
+      }
+      player.destroy();
+      window.__testPlayerReady = false;
+    };
   }, []);
 
   return (

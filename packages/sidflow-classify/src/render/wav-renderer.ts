@@ -9,11 +9,26 @@ export interface RenderWavOptions {
   sidFile: string;
   wavFile: string;
   songIndex?: number;
+  maxRenderSeconds?: number;
 }
 
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
+
+function resolveMaxRenderSeconds(override?: number): number {
+  if (typeof override === "number" && Number.isFinite(override) && override > 0) {
+    return override;
+  }
+  const envValue = process.env.SIDFLOW_MAX_RENDER_SECONDS;
+  if (envValue) {
+    const parsed = Number.parseFloat(envValue);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return MAX_RENDER_SECONDS;
+}
 
 export async function computeFileHash(filePath: string): Promise<string> {
   const content = await readFile(filePath);
@@ -65,7 +80,8 @@ export async function renderWavWithEngine(
 
   const sampleRate = engine.getSampleRate();
   const channels = engine.getChannels();
-  const maxSamples = Math.floor(sampleRate * channels * MAX_RENDER_SECONDS);
+  const maxSeconds = resolveMaxRenderSeconds(options.maxRenderSeconds);
+  const maxSamples = Math.max(1, Math.floor(sampleRate * channels * maxSeconds));
   const chunks: Int16Array[] = [];
 
   let collectedSamples = 0;

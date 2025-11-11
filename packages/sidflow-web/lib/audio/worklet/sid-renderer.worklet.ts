@@ -25,6 +25,9 @@ interface AudioWorkletProcessor {
   ): boolean;
 }
 
+declare const currentTime: number;
+declare const sampleRate: number;
+
 declare function registerProcessor(
   name: string,
   processorCtor: new (options?: AudioWorkletNodeOptions) => AudioWorkletProcessor
@@ -52,6 +55,10 @@ interface TelemetryMessage {
   maxDriftMs: number;
 }
 
+type ControlMessage =
+  | { type: 'start' }
+  | { type: 'stop' };
+
 class SidRendererProcessor extends AudioWorkletProcessor {
   private consumer: SABRingBufferConsumer;
   private channelCount: number;
@@ -71,6 +78,7 @@ class SidRendererProcessor extends AudioWorkletProcessor {
   private quantumCount = 0;
   private zeroByteCheckCounter = 0;
   private readonly ZERO_BYTE_CHECK_INTERVAL = 8; // Check every 8th quantum to reduce CPU overhead
+  private isRunning = false;
 
   constructor(options: AudioWorkletNodeOptions) {
     super();
@@ -88,6 +96,20 @@ class SidRendererProcessor extends AudioWorkletProcessor {
       blockSize: processorOptions.sabPointers.blockSize,
       capacity: processorOptions.sabPointers.capacityFrames,
     });
+
+    this.port.onmessage = (event: MessageEvent<ControlMessage>) => {
+      const message = event.data;
+      if (!message || typeof message.type !== 'string') {
+        return;
+      }
+
+      if (message.type === 'start') {
+        this.isRunning = true;
+        this.resetTelemetry();
+      } else if (message.type === 'stop') {
+        this.isRunning = false;
+      }
+    };
   }
 
   process(
@@ -97,6 +119,13 @@ class SidRendererProcessor extends AudioWorkletProcessor {
   ): boolean {
     const output = outputs[0];
     if (!output || output.length === 0) {
+      return true;
+    }
+
+    if (!this.isRunning) {
+      for (let ch = 0; ch < output.length; ch++) {
+        output[ch].fill(0);
+      }
       return true;
     }
 
@@ -196,6 +225,21 @@ class SidRendererProcessor extends AudioWorkletProcessor {
     };
 
     this.port.postMessage(message);
+  }
+
+  private resetTelemetry(): void {
+    this.framesConsumed = 0;
+    this.underruns = 0;
+    this.minOccupancy = Number.MAX_SAFE_INTEGER;
+    this.maxOccupancy = 0;
+    this.telemetryCounter = 0;
+    this.zeroByteFrames = 0;
+    this.missedQuanta = 0;
+    this.lastProcessTime = 0;
+    this.totalDriftMs = 0;
+    this.maxDriftMs = 0;
+    this.quantumCount = 0;
+    this.zeroByteCheckCounter = 0;
   }
 }
 

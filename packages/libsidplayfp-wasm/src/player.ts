@@ -72,13 +72,19 @@ export class SidAudioEngine {
 
   private async loadPatchedBuffer(patched: Uint8Array): Promise<SidPlayerContext> {
     const ctx = await this.createConfiguredContext();
-    this.applySystemROMs(ctx);
+    console.log('[SidAudioEngine] loadSidBuffer → ctx.loadSidBuffer start', {
+      bytes: patched.length,
+    });
     if (!ctx.loadSidBuffer(patched)) {
       throw new Error(ctx.getLastError());
     }
+    console.log('[SidAudioEngine] loadSidBuffer → ctx.loadSidBuffer complete');
+    this.applySystemROMs(ctx);
+    console.log('[SidAudioEngine] loadSidBuffer → ctx.setSystemROMs complete');
     if (!ctx.reset()) {
       throw new Error(ctx.getLastError());
     }
+    console.log('[SidAudioEngine] loadSidBuffer → ctx.reset complete');
     this.context = ctx;
     this.configured = true;
     return ctx;
@@ -93,14 +99,21 @@ export class SidAudioEngine {
 
   private applySystemROMs(ctx: SidPlayerContext): void {
     if (this.romSupportDisabled) {
+      console.log('[SidAudioEngine] ROM support disabled, skipping apply');
       return;
     }
 
     if (!this.kernalRom && !this.basicRom && !this.chargenRom) {
+      console.log('[SidAudioEngine] No custom ROMs to apply');
       return;
     }
 
     try {
+      console.log('[SidAudioEngine] Applying ROMs', {
+        kernal: this.kernalRom?.length ?? 0,
+        basic: this.basicRom?.length ?? 0,
+        chargen: this.chargenRom?.length ?? 0,
+      });
       const success = ctx.setSystemROMs(
         this.kernalRom ?? null,
         this.basicRom ?? null,
@@ -109,6 +122,7 @@ export class SidAudioEngine {
       if (!success) {
         throw new Error(ctx.getLastError());
       }
+      console.log('[SidAudioEngine] ROMs applied successfully');
     } catch (error) {
       this.romSupportDisabled = true;
       if (!this.romFailureLogged) {
@@ -489,12 +503,12 @@ export class SidAudioEngine {
     if (!ctx.configure(this.sampleRate, this.stereo)) {
       return;
     }
+    if (!ctx.loadSidBuffer(buffer)) {
+      return;
+    }
     try {
       this.applySystemROMs(ctx);
     } catch {
-      return;
-    }
-    if (!ctx.loadSidBuffer(buffer)) {
       return;
     }
     if (!ctx.reset()) {
