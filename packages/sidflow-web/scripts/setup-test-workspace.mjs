@@ -14,8 +14,8 @@ console.log(`  Target: ${testWorkspace}`);
 
 // Clean existing test-workspace
 if (existsSync(testWorkspace)) {
-  console.log('  Cleaning existing test-workspace...');
-  rmSync(testWorkspace, { recursive: true, force: true });
+    console.log('  Cleaning existing test-workspace...');
+    rmSync(testWorkspace, { recursive: true, force: true });
 }
 
 // Create test-workspace structure
@@ -30,10 +30,10 @@ const sourceMusic = resolve(testData, 'C64Music');
 const targetMusic = resolve(testWorkspace, 'hvsc', 'C64Music');
 
 if (existsSync(sourceMusic)) {
-  console.log('  Copying C64Music files...');
-  cpSync(sourceMusic, targetMusic, { recursive: true });
-  console.log('  ✓ Test workspace ready');
+    console.log('  Copying C64Music files...');
+    cpSync(sourceMusic, targetMusic, { recursive: true });
+    console.log('  ✓ Test workspace ready');
 } else {
-  console.error(`  ✗ Source directory not found: ${sourceMusic}`);
-  process.exit(1);
+    console.error(`  ✗ Source directory not found: ${sourceMusic}`);
+    process.exit(1);
 }
