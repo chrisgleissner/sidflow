@@ -1,12 +1,14 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import { SidAudioEngine } from "../src/player.js";
 
+const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SAMPLE_SID = path.join(
-  process.cwd(),
-  "test-data",
+  CURRENT_DIR,
+  "../../../test-data",
   "C64Music",
   "DEMOS",
   "0-9",
@@ -20,7 +22,7 @@ const SEEK_CHUNK_SAMPLES = Math.floor(SEEK_DURATION * 44_100 * 2);
 
 describe("SidAudioEngine WASM flows", () => {
   let playbackChunk: Int16Array;
-  let tuneInfo: Record<string, unknown> | null;
+  let tuneInfo: any;
   let songSelectResult = 0;
   let followupChunkLen = 0;
   let cachedMid: Int16Array;
