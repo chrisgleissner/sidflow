@@ -107,6 +107,7 @@ function MetaRow({ label, value }: { label: string; value: ReactNode }) {
 }
 
 const DEFAULT_DURATION = 180;
+const PREFETCH_WAIT_MS = 800;
 
 export function RateTab({ onStatusChange }: RateTabProps) {
   const [currentTrack, setCurrentTrack] = useState<RateTrackInfo | null>(null);
@@ -138,6 +139,8 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const pendingLoadAbortRef = useRef<AbortController | null>(null);
   const ratingCacheRef = useRef<Map<string, RatingValues>>(new Map());
   const statusHandlerRef = useRef(onStatusChange);
+  const prefetchedTrackRef = useRef<RateTrackWithSession | null>(null);
+  const prefetchRequestRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     statusHandlerRef.current = onStatusChange;
@@ -160,6 +163,82 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     },
     []
   );
+
+  const ensureNextTrackPrefetched = useCallback((): Promise<void> => {
+    if (prefetchedTrackRef.current) {
+      return Promise.resolve();
+    }
+    if (prefetchRequestRef.current) {
+      return prefetchRequestRef.current;
+    }
+
+    const job = (async () => {
+      try {
+        const response = await requestRandomRateTrack();
+        if (!response.success) {
+          console.warn('[RateTab] Prefetch request failed:', formatApiError(response));
+          return;
+        }
+        prefetchedTrackRef.current = response.data;
+      } catch (error) {
+        console.error('[RateTab] Prefetch request error', error);
+      }
+    })();
+
+    const wrapped = job.finally(() => {
+      prefetchRequestRef.current = null;
+    });
+
+    prefetchRequestRef.current = wrapped.then(
+      () => undefined,
+      () => undefined
+    );
+
+    return prefetchRequestRef.current;
+  }, []);
+
+  const consumePrefetchedTrack = useCallback(async (): Promise<RateTrackWithSession | null> => {
+    if (prefetchedTrackRef.current) {
+      const next = prefetchedTrackRef.current;
+      prefetchedTrackRef.current = null;
+      return next;
+    }
+
+    const inflight = prefetchRequestRef.current;
+    if (!inflight) {
+      return null;
+    }
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      }, PREFETCH_WAIT_MS);
+
+      inflight.finally(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+
+    if (prefetchedTrackRef.current) {
+      const next = prefetchedTrackRef.current;
+      prefetchedTrackRef.current = null;
+      return next;
+    }
+
+    return null;
+  }, []);
+
+  useEffect(() => {
+    void ensureNextTrackPrefetched();
+  }, [ensureNextTrackPrefetched]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -301,6 +380,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const playSidFile = useCallback(
     async (sidPath: string, announcement?: string) => {
       setIsFetchingTrack(true);
+      let loadSucceeded = false;
       try {
         const response = await playManualTrack({ sid_path: sidPath });
         if (!response.success) {
@@ -308,14 +388,18 @@ export function RateTab({ onStatusChange }: RateTabProps) {
           return;
         }
         await loadTrackIntoPlayer(response.data, announcement);
+        loadSucceeded = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         onStatusChange(`Unable to load SID: ${message}`, true);
       } finally {
+        if (loadSucceeded) {
+          void ensureNextTrackPrefetched();
+        }
         setIsFetchingTrack(false);
       }
     },
-    [loadTrackIntoPlayer, onStatusChange]
+    [ensureNextTrackPrefetched, loadTrackIntoPlayer, onStatusChange]
   );
 
   const handlePlayRandom = useCallback(async () => {
@@ -323,29 +407,81 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       return;
     }
     setIsFetchingTrack(true);
-    onStatusChange('Selecting a random SID and preparing playback...');
+
+    if (prefetchedTrackRef.current) {
+      onStatusChange('Loading prefetched SID...');
+    } else if (prefetchRequestRef.current) {
+      onStatusChange('Awaiting prepared SID render...');
+    } else {
+      onStatusChange('Selecting a random SID and preparing playback...');
+    }
 
     try {
-      const response = await requestRandomRateTrack();
-      if (!response.success) {
-        onStatusChange(`Unable to start playback: ${formatApiError(response)}`, true);
+  let payload = await consumePrefetchedTrack();
+  const usedPrefetch = Boolean(payload);
+
+      if (!payload) {
+        const response = await requestRandomRateTrack();
+        if (!response.success) {
+          onStatusChange(`Unable to start playback: ${formatApiError(response)}`, true);
+          return;
+        }
+        payload = response.data;
+      }
+
+      if (!payload) {
+        onStatusChange('No SID available for playback', true);
         return;
       }
 
       pushCurrentTrackToHistory();
-      const payload = response.data;
-      const track = payload.track;
-      await loadTrackIntoPlayer(
-        payload,
-        `Now playing "${track.displayName}" (song ${track.selectedSong}/${track.metadata.songs})`
-      );
+
+      const attemptLoad = async (candidate: RateTrackWithSession) => {
+        const track = candidate.track;
+        await loadTrackIntoPlayer(
+          candidate,
+          `Now playing "${track.displayName}" (song ${track.selectedSong}/${track.metadata.songs})`
+        );
+        void ensureNextTrackPrefetched();
+      };
+
+      try {
+        await attemptLoad(payload);
+        return;
+      } catch (error) {
+        if (!usedPrefetch) {
+          throw error;
+        }
+
+        console.warn('[RateTab] Prefetched SID failed to load, requesting fallback...', error);
+        onStatusChange('Prefetched SID failed to load. Selecting another track...', true);
+
+        const fallbackResponse = await requestRandomRateTrack();
+        if (!fallbackResponse.success) {
+          onStatusChange(`Unable to start playback: ${formatApiError(fallbackResponse)}`, true);
+          return;
+        }
+
+        await attemptLoad(fallbackResponse.data);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       onStatusChange(`Failed to start playback: ${message}`, true);
     } finally {
+      if (!prefetchedTrackRef.current && !prefetchRequestRef.current) {
+        void ensureNextTrackPrefetched();
+      }
       setIsFetchingTrack(false);
     }
-  }, [isAudioLoading, isFetchingTrack, loadTrackIntoPlayer, onStatusChange, pushCurrentTrackToHistory]);
+  }, [
+    consumePrefetchedTrack,
+    ensureNextTrackPrefetched,
+    isAudioLoading,
+    isFetchingTrack,
+    loadTrackIntoPlayer,
+    onStatusChange,
+    pushCurrentTrackToHistory,
+  ]);
 
   const handlePlayPause = useCallback(async () => {
     const player = playerRef.current;

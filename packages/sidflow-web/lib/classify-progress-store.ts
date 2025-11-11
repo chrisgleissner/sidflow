@@ -8,6 +8,7 @@ interface ThreadStatusInternal {
   status: 'idle' | 'working';
   phase?: ThreadPhase;
   updatedAt: number;
+  stale: boolean;
 }
 
 interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread'> {
@@ -28,7 +29,7 @@ function createInitialSnapshot(): ProgressState {
     skippedFiles: 0,
     percentComplete: 0,
     threads: 1,
-    perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now() }],
+  perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false }],
     isActive: false,
     isPaused: false,
     updatedAt: Date.now(),
@@ -56,6 +57,7 @@ function ensureThreads(count: number) {
     status: 'idle',
     phase: undefined,
     updatedAt: Date.now(),
+    stale: false,
   }));
 }
 
@@ -79,14 +81,13 @@ function applyThreadStatusUpdate(update: {
         phase: update.phase ?? thread.phase,
         currentFile: update.status === 'working' ? update.file ?? thread.currentFile : undefined,
         updatedAt: now,
+        stale: false,
       };
     }
-    if (now - thread.updatedAt > STALE_THREAD_MS && thread.status !== 'idle') {
+    if (now - thread.updatedAt > STALE_THREAD_MS && thread.status === 'working' && !thread.stale) {
       return {
         ...thread,
-        status: 'idle',
-        currentFile: undefined,
-        updatedAt: now,
+        stale: true,
       };
     }
     return thread;

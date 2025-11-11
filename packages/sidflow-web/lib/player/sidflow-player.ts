@@ -186,6 +186,9 @@ export class SidflowPlayer {
             maxDriftMs: 0,
             contextSuspendCount: 0,
             contextResumeCount: 0,
+            renderMaxDurationMs: 0,
+            renderAvgDurationMs: 0,
+            ringBufferCapacityFrames: 0,
         };
     }
 

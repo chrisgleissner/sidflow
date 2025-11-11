@@ -9,6 +9,7 @@ import {
 import { createPlaybackSession } from '@/lib/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { ZodError } from 'zod';
+import { scheduleWavPrefetchForTrack } from '@/lib/wav-cache-service';
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -52,6 +53,8 @@ export async function POST(request: NextRequest) {
         chargen: env.chargenRomPath ?? null,
       },
     });
+
+      scheduleWavPrefetchForTrack(payload);
 
     const elapsedMs = Date.now() - startTime;
     console.log('[API] /api/play/manual - Success:', {

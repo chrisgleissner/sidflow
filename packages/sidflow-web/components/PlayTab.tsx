@@ -41,6 +41,7 @@ type MoodPreset = (typeof PRESETS)[number]['value'];
 const HISTORY_LIMIT = 3;
 const UPCOMING_DISPLAY_LIMIT = 3;
 const INITIAL_PLAYLIST_SIZE = 12;
+const PREFETCH_WAIT_MS = 800;
 
 interface InfoProps {
   label: string;
@@ -110,6 +111,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const playerRef = useRef<SidflowPlayer | null>(null);
   const pendingLoadAbortRef = useRef<AbortController | null>(null);
   const playNextHandlerRef = useRef<(() => Promise<void>) | null>(null);
+  const prefetchedSessionsRef = useRef<Map<string, RateTrackWithSession>>(new Map());
+  const prefetchPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
 
   useEffect(() => {
     playedRef.current = playedTracks;
@@ -227,6 +230,104 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     trackPlayedHandlerRef.current(sidPath);
   }, []);
 
+  const prefetchKeyForTrack = useCallback((track: RateTrackInfo | PlaylistTrack | null | undefined): string | null => {
+    if (!track || !track.sidPath) {
+      return null;
+    }
+    const songPart = typeof track.selectedSong === 'number' ? track.selectedSong : 0;
+    return `${track.sidPath}#${songPart}`;
+  }, []);
+
+  const prefetchTrackSession = useCallback(async (track: PlaylistTrack | null | undefined): Promise<void> => {
+    if (!track) {
+      return;
+    }
+    const key = prefetchKeyForTrack(track);
+    if (!key) {
+      return;
+    }
+    if (prefetchedSessionsRef.current.has(key)) {
+      return;
+    }
+    const existing = prefetchPromisesRef.current.get(key);
+    if (existing) {
+      await existing.catch(() => undefined);
+      return;
+    }
+
+    const job = (async () => {
+      try {
+        const response = await playManualTrack({ sid_path: track.sidPath });
+        if (!response.success) {
+          console.warn('[PlayTab] Prefetch failed:', formatApiError(response));
+          return;
+        }
+        prefetchedSessionsRef.current.set(key, response.data);
+      } catch (error) {
+        console.error('[PlayTab] Prefetch error', error);
+      } finally {
+        prefetchPromisesRef.current.delete(key);
+      }
+    })();
+
+    prefetchPromisesRef.current.set(key, job);
+    await job.catch(() => undefined);
+  }, [prefetchKeyForTrack]);
+
+  const waitForPrefetch = useCallback(async (track: PlaylistTrack | null | undefined): Promise<void> => {
+    if (!track) {
+      return;
+    }
+    const key = prefetchKeyForTrack(track);
+    if (!key) {
+      return;
+    }
+    const pending = prefetchPromisesRef.current.get(key);
+    if (!pending) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      }, PREFETCH_WAIT_MS);
+
+      pending.finally(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+  }, [prefetchKeyForTrack]);
+
+  const consumePrefetchedSession = useCallback(async (track: PlaylistTrack | null | undefined): Promise<RateTrackWithSession | null> => {
+    if (!track) {
+      return null;
+    }
+    const key = prefetchKeyForTrack(track);
+    if (!key) {
+      return null;
+    }
+    let payload = prefetchedSessionsRef.current.get(key) ?? null;
+    if (payload) {
+      prefetchedSessionsRef.current.delete(key);
+      return payload;
+    }
+
+    await waitForPrefetch(track);
+    payload = prefetchedSessionsRef.current.get(key) ?? null;
+    if (payload) {
+      prefetchedSessionsRef.current.delete(key);
+    }
+    return payload;
+  }, [prefetchKeyForTrack, waitForPrefetch]);
+
   const assignPlaylistNumber = useCallback((track: RateTrackInfo): PlaylistTrack => {
     const existing = trackNumberMapRef.current.get(track.sidPath);
     if (existing) {
@@ -314,6 +415,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       playlistCounterRef.current = 1;
       playedRef.current = [];
       upcomingRef.current = [];
+    prefetchedSessionsRef.current.clear();
+    prefetchPromisesRef.current.clear();
       setPlayedTracks([]);
       setUpcomingTracks([]);
       currentTrackRef.current = null;
@@ -339,6 +442,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       }
       upcomingRef.current = seeded;
       setUpcomingTracks(seeded.slice(0, UPCOMING_DISPLAY_LIMIT));
+      if (seeded.length > 0) {
+        void prefetchTrackSession(seeded[0]);
+      }
     } catch (error) {
       notifyStatus(
         `Unable to seed playlist: ${error instanceof Error ? error.message : String(error)}`,
@@ -347,7 +453,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [assignPlaylistNumber, notifyStatus, preset]);
+  }, [assignPlaylistNumber, notifyStatus, prefetchTrackSession, preset]);
 
   useEffect(() => {
     void rebuildPlaylist();
@@ -357,20 +463,32 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     async (track: PlaylistTrack, announcement?: string) => {
       setIsLoading(true);
       try {
-        const response = await playManualTrack({ sid_path: track.sidPath });
-        if (!response.success) {
-          notifyStatus(`Unable to load SID: ${formatApiError(response)}`, true);
-          return false;
+        let payload = await consumePrefetchedSession(track);
+
+        if (!payload) {
+          const response = await playManualTrack({ sid_path: track.sidPath });
+          if (!response.success) {
+            notifyStatus(`Unable to load SID: ${formatApiError(response)}`, true);
+            return false;
+          }
+          payload = response.data;
         }
 
-        const payload = response.data;
         const playlistNumber = track.playlistNumber;
-        return await loadTrackIntoPlayer(payload, playlistNumber, announcement);
+        const success = await loadTrackIntoPlayer(payload, playlistNumber, announcement);
+        if (!success) {
+          const key = prefetchKeyForTrack(track);
+          if (key) {
+            prefetchedSessionsRef.current.set(key, payload);
+          }
+          return false;
+        }
+        return true;
       } finally {
         setIsLoading(false);
       }
     },
-    [loadTrackIntoPlayer, notifyStatus]
+    [consumePrefetchedSession, loadTrackIntoPlayer, notifyStatus, prefetchKeyForTrack]
   );
 
   const playNextFromQueue = useCallback(async () => {
@@ -398,11 +516,20 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     } else {
       setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
     }
-  }, [isAudioLoading, isLoading, notifyStatus, startPlayback]);
+    if (upcomingRef.current.length > 0) {
+      void prefetchTrackSession(upcomingRef.current[0]);
+    }
+  }, [isAudioLoading, isLoading, notifyStatus, prefetchTrackSession, startPlayback]);
 
   useEffect(() => {
     playNextHandlerRef.current = playNextFromQueue;
   }, [playNextFromQueue]);
+
+  useEffect(() => {
+    if (upcomingTracks.length > 0) {
+      void prefetchTrackSession(upcomingTracks[0]);
+    }
+  }, [prefetchTrackSession, upcomingTracks]);
 
   const handlePlayPause = useCallback(async () => {
     const player = playerRef.current;
@@ -446,7 +573,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     } else {
       setPlayedTracks(playedRef.current.slice());
     }
-  }, [notifyStatus, startPlayback]);
+    if (upcomingRef.current.length > 0) {
+      void prefetchTrackSession(upcomingRef.current[0]);
+    }
+  }, [notifyStatus, prefetchTrackSession, startPlayback]);
 
   const replayFromHistory = useCallback(
     async (track: PlaylistTrack) => {
@@ -469,8 +599,11 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         playedRef.current = [previousTrack, ...playedRef.current].slice(0, HISTORY_LIMIT);
       }
       setPlayedTracks(playedRef.current.slice());
+      if (upcomingRef.current.length > 0) {
+        void prefetchTrackSession(upcomingRef.current[0]);
+      }
     },
-    [startPlayback]
+    [prefetchTrackSession, startPlayback]
   );
 
   const handleSeek = useCallback(

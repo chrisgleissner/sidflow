@@ -11,6 +11,7 @@ import {
 import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createPlaybackSession } from '@/lib/playback-session';
+import { scheduleWavPrefetchForTrack } from '@/lib/wav-cache-service';
 
 const PRESETS = ['quiet', 'ambient', 'energetic', 'dark', 'bright', 'complex'] as const;
 type MoodPreset = (typeof PRESETS)[number];
@@ -194,6 +195,8 @@ export async function POST(request: NextRequest) {
           chargen: env.chargenRomPath ?? null,
         },
       });
+
+      scheduleWavPrefetchForTrack(enrichedTrack);
 
     const elapsedMs = Date.now() - startTime;
     console.log('[API] /api/play/random - Success:', {

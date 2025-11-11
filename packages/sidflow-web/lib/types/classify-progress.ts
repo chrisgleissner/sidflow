@@ -14,6 +14,7 @@ export interface ClassifyThreadStatus {
   status: 'idle' | 'working';
   phase?: 'analyzing' | 'building' | 'metadata' | 'tagging';
   updatedAt: number;
+  stale?: boolean;
 }
 
 export interface ClassifyProgressSnapshot {

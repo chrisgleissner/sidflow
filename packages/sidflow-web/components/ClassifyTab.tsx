@@ -288,9 +288,11 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
               {threadStatuses.map((thread) => {
                 const phaseLabel = thread.phase ? thread.phase.toUpperCase() : 'IDLE';
                 const isWorking = thread.status === 'working';
+                const isStale = Boolean(thread.stale && isWorking);
                 const headline = isWorking
-                  ? thread.currentFile ?? 'Working...'
+                  ? thread.currentFile ?? (isStale ? 'Working (no recent update)' : 'Working...')
                   : 'Waiting for work';
+                const phaseText = isStale ? `${phaseLabel} (stale)` : phaseLabel;
                 return (
                   <div
                     key={thread.id}
@@ -298,9 +300,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                   >
                     <div className="flex items-center justify-between text-[11px] uppercase tracking-wide">
                       <span className="text-foreground">Thread {thread.id}</span>
-                      <span className={isWorking ? 'text-accent' : 'text-muted-foreground'}>
-                        {phaseLabel}
-                      </span>
+                      <span className={isWorking ? 'text-accent' : 'text-muted-foreground'}>{phaseText}</span>
                     </div>
                     <p
                       className={`mt-1 font-mono ${

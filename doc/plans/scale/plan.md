@@ -1,5 +1,11 @@
 # Client-Side Playback Scale Migration Plan
 
+## Required Reading
+- `doc/developer.md` – developer setup, scripts, testing
+- `doc/technical-reference.md` – architecture, APIs, data flow
+- `doc/plans/scale/c64-rest-api.md` – C64 Ultimate REST control
+- `doc/plans/scale/c64-stream-spec.md` – C64 Ultimate data streams (UDP)
+
 ## Scope & Objectives
 - Deliver client-side SID playback for thousands of concurrent listeners while keeping the server responsible only for orchestration, cached assets, and administration.
 - Maintain the existing HVSC → classify → train pipeline (`@sidflow/fetch`, `@sidflow/classify`, `@sidflow/train`) but ensure heavy computation is limited to admins and background jobs.
@@ -40,6 +46,53 @@
 4. Inline rating writes to local feedback store first; background sync persists aggregated actions to server canonical JSONL via admin-controlled ingestion (see “Feedback & Training”).
 5. Offline mode: if `/api/play` unreachable, surface fallback state (cached queue, ability to play tracks stored locally if downloaded previously).
 
+## Audio Conversion Tools
+
+The Play (Client-side) and Render (Server-side) flows must support conversion of raw PCM samples (from libsidplayfp-wasm, sidplayfp, or a C64 Ultimate) into WAV and MP3 files.
+
+### 1. PCM → WAV (TypeScript)
+- Aggregate raw PCM samples (s16le, 44.1 kHz, stereo).
+- Prepend a 44-byte RIFF/WAVE header.
+- Save as `output.wav`.
+
+### 2A. WAV → MP3 (TypeScript + WASM)
+- **Tool:** `ffmpeg.wasm`
+- **Use:** Portable, works in Node/Bun/browser without system dependencies.
+```ts
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
+const ffmpeg = createFFmpeg({ log: false });
+await ffmpeg.load();
+ffmpeg.FS("writeFile", "in.wav", await fetchFile("output.wav"));
+await ffmpeg.run("-i","in.wav","-b:a","320k","out.mp3");
+const mp3 = ffmpeg.FS("readFile","out.mp3");
+```
+
+### 2B. WAV → MP3 (Native)
+- **Tool:** `ffmpeg` (libmp3lame)
+- **Use:** System-level encoder for environments with native `ffmpeg` installed.
+```bash
+ffmpeg -i output.wav -b:a 320k output.mp3
+```
+
+> **Note:** Steps 2A and 2B are user-selectable options.  
+> Choose 2A for portability (browser or sandboxed runtime), or 2B for native performance and integration with system binaries. MP3 bitrate is standardized at `320k` for MVP.
+
+### Render vs Playback
+
+- Render: the process that produces shareable audio assets (WAV/MP3) from SID inputs. Runs as admin jobs on the server or via hardware capture. Output feeds streaming endpoints and caches.
+- Playback: end-user audio output in real time. Default is browser playback via `libsidplayfp-wasm`. Optional hardware playback via a locally accessible C64 Ultimate device is supported for local runs and enthusiasts.
+
+### Render Matrix
+
+| Location | Time      | Technology                         | Target              | Typical Use                            | Status |
+|----------|-----------|------------------------------------|---------------------|----------------------------------------|--------|
+| Server   | Prepared  | `sidplayfp` CLI (native)           | WAV + MP3 (320k)    | Batch classify conversions to cache     | MVP    |
+| Server   | Prepared  | `libsidplayfp-wasm` (Node/Bun)     | WAV + MP3 (320k)    | Portable render where CLI unavailable   | Future |
+| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + MP3 (320k)    | Hardware-authentic captures             | MVP    |
+| Client   | Real-time | `libsidplayfp-wasm` (browser)      | N/A (playback only) | Default playback                        | MVP    |
+| Client   | Real-time | `sidplayfp` CLI (local bridge)     | N/A (playback only) | Optional local playback                 | Future |
+| Client   | Real-time | C64 Ultimate (direct hardware play)| N/A (device plays)  | Local hardware playback                 | MVP    |
+
 ## Preferences & Persistence
 - Preferences schema expands to include UI theming, ROM selection, playback engine choice, Ultimate 64 device configuration (IP/port, HTTPS flag, optional auth header), local training toggles, iteration budget, and sync cadence. Represent them as a versioned record stored in `localStorage` (for fast bootstrap) with a mirrored IndexedDB object store (for validation history and rollback).
 - ROM selection validation:
@@ -65,6 +118,14 @@
   - UI drives job orchestration service (server module wrapping `@sidflow/fetch.syncHvsc`, `@sidflow/classify`). Commands enqueue jobs with explicit job IDs persisted under `tmp/jobs/*.json`.
   - Provide resumable execution by persisting progress markers (e.g., last processed HVSC delta, classification shard). Re-run uses same job ID to continue.
   - File system writes stay under configured cache roots (HVSC mirror, WAV cache) with `@sidflow/common.ensureDir` to guarantee idempotency.
+- Render engine: When rendering SID files to their WAV and MP3 equivalents, one of the following engines can be selected:
+  - libsidplayfp-wasm (default): WASM version of libsidplayfp. Requires no further tooling.
+  - sidplayfp CLI tool: Requires installation of CLI tool. Faster than libsidplayfp-wasm.
+  - C64 Ultimate Hardware: Most authentic, but requires C64 Ultimate or Ultimate 64 and uses its [REST API](./c64-rest-api.md) and [Audio Stream Protocol](./c64-stream-spec.md):
+    1. Correct hardware SID chip is activated on C64 Ultimate via REST as specified in SID song: `6581` (default if not specified) or `8580R5`
+    1. SID sent to C64 via REST API
+    1. Audio streaming start requested via REST API
+    1. Audio stream UDP packets captured and transformed into WAV and 320 kbps MP3 (ideally concurrently). 
 - Train controls: extend to accept dataset filters, schedule GPU/offline runs, and publish new model versions. Publishing writes new `data/model/` artifacts and updates manifest served to clients.
 - Health & metrics: embed dashboards that call `/api/admin/metrics` for queue depth, job status, cache freshness, and worker health (CPU, memory). Include manual invalidation/backfill triggers (e.g., “Rebuild WAV cache chunk”).
 

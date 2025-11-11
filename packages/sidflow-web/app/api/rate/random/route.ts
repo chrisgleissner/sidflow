@@ -8,6 +8,7 @@ import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createRateTrackInfo } from '@/lib/rate-playback';
 import { createPlaybackSession } from '@/lib/playback-session';
+import { scheduleWavPrefetchForTrack } from '@/lib/wav-cache-service';
 
 type RateTrackPayload = RateTrackInfo;
 
@@ -129,7 +130,9 @@ export async function POST() {
       elapsedMs,
     });
 
-    const response: ApiResponse<{ track: RateTrackPayload; session: typeof session }> = {
+  scheduleWavPrefetchForTrack(track);
+
+  const response: ApiResponse<{ track: RateTrackPayload; session: typeof session }> = {
       success: true,
       data: {
         track,

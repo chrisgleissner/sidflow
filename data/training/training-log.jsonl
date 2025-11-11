@@ -884,3 +884,4 @@
 {"modelVersion":"0.2.0","trainedAt":"2025-11-11T18:33:59.827Z","samples":3,"metrics":{"mae":0.17732757329940796,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
 {"modelVersion":"0.2.0","trainedAt":"2025-11-11T18:33:59.867Z","samples":3,"metrics":{"mae":0.32915857434272766,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
 {"modelVersion":"0.2.0","trainedAt":"2025-11-11T18:33:59.906Z","samples":3,"metrics":{"mae":0.09362437576055527,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-11T22:10:55.883Z","samples":3,"metrics":{"mae":0.11860018968582153,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}

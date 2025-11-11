@@ -97,7 +97,8 @@ class SidProducerWorker {
   private shouldStop = false;
   private renderLoopPromise: Promise<void> | null = null;
 
-  private readonly PRE_ROLL_TARGET_RATIO = 0.8;
+  // Keep roughly 30% of the ring buffer primed (~0.9s with default capacity).
+  private readonly PRE_ROLL_TARGET_RATIO = 0.3;
   private readonly MIN_PREROLL_FRAMES = 8192;
   private preRollFrames = this.MIN_PREROLL_FRAMES;
 

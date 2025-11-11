@@ -95,7 +95,7 @@ export class WorkletPlayer {
     ringBufferCapacityFrames: 0,
   };
 
-  private readonly RING_BUFFER_CAPACITY_FRAMES = 262144; // ~5.9s at 44.1kHz
+  private readonly RING_BUFFER_CAPACITY_FRAMES = 131072; // ~3.0s at 44.1kHz
   private readonly CHANNEL_COUNT = 2; // Stereo
 
   private workerLoadedResolve: (() => void) | null = null;
