@@ -141,11 +141,13 @@ export class WasmRendererPool {
         job.resolve();
       }
     } else if (message.type === "error") {
+      state.exiting = true;
       const error = new Error(message.error?.message ?? "Renderer worker failed");
       if (message.error?.stack) {
         error.stack = message.error.stack;
       }
       this.failJob(state, error);
+      void state.worker.terminate().catch(() => {});
       this.restartWorker(state);
     }
     this.dispatch();
