@@ -89,6 +89,14 @@ function formatHistoryTimestamp(timestamp?: string): string {
   return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+function formatPathTail(path: string, maxLength = 80): string {
+  if (path.length <= maxLength) {
+    return path;
+  }
+  const tailLength = Math.max(10, maxLength - 1);
+  return `…${path.slice(-tailLength)}`;
+}
+
 function MetaRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -888,17 +896,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs md:text-sm border border-border/60 rounded table-fixed">
+              <table className="w-full text-xs md:text-sm border border-border/60 rounded">
                 <thead className="bg-muted/40 text-muted-foreground uppercase tracking-tight text-[10px] md:text-[11px]">
                   <tr>
-                    <th className="px-1.5 py-1 text-left">Play</th>
-                    <th className="px-1.5 py-1 text-left">SID Path</th>
+                    <th className="px-1.5 py-1 text-left whitespace-nowrap">Play</th>
+                    <th className="px-1.5 py-1 text-left w-full">SID Path</th>
                     {RATING_DIMENSIONS.map((dimension) => (
-                      <th key={dimension.key} className="px-1 py-1 text-center">
+                      <th
+                        key={dimension.key}
+                        className="px-1 py-1 text-center whitespace-nowrap text-[11px] md:text-xs"
+                      >
                         {dimension.label}
                       </th>
                     ))}
-                    <th className="px-1.5 py-1 text-right">Updated</th>
+                    <th className="px-1.5 py-1 text-right whitespace-nowrap">Updated</th>
                   </tr>
                 </thead>
                 <tbody className="align-middle text-[11px] md:text-xs">
@@ -930,9 +941,9 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                             {isEntryPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                           </Button>
                         </td>
-                        <td className="px-1.5 py-1 font-mono">
-                          <div className="truncate" title={entry.relativePath}>
-                            {entry.relativePath}
+                        <td className="px-1.5 py-1 font-mono text-foreground whitespace-nowrap">
+                          <div className="overflow-hidden" title={entry.relativePath}>
+                            {formatPathTail(entry.relativePath)}
                           </div>
                         </td>
                         {RATING_DIMENSIONS.map((dimension) => {
@@ -996,7 +1007,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                           };
 
                           return (
-                            <td key={`${entry.id}-${dimension.key}`} className="px-1 py-1 text-center">
+                            <td
+                              key={`${entry.id}-${dimension.key}`}
+                              className="px-1 py-1 text-center whitespace-nowrap"
+                            >
                               <select
                                 value={currentValue}
                                 onChange={handleDropdownChange}
@@ -1012,7 +1026,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                             </td>
                           );
                         })}
-                        <td className="px-1.5 py-1 text-right text-muted-foreground text-[10px] md:text-[11px]">
+                        <td className="px-1.5 py-1 text-right text-muted-foreground text-[10px] md:text-[11px] whitespace-nowrap">
                           {formatHistoryTimestamp(entry.timestamp)}
                         </td>
                       </tr>
