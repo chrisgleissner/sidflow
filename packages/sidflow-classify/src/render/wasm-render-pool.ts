@@ -139,6 +139,10 @@ export class WasmRendererPool {
         state.job = null;
         state.busy = false;
         job.resolve();
+      } else if (!state.exiting && !this.destroyed) {
+        // Received result for unexpected job; reset state
+        state.busy = false;
+        state.job = null;
       }
     } else if (message.type === "error") {
       state.exiting = true;
