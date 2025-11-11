@@ -88,10 +88,34 @@ ffmpeg -i output.wav -b:a 320k output.mp3
 |----------|-----------|------------------------------------|---------------------|----------------------------------------|--------|
 | Server   | Prepared  | `sidplayfp` CLI (native)           | WAV + MP3 (320k)    | Batch classify conversions to cache     | MVP    |
 | Server   | Prepared  | `libsidplayfp-wasm` (Node/Bun)     | WAV + MP3 (320k)    | Portable render where CLI unavailable   | Future |
-| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + MP3 (320k)    | Hardware-authentic captures             | MVP    |
+| Server   | Prepared| C64 Ultimate (REST + UDP capture)  | WAV + MP3 (320k)    | Hardware-authentic captures             | MVP    |
+| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + MP3 (320k)    | Hardware-authentic live streams           | MVP    |
 | Client   | Real-time | `libsidplayfp-wasm` (browser)      | N/A (playback only) | Default playback                        | MVP    |
 | Client   | Real-time | `sidplayfp` CLI (local bridge)     | N/A (playback only) | Optional local playback                 | Future |
 | Client   | Real-time | C64 Ultimate (direct hardware play)| N/A (device plays)  | Local hardware playback                 | MVP    |
+
+### Render Caching and User Preferences
+
+- Cache all server-produced WAV/MP3 files for reuse; avoid redundant rendering.
+- Filenames must encode renderer, chip, and encoding:
+  `$name[-$trackIndex]-$platform-$chip.$encoding`
+  - `$name`: SID base name
+  - `$trackIndex`: 1-based index, omit if single-track
+  - `$platform`: sidplayfp | c64u
+  - `$chip`: 6581 | 8580r5
+  - `$encoding`: wav | mp3
+  - Examples:
+    - foo-2-sidplayfp-6581.wav
+    - foo-c64u-6581.wav
+    - foo-3-c64u-8580r5.mp3
+- Expose available render variants to users.
+- User prefs:
+  - Rendering: (1) HW if available, else SW [default]; (2) HW only
+  - Chipset:
+    1. Use song metadata; if unspecified, default to 6581 [default]
+    2. Use song metadata; if unspecified, default to 8580R5
+    3. Always use 6581
+    4. Always use 8580R5
 
 ## Preferences & Persistence
 - Preferences schema expands to include UI theming, ROM selection, playback engine choice, Ultimate 64 device configuration (IP/port, HTTPS flag, optional auth header), local training toggles, iteration budget, and sync cadence. Represent them as a versioned record stored in `localStorage` (for fast bootstrap) with a mirrored IndexedDB object store (for validation history and rollback).

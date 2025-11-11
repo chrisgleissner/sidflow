@@ -1,7 +1,7 @@
 {
   "modelVersion": "0.2.0",
   "featureSetVersion": "2025-11-03",
-  "createdAt": "2025-11-11T18:33:59.631Z",
+  "createdAt": "2025-11-11T23:10:03.559Z",
   "architecture": {
     "inputDim": 8,
     "hiddenLayers": [
@@ -11,6 +11,6 @@
     "outputDim": 3,
     "activation": "tanh"
   },
-  "trainedAt": "2025-11-11T22:10:55.882Z",
+  "trainedAt": "2025-11-11T23:10:03.812Z",
   "samples": 3
 }

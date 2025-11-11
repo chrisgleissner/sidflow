@@ -1,6 +1,9 @@
-'use server';
+'use strict';
 
-import { defaultRenderWav, needsWavRefresh, planClassification, resolveWavPath, type ClassificationPlan } from '@sidflow/classify';
+import { fileURLToPath } from 'node:url';
+import process from 'node:process';
+import { defaultRenderWav, needsWavRefresh, planClassification, resolveWavPath } from '@sidflow/classify';
+type ClassificationPlan = Awaited<ReturnType<typeof planClassification>>;
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 
 interface WavPrefetchJob {
@@ -11,13 +14,18 @@ interface WavPrefetchJob {
 const inflight = new Map<string, WavPrefetchJob>();
 let planPromise: Promise<ClassificationPlan> | null = null;
 
+const DEFAULT_CONFIG_PATH = fileURLToPath(new URL('../../../.sidflow.json', import.meta.url));
+const CONFIG_PATH = process.env.SIDFLOW_CONFIG_PATH?.trim().length
+  ? process.env.SIDFLOW_CONFIG_PATH
+  : DEFAULT_CONFIG_PATH;
+
 function computeKey(sidPath: string, songIndex?: number): string {
   return `${sidPath}#${songIndex ?? 0}`;
 }
 
 async function getPlan(): Promise<ClassificationPlan> {
   if (!planPromise) {
-    planPromise = planClassification().catch((error: unknown) => {
+    planPromise = planClassification({ configPath: CONFIG_PATH }).catch((error: unknown) => {
       planPromise = null;
       throw error;
     });
@@ -64,7 +72,7 @@ async function executePrefetch(track: RateTrackInfo): Promise<void> {
   return jobPromise;
 }
 
-export function scheduleWavPrefetchForTrack(track: RateTrackInfo | null | undefined): void {
+export async function scheduleWavPrefetchForTrack(track: RateTrackInfo | null | undefined): Promise<void> {
   if (!track || !track.sidPath) {
     return;
   }
