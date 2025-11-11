@@ -17,21 +17,39 @@
 - Extract persona-specific wrappers (e.g., `PublicShell`, `AdminShell`) that inject context (auth, permissions) but render the same tabs.
 - Guard admin-only actions (Fetch/Classify/Train dashboards, telemetry detail charts) behind feature flags derived from an `AdminCapabilityContext` instead of branching inside components, ensuring component code paths remain single-source.
 
+## Playback Facade Architecture
+- Introduce a playback facade (`PlaybackService`) decoupling UI from transport specifics. Concrete adapters:
+  - `WasmPlaybackAdapter` (default) – uses `libsidplayfp-wasm` AudioWorklet pipeline.
+  - `SidplayfpCliAdapter` – shells out to locally-installed `sidplayfp` binary (requires availability check and error messaging).
+  - `StreamingWavAdapter` / `StreamingMp3Adapter` – stream pre-rendered WAV/MP3 from server (cached assets produced during admin classify conversions).
+  - `Ultimate64Adapter` – calls Ultimate 64 REST API to push SID to hardware (configurable IP/hostname + optional auth header/secret).
+- Facade enforces common interface (`load`, `play`, `pause`, `stop`, telemetry hooks) so `PlayTab` and background rating workflows remain agnostic. Adapters registered through dependency injection based on user preference.
+- Adapter selection validated at startup; unsupported modes surface actionable errors and fall back to default when possible.
+
 ## Public Playback Flow (`/`)
 1. User loads `/` → Next.js middleware (`middleware.ts`) enforces COOP/COEP for SharedArrayBuffer (SAB) support.
 2. Preferences bootstrap from `localStorage`/IndexedDB; apply theme (foreground/background/font) via CSS custom properties before first paint to avoid flash.
 3. Play flow:
    - Client requests playlist or single track using existing `PlayRequestSchema`; `/api/play` (Next.js route) validates input, resolves SID path via `@sidflow/common`, and issues `createPlaybackSession` (15 min TTL).
-   - Browser fetches SID bytes and ROM assets via `/api/playback/{id}/sid` and `/api/playback/{id}/rom/*`; Worklet pipeline loads them into `libsidplayfp-wasm` on dedicated Worker → AudioWorklet (see `lib/audio/worklet-player.ts`).
+   - Playback facade selects adapter per preferences:
+     - **WASM**: fetch SID + ROM assets via `/api/playback/{id}/sid` and `/api/playback/{id}/rom/*`, stream into `libsidplayfp-wasm`.
+     - **sidplayfp CLI**: enqueue command invocation via local bridge (Electron/WebView shell). UI warns if binary missing and offers fallback to WASM.
+     - **WAV/MP3 streaming**: request `/api/playback/{id}/{format}` (new endpoints) delivering cached PCM/compressed assets generated via admin classify conversions; leverages browser `<audio>` with MediaSource.
+     - **Ultimate 64**: REST call to configured hardware (`http(s)://<ip>/api/play`) with SID payload; include optional secret header from preferences.
    - Implicit events (`play`, `skip`) log locally immediately (IndexedDB queue) and asynchronously POST to `/api/rate/feedback` batch endpoint when online to avoid blocking playback.
 4. Inline rating writes to local feedback store first; background sync persists aggregated actions to server canonical JSONL via admin-controlled ingestion (see “Feedback & Training”).
 5. Offline mode: if `/api/play` unreachable, surface fallback state (cached queue, ability to play tracks stored locally if downloaded previously).
 
 ## Preferences & Persistence
-- Preferences schema expands to include UI theming, ROM selection, local training toggles, iteration budget, and sync cadence. Represent them as a versioned record stored in `localStorage` (for fast bootstrap) with a mirrored IndexedDB object store (for validation history and rollback).
+- Preferences schema expands to include UI theming, ROM selection, playback engine choice, Ultimate 64 device configuration (IP/port, HTTPS flag, optional auth header), local training toggles, iteration budget, and sync cadence. Represent them as a versioned record stored in `localStorage` (for fast bootstrap) with a mirrored IndexedDB object store (for validation history and rollback).
 - ROM selection validation:
   - Public persona: provide curated ROM bundles hashed server-side. Preference UI lists allowed `(basic, kernal, chargen)` combinations with SHA-256 fingerprints pulled from `/api/prefs/rom-manifest`. Client validates downloaded ROM bytes against manifest before enabling playback.
   - Admin persona: can upload new ROM bundles via `/admin` panel; server-side validation reuses `readSidplayfpConfig` and ensures new files are saved under secured storage (`/workspace/roms`).
+- Playback engine validation:
+  - WASM: always available if browser supports SAB. Detect support and set as default.
+  - `sidplayfp` CLI: run detection routine on first selection; store error state if binary missing/not executable.
+  - Streaming formats: only selectable once server reports asset availability for requested SID (requires classify conversion job completion).
+  - Ultimate 64: verify IP reachability and optional secret header via test endpoint; surface latency warnings.
 - Startup application: on hydrate, `PreferencesProvider` loads persisted preferences, applies CSS variables, primes `WorkletPlayer` with ROM asset URLs, and triggers local training scheduler if enabled.
 
 ## Feedback & Training (Public Persona)
@@ -63,11 +81,13 @@
 
 ## Playback & Asset Delivery
 - Session descriptors served via `/api/play` referencing `createPlaybackSession` with TTL to limit stale access. For scale, serve SID binaries through CDN-backed static route once session validated (issue signed URLs or tokenized headers).
-- Ensure `Cross-Origin-Resource-Policy: same-origin` and HTTP caching (`Cache-Control: private, max-age=30`) remain as in `playback-session.ts`, but front additional CDN caching for static ROM bundles and WASM assets under `/public/wasm`.
-- Implement HLS/AAC fallback:
-  - Admin job optionally pre-generates HLS playlists to `/public/hls/{sidHash}/index.m3u8`.
-  - `/api/play` advertises fallback URLs when available; client chooses based on SAB support (feature detection).
-- Thousands of concurrent users rely on edge caching for static assets and minimal server compute (only session metadata). Rate limit session creation to protect from abuse (e.g., sliding window per IP).
+- Extend playback APIs:
+  - `/api/playback/{id}/sid` (existing) for WASM/Ultimate 64.
+  - `/api/playback/{id}/wav` and `/api/playback/{id}/mp3` streaming endpoints returning ranged responses with long-lived caching headers (assets generated during classify conversions).
+  - `/api/playback/{id}/handoff/ultimate64` to broker hardware dispatch when clients cannot reach device directly (optional).
+- Ensure `Cross-Origin-Resource-Policy: same-origin` and HTTP caching (`Cache-Control: private, max-age=30`) remain as in `playback-session.ts`, but front additional CDN caching for static ROM bundles, WASM assets, and streaming audio.
+- HLS/AAC fallback remains available for browsers lacking SAB; playback facade maps this to streaming adapter internally.
+- Thousands of concurrent users rely on edge caching for static assets and minimal server compute (only session metadata). Rate limit session creation and enforce per-adapter quotas (e.g., `sidplayfp` CLI not available on shared devices by default).
 
 ## Background Jobs & Idempotency
 - Job manager provides CRUD for jobs with `pending | running | completed | failed | paused` statuses stored in durable queue (e.g., SQLite file or JSON manifest).
@@ -106,10 +126,11 @@
 ## Acceptance Criteria
 - **UX & Accessibility:** Public `/` loads play + prefs in <2s on 3G, supports keyboard navigation and ARIA labeling; offline and error banners present; admin UI hides administrative language on `/`.
 - **Component Reuse:** 100% of Play and Preferences UI code shared between personas (verified by component import graph); admin adds features via wrappers only.
+- **Playback Facade:** Playback facade provides uniform telemetry across adapters; switching engines in preferences updates active adapter on next session without reload; unsupported selections fall back gracefully with actionable messaging.
 - **Local Persistence & Training:** Preferences persist between sessions; ROM manifests validated against hashes; local model training runs asynchronously without blocking playback (<5% CPU when active) and sync can be disabled.
 - **Global Model Governance:** Admin can publish new model versions with metadata, clients detect and adopt within configured cadence; local deltas mark stale on new publish.
 - **Background Jobs:** Fetch/Classify/Train jobs resumable, idempotent, and expose progress + logs in admin UI; cache directories remain consistent after interruption.
-- **Scalability:** Load test demonstrates 5k concurrent playback sessions with <5% server CPU (mostly static asset serving), SAB path success rate ≥95%, fallback HLS path functional on Safari/iOS.
+- **Scalability:** Load test demonstrates 5k concurrent playback sessions with <5% server CPU (mostly static asset serving), SAB path success rate ≥95%, streaming adapters sustain expected throughput, fallback HLS path functional on Safari/iOS.
 - **Telemetry & Observability:** Playback, feedback, job metrics visible in admin dashboard; alerts configured for stale caches and high error rates.
 - **Security & Compliance:** `/admin` requires auth, audit log entries for every admin action, preference storage complies with local-only storage (no PII leakage), and public UI surfaces no admin terminology.
 - **Documentation:** Updated references in `doc/technical-reference.md`, `doc/developer.md`, and new admin guide covering job controls, model publishing, recovery steps.
