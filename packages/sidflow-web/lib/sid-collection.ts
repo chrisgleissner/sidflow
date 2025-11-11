@@ -29,6 +29,7 @@ export async function resolveSidCollectionContext(): Promise<SidCollectionContex
   const repoRoot = getRepoRoot();
   const hvscRoot = resolvePath(config.hvscPath, repoRoot);
   const defaultCollectionRoot = path.join(hvscRoot, 'C64Music');
+  
   const prefs = await getWebPreferences();
 
   const preferencePath = prefs.sidBasePath;

@@ -1,0 +1,8 @@
+{
+  "hvscPath": "./test-workspace/hvsc",
+  "wavCachePath": "./test-workspace/wav-cache",
+  "tagsPath": "./test-workspace/tags",
+  "classifiedPath": "./data/classified",
+  "threads": 0,
+  "classificationDepth": 3
+}

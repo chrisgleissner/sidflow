@@ -152,8 +152,8 @@ class SidProducerWorker {
       throw new Error('Engine not initialized');
     }
 
-  const romSet = this.prepareRomSet(message.roms);
-  const romsToApply = null; // TEMP: disable custom ROMs to isolate load hang
+    const romSet = this.prepareRomSet(message.roms);
+    const romsToApply = null; // TEMP: disable custom ROMs to isolate load hang
 
     // Loading SID (verbose logging reduced for test clarity)
     await this.engine.setSystemROMs(
@@ -162,7 +162,7 @@ class SidProducerWorker {
       romSet?.chargen ?? null
     );
     // ROM configuration applied
-    
+
     await this.engine.loadSidBuffer(message.sidBytes);
     console.log('[SidProducer] ✓ Loaded SID buffer into engine');
 
