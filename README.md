@@ -130,59 +130,189 @@ Documentation: [packages/sidflow-web/README.md](packages/sidflow-web/README.md)
 
 If you prefer automation or terminal workflows, use these CLI tools.
 
-### Fetch SIDs
+### Example: Your First Playlist
+
+Let's walk through creating your first mood-based playlist from start to finish.
+
+#### Step 1: Download SID Files
+
+First, download some SID music from the High Voltage SID Collection:
 
 ```bash
 ./scripts/sidflow-fetch
 ```
 
-Downloads and extracts the latest HVSC archive to `workspace/hvsc/`.
+This downloads the latest HVSC archive and extracts it to `workspace/hvsc/`. It takes about 5-10 minutes on first run. The tool is smart – it only downloads what's new on subsequent runs.
 
-### Rate Songs
+#### Step 2: Rate Some Songs (Optional but Recommended)
+
+To help the system learn your taste, rate a few songs manually. This step is optional – you can skip directly to classification if you want.
 
 ```bash
 ./scripts/sidflow-rate
 ```
 
-Play songs, rate them on **energy**, **mood**, and **complexity** (1–5).
+The tool will:
+- Play each unrated song through your speakers
+- Ask you to rate it on energy (e), mood (m), and complexity (c) from 1-5
+- Save your ratings automatically
 
-### Classify Collection
+**Controls:**
+- Type `e4` to rate energy as 4, `m3` for mood 3, etc.
+- Press Enter to save and move to next song
+- Press Q to quit (progress is saved automatically)
+
+Rate at least 10-20 songs for best results. The more you rate, the better the system understands your preferences!
+
+#### Step 3: Classify Your Collection
+
+Now, let the system analyze and classify all your SID files:
 
 ```bash
 ./scripts/sidflow-classify
 ```
 
-Analyzes all SIDs, converts to WAV via the WASM renderer, extracts features, and predicts ratings—no native `sidplayfp` binary required.
+This process:
+1. Converts SID files to WAV format using the bundled WASM renderer (cached for speed)
+2. Extracts audio features (BPM, energy, spectral analysis, etc.)
+3. Predicts ratings for songs you haven't rated manually
+4. Creates organized classification files
 
-### Train Model
+**First run takes time** (maybe 30-60 minutes for full HVSC), but subsequent runs are much faster thanks to caching. The WASM renderer eliminates the need for a native `sidplayfp` binary.
+
+#### Step 4: Train the Model (If You Rated Songs)
+
+If you rated songs in Step 2, train the machine learning model on your ratings:
 
 ```bash
 ./scripts/sidflow-train
 ```
 
-Trains the ML model using your ratings.
+This teaches the system to predict ratings for unrated songs based on what you like. The more feedback you provide, the better it gets!
 
-### Build Database
+#### Step 5: Build the Database
+
+Create a searchable database from your classifications:
 
 ```bash
 npm run build:db
 ```
 
-Builds a searchable recommendation database.
+This creates a vector database that enables fast similarity search and personalized recommendations.
 
-### Play Music
+#### Step 6: Play Music!
 
+Finally, generate and play a playlist based on your mood:
+
+```bash
+# Energetic playlist
+./scripts/sidflow-play --mood energetic
+
+# Quiet and relaxing
+./scripts/sidflow-play --mood quiet
+
+# Dark and atmospheric
+./scripts/sidflow-play --mood dark
+
+# Custom filters: high energy + specific BPM range
+./scripts/sidflow-play --filters "e>=4,bpm=120-140"
+```
+
+**Playback controls:**
+- The playlist streams automatically through `sidplayfp` (or use the web UI for WASM-based playback)
+- Press Ctrl+C to stop
+
+**Export without playing:**
+```bash
+# Export as JSON with metadata
+./scripts/sidflow-play --mood energetic --export playlist.json --export-only
+
+# Export as M3U for other players
+./scripts/sidflow-play --mood quiet --export playlist.m3u --export-format m3u --export-only
+```
+
+That's it! You now have a smart music system that understands your taste. 🎶
+
+---
+
+## Available Mood Presets
+
+Choose from these built-in mood presets when generating playlists:
+
+| Preset | Energy | Mood | Complexity | Best For |
+|--------|--------|------|------------|----------|
+| **quiet** | Low (1) | Calm (2) | Simple (1) | Background music, focusing |
+| **ambient** | Medium (2) | Neutral (3) | Medium (2) | Relaxing, thinking |
+| **energetic** | High (5) | Upbeat (5) | High (4) | Gaming, exercise |
+| **dark** | Medium (3) | Somber (1) | Medium (3) | Atmospheric, moody |
+| **bright** | High (4) | Upbeat (5) | Medium (3) | Happy, positive vibes |
+| **complex** | Medium (3) | Neutral (3) | High (5) | Deep listening, analysis |
+
+Use them like this:
 ```bash
 ./scripts/sidflow-play --mood energetic
-./scripts/sidflow-play --filters "e>=4,m>=3"
+./scripts/sidflow-play --mood quiet
 ```
 
-Playlists stream via `sidplayfp`.  
-Export instead of play:
+Or create your own combinations with custom filters:
+```bash
+# High energy, upbeat mood, any complexity
+./scripts/sidflow-play --filters "e>=4,m>=4"
+
+# Medium complexity, slow tempo
+./scripts/sidflow-play --filters "c=3,bpm=80-110"
+```
+
+---
+
+## Quick Command Reference
+
+Here are the main commands you'll use:
 
 ```bash
+# Download/update SID files
+./scripts/sidflow-fetch
+
+# Rate songs manually
+./scripts/sidflow-rate
+
+# Classify your collection (uses WASM renderer)
+./scripts/sidflow-classify
+
+# Train the ML model
+./scripts/sidflow-train
+
+# Build recommendation database
+npm run build:db
+
+# Play mood-based playlists
+./scripts/sidflow-play --mood energetic
+./scripts/sidflow-play --filters "e>=4,m>=3"
+
+# Export playlists
 ./scripts/sidflow-play --mood quiet --export playlist.json --export-only
+
+# Verify configuration
+npm run validate:config
 ```
+
+---
+
+## Next Steps
+
+- **Try the Web UI** – Run `cd packages/sidflow-web && npm run dev` for a graphical interface
+- **Rate more songs** – Run `./scripts/sidflow-rate` regularly to improve recommendations
+- **Explore filters** – Try different combinations with `--filters` to find exactly what you want
+- **Share your data** – The `workspace/tags/` folder contains your ratings (can be committed to git)
+- **Learn more** – Check out [Technical Reference](doc/technical-reference.md) for advanced usage
+
+---
+
+## Getting Help
+
+- **Issues or bugs?** – [Open an issue on GitHub](https://github.com/chrisgleissner/sidflow/issues)
+- **Questions?** – Check the [Technical Reference](doc/technical-reference.md) or [Developer Guide](doc/developer.md)
+- **Want to contribute?** – See [doc/developer.md](doc/developer.md) for development setup
 
 ---
 
