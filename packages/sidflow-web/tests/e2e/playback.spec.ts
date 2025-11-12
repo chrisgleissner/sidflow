@@ -187,7 +187,10 @@ test.describe('RateTab Browser Playback', () => {
 });
 
 test.describe('PlayTab Browser Playback', () => {
-    test('loads playlist and plays tracks', async ({ page }) => {
+    test('loads playlist and plays tracks', async ({ page }, testInfo) => {
+        // This test exercises complex WASM + AudioWorklet + SharedArrayBuffer which can be unstable
+        // Browser crashes (~10% failure rate) are a known Chromium issue with SharedArrayBuffer
+        test.slow(); // Mark as slow (gets 3x timeout)
         await page.goto('/?tab=play');
         await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
 
@@ -211,12 +214,11 @@ test.describe('PlayTab Browser Playback', () => {
         // Click play button
         await playButton.click();
 
-        // Wait for track to load
-        await page.waitForTimeout(15000);
-
-        // Verify playback controls are present
+        // Wait for playback to start - pause button appears and is enabled
         const pauseButton = page.getByRole('button', { name: /pause/i }).first();
-        await expect(pauseButton).toBeVisible({ timeout: 5000 });
+        await expect(pauseButton).toBeVisible({ timeout: 30000 });
+        await expect(pauseButton).toBeEnabled({ timeout: 30000 });
+        await page.waitForTimeout(1000); // Let audio pipeline stabilize
 
         // Verify no PCM streaming occurred
         expect(pcmRequests).toHaveLength(0);

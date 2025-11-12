@@ -84,9 +84,9 @@ function HomeContent() {
             <Image
               src="/logo-small.png"
               alt="SIDFlow"
-              width={48}
-              height={48}
-              className="w-12 h-12"
+              width={60}
+              height={40}
+              className="w-[60px] h-[40px]"
               priority
             />
             <div className="flex-1">
