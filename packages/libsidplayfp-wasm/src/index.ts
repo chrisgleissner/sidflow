@@ -4,6 +4,14 @@ import createLibsidplayfp, {
     type SidPlayerContextOptions
 } from "../dist/libsidplayfp.js";
 
+const wasmPathOverride = typeof process !== "undefined"
+    ? (process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH ?? process.env.LIBSIDPLAYFP_WASM_PATH)?.trim() || undefined
+    : undefined;
+
+const isServerLikeEnvironment = typeof globalThis === "object"
+    ? typeof (globalThis as { window?: unknown }).window === "undefined"
+    : true;
+
 export interface LoadLibsidplayfpOptions extends SidPlayerContextOptions {
     /**
      * Optional override for locating artifacts when bundlers relocate the WASM binary.
@@ -17,7 +25,12 @@ const artifactBaseUrl = new URL("../dist/", import.meta.url);
 export async function loadLibsidplayfp(
     options: LoadLibsidplayfpOptions = {}
 ): Promise<LibsidplayfpWasmModule> {
-    const locate = options.locateFile ?? ((asset: string) => new URL(asset, artifactBaseUrl).href);
+    const locate = options.locateFile ?? ((asset: string) => {
+        if (isServerLikeEnvironment && wasmPathOverride) {
+            return wasmPathOverride;
+        }
+        return new URL(asset, artifactBaseUrl).href;
+    });
 
     return await createLibsidplayfp({
         ...options,

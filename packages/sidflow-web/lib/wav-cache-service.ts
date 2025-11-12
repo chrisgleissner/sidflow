@@ -1,10 +1,10 @@
 'use strict';
 
-import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { defaultRenderWav, needsWavRefresh, planClassification, resolveWavPath } from '@sidflow/classify';
 type ClassificationPlan = Awaited<ReturnType<typeof planClassification>>;
 import type { RateTrackInfo } from '@/lib/types/rate-track';
+import { resolveFromRepoRoot } from './server-env';
 
 interface WavPrefetchJob {
   promise: Promise<void>;
@@ -14,10 +14,19 @@ interface WavPrefetchJob {
 const inflight = new Map<string, WavPrefetchJob>();
 let planPromise: Promise<ClassificationPlan> | null = null;
 
-const DEFAULT_CONFIG_PATH = fileURLToPath(new URL('../../../.sidflow.json', import.meta.url));
-const CONFIG_PATH = process.env.SIDFLOW_CONFIG_PATH?.trim().length
-  ? process.env.SIDFLOW_CONFIG_PATH
-  : DEFAULT_CONFIG_PATH;
+function resolveConfigPath(): string {
+  const fromExplicit = process.env.SIDFLOW_CONFIG_PATH?.trim();
+  if (fromExplicit && fromExplicit.length > 0) {
+    return resolveFromRepoRoot(fromExplicit);
+  }
+
+  const fromRepoConfig = process.env.SIDFLOW_CONFIG?.trim();
+  if (fromRepoConfig && fromRepoConfig.length > 0) {
+    return resolveFromRepoRoot(fromRepoConfig);
+  }
+
+  return resolveFromRepoRoot('.sidflow.json');
+}
 
 function computeKey(sidPath: string, songIndex?: number): string {
   return `${sidPath}#${songIndex ?? 0}`;
@@ -25,7 +34,16 @@ function computeKey(sidPath: string, songIndex?: number): string {
 
 async function getPlan(): Promise<ClassificationPlan> {
   if (!planPromise) {
-    planPromise = planClassification({ configPath: CONFIG_PATH }).catch((error: unknown) => {
+    planPromise = (async () => {
+      const configPath = resolveConfigPath();
+      const plan = await planClassification({ configPath });
+      return {
+        ...plan,
+        hvscPath: resolveFromRepoRoot(plan.hvscPath),
+        wavCachePath: resolveFromRepoRoot(plan.wavCachePath),
+        tagsPath: resolveFromRepoRoot(plan.tagsPath),
+      } satisfies ClassificationPlan;
+    })().catch((error: unknown) => {
       planPromise = null;
       throw error;
     });
