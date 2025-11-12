@@ -62,4 +62,4 @@ This document captures the deliverables for the client-side playback scale plan 
 ---
 
 ## Follow-Up
-- Phase 2 will extend the preferences schema, playback facade integrations, and local-first experience leveraging the scaffolding captured here.
+- Phase 2 will extend the preferences schema, playback facade integrations, and local-first experience leveraging the scaffolding captured here; see `doc/plans/scale/phase-2-plan.md` for the detailed implementation plan.

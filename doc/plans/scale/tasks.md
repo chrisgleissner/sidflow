@@ -36,22 +36,22 @@ Required reading (skim before starting any phase):
 ## Phase 4 – Admin Background Jobs & Data Governance
 - [ ] Build job orchestration service (queues, manifests, resumable execution) wrapping `sidflow-fetch`, `sidflow-classify`, `sidflow-train`; include unit + integration coverage for restart/idempotency.
 - [ ] Define render-engine orchestration covering `libsidplayfp-wasm`, optional `sidplayfp` CLI, and Ultimate 64 hardware playback: automate CLI availability checks, surface graceful fallbacks, and document the Ultimate 64 REST/workflow using `doc/plans/scale/c64-rest-api.md`.
-- [ ] Capture UDP audio from the Ultimate 64 stream, transform it into WAV/MP3 assets, and publish availability manifests referencing the packet/stream nuances documented in `doc/plans/scale/c64-stream-spec.md`.
+- [ ] Capture UDP audio from the Ultimate 64 stream, transform it into WAV/MP3/FLAC assets, and publish availability manifests referencing the packet/stream nuances documented in `doc/plans/scale/c64-stream-spec.md`.
 - [ ] Design UDP capture pipeline to track packet sequence numbers, reorder out-of-order deliveries, and detect/compensate for missing packets before transcoding to PCM.
 - [ ] Build resiliency around UDP packet loss: time-based buffering and minimal gap handling; log basic packet loss metrics.
 - [ ] Implement the TypeScript PCM→WAV pipeline (44-byte RIFF header + aggregated s16le samples) so render jobs can materialize `output.wav` for downstream encoding.
-- [ ] Provide WAV→MP3 conversion paths: `ffmpeg.wasm` for portable builds and native `ffmpeg`/`libmp3lame` for optimized runners; basic tests for both.
+- [ ] Provide WAV→MP3 and WAV→FLAC conversion paths: `ffmpeg.wasm` for portable builds and native `ffmpeg`/`libmp3lame` for optimized runners; basic tests for both.
 - [ ] Standardize MP3 bitrate at 320k across encoders and configuration; add a smoke test validating target bitrate in produced files.
 - [ ] Expose Render Mode selection (location, time, technology, target) in admin job configuration; validate and reject unsupported combinations per Render Matrix.
 - [ ] Extend admin UI to monitor HVSC sync status, cache coverage, job progress/logs, and expose targeted backfill/invalidation actions.
 - [ ] Publish model versioning workflow: train, evaluate, approve, and atomically expose new manifests/weights with rollback capability.
 - [ ] Ensure canonical data (`data/classified`, `data/feedback`, `data/model`, manifests) update deterministically and append audit trail entries for all admin actions.
-- [ ] Implement classify conversion pipeline to generate and publish streaming WAV/MP3 assets with manifests for availability checks.
+- [ ] Implement classify conversion pipeline to generate and publish streaming WAV/MP3/FLAC assets with manifests for availability checks.
 
 ### Phase 4 – Acceptance Criteria (MVP)
 - Render Engine Orchestration: selecting a render mode from the Render Matrix validates against supported combinations; unsupported selections are rejected with actionable errors.
 - Ultimate 64 capture: UDP pipeline reorders out-of-order packets and fills gaps minimally; basic packet-loss rate is logged; jobs succeed despite ≤1% loss and fail fast above a configurable threshold.
-- PCM→WAV/MP3: WAV files open in standard players; MP3 encodes at 320k (smoke test verifies bitrate/codec); both paths (`ffmpeg.wasm` and native ffmpeg) are exercised in CI on at least one platform each.
+- PCM→WAV/MP3/FLAC: WAV files open in standard players; MP3 encodes at 320k (smoke test verifies bitrate/codec); FLAC is crated successfully and is structurally correct; both paths (`ffmpeg.wasm` and native ffmpeg) are exercised in CI on at least one platform each.
 - Manifests: generated assets are discoverable via availability manifests and are referenced by `/api/playback/{id}/{format}` endpoints.
 - Tests: unit+integration coverage ≥90% for changed packages; E2E covers one end-to-end capture→encode→stream happy path.
 

@@ -5,6 +5,7 @@
 - `doc/technical-reference.md` – architecture, APIs, data flow
 - `doc/plans/scale/c64-rest-api.md` – C64 Ultimate REST control
 - `doc/plans/scale/c64-stream-spec.md` – C64 Ultimate data streams (UDP)
+- `doc/plans/scale/phase-2-plan.md` – Phase 2 implementation blueprint
 
 ## Scope & Objectives
 - Deliver client-side SID playback for thousands of concurrent listeners while keeping the server responsible only for orchestration, cached assets, and administration.
@@ -48,7 +49,7 @@
 
 ## Audio Conversion Tools
 
-The Play (Client-side) and Render (Server-side) flows must support conversion of raw PCM samples (from libsidplayfp-wasm, sidplayfp, or a C64 Ultimate) into WAV and MP3 files.
+The Play (Client-side) and Render (Server-side) flows must support conversion of raw PCM samples (from libsidplayfp-wasm, sidplayfp, or a C64 Ultimate) into WAV, MP3, and FLAC files.
 
 ### 1. PCM → WAV (TypeScript)
 - Aggregate raw PCM samples (s16le, 44.1 kHz, stereo).
@@ -75,21 +76,59 @@ ffmpeg -i output.wav -b:a 320k output.mp3
 ```
 
 > **Note:** Steps 2A and 2B are user-selectable options.  
-> Choose 2A for portability (browser or sandboxed runtime), or 2B for native performance and integration with system binaries. MP3 bitrate is standardized at `320k` for MVP.
+> Choose 2A for portability (browser or sandboxed runtime), or 2B for native performance and integration with system binaries. MP3 bitrate is standardized at `320k` for MVP, but fully configurable.
+
+### 3. WAV → FLAC (TypeScript + WASM)
+- **Tool:** `ffmpeg.wasm`
+- **Use:** Portable, works in Node/Bun/browser without native dependencies.
+```ts
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
+const ffmpeg = createFFmpeg({ log: false });
+await ffmpeg.load();
+ffmpeg.FS("writeFile", "in.wav", await fetchFile("output.wav"));
+await ffmpeg.run("-i", "in.wav", "-compression_level", "5", "out.flac");
+const flac = ffmpeg.FS("readFile", "out.flac");
+```
+
+### 4. WAV → FLAC (Native)
+- **Tool:** `ffmpeg` or `flac` CLI encoder
+- **Use:** System-level encoder for environments with native binaries installed.
+```bash
+ffmpeg -i output.wav -compression_level 5 output.flac
+# or
+flac -5 output.wav -o output.flac
+```
+
+> **FLAC Compression Level 5**  
+> Compression levels range from **0** (fastest, largest files) to **8** (slowest, smallest files).  
+> All levels are **lossless**, meaning the decoded audio is bit-for-bit identical to the original PCM data.  
+> Level **5** is recommended as a balanced default — achieving roughly **50–65%** of the original WAV file size with negligible CPU overhead.  
+>  
+> In perceptual terms, FLAC at any level far exceeds MP3 at 320 kbps in fidelity; the level only affects encoding time and file size, not sound quality.  
+> For configuration parity with MP3, treat the `compression_level` as the FLAC equivalent of MP3’s `bitrate_kbps`.
+
+Example configuration block:
+```yaml
+encoding:
+  mp3:
+    bitrate_kbps: 320
+  flac:
+    compression_level: 5
+```
 
 ### Render vs Playback
 
-- Render: the process that produces shareable audio assets (WAV/MP3) from SID inputs. Runs as admin jobs on the server or via hardware capture. Output feeds streaming endpoints and caches.
-- Playback: end-user audio output in real time. Default is browser playback via `libsidplayfp-wasm`. Optional hardware playback via a locally accessible C64 Ultimate device is supported for local runs and enthusiasts.
+- **Render:** Produces shareable audio assets (WAV/MP3/FLAC) from SID inputs. Runs as admin jobs on the server or via hardware capture. Output feeds streaming endpoints and caches.
+- **Playback:** End-user audio output in real time. Default is browser playback via `libsidplayfp-wasm`. Optional hardware playback via a locally accessible C64 Ultimate device is supported for local runs and enthusiasts.
 
 ### Render Matrix
 
 | Location | Time      | Technology                         | Target              | Typical Use                            | Status |
 |----------|-----------|------------------------------------|---------------------|----------------------------------------|--------|
-| Server   | Prepared  | `sidplayfp` CLI (native)           | WAV + MP3 (320k)    | Batch classify conversions to cache     | MVP    |
-| Server   | Prepared  | `libsidplayfp-wasm` (Node/Bun)     | WAV + MP3 (320k)    | Portable render where CLI unavailable   | Future |
-| Server   | Prepared| C64 Ultimate (REST + UDP capture)  | WAV + MP3 (320k)    | Hardware-authentic captures             | MVP    |
-| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + MP3 (320k)    | Hardware-authentic live streams           | MVP    |
+| Server   | Prepared  | `sidplayfp` CLI (native)           | WAV + MP3 + FLAC    | Batch classify conversions to cache     | MVP    |
+| Server   | Prepared  | `libsidplayfp-wasm` (Node/Bun)     | WAV + MP3 + FLAC    | Portable render where CLI unavailable   | Future |
+| Server   | Prepared  | C64 Ultimate (REST + UDP capture)  | WAV + MP3 + FLAC    | Hardware-authentic captures             | MVP    |
+| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + MP3 + FLAC    | Hardware-authentic live streams         | MVP    |
 | Client   | Real-time | `libsidplayfp-wasm` (browser)      | N/A (playback only) | Default playback                        | MVP    |
 | Client   | Real-time | `sidplayfp` CLI (local bridge)     | N/A (playback only) | Optional local playback                 | Future |
 | Client   | Real-time | C64 Ultimate (direct hardware play)| N/A (device plays)  | Local hardware playback                 | MVP    |
@@ -98,34 +137,41 @@ ffmpeg -i output.wav -b:a 320k output.mp3
 
 - Filenames must encode renderer, chip, and encoding:
   `$name[-$trackIndex]-$platform-$chip.$encoding`
-  - `$name`: SID base name
-  - `$trackIndex`: 1-based index, omit if single-track
-  - `$platform`: sidplayfp | c64u
-  - `$chip`: 6581 | 8580r5
-  - `$encoding`: wav | mp3
+  - `$name`: SID base name  
+  - `$trackIndex`: 1-based index, omit if single-track  
+  - `$platform`: sidplayfp | c64u  
+  - `$chip`: 6581 | 8580r5  
+  - `$encoding`: wav | mp3 | flac  
   - Examples:
-    - foo-2-sidplayfp-6581.wav
-    - foo-c64u-6581.wav
-    - foo-3-c64u-8580r5.mp3
+    - foo-2-sidplayfp-6581.wav  
+    - foo-c64u-6581.flac  
+    - foo-3-c64u-8580r5.mp3  
+
 - Expose available render variants to users.
-- User prefs:
-  - Rendering: (1) HW if available, else SW [default]; (2) HW only
-  - Chipset:
-    1. Use song metadata; if unspecified, default to 6581 [default]
-    2. Use song metadata; if unspecified, default to 8580R5
-    3. Always use 6581
-    4. Always use 8580R5
-- Cache all server-produced audio files (converted from SID) for reuse; avoid redundant rendering.
+
+- **User Preferences**
+  - Rendering:  
+    1. HW if available, else SW [default]  
+    2. HW only  
+  - Chipset:  
+    1. Use song metadata; if unspecified, default to 6581 [default]  
+    2. Use song metadata; if unspecified, default to 8580R5  
+    3. Always use 6581  
+    4. Always use 8580R5  
+
+- **Caching Policy**
+  - Cache all server-produced audio files (converted from SID) for reuse; avoid redundant rendering.
   - Supported cache formats: **WAV**, **FLAC**, and **MP3** — any combination can be enabled.
   - By default, only **MP3** and **FLAC** are cached; **WAV** caching is optional and disabled by default.
   - Disk caching thresholds must be configurable:
-    - Default: stop caching WAV at **70%** total disk usage.
-    - Default: stop caching FLAC at **80%** total disk usage.
-    - Default: stop all caching (including MP3 and FLAC) at **90%** total disk usage.
+    - Stop caching **WAV** at **70%** total disk usage.
+    - Stop caching **FLAC** at **80%** total disk usage.
+    - Stop all caching (including MP3 and FLAC) at **90%** total disk usage.
   - Respect the user-configurable max disk use (default: 90%) and terminate rendering with a clear error message if the threshold is reached.
-  - MP3 bit rate must be configurable (default: **320 kbps**).
+  - MP3 bitrate and FLAC compression level must both be configurable:
+    - MP3 default: **320 kbps**
+    - FLAC default: **compression level 5**
   - Caching decisions are based solely on current disk usage; no usage tracking or eviction logic is required.
-
 
 ## Preferences & Persistence
 - Preferences schema expands to include UI theming, ROM selection, playback engine choice, Ultimate 64 device configuration (IP/port, HTTPS flag, optional auth header), local training toggles, iteration budget, and sync cadence. Represent them as a versioned record stored in `localStorage` (for fast bootstrap) with a mirrored IndexedDB object store (for validation history and rollback).
