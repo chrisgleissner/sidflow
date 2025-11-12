@@ -26,20 +26,16 @@ No more random browsing – just tell it what kind of music you want, and it pla
 
 - Automatically rates songs for energy, mood, and complexity
 - Uses audio analysis and learns from feedback
+- Improves over time based on your ratings
 
 🎵 **Mood-Based Playlists**
 
 - Create playlists like "energetic," "quiet," or "dark"
-- Filter by BPM, energy, and other traits
 
 🎮 **Easy to Use**
 
-- Simple command-line tools and a web UI
-- Stream directly or export playlists
-
-📊 **Learning System**
-
-- Improves over time based on your ratings
+- Simple web UI
+- Command-line tools for scripting
 
 🔄 **Reproducible**
 
@@ -131,7 +127,7 @@ The `.sidflow.json` file contains details about the HVSC download folder and mor
 
 ## Developer Documentation
 
-- **[Technical Reference](doc/technical-reference.md)** – architecture, CLI flags, APIs  
+- **[Technical Reference](doc/technical-reference.md)** – architecture, CLI tools, APIs  
 - **[Developer Guide](doc/developer.md)** – setup, testing, contributions  
 - **[Performance Metrics](doc/performance-metrics.md)** – benchmarks  
 - **[Artifact Governance](doc/artifact-governance.md)** – data management
