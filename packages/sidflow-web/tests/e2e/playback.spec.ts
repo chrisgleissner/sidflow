@@ -180,8 +180,11 @@ test.describe('PlayTab Browser Playback', () => {
         await page.getByRole('combobox').first().click();
         await page.getByRole('option', { name: 'Energetic' }).click();
 
-        // Click play button
+        // Wait for playlist to populate - button text changes from "PLAYLIST EMPTY" to "PLAY NEXT TRACK"
         const playButton = page.getByRole('button', { name: /play next track/i });
+        await expect(playButton).toBeEnabled({ timeout: 30000 });
+
+        // Click play button
         await playButton.click();
 
         // Wait for track to load
