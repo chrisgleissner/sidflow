@@ -15,6 +15,7 @@ export interface ClassifyThreadStatus {
   phase?: 'analyzing' | 'building' | 'metadata' | 'tagging';
   updatedAt: number;
   stale?: boolean;
+  phaseStartedAt?: number;
 }
 
 export interface ClassifyProgressSnapshot {

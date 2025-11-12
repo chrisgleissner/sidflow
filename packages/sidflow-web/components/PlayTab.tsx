@@ -427,8 +427,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       setPosition(0);
       setDuration(180);
 
+      // Load first 2 tracks quickly to enable Play button
       const seeded: PlaylistTrack[] = [];
-      for (let index = 0; index < INITIAL_PLAYLIST_SIZE; index += 1) {
+      for (let index = 0; index < Math.min(2, INITIAL_PLAYLIST_SIZE); index += 1) {
         const response = await requestRandomPlayTrack(preset, { preview: true });
         if (!response.success) {
           notifyStatus(`Unable to seed playlist: ${formatApiError(response)}`, true);
@@ -444,6 +445,21 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       setUpcomingTracks(seeded.slice(0, UPCOMING_DISPLAY_LIMIT));
       if (seeded.length > 0) {
         void prefetchTrackSession(seeded[0]);
+      }
+      
+      // Load remaining tracks in background
+      if (seeded.length > 0) {
+        void (async () => {
+          for (let index = seeded.length; index < INITIAL_PLAYLIST_SIZE; index += 1) {
+            const response = await requestRandomPlayTrack(preset, { preview: true });
+            if (!response.success) {
+              break;
+            }
+            const numbered = assignPlaylistNumber(response.data.track);
+            upcomingRef.current.push(numbered);
+            setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
+          }
+        })();
       }
     } catch (error) {
       notifyStatus(

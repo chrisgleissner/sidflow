@@ -34,14 +34,20 @@ export class WasmRendererPool {
     if (!Number.isInteger(size) || size <= 0) {
       throw new Error(`Renderer pool size must be a positive integer (received ${size})`);
     }
+    console.error(`[DEBUG] WasmRendererPool: Creating ${size} workers`);
     for (let index = 0; index < size; index += 1) {
       this.workers.push(this.createWorkerState());
     }
+    console.error(`[DEBUG] WasmRendererPool: ${this.workers.length} workers created`);
   }
 
   async render(options: RenderWavOptions): Promise<void> {
     if (this.destroyed) {
       throw new Error("Renderer pool has been destroyed");
+    }
+    const jobId = this.nextJobId;
+    if (jobId <= 3) {
+      console.error(`[DEBUG] WasmRendererPool.render: Queueing job ${jobId} for ${options.wavFile}`);
     }
     return await new Promise<void>((resolve, reject) => {
       const job: Job = {
@@ -100,6 +106,7 @@ export class WasmRendererPool {
     });
 
     worker.on("error", (error) => {
+      console.error(`[DEBUG] Worker error:`, error);
       if (state.exiting || this.destroyed) {
         return;
       }
@@ -110,6 +117,7 @@ export class WasmRendererPool {
     });
 
     worker.on("exit", (code) => {
+      console.error(`[DEBUG] Worker exited with code: ${code}`);
       if (state.exiting || this.destroyed) {
         return;
       }
@@ -141,11 +149,15 @@ export class WasmRendererPool {
     if (message.type === "result") {
       if (state.job && state.job.id === message.jobId) {
         const job = state.job;
+        if (job.id <= 3) {
+          console.error(`[DEBUG] Worker completed job ${job.id}`);
+        }
         state.job = null;
         state.busy = false;
         job.resolve();
       } else if (!state.exiting && !this.destroyed) {
         // Received result for unexpected job; reset state
+        console.error(`[DEBUG] Worker received result for unexpected job ${message.jobId}`);
         state.busy = false;
         state.job = null;
       }
@@ -178,6 +190,7 @@ export class WasmRendererPool {
       return;
     }
 
+    let dispatched = 0;
     for (const state of this.workers) {
       if (state.busy || state.exiting) {
         continue;
@@ -189,6 +202,10 @@ export class WasmRendererPool {
       state.busy = true;
       state.job = job;
       state.worker.postMessage({ type: "render", jobId: job.id, options: job.options });
+      dispatched++;
+    }
+    if (dispatched > 0 && this.queue.length > 0) {
+      console.error(`[DEBUG] Dispatched ${dispatched} jobs, ${this.queue.length} jobs still in queue`);
     }
   }
 }

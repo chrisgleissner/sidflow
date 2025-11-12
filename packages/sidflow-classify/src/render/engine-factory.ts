@@ -3,7 +3,6 @@ import loadLibsidplayfp, {
   type LibsidplayfpWasmModule
 } from "@sidflow/libsidplayfp-wasm";
 
-let wasmModulePromise: Promise<LibsidplayfpWasmModule> | null = null;
 let engineFactoryOverride: (() => Promise<SidAudioEngine>) | null = null;
 
 export function setEngineFactoryOverride(
@@ -13,10 +12,9 @@ export function setEngineFactoryOverride(
 }
 
 export async function getWasmModule(): Promise<LibsidplayfpWasmModule> {
-  if (!wasmModulePromise) {
-    wasmModulePromise = loadLibsidplayfp();
-  }
-  return wasmModulePromise;
+  // NEVER cache - always load a fresh WASM module to ensure complete isolation
+  const module = await loadLibsidplayfp();
+  return module;
 }
 
 export async function createEngine(): Promise<SidAudioEngine> {
@@ -24,5 +22,13 @@ export async function createEngine(): Promise<SidAudioEngine> {
     return await engineFactoryOverride();
   }
   const module = await getWasmModule();
-  return new SidAudioEngine({ module: Promise.resolve(module) });
+  
+  // Create engine with explicit configuration and fresh module
+  const engine = new SidAudioEngine({ 
+    module: Promise.resolve(module),
+    sampleRate: 44100,
+    stereo: true
+  });
+  
+  return engine;
 }

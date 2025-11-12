@@ -87,13 +87,29 @@ bun run dev
 
 Open **<http://localhost:3000>** in your browser.
 
-![r8ate panel](./doc/web-screenshots/04-rate-playback.png)
+### Rate
 
-### Features
+Play and rate songs based on personal preference. 
+
+You listen to a song and manually rate it based on its energy, complexity, mood, and personal preference.
+
+![rate panel](./doc/web-screenshots/04-rate-playback.png)
+
+### Classify
+
+Classify songs based on objective similarity. 
+
+This involves converting all tracks of each SID to a WAV file and then automatically analyzing it, using all cores of your CPU.
+
+As it's very CPU intensive, it can take a while for a large song collection.
+
+![classify panel](./doc/web-screenshots/05-classify-progress.png)
+
+
+### Additional Features
 
 - Play and control SID playback by mood
-- Rate songs visually using sliders
-- Trigger classification, HVSC sync, and training jobs
+- Trigger HVSC fetch and training jobs
 - Real-time system feedback and status display
 - RESTful API and [OpenAPI Spec](packages/sidflow-web/openapi.yaml)
 

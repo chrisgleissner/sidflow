@@ -68,6 +68,7 @@ export async function renderWavWithEngine(
   options: RenderWavOptions
 ): Promise<void> {
   const { sidFile, wavFile, songIndex } = options;
+  
   await ensureDir(path.dirname(wavFile));
 
   const sidBuffer = new Uint8Array(await readFile(sidFile));
@@ -92,6 +93,7 @@ export async function renderWavWithEngine(
   while (collectedSamples < maxSamples && iterations < maxIterations) {
     iterations += 1;
     const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
+    
     if (chunk === null) {
       break;
     }
@@ -118,6 +120,7 @@ export async function renderWavWithEngine(
     throw new Error(`WASM renderer produced no audio for ${sidFile}`);
   }
 
+  console.error(`[DEBUG] renderWav: Assembling PCM data`);
   const pcm = new Int16Array(collectedSamples);
   let writeOffset = 0;
   for (const chunk of chunks) {
@@ -125,14 +128,18 @@ export async function renderWavWithEngine(
     writeOffset += chunk.length;
   }
 
+  console.error(`[DEBUG] renderWav: Encoding to WAV for ${path.basename(wavFile)}`);
   const wavBuffer = encodePcmToWav(pcm, sampleRate, channels);
+  console.error(`[DEBUG] renderWav: Writing WAV file ${path.basename(wavFile)} (${wavBuffer.length} bytes)`);
   await writeFile(wavFile, wavBuffer);
 
+  console.error(`[DEBUG] renderWav: Computing hash for ${path.basename(wavFile)}`);
   const hashFile = `${wavFile}.hash`;
   try {
     const hash = await computeFileHash(sidFile);
     await writeFile(hashFile, hash, "utf8");
-  } catch {
-    // Hash storage is best-effort; ignore failures.
+  } catch (err) {
+    console.error(`[DEBUG] renderWav: Hash write failed for ${path.basename(wavFile)}:`, err);
   }
+  console.error(`[DEBUG] renderWav: ✓ COMPLETE for ${path.basename(wavFile)}`);
 }

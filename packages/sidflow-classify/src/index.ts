@@ -69,14 +69,29 @@ async function runConcurrent<T>(
   const limit = Math.max(1, Math.min(concurrency, items.length));
   let nextIndex = 0;
 
+  // Helper to atomically get next index
+  const getNextIndex = (): number | null => {
+    if (nextIndex >= items.length) {
+      return null;
+    }
+    const current = nextIndex;
+    nextIndex += 1;
+    return current;
+  };
+
   const runners = Array.from({ length: limit }, async (_, workerIndex) => {
     const threadId = workerIndex + 1;
+    // Yield immediately to prevent all workers from grabbing indices synchronously
+    await Promise.resolve();
+    
+    let itemsProcessed = 0;
     while (true) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      if (currentIndex >= items.length) {
+      const currentIndex = getNextIndex();
+      if (currentIndex === null) {
+        console.error(`[DEBUG] Thread ${threadId} finished after processing ${itemsProcessed} items`);
         break;
       }
+      itemsProcessed++;
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
     }
@@ -298,6 +313,7 @@ export async function buildWavCache(
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
+  console.error(`[DEBUG] collectSidFiles found ${sidFiles.length} SID files in ${plan.hvscPath}`);
   const rendered: string[] = [];
   const skipped: string[] = [];
   const render = options.render ?? defaultRenderWav;
@@ -332,6 +348,7 @@ export async function buildWavCache(
   const songsToRender: SongToRender[] = [];
   const songsToSkip: SongToRender[] = [];
   let analyzedSongs = 0;
+  let debugLogCount = 0;
 
   const analysisConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
   await runConcurrent(
@@ -351,7 +368,13 @@ export async function buildWavCache(
           file: songLabel
         });
 
-        if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
+        const needsRefresh = await needsWavRefresh(sidFile, wavFile, shouldForce);
+        if (debugLogCount < 5) {
+          console.error(`[DEBUG] needsWavRefresh(${songLabel}): ${needsRefresh}, wavFile: ${wavFile}`);
+          debugLogCount++;
+        }
+        
+        if (needsRefresh) {
           songsToRender.push({ sidFile, songIndex, wavFile, songCount });
         } else {
           songsToSkip.push({ sidFile, songIndex, wavFile, songCount });
@@ -377,23 +400,27 @@ export async function buildWavCache(
         }
       }
 
-      onThreadUpdate?.({
-        threadId: context.threadId,
-        phase: "analyzing",
-        status: "idle"
-      });
+      // Don't report idle status - threads will immediately start building phase
+      // Reporting idle causes UI to show "waiting for work" during phase transition
     }
   );
 
+  console.error(`[DEBUG] Analysis complete: ${songsToRender.length} songs to render, ${songsToSkip.length} to skip`);
+
   // Building phase: render WAV files for each song
   const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
+  console.error(`[DEBUG] Starting building phase with ${buildConcurrency} threads`);
   const rendererPool = render === defaultRenderWav ? new WasmRendererPool(buildConcurrency) : null;
 
   try {
+    console.error(`[DEBUG] About to call runConcurrent for building with ${songsToRender.length} songs`);
     await runConcurrent(
       songsToRender,
       buildConcurrency,
       async ({ sidFile, songIndex, wavFile, songCount }, context) => {
+        if (rendered.length < 3) {
+          console.error(`[DEBUG] Thread ${context.threadId} starting to render: ${wavFile}`);
+        }
         const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
         onThreadUpdate?.({
           threadId: context.threadId,
@@ -401,14 +428,48 @@ export async function buildWavCache(
           status: "working",
           file: songLabel
         });
+        
+        // Start heartbeat to prevent thread from appearing stale during long renders
+        const heartbeatInterval = setInterval(() => {
+          onThreadUpdate?.({
+            threadId: context.threadId,
+            phase: "building",
+            status: "working",
+            file: songLabel
+          });
+        }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
+        
+        const renderOptions = { sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined };
+        let renderSucceeded = false;
+        let lastError: Error | null = null;
+        
         try {
-          const renderOptions = { sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined };
-          if (rendererPool) {
-            await rendererPool.render(renderOptions);
-          } else {
-            await render(renderOptions);
+          // Retry up to 3 times for rendering failures
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              if (rendererPool) {
+                await rendererPool.render(renderOptions);
+              } else {
+                await render(renderOptions);
+              }
+              renderSucceeded = true;
+              break;
+            } catch (error) {
+              lastError = error instanceof Error ? error : new Error(String(error));
+              if (attempt < 3) {
+                console.error(`[RETRY] Attempt ${attempt}/3 failed for ${songLabel}: ${lastError.message}. Retrying...`);
+              }
+            }
           }
+        } finally {
+          clearInterval(heartbeatInterval);
+        }
+        
+        if (renderSucceeded) {
           rendered.push(wavFile);
+          if (rendered.length <= 3) {
+            console.error(`[DEBUG] Thread ${context.threadId} successfully rendered: ${wavFile}`);
+          }
 
           if (onProgress) {
             const processed = skipped.length + rendered.length;
@@ -423,13 +484,17 @@ export async function buildWavCache(
               currentFile: songLabel
             });
           }
-        } finally {
-          onThreadUpdate?.({
-            threadId: context.threadId,
-            phase: "building",
-            status: "idle"
-          });
+        } else {
+          // All retries failed
+          console.error(`[WARN] Failed to render ${songLabel} after 3 attempts: ${lastError?.message}`);
+          // Don't add to rendered list, effectively skipping this file
         }
+        
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "building",
+          status: "idle"
+        });
       }
     );
   } finally {

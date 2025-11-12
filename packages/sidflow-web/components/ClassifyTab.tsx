@@ -63,6 +63,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   const [defaultPath, setDefaultPath] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState<ClassifyProgressWithStorage | null>(null);
+  const [, setTick] = useState(0);
 
   const isRunning = progress?.isActive ?? false;
   const percent = progress?.percentComplete ?? 0;
@@ -100,6 +101,15 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
     return () => clearInterval(interval);
   }, [refreshProgress, isRunning]);
 
+  // Force re-render every 3 seconds to update elapsed time counters
+  useEffect(() => {
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
+
   const handleClassify = useCallback(async () => {
     const target = path || defaultPath;
     if (!target) {
@@ -127,6 +137,13 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
 
   const threadStatuses = useMemo(() => progress?.perThread ?? [], [progress]);
   const storageStats = progress?.storage;
+  
+  // Helper to format elapsed time as "XXs"
+  const formatElapsed = useCallback((startedAt?: number) => {
+    if (!startedAt) return '';
+    const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+    return elapsedSec > 0 ? ` (${elapsedSec}s)` : '';
+  }, []);
   const estimatedMsRemaining = useMemo(() => {
     if (!progress || progress.totalFiles === 0 || progress.processedFiles === 0) {
       return null;
@@ -289,10 +306,13 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 const phaseLabel = thread.phase ? thread.phase.toUpperCase() : 'IDLE';
                 const isWorking = thread.status === 'working';
                 const isStale = Boolean(thread.stale && isWorking);
+                const elapsed = formatElapsed(thread.phaseStartedAt);
                 const headline = isWorking
                   ? thread.currentFile ?? (isStale ? 'Working (no recent update)' : 'Working...')
                   : 'Waiting for work';
-                const phaseText = isStale ? `${phaseLabel} (stale)` : phaseLabel;
+                const phaseText = isStale 
+                  ? `${phaseLabel} (STALE)` 
+                  : (isWorking && elapsed ? `${phaseLabel}${elapsed}` : phaseLabel);
                 return (
                   <div
                     key={thread.id}

@@ -16,13 +16,9 @@ interface WorkerResponse {
   error?: { message: string; stack?: string };
 }
 
-let enginePromise: Promise<import("@sidflow/libsidplayfp-wasm").SidAudioEngine> | null = null;
-
+// DO NOT cache engine - create fresh instance for each render to ensure complete WASM isolation
 async function getEngine() {
-  if (!enginePromise) {
-    enginePromise = createEngine();
-  }
-  return await enginePromise;
+  return await createEngine();
 }
 
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {

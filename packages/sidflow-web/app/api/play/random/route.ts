@@ -83,7 +83,7 @@ async function pickRandomSid(
     return matchesSubset && moodMatchesPath(preset, p);
   });
   const candidates = filtered.length > 0 ? filtered : paths;
-  const maxAttempts = Math.min(candidates.length, 2000);
+  const maxAttempts = Math.min(candidates.length, 100);
   const seen = new Set<number>();
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let index = Math.floor(Math.random() * candidates.length);

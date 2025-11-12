@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
       cwd: root,
       env: cliEnv,
       onStdout: ingestClassifyStdout,
+      onStderr: (chunk) => console.error('[classify stderr]', chunk),
     });
 
     if (reason === 'paused') {
