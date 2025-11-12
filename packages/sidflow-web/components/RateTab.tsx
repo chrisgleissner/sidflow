@@ -138,6 +138,8 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const canGoBack = trackHistory.length > 0;
   const playerRef = useRef<SidflowPlayer | null>(null);
   const pendingLoadAbortRef = useRef<AbortController | null>(null);
+  const isAudioLoadingRef = useRef(isAudioLoading);
+  const currentTrackRef = useRef<RateTrackInfo | null>(null);
   const ratingCacheRef = useRef<Map<string, RatingValues>>(new Map());
   const statusHandlerRef = useRef(onStatusChange);
   const prefetchedTrackRef = useRef<RateTrackWithSession | null>(null);
@@ -147,9 +149,28 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     statusHandlerRef.current = onStatusChange;
   }, [onStatusChange]);
 
+  const recomputePauseReady = useCallback((origin: string) => {
+    const hasTrack = Boolean(currentTrackRef.current);
+    const ready = hasTrack && !isAudioLoadingRef.current;
+    console.debug('[RateTab] Pause readiness recalculated', {
+      origin,
+      ready,
+      hasTrack,
+      isAudioLoading: isAudioLoadingRef.current,
+      playerState: playerRef.current?.getState(),
+    });
+    setIsPauseReady(ready);
+  }, []);
+
   useEffect(() => {
-    setIsPauseReady(Boolean(currentTrack) && !isAudioLoading);
-  }, [currentTrack, isAudioLoading]);
+    isAudioLoadingRef.current = isAudioLoading;
+    recomputePauseReady('is-audio-loading-change');
+  }, [isAudioLoading, recomputePauseReady]);
+
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+    recomputePauseReady('current-track-change');
+  }, [currentTrack, recomputePauseReady]);
 
   const applyCachedRatings = useCallback(
     (sidPath?: string | null) => {
@@ -265,6 +286,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       if (state === 'ended') {
         setIsPlaying(false);
       }
+      recomputePauseReady(`player-statechange:${state}`);
     };
     player.on('loadprogress', handleProgress);
     player.on('error', handleError);
@@ -288,7 +310,8 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       }
       playerRef.current = null;
     };
-  }, []);
+    recomputePauseReady('player-initialized');
+  }, [recomputePauseReady]);
 
   useEffect(() => {
     let rafId: number;
@@ -345,19 +368,20 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         return;
       }
 
-      pendingLoadAbortRef.current?.abort();
-      const abortController = new AbortController();
-  pendingLoadAbortRef.current = abortController;
-  setIsAudioLoading(true);
-  setLoadProgress(0);
+    pendingLoadAbortRef.current?.abort();
+    const abortController = new AbortController();
+    pendingLoadAbortRef.current = abortController;
+    setIsAudioLoading(true);
+    recomputePauseReady('load-start');
+    setLoadProgress(0);
 
       try {
         await player.load({ track, session, signal: abortController.signal });
-        setCurrentTrack(track);
+    setCurrentTrack(track);
         setCurrentSession(session);
         applyCachedRatings(track.sidPath);
         setPosition(0);
-  setDuration(player.getDurationSeconds() || track.durationSeconds || DEFAULT_DURATION);
+    setDuration(player.getDurationSeconds() || track.durationSeconds || DEFAULT_DURATION);
         await player.play();
         setIsPlaying(true);
         if (announcement) {
@@ -375,9 +399,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
           pendingLoadAbortRef.current = null;
         }
         setIsAudioLoading(false);
+        recomputePauseReady('load-complete');
       }
     },
-    [applyCachedRatings, onStatusChange]
+    [applyCachedRatings, onStatusChange, recomputePauseReady]
   );
 
   const seekTimeout = useRef<NodeJS.Timeout | null>(null);

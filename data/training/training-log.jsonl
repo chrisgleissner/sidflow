@@ -1029,3 +1029,8 @@
 {"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:13:45.373Z","samples":3,"metrics":{"mae":0.6149806976318359,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
 {"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:13:45.409Z","samples":3,"metrics":{"mae":0.3801567554473877,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
 {"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:13:45.447Z","samples":3,"metrics":{"mae":0.45230919122695923,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:22:24.614Z","samples":3,"metrics":{"mae":1.0531615018844604,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:22:24.650Z","samples":3,"metrics":{"mae":0.7621601819992065,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:22:24.685Z","samples":3,"metrics":{"mae":0.496634840965271,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:22:24.721Z","samples":3,"metrics":{"mae":0.39250999689102173,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}
+{"modelVersion":"0.2.0","trainedAt":"2025-11-12T16:22:24.758Z","samples":3,"metrics":{"mae":0.38236159086227417,"r2":0},"featureSetVersion":"2025-11-03","notes":"Trained on 3 samples (3 explicit, 0 implicit)"}

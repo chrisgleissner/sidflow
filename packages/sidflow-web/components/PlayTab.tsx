@@ -76,6 +76,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [isPauseReady, setIsPauseReady] = useState(false);
+  const isAudioLoadingRef = useRef(isAudioLoading);
 
   const seekTimeout = useRef<NodeJS.Timeout | null>(null);
   const playlistCounterRef = useRef(1);
@@ -119,9 +120,27 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     currentTrackRef.current = currentTrack;
   }, [currentTrack]);
 
+  const recomputePauseReady = useCallback((origin: string) => {
+    const hasTrack = Boolean(currentTrackRef.current);
+    const ready = hasTrack && !isAudioLoadingRef.current;
+    console.debug('[PlayTab] Pause readiness recalculated', {
+      origin,
+      ready,
+      hasTrack,
+      isAudioLoading: isAudioLoadingRef.current,
+      playerState: playerRef.current?.getState(),
+    });
+    setIsPauseReady(ready);
+  }, []);
+
   useEffect(() => {
-    setIsPauseReady(Boolean(currentTrack) && !isAudioLoading);
-  }, [currentTrack, isAudioLoading]);
+    isAudioLoadingRef.current = isAudioLoading;
+    recomputePauseReady('is-audio-loading-change');
+  }, [isAudioLoading, recomputePauseReady]);
+
+  useEffect(() => {
+    recomputePauseReady('current-track-change');
+  }, [currentTrack, recomputePauseReady]);
 
   useEffect(() => {
     return () => {
@@ -166,6 +185,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           void next();
         }
       }
+      recomputePauseReady(`player-statechange:${state}`);
     };
 
     player.on('loadprogress', handleProgress);
@@ -190,7 +210,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       }
       playerRef.current = null;
     };
-  }, []);
+    recomputePauseReady('player-initialized');
+  }, [recomputePauseReady]);
 
   useEffect(() => {
     let rafId: number;
@@ -352,10 +373,11 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         return false;
       }
 
-      pendingLoadAbortRef.current?.abort();
+  pendingLoadAbortRef.current?.abort();
       const abortController = new AbortController();
       pendingLoadAbortRef.current = abortController;
       setIsAudioLoading(true);
+  recomputePauseReady('load-start');
       setLoadProgress(0);
 
       try {
@@ -398,9 +420,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           pendingLoadAbortRef.current = null;
         }
         setIsAudioLoading(false);
+        recomputePauseReady('load-complete');
       }
     },
-    [notifyTrackPlayed]
+    [notifyTrackPlayed, recomputePauseReady]
   );
 
   const rebuildPlaylist = useCallback(async () => {
