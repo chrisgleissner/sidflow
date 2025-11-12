@@ -27,7 +27,7 @@
   - `theme`: `'system' | 'c64-light' | 'c64-dark' | 'classic'`.
   - `font`: `'c64' | 'mono' | 'sans'`.
   - `romBundleId`: string identifier from manifest (nullable).
-  - `playbackEngine`: `'wasm' | 'sidplayfp-cli' | 'stream-wav' | 'stream-mp3' | 'ultimate64'`.
+  - `playbackEngine`: `'wasm' | 'sidplayfp-cli' | 'stream-wav' | 'stream-m4a' | 'ultimate64'`.
   - `ultimate64`: `{ host: string; https: boolean; secretHeader?: string } | null`.
   - `training`: `{ enabled: boolean; iterationBudget: number; syncCadenceMinutes: number; allowUpload: boolean }`.
   - `localCache`: `{ maxEntries: number; maxBytes: number; preferOffline: boolean }`.
@@ -47,8 +47,8 @@
 - Add API route `packages/sidflow-web/app/api/prefs/rom-manifest/route.ts` returning manifest with cache headers (`Cache-Control: private, max-age=300`).
 - Client workflow:
   - `PrefsTab` fetches manifest via new `useRomManifest` hook; manifest entries populate ROM selection UI.
-  - If user selects a bundle, download ROM bytes through `/api/playback/rom/{bundleId}/{filename}` (new secured route) or instruct user to provide local file if `manual` bundle chosen.
-  - Validate downloads using Web Crypto `subtle.digest('SHA-256', bytes)` before storing in IndexedDB object store `rom-bundles` (`keyPath: ['bundleId','file']`).
+  - When a user selects a curated bundle, prompt them to supply their own BASIC/KERNAL/CHARGEN ROM files locally; validate hashes against the manifest before persisting to IndexedDB (`rom-bundles`, keyPath `['bundleId','file']`).
+  - For `manual` bundles, allow the user to associate arbitrary ROM paths while still storing validation metadata locally.
   - Expose status messages (validating, hash mismatch, download failed) through existing `onStatusChange` callback.
 - When preferences reference invalid bundle or hash mismatch occurs, block playback and show inline remediation (retry download, choose different bundle).
 
@@ -56,7 +56,7 @@
 - Extend `PlaybackFacade` (`packages/sidflow-web/lib/player/playback-facade.ts`) to surface `checkAvailability(persona, preferences)` promise for each adapter.
   - WASM adapter: ensure SharedArrayBuffer supported; fall back to HLS if not.
   - `sidplayfp` CLI adapter: add detection endpoint `app/api/playback/detect/route.ts` that probes server-side bridge or returns unsupported; cache result per session.
-  - Streaming adapters: require streaming manifest for SID path (`/api/playback/{id}/wav|mp3` HEAD request) before marking available.
+  - Streaming adapters: require streaming manifest for SID path (`/api/playback/{id}/wav|m4a` HEAD request) before marking available.
   - Ultimate 64: perform reachability ping (`/api/play/ultimate64/test` hitting device or returning status) with timeout and report latency.
 - Update preferences UI to show availability badges (`Available`, `Unavailable`, `Requires Setup`) and auto-select highest priority available engine.
 - On playback start, the facade should:
@@ -108,8 +108,8 @@
 
 ## API & Routing Additions
 - `GET /api/prefs/rom-manifest` – Returns manifest; gated by admin auth for `/admin`, public read-only for `/`.
-- `GET /api/playback/rom/[bundleId]/[file]` – Streams ROM bytes when server stores curated bundles; respects manifest and audit logs.
-- `GET /api/playback/detect` – Reports adapter availability (`{ wasm: true, sidplayfpCli: false, streamWav: boolean, streamMp3: boolean, ultimate64: { supported: boolean, latencyMs?: number } }`).
+- `GET /api/playback/rom/[bundleId]/[file]` – Admin-only helper to deliver curated ROM bytes to trusted rendering jobs; must remain disabled for public personas.
+- `GET /api/playback/detect` – Reports adapter availability (`{ wasm: true, sidplayfpCli: false, streamWav: boolean, streamM4a: boolean, ultimate64: { supported: boolean, latencyMs?: number } }`).
 - `POST /api/playback/offline/report` – Optional endpoint for clients to report queued requests and flush when back online (future-proof for Phase 3, stubbed now).
 - Ensure each route loads config via `@sidflow/common/loadConfig`, reads/writes with `ensureDir`/`pathExists`, and serializes responses deterministically.
 

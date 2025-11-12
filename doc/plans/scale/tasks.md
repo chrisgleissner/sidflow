@@ -22,7 +22,7 @@ Required reading (skim before starting any phase):
 
 ## Phase 2 – Public Local-First Experience
 - [ ] Expand preferences schema (theme, ROM set, playback engine selection, Ultimate 64 configuration, training toggle, iteration budget, sync cadence) and persist to `localStorage` + IndexedDB with migration/versioning tests.
-- [ ] Implement ROM manifest validation workflow (download, hash check, caching) plus error states for missing/invalid ROMs.
+- [ ] Implement ROM manifest validation workflow (local upload + hash check + caching) plus error states for missing/invalid ROMs.
 - [ ] Surface playback engine selector with availability checks (WASM default, sidplayfp CLI detection, streaming readiness, Ultimate 64 connectivity test) and automated fallback rules.
 - [ ] Build offline/poor-network handling: queue playback requests, cache recent tracks, surface banner states, and add E2E tests covering offline/resume scenarios.
 - [ ] Instrument playback path to ensure worklet pipeline never blocks UI thread (profiling + regression alerts) and confirm fallback HLS path triggers on browsers without SAB.
@@ -40,7 +40,7 @@ Required reading (skim before starting any phase):
 - [ ] Design UDP capture pipeline to track packet sequence numbers, reorder out-of-order deliveries, and detect/compensate for missing packets before transcoding to PCM.
 - [ ] Build resiliency around UDP packet loss: time-based buffering and minimal gap handling; log basic packet loss metrics.
 - [ ] Implement the TypeScript PCM→WAV pipeline (44-byte RIFF header + aggregated s16le samples) so render jobs can materialize `output.wav` for downstream encoding.
-- [ ] Provide WAV→MP3 and WAV→FLAC conversion paths: `ffmpeg.wasm` for portable builds and native `ffmpeg` for optimized runners; basic tests for both.
+- [ ] Provide WAV→M4A and WAV→FLAC conversion paths: `ffmpeg.wasm` for portable builds and native `ffmpeg` for optimized runners; basic tests for both.
 - [ ] Standardize M4A bitrate at 256k across encoders and configuration; add a smoke test validating target bitrate in produced files.
 - [ ] Expose Render Mode selection (location, time, technology, target) in admin job configuration; validate and reject unsupported combinations per Render Matrix.
 - [ ] Extend admin UI to monitor HVSC sync status, cache coverage, job progress/logs, and expose targeted backfill/invalidation actions.

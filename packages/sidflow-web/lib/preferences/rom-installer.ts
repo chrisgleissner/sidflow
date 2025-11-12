@@ -11,35 +11,59 @@ async function computeSha256(bytes: ArrayBuffer): Promise<string> {
     .join('');
 }
 
-async function fetchRomFile(bundleId: string, file: RomManifestFile): Promise<ArrayBuffer> {
-  const response = await fetch(`/api/playback/rom/${encodeURIComponent(bundleId)}/${encodeURIComponent(file.fileName)}`);
-  if (!response.ok) {
-    throw new Error(`Failed to download ${file.fileName} (HTTP ${response.status})`);
-  }
-  return await response.arrayBuffer();
-}
+const ROM_ROLES = ['basic', 'kernal', 'chargen'] as const;
+type RomRole = (typeof ROM_ROLES)[number];
 
 async function ensureFile(
   bundleId: string,
-  descriptor: RomManifestFile
+  descriptor: RomManifestFile,
+  suppliedFile?: File | null
 ): Promise<RomValidationResult> {
   const cached = await loadRomBundleFile(bundleId, descriptor.fileName);
   if (cached && cached.hash === descriptor.sha256 && cached.bytes.byteLength === descriptor.size) {
     return { bundleId, fileName: descriptor.fileName, ok: true };
   }
 
-  const bytes = await fetchRomFile(bundleId, descriptor);
+  if (!suppliedFile) {
+    return {
+      bundleId,
+      fileName: descriptor.fileName,
+      ok: false,
+      reason: `${descriptor.fileName} not installed locally. Provide a ROM matching SHA-256 ${descriptor.sha256.slice(0, 12)}…`,
+    };
+  }
+
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await suppliedFile.arrayBuffer();
+  } catch (error) {
+    return {
+      bundleId,
+      fileName: descriptor.fileName,
+      ok: false,
+      reason: `Failed to read ${suppliedFile.name}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
   const hash = await computeSha256(bytes);
   if (hash !== descriptor.sha256) {
-    throw new Error(
-      `${descriptor.fileName} hash mismatch (expected ${descriptor.sha256.slice(0, 12)}, got ${hash.slice(0, 12)})`
-    );
+    return {
+      bundleId,
+      fileName: descriptor.fileName,
+      ok: false,
+      reason: `Hash mismatch (expected ${descriptor.sha256.slice(0, 12)}, got ${hash.slice(0, 12)})`,
+    };
   }
+
   if (bytes.byteLength !== descriptor.size) {
-    throw new Error(
-      `${descriptor.fileName} size mismatch (expected ${descriptor.size}, got ${bytes.byteLength})`
-    );
+    return {
+      bundleId,
+      fileName: descriptor.fileName,
+      ok: false,
+      reason: `Size mismatch (expected ${descriptor.size} bytes, got ${bytes.byteLength})`,
+    };
   }
+
   await storeRomBundleFile(bundleId, descriptor.fileName, bytes, hash);
   return { bundleId, fileName: descriptor.fileName, ok: true };
 }
@@ -51,22 +75,44 @@ export interface BundleInstallResult {
   error?: string;
 }
 
-export async function installRomBundle(bundle: RomManifestBundle): Promise<BundleInstallResult> {
+export async function installRomBundle(
+  bundle: RomManifestBundle,
+  suppliedFiles: Partial<Record<RomRole, File | null>> = {}
+): Promise<BundleInstallResult> {
+  const descriptors: Record<RomRole, RomManifestFile> = {
+    basic: bundle.files.basic,
+    kernal: bundle.files.kernal,
+    chargen: bundle.files.chargen,
+  };
+
   const results: RomValidationResult[] = [];
-  try {
-    for (const descriptor of [bundle.files.basic, bundle.files.kernal, bundle.files.chargen]) {
-      const result = await ensureFile(bundle.id, descriptor);
-      results.push(result);
+  let wroteNewFile = false;
+
+  for (const role of ROM_ROLES) {
+    const descriptor = descriptors[role];
+    const supplied = suppliedFiles[role] ?? null;
+    const result = await ensureFile(bundle.id, descriptor, supplied ?? null);
+    if (result.ok && supplied) {
+      wroteNewFile = true;
     }
-    return { bundleId: bundle.id, success: true, results };
-  } catch (error) {
-    console.warn('[installRomBundle] validation failed, clearing bundle cache', error);
-    await removeRomBundle(bundle.id);
-    return {
-      bundleId: bundle.id,
-      success: false,
-      results,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    results.push(result);
   }
+
+  const success = results.every((entry) => entry.ok);
+  if (!success && wroteNewFile) {
+    await removeRomBundle(bundle.id);
+  }
+  const error = success
+    ? undefined
+    : results
+        .filter((entry) => !entry.ok)
+        .map((entry) => `${entry.fileName}: ${entry.reason ?? 'validation failed'}`)
+        .join('; ');
+
+  return {
+    bundleId: bundle.id,
+    success,
+    results,
+    error,
+  };
 }

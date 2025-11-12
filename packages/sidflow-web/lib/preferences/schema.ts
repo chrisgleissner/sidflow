@@ -4,7 +4,7 @@ export const BROWSER_PREFERENCES_VERSION = 2 as const;
 
 export const THEME_OPTIONS = ['system', 'c64-light', 'c64-dark', 'classic'] as const;
 export const FONT_OPTIONS = ['c64', 'mono', 'sans'] as const;
-export const PLAYBACK_ENGINES = ['wasm', 'sidplayfp-cli', 'stream-wav', 'stream-mp3', 'ultimate64'] as const;
+export const PLAYBACK_ENGINES = ['wasm', 'sidplayfp-cli', 'stream-wav', 'stream-m4a', 'ultimate64'] as const;
 
 const ultimate64Schema = z
   .object({
@@ -57,10 +57,12 @@ type LegacyPreferencesV0 = {
   font?: string;
 };
 
+type LegacyPlaybackEngine = (typeof PLAYBACK_ENGINES)[number] | 'stream-mp3';
+
 type LegacyPreferencesV1 = LegacyPreferencesV0 & {
   version: 1;
   romBundleId?: string | null;
-  playbackEngine?: typeof PLAYBACK_ENGINES[number];
+  playbackEngine?: LegacyPlaybackEngine;
   ultimate64?: Partial<z.infer<typeof ultimate64Schema>> | null;
   training?: Partial<z.infer<typeof trainingSchema>>;
   localCache?: Partial<z.infer<typeof localCacheSchema>>;
@@ -80,6 +82,9 @@ function coerceFont(value: unknown): BrowserPreferences['font'] {
 }
 
 function coercePlaybackEngine(value: unknown): BrowserPreferences['playbackEngine'] {
+  if (value === 'stream-mp3') {
+    return 'stream-m4a';
+  }
   return PLAYBACK_ENGINES.includes(value as BrowserPreferences['playbackEngine'])
     ? (value as BrowserPreferences['playbackEngine'])
     : DEFAULT_BROWSER_PREFERENCES.playbackEngine;

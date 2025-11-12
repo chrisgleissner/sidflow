@@ -31,7 +31,7 @@ test.describe('RateTab Browser Playback', () => {
         page.on('request', (request) => {
             const url = request.url();
             // Track any suspicious audio streaming endpoints
-            if (url.includes('/stream') || url.includes('.wav') || url.includes('.mp3')) {
+            if (url.includes('/stream') || url.includes('.wav') || url.includes('.m4a')) {
                 pcmRequests.push(url);
             }
         });
@@ -198,7 +198,7 @@ test.describe('PlayTab Browser Playback', () => {
         const pcmRequests: string[] = [];
         page.on('request', (request) => {
             const url = request.url();
-            if (url.includes('/stream') || url.includes('.wav') || url.includes('.mp3')) {
+            if (url.includes('/stream') || url.includes('.wav') || url.includes('.m4a')) {
                 pcmRequests.push(url);
             }
         });

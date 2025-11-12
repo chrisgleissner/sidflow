@@ -11,6 +11,9 @@ import { useRomManifest } from '@/lib/preferences/use-rom-manifest';
 import type { RomManifestBundle } from '@/lib/preferences/types';
 import { installRomBundle } from '@/lib/preferences/rom-installer';
 
+const ROM_ROLES = ['basic', 'kernal', 'chargen'] as const;
+type RomRole = (typeof ROM_ROLES)[number];
+
 interface PublicPrefsTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
 }
@@ -27,7 +30,7 @@ const ADAPTER_LABELS: Record<BrowserPreferences['playbackEngine'], string> = {
   wasm: 'In-browser WASM (default)',
   'sidplayfp-cli': 'sidplayfp CLI (local bridge)',
   'stream-wav': 'Streaming WAV (server cache)',
-  'stream-mp3': 'Streaming MP3 (server cache)',
+  'stream-m4a': 'Streaming M4A (server cache)',
   ultimate64: 'Ultimate 64 Hardware',
 };
 
@@ -36,6 +39,7 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
   const { status: manifestStatus, manifest, error: manifestError, refresh } = useRomManifest();
   const [isInstallingBundle, setIsInstallingBundle] = useState(false);
   const [adapterAvailability, setAdapterAvailability] = useState<AdapterAvailability[]>([]);
+  const [pendingRomFiles, setPendingRomFiles] = useState<Record<string, Partial<Record<RomRole, File>>>>({});
 
   const canInteract = status === 'ready';
 
@@ -180,26 +184,51 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
     [preferences.localCache, onStatusChange, updatePreferences]
   );
 
+  const handleRomFileSelect = useCallback((bundleId: string, role: RomRole, file: File | null) => {
+    setPendingRomFiles((previous) => {
+      const next = { ...previous };
+      const current = { ...(next[bundleId] ?? {}) };
+      if (file) {
+        current[role] = file;
+      } else {
+        delete current[role];
+      }
+      if (Object.keys(current).length === 0) {
+        delete next[bundleId];
+      } else {
+        next[bundleId] = current;
+      }
+      return next;
+    });
+  }, []);
+
   const handleBundleInstall = useCallback(
     async (bundle: RomManifestBundle) => {
       setIsInstallingBundle(true);
       try {
-        const result = await installRomBundle(bundle);
+        const suppliedFiles = pendingRomFiles[bundle.id] ?? {};
+        const result = await installRomBundle(bundle, suppliedFiles);
         if (!result.success) {
-          throw new Error(result.error ?? 'Validation failed');
+          const reason = result.error ?? 'Validation failed – double-check supplied ROMs';
+          throw new Error(reason);
         }
         await updatePreferences({ romBundleId: bundle.id });
-        onStatusChange(`ROM bundle "${bundle.label}" validated and stored`);
+        setPendingRomFiles((previous) => {
+          const next = { ...previous };
+          delete next[bundle.id];
+          return next;
+        });
+        onStatusChange(`ROM bundle "${bundle.label}" validated and stored locally`);
       } catch (error) {
         onStatusChange(
-          `Failed to install ROM bundle: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to validate ROM bundle: ${error instanceof Error ? error.message : String(error)}`,
           true
         );
       } finally {
         setIsInstallingBundle(false);
       }
     },
-    [onStatusChange, updatePreferences]
+    [onStatusChange, pendingRomFiles, updatePreferences]
   );
 
   const handleBundleClear = useCallback(async () => {
@@ -454,7 +483,7 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
         <CardHeader>
           <CardTitle className="petscii-text text-accent">ROM Bundles</CardTitle>
           <CardDescription>
-            Validate curated ROM bundles before playback. Assets are stored locally in IndexedDB.
+            Validate curated ROM bundles before playback. Supply your own ROM files; SIDFlow never distributes copyrighted assets.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
@@ -475,10 +504,15 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
               <div className="grid gap-2">
                 {manifest.bundles.map((bundle) => {
                   const isActive = preferences.romBundleId === bundle.id;
+                  const pending = pendingRomFiles[bundle.id] ?? {};
+                  const fileDescriptors = ROM_ROLES.map((role) => ({
+                    role,
+                    descriptor: bundle.files[role],
+                  }));
                   return (
                     <div
                       key={bundle.id}
-                      className={`border border-border/70 rounded-md p-3 flex flex-col gap-2 ${
+                      className={`border border-border/70 rounded-md p-3 flex flex-col gap-3 ${
                         isActive ? 'bg-accent/10' : 'bg-background'
                       }`}
                     >
@@ -493,7 +527,10 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
                           <Button
                             size="sm"
                             onClick={() => void handleBundleInstall(bundle)}
-                            disabled={isInstallingBundle}
+                            disabled={
+                              isInstallingBundle ||
+                              fileDescriptors.some(({ role }) => !pending[role])
+                            }
                           >
                             {isActive ? 'Re-Validate' : 'Validate & Select'}
                           </Button>
@@ -503,6 +540,31 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
                             </Button>
                           )}
                         </div>
+                      </div>
+                      <div className="grid gap-3">
+                        {fileDescriptors.map(({ role, descriptor }) => (
+                          <div key={role} className="grid gap-1">
+                            <label
+                              className="text-xs text-muted-foreground"
+                              htmlFor={`${bundle.id}-${role}`}
+                            >
+                              {role.toUpperCase()} ROM · {descriptor.size} bytes · SHA-256 {descriptor.sha256}
+                            </label>
+                            <Input
+                              id={`${bundle.id}-${role}`}
+                              type="file"
+                              accept=".bin,.rom,.prg"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0] ?? null;
+                                handleRomFileSelect(bundle.id, role, file);
+                              }}
+                              disabled={isInstallingBundle}
+                            />
+                            <p className="text-[11px] text-muted-foreground truncate">
+                              {pending[role]?.name ?? 'No file selected'}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   );

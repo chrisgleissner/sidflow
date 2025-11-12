@@ -6,7 +6,7 @@ export type PlaybackAdapterKind =
   | 'wasm'
   | 'cli'
   | 'streaming-wav'
-  | 'streaming-mp3'
+  | 'streaming-m4a'
   | 'ultimate64';
 
 export type PlaybackState =

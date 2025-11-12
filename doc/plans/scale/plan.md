@@ -134,7 +134,7 @@ encoding:
 | Server   | Prepared  | `sidplayfp` CLI (native)           | WAV + M4A + FLAC    | Batch classify conversions to cache     | MVP    |
 | Server   | Prepared  | `libsidplayfp-wasm` (Node/Bun)     | WAV + M4A + FLAC    | Portable render where CLI unavailable   | Future |
 | Server   | Prepared  | C64 Ultimate (REST + UDP capture)  | WAV + M4A + FLAC    | Hardware-authentic captures             | MVP    |
-| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + AAC + FLAC    | Hardware-authentic live streams         | MVP    |
+| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + M4A + FLAC    | Hardware-authentic live streams         | MVP    |
 | Client   | Real-time | `libsidplayfp-wasm` (browser)      | N/A (playback only) | Default playback                        | MVP    |
 | Client   | Real-time | `sidplayfp` CLI (local bridge)     | N/A (playback only) | Optional local playback                 | Future |
 | Client   | Real-time | C64 Ultimate (direct hardware play)| N/A (device plays)  | Local hardware playback                 | MVP    |
@@ -167,15 +167,15 @@ encoding:
 
 - **Caching Policy**
   - Cache all server-produced audio files (converted from SID) for reuse; avoid redundant rendering.
-  - Supported cache formats: **WAV**, **FLAC**, and **AAC** — any combination can be enabled.
-  - By default, only **AAC** and **FLAC** are cached; **WAV** caching is optional and disabled by default.
+  - Supported cache formats: **WAV**, **M4A** (AAC), and **FLAC** — any combination can be enabled.
+  - By default, only **M4A** and **FLAC** are cached; **WAV** caching is optional and disabled by default.
   - Disk caching thresholds must be configurable:
     - Stop caching **WAV** at **70%** total disk usage.
     - Stop caching **FLAC** at **80%** total disk usage.
-    - Stop all caching (including AAC and FLAC) at **90%** total disk usage.
+  - Stop all caching (including M4A and FLAC) at **90%** total disk usage.
   - Respect the user-configurable max disk use (default: 90%) and terminate rendering with a clear error message if the threshold is reached.
-  - AAC bitrate and FLAC compression level must both be configurable:
-    - AAC default: **256 kbps**
+  - M4A (AAC) bitrate and FLAC compression level must both be configurable:
+    - M4A default bitrate: **256 kbps**
     - FLAC default: **compression level 5**
   - Caching decisions are based solely on current disk usage; no usage tracking or eviction logic is required.
 
@@ -211,7 +211,7 @@ encoding:
     1. Correct hardware SID chip is activated on C64 Ultimate via REST as specified in SID song: `6581` (default if not specified) or `8580R5`
     1. SID sent to C64 via REST API
     1. Audio streaming start requested via REST API
-    1. Audio stream UDP packets captured and transformed into WAV and 256 kbps AAC (ideally concurrently). 
+  1. Audio stream UDP packets captured and transformed into WAV and 256 kbps AAC packaged as M4A (ideally concurrently).
 - Train controls: extend to accept dataset filters, schedule GPU/offline runs, and publish new model versions. Publishing writes new `data/model/` artifacts and updates manifest served to clients.
 - Health & metrics: embed dashboards that call `/api/admin/metrics` for queue depth, job status, cache freshness, and worker health (CPU, memory). Include manual invalidation/backfill triggers (e.g., “Rebuild WAV cache chunk”).
 
@@ -233,7 +233,7 @@ encoding:
   - `/api/playback/{id}/wav` and `/api/playback/{id}/m4a` streaming endpoints returning ranged responses with long-lived caching headers (assets generated during classify conversions).
   - `/api/playback/{id}/handoff/ultimate64` to broker hardware dispatch when clients cannot reach device directly (optional).
 - Ensure `Cross-Origin-Resource-Policy: same-origin` and HTTP caching (`Cache-Control: private, max-age=30`) remain as in `playback-session.ts`, but front additional CDN caching for static ROM bundles, WASM assets, and streaming audio.
-- HLS/AAC fallback remains available for browsers lacking SAB; playback facade maps this to streaming adapter internally.
+- HLS fallback carrying AAC-in-M4A segments remains available for browsers lacking SAB; playback facade maps this to the streaming adapter internally.
 - Thousands of concurrent users rely on edge caching for static assets and minimal server compute (only session metadata). Rate limit session creation and enforce per-adapter quotas (e.g., `sidplayfp` CLI not available on shared devices by default).
 
 ## Background Jobs & Idempotency

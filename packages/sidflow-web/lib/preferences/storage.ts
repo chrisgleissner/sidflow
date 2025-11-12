@@ -83,6 +83,34 @@ export function readPreferencesFromLocalStorage(): unknown {
   }
 }
 
+async function deleteDatabase(): Promise<void> {
+  if (typeof indexedDB === 'undefined') {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
+}
+
+export async function __resetPreferencesStorageForTests(): Promise<void> {
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      db.close();
+    } catch {
+      // ignore
+    }
+  }
+  dbPromise = null;
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(PREFERENCES_LOCAL_STORAGE_KEY);
+  }
+  await deleteDatabase();
+}
+
 export function writePreferencesToLocalStorage(preferences: BrowserPreferences): void {
   if (typeof window === 'undefined') {
     return;
