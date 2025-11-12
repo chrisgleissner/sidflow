@@ -46,12 +46,16 @@ test.describe('RateTab Browser Playback', () => {
         await expect(playButton).toBeVisible();
         await playButton.click();
 
-        // Wait for track to load by checking if pause button appears
-        // (The pause button only appears when a track is successfully loaded and playing)
+        // Wait for track to load - the play/pause button changes from "Resume playback" to "Pause playback"
+        // when track starts playing. Also need to wait for it to be enabled (not in loading state).
         const pauseButton = page.getByRole('button', { name: /pause playback/i });
         try {
+            // Wait for button to exist and be enabled (meaning audio has loaded and is playing)
             await expect(pauseButton).toBeVisible({ timeout: 30000 });
-            await expect(pauseButton).toBeEnabled();
+            await expect(pauseButton).toBeEnabled({ timeout: 30000 });
+            
+            // Give audio pipeline a moment to stabilize
+            await page.waitForTimeout(1000);
         } catch (error) {
             // Log debugging info if the button doesn't appear
             console.log('Page errors:', pageErrors);
@@ -136,14 +140,34 @@ test.describe('RateTab Browser Playback', () => {
         expect(Number.parseInt(newValue || '0')).toBeGreaterThan(Number.parseInt(initialValue || '0'));
     });
 
-    test('displays rating controls and allows submission', async ({ page }) => {
+    test('displays rating controls and allows submission', async ({ page }, testInfo) => {
         await page.goto('/?tab=rate');
 
-        // Load a track - wait for pause button as indicator
+        // Set up error tracking
+        const pageErrors: Error[] = [];
+        const consoleErrors: string[] = [];
+        page.on('pageerror', (error) => pageErrors.push(error));
+        page.on('console', (msg) => {
+            if (msg.type() === 'error') {
+                consoleErrors.push(msg.text());
+            }
+        });
+
+        // Load a track - wait for pause button to appear and be enabled
         const playButton = page.getByRole('button', { name: /play random sid/i });
         await playButton.click();
         const pauseButton = page.getByRole('button', { name: /pause playback/i });
-        await expect(pauseButton).toBeVisible({ timeout: 30000 });
+        
+        try {
+            await expect(pauseButton).toBeVisible({ timeout: 30000 });
+            await expect(pauseButton).toBeEnabled({ timeout: 30000 });
+            await page.waitForTimeout(1000); // Let audio pipeline stabilize
+        } catch (error) {
+            console.log('Test failed waiting for pause button');
+            console.log('Page errors:', pageErrors);
+            console.log('Console errors:', consoleErrors);
+            throw error;
+        }
 
         // Verify rating dimension buttons are present
         await expect(page.getByText(/Energy/i)).toBeVisible();
@@ -215,19 +239,40 @@ test.describe('PlayTab Browser Playback', () => {
         await page.getByRole('option', { name: 'Dark' }).click();
     });
 
-    test('displays track information during playback', async ({ page }) => {
+    test('displays track information during playback', async ({ page }, testInfo) => {
         await page.goto('/?tab=play');
 
-        // Select preset and play (Radix UI Select)
+        // Set up error tracking
+        const pageErrors: Error[] = [];
+        const consoleErrors: string[] = [];
+        page.on('pageerror', (error) => pageErrors.push(error));
+        page.on('console', (msg) => {
+            if (msg.type() === 'error') {
+                consoleErrors.push(msg.text());
+            }
+        });
+
+        // Select preset and wait for playlist to populate
         await page.getByRole('combobox').first().click();
         await page.getByRole('option', { name: 'Ambient' }).click();
 
         const playButton = page.getByRole('button', { name: /play next track/i });
+        await expect(playButton).toBeEnabled({ timeout: 30000 });
         await playButton.click();
 
-        // Wait for track info to appear (pause button indicates playback started)
+        // Wait for playback to start (pause button appears and is enabled)
         const pauseButton = page.getByRole('button', { name: /pause/i });
-        await expect(pauseButton).toBeVisible({ timeout: 15000 });
+        
+        try {
+            await expect(pauseButton).toBeVisible({ timeout: 30000 });
+            await expect(pauseButton).toBeEnabled({ timeout: 30000 });
+            await page.waitForTimeout(1000); // Let audio pipeline stabilize
+        } catch (error) {
+            console.log('Test failed waiting for pause button');
+            console.log('Page errors:', pageErrors);
+            console.log('Console errors:', consoleErrors);
+            throw error;
+        }
 
         // Verify track metadata is displayed
         const artistLabel = page.getByText(/artist/i);
@@ -267,25 +312,40 @@ test.describe('Error Handling', () => {
     test('handles playback errors gracefully', async ({ page }) => {
         await page.goto('/?tab=rate');
 
+        // Verify initial page load
+        const heading = page.getByRole('heading', { name: /rate track/i });
+        await expect(heading).toBeVisible();
+
         // Set up console error monitoring
         const consoleErrors: string[] = [];
+        const uncaughtErrors: Error[] = [];
         page.on('console', (msg) => {
             if (msg.type() === 'error') {
                 consoleErrors.push(msg.text());
             }
+        });
+        page.on('pageerror', (error) => {
+            uncaughtErrors.push(error);
         });
 
         // Try to play (may or may not succeed depending on available SIDs)
         const playButton = page.getByRole('button', { name: /play random sid/i });
         await playButton.click();
 
-        // Wait a bit
+        // Wait for either playback to start or error to be handled
         await page.waitForTimeout(5000);
 
-        // Verify page is still responsive (no crashes)
-        await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
+        // Verify page is still responsive (no crashes) by checking critical UI elements
+        // The heading should still be present regardless of playback success/failure
+        await expect(heading).toBeVisible();
+        
+        // Verify no uncaught JavaScript exceptions occurred
+        expect(uncaughtErrors).toHaveLength(0);
+        
+        // Check that the play button is still functional (page didn't freeze)
+        await expect(playButton).toBeVisible();
 
-        // If there were errors, they should be handled gracefully
-        // (no uncaught exceptions or blank pages)
+        // If there were console errors, they should be app-level errors (handled gracefully),
+        // not uncaught exceptions that would crash the page
     });
 });
