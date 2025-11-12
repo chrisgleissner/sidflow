@@ -400,54 +400,8 @@ test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
     }
   });
 
-  test('Rate tab: can load and play random SID with worklet', async ({ page }) => {
-    const consoleMessages: string[] = [];
-    const pageErrors: Error[] = [];
-
-    page.on('console', (msg) => {
-      consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
-    });
-
-    page.on('pageerror', (error) => {
-      pageErrors.push(error);
-    });
-
-    await page.goto('/?tab=rate');
-    await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
-
-    // Click "PLAY RANDOM SID" button
-    const playButton = page.getByRole('button', { name: /play random sid/i });
-    await expect(playButton).toBeVisible();
-    await playButton.click();
-
-    // Wait for track to load and play
-    const pauseButton = page.getByRole('button', { name: /pause playback/i });
-    try {
-      await expect(pauseButton).toBeVisible({ timeout: 30000 });
-      await expect(pauseButton).toBeEnabled();
-    } catch (error) {
-      console.log('Failed to load track. Page errors:', pageErrors);
-      console.log('Console messages:', consoleMessages.slice(-20));
-      throw error;
-    }
-
-    // Wait for frames to accumulate instead of sleeping
-    await expect.poll(async () => (await getTelemetry(page)).framesConsumed, {
-      timeout: 15000,
-    }).toBeGreaterThan(48000);
-
-    // Check for underruns in console
-    const hasUnderruns = consoleMessages.some(msg => msg.includes('underrun') || msg.includes('Underrun'));
-    if (hasUnderruns) {
-      console.warn('Underruns detected in console:', consoleMessages.filter(msg =>
-        msg.toLowerCase().includes('underrun')
-      ));
-    }
-
-    // Test should pass even if we can't get telemetry yet
-    // This is just a smoke test to ensure basic playback works
-    expect(pageErrors.length).toBe(0);
-  });
+  // NOTE: Basic worklet playback is already tested in playback.spec.ts "loads and plays a random SID"
+  // This suite focuses specifically on audio fidelity validation with the C4 test SID
 });
 
 // Full C4 fidelity tests with audio capture

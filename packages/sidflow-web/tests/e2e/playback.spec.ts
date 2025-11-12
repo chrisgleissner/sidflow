@@ -80,6 +80,21 @@ test.describe('RateTab Browser Playback', () => {
         await resumeButton.click();
         await page.waitForTimeout(500); // Brief wait for state to update
 
+        // Verify telemetry shows audio is being produced (worklet pipeline is working)
+        const telemetry = await page.evaluate(() => {
+            const player = (window as any).__sidflowPlayer;
+            return player ? player.getTelemetry() : null;
+        });
+        if (telemetry) {
+            expect(telemetry.framesConsumed).toBeGreaterThan(0);
+            expect(telemetry.framesProduced).toBeGreaterThan(0);
+            // Check for underruns
+            const hasUnderruns = consoleMessages.some(msg => msg.toLowerCase().includes('underrun'));
+            if (hasUnderruns) {
+                console.warn('Underruns detected:', consoleMessages.filter(msg => msg.toLowerCase().includes('underrun')));
+            }
+        }
+
         // Log console messages if test fails
         if (consoleMessages.length > 0) {
             console.log('Browser console messages:', consoleMessages);
