@@ -96,7 +96,6 @@ ffmpeg -i output.wav -b:a 320k output.mp3
 
 ### Render Caching and User Preferences
 
-- Cache all server-produced WAV/MP3 files for reuse; avoid redundant rendering.
 - Filenames must encode renderer, chip, and encoding:
   `$name[-$trackIndex]-$platform-$chip.$encoding`
   - `$name`: SID base name
@@ -116,6 +115,17 @@ ffmpeg -i output.wav -b:a 320k output.mp3
     2. Use song metadata; if unspecified, default to 8580R5
     3. Always use 6581
     4. Always use 8580R5
+- Cache all server-produced audio files (converted from SID) for reuse; avoid redundant rendering.
+  - Supported cache formats: **WAV**, **FLAC**, and **MP3** — any combination can be enabled.
+  - By default, only **MP3** and **FLAC** are cached; **WAV** caching is optional and disabled by default.
+  - Disk caching thresholds must be configurable:
+    - Default: stop caching WAV at **70%** total disk usage.
+    - Default: stop caching FLAC at **80%** total disk usage.
+    - Default: stop all caching (including MP3 and FLAC) at **90%** total disk usage.
+  - Respect the user-configurable max disk use (default: 90%) and terminate rendering with a clear error message if the threshold is reached.
+  - MP3 bit rate must be configurable (default: **320 kbps**).
+  - Caching decisions are based solely on current disk usage; no usage tracking or eviction logic is required.
+
 
 ## Preferences & Persistence
 - Preferences schema expands to include UI theming, ROM selection, playback engine choice, Ultimate 64 device configuration (IP/port, HTTPS flag, optional auth header), local training toggles, iteration budget, and sync cadence. Represent them as a versioned record stored in `localStorage` (for fast bootstrap) with a mirrored IndexedDB object store (for validation history and rollback).
