@@ -87,7 +87,7 @@ bun run dev
 
 Open **<http://localhost:3000>** in your browser.
 
-![r8ate panel](./doc/web-screenshots/04-rate.png)
+![r8ate panel](./doc/web-screenshots/04-rate-playback.png)
 
 ### Features
 

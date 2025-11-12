@@ -77,7 +77,7 @@ function HomeContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" suppressHydrationWarning>
       <main className="max-w-7xl mx-auto">
         <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
           <div className="flex items-center gap-4">
