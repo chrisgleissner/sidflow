@@ -82,13 +82,12 @@ function HomeContent() {
         <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
           <div className="flex items-center gap-4">
             <Image
-              src="/logo-modern.svg"
+              src="/logo-small.png"
               alt="SIDFlow"
               width={48}
               height={48}
               className="w-12 h-12"
               priority
-              unoptimized
             />
             <div className="flex-1">
               <h1 className="text-xl font-bold text-foreground tracking-tight leading-tight">
