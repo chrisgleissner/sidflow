@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD024 MD036 MD040 -->
 # SID Flow Technical Reference
 
 This document provides comprehensive technical documentation for developers and advanced users of SID Flow.
@@ -115,6 +116,7 @@ graph TB
 ```
 
 **Legend:**
+
 - **Blue boxes**: SID source files
 - **Red boxes**: Manual rating files
 - **Green boxes**: Auto-generated rating files and JSONL data
@@ -155,11 +157,11 @@ Each command can be run via the command line interface from the repository root.
 ### 2. `sidflow-rate` (formerly `sidflow-tag`)
 
 ```sh
-./scripts/sidflow-rate [--sidplay <path>] [--config <path>]
+./scripts/sidflow-rate [--config <path>]
 ```
 
 **Purpose:** Capture user ratings across multiple dimensions for supervised classification and preference learning.  
-**Operation:** Plays unrated `.sid` files via `sidplayfp`, records energy/mood/complexity/preference (`e/m/c/p`) ratings, and stores results beside each track.
+**Operation:** Plays unrated `.sid` files via WASM renderer, records energy/mood/complexity/preference (`e/m/c/p`) ratings, and stores results beside each track.
 
 **Controls**
 
@@ -178,32 +180,17 @@ Each command can be run via the command line interface from the repository root.
 ### 3. `sidflow-classify`
 
 ```sh
-./scripts/sidflow-classify [--config <path>] [--sidplay <path>] [--force-rebuild]
+./scripts/sidflow-classify [--config <path>] [--force-rebuild]
                             [--feature-module <path>] [--predictor-module <path>]
                             [--metadata-module <path>] [--render-module <path>]
 ```
 
-**Purpose:** Convert SIDs to WAV, extract features, merge manual ratings, and publish deterministic `auto-tags.json` summaries.  
-**Operation:** Rebuilds the WAV cache, captures metadata (falling back to path heuristics when `sidplayfp` is missing), derives feature vectors using Essentia.js, and predicts `(e/m/c/p)` ratings using TensorFlow.js for unrated dimensions without overwriting manual values.
+**Purpose:** Automate feature extraction and rating prediction for the entire collection.  
+**Operation:** Rebuilds the WAV cache using WASM renderer, captures metadata (falling back to path heuristics when needed), derives feature vectors using Essentia.js, and predicts `(e/m/c/p)` ratings using TensorFlow.js for unrated dimensions without overwriting manual values.
 
-#### Flags (classification)
+**Flags:**
 
-- `--config <path>` — alternate `.sidflow.json`
-- `--sidplay <path>` — override `sidplayfp` binary for WAV + metadata extraction
-- `--force-rebuild` — re-render WAV cache even if fresh
-- `--feature-module <path>` — custom Bun/ESM module exporting `featureExtractor`
-- `--predictor-module <path>` — custom module exporting `predictRatings`
-- `--metadata-module <path>` — custom module exporting `extractMetadata`
-- `--render-module <path>` — custom module exporting `render` hook (handy for tests)
-
-#### Outputs (classification)
-
-- Deterministic WAV cache under `wavCachePath`
-- Per-SID metadata files (`*.sid.meta.json`)
-- Aggregated `auto-tags.json` files respecting `classificationDepth`
-- Summary of auto/manual/mixed rating coverage on stdout
-- **Performance metrics** (runtime, cache hit rate, predictions generated) — see [`performance-metrics.md`](performance-metrics.md)
-- **JSONL classification output** — structured data format for further processing
+- `--config <path>` — override default `.sidflow.json`
 
 > [!TIP]
 > The CLI includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`../packages/sidflow-classify/README-INTEGRATION.md`](../packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
@@ -220,6 +207,7 @@ The classification pipeline can output results in **JSONL** (JSON Lines) format,
 **JSONL Schema:**
 
 Each line contains a JSON object with:
+
 - `sid_path` — Full relative path within HVSC (e.g., `"Rob_Hubbard/Delta.sid"`)
 - `ratings` — Nested object with dimensions: `e` (energy), `m` (mood), `c` (complexity), `p` (preference)
 - `features` — Optional nested object with all extracted audio features (energy, rms, spectralCentroid, spectralRolloff, zeroCrossingRate, bpm, confidence, duration)
@@ -315,7 +303,7 @@ Each training run appends a summary to `data/training/training-log.jsonl`:
 ```
 
 **Purpose:** Turn your classified collection into a dynamic SID playlist experience with mood-based recommendations.  
-**Operation:** Uses LanceDB vector similarity and the recommendation engine to generate personalized playlists based on mood presets or custom filters. Streams through `sidplayfp` with queue controls and exports deterministic manifests.
+**Operation:** Uses LanceDB vector similarity and the recommendation engine to generate personalized playlists based on mood presets or custom filters. Streams through WASM renderer with queue controls and exports deterministic manifests.
 
 #### Key Flags
 
@@ -324,7 +312,6 @@ Each training run appends a summary to `data/training/training-log.jsonl`:
 - `--limit <n>` — Number of songs in playlist (default: 20)
 - `--exploration <0-1>` — Exploration factor (default: 0.2, higher = more diversity)
 - `--diversity <0-1>` — Diversity threshold (default: 0.2, minimum distance between consecutive songs)
-- `--sidplay <path>` — Override sidplayfp executable
 - `--export <path>` — Export playlist to file
 - `--export-format <fmt>` — Export format: json, m3u, m3u8 (default: json)
 - `--export-only` — Export playlist without playing
@@ -365,6 +352,7 @@ Quick mood-based playlist generation:
 #### Export Formats
 
 **JSON** — Full playlist with metadata and ratings:
+
 ```json
 {
   "metadata": {
@@ -384,12 +372,14 @@ Quick mood-based playlist generation:
 ```
 
 **M3U** — Simple playlist for external players:
+
 ```
 Test/Song1.sid
 Test/Song2.sid
 ```
 
 **M3U8** — Extended M3U with metadata:
+
 ```
 #EXTM3U
 #EXTINF:180,Song1.sid
@@ -411,26 +401,31 @@ Each playback session is automatically tracked and persisted:
 #### Examples
 
 **Generate and play an energetic playlist:**
+
 ```bash
 ./scripts/sidflow-play --mood energetic --limit 30
 ```
 
 **Export a quiet playlist without playing:**
+
 ```bash
 ./scripts/sidflow-play --mood quiet --export quiet-playlist.json --export-only
 ```
 
 **High-energy songs with BPM matching:**
+
 ```bash
 ./scripts/sidflow-play --filters "e>=4,m>=4,bpm=130-150" --limit 25
 ```
 
 **Export M3U playlist with custom filters:**
+
 ```bash
 ./scripts/sidflow-play --filters "e>=3,p>=4" --export playlist.m3u --export-format m3u
 ```
 
 **Balanced exploration mode:**
+
 ```bash
 ./scripts/sidflow-play --mood ambient --exploration 0.5 --diversity 0.3
 ```
@@ -459,6 +454,7 @@ The web server is a thin **presentation layer** built with modern web technologi
 - **Testability**: Comprehensive E2E tests validate the full UI → API → CLI flow
 
 **Technology Stack:**
+
 - **Next.js 15** (App Router) - Server framework
 - **React 19** - UI components
 - **TypeScript** - Type safety throughout
@@ -473,9 +469,10 @@ cd packages/sidflow-web
 bun run dev
 ```
 
-The server starts on **http://localhost:3000** by default.
+The server starts on **<http://localhost:3000>** by default.
 
 For production builds:
+
 ```bash
 bun run build
 bun run start
@@ -486,7 +483,9 @@ bun run start
 The web server exposes RESTful API endpoints that wrap CLI commands:
 
 #### POST /api/play
+
 Triggers playback via `sidflow-play`:
+
 ```json
 {
   "sid_path": "/path/to/file.sid",
@@ -497,7 +496,9 @@ Triggers playback via `sidflow-play`:
 Presets: `quiet`, `ambient`, `energetic`, `dark`, `bright`, `complex`
 
 #### POST /api/rate
+
 Submits ratings via `sidflow-rate`:
+
 ```json
 {
   "sid_path": "/path/to/file.sid",
@@ -511,7 +512,9 @@ Submits ratings via `sidflow-rate`:
 ```
 
 #### POST /api/classify
+
 Triggers classification via `sidflow-classify`:
+
 ```json
 {
   "path": "/path/to/sid/directory"
@@ -519,7 +522,9 @@ Triggers classification via `sidflow-classify`:
 ```
 
 #### POST /api/fetch
+
 Synchronizes HVSC via `sidflow-fetch`:
+
 ```json
 {
   "configPath": "/path/to/config.json",     // optional
@@ -529,7 +534,9 @@ Synchronizes HVSC via `sidflow-fetch`:
 ```
 
 #### POST /api/train
+
 Trains model via `sidflow-train`:
+
 ```json
 {
   "configPath": "/path/to/config.json",  // optional
@@ -542,6 +549,7 @@ Trains model via `sidflow-train`:
 ```
 
 All endpoints return consistent response format:
+
 ```json
 {
   "success": true,
@@ -550,6 +558,7 @@ All endpoints return consistent response format:
 ```
 
 Or on error:
+
 ```json
 {
   "success": false,
@@ -570,12 +579,14 @@ Or on error:
 The web server includes comprehensive test coverage (≥95%):
 
 **Unit Tests** (`tests/unit/`):
+
 - `cli-executor.test.ts` - Command execution with timeouts, errors
 - `validation.test.ts` - Zod schema validation for all endpoints
 - `api-routes.test.ts` - API route structure validation
 - `api-client.test.ts` - Client-side function exports
 
 **E2E Tests** (`tests/e2e/`):
+
 - `homepage.spec.ts` - Page load and structure
 - `play.spec.ts` - Playback workflow with all mood presets
 - `rate.spec.ts` - Rating submission and slider interactions
@@ -583,6 +594,7 @@ The web server includes comprehensive test coverage (≥95%):
 
 **Stub CLI Tools** (`tests/stubs/`):
 For CI/CD testing without `sidplayfp` or long-running operations, stub scripts simulate CLI behavior:
+
 - `sidflow-play` - Mock playback output
 - `sidflow-rate` - Mock rating submission
 - `sidflow-classify` - Mock classification progress
@@ -709,6 +721,7 @@ bun run validate:feedback [feedback-path]
 ```
 
 The validator checks:
+
 - JSON syntax correctness
 - Required fields presence
 - Valid action types
@@ -717,6 +730,7 @@ The validator checks:
 ### Merge-Friendly Design
 
 The append-only structure and date partitioning minimize Git merge conflicts:
+
 - Each event is a single line
 - Files are organized by date (YYYY/MM/DD)
 - Optional UUIDs enable deduplication across devices
@@ -736,7 +750,6 @@ The configuration file controls all paths and settings:
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./workspace/classified",
-  "sidplayPath": "sidplayfp",
   "threads": 0,
   "classificationDepth": 3
 }
@@ -748,7 +761,6 @@ The configuration file controls all paths and settings:
 - `wavCachePath` — Cache directory for converted WAV files
 - `tagsPath` — Directory for manual and auto-generated rating tags
 - `classifiedPath` — Output directory for JSONL classification files
-- `sidplayPath` — Path to sidplayfp binary (or just "sidplayfp" if in PATH)
 - `threads` — Number of parallel threads for processing (0 = auto-detect)
 - `classificationDepth` — Directory depth for aggregating auto-tags.json files
 
@@ -761,10 +773,10 @@ bun run validate:config [--config <path>]
 ```
 
 This checks:
+
 - JSON syntax correctness
 - Required fields presence
 - Path accessibility
-- sidplayfp availability (warning if missing)
 
 ---
 
@@ -775,22 +787,25 @@ This checks:
 - Retries manifest and archive downloads up to three times.  
 - On persistent errors, use `--remote` with an alternate mirror.  
 - Delete partial archives if extraction fails and rerun.  
-- Ensure `7z` is installed and accessible on your `PATH`.  
+- Ensure `bun install` has been run so the bundled `7zip-min` dependency is available.  
 - If `hvsc-version.json` drifts from actual content, remove it to trigger a clean re-sync.
 
 ### Classification Issues
 
 **WAV Rendering Fails:**
-- Verify `sidplayfp` is installed and in PATH
-- Test manually: `sidplayfp --wav=test.wav yourfile.sid`
-- Check for C64 ROM requirements (most HVSC files don't need ROMs)
+
+- Ensure `packages/libsidplayfp-wasm/dist/libsidplayfp.wasm` exists; rebuild with `bun run wasm:build` if it is missing or stale
+- Verify `data/wasm-build.json` reflects the latest upstream hash (delete it and rerun the build to regenerate)
+- Confirm you are running on Bun ≥1.3 with WebAssembly SIMD enabled; older runtimes may fail to instantiate the renderer
 
 **Feature Extraction Errors:**
+
 - Ensure WAV files are valid (44.1kHz, mono/stereo, 16-bit PCM)
 - Check disk space in `wavCachePath`
 - Try `--force-rebuild` to regenerate corrupted WAVs
 
 **Prediction Failures:**
+
 - First-time use: Model may give generic predictions
 - Rate 10-20 songs manually and run `sidflow-train`
 - Model improves with more training data
@@ -798,15 +813,18 @@ This checks:
 ### Playback Issues
 
 **sidplayfp not found:**
-- Install via package manager (see Requirements)
+
+- Install via package manager only if you still rely on the legacy playback CLIs
 - Specify explicit path: `--sidplay /usr/local/bin/sidplayfp`
 
 **No songs match filters:**
+
 - Try broader filters (e.g., `e>=2` instead of `e>=4`)
 - Check that classification has run successfully
 - Verify LanceDB was built: `bun run build:db`
 
 **Audio quality issues:**
+
 - sidplayfp uses default SID model (6581)
 - Configure via sidplayfp config file for different models
 - Some songs require specific SID chips or Kernal ROMs
@@ -831,6 +849,7 @@ SIDFlow includes comprehensive test coverage:
 - **CI Verification**: `bun run ci:verify` runs configuration validation, sample fetch/classify, and end-to-end tests
 
 The end-to-end test validates the full workflow:
+
 1. Load SID files from `test-data/` directory
 2. Build WAV cache (with real sidplayfp if available, mock otherwise)
 3. Extract audio features using Essentia.js
@@ -854,7 +873,7 @@ The end-to-end test validates the full workflow:
 For users who prefer a graphical interface, the web control panel provides the same functionality:
 
 1. Start the web server: `cd packages/sidflow-web && bun run dev`
-2. Open http://localhost:3000 in your browser
+2. Open <http://localhost:3000> in your browser
 3. Use the **Play Controls** to trigger playback with mood presets
 4. Use the **Rating Panel** to rate tracks with visual sliders
 5. View recently played tracks in the **Queue View**

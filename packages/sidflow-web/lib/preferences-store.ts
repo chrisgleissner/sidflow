@@ -8,12 +8,14 @@ export interface WebPreferences {
   sidBasePath?: string | null;
   kernalRomPath?: string | null;
   basicRomPath?: string | null;
+  chargenRomPath?: string | null;
 }
 
 const DEFAULT_PREFERENCES: WebPreferences = {
   sidBasePath: null,
   kernalRomPath: null,
   basicRomPath: null,
+  chargenRomPath: null,
 };
 
 function resolvePreferencesPath(): string {

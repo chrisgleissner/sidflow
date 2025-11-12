@@ -30,12 +30,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Compute a deterministic hash over Dockerfile.ci and apt-packages.txt
+      # Compute a deterministic hash over Dockerfile and apt-packages.txt
       # This ensures that cache is invalidated when either file changes
       - name: Determine Docker context hash
         id: context
         run: |
-          HASH=$(git ls-files Dockerfile.ci apt-packages.txt | xargs cat | sha256sum | cut -d' ' -f1)
+          HASH=$(git ls-files Dockerfile apt-packages.txt | xargs cat | sha256sum | cut -d' ' -f1)
           echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
@@ -53,7 +53,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.ci
+          file: Dockerfile
           push: true
           # Pass the hash to the Dockerfile as build arg to force rebuild when context changes
           build-args: |

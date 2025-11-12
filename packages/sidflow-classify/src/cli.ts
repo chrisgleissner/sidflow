@@ -30,7 +30,6 @@ const PROGRESS_THROTTLE_MS = 500; // Max 2 updates per second
 interface ClassifyCliOptions {
   configPath?: string;
   forceRebuild?: boolean;
-  sidplayPath?: string;
   featureModule?: string;
   predictorModule?: string;
   metadataModule?: string;
@@ -46,7 +45,6 @@ interface ParseResult {
 const KNOWN_FLAGS = new Set([
   "--config",
   "--force-rebuild",
-  "--sidplay",
   "--feature-module",
   "--predictor-module",
   "--metadata-module",
@@ -71,7 +69,6 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
         break;
       }
       case "--config":
-      case "--sidplay":
       case "--feature-module":
       case "--predictor-module":
       case "--metadata-module":
@@ -82,8 +79,6 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
         } else {
           if (token === "--config") {
             options.configPath = next;
-          } else if (token === "--sidplay") {
-            options.sidplayPath = next;
           } else if (token === "--feature-module") {
             options.featureModule = next;
           } else if (token === "--predictor-module") {
@@ -125,7 +120,6 @@ function printHelp(): void {
     "",
     "Options:",
     "  --config <path>           Use an alternate .sidflow.json file",
-    "  --sidplay <path>          Override the sidplayfp binary path",
     "  --force-rebuild           Re-render WAVs even if cache is fresh",
     "  --feature-module <path>   Module exporting a featureExtractor override",
     "  --predictor-module <path> Module exporting a predictRatings override",
@@ -328,13 +322,14 @@ export async function runClassifyCli(
 
     const resolvedPlan: ClassificationPlan = {
       ...plan,
-      forceRebuild: options.forceRebuild ?? plan.forceRebuild,
-      sidplayPath: options.sidplayPath ? path.resolve(options.sidplayPath) : plan.sidplayPath
+      forceRebuild: options.forceRebuild ?? plan.forceRebuild
     };
 
     // Determine thread count
     const threads = plan.config.threads || os.cpus().length;
-    runtime.stdout.write(`Starting classification (threads: ${threads})\n\n`);
+    runtime.stdout.write(`Starting classification (threads: ${threads})\n`);
+    runtime.stdout.write(`HVSC path: ${resolvedPlan.hvscPath}\n`);
+    runtime.stdout.write(`WAV cache path: ${resolvedPlan.wavCachePath}\n\n`);
 
     // Create progress logger
     const progressLogger = createProgressLogger(runtime.stdout);
@@ -347,7 +342,6 @@ export async function runClassifyCli(
 
     const wavResult = await runtime.buildWavCache(resolvedPlan, {
       forceRebuild: options.forceRebuild,
-      sidplayPath: resolvedPlan.sidplayPath,
       render,
       threads,
       onThreadUpdate: threadLogger,

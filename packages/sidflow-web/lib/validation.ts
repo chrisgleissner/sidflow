@@ -3,6 +3,7 @@
  */
 import { z } from 'zod';
 import type { FetchProgressSnapshot } from './types/fetch-progress';
+import type { ClassifyProgressSnapshot } from './types/classify-progress';
 
 // Play endpoint schema
 export const PlayRequestSchema = z.object({
@@ -75,7 +76,7 @@ export interface ApiErrorResponse {
   error: string;
   details?: string;
   logs?: string;
-  progress?: FetchProgressSnapshot;
+  progress?: FetchProgressSnapshot | ClassifyProgressSnapshot;
 }
 
 export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;

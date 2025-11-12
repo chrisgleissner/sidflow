@@ -46,34 +46,36 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
   const [customPath, setCustomPath] = useState('');
   const [kernalPath, setKernalPath] = useState('');
   const [basicPath, setBasicPath] = useState('');
+  const [chargenPath, setChargenPath] = useState('');
   const [isSavingCollection, setIsSavingCollection] = useState(false);
   const [isSavingRom, setIsSavingRom] = useState(false);
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
   const kernalFileInputRef = useRef<HTMLInputElement | null>(null);
   const basicFileInputRef = useRef<HTMLInputElement | null>(null);
+  const chargenFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load preferences from localStorage on mount
   useEffect(() => {
     const savedColor = localStorage.getItem('sidflow-color-scheme') || 'system';
     const savedFont = localStorage.getItem('sidflow-font-scheme') || 'mono';
-    
+
     setColorScheme(savedColor);
     setFontScheme(savedFont);
-    
+
     applyTheme(savedColor, savedFont);
   }, []);
 
   const applyTheme = (color: string, font: string) => {
     const html = document.documentElement;
-    
+
     // Apply color scheme
     if (color === 'system') {
       html.removeAttribute('data-theme');
     } else {
       html.setAttribute('data-theme', color);
     }
-    
+
     // Apply font scheme
     html.classList.remove('font-c64', 'font-mono', 'font-sans');
     html.classList.add(`font-${font}`);
@@ -100,13 +102,18 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
       setCustomPath(response.data.preferences.sidBasePath ?? '');
       setKernalPath(
         response.data.preferences.kernalRomPath ??
-          response.data.sidplayfpConfig.kernalRomPath ??
-          ''
+        response.data.sidplayfpConfig.kernalRomPath ??
+        ''
       );
       setBasicPath(
         response.data.preferences.basicRomPath ??
-          response.data.sidplayfpConfig.basicRomPath ??
-          ''
+        response.data.sidplayfpConfig.basicRomPath ??
+        ''
+      );
+      setChargenPath(
+        response.data.preferences.chargenRomPath ??
+        response.data.sidplayfpConfig.chargenRomPath ??
+        ''
       );
     } else {
       onStatusChange(`Failed to load preferences: ${formatApiError(response)}`, true);
@@ -175,12 +182,22 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
   );
 
   const saveRomPath = useCallback(
-    async (key: 'kernal' | 'basic', rawValue: string | null) => {
+    async (key: 'kernal' | 'basic' | 'chargen', rawValue: string | null) => {
       setIsSavingRom(true);
       const trimmed = rawValue?.trim() ?? '';
       const normalized = trimmed.length > 0 ? trimmed : null;
-      const payload =
-        key === 'kernal' ? { kernalRomPath: normalized } : { basicRomPath: normalized };
+      const payload: {
+        kernalRomPath?: string | null;
+        basicRomPath?: string | null;
+        chargenRomPath?: string | null;
+      } = {};
+      if (key === 'kernal') {
+        payload.kernalRomPath = normalized;
+      } else if (key === 'basic') {
+        payload.basicRomPath = normalized;
+      } else {
+        payload.chargenRomPath = normalized;
+      }
       try {
         const response = await updatePreferences(payload);
         if (response.success) {
@@ -191,7 +208,13 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
           setBasicPath(
             response.data.preferences.basicRomPath ?? response.data.sidplayfpConfig.basicRomPath ?? ''
           );
-          const label = key === 'kernal' ? 'KERNAL' : 'BASIC';
+          setChargenPath(
+            response.data.preferences.chargenRomPath ??
+            response.data.sidplayfpConfig.chargenRomPath ??
+            ''
+          );
+          const label =
+            key === 'kernal' ? 'KERNAL' : key === 'basic' ? 'BASIC' : 'CHARGEN';
           const message = normalized
             ? `${label} ROM path set to ${normalized}`
             : `${label} ROM path cleared`;
@@ -240,13 +263,18 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
     await saveCollectionPath(value.length > 0 ? value : null);
   }, [customPath, saveCollectionPath]);
 
-  const handleBrowseFile = useCallback((kind: 'kernal' | 'basic') => {
-    const target = kind === 'kernal' ? kernalFileInputRef.current : basicFileInputRef.current;
+  const handleBrowseFile = useCallback((kind: 'kernal' | 'basic' | 'chargen') => {
+    const target =
+      kind === 'kernal'
+        ? kernalFileInputRef.current
+        : kind === 'basic'
+          ? basicFileInputRef.current
+          : chargenFileInputRef.current;
     target?.click();
   }, []);
 
   const handleFileSelected = useCallback(
-    (kind: 'kernal' | 'basic', event: ChangeEvent<HTMLInputElement>) => {
+    (kind: 'kernal' | 'basic' | 'chargen', event: ChangeEvent<HTMLInputElement>) => {
       const input = event.target;
       const [file] = input.files ?? [];
       const withPath = file as File & { path?: string; webkitRelativePath?: string };
@@ -258,8 +286,10 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
 
       if (kind === 'kernal') {
         setKernalPath(resolvedPath);
-      } else {
+      } else if (kind === 'basic') {
         setBasicPath(resolvedPath);
+      } else {
+        setChargenPath(resolvedPath);
       }
 
       input.value = '';
@@ -299,7 +329,7 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
                   </span>
                   <div className="flex gap-2">
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="outline"
                       onClick={handleFolderUp}
                       disabled={folderListing.relativePath.length === 0 || isLoadingFolders}
@@ -307,7 +337,7 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
                       Up
                     </Button>
                     <Button
-                      size="xs"
+                      size="sm"
                       variant="outline"
                       onClick={() => loadFolders('')}
                       disabled={isLoadingFolders}
@@ -387,7 +417,7 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
         <CardHeader>
           <CardTitle className="petscii-text text-accent">SIDPLAY ROMS</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Point sidplayfp to the correct KERNAL and BASIC ROM dumps.
+            Point sidplayfp to the correct KERNAL, BASIC, and CHARGEN ROM dumps.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
@@ -403,7 +433,13 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
             className="hidden"
             onChange={(event) => handleFileSelected('basic', event)}
           />
-          <div className="grid gap-4 md:grid-cols-2">
+          <input
+            ref={chargenFileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(event) => handleFileSelected('chargen', event)}
+          />
+          <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground">KERNAL ROM</p>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -468,6 +504,41 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
                 <Button
                   variant="outline"
                   onClick={() => saveRomPath('basic', null)}
+                  disabled={isSavingRom}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">CHARGEN ROM</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-1 items-center gap-2">
+                  <Input
+                    value={chargenPath}
+                    onChange={(event) => setChargenPath(event.target.value)}
+                    placeholder="/path/to/chargen"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Browse for CHARGEN ROM"
+                    onClick={() => handleBrowseFile('chargen')}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => saveRomPath('chargen', chargenPath)}
+                  disabled={isSavingRom}
+                >
+                  Save
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => saveRomPath('chargen', null)}
                   disabled={isSavingRom}
                 >
                   Clear

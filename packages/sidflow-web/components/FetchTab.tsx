@@ -110,7 +110,8 @@ export function FetchTab({ onStatusChange }: FetchTabProps) {
         const logs = response.logs || response.details || 'sidflow-fetch did not return logs. Check server console.';
         setLogLines(logs.split('\n'));
         const snapshot = response.progress;
-        if (snapshot) {
+        if (snapshot && 'percent' in snapshot && 'logs' in snapshot) {
+          // Type guard: only set if it's a FetchProgressSnapshot
           setProgress(snapshot);
           setIsPolling(snapshot.isActive);
           setIsLoading(snapshot.isActive);
@@ -153,9 +154,9 @@ export function FetchTab({ onStatusChange }: FetchTabProps) {
         )}
 
         <div className="relative">
-          <Button 
-            onClick={handleFetch} 
-            disabled={isLoading} 
+          <Button
+            onClick={handleFetch}
+            disabled={isLoading}
             className="w-full retro-glow peer"
             variant="default"
           >

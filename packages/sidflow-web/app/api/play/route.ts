@@ -1,48 +1,54 @@
-/**
- * Play API endpoint - triggers SID playback via sidflow-play CLI
- */
 import { NextRequest, NextResponse } from 'next/server';
-import { executeCli } from '@/lib/cli-executor';
 import { PlayRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
-import { describeCliFailure, describeCliSuccess } from '@/lib/cli-logs';
+import { resolvePlaybackEnvironment, resolveSidPath, createRateTrackInfo } from '@/lib/rate-playback';
+import { pathExists } from '@sidflow/common';
+import { createPlaybackSession } from '@/lib/playback-session';
+import type { RateTrackInfo } from '@/lib/types/rate-track';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validatedData = PlayRequestSchema.parse(body);
+    const env = await resolvePlaybackEnvironment();
+    const sidPath = await resolveSidPath(validatedData.sid_path, env);
 
-    const args = [];
-    if (validatedData.preset) {
-      args.push('--mood', validatedData.preset);
-    }
-    args.push(validatedData.sid_path);
-
-    const command = 'sidflow-play';
-    const result = await executeCli(command, args, {
-      timeout: 60000, // 60 seconds for playback
-    });
-
-    if (result.success) {
-      const { logs } = describeCliSuccess(command, result);
-      const response: ApiResponse<{ output: string; logs: string }> = {
-        success: true,
-        data: {
-          output: result.stdout,
-          logs,
-        },
-      };
-      return NextResponse.json(response, { status: 200 });
-    } else {
-      const { details, logs } = describeCliFailure(command, result);
+    if (!(await pathExists(sidPath))) {
       const response: ApiResponse = {
         success: false,
-        error: 'Playback command failed',
-        details,
-        logs,
+        error: 'SID not found',
+        details: sidPath,
       };
-      return NextResponse.json(response, { status: 500 });
+      return NextResponse.json(response, { status: 404 });
     }
+
+    const track: RateTrackInfo = await createRateTrackInfo({
+      env,
+      sidPath,
+      relativeBase: 'hvsc',
+    });
+
+    const session = createPlaybackSession({
+      scope: 'play',
+      sidPath,
+      track,
+      durationSeconds: track.durationSeconds,
+      selectedSong: track.selectedSong,
+      romPaths: {
+        kernal: env.kernalRomPath ?? null,
+        basic: env.basicRomPath ?? null,
+        chargen: env.chargenRomPath ?? null,
+      },
+    });
+
+    const response: ApiResponse<{ track: RateTrackInfo; session: typeof session }> = {
+      success: true,
+      data: {
+        track,
+        session,
+      },
+    };
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) {
       const response: ApiResponse = {

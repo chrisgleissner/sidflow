@@ -18,14 +18,16 @@ export function resolveRelativeSidPath(hvscPath: string, sidFile: string): strin
 export function resolveManualTagPath(hvscPath: string, tagsPath: string, sidFile: string): string {
   const relative = resolveRelativeSidPath(hvscPath, sidFile);
   const directory = path.dirname(relative);
-  const filename = `${path.basename(sidFile)}${MANUAL_TAG_EXTENSION}`;
+  const baseName = path.basename(sidFile, ".sid");
+  const filename = `${baseName}${MANUAL_TAG_EXTENSION}`;
   return path.join(tagsPath, directory, filename);
 }
 
 export function resolveMetadataPath(hvscPath: string, tagsPath: string, sidFile: string): string {
   const relative = resolveRelativeSidPath(hvscPath, sidFile);
   const directory = path.dirname(relative);
-  const filename = `${path.basename(sidFile)}${METADATA_EXTENSION}`;
+  const baseName = path.basename(sidFile, ".sid");
+  const filename = `${baseName}${METADATA_EXTENSION}`;
   return path.join(tagsPath, directory, filename);
 }
 

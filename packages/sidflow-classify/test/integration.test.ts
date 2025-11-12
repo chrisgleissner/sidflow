@@ -77,7 +77,6 @@ describe("End-to-End SIDFlow Pipeline", () => {
         hvscPath,
         wavCachePath,
         tagsPath,
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       } as ClassificationPlan["config"],
@@ -85,13 +84,12 @@ describe("End-to-End SIDFlow Pipeline", () => {
       classificationDepth: 3,
       hvscPath,
       wavCachePath,
-      tagsPath,
-      sidplayPath: "sidplayfp"
+      tagsPath
     };
 
     // Mock WAV renderer
-    const mockRender = async ({ sidFile, wavFile, sidplayPath, songIndex }: { sidFile: string; wavFile: string; sidplayPath: string; songIndex?: number }) => {
-      console.log(`[TEST] Rendering WAV: ${wavFile} from ${sidFile} (songIndex: ${songIndex}, sidplayPath: ${sidplayPath})`);
+    const mockRender = async ({ sidFile, wavFile, songIndex }: { sidFile: string; wavFile: string; songIndex?: number }) => {
+      console.log(`[TEST] Rendering WAV: ${wavFile} from ${sidFile} (songIndex: ${songIndex})`);
       await ensureDir(path.dirname(wavFile));
       const wavData = generateTestWav(2, 440, 44100);
       await writeFile(wavFile, wavData);
@@ -103,10 +101,9 @@ describe("End-to-End SIDFlow Pipeline", () => {
     console.log(`[TEST] Plan configuration:`, JSON.stringify({
       hvscPath: plan.hvscPath,
       wavCachePath: plan.wavCachePath,
-      tagsPath: plan.tagsPath,
-      sidplayPath: plan.sidplayPath
+      tagsPath: plan.tagsPath
     }, null, 2));
-    
+
     let wavResult;
     try {
       wavResult = await buildWavCache(plan, {
@@ -128,9 +125,9 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(wavResult.skipped).toHaveLength(0);
 
     // Step 2: Extract features using Essentia.js
-  const wavFile1 = path.join(wavCachePath, "MUSICIANS", "Test", "song1.wav");
+    const wavFile1 = path.join(wavCachePath, "MUSICIANS", "Test", "song1.wav");
     console.log(`[TEST] Checking for WAV file: ${wavFile1}`);
-    
+
     // Check if file exists
     const fs = await import("node:fs/promises");
     try {

@@ -8,6 +8,8 @@ interface ThreadStatusInternal {
   status: 'idle' | 'working';
   phase?: ThreadPhase;
   updatedAt: number;
+  stale: boolean;
+  phaseStartedAt?: number;
 }
 
 interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread'> {
@@ -28,7 +30,7 @@ function createInitialSnapshot(): ProgressState {
     skippedFiles: 0,
     percentComplete: 0,
     threads: 1,
-    perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now() }],
+  perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false, phaseStartedAt: undefined }],
     isActive: false,
     isPaused: false,
     updatedAt: Date.now(),
@@ -56,6 +58,8 @@ function ensureThreads(count: number) {
     status: 'idle',
     phase: undefined,
     updatedAt: Date.now(),
+    stale: false,
+    phaseStartedAt: undefined,
   }));
 }
 
@@ -73,20 +77,25 @@ function applyThreadStatusUpdate(update: {
   const now = Date.now();
   snapshot.perThread = snapshot.perThread.map((thread, idx) => {
     if (idx === index) {
+      const isPhaseChange = update.phase && update.phase !== thread.phase;
+      const isFileChange = update.file && update.file !== thread.currentFile;
+      const isGoingIdle = update.status === 'idle';
+      const shouldResetTimer = isPhaseChange || isFileChange || isGoingIdle;
+      
       return {
         ...thread,
         status: update.status,
         phase: update.phase ?? thread.phase,
         currentFile: update.status === 'working' ? update.file ?? thread.currentFile : undefined,
         updatedAt: now,
+        stale: false,
+        phaseStartedAt: shouldResetTimer ? (update.status === 'working' ? now : undefined) : thread.phaseStartedAt,
       };
     }
-    if (now - thread.updatedAt > STALE_THREAD_MS && thread.status !== 'idle') {
+    if (now - thread.updatedAt > STALE_THREAD_MS && thread.status === 'working' && !thread.stale) {
       return {
         ...thread,
-        status: 'idle',
-        currentFile: undefined,
-        updatedAt: now,
+        stale: true,
       };
     }
     return thread;

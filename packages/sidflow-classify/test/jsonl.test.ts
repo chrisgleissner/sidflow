@@ -23,7 +23,6 @@ describe("generateJsonlOutput", () => {
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       },
@@ -31,8 +30,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir,
-      sidplayPath: "sidplayfp"
+      hvscPath: testDir
     };
 
     // Mock feature extractor
@@ -76,10 +74,10 @@ describe("generateJsonlOutput", () => {
     await mkdir(sidDir, { recursive: true });
     await writeFile(path.join(sidDir, "test.sid"), Buffer.from("test content"));
 
-  // Create a mock WAV file
-  const wavCacheDir = path.join(testDir, "wav-cache", "test-artist");
+    // Create a mock WAV file
+    const wavCacheDir = path.join(testDir, "wav-cache", "test-artist");
     await mkdir(wavCacheDir, { recursive: true });
-  await writeFile(path.join(wavCacheDir, "test.wav"), Buffer.from("mock wav data"));
+    await writeFile(path.join(wavCacheDir, "test.wav"), Buffer.from("mock wav data"));
 
     const plan: ClassificationPlan = {
       config: {
@@ -87,7 +85,6 @@ describe("generateJsonlOutput", () => {
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       },
@@ -95,8 +92,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir,
-      sidplayPath: "sidplayfp"
+      hvscPath: testDir
     };
 
     const mockFeatureExtractor = async (): Promise<FeatureVector> => ({
@@ -126,9 +122,9 @@ describe("generateJsonlOutput", () => {
     // Read and parse JSONL file
     const content = await readFile(result.jsonlFile, "utf8");
     const lines = content.trim().split("\n");
-    
+
     expect(lines.length).toBe(1);
-    
+
     const record: ClassificationRecord = JSON.parse(lines[0]);
     expect(record.sid_path).toBeTruthy();
     expect(record.ratings).toBeDefined();
@@ -146,7 +142,6 @@ describe("generateJsonlOutput", () => {
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
-        sidplayPath: "sidplayfp",
         threads: 0,
         classificationDepth: 3
       },
@@ -154,8 +149,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir,
-      sidplayPath: "sidplayfp"
+      hvscPath: testDir
     };
 
     const result = await generateJsonlOutput(plan, {});

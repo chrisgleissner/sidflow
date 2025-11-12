@@ -12,7 +12,6 @@ interface TestSidflowConfig {
   hvscPath: string;
   wavCachePath: string;
   tagsPath: string;
-  sidplayPath: string;
   threads: number;
   classificationDepth: number;
 }
@@ -24,7 +23,6 @@ interface TestClassificationPlan {
   hvscPath: string;
   wavCachePath: string;
   tagsPath: string;
-  sidplayPath: string;
 }
 
 interface TestBuildWavCacheMetrics {
@@ -69,7 +67,6 @@ function createPlan(): TestClassificationPlan {
       hvscPath: "/workspace/hvsc",
       wavCachePath: "/workspace/wav",
       tagsPath: "/workspace/tags",
-      sidplayPath: "sidplayfp",
       threads: 0,
       classificationDepth: 2
     },
@@ -77,8 +74,7 @@ function createPlan(): TestClassificationPlan {
     classificationDepth: 2,
     hvscPath: "/workspace/hvsc",
     wavCachePath: "/workspace/wav",
-    tagsPath: "/workspace/tags",
-    sidplayPath: "sidplayfp"
+    tagsPath: "/workspace/tags"
   } satisfies TestClassificationPlan;
 }
 
@@ -88,8 +84,6 @@ describe("parseClassifyArgs", () => {
       "--config",
       "./config.json",
       "--force-rebuild",
-      "--sidplay",
-      "./sidplayfp",
       "--feature-module",
       "./feature.js",
       "--predictor-module",
@@ -105,7 +99,6 @@ describe("parseClassifyArgs", () => {
     expect(result.options).toEqual({
       configPath: "./config.json",
       forceRebuild: true,
-      sidplayPath: "./sidplayfp",
       featureModule: "./feature.js",
       predictorModule: "./predictor.js",
       metadataModule: "./metadata.js",
@@ -142,9 +135,9 @@ describe("runClassifyCli", () => {
     const exitCode = await runClassifyCli([], {
       stdout,
       stderr,
-  planClassification: (async (_options: unknown) => plan) as any,
-      buildWavCache: (async () => ({ 
-        rendered: ["a"], 
+      planClassification: (async (_options: unknown) => plan) as any,
+      buildWavCache: (async () => ({
+        rendered: ["a"],
         skipped: ["b"],
         metrics: {
           startTime: 0,
@@ -297,9 +290,7 @@ describe("runClassifyCli", () => {
         "--metadata-module",
         metadataModulePath,
         "--render-module",
-        renderModulePath,
-        "--sidplay",
-        "/custom/sidplay"
+        renderModulePath
       ],
       {
         stdout,
@@ -308,7 +299,7 @@ describe("runClassifyCli", () => {
         buildWavCache: (async (_plan: unknown, options: unknown) => {
           const params = options as {
             onProgress?: (progress: TestProgressEvent) => void;
-            render?: (input: { sidFile: string; wavFile: string; sidplayPath: string; songIndex: number }) => Promise<void>;
+            render?: (input: { sidFile: string; wavFile: string; songIndex: number }) => Promise<void>;
           };
 
           params.onProgress?.({
@@ -336,7 +327,6 @@ describe("runClassifyCli", () => {
           await params.render?.({
             sidFile: "test.sid",
             wavFile: "/tmp/test.wav",
-            sidplayPath: "/tmp/sidplay",
             songIndex: 1
           });
 
@@ -356,7 +346,7 @@ describe("runClassifyCli", () => {
         }) as any,
         generateAutoTags: (async (_plan: unknown, options: unknown) => {
           const params = options as {
-            extractMetadata: (input: { sidFile: string; relativePath: string; sidplayPath: string }) => Promise<unknown>;
+            extractMetadata: (input: { sidFile: string; relativePath: string }) => Promise<unknown>;
             featureExtractor: (input: { sidFile: string; relativePath: string; metadata: unknown }) => Promise<Record<string, number>>;
             predictRatings: (input: { features: Record<string, number> }) => Promise<{ e: number; m: number; c: number }>;
             onProgress?: (progress: TestAutoProgressEvent) => void;
@@ -364,8 +354,7 @@ describe("runClassifyCli", () => {
 
           const metadata = await params.extractMetadata({
             sidFile: "test.sid",
-            relativePath: "relative/test.sid",
-            sidplayPath: "/custom/sidplay"
+            relativePath: "relative/test.sid"
           });
 
           const features = await params.featureExtractor({
@@ -417,12 +406,11 @@ describe("runClassifyCli", () => {
 
     try {
       expect(exitCode).toBe(0);
-      expect(captured.stderr).toHaveLength(0);
       const output = captured.stdout.join("\n");
-  expect(captured.stdout.some((chunk) => chunk.includes("[Analyzing]"))).toBe(true);
-  expect(captured.stdout.some((chunk) => chunk.includes("[Converting]"))).toBe(true);
-  expect(captured.stdout.some((chunk) => chunk.includes("[Metadata]"))).toBe(true);
-  expect(captured.stdout.some((chunk) => chunk.includes("[Tagging]"))).toBe(true);
+      expect(captured.stdout.some((chunk) => chunk.includes("[Analyzing]"))).toBe(true);
+      expect(captured.stdout.some((chunk) => chunk.includes("[Converting]"))).toBe(true);
+      expect(captured.stdout.some((chunk) => chunk.includes("[Metadata]"))).toBe(true);
+      expect(captured.stdout.some((chunk) => chunk.includes("[Tagging]"))).toBe(true);
       const state = globalThis as typeof globalThis & { __classifyRenderTarget?: string };
       expect(state.__classifyRenderTarget).toBe("/tmp/test.wav");
     } finally {

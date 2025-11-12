@@ -1,10 +1,105 @@
-/**
- * Tests for playback controller.
- */
-
 import { describe, expect, test, mock } from "bun:test";
 import { createPlaybackController, PlaybackState } from "../src/index.js";
 import type { Recommendation } from "@sidflow/common";
+import type { PlaybackEvent } from "../src/playback.js";
+
+class StubHarness {
+  public state: "idle" | "playing" | "paused" = "idle";
+  public positionSeconds = 0;
+  private startedListeners = new Set<(payload: unknown) => void>();
+  private finishedListeners = new Set<() => void>();
+  private errorListeners = new Set<(error: Error) => void>();
+
+  public start = mock(async () => {
+    this.state = "playing";
+    const result = {
+      pid: 123,
+      command: "stub-player",
+      startedAt: new Date("2025-01-01T00:00:00.000Z"),
+      offsetSeconds: 0,
+      durationSeconds: undefined
+    };
+    for (const listener of this.startedListeners) {
+      listener(result);
+    }
+    return result;
+  });
+
+  public stop = mock(async () => {
+    this.state = "idle";
+  });
+
+  public pause = mock(async () => {
+    this.state = "paused";
+  });
+
+  public resume = mock(async () => {
+    this.state = "playing";
+  });
+
+  public getState(): "idle" | "playing" | "paused" {
+    return this.state;
+  }
+
+  public getPositionSeconds = mock(() => this.positionSeconds);
+
+  public on(event: "started" | "finished" | "error", listener: ((...args: unknown[]) => void)): void {
+    if (event === "finished") {
+      this.finishedListeners.add(listener as () => void);
+      return;
+    }
+    if (event === "error") {
+      this.errorListeners.add(listener as (error: Error) => void);
+      return;
+    }
+    this.startedListeners.add(listener);
+  }
+
+  public off(event: "started" | "finished" | "error", listener: ((...args: unknown[]) => void)): void {
+    if (event === "finished") {
+      this.finishedListeners.delete(listener as () => void);
+      return;
+    }
+    if (event === "error") {
+      this.errorListeners.delete(listener as (error: Error) => void);
+      return;
+    }
+    this.startedListeners.delete(listener);
+  }
+
+  public emitFinished(): void {
+    for (const listener of this.finishedListeners) {
+      listener();
+    }
+  }
+
+  public emitError(error: Error): void {
+    for (const listener of this.errorListeners) {
+      listener(error);
+    }
+  }
+}
+
+type HarnessContract = Pick<
+  StubHarness,
+  "start" | "stop" | "pause" | "resume" | "getPositionSeconds" | "getState" | "on" | "off"
+>;
+
+function setupController(overrides: Partial<Parameters<typeof createPlaybackController>[0]> = {}) {
+  const harness = new StubHarness();
+  const recordedEvents: PlaybackEvent[] = [];
+  const { onEvent, ...rest } = overrides;
+  const controller = createPlaybackController({
+    rootPath: "/tmp/test",
+    createHarness: () => harness as unknown as HarnessContract,
+    onEvent: (event) => {
+      recordedEvents.push(event);
+      onEvent?.(event);
+    },
+    ...rest
+  });
+  return { controller, harness, events: recordedEvents };
+}
 
 const mockSongs: Recommendation[] = [
   {
@@ -29,24 +124,17 @@ const mockSongs: Recommendation[] = [
 
 describe("PlaybackController", () => {
   test("creates playback controller instance", () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test",
-      sidplayPath: "sidplayfp"
-    });
+    const { controller } = setupController();
     expect(controller).toBeDefined();
   });
 
   test("initial state is IDLE", () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test"
-    });
+    const { controller } = setupController();
     expect(controller.getState()).toBe(PlaybackState.IDLE);
   });
 
   test("loadQueue loads songs into queue", () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test"
-    });
+    const { controller } = setupController();
     controller.loadQueue(mockSongs);
 
     const queue = controller.getQueue();
@@ -56,18 +144,14 @@ describe("PlaybackController", () => {
   });
 
   test("getCurrentSong returns undefined when queue not started", () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test"
-    });
+    const { controller } = setupController();
     controller.loadQueue(mockSongs);
 
     expect(controller.getCurrentSong()).toBeUndefined();
   });
 
   test("getQueue returns queue information", () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test"
-    });
+    const { controller } = setupController();
     controller.loadQueue(mockSongs);
 
     const queue = controller.getQueue();
@@ -77,55 +161,35 @@ describe("PlaybackController", () => {
   });
 
   test("throws error when playing empty queue", async () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test"
-    });
+    const { controller } = setupController();
 
     expect(controller.play()).rejects.toThrow("Queue is empty");
   });
 
   test("stop resets state", async () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test"
-    });
+    const { controller, harness } = setupController();
     controller.loadQueue(mockSongs);
-
-    const kill = mock(() => {});
-    (controller as unknown as { process?: { kill: () => void } }).process = { kill };
-
+    await controller.play();
     await controller.stop();
     expect(controller.getState()).toBe(PlaybackState.STOPPED);
-    expect(kill).toHaveBeenCalled();
+    expect(harness.stop).toHaveBeenCalled();
     expect(controller.getQueue().currentIndex).toBe(-1);
   });
 
-  test("calls onEvent callback on events", () => {
-    const eventCallback = mock(() => {});
-    
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test",
-      onEvent: eventCallback
-    });
-
+  test("emits started event when playback begins", async () => {
+    const { controller, events } = setupController();
     controller.loadQueue(mockSongs);
-    
-    // Event callback should be set
-    expect(eventCallback).not.toHaveBeenCalled();
+    await controller.play();
+    expect(events.some((event) => event.type === "started")).toBeTrue();
   });
 
   test("respects minDuration setting", () => {
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test",
-      minDuration: 30
-    });
-    
+    const { controller } = setupController({ minDuration: 30 });
     expect(controller).toBeDefined();
     expect(controller.getState()).toBe(PlaybackState.IDLE);
   });
 
   test("skips songs shorter than minDuration", async () => {
-    const events: string[] = [];
-    
     const shortSong: Recommendation = {
       sid_path: "Test/ShortSong.sid",
       score: 0.9,
@@ -134,106 +198,66 @@ describe("PlaybackController", () => {
       userAffinity: 0.7,
       ratings: { e: 5, m: 5, c: 4, p: 5 },
       feedback: { likes: 10, dislikes: 1, skips: 2, plays: 20 },
-      features: { duration: 10 } // 10 seconds - too short
+      features: { duration: 10 }
     };
-    
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test",
-      minDuration: 15,
-      onEvent: (event) => {
-        events.push(event.type);
-      }
+    const { controller, harness, events } = setupController({
+      minDuration: 15
     });
-    
     controller.loadQueue([shortSong]);
-    
-    // The controller should skip the short song, but we can't test actual playback
-    // in unit tests without mocking spawn. Just verify the controller is configured.
     await controller.play();
-    expect(events).toContain("skipped");
+    expect(events.map((event) => event.type)).toContain("skipped");
+    expect(harness.start).not.toHaveBeenCalled();
     expect(controller.getState()).toBe(PlaybackState.IDLE);
   });
 
   test("pause emits paused event when playing", async () => {
-    const events: string[] = [];
-    const kill = mock(() => {});
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test",
-      onEvent: (event) => events.push(event.type)
-    });
-
+    const { controller, harness, events } = setupController();
     controller.loadQueue(mockSongs);
-    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PLAYING;
-    (controller as unknown as { currentIndex: number }).currentIndex = 0;
-    (controller as unknown as { process?: { kill: (signal?: string) => void } }).process = {
-      kill
-    };
-
+    await controller.play();
     await controller.pause();
-    expect(kill).toHaveBeenCalledWith("SIGSTOP");
-    expect(events).toContain("paused");
+    expect(harness.pause).toHaveBeenCalled();
+    expect(events.map((event) => event.type)).toContain("paused");
     expect(controller.getState()).toBe(PlaybackState.PAUSED);
   });
 
   test("resume emits resumed event when paused", async () => {
-    const events: string[] = [];
-    const kill = mock(() => {});
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test",
-      onEvent: (event) => events.push(event.type)
-    });
-
+    const { controller, harness, events } = setupController();
     controller.loadQueue(mockSongs);
-    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PAUSED;
-    (controller as unknown as { currentIndex: number }).currentIndex = 0;
-    (controller as unknown as { process?: { kill: (signal?: string) => void } }).process = {
-      kill
-    };
-
+    await controller.play();
+    await controller.pause();
     await controller.resume();
-    expect(kill).toHaveBeenCalledWith("SIGCONT");
-    expect(events).toContain("resumed");
+    expect(harness.resume).toHaveBeenCalled();
+    expect(events.map((event) => event.type)).toContain("resumed");
     expect(controller.getState()).toBe(PlaybackState.PLAYING);
   });
 
   test("play resumes from paused state", async () => {
-    const kill = mock(() => {});
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test"
-    });
-
+    const { controller, harness } = setupController();
     controller.loadQueue(mockSongs);
-    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PAUSED;
-    (controller as unknown as { currentIndex: number }).currentIndex = 0;
-    (controller as unknown as { process?: { kill: (signal?: string) => void } }).process = {
-      kill
-    };
-
     await controller.play();
-    expect(kill).toHaveBeenCalledWith("SIGCONT");
+    await controller.pause();
+    await controller.play();
+    expect(harness.resume).toHaveBeenCalled();
     expect(controller.getState()).toBe(PlaybackState.PLAYING);
   });
 
   test("skip emits skipped event and advances queue", async () => {
-    const events: string[] = [];
-    const kill = mock(() => {});
-    const next = mock(async () => {
-      (controller as unknown as { state: PlaybackState }).state = PlaybackState.IDLE;
-    });
-    const controller = createPlaybackController({
-      rootPath: "/tmp/test",
-      onEvent: (event) => events.push(event.type)
-    });
-
+    const { controller, harness, events } = setupController();
     controller.loadQueue(mockSongs);
-    (controller as unknown as { currentIndex: number }).currentIndex = 0;
-    (controller as unknown as { state: PlaybackState }).state = PlaybackState.PLAYING;
-    (controller as unknown as { process?: { kill: () => void } }).process = { kill };
-    (controller as unknown as { next: () => Promise<void> }).next = next;
-
+    await controller.play();
     await controller.skip();
-    expect(kill).toHaveBeenCalled();
-    expect(events).toContain("skipped");
-    expect(next).toHaveBeenCalled();
+    expect(harness.stop).toHaveBeenCalled();
+    expect(events.map((event) => event.type)).toContain("skipped");
+    expect(harness.start).toHaveBeenCalledTimes(2);
+  });
+
+  test("finished event advances to next song", async () => {
+    const { controller, harness, events } = setupController();
+    controller.loadQueue(mockSongs);
+    await controller.play();
+    harness.emitFinished();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events.map((event) => event.type)).toContain("finished");
+    expect(harness.start).toHaveBeenCalledTimes(2);
   });
 });

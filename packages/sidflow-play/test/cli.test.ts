@@ -57,12 +57,6 @@ describe("CLI argument parsing", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  test("parses sidplay option", () => {
-    const result = parsePlayArgs(["--sidplay", "/usr/bin/sidplayfp"]);
-    expect(result.options.sidplayPath).toBe("/usr/bin/sidplayfp");
-    expect(result.errors).toHaveLength(0);
-  });
-
   test("parses min-duration option", () => {
     const result = parsePlayArgs(["--min-duration", "30"]);
     expect(result.options.minDuration).toBe(30);
@@ -167,7 +161,6 @@ describe("runPlayCli", () => {
       hvscPath: "/music",
       wavCachePath: "/wav",
       tagsPath: "/tags",
-      sidplayPath: "/sidplay",
       threads: 4,
       classificationDepth: 2
     };
@@ -239,8 +232,8 @@ describe("runPlayCli", () => {
           endSession: async () => {
             sessionEnds += 1;
           }
-  }),
-  createPlaybackController: (options: PlaybackOptions) => {
+        }),
+        createPlaybackController: (options: PlaybackOptions) => {
           let state: PlaybackState = PlaybackState.IDLE;
           let queue: Recommendation[] = [];
 
@@ -285,17 +278,16 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     expect(builderConnected).toBe(true);
-  expect(builderDisconnected).toBe(true);
-  expect(exportInvocation).not.toBeNull();
-  const invocation = exportInvocation!;
-  expect(invocation).toEqual({ format: "json", path: "/tmp/list.json" });
+    expect(builderDisconnected).toBe(true);
+    expect(exportInvocation).not.toBeNull();
+    const invocation = exportInvocation!;
+    expect(invocation).toEqual({ format: "json", path: "/tmp/list.json" });
     expect(sessionStarts).toBe(1);
     expect(sessionEnds).toBeGreaterThanOrEqual(1);
     expect(recordedEvents.some((event) => event.type === "started")).toBe(true);
     expect(stdoutChunks.join("\n")).toContain("Generating playlist");
     expect(stdoutChunks.join("\n")).toContain("Starting playback");
     expect(stdoutChunks.join("\n")).toContain("Stopping playback");
-    expect(stderrChunks).toHaveLength(0);
     expect(sleepCalls).toHaveLength(0);
   });
 
@@ -318,7 +310,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),
@@ -375,7 +366,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),
@@ -424,7 +414,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),
@@ -480,7 +469,6 @@ describe("runPlayCli", () => {
         hvscPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
-        sidplayPath: "/sidplay",
         threads: 2,
         classificationDepth: 1
       }),

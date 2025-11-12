@@ -1,28 +1,89 @@
 import { NextResponse } from 'next/server';
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
-import { parseSidFile, pathExists } from '@sidflow/common';
-import { createTagFilePath, findUntaggedSids } from '@sidflow/rate';
+import { readdir } from 'node:fs/promises';
+import { pathExists } from '@sidflow/common';
+import { findUntaggedSids, createTagFilePath } from '@sidflow/rate';
 import type { ApiResponse } from '@/lib/validation';
-import {
-  resolvePlaybackEnvironment,
-  startSidPlayback,
-  parseDurationSeconds,
-} from '@/lib/rate-playback';
-import { createPlaybackLock } from '@sidflow/common';
-import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
+import { resolvePlaybackEnvironment } from '@/lib/rate-playback';
+import { lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
+import { createRateTrackInfo } from '@/lib/rate-playback';
+import { createPlaybackSession } from '@/lib/playback-session';
 
 type RateTrackPayload = RateTrackInfo;
 
-function resolveExecutable(executable: string, root: string): string {
-  if (path.isAbsolute(executable)) {
-    return executable;
+// Cache untagged SIDs list for 5 minutes to avoid slow directory scans
+let untaggedCache: { sids: string[]; timestamp: number; hvscPath: string; tagsPath: string } | null = null;
+let cacheBuilding = false;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const QUICK_SCAN_LIMIT = 50; // Only scan first N files for instant response
+
+async function quickFindUntaggedSid(hvscPath: string, tagsPath: string): Promise<string | null> {
+  // Quick scan: find first untagged SID in a shallow search
+  async function quickWalk(dir: string, depth: number = 0): Promise<string | null> {
+    if (depth > 3) return null; // Don't go too deep
+    
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      
+      // First check files in current dir
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.toLowerCase().endsWith('.sid')) {
+          const fullPath = path.join(dir, entry.name);
+          const tagPath = createTagFilePath(hvscPath, tagsPath, fullPath);
+          if (!(await pathExists(tagPath))) {
+            return fullPath;
+          }
+        }
+      }
+      
+      // Then recurse into subdirectories
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const result = await quickWalk(path.join(dir, entry.name), depth + 1);
+          if (result) return result;
+        }
+      }
+    } catch {
+      return null;
+    }
+    
+    return null;
   }
-  if (executable.startsWith('./') || executable.startsWith('../')) {
-    return path.resolve(root, executable);
+  
+  return quickWalk(hvscPath);
+}
+
+async function getCachedUntaggedSids(hvscPath: string, tagsPath: string): Promise<string[]> {
+  const now = Date.now();
+  if (
+    untaggedCache &&
+    untaggedCache.hvscPath === hvscPath &&
+    untaggedCache.tagsPath === tagsPath &&
+    now - untaggedCache.timestamp < CACHE_TTL_MS
+  ) {
+    return untaggedCache.sids;
   }
-  return executable;
+
+  const sids = await findUntaggedSids(hvscPath, tagsPath);
+  untaggedCache = { sids, timestamp: now, hvscPath, tagsPath };
+  return sids;
+}
+
+function startBackgroundCacheBuild(hvscPath: string, tagsPath: string): void {
+  if (cacheBuilding) return;
+  
+  cacheBuilding = true;
+  getCachedUntaggedSids(hvscPath, tagsPath)
+    .then(() => {
+      console.log('[rate/random] Background cache build complete');
+    })
+    .catch((error) => {
+      console.error('[rate/random] Background cache build failed:', error);
+    })
+    .finally(() => {
+      cacheBuilding = false;
+    });
 }
 
 async function pickRandomUntaggedSid(
@@ -30,109 +91,43 @@ async function pickRandomUntaggedSid(
   collectionRoot: string,
   tagsPath: string
 ): Promise<string | null> {
-  const { paths } = await loadSonglengthsData(hvscRoot);
-  const baseRelative = path.relative(hvscRoot, collectionRoot);
-  const normalizedBase = baseRelative
-    .split(path.sep)
-    .filter(Boolean)
-    .join('/');
-  const basePrefix = normalizedBase ? `${normalizedBase.replace(/\/+$/, '')}/` : '';
-  const subsetSupported =
-    normalizedBase === '' || (!normalizedBase.startsWith('..') && !path.isAbsolute(baseRelative));
-
-  if (paths.length > 0 && subsetSupported) {
-    const filtered = normalizedBase
-      ? paths.filter((relative) => relative === normalizedBase || relative.startsWith(basePrefix))
-      : paths;
-    const maxAttempts = Math.min(filtered.length, 2000);
-    const seen = new Set<number>();
-
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      let index = Math.floor(Math.random() * filtered.length);
-      while (seen.has(index) && seen.size < filtered.length) {
-        index = (index + 1) % filtered.length;
-      }
-      if (seen.has(index)) {
-        break;
-      }
-      seen.add(index);
-      const relativePosix = filtered[index].replace(/^\//, '');
-      const absolutePath = path.join(hvscRoot, ...relativePosix.split('/'));
-      if (
-        !(await pathExists(absolutePath)) ||
-        !absolutePath.startsWith(collectionRoot)
-      ) {
-        continue;
-      }
-      const tagBase = absolutePath.startsWith(hvscRoot) ? hvscRoot : collectionRoot;
-      const tagPath = createTagFilePath(tagBase, tagsPath, absolutePath);
-      if (!(await pathExists(tagPath))) {
-        return absolutePath;
-      }
+  // If cache exists and is valid, use it for true random selection
+  const now = Date.now();
+  if (
+    untaggedCache &&
+    untaggedCache.hvscPath === collectionRoot &&
+    untaggedCache.tagsPath === tagsPath &&
+    now - untaggedCache.timestamp < CACHE_TTL_MS &&
+    untaggedCache.sids.length > 0
+  ) {
+    const index = Math.floor(Math.random() * untaggedCache.sids.length);
+    const candidate = untaggedCache.sids[index] ?? null;
+    if (candidate && (await pathExists(candidate))) {
+      return candidate;
     }
   }
 
-  const fallback = await findUntaggedSids(collectionRoot, tagsPath);
-  if (fallback.length === 0) {
-    return null;
+  // No cache or expired: do quick scan for instant response
+  const quickResult = await quickFindUntaggedSid(collectionRoot, tagsPath);
+  
+  // Start building full cache in background for next requests
+  if (!cacheBuilding) {
+    startBackgroundCacheBuild(collectionRoot, tagsPath);
   }
-  const index = Math.floor(Math.random() * fallback.length);
-  const candidate = fallback[index] ?? null;
-  if (candidate && (await pathExists(candidate))) {
-    return candidate;
-  }
-  return null;
+  
+  return quickResult;
 }
-
-async function startPlayback(
-  sidPath: string,
-  sidplayPath: string,
-  root: string,
-  playbackLock: PlaybackLock,
-  playbackSource: string
-): Promise<void> {
-  try {
-    const child = spawn(resolveExecutable(sidplayPath, root), [sidPath], {
-      stdio: 'ignore',
-      cwd: path.dirname(sidPath),
-    });
-    if (child.pid) {
-      const metadata = {
-        pid: child.pid,
-        command: playbackSource,
-        sidPath,
-        source: playbackSource,
-        startedAt: new Date().toISOString(),
-      };
-      await playbackLock.registerProcess(metadata);
-      const pid = child.pid;
-      child.once('exit', () => {
-        void playbackLock.releaseIfMatches(pid);
-      });
-      child.once('error', () => {
-        void playbackLock.releaseIfMatches(pid);
-      });
-    }
-  } catch (error) {
-    console.error('[api/rate/random] Unable to spawn sidplayfp', error);
-    await playbackLock.stopExistingPlayback(playbackSource);
-  }
-}
-
-function buildResponse(track: RateTrackPayload): ApiResponse<{ track: RateTrackPayload }> {
-  return {
-    success: true,
-    data: {
-      track,
-    },
-  };
-}
-
 export async function POST() {
+  const startTime = Date.now();
   try {
+    console.log('[API] /api/rate/random - Request:', {
+      timestamp: new Date().toISOString(),
+    });
+
     const env = await resolvePlaybackEnvironment();
     const sidPath = await pickRandomUntaggedSid(env.hvscPath, env.musicRoot, env.tagsPath);
     if (!sidPath) {
+      console.log('[API] /api/rate/random - No untagged SIDs found');
       const response: ApiResponse = {
         success: false,
         error: 'No SID files to rate',
@@ -140,9 +135,6 @@ export async function POST() {
       };
       return NextResponse.json(response, { status: 404 });
     }
-    const playbackLock = await createPlaybackLock(env.config);
-    await playbackLock.stopExistingPlayback('api/rate/random');
-
     if (!(await pathExists(sidPath))) {
       return NextResponse.json(
         {
@@ -154,51 +146,52 @@ export async function POST() {
       );
     }
 
-    const metadata = await parseSidFile(sidPath);
-    const fileStats = await stat(sidPath);
     const length = await lookupSongLength(sidPath, env.hvscPath, env.musicRoot);
-    const relativePath = path.relative(env.musicRoot, sidPath);
-    const filename = path.basename(sidPath);
-    const selectedSong = metadata.startSong;
-    const durationSeconds = parseDurationSeconds(metadata.length ?? length);
 
-    const payload: RateTrackPayload = {
+    const track = await createRateTrackInfo({
+      env,
       sidPath,
-      relativePath,
-      filename,
-      displayName: metadata.title || filename.replace(/\.sid$/i, ''),
-      selectedSong,
-      durationSeconds,
-      metadata: {
-        title: metadata.title || undefined,
-        author: metadata.author || undefined,
-        released: metadata.released || undefined,
-        songs: metadata.songs,
-        startSong: metadata.startSong,
-        sidType: metadata.type,
-        version: metadata.version,
-        sidModel: metadata.sidModel1,
-        sidModelSecondary: metadata.sidModel2,
-        sidModelTertiary: metadata.sidModel3,
-        clock: metadata.clock,
-        length: length,
-        fileSizeBytes: fileStats.size,
+      relativeBase: 'collection',
+      lengthHint: length,
+    });
+
+    const session = createPlaybackSession({
+      scope: 'rate',
+      sidPath,
+      track,
+      durationSeconds: track.durationSeconds,
+      selectedSong: track.selectedSong,
+      romPaths: {
+        kernal: env.kernalRomPath ?? null,
+        basic: env.basicRomPath ?? null,
+        chargen: env.chargenRomPath ?? null,
+      },
+    });
+
+    const elapsedMs = Date.now() - startTime;
+    console.log('[API] /api/rate/random - Success:', {
+      sessionId: session.sessionId,
+      sidPath,
+      selectedSong: session.selectedSong,
+      durationSeconds: session.durationSeconds,
+      elapsedMs,
+    });
+
+    const response: ApiResponse<{ track: RateTrackPayload; session: typeof session }> = {
+      success: true,
+      data: {
+        track,
+        session,
       },
     };
 
-    await startSidPlayback({
-      env,
-      playbackLock,
-      sidPath,
-      offsetSeconds: 0,
-      durationSeconds,
-      source: 'api/rate/random',
-      track: payload,
-    });
-
-    return NextResponse.json(buildResponse(payload), { status: 200 });
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('[api/rate/random] Failed to load random SID', error);
+    const elapsedMs = Date.now() - startTime;
+    console.error('[API] /api/rate/random - Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      elapsedMs,
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to load random SID',

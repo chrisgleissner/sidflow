@@ -12,7 +12,7 @@
 ## Dependencies
 
 - Reliable network access to download HVSC archives and apply deltas.
-- System support for 7-Zip extraction (either bundled binary or documented prerequisite).
+- Archive extraction handled by bundled `7zip-min`; ensure the package stays pinned and audited.
 - Codecov account with repository token configured in CI secrets.
 - Adequate storage for HVSC mirror, WAV cache, and generated models.
 

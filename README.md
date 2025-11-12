@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 ![Logo](./doc/img/logo.png)
 
 # SID Flow
@@ -22,76 +23,60 @@ No more random browsing – just tell it what kind of music you want, and it pla
 ## Features
 
 ✨ **Smart Classification**
+
 - Automatically rates songs for energy, mood, and complexity
 - Uses audio analysis and learns from feedback
+- Improves over time based on your ratings
 
 🎵 **Mood-Based Playlists**
+
 - Create playlists like "energetic," "quiet," or "dark"
 
 🎮 **Easy to Use**
-- Simple command-line tools and a web UI
-- Stream directly or export playlists
 
-📊 **Learning System**
-- Improves over time based on your ratings
+- Simple web UI
+- Command-line tools for scripting
 
 🔄 **Reproducible**
+
 - All data stored in human-readable formats (JSON/JSONL)
 - Version control friendly
 
 ---
 
-## Installation
+## Getting Started
 
-### Prerequisites
+### Install Bun
 
-Install the following tools first:
+First install Bun, the all-in-one toolkit for developing modern Typescript applications, as per https://bun.com/docs/installation:
 
-1. **[Bun](https://bun.sh/install)** – JavaScript runtime  
-   ```bash
-   curl -fsSL https://bun.sh/install | bash
-   ```
+macOS and Linux:
 
-2. **[sidplayfp](https://github.com/libsidplayfp/sidplayfp)** – SID-to-audio converter  
-   - Linux: `sudo apt install sidplayfp`  
-   - macOS: `brew install sidplayfp`  
-   - Windows: download from [releases](https://github.com/libsidplayfp/sidplayfp/releases)
+```sh
+curl -fsSL https://bun.com/install | bash
+```
 
-3. **[7-Zip](https://www.7-zip.org/)** – archive extraction tool  
-   - Linux: `sudo apt install p7zip-full`  
-   - macOS: `brew install p7zip`  
-   - Windows: download from 7-zip.org
+Windows:
 
-### Setup
+```sh
+powershell -c "irm bun.sh/install.ps1|iex"
+```
+
+
+
+### Build Project
+
+Then install and build this project:
 
 ```bash
 git clone https://github.com/chrisgleissner/sidflow.git
 cd sidflow
-bun install
 bun run build
-```
-
-Then create `.sidflow.json` in the root directory:
-
-```json
-{
-  "hvscPath": "./workspace/hvsc",
-  "wavCachePath": "./workspace/wav-cache",
-  "tagsPath": "./workspace/tags",
-  "sidplayPath": "sidplayfp",
-  "threads": 0,
-  "classificationDepth": 3
-}
-```
-
-Validate your setup:
-```bash
-bun run validate:config
 ```
 
 ---
 
-## Web Control Panel
+## Web UI
 
 For those who prefer a graphical interface, SID Flow includes a **Next.js + React** control panel.
 
@@ -100,15 +85,31 @@ cd packages/sidflow-web
 bun run dev
 ```
 
-Open **http://localhost:3000** in your browser.
+Open **<http://localhost:3000>** in your browser.
 
-![r8ate panel](./doc/web-screenshots/04-rate.png)
+### Rate
 
-### Features
+Play and rate songs based on personal preference. 
+
+You listen to a song and manually rate it based on its energy, complexity, mood, and personal preference.
+
+![rate panel](./doc/web-screenshots/04-rate-playback.png)
+
+### Classify
+
+Classify songs based on objective similarity. 
+
+This involves converting all tracks of each SID to a WAV file and then automatically analyzing it, using all cores of your CPU.
+
+As it's very CPU intensive, it can take a while for a large song collection.
+
+![classify panel](./doc/web-screenshots/05-classify-progress.png)
+
+
+### Additional Features
 
 - Play and control SID playback by mood
-- Rate songs visually using buttons
-- Trigger classification, HVSC sync, and training jobs
+- Trigger HVSC fetch and training jobs
 - Real-time system feedback and status display
 - RESTful API and [OpenAPI Spec](packages/sidflow-web/openapi.yaml)
 
@@ -118,64 +119,31 @@ Documentation: [packages/sidflow-web/README.md](packages/sidflow-web/README.md)
 
 ## Command-Line Tools
 
-If you prefer automation or terminal workflows, use these CLI tools.
+If you prefer automation or terminal workflows, use the CLI tools documented in the [Technical Reference](./doc/technical-reference.md).
 
-### Fetch SIDs
-
-```bash
-./scripts/sidflow-fetch
-```
-
-Downloads and extracts the latest HVSC archive to `workspace/hvsc/`.
-
-### Rate Songs
-
-```bash
-./scripts/sidflow-rate
-```
-Play songs, rate them on **energy**, **mood**, and **complexity** (1–5).
-
-### Classify Collection
-
-```bash
-./scripts/sidflow-classify
-```
-Analyzes all SIDs, converts to WAV, extracts features, and predicts ratings.
-
-### Train Model
-
-```bash
-./scripts/sidflow-train
-```
-
-Trains the ML model using your ratings.
-
-### Build Database
-
-```bash
-bun run build:db
-```
-
-Builds a searchable recommendation database.
-
-### Play Music
-
-```bash
-./scripts/sidflow-play --mood energetic
-./scripts/sidflow-play --filters "e>=4,m>=3"
-```
-
-Playlists stream via `sidplayfp`.  
-Export instead of play:
-```bash
-./scripts/sidflow-play --mood quiet --export playlist.json --export-only
-```
 
 ---
 
+## Config
+
+
+The `.sidflow.json` file contains details about the HVSC download folder and more:
+
+```json
+{
+  "hvscPath": "./workspace/hvsc",
+  "wavCachePath": "./workspace/wav-cache",
+  "tagsPath": "./workspace/tags",
+  "threads": 0,
+  "classificationDepth": 3
+}
+```
+
+
+
 ## Developer Documentation
 
-- **[Technical Reference](doc/technical-reference.md)** – architecture, CLI flags, APIs  
+- **[Technical Reference](doc/technical-reference.md)** – architecture, CLI tools, APIs  
 - **[Developer Guide](doc/developer.md)** – setup, testing, contributions  
 - **[Performance Metrics](doc/performance-metrics.md)** – benchmarks  
 - **[Artifact Governance](doc/artifact-governance.md)** – data management
@@ -184,18 +152,10 @@ Export instead of play:
 
 ## Acknowledgements
 
-SID Flow builds upon outstanding open-source software and datasets:
+SID Flow is [GPLv2](LICENSE)-licensed and builds upon outstanding open-source software and datasets:
 
-| Component | License | Source |
-|------------|----------|---------|
-| **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) |
-| **libsidplayfp / sidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) |
-| **7-Zip** | LGPL 2.1+ / BSD | [7-zip.org](https://www.7-zip.org/) |
-| **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) |
-
----
-
-## License
-
-**GPL v2** – see [LICENSE](LICENSE).  
-Third-party components retain their respective licenses.
+| Component | License | Source | Credit |
+|------------|----------|---------|-----|
+| **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) | Fastest Typescript runtime |
+| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | Most accurate software SID emulator |
+| **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) | Largest SID collection |

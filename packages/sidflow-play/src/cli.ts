@@ -27,7 +27,6 @@ interface CliOptions {
   limit?: number;
   explorationFactor?: number;
   diversityThreshold?: number;
-  sidplayPath?: string;
   playOnly?: boolean;
   exportOnly?: boolean;
   minDuration?: number;
@@ -44,6 +43,7 @@ function printHelp(stream: NodeJS.WritableStream = process.stdout): void {
     "Usage: sidflow play [options]",
     "",
     "Personal radio for SID music with mood-based playlist generation.",
+    "Playback uses the WASM SidPlaybackHarness; ensure either ffplay or aplay is available locally.",
     "",
     "Options:",
     "  --config <path>              Load an alternate .sidflow.json",
@@ -53,7 +53,6 @@ function printHelp(stream: NodeJS.WritableStream = process.stdout): void {
     "  --exploration <0-1>          Exploration factor (default: 0.2)",
     "  --diversity <0-1>            Diversity threshold (default: 0.2)",
     "  --min-duration <seconds>     Minimum song duration in seconds (default: 15)",
-    "  --sidplay <path>             Override sidplayfp executable",
     "  --export <path>              Export playlist to file",
     "  --export-format <fmt>        Export format: json, m3u, m3u8 (default: json)",
     "  --export-only                Export playlist without playing",
@@ -172,16 +171,6 @@ export function parsePlayArgs(argv: string[]): ParseResult {
             options.diversityThreshold = num;
             index += 1;
           }
-        }
-        break;
-      }
-      case "--sidplay": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--sidplay requires a value");
-        } else {
-          options.sidplayPath = next;
-          index += 1;
         }
         break;
       }
@@ -410,7 +399,6 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
 
     const controller = runtime.createPlaybackController({
       rootPath: config.hvscPath,
-      sidplayPath: options.sidplayPath || config.sidplayPath,
       minDuration: options.minDuration,
       playbackLock,
       playbackSource: "sidflow-play",

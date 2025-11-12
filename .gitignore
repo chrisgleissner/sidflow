@@ -1,4 +1,6 @@
 node_modules/
+.bun/
+.playwright-browsers/
 .DS_Store
 *.log
 coverage/
@@ -7,6 +9,10 @@ packages/*/dist/
 packages/*/.tsbuildinfo
 workspace/
 !workspace/.gitkeep
+test-workspace/
+
+# Test artifacts
+packages/libsidplayfp-wasm/test-output.wav
 
 # Preferences
 .sidflow-preferences.json

@@ -3,10 +3,9 @@ import { mkdir, mkdtemp, opendir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
 import { once } from "node:events";
 
-import { createLogger, ensureDir, loadConfig, retry, type SidflowConfig } from "@sidflow/common";
+import { createLogger, ensureDir, extractSevenZipArchive, loadConfig, retry, type SidflowConfig } from "@sidflow/common";
 
 import { fetchHvscManifest, DEFAULT_BASE_URL } from "./manifest.js";
 import { loadHvscVersion, saveHvscVersion } from "./version.js";
@@ -154,11 +153,11 @@ async function syncDeltas(context: SyncDeltasContext): Promise<number[]> {
       continue;
     }
 
-  logger.info(`Applying HVSC delta ${descriptor.filename}`);
-  logger.info(`Downloading delta ${descriptor.filename}`);
-  const progress = createProgressReporter(logger, descriptor.filename);
-  const archivePath = await downloadArchive(descriptor, dependencies, progress);
-  logger.info(`Download complete: ${descriptor.filename}`);
+    logger.info(`Applying HVSC delta ${descriptor.filename}`);
+    logger.info(`Downloading delta ${descriptor.filename}`);
+    const progress = createProgressReporter(logger, descriptor.filename);
+    const archivePath = await downloadArchive(descriptor, dependencies, progress);
+    logger.info(`Download complete: ${descriptor.filename}`);
     await dependencies.extractArchive(archivePath, hvscPath);
     const checksum = await dependencies.computeChecksum(archivePath);
 
@@ -325,20 +324,7 @@ async function defaultChecksum(filePath: string): Promise<string> {
 
 /* c8 ignore start */
 async function defaultExtractArchive(archivePath: string, destination: string): Promise<void> {
-  await mkdir(destination, { recursive: true });
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("7z", ["x", archivePath, `-o${destination}`, "-y"], {
-      stdio: "ignore"
-    });
-    child.once("error", reject);
-    child.once("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`7z exited with code ${code}`));
-      }
-    });
-  });
+  await extractSevenZipArchive(archivePath, destination);
 }
 /* c8 ignore stop */
 

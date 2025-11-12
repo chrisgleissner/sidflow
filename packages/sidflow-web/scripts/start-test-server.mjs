@@ -1,10 +1,22 @@
 import { createServer } from 'http';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import next from 'next';
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const hostname = process.env.HOSTNAME ?? '0.0.0.0';
 
+const thisDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(thisDir, '../../..');
+const wasmArtifactPath = resolve(repoRoot, 'packages/libsidplayfp-wasm/dist/libsidplayfp.wasm');
+
+if (!process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH) {
+  process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH = wasmArtifactPath;
+}
+
 async function start() {
+  // Use test-specific config
+  process.env.SIDFLOW_CONFIG = '.sidflow.test.json';
   try {
     const app = next({
       dev: true,

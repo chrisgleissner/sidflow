@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'node:path';
 import type { Dirent } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
-import { parseSidFile } from '@sidflow/common';
+import { pathExists } from '@sidflow/common';
 import type { ApiResponse } from '@/lib/validation';
 import {
   resolvePlaybackEnvironment,
-  startSidPlayback,
-  parseDurationSeconds,
+  createRateTrackInfo,
 } from '@/lib/rate-playback';
-import { createPlaybackLock } from '@sidflow/common';
 import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
+import { createPlaybackSession } from '@/lib/playback-session';
 
 const PRESETS = ['quiet', 'ambient', 'energetic', 'dark', 'bright', 'complex'] as const;
 type MoodPreset = (typeof PRESETS)[number];
@@ -84,7 +83,7 @@ async function pickRandomSid(
     return matchesSubset && moodMatchesPath(preset, p);
   });
   const candidates = filtered.length > 0 ? filtered : paths;
-  const maxAttempts = Math.min(candidates.length, 2000);
+  const maxAttempts = Math.min(candidates.length, 100);
   const seen = new Set<number>();
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let index = Math.floor(Math.random() * candidates.length);
@@ -138,10 +137,17 @@ async function pickRandomSidFromFilesystem(collectionRoot: string): Promise<stri
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const body = await request.json().catch(() => ({}));
     const preset = normalizePreset(body?.preset);
     const preview = Boolean(body?.preview);
+
+    console.log('[API] /api/play/random - Request:', {
+      preset,
+      preview,
+      timestamp: new Date().toISOString(),
+    });
 
     const env = await resolvePlaybackEnvironment();
     const sidPath = await pickRandomSid(env.hvscPath, env.collectionRoot, preset);
@@ -155,76 +161,65 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 404 });
     }
 
-    const playbackLock = preview ? null : await createPlaybackLock(env.config);
-    if (playbackLock) {
-      await playbackLock.stopExistingPlayback('api/play/random');
-    }
-
-    const metadata = await parseSidFile(sidPath);
     const fileStats = await stat(sidPath);
     const length = await lookupSongLength(sidPath, env.hvscPath, env.musicRoot);
-    const relativePath = path.relative(env.collectionRoot, sidPath);
-    const filename = path.basename(sidPath);
-    const selectedSong = metadata.startSong;
-    const durationSeconds = parseDurationSeconds(metadata.length ?? length);
 
-    const payload: RateTrackInfo = {
+    const track = await createRateTrackInfo({
+      env,
       sidPath,
-      relativePath,
-      filename,
-      displayName: metadata.title || filename.replace(/\.sid$/i, ''),
-      selectedSong,
+      relativeBase: 'collection',
+      lengthHint: length,
+    });
+
+    const enrichedTrack: RateTrackInfo = {
+      ...track,
       metadata: {
-        title: metadata.title || undefined,
-        author: metadata.author || undefined,
-        released: metadata.released || undefined,
-        songs: metadata.songs,
-        startSong: metadata.startSong,
-        sidType: metadata.type,
-        version: metadata.version,
-        sidModel: metadata.sidModel1,
-        sidModelSecondary: metadata.sidModel2,
-        sidModelTertiary: metadata.sidModel3,
-        clock: metadata.clock,
-        length: length,
+        ...track.metadata,
+        length,
         fileSizeBytes: fileStats.size,
       },
-      durationSeconds,
     };
 
-    if (!preview && playbackLock) {
-      await startSidPlayback({
-        env,
-        playbackLock,
+    const session = preview
+      ? null
+      : createPlaybackSession({
+        scope: 'play',
         sidPath,
-        offsetSeconds: 0,
-        durationSeconds,
-        source: 'api/play/random',
-        track: payload,
+        track: enrichedTrack,
+        durationSeconds: enrichedTrack.durationSeconds,
+        selectedSong: enrichedTrack.selectedSong,
+        romPaths: {
+          kernal: env.kernalRomPath ?? null,
+          basic: env.basicRomPath ?? null,
+          chargen: env.chargenRomPath ?? null,
+        },
       });
-    }
 
-    const response: ApiResponse<{ track: RateTrackInfo }> = {
+      const elapsedMs = Date.now() - startTime;
+    console.log('[API] /api/play/random - Success:', {
+      sessionId: session?.sessionId,
+      sidPath,
+      selectedSong: enrichedTrack.selectedSong,
+      durationSeconds: enrichedTrack.durationSeconds,
+      elapsedMs,
+    });
+
+    const response: ApiResponse<{ track: RateTrackInfo; session: typeof session | null }> = {
       success: true,
-      data: { track: payload },
+      data: { track: enrichedTrack, session },
     };
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('[api/play/random] failed', error);
+    const elapsedMs = Date.now() - startTime;
+    console.error('[API] /api/play/random - Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      elapsedMs,
+    });
     const response: ApiResponse = {
       success: false,
       error: 'Failed to load random SID',
       details: error instanceof Error ? error.message : String(error),
     };
     return NextResponse.json(response, { status: 500 });
-  }
-}
-
-async function pathExists(candidate: string): Promise<boolean> {
-  try {
-    const stats = await stat(candidate);
-    return stats.isFile();
-  } catch {
-    return false;
   }
 }

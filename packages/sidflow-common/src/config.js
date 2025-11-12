@@ -4,6 +4,7 @@ import process from "node:process";
 export const DEFAULT_CONFIG_FILENAME = ".sidflow.json";
 let cachedConfig = null;
 let cachedPath = null;
+let sidplayWarningEmitted = false;
 export class SidflowConfigError extends Error {
     constructor(message, options) {
         super(message);
@@ -40,6 +41,14 @@ export async function loadConfig(configPath) {
         throw new SidflowConfigError(`Invalid JSON in SIDFlow config at ${resolvedPath}`, { cause: error });
     }
     const config = validateConfig(data, resolvedPath);
+    const overrideSidBase = process.env.SIDFLOW_SID_BASE_PATH;
+    if (overrideSidBase && overrideSidBase.trim().length > 0) {
+        config.hvscPath = path.normalize(overrideSidBase);
+    }
+    if (config.sidplayPath && !sidplayWarningEmitted) {
+        sidplayWarningEmitted = true;
+        process.stderr.write("[sidflow] Config key \"sidplayPath\" is deprecated. The WASM renderer is now used by default; remove this key once native fallbacks are retired.\n");
+    }
     cachedConfig = config;
     cachedPath = resolvedPath;
     return config;
@@ -72,11 +81,22 @@ function validateConfig(value, configPath) {
         }
         return raw;
     };
+    const optionalString = (key) => {
+        const raw = record[key];
+        if (raw === undefined) {
+            return undefined;
+        }
+        if (typeof raw !== "string" || raw.trim() === "") {
+            throw new SidflowConfigError(`Config key "${String(key)}" must be a non-empty string`);
+        }
+        return path.normalize(raw);
+    };
     return {
         hvscPath: requiredString("hvscPath"),
         wavCachePath: requiredString("wavCachePath"),
         tagsPath: requiredString("tagsPath"),
-        sidplayPath: requiredString("sidplayPath"),
+        classifiedPath: optionalString("classifiedPath"),
+        sidplayPath: optionalString("sidplayPath"),
         threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
         classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0)
     };

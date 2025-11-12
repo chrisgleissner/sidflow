@@ -12,11 +12,16 @@
         "typescript": "^5.4.0",
       },
     },
+    "packages/libsidplayfp-wasm": {
+      "name": "@sidflow/libsidplayfp-wasm",
+      "version": "0.1.0",
+    },
     "packages/sidflow-classify": {
       "name": "@sidflow/classify",
       "version": "0.1.0",
       "dependencies": {
         "@sidflow/common": "workspace:*",
+        "@sidflow/libsidplayfp-wasm": "workspace:*",
         "@tensorflow/tfjs-node": "^4.22.0",
         "essentia.js": "^0.1.3",
       },
@@ -24,6 +29,10 @@
     "packages/sidflow-common": {
       "name": "@sidflow/common",
       "version": "0.1.0",
+      "dependencies": {
+        "7zip-min": "^1.3.1",
+        "@sidflow/libsidplayfp-wasm": "workspace:*",
+      },
     },
     "packages/sidflow-fetch": {
       "name": "@sidflow/fetch",
@@ -65,7 +74,9 @@
         "@radix-ui/react-slider": "^1.3.6",
         "@radix-ui/react-slot": "^1.2.4",
         "@radix-ui/react-tabs": "^1.1.13",
+        "@sidflow/classify": "workspace:*",
         "@sidflow/common": "workspace:*",
+        "@sidflow/libsidplayfp-wasm": "workspace:*",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "lucide-react": "^0.552.0",
@@ -89,6 +100,10 @@
     },
   },
   "packages": {
+    "7zip-bin": ["7zip-bin@5.1.1", "", {}, "sha512-sAP4LldeWNz0lNzmTird3uWfFDWWTeg6V/MsmyyLR9X1idwKBWIgt/ZvinqQldJm3LecKEs1emkbquO6PCiLVQ=="],
+
+    "7zip-min": ["7zip-min@1.4.5", "", { "dependencies": { "7zip-bin": "5.1.1" } }, "sha512-S+FzNwJFKF5LgQYs+hPQo+qeffdi+259Ak63rWEfkHP9arsU8gbe5K+4HscuWN1ih1lP1gTjDNPddbU0qhPtHQ=="],
+
     "@75lb/deep-merge": ["@75lb/deep-merge@1.1.2", "", { "dependencies": { "lodash": "^4.17.21", "typical": "^7.1.1" } }, "sha512-08K9ou5VNbheZFxM5tDWoqjA3ImC50DiuuJ2tj1yEPRfkp8lLLg6XAaJ4On+a0yAXor/8ay5gHnAIshRM44Kpw=="],
 
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -340,6 +355,8 @@
     "@sidflow/common": ["@sidflow/common@workspace:packages/sidflow-common"],
 
     "@sidflow/fetch": ["@sidflow/fetch@workspace:packages/sidflow-fetch"],
+
+    "@sidflow/libsidplayfp-wasm": ["@sidflow/libsidplayfp-wasm@workspace:packages/libsidplayfp-wasm"],
 
     "@sidflow/play": ["@sidflow/play@workspace:packages/sidflow-play"],
 

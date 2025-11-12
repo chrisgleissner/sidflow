@@ -50,7 +50,6 @@ async function createConfig(root: string): Promise<string> {
     hvscPath,
     wavCachePath,
     tagsPath,
-    sidplayPath: "sidplayfp",
     threads: 0,
     classificationDepth: 2
   } satisfies ClassificationPlan["config"];

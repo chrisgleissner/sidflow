@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { ToastProvider } from '@/context/toast-context';
 import { ToastViewport } from '@/components/ToastViewport';
+import { CrossOriginIsolatedCheck } from '@/components/CrossOriginIsolatedCheck';
 
 export const metadata: Metadata = {
   title: 'SIDFlow Control Panel',
@@ -14,9 +15,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="antialiased font-c64">
         <ToastProvider>
+          <CrossOriginIsolatedCheck />
           {children}
           <ToastViewport />
         </ToastProvider>

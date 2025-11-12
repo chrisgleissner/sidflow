@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WizardTab } from '@/components/WizardTab';
@@ -22,7 +22,7 @@ interface QueueItem {
 const TAB_VALUES = ['wizard', 'prefs', 'fetch', 'rate', 'classify', 'train', 'play'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
-export default function Home() {
+function HomeContent() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -77,18 +77,17 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" suppressHydrationWarning>
       <main className="max-w-7xl mx-auto">
         <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
           <div className="flex items-center gap-4">
             <Image
-              src="/logo-modern.svg"
+              src="/logo-small.png"
               alt="SIDFlow"
-              width={48}
-              height={48}
-              className="w-12 h-12"
+              width={60}
+              height={40}
+              className="w-[60px] h-[40px]"
               priority
-              unoptimized
             />
             <div className="flex-1">
               <h1 className="text-xl font-bold text-foreground tracking-tight leading-tight">
@@ -174,7 +173,7 @@ export default function Home() {
 
               <div className="flex-1">
                 <TabsContent value="wizard" className="mt-0">
-                  <WizardTab onStatusChange={handleStatusChange} onSwitchTab={setActiveTab} />
+                  <WizardTab onStatusChange={handleStatusChange} onSwitchTab={(tab) => setActiveTab(tab as typeof activeTab)} />
                 </TabsContent>
                 <TabsContent value="prefs" className="mt-0">
                   <PrefsTab onStatusChange={handleStatusChange} />
@@ -206,5 +205,13 @@ export default function Home() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }

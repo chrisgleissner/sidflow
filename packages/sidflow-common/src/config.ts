@@ -7,7 +7,6 @@ export interface SidflowConfig {
   wavCachePath: string;
   tagsPath: string;
   classifiedPath?: string;
-  sidplayPath: string;
   threads: number;
   classificationDepth: number;
 }
@@ -136,7 +135,6 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     wavCachePath: requiredString("wavCachePath"),
     tagsPath: requiredString("tagsPath"),
     classifiedPath: optionalString("classifiedPath"),
-    sidplayPath: requiredString("sidplayPath"),
     threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
     classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0)
   };

@@ -29,7 +29,6 @@ export interface TagCliOptions {
 export interface TagSessionPlan {
   config: SidflowConfig;
   random: boolean;
-  sidplayPath: string;
   tagsPath: string;
   hvscPath: string;
 }
@@ -44,7 +43,6 @@ export async function planTagSession(
   return {
     config,
     random: options.random ?? false,
-    sidplayPath: config.sidplayPath,
     tagsPath: config.tagsPath,
     hvscPath: config.hvscPath
   };
@@ -102,12 +100,12 @@ export async function writeManualTag(
     source: "manual",
     timestamp: timestamp.toISOString()
   };
-  
+
   // Include preference rating if present
   if (ratings.p !== undefined) {
     record.p = ratings.p;
   }
-  
+
   await ensureDirectory(tagFilePath);
   await writeFile(tagFilePath, stringifyDeterministic(record));
 }

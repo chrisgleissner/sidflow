@@ -1,0 +1,11 @@
+{
+  "lastChecked": "2025-11-12T02:37:04.614Z",
+  "lastSuccessfulBuild": {
+    "artifact": "/home/chris/dev/c64/sidflow/packages/libsidplayfp-wasm/dist/libsidplayfp.wasm",
+    "commit": "7284e97bda67a838dadd3c2e361798b4f5b6ab30",
+    "notes": "Phase 4 deterministic build via bun run wasm:build; artifacts committed.",
+    "timestamp": "2025-11-10T22:05:30.028Z"
+  },
+  "latestUpstreamCommit": "7284e97bda67a838dadd3c2e361798b4f5b6ab30",
+  "upstreamRepo": "https://github.com/libsidplayfp/libsidplayfp"
+}

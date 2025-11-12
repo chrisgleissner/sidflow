@@ -6,6 +6,15 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/**/*"],
-  "exclude": ["test/**/*"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "test/**/*"
+  ],
+  "references": [
+    {
+      "path": "../libsidplayfp-wasm"
+    }
+  ]
 }

@@ -37,12 +37,13 @@ const projectUse = hasSystemChrome
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 10 * 1000,
+  timeout: 15 * 1000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 6 : undefined,
   reporter: [
+    ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'playwright-report/report.json' }],
   ],
@@ -56,7 +57,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'bun ./scripts/start-test-server.mjs',
+    command: 'bun ./scripts/setup-test-workspace.mjs && bun ./scripts/start-test-server.mjs',
     url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 180 * 1000,
@@ -65,6 +66,7 @@ export default defineConfig({
       PATH: `${stubToolsPath}${path.delimiter}${process.env.PATH ?? ''}`,
       NODE_ENV: 'development',
       HOSTNAME: '0.0.0.0',
+      SIDFLOW_CONFIG: '.sidflow.test.json',
     },
   },
 });

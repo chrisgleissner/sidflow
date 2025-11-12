@@ -20,11 +20,17 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
-import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { WasmRendererPool } from "./render/wasm-render-pool.js";
+import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
+import {
+  computeFileHash,
+  renderWavWithEngine,
+  type RenderWavOptions
+} from "./render/wav-renderer.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -63,14 +69,29 @@ async function runConcurrent<T>(
   const limit = Math.max(1, Math.min(concurrency, items.length));
   let nextIndex = 0;
 
+  // Helper to atomically get next index
+  const getNextIndex = (): number | null => {
+    if (nextIndex >= items.length) {
+      return null;
+    }
+    const current = nextIndex;
+    nextIndex += 1;
+    return current;
+  };
+
   const runners = Array.from({ length: limit }, async (_, workerIndex) => {
     const threadId = workerIndex + 1;
+    // Yield immediately to prevent all workers from grabbing indices synchronously
+    await Promise.resolve();
+    
+    let itemsProcessed = 0;
     while (true) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      if (currentIndex >= items.length) {
+      const currentIndex = getNextIndex();
+      if (currentIndex === null) {
+        console.error(`[DEBUG] Thread ${threadId} finished after processing ${itemsProcessed} items`);
         break;
       }
+      itemsProcessed++;
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
     }
@@ -84,15 +105,19 @@ async function runConcurrent<T>(
  * This function parses all SID files once and caches the metadata to avoid redundant I/O.
  * Used by buildWavCache, generateAutoTags, and generateJsonlOutput.
  */
+type EngineFactory = () => Promise<SidAudioEngine>;
+
+let parseSidFileImpl: typeof parseSidFile = parseSidFile;
+
 async function collectSidMetadataAndSongCount(
   sidFiles: string[]
 ): Promise<{ sidMetadataCache: Map<string, SidFileMetadata>; totalSongs: number }> {
   const sidMetadataCache = new Map<string, SidFileMetadata>();
   let totalSongs = 0;
-  
+
   for (const sidFile of sidFiles) {
     try {
-      const fullMetadata = await parseSidFile(sidFile);
+      const fullMetadata = await parseSidFileImpl(sidFile);
       sidMetadataCache.set(sidFile, fullMetadata);
       totalSongs += fullMetadata.songs;
     } catch {
@@ -100,7 +125,7 @@ async function collectSidMetadataAndSongCount(
       totalSongs += 1;
     }
   }
-  
+
   return { sidMetadataCache, totalSongs };
 }
 
@@ -129,7 +154,6 @@ export interface ClassificationPlan {
   forceRebuild: boolean;
   classificationDepth: number;
   hvscPath: string;
-  sidplayPath: string;
 }
 
 export async function planClassification(
@@ -143,21 +167,17 @@ export async function planClassification(
     tagsPath: config.tagsPath,
     forceRebuild: options.forceRebuild ?? false,
     classificationDepth: config.classificationDepth,
-    hvscPath: config.hvscPath,
-    sidplayPath: config.sidplayPath
+    hvscPath: config.hvscPath
   };
 }
 
 const SID_EXTENSION = ".sid";
 
-async function computeFileHash(filePath: string): Promise<string> {
-  const content = await readFile(filePath);
-  return createHash("sha256").update(content).digest("hex");
-}
+export type { RenderWavOptions } from "./render/wav-renderer.js";
 
 export function resolveWavPath(
-  plan: ClassificationPlan, 
-  sidFile: string, 
+  plan: ClassificationPlan,
+  sidFile: string,
   songIndex?: number
 ): string {
   const relative = path.relative(plan.hvscPath, sidFile);
@@ -167,7 +187,7 @@ export function resolveWavPath(
 
   const directory = path.dirname(relative);
   const baseName = path.basename(relative, path.extname(relative));
-  const wavName = songIndex !== undefined 
+  const wavName = songIndex !== undefined
     ? `${baseName}-${songIndex}.wav`
     : `${baseName}.wav`;
   return path.join(plan.wavCachePath, directory, wavName);
@@ -216,7 +236,7 @@ export async function needsWavRefresh(
   }
 
   const [sidStats, wavStats] = await Promise.all([stat(sidFile), stat(wavFile)]);
-  
+
   // If SID file is older than WAV, no refresh needed
   if (sidStats.mtimeMs <= wavStats.mtimeMs) {
     return false;
@@ -240,50 +260,11 @@ export async function needsWavRefresh(
   return true;
 }
 
-export interface RenderWavOptions {
-  sidFile: string;
-  wavFile: string;
-  sidplayPath: string;
-  songIndex?: number;
-}
-
 export type RenderWav = (options: RenderWavOptions) => Promise<void>;
 
-export const defaultRenderWav: RenderWav = async ({ sidFile, wavFile, sidplayPath, songIndex }) => {
-  await ensureDir(path.dirname(wavFile));
-  
-  // Build sidplayfp command arguments
-  const args = [`-w${wavFile}`];
-  
-  // Add song selection if specified (1-based index)
-  if (songIndex !== undefined) {
-    args.push(`-o${songIndex}`);
-  }
-  
-  args.push(sidFile);
-  
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(sidplayPath, args, {
-      stdio: "ignore"
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`sidplayfp exited with code ${code}`));
-      }
-    });
-  });
-
-  // Store hash of SID file after successful WAV render
-  const hashFile = `${wavFile}.hash`;
-  try {
-    const hash = await computeFileHash(sidFile);
-    await writeFile(hashFile, hash, "utf8");
-  } catch {
-    // Hash storage is optional, continue even if it fails
-  }
+export const defaultRenderWav: RenderWav = async (options) => {
+  const engine = await createEngine();
+  await renderWavWithEngine(engine, options);
 };
 
 export interface WavCacheProgress {
@@ -300,7 +281,6 @@ export interface WavCacheProgress {
 export type ProgressCallback = (progress: WavCacheProgress) => void;
 
 export interface BuildWavCacheOptions {
-  sidplayPath?: string;
   render?: RenderWav;
   forceRebuild?: boolean;
   onProgress?: ProgressCallback;
@@ -333,9 +313,9 @@ export async function buildWavCache(
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
+  console.error(`[DEBUG] collectSidFiles found ${sidFiles.length} SID files in ${plan.hvscPath}`);
   const rendered: string[] = [];
   const skipped: string[] = [];
-  const sidplayPath = options.sidplayPath ?? plan.sidplayPath;
   const render = options.render ?? defaultRenderWav;
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
@@ -368,6 +348,7 @@ export async function buildWavCache(
   const songsToRender: SongToRender[] = [];
   const songsToSkip: SongToRender[] = [];
   let analyzedSongs = 0;
+  let debugLogCount = 0;
 
   const analysisConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
   await runConcurrent(
@@ -387,7 +368,13 @@ export async function buildWavCache(
           file: songLabel
         });
 
-        if (await needsWavRefresh(sidFile, wavFile, shouldForce)) {
+        const needsRefresh = await needsWavRefresh(sidFile, wavFile, shouldForce);
+        if (debugLogCount < 5) {
+          console.error(`[DEBUG] needsWavRefresh(${songLabel}): ${needsRefresh}, wavFile: ${wavFile}`);
+          debugLogCount++;
+        }
+        
+        if (needsRefresh) {
           songsToRender.push({ sidFile, songIndex, wavFile, songCount });
         } else {
           songsToSkip.push({ sidFile, songIndex, wavFile, songCount });
@@ -413,53 +400,106 @@ export async function buildWavCache(
         }
       }
 
-      onThreadUpdate?.({
-        threadId: context.threadId,
-        phase: "analyzing",
-        status: "idle"
-      });
+      // Don't report idle status - threads will immediately start building phase
+      // Reporting idle causes UI to show "waiting for work" during phase transition
     }
   );
 
+  console.error(`[DEBUG] Analysis complete: ${songsToRender.length} songs to render, ${songsToSkip.length} to skip`);
+
   // Building phase: render WAV files for each song
   const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
-  await runConcurrent(
-    songsToRender,
-    buildConcurrency,
-    async ({ sidFile, songIndex, wavFile, songCount }, context) => {
-      const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
-      onThreadUpdate?.({
-        threadId: context.threadId,
-        phase: "building",
-        status: "working",
-        file: songLabel
-      });
-      try {
-        await render({ sidFile, wavFile, sidplayPath, songIndex });
-        rendered.push(wavFile);
+  console.error(`[DEBUG] Starting building phase with ${buildConcurrency} threads`);
+  const rendererPool = render === defaultRenderWav ? new WasmRendererPool(buildConcurrency) : null;
 
-        if (onProgress) {
-          const processed = skipped.length + rendered.length;
-          onProgress({
-            phase: "building",
-            totalFiles,
-            processedFiles: processed,
-            renderedFiles: rendered.length,
-            skippedFiles: skipped.length,
-            percentComplete: totalFiles === 0 ? 100 : (processed / totalFiles) * 100,
-            elapsedMs: Date.now() - startTime,
-            currentFile: songLabel
-          });
+  try {
+    console.error(`[DEBUG] About to call runConcurrent for building with ${songsToRender.length} songs`);
+    await runConcurrent(
+      songsToRender,
+      buildConcurrency,
+      async ({ sidFile, songIndex, wavFile, songCount }, context) => {
+        if (rendered.length < 3) {
+          console.error(`[DEBUG] Thread ${context.threadId} starting to render: ${wavFile}`);
         }
-      } finally {
+        const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "building",
+          status: "working",
+          file: songLabel
+        });
+        
+        // Start heartbeat to prevent thread from appearing stale during long renders
+        const heartbeatInterval = setInterval(() => {
+          onThreadUpdate?.({
+            threadId: context.threadId,
+            phase: "building",
+            status: "working",
+            file: songLabel
+          });
+        }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
+        
+        const renderOptions = { sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined };
+        let renderSucceeded = false;
+        let lastError: Error | null = null;
+        
+        try {
+          // Retry up to 3 times for rendering failures
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              if (rendererPool) {
+                await rendererPool.render(renderOptions);
+              } else {
+                await render(renderOptions);
+              }
+              renderSucceeded = true;
+              break;
+            } catch (error) {
+              lastError = error instanceof Error ? error : new Error(String(error));
+              if (attempt < 3) {
+                console.error(`[RETRY] Attempt ${attempt}/3 failed for ${songLabel}: ${lastError.message}. Retrying...`);
+              }
+            }
+          }
+        } finally {
+          clearInterval(heartbeatInterval);
+        }
+        
+        if (renderSucceeded) {
+          rendered.push(wavFile);
+          if (rendered.length <= 3) {
+            console.error(`[DEBUG] Thread ${context.threadId} successfully rendered: ${wavFile}`);
+          }
+
+          if (onProgress) {
+            const processed = skipped.length + rendered.length;
+            onProgress({
+              phase: "building",
+              totalFiles,
+              processedFiles: processed,
+              renderedFiles: rendered.length,
+              skippedFiles: skipped.length,
+              percentComplete: totalFiles === 0 ? 100 : (processed / totalFiles) * 100,
+              elapsedMs: Date.now() - startTime,
+              currentFile: songLabel
+            });
+          }
+        } else {
+          // All retries failed
+          console.error(`[WARN] Failed to render ${songLabel} after 3 attempts: ${lastError?.message}`);
+          // Don't add to rendered list, effectively skipping this file
+        }
+        
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "building",
           status: "idle"
         });
       }
-    }
-  );
+    );
+  } finally {
+    await rendererPool?.destroy();
+  }
 
   const endTime = Date.now();
   const cacheHitRate = totalFiles > 0 ? skipped.length / totalFiles : 0;
@@ -487,60 +527,53 @@ export interface SidMetadata {
 
 export interface ExtractMetadataOptions {
   sidFile: string;
-  sidplayPath: string;
   relativePath: string;
 }
 
 export type ExtractMetadata = (options: ExtractMetadataOptions) => Promise<SidMetadata>;
 
-const SIDPLAY_METADATA_ARGS = ["-t1", "--none"] as const;
+function metadataFromTuneInfo(info: Record<string, unknown> | null): SidMetadata | null {
+  if (!info) {
+    return null;
+  }
+  const infoStrings = Array.isArray((info as Record<string, unknown>).infoStrings)
+    ? (info as Record<string, unknown>).infoStrings
+    : [];
+  const [titleRaw, authorRaw, releasedRaw] = infoStrings as Array<unknown>;
+  const title = typeof titleRaw === "string" && titleRaw.trim().length > 0 ? titleRaw.trim() : undefined;
+  const author = typeof authorRaw === "string" && authorRaw.trim().length > 0 ? authorRaw.trim() : undefined;
+  const released = typeof releasedRaw === "string" && releasedRaw.trim().length > 0 ? releasedRaw.trim() : undefined;
+  if (!title && !author && !released) {
+    return null;
+  }
+  return { title, author, released };
+}
 
-export const defaultExtractMetadata: ExtractMetadata = async ({ sidFile, sidplayPath, relativePath }) => {
+export const defaultExtractMetadata: ExtractMetadata = async ({ sidFile, relativePath }) => {
   try {
     // Try to parse SID file directly for complete metadata
-    const fullMetadata = await parseSidFile(sidFile);
+    const fullMetadata = await parseSidFileImpl(sidFile);
     return {
       title: fullMetadata.title,
       author: fullMetadata.author,
       released: fullMetadata.released
     };
   } catch (parseError) {
-    // Fall back to sidplayfp output parsing
+    // Fall back to WASM tune info parsing
     try {
-      const output = await runSidplayForMetadata(sidFile, sidplayPath);
-      return parseSidMetadataOutput(output);
+      const engine = await createEngine();
+      const sidBuffer = new Uint8Array(await readFile(sidFile));
+      await engine.loadSidBuffer(sidBuffer);
+      const info = metadataFromTuneInfo(engine.getTuneInfo());
+      if (info) {
+        return info;
+      }
+      return fallbackMetadataFromPath(relativePath, parseError);
     } catch (error) {
       return fallbackMetadataFromPath(relativePath, error);
     }
   }
 };
-
-async function runSidplayForMetadata(sidFile: string, sidplayPath: string): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const child = spawn(sidplayPath, [...SIDPLAY_METADATA_ARGS, sidFile], {
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string | Buffer) => {
-      stdout += chunk.toString();
-    });
-    child.stderr?.on("data", (chunk: string | Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        const message = stderr.trim() ? `: ${stderr.trim()}` : "";
-        reject(new Error(`sidplayfp metadata extraction failed with code ${code}${message}`));
-      }
-    });
-  });
-}
 
 const METADATA_FIELD_MAP = new Map<string, keyof SidMetadata>([
   ["title", "title"],
@@ -629,7 +662,7 @@ async function loadManualTagRecord(
       ratings[dimension] = clampRating(raw);
     }
   }
-  
+
   // Also load preference rating if present (not predicted by classifier)
   const pRaw = record.p;
   if (typeof pRaw === "number" && !Number.isNaN(pRaw)) {
@@ -678,7 +711,7 @@ function combineRatings(
       ratings[dimension] = defaultValue;
     }
   }
-  
+
   // Preserve manual preference rating if present (not predicted by classifier)
   if (manual && manual.p !== undefined) {
     ratings.p = clampRating(manual.p);
@@ -747,10 +780,10 @@ async function writeMetadataRecord(
 ): Promise<string> {
   const metadataPath = resolveMetadataPath(plan.hvscPath, plan.tagsPath, sidFile);
   await ensureDir(path.dirname(metadataPath));
-  
+
   // Build metadata object with simple fields
   const metadataJson = metadataToJson(metadata);
-  
+
   // Use cached metadata if available, otherwise try to parse
   if (cachedFullMetadata) {
     const fullJson = sidMetadataToJson(cachedFullMetadata);
@@ -763,7 +796,7 @@ async function writeMetadataRecord(
   } else {
     // Fallback: try to parse if no cache provided (backward compatibility)
     try {
-      const fullMetadata = await parseSidFile(sidFile);
+      const fullMetadata = await parseSidFileImpl(sidFile);
       const fullJson = sidMetadataToJson(fullMetadata);
       Object.assign(metadataJson, fullJson, {
         title: metadata.title || fullMetadata.title,
@@ -774,7 +807,7 @@ async function writeMetadataRecord(
       // If we can't parse the SID file, just use the simple metadata
     }
   }
-  
+
   await writeFile(metadataPath, stringifyDeterministic(metadataJson));
   return metadataPath;
 }
@@ -860,7 +893,6 @@ export async function generateAutoTags(
 
     const metadata = await extractMetadata({
       sidFile,
-      sidplayPath: plan.sidplayPath,
       relativePath: posixRelative
     });
 
@@ -1008,12 +1040,12 @@ export async function generateAutoTags(
         c: entry.c,
         source: entry.source
       };
-      
+
       // Include preference rating if present
       if (entry.p !== undefined) {
         entryData.p = entry.p;
       }
-      
+
       record[key] = entryData;
     }
     await ensureDir(path.dirname(autoFilePath));
@@ -1103,7 +1135,6 @@ export async function generateJsonlOutput(
     // Load metadata once per SID file
     const metadata = await extractMetadata({
       sidFile,
-      sidplayPath: plan.sidplayPath,
       relativePath: posixRelative
     });
 
@@ -1127,9 +1158,9 @@ export async function generateJsonlOutput(
 
       // Load manual ratings if available
       const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
-      
+
       // Extract features and generate ratings for this song
-  const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
+      const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
       let features: AudioFeatures | undefined;
       let ratings: TagRatings;
 
@@ -1188,7 +1219,7 @@ export async function generateJsonlOutput(
       // Append as JSONL (one JSON object per line)
       // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
       records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
-      
+
       processedSongs++;
     }
   }
@@ -1243,6 +1274,14 @@ export const heuristicPredictRatings: PredictRatings = async ({
     c: clampRating(toRating(complexitySeed))
   };
 };
+
+export function __setClassifyTestOverrides(overrides?: {
+  parseSidFile?: typeof parseSidFile;
+  createEngine?: EngineFactory;
+}): void {
+  parseSidFileImpl = overrides?.parseSidFile ?? parseSidFile;
+  setEngineFactoryOverride(overrides?.createEngine ?? null);
+}
 
 // Re-export Essentia.js and TensorFlow.js implementations
 export { essentiaFeatureExtractor } from "./essentia-features.js";

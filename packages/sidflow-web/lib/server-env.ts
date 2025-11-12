@@ -43,7 +43,9 @@ export async function getSidflowConfig(configPath?: string): Promise<SidflowConf
   }
 
   const root = getRepoRoot();
-  const resolvedPath = path.join(root, '.sidflow.json');
+  // Check for SIDFLOW_CONFIG environment variable first
+  const configFile = process.env.SIDFLOW_CONFIG || '.sidflow.json';
+  const resolvedPath = path.join(root, configFile);
 
   if (cachedConfig && cachedConfigPath === resolvedPath) {
     return cachedConfig;

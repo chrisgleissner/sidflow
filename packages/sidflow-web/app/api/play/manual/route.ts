@@ -1,48 +1,27 @@
-import path from 'node:path';
-import { stat } from 'node:fs/promises';
 import { NextRequest, NextResponse } from 'next/server';
 import { PlayRequestSchema, type ApiResponse } from '@/lib/validation';
-import { parseSidFile, pathExists, createPlaybackLock } from '@sidflow/common';
-import { resolvePlaybackEnvironment, startSidPlayback, parseDurationSeconds } from '@/lib/rate-playback';
-import { resolveSidCollectionContext } from '@/lib/sid-collection';
+import { pathExists } from '@sidflow/common';
+import {
+  resolvePlaybackEnvironment,
+  resolveSidPath,
+  createRateTrackInfo,
+} from '@/lib/rate-playback';
+import { createPlaybackSession } from '@/lib/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { ZodError } from 'zod';
 
-async function resolveSidPath(
-  input: string,
-  env: Awaited<ReturnType<typeof resolvePlaybackEnvironment>>
-): Promise<string> {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    throw new Error('SID path is required');
-  }
-
-  if (path.isAbsolute(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replace(/^\.?\/+/, '');
-  const direct = path.join(env.hvscPath, normalized);
-  if (await pathExists(direct)) {
-    return direct;
-  }
-
-  const withoutPrefix = normalized.replace(/^c64music[\/]/i, '');
-  const musicCandidate = path.join(env.musicRoot, withoutPrefix);
-  if (await pathExists(musicCandidate)) {
-    return musicCandidate;
-  }
-
-  return direct;
-}
-
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const body = await request.json();
     const validated = PlayRequestSchema.parse(body);
 
+    console.log('[API] /api/play/manual - Request:', {
+      sidPath: validated.sid_path,
+      timestamp: new Date().toISOString(),
+    });
+
     const env = await resolvePlaybackEnvironment();
-    const playbackLock = await createPlaybackLock(env.config);
 
     const sidPath = await resolveSidPath(validated.sid_path, env);
 
@@ -55,51 +34,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 404 });
     }
 
-    const metadata = await parseSidFile(sidPath);
-    const durationSeconds = parseDurationSeconds(metadata.length);
-    const fileSize = (await stat(sidPath)).size;
-    const payload: RateTrackInfo = {
-      sidPath,
-      relativePath: path.relative(env.hvscPath, sidPath),
-      filename: path.basename(sidPath),
-      displayName: metadata.title || path.basename(sidPath).replace(/\.sid$/i, ''),
-      selectedSong: metadata.startSong,
-      durationSeconds,
-      metadata: {
-        title: metadata.title,
-        author: metadata.author,
-        released: metadata.released,
-        songs: metadata.songs,
-        startSong: metadata.startSong,
-        sidType: metadata.type,
-        version: metadata.version,
-        sidModel: metadata.sidModel1,
-        sidModelSecondary: metadata.sidModel2,
-        sidModelTertiary: metadata.sidModel3,
-        clock: metadata.clock,
-        length: metadata.length,
-        fileSizeBytes: fileSize,
-      },
-    };
-
-    await startSidPlayback({
+    const payload: RateTrackInfo = await createRateTrackInfo({
       env,
-      playbackLock,
       sidPath,
-      offsetSeconds: 0,
-      durationSeconds,
-      source: 'play/manual',
-      track: payload,
+      relativeBase: 'hvsc',
     });
 
-    const response: ApiResponse<{ track: RateTrackInfo }> = {
+    const session = createPlaybackSession({
+      scope: 'manual',
+      sidPath,
+      track: payload,
+      durationSeconds: payload.durationSeconds,
+      selectedSong: payload.selectedSong,
+      romPaths: {
+        kernal: env.kernalRomPath ?? null,
+        basic: env.basicRomPath ?? null,
+        chargen: env.chargenRomPath ?? null,
+      },
+    });
+
+    const elapsedMs = Date.now() - startTime;
+    console.log('[API] /api/play/manual - Success:', {
+      sessionId: session.sessionId,
+      sidPath,
+      selectedSong: session.selectedSong,
+      durationSeconds: session.durationSeconds,
+      elapsedMs,
+    });
+
+    const response: ApiResponse<{ track: RateTrackInfo; session: typeof session }> = {
       success: true,
       data: {
         track: payload,
+        session,
       },
     };
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
+    const elapsedMs = Date.now() - startTime;
+    console.error('[API] /api/play/manual - Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      elapsedMs,
+    });
+
     if (error instanceof ZodError) {
       const response: ApiResponse = {
         success: false,

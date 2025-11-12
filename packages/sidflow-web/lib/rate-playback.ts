@@ -1,11 +1,6 @@
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import {
-  createPlaybackLock,
-  type PlaybackLock,
-  type PlaybackLockMetadata,
-  type SidflowConfig,
-} from '@sidflow/common';
+import { stat } from 'node:fs/promises';
+import { parseSidFile, pathExists, type SidflowConfig } from '@sidflow/common';
 import { getRepoRoot } from '@/lib/server-env';
 import { resolveSidCollectionContext } from '@/lib/sid-collection';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
@@ -17,6 +12,9 @@ export interface PlaybackEnvironment {
   collectionRoot: string;
   musicRoot: string;
   tagsPath: string;
+  kernalRomPath: string | null;
+  basicRomPath: string | null;
+  chargenRomPath: string | null;
 }
 
 export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment> {
@@ -29,83 +27,10 @@ export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment>
     collectionRoot: context.collectionRoot,
     musicRoot: context.collectionRoot,
     tagsPath: context.tagsPath,
+    kernalRomPath: context.kernalRomPath ?? null,
+    basicRomPath: context.basicRomPath ?? null,
+    chargenRomPath: context.chargenRomPath ?? null,
   };
-}
-
-function formatSidplayOffset(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = (seconds - mins * 60).toFixed(3);
-  return `${mins}:${secs.padStart(6, '0')}`;
-}
-
-export async function startSidPlayback(options: {
-  env: PlaybackEnvironment;
-  playbackLock: PlaybackLock;
-  sidPath: string;
-  offsetSeconds?: number;
-  durationSeconds?: number;
-  source: string;
-  track?: RateTrackInfo;
-}): Promise<void> {
-  const {
-    env,
-    playbackLock,
-    sidPath,
-    offsetSeconds = 0,
-    durationSeconds,
-    source,
-    track,
-  } = options;
-  await playbackLock.stopExistingPlayback(source);
-
-  const args: string[] = [];
-  if (offsetSeconds > 0) {
-    args.push(`-b${formatSidplayOffset(offsetSeconds)}`);
-  }
-  args.push(sidPath);
-
-  try {
-    const child = spawn(env.config.sidplayPath, args, {
-      stdio: 'ignore',
-      cwd: path.dirname(sidPath),
-    });
-
-    if (child.pid) {
-      const metadata: PlaybackLockMetadata = {
-        pid: child.pid,
-        command: source,
-        sidPath,
-        source,
-        startedAt: new Date().toISOString(),
-        offsetSeconds,
-        durationSeconds,
-        isPaused: false,
-        track,
-      };
-      await playbackLock.registerProcess(metadata);
-      const pid = child.pid;
-      child.once('exit', () => {
-        void playbackLock.releaseIfMatches(pid);
-      });
-      child.once('error', () => {
-        void playbackLock.releaseIfMatches(pid);
-      });
-    }
-  } catch (error) {
-    console.error('[rate-playback] Unable to spawn sidplayfp', error);
-    await playbackLock.stopExistingPlayback(source);
-    throw error;
-  }
-}
-
-export function computePlaybackPosition(metadata: PlaybackLockMetadata): number {
-  const offset = metadata.offsetSeconds ?? 0;
-  if (metadata.isPaused) {
-    return offset;
-  }
-  const startedAt = metadata.startedAt ? Date.parse(metadata.startedAt) : Date.now();
-  const elapsed = Math.max(0, (Date.now() - startedAt) / 1000);
-  return offset + elapsed;
 }
 
 export function parseDurationSeconds(length?: string): number {
@@ -128,4 +53,69 @@ export function parseDurationSeconds(length?: string): number {
   }
 
   return 180;
+}
+
+export async function resolveSidPath(
+  input: string,
+  env: PlaybackEnvironment
+): Promise<string> {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error('SID path is required');
+  }
+
+  if (path.isAbsolute(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replace(/^\.\/+/, '');
+  const direct = path.join(env.hvscPath, normalized);
+  if (await pathExists(direct)) {
+    return direct;
+  }
+
+  const withoutPrefix = normalized.replace(/^c64music[\/]/i, '');
+  const musicCandidate = path.join(env.musicRoot, withoutPrefix);
+  if (await pathExists(musicCandidate)) {
+    return musicCandidate;
+  }
+
+  return direct;
+}
+
+export async function createRateTrackInfo(options: {
+  env: PlaybackEnvironment;
+  sidPath: string;
+  relativeBase: 'hvsc' | 'collection';
+  lengthHint?: string;
+}): Promise<RateTrackInfo> {
+  const { env, sidPath, relativeBase, lengthHint } = options;
+  const metadata = await parseSidFile(sidPath);
+  const durationSeconds = parseDurationSeconds(lengthHint);
+  const fileSize = (await stat(sidPath)).size;
+  const relativeRoot = relativeBase === 'hvsc' ? env.hvscPath : env.collectionRoot;
+  const relativePath = path.relative(relativeRoot, sidPath);
+  return {
+    sidPath,
+    relativePath,
+    filename: path.basename(sidPath),
+    displayName: metadata.title || path.basename(sidPath).replace(/\.sid$/i, ''),
+    selectedSong: metadata.startSong,
+    metadata: {
+      title: metadata.title,
+      author: metadata.author,
+      released: metadata.released,
+      songs: metadata.songs,
+      startSong: metadata.startSong,
+      sidType: metadata.type,
+      version: metadata.version,
+      sidModel: metadata.sidModel1,
+      sidModelSecondary: metadata.sidModel2,
+      sidModelTertiary: metadata.sidModel3,
+      clock: metadata.clock,
+      length: lengthHint,
+      fileSizeBytes: fileSize,
+    },
+    durationSeconds,
+  };
 }

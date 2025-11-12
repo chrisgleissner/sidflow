@@ -12,14 +12,30 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "types": ["bun-types", "node"],
+    "types": [
+      "bun-types",
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@sidflow/common": ["packages/sidflow-common/src/index.ts"],
-      "@sidflow/fetch": ["packages/sidflow-fetch/src/index.ts"],
-      "@sidflow/tag": ["packages/sidflow-tag/src/index.ts"],
-      "@sidflow/classify": ["packages/sidflow-classify/src/index.ts"],
-      "@sidflow/rate": ["packages/sidflow-rate/src/index.ts"]
+      "@sidflow/common": [
+        "packages/sidflow-common/src/index.ts"
+      ],
+      "@sidflow/fetch": [
+        "packages/sidflow-fetch/src/index.ts"
+      ],
+      "@sidflow/tag": [
+        "packages/sidflow-tag/src/index.ts"
+      ],
+      "@sidflow/classify": [
+        "packages/sidflow-classify/src/index.ts"
+      ],
+      "@sidflow/rate": [
+        "packages/sidflow-rate/src/index.ts"
+      ],
+      "@sidflow/libsidplayfp-wasm": [
+        "packages/libsidplayfp-wasm/src/index.ts"
+      ]
     }
   }
 }
