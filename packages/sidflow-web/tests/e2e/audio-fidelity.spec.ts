@@ -375,14 +375,15 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
 
 test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
   test('Rate and play tabs initialize shared pipeline', async ({ page }) => {
-    for (const tab of ['rate', 'play'] as const) {
-      const pageErrors: Error[] = [];
-      const errorHandler = (error: Error) => {
-        pageErrors.push(error);
-      };
-      page.on('pageerror', errorHandler);
+      for (const tab of ['rate', 'play'] as const) {
+        const pageErrors: Error[] = [];
+        const errorHandler = (error: Error) => {
+          pageErrors.push(error);
+        };
+        page.on('pageerror', errorHandler);
 
-      await page.goto(`/?tab=${tab}`);
+        const basePath = tab === 'rate' ? '/admin' : '/';
+        await page.goto(`${basePath}?tab=${tab}`);
 
       await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
       const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');

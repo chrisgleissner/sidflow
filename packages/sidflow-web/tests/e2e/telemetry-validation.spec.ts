@@ -222,7 +222,7 @@ test.describe('Telemetry Validation', () => {
 
   test('verifies telemetry sink works in test mode', async ({ page }) => {
     // Navigate to a page with telemetry
-    await page.goto('/?tab=rate');
+    await page.goto('/admin?tab=rate');
     await page.waitForTimeout(1000);
 
     // Initialize telemetry sink and set mode to test

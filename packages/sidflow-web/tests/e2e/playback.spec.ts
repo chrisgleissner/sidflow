@@ -12,7 +12,7 @@ test.setTimeout(60000);
 test.describe('RateTab Browser Playback', () => {
     test('loads and plays a random SID', async ({ page }) => {
         // Navigate to Rate tab
-        await page.goto('/?tab=rate');
+        await page.goto('/admin?tab=rate');
         await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
 
         // Capture console messages and errors for debugging
@@ -107,7 +107,7 @@ test.describe('RateTab Browser Playback', () => {
 
     // TODO: Re-enable once seek operations are properly implemented
     test.skip('handles seek operations', async ({ page }) => {
-        await page.goto('/?tab=rate');
+        await page.goto('/admin?tab=rate');
 
         // Load a track - wait for pause button to appear as indicator of successful load
         const playButton = page.getByRole('button', { name: /play random sid/i });
@@ -141,7 +141,7 @@ test.describe('RateTab Browser Playback', () => {
     });
 
     test('displays rating controls and allows submission', async ({ page }, testInfo) => {
-        await page.goto('/?tab=rate');
+          await page.goto('/admin?tab=rate');
 
         // Set up error tracking
         const pageErrors: Error[] = [];
@@ -293,7 +293,7 @@ test.describe('WASM Asset Loading', () => {
             }
         });
 
-        await page.goto('/?tab=rate');
+        await page.goto('/admin?tab=rate');
 
         // Trigger WASM loading by starting playback
         const playButton = page.getByRole('button', { name: /play random sid/i });
@@ -321,7 +321,7 @@ test.describe('Error Handling', () => {
             attempt++;
             
             try {
-                await page.goto('/?tab=rate');
+                await page.goto('/admin?tab=rate');
 
                 // Verify initial page load
                 const heading = page.getByRole('heading', { name: /rate track/i });

@@ -2,24 +2,62 @@
 
 /* Authentic Commodore 64 color palette */
 :root {
-  /* Light mode - authentic C64 colors */
-  --background: #6C5EB5; /* C64 Light Blue */
-  --foreground: #352879; /* C64 Dark Blue */
-  --primary: #352879;
-  --primary-foreground: #ffffff;
-  --secondary: #5048A5;
-  --secondary-foreground: #ffffff;
-  --accent: #50E89D; /* C64 Light Green */
-  --accent-foreground: #000000;
-  --muted: #8078C5;
-  --muted-foreground: #352879;
-  --border: #352879;
-  --input: #9088D5;
-  --ring: #50E89D;
-  --destructive: #E64646;
-  --destructive-foreground: #ffffff;
-  --card: #7C6EC5;
-  --card-foreground: #ffffff;
+  /* Admin persona – authentic C64 colors */
+  --admin-background: #6C5EB5;
+  --admin-foreground: #352879;
+  --admin-primary: #352879;
+  --admin-primary-foreground: #ffffff;
+  --admin-secondary: #5048A5;
+  --admin-secondary-foreground: #ffffff;
+  --admin-accent: #50E89D;
+  --admin-accent-foreground: #000000;
+  --admin-muted: #8078C5;
+  --admin-muted-foreground: #352879;
+  --admin-border: #352879;
+  --admin-input: #9088D5;
+  --admin-ring: #50E89D;
+  --admin-destructive: #E64646;
+  --admin-destructive-foreground: #ffffff;
+  --admin-card: #7C6EC5;
+  --admin-card-foreground: #ffffff;
+
+  /* Public persona – softer chrome for listeners */
+  --public-background: #f4f1ff;
+  --public-foreground: #241b5d;
+  --public-primary: #4331a8;
+  --public-primary-foreground: #ffffff;
+  --public-secondary: #d7d1ff;
+  --public-secondary-foreground: #241b5d;
+  --public-accent: #50c7e8;
+  --public-accent-foreground: #06202f;
+  --public-muted: #e6e0ff;
+  --public-muted-foreground: #3a2d83;
+  --public-border: #c5beff;
+  --public-input: #ebe7ff;
+  --public-ring: #50c7e8;
+  --public-destructive: #E64646;
+  --public-destructive-foreground: #ffffff;
+  --public-card: #ffffff;
+  --public-card-foreground: #1b1646;
+
+  /* Default to admin persona */
+  --background: var(--admin-background);
+  --foreground: var(--admin-foreground);
+  --primary: var(--admin-primary);
+  --primary-foreground: var(--admin-primary-foreground);
+  --secondary: var(--admin-secondary);
+  --secondary-foreground: var(--admin-secondary-foreground);
+  --accent: var(--admin-accent);
+  --accent-foreground: var(--admin-accent-foreground);
+  --muted: var(--admin-muted);
+  --muted-foreground: var(--admin-muted-foreground);
+  --border: var(--admin-border);
+  --input: var(--admin-input);
+  --ring: var(--admin-ring);
+  --destructive: var(--admin-destructive);
+  --destructive-foreground: var(--admin-destructive-foreground);
+  --card: var(--admin-card);
+  --card-foreground: var(--admin-card-foreground);
 }
 
 /* Dark mode - black background with C64 dark blue for text */
@@ -118,6 +156,46 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+}
+
+body[data-persona="admin"] {
+  --background: var(--admin-background);
+  --foreground: var(--admin-foreground);
+  --primary: var(--admin-primary);
+  --primary-foreground: var(--admin-primary-foreground);
+  --secondary: var(--admin-secondary);
+  --secondary-foreground: var(--admin-secondary-foreground);
+  --accent: var(--admin-accent);
+  --accent-foreground: var(--admin-accent-foreground);
+  --muted: var(--admin-muted);
+  --muted-foreground: var(--admin-muted-foreground);
+  --border: var(--admin-border);
+  --input: var(--admin-input);
+  --ring: var(--admin-ring);
+  --destructive: var(--admin-destructive);
+  --destructive-foreground: var(--admin-destructive-foreground);
+  --card: var(--admin-card);
+  --card-foreground: var(--admin-card-foreground);
+}
+
+body[data-persona="public"] {
+  --background: var(--public-background);
+  --foreground: var(--public-foreground);
+  --primary: var(--public-primary);
+  --primary-foreground: var(--public-primary-foreground);
+  --secondary: var(--public-secondary);
+  --secondary-foreground: var(--public-secondary-foreground);
+  --accent: var(--public-accent);
+  --accent-foreground: var(--public-accent-foreground);
+  --muted: var(--public-muted);
+  --muted-foreground: var(--public-muted-foreground);
+  --border: var(--public-border);
+  --input: var(--public-input);
+  --ring: var(--public-ring);
+  --destructive: var(--public-destructive);
+  --destructive-foreground: var(--public-destructive-foreground);
+  --card: var(--public-card);
+  --card-foreground: var(--public-card-foreground);
 }
 
 /* Font family classes - Press Start 2P loaded via layout.tsx */

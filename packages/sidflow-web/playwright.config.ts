@@ -19,6 +19,10 @@ const baseUse = {
   trace: 'on-first-retry' as const,
   headless: true,
   video: videoMode,
+  httpCredentials: {
+    username: process.env.SIDFLOW_ADMIN_USER ?? 'ops',
+    password: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123',
+  },
 };
 
 const desktopChrome = devices['Desktop Chrome'];

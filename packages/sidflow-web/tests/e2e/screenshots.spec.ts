@@ -80,9 +80,12 @@ test.describe('Tab Screenshots', () => {
     }
   });
 
+  const adminTabs = new Set(['wizard', 'fetch', 'rate', 'classify', 'train']);
+
   for (const tab of TABS) {
     test(`${tab.label} tab screenshot`, async ({ page }) => {
-      await page.goto(`/?tab=${tab.value}`);
+      const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
+      await page.goto(`${basePath}?tab=${tab.value}`);
       if (tab.setup) {
         await tab.setup(page);
       }

@@ -10,15 +10,15 @@ Required reading (skim before starting any phase):
 > Phase gating: Complete phases sequentially. All checkboxes in the current phase must be done before advancing. Maintain ≥90% unit+integration test coverage for changed packages and pass E2E smoke tests before moving to the next phase.
 
 ## Phase 0 – Architectural Readiness
-- [ ] Inventory existing playback/session code paths (`packages/sidflow-web/app/api/play`, `lib/player/`, `lib/audio/`) and confirm SAB/HLS prerequisites (COOP/COEP headers, WASM asset hosting) are in place and documented.
-- [ ] Map dependencies across `@sidflow/common`, `@sidflow/fetch`, `@sidflow/classify`, `@sidflow/train`, and confirm no server-side audio rendering remains in production builds.
-- [ ] Define non-functional targets (latency, CPU, concurrency, storage limits) and document baseline metrics for current server workload.
-- [ ] Draft playback facade design (interface, adapter responsibilities, dependency injection strategy) reviewed with engineering leads.
+- [x] Inventory existing playback/session code paths (`packages/sidflow-web/app/api/play`, `lib/player/`, `lib/audio/`) and confirm SAB/HLS prerequisites (COOP/COEP headers, WASM asset hosting) are in place and documented.
+- [x] Map dependencies across `@sidflow/common`, `@sidflow/fetch`, `@sidflow/classify`, `@sidflow/train`, and confirm no server-side audio rendering remains in production builds.
+- [x] Define non-functional targets (latency, CPU, concurrency, storage limits) and document baseline metrics for current server workload.
+- [x] Draft playback facade design (interface, adapter responsibilities, dependency injection strategy) reviewed with engineering leads.
 
 ## Phase 1 – Persona Separation & Component Reuse
-- [ ] Introduce role-aware routing (`/` vs `/admin`) with shared layout/components; verify Play/Prefs tabs render identically in both contexts with zero duplicated JSX/logic.
-- [ ] Implement admin authentication middleware and add automated tests for unauthorized access, role escalation, and session expiry.
-- [ ] Update design system (shadcn/ui) tokens to support persona-specific chrome while ensuring shared components inherit styles without overrides.
+- [x] Introduce role-aware routing (`/` vs `/admin`) with shared layout/components; verify Play/Prefs tabs render identically in both contexts with zero duplicated JSX/logic.
+- [x] Implement admin authentication middleware and add automated tests for unauthorized access, role escalation, and session expiry.
+- [x] Update design system (shadcn/ui) tokens to support persona-specific chrome while ensuring shared components inherit styles without overrides.
 
 ## Phase 2 – Public Local-First Experience
 - [ ] Expand preferences schema (theme, ROM set, playback engine selection, Ultimate 64 configuration, training toggle, iteration budget, sync cadence) and persist to `localStorage` + IndexedDB with migration/versioning tests.
