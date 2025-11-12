@@ -4,13 +4,15 @@ import createLibsidplayfp, {
     type SidPlayerContextOptions
 } from "../dist/libsidplayfp.js";
 
-const wasmPathOverride = typeof process !== "undefined"
+// Only check environment variables in Node.js/server contexts, not in browsers/workers
+const wasmPathOverride = (typeof process !== "undefined" && typeof process.env === "object")
     ? (process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH ?? process.env.LIBSIDPLAYFP_WASM_PATH)?.trim() || undefined
     : undefined;
 
+// Detect if we're in a server-like environment (Node.js) vs browser/worker
 const isServerLikeEnvironment = typeof globalThis === "object"
-    ? typeof (globalThis as { window?: unknown }).window === "undefined"
-    : true;
+    ? (typeof (globalThis as { window?: unknown }).window === "undefined" && typeof process !== "undefined")
+    : false;
 
 export interface LoadLibsidplayfpOptions extends SidPlayerContextOptions {
     /**
