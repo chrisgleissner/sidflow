@@ -28,9 +28,9 @@
 - Introduce a playback facade (`PlaybackService`) decoupling UI from transport specifics. Concrete adapters:
   - `WasmPlaybackAdapter` (default) – uses `libsidplayfp-wasm` AudioWorklet pipeline.
   - `SidplayfpCliAdapter` – shells out to locally-installed `sidplayfp` binary (requires availability check and error messaging).
-  - `StreamingWavAdapter` / `StreamingMp3Adapter` – stream pre-rendered WAV/MP3 from server (cached assets produced during admin classify conversions).
+  - `StreamingWavAdapter` / `StreamingM4aAdapter` – stream pre-rendered WAV/M4A from server (cached assets produced during admin classify conversions).
   - `Ultimate64Adapter` – calls Ultimate 64 REST API to push SID to hardware (configurable IP/hostname + optional auth header/secret).
-- Facade enforces common interface (`load`, `play`, `pause`, `stop`, telemetry hooks) so `PlayTab` and background rating workflows remain agnostic. Adapters registered through dependency injection based on user preference.
+- Facade enforces common interface (`load`, `play`, `pause`, `stop`, telemetry hooks`) so `PlayTab` and background rating workflows remain agnostic. Adapters registered through dependency injection based on user preference.
 - Adapter selection validated at startup; unsupported modes surface actionable errors and fall back to default when possible.
 
 ## Public Playback Flow (`/`)
@@ -41,22 +41,22 @@
    - Playback facade selects adapter per preferences:
      - **WASM**: fetch SID + ROM assets via `/api/playback/{id}/sid` and `/api/playback/{id}/rom/*`, stream into `libsidplayfp-wasm`.
      - **sidplayfp CLI**: enqueue command invocation via local bridge (Electron/WebView shell). UI warns if binary missing and offers fallback to WASM.
-     - **WAV/MP3 streaming**: request `/api/playback/{id}/{format}` (new endpoints) delivering cached PCM/compressed assets generated via admin classify conversions; leverages browser `<audio>` with MediaSource.
-     - **Ultimate 64**: REST call to configured hardware (`http(s)://<ip>/api/play`) with SID payload; include optional secret header from preferences.
+     - **WAV/M4A streaming**: request `/api/playback/{id}/{format}` (new endpoints) delivering cached PCM/compressed assets generated via admin classify conversions; leverages browser `<audio>` with MediaSource or HTML5 streaming.
+     - **Ultimate 64**: REST call to configured hardware (`PUT http://<ip>/v1/runners:sidplay`) with SID payload; include optional secret header from preferences.
    - Implicit events (`play`, `skip`) log locally immediately (IndexedDB queue) and asynchronously POST to `/api/rate/feedback` batch endpoint when online to avoid blocking playback.
 4. Inline rating writes to local feedback store first; background sync persists aggregated actions to server canonical JSONL via admin-controlled ingestion (see “Feedback & Training”).
 5. Offline mode: if `/api/play` unreachable, surface fallback state (cached queue, ability to play tracks stored locally if downloaded previously).
 
 ## Audio Conversion Tools
 
-The Play (Client-side) and Render (Server-side) flows must support conversion of raw PCM samples (from libsidplayfp-wasm, sidplayfp, or a C64 Ultimate) into WAV, MP3, and FLAC files.
+The Play (Client-side) and Render (Server-side) flows must support conversion of raw PCM samples (from libsidplayfp-wasm, sidplayfp, or a C64 Ultimate) into WAV, M4A, and FLAC files.
 
 ### 1. PCM → WAV (TypeScript)
 - Aggregate raw PCM samples (s16le, 44.1 kHz, stereo).
 - Prepend a 44-byte RIFF/WAVE header.
 - Save as `output.wav`.
 
-### 2A. WAV → MP3 (TypeScript + WASM)
+### 2A. WAV → M4A (TypeScript + WASM)
 - **Tool:** `ffmpeg.wasm`
 - **Use:** Portable, works in Node/Bun/browser without system dependencies.
 ```ts
@@ -64,19 +64,27 @@ import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 const ffmpeg = createFFmpeg({ log: false });
 await ffmpeg.load();
 ffmpeg.FS("writeFile", "in.wav", await fetchFile("output.wav"));
-await ffmpeg.run("-i","in.wav","-b:a","320k","out.mp3");
-const mp3 = ffmpeg.FS("readFile","out.mp3");
+await ffmpeg.run("-i","in.wav","-c:a","aac","-b:a","256k","out.m4a");
+const m4a = ffmpeg.FS("readFile","out.m4a");
 ```
 
-### 2B. WAV → MP3 (Native)
-- **Tool:** `ffmpeg` (libmp3lame)
+### 2B. WAV → M4A (Native)
+- **Tool:** `ffmpeg` (aac or libfdk_aac)
 - **Use:** System-level encoder for environments with native `ffmpeg` installed.
 ```bash
-ffmpeg -i output.wav -b:a 320k output.mp3
+# Built-in AAC encoder
+ffmpeg -i output.wav -c:a aac -b:a 256k output.m4a
+
+# Or with libfdk_aac (preferred, if available)
+ffmpeg -i output.wav -c:a libfdk_aac -vbr 5 output.m4a
 ```
 
-> **Note:** Steps 2A and 2B are user-selectable options.  
-> Choose 2A for portability (browser or sandboxed runtime), or 2B for native performance and integration with system binaries. MP3 bitrate is standardized at `320k` for MVP, but fully configurable.
+Note: 
+
+- All M4A files use the AAC-LC profile (Advanced Audio Coding – Low Complexity) for maximum browser compatibility.
+- The default bitrate is 256 kbps, which provides transparent quality comparable to MP3 320 kbps.
+- The .m4a container ensures metadata and broad HTML5 support.
+ffmpeg.wasm uses the built-in aac encoder; libfdk_aac is optional but provides slightly better efficiency.
 
 ### 3. WAV → FLAC (TypeScript + WASM)
 - **Tool:** `ffmpeg.wasm`
@@ -94,9 +102,7 @@ const flac = ffmpeg.FS("readFile", "out.flac");
 - **Tool:** `ffmpeg` or `flac` CLI encoder
 - **Use:** System-level encoder for environments with native binaries installed.
 ```bash
-ffmpeg -i output.wav -compression_level 5 output.flac
-# or
-flac -5 output.wav -o output.flac
+ffmpeg -i output.wav -c:a flac -compression_level 5 output.flac
 ```
 
 > **FLAC Compression Level 5**  
@@ -104,31 +110,31 @@ flac -5 output.wav -o output.flac
 > All levels are **lossless**, meaning the decoded audio is bit-for-bit identical to the original PCM data.  
 > Level **5** is recommended as a balanced default — achieving roughly **50–65%** of the original WAV file size with negligible CPU overhead.  
 >  
-> In perceptual terms, FLAC at any level far exceeds MP3 at 320 kbps in fidelity; the level only affects encoding time and file size, not sound quality.  
-> For configuration parity with MP3, treat the `compression_level` as the FLAC equivalent of MP3’s `bitrate_kbps`.
+> In perceptual terms, FLAC at any level far exceeds M4A at 256 kbps in fidelity; the level only affects encoding time and file size, not sound quality.  
+> For configuration parity with M4A, treat the `compression_level` as the FLAC equivalent of M4A's `bitrate_kbps`.
 
 Example configuration block:
 ```yaml
 encoding:
-  mp3:
-    bitrate_kbps: 320
+  m4a:
+    bitrate_kbps: 256
   flac:
     compression_level: 5
 ```
 
 ### Render vs Playback
 
-- **Render:** Produces shareable audio assets (WAV/MP3/FLAC) from SID inputs. Runs as admin jobs on the server or via hardware capture. Output feeds streaming endpoints and caches.
+- **Render:** Produces shareable audio assets (WAV/M4A/FLAC) from SID inputs. Runs as admin jobs on the server or via hardware capture. Output feeds streaming endpoints and caches.
 - **Playback:** End-user audio output in real time. Default is browser playback via `libsidplayfp-wasm`. Optional hardware playback via a locally accessible C64 Ultimate device is supported for local runs and enthusiasts.
 
 ### Render Matrix
 
 | Location | Time      | Technology                         | Target              | Typical Use                            | Status |
 |----------|-----------|------------------------------------|---------------------|----------------------------------------|--------|
-| Server   | Prepared  | `sidplayfp` CLI (native)           | WAV + MP3 + FLAC    | Batch classify conversions to cache     | MVP    |
-| Server   | Prepared  | `libsidplayfp-wasm` (Node/Bun)     | WAV + MP3 + FLAC    | Portable render where CLI unavailable   | Future |
-| Server   | Prepared  | C64 Ultimate (REST + UDP capture)  | WAV + MP3 + FLAC    | Hardware-authentic captures             | MVP    |
-| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + MP3 + FLAC    | Hardware-authentic live streams         | MVP    |
+| Server   | Prepared  | `sidplayfp` CLI (native)           | WAV + M4A + FLAC    | Batch classify conversions to cache     | MVP    |
+| Server   | Prepared  | `libsidplayfp-wasm` (Node/Bun)     | WAV + M4A + FLAC    | Portable render where CLI unavailable   | Future |
+| Server   | Prepared  | C64 Ultimate (REST + UDP capture)  | WAV + M4A + FLAC    | Hardware-authentic captures             | MVP    |
+| Server   | Real-time | C64 Ultimate (REST + UDP capture)  | WAV + AAC + FLAC    | Hardware-authentic live streams         | MVP    |
 | Client   | Real-time | `libsidplayfp-wasm` (browser)      | N/A (playback only) | Default playback                        | MVP    |
 | Client   | Real-time | `sidplayfp` CLI (local bridge)     | N/A (playback only) | Optional local playback                 | Future |
 | Client   | Real-time | C64 Ultimate (direct hardware play)| N/A (device plays)  | Local hardware playback                 | MVP    |
@@ -141,11 +147,11 @@ encoding:
   - `$trackIndex`: 1-based index, omit if single-track  
   - `$platform`: sidplayfp | c64u  
   - `$chip`: 6581 | 8580r5  
-  - `$encoding`: wav | mp3 | flac  
+  - `$encoding`: wav | m4a | flac  
   - Examples:
     - foo-2-sidplayfp-6581.wav  
     - foo-c64u-6581.flac  
-    - foo-3-c64u-8580r5.mp3  
+    - foo-3-c64u-8580r5.m4a
 
 - Expose available render variants to users.
 
@@ -161,15 +167,15 @@ encoding:
 
 - **Caching Policy**
   - Cache all server-produced audio files (converted from SID) for reuse; avoid redundant rendering.
-  - Supported cache formats: **WAV**, **FLAC**, and **MP3** — any combination can be enabled.
-  - By default, only **MP3** and **FLAC** are cached; **WAV** caching is optional and disabled by default.
+  - Supported cache formats: **WAV**, **FLAC**, and **AAC** — any combination can be enabled.
+  - By default, only **AAC** and **FLAC** are cached; **WAV** caching is optional and disabled by default.
   - Disk caching thresholds must be configurable:
     - Stop caching **WAV** at **70%** total disk usage.
     - Stop caching **FLAC** at **80%** total disk usage.
-    - Stop all caching (including MP3 and FLAC) at **90%** total disk usage.
+    - Stop all caching (including AAC and FLAC) at **90%** total disk usage.
   - Respect the user-configurable max disk use (default: 90%) and terminate rendering with a clear error message if the threshold is reached.
-  - MP3 bitrate and FLAC compression level must both be configurable:
-    - MP3 default: **320 kbps**
+  - AAC bitrate and FLAC compression level must both be configurable:
+    - AAC default: **256 kbps**
     - FLAC default: **compression level 5**
   - Caching decisions are based solely on current disk usage; no usage tracking or eviction logic is required.
 
@@ -198,14 +204,14 @@ encoding:
   - UI drives job orchestration service (server module wrapping `@sidflow/fetch.syncHvsc`, `@sidflow/classify`). Commands enqueue jobs with explicit job IDs persisted under `tmp/jobs/*.json`.
   - Provide resumable execution by persisting progress markers (e.g., last processed HVSC delta, classification shard). Re-run uses same job ID to continue.
   - File system writes stay under configured cache roots (HVSC mirror, WAV cache) with `@sidflow/common.ensureDir` to guarantee idempotency.
-- Render engine: When rendering SID files to their WAV and MP3 equivalents, one of the following engines can be selected:
+- Render engine: When rendering SID files to their WAV and M4A equivalents, one of the following engines can be selected:
   - libsidplayfp-wasm (default): WASM version of libsidplayfp. Requires no further tooling.
   - sidplayfp CLI tool: Requires installation of CLI tool. Faster than libsidplayfp-wasm.
   - C64 Ultimate Hardware: Most authentic, but requires C64 Ultimate or Ultimate 64 and uses its [REST API](./c64-rest-api.md) and [Audio Stream Protocol](./c64-stream-spec.md):
     1. Correct hardware SID chip is activated on C64 Ultimate via REST as specified in SID song: `6581` (default if not specified) or `8580R5`
     1. SID sent to C64 via REST API
     1. Audio streaming start requested via REST API
-    1. Audio stream UDP packets captured and transformed into WAV and 320 kbps MP3 (ideally concurrently). 
+    1. Audio stream UDP packets captured and transformed into WAV and 256 kbps AAC (ideally concurrently). 
 - Train controls: extend to accept dataset filters, schedule GPU/offline runs, and publish new model versions. Publishing writes new `data/model/` artifacts and updates manifest served to clients.
 - Health & metrics: embed dashboards that call `/api/admin/metrics` for queue depth, job status, cache freshness, and worker health (CPU, memory). Include manual invalidation/backfill triggers (e.g., “Rebuild WAV cache chunk”).
 
@@ -224,7 +230,7 @@ encoding:
 - Session descriptors served via `/api/play` referencing `createPlaybackSession` with TTL to limit stale access. For scale, serve SID binaries through CDN-backed static route once session validated (issue signed URLs or tokenized headers).
 - Extend playback APIs:
   - `/api/playback/{id}/sid` (existing) for WASM/Ultimate 64.
-  - `/api/playback/{id}/wav` and `/api/playback/{id}/mp3` streaming endpoints returning ranged responses with long-lived caching headers (assets generated during classify conversions).
+  - `/api/playback/{id}/wav` and `/api/playback/{id}/m4a` streaming endpoints returning ranged responses with long-lived caching headers (assets generated during classify conversions).
   - `/api/playback/{id}/handoff/ultimate64` to broker hardware dispatch when clients cannot reach device directly (optional).
 - Ensure `Cross-Origin-Resource-Policy: same-origin` and HTTP caching (`Cache-Control: private, max-age=30`) remain as in `playback-session.ts`, but front additional CDN caching for static ROM bundles, WASM assets, and streaming audio.
 - HLS/AAC fallback remains available for browsers lacking SAB; playback facade maps this to streaming adapter internally.
@@ -268,7 +274,7 @@ encoding:
 - **UX & Accessibility:** Public `/` loads play + prefs in <2s on 3G, supports keyboard navigation and ARIA labeling; offline and error banners present; admin UI hides administrative language on `/`.
 - **Component Reuse:** 100% of Play and Preferences UI code shared between personas (verified by component import graph); admin adds features via wrappers only.
 - **Playback Facade:** Playback facade provides uniform telemetry across adapters; switching engines in preferences updates active adapter on next session without reload; unsupported selections fall back gracefully with actionable messaging.
-- **Local Persistence & Training:** Preferences persist between sessions; ROM manifests validated against hashes; local model training runs asynchronously without blocking playback (<5% CPU when active) and sync can be disabled.
+- **Local Persistence & Training:** Preferences persist between sessions; ROM manifests validated against hashes; local model training runs asynchronously without blocking playback (<15 % CPU when active) and sync can be disabled.
 - **Global Model Governance:** Admin can publish new model versions with metadata, clients detect and adopt within configured cadence; local deltas mark stale on new publish.
 - **Background Jobs:** Fetch/Classify/Train jobs resumable, idempotent, and expose progress + logs in admin UI; cache directories remain consistent after interruption.
 - **Scalability:** Load test demonstrates 5k concurrent playback sessions with <5% server CPU (mostly static asset serving), SAB path success rate ≥95%, streaming adapters sustain expected throughput, fallback HLS path functional on Safari/iOS.
