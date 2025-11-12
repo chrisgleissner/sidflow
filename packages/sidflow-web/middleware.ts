@@ -19,7 +19,7 @@ function applyIsolationHeaders(response: NextResponse): NextResponse {
   return response;
 }
 
-function enforceAdminAuthentication(request: NextRequest): NextResponse | null {
+async function enforceAdminAuthentication(request: NextRequest): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname;
   if (!ADMIN_ROUTE_PATTERN.test(pathname)) {
     return null;
@@ -40,12 +40,12 @@ function enforceAdminAuthentication(request: NextRequest): NextResponse | null {
 
   const now = Date.now();
   const existingCookie = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
-  const sessionValidation = validateSessionToken(existingCookie, config, now);
+  const sessionValidation = await validateSessionToken(existingCookie, config, now);
 
   if (sessionValidation.valid && sessionValidation.payload) {
     const response = NextResponse.next();
     if (shouldRenewSession(sessionValidation.payload, config, now)) {
-      const { token } = issueSessionToken(config, now);
+      const { token } = await issueSessionToken(config, now);
       response.cookies.set({
         name: ADMIN_SESSION_COOKIE,
         value: token,
@@ -61,7 +61,7 @@ function enforceAdminAuthentication(request: NextRequest): NextResponse | null {
 
   const credentials = parseBasicAuth(request.headers.get('authorization'));
   if (verifyAdminCredentials(credentials, config)) {
-    const { token } = issueSessionToken(config, now);
+    const { token } = await issueSessionToken(config, now);
     const response = NextResponse.next();
     response.cookies.set({
       name: ADMIN_SESSION_COOKIE,
@@ -91,8 +91,8 @@ function enforceAdminAuthentication(request: NextRequest): NextResponse | null {
   return response;
 }
 
-export function middleware(request: NextRequest): NextResponse {
-  const conditional = enforceAdminAuthentication(request);
+export async function middleware(request: NextRequest): Promise<NextResponse> {
+  const conditional = await enforceAdminAuthentication(request);
   if (conditional) {
     return applyIsolationHeaders(conditional);
   }

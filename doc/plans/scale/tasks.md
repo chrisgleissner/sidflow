@@ -7,7 +7,7 @@ Required reading (skim before starting any phase):
 - `doc/technical-reference.md`
 - `doc/developer.md`
 
-> Phase gating: Complete phases sequentially. All checkboxes in the current phase must be done before advancing. Maintain ≥90% unit+integration test coverage for changed packages and pass E2E smoke tests before moving to the next phase.
+> Phase gating: Complete phases sequentially. All checkboxes in the current phase must be done before advancing. Maintain ≥90% unit+integration test coverage for changed packages, ensure `bun run test:all` passes, and verify E2E smoke tests before moving to the next phase.
 
 ## Phase 0 – Architectural Readiness
 - [x] Inventory existing playback/session code paths (`packages/sidflow-web/app/api/play`, `lib/player/`, `lib/audio/`) and confirm SAB/HLS prerequisites (COOP/COEP headers, WASM asset hosting) are in place and documented.

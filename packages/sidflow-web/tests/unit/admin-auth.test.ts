@@ -8,7 +8,7 @@ import {
   validateSessionToken,
   verifyAdminCredentials,
   type AdminSessionPayload,
-} from '@/lib/server/admin-auth';
+} from '@/lib/server/admin-auth-core';
 
 const AUTH_HEADER_PREFIX = 'Basic ';
 
@@ -39,7 +39,7 @@ describe('admin auth', () => {
     expect(verifyAdminCredentials(credentials, config)).toBe(false);
   });
 
-  it('blocks role escalation attempts via tampered session tokens', () => {
+  it('blocks role escalation attempts via tampered session tokens', async () => {
     const config = getAdminConfig();
     const tamperedPayload = {
       v: 1,
@@ -48,17 +48,17 @@ describe('admin auth', () => {
       expiresAt: config.sessionTtlMs,
     } as unknown as AdminSessionPayload;
 
-    const token = encodeSessionPayload(tamperedPayload, config.secret);
-    const validation = validateSessionToken(token, config, Date.now());
+    const token = await encodeSessionPayload(tamperedPayload, config.secret);
+    const validation = await validateSessionToken(token, config, Date.now());
 
     expect(validation.valid).toBe(false);
     expect(validation.reason).toBe('invalid-role');
   });
 
-  it('expires sessions when past the configured TTL', () => {
+  it('expires sessions when past the configured TTL', async () => {
     const config = getAdminConfig();
-    const { token, payload } = issueSessionToken(config, 0);
-    const validation = validateSessionToken(token, config, payload.expiresAt + 1);
+    const { token, payload } = await issueSessionToken(config, 0);
+    const validation = await validateSessionToken(token, config, payload.expiresAt + 1);
 
     expect(validation.valid).toBe(false);
     expect(validation.reason).toBe('expired');

@@ -16,7 +16,7 @@ import {
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import type { RateRequest } from '@/lib/validation';
-import { SidflowPlayer } from '@/lib/player/sidflow-player';
+import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import {
   Shuffle,
@@ -124,6 +124,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
+  const [isPauseReady, setIsPauseReady] = useState(false);
   const [historyData, setHistoryData] = useState<{
     total: number;
     page: number;
@@ -256,8 +257,16 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     const handleError = (error: Error) => {
       statusHandlerRef.current(`Playback error: ${error.message}`, true);
     };
+    const handleState = (state: SidflowPlayerState) => {
+      const interactive = state === 'playing' || state === 'paused' || state === 'ready';
+      setIsPauseReady(interactive);
+      if (state === 'ended') {
+        setIsPlaying(false);
+      }
+    };
     player.on('loadprogress', handleProgress);
     player.on('error', handleError);
+    player.on('statechange', handleState);
     playerRef.current = player;
     if (typeof window !== 'undefined') {
       (window as unknown as { __sidflowPlayer?: SidflowPlayer }).__sidflowPlayer = player;
@@ -267,6 +276,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       pendingLoadAbortRef.current?.abort();
       player.off('loadprogress', handleProgress);
       player.off('error', handleError);
+      player.off('statechange', handleState);
       player.destroy();
       if (typeof window !== 'undefined') {
         const globalWindow = window as unknown as { __sidflowPlayer?: SidflowPlayer };
@@ -335,9 +345,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
       pendingLoadAbortRef.current?.abort();
       const abortController = new AbortController();
-      pendingLoadAbortRef.current = abortController;
-      setIsAudioLoading(true);
-      setLoadProgress(0);
+  pendingLoadAbortRef.current = abortController;
+  setIsAudioLoading(true);
+  setIsPauseReady(false);
+  setLoadProgress(0);
 
       try {
         await player.load({ track, session, signal: abortController.signal });
@@ -346,8 +357,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         applyCachedRatings(track.sidPath);
         setPosition(0);
         setDuration(player.getDurationSeconds() || track.durationSeconds || DEFAULT_DURATION);
-        await player.play();
-        setIsPlaying(true);
+        setIsPauseReady(true);
+  await player.play();
+  setIsPlaying(true);
+  setIsPauseReady(true);
         if (announcement) {
           onStatusChange(announcement);
         }
@@ -357,12 +370,18 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         }
         const message = error instanceof Error ? error.message : String(error);
         onStatusChange(`Failed to prepare playback: ${message}`, true);
+        setIsPauseReady(false);
         throw error;
       } finally {
         if (pendingLoadAbortRef.current === abortController) {
           pendingLoadAbortRef.current = null;
         }
         setIsAudioLoading(false);
+        if (!abortController.signal.aborted && player) {
+          const state = player.getState();
+          const interactive = state === 'playing' || state === 'paused' || state === 'ready';
+          setIsPauseReady(interactive);
+        }
       }
     },
     [applyCachedRatings, onStatusChange]
@@ -417,8 +436,8 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     }
 
     try {
-  let payload = await consumePrefetchedTrack();
-  const usedPrefetch = Boolean(payload);
+      let payload = await consumePrefetchedTrack();
+      const usedPrefetch = Boolean(payload);
 
       if (!payload) {
         const response = await requestRandomRateTrack();
@@ -446,7 +465,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       };
 
       try {
-        await attemptLoad(payload);
+            await attemptLoad(payload);
         return;
       } catch (error) {
         if (!usedPrefetch) {
@@ -462,7 +481,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
           return;
         }
 
-        await attemptLoad(fallbackResponse.data);
+  await attemptLoad(fallbackResponse.data);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -785,6 +804,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
               <Button
                 onClick={handlePlayRandom}
                 disabled={isFetchingTrack || isSubmitting || isAudioLoading}
+                aria-label="Play random SID"
                 className="w-full md:w-auto retro-glow gap-2 peer"
               >
                 {randomButtonIcon}
@@ -813,8 +833,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                 variant="default"
                 size="icon"
                 onClick={handlePlayPause}
-                disabled={!hasTrack || isAudioLoading}
-                aria-label={isPlaying ? 'Pause playback' : 'Resume playback'}
+                disabled={!isPauseReady}
+                aria-label="Pause playback / Resume playback"
+                aria-pressed={isPlaying}
+                title={isPlaying ? 'Pause playback' : 'Resume playback'}
               >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
@@ -1070,6 +1092,8 @@ export function RateTab({ onStatusChange }: RateTabProps) {
                             size="icon"
                             variant={isEntryPlaying ? 'default' : 'outline'}
                             onClick={handlePlayClick}
+                            aria-label={isEntryPlaying ? 'Pause playback' : 'Play this SID'}
+                            aria-pressed={isEntryPlaying}
                             title={isEntryPlaying ? 'Pause playback' : 'Play this SID'}
                             className="h-6 w-6 rounded-full"
                             disabled={isAudioLoading || isFetchingTrack}

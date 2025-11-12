@@ -299,6 +299,12 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
 
   return (
     <div className="space-y-6">
+      <header className="space-y-1">
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Preferences</h2>
+        <p className="text-sm text-muted-foreground">
+          Manage playback defaults, collection paths, and ROM bundles.
+        </p>
+      </header>
       <Card className="c64-border">
         <CardHeader>
           <CardTitle className="petscii-text text-accent">SID COLLECTION</CardTitle>
@@ -573,7 +579,9 @@ export function PrefsTab({ onStatusChange }: PrefsTabProps) {
 
       <Card className="c64-border">
         <CardHeader>
-          <CardTitle className="petscii-text text-accent">PREFERENCES</CardTitle>
+          <CardTitle aria-hidden="true" className="petscii-text text-accent">
+            PREFERENCES
+          </CardTitle>
           <CardDescription className="text-muted-foreground">
             Customize your SIDFlow experience
           </CardDescription>

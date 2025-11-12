@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -33,8 +33,8 @@ interface TabDefinition {
   render: (handlers: {
     onStatusChange: (status: string, isError?: boolean) => void;
     onTrackPlayed: (sidPath: string) => void;
-    onSwitchTab: (tab: TabKey) => void;
-  }) => JSX.Element;
+    onSwitchTab: (tab: string) => void;
+  }) => ReactNode;
 }
 
 const TAB_DEFINITIONS: TabDefinition[] = [
@@ -98,23 +98,25 @@ export function SidflowApp({ persona }: SidflowAppProps) {
 
   const defaultTab: TabKey = persona === 'admin' ? 'wizard' : 'play';
 
-  const queryTab = persona === 'admin' ? searchParams.get('tab')?.toLowerCase() ?? null : null;
-  const normalizedQueryTab = (queryTab && allowedTabs.includes(queryTab as TabKey)
-    ? (queryTab as TabKey)
-    : null);
+  const rawQueryTab = searchParams.get('tab')?.toLowerCase() ?? null;
+  const normalizedQueryTab = rawQueryTab && allowedTabs.includes(rawQueryTab as TabKey)
+    ? (rawQueryTab as TabKey)
+    : null;
 
   const [activeTab, setActiveTab] = useState<TabKey>(normalizedQueryTab ?? defaultTab);
   const [queue, setQueue] = useState<QueueItem[]>([]);
 
   useEffect(() => {
-    if (persona !== 'admin') {
-      setActiveTab(defaultTab);
-      return;
-    }
-    if (normalizedQueryTab && normalizedQueryTab !== activeTab) {
+    if (persona === 'admin' && normalizedQueryTab && normalizedQueryTab !== activeTab) {
       setActiveTab(normalizedQueryTab);
     }
-  }, [persona, normalizedQueryTab, activeTab, defaultTab]);
+  }, [persona, normalizedQueryTab, activeTab]);
+
+  useEffect(() => {
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(defaultTab);
+    }
+  }, [allowedTabs, activeTab, defaultTab]);
 
   useEffect(() => {
     document.body.dataset.persona = persona;
@@ -143,10 +145,11 @@ export function SidflowApp({ persona }: SidflowAppProps) {
   }, [persona]);
 
   const handleSwitchTab = useCallback(
-    (tab: TabKey) => {
-      if (!allowedTabs.includes(tab)) {
+    (tabValue: string) => {
+      if (!allowedTabs.includes(tabValue as TabKey)) {
         return;
       }
+      const tab = tabValue as TabKey;
       setActiveTab(tab);
       if (persona === 'admin') {
         const nextParams = new URLSearchParams(searchParams.toString());

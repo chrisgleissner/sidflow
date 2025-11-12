@@ -101,6 +101,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [upcomingTracks, setUpcomingTracks] = useState<PlaylistTrack[]>([]);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
+  const [isPauseReady, setIsPauseReady] = useState(false);
 
   const seekTimeout = useRef<NodeJS.Timeout | null>(null);
   const playlistCounterRef = useRef(1);
@@ -359,6 +360,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       const abortController = new AbortController();
       pendingLoadAbortRef.current = abortController;
       setIsAudioLoading(true);
+  setIsPauseReady(false);
       setLoadProgress(0);
 
       try {
@@ -381,8 +383,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           parseLengthSeconds(normalized.metadata.length);
         setDuration(resolvedDuration);
         setPosition(0);
-        await player.play();
-        setIsPlaying(true);
+        setIsPauseReady(true);
+  await player.play();
+  setIsPlaying(true);
+  setIsPauseReady(true);
         if (announcement) {
           statusHandlerRef.current(announcement);
         }
@@ -395,12 +399,18 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
             true
           );
         }
+        setIsPauseReady(false);
         return false;
       } finally {
         if (pendingLoadAbortRef.current === abortController) {
           pendingLoadAbortRef.current = null;
         }
         setIsAudioLoading(false);
+        if (!abortController.signal.aborted && player) {
+          const state = player.getState();
+          const interactive = state === 'playing' || state === 'paused' || state === 'ready';
+          setIsPauseReady(interactive);
+        }
       }
     },
     [notifyTrackPlayed]
@@ -421,6 +431,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       setUpcomingTracks([]);
       currentTrackRef.current = null;
       setCurrentTrack(null);
+  setIsPauseReady(false);
       setIsAudioLoading(false);
       setLoadProgress(0);
       setIsPlaying(false);
@@ -775,8 +786,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 variant="outline"
                 size="icon"
                 onClick={handlePlayPause}
-                disabled={!currentTrack || isLoading || isAudioLoading}
-                title={isPlaying ? 'Pause' : 'Play'}
+                disabled={!isPauseReady}
+                aria-label="Pause playback / Resume playback"
+                aria-pressed={isPlaying}
+                title={isPlaying ? 'Pause playback' : 'Start playback'}
               >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
