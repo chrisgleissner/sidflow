@@ -21,6 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  dedupeBySidPath,
+  formatSeconds,
+  parseLengthSeconds,
+  type PlaylistTrack,
+} from '@/components/play-tab-helpers';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -57,38 +63,6 @@ function InfoRow({ label, value }: InfoProps) {
   );
 }
 
-interface PlaylistTrack extends RateTrackInfo {
-  playlistNumber: number;
-}
-
-function formatSeconds(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.max(0, Math.floor(seconds % 60));
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function parseLengthSeconds(length?: string): number {
-  if (!length) {
-    return 180;
-  }
-
-  if (length.includes(':')) {
-    const [minutes, secondsPart] = length.split(':');
-    const mins = Number(minutes);
-    const secs = Number(secondsPart);
-    if (!Number.isNaN(mins) && !Number.isNaN(secs)) {
-      return Math.max(15, mins * 60 + secs);
-    }
-  }
-
-  const numeric = Number(length);
-  if (!Number.isNaN(numeric) && numeric > 0) {
-    return Math.max(15, numeric);
-  }
-
-  return 180;
-}
-
 export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [preset, setPreset] = useState<MoodPreset>('energetic');
   const [currentTrack, setCurrentTrack] = useState<PlaylistTrack | null>(null);
@@ -115,6 +89,24 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const prefetchedSessionsRef = useRef<Map<string, RateTrackWithSession>>(new Map());
   const prefetchPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
 
+  const applyUpcoming = useCallback(
+    (nextTracks: PlaylistTrack[]) => {
+      const uniqueTracks = dedupeBySidPath(nextTracks);
+      upcomingRef.current = uniqueTracks;
+      setUpcomingTracks(uniqueTracks.slice(0, UPCOMING_DISPLAY_LIMIT));
+      return uniqueTracks;
+    },
+    [setUpcomingTracks]
+  );
+
+  const updateUpcoming = useCallback(
+    (mutator: (queue: PlaylistTrack[]) => PlaylistTrack[]) => {
+      const baseQueue = upcomingRef.current.slice();
+      return applyUpcoming(mutator(baseQueue));
+    },
+    [applyUpcoming]
+  );
+
   useEffect(() => {
     playedRef.current = playedTracks;
   }, [playedTracks]);
@@ -126,6 +118,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   useEffect(() => {
     currentTrackRef.current = currentTrack;
   }, [currentTrack]);
+
+  useEffect(() => {
+    setIsPauseReady(Boolean(currentTrack) && !isAudioLoading);
+  }, [currentTrack, isAudioLoading]);
 
   useEffect(() => {
     return () => {
@@ -360,7 +356,6 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       const abortController = new AbortController();
       pendingLoadAbortRef.current = abortController;
       setIsAudioLoading(true);
-  setIsPauseReady(false);
       setLoadProgress(0);
 
       try {
@@ -383,10 +378,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           parseLengthSeconds(normalized.metadata.length);
         setDuration(resolvedDuration);
         setPosition(0);
-        setIsPauseReady(true);
-  await player.play();
-  setIsPlaying(true);
-  setIsPauseReady(true);
+        await player.play();
+        setIsPlaying(true);
         if (announcement) {
           statusHandlerRef.current(announcement);
         }
@@ -399,18 +392,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
             true
           );
         }
-        setIsPauseReady(false);
         return false;
       } finally {
         if (pendingLoadAbortRef.current === abortController) {
           pendingLoadAbortRef.current = null;
         }
         setIsAudioLoading(false);
-        if (!abortController.signal.aborted && player) {
-          const state = player.getState();
-          const interactive = state === 'playing' || state === 'paused' || state === 'ready';
-          setIsPauseReady(interactive);
-        }
       }
     },
     [notifyTrackPlayed]
@@ -424,14 +411,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       trackNumberMapRef.current.clear();
       playlistCounterRef.current = 1;
       playedRef.current = [];
-      upcomingRef.current = [];
-    prefetchedSessionsRef.current.clear();
-    prefetchPromisesRef.current.clear();
+      prefetchedSessionsRef.current.clear();
+      prefetchPromisesRef.current.clear();
       setPlayedTracks([]);
-      setUpcomingTracks([]);
+  applyUpcoming([]);
       currentTrackRef.current = null;
       setCurrentTrack(null);
-  setIsPauseReady(false);
       setIsAudioLoading(false);
       setLoadProgress(0);
       setIsPlaying(false);
@@ -452,23 +437,21 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       if (seeded.length === 0) {
         notifyStatus('No songs available for this preset.', true);
       }
-      upcomingRef.current = seeded;
-      setUpcomingTracks(seeded.slice(0, UPCOMING_DISPLAY_LIMIT));
-      if (seeded.length > 0) {
-        void prefetchTrackSession(seeded[0]);
+      const queued = applyUpcoming(seeded);
+      if (queued.length > 0) {
+        void prefetchTrackSession(queued[0]);
       }
       
       // Load remaining tracks in background
-      if (seeded.length > 0) {
+      if (queued.length > 0) {
         void (async () => {
-          for (let index = seeded.length; index < INITIAL_PLAYLIST_SIZE; index += 1) {
+          for (let index = queued.length; index < INITIAL_PLAYLIST_SIZE; index += 1) {
             const response = await requestRandomPlayTrack(preset, { preview: true });
             if (!response.success) {
               break;
             }
             const numbered = assignPlaylistNumber(response.data.track);
-            upcomingRef.current.push(numbered);
-            setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
+            updateUpcoming((queue) => [...queue, numbered]);
           }
         })();
       }
@@ -480,7 +463,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [assignPlaylistNumber, notifyStatus, prefetchTrackSession, preset]);
+  }, [applyUpcoming, assignPlaylistNumber, notifyStatus, prefetchTrackSession, preset, updateUpcoming]);
 
   useEffect(() => {
     void rebuildPlaylist();
@@ -522,12 +505,13 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     if (isLoading || isAudioLoading) {
       return;
     }
-    if (upcomingRef.current.length === 0) {
+    const queue = upcomingRef.current.slice();
+    if (queue.length === 0) {
       notifyStatus('No upcoming songs. Change the preset to rebuild the playlist.', true);
       return;
     }
-    const nextTrack = upcomingRef.current.shift()!;
-    setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
+    const [nextTrack, ...rest] = queue;
+    updateUpcoming(() => rest);
     const previousTrack = currentTrackRef.current;
     const success = await startPlayback(
       nextTrack,
@@ -538,15 +522,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       setPlayedTracks(playedRef.current.slice());
     }
     if (!success) {
-      upcomingRef.current = [nextTrack, ...upcomingRef.current];
-      setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
-    } else {
-      setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
+      updateUpcoming((current) => [nextTrack, ...current]);
     }
     if (upcomingRef.current.length > 0) {
       void prefetchTrackSession(upcomingRef.current[0]);
     }
-  }, [isAudioLoading, isLoading, notifyStatus, prefetchTrackSession, startPlayback]);
+  }, [isAudioLoading, isLoading, notifyStatus, prefetchTrackSession, startPlayback, updateUpcoming]);
 
   useEffect(() => {
     playNextHandlerRef.current = playNextFromQueue;
@@ -586,9 +567,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       return;
     }
     const track = playedRef.current.shift()!;
-    if (currentTrackRef.current) {
-      upcomingRef.current = [currentTrackRef.current, ...upcomingRef.current];
-      setUpcomingTracks(upcomingRef.current.slice(0, UPCOMING_DISPLAY_LIMIT));
+    const current = currentTrackRef.current;
+    if (current) {
+      updateUpcoming((queue) => [current, ...queue]);
     }
     const success = await startPlayback(
       track,
@@ -603,7 +584,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     if (upcomingRef.current.length > 0) {
       void prefetchTrackSession(upcomingRef.current[0]);
     }
-  }, [notifyStatus, prefetchTrackSession, startPlayback]);
+  }, [notifyStatus, prefetchTrackSession, startPlayback, updateUpcoming]);
 
   const replayFromHistory = useCallback(
     async (track: PlaylistTrack) => {

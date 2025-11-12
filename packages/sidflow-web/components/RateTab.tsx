@@ -147,6 +147,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     statusHandlerRef.current = onStatusChange;
   }, [onStatusChange]);
 
+  useEffect(() => {
+    setIsPauseReady(Boolean(currentTrack) && !isAudioLoading);
+  }, [currentTrack, isAudioLoading]);
+
   const applyCachedRatings = useCallback(
     (sidPath?: string | null) => {
       if (!sidPath) {
@@ -258,8 +262,6 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       statusHandlerRef.current(`Playback error: ${error.message}`, true);
     };
     const handleState = (state: SidflowPlayerState) => {
-      const interactive = state === 'playing' || state === 'paused' || state === 'ready';
-      setIsPauseReady(interactive);
       if (state === 'ended') {
         setIsPlaying(false);
       }
@@ -347,7 +349,6 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       const abortController = new AbortController();
   pendingLoadAbortRef.current = abortController;
   setIsAudioLoading(true);
-  setIsPauseReady(false);
   setLoadProgress(0);
 
       try {
@@ -356,11 +357,9 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         setCurrentSession(session);
         applyCachedRatings(track.sidPath);
         setPosition(0);
-        setDuration(player.getDurationSeconds() || track.durationSeconds || DEFAULT_DURATION);
-        setIsPauseReady(true);
-  await player.play();
-  setIsPlaying(true);
-  setIsPauseReady(true);
+  setDuration(player.getDurationSeconds() || track.durationSeconds || DEFAULT_DURATION);
+        await player.play();
+        setIsPlaying(true);
         if (announcement) {
           onStatusChange(announcement);
         }
@@ -368,20 +367,14 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         if (abortController.signal.aborted) {
           return;
         }
-        const message = error instanceof Error ? error.message : String(error);
-        onStatusChange(`Failed to prepare playback: ${message}`, true);
-        setIsPauseReady(false);
+  const message = error instanceof Error ? error.message : String(error);
+  onStatusChange(`Failed to prepare playback: ${message}`, true);
         throw error;
       } finally {
         if (pendingLoadAbortRef.current === abortController) {
           pendingLoadAbortRef.current = null;
         }
         setIsAudioLoading(false);
-        if (!abortController.signal.aborted && player) {
-          const state = player.getState();
-          const interactive = state === 'playing' || state === 'paused' || state === 'ready';
-          setIsPauseReady(interactive);
-        }
       }
     },
     [applyCachedRatings, onStatusChange]

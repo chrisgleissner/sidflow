@@ -91,7 +91,7 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
   return response;
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const conditional = await enforceAdminAuthentication(request);
   if (conditional) {
     return applyIsolationHeaders(conditional);
