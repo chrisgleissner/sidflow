@@ -10,6 +10,8 @@ import { THEME_OPTIONS, FONT_OPTIONS, PLAYBACK_ENGINES, type BrowserPreferences 
 import { useRomManifest } from '@/lib/preferences/use-rom-manifest';
 import type { RomManifestBundle } from '@/lib/preferences/types';
 import { installRomBundle } from '@/lib/preferences/rom-installer';
+import { useFeedbackRuntimeState } from '@/lib/feedback/use-feedback-runtime';
+import { triggerFeedbackTraining, triggerFeedbackSync } from '@/lib/feedback/runtime';
 
 const ROM_ROLES = ['basic', 'kernal', 'chargen'] as const;
 type RomRole = (typeof ROM_ROLES)[number];
@@ -37,6 +39,7 @@ const ADAPTER_LABELS: Record<BrowserPreferences['playbackEngine'], string> = {
 export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
   const { status, preferences, updatePreferences } = usePreferences();
   const { status: manifestStatus, manifest, error: manifestError, refresh } = useRomManifest();
+  const feedbackRuntime = useFeedbackRuntimeState();
   const [isInstallingBundle, setIsInstallingBundle] = useState(false);
   const [adapterAvailability, setAdapterAvailability] = useState<AdapterAvailability[]>([]);
   const [pendingRomFiles, setPendingRomFiles] = useState<Record<string, Partial<Record<RomRole, File>>>>({});
@@ -246,6 +249,52 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
     return preferences.romBundleId ? 'unknown' : 'none';
   }, [manifest, selectedBundle, preferences.romBundleId]);
 
+  const trainingStatusText = useMemo(() => {
+    if (!feedbackRuntime.trainingEnabled) {
+      return 'Training disabled';
+    }
+    if (!feedbackRuntime.lastTraining) {
+      return 'Training enabled – no runs yet';
+    }
+    const { timestamp, samples, durationMs, modelVersion } = feedbackRuntime.lastTraining;
+    const when = new Date(timestamp).toLocaleString();
+    const durationSeconds = durationMs ? (durationMs / 1000).toFixed(1) : '0.0';
+    return `Last run: ${when} · ${samples} samples · ${durationSeconds}s · v${modelVersion}`;
+  }, [feedbackRuntime]);
+
+  const syncStatusText = useMemo(() => {
+    if (!feedbackRuntime.uploadingEnabled) {
+      return 'Sync disabled';
+    }
+    if (!feedbackRuntime.lastSync) {
+      return 'Sync enabled – no uploads yet';
+    }
+    const { timestamp, uploadedRatings, uploadedImplicit, success, error } = feedbackRuntime.lastSync;
+    const when = new Date(timestamp).toLocaleString();
+    if (!success) {
+      return `Last sync failed: ${error ?? 'Unknown error'}`;
+    }
+    return `Last sync: ${when} · ${uploadedRatings} ratings, ${uploadedImplicit} implicit`;
+  }, [feedbackRuntime]);
+
+  const handleTriggerTraining = useCallback(() => {
+    if (!preferences.training.enabled) {
+      onStatusChange('Enable background training first', true);
+      return;
+    }
+    triggerFeedbackTraining('manual-prefs');
+    onStatusChange('Training run queued');
+  }, [preferences.training.enabled, onStatusChange]);
+
+  const handleTriggerSync = useCallback(() => {
+    if (!preferences.training.allowUpload) {
+      onStatusChange('Enable upload first', true);
+      return;
+    }
+    triggerFeedbackSync();
+    onStatusChange('Sync queued');
+  }, [preferences.training.allowUpload, onStatusChange]);
+
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -389,15 +438,39 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
           <CardTitle className="petscii-text text-accent">Local Training</CardTitle>
           <CardDescription>Tune on-device model updates without blocking playback.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={preferences.training.enabled}
-              onChange={(event) => void handleTrainingToggle(event.target.checked)}
-            />
-            <span>Enable background training</span>
-          </label>
+        <CardContent className="grid gap-4 text-sm">
+          <div className="space-y-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={preferences.training.enabled}
+                onChange={(event) => void handleTrainingToggle(event.target.checked)}
+              />
+              <span>Enable background training</span>
+            </label>
+            
+            <div className="bg-muted/40 rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Training Status</p>
+                  <p className="text-xs text-foreground">{trainingStatusText}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Base model: v{feedbackRuntime.baseModelVersion ?? 'unknown'} · 
+                    Local model: v{feedbackRuntime.localModelVersion ?? 'none'}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleTriggerTraining}
+                  disabled={!preferences.training.enabled}
+                >
+                  Train Now
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-2 md:grid-cols-3">
             <div className="grid gap-1">
               <span className="text-xs uppercase text-muted-foreground">Iteration Budget</span>
@@ -409,7 +482,11 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
                 onChange={(event) =>
                   void handleTrainingField('iterationBudget', Number(event.target.value) || 1)
                 }
+                disabled={!canInteract}
               />
+              <span className="text-[11px] text-muted-foreground">
+                Default: 200. Higher values = more training time.
+              </span>
             </div>
             <div className="grid gap-1">
               <span className="text-xs uppercase text-muted-foreground">Sync Every (minutes)</span>
@@ -421,16 +498,34 @@ export function PublicPrefsTab({ onStatusChange }: PublicPrefsTabProps) {
                 onChange={(event) =>
                   void handleTrainingField('syncCadenceMinutes', Number(event.target.value) || 5)
                 }
+                disabled={!canInteract}
               />
+              <span className="text-[11px] text-muted-foreground">
+                Minimum: 5 minutes between sync attempts.
+              </span>
             </div>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={preferences.training.allowUpload}
-                onChange={(event) => void handleTrainingField('allowUpload', event.target.checked)}
-              />
-              <span>Allow upload of anonymised deltas</span>
-            </label>
+            <div className="grid gap-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={preferences.training.allowUpload}
+                  onChange={(event) => void handleTrainingField('allowUpload', event.target.checked)}
+                />
+                <span>Allow upload of anonymised deltas</span>
+              </label>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">{syncStatusText}</p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleTriggerSync}
+                  disabled={!preferences.training.allowUpload}
+                  className="h-8"
+                >
+                  Sync Now
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

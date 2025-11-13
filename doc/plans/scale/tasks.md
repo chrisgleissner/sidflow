@@ -29,10 +29,10 @@ Required reading (skim before starting any phase):
 - [x] Standardize Playwright screenshot theming so all captures use the dark background, including resetting mutated themes between tests (`tests/e2e/screenshots.spec.ts`, README screenshot refresh).
 
 ## Phase 3 – Local Feedback & Training
-- [ ] Stand up client-side feedback store (IndexedDB) and background worker that batches implicit/explicit events without impacting playback latency.
-- [ ] Integrate local TensorFlow.js fine-tuning using latest global model manifest; measure CPU budget (<5% average) and provide pause/resume controls tied to Preferences.
-- [ ] Implement optional sync pipeline (upload deltas, retry/backoff, conflict resolution) and verify privacy guardrails (no raw personal data uploaded).
-- [ ] Wire playback facade to feed consistent telemetry and feedback events regardless of adapter (WASM, CLI, streaming, Ultimate 64).
+- [x] Stand up client-side feedback store (IndexedDB) and background worker that batches implicit/explicit events without impacting playback latency.
+- [x] Integrate local TensorFlow.js fine-tuning using latest global model manifest; measure CPU budget (<5% average) and provide pause/resume controls tied to Preferences.
+- [x] Implement optional sync pipeline (upload deltas, retry/backoff, conflict resolution) and verify privacy guardrails (no raw personal data uploaded).
+- [x] Wire playback facade to feed consistent telemetry and feedback events regardless of adapter (WASM, CLI, streaming, Ultimate 64).
 
 ## Phase 4 – Admin Background Jobs & Data Governance
 - [ ] Build job orchestration service (queues, manifests, resumable execution) wrapping `sidflow-fetch`, `sidflow-classify`, `sidflow-train`; include unit + integration coverage for restart/idempotency.
