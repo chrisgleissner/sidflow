@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { mkdtemp, writeFile, rm, mkdir, readFile } from "fs/promises";
+import { createHash } from "node:crypto";
 import os from "os";
 import path from "path";
 
@@ -22,6 +23,7 @@ import {
   resolveManualTagPath,
   resolveRelativeSidPath
 } from "@sidflow/common";
+import { WAV_HASH_EXTENSION, type RenderWavOptions } from "../src/render/wav-renderer.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-");
 
@@ -115,7 +117,7 @@ describe("classification helpers", () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidFile = path.join(root, "track.sid");
     const wavFile = path.join(root, "track.wav");
-    const hashFile = `${wavFile}.hash`;
+  const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
     await writeFile(sidFile, "initial");
 
     expect(await needsWavRefresh(sidFile, wavFile, false)).toBeTrue();
@@ -331,6 +333,51 @@ describe("classification helpers", () => {
     expect(rendered[0].wavFile).toContain("multi-1.wav");
     expect(rendered[1].wavFile).toContain("multi-2.wav");
     expect(rendered[2].wavFile).toContain("multi-3.wav");
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("passes HVSC song lengths to renderer", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const hvscPath = path.join(root, "hvsc");
+    const wavCachePath = path.join(root, "wav");
+    const docsPath = path.join(hvscPath, "C64Music", "DOCUMENTS");
+    const demoDir = path.join(hvscPath, "C64Music", "DEMOS", "A-F");
+
+    await mkdir(demoDir, { recursive: true });
+    await mkdir(docsPath, { recursive: true });
+
+    const sidFile = path.join(demoDir, "Song.sid");
+    const sidContent = Buffer.from("song-content");
+    await writeFile(sidFile, sidContent);
+    const hash = createHash("md5").update(sidContent).digest("hex");
+
+    const songlengths = [
+      "[Database]",
+      "; /DEMOS/A-F/Song.sid",
+      `${hash}=0:30.500`
+    ].join("\n");
+    await writeFile(path.join(docsPath, "Songlengths.md5"), songlengths, "utf8");
+
+    const plan = {
+      config: {} as ClassificationPlan["config"],
+      forceRebuild: false,
+      classificationDepth: 3,
+      hvscPath,
+      wavCachePath,
+      tagsPath: path.join(root, "tags")
+    } as unknown as ClassificationPlan;
+
+    let observedDuration: number | undefined;
+    await buildWavCache(plan, {
+      render: async (options: RenderWavOptions) => {
+        observedDuration = options.targetDurationMs;
+        await mkdir(path.dirname(options.wavFile), { recursive: true });
+        await writeFile(options.wavFile, "wav");
+      }
+    });
+
+    expect(observedDuration).toBe(30_500);
 
     await rm(root, { recursive: true, force: true });
   });

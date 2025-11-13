@@ -11,18 +11,24 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-// Longer timeout for audio operations
-test.setTimeout(90000);
+const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
-// Configure browser launch options
-test.use({
-  launchOptions: {
-    args: [
-      '--autoplay-policy=no-user-gesture-required',
-      '--enable-features=SharedArrayBuffer',
-    ],
-  },
-});
+if (!isPlaywrightRunner) {
+  console.warn('[sidflow-web] Skipping Playwright telemetry validation e2e spec; run via `bun run test:e2e`.');
+} else {
+  // Longer timeout for audio operations
+  test.setTimeout(90000);
+
+  // Configure browser launch options
+  test.use({
+    launchOptions: {
+      args: [
+        '--autoplay-policy=no-user-gesture-required',
+        '--enable-features=SharedArrayBuffer',
+      ],
+    },
+  });
+}
 
 interface TelemetryData {
   underruns: number;
@@ -131,6 +137,7 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
   await page.waitForTimeout(4000);
 }
 
+if (isPlaywrightRunner) {
 test.describe('Telemetry Validation', () => {
   test('verifies no underruns during normal playback', async ({ page }) => {
     page.on('console', (msg) => {
@@ -260,3 +267,4 @@ test.describe('Telemetry Validation', () => {
     expect(firstEvent).toHaveProperty('timestamp');
   });
 });
+}

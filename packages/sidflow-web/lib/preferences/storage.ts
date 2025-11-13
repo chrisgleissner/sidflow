@@ -24,6 +24,26 @@ interface RomBundleRecord {
   updatedAt: number;
 }
 
+export type PlaybackQueueKind = 'rebuild-playlist' | 'play-next';
+
+export interface PlaybackQueueRecord {
+  id?: number;
+  kind: PlaybackQueueKind;
+  payload: Record<string, unknown>;
+  status: 'pending' | 'failed';
+  enqueuedAt: number;
+  attempts: number;
+  lastError?: string;
+  lastAttemptAt?: number;
+}
+
+export interface PlaybackCacheRecord<T = unknown> {
+  sidPath: string;
+  data: T;
+  updatedAt: number;
+  expiresAt?: number | null;
+}
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function hasIndexedDb(): boolean {
@@ -228,4 +248,149 @@ export function clearLocalStoragePreferences(): void {
     return;
   }
   window.localStorage.removeItem(PREFERENCES_LOCAL_STORAGE_KEY);
+}
+
+export async function enqueuePlaybackQueueRecord(
+  record: Omit<PlaybackQueueRecord, 'id' | 'status' | 'attempts' | 'enqueuedAt'> &
+    Partial<Pick<PlaybackQueueRecord, 'status' | 'attempts' | 'enqueuedAt' | 'lastError' | 'lastAttemptAt'>>
+): Promise<number> {
+  const db = await openDatabase();
+  return await new Promise<number>((resolve, reject) => {
+    const transaction = db.transaction(STORE_PLAYBACK_QUEUE, 'readwrite');
+    const store = transaction.objectStore(STORE_PLAYBACK_QUEUE);
+    const payload: PlaybackQueueRecord = {
+      kind: record.kind,
+      payload: record.payload ?? {},
+      status: record.status ?? 'pending',
+      enqueuedAt: record.enqueuedAt ?? Date.now(),
+      attempts: record.attempts ?? 0,
+      lastError: record.lastError,
+      lastAttemptAt: record.lastAttemptAt,
+    };
+    const request = store.add(payload);
+    request.onerror = () => reject(request.error ?? new Error('Failed to enqueue playback queue record'));
+    request.onsuccess = () => resolve(request.result as number);
+  });
+}
+
+export async function getPlaybackQueueRecords(): Promise<PlaybackQueueRecord[]> {
+  try {
+    const db = await openDatabase();
+    return await new Promise<PlaybackQueueRecord[]>((resolve, reject) => {
+      const transaction = db.transaction(STORE_PLAYBACK_QUEUE, 'readonly');
+      const store = transaction.objectStore(STORE_PLAYBACK_QUEUE);
+      const request = store.getAll();
+      request.onerror = () => reject(request.error ?? new Error('Failed to read playback queue records'));
+      request.onsuccess = () => resolve((request.result as PlaybackQueueRecord[]) ?? []);
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function updatePlaybackQueueRecord(record: PlaybackQueueRecord): Promise<void> {
+  if (typeof record.id !== 'number') {
+    throw new Error('Playback queue record must have an id to update');
+  }
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_PLAYBACK_QUEUE, 'readwrite');
+    const store = transaction.objectStore(STORE_PLAYBACK_QUEUE);
+    const request = store.put(record);
+    request.onerror = () => reject(request.error ?? new Error('Failed to update playback queue record'));
+    request.onsuccess = () => resolve();
+  });
+}
+
+export async function deletePlaybackQueueRecord(id: number): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_PLAYBACK_QUEUE, 'readwrite');
+    const store = transaction.objectStore(STORE_PLAYBACK_QUEUE);
+    const request = store.delete(id);
+    request.onerror = () => reject(request.error ?? new Error('Failed to delete playback queue record'));
+    request.onsuccess = () => resolve();
+  });
+}
+
+export async function writePlaybackCacheRecord<T>(record: PlaybackCacheRecord<T>): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_PLAYBACK_CACHE, 'readwrite');
+    const store = transaction.objectStore(STORE_PLAYBACK_CACHE);
+    const payload: PlaybackCacheRecord<T> = {
+      sidPath: record.sidPath,
+      data: record.data,
+      updatedAt: record.updatedAt ?? Date.now(),
+      expiresAt: record.expiresAt ?? null,
+    };
+    const request = store.put(payload);
+    request.onerror = () => reject(request.error ?? new Error('Failed to write playback cache record'));
+    request.onsuccess = () => resolve();
+  });
+}
+
+export async function readPlaybackCacheRecord<T = unknown>(sidPath: string): Promise<PlaybackCacheRecord<T> | null> {
+  try {
+    const db = await openDatabase();
+    return await new Promise<PlaybackCacheRecord<T> | null>((resolve, reject) => {
+      const transaction = db.transaction(STORE_PLAYBACK_CACHE, 'readonly');
+      const store = transaction.objectStore(STORE_PLAYBACK_CACHE);
+      const request = store.get(sidPath);
+      request.onerror = () => reject(request.error ?? new Error('Failed to read playback cache record'));
+      request.onsuccess = () => resolve((request.result as PlaybackCacheRecord<T> | undefined) ?? null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function listPlaybackCacheRecords<T = unknown>(): Promise<PlaybackCacheRecord<T>[]> {
+  try {
+    const db = await openDatabase();
+    return await new Promise<PlaybackCacheRecord<T>[]>((resolve, reject) => {
+      const transaction = db.transaction(STORE_PLAYBACK_CACHE, 'readonly');
+      const store = transaction.objectStore(STORE_PLAYBACK_CACHE);
+      const request = store.getAll();
+      request.onerror = () => reject(request.error ?? new Error('Failed to list playback cache records'));
+      request.onsuccess = () => resolve((request.result as PlaybackCacheRecord<T>[]) ?? []);
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function deletePlaybackCacheRecord(sidPath: string): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_PLAYBACK_CACHE, 'readwrite');
+    const store = transaction.objectStore(STORE_PLAYBACK_CACHE);
+    const request = store.delete(sidPath);
+    request.onerror = () => reject(request.error ?? new Error('Failed to delete playback cache record'));
+    request.onsuccess = () => resolve();
+  });
+}
+
+export async function prunePlaybackCache(maxEntries: number): Promise<void> {
+  if (maxEntries <= 0) {
+    const db = await openDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_PLAYBACK_CACHE, 'readwrite');
+      const store = transaction.objectStore(STORE_PLAYBACK_CACHE);
+      const request = store.clear();
+      request.onerror = () => reject(request.error ?? new Error('Failed to clear playback cache'));
+      request.onsuccess = () => resolve();
+    });
+    return;
+  }
+
+  const records = await listPlaybackCacheRecords();
+  if (records.length <= maxEntries) {
+    return;
+  }
+  const sorted = records.sort((a, b) => b.updatedAt - a.updatedAt);
+  const toRemove = sorted.slice(maxEntries);
+  for (const record of toRemove) {
+    await deletePlaybackCacheRecord(record.sidPath);
+  }
 }

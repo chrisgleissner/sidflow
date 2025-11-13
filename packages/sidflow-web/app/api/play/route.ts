@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
         basic: env.basicRomPath ?? null,
         chargen: env.chargenRomPath ?? null,
       },
+      fallbackHlsUrl: null,
     });
 
     const response: ApiResponse<{ track: RateTrackInfo; session: typeof session }> = {

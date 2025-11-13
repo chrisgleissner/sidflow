@@ -166,6 +166,7 @@ export async function POST() {
         basic: env.basicRomPath ?? null,
         chargen: env.chargenRomPath ?? null,
       },
+      fallbackHlsUrl: null,
     });
 
     const elapsedMs = Date.now() - startTime;

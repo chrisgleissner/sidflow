@@ -14,4 +14,5 @@ export interface PlaybackSessionDescriptor {
     selectedSong: number;
     expiresAt: string;
     romUrls?: SessionRomUrls;
+    fallbackHlsUrl?: string | null;
 }

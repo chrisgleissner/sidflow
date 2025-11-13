@@ -9,6 +9,7 @@ export interface WebPreferences {
   kernalRomPath?: string | null;
   basicRomPath?: string | null;
   chargenRomPath?: string | null;
+  sidplayfpCliFlags?: string | null;
 }
 
 const DEFAULT_PREFERENCES: WebPreferences = {
@@ -16,6 +17,7 @@ const DEFAULT_PREFERENCES: WebPreferences = {
   kernalRomPath: null,
   basicRomPath: null,
   chargenRomPath: null,
+  sidplayfpCliFlags: null,
 };
 
 function resolvePreferencesPath(): string {

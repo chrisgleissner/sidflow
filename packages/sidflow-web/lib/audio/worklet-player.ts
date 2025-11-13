@@ -13,6 +13,7 @@ import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createSABRingBuffer, type SABRingBufferPointers } from './shared/sab-ring-buffer';
 import type { WorkerMessage, WorkerResponse } from './worker/sid-producer.worker';
 import { telemetry } from '@/lib/telemetry';
+import { WorkletGuard, type WorkletGuardOutcome } from '@/lib/player/worklet-guard';
 import { fetchRomAssets, type RomAssetMap } from './fetch-rom-assets';
 
 export type WorkletPlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
@@ -60,6 +61,9 @@ export class WorkletPlayer {
   private worker: Worker | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private sabPointers: SABRingBufferPointers | null = null;
+
+  private performanceGuard: WorkletGuard | null = null;
+  private performanceGuardDisabled = false;
 
   private state: WorkletPlayerState = 'idle';
   private readonly listeners: Map<WorkletPlayerEvent, Set<(payload: EventPayloadMap[WorkletPlayerEvent]) => void>> =
@@ -712,7 +716,105 @@ export class WorkletPlayer {
     }
   }
 
+  private ensurePerformanceGuard(): WorkletGuard | null {
+    if (this.performanceGuardDisabled) {
+      return null;
+    }
+
+    if (this.performanceGuard) {
+      return this.performanceGuard;
+    }
+
+    const guard = new WorkletGuard({
+      onWarning: (sample) => {
+        console.warn('[WorkletPlayer] Worklet guard warning: slow frames detected', {
+          avgFrameDurationMs: sample.avgFrameDurationMs,
+          worstFrameDurationMs: sample.worstFrameDurationMs,
+          overBudgetFrameCount: sample.overBudgetFrameCount,
+          frameCount: sample.frameCount,
+        });
+
+        telemetry.trackPerformance({
+          sessionId: this.currentSession?.sessionId,
+          sidPath: this.currentTrack?.sidPath,
+          metrics: {
+            guardEvent: 'warning',
+            avgFrameDurationMs: sample.avgFrameDurationMs,
+            worstFrameDurationMs: sample.worstFrameDurationMs,
+            overBudgetFrameCount: sample.overBudgetFrameCount,
+            sampleFrameCount: sample.frameCount,
+            warningBudgetMs: sample.warningBudgetMs,
+          },
+        });
+      },
+    });
+
+    if (!guard.isSupported()) {
+      this.performanceGuardDisabled = true;
+      return null;
+    }
+
+    this.performanceGuard = guard;
+    return guard;
+  }
+
+  private startPerformanceGuard(): void {
+    const guard = this.ensurePerformanceGuard();
+    if (!guard) {
+      return;
+    }
+    guard.start();
+  }
+
+  private stopPerformanceGuard(outcome: WorkletGuardOutcome): void {
+    if (!this.performanceGuard) {
+      return;
+    }
+
+    const result = this.performanceGuard.stop(outcome);
+    if (!result) {
+      return;
+    }
+
+    telemetry.trackPerformance({
+      sessionId: this.currentSession?.sessionId,
+      sidPath: this.currentTrack?.sidPath,
+      metrics: {
+        guardEvent: 'summary',
+        guardOutcome: result.outcome,
+        guardDurationMs: result.durationMs,
+        avgFrameDurationMs: result.avgFrameDurationMs,
+        worstFrameDurationMs: result.worstFrameDurationMs,
+        overBudgetFrameCount: result.overBudgetFrameCount,
+        totalFrameCount: result.totalFrames,
+        warningCount: result.warningCount,
+        warningBudgetMs: result.warningBudgetMs,
+        sampleFrameCount: result.lastWarning?.frameCount,
+      },
+    });
+  }
+
+  private mapStateToGuardOutcome(state: WorkletPlayerState): WorkletGuardOutcome {
+    switch (state) {
+      case 'paused':
+        return 'paused';
+      case 'ended':
+        return 'ended';
+      case 'error':
+        return 'error';
+      case 'loading':
+        return 'loading';
+      case 'ready':
+        return 'ready';
+      case 'idle':
+        return 'stopped';
+      default:
+        return 'stopped';
+    }
+  }
+
   private cleanup(): void {
+    this.stopPerformanceGuard('teardown');
     this.rejectWorkerWaits(new DOMException('Playback stopped', 'AbortError'));
 
     // Stop worker
@@ -780,8 +882,17 @@ export class WorkletPlayer {
     }
 
     const oldState = this.state;
+
+    if (oldState === 'playing' && next !== 'playing') {
+      this.stopPerformanceGuard(this.mapStateToGuardOutcome(next));
+    }
+
     this.state = next;
     this.emit('statechange', next);
+
+    if (next === 'playing' && oldState !== 'playing') {
+      this.startPerformanceGuard();
+    }
 
     telemetry.trackPlaybackStateChange({
       sessionId: this.currentSession?.sessionId,

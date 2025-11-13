@@ -3,6 +3,7 @@ import {
   clampRating,
   ensureDir,
   loadConfig,
+  lookupSongDurationsMs,
   pathExists,
   parseSidFile,
   resolveAutoTagFilePath,
@@ -27,6 +28,7 @@ import path from "node:path";
 import { WasmRendererPool } from "./render/wasm-render-pool.js";
 import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import {
+  WAV_HASH_EXTENSION,
   computeFileHash,
   renderWavWithEngine,
   type RenderWavOptions
@@ -244,7 +246,7 @@ export async function needsWavRefresh(
 
   // Timestamp changed - check if content actually changed by comparing hashes
   // Store hash in a sidecar file to avoid re-computing on every check
-  const hashFile = `${wavFile}.hash`;
+  const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
   if (await pathExists(hashFile)) {
     try {
       const storedHash = await readFile(hashFile, "utf8");
@@ -320,6 +322,24 @@ export async function buildWavCache(
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
+  const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+
+  const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
+    const existing = songlengthPromises.get(sidFile);
+    if (existing) {
+      return existing;
+    }
+    const pending = lookupSongDurationsMs(sidFile, plan.hvscPath).catch((error) => {
+      console.error(
+        `[WARN] Failed to resolve song length for ${path.relative(plan.hvscPath, sidFile)}: ${(error as Error).message}`
+      );
+      return undefined;
+    });
+    songlengthPromises.set(sidFile, pending);
+    return pending;
+  };
+
+  let songlengthDebugCount = 0;
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
@@ -439,7 +459,30 @@ export async function buildWavCache(
           });
         }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
         
-        const renderOptions = { sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined };
+        let targetDurationMs: number | undefined;
+        try {
+          const durations = await getSongDurations(sidFile);
+          if (durations && durations.length > 0) {
+            const index = Math.min(Math.max(songIndex - 1, 0), durations.length - 1);
+            targetDurationMs = durations[index];
+            if (targetDurationMs !== undefined && songlengthDebugCount < 5) {
+              console.error(
+                `[DEBUG] Resolved HVSC duration ${targetDurationMs}ms for ${songLabel}`
+              );
+              songlengthDebugCount += 1;
+            }
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[WARN] Unable to resolve song length for ${songLabel}: ${message}`);
+        }
+
+        const renderOptions = {
+          sidFile,
+          wavFile,
+          songIndex: songCount > 1 ? songIndex : undefined,
+          targetDurationMs
+        };
         let renderSucceeded = false;
         let lastError: Error | null = null;
         

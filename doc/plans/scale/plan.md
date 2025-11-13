@@ -182,7 +182,7 @@ encoding:
 ## Preferences & Persistence
 - Preferences schema expands to include UI theming, ROM selection, playback engine choice, Ultimate 64 device configuration (IP/port, HTTPS flag, optional auth header), local training toggles, iteration budget, and sync cadence. Represent them as a versioned record stored in `localStorage` (for fast bootstrap) with a mirrored IndexedDB object store (for validation history and rollback).
 - ROM selection validation:
-  - Public persona: provide curated ROM bundles hashed server-side. Preference UI lists allowed `(basic, kernal, chargen)` combinations with SHA-256 fingerprints pulled from `/api/prefs/rom-manifest`. Client validates downloaded ROM bytes against manifest before enabling playback.
+  - Public persona: provide curated ROM bundles hashed server-side. Preference UI lists allowed `(basic, kernal, chargen)` combinations with SHA-256 fingerprints pulled from `/api/prefs/rom-manifest`. Clients must supply their own ROM files locally; SIDFlow never serves copyrighted ROM content to public users. The browser validates user-provided bytes against the manifest before enabling playback.
   - Admin persona: can upload new ROM bundles via `/admin` panel; server-side validation reuses `readSidplayfpConfig` and ensures new files are saved under secured storage (`/workspace/roms`).
 - Playback engine validation:
   - WASM: always available if browser supports SAB. Detect support and set as default.
@@ -232,6 +232,7 @@ encoding:
   - `/api/playback/{id}/sid` (existing) for WASM/Ultimate 64.
   - `/api/playback/{id}/wav` and `/api/playback/{id}/m4a` streaming endpoints returning ranged responses with long-lived caching headers (assets generated during classify conversions).
   - `/api/playback/{id}/handoff/ultimate64` to broker hardware dispatch when clients cannot reach device directly (optional).
+  - `/api/playback/rom/[bundleId]/[fileName]` remains restricted to authenticated admins and rendering jobs only; public personas never receive ROM binaries over the wire.
 - Ensure `Cross-Origin-Resource-Policy: same-origin` and HTTP caching (`Cache-Control: private, max-age=30`) remain as in `playback-session.ts`, but front additional CDN caching for static ROM bundles, WASM assets, and streaming audio.
 - HLS fallback carrying AAC-in-M4A segments remains available for browsers lacking SAB; playback facade maps this to the streaming adapter internally.
 - Thousands of concurrent users rely on edge caching for static assets and minimal server compute (only session metadata). Rate limit session creation and enforce per-adapter quotas (e.g., `sidplayfp` CLI not available on shared devices by default).

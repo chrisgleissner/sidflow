@@ -3,8 +3,21 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 
+const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
+
+if (!isPlaywrightRunner) {
+  console.warn('[sidflow-web] Skipping Playwright tab screenshots e2e spec; run via `bun run test:e2e`.');
+}
+
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'doc/web-screenshots');
+
+const PREFERENCES_STORAGE_KEY = 'sidflow.preferences';
+const DARK_SCREENSHOT_THEME = 'c64-dark';
+const DARK_SCREENSHOT_PREFERENCES = {
+  version: 2,
+  theme: DARK_SCREENSHOT_THEME,
+};
 
 interface TabScenario {
   label: string;
@@ -73,11 +86,36 @@ const TABS: TabScenario[] = [
   },
 ];
 
+if (isPlaywrightRunner) {
 test.describe('Tab Screenshots', () => {
   test.beforeAll(() => {
     if (!fs.existsSync(screenshotDir)) {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.addInitScript(
+      ({ key, preferences, theme }) => {
+        try {
+          window.localStorage.setItem(key, JSON.stringify(preferences));
+        } catch (error) {
+          console.warn('[screenshots] Failed to seed preferences', error);
+        }
+        try {
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.classList.add('font-mono');
+        } catch (error) {
+          console.warn('[screenshots] Failed to force theme attribute', error);
+        }
+      },
+      {
+        key: PREFERENCES_STORAGE_KEY,
+        preferences: DARK_SCREENSHOT_PREFERENCES,
+        theme: DARK_SCREENSHOT_THEME,
+      }
+    );
   });
 
   const adminTabs = new Set(['wizard', 'fetch', 'rate', 'classify', 'train']);
@@ -89,6 +127,10 @@ test.describe('Tab Screenshots', () => {
       if (tab.setup) {
         await tab.setup(page);
       }
+      await page.waitForFunction(
+        (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
+        DARK_SCREENSHOT_THEME
+      );
       await tab.verify(page);
       await page.screenshot({
         path: path.join(screenshotDir, tab.screenshot),
@@ -97,3 +139,4 @@ test.describe('Tab Screenshots', () => {
     });
   }
 });
+}

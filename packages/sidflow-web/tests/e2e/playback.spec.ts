@@ -6,8 +6,13 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-// Longer timeout for audio operations
-test.setTimeout(60000);
+const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
+
+if (!isPlaywrightRunner) {
+    console.warn('[sidflow-web] Skipping Playwright playback e2e spec; run via `bun run test:e2e`.');
+} else {
+    // Longer timeout for audio operations
+    test.setTimeout(60000);
 
 test.describe('RateTab Browser Playback', () => {
     test('loads and plays a random SID', async ({ page }) => {
@@ -280,6 +285,41 @@ test.describe('PlayTab Browser Playback', () => {
         const artistLabel = page.getByText(/artist/i);
         await expect(artistLabel).toBeVisible({ timeout: 5000 });
     });
+
+    test('queues playback while offline and resumes once online', async ({ page, context }) => {
+        await page.goto('/?tab=play');
+        await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
+
+        const presetTrigger = page.getByRole('combobox').first();
+        await presetTrigger.click();
+        await page.getByRole('option', { name: 'Energetic' }).click();
+
+        const playButton = page.getByRole('button', { name: /play next track/i });
+        await expect(playButton).toBeEnabled({ timeout: 30000 });
+
+        try {
+            await context.setOffline(true);
+            await page.waitForFunction(() => !navigator.onLine);
+
+            await playButton.click();
+
+            const offlineBanner = page.getByText(/Offline mode: playback requests are queued locally/i);
+            await expect(offlineBanner).toBeVisible({ timeout: 5000 });
+            await expect(page.getByText(/Pending actions:/i)).toBeVisible({ timeout: 5000 });
+
+            await context.setOffline(false);
+            await page.waitForFunction(() => navigator.onLine);
+
+            const pauseButton = page.getByRole('button', { name: /pause/i }).first();
+            await expect(pauseButton).toBeVisible({ timeout: 30000 });
+            await expect(pauseButton).toBeEnabled({ timeout: 30000 });
+
+            await expect(page.getByText(/Pending actions:/i)).toHaveCount(0, { timeout: 15000 });
+            await expect(offlineBanner).toHaveCount(0, { timeout: 15000 });
+        } finally {
+            await context.setOffline(false);
+        }
+    });
 });
 
 test.describe('WASM Asset Loading', () => {
@@ -393,3 +433,4 @@ test.describe('Error Handling', () => {
         // not uncaught exceptions that would crash the page
     });
 });
+}

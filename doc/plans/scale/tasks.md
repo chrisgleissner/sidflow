@@ -21,11 +21,12 @@ Required reading (skim before starting any phase):
 - [x] Update design system (shadcn/ui) tokens to support persona-specific chrome while ensuring shared components inherit styles without overrides.
 
 ## Phase 2 – Public Local-First Experience
-- [ ] Expand preferences schema (theme, ROM set, playback engine selection, Ultimate 64 configuration, training toggle, iteration budget, sync cadence) and persist to `localStorage` + IndexedDB with migration/versioning tests.
-- [ ] Implement ROM manifest validation workflow (local upload + hash check + caching) plus error states for missing/invalid ROMs.
-- [ ] Surface playback engine selector with availability checks (WASM default, sidplayfp CLI detection, streaming readiness, Ultimate 64 connectivity test) and automated fallback rules.
-- [ ] Build offline/poor-network handling: queue playback requests, cache recent tracks, surface banner states, and add E2E tests covering offline/resume scenarios.
+- [x] Expand preferences schema (theme, ROM set, playback engine selection, Ultimate 64 configuration, training toggle, iteration budget, sync cadence) and persist to `localStorage` + IndexedDB with migration/versioning tests.
+- [x] Implement ROM manifest validation workflow (local upload + hash check + caching) plus error states for missing/invalid ROMs.
+- [x] Surface playback engine selector with availability checks (WASM default, sidplayfp CLI detection, streaming readiness, Ultimate 64 connectivity test) and automated fallback rules.
+- [x] Build offline/poor-network handling: queue playback requests, cache recent tracks, surface banner states, and add E2E tests covering offline/resume scenarios.
 - [ ] Instrument playback path to ensure worklet pipeline never blocks UI thread (profiling + regression alerts) and confirm fallback HLS path triggers on browsers without SAB.
+- [ ] Standardize Playwright screenshot theming so all captures use the dark background, including resetting mutated themes between tests.
 
 ## Phase 3 – Local Feedback & Training
 - [ ] Stand up client-side feedback store (IndexedDB) and background worker that batches implicit/explicit events without impacting playback latency.

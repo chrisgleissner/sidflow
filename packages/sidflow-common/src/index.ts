@@ -14,3 +14,4 @@ export * from "./playback-lock.js";
 export * from "./wasm-build.js";
 export * from "./archive.js";
 export * from "./playback-harness.js";
+export * from "./songlengths.js";

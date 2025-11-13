@@ -105,12 +105,30 @@ export async function POST(request: NextRequest) {
     const normalizedKernalRomPath = await normalizeFile(body?.kernalRomPath ?? undefined, 'kernalRomPath');
     const normalizedBasicRomPath = await normalizeFile(body?.basicRomPath ?? undefined, 'basicRomPath');
     const normalizedChargenRomPath = await normalizeFile(body?.chargenRomPath ?? undefined, 'chargenRomPath');
+    const normalizeSidplayFlags = (value: unknown): string | null | undefined => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+      if (typeof value !== 'string') {
+        throw new Error('sidplayfpCliFlags must be a string or null');
+      }
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        return null;
+      }
+      return trimmed;
+    };
+    const normalizedSidplayFlags = normalizeSidplayFlags(body?.sidplayfpCliFlags ?? undefined);
 
     if (
       normalizedSidBasePath === undefined &&
       normalizedKernalRomPath === undefined &&
       normalizedBasicRomPath === undefined &&
-      normalizedChargenRomPath === undefined
+      normalizedChargenRomPath === undefined &&
+      normalizedSidplayFlags === undefined
     ) {
       throw new Error('No preferences provided');
     }
@@ -127,6 +145,9 @@ export async function POST(request: NextRequest) {
     }
     if (normalizedChargenRomPath !== undefined) {
       preferenceUpdates.chargenRomPath = normalizedChargenRomPath;
+    }
+    if (normalizedSidplayFlags !== undefined) {
+      preferenceUpdates.sidplayfpCliFlags = normalizedSidplayFlags;
     }
 
     const romOverrides =

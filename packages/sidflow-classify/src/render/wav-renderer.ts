@@ -10,11 +10,14 @@ export interface RenderWavOptions {
   wavFile: string;
   songIndex?: number;
   maxRenderSeconds?: number;
+  targetDurationMs?: number;
 }
 
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
+export const WAV_HASH_EXTENSION = ".sha256";
+const SONG_LENGTH_PADDING_SECONDS = 2;
 
 function resolveMaxRenderSeconds(override?: number): number {
   if (typeof override === "number" && Number.isFinite(override) && override > 0) {
@@ -81,7 +84,53 @@ export async function renderWavWithEngine(
 
   const sampleRate = engine.getSampleRate();
   const channels = engine.getChannels();
-  const maxSeconds = resolveMaxRenderSeconds(options.maxRenderSeconds);
+  const fallbackSeconds = resolveMaxRenderSeconds(options.maxRenderSeconds);
+  const hasSonglength =
+    typeof options.targetDurationMs === "number" &&
+    Number.isFinite(options.targetDurationMs) &&
+    options.targetDurationMs > 0;
+  const hasExplicitOverride =
+    typeof options.maxRenderSeconds === "number" &&
+    Number.isFinite(options.maxRenderSeconds) &&
+    options.maxRenderSeconds > 0;
+  const envOverrideRaw = process.env.SIDFLOW_MAX_RENDER_SECONDS;
+  const hasEnvOverride = !hasExplicitOverride && envOverrideRaw
+    ? (() => {
+        const parsed = Number.parseFloat(envOverrideRaw);
+        return Number.isFinite(parsed) && parsed > 0;
+      })()
+    : false;
+  const hasExternalLimit = hasExplicitOverride || hasEnvOverride;
+
+  let maxSeconds = fallbackSeconds;
+  if (hasSonglength) {
+    const paddedSeconds = Math.max(
+      1,
+      options.targetDurationMs! / 1000 + SONG_LENGTH_PADDING_SECONDS
+    );
+    const clamped = hasExternalLimit ? Math.min(paddedSeconds, fallbackSeconds) : paddedSeconds;
+    maxSeconds = clamped;
+    if (hasExternalLimit && paddedSeconds > fallbackSeconds) {
+      console.error(
+        `[DEBUG] renderWav: Songlength ${paddedSeconds.toFixed(3)}s clamped to ${fallbackSeconds.toFixed(3)}s for ${path.basename(
+          wavFile
+        )}`
+      );
+    } else {
+      console.error(
+        `[DEBUG] renderWav: Songlength target ${paddedSeconds.toFixed(3)}s for ${path.basename(
+          wavFile
+        )}`
+      );
+    }
+  } else {
+    console.error(
+      `[DEBUG] renderWav: Using fallback render limit ${fallbackSeconds.toFixed(3)}s for ${path.basename(
+        wavFile
+      )}`
+    );
+  }
+
   const maxSamples = Math.max(1, Math.floor(sampleRate * channels * maxSeconds));
   const chunks: Int16Array[] = [];
 
@@ -134,7 +183,7 @@ export async function renderWavWithEngine(
   await writeFile(wavFile, wavBuffer);
 
   console.error(`[DEBUG] renderWav: Computing hash for ${path.basename(wavFile)}`);
-  const hashFile = `${wavFile}.hash`;
+  const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
   try {
     const hash = await computeFileHash(sidFile);
     await writeFile(hashFile, hash, "utf8");

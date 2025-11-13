@@ -25,6 +25,7 @@ interface PlaybackSessionRecord {
     createdAt: number;
     lastAccessedAt: number;
     romPaths?: SessionRomPaths;
+    fallbackHlsUrl?: string | null;
 }
 
 const sessions = new Map<string, PlaybackSessionRecord>();
@@ -75,6 +76,7 @@ export function createPlaybackSession(options: {
     durationSeconds: number;
     selectedSong: number;
     romPaths?: Partial<Record<SessionRomKind, string | null>> | null;
+    fallbackHlsUrl?: string | null;
 }): PlaybackSessionDescriptor {
     const now = Date.now();
     pruneExpiredSessions(now);
@@ -91,6 +93,7 @@ export function createPlaybackSession(options: {
         createdAt: now,
         lastAccessedAt: now,
         romPaths,
+        fallbackHlsUrl: options.fallbackHlsUrl ?? null,
     };
     sessions.set(id, record);
 
@@ -104,6 +107,7 @@ export function createPlaybackSession(options: {
         selectedSong: options.selectedSong,
         expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
         romUrls,
+        fallbackHlsUrl: options.fallbackHlsUrl ?? null,
     };
 }
 

@@ -16,6 +16,18 @@ export function ServiceWorkerBridge() {
 
     let cancelled = false;
 
+    const handleMessage = (event: MessageEvent) => {
+      const payload = event.data;
+      if (!payload || typeof payload !== 'object') {
+        return;
+      }
+      if ((payload as { source?: string }).source === 'sidflow-sw') {
+        console.debug('[ServiceWorkerBridge] Message from service worker', payload);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleMessage);
+
     const register = async () => {
       try {
         const registration = await navigator.serviceWorker.register(SERVICE_WORKER_PATH, {
@@ -37,6 +49,7 @@ export function ServiceWorkerBridge() {
 
     return () => {
       cancelled = true;
+      navigator.serviceWorker.removeEventListener('message', handleMessage);
     };
   }, []);
 
