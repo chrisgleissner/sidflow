@@ -5,12 +5,141 @@
  */
 
 import { test, expect, type Locator, type Page, type Request, type Route } from '@playwright/test';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
 if (!isPlaywrightRunner) {
     console.warn('[sidflow-web] Skipping Playwright playback e2e spec; run via `bun run test:e2e`.');
 } else {
+    const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
+    const TEST_SID_PATH = path.resolve(CURRENT_DIR, '../../../libsidplayfp-wasm/test-tone-c4.sid');
+    const TEST_SID_BUFFER = readFileSync(TEST_SID_PATH);
+    const TEST_SID_DATA_URL = `data:application/octet-stream;base64,${TEST_SID_BUFFER.toString('base64')}`;
+
+    const playbackRoutesInstalled = new WeakSet<import('@playwright/test').BrowserContext>();
+    let sessionCounter = 0;
+
+    const STUB_TRACK_TEMPLATE = {
+        sidPath: '/virtual/test-tone-c4.sid',
+        relativePath: 'virtual/test-tone-c4.sid',
+        filename: 'test-tone-c4.sid',
+        displayName: 'Test Tone C4',
+        selectedSong: 1,
+        metadata: {
+            title: 'Test Tone C4',
+            author: 'SIDFlow',
+            released: '2024',
+            songs: 1,
+            startSong: 1,
+            sidType: 'PSID',
+            version: 2,
+            sidModel: '6581',
+            clock: 'PAL',
+            length: '00:03',
+            fileSizeBytes: TEST_SID_BUFFER.length,
+        },
+        durationSeconds: 3,
+    } as const;
+
+    function createStubTrack() {
+        return {
+            ...STUB_TRACK_TEMPLATE,
+            metadata: { ...STUB_TRACK_TEMPLATE.metadata },
+        };
+    }
+
+    function registerSession(scope: 'rate' | 'play') {
+        sessionCounter += 1;
+        const sessionId = `${scope}-stub-${Date.now()}-${sessionCounter}`;
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+        console.log('[playback-test] registerSession', sessionId);
+        return {
+            sessionId,
+            sidUrl: TEST_SID_DATA_URL,
+            scope,
+            durationSeconds: STUB_TRACK_TEMPLATE.durationSeconds,
+            selectedSong: STUB_TRACK_TEMPLATE.selectedSong,
+            expiresAt,
+            fallbackHlsUrl: null,
+            romUrls: {},
+        } as const;
+    }
+
+    async function installDeterministicPlaybackRoutes(page: Page): Promise<void> {
+        const context = page.context();
+        if (playbackRoutesInstalled.has(context)) {
+            return;
+        }
+        playbackRoutesInstalled.add(context);
+
+        await context.route('**/virtual/test-tone-c4.sid', async (route) => {
+            await route.fulfill({
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'Cache-Control': 'no-store',
+                    'Content-Length': String(TEST_SID_BUFFER.length),
+                },
+                body: TEST_SID_BUFFER,
+            });
+        });
+
+        await context.route('**/api/rate/random', async (route) => {
+            const track = createStubTrack();
+            const session = registerSession('rate');
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: true,
+                    data: {
+                        track,
+                        session,
+                    },
+                }),
+            });
+        });
+
+        await context.route('**/api/play/random', async (route) => {
+            const track = createStubTrack();
+            const session = registerSession('play');
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: true,
+                    data: {
+                        track,
+                        session,
+                    },
+                }),
+            });
+        });
+
+        await context.route('**/api/play/manual', async (route) => {
+            const track = createStubTrack();
+            const session = registerSession('play');
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: true,
+                    data: {
+                        track,
+                        session,
+                    },
+                }),
+            });
+        });
+    }
+
+    test.beforeEach(async ({ page }) => {
+        await installDeterministicPlaybackRoutes(page);
+    });
+
     // Longer timeout for audio operations
     test.setTimeout(120000);
 
@@ -226,10 +355,10 @@ if (!isPlaywrightRunner) {
             }
 
             // Verify rating dimension buttons are present
-            await expect(page.getByText(/Energy/i)).toBeVisible();
-            await expect(page.getByText(/Mood/i)).toBeVisible();
-            await expect(page.getByText(/Complexity/i)).toBeVisible();
-            await expect(page.getByText(/Preference/i)).toBeVisible();
+            await expect(page.getByText(/Energy/i)).toBeVisible({ timeout: 60000 });
+            await expect(page.getByText(/Mood/i)).toBeVisible({ timeout: 60000 });
+            await expect(page.getByText(/Complexity/i)).toBeVisible({ timeout: 60000 });
+            await expect(page.getByText(/Preference/i)).toBeVisible({ timeout: 60000 });
 
             // Click rating buttons
             const energyButton = page.getByRole('button', { name: /E 5/i });

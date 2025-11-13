@@ -19,6 +19,8 @@ export async function applyDarkScreenshotTheme(page: Page): Promise<void> {
         ({ key, preferences, theme }) => {
             try {
                 window.localStorage.setItem(key, JSON.stringify(preferences));
+                window.localStorage.setItem('sidflow-color-scheme', theme);
+                window.localStorage.setItem('sidflow-font-scheme', 'mono');
             } catch (error) {
                 console.warn('[screenshots] Failed to seed preferences', error);
             }
@@ -42,6 +44,8 @@ export async function resetThemeState(page: Page): Promise<void> {
         await page.evaluate((key) => {
             try {
                 window.localStorage.removeItem(key);
+                window.localStorage.removeItem('sidflow-color-scheme');
+                window.localStorage.removeItem('sidflow-font-scheme');
             } catch (error) {
                 console.warn('[screenshots] Failed to clear seeded preferences', error);
             }
