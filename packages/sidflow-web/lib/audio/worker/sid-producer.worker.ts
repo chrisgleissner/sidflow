@@ -48,6 +48,15 @@ interface ReadyMessage {
   framesProduced: number;
 }
 
+interface InitProgressMessage {
+  type: 'init-progress';
+  stage: string;
+}
+
+interface InitializedMessage {
+  type: 'initialized';
+}
+
 interface LoadedMessage {
   type: 'loaded';
 }
@@ -74,7 +83,7 @@ interface EndedMessage {
   framesProduced: number;
 }
 
-type WorkerResponse = ReadyMessage | LoadedMessage | TelemetryMessage | ErrorMessage | EndedMessage;
+type WorkerResponse = InitProgressMessage | InitializedMessage | ReadyMessage | LoadedMessage | TelemetryMessage | ErrorMessage | EndedMessage;
 
 class SidProducerWorker {
   private producer: SABRingBufferProducer | null = null;
@@ -545,12 +554,15 @@ class SidProducerWorker {
 
     // Initialize WASM engine
     const locateFile = message.wasmLocateFile ?? ((asset: string) => `/wasm/${asset}`);
+    this.postMessage({ type: 'init-progress', stage: 'wasm-loading' });
     const module = await loadLibsidplayfp({ locateFile });
     this.engine = new SidAudioEngine({
       module: Promise.resolve(module),
       sampleRate: this.targetSampleRate,
       stereo: this.channelCount === 2,
     });
+
+    this.postMessage({ type: 'init-progress', stage: 'wasm-initialized' });
 
     this.engineInitialized = true;
 
@@ -559,6 +571,8 @@ class SidProducerWorker {
       channels: this.channelCount,
       blockSize: this.blockSize,
     });
+
+    this.postMessage({ type: 'initialized' });
   }
 
   private async ensureEngineReady(): Promise<void> {

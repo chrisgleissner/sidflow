@@ -110,6 +110,12 @@ export class WorkletPlayer {
   private workerLoadedAbortSignal: AbortSignal | null = null;
   private workerLoadedAbortHandler: (() => void) | null = null;
 
+  private workerInitializedResolve: (() => void) | null = null;
+  private workerInitializedReject: ((error: Error) => void) | null = null;
+  private workerInitializedTimeout: ReturnType<typeof setTimeout> | null = null;
+  private workerInitializedAbortSignal: AbortSignal | null = null;
+  private workerInitializedAbortHandler: (() => void) | null = null;
+
   private workerReadyResolve: (() => void) | null = null;
   private workerReadyReject: ((error: Error) => void) | null = null;
   private workerReadyTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -249,6 +255,20 @@ export class WorkletPlayer {
     this.workerLoadedReject = null;
   }
 
+  private clearWorkerInitializedWait(): void {
+    if (this.workerInitializedTimeout) {
+      clearTimeout(this.workerInitializedTimeout);
+      this.workerInitializedTimeout = null;
+    }
+    if (this.workerInitializedAbortSignal && this.workerInitializedAbortHandler) {
+      this.workerInitializedAbortSignal.removeEventListener('abort', this.workerInitializedAbortHandler);
+    }
+    this.workerInitializedAbortSignal = null;
+    this.workerInitializedAbortHandler = null;
+    this.workerInitializedResolve = null;
+    this.workerInitializedReject = null;
+  }
+
   private waitForWorkerLoaded(signal?: AbortSignal): Promise<void> {
     this.clearWorkerLoadedWait();
 
@@ -265,7 +285,7 @@ export class WorkletPlayer {
 
       this.workerLoadedTimeout = setTimeout(() => {
         this.workerLoadedReject?.(new Error('Worker load timeout'));
-      }, 10000);
+      }, 60000);
 
       if (signal) {
         if (signal.aborted) {
@@ -279,6 +299,41 @@ export class WorkletPlayer {
 
         this.workerLoadedAbortSignal = signal;
         this.workerLoadedAbortHandler = abortHandler;
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+    });
+  }
+
+  private waitForWorkerInitialized(signal?: AbortSignal): Promise<void> {
+    this.clearWorkerInitializedWait();
+
+    return new Promise<void>((resolve, reject) => {
+      this.workerInitializedResolve = () => {
+        this.clearWorkerInitializedWait();
+        resolve();
+      };
+
+      this.workerInitializedReject = (error: Error) => {
+        this.clearWorkerInitializedWait();
+        reject(error);
+      };
+
+      this.workerInitializedTimeout = setTimeout(() => {
+        this.workerInitializedReject?.(new Error('Worker init timeout'));
+      }, 20000);
+
+      if (signal) {
+        if (signal.aborted) {
+          this.workerInitializedReject?.(new DOMException('Playback load aborted', 'AbortError'));
+          return;
+        }
+
+        const abortHandler = () => {
+          this.workerInitializedReject?.(new DOMException('Playback load aborted', 'AbortError'));
+        };
+
+        this.workerInitializedAbortSignal = signal;
+        this.workerInitializedAbortHandler = abortHandler;
         signal.addEventListener('abort', abortHandler, { once: true });
       }
     });
@@ -335,6 +390,7 @@ export class WorkletPlayer {
   }
 
   private rejectWorkerWaits(error: Error): void {
+    this.workerInitializedReject?.(error);
     this.workerLoadedReject?.(error);
     this.workerReadyReject?.(error);
   }
@@ -659,10 +715,22 @@ export class WorkletPlayer {
       targetSampleRate: this.audioContext.sampleRate,
     };
 
+    const waitForInit = this.waitForWorkerInitialized(signal);
+
     this.worker.postMessage(initMessage);
 
-    // Wait a bit for initialization
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    try {
+      await waitForInit;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[WorkletPlayer] Worker init acknowledgement not received; continuing', {
+        error: message,
+      });
+    }
     this.throwIfAborted(signal);
 
     console.log('[WorkletPlayer] ✓ Web Worker initialized');
@@ -758,6 +826,17 @@ export class WorkletPlayer {
       case 'loaded':
         console.log('[WorkletPlayer] Worker loaded SID payload');
         this.workerLoadedResolve?.();
+        break;
+
+      case 'initialized':
+        console.log('[WorkletPlayer] Worker engine initialized');
+        this.workerInitializedResolve?.();
+        break;
+
+      case 'init-progress':
+        console.log('[WorkletPlayer] Worker init progress', {
+          stage: data.stage,
+        });
         break;
 
       case 'telemetry':
