@@ -2,6 +2,7 @@ import loadLibsidplayfp, { SidAudioEngine } from '@sidflow/libsidplayfp-wasm';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { telemetry } from '@/lib/telemetry';
+import { recordImplicitAction } from '@/lib/feedback/recorder';
 import { WorkletPlayer, type WorkletPlayerState, type TelemetryData } from '@/lib/audio/worklet-player';
 import { HlsPlayer } from '@/lib/audio/hls-player';
 import { fetchRomAssets } from '@/lib/audio/fetch-rom-assets';
@@ -299,6 +300,28 @@ export class SidflowPlayer {
 
     async load(options: LoadOptions): Promise<void> {
         const { session, track } = options;
+
+        const previousTrack = this.currentTrack;
+        const previousSession = this.currentSession;
+        const previousPipeline = this.activePipeline;
+        const previousState = this.state;
+
+        if (
+            previousTrack &&
+            previousTrack.sidPath !== track.sidPath &&
+            (previousState === 'playing' || previousState === 'paused')
+        ) {
+            recordImplicitAction({
+                track: previousTrack,
+                action: 'skip',
+                sessionId: previousSession?.sessionId,
+                pipeline: previousPipeline,
+                metadata: {
+                    reason: 'load-new-track',
+                    nextSidPath: track.sidPath,
+                },
+            });
+        }
 
         this.currentSession = session;
         this.currentTrack = track;
@@ -743,6 +766,19 @@ export class SidflowPlayer {
             newState: next,
             positionSeconds: this.getPositionSeconds(),
         });
+
+        if (next === 'playing' && this.currentTrack) {
+            recordImplicitAction({
+                track: this.currentTrack,
+                action: 'play',
+                sessionId: this.currentSession?.sessionId,
+                pipeline: this.activePipeline,
+                metadata: {
+                    stateTransition: `${oldState}->${next}`,
+                    resumed: oldState === 'paused',
+                },
+            });
+        }
     }
 
     private emit<Event extends SidflowPlayerEvent>(event: Event, payload: EventPayloadMap[Event]): void {

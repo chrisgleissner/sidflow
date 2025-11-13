@@ -14,6 +14,8 @@ import {
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
 import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle } from 'lucide-react';
+import type { FeedbackAction } from '@sidflow/common';
+import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
   Select,
   SelectContent,
@@ -128,6 +130,25 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const rebuildPlaylistRef = useRef<(() => Promise<void>) | null>(null);
   const prefetchedSessionsRef = useRef<Map<string, RateTrackWithSession>>(new Map());
   const prefetchPromisesRef = useRef<Map<string, Promise<void>>>(new Map());
+
+  const getPipelineKind = useCallback(() => playerRef.current?.getPipelineKind() ?? null, []);
+
+  const recordImplicitForCurrent = useCallback(
+    (action: FeedbackAction, metadata: Record<string, unknown>) => {
+      const track = currentTrackRef.current;
+      if (!track) {
+        return;
+      }
+      recordImplicitAction({
+        track,
+        action,
+        sessionId: playerRef.current?.getSession()?.sessionId,
+        pipeline: getPipelineKind(),
+        metadata,
+      });
+    },
+    [getPipelineKind]
+  );
 
   const applyUpcoming = useCallback(
     (nextTracks: PlaylistTrack[]) => {
@@ -846,6 +867,18 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           return;
         }
         notifyStatus(`${label} recorded for "${currentTrack.displayName}"`);
+        recordExplicitRating({
+          track: currentTrack,
+          ratings: { e: value, m: value, c: value },
+          sessionId: playerRef.current?.getSession()?.sessionId,
+          pipeline: getPipelineKind(),
+          metadata: {
+            origin: 'play-tab',
+            preset,
+            control: label.toLowerCase(),
+            advance,
+          },
+        });
         if (advance) {
           if (upcomingRef.current.length === 0) {
             notifyStatus('No upcoming songs remaining.', true);
@@ -862,7 +895,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         setIsRating(false);
       }
     },
-    [currentTrack, isRating, notifyStatus, playNextFromQueue]
+    [currentTrack, getPipelineKind, isRating, notifyStatus, playNextFromQueue, preset]
   );
 
   const highestPlaylistNumber = useMemo(() => {
@@ -958,7 +991,14 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 </SelectContent>
               </Select>
               <Button
-                onClick={playNextFromQueue}
+                onClick={() => {
+                  recordImplicitForCurrent('skip', {
+                    origin: 'play-tab',
+                    control: 'play-next-button',
+                    preset,
+                  });
+                  void playNextFromQueue();
+                }}
                 disabled={isLoading || isAudioLoading || upcomingTracks.length === 0}
                 className="w-full retro-glow gap-2"
               >
@@ -1071,7 +1111,14 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   size="sm"
                   className="gap-1"
                   disabled={isRating}
-                  onClick={() => submitRating(5, 'Like', true)}
+                  onClick={() => {
+                    recordImplicitForCurrent('like', {
+                      origin: 'play-tab',
+                      control: 'quick-like',
+                      preset,
+                    });
+                    void submitRating(5, 'Like', true);
+                  }}
                 >
                   <ThumbsUp className="h-4 w-4" /> Like
                 </Button>
@@ -1080,7 +1127,14 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   size="sm"
                   className="gap-1"
                   disabled={isRating}
-                  onClick={() => submitRating(1, 'Dislike', true)}
+                  onClick={() => {
+                    recordImplicitForCurrent('dislike', {
+                      origin: 'play-tab',
+                      control: 'quick-dislike',
+                      preset,
+                    });
+                    void submitRating(1, 'Dislike', true);
+                  }}
                 >
                   <ThumbsDown className="h-4 w-4" /> Dislike
                 </Button>
@@ -1089,7 +1143,14 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   size="sm"
                   className="gap-1"
                   disabled={isRating}
-                  onClick={() => submitRating(3, 'Skipped', true)}
+                  onClick={() => {
+                    recordImplicitForCurrent('skip', {
+                      origin: 'play-tab',
+                      control: 'quick-skip',
+                      preset,
+                    });
+                    void submitRating(3, 'Skipped', true);
+                  }}
                 >
                   <Forward className="h-4 w-4" /> Next
                 </Button>

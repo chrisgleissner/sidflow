@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode, type ChangeEvent } from 'react';
+import type { FeedbackAction } from '@sidflow/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -18,6 +19,7 @@ import { formatApiError } from '@/lib/format-error';
 import type { RateRequest } from '@/lib/validation';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
+import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
   Shuffle,
   Music2,
@@ -144,6 +146,25 @@ export function RateTab({ onStatusChange }: RateTabProps) {
   const statusHandlerRef = useRef(onStatusChange);
   const prefetchedTrackRef = useRef<RateTrackWithSession | null>(null);
   const prefetchRequestRef = useRef<Promise<void> | null>(null);
+
+  const getPipelineKind = useCallback(() => playerRef.current?.getPipelineKind() ?? null, []);
+
+  const recordQuickFeedback = useCallback(
+    (action: FeedbackAction, metadata: Record<string, unknown>) => {
+      const track = currentTrackRef.current;
+      if (!track) {
+        return;
+      }
+      recordImplicitAction({
+        track,
+        action,
+        sessionId: currentSession?.sessionId,
+        pipeline: getPipelineKind(),
+        metadata,
+      });
+    },
+    [currentSession, getPipelineKind]
+  );
 
   useEffect(() => {
     statusHandlerRef.current = onStatusChange;
@@ -591,8 +612,9 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     if (isFetchingTrack || isAudioLoading) {
       return;
     }
+    recordQuickFeedback('skip', { origin: 'rate-tab', control: 'skip-forward' });
     await handlePlayRandom();
-  }, [handlePlayRandom, isAudioLoading, isFetchingTrack]);
+  }, [handlePlayRandom, isAudioLoading, isFetchingTrack, recordQuickFeedback]);
 
   const sendSeek = useCallback(
     (target: number) => {
@@ -622,19 +644,21 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     [duration, hasTrack, sendSeek]
   );
 
-  const handleLike = () => {
+  const handleLike = useCallback(() => {
     setEnergy(5);
     setMood(5);
     setComplexity(5);
     setPreference(5);
-  };
+    recordQuickFeedback('like', { origin: 'rate-tab', control: 'max-all' });
+  }, [recordQuickFeedback]);
 
-  const handleDislike = () => {
+  const handleDislike = useCallback(() => {
     setEnergy(1);
     setMood(1);
     setComplexity(1);
     setPreference(1);
-  };
+    recordQuickFeedback('dislike', { origin: 'rate-tab', control: 'min-all' });
+  }, [recordQuickFeedback]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -814,6 +838,16 @@ export function RateTab({ onStatusChange }: RateTabProps) {
       const response = await rateTrack(request);
 
       if (response.success) {
+        recordExplicitRating({
+          track: currentTrack,
+          ratings: request.ratings,
+          sessionId: currentSession?.sessionId,
+          pipeline: getPipelineKind(),
+          metadata: {
+            origin: 'rate-tab',
+            submission: 'manual',
+          },
+        });
         onStatusChange('Rating submitted! Loading the next SID...');
         ratingCacheRef.current.set(currentTrack.sidPath, {
           e: energy,
@@ -836,6 +870,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     }
   }, [
     currentTrack,
+    currentSession,
     energy,
     mood,
     complexity,
@@ -843,6 +878,7 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     onStatusChange,
     handlePlayRandom,
     refreshRatingHistory,
+    getPipelineKind,
   ]);
 
   return (

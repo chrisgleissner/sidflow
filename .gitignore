@@ -10,6 +10,8 @@ packages/*/.tsbuildinfo
 workspace/
 !workspace/.gitkeep
 test-workspace/
+tmp
+_codeql_detected_source_root
 
 # Test artifacts
 packages/libsidplayfp-wasm/test-output.wav
