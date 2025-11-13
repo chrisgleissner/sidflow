@@ -9,6 +9,7 @@ import { lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createRateTrackInfo } from '@/lib/rate-playback';
 import { createPlaybackSession } from '@/lib/playback-session';
+import { ensureHlsForTrack } from '@/lib/server/hls-service';
 
 type RateTrackPayload = RateTrackInfo;
 
@@ -155,6 +156,8 @@ export async function POST() {
       lengthHint: length,
     });
 
+    const fallbackHlsUrl = await ensureHlsForTrack(track);
+
     const session = createPlaybackSession({
       scope: 'rate',
       sidPath,
@@ -166,7 +169,7 @@ export async function POST() {
         basic: env.basicRomPath ?? null,
         chargen: env.chargenRomPath ?? null,
       },
-      fallbackHlsUrl: null,
+      fallbackHlsUrl,
     });
 
     const elapsedMs = Date.now() - startTime;

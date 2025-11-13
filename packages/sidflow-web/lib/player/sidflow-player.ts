@@ -3,6 +3,7 @@ import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { telemetry } from '@/lib/telemetry';
 import { WorkletPlayer, type WorkletPlayerState, type TelemetryData } from '@/lib/audio/worklet-player';
+import { HlsPlayer } from '@/lib/audio/hls-player';
 import { fetchRomAssets } from '@/lib/audio/fetch-rom-assets';
 
 interface WorkletSupportOverrides {
@@ -34,7 +35,7 @@ export function detectWorkletSupport(overrides: WorkletSupportOverrides = {}): W
         reasons.push('cross-origin-isolation-disabled');
     }
 
-    const sharedArrayBuffer = overrides.sharedArrayBuffer !== undefined
+    const sharedArrayBuffer = Object.prototype.hasOwnProperty.call(overrides, 'sharedArrayBuffer')
         ? overrides.sharedArrayBuffer
         : (typeof SharedArrayBuffer !== 'undefined' ? SharedArrayBuffer : undefined);
 
@@ -49,8 +50,15 @@ export function detectWorkletSupport(overrides: WorkletSupportOverrides = {}): W
 
     if (!AudioContextCtor) {
         reasons.push('missing-audio-context');
-    } else if (!AudioContextCtor.prototype || typeof AudioContextCtor.prototype.audioWorklet === 'undefined') {
-        reasons.push('missing-audio-worklet');
+    } else {
+        const prototype = AudioContextCtor.prototype;
+        const hasAudioWorklet = Boolean(
+            prototype && ('audioWorklet' in prototype || Object.getOwnPropertyDescriptor(prototype, 'audioWorklet'))
+        );
+
+        if (!hasAudioWorklet) {
+            reasons.push('missing-audio-worklet');
+        }
     }
 
     return {
@@ -110,6 +118,8 @@ export class SidflowPlayer {
 
     // New worklet-based player
     private workletPlayer: WorkletPlayer | null = null;
+    private hlsPlayer: HlsPlayer | null = null;
+    private activePipeline: 'worklet' | 'legacy' | 'hls' = 'legacy';
 
     constructor(context?: AudioContext) {
         const AudioContextCtor = typeof AudioContext !== 'undefined'
@@ -164,10 +174,12 @@ export class SidflowPlayer {
                 this.emit('error', error);
             });
         }
+
+        this.activePipeline = this.useWorkletPlayer ? 'worklet' : 'legacy';
     }
 
-    getPipelineKind(): 'worklet' | 'legacy' {
-        return this.useWorkletPlayer ? 'worklet' : 'legacy';
+    getPipelineKind(): 'worklet' | 'legacy' | 'hls' {
+        return this.activePipeline;
     }
 
     getWorkletFallbackReasons(): readonly string[] {
@@ -195,12 +207,13 @@ export class SidflowPlayer {
     }
 
     getDurationSeconds(): number {
-        // Delegate to worklet player if enabled
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             return this.workletPlayer.getDurationSeconds();
         }
+        if (this.activePipeline === 'hls' && this.hlsPlayer) {
+            return this.hlsPlayer.getDurationSeconds();
+        }
 
-        // Legacy implementation
         if (this.audioBuffer) {
             return this.audioBuffer.duration;
         }
@@ -208,12 +221,13 @@ export class SidflowPlayer {
     }
 
     getPositionSeconds(): number {
-        // Delegate to worklet player if enabled
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             return this.workletPlayer.getPositionSeconds();
         }
+        if (this.activePipeline === 'hls' && this.hlsPlayer) {
+            return this.hlsPlayer.getPositionSeconds();
+        }
 
-        // Legacy implementation
         if (!this.audioBuffer) {
             return 0;
         }
@@ -229,7 +243,7 @@ export class SidflowPlayer {
      * Must be called before play().
      */
     enableCapture(): void {
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             this.workletPlayer.enableCapture();
         }
     }
@@ -238,7 +252,7 @@ export class SidflowPlayer {
      * Get captured audio data (worklet mode only).
      */
     getCapturedAudio(): Blob | null {
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             return this.workletPlayer.getCapturedAudio();
         }
         return null;
@@ -248,7 +262,7 @@ export class SidflowPlayer {
      * Get captured audio as PCM for analysis (worklet mode only).
      */
     async getCapturedPCM(): Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | null> {
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             return this.workletPlayer.getCapturedPCM();
         }
         return null;
@@ -258,8 +272,11 @@ export class SidflowPlayer {
      * Get telemetry data (worklet mode only).
      */
     getTelemetry(): TelemetryData {
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             return this.workletPlayer.getTelemetry();
+        }
+        if (this.activePipeline === 'hls' && this.hlsPlayer) {
+            return this.hlsPlayer.getTelemetry();
         }
         return {
             underruns: 0,
@@ -281,22 +298,45 @@ export class SidflowPlayer {
     }
 
     async load(options: LoadOptions): Promise<void> {
-        // Delegate to worklet player if enabled
-        if (this.useWorkletPlayer && this.workletPlayer) {
-            this.currentSession = options.session;
-            this.currentTrack = options.track;
-            return this.workletPlayer.load(options);
+        const { session, track } = options;
+
+        this.currentSession = session;
+        this.currentTrack = track;
+
+        const pipeline = this.determinePipeline(session);
+        this.activePipeline = pipeline;
+
+        this.stopLegacyPlayback();
+        try {
+            this.workletPlayer?.stop();
+        } catch {
+            // ignore stop errors
+        }
+        if (this.hlsPlayer) {
+            this.hlsPlayer.stop();
         }
 
-        // Legacy implementation
+        if (pipeline === 'worklet' && this.workletPlayer) {
+            await this.workletPlayer.load(options);
+            return;
+        }
+
+        if (pipeline === 'hls') {
+            await this.loadHls(options);
+            return;
+        }
+
+        await this.loadLegacy(options);
+    }
+
+    private async loadLegacy(options: LoadOptions): Promise<void> {
         const { session, track, signal } = options;
-    this.stopLegacyPlayback();
+
         this.audioBuffer = null;
         this.durationSeconds = 0;
         this.pauseOffset = 0;
-        this.currentSession = session;
-        this.currentTrack = track;
-        if (!this.useWorkletPlayer) {
+
+        if (this.workletFallbackReasons.length > 0) {
             telemetry.trackPlaybackFallback({
                 sessionId: session.sessionId,
                 sidPath: track.sidPath,
@@ -361,14 +401,11 @@ export class SidflowPlayer {
             );
             const totalSamplesEstimate = Math.max(1, Math.floor(sampleRate * channels * targetDuration));
 
-            // Render with minimal progress tracking overhead (throttled updates)
-            // Use larger chunks (40000 cycles) to reduce WASM call overhead
             let lastProgress = 0;
             let lastProgressTime = 0;
             const pcm = await engine.renderSeconds(targetDuration, 40000, (samplesWritten: number) => {
                 if (!this.audioBuffer && totalSamplesEstimate > 0) {
                     const now = performance.now();
-                    // Only emit progress updates every 100ms to reduce overhead
                     if (now - lastProgressTime >= 100) {
                         const progress = clamp(samplesWritten / totalSamplesEstimate, 0, 0.999);
                         if (progress - lastProgress >= 0.01) {
@@ -384,10 +421,8 @@ export class SidflowPlayer {
             const frames = Math.floor(pcm.length / channels);
             const buffer = this.audioContext.createBuffer(channels, frames, sampleRate);
 
-            // Convert with chunked processing to avoid blocking main thread
-            const CHUNK_SIZE = 44100; // Process 1 second at a time
+            const CHUNK_SIZE = 44100;
             if (channels === 2) {
-                // Stereo fast path - most common case
                 const leftChannel = buffer.getChannelData(0);
                 const rightChannel = buffer.getChannelData(1);
                 for (let startFrame = 0; startFrame < frames; startFrame += CHUNK_SIZE) {
@@ -397,14 +432,12 @@ export class SidflowPlayer {
                         leftChannel[frame] = pcm[idx] * INT16_SCALE;
                         rightChannel[frame] = pcm[idx + 1] * INT16_SCALE;
                     }
-                    // Yield to event loop every second of audio
                     if (endFrame < frames) {
                         await new Promise(resolve => setTimeout(resolve, 0));
                         this.throwIfAborted(signal);
                     }
                 }
             } else {
-                // Mono or multi-channel fallback
                 for (let channel = 0; channel < channels; channel += 1) {
                     const channelData = buffer.getChannelData(channel);
                     for (let startFrame = 0; startFrame < frames; startFrame += CHUNK_SIZE) {
@@ -412,7 +445,6 @@ export class SidflowPlayer {
                         for (let frame = startFrame; frame < endFrame; frame += 1) {
                             channelData[frame] = pcm[frame * channels + channel] * INT16_SCALE;
                         }
-                        // Yield to event loop every second of audio
                         if (endFrame < frames) {
                             await new Promise(resolve => setTimeout(resolve, 0));
                             this.throwIfAborted(signal);
@@ -454,17 +486,108 @@ export class SidflowPlayer {
                 error: errorObj,
             });
 
-            throw error;
+            throw errorObj;
         }
     }
 
-    async play(): Promise<void> {
-        // Delegate to worklet player if enabled
-        if (this.useWorkletPlayer && this.workletPlayer) {
-            return this.workletPlayer.play();
+    private async loadHls(options: LoadOptions): Promise<void> {
+        const { session, track, signal } = options;
+        const player = this.ensureHlsPlayer();
+
+        if (!session.fallbackHlsUrl) {
+            throw new Error('No fallback HLS URL provided for session');
         }
 
-        // Legacy implementation
+        this.durationSeconds = track.durationSeconds;
+        this.pauseOffset = 0;
+
+        if (this.workletFallbackReasons.length > 0) {
+            telemetry.trackPlaybackFallback({
+                sessionId: session.sessionId,
+                sidPath: track.sidPath,
+                reason: this.workletFallbackReasons[0] ?? 'worklet-unsupported',
+                fallbackType: 'hls',
+                metadata: {
+                    reasons: this.workletFallbackReasons,
+                },
+            });
+        }
+
+        const loadStartTime = performance.now();
+        telemetry.trackPlaybackLoad({
+            sessionId: session.sessionId,
+            sidPath: track.sidPath,
+            status: 'start',
+        });
+
+        try {
+            await player.load(options);
+            const loadEndTime = performance.now();
+            telemetry.trackPlaybackLoad({
+                sessionId: session.sessionId,
+                sidPath: track.sidPath,
+                status: 'success',
+                metrics: {
+                    loadDurationMs: loadEndTime - loadStartTime,
+                    trackDurationSeconds: track.durationSeconds,
+                },
+            });
+        } catch (error) {
+            if (signal?.aborted) {
+                this.updateState('idle');
+                return;
+            }
+            const errorObj = error instanceof Error ? error : new Error(String(error));
+            this.updateState('idle');
+            this.emit('error', errorObj);
+
+            telemetry.trackPlaybackLoad({
+                sessionId: session.sessionId,
+                sidPath: track.sidPath,
+                status: 'error',
+                error: errorObj,
+            });
+
+            throw errorObj;
+        }
+    }
+
+    private determinePipeline(session: PlaybackSessionDescriptor): 'worklet' | 'legacy' | 'hls' {
+        if (this.useWorkletPlayer && this.workletPlayer) {
+            return 'worklet';
+        }
+        if (session.fallbackHlsUrl && typeof window !== 'undefined' && HlsPlayer.isSupported()) {
+            return 'hls';
+        }
+        return 'legacy';
+    }
+
+    private ensureHlsPlayer(): HlsPlayer {
+        if (this.hlsPlayer) {
+            return this.hlsPlayer;
+        }
+        const player = new HlsPlayer();
+        player.on('statechange', (state) => {
+            this.updateState(state as SidflowPlayerState);
+        });
+        player.on('loadprogress', (progress) => {
+            this.emit('loadprogress', progress);
+        });
+        player.on('error', (error) => {
+            this.emit('error', error);
+        });
+        this.hlsPlayer = player;
+        return player;
+    }
+
+    async play(): Promise<void> {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
+            return this.workletPlayer.play();
+        }
+        if (this.activePipeline === 'hls' && this.hlsPlayer) {
+            return this.hlsPlayer.play();
+        }
+
         if (!this.audioBuffer) {
             return;
         }
@@ -473,7 +596,7 @@ export class SidflowPlayer {
             this.emit('error', error instanceof Error ? error : new Error(String(error)));
         });
 
-    this.stopLegacyPlayback();
+        this.stopLegacyPlayback();
         const source = this.audioContext.createBufferSource();
         source.buffer = this.audioBuffer;
         source.connect(this.gainNode);
@@ -494,43 +617,53 @@ export class SidflowPlayer {
     }
 
     pause(): void {
-        // Delegate to worklet player if enabled
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             this.workletPlayer.pause();
             return;
         }
+        if (this.activePipeline === 'hls' && this.hlsPlayer) {
+            this.hlsPlayer.pause();
+            return;
+        }
 
-        // Legacy implementation
         if (!this.audioBuffer || !this.bufferSource || this.state !== 'playing') {
             return;
         }
         const elapsed = this.audioContext.currentTime - this.startTime;
         this.pauseOffset = clamp(elapsed, 0, this.audioBuffer.duration);
-    this.stopLegacyPlayback();
+        this.stopLegacyPlayback();
         this.updateState('paused');
     }
 
     stop(): void {
-        // Delegate to worklet player if enabled
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             this.workletPlayer.stop();
             return;
         }
 
-        // Legacy implementation
+        if (this.activePipeline === 'hls' && this.hlsPlayer) {
+            this.hlsPlayer.stop();
+            this.pauseOffset = 0;
+            this.updateState('idle');
+            return;
+        }
+
         this.pauseOffset = 0;
         this.stopLegacyPlayback();
         this.updateState('idle');
     }
 
     seek(seconds: number): void {
-        // Seek disabled in worklet player (as per requirements)
-        if (this.useWorkletPlayer) {
+        if (this.activePipeline === 'worklet') {
             console.warn('[SidflowPlayer] Seek not supported in worklet mode');
             return;
         }
 
-        // Legacy implementation
+        if (this.activePipeline === 'hls') {
+            console.warn('[SidflowPlayer] Seek not supported in HLS fallback mode');
+            return;
+        }
+
         if (!this.audioBuffer) {
             return;
         }
@@ -544,14 +677,18 @@ export class SidflowPlayer {
     }
 
     destroy(): void {
-        // Delegate to worklet player if enabled
-        if (this.useWorkletPlayer && this.workletPlayer) {
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
             this.workletPlayer.destroy();
+            this.workletPlayer = null;
             return;
         }
 
-        // Legacy implementation
-    this.stopLegacyPlayback();
+        if (this.hlsPlayer) {
+            this.hlsPlayer.destroy();
+            this.hlsPlayer = null;
+        }
+
+        this.stopLegacyPlayback();
         this.audioBuffer = null;
         this.currentSession = null;
         this.currentTrack = null;

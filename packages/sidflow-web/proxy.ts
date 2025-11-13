@@ -12,10 +12,39 @@ import {
 } from '@/lib/server/admin-auth';
 
 const ADMIN_ROUTE_PATTERN = /^\/(?:admin|api\/admin)(?:\/|$)/;
+const MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.wasm']);
 
-function applyIsolationHeaders(response: NextResponse): NextResponse {
-  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-  response.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+function shouldApplyDocumentHeaders(request: NextRequest): boolean {
+  const accept = request.headers.get('accept') ?? '';
+  return accept.includes('text/html');
+}
+
+function shouldApplyModuleHeaders(pathname: string): boolean {
+  const dotIndex = pathname.lastIndexOf('.');
+  if (dotIndex === -1) {
+    return false;
+  }
+  const extension = pathname.slice(dotIndex).toLowerCase();
+  return MODULE_EXTENSIONS.has(extension);
+}
+
+function applySecurityHeaders(request: NextRequest, response: NextResponse): NextResponse {
+  const { pathname } = request.nextUrl;
+
+  if (shouldApplyDocumentHeaders(request)) {
+    response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+    response.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  }
+
+  if (shouldApplyModuleHeaders(pathname)) {
+    response.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+    response.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+  }
+
+  if (pathname.endsWith('.wasm')) {
+    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+
   return response;
 }
 
@@ -30,7 +59,8 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
     config = getAdminConfig();
   } catch (error) {
     console.error('[admin-auth] Misconfigured admin credentials:', error);
-    return applyIsolationHeaders(
+    return applySecurityHeaders(
+      request,
       NextResponse.json(
         { error: 'server_error', reason: 'admin-auth-misconfigured' },
         { status: 500 }
@@ -94,9 +124,9 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const conditional = await enforceAdminAuthentication(request);
   if (conditional) {
-    return applyIsolationHeaders(conditional);
+    return applySecurityHeaders(request, conditional);
   }
-  return applyIsolationHeaders(NextResponse.next());
+  return applySecurityHeaders(request, NextResponse.next());
 }
 
 export const config = {

@@ -2,6 +2,11 @@ import { test, expect, Page } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
+import {
+  applyDarkScreenshotTheme,
+  resetThemeState,
+  DARK_SCREENSHOT_THEME,
+} from './utils/theme';
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
@@ -11,13 +16,6 @@ if (!isPlaywrightRunner) {
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'doc/web-screenshots');
-
-const PREFERENCES_STORAGE_KEY = 'sidflow.preferences';
-const DARK_SCREENSHOT_THEME = 'c64-dark';
-const DARK_SCREENSHOT_PREFERENCES = {
-  version: 2,
-  theme: DARK_SCREENSHOT_THEME,
-};
 
 interface TabScenario {
   label: string;
@@ -95,27 +93,11 @@ test.describe('Tab Screenshots', () => {
   });
 
   test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.addInitScript(
-      ({ key, preferences, theme }) => {
-        try {
-          window.localStorage.setItem(key, JSON.stringify(preferences));
-        } catch (error) {
-          console.warn('[screenshots] Failed to seed preferences', error);
-        }
-        try {
-          document.documentElement.setAttribute('data-theme', theme);
-          document.documentElement.classList.add('font-mono');
-        } catch (error) {
-          console.warn('[screenshots] Failed to force theme attribute', error);
-        }
-      },
-      {
-        key: PREFERENCES_STORAGE_KEY,
-        preferences: DARK_SCREENSHOT_PREFERENCES,
-        theme: DARK_SCREENSHOT_THEME,
-      }
-    );
+    await applyDarkScreenshotTheme(page);
+  });
+
+  test.afterEach(async ({ page }) => {
+    await resetThemeState(page);
   });
 
   const adminTabs = new Set(['wizard', 'fetch', 'rate', 'classify', 'train']);

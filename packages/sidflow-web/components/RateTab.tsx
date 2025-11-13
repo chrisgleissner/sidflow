@@ -107,7 +107,7 @@ function MetaRow({ label, value }: { label: string; value: ReactNode }) {
 }
 
 const DEFAULT_DURATION = 180;
-const PREFETCH_WAIT_MS = 800;
+const PREFETCH_WAIT_MS = 3000;
 
 export function RateTab({ onStatusChange }: RateTabProps) {
   const [currentTrack, setCurrentTrack] = useState<RateTrackInfo | null>(null);
@@ -151,13 +151,16 @@ export function RateTab({ onStatusChange }: RateTabProps) {
 
   const recomputePauseReady = useCallback((origin: string) => {
     const hasTrack = Boolean(currentTrackRef.current);
-    const ready = hasTrack && !isAudioLoadingRef.current;
+    const playerState = playerRef.current?.getState();
+    const ready =
+      hasTrack &&
+      (playerState === 'playing' || playerState === 'paused' || playerState === 'ready' || playerState === 'ended');
     console.debug('[RateTab] Pause readiness recalculated', {
       origin,
       ready,
       hasTrack,
       isAudioLoading: isAudioLoadingRef.current,
-      playerState: playerRef.current?.getState(),
+      playerState,
     });
     setIsPauseReady(ready);
   }, []);
@@ -171,6 +174,10 @@ export function RateTab({ onStatusChange }: RateTabProps) {
     currentTrackRef.current = currentTrack;
     recomputePauseReady('current-track-change');
   }, [currentTrack, recomputePauseReady]);
+
+  useEffect(() => {
+    console.debug('[RateTab] Pause ready state updated', { isPauseReady });
+  }, [isPauseReady]);
 
   const applyCachedRatings = useCallback(
     (sidPath?: string | null) => {
@@ -368,21 +375,40 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         return;
       }
 
-    pendingLoadAbortRef.current?.abort();
-    const abortController = new AbortController();
-    pendingLoadAbortRef.current = abortController;
-    setIsAudioLoading(true);
-    recomputePauseReady('load-start');
-    setLoadProgress(0);
+      pendingLoadAbortRef.current?.abort();
+      const abortController = new AbortController();
+      pendingLoadAbortRef.current = abortController;
+      isAudioLoadingRef.current = true;
+      setIsAudioLoading(true);
+      setIsPauseReady(false);
+      recomputePauseReady('load-start');
+      setLoadProgress(0);
+      let playbackStarted = false;
+      console.debug('[RateTab] loadTrackIntoPlayer: starting load', {
+        track: track.sidPath,
+        sessionId: session.sessionId,
+      });
 
       try {
         await player.load({ track, session, signal: abortController.signal });
-    setCurrentTrack(track);
+        console.debug('[RateTab] loadTrackIntoPlayer: load resolved', {
+          track: track.sidPath,
+          playerState: player.getState(),
+        });
+        currentTrackRef.current = track;
+        setCurrentTrack(track);
         setCurrentSession(session);
+  setIsPauseReady(true);
+  recomputePauseReady('track-loaded');
         applyCachedRatings(track.sidPath);
         setPosition(0);
-    setDuration(player.getDurationSeconds() || track.durationSeconds || DEFAULT_DURATION);
+        setDuration(player.getDurationSeconds() || track.durationSeconds || DEFAULT_DURATION);
         await player.play();
+        console.debug('[RateTab] loadTrackIntoPlayer: play resolved', {
+          track: track.sidPath,
+          playerState: player.getState(),
+        });
+        playbackStarted = true;
         setIsPlaying(true);
         if (announcement) {
           onStatusChange(announcement);
@@ -391,15 +417,27 @@ export function RateTab({ onStatusChange }: RateTabProps) {
         if (abortController.signal.aborted) {
           return;
         }
-  const message = error instanceof Error ? error.message : String(error);
-  onStatusChange(`Failed to prepare playback: ${message}`, true);
+        const message = error instanceof Error ? error.message : String(error);
+        onStatusChange(`Failed to prepare playback: ${message}`, true);
         throw error;
       } finally {
         if (pendingLoadAbortRef.current === abortController) {
           pendingLoadAbortRef.current = null;
         }
+        isAudioLoadingRef.current = false;
         setIsAudioLoading(false);
-        recomputePauseReady('load-complete');
+        if (playbackStarted) {
+          setIsPauseReady(true);
+          recomputePauseReady('playback-start');
+        } else {
+          recomputePauseReady('load-complete');
+        }
+        console.debug('[RateTab] loadTrackIntoPlayer: load finished', {
+          trackAttempted: track.sidPath,
+          playbackStarted,
+          playerState: player.getState(),
+          isAudioLoading: isAudioLoadingRef.current,
+        });
       }
     },
     [applyCachedRatings, onStatusChange, recomputePauseReady]

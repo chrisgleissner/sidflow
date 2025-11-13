@@ -230,18 +230,39 @@ export class WorkletPlayer {
   private waitForWorkerReady(): Promise<void> {
     this.clearWorkerReadyWait();
 
+    const waitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    console.log('[WorkletPlayer] waitForWorkerReady start', {
+      state: this.state,
+    });
+
     return new Promise<void>((resolve, reject) => {
       this.workerReadyResolve = () => {
         this.clearWorkerReadyWait();
+        const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - waitStartedAt;
+        console.log('[WorkletPlayer] waitForWorkerReady resolved', {
+          state: this.state,
+          duration,
+        });
         resolve();
       };
 
       this.workerReadyReject = (error: Error) => {
         this.clearWorkerReadyWait();
+        const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - waitStartedAt;
+        console.warn('[WorkletPlayer] waitForWorkerReady rejected', {
+          state: this.state,
+          duration,
+          error: error instanceof Error ? error.message : String(error),
+        });
         reject(error);
       };
 
       this.workerReadyTimeout = setTimeout(() => {
+        const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - waitStartedAt;
+        console.warn('[WorkletPlayer] waitForWorkerReady timeout', {
+          state: this.state,
+          duration,
+        });
         this.workerReadyReject?.(new Error('Worker ready timeout'));
       }, 10000);
     });
@@ -406,7 +427,15 @@ export class WorkletPlayer {
     // Start worker rendering (pre-roll happens before resolving ready promise)
     this.worker.postMessage({ type: 'start' } as WorkerMessage);
 
-    await readyPromise;
+    try {
+      await readyPromise;
+    } catch (error) {
+      console.error('[WorkletPlayer] waitForWorkerReady failed during play()', {
+        state: this.state,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
     console.log('[WorkletPlayer] Worker ready resolved, continuing playback setup');
 
     this.sendWorkletControl({ type: 'start' });

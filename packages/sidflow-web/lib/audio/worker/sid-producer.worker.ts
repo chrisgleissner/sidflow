@@ -227,6 +227,10 @@ class SidProducerWorker {
       return;
     }
 
+    console.log('[SidProducer] Pre-roll start', {
+      targetFrames: this.preRollFrames,
+    });
+
     // Pre-rolling buffer
 
     while (!this.shouldStop) {
@@ -254,6 +258,11 @@ class SidProducerWorker {
     const finalOccupancy = this.producer.getOccupancy();
     this.minOccupancy = finalOccupancy;
     this.maxOccupancy = Math.max(this.maxOccupancy, finalOccupancy);
+
+    console.log('[SidProducer] Pre-roll complete', {
+      occupancy: finalOccupancy,
+      shouldStop: this.shouldStop,
+    });
   }
 
   private async renderLoop(): Promise<void> {

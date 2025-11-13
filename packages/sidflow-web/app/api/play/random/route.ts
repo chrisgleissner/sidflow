@@ -11,6 +11,7 @@ import {
 import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createPlaybackSession } from '@/lib/playback-session';
+import { ensureHlsForTrack } from '@/lib/server/hls-service';
 
 const PRESETS = ['quiet', 'ambient', 'energetic', 'dark', 'bright', 'complex'] as const;
 type MoodPreset = (typeof PRESETS)[number];
@@ -180,6 +181,8 @@ export async function POST(request: NextRequest) {
       },
     };
 
+    const fallbackHlsUrl = preview ? null : await ensureHlsForTrack(enrichedTrack);
+
     const session = preview
       ? null
       : createPlaybackSession({
@@ -193,7 +196,7 @@ export async function POST(request: NextRequest) {
           basic: env.basicRomPath ?? null,
           chargen: env.chargenRomPath ?? null,
         },
-        fallbackHlsUrl: null,
+        fallbackHlsUrl,
       });
 
       const elapsedMs = Date.now() - startTime;
