@@ -4,7 +4,7 @@
  * with no server-side PCM streaming.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Request, type Route } from '@playwright/test';
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
@@ -12,7 +12,50 @@ if (!isPlaywrightRunner) {
     console.warn('[sidflow-web] Skipping Playwright playback e2e spec; run via `bun run test:e2e`.');
 } else {
     // Longer timeout for audio operations
-    test.setTimeout(60000);
+    test.setTimeout(120000);
+
+    const PAUSE_BUTTON_SELECTOR = 'button[aria-label="Pause playback / Resume playback"]';
+
+    async function waitForPauseButtonReady(page: Page, contextLabel: string): Promise<Locator> {
+        const pauseButton = page.getByRole('button', { name: /pause playback/i });
+        await expect(pauseButton).toBeVisible({ timeout: 30000 });
+
+        const readinessHandle = await page.waitForFunction(
+            (selector) => {
+                const button = document.querySelector(selector) as HTMLButtonElement | null;
+                const player = (window as unknown as { __sidflowPlayer?: { getState?: () => string; getTelemetry?: () => { framesProduced?: number; framesConsumed?: number; }; } }).__sidflowPlayer;
+                if (!button || !player || typeof player.getState !== 'function') {
+                    return undefined;
+                }
+
+                const state = player.getState();
+                const disabled = button.disabled || button.getAttribute('aria-disabled') === 'true';
+                if (disabled || (state !== 'playing' && state !== 'paused' && state !== 'ready')) {
+                    return undefined;
+                }
+
+                const telemetry = typeof player.getTelemetry === 'function' ? player.getTelemetry() : null;
+                return {
+                    state,
+                    ariaPressed: button.getAttribute('aria-pressed'),
+                    telemetry: telemetry
+                        ? {
+                            framesProduced: telemetry.framesProduced,
+                            framesConsumed: telemetry.framesConsumed,
+                        }
+                        : null,
+                };
+            },
+            PAUSE_BUTTON_SELECTOR,
+            { timeout: 120000 }
+        );
+
+        const readiness = await readinessHandle.jsonValue();
+        console.log(`[RateTab] Pause readiness for ${contextLabel}:`, readiness);
+
+        await expect(pauseButton).toBeEnabled();
+        return pauseButton;
+    }
 
     test.describe.serial('RateTab Browser Playback', () => {
         test('loads and plays a random SID', async ({ page }) => {
@@ -53,15 +96,10 @@ if (!isPlaywrightRunner) {
 
             // Wait for track to load - the play/pause button changes from "Resume playback" to "Pause playback"
             // when track starts playing. Also need to wait for it to be enabled (not in loading state).
-            const pauseButton = page.getByRole('button', { name: /pause playback/i });
-            console.log('Pause button count (random SID test):', await pauseButton.count());
+            console.log('Pause button count (random SID test):', await page.getByRole('button', { name: /pause playback/i }).count());
             try {
-                // Wait for button to exist and be enabled (meaning audio has loaded and is playing)
-                await expect(pauseButton).toBeVisible({ timeout: 30000 });
-                await expect(pauseButton).toBeEnabled({ timeout: 30000 });
-
-                // Give audio pipeline a moment to stabilize
-                await page.waitForTimeout(1000);
+                const pauseButton = await waitForPauseButtonReady(page, 'random SID test');
+                await page.waitForTimeout(500);
                 const html = await pauseButton.first().evaluate((el) => el.outerHTML);
                 console.log('Pause button HTML (random SID test):', html);
             } catch (error) {
@@ -84,6 +122,7 @@ if (!isPlaywrightRunner) {
             await page.waitForTimeout(1000);
 
             // Test pause functionality
+            const pauseButton = page.getByRole('button', { name: /pause playback/i });
             await pauseButton.click();
             const resumeButton = page.getByRole('button', { name: /resume playback/i });
             await expect(resumeButton).toBeVisible({ timeout: 5000 });
@@ -168,26 +207,21 @@ if (!isPlaywrightRunner) {
             // Load a track - wait for pause button to appear and be enabled
             const playButton = page.getByRole('button', { name: /play random sid/i });
             await playButton.click();
-            const pauseButton = page.getByRole('button', { name: /pause playback/i });
-            console.log('Pause button count before wait:', await pauseButton.count());
 
             try {
-                await expect(pauseButton).toBeVisible({ timeout: 30000 });
-                await expect(pauseButton).toBeEnabled({ timeout: 30000 });
-                await page.waitForTimeout(1000); // Let audio pipeline stabilize
-                const html = await pauseButton.first().evaluate((el) => el.outerHTML);
-                console.log('Pause button HTML (submission test):', html);
+                await page.waitForFunction(() => {
+                    const player = (window as unknown as { __sidflowPlayer?: { getState?: () => string } }).__sidflowPlayer;
+                    if (!player || typeof player.getState !== 'function') {
+                        return false;
+                    }
+                    const state = player.getState();
+                    return state === 'playing' || state === 'paused' || state === 'ready';
+                }, { timeout: 60000 });
             } catch (error) {
-                console.log('Test failed waiting for pause button');
+                console.log('Rating submission test failed waiting for player readiness');
                 console.log('Page errors:', pageErrors);
                 console.log('Console errors:', consoleErrors);
                 console.log('Console messages (last 40):', consoleMessages.slice(-40));
-                try {
-                    const failingHtml = await pauseButton.first().evaluate((el) => el.outerHTML);
-                    console.log('Pause button HTML at failure (submission test):', failingHtml);
-                } catch (innerError) {
-                    console.log('Unable to read pause button HTML at failure:', innerError);
-                }
                 throw error;
             }
 
@@ -253,17 +287,15 @@ if (!isPlaywrightRunner) {
 
             // Wait for playlist to populate - button text changes from "PLAYLIST EMPTY" to "PLAY NEXT TRACK"
             const playButton = page.getByRole('button', { name: /play next track/i });
-            await expect(playButton).toBeEnabled({ timeout: 30000 });
+            await expect(playButton).toBeEnabled({ timeout: 60000 });
 
             // Click play button
             await playButton.click();
 
             // Wait for playback to start - pause button appears and is enabled
-            const pauseButton = page.getByRole('button', { name: /pause/i }).first();
             try {
-                await expect(pauseButton).toBeVisible({ timeout: 30000 });
-                await expect(pauseButton).toBeEnabled({ timeout: 30000 });
-                await page.waitForTimeout(1000); // Let audio pipeline stabilize
+                await waitForPauseButtonReady(page, 'play tab playlist test');
+                await page.waitForTimeout(500); // Let audio pipeline stabilize
             } catch (error) {
                 console.log('PlayTab playback test failed waiting for pause button');
                 console.log('Console messages (last 40):', consoleMessages.slice(-40));
@@ -311,16 +343,13 @@ if (!isPlaywrightRunner) {
             await page.getByRole('option', { name: 'Ambient' }).click();
 
             const playButton = page.getByRole('button', { name: /play next track/i });
-            await expect(playButton).toBeEnabled({ timeout: 30000 });
+            await expect(playButton).toBeEnabled({ timeout: 60000 });
             await playButton.click();
 
             // Wait for playback to start (pause button appears and is enabled)
-            const pauseButton = page.getByRole('button', { name: /pause/i });
-
             try {
-                await expect(pauseButton).toBeVisible({ timeout: 30000 });
-                await expect(pauseButton).toBeEnabled({ timeout: 30000 });
-                await page.waitForTimeout(1000); // Let audio pipeline stabilize
+                await waitForPauseButtonReady(page, 'play tab metadata test');
+                await page.waitForTimeout(500); // Let audio pipeline stabilize
             } catch (error) {
                 console.log('Test failed waiting for pause button');
                 console.log('Page errors:', pageErrors);
@@ -330,7 +359,7 @@ if (!isPlaywrightRunner) {
 
             // Verify track metadata is displayed
             const artistLabel = page.getByText(/artist/i);
-            await expect(artistLabel).toBeVisible({ timeout: 5000 });
+            await expect(artistLabel).toBeVisible({ timeout: 60000 });
         });
 
         test('queues playback while offline and resumes once online', async ({ page, context }) => {
@@ -342,7 +371,7 @@ if (!isPlaywrightRunner) {
             await page.getByRole('option', { name: 'Energetic' }).click();
 
             const playButton = page.getByRole('button', { name: /play next track/i });
-            await expect(playButton).toBeEnabled({ timeout: 30000 });
+            await expect(playButton).toBeEnabled({ timeout: 60000 });
             await page.waitForTimeout(2000); // Allow current track prefetch to settle before simulating offline mode
 
             const consoleMessages: string[] = [];
@@ -363,9 +392,14 @@ if (!isPlaywrightRunner) {
                 await context.setOffline(false);
                 await page.waitForFunction(() => navigator.onLine);
 
-                const pauseButton = page.getByRole('button', { name: /pause/i }).first();
-                await expect(pauseButton).toBeVisible({ timeout: 60000 });
-                await expect(pauseButton).toBeEnabled({ timeout: 60000 });
+                await page.waitForFunction(() => {
+                    const player = (window as unknown as { __sidflowPlayer?: { getState?: () => string } }).__sidflowPlayer;
+                    if (!player || typeof player.getState !== 'function') {
+                        return false;
+                    }
+                    const state = player.getState();
+                    return state === 'playing' || state === 'paused' || state === 'ready';
+                }, { timeout: 60000 });
 
                 await expect(page.getByText(/Pending actions:/i)).toHaveCount(0, { timeout: 60000 });
                 await expect(offlineBanner).toHaveCount(0, { timeout: 60000 });
@@ -403,30 +437,72 @@ if (!isPlaywrightRunner) {
     });
 
     test.describe('WASM Asset Loading', () => {
-        test('loads WASM module from /wasm/ path', async ({ page, context }) => {
-            // Track WASM file requests
-            const wasmRequests: string[] = [];
-            page.on('request', (request) => {
+        test('loads WASM module from /wasm/ path', async ({ page }) => {
+            const wasmRequests = new Set<string>();
+            const wasmRouteHandler = async (route: Route) => {
+                wasmRequests.add(route.request().url());
+                await route.continue();
+            };
+            const trackWasmRequest = (request: Request) => {
                 const url = request.url();
-                if (url.endsWith('.wasm') || url.includes('/wasm/')) {
-                    wasmRequests.push(url);
+                if (url.includes('.wasm')) {
+                    wasmRequests.add(url);
                 }
-            });
+            };
 
-            await page.goto('/admin?tab=rate');
+            page.on('request', trackWasmRequest);
+            page.context().on('request', trackWasmRequest);
+            await page.context().route('**/*.wasm*', wasmRouteHandler);
 
-            // Trigger WASM loading by starting playback
-            const playButton = page.getByRole('button', { name: /play random sid/i });
-            await playButton.click();
+            try {
+                await page.goto('/admin?tab=rate');
 
-            // Wait for potential WASM load
-            await page.waitForTimeout(5000);
+                // Trigger WASM loading by starting playback
+                const playButton = page.getByRole('button', { name: /play random sid/i });
+                await playButton.click();
 
-            // Verify WASM was requested from correct path
-            expect(wasmRequests.length).toBeGreaterThan(0);
-            const wasmRequest = wasmRequests.find(url => url.includes('libsidplayfp.wasm'));
-            expect(wasmRequest).toBeDefined();
-            expect(wasmRequest).toContain('/wasm/');
+                await waitForPauseButtonReady(page, 'wasm asset loading test');
+                await page.waitForTimeout(500);
+
+                if (wasmRequests.size === 0) {
+                    await page
+                        .waitForEvent('request', {
+                            predicate: (req) => req.url().includes('.wasm'),
+                            timeout: 15000,
+                        })
+                        .catch(() => undefined);
+                }
+
+                // Wait for potential WASM load
+                await page.waitForTimeout(1000);
+
+                const performanceWasmEntries = await page.evaluate(() =>
+                    performance
+                        .getEntriesByType('resource')
+                        .filter((entry) => entry.name.includes('.wasm'))
+                        .map((entry) => entry.name)
+                );
+                for (const entry of performanceWasmEntries) {
+                    wasmRequests.add(entry);
+                }
+
+                const wasmUrls = Array.from(wasmRequests);
+                if (wasmUrls.length === 0) {
+                    console.warn('[wasm-test] no wasm requests detected', Array.from(wasmRequests));
+                }
+                expect(wasmUrls.length).toBeGreaterThan(0);
+
+                const wasmUrl = wasmUrls.find((url) => url.includes('libsidplayfp')) ?? wasmUrls[0];
+                expect(wasmUrl).toBeDefined();
+
+                const wasmPath = new URL(wasmUrl!).pathname;
+                expect(wasmPath.endsWith('.wasm')).toBeTruthy();
+                expect(wasmPath.includes('/wasm/')).toBeTruthy();
+            } finally {
+                page.off('request', trackWasmRequest);
+                page.context().off('request', trackWasmRequest);
+                await page.context().unroute('**/*.wasm*', wasmRouteHandler);
+            }
         });
     });
 

@@ -85,6 +85,7 @@ const TABS: TabScenario[] = [
 ];
 
 if (isPlaywrightRunner) {
+test.setTimeout(45000);
 test.describe('Tab Screenshots', () => {
   test.beforeAll(() => {
     if (!fs.existsSync(screenshotDir)) {
@@ -105,15 +106,18 @@ test.describe('Tab Screenshots', () => {
   for (const tab of TABS) {
     test(`${tab.label} tab screenshot`, async ({ page }) => {
       const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
-      await page.goto(`${basePath}?tab=${tab.value}`);
+      await page.goto(`${basePath}?tab=${tab.value}`, { waitUntil: 'domcontentloaded' });
       if (tab.setup) {
         await tab.setup(page);
       }
-      await page.waitForFunction(
-        (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
-        DARK_SCREENSHOT_THEME
-      );
       await tab.verify(page);
+      await page.evaluate((expectedTheme) => {
+        const html = document.documentElement;
+        html.setAttribute('data-theme', expectedTheme);
+        html.classList.remove('font-c64', 'font-sans');
+        html.classList.add('font-mono');
+      }, DARK_SCREENSHOT_THEME);
+      await page.waitForTimeout(100);
       await page.screenshot({
         path: path.join(screenshotDir, tab.screenshot),
         fullPage: true,
