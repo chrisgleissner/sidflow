@@ -87,6 +87,24 @@ bun run dev
 
 Open **<http://localhost:3000>** in your browser.
 
+### Wizard
+
+First-time setup walks you through selecting your HVSC root and confirming cache locations.
+
+![wizard panel](./doc/web-screenshots/01-wizard.png)
+
+### Preferences
+
+Tweak themes, fonts, and runtime options. The dark theme used in screenshots is applied automatically when you seed preferences for docs.
+
+![preferences panel](./doc/web-screenshots/02-prefs.png)
+
+### Fetch HVSC
+
+Kick off or review HVSC synchronisation runs with live progress feedback.
+
+![fetch panel](./doc/web-screenshots/03-fetch.png)
+
 ### Rate
 
 Play and rate songs based on personal preference. 
@@ -104,6 +122,12 @@ This involves converting all tracks of each SID to a WAV file and then automatic
 As it's very CPU intensive, it can take a while for a large song collection.
 
 ![classify panel](./doc/web-screenshots/05-classify-progress.png)
+
+### Play
+
+Create mood-based queues and drive playback directly from the browser.
+
+![play panel](./doc/web-screenshots/07-play.png)
 
 
 ### Additional Features

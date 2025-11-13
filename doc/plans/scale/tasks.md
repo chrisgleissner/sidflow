@@ -26,7 +26,7 @@ Required reading (skim before starting any phase):
 - [x] Surface playback engine selector with availability checks (WASM default, sidplayfp CLI detection, streaming readiness, Ultimate 64 connectivity test) and automated fallback rules.
 - [x] Build offline/poor-network handling: queue playback requests, cache recent tracks, surface banner states, and add E2E tests covering offline/resume scenarios.
 - [x] Instrument playback path to ensure worklet pipeline never blocks UI thread (profiling + regression alerts) and confirm fallback HLS path triggers on browsers without SAB.
-- [ ] Standardize Playwright screenshot theming so all captures use the dark background, including resetting mutated themes between tests.
+- [x] Standardize Playwright screenshot theming so all captures use the dark background, including resetting mutated themes between tests (`tests/e2e/screenshots.spec.ts`, README screenshot refresh).
 
 ## Phase 3 – Local Feedback & Training
 - [ ] Stand up client-side feedback store (IndexedDB) and background worker that batches implicit/explicit events without impacting playback latency.
