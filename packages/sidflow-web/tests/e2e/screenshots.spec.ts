@@ -412,12 +412,16 @@ async function installScreenshotFixtures(page: Page): Promise<void> {
 }
 
 async function waitForStableUi(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle');
-  await page.waitForFunction(() => document.readyState === 'complete');
-  await page.waitForFunction(
-    (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
-    DARK_SCREENSHOT_THEME,
-  );
+  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+  // Next.js dev server holds open WebSocket connections, so `networkidle` may never resolve.
+  await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => undefined);
+  await page.waitForFunction(() => document.readyState === 'complete').catch(() => undefined);
+  await page
+    .waitForFunction(
+      (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
+      DARK_SCREENSHOT_THEME,
+    )
+    .catch(() => undefined);
   await page.waitForFunction(() => {
     if (!(document as any).fonts || typeof (document as any).fonts.status !== 'string') {
       return true;

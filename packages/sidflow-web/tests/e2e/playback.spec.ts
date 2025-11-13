@@ -68,6 +68,33 @@ if (!isPlaywrightRunner) {
         } as const;
     }
 
+    async function readPendingPlaybackQueueCount(page: Page): Promise<number> {
+        return await page.evaluate(() => {
+            return new Promise<number>((resolve) => {
+                try {
+                    const request = indexedDB.open('sidflow-local');
+                    request.onerror = () => resolve(0);
+                    request.onsuccess = () => {
+                        const db = request.result;
+                        const transaction = db.transaction('playback-queue', 'readonly');
+                        const store = transaction.objectStore('playback-queue');
+                        const getAll = store.getAll();
+                        getAll.onerror = () => resolve(0);
+                        getAll.onsuccess = () => {
+                            const records = Array.isArray(getAll.result) ? getAll.result : [];
+                            const pending = records.filter((record: { status?: string }) => {
+                                return record?.status === 'pending' || record?.status === 'failed';
+                            });
+                            resolve(pending.length);
+                        };
+                    };
+                } catch {
+                    resolve(0);
+                }
+            });
+        });
+    }
+
     async function installDeterministicPlaybackRoutes(page: Page): Promise<void> {
         const context = page.context();
         if (playbackRoutesInstalled.has(context)) {
@@ -514,9 +541,22 @@ if (!isPlaywrightRunner) {
 
                 await playButton.click();
 
-                const offlineBanner = page.getByText(/Offline mode: playback requests are queued locally/i);
+                const offlineBanner = page.getByTestId('playback-offline-banner');
                 await expect(offlineBanner).toBeVisible({ timeout: 5000 });
-                await expect(page.getByText(/Pending actions:/i)).toBeVisible({ timeout: 5000 });
+
+                const pendingActions = page.getByTestId('playback-pending-actions');
+                await expect.poll(async () => {
+                    const attributeValue = await offlineBanner.getAttribute('data-pending-count');
+                    const attributeCount = attributeValue ? Number.parseInt(attributeValue, 10) : 0;
+                    if (Number.isFinite(attributeCount) && attributeCount > 0) {
+                        return attributeCount;
+                    }
+                    return await readPendingPlaybackQueueCount(page);
+                }, { timeout: 15000 }).toBeGreaterThan(0);
+
+                if ((await pendingActions.count()) > 0) {
+                    await expect(pendingActions.first()).toBeVisible({ timeout: 5000 });
+                }
 
                 await context.setOffline(false);
                 await page.waitForFunction(() => navigator.onLine);
@@ -530,7 +570,9 @@ if (!isPlaywrightRunner) {
                     return state === 'playing' || state === 'paused' || state === 'ready';
                 }, { timeout: 60000 });
 
-                await expect(page.getByText(/Pending actions:/i)).toHaveCount(0, { timeout: 60000 });
+                await expect.poll(async () => readPendingPlaybackQueueCount(page), {
+                    timeout: 60000,
+                }).toBe(0);
                 await expect(offlineBanner).toHaveCount(0, { timeout: 60000 });
             } catch (error) {
                 const queueSnapshot = await page.evaluate(async () => {

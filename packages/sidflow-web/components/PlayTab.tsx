@@ -90,6 +90,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [loadProgress, setLoadProgress] = useState(0);
   const [isPauseReady, setIsPauseReady] = useState(false);
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -106,6 +107,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     return () => {
       isMountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    setHasHydrated(true);
   }, []);
 
   const refreshQueueCount = useCallback(async () => {
@@ -535,10 +540,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       applyUpcoming([]);
       currentTrackRef.current = null;
       setCurrentTrack(null);
-  isAudioLoadingRef.current = false;
-  setIsAudioLoading(false);
-  setIsPauseReady(false);
-  recomputePauseReady('playlist-reset');
+      isAudioLoadingRef.current = false;
+      setIsAudioLoading(false);
+      setIsPauseReady(false);
+      recomputePauseReady('playlist-reset');
       setLoadProgress(0);
       setIsPlaying(false);
       setPosition(0);
@@ -949,8 +954,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
 
   return (
     <div className="space-y-4">
-      {(!isOnline || pendingQueueCount > 0) && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+      {hasHydrated && (!isOnline || pendingQueueCount > 0) && (
+        <div
+          className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3"
+          data-testid="playback-offline-banner"
+          data-pending-count={pendingQueueCount}
+        >
           <div className="flex items-start gap-3 text-sm text-amber-600">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <div className="space-y-1">
@@ -962,7 +971,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 <p>Replaying queued playback actions…</p>
               )}
               {pendingQueueCount > 0 ? (
-                <p className="text-xs text-amber-700">Pending actions: {pendingQueueCount}</p>
+                <p
+                  className="text-xs text-amber-700"
+                  data-testid="playback-pending-actions"
+                >
+                  Pending actions: {pendingQueueCount}
+                </p>
               ) : null}
             </div>
           </div>

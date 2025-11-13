@@ -14,8 +14,10 @@ export interface FeedbackTrainerConfig {
 
 export interface TrainingSnapshotInfo {
   modelVersion: string;
+  baseModelVersion: string | null;
   samples: number;
   durationMs: number;
+  timestamp: number;
 }
 
 interface InternalConfig extends FeedbackTrainerConfig {
@@ -242,21 +244,34 @@ export class FeedbackTrainer {
       await model.save(
         tf.io.withSaveHandler(async (artifacts: tf.io.ModelArtifacts) => {
           savedArtifacts = artifacts;
+          const weightDataBytes = (() => {
+            const data = artifacts.weightData;
+            if (!data) {
+              return 0;
+            }
+            if (Array.isArray(data)) {
+              return data.reduce((sum, entry) => sum + entry.byteLength, 0);
+            }
+            return data.byteLength;
+          })();
           return {
             modelArtifactsInfo: {
               dateSaved: new Date(),
               modelTopologyType: 'JSON',
               modelTopologyBytes: artifacts.modelTopology ? JSON.stringify(artifacts.modelTopology).length : 0,
-              weightDataBytes: artifacts.weightData ? artifacts.weightData.byteLength : 0,
+              weightDataBytes,
             },
           } satisfies tf.io.SaveResult;
         })
       );
 
-      const weightData = savedArtifacts?.weightData ?? null;
+  const artifacts = savedArtifacts as tf.io.ModelArtifacts | null;
+  const weightData = (artifacts?.weightData ?? null) as ArrayBuffer | null;
       if (!weightData) {
         throw new Error('Training completed but weight data unavailable');
       }
+
+      const duration = performance.now() - start;
 
       await storeModelSnapshot({
         modelVersion,
@@ -269,13 +284,16 @@ export class FeedbackTrainer {
           mae: history.history.mae?.at(-1) ?? null,
           trainedAt: new Date().toISOString(),
           baseVersion,
+          durationMs: duration,
         },
       });
 
       this.onSnapshot?.({
         modelVersion,
+        baseModelVersion: baseVersion,
         samples: vectors.length,
-        durationMs: performance.now() - start,
+        durationMs: duration,
+        timestamp: Date.now(),
       });
     } catch (error) {
       console.warn('[FeedbackTrainer] Training run failed', error);

@@ -58,6 +58,8 @@ export class WorkletPlayer {
   private readonly audioContext: AudioContext;
   private readonly gainNode: GainNode;
 
+  private static pipelineWarmupPromise: Promise<void> | null = null;
+
   private worker: Worker | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private sabPointers: SABRingBufferPointers | null = null;
@@ -131,6 +133,70 @@ export class WorkletPlayer {
         this.telemetry.contextResumeCount++;
       }
     });
+  }
+
+  private static async warmupPipelineAssets(signal?: AbortSignal): Promise<void> {
+    if (typeof fetch === 'undefined') {
+      return;
+    }
+
+    if (WorkletPlayer.pipelineWarmupPromise) {
+      await WorkletPlayer.pipelineWarmupPromise;
+      return;
+    }
+
+    const warmup = (async (): Promise<void> => {
+      const resources = [
+        { url: '/audio/worklet/sid-renderer.worklet.js', kind: 'script' as const },
+        { url: '/audio/worker/sid-producer.worker.js', kind: 'script' as const },
+        { url: '/wasm/libsidplayfp.wasm', kind: 'wasm' as const },
+      ];
+
+      const errors: Error[] = [];
+
+      for (const resource of resources) {
+        if (signal?.aborted) {
+          throw new DOMException('Playback load aborted', 'AbortError');
+        }
+
+        try {
+          const response = await fetch(resource.url, {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-cache',
+            signal,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Warmup fetch failed for ${resource.url} (${response.status})`);
+          }
+
+          if (resource.kind === 'wasm') {
+            await response.arrayBuffer();
+          } else {
+            await response.text();
+          }
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            throw error;
+          }
+          errors.push(error instanceof Error ? error : new Error(String(error)));
+        }
+      }
+
+      if (errors.length > 0) {
+        console.warn('[WorkletPlayer] Asset warmup completed with warnings', {
+          errors: errors.map((error) => error.message),
+        });
+      }
+    })();
+
+    WorkletPlayer.pipelineWarmupPromise = warmup.catch((error) => {
+      WorkletPlayer.pipelineWarmupPromise = null;
+      throw error;
+    });
+
+    await WorkletPlayer.pipelineWarmupPromise;
   }
 
   on<Event extends WorkletPlayerEvent>(event: Event, listener: (payload: EventPayloadMap[Event]) => void): void {
@@ -520,6 +586,17 @@ export class WorkletPlayer {
   }
 
   private async initializeWorklet(signal?: AbortSignal): Promise<void> {
+    try {
+      await WorkletPlayer.warmupPipelineAssets(signal);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      console.warn('[WorkletPlayer] Proceeding without asset warmup', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     // Add worklet module
     const workletUrl = '/audio/worklet/sid-renderer.worklet.js';
     await this.audioContext.audioWorklet.addModule(workletUrl);

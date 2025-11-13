@@ -22,6 +22,7 @@ import {
   writePreferencesToIndexedDb,
   writePreferencesToLocalStorage,
 } from '@/lib/preferences/storage';
+import { updateFeedbackRuntimePreferences } from '@/lib/feedback/runtime';
 
 export type PreferencesStatus = 'loading' | 'ready';
 
@@ -131,6 +132,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    updateFeedbackRuntimePreferences(preferences);
+  }, [preferences]);
 
   const updatePreferences = useCallback<PreferencesContextValue['updatePreferences']>(
     async (updater) => {
