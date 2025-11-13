@@ -10,8 +10,11 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { configureE2eLogging } from './utils/logging';
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
+
+configureE2eLogging();
 
 if (!isPlaywrightRunner) {
   console.warn('[sidflow-web] Skipping Playwright telemetry validation e2e spec; run via `bun run test:e2e`.');

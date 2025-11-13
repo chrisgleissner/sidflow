@@ -5,9 +5,13 @@
  */
 
 import { test, expect, type Locator, type Page, type Request, type Route } from '@playwright/test';
+import { createLogger } from '@sidflow/common';
+import { configureE2eLogging } from './utils/logging';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+configureE2eLogging();
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
@@ -51,11 +55,13 @@ if (!isPlaywrightRunner) {
         };
     }
 
+    const playbackLogger = createLogger('playback-test');
+
     function registerSession(scope: 'rate' | 'play') {
         sessionCounter += 1;
         const sessionId = `${scope}-stub-${Date.now()}-${sessionCounter}`;
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-        console.log('[playback-test] registerSession', sessionId);
+        playbackLogger.debug('registerSession %s', sessionId);
         return {
             sessionId,
             sidUrl: TEST_SID_DATA_URL,

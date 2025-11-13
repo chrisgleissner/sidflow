@@ -11,10 +11,13 @@
  */
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { configureE2eLogging } from './utils/logging';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
+
+configureE2eLogging();
 
 if (!isPlaywrightRunner) {
   console.warn('[sidflow-web] Skipping Playwright audio fidelity e2e spec; run via `bun run test:e2e`.');

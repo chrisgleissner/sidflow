@@ -1,6 +1,7 @@
 import {
   DEFAULT_RATINGS,
   clampRating,
+  createLogger,
   ensureDir,
   loadConfig,
   lookupSongDurationsMs,
@@ -37,6 +38,7 @@ import {
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
+const classifyLogger = createLogger("classify");
 
 export type ThreadPhase = "analyzing" | "building" | "metadata" | "tagging";
 
@@ -90,7 +92,9 @@ async function runConcurrent<T>(
     while (true) {
       const currentIndex = getNextIndex();
       if (currentIndex === null) {
-        console.error(`[DEBUG] Thread ${threadId} finished after processing ${itemsProcessed} items`);
+        classifyLogger.debug(
+          `Thread ${threadId} finished after processing ${itemsProcessed} items`
+        );
         break;
       }
       itemsProcessed++;
@@ -315,7 +319,9 @@ export async function buildWavCache(
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
-  console.error(`[DEBUG] collectSidFiles found ${sidFiles.length} SID files in ${plan.hvscPath}`);
+  classifyLogger.debug(
+    `collectSidFiles found ${sidFiles.length} SID files in ${plan.hvscPath}`
+  );
   const rendered: string[] = [];
   const skipped: string[] = [];
   const render = options.render ?? defaultRenderWav;
@@ -330,8 +336,8 @@ export async function buildWavCache(
       return existing;
     }
     const pending = lookupSongDurationsMs(sidFile, plan.hvscPath).catch((error) => {
-      console.error(
-        `[WARN] Failed to resolve song length for ${path.relative(plan.hvscPath, sidFile)}: ${(error as Error).message}`
+      classifyLogger.warn(
+        `Failed to resolve song length for ${path.relative(plan.hvscPath, sidFile)}: ${(error as Error).message}`
       );
       return undefined;
     });
@@ -390,7 +396,9 @@ export async function buildWavCache(
 
         const needsRefresh = await needsWavRefresh(sidFile, wavFile, shouldForce);
         if (debugLogCount < 5) {
-          console.error(`[DEBUG] needsWavRefresh(${songLabel}): ${needsRefresh}, wavFile: ${wavFile}`);
+          classifyLogger.debug(
+            `needsWavRefresh(${songLabel}): ${needsRefresh}, wavFile: ${wavFile}`
+          );
           debugLogCount++;
         }
         
@@ -424,22 +432,27 @@ export async function buildWavCache(
       // Reporting idle causes UI to show "waiting for work" during phase transition
     }
   );
-
-  console.error(`[DEBUG] Analysis complete: ${songsToRender.length} songs to render, ${songsToSkip.length} to skip`);
+  classifyLogger.debug(
+    `Analysis complete: ${songsToRender.length} songs to render, ${songsToSkip.length} to skip`
+  );
 
   // Building phase: render WAV files for each song
   const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
-  console.error(`[DEBUG] Starting building phase with ${buildConcurrency} threads`);
+  classifyLogger.debug(`Starting building phase with ${buildConcurrency} threads`);
   const rendererPool = render === defaultRenderWav ? new WasmRendererPool(buildConcurrency) : null;
 
   try {
-    console.error(`[DEBUG] About to call runConcurrent for building with ${songsToRender.length} songs`);
+    classifyLogger.debug(
+      `About to call runConcurrent for building with ${songsToRender.length} songs`
+    );
     await runConcurrent(
       songsToRender,
       buildConcurrency,
       async ({ sidFile, songIndex, wavFile, songCount }, context) => {
         if (rendered.length < 3) {
-          console.error(`[DEBUG] Thread ${context.threadId} starting to render: ${wavFile}`);
+          classifyLogger.debug(
+            `Thread ${context.threadId} starting to render: ${wavFile}`
+          );
         }
         const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
         onThreadUpdate?.({
@@ -466,15 +479,15 @@ export async function buildWavCache(
             const index = Math.min(Math.max(songIndex - 1, 0), durations.length - 1);
             targetDurationMs = durations[index];
             if (targetDurationMs !== undefined && songlengthDebugCount < 5) {
-              console.error(
-                `[DEBUG] Resolved HVSC duration ${targetDurationMs}ms for ${songLabel}`
+              classifyLogger.debug(
+                `Resolved HVSC duration ${targetDurationMs}ms for ${songLabel}`
               );
               songlengthDebugCount += 1;
             }
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          console.error(`[WARN] Unable to resolve song length for ${songLabel}: ${message}`);
+          classifyLogger.warn(`Unable to resolve song length for ${songLabel}: ${message}`);
         }
 
         const renderOptions = {
@@ -500,7 +513,9 @@ export async function buildWavCache(
             } catch (error) {
               lastError = error instanceof Error ? error : new Error(String(error));
               if (attempt < 3) {
-                console.error(`[RETRY] Attempt ${attempt}/3 failed for ${songLabel}: ${lastError.message}. Retrying...`);
+                classifyLogger.warn(
+                  `[RETRY] Attempt ${attempt}/3 failed for ${songLabel}: ${lastError.message}. Retrying...`
+                );
               }
             }
           }
@@ -511,7 +526,9 @@ export async function buildWavCache(
         if (renderSucceeded) {
           rendered.push(wavFile);
           if (rendered.length <= 3) {
-            console.error(`[DEBUG] Thread ${context.threadId} successfully rendered: ${wavFile}`);
+            classifyLogger.debug(
+              `Thread ${context.threadId} successfully rendered: ${wavFile}`
+            );
           }
 
           if (onProgress) {
@@ -529,7 +546,9 @@ export async function buildWavCache(
           }
         } else {
           // All retries failed
-          console.error(`[WARN] Failed to render ${songLabel} after 3 attempts: ${lastError?.message}`);
+          classifyLogger.warn(
+            `Failed to render ${songLabel} after 3 attempts: ${lastError?.message}`
+          );
           // Don't add to rendered list, effectively skipping this file
         }
         

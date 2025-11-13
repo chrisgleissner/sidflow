@@ -7,6 +7,9 @@ import {
   resetThemeState,
   DARK_SCREENSHOT_THEME,
 } from './utils/theme';
+import { configureE2eLogging } from './utils/logging';
+
+configureE2eLogging();
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
