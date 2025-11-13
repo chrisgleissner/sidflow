@@ -460,6 +460,20 @@ test.describe('Tab Screenshots', () => {
         html.setAttribute('data-theme', expectedTheme);
         html.classList.remove('font-c64', 'font-sans');
         html.classList.add('font-mono');
+        const body = document.body;
+        if (body) {
+          delete (body.dataset as Record<string, string | undefined>).persona;
+          body.classList.remove('font-c64', 'font-sans');
+          body.classList.add('font-mono');
+          const computedBackground = getComputedStyle(html).getPropertyValue('--background').trim();
+          if (computedBackground) {
+            body.style.setProperty('background', computedBackground);
+            body.style.setProperty('background-color', computedBackground);
+          } else {
+            body.style.setProperty('background', 'var(--background)');
+            body.style.setProperty('background-color', 'var(--background)');
+          }
+        }
       }, DARK_SCREENSHOT_THEME);
       await page.waitForTimeout(100);
       await page.screenshot({
