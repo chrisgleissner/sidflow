@@ -7,7 +7,7 @@ import {
   DEFAULT_FLAC_COMPRESSION_LEVEL,
 } from "../src/audio-encoding";
 import { encodePcmToWav } from "../../sidflow-classify/src/render/wav-renderer";
-import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
+import { writeFile, unlink, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
