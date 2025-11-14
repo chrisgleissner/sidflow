@@ -116,7 +116,7 @@ export async function encodeWavToFlacNative(options: EncodeOptions): Promise<Enc
 
   try {
     // Use system ffmpeg
-    let ffmpegPath = "ffmpeg";
+    const ffmpegPath = "ffmpeg";
 
     await new Promise<void>((resolve, reject) => {
       const args = [
