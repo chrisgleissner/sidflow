@@ -20,3 +20,5 @@ export * from "./job-orchestrator.js";
 export * from "./audio-encoding.js";
 export * from "./ultimate64-client.js";
 export * from "./ultimate64-capture.js";
+export * from "./render-matrix.js";
+export * from "./audit-trail.js";

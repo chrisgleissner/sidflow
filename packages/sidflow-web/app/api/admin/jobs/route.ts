@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { JobOrchestrator } from "@sidflow/common";
+import { JobOrchestrator, getDefaultAuditTrail } from "@sidflow/common";
 import { loadConfig } from "@sidflow/common";
 import path from "node:path";
 
@@ -20,6 +20,8 @@ async function getOrchestrator(): Promise<JobOrchestrator> {
   }
   return orchestrator;
 }
+
+const auditTrail = getDefaultAuditTrail();
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,8 +65,17 @@ export async function POST(request: NextRequest) {
     const orch = await getOrchestrator();
     const job = await orch.createJob(type, params);
 
+    await auditTrail.logSuccess("job:create", "admin", job.id, { type, params });
+
     return NextResponse.json({ job });
   } catch (error) {
+    await auditTrail.logFailure(
+      "job:create",
+      "admin",
+      String(error),
+      undefined,
+      { type: body.type }
+    );
     console.error("Failed to create job:", error);
     return NextResponse.json(
       { error: "Failed to create job" },

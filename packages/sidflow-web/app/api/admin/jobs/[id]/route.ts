@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { JobOrchestrator } from "@sidflow/common";
+import { JobOrchestrator, getDefaultAuditTrail } from "@sidflow/common";
 import path from "node:path";
 
 let orchestrator: JobOrchestrator | null = null;
@@ -19,6 +19,8 @@ async function getOrchestrator(): Promise<JobOrchestrator> {
   }
   return orchestrator;
 }
+
+const auditTrail = getDefaultAuditTrail();
 
 export async function GET(
   request: NextRequest,
@@ -64,9 +66,12 @@ export async function PATCH(
       );
     }
 
+    await auditTrail.logSuccess("job:update", "admin", id, { status, progress });
+
     const job = orch.getJob(id);
     return NextResponse.json({ job });
   } catch (error) {
+    await auditTrail.logFailure("job:update", "admin", String(error), id);
     console.error("Failed to update job:", error);
     return NextResponse.json(
       { error: "Failed to update job" },
@@ -85,8 +90,11 @@ export async function DELETE(
 
     await orch.deleteJob(id);
 
+    await auditTrail.logSuccess("job:delete", "admin", id);
+
     return NextResponse.json({ success: true });
   } catch (error) {
+    await auditTrail.logFailure("job:delete", "admin", String(error), id);
     console.error("Failed to delete job:", error);
     return NextResponse.json(
       { error: "Failed to delete job" },
