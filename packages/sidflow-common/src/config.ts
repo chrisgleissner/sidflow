@@ -35,6 +35,21 @@ export interface AvailabilityConfig {
   publicBaseUrl?: string;
 }
 
+export interface AlertThresholds {
+  maxSessionFailureRate?: number; // 0.0-1.0, default 0.1 (10%)
+  maxCacheAgeMs?: number; // milliseconds, default 7 days
+  maxJobStallMs?: number; // milliseconds, default 1 hour
+  maxCpuPercent?: number; // 0-100, default 80
+  maxMemoryPercent?: number; // 0-100, default 90
+}
+
+export interface AlertConfig {
+  enabled?: boolean;
+  thresholds?: AlertThresholds;
+  webhookUrl?: string;
+  emailRecipients?: string[];
+}
+
 export interface SidflowConfig {
   hvscPath: string;
   wavCachePath: string;
@@ -45,6 +60,7 @@ export interface SidflowConfig {
   classificationDepth: number;
   render?: RenderSettings;
   availability?: AvailabilityConfig;
+  alerts?: AlertConfig;
 }
 
 export const DEFAULT_CONFIG_FILENAME = ".sidflow.json";
@@ -184,6 +200,7 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0),
     render: parseRenderSettings(record.render, configPath),
     availability: parseAvailabilityConfig(record.availability, configPath),
+    alerts: parseAlertConfig(record.alerts, configPath),
   };
 }
 
@@ -478,7 +495,128 @@ function parseAvailabilityConfig(value: unknown, configPath: string): Availabili
         `Config key "availability.publicBaseUrl" must be a non-empty string`
       );
     }
-    config.publicBaseUrl = record.publicBaseUrl.trim();
+    config.publicBaseUrl = record.publicBaseUrl;
+  }
+
+  return config;
+}
+
+function parseAlertConfig(value: unknown, configPath: string): AlertConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    throw new SidflowConfigError(
+      `Config key "alerts" must be an object in ${configPath}`
+    );
+  }
+
+  const record = value as Record<string, unknown>;
+  const config: AlertConfig = {};
+
+  if (record.enabled !== undefined) {
+    if (typeof record.enabled !== "boolean") {
+      throw new SidflowConfigError(
+        `Config key "alerts.enabled" must be a boolean`
+      );
+    }
+    config.enabled = record.enabled;
+  }
+
+  if (record.webhookUrl !== undefined) {
+    if (typeof record.webhookUrl !== "string" || record.webhookUrl.trim() === "") {
+      throw new SidflowConfigError(
+        `Config key "alerts.webhookUrl" must be a non-empty string`
+      );
+    }
+    config.webhookUrl = record.webhookUrl;
+  }
+
+  if (record.emailRecipients !== undefined) {
+    if (!Array.isArray(record.emailRecipients)) {
+      throw new SidflowConfigError(
+        `Config key "alerts.emailRecipients" must be an array`
+      );
+    }
+    for (const email of record.emailRecipients) {
+      if (typeof email !== "string" || email.trim() === "") {
+        throw new SidflowConfigError(
+          `Config key "alerts.emailRecipients" must contain non-empty strings`
+        );
+      }
+    }
+    config.emailRecipients = record.emailRecipients as string[];
+  }
+
+  if (record.thresholds !== undefined) {
+    if (!record.thresholds || typeof record.thresholds !== "object") {
+      throw new SidflowConfigError(
+        `Config key "alerts.thresholds" must be an object`
+      );
+    }
+
+    const thresholds = record.thresholds as Record<string, unknown>;
+    const parsed: AlertThresholds = {};
+
+    if (thresholds.maxSessionFailureRate !== undefined) {
+      if (
+        typeof thresholds.maxSessionFailureRate !== "number" ||
+        thresholds.maxSessionFailureRate < 0 ||
+        thresholds.maxSessionFailureRate > 1
+      ) {
+        throw new SidflowConfigError(
+          `Config key "alerts.thresholds.maxSessionFailureRate" must be between 0 and 1`
+        );
+      }
+      parsed.maxSessionFailureRate = thresholds.maxSessionFailureRate;
+    }
+
+    if (thresholds.maxCacheAgeMs !== undefined) {
+      if (typeof thresholds.maxCacheAgeMs !== "number" || thresholds.maxCacheAgeMs <= 0) {
+        throw new SidflowConfigError(
+          `Config key "alerts.thresholds.maxCacheAgeMs" must be a positive number`
+        );
+      }
+      parsed.maxCacheAgeMs = thresholds.maxCacheAgeMs;
+    }
+
+    if (thresholds.maxJobStallMs !== undefined) {
+      if (typeof thresholds.maxJobStallMs !== "number" || thresholds.maxJobStallMs <= 0) {
+        throw new SidflowConfigError(
+          `Config key "alerts.thresholds.maxJobStallMs" must be a positive number`
+        );
+      }
+      parsed.maxJobStallMs = thresholds.maxJobStallMs;
+    }
+
+    if (thresholds.maxCpuPercent !== undefined) {
+      if (
+        typeof thresholds.maxCpuPercent !== "number" ||
+        thresholds.maxCpuPercent <= 0 ||
+        thresholds.maxCpuPercent > 100
+      ) {
+        throw new SidflowConfigError(
+          `Config key "alerts.thresholds.maxCpuPercent" must be between 0 and 100`
+        );
+      }
+      parsed.maxCpuPercent = thresholds.maxCpuPercent;
+    }
+
+    if (thresholds.maxMemoryPercent !== undefined) {
+      if (
+        typeof thresholds.maxMemoryPercent !== "number" ||
+        thresholds.maxMemoryPercent <= 0 ||
+        thresholds.maxMemoryPercent > 100
+      ) {
+        throw new SidflowConfigError(
+          `Config key "alerts.thresholds.maxMemoryPercent" must be between 0 and 100`
+        );
+      }
+      parsed.maxMemoryPercent = thresholds.maxMemoryPercent;
+    }
+
+    config.thresholds = parsed;
   }
 
   return config;

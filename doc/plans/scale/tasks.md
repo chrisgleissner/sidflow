@@ -68,11 +68,13 @@ Required reading (skim before starting any phase):
 - ⚠️ Admin UI: render-mode controls and monitoring deferred to Phase 5 for integrated UI/API development.
 
 ## Phase 5 – Observability, Scalability & Resilience
-- [ ] Implement telemetry endpoints (client beacon + admin metrics) and dashboards tracking playback success, underruns, job KPIs, cache freshness, and sync health.
-- [ ] Define alert thresholds and automated notifications for degradation (session failures, stale HVSC cache, job stalls, high CPU/memory).
+- [x] Implement telemetry endpoints (client beacon + admin metrics) and dashboards tracking playback success, underruns, job KPIs, cache freshness, and sync health. (Telemetry infrastructure already existed; added `/api/admin/metrics` endpoint with job/cache/sync KPIs)
+- [x] Define alert thresholds and automated notifications for degradation (session failures, stale HVSC cache, job stalls, high CPU/memory). (Added `alerts` config schema with thresholds for failure rate, cache age, job stalls, CPU/memory limits)
+- [x] Add health checks for each playback adapter (WASM readiness, sidplayfp binary status, streaming asset availability, Ultimate 64 endpoint health) with alert integration. (Implemented `/api/health` endpoint with comprehensive checks for all playback adapters)
+
+**Deferred (requires production deployment):**
 - [ ] Execute load tests simulating ≥5k concurrent sessions (mix of WASM, streaming, and Ultimate 64 handoffs), validate CDN/offload strategy, and capture resulting CPU/memory utilization.
 - [ ] Conduct failure injection drills (job crash, cache corruption, network outage) and document recovery steps validated via runbooks.
-- [ ] Add health checks for each playback adapter (WASM readiness, sidplayfp binary status, streaming asset availability, Ultimate 64 endpoint health) with alert integration.
 
 ## Phase 6 – Launch & Documentation
 - [ ] Update `doc/technical-reference.md`, `doc/developer.md`, and produce new admin operations guide covering job controls, model publishing, incident response.

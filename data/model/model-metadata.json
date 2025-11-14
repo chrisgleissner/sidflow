@@ -8,10 +8,10 @@
     "inputDim": 8,
     "outputDim": 3
   },
-  "createdAt": "2025-11-14T17:33:47.470Z",
+  "createdAt": "2025-11-14T17:53:07.393Z",
   "featureSetVersion": "2025-11-03",
   "modelVersion": "0.2.0",
   "samples": 3,
-  "trainedAt": "2025-11-14T17:33:47.747Z"
+  "trainedAt": "2025-11-14T17:53:07.769Z"
 }
 

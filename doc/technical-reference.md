@@ -936,6 +936,123 @@ All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is 
 
 ---
 
+## Observability & Monitoring
+
+SIDFlow provides comprehensive observability features for production deployments:
+
+### Health Check Endpoints
+
+**GET `/api/health`**
+
+Returns system health status with checks for:
+- WASM readiness (sidplayfp.wasm availability and size)
+- sidplayfp CLI availability and version
+- Streaming asset availability (manifest presence and asset count)
+- Ultimate 64 connectivity (if configured)
+
+Response format:
+```json
+{
+  "overall": "healthy" | "degraded" | "unhealthy",
+  "timestamp": 1700000000000,
+  "checks": {
+    "wasm": { "status": "healthy", "details": { "sizeBytes": 1234567 } },
+    "sidplayfpCli": { "status": "degraded", "message": "Not configured" },
+    "streamingAssets": { "status": "healthy", "details": { "assetCount": 42 } },
+    "ultimate64": { "status": "healthy", "details": { "connected": true } }
+  }
+}
+```
+
+HTTP Status: 200 (healthy/degraded), 503 (unhealthy)
+
+### Admin Metrics
+
+**GET `/api/admin/metrics`**
+
+Provides aggregated KPIs for job status, cache health, and HVSC sync:
+
+```json
+{
+  "timestamp": 1700000000000,
+  "jobs": {
+    "pending": 0,
+    "running": 1,
+    "completed": 42,
+    "failed": 2,
+    "totalDurationMs": 120000,
+    "avgDurationMs": 2857
+  },
+  "cache": {
+    "wavCacheCount": 1000,
+    "wavCacheSizeBytes": 500000000,
+    "classifiedCount": 950,
+    "oldestCacheFileAge": 604800000,
+    "newestCacheFileAge": 3600000
+  },
+  "sync": {
+    "hvscVersion": "78",
+    "hvscSidCount": 55000,
+    "lastSyncTimestamp": 1699900000000,
+    "syncAgeMs": 100000000
+  }
+}
+```
+
+### Telemetry
+
+**POST `/api/telemetry`**
+
+Client-side telemetry beacon for playback events and performance metrics. Uses `navigator.sendBeacon` for non-blocking fire-and-forget reporting.
+
+Event types:
+- `playback.load.start` / `playback.load.success` / `playback.load.error`
+- `playback.state.change`
+- `playback.error`
+- `playback.performance`
+- `playback.audio.metrics`
+- `playback.fallback`
+
+Performance metrics include:
+- Load duration, render duration, file size
+- Frame timing (avg, worst, over-budget count)
+- Audio underruns, drift, occupancy stats
+
+Telemetry mode controlled by `NEXT_PUBLIC_TELEMETRY_MODE`:
+- `production`: Sends to beacon endpoint
+- `test`: Writes to `window.telemetrySink` array
+- `disabled`: No-op
+
+### Alert Configuration
+
+Configure alerting thresholds in `.sidflow.json`:
+
+```json
+{
+  "alerts": {
+    "enabled": true,
+    "webhookUrl": "https://your-monitoring.com/webhook",
+    "emailRecipients": ["ops@example.com"],
+    "thresholds": {
+      "maxSessionFailureRate": 0.1,
+      "maxCacheAgeMs": 604800000,
+      "maxJobStallMs": 3600000,
+      "maxCpuPercent": 80,
+      "maxMemoryPercent": 90
+    }
+  }
+}
+```
+
+Threshold defaults:
+- `maxSessionFailureRate`: 0.1 (10% failure rate)
+- `maxCacheAgeMs`: 604800000 (7 days)
+- `maxJobStallMs`: 3600000 (1 hour)
+- `maxCpuPercent`: 80%
+- `maxMemoryPercent`: 90%
+
+---
+
 ## Additional Resources
 
 - **[Main README](../README.md)** — User-friendly getting started guide
@@ -943,3 +1060,4 @@ All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is 
 - **[Artifact Governance](artifact-governance.md)** — Canonical vs derived data policies
 - **[Performance Metrics](performance-metrics.md)** — Benchmarking and optimization
 - **[SID Metadata](sid-metadata.md)** — SID file format specifications
+- **[Telemetry](telemetry.md)** — Detailed telemetry implementation guide
