@@ -11,6 +11,9 @@ const logger = createLogger("audio-encoding");
 export const DEFAULT_M4A_BITRATE = 256; // kbps
 export const DEFAULT_FLAC_COMPRESSION_LEVEL = 5;
 
+const FFMPEG_PATH = "ffmpeg";
+const FFPROBE_PATH = "ffprobe";
+
 export interface EncodeOptions {
   readonly inputPath: string;
   readonly outputPath: string;
@@ -26,31 +29,17 @@ export interface EncodingResult {
 }
 
 /**
- * Encode WAV to M4A using native ffmpeg
- * Uses AAC-LC codec at specified bitrate (default 256 kbps)
+ * Common function to run ffmpeg encoding
  */
-export async function encodeWavToM4aNative(options: EncodeOptions): Promise<EncodingResult> {
-  const { inputPath, outputPath, m4aBitrate = DEFAULT_M4A_BITRATE } = options;
-
-  logger.debug(`Encoding ${inputPath} to M4A (native ffmpeg, ${m4aBitrate}k)`);
-
+async function runFfmpegEncoding(
+  inputPath: string,
+  outputPath: string,
+  args: string[],
+  format: string
+): Promise<EncodingResult> {
   try {
-    // Use system ffmpeg
-    const ffmpegPath = "ffmpeg";
-
     await new Promise<void>((resolve, reject) => {
-      const args = [
-        "-i",
-        inputPath,
-        "-c:a",
-        "aac",
-        "-b:a",
-        `${m4aBitrate}k`,
-        "-y", // overwrite output file
-        outputPath,
-      ];
-
-      const proc = spawn(ffmpegPath, args, {
+      const proc = spawn(FFMPEG_PATH, args, {
         stdio: ["ignore", "pipe", "pipe"],
       });
 
@@ -78,9 +67,7 @@ export async function encodeWavToM4aNative(options: EncodeOptions): Promise<Enco
     );
     const outputSizeBytes = stats.size;
 
-    logger.debug(
-      `Encoded ${inputPath} to M4A: ${outputSizeBytes} bytes`
-    );
+    logger.debug(`Encoded ${inputPath} to ${format}: ${outputSizeBytes} bytes`);
 
     return {
       success: true,
@@ -88,15 +75,37 @@ export async function encodeWavToM4aNative(options: EncodeOptions): Promise<Enco
       outputSizeBytes,
     };
   } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : String(err);
-    logger.error(`Failed to encode ${inputPath} to M4A: ${errorMessage}`);
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logger.error(`Failed to encode ${inputPath} to ${format}: ${errorMessage}`);
     return {
       success: false,
       outputPath,
       error: errorMessage,
     };
   }
+}
+
+/**
+ * Encode WAV to M4A using native ffmpeg
+ * Uses AAC-LC codec at specified bitrate (default 256 kbps)
+ */
+export async function encodeWavToM4aNative(options: EncodeOptions): Promise<EncodingResult> {
+  const { inputPath, outputPath, m4aBitrate = DEFAULT_M4A_BITRATE } = options;
+
+  logger.debug(`Encoding ${inputPath} to M4A (native ffmpeg, ${m4aBitrate}k)`);
+
+  const args = [
+    "-i",
+    inputPath,
+    "-c:a",
+    "aac",
+    "-b:a",
+    `${m4aBitrate}k`,
+    "-y", // overwrite output file
+    outputPath,
+  ];
+
+  return runFfmpegEncoding(inputPath, outputPath, args, "M4A");
 }
 
 /**
@@ -114,69 +123,18 @@ export async function encodeWavToFlacNative(options: EncodeOptions): Promise<Enc
     `Encoding ${inputPath} to FLAC (native ffmpeg, level ${flacCompressionLevel})`
   );
 
-  try {
-    // Use system ffmpeg
-    const ffmpegPath = "ffmpeg";
+  const args = [
+    "-i",
+    inputPath,
+    "-c:a",
+    "flac",
+    "-compression_level",
+    String(flacCompressionLevel),
+    "-y", // overwrite output file
+    outputPath,
+  ];
 
-    await new Promise<void>((resolve, reject) => {
-      const args = [
-        "-i",
-        inputPath,
-        "-c:a",
-        "flac",
-        "-compression_level",
-        String(flacCompressionLevel),
-        "-y", // overwrite output file
-        outputPath,
-      ];
-
-      const proc = spawn(ffmpegPath, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      let stderr = "";
-
-      proc.stderr?.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      proc.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`ffmpeg exited with code ${code}: ${stderr}`));
-        }
-      });
-
-      proc.on("error", (err) => {
-        reject(err);
-      });
-    });
-
-    const stats = await import("node:fs/promises").then((fs) =>
-      fs.stat(outputPath)
-    );
-    const outputSizeBytes = stats.size;
-
-    logger.debug(
-      `Encoded ${inputPath} to FLAC: ${outputSizeBytes} bytes`
-    );
-
-    return {
-      success: true,
-      outputPath,
-      outputSizeBytes,
-    };
-  } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : String(err);
-    logger.error(`Failed to encode ${inputPath} to FLAC: ${errorMessage}`);
-    return {
-      success: false,
-      outputPath,
-      error: errorMessage,
-    };
-  }
+  return runFfmpegEncoding(inputPath, outputPath, args, "FLAC");
 }
 
 /**
@@ -184,9 +142,6 @@ export async function encodeWavToFlacNative(options: EncodeOptions): Promise<Enc
  */
 export async function getM4aBitrate(filePath: string): Promise<number | null> {
   try {
-    // Use system ffprobe
-    const ffprobePath = "ffprobe";
-
     const output = await new Promise<string>((resolve, reject) => {
       const args = [
         "-v",
@@ -198,7 +153,7 @@ export async function getM4aBitrate(filePath: string): Promise<number | null> {
         filePath,
       ];
 
-      const proc = spawn(ffprobePath, args, {
+      const proc = spawn(FFPROBE_PATH, args, {
         stdio: ["ignore", "pipe", "pipe"],
       });
 

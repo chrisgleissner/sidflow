@@ -330,8 +330,11 @@ export class RenderOrchestrator {
     const { samples } = capture.stop();
 
     // Convert to WAV
+    // Note: Ultimate 64 outputs at PAL (47983 Hz) or NTSC (47940 Hz) sample rates,
+    // but we use standard 44.1 kHz for compatibility with common audio tools
     const { encodePcmToWav } = await import("./wav-renderer.js");
-    const wavBuffer = encodePcmToWav(samples, 44100, 2);
+    const STANDARD_SAMPLE_RATE = 44100;
+    const wavBuffer = encodePcmToWav(samples, STANDARD_SAMPLE_RATE, 2);
 
     // Write WAV file
     await import("node:fs/promises").then((fs) =>
