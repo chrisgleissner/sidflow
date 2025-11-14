@@ -13,7 +13,6 @@ let orchestrator: JobOrchestrator | null = null;
 
 async function getOrchestrator(): Promise<JobOrchestrator> {
   if (!orchestrator) {
-    const config = await loadConfig();
     const manifestPath = path.join(process.cwd(), "data", "jobs", "manifest.json");
     orchestrator = new JobOrchestrator({ manifestPath });
     await orchestrator.load();
