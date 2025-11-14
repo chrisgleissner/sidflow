@@ -13,6 +13,7 @@ export interface WebPreferences {
   sidplayfpCliFlags?: string | null;
   // Preferred server-side render engine for admin operations
   renderEngine?: RenderTechnology;
+  preferredEngines?: RenderTechnology[] | null;
 }
 
 const DEFAULT_PREFERENCES: WebPreferences = {
@@ -22,6 +23,7 @@ const DEFAULT_PREFERENCES: WebPreferences = {
   chargenRomPath: null,
   sidplayfpCliFlags: null,
   renderEngine: 'wasm',
+  preferredEngines: null,
 };
 
 function resolvePreferencesPath(): string {

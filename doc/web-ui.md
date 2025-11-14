@@ -81,8 +81,16 @@ Public Prefs (local to the browser):
 
 Admin Prefs (server‑side, affects backend):
 - Active collection root (HVSC or a custom subset)
-  - Browse HVSC folders server‑side and “Use This Folder”
+  - Browse HVSC folders server‑side and "Use This Folder"
   - Set/clear custom absolute path
+- Render Engine (for server-side classification and admin render operations)
+  - Default engine: libsidplayfp-wasm (portable, no dependencies)
+  - Alternative engines: sidplayfp CLI, Ultimate 64 hardware
+  - Preferred engine order: define fallback sequence when using auto mode
+    - Add/remove engines from preferred order
+    - Reorder with Up/Down buttons
+    - WASM is always appended as final fallback
+    - Empty list uses config defaults from `.sidflow.json`
 - sidplayfp CLI flags: Balanced (default), Fast (`-rif --resid`), or Custom
 - Server ROM paths: KERNAL/BASIC/CHARGEN file paths (with file picker)
 - Theme and font for admin UI (saved locally in your browser)
@@ -240,6 +248,41 @@ The interface supports full keyboard navigation:
 - Tailwind CSS + shadcn/ui
 - Bun (runtime and package manager)
 
+## Troubleshooting
+
+### Render engine issues
+
+**Problem: Classification stalls with threads stuck in BUILDING phase**
+- Check server logs for `[engine-stall]` or `[engine-chosen]` messages
+- WASM worker may exit with code 0 but produce no audio
+- Try switching to sidplayfp-cli engine in Admin Prefs → Render Engine
+- Check `--prefer` flag order if using auto mode with multiple engines
+
+**Problem: "No audio" errors during classification**
+- WASM engine may have compatibility issues with certain SID files
+- Look for `[engine-stall]` messages indicating consecutive failures
+- Set preferred engine order to try sidplayfp-cli before WASM fallback
+- Ensure sidplayfp CLI is installed and accessible: `which sidplayfp`
+
+**Problem: Engine availability check fails**
+- sidplayfp-cli: verify `sidplayfp` is in PATH or set `sidplayPath` in `.sidflow.json`
+- Ultimate 64: check network connectivity, host/port, and password in render config
+- WASM: should always be available; check browser console for worker errors
+
+**Problem: Preferred engines not respected**
+- Admin Prefs override config-level `render.preferredEngines` in `.sidflow.json`
+- Empty preferred list in Admin Prefs falls back to config defaults
+- Check server logs for `[engine-order]` messages showing resolved order
+- Forced engine (`renderEngine` preference) takes priority over preferred list
+
+### Server logs for debugging
+Monitor console output for structured engine tags:
+- `[engine-order]` — resolved engine priority order
+- `[engine-availability]` — per-engine availability check results
+- `[engine-chosen]` — which engine was selected for each render attempt
+- `[engine-stall]` — thread inactivity or no-audio streak detection
+- `[engine-escalate]` — automatic fallback triggered after repeated failures
+
 ## Future enhancements
 
 - Additional color schemes (VIC-20, C128)
@@ -249,6 +292,7 @@ The interface supports full keyboard navigation:
 - Additional keyboard shortcuts
 - Gamepad support
 - Accessibility improvements
+- Real-time engine health monitoring in admin UI
 
 ## Getting started
 

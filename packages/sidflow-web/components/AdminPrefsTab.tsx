@@ -32,6 +32,7 @@ import {
 } from "@/lib/api-client";
 import { formatApiError } from "@/lib/format-error";
 import { FolderOpen } from "lucide-react";
+import type { RenderTechnology } from "@sidflow/common";
 
 interface AdminPrefsTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -72,11 +73,36 @@ const FONT_SCHEMES = [
 
 type SidplayMode = "balanced" | "fast" | "custom";
 
+const RENDER_ENGINE_CHOICES: Array<{
+  value: RenderTechnology;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "wasm",
+    label: "libsidplayfp-wasm (default)",
+    description: "Portable, no external dependencies",
+  },
+  {
+    value: "sidplayfp-cli",
+    label: "sidplayfp CLI",
+    description: "Requires sidplayfp installed on server",
+  },
+  {
+    value: "ultimate64",
+    label: "Ultimate 64",
+    description: "Needs hardware and connectivity configured",
+  },
+];
+
 export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
   const [colorScheme, setColorScheme] = useState("system");
   const [fontScheme, setFontScheme] = useState("mono");
   const [prefsInfo, setPrefsInfo] = useState<PreferencesPayload | null>(null);
-  const [renderEngine, setRenderEngine] = useState<'wasm' | 'sidplayfp-cli' | 'ultimate64'>('wasm');
+  const [renderEngine, setRenderEngine] = useState<RenderTechnology>("wasm");
+  const [preferredEngines, setPreferredEngines] = useState<RenderTechnology[]>([]);
+  const [pendingPreferredEngine, setPendingPreferredEngine] = useState<RenderTechnology | "">("");
+  const [isSavingPreferredEngines, setIsSavingPreferredEngines] = useState(false);
   const [folderListing, setFolderListing] = useState<FolderListing | null>(
     null,
   );
@@ -156,7 +182,8 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
     const response = await getPreferences();
     if (response.success) {
       setPrefsInfo(response.data);
-      setRenderEngine(response.data.preferences.renderEngine ?? 'wasm');
+      setRenderEngine(response.data.preferences.renderEngine ?? "wasm");
+      setPreferredEngines(response.data.preferences.preferredEngines ?? []);
       setCustomPath(response.data.preferences.sidBasePath ?? "");
       setKernalPath(
         response.data.preferences.kernalRomPath ??
@@ -380,6 +407,35 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
     [],
   );
 
+  const addPreferredEngine = useCallback((engine: RenderTechnology) => {
+    setPreferredEngines((current) =>
+      current.includes(engine) ? current : [...current, engine],
+    );
+  }, []);
+
+  const movePreferredEngine = useCallback(
+    (engine: RenderTechnology, direction: "up" | "down") => {
+      setPreferredEngines((current) => {
+        const index = current.indexOf(engine);
+        if (index === -1) {
+          return current;
+        }
+        const targetIndex = direction === "up" ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= current.length) {
+          return current;
+        }
+        const next = [...current];
+        [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+        return next;
+      });
+    },
+    [],
+  );
+
+  const removePreferredEngine = useCallback((engine: RenderTechnology) => {
+    setPreferredEngines((current) => current.filter((entry) => entry !== engine));
+  }, []);
+
   const handleSidplayModeChange = useCallback((value: SidplayMode) => {
     setSidplayMode(value);
     if (value === "balanced") {
@@ -393,6 +449,60 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
     setSidplayMode("balanced");
     setSidplayCustomFlags("");
   }, []);
+
+  const handleSavePreferredEngines = useCallback(async () => {
+    setIsSavingPreferredEngines(true);
+    const payload = preferredEngines.length > 0 ? preferredEngines : null;
+    try {
+      const response = await updatePreferences({ preferredEngines: payload });
+      if (response.success) {
+        setPrefsInfo(response.data);
+        setPreferredEngines(response.data.preferences.preferredEngines ?? []);
+        const savedOrder = response.data.preferences.preferredEngines ?? [];
+        onStatusChange(
+          savedOrder.length
+            ? `Preferred render engine order saved: ${savedOrder.join(" → ")}`
+            : "Preferred render engine order reset to defaults",
+        );
+      } else {
+        onStatusChange(
+          `Unable to save preferred engines: ${formatApiError(response)}`,
+          true,
+        );
+      }
+    } catch (error) {
+      onStatusChange(
+        `Unable to save preferred engines: ${error instanceof Error ? error.message : String(error)}`,
+        true,
+      );
+    } finally {
+      setIsSavingPreferredEngines(false);
+    }
+  }, [preferredEngines, onStatusChange]);
+
+  const handleResetPreferredEngines = useCallback(async () => {
+    setIsSavingPreferredEngines(true);
+    try {
+      const response = await updatePreferences({ preferredEngines: null });
+      if (response.success) {
+        setPrefsInfo(response.data);
+        setPreferredEngines(response.data.preferences.preferredEngines ?? []);
+        onStatusChange("Preferred render engine order reset to defaults");
+      } else {
+        onStatusChange(
+          `Unable to reset preferred engines: ${formatApiError(response)}`,
+          true,
+        );
+      }
+    } catch (error) {
+      onStatusChange(
+        `Unable to reset preferred engines: ${error instanceof Error ? error.message : String(error)}`,
+        true,
+      );
+    } finally {
+      setIsSavingPreferredEngines(false);
+    }
+  }, [onStatusChange]);
 
   const handleSaveSidplayFlags = useCallback(async () => {
     setIsSavingSidplayFlags(true);
@@ -438,6 +548,10 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
       setIsSavingSidplayFlags(false);
     }
   }, [sidplayMode, sidplayCustomFlags, onStatusChange, syncSidplayState]);
+
+  const availablePreferredEngineOptions = RENDER_ENGINE_CHOICES.filter(
+    (option) => !preferredEngines.includes(option.value),
+  );
 
   return (
     <div className="space-y-6">
@@ -591,30 +705,20 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
             <p className="text-xs font-semibold text-muted-foreground">Engine</p>
             <Select
               value={renderEngine}
-              onValueChange={(value) => setRenderEngine(value as 'wasm' | 'sidplayfp-cli' | 'ultimate64')}
+              onValueChange={(value) => setRenderEngine(value as RenderTechnology)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select engine" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="wasm">
-                  <div className="flex flex-col">
-                    <span className="font-semibold">libsidplayfp-wasm (default)</span>
-                    <span className="text-xs text-muted-foreground">Portable, no external dependencies</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="sidplayfp-cli">
-                  <div className="flex flex-col">
-                    <span className="font-semibold">sidplayfp CLI</span>
-                    <span className="text-xs text-muted-foreground">Requires sidplayfp installed on server</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="ultimate64">
-                  <div className="flex flex-col">
-                    <span className="font-semibold">Ultimate 64</span>
-                    <span className="text-xs text-muted-foreground">Needs hardware and connectivity configured</span>
-                  </div>
-                </SelectItem>
+                {RENDER_ENGINE_CHOICES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex flex-col">
+                      <span className="font-semibold">{option.label}</span>
+                      <span className="text-xs text-muted-foreground">{option.description}</span>
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -639,7 +743,7 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
                 const response = await updatePreferences({ renderEngine: null });
                 if (response.success) {
                   setPrefsInfo(response.data);
-                  setRenderEngine('wasm');
+                  setRenderEngine("wasm");
                   onStatusChange('Render engine reset to default (wasm)');
                 } else {
                   onStatusChange(`Unable to reset render engine: ${formatApiError(response)}`, true);
@@ -648,6 +752,134 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
             >
               Reset
             </Button>
+          </div>
+          <div className="grid gap-3 border-t border-border/60 pt-4">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-muted-foreground">
+                Preferred order (auto mode)
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                When Classify runs in auto mode, engines are tried in this order before falling back to WASM.
+              </p>
+            </div>
+            <div className="space-y-2 rounded border border-border/60 bg-muted/30 p-2">
+              {preferredEngines.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No overrides set. The system will use the order from <code>.sidflow.json</code> (default: WASM → sidplayfp-cli → ultimate64).
+                </p>
+              ) : (
+                <ol className="space-y-2 text-sm text-foreground">
+                  {preferredEngines.map((engine, index) => {
+                    const details = RENDER_ENGINE_CHOICES.find(
+                      (option) => option.value === engine,
+                    );
+                    return (
+                      <li
+                        key={engine}
+                        className="flex items-center justify-between gap-3 rounded border border-border/40 bg-background/60 px-3 py-2"
+                      >
+                        <div>
+                          <p className="font-semibold">
+                            #{index + 1} — {details?.label ?? engine}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {details?.description ?? ""}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => movePreferredEngine(engine, "up")}
+                            disabled={index === 0 || isSavingPreferredEngines}
+                          >
+                            Up
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => movePreferredEngine(engine, "down")}
+                            disabled={
+                              index === preferredEngines.length - 1 ||
+                              isSavingPreferredEngines
+                            }
+                          >
+                            Down
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removePreferredEngine(engine)}
+                            disabled={isSavingPreferredEngines}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 md:flex-row">
+              <Select
+                value={pendingPreferredEngine || undefined}
+                onValueChange={(value) =>
+                  setPendingPreferredEngine(value as RenderTechnology)
+                }
+                disabled={availablePreferredEngineOptions.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Add engine" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availablePreferredEngineOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex flex-col">
+                        <span className="font-semibold">{option.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {option.description}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!pendingPreferredEngine) {
+                    return;
+                  }
+                  addPreferredEngine(pendingPreferredEngine);
+                  setPendingPreferredEngine("");
+                }}
+                disabled={
+                  !pendingPreferredEngine || isSavingPreferredEngines
+                }
+              >
+                Add to order
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={handleSavePreferredEngines}
+                disabled={isSavingPreferredEngines}
+              >
+                Save order
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleResetPreferredEngines}
+                disabled={isSavingPreferredEngines}
+              >
+                Reset overrides
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Order is optional—WASM is always appended as the final fallback even if it is not listed above.
+            </p>
           </div>
         </CardContent>
       </Card>

@@ -1173,7 +1173,12 @@ systemctl start sidflow
 **Recommendations**:
 - `threads`: Set to CPU core count - 1
 - `classificationDepth`: Increase for better accuracy, decrease for speed
-- `preferredEngines`: Order by performance (WASM fastest)
+- `preferredEngines`: Order by performance and availability
+  - WASM: fastest, always available, no dependencies
+  - sidplayfp-cli: requires sidplayfp installed, good compatibility
+  - ultimate64: real hardware, best accuracy, requires network access
+  - Always include wasm as final fallback (auto-appended if missing)
+- Can be overridden via Admin Prefs → Render Engine → Preferred order
 
 ### Database Optimization
 

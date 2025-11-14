@@ -65,14 +65,27 @@ export async function POST(request: NextRequest) {
       config.render?.preferredEngines
     );
 
+    console.log(`[engine-order] Resolved engine order: ${engineOrder.join(' → ')}`);
+    if (engineSelection && engineSelection !== 'auto') {
+      console.log(`[engine-order] Forced engine: ${engineSelection}`);
+    }
+    if (preferredEngines.length > 0) {
+      console.log(`[engine-order] Request preferred: ${preferredEngines.join(', ')}`);
+    }
+    if (config.render?.preferredEngines && config.render.preferredEngines.length > 0) {
+      console.log(`[engine-order] Config preferred: ${config.render.preferredEngines.join(', ')}`);
+    }
+
     const availability: RenderEngine[] = [];
     const unavailable: string[] = [];
     for (const engine of engineOrder) {
       const status = await orchestrator.checkEngineAvailability(engine);
       if (status.available) {
         availability.push(engine);
+        console.log(`[engine-availability] ${engine}: available`);
       } else {
         unavailable.push(`${engine}: ${status.reason ?? "unknown"}`);
+        console.log(`[engine-availability] ${engine}: unavailable (${status.reason ?? "unknown"})`);
       }
     }
 
@@ -89,6 +102,7 @@ export async function POST(request: NextRequest) {
     const attempts: { engine: RenderEngine; error?: string }[] = [];
     for (const engine of availability) {
       try {
+        console.log(`[engine-chosen] Attempting render with: ${engine}`);
         const result = await orchestrator.render({
           sidPath: absoluteSidPath,
           outputDir,
@@ -100,6 +114,7 @@ export async function POST(request: NextRequest) {
           maxLossRate,
         });
 
+        console.log(`[engine-chosen] Success with ${engine}`);
         return NextResponse.json({
           success: true,
           engine,
@@ -109,6 +124,7 @@ export async function POST(request: NextRequest) {
           result,
         });
       } catch (error) {
+        console.error(`[engine-chosen] Failed with ${engine}: ${String(error)}`);
         attempts.push({ engine, error: String(error) });
       }
     }

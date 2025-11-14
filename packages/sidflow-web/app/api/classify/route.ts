@@ -19,6 +19,8 @@ import {
 } from '@/lib/classify-progress-store';
 import { runClassificationProcess } from '@/lib/classify-runner';
 import { resolveSidCollectionContext, buildCliEnvOverrides } from '@/lib/sid-collection';
+import { getWebPreferences } from '@/lib/preferences-store';
+import type { RenderTechnology } from '@sidflow/common';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +30,8 @@ export async function POST(request: NextRequest) {
     const config = await getSidflowConfig();
     const root = getRepoRoot();
     const collection = await resolveSidCollectionContext();
+    const prefs = await getWebPreferences();
+    
     const requestedPath = validatedData.path?.trim();
     const classificationPath = requestedPath
       ? path.isAbsolute(requestedPath)
@@ -38,9 +42,37 @@ export async function POST(request: NextRequest) {
     const threads = config.threads && config.threads > 0 ? config.threads : os.cpus().length;
     beginClassifyProgress(threads);
 
+    // Resolve engine preferences
+    const preferredEngines: RenderTechnology[] = [];
+    if (prefs.preferredEngines && prefs.preferredEngines.length > 0) {
+      preferredEngines.push(...prefs.preferredEngines);
+    } else if (config.render?.preferredEngines && config.render.preferredEngines.length > 0) {
+      preferredEngines.push(...config.render.preferredEngines);
+    }
+    // Always append wasm as fallback
+    if (!preferredEngines.includes('wasm')) {
+      preferredEngines.push('wasm');
+    }
+
+    console.log('[engine-order] Classification starting');
+    if (prefs.renderEngine && prefs.renderEngine !== 'wasm') {
+      console.log(`[engine-order] Forced engine from preferences: ${prefs.renderEngine}`);
+    } else if (preferredEngines.length > 0) {
+      console.log(`[engine-order] Preferred engine order: ${preferredEngines.join(' → ')}`);
+    } else {
+      console.log(`[engine-order] Using default WASM engine`);
+    }
+
   const command = 'sidflow-classify';
-  // Use default engine (WASM) for WAV cache builds; no custom flags needed
   const cliArgs: string[] = [];
+  
+  // Pass engine preferences to classify CLI
+  if (prefs.renderEngine && prefs.renderEngine !== 'wasm') {
+    cliArgs.push('--engine', prefs.renderEngine);
+  } else if (preferredEngines.length > 1) {
+    // Pass preferred order (excluding the final wasm fallback as it's implicit)
+    cliArgs.push('--prefer', preferredEngines.slice(0, -1).join(','));
+  }
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
       SIDFLOW_SID_BASE_PATH: classificationPath,

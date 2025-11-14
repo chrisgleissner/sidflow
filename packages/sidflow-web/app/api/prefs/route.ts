@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
     const normalizedKernalRomPath = await normalizeFile(body?.kernalRomPath ?? undefined, 'kernalRomPath');
     const normalizedBasicRomPath = await normalizeFile(body?.basicRomPath ?? undefined, 'basicRomPath');
     const normalizedChargenRomPath = await normalizeFile(body?.chargenRomPath ?? undefined, 'chargenRomPath');
+    const allowedEngines: RenderTechnology[] = ['wasm', 'sidplayfp-cli', 'ultimate64'];
     const normalizeRenderEngine = (value: unknown): RenderTechnology | undefined => {
       if (value === undefined) {
         return undefined;
@@ -118,13 +119,46 @@ export async function POST(request: NextRequest) {
         throw new Error('renderEngine must be a string or null');
       }
       const trimmed = value.trim();
-      const allowed: RenderTechnology[] = ['wasm', 'sidplayfp-cli', 'ultimate64'];
-      if (!allowed.includes(trimmed as RenderTechnology)) {
+      if (!allowedEngines.includes(trimmed as RenderTechnology)) {
         throw new Error(`Unsupported renderEngine: ${trimmed}`);
       }
       return trimmed as RenderTechnology;
     };
     const normalizedRenderEngine = normalizeRenderEngine(body?.renderEngine ?? undefined);
+    const normalizePreferredEngines = (
+      value: unknown
+    ): RenderTechnology[] | null | undefined => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+      if (!Array.isArray(value)) {
+        throw new Error('preferredEngines must be an array or null');
+      }
+      const deduped: RenderTechnology[] = [];
+      const seen = new Set<RenderTechnology>();
+      value.forEach((entry, index) => {
+        if (typeof entry !== 'string') {
+          throw new Error(`preferredEngines[${index}] must be a string`);
+        }
+        const trimmed = entry.trim();
+        if (!allowedEngines.includes(trimmed as RenderTechnology)) {
+          throw new Error(`Unsupported preferredEngines[${index}]: ${trimmed}`);
+        }
+        const casted = trimmed as RenderTechnology;
+        if (!seen.has(casted)) {
+          seen.add(casted);
+          deduped.push(casted);
+        }
+      });
+      if (deduped.length === 0) {
+        throw new Error('preferredEngines cannot be empty; use null to reset to defaults');
+      }
+      return deduped;
+    };
+    const normalizedPreferredEngines = normalizePreferredEngines(body?.preferredEngines ?? undefined);
     const normalizeSidplayFlags = (value: unknown): string | null | undefined => {
       if (value === undefined) {
         return undefined;
@@ -149,12 +183,13 @@ export async function POST(request: NextRequest) {
       normalizedBasicRomPath === undefined &&
       normalizedChargenRomPath === undefined &&
       normalizedSidplayFlags === undefined &&
-      normalizedRenderEngine === undefined
+      normalizedRenderEngine === undefined &&
+      normalizedPreferredEngines === undefined
     ) {
       throw new Error('No preferences provided');
     }
 
-  const preferenceUpdates: Partial<WebPreferences> = {};
+    const preferenceUpdates: Partial<WebPreferences> = {};
     if (normalizedSidBasePath !== undefined) {
       preferenceUpdates.sidBasePath = normalizedSidBasePath;
     }
@@ -172,6 +207,12 @@ export async function POST(request: NextRequest) {
     }
     if (normalizedRenderEngine !== undefined) {
       preferenceUpdates.renderEngine = normalizedRenderEngine;
+    }
+    if (normalizedPreferredEngines !== undefined) {
+      preferenceUpdates.preferredEngines = normalizedPreferredEngines;
+    }
+    if (normalizedPreferredEngines !== undefined) {
+      preferenceUpdates.preferredEngines = normalizedPreferredEngines;
     }
 
     const romOverrides =

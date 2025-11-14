@@ -44,7 +44,7 @@ export const RENDER_MATRIX: readonly RenderMatrixEntry[] = [
     technology: 'wasm',
     target: 'wav-m4a-flac',
     typicalUse: 'Portable render where CLI unavailable',
-    status: 'mvp',
+    status: 'future',
   },
   {
     location: 'server',

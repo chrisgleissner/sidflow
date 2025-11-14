@@ -10,6 +10,7 @@ interface ThreadStatusInternal {
   updatedAt: number;
   stale: boolean;
   phaseStartedAt?: number;
+  noAudioStreak?: number;
 }
 
 interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread'> {
@@ -17,6 +18,8 @@ interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread'> {
 }
 
 const STALE_THREAD_MS = 5000;
+const NO_AUDIO_STREAK_THRESHOLD = 3;
+const GLOBAL_STALL_TIMEOUT_MS = 30000;
 
 let snapshot: ProgressState = createInitialSnapshot();
 let stdoutBuffer = '';
@@ -30,7 +33,7 @@ function createInitialSnapshot(): ProgressState {
     skippedFiles: 0,
     percentComplete: 0,
     threads: 1,
-  perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false, phaseStartedAt: undefined }],
+  perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false, phaseStartedAt: undefined, noAudioStreak: 0 }],
     isActive: false,
     isPaused: false,
     updatedAt: Date.now(),
@@ -60,6 +63,7 @@ function ensureThreads(count: number) {
     updatedAt: Date.now(),
     stale: false,
     phaseStartedAt: undefined,
+    noAudioStreak: 0,
   }));
 }
 
@@ -135,6 +139,42 @@ export function pauseClassifyProgress(message?: string) {
   }
 }
 
+export function recordNoAudioEvent(threadId: number) {
+  const index = threadId - 1;
+  if (index < 0 || index >= snapshot.perThread.length) {
+    return;
+  }
+  const thread = snapshot.perThread[index];
+  const newStreak = (thread.noAudioStreak ?? 0) + 1;
+  snapshot.perThread[index] = { ...thread, noAudioStreak: newStreak };
+  
+  console.log(`[engine-stall] Thread ${threadId}: no audio (streak: ${newStreak})`);
+  
+  if (newStreak >= NO_AUDIO_STREAK_THRESHOLD) {
+    console.error(`[engine-escalate] Thread ${threadId}: ${newStreak} consecutive no-audio failures, consider switching engines`);
+  }
+}
+
+export function checkGlobalStall(): boolean {
+  if (!snapshot.isActive) {
+    return false;
+  }
+  
+  const now = Date.now();
+  const allThreadsStale = snapshot.perThread.length > 0 && 
+    snapshot.perThread.every(thread => now - thread.updatedAt > STALE_THREAD_MS);
+  
+  const noProgressSinceStart = now - snapshot.startedAt > GLOBAL_STALL_TIMEOUT_MS && 
+    snapshot.processedFiles === 0;
+  
+  if (allThreadsStale || noProgressSinceStart) {
+    console.error('[engine-stall] Global stall detected: all threads inactive or no progress');
+    return true;
+  }
+  
+  return false;
+}
+
 export function ingestClassifyStdout(chunk: string) {
   stdoutBuffer += chunk.replace(/\r/g, '\n');
   let newlineIndex = stdoutBuffer.indexOf('\n');
@@ -151,6 +191,20 @@ export function ingestClassifyStdout(chunk: string) {
 function processLine(line: string) {
   if (!line) {
     return;
+  }
+
+  // Log engine-related messages with structured tags
+  if (line.includes('Rendering') || line.includes('engine')) {
+    console.log(`[classify-engine] ${line}`);
+  }
+
+  // Detect no-audio events (worker exit code 0 with no audio output)
+  const noAudioMatch = line.match(/\[Thread\s+(\d+)\].*no audio|exit code 0.*no output/i);
+  if (noAudioMatch) {
+    const threadId = Number(noAudioMatch[1]);
+    if (!isNaN(threadId)) {
+      recordNoAudioEvent(threadId);
+    }
   }
 
   const threadMatch = line.match(/threads:\s*(\d+)/i);

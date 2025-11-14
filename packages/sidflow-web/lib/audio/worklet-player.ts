@@ -535,6 +535,21 @@ export class WorkletPlayer {
 
   async play(): Promise<void> {
     console.log('[WorkletPlayer] play() invoked', { state: this.state });
+    // If playback has ended, reload the current track so play() can restart from the beginning.
+    if (this.state === 'ended') {
+      if (this.currentSession && this.currentTrack) {
+        try {
+          await this.load({ session: this.currentSession, track: this.currentTrack });
+        } catch (error) {
+          console.warn('[WorkletPlayer] Failed to reload after ended state:', error);
+          return;
+        }
+      } else {
+        console.warn('[WorkletPlayer] Cannot restart from ended state without session/track');
+        return;
+      }
+    }
+
     if (this.state !== 'ready' && this.state !== 'paused') {
       console.warn('[WorkletPlayer] Cannot play from state:', this.state);
       return;
@@ -542,6 +557,20 @@ export class WorkletPlayer {
 
     if (!this.worker || !this.workletNode) {
       throw new Error('Player not initialized');
+    }
+
+    const resumingFromPause = this.state === 'paused';
+
+    // When resuming from pause, start the worklet consumer first so the ring buffer can drain
+    // while the worker performs pre-roll. This avoids a deadlock where the worker waits for
+    // buffer space but the worklet isn't consuming until after 'ready'.
+    if (resumingFromPause) {
+      if (!this.workletConnected) {
+        this.workletNode.connect(this.gainNode);
+        this.workletConnected = true;
+      }
+      await this.audioContext.resume();
+      this.sendWorkletControl({ type: 'start' });
     }
 
     const readyPromise = this.waitForWorkerReady();
@@ -560,7 +589,10 @@ export class WorkletPlayer {
     }
     console.log('[WorkletPlayer] Worker ready resolved, continuing playback setup');
 
-    this.sendWorkletControl({ type: 'start' });
+    // For first-time play (state === 'ready'), start the worklet after pre-roll completes
+    if (!resumingFromPause) {
+      this.sendWorkletControl({ type: 'start' });
+    }
 
     if (this.captureEnabled && !this.captureDestination) {
       this.captureDestination = this.audioContext.createMediaStreamDestination();
@@ -577,12 +609,13 @@ export class WorkletPlayer {
       };
     }
 
-    if (!this.workletConnected) {
-      this.workletNode.connect(this.gainNode);
-      this.workletConnected = true;
+    if (!resumingFromPause) {
+      if (!this.workletConnected) {
+        this.workletNode.connect(this.gainNode);
+        this.workletConnected = true;
+      }
+      await this.audioContext.resume();
     }
-
-    await this.audioContext.resume();
 
     if (this.mediaRecorder && this.mediaRecorder.state === 'inactive') {
       this.mediaRecorder.start(100);
