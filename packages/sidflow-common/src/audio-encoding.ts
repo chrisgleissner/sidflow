@@ -37,7 +37,7 @@ export async function encodeWavToM4aNative(options: EncodeOptions): Promise<Enco
 
   try {
     // Use system ffmpeg
-    let ffmpegPath = "ffmpeg";
+    const ffmpegPath = "ffmpeg";
 
     await new Promise<void>((resolve, reject) => {
       const args = [
