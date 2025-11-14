@@ -1,5 +1,11 @@
 # SIDFlow Copilot Guardrails
 
+## Agent quickstart
+- Read `AGENTS.md` at the repo root for repo-wide agent behavior, ExecPlan usage, and multi-hour workflow expectations.
+- Read `PLANS.md` and follow it for any multi-step work.
+- For Cursor users: also honor `.cursorrules` at the repo root; it mirrors these guardrails and points to the same execution plan.
+- For short Q&A or trivial code snippets, you may answer directly, but prefer making concrete edits and running fast checks when feasible.
+
 ## Agent autonomy and execution plans
 - This repository opts into persistent, autonomous agents. When you begin any non-trivial task, first load and follow the central execution plan in `PLANS.md` at the repo root. Treat it as the single source of truth for plan-then-act, progress logging, quality gates, and verification.
 - Do not stop early. Continue working until the user’s request is fully satisfied or you are genuinely blocked by missing credentials or external access. Prefer research and reasonable assumptions over asking for clarification; document assumptions you make in your plan’s Decision Log.
@@ -45,9 +51,3 @@
 - Compose functionality from small functions; use concise comments only to explain non-obvious steps (e.g., cache heuristics).
 - Use shared error types like `SidflowConfigError` for config issues and preserve informative messaging when wrapping errors.
 - Never duplicate logging/serialization patterns; extend `@sidflow/common` if a new cross-cutting helper is required.
-
-## Agent quickstart
-- Read `AGENTS.md` at the repo root for repo-wide agent behavior, ExecPlan usage, and multi-hour workflow expectations.
-- Read `PLANS.md` and follow it for any multi-step work.
-- For Cursor users: also honor `.cursorrules` at the repo root; it mirrors these guardrails and points to the same execution plan.
-- For short Q&A or trivial code snippets, you may answer directly, but prefer making concrete edits and running fast checks when feasible.
