@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       "admin",
       String(error),
       undefined,
-      { type: body.type }
+      { type }
     );
     console.error("Failed to create job:", error);
     return NextResponse.json(
