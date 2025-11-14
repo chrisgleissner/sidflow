@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { JobOrchestrator, getDefaultAuditTrail } from "@sidflow/common";
+import type { JobType, JobStatus } from "@sidflow/common";
 import { loadConfig } from "@sidflow/common";
 import path from "node:path";
 
@@ -25,13 +26,13 @@ const auditTrail = getDefaultAuditTrail();
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get("type") as any;
-    const status = searchParams.get("status") as any;
+    const typeParam = searchParams.get("type");
+    const statusParam = searchParams.get("status");
 
     const orch = await getOrchestrator();
-    const filters: any = {};
-    if (type) filters.type = type;
-    if (status) filters.status = status;
+    const filters: { type?: JobType; status?: JobStatus } = {};
+    if (typeParam) filters.type = typeParam as JobType;
+    if (statusParam) filters.status = statusParam as JobStatus;
 
     const jobs = orch.listJobs(Object.keys(filters).length > 0 ? filters : undefined);
     const stats = orch.getStatistics();
