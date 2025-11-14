@@ -38,6 +38,7 @@ export interface PreferencesPayload {
     basicRomPath?: string | null;
     chargenRomPath?: string | null;
     sidplayfpCliFlags?: string | null;
+    renderEngine?: 'wasm' | 'sidplayfp-cli' | 'ultimate64';
   };
   sidplayfpConfig: {
     path: string;
@@ -113,6 +114,7 @@ export async function updatePreferences(payload: {
   basicRomPath?: string | null;
   chargenRomPath?: string | null;
   sidplayfpCliFlags?: string | null;
+  renderEngine?: 'wasm' | 'sidplayfp-cli' | 'ultimate64' | null;
 }): Promise<ApiResponse<PreferencesPayload>> {
   return apiRequest('/prefs', payload);
 }

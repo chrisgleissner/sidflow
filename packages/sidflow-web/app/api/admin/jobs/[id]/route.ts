@@ -71,7 +71,12 @@ export async function PATCH(
     const job = orch.getJob(id);
     return NextResponse.json({ job });
   } catch (error) {
-    await auditTrail.logFailure("job:update", "admin", String(error), id);
+    // Best-effort extraction of id for logging
+    let jobId: string | undefined;
+    try {
+      jobId = (await params).id;
+    } catch {}
+    await auditTrail.logFailure("job:update", "admin", String(error), jobId);
     console.error("Failed to update job:", error);
     return NextResponse.json(
       { error: "Failed to update job" },
@@ -94,7 +99,12 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    await auditTrail.logFailure("job:delete", "admin", String(error), id);
+    // Best-effort extraction of id for logging
+    let jobId: string | undefined;
+    try {
+      jobId = (await params).id;
+    } catch {}
+    await auditTrail.logFailure("job:delete", "admin", String(error), jobId);
     console.error("Failed to delete job:", error);
     return NextResponse.json(
       { error: "Failed to delete job" },

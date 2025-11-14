@@ -83,7 +83,11 @@
   }
 }
 
-/* Theme overrides via data attributes */
+/*
+  Theme overrides via data attributes
+  NOTE: Placed AFTER persona variables so user-chosen theme takes precedence in public persona.
+*/
+body[data-theme="c64-light"],
 [data-theme="c64-light"] {
   --background: #6C5EB5;
   --foreground: #352879;
@@ -102,6 +106,7 @@
   --card-foreground: #ffffff;
 }
 
+body[data-theme="c64-dark"],
 [data-theme="c64-dark"] {
   --background: #000000;
   --foreground: #6C5EB5;
@@ -120,6 +125,7 @@
   --card-foreground: #6C5EB5;
 }
 
+body[data-theme="classic"],
 [data-theme="classic"] {
   --background: #3e31a2;
   --foreground: #7c71da;
@@ -196,6 +202,64 @@ body[data-persona="public"] {
   --destructive-foreground: var(--public-destructive-foreground);
   --card: var(--public-card);
   --card-foreground: var(--public-card-foreground);
+}
+
+/*
+  User-selected theme overrides (duplicated after persona blocks)
+  Ensure these come AFTER persona variables so the theme wins in public UI.
+*/
+body[data-theme="c64-light"] {
+  --background: #6C5EB5;
+  --foreground: #352879;
+  --primary: #352879;
+  --primary-foreground: #ffffff;
+  --secondary: #5048A5;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D;
+  --accent-foreground: #000000;
+  --muted: #8078C5;
+  --muted-foreground: #352879;
+  --border: #352879;
+  --input: #9088D5;
+  --ring: #50E89D;
+  --card: #7C6EC5;
+  --card-foreground: #ffffff;
+}
+
+body[data-theme="c64-dark"] {
+  --background: #000000;
+  --foreground: #6C5EB5;
+  --primary: #6C5EB5;
+  --primary-foreground: #000000;
+  --secondary: #352879;
+  --secondary-foreground: #ffffff;
+  --accent: #50E89D;
+  --accent-foreground: #000000;
+  --muted: #1a1440;
+  --muted-foreground: #8078C5;
+  --border: #352879;
+  --input: #1a1440;
+  --ring: #50E89D;
+  --card: #0d0820;
+  --card-foreground: #6C5EB5;
+}
+
+body[data-theme="classic"] {
+  --background: #3e31a2;
+  --foreground: #7c71da;
+  --primary: #7c71da;
+  --primary-foreground: #3e31a2;
+  --secondary: #5b55d0;
+  --secondary-foreground: #ffffff;
+  --accent: #a5fc86;
+  --accent-foreground: #3e31a2;
+  --muted: #5542c4;
+  --muted-foreground: #a5a0d8;
+  --border: #7c71da;
+  --input: #5542c4;
+  --ring: #a5fc86;
+  --card: #4a3fc7;
+  --card-foreground: #d0cdff;
 }
 
 /* Font family classes - Press Start 2P loaded via layout.tsx */

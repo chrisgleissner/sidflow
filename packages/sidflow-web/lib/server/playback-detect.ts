@@ -96,9 +96,9 @@ async function directoryContainsExtension(root: string, extension: string): Prom
     }
     visited += 1;
 
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: import('node:fs').Dirent[];
     try {
-      entries = await readdir(current.dir, { withFileTypes: true, encoding: 'utf8' });
+      entries = await readdir(current.dir, { withFileTypes: true });
     } catch (error) {
       console.warn('[playback-detect] Failed to read directory during scan', current.dir, error);
       continue;

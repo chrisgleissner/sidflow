@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loadConfig } from "@sidflow/common";
+import { getSidflowConfig } from "@/lib/server-env";
 import { readFile, stat, readdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -41,7 +41,7 @@ interface AdminMetrics {
 
 export async function GET() {
   try {
-    const config = await loadConfig();
+  const config = await getSidflowConfig();
 
     // Collect job metrics
     const jobMetrics = await collectJobMetrics(config.hvscPath);

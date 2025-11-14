@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { getRepoRoot } from '@/lib/server-env';
+import type { RenderTechnology } from '@sidflow/common';
 
 const PREFERENCES_FILENAME = '.sidflow-preferences.json';
 
@@ -10,6 +11,8 @@ export interface WebPreferences {
   basicRomPath?: string | null;
   chargenRomPath?: string | null;
   sidplayfpCliFlags?: string | null;
+  // Preferred server-side render engine for admin operations
+  renderEngine?: RenderTechnology;
 }
 
 const DEFAULT_PREFERENCES: WebPreferences = {
@@ -18,6 +21,7 @@ const DEFAULT_PREFERENCES: WebPreferences = {
   basicRomPath: null,
   chargenRomPath: null,
   sidplayfpCliFlags: null,
+  renderEngine: 'wasm',
 };
 
 function resolvePreferencesPath(): string {

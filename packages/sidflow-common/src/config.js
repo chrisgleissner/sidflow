@@ -99,7 +99,7 @@ function validateConfig(value, configPath) {
         }
         const r = raw;
         const allowedFormats = new Set(["wav", "m4a", "flac"]);
-        const allowedEngines = new Set(["wasm", "sidplayfp-cli", "c64u"]);
+    const allowedEngines = new Set(["wasm", "sidplayfp-cli", "ultimate64"]);
         const allowedChips = new Set(["6581", "8580r5"]);
 
         // Optional output path (validate string if provided)

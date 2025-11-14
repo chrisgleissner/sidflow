@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 import { getWebPreferences, updateWebPreferences, type WebPreferences } from '@/lib/preferences-store';
+import type { RenderTechnology } from '@sidflow/common';
 import { resolveSidCollectionContext } from '@/lib/sid-collection';
 import { getRepoRoot } from '@/lib/server-env';
 import type { ApiResponse } from '@/lib/validation';
@@ -105,6 +106,25 @@ export async function POST(request: NextRequest) {
     const normalizedKernalRomPath = await normalizeFile(body?.kernalRomPath ?? undefined, 'kernalRomPath');
     const normalizedBasicRomPath = await normalizeFile(body?.basicRomPath ?? undefined, 'basicRomPath');
     const normalizedChargenRomPath = await normalizeFile(body?.chargenRomPath ?? undefined, 'chargenRomPath');
+    const normalizeRenderEngine = (value: unknown): RenderTechnology | undefined => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        // Null signals reset to default (wasm)
+        return 'wasm';
+      }
+      if (typeof value !== 'string') {
+        throw new Error('renderEngine must be a string or null');
+      }
+      const trimmed = value.trim();
+      const allowed: RenderTechnology[] = ['wasm', 'sidplayfp-cli', 'ultimate64'];
+      if (!allowed.includes(trimmed as RenderTechnology)) {
+        throw new Error(`Unsupported renderEngine: ${trimmed}`);
+      }
+      return trimmed as RenderTechnology;
+    };
+    const normalizedRenderEngine = normalizeRenderEngine(body?.renderEngine ?? undefined);
     const normalizeSidplayFlags = (value: unknown): string | null | undefined => {
       if (value === undefined) {
         return undefined;
@@ -128,12 +148,13 @@ export async function POST(request: NextRequest) {
       normalizedKernalRomPath === undefined &&
       normalizedBasicRomPath === undefined &&
       normalizedChargenRomPath === undefined &&
-      normalizedSidplayFlags === undefined
+      normalizedSidplayFlags === undefined &&
+      normalizedRenderEngine === undefined
     ) {
       throw new Error('No preferences provided');
     }
 
-    const preferenceUpdates: Partial<Record<keyof WebPreferences, string | null>> = {};
+  const preferenceUpdates: Partial<WebPreferences> = {};
     if (normalizedSidBasePath !== undefined) {
       preferenceUpdates.sidBasePath = normalizedSidBasePath;
     }
@@ -148,6 +169,9 @@ export async function POST(request: NextRequest) {
     }
     if (normalizedSidplayFlags !== undefined) {
       preferenceUpdates.sidplayfpCliFlags = normalizedSidplayFlags;
+    }
+    if (normalizedRenderEngine !== undefined) {
+      preferenceUpdates.renderEngine = normalizedRenderEngine;
     }
 
     const romOverrides =

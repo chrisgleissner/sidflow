@@ -72,9 +72,7 @@ export async function POST(request: NextRequest) {
     await auditTrail.logFailure(
       "job:create",
       "admin",
-      String(error),
-      undefined,
-      { type }
+      String(error)
     );
     console.error("Failed to create job:", error);
     return NextResponse.json(

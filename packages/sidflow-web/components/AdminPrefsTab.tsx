@@ -76,6 +76,7 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
   const [colorScheme, setColorScheme] = useState("system");
   const [fontScheme, setFontScheme] = useState("mono");
   const [prefsInfo, setPrefsInfo] = useState<PreferencesPayload | null>(null);
+  const [renderEngine, setRenderEngine] = useState<'wasm' | 'sidplayfp-cli' | 'ultimate64'>('wasm');
   const [folderListing, setFolderListing] = useState<FolderListing | null>(
     null,
   );
@@ -155,6 +156,7 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
     const response = await getPreferences();
     if (response.success) {
       setPrefsInfo(response.data);
+      setRenderEngine(response.data.preferences.renderEngine ?? 'wasm');
       setCustomPath(response.data.preferences.sidBasePath ?? "");
       setKernalPath(
         response.data.preferences.kernalRomPath ??
@@ -573,6 +575,79 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
               The path must exist on disk. Relative paths resolve against the
               repository root.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="c64-border">
+        <CardHeader>
+          <CardTitle className="petscii-text text-accent">RENDER ENGINE</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Choose the server-side engine used for renders in admin operations. Default is WASM.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 text-sm">
+          <div className="grid gap-2">
+            <p className="text-xs font-semibold text-muted-foreground">Engine</p>
+            <Select
+              value={renderEngine}
+              onValueChange={(value) => setRenderEngine(value as 'wasm' | 'sidplayfp-cli' | 'ultimate64')}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select engine" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wasm">
+                  <div className="flex flex-col">
+                    <span className="font-semibold">libsidplayfp-wasm (default)</span>
+                    <span className="text-xs text-muted-foreground">Portable, no external dependencies</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="sidplayfp-cli">
+                  <div className="flex flex-col">
+                    <span className="font-semibold">sidplayfp CLI</span>
+                    <span className="text-xs text-muted-foreground">Requires sidplayfp installed on server</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="ultimate64">
+                  <div className="flex flex-col">
+                    <span className="font-semibold">Ultimate 64</span>
+                    <span className="text-xs text-muted-foreground">Needs hardware and connectivity configured</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                const response = await updatePreferences({ renderEngine });
+                if (response.success) {
+                  setPrefsInfo(response.data);
+                  onStatusChange(`Render engine set to ${renderEngine}`);
+                } else {
+                  onStatusChange(`Unable to save render engine: ${formatApiError(response)}`, true);
+                }
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                const response = await updatePreferences({ renderEngine: null });
+                if (response.success) {
+                  setPrefsInfo(response.data);
+                  setRenderEngine('wasm');
+                  onStatusChange('Render engine reset to default (wasm)');
+                } else {
+                  onStatusChange(`Unable to reset render engine: ${formatApiError(response)}`, true);
+                }
+              }}
+            >
+              Reset
+            </Button>
           </div>
         </CardContent>
       </Card>

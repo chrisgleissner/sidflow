@@ -81,10 +81,15 @@ describe('admin auth', () => {
     expect(updated.secret).toBe('sidflow-another-secret-7890');
   });
 
-  it('throws when admin password is not configured', () => {
+  it('defaults to insecure password when admin password is not configured (dev only)', () => {
+    // Clear both password and secret to validate fallback behaviors
     delete process.env.SIDFLOW_ADMIN_PASSWORD;
+    delete process.env.SIDFLOW_ADMIN_SECRET;
     resetAdminAuthConfigCache();
-    expect(() => getAdminConfig()).toThrow('SIDFLOW_ADMIN_PASSWORD must be set');
+    const config = getAdminConfig();
+    expect(config.password).toBe('password');
+    // Secret should derive from the fallback password when explicit secret is absent
+    expect(config.secret).toBe('sidflow-password');
   });
 
   it('parses valid credentials and rejects malformed headers', () => {

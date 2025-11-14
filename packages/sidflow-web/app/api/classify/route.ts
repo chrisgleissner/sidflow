@@ -38,9 +38,9 @@ export async function POST(request: NextRequest) {
     const threads = config.threads && config.threads > 0 ? config.threads : os.cpus().length;
     beginClassifyProgress(threads);
 
-    const command = 'sidflow-classify';
-    // Prefer WASM engine by default for server-side renders; fall back to others
-    const cliArgs: string[] = ['--prefer', 'wasm,sidplayfp-cli,ultimate64'];
+  const command = 'sidflow-classify';
+  // Use default engine (WASM) for WAV cache builds; no custom flags needed
+  const cliArgs: string[] = [];
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
       SIDFLOW_SID_BASE_PATH: classificationPath,

@@ -43,16 +43,23 @@ function applyTheme(preferences: BrowserPreferences): void {
   if (typeof document === 'undefined') {
     return;
   }
+
+  // Prefer setting theme on <body> so it can override persona-scoped CSS variables
+  const body = document.body;
   const html = document.documentElement;
 
+  // Clean up any previous attribute on <html> to avoid precedence confusion
+  html.removeAttribute('data-theme');
+
   if (preferences.theme === 'system') {
-    html.removeAttribute('data-theme');
+    body.removeAttribute('data-theme');
   } else {
-    html.setAttribute('data-theme', preferences.theme);
+    body.setAttribute('data-theme', preferences.theme);
   }
 
-  html.classList.remove('font-c64', 'font-mono', 'font-sans');
-  html.classList.add(`font-${preferences.font}`);
+  // Apply font class on body to take precedence over global body font rules
+  body.classList.remove('font-c64', 'font-mono', 'font-sans');
+  body.classList.add(`font-${preferences.font}`);
 }
 
 function mergePreferences(
