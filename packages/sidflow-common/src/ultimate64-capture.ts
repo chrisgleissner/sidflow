@@ -169,7 +169,7 @@ export class Ultimate64AudioCapture extends EventEmitter {
       const elapsed = Date.now() - this.startTime;
       if (elapsed >= this.targetDurationMs) {
         logger.debug(`Target duration ${this.targetDurationMs}ms reached`);
-        this.stop();
+        setImmediate(() => this.stop());
         return;
       }
     }
