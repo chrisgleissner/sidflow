@@ -38,8 +38,8 @@ Required reading (skim before starting any phase):
 - [x] Build job orchestration service (queues, manifests, resumable execution) wrapping `sidflow-fetch`, `sidflow-classify`, `sidflow-train`; include unit + integration coverage for restart/idempotency.
 - [x] Implement queue runners that invoke the package CLIs end-to-end (fetch→classify→train→render), persist checkpoints/resume data, and expose idempotent restart handling in tests.
 - [x] Wire audit-trail logging + deterministic writes for `data/classified`, `data/feedback`, `data/model`, manifests, and other canonical assets touched by admin flows.
-- [ ] Define render-engine orchestration covering `libsidplayfp-wasm`, optional `sidplayfp` CLI, and Ultimate 64 hardware playback: automate CLI availability checks, surface graceful fallbacks, and document the Ultimate 64 REST/workflow using `doc/plans/scale/c64-rest-api.md`.
-- [ ] Integrate Ultimate 64 capture + render orchestration with admin config (host, ports, credentials), and add documentation snippets that map directly to the REST workflow.
+- [x] Define render-engine orchestration covering `libsidplayfp-wasm`, optional `sidplayfp` CLI, and Ultimate 64 hardware playback: automate CLI availability checks, surface graceful fallbacks, and document the Ultimate 64 REST/workflow using `doc/plans/scale/c64-rest-api.md`.
+- [x] Integrate Ultimate 64 capture + render orchestration with admin config (host, ports, credentials), and add documentation snippets that map directly to the REST workflow.
 - [ ] Capture UDP audio from the Ultimate 64 stream, transform it into WAV/M4A/FLAC assets, and publish availability manifests referencing the packet/stream nuances documented in `doc/plans/scale/c64-stream-spec.md`.
 - [ ] Extend classify/render pipelines so captured WAV/M4A/FLAC assets register in availability manifests consumed by `/api/playback/{id}/{format}`, including storage layout and cache invalidation hooks.
 - [ ] Design UDP capture pipeline to track packet sequence numbers, reorder out-of-order deliveries, and detect/compensate for missing packets before transcoding to PCM.

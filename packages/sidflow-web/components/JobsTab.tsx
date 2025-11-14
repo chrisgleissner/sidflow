@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import type { JobDescriptor, JobType, JobStatus } from '@sidflow/common';
+import type { JobDescriptor, JobType, JobStatus, RenderEngine } from '@sidflow/common';
+
+type RenderFormat = 'wav' | 'm4a' | 'flac';
+type RenderEngineSelection = 'auto' | RenderEngine;
 
 interface JobsTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -21,6 +24,19 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
   const [stats, setStats] = useState<JobStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<{ type?: JobType; status?: JobStatus }>({});
+  const [renderEngine, setRenderEngine] = useState<RenderEngineSelection>('auto');
+  const [renderFormats, setRenderFormats] = useState<RenderFormat[]>(['wav', 'm4a']);
+  const [renderDurationSeconds, setRenderDurationSeconds] = useState(120);
+  const [renderMaxLoss, setRenderMaxLoss] = useState(0.01);
+
+  const renderFormatOptions: RenderFormat[] = ['wav', 'm4a', 'flac'];
+
+  const renderJobParams = {
+    engine: renderEngine,
+    formats: renderFormats.length > 0 ? renderFormats : (['wav'] as RenderFormat[]),
+    targetDurationMs: Math.round(Math.max(1, renderDurationSeconds) * 1000),
+    maxLossRate: Math.max(0, Math.min(0.5, renderMaxLoss)),
+  };
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -83,6 +99,14 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
     } catch (error) {
       onStatusChange(`Failed to delete job: ${error}`, true);
     }
+  };
+
+  const toggleRenderFormat = (format: RenderFormat) => {
+    setRenderFormats((current) =>
+      current.includes(format)
+        ? current.filter((entry) => entry !== format)
+        : [...current, format]
+    );
   };
 
   return (
@@ -178,6 +202,12 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
           Create Train Job
         </button>
         <button
+          onClick={() => createJob('render', renderJobParams)}
+          className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+        >
+          Create Render Job
+        </button>
+        <button
           onClick={() =>
             createJob('pipeline', {
               allowResume: true,
@@ -185,7 +215,7 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
                 { type: 'fetch', label: 'Fetch HVSC' },
                 { type: 'classify', label: 'Classify Library' },
                 { type: 'train', label: 'Train Model' },
-                { type: 'render', label: 'Render Assets' },
+                { type: 'render', label: 'Render Assets', params: renderJobParams },
               ],
             })
           }
@@ -193,6 +223,64 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
         >
           Run Full Pipeline
         </button>
+      </div>
+
+      {/* Render Controls */}
+      <div className="border rounded p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Render Configuration</h3>
+          <span className="text-sm text-gray-500">Applies to Render jobs and the pipeline stage</span>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex flex-col text-sm font-medium gap-1">
+            Render Engine
+            <select
+              value={renderEngine}
+              onChange={(event) => setRenderEngine(event.target.value as 'auto' | RenderEngine)}
+              className="px-3 py-2 border rounded"
+            >
+              <option value="auto">Auto (fallback)</option>
+              <option value="wasm">WASM (local)</option>
+              <option value="sidplayfp-cli">sidplayfp CLI</option>
+              <option value="ultimate64">Ultimate 64</option>
+            </select>
+          </label>
+          <label className="flex flex-col text-sm font-medium gap-1">
+            Target Duration (seconds)
+            <input
+              type="number"
+              min={15}
+              value={renderDurationSeconds}
+              onChange={(event) => setRenderDurationSeconds(Number(event.target.value) || 60)}
+              className="px-3 py-2 border rounded w-32"
+            />
+          </label>
+          <label className="flex flex-col text-sm font-medium gap-1">
+            Max Packet Loss
+            <input
+              type="number"
+              min={0}
+              max={0.5}
+              step={0.01}
+              value={renderMaxLoss}
+              onChange={(event) => setRenderMaxLoss(Number(event.target.value) || 0)}
+              className="px-3 py-2 border rounded w-32"
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-4 items-center">
+          <span className="text-sm font-medium">Formats</span>
+          {renderFormatOptions.map((format) => (
+            <label key={format} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={renderFormats.includes(format)}
+                onChange={() => toggleRenderFormat(format)}
+              />
+              {format.toUpperCase()}
+            </label>
+          ))}
+        </div>
       </div>
 
       {/* Job List */}

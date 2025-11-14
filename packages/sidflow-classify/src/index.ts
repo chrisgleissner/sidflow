@@ -181,6 +181,13 @@ export async function planClassification(
 const SID_EXTENSION = ".sid";
 
 export type { RenderWavOptions } from "./render/wav-renderer.js";
+export {
+  RenderOrchestrator,
+  type RenderRequest,
+  type RenderResult,
+  type RenderEngine,
+  type RenderFormat,
+} from "./render/render-orchestrator.js";
 
 export function resolveWavPath(
   plan: ClassificationPlan,

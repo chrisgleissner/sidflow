@@ -389,7 +389,7 @@ export async function runRenderCli(argv: string[]): Promise<number> {
   return 0;
 }
 
-function resolveFormats(options: RenderCliOptions, config: SidflowConfig): RenderFormat[] {
+export function resolveFormats(options: RenderCliOptions, config: SidflowConfig): RenderFormat[] {
   const candidateList: (RenderFormat | ConfigRenderFormat)[] =
     options.formats ?? config.render?.defaultFormats ?? DEFAULT_FORMATS;
 
@@ -407,7 +407,7 @@ function resolveFormats(options: RenderCliOptions, config: SidflowConfig): Rende
   return resolved;
 }
 
-function resolveEngineOrder(options: RenderCliOptions, config: SidflowConfig): RenderEngine[] {
+export function resolveEngineOrder(options: RenderCliOptions, config: SidflowConfig): RenderEngine[] {
   const cliPreferred = options.preferredEngines ?? [];
   const configPreferred = (config.render?.preferredEngines ?? [])
     .map((engine) => coerceRenderEngine(engine))
@@ -436,7 +436,7 @@ function resolveEngineOrder(options: RenderCliOptions, config: SidflowConfig): R
   return ordered;
 }
 
-function parseSidSpec(value: string): SidSpec | null {
+export function parseSidSpec(value: string): SidSpec | null {
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
@@ -457,7 +457,7 @@ function parseSidSpec(value: string): SidSpec | null {
   return spec;
 }
 
-async function loadSidListFile(filePath: string): Promise<SidSpec[]> {
+export async function loadSidListFile(filePath: string): Promise<SidSpec[]> {
   const resolved = path.resolve(filePath);
   if (!(await pathExists(resolved))) {
     logger.warn(`SID list file not found: ${resolved}`);
