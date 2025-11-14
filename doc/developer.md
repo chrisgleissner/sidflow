@@ -152,7 +152,239 @@ See `test-data/README.md` for detailed instructions.
 
 ---
 
-## 10. Pull Request Checklist
+## 10. Testing Observability & Monitoring
+
+SIDFlow includes health checks, metrics, and telemetry for production deployments. These endpoints are located in `packages/sidflow-web/app/api/`:
+
+- `/api/health` - System health checks (WASM, CLI, streaming, Ultimate64)
+- `/api/admin/metrics` - Operational KPIs (jobs, cache, sync)
+- `/api/telemetry/beacon` - Anonymous telemetry collection
+
+### Testing Health Endpoints
+
+Health checks validate system readiness across multiple render engines:
+
+```typescript
+// packages/sidflow-web/tests/unit/health-api.test.ts
+import { GET } from "@/app/api/health/route";
+
+test("health check returns 200 when all systems healthy", async () => {
+  const response = await GET(new Request("http://localhost/api/health"));
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.status).toBe("healthy");
+  expect(body.checks).toHaveProperty("wasm");
+  expect(body.checks).toHaveProperty("cli");
+});
+```
+
+Mock external dependencies (filesystem, exec) to test different health states (healthy, degraded, unhealthy).
+
+### Testing Metrics Aggregation
+
+Metrics endpoints return operational data for monitoring dashboards:
+
+```typescript
+// packages/sidflow-web/tests/unit/admin-metrics-api.test.ts
+import { GET } from "@/app/api/admin/metrics/route";
+
+test("metrics endpoint returns job statistics", async () => {
+  // Mock job queue with test data
+  const response = await GET(new Request("http://localhost/api/admin/metrics"));
+  const body = await response.json();
+  expect(body.jobs).toHaveProperty("pending");
+  expect(body.cache).toHaveProperty("totalSize");
+});
+```
+
+Use temporary directories and mock data to simulate realistic metric scenarios.
+
+### Alert Configuration
+
+Alerts are configured in `.sidflow.json`:
+
+```json
+{
+  "alerts": {
+    "enabled": true,
+    "thresholds": {
+      "failureRate": 0.1,
+      "cacheAgeHours": 168,
+      "cpuPercent": 85,
+      "memoryPercent": 90
+    }
+  }
+}
+```
+
+Test alert validation in `packages/sidflow-common/test/config.test.ts` by providing invalid thresholds and asserting error messages.
+
+---
+
+## 11. Working with Render Orchestrator
+
+The RenderOrchestrator (`packages/sidflow-web/src/lib/render/orchestrator.ts`) manages multi-engine rendering:
+
+### Render Modes
+
+```typescript
+import { RenderOrchestrator } from "@/lib/render/orchestrator";
+
+const orchestrator = new RenderOrchestrator({
+  wasmEnabled: true,
+  cliEnabled: true,
+  ultimate64Enabled: false
+});
+
+// Orchestrator selects optimal engine based on availability
+const result = await orchestrator.render(sidFile, subtune);
+```
+
+### Ultimate64 Network Capture
+
+For Ultimate64 hardware rendering, configure network capture in `.sidflow.json`:
+
+```json
+{
+  "ultimate64": {
+    "host": "192.168.1.100",
+    "port": 64,
+    "captureMethod": "network",
+    "audioFormat": "raw"
+  }
+}
+```
+
+Test Ultimate64 integration by mocking network responses with sample PCM data.
+
+### Availability Manifests
+
+Availability manifests track render engine health over time:
+
+```json
+{
+  "timestamp": "2025-01-15T10:00:00Z",
+  "engines": {
+    "wasm": { "available": true, "lastCheck": "2025-01-15T09:59:00Z" },
+    "cli": { "available": true, "lastCheck": "2025-01-15T09:59:00Z" },
+    "ultimate64": { "available": false, "lastCheck": "2025-01-15T09:55:00Z" }
+  }
+}
+```
+
+These manifests enable graceful degradation when engines fail. See `doc/technical-reference.md` for schema details.
+
+---
+
+## 12. Contributing to Monitoring Infrastructure
+
+When adding new background jobs or critical paths, instrument them for observability:
+
+1. Add health checks to `/api/health/route.ts` if introducing new external dependencies
+2. Add metrics to `/api/admin/metrics/route.ts` for tracking operational state
+3. Emit telemetry events via `/api/telemetry/beacon` for user interactions
+4. Update `doc/admin-operations.md` with operational guidance for new features
+
+All monitoring additions require tests demonstrating healthy, degraded, and failure scenarios.
+
+---
+
+## 13. Accessibility Guidelines
+
+SIDFlow web UI follows WCAG 2.1 Level AA standards for accessibility. All components must be:
+
+### Keyboard Navigation
+
+- All interactive elements (buttons, inputs, links) must be keyboard accessible
+- Use semantic HTML (`<button>`, `<input>`, `<a>`) rather than styled `<div>` elements
+- Provide visible focus indicators (`:focus-visible` pseudo-class)
+- Support standard keyboard shortcuts:
+  - `Tab`/`Shift+Tab` for navigation
+  - `Enter`/`Space` for activation
+  - `Escape` for dismissing modals/dropdowns
+  - Arrow keys for sliders and radio groups
+
+### ARIA Labels
+
+- Icon-only buttons must have `aria-label` attributes describing their action
+- Form inputs should have associated `<label>` elements with `htmlFor` or `aria-labelledby`
+- Complex widgets (sliders, custom selects) should have appropriate ARIA roles and states
+- Use `aria-describedby` for additional context or error messages
+
+### Screen Reader Support
+
+- Use semantic HTML structure (`<main>`, `<nav>`, `<article>`, `<section>`)
+- Provide alt text for all images with `alt` attribute
+- Use `role="alert"` for status messages and errors
+- Announce dynamic content changes with `aria-live` regions
+- Hide decorative elements with `aria-hidden="true"`
+
+### Color Contrast
+
+- Text must meet WCAG AA contrast ratios:
+  - Normal text: 4.5:1 minimum
+  - Large text (≥18pt or ≥14pt bold): 3:1 minimum
+- Do not rely on color alone to convey information
+- Test with browser DevTools accessibility audits
+
+### Focus Management
+
+- Modals should trap focus and restore it on close
+- Skip links should be provided for long navigation menus
+- Focus should be moved to appropriate elements after actions (e.g., error messages)
+
+### Testing Accessibility
+
+```bash
+# Run automated accessibility checks with Playwright
+bun run test:e2e -- --grep "@a11y"
+
+# Manual testing checklist:
+# 1. Navigate entire UI with keyboard only
+# 2. Test with screen reader (NVDA on Windows, VoiceOver on macOS)
+# 3. Test with browser zoom at 200%
+# 4. Use browser DevTools Lighthouse audit
+# 5. Verify color contrast with Chrome DevTools or axe DevTools
+```
+
+### Common Patterns
+
+**Icon Button:**
+```tsx
+<Button aria-label="Play track" size="icon">
+  <PlayIcon />
+</Button>
+```
+
+**Form Input:**
+```tsx
+<label htmlFor="sid-path" className="text-sm font-medium">
+  SID File Path
+</label>
+<input
+  id="sid-path"
+  type="text"
+  aria-describedby="sid-path-hint"
+  // ...
+/>
+<p id="sid-path-hint">Enter relative path from HVSC root</p>
+```
+
+**Slider:**
+```tsx
+<Slider
+  value={energy}
+  onValueChange={setEnergy}
+  min={1}
+  max={5}
+  aria-label="Energy level"
+  aria-valuetext={`Energy level ${energy[0]} out of 5`}
+/>
+```
+
+---
+
+## 14. Pull Request Checklist
 
 - `bun run build`
 - `bun run test`
@@ -160,5 +392,7 @@ See `test-data/README.md` for detailed instructions.
 - `bun run validate:config`
 - Ensure new features have accompanying tests and keep coverage ≥90%.
 - Update `README.md` or `doc/developer.md` when behaviour changes.
+- For observability changes, update `doc/admin-operations.md` and `doc/technical-reference.md`.
+- Verify accessibility with keyboard navigation and screen reader testing.
 
 Happy hacking! 🎶

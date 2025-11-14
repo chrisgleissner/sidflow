@@ -95,6 +95,8 @@ export function RatingPanel({ onStatusChange }: RatingPanelProps) {
             max={5}
             step={1}
             disabled={isLoading}
+            aria-label="Energy level"
+            aria-valuetext={`Energy level ${energy[0]} out of 5`}
           />
         </div>
 
@@ -109,6 +111,8 @@ export function RatingPanel({ onStatusChange }: RatingPanelProps) {
             max={5}
             step={1}
             disabled={isLoading}
+            aria-label="Mood level"
+            aria-valuetext={`Mood level ${mood[0]} out of 5`}
           />
         </div>
 
@@ -123,6 +127,8 @@ export function RatingPanel({ onStatusChange }: RatingPanelProps) {
             max={5}
             step={1}
             disabled={isLoading}
+            aria-label="Complexity level"
+            aria-valuetext={`Complexity level ${complexity[0]} out of 5`}
           />
         </div>
 
@@ -137,6 +143,8 @@ export function RatingPanel({ onStatusChange }: RatingPanelProps) {
             max={5}
             step={1}
             disabled={isLoading}
+            aria-label="Preference level"
+            aria-valuetext={`Preference level ${preference[0]} out of 5`}
           />
         </div>
 

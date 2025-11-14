@@ -10,8 +10,14 @@ import {
   validateSessionToken,
   verifyAdminCredentials,
 } from '@/lib/server/admin-auth';
+import {
+  adminRateLimiter,
+  defaultRateLimiter,
+  getClientIp,
+} from '@/lib/server/rate-limiter';
 
 const ADMIN_ROUTE_PATTERN = /^\/(?:admin|api\/admin)(?:\/|$)/;
+const API_ROUTE_PATTERN = /^\/api\//;
 const MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.wasm']);
 
 function shouldApplyDocumentHeaders(request: NextRequest): boolean {
@@ -31,6 +37,7 @@ function shouldApplyModuleHeaders(pathname: string): boolean {
 function applySecurityHeaders(request: NextRequest, response: NextResponse): NextResponse {
   const { pathname } = request.nextUrl;
 
+  // Apply Cross-Origin headers for SharedArrayBuffer support
   if (shouldApplyDocumentHeaders(request)) {
     response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
     response.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
@@ -41,8 +48,53 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
     response.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
   }
 
+  // Cache control for immutable assets
   if (pathname.endsWith('.wasm')) {
     response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+
+  // Content Security Policy
+  // Allow same-origin scripts, styles, and media; block inline scripts without nonce
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval'", // unsafe-eval needed for WASM in some browsers
+    "style-src 'self' 'unsafe-inline'", // unsafe-inline for styled-components/tailwind
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "media-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "frame-ancestors 'none'", // Prevent clickjacking
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ');
+  response.headers.set('Content-Security-Policy', csp);
+
+  // Prevent clickjacking
+  response.headers.set('X-Frame-Options', 'DENY');
+
+  // Prevent MIME type sniffing
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+
+  // Referrer policy - send only origin for cross-origin requests
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Permissions policy - restrict sensitive features
+  const permissions = [
+    'camera=()',
+    'microphone=()',
+    'geolocation=()',
+    'payment=()',
+    'usb=()',
+  ].join(', ');
+  response.headers.set('Permissions-Policy', permissions);
+
+  // HSTS - enforce HTTPS in production
+  if (process.env.NODE_ENV === 'production') {
+    response.headers.set(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains; preload'
+    );
   }
 
   return response;
@@ -121,11 +173,61 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
   return response;
 }
 
+/**
+ * Enforce rate limiting for API routes.
+ */
+function enforceRateLimit(request: NextRequest): NextResponse | null {
+  const pathname = request.nextUrl.pathname;
+
+  // Only rate limit API routes
+  if (!API_ROUTE_PATTERN.test(pathname)) {
+    return null;
+  }
+
+  // Use stricter rate limit for admin endpoints
+  const rateLimiter = ADMIN_ROUTE_PATTERN.test(pathname)
+    ? adminRateLimiter
+    : defaultRateLimiter;
+
+  const clientIp = getClientIp(request.headers);
+  const result = rateLimiter.check(clientIp);
+
+  if (!result.allowed) {
+    const response = NextResponse.json(
+      {
+        error: 'rate_limit_exceeded',
+        message: 'Too many requests. Please try again later.',
+        retryAfter: result.retryAfter,
+      },
+      { status: 429 }
+    );
+
+    response.headers.set('X-RateLimit-Limit', String(rateLimiter['config'].maxRequests));
+    response.headers.set('X-RateLimit-Remaining', '0');
+    response.headers.set('X-RateLimit-Reset', String(result.resetTime));
+    if (result.retryAfter !== undefined) {
+      response.headers.set('Retry-After', String(result.retryAfter));
+    }
+
+    return response;
+  }
+
+  return null;
+}
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  // Check rate limits first
+  const rateLimitResponse = enforceRateLimit(request);
+  if (rateLimitResponse) {
+    return applySecurityHeaders(request, rateLimitResponse);
+  }
+
+  // Then enforce authentication
   const conditional = await enforceAdminAuthentication(request);
   if (conditional) {
     return applySecurityHeaders(request, conditional);
   }
+
   return applySecurityHeaders(request, NextResponse.next());
 }
 
