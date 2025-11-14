@@ -39,6 +39,79 @@ function createTestWavBuffer(durationSeconds: number, sampleRate: number): Buffe
   return buffer;
 }
 
+describe("RenderOrchestrator render mode validation", () => {
+  it("rejects invalid render mode combinations", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "sidflow-render-"));
+    const outputDir = path.join(root, "renders");
+    const sidPath = path.join(root, "test.sid");
+
+    try {
+      await writeFile(sidPath, Buffer.from("dummy sid"));
+      const orchestrator = new RenderOrchestrator();
+
+      // Invalid combination: client + prepared (should be realtime)
+      await expect(
+        orchestrator.render({
+          sidPath,
+          outputDir,
+          engine: "wasm",
+          formats: ["wav"],
+          renderMode: {
+            location: "client",
+            time: "prepared",
+            technology: "wasm",
+            target: "playback-only",
+          },
+        })
+      ).rejects.toThrow("Invalid render mode");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts valid render mode combinations", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "sidflow-render-"));
+    const hvscRoot = path.join(root, "hvsc");
+    const outputDir = path.join(root, "renders");
+
+    try {
+      await mkdir(path.join(hvscRoot, "MUSICIANS", "Test"), { recursive: true });
+      const sidPath = path.join(hvscRoot, "MUSICIANS", "Test", "demo.sid");
+      await writeFile(sidPath, Buffer.from("dummy sid"));
+
+      const orchestrator = new RenderOrchestrator({ hvscRoot });
+      const wavBuffer = createTestWavBuffer(1, 44100);
+
+      const orchestratorAny = orchestrator as unknown as {
+        renderWav: typeof orchestrator["renderWav"];
+      };
+
+      orchestratorAny.renderWav = async (_request, wavPath) => {
+        await writeFile(wavPath, wavBuffer);
+        return undefined;
+      };
+
+      // Valid combination: server + prepared + sidplayfp-cli
+      const result = await orchestrator.render({
+        sidPath,
+        outputDir,
+        engine: "sidplayfp-cli",
+        formats: ["wav"],
+        renderMode: {
+          location: "server",
+          time: "prepared",
+          technology: "sidplayfp-cli",
+          target: "wav-m4a-flac",
+        },
+      });
+
+      expect(result.errors).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("RenderOrchestrator availability registration", () => {
   it("records capture metadata when manifests are enabled", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "sidflow-render-"));
@@ -84,10 +157,16 @@ describe("RenderOrchestrator availability registration", () => {
       await orchestrator.render({
         sidPath,
         outputDir,
-        engine: "wasm",
+        engine: "ultimate64",
         formats: ["wav"],
         songIndex: 1,
         targetDurationMs: 1_000,
+        renderMode: {
+          location: "server",
+          time: "prepared",
+          technology: "ultimate64",
+          target: "wav-m4a-flac",
+        },
       });
 
       const manifest = await loadAvailabilityManifest(manifestPath);
@@ -96,7 +175,7 @@ describe("RenderOrchestrator availability registration", () => {
       const asset = manifest.assets[0];
       expect(asset.relativeSidPath).toBe("MUSICIANS/Test/demo.sid");
       expect(asset.capture?.bufferTimeMs).toBe(180);
-      expect(asset.storagePath).toBe("demo-1-wasm-6581.wav");
+      expect(asset.storagePath).toBe("demo-1-ultimate64-6581.wav");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

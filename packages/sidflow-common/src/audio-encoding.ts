@@ -7,7 +7,7 @@ import { createLogger } from "./logger.js";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { writeFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { createFFmpeg, fetchFile, type FFmpeg } from "@ffmpeg/ffmpeg";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -126,11 +126,15 @@ function resolveImplementation(
 }
 
 function normalizeWasmOptions(options?: FfmpegWasmOptions): FfmpegWasmOptions {
+  const fetchImplementation = createFileAwareFetch(options?.fetch);
+  ensureGlobalFetchPatched(fetchImplementation);
+
   return {
     log: options?.log ?? false,
-    corePath: options?.corePath ?? DEFAULT_FFMPEG_CORE_PATH,
-    wasmPath: options?.wasmPath ?? DEFAULT_FFMPEG_WASM_PATH,
-    workerPath: options?.workerPath ?? DEFAULT_FFMPEG_WORKER_PATH,
+    corePath: resolveCoreModulePath(options?.corePath ?? DEFAULT_FFMPEG_CORE_PATH),
+    wasmPath: resolveWasmAssetPath(options?.wasmPath ?? DEFAULT_FFMPEG_WASM_PATH),
+    workerPath: resolveWasmAssetPath(options?.workerPath ?? DEFAULT_FFMPEG_WORKER_PATH),
+    fetch: fetchImplementation,
   };
 }
 
@@ -219,7 +223,7 @@ async function runWasmEncoding(
   const tempOutput = `${randomUUID()}.bin`;
 
   try {
-    const data = await fetchFile(inputPath);
+    const data = await loadWasmInput(inputPath);
     ffmpeg.FS("writeFile", tempInput, data);
 
     const args = wasmOptions.buildArgs(tempInput, tempOutput);
@@ -256,6 +260,197 @@ async function runWasmEncoding(
       // ignore cleanup errors
     }
   }
+}
+
+function isLikelyUrl(value: string): boolean {
+  if (value.startsWith("data:")) {
+    return true;
+  }
+  return /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(value);
+}
+
+async function loadWasmInput(inputPath: string): Promise<Uint8Array> {
+  if (isLikelyUrl(inputPath)) {
+    return fetchFile(inputPath);
+  }
+
+  const fileBuffer = await readFile(inputPath);
+  return fileBuffer instanceof Uint8Array ? fileBuffer : new Uint8Array(fileBuffer);
+}
+
+function resolveCoreModulePath(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  if (isLikelyUrl(trimmed)) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith(".") || path.isAbsolute(trimmed)) {
+    // Convert to file:// URL for proper fetch handling
+    const absolutePath = path.isAbsolute(trimmed) ? trimmed : path.resolve(trimmed);
+    return `file://${absolutePath}`;
+  }
+
+  return trimmed;
+}
+
+function resolveWasmAssetPath(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  if (isLikelyUrl(trimmed)) {
+    return trimmed;
+  }
+
+  // Convert absolute paths to file:// URLs for proper fetch handling
+  const absolutePath = path.isAbsolute(trimmed) ? trimmed : path.resolve(trimmed);
+  return `file://${absolutePath}`;
+}
+
+type FetchArgs = Parameters<typeof fetch>;
+type FetchInput = FetchArgs[0];
+type FetchInit = FetchArgs[1];
+type FetchPreconnect = typeof fetch extends { preconnect: infer T }
+  ? T extends (...args: any[]) => any
+    ? T
+    : () => Promise<void>
+  : () => Promise<void>;
+
+let activeGlobalFetch: typeof fetch | undefined;
+
+function createFileAwareFetch(customFetch?: typeof fetch): typeof fetch {
+  const baseFetch = customFetch ?? globalThis.fetch;
+  if (!baseFetch) {
+    throw new Error(
+      "ffmpeg.wasm requires a fetch implementation; provide one via wasm.fetch or ensure global fetch is available."
+    );
+  }
+
+  const ResponseCtor = globalThis.Response;
+  if (!ResponseCtor) {
+    throw new Error(
+      "ffmpeg.wasm requires the Response constructor; ensure the runtime provides fetch/Response polyfills."
+    );
+  }
+
+  const wrappedFetch = (async (resource: FetchInput, init?: FetchInit) => {
+    const url = resolveFetchUrl(resource);
+    if (url) {
+      const fileResponse = await tryFetchLocalFile(url, init, ResponseCtor);
+      if (fileResponse) {
+        return fileResponse;
+      }
+    }
+
+    return baseFetch(resource as FetchInput, init as FetchInit);
+  }) as typeof fetch;
+
+  const basePreconnect = (baseFetch as typeof baseFetch & {
+    preconnect?: FetchPreconnect;
+  }).preconnect;
+
+  if (typeof basePreconnect === "function") {
+    (wrappedFetch as typeof wrappedFetch & { preconnect: FetchPreconnect }).preconnect =
+      basePreconnect.bind(baseFetch) as FetchPreconnect;
+  } else {
+    (wrappedFetch as typeof wrappedFetch & { preconnect: FetchPreconnect }).preconnect =
+      ((() => Promise.resolve()) as FetchPreconnect);
+  }
+
+  return wrappedFetch;
+}
+
+function ensureGlobalFetchPatched(fetchImpl: typeof fetch): void {
+  const target = globalThis as typeof globalThis & { fetch: typeof fetch };
+  if (target.fetch === fetchImpl) {
+    activeGlobalFetch = fetchImpl;
+    return;
+  }
+
+  if (activeGlobalFetch && target.fetch === activeGlobalFetch) {
+    target.fetch = fetchImpl;
+    activeGlobalFetch = fetchImpl;
+    logger.debug("Replaced patched global fetch for ffmpeg.wasm asset loading");
+    return;
+  }
+
+  target.fetch = fetchImpl;
+  activeGlobalFetch = fetchImpl;
+  logger.debug("Patched global fetch to handle ffmpeg.wasm asset URLs");
+}
+
+function resolveFetchUrl(resource: FetchInput): string | undefined {
+  if (typeof resource === "string") {
+    return resource;
+  }
+
+  if (resource instanceof URL) {
+    return resource.toString();
+  }
+
+  if (typeof resource === "object" && resource !== null && "url" in resource) {
+    const candidate = (resource as { url?: unknown }).url;
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+async function tryFetchLocalFile(
+  url: string,
+  init: FetchInit,
+  ResponseCtor: typeof Response
+): Promise<Response | undefined> {
+  const method = init?.method?.toUpperCase() ?? "GET";
+  if (method !== "GET") {
+    return undefined;
+  }
+
+  const filePath = resolveLocalFilePath(url);
+  if (!filePath) {
+    return undefined;
+  }
+
+  const data = await readFile(filePath);
+  logger.debug(`Serving ffmpeg.wasm asset from disk: ${url} -> ${filePath}`);
+  return new ResponseCtor(data, {
+    status: 200,
+    headers: {
+      "content-length": String(data.byteLength ?? data.length ?? 0),
+    },
+  });
+}
+
+function resolveLocalFilePath(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "file:") {
+      return fileURLToPath(parsed);
+    }
+  } catch {
+    // ignore URL parsing errors and fall through to path checks
+  }
+
+  if (!isLikelyUrl(url) && path.isAbsolute(url)) {
+    return url;
+  }
+
+  return undefined;
 }
 
 async function encodeWithImplementation(

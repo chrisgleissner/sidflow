@@ -53,17 +53,18 @@ describe("config", () => {
     await writeFile(configPath, JSON.stringify(payload), "utf8");
 
     const config = await loadConfig(configPath);
-    expect(config).toEqual({
-      ...payload,
-      hvscPath: path.normalize(payload.hvscPath),
-      wavCachePath: path.normalize(payload.wavCachePath),
-      tagsPath: path.normalize(payload.tagsPath),
-      sidplayPath: path.normalize(payload.sidplayPath),
-      render: {
-        ...payload.render,
-        outputPath: path.normalize(payload.render!.outputPath!)
-      }
-    });
+    expect(config.hvscPath).toBe(path.normalize(payload.hvscPath));
+    expect(config.wavCachePath).toBe(path.normalize(payload.wavCachePath));
+    expect(config.tagsPath).toBe(path.normalize(payload.tagsPath));
+    expect(config.sidplayPath).toBe(path.normalize(payload.sidplayPath));
+    expect(config.threads).toBe(payload.threads);
+    expect(config.classificationDepth).toBe(payload.classificationDepth);
+    expect(config.render).toBeDefined();
+    expect(config.render?.outputPath).toBe(path.normalize(payload.render!.outputPath!));
+    expect(config.render?.defaultFormats).toEqual(["wav", "m4a"]);
+    expect(config.render?.preferredEngines).toEqual(["wasm", "sidplayfp-cli"]);
+    expect(config.render?.defaultChip).toBe("8580r5");
+    expect(config.render?.ultimate64).toEqual(payload.render!.ultimate64);
 
     // Should return cached config
     const cached = getCachedConfig();
@@ -163,7 +164,7 @@ describe("config", () => {
     await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
   });
 
-  it("validates render settings", async () => {
+  it("validates render settings - empty defaultFormats", async () => {
     const payload = {
       hvscPath: "./hvsc",
       wavCachePath: "./wav",
@@ -172,7 +173,37 @@ describe("config", () => {
       classificationDepth: 4,
       render: {
         defaultFormats: [],
+      }
+    };
+
+    await writeFile(configPath, JSON.stringify(payload), "utf8");
+    await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
+  });
+
+  it("validates render settings - invalid preferredEngines", async () => {
+    const payload = {
+      hvscPath: "./hvsc",
+      wavCachePath: "./wav",
+      tagsPath: "./tags",
+      threads: 1,
+      classificationDepth: 4,
+      render: {
         preferredEngines: ["invalid"],
+      }
+    };
+
+    await writeFile(configPath, JSON.stringify(payload), "utf8");
+    await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
+  });
+
+  it("validates render settings - missing ultimate64 host", async () => {
+    const payload = {
+      hvscPath: "./hvsc",
+      wavCachePath: "./wav",
+      tagsPath: "./tags",
+      threads: 1,
+      classificationDepth: 4,
+      render: {
         ultimate64: {}
       }
     };

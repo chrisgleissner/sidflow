@@ -10,6 +10,7 @@ import {
   encodeWavToM4a,
   ensureDir,
   registerAvailabilityAsset,
+  validateRenderMode,
   DEFAULT_FLAC_COMPRESSION_LEVEL,
   DEFAULT_M4A_BITRATE,
   type AudioEncoderImplementation,
@@ -194,6 +195,21 @@ export class RenderOrchestrator {
     const outputs: RenderResult["outputs"] = [];
     const renderMode =
       request.renderMode ?? this.buildDefaultRenderMode(request.engine);
+
+    // Validate render mode
+    const validation = validateRenderMode(renderMode);
+    if (!validation.valid) {
+      const errorMsg = `Invalid render mode: ${validation.reason}`;
+      logger.error(errorMsg);
+      if (validation.suggestedAlternatives && validation.suggestedAlternatives.length > 0) {
+        const suggestions = validation.suggestedAlternatives
+          .map(alt => `${alt.location}/${alt.time}/${alt.technology}/${alt.target}`)
+          .join(', ');
+        logger.info(`Suggested alternatives: ${suggestions}`);
+      }
+      throw new Error(errorMsg);
+    }
+
     const relativeSidPathCandidate =
       request.relativeSidPath ??
       this.resolveRelativeSidPath(request.sidPath);

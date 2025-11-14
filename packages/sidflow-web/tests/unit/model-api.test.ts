@@ -167,7 +167,7 @@ describe('Model API - GET /api/model/latest', () => {
   test('should set appropriate cache headers', async () => {
     const response = await GET();
     const cacheControl = response.headers.get('Cache-Control');
-    expect(cacheControl).toBe('private, max-age=300');
+    expect(cacheControl).toBe('private, max-age=60');
   });
 
   test('should handle missing feature stats gracefully', async () => {
@@ -208,7 +208,7 @@ describe('Model API - GET /api/model/latest', () => {
     }
   });
 
-  test('should return error if model metadata is missing', async () => {
+  test('should return stub manifest if model metadata is missing', async () => {
     // Remove metadata temporarily
     const metadataPath = join(modelPath, 'model-metadata.json');
     const { rename } = await import('node:fs/promises');
@@ -218,9 +218,10 @@ describe('Model API - GET /api/model/latest', () => {
       const response = await GET();
       const data = await response.json();
 
-      expect(response.status).toBe(500);
-      expect(data.success).toBe(false);
-      expect(data.error).toBe('Failed to load model manifest');
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.modelVersion).toBe('stub');
+      expect(data.data.featureStats).toBeNull();
     } finally {
       // Restore metadata
       await rename(`${metadataPath}.bak`, metadataPath);

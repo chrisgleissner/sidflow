@@ -5,6 +5,7 @@ export interface FfmpegWasmOptions {
 	readonly corePath?: string;
 	readonly wasmPath?: string;
 	readonly workerPath?: string;
+	readonly fetch?: typeof fetch;
 }
 
 export interface AudioEncoderConfig {
