@@ -590,12 +590,24 @@ function createOrchestrator(
     });
   }
 
+  const hvscRoot = path.resolve(config.hvscPath);
+  const availabilityManifestPath = config.availability?.manifestPath
+    ? path.resolve(config.availability.manifestPath)
+    : undefined;
+  const availabilityAssetRoot = config.availability?.assetRoot
+    ? path.resolve(config.availability.assetRoot)
+    : undefined;
+
   return new RenderOrchestrator({
     ultimate64Client,
     ultimate64Capture,
     sidplayfpCliPath: config.sidplayPath,
     ultimate64AudioPort: ultimateConfig?.audioPort,
     ultimate64StreamIp: ultimateConfig?.streamIp,
+    hvscRoot,
+    availabilityManifestPath,
+    availabilityAssetRoot,
+    availabilityPublicBaseUrl: config.availability?.publicBaseUrl,
   });
 }
 

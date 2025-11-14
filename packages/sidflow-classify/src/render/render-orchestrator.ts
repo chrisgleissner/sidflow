@@ -6,13 +6,16 @@
 import {
   createAvailabilityAssetId,
   createLogger,
-  encodeWavToFlacNative,
-  encodeWavToM4aNative,
+  encodeWavToFlac,
+  encodeWavToM4a,
   ensureDir,
   registerAvailabilityAsset,
   DEFAULT_FLAC_COMPRESSION_LEVEL,
   DEFAULT_M4A_BITRATE,
+  type AudioEncoderImplementation,
+  type FfmpegWasmOptions,
   type AvailabilityAsset,
+  type AvailabilityCaptureMetadata,
   type RenderMode,
 } from "@sidflow/common";
 import type {
@@ -56,7 +59,7 @@ interface RegisterAssetParams {
   readonly songIndex: number;
   readonly renderMode: RenderMode;
   readonly engine: RenderEngine;
-  readonly capture?: CaptureStatistics;
+  readonly capture?: AvailabilityCaptureMetadata;
   readonly checksum?: string;
   readonly metadata?: Record<string, unknown>;
 }
@@ -170,6 +173,8 @@ export interface RenderOrchestratorConfig {
   readonly availabilityAssetRoot?: string;
   readonly availabilityPublicBaseUrl?: string;
   readonly registerAvailabilityAssets?: boolean;
+  readonly audioEncoderImplementation?: AudioEncoderImplementation;
+  readonly ffmpegWasmOptions?: FfmpegWasmOptions;
 }
 
 export class RenderOrchestrator {
@@ -245,6 +250,7 @@ export class RenderOrchestrator {
     }
 
     let wavMetadata: WavFileMetadata | null = null;
+    const captureMetadata = this.buildCaptureMetadata(captureStats);
     try {
       wavMetadata = await probeWavMetadata(wavPath);
     } catch (error) {
@@ -270,7 +276,7 @@ export class RenderOrchestrator {
           songIndex,
           renderMode,
           engine: request.engine,
-          capture: captureStats,
+          capture: captureMetadata,
         });
       } catch (error) {
         logger.warn("Failed to register WAV availability asset", error);
@@ -281,10 +287,12 @@ export class RenderOrchestrator {
     if (request.formats.includes("m4a")) {
       const m4aPath = path.join(request.outputDir, `${filePrefix}.m4a`);
       try {
-        const result = await encodeWavToM4aNative({
+        const result = await encodeWavToM4a({
           inputPath: wavPath,
           outputPath: m4aPath,
           m4aBitrate: this.config.m4aBitrate ?? DEFAULT_M4A_BITRATE,
+          implementation: this.config.audioEncoderImplementation,
+          wasm: this.config.ffmpegWasmOptions,
         });
 
         if (result.success) {
@@ -314,7 +322,7 @@ export class RenderOrchestrator {
                 songIndex,
                 renderMode,
                 engine: request.engine,
-                capture: captureStats,
+                capture: captureMetadata,
               });
             } catch (error) {
               logger.warn("Failed to register M4A availability asset", error);
@@ -335,12 +343,14 @@ export class RenderOrchestrator {
     if (request.formats.includes("flac")) {
       const flacPath = path.join(request.outputDir, `${filePrefix}.flac`);
       try {
-        const result = await encodeWavToFlacNative({
+        const result = await encodeWavToFlac({
           inputPath: wavPath,
           outputPath: flacPath,
           flacCompressionLevel:
             this.config.flacCompressionLevel ??
             DEFAULT_FLAC_COMPRESSION_LEVEL,
+          implementation: this.config.audioEncoderImplementation,
+          wasm: this.config.ffmpegWasmOptions,
         });
 
         if (result.success) {
@@ -370,7 +380,7 @@ export class RenderOrchestrator {
                 songIndex,
                 renderMode,
                 engine: request.engine,
-                capture: captureStats,
+                capture: captureMetadata,
               });
             } catch (error) {
               logger.warn("Failed to register FLAC availability asset", error);
@@ -720,6 +730,24 @@ export class RenderOrchestrator {
       time: "prepared",
       technology: engine,
       target: "wav-m4a-flac",
+    };
+  }
+
+  private buildCaptureMetadata(
+    stats?: CaptureStatistics
+  ): AvailabilityCaptureMetadata | undefined {
+    if (!stats) {
+      return undefined;
+    }
+
+    const bufferTimeMs =
+      typeof this.config.ultimate64Capture?.getBufferTimeMs === "function"
+        ? this.config.ultimate64Capture.getBufferTimeMs()
+        : undefined;
+
+    return {
+      ...stats,
+      bufferTimeMs,
     };
   }
 

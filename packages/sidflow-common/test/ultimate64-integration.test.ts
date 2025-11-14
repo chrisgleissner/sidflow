@@ -306,4 +306,13 @@ describe("Ultimate 64 Integration (Mock Server)", () => {
     expect(stats.packetsReceived).toBe(5);
     expect(stats.packetsLost).toBe(0);
   });
+
+  test("UDP Audio Capture: exposes buffer configuration", () => {
+    const capture = new Ultimate64AudioCapture({
+      port: udpPort + 400,
+      bufferTimeMs: 250,
+    });
+
+    expect(capture.getBufferTimeMs()).toBe(250);
+  });
 });

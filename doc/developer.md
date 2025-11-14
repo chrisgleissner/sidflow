@@ -29,6 +29,16 @@ Install dependencies once: `bun install`.
 | `threads` | Worker pool size (`0` = auto). |
 | `classificationDepth` | Folder depth for `auto-tags.json` aggregation. |
 
+Optional blocks:
+
+### Availability Manifests
+
+| Key | Purpose |
+| --- | --- |
+| `availability.manifestPath` | Deterministic JSON manifest listing rendered WAV/M4A/FLAC assets. |
+| `availability.assetRoot` | Filesystem root used to resolve `storagePath` entries inside manifests. |
+| `availability.publicBaseUrl` | Optional CDN/base URL; prepended to `storagePath` when publishing `publicPath`. |
+
 Validate edits with `bun run validate:config`.
 
 ---

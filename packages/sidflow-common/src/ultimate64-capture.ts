@@ -51,7 +51,7 @@ export class Ultimate64AudioCapture extends EventEmitter {
   private readonly port: number;
   private targetDurationMs: number;
   private maxLossRate: number;
-  private bufferTimeMs: number;
+  private readonly bufferTimeMs: number;
   private lastResult: { samples: Int16Array; stats: CaptureStatistics } | null = null;
 
   constructor(options: CaptureOptions) {
@@ -343,5 +343,12 @@ export class Ultimate64AudioCapture extends EventEmitter {
           : 0,
       durationMs,
     };
+  }
+
+  /**
+   * Expose the configured buffer time (used for availability metadata)
+   */
+  getBufferTimeMs(): number {
+    return this.bufferTimeMs;
   }
 }
