@@ -11,11 +11,12 @@ import { RateTab } from '@/components/RateTab';
 import { ClassifyTab } from '@/components/ClassifyTab';
 import { TrainTab } from '@/components/TrainTab';
 import { PlayTab } from '@/components/PlayTab';
+import { JobsTab } from '@/components/JobsTab';
 import { QueueView } from '@/components/QueueView';
 import { useToastContext } from '@/context/toast-context';
 import { AdminCapabilityProvider, type Persona } from '@/context/admin-capability';
 
-type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play';
+type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs';
 
 interface QueueItem {
   path: string;
@@ -83,6 +84,12 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     render: ({ onStatusChange, onTrackPlayed }) => (
       <PlayTab onStatusChange={onStatusChange} onTrackPlayed={onTrackPlayed} />
     ),
+  },
+  {
+    key: 'jobs',
+    label: 'JOBS',
+    icon: '📋',
+    render: ({ onStatusChange }) => <JobsTab onStatusChange={onStatusChange} />,
   },
 ];
 
