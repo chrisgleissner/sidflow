@@ -226,6 +226,8 @@ export class Ultimate64AudioCapture extends EventEmitter {
    */
   private isAfter(a: number, b: number): boolean {
     const diff = (a - b) & 0xffff;
+    // 32768 is half of the 16-bit sequence number space (65536).
+    // This standard technique (RFC 1982) determines if 'a' comes after 'b', handling wraparound.
     return diff > 0 && diff < 32768;
   }
 
