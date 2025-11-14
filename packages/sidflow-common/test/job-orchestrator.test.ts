@@ -3,7 +3,6 @@ import { JobOrchestrator } from "../src/job-orchestrator";
 import type { FetchJobParams, ClassifyJobParams } from "../src/job-types";
 import { unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import path from "node:path";
 
 const testManifestPath = "/tmp/test-job-manifest.json";
 
