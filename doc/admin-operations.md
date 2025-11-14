@@ -98,6 +98,346 @@ Jobs are idempotent and resumable:
 
 1. **Crash Recovery**: Restart the server; pending jobs auto-resume
 2. **Manual Restart**: Delete job file or set status to "pending"
+
+### Job Controls
+
+#### Pause Running Job
+
+```bash
+# Gracefully pause job (saves checkpoint)
+curl -X POST http://localhost:3000/api/admin/jobs/{jobId}/pause \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+#### Resume Paused Job
+
+```bash
+# Resume from last checkpoint
+curl -X POST http://localhost:3000/api/admin/jobs/{jobId}/resume \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+#### Cancel Job
+
+```bash
+# Cancel and cleanup (removes temp files)
+curl -X DELETE http://localhost:3000/api/admin/jobs/{jobId} \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+#### Retry Failed Job
+
+```bash
+# Retry with same config
+curl -X POST http://localhost:3000/api/admin/jobs/{jobId}/retry \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Retry with updated config
+curl -X POST http://localhost:3000/api/admin/jobs/{jobId}/retry \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"config": {"threads": 8}}'
+```
+
+#### View Job Logs
+
+```bash
+# Stream job logs (SSE)
+curl http://localhost:3000/api/admin/jobs/{jobId}/logs \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  --no-buffer
+
+# Get full log history
+curl http://localhost:3000/api/admin/jobs/{jobId}/logs?full=true \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+### Job Priority Management
+
+```bash
+# List jobs by priority
+curl http://localhost:3000/api/admin/jobs?sort=priority \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Update job priority
+curl -X PATCH http://localhost:3000/api/admin/jobs/{jobId} \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"priority": 10}'
+```
+
+**Priority Levels:**
+- `10`: Critical (system maintenance, urgent fixes)
+- `5`: High (user-requested operations)
+- `1`: Normal (scheduled tasks)
+- `0`: Low (background optimization)
+
+### Concurrency Limits
+
+Configure max concurrent jobs in `.sidflow.json`:
+
+```json
+{
+  "jobs": {
+    "maxConcurrent": 2,
+    "maxConcurrentByType": {
+      "fetch": 1,
+      "classify": 2,
+      "train": 1,
+      "render": 4
+    }
+  }
+}
+```
+
+### Job Scheduling
+
+Schedule recurring jobs via cron:
+
+```bash
+# Daily HVSC sync at 2 AM
+0 2 * * * curl -X POST http://localhost:3000/api/fetch \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Weekly training at Sunday 3 AM
+0 3 * * 0 curl -X POST http://localhost:3000/api/train \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Or use built-in scheduler:
+
+```json
+{
+  "jobs": {
+    "schedule": {
+      "fetch": "0 2 * * *",
+      "train": "0 3 * * 0",
+      "classify": "0 4 * * 1-5"
+    }
+  }
+}
+```
+
+---
+
+## Render Mode Selection
+
+SIDFlow supports multiple rendering technologies with different trade-offs. The **Render Matrix** defines valid combinations.
+
+### Render Matrix
+
+| Location | Time | Technology | Target | Use Case |
+|----------|------|------------|--------|----------|
+| Client | Real-time | WASM | Live audio | Default playback |
+| Client | Real-time | HLS | Streamed audio | Browser fallback |
+| Server | Offline | CLI | WAV/M4A/FLAC | Batch rendering |
+| Ultimate 64 | Real-time | Hardware | WAV/M4A/FLAC | Archival quality |
+
+### Selecting Render Modes
+
+**Admin UI**: Navigate to `/admin/render` and select:
+1. **Source**: Single file, directory, or entire HVSC
+2. **Mode**: Technology + format combination
+3. **Options**: Subtune, duration, quality settings
+
+**API Request**:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/render \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sidPath": "MUSICIANS/Rob_Hubbard/Delta.sid",
+    "mode": {
+      "location": "server",
+      "time": "offline",
+      "technology": "cli",
+      "target": "m4a"
+    },
+    "options": {
+      "subtune": 1,
+      "duration": 180,
+      "quality": "high"
+    }
+  }'
+```
+
+### Mode Validation
+
+Invalid combinations are rejected with suggestions:
+
+**Example: Invalid client+offline+wasm**
+
+```bash
+curl -X POST http://localhost:3000/api/admin/render \
+  -d '{"mode": {"location": "client", "time": "offline", "technology": "wasm"}}'
+
+# Response: 400 Bad Request
+{
+  "error": "Invalid render mode combination",
+  "details": "WASM only supports real-time rendering",
+  "suggestions": [
+    "Use server+offline+cli for offline WAV generation",
+    "Use client+real-time+wasm for live playback"
+  ]
+}
+```
+
+### Technology-Specific Considerations
+
+#### WASM Rendering
+- **Best for**: Real-time client playback
+- **Requires**: Browser with SharedArrayBuffer support
+- **Latency**: 10-50ms
+- **Quality**: Cycle-accurate emulation
+- **Limitation**: Client-side only, no offline rendering
+
+#### CLI (sidplayfp) Rendering
+- **Best for**: Batch server-side rendering
+- **Requires**: Native `sidplayfp` binary installed
+- **Speed**: Fastest for bulk operations
+- **Quality**: Identical to WASM
+- **Formats**: WAV, can pipe to ffmpeg for M4A/FLAC
+
+#### Ultimate 64 Hardware
+- **Best for**: Archival-quality captures
+- **Requires**: Ultimate 64 device on network
+- **Quality**: Real SID chip (6581/8580), authentic analog filters
+- **Speed**: Real-time only (no faster-than-realtime)
+- **Formats**: WAV (via UDP capture) + M4A/FLAC (encoded)
+- **Configuration**: See [Ultimate 64 Setup](#ultimate-64-setup)
+
+### Batch Render Operations
+
+Render entire collections:
+
+```bash
+# Render all Rob Hubbard tracks to M4A
+curl -X POST http://localhost:3000/api/admin/render \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "sidPath": "MUSICIANS/Rob_Hubbard",
+    "mode": {"location": "server", "technology": "cli", "target": "m4a"},
+    "options": {"recursive": true, "formats": ["m4a", "flac"]}
+  }'
+```
+
+Monitor batch progress:
+
+```bash
+# Check render job status
+curl http://localhost:3000/api/admin/jobs/{jobId} \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq '.progress'
+
+# Output:
+{
+  "current": 42,
+  "total": 150,
+  "percentComplete": 28.0,
+  "message": "Rendering MUSICIANS/Rob_Hubbard/Commando.sid"
+}
+```
+
+### Ultimate 64 Setup
+
+Configure Ultimate 64 in `.sidflow.json`:
+
+```json
+{
+  "render": {
+    "ultimate64": {
+      "host": "ultimate64.local",
+      "port": 64,
+      "username": "admin",
+      "password": "${ULTIMATE64_PASSWORD}",
+      "capturePort": 11000,
+      "sidType": "6581",
+      "clockSpeed": "PAL",
+      "maxConcurrent": 1,
+      "timeout": 300000
+    }
+  }
+}
+```
+
+**Network Requirements:**
+- Ultimate 64 and server on same network
+- Port 64 (HTTP) open for REST API
+- Port 11000 (UDP) open for audio streaming
+- Stable low-latency connection (<10ms RTT preferred)
+
+**Testing Connectivity:**
+
+```bash
+# Check Ultimate 64 REST API
+curl http://ultimate64.local:64/api/status
+
+# Test UDP port (on server)
+nc -u -l 11000
+
+# Trigger test stream (on Ultimate 64)
+curl -X POST http://ultimate64.local:64/api/test-stream \
+  -d '{"port": 11000, "duration": 5}'
+```
+
+**Audio Quality Settings:**
+
+```json
+{
+  "render": {
+    "ultimate64": {
+      "sidType": "6581",           // or "8580"
+      "clockSpeed": "PAL",         // or "NTSC"
+      "filterCurve": "6581R3",     // Filter revision
+      "bufferSize": 2048,          // UDP buffer (samples)
+      "packetLossThreshold": 0.01  // Max 1% loss
+    }
+  }
+}
+```
+
+### Render Asset Management
+
+Generated assets are registered in availability manifests:
+
+```bash
+# View available formats for SID
+curl http://localhost:3000/api/availability/check \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"sidPath": "MUSICIANS/Rob_Hubbard/Delta.sid"}'
+
+# Response:
+{
+  "available": true,
+  "formats": {
+    "wav": {
+      "size": 31752044,
+      "duration": 180.0,
+      "renderedAt": "2025-11-14T10:30:00Z",
+      "renderer": "ultimate64"
+    },
+    "m4a": {
+      "size": 5760000,
+      "bitrate": 256000,
+      "renderedAt": "2025-11-14T10:30:15Z"
+    }
+  }
+}
+```
+
+Invalidate stale renders:
+
+```bash
+# Invalidate specific SID
+curl -X DELETE http://localhost:3000/api/availability/invalidate \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"sidPath": "MUSICIANS/Rob_Hubbard/Delta.sid"}'
+
+# Invalidate by age
+curl -X DELETE http://localhost:3000/api/availability/invalidate \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"olderThanDays": 90}'
+```
 3. **Failed Jobs**: Check `metadata.error` for diagnostics
 
 ### Job Queue Workers
@@ -125,15 +465,19 @@ await worker.stop(); // Waits for current job to complete
 
 ## Model Publishing
 
+SIDFlow uses a managed workflow for publishing trained ML models to production. This ensures model quality, enables rollback, and maintains audit trails.
+
 ### Model Lifecycle
 
-1. **Train**: Generate new model weights from feedback data
-2. **Evaluate**: Validate against holdout set
-3. **Approve**: Admin decision to publish
-4. **Deploy**: Atomically update manifests and weights
-5. **Rollback**: Revert to previous version if issues
+```
+Train → Evaluate → Approve → Publish → Monitor
+  ↓       ↓         ↓         ↓         ↓
+Stage   Validate  Review    Deploy    Track
+```
 
-### Training a New Model
+### Training Phase
+
+Trigger model training:
 
 ```bash
 # Via CLI
@@ -146,8 +490,258 @@ curl -X POST http://localhost:3000/api/train \
   -d '{
     "epochs": 50,
     "batchSize": 32,
-    "learningRate": 0.001
+    "learningRate": 0.001,
+    "validationSplit": 0.2,
+    "evaluate": true
   }'
+```
+
+Training produces:
+- `data/model/model.json` - TensorFlow.js model architecture
+- `data/model/model/*.bin` - Model weights (sharded)
+- `data/model/model-metadata.json` - Training metadata and metrics
+- `data/training/training-log.jsonl` - Append-only training history
+
+**Training Metadata:**
+
+```json
+{
+  "modelVersion": "1.2.0",
+  "trainedAt": "2025-11-14T12:00:00Z",
+  "trainingDuration": 3600000,
+  "samples": {
+    "total": 5000,
+    "explicit": 3500,
+    "implicit": 1500,
+    "validation": 1000
+  },
+  "hyperparameters": {
+    "epochs": 50,
+    "batchSize": 32,
+    "learningRate": 0.001
+  },
+  "metrics": {
+    "mae": 0.38,
+    "rmse": 0.52,
+    "r2": 0.87,
+    "validationMae": 0.42,
+    "validationR2": 0.84
+  },
+  "featureSetVersion": "2.1.0",
+  "status": "candidate"
+}
+```
+
+### Evaluation Phase
+
+Automated evaluation runs after training:
+
+```bash
+# View evaluation metrics
+curl http://localhost:3000/api/admin/model/evaluate \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Response:
+{
+  "modelVersion": "1.2.0",
+  "metrics": {
+    "mae": 0.38,
+    "rmse": 0.52,
+    "r2": 0.87
+  },
+  "baseline": {
+    "mae": 0.45,
+    "improvement": "15.6%"
+  },
+  "recommendations": [
+    "✓ R² score improved from 0.84 to 0.87",
+    "✓ MAE below threshold (0.4)",
+    "✓ Ready for approval"
+  ]
+}
+```
+
+**Quality Gates:**
+- MAE < 0.4 (mean absolute error)
+- R² > 0.8 (coefficient of determination)
+- Validation metrics within 10% of training metrics
+- Better than baseline model
+
+### Approval Phase
+
+Manual approval by admin:
+
+```bash
+# Review candidate model
+curl http://localhost:3000/api/admin/model/candidate \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Approve for production
+curl -X POST http://localhost:3000/api/admin/model/approve \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "modelVersion": "1.2.0",
+    "notes": "Improved R² from 0.84 to 0.87 with 5k samples"
+  }'
+```
+
+Approval triggers:
+1. Copy model to `data/model/production/`
+2. Update `data/model/active-version.json`
+3. Create backup of previous production model
+4. Log approval to `data/audit/admin-actions.jsonl`
+
+### Publishing Phase
+
+Atomic model deployment:
+
+```bash
+# Publish approved model
+curl -X POST http://localhost:3000/api/admin/model/publish \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"modelVersion": "1.2.0"}'
+```
+
+**Publishing Steps:**
+1. Validate model artifacts (checksums)
+2. Generate model manifest with metadata
+3. Atomically update `data/model/manifest.json`
+4. Trigger client refresh (via WebSocket or polling)
+5. Monitor for errors (5-minute warmup period)
+
+**Model Manifest:**
+
+```json
+{
+  "activeVersion": "1.2.0",
+  "publishedAt": "2025-11-14T14:00:00Z",
+  "manifestChecksum": "sha256:abc123...",
+  "artifacts": {
+    "model.json": {
+      "checksum": "sha256:def456...",
+      "sizeBytes": 1234
+    },
+    "model/weights.bin": {
+      "checksum": "sha256:ghi789...",
+      "sizeBytes": 567890
+    }
+  },
+  "metadata": {
+    "trainedAt": "2025-11-14T12:00:00Z",
+    "samples": 5000,
+    "metrics": { "mae": 0.38, "r2": 0.87 }
+  },
+  "rollback": {
+    "previousVersion": "1.1.0",
+    "availableVersions": ["1.0.0", "1.1.0"]
+  }
+}
+```
+
+### Monitoring Phase
+
+Track model performance in production:
+
+```bash
+# Live metrics
+curl http://localhost:3000/api/admin/model/metrics \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Response:
+{
+  "activeVersion": "1.2.0",
+  "uptime": 3600000,
+  "predictions": {
+    "total": 15000,
+    "errors": 12,
+    "errorRate": 0.0008,
+    "avgLatency": 8.5,
+    "p95Latency": 15.2
+  },
+  "accuracy": {
+    "mae": 0.39,
+    "drift": 0.01
+  },
+  "health": "healthy"
+}
+```
+
+**Alert Conditions:**
+- Error rate > 1%
+- Average latency > 50ms
+- MAE drift > 0.1 from training metrics
+- Missing model artifacts
+
+### Rollback Procedure
+
+Revert to previous model version:
+
+```bash
+# Emergency rollback to last stable version
+curl -X POST http://localhost:3000/api/admin/model/rollback \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "reason": "High error rate in production",
+    "immediate": true
+  }'
+
+# Rollback to specific version
+curl -X POST http://localhost:3000/api/admin/model/rollback \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "targetVersion": "1.1.0",
+    "reason": "Manual rollback for testing"
+  }'
+```
+
+**Rollback Steps:**
+1. Verify target version exists in backups
+2. Update active version pointer
+3. Trigger client refresh
+4. Monitor for 5 minutes
+5. Log rollback to audit trail
+
+**Recovery Time Objective:** < 2 minutes
+
+### Versioning Strategy
+
+**Semantic Versioning:**
+- `MAJOR.MINOR.PATCH` (e.g., `1.2.0`)
+- **MAJOR**: Breaking changes to feature set or model architecture
+- **MINOR**: New features, improved accuracy
+- **PATCH**: Bug fixes, performance improvements
+
+**Version Retention:**
+- Keep last 5 production versions
+- Archive older versions to backup storage
+- Minimum retention: 90 days
+
+### Model Audit Trail
+
+All model operations logged to `data/audit/admin-actions.jsonl`:
+
+```json
+{
+  "timestamp": "2025-11-14T14:00:00Z",
+  "action": "model.publish",
+  "actor": "admin@example.com",
+  "details": {
+    "modelVersion": "1.2.0",
+    "previousVersion": "1.1.0",
+    "metrics": { "mae": 0.38, "r2": 0.87 },
+    "notes": "Improved accuracy with expanded training set"
+  }
+}
+```
+
+Query audit trail:
+
+```bash
+# Recent model operations
+grep "model\." data/audit/admin-actions.jsonl | tail -n 10
+
+# Specific model history
+grep "1.2.0" data/audit/admin-actions.jsonl | jq .
 ```
 
 ### Model Artifacts

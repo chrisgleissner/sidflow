@@ -91,6 +91,94 @@ function validateConfig(value, configPath) {
         }
         return path.normalize(raw);
     };
+    const parseRender = () => {
+        const raw = record["render"];
+        if (raw === undefined) return undefined;
+        if (!raw || typeof raw !== "object") {
+            throw new SidflowConfigError(`Config key "render" must be an object when provided`);
+        }
+        const r = raw;
+        const allowedFormats = new Set(["wav", "m4a", "flac"]);
+        const allowedEngines = new Set(["wasm", "sidplayfp-cli", "c64u"]);
+        const allowedChips = new Set(["6581", "8580r5"]);
+
+        // Optional output path (validate string if provided)
+        let outputPath;
+        if (r.outputPath !== undefined) {
+            if (typeof r.outputPath !== "string" || r.outputPath.trim() === "") {
+                throw new SidflowConfigError(`Config key "render.outputPath" must be a non-empty string`);
+            }
+            outputPath = path.normalize(r.outputPath);
+        }
+
+        // defaultFormats: if provided, must be non-empty array of allowed formats
+        let defaultFormats;
+        if (r.defaultFormats !== undefined) {
+            if (!Array.isArray(r.defaultFormats) || r.defaultFormats.length === 0) {
+                throw new SidflowConfigError(`Config key "render.defaultFormats" must be a non-empty array`);
+            }
+            defaultFormats = r.defaultFormats.map((f) => {
+                if (typeof f !== "string" || !allowedFormats.has(f)) {
+                    throw new SidflowConfigError(`Unsupported render format: ${String(f)}`);
+                }
+                return f;
+            });
+        }
+
+        // preferredEngines: if provided, each must be allowed
+        let preferredEngines;
+        if (r.preferredEngines !== undefined) {
+            if (!Array.isArray(r.preferredEngines) || r.preferredEngines.length === 0) {
+                throw new SidflowConfigError(`Config key "render.preferredEngines" must be a non-empty array`);
+            }
+            preferredEngines = r.preferredEngines.map((e) => {
+                if (typeof e !== "string" || !allowedEngines.has(e)) {
+                    throw new SidflowConfigError(`Unsupported render engine: ${String(e)}`);
+                }
+                return e;
+            });
+        }
+
+        // defaultChip: optional, must be allowed if provided
+        let defaultChip;
+        if (r.defaultChip !== undefined) {
+            if (typeof r.defaultChip !== "string" || !allowedChips.has(r.defaultChip)) {
+                throw new SidflowConfigError(`Unsupported default chip: ${String(r.defaultChip)}`);
+            }
+            defaultChip = r.defaultChip;
+        }
+
+        // ultimate64: optional object; if provided, must include host (non-empty string)
+        let ultimate64;
+        if (r.ultimate64 !== undefined) {
+            const u = r.ultimate64;
+            if (!u || typeof u !== "object") {
+                throw new SidflowConfigError(`Config key "render.ultimate64" must be an object when provided`);
+            }
+            const host = u.host;
+            if (typeof host !== "string" || host.trim() === "") {
+                throw new SidflowConfigError(`Config key "render.ultimate64.host" must be a non-empty string`);
+            }
+            ultimate64 = {
+                host: host,
+                https: Boolean(u.https),
+                password: typeof u.password === "string" && u.password.trim() !== "" ? u.password : undefined,
+                audioPort: typeof u.audioPort === "number" && Number.isInteger(u.audioPort) && u.audioPort > 0
+                    ? u.audioPort
+                    : undefined,
+                streamIp: typeof u.streamIp === "string" && u.streamIp.trim() !== "" ? u.streamIp : undefined
+            };
+        }
+
+        return {
+            outputPath: outputPath,
+            defaultFormats,
+            preferredEngines,
+            defaultChip,
+            ultimate64
+        };
+    };
+
     return {
         hvscPath: requiredString("hvscPath"),
         wavCachePath: requiredString("wavCachePath"),
@@ -98,7 +186,8 @@ function validateConfig(value, configPath) {
         classifiedPath: optionalString("classifiedPath"),
         sidplayPath: optionalString("sidplayPath"),
         threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
-        classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0)
+        classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0),
+        render: parseRender()
     };
 }
 //# sourceMappingURL=config.js.map

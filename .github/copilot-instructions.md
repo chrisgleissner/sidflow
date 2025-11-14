@@ -1,5 +1,12 @@
 # SIDFlow Copilot Guardrails
 
+## Agent autonomy and execution plans
+- This repository opts into persistent, autonomous agents. When you begin any non-trivial task, first load and follow the central execution plan in `PLANS.md` at the repo root. Treat it as the single source of truth for plan-then-act, progress logging, quality gates, and verification.
+- Do not stop early. Continue working until the user’s request is fully satisfied or you are genuinely blocked by missing credentials or external access. Prefer research and reasonable assumptions over asking for clarification; document assumptions you make in your plan’s Decision Log.
+- Keep going across long sessions. Use the plan’s Progress, Surprises & Discoveries, Decision Log, and Outcomes sections to maintain continuity over hours of work. Always update these sections as you proceed.
+- Always run quick validation after substantive edits (Build, Lint/Typecheck, Tests). Record PASS/FAIL and errors encountered in the plan’s Progress section and iterate up to three targeted fixes before surfacing a summary to the user.
+- Prefer minimal, additive edits; keep public APIs stable unless the task requires changes. Preserve repository coding conventions and shared utilities as defined below.
+
 ## Architecture & Data Flow
 - SIDFlow is a CLI-first pipeline: fetch HVSC (`@sidflow/fetch`), classify audio (`@sidflow/classify`), train ML (`@sidflow/train`), and play/recommend (`@sidflow/play`); each stage reads/writes `data/` JSONL and relies on `.sidflow.json` paths.
 - Classification splits into WAV cache rendering, heuristic feature extraction (`heuristicFeatureExtractor`), auto-tag generation, and JSONL emission; reuse the planner in `packages/sidflow-classify/src/index.ts`.
@@ -38,3 +45,9 @@
 - Compose functionality from small functions; use concise comments only to explain non-obvious steps (e.g., cache heuristics).
 - Use shared error types like `SidflowConfigError` for config issues and preserve informative messaging when wrapping errors.
 - Never duplicate logging/serialization patterns; extend `@sidflow/common` if a new cross-cutting helper is required.
+
+## Agent quickstart
+- Read `AGENTS.md` at the repo root for repo-wide agent behavior, ExecPlan usage, and multi-hour workflow expectations.
+- Read `PLANS.md` and follow it for any multi-step work.
+- For Cursor users: also honor `.cursorrules` at the repo root; it mirrors these guardrails and points to the same execution plan.
+- For short Q&A or trivial code snippets, you may answer directly, but prefer making concrete edits and running fast checks when feasible.
