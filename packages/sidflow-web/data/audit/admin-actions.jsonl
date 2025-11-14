@@ -1,0 +1,2 @@
+{"timestamp":"2025-11-14T22:09:38.743Z","action":"job:create","actor":"admin","resource":"fetch-1763158178735-hqmrlm","details":{"type":"fetch","params":{}},"success":true}
+{"timestamp":"2025-11-14T22:09:43.466Z","action":"job:delete","actor":"admin","resource":"fetch-1763158178735-hqmrlm","success":true}

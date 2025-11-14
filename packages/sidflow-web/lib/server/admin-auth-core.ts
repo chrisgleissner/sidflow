@@ -117,7 +117,8 @@ function safeCompare(a: string, b: string): boolean {
 function getEnvSignature(): string {
   return JSON.stringify({
     user: process.env.SIDFLOW_ADMIN_USER ?? 'admin',
-    password: process.env.SIDFLOW_ADMIN_PASSWORD ?? '',
+    // Use the effective fallback in the signature so cache invalidates if env is later set
+    password: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'password',
     secret: process.env.SIDFLOW_ADMIN_SECRET ?? '',
     ttl: process.env.SIDFLOW_ADMIN_SESSION_TTL_MS ?? '',
   });
@@ -157,9 +158,14 @@ export function getAdminConfig(): AdminConfig {
   }
 
   const username = process.env.SIDFLOW_ADMIN_USER ?? 'admin';
-  const password = process.env.SIDFLOW_ADMIN_PASSWORD;
-  if (!password) {
-    throw new Error('SIDFLOW_ADMIN_PASSWORD must be set to enable /admin authentication');
+  const password = process.env.SIDFLOW_ADMIN_PASSWORD ?? 'password';
+  if (process.env.SIDFLOW_ADMIN_PASSWORD == null) {
+    // Warn loudly in dev if the insecure default is in use; do not crash.
+    // This keeps /admin usable out of the box but makes it obvious in logs.
+    console.warn(
+      '[admin-auth] SIDFLOW_ADMIN_PASSWORD is not set. Using insecure default "password". '
+        + 'Set SIDFLOW_ADMIN_PASSWORD in production.'
+    );
   }
 
   const sessionTtlEnv = process.env.SIDFLOW_ADMIN_SESSION_TTL_MS;

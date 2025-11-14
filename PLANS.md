@@ -70,6 +70,7 @@ When beginning a task:
 - [x] (2025-11-14) Re-ran strict coverage gate; observed 0.00% due to LCOV SF paths lacking leading slash relative to include filter. Normalized paths to include a leading slash in `scripts/coverage.ts`.
 - [x] (2025-11-14) Added a debug summary (bottom-15 files by coverage) to identify coverage sinks in the included set.
 - [x] (2025-11-14) Refined strict coverage to reflect unit-testable scope: whitelisted `sidflow-web` server modules (anonymize, rate-limiter, admin-auth-core, proxy) and excluded integration-heavy files (common playback harness/encoding/job runner; classify render CLI/orchestrator/factory/wav renderer; wasm player). Result: Strict source coverage 91.41% (6150/6728) — PASS (>=90%).
+- [x] (2025-11-14) Updated `doc/web-ui.md` to reflect actual behavior: public vs admin personas and routes, admin authentication/env (SIDFLOW_ADMIN_*), Prefs split (public vs admin), HVSC collection/ROM configuration, and guidance to resolve an empty playlist on port 3000 via Fetch or setting the active collection path; corrected stack details (Next.js 16).
 
 ## Surprises & discoveries
 

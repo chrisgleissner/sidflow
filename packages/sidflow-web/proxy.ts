@@ -54,14 +54,19 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
   }
 
   // Content Security Policy
-  // Allow same-origin scripts, styles, and media; block inline scripts without nonce
+  // In development we relax script-src/connect-src to allow Next.js dev client and hydration.
+  const isProd = process.env.NODE_ENV === 'production';
+  const scriptSrc = isProd
+    ? "script-src 'self' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:";
+  const connectSrc = isProd ? "connect-src 'self'" : "connect-src 'self' ws: wss:";
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval'", // unsafe-eval needed for WASM in some browsers
-    "style-src 'self' 'unsafe-inline'", // unsafe-inline for styled-components/tailwind
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline'", // allow inline styles for Tailwind
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    connectSrc,
     "media-src 'self' blob:",
     "worker-src 'self' blob:",
     "frame-ancestors 'none'", // Prevent clickjacking

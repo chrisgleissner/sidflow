@@ -39,13 +39,15 @@ export async function POST(request: NextRequest) {
     beginClassifyProgress(threads);
 
     const command = 'sidflow-classify';
+    // Prefer WASM engine by default for server-side renders; fall back to others
+    const cliArgs: string[] = ['--prefer', 'wasm,sidplayfp-cli,ultimate64'];
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
       SIDFLOW_SID_BASE_PATH: classificationPath,
     };
     const { result, reason } = await runClassificationProcess({
       command,
-      args: [],
+      args: cliArgs,
       cwd: root,
       env: cliEnv,
       onStdout: ingestClassifyStdout,
