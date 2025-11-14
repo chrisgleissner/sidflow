@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "node:path";
 
 import { RenderOrchestrator } from "@sidflow/classify";
-import type { RenderEngine, RenderFormat } from "@sidflow/common";
+import type {
+  RenderEngine,
+  RenderFormat,
+  FfmpegWasmOptions,
+} from "@sidflow/common";
 import {
   loadConfig,
   Ultimate64AudioCapture,
@@ -254,6 +258,7 @@ function createOrchestrator(
     ? path.resolve(config.availability.assetRoot)
     : undefined;
 
+  const renderSettings = config.render;
   return new RenderOrchestrator({
     ultimate64Client,
     ultimate64Capture,
@@ -264,5 +269,18 @@ function createOrchestrator(
     availabilityManifestPath,
     availabilityAssetRoot,
     availabilityPublicBaseUrl: config.availability?.publicBaseUrl,
+    m4aBitrate: renderSettings?.m4aBitrate,
+    flacCompressionLevel: renderSettings?.flacCompressionLevel,
+    audioEncoderImplementation: renderSettings?.audioEncoder?.implementation,
+    ffmpegWasmOptions: normalizeWasmOptions(renderSettings?.audioEncoder?.wasm),
   });
+}
+
+function normalizeWasmOptions(
+  options?: FfmpegWasmOptions
+): FfmpegWasmOptions | undefined {
+  if (!options) {
+    return undefined;
+  }
+  return Object.keys(options).length > 0 ? options : undefined;
 }

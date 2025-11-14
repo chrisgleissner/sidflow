@@ -195,6 +195,27 @@ Each command can be run via the command line interface from the repository root.
 > [!TIP]
 > The CLI includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`../packages/sidflow-classify/README-INTEGRATION.md`](../packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
 
+#### Render CLI (`scripts/sidflow-render`)
+
+Use the render CLI to convert specific SID tracks into WAV, M4A, and/or FLAC files with fine-grained encoder control:
+
+```sh
+./scripts/sidflow-render --sid Rob_Hubbard/Delta.sid#2 \
+  --formats wav,m4a --engine auto --encoder wasm \
+  --target-duration 120 --ffmpeg-wasm-core ./vendor/ffmpeg-core.js
+```
+
+Key flags:
+
+- `--encoder <auto|native|wasm>` — Choose ffmpeg implementation (falls back to `render.audioEncoder.implementation`)
+- `--ffmpeg-wasm-core`, `--ffmpeg-wasm-wasm`, `--ffmpeg-wasm-worker` — Override the ffmpeg.wasm bundle paths without editing config
+- `--ffmpeg-wasm-log <true|false>` — Toggle verbose ffmpeg.wasm logging
+- `--target-duration <seconds>` / `--max-loss <0-1>` — Control capture duration and tolerated Ultimate64 packet loss
+- `--formats <wav,m4a,flac>` — Emit one or more formats in a single pass
+- `--prefer <engine list>` — Influence engine fallback order (e.g., `ultimate64,sidplayfp-cli,wasm`)
+
+All overrides merge with the `.sidflow.json` `render` block so you can keep defaults in config and override specific runs from the CLI.
+
 #### JSONL Classification Output
 
 The classification pipeline can output results in **JSONL** (JSON Lines) format, with one classification record per line. This format is ideal for:
@@ -751,7 +772,24 @@ The configuration file controls all paths and settings:
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./workspace/classified",
   "threads": 0,
-  "classificationDepth": 3
+  "classificationDepth": 3,
+  "render": {
+    "outputPath": "./workspace/renders",
+    "defaultFormats": ["wav", "m4a"],
+    "preferredEngines": ["ultimate64", "sidplayfp-cli"],
+    "defaultChip": "6581",
+    "m4aBitrate": 256,
+    "flacCompressionLevel": 7,
+    "audioEncoder": {
+      "implementation": "auto",
+      "wasm": {
+        "corePath": "./vendor/ffmpeg-core.js",
+        "wasmPath": "./vendor/ffmpeg-core.wasm",
+        "workerPath": "./vendor/ffmpeg-core.worker.js",
+        "log": false
+      }
+    }
+  }
 }
 ```
 
@@ -763,6 +801,19 @@ The configuration file controls all paths and settings:
 - `classifiedPath` — Output directory for JSONL classification files
 - `threads` — Number of parallel threads for processing (0 = auto-detect)
 - `classificationDepth` — Directory depth for aggregating auto-tags.json files
+- `render` — Optional block for render defaults (described below)
+
+#### Render settings
+
+- `render.outputPath` — Default directory for `sidflow-render` outputs (falls back to `wavCachePath/rendered`)
+- `render.defaultFormats` — Default set of formats (`wav`, `m4a`, `flac`) produced per render request
+- `render.preferredEngines` — Ordered list of engines to try before falling back to WASM (`ultimate64`, `sidplayfp-cli`, `wasm`)
+- `render.defaultChip` — Default SID chip profile for renders (`6581` or `8580r5`)
+- `render.m4aBitrate` — Target AAC bitrate (kbps) used by both native ffmpeg and ffmpeg.wasm (default: 256)
+- `render.flacCompressionLevel` — FLAC compression level (0-12)
+- `render.audioEncoder.implementation` — Lock encoder to `native`, `wasm`, or `auto`
+- `render.audioEncoder.wasm.*` — Override `ffmpeg-core` bundle paths or enable verbose logging when using ffmpeg.wasm
+- `render.ultimate64.*` — Ultimate 64 capture settings (host, HTTPS, password, ports)
 
 ### Validation
 

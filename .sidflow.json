@@ -10,6 +10,16 @@
     "defaultFormats": ["wav", "m4a", "flac"],
     "preferredEngines": ["sidplayfp-cli", "ultimate64", "wasm"],
     "defaultChip": "6581",
+    "m4aBitrate": 256,
+    "flacCompressionLevel": 5,
+    "audioEncoder": {
+      "implementation": "auto",
+      "wasm": {
+        "corePath": "./node_modules/@ffmpeg/core/dist/ffmpeg-core.js",
+        "wasmPath": "./node_modules/@ffmpeg/core/dist/ffmpeg-core.wasm",
+        "workerPath": "./node_modules/@ffmpeg/core/dist/ffmpeg-core.worker.js"
+      }
+    },
     "ultimate64": {
       "host": "127.0.0.1:11080",
       "audioPort": 11001

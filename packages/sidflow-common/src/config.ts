@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import type {
+  AudioEncoderConfig,
+  AudioEncoderImplementation,
+  FfmpegWasmOptions,
+} from "./audio-types.js";
 
 export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
 export type RenderFormat = "wav" | "m4a" | "flac";
@@ -18,6 +23,9 @@ export interface RenderSettings {
   defaultFormats?: RenderFormat[];
   preferredEngines?: RenderEngine[];
   defaultChip?: "6581" | "8580r5";
+  m4aBitrate?: number;
+  flacCompressionLevel?: number;
+  audioEncoder?: AudioEncoderConfig;
   ultimate64?: Ultimate64RenderConfig;
 }
 
@@ -245,6 +253,125 @@ function parseRenderSettings(value: unknown, configPath: string): RenderSettings
     settings.defaultChip = record.defaultChip;
   }
 
+  if (record.m4aBitrate !== undefined) {
+    if (
+      typeof record.m4aBitrate !== "number" ||
+      !Number.isInteger(record.m4aBitrate) ||
+      record.m4aBitrate <= 0
+    ) {
+      throw new SidflowConfigError(
+        `Config key "render.m4aBitrate" must be a positive integer number of kbps`
+      );
+    }
+    settings.m4aBitrate = record.m4aBitrate;
+  }
+
+  if (record.flacCompressionLevel !== undefined) {
+    if (
+      typeof record.flacCompressionLevel !== "number" ||
+      !Number.isInteger(record.flacCompressionLevel) ||
+      record.flacCompressionLevel < 0 ||
+      record.flacCompressionLevel > 12
+    ) {
+      throw new SidflowConfigError(
+        `Config key "render.flacCompressionLevel" must be an integer between 0 and 12`
+      );
+    }
+    settings.flacCompressionLevel = record.flacCompressionLevel;
+  }
+
+  if (record.audioEncoder !== undefined) {
+    if (!record.audioEncoder || typeof record.audioEncoder !== "object") {
+      throw new SidflowConfigError(
+        `Config key "render.audioEncoder" must be an object`
+      );
+    }
+
+    const encoderRecord = record.audioEncoder as Record<string, unknown>;
+    let audioEncoder: AudioEncoderConfig = {};
+
+    if (encoderRecord.implementation !== undefined) {
+      if (!isAudioEncoderImplementation(encoderRecord.implementation)) {
+        throw new SidflowConfigError(
+          `Config key "render.audioEncoder.implementation" must be one of native, wasm, auto`
+        );
+      }
+      audioEncoder = {
+        ...audioEncoder,
+        implementation: encoderRecord.implementation,
+      };
+    }
+
+    if (encoderRecord.wasm !== undefined) {
+      if (!encoderRecord.wasm || typeof encoderRecord.wasm !== "object") {
+        throw new SidflowConfigError(
+          `Config key "render.audioEncoder.wasm" must be an object`
+        );
+      }
+
+      const wasmRecord = encoderRecord.wasm as Record<string, unknown>;
+      let wasmOptions: FfmpegWasmOptions = {};
+
+      if (wasmRecord.corePath !== undefined) {
+        if (typeof wasmRecord.corePath !== "string" || wasmRecord.corePath.trim() === "") {
+          throw new SidflowConfigError(
+            `Config key "render.audioEncoder.wasm.corePath" must be a non-empty string`
+          );
+        }
+        wasmOptions = {
+          ...wasmOptions,
+          corePath: path.normalize(wasmRecord.corePath),
+        };
+      }
+
+      if (wasmRecord.wasmPath !== undefined) {
+        if (typeof wasmRecord.wasmPath !== "string" || wasmRecord.wasmPath.trim() === "") {
+          throw new SidflowConfigError(
+            `Config key "render.audioEncoder.wasm.wasmPath" must be a non-empty string`
+          );
+        }
+        wasmOptions = {
+          ...wasmOptions,
+          wasmPath: path.normalize(wasmRecord.wasmPath),
+        };
+      }
+
+      if (wasmRecord.workerPath !== undefined) {
+        if (
+          typeof wasmRecord.workerPath !== "string" ||
+          wasmRecord.workerPath.trim() === ""
+        ) {
+          throw new SidflowConfigError(
+            `Config key "render.audioEncoder.wasm.workerPath" must be a non-empty string`
+          );
+        }
+        wasmOptions = {
+          ...wasmOptions,
+          workerPath: path.normalize(wasmRecord.workerPath),
+        };
+      }
+
+      if (wasmRecord.log !== undefined) {
+        if (typeof wasmRecord.log !== "boolean") {
+          throw new SidflowConfigError(
+            `Config key "render.audioEncoder.wasm.log" must be a boolean`
+          );
+        }
+        wasmOptions = {
+          ...wasmOptions,
+          log: wasmRecord.log,
+        };
+      }
+
+      audioEncoder = {
+        ...audioEncoder,
+        wasm: wasmOptions,
+      };
+    }
+
+    settings.audioEncoder = audioEncoder;
+  }
+
   if (record.ultimate64 !== undefined) {
     if (!record.ultimate64 || typeof record.ultimate64 !== "object") {
       throw new SidflowConfigError(
@@ -307,6 +434,10 @@ function parseRenderSettings(value: unknown, configPath: string): RenderSettings
   }
 
   return settings;
+}
+
+function isAudioEncoderImplementation(value: unknown): value is AudioEncoderImplementation {
+  return value === "native" || value === "wasm" || value === "auto";
 }
 
 function parseAvailabilityConfig(value: unknown, configPath: string): AvailabilityConfig | undefined {

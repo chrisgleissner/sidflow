@@ -9,7 +9,13 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { writeFile } from "node:fs/promises";
 import { createFFmpeg, fetchFile, type FFmpeg } from "@ffmpeg/ffmpeg";
-import type { AudioEncoderImplementation } from "./audio-types.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import type {
+  AudioEncoderImplementation,
+  FfmpegWasmOptions,
+} from "./audio-types.js";
 
 const logger = createLogger("audio-encoding");
 const require = createRequire(import.meta.url);
@@ -28,18 +34,67 @@ const DEFAULT_FFMPEG_WORKER_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.wor
 let wasmEncoder: FFmpeg | null = null;
 
 function tryResolve(moduleId: string): string | undefined {
+  const candidates = [moduleId, `@ffmpeg/ffmpeg/node_modules/${moduleId}`];
+  for (const specifier of candidates) {
+    try {
+      return require.resolve(specifier);
+    } catch {
+      continue;
+    }
+  }
+
+  const resolver = (import.meta as ImportMeta & {
+    resolve?(specifier: string): string;
+  }).resolve;
+  if (!resolver) {
+    return undefined;
+  }
+
+  for (const specifier of candidates) {
+    try {
+      const resolvedUrl = resolver(specifier);
+      return resolvedUrl.startsWith("file://")
+        ? fileURLToPath(resolvedUrl)
+        : resolvedUrl;
+    } catch {
+      continue;
+    }
+  }
+
+  return resolveFromBunStore(moduleId);
+}
+
+function resolveFromBunStore(moduleId: string): string | undefined {
+  if (!moduleId.startsWith("@ffmpeg/core/")) {
+    return undefined;
+  }
+
+  const bunRoot = path.resolve(process.cwd(), "node_modules/.bun");
+  const suffix = moduleId.replace("@ffmpeg/core/", "");
+
   try {
-    return require.resolve(moduleId);
+    const entries = readdirSync(bunRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith("@ffmpeg+core@")) {
+        continue;
+      }
+      const candidate = path.join(
+        bunRoot,
+        entry.name,
+        "node_modules",
+        "@ffmpeg",
+        "core",
+        suffix
+      );
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
   } catch {
     return undefined;
   }
-}
 
-export interface FfmpegWasmOptions {
-  readonly log?: boolean;
-  readonly corePath?: string;
-  readonly wasmPath?: string;
-  readonly workerPath?: string;
+  return undefined;
 }
 
 export interface EncodeOptions {

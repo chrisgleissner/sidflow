@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import {
   encodeWavToM4aNative,
+  encodeWavToM4aWasm,
   encodeWavToFlacNative,
   getM4aBitrate,
   DEFAULT_M4A_BITRATE,
@@ -14,6 +15,7 @@ import path from "node:path";
 const testDir = "/tmp/audio-encoding-test";
 const testWavPath = path.join(testDir, "test.wav");
 const testM4aPath = path.join(testDir, "test.m4a");
+const testM4aWasmPath = path.join(testDir, "test-wasm.m4a");
 const testFlacPath = path.join(testDir, "test.flac");
 
 beforeAll(async () => {
@@ -44,6 +46,7 @@ afterAll(async () => {
   try {
     if (existsSync(testWavPath)) await unlink(testWavPath);
     if (existsSync(testM4aPath)) await unlink(testM4aPath);
+  if (existsSync(testM4aWasmPath)) await unlink(testM4aWasmPath);
     if (existsSync(testFlacPath)) await unlink(testFlacPath);
   } catch {
     // Ignore cleanup errors
@@ -88,22 +91,35 @@ describe("Audio Encoding", () => {
     expect(stats.size).toBeGreaterThan(0);
   });
 
-  test("M4A file has correct bitrate", async () => {
-    // First encode with known bitrate
+  test("encodeWavToM4aNative uses default 256 kbps when unspecified", async () => {
     await encodeWavToM4aNative({
       inputPath: testWavPath,
       outputPath: testM4aPath,
-      m4aBitrate: 256,
     });
 
-    // Then check the bitrate
     const bitrate = await getM4aBitrate(testM4aPath);
     expect(bitrate).not.toBeNull();
 
-    // Bitrate should be close to 256 kbps (allow some variance)
     if (bitrate !== null) {
-      expect(bitrate).toBeGreaterThan(200);
-      expect(bitrate).toBeLessThan(300);
+      expect(Math.abs(bitrate - DEFAULT_M4A_BITRATE)).toBeLessThanOrEqual(40);
+    }
+  });
+
+  test("encodeWavToM4aWasm matches default 256 kbps output", async () => {
+    const result = await encodeWavToM4aWasm({
+      inputPath: testWavPath,
+      outputPath: testM4aWasmPath,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.outputPath).toBe(testM4aWasmPath);
+    expect(existsSync(testM4aWasmPath)).toBe(true);
+
+    const bitrate = await getM4aBitrate(testM4aWasmPath);
+    expect(bitrate).not.toBeNull();
+
+    if (bitrate !== null) {
+      expect(Math.abs(bitrate - DEFAULT_M4A_BITRATE)).toBeLessThanOrEqual(40);
     }
   });
 

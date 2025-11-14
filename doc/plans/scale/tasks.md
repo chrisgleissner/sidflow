@@ -45,9 +45,9 @@ Required reading (skim before starting any phase):
 - [ ] Design UDP capture pipeline to track packet sequence numbers, reorder out-of-order deliveries, and detect/compensate for missing packets before transcoding to PCM.
 - [ ] Build resiliency around UDP packet loss: time-based buffering and minimal gap handling; log basic packet loss metrics.
 - [ ] Implement the TypeScript PCM→WAV pipeline (44-byte RIFF header + aggregated s16le samples) so render jobs can materialize `output.wav` for downstream encoding.
-- [ ] Provide WAV→M4A and WAV→FLAC conversion paths: `ffmpeg.wasm` for portable builds and native `ffmpeg` for optimized runners; basic tests for both.
+- [x] Provide WAV→M4A and WAV→FLAC conversion paths: `ffmpeg.wasm` for portable builds and native `ffmpeg` for optimized runners; basic tests for both.
 - [ ] Ensure both ffmpeg.wasm and native ffmpeg encoders run in CI (at least one platform each) with smoke tests covering bitrate/compression targets.
-- [ ] Standardize M4A bitrate at 256k across encoders and configuration; add a smoke test validating target bitrate in produced files.
+- [x] Standardize M4A bitrate at 256k across encoders and configuration; add a smoke test validating target bitrate in produced files.
 - [ ] Expose Render Mode selection (location, time, technology, target) in admin job configuration; validate and reject unsupported combinations per Render Matrix.
 - [ ] Add render-mode aware controls to the admin UI and `/api/admin/render` endpoint so unsupported combinations fail fast with suggested alternatives.
 - [ ] Extend admin UI to monitor HVSC sync status, cache coverage, job progress/logs, and expose targeted backfill/invalidation actions.

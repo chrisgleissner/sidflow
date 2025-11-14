@@ -11,6 +11,9 @@ import {
   pathExists,
   Ultimate64AudioCapture,
   Ultimate64Client,
+  type AudioEncoderConfig,
+  type AudioEncoderImplementation,
+  type FfmpegWasmOptions,
   type RenderFormat as ConfigRenderFormat,
   type SidflowConfig,
 } from "@sidflow/common";
@@ -43,6 +46,11 @@ interface RenderCliOptions {
   sidListFiles: string[];
   targetDurationSeconds?: number;
   maxLossRate?: number;
+  encoderImplementation?: AudioEncoderImplementation;
+  ffmpegWasmCorePath?: string;
+  ffmpegWasmBinaryPath?: string;
+  ffmpegWasmWorkerPath?: string;
+  ffmpegWasmLog?: boolean;
 }
 
 interface ParseResult {
@@ -72,6 +80,11 @@ const KNOWN_FLAGS = new Set([
   "--sid-file",
   "--target-duration",
   "--max-loss",
+  "--encoder",
+  "--ffmpeg-wasm-core",
+  "--ffmpeg-wasm-wasm",
+  "--ffmpeg-wasm-worker",
+  "--ffmpeg-wasm-log",
   "--help",
 ]);
 
@@ -91,6 +104,7 @@ export function parseRenderArgs(argv: string[]): ParseResult {
         break;
       case "--config":
       case "--engine":
+      case "--encoder":
       case "--formats":
       case "--chip":
       case "--output":
@@ -98,7 +112,11 @@ export function parseRenderArgs(argv: string[]): ParseResult {
       case "--sid-file":
       case "--target-duration":
       case "--max-loss":
-      case "--prefer": {
+      case "--prefer":
+      case "--ffmpeg-wasm-core":
+      case "--ffmpeg-wasm-wasm":
+      case "--ffmpeg-wasm-worker":
+      case "--ffmpeg-wasm-log": {
         const next = argv[index + 1];
         if (!next || next.startsWith("--")) {
           errors.push(`${token} requires a value`);
@@ -119,6 +137,15 @@ export function parseRenderArgs(argv: string[]): ParseResult {
               } else {
                 options.engine = engine;
               }
+            }
+            break;
+          }
+          case "--encoder": {
+            const implementation = coerceAudioEncoderImplementation(next);
+            if (!implementation) {
+              errors.push(`Unsupported encoder implementation: ${next}`);
+            } else {
+              options.encoderImplementation = implementation;
             }
             break;
           }
@@ -187,6 +214,24 @@ export function parseRenderArgs(argv: string[]): ParseResult {
             ];
             break;
           }
+          case "--ffmpeg-wasm-core":
+            options.ffmpegWasmCorePath = next;
+            break;
+          case "--ffmpeg-wasm-wasm":
+            options.ffmpegWasmBinaryPath = next;
+            break;
+          case "--ffmpeg-wasm-worker":
+            options.ffmpegWasmWorkerPath = next;
+            break;
+          case "--ffmpeg-wasm-log": {
+            const parsed = parseBooleanFlag(next);
+            if (parsed === null) {
+              errors.push("--ffmpeg-wasm-log must be true or false");
+            } else {
+              options.ffmpegWasmLog = parsed;
+            }
+            break;
+          }
           default:
             break;
         }
@@ -225,12 +270,31 @@ function coerceRenderFormat(value: string): RenderFormat | null {
   return SUPPORTED_FORMATS.includes(candidate) ? candidate : null;
 }
 
+function coerceAudioEncoderImplementation(value: string): AudioEncoderImplementation | null {
+  if (value === "native" || value === "wasm" || value === "auto") {
+    return value;
+  }
+  return null;
+}
+
+function parseBooleanFlag(value: string): boolean | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0") {
+    return false;
+  }
+  return null;
+}
+
 function printHelp(): void {
   process.stdout.write(`SIDFlow Render CLI\n\n`);
   process.stdout.write(`Usage: bun scripts/sidflow-render [options] --sid <path[#song]>\n\n`);
   process.stdout.write(`Options:\n`);
   process.stdout.write(`  --config <path>           Path to .sidflow.json (defaults to cwd)\n`);
   process.stdout.write(`  --engine <name|auto>      Force engine (wasm, sidplayfp-cli, ultimate64, auto)\n`);
+  process.stdout.write(`  --encoder <mode>          Choose audio encoder (native, wasm, auto)\n`);
   process.stdout.write(`  --prefer <list>           Preferred engine order (comma separated)\n`);
   process.stdout.write(`  --formats <list>          Output formats (wav,m4a,flac)\n`);
   process.stdout.write(`  --chip <6581|8580r5>      SID chip profile\n`);
@@ -239,6 +303,10 @@ function printHelp(): void {
   process.stdout.write(`  --sid-file <file>         File with SID paths (newline or JSONL)\n`);
   process.stdout.write(`  --target-duration <sec>   Target capture duration in seconds (default ${DEFAULT_TARGET_DURATION_SECONDS})\n`);
   process.stdout.write(`  --max-loss <0-1>          Max acceptable packet loss rate (default ${DEFAULT_MAX_LOSS})\n`);
+  process.stdout.write(`  --ffmpeg-wasm-core <path> Override ffmpeg-core.js path for ffmpeg.wasm\n`);
+  process.stdout.write(`  --ffmpeg-wasm-wasm <path> Override ffmpeg-core.wasm path\n`);
+  process.stdout.write(`  --ffmpeg-wasm-worker <path> Override ffmpeg-core.worker.js path\n`);
+  process.stdout.write(`  --ffmpeg-wasm-log <true|false> Enable verbose ffmpeg.wasm logging\n`);
   process.stdout.write(`  --help                    Show this message\n`);
 }
 
@@ -313,7 +381,14 @@ export async function runRenderCli(argv: string[]): Promise<number> {
   const chip = options.chip ?? config.render?.defaultChip ?? "6581";
   const engines = resolveEngineOrder(options, config);
 
-  const orchestrator = createOrchestrator(config, targetDurationMs, maxLossRate);
+  const encoderOverrides = resolveAudioEncoderOptions(options, config);
+
+  const orchestrator = createOrchestrator(
+    config,
+    targetDurationMs,
+    maxLossRate,
+    encoderOverrides
+  );
 
   const availableEngines: RenderEngine[] = [];
   const unavailable: string[] = [];
@@ -405,6 +480,79 @@ export function resolveFormats(options: RenderCliOptions, config: SidflowConfig)
     }
   }
   return resolved;
+}
+
+export function resolveAudioEncoderOptions(
+  options: RenderCliOptions,
+  config: SidflowConfig
+): AudioEncoderConfig | undefined {
+  const configEncoder = config.render?.audioEncoder;
+  const cliWasmOverrides = buildCliWasmOverrides(options);
+  const mergedWasm = mergeWasmOptions(configEncoder?.wasm, cliWasmOverrides);
+  const implementation = options.encoderImplementation ?? configEncoder?.implementation;
+
+  if (!implementation && !mergedWasm) {
+    return undefined;
+  }
+
+  return {
+    ...(implementation ? { implementation } : {}),
+    ...(mergedWasm ? { wasm: mergedWasm } : {}),
+  };
+}
+
+function buildCliWasmOverrides(options: RenderCliOptions): FfmpegWasmOptions | undefined {
+  let overrides: FfmpegWasmOptions = {};
+
+  if (options.ffmpegWasmCorePath) {
+    overrides = {
+      ...overrides,
+      corePath: path.resolve(options.ffmpegWasmCorePath),
+    };
+  }
+
+  if (options.ffmpegWasmBinaryPath) {
+    overrides = {
+      ...overrides,
+      wasmPath: path.resolve(options.ffmpegWasmBinaryPath),
+    };
+  }
+
+  if (options.ffmpegWasmWorkerPath) {
+    overrides = {
+      ...overrides,
+      workerPath: path.resolve(options.ffmpegWasmWorkerPath),
+    };
+  }
+
+  if (options.ffmpegWasmLog !== undefined) {
+    overrides = {
+      ...overrides,
+      log: options.ffmpegWasmLog,
+    };
+  }
+
+  return hasWasmOverrides(overrides) ? overrides : undefined;
+}
+
+function mergeWasmOptions(
+  base?: FfmpegWasmOptions,
+  overrides?: FfmpegWasmOptions
+): FfmpegWasmOptions | undefined {
+  if (!base && !overrides) {
+    return undefined;
+  }
+
+  const merged: FfmpegWasmOptions = {
+    ...(base ?? {}),
+    ...(overrides ?? {}),
+  };
+
+  return hasWasmOverrides(merged) ? merged : undefined;
+}
+
+function hasWasmOverrides(value?: FfmpegWasmOptions): value is FfmpegWasmOptions {
+  return value !== undefined && Object.keys(value).length > 0;
 }
 
 export function resolveEngineOrder(options: RenderCliOptions, config: SidflowConfig): RenderEngine[] {
@@ -571,7 +719,8 @@ function resolveSidPath(hvscPath: string, input: string): {
 function createOrchestrator(
   config: SidflowConfig,
   targetDurationMs: number,
-  maxLossRate: number
+  maxLossRate: number,
+  encoderOverrides?: AudioEncoderConfig
 ): RenderOrchestrator {
   const ultimateConfig = config.render?.ultimate64;
   let ultimate64Client: Ultimate64Client | undefined;
@@ -598,6 +747,13 @@ function createOrchestrator(
     ? path.resolve(config.availability.assetRoot)
     : undefined;
 
+  const renderSettings = config.render;
+  const audioEncoderConfig = renderSettings?.audioEncoder;
+  const mergedWasmOptions = mergeWasmOptions(
+    audioEncoderConfig?.wasm,
+    encoderOverrides?.wasm
+  );
+
   return new RenderOrchestrator({
     ultimate64Client,
     ultimate64Capture,
@@ -608,6 +764,11 @@ function createOrchestrator(
     availabilityManifestPath,
     availabilityAssetRoot,
     availabilityPublicBaseUrl: config.availability?.publicBaseUrl,
+    m4aBitrate: renderSettings?.m4aBitrate,
+    flacCompressionLevel: renderSettings?.flacCompressionLevel,
+    audioEncoderImplementation:
+      encoderOverrides?.implementation ?? audioEncoderConfig?.implementation,
+    ffmpegWasmOptions: mergedWasmOptions,
   });
 }
 
