@@ -10,6 +10,7 @@ import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createRateTrackInfo } from '@/lib/rate-playback';
 import { createPlaybackSession } from '@/lib/playback-session';
 import { ensureHlsForTrack } from '@/lib/server/hls-service';
+import { resolveSessionStreamAssets } from '@/lib/server/availability-service';
 
 type RateTrackPayload = RateTrackInfo;
 
@@ -157,6 +158,7 @@ export async function POST() {
     });
 
     const fallbackHlsUrl = await ensureHlsForTrack(track);
+    const streamAssets = await resolveSessionStreamAssets(track);
 
     const session = createPlaybackSession({
       scope: 'rate',
@@ -170,6 +172,7 @@ export async function POST() {
         chargen: env.chargenRomPath ?? null,
       },
       fallbackHlsUrl,
+      streamAssets,
     });
 
     const elapsedMs = Date.now() - startTime;

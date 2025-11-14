@@ -15,4 +15,19 @@ export interface PlaybackSessionDescriptor {
     expiresAt: string;
     romUrls?: SessionRomUrls;
     fallbackHlsUrl?: string | null;
+    streamUrls?: SessionStreamUrls;
 }
+
+export interface SessionStreamDescriptor {
+    format: 'wav' | 'm4a' | 'flac';
+    url: string;
+    sizeBytes: number;
+    durationMs: number;
+    sampleRate: number;
+    channels: number;
+    bitrateKbps?: number;
+    codec?: string;
+    publicPath?: string;
+}
+
+export type SessionStreamUrls = Partial<Record<'wav' | 'm4a' | 'flac', SessionStreamDescriptor>>;

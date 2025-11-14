@@ -29,7 +29,6 @@
         "./*"
       ],
       "@sidflow/common": [
-        "../sidflow-common/src/index.ts",
         "../sidflow-common/dist/index.js"
       ],
       "@sidflow/rate": [

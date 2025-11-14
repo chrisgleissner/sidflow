@@ -3,6 +3,7 @@ import { PlayRequestSchema, type ApiResponse } from '@/lib/validation';
 import { ZodError } from 'zod';
 import { resolvePlaybackEnvironment, resolveSidPath, createRateTrackInfo } from '@/lib/rate-playback';
 import { ensureHlsForTrack } from '@/lib/server/hls-service';
+import { resolveSessionStreamAssets } from '@/lib/server/availability-service';
 import { pathExists } from '@sidflow/common';
 import { createPlaybackSession } from '@/lib/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
     });
 
     const fallbackHlsUrl = await ensureHlsForTrack(track);
+    const streamAssets = await resolveSessionStreamAssets(track);
 
     const session = createPlaybackSession({
       scope: 'play',
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest) {
         chargen: env.chargenRomPath ?? null,
       },
       fallbackHlsUrl,
+      streamAssets,
     });
 
     const response: ApiResponse<{ track: RateTrackInfo; session: typeof session }> = {

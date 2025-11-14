@@ -21,6 +21,12 @@ export interface RenderSettings {
   ultimate64?: Ultimate64RenderConfig;
 }
 
+export interface AvailabilityConfig {
+  manifestPath?: string;
+  assetRoot?: string;
+  publicBaseUrl?: string;
+}
+
 export interface SidflowConfig {
   hvscPath: string;
   wavCachePath: string;
@@ -30,6 +36,7 @@ export interface SidflowConfig {
   threads: number;
   classificationDepth: number;
   render?: RenderSettings;
+  availability?: AvailabilityConfig;
 }
 
 export const DEFAULT_CONFIG_FILENAME = ".sidflow.json";
@@ -168,6 +175,7 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
     classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0),
     render: parseRenderSettings(record.render, configPath),
+    availability: parseAvailabilityConfig(record.availability, configPath),
   };
 }
 
@@ -299,4 +307,48 @@ function parseRenderSettings(value: unknown, configPath: string): RenderSettings
   }
 
   return settings;
+}
+
+function parseAvailabilityConfig(value: unknown, configPath: string): AvailabilityConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    throw new SidflowConfigError(
+      `Config key "availability" must be an object in ${configPath}`
+    );
+  }
+
+  const record = value as Record<string, unknown>;
+  const config: AvailabilityConfig = {};
+
+  if (record.manifestPath !== undefined) {
+    if (typeof record.manifestPath !== "string" || record.manifestPath.trim() === "") {
+      throw new SidflowConfigError(
+        `Config key "availability.manifestPath" must be a non-empty string`
+      );
+    }
+    config.manifestPath = path.normalize(record.manifestPath);
+  }
+
+  if (record.assetRoot !== undefined) {
+    if (typeof record.assetRoot !== "string" || record.assetRoot.trim() === "") {
+      throw new SidflowConfigError(
+        `Config key "availability.assetRoot" must be a non-empty string`
+      );
+    }
+    config.assetRoot = path.normalize(record.assetRoot);
+  }
+
+  if (record.publicBaseUrl !== undefined) {
+    if (typeof record.publicBaseUrl !== "string" || record.publicBaseUrl.trim() === "") {
+      throw new SidflowConfigError(
+        `Config key "availability.publicBaseUrl" must be a non-empty string`
+      );
+    }
+    config.publicBaseUrl = record.publicBaseUrl.trim();
+  }
+
+  return config;
 }

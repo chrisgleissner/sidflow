@@ -3,7 +3,18 @@
  * Supports multiple engines: WASM, sidplayfp CLI, and Ultimate 64 hardware
  */
 
-import { createLogger, ensureDir } from "@sidflow/common";
+import {
+  createAvailabilityAssetId,
+  createLogger,
+  encodeWavToFlacNative,
+  encodeWavToM4aNative,
+  ensureDir,
+  registerAvailabilityAsset,
+  DEFAULT_FLAC_COMPRESSION_LEVEL,
+  DEFAULT_M4A_BITRATE,
+  type AvailabilityAsset,
+  type RenderMode,
+} from "@sidflow/common";
 import type {
   Ultimate64Client,
   Ultimate64AudioCapture,
@@ -13,16 +24,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { renderWavWithEngine } from "./wav-renderer.js";
 import { createEngine } from "./engine-factory.js";
-import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
-import {
-  encodeWavToM4aNative,
-  encodeWavToFlacNative,
-  DEFAULT_M4A_BITRATE,
-  DEFAULT_FLAC_COMPRESSION_LEVEL,
-} from "@sidflow/common";
 
 const logger = createLogger("render-orchestrator");
-
 export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
 export type RenderFormat = "wav" | "m4a" | "flac";
 
@@ -31,11 +34,114 @@ export interface RenderRequest {
   readonly outputDir: string;
   readonly engine: RenderEngine;
   readonly formats: RenderFormat[];
+  readonly relativeSidPath?: string;
+  readonly renderMode?: RenderMode;
   readonly chip?: "6581" | "8580r5";
   readonly songIndex?: number;
   readonly maxRenderSeconds?: number;
   readonly targetDurationMs?: number;
   readonly maxLossRate?: number;
+}
+
+interface RegisterAssetParams {
+  readonly format: RenderFormat;
+  readonly filePath: string;
+  readonly sizeBytes: number;
+  readonly codec?: string;
+  readonly bitrateKbps?: number;
+  readonly durationMs: number;
+  readonly sampleRate: number;
+  readonly channels: number;
+  readonly relativeSidPath: string;
+  readonly songIndex: number;
+  readonly renderMode: RenderMode;
+  readonly engine: RenderEngine;
+  readonly capture?: CaptureStatistics;
+  readonly checksum?: string;
+  readonly metadata?: Record<string, unknown>;
+}
+
+interface WavFileMetadata {
+  readonly durationMs: number;
+  readonly sampleRate: number;
+  readonly channels: number;
+  readonly bitsPerSample: number;
+  readonly byteRate: number;
+}
+
+function computeBitrateKbps(
+  sizeBytes: number,
+  durationMs: number
+): number | undefined {
+  if (sizeBytes <= 0 || durationMs <= 0) {
+    return undefined;
+  }
+  const durationSeconds = durationMs / 1000;
+  if (durationSeconds <= 0) {
+    return undefined;
+  }
+  const bitsPerSecond = (sizeBytes * 8) / durationSeconds;
+  return Math.max(1, Math.round(bitsPerSecond / 1000));
+}
+
+async function probeWavMetadata(filePath: string): Promise<WavFileMetadata> {
+  const buffer = await readFile(filePath);
+  if (buffer.length < 44) {
+    throw new Error("WAV file is too small to contain required headers");
+  }
+
+  if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("Invalid WAV header");
+  }
+
+  let offset = 12;
+  let fmtChunkOffset = -1;
+  let dataChunkSize = 0;
+
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+
+    if (chunkId === "fmt ") {
+      fmtChunkOffset = chunkStart;
+    } else if (chunkId === "data") {
+      dataChunkSize = chunkSize;
+      break;
+    }
+
+    offset = chunkStart + chunkSize + (chunkSize % 2);
+  }
+
+  if (fmtChunkOffset < 0) {
+    throw new Error("Missing fmt chunk in WAV file");
+  }
+
+  if (dataChunkSize <= 0) {
+    throw new Error("Missing data chunk in WAV file");
+  }
+
+  const channels = buffer.readUInt16LE(fmtChunkOffset + 2);
+  const sampleRate = buffer.readUInt32LE(fmtChunkOffset + 4);
+  const byteRate = buffer.readUInt32LE(fmtChunkOffset + 8);
+  const bitsPerSample = buffer.readUInt16LE(fmtChunkOffset + 14);
+  const resolvedByteRate =
+    byteRate > 0 ? byteRate : sampleRate * channels * (bitsPerSample / 8);
+  const durationMs = resolvedByteRate
+    ? Math.max(1, Math.round((dataChunkSize / resolvedByteRate) * 1000))
+    : 0;
+
+  return {
+    durationMs,
+    sampleRate,
+    channels,
+    bitsPerSample,
+    byteRate: resolvedByteRate,
+  };
+}
+
+function toPosixPath(input: string): string {
+  return input.replace(/\\+/g, "/");
 }
 
 export interface RenderResult {
@@ -59,6 +165,11 @@ export interface RenderOrchestratorConfig {
   readonly flacCompressionLevel?: number;
   readonly ultimate64AudioPort?: number;
   readonly ultimate64StreamIp?: string;
+  readonly hvscRoot?: string;
+  readonly availabilityManifestPath?: string;
+  readonly availabilityAssetRoot?: string;
+  readonly availabilityPublicBaseUrl?: string;
+  readonly registerAvailabilityAssets?: boolean;
 }
 
 export class RenderOrchestrator {
@@ -76,6 +187,17 @@ export class RenderOrchestrator {
     const chip = request.chip ?? "6581";
     const errors: string[] = [];
     const outputs: RenderResult["outputs"] = [];
+    const renderMode =
+      request.renderMode ?? this.buildDefaultRenderMode(request.engine);
+    const relativeSidPathCandidate =
+      request.relativeSidPath ??
+      this.resolveRelativeSidPath(request.sidPath);
+    const manifestRelativeSidPath = this.shouldRegisterAssets(
+      relativeSidPathCandidate
+    )
+      ? relativeSidPathCandidate
+      : null;
+    const songIndex = request.songIndex ?? 1;
 
     logger.debug(
       `Rendering ${path.basename(request.sidPath)} with ${request.engine} engine (${chip})`
@@ -83,21 +205,22 @@ export class RenderOrchestrator {
 
     await ensureDir(request.outputDir);
 
+    const fs = await import("node:fs/promises");
+
     // Step 1: Generate WAV file
     const baseName = path.basename(request.sidPath, ".sid");
     const trackSuffix =
       request.songIndex !== undefined ? `-${request.songIndex}` : "";
     const filePrefix = `${baseName}${trackSuffix}-${request.engine}-${chip}`;
     const wavPath = path.join(request.outputDir, `${filePrefix}.wav`);
+    let captureStats: CaptureStatistics | undefined;
 
     try {
-      await this.renderWav(request, wavPath, chip);
+      captureStats = await this.renderWav(request, wavPath, chip);
       logger.debug(`WAV rendered: ${wavPath}`);
 
       if (request.formats.includes("wav")) {
-        const stats = await import("node:fs/promises").then((fs) =>
-          fs.stat(wavPath)
-        );
+        const stats = await fs.stat(wavPath);
         outputs.push({
           format: "wav",
           path: wavPath,
@@ -121,6 +244,39 @@ export class RenderOrchestrator {
       };
     }
 
+    let wavMetadata: WavFileMetadata | null = null;
+    try {
+      wavMetadata = await probeWavMetadata(wavPath);
+    } catch (error) {
+      logger.warn(`Failed to parse WAV metadata for ${wavPath}`, error);
+    }
+
+    if (manifestRelativeSidPath && request.formats.includes("wav") && wavMetadata) {
+      try {
+        const wavStats = await fs.stat(wavPath);
+        await this.recordAvailabilityAsset({
+          format: "wav",
+          filePath: wavPath,
+          sizeBytes: wavStats.size,
+          codec: "pcm_s16le",
+          durationMs: wavMetadata.durationMs,
+          sampleRate: wavMetadata.sampleRate,
+          channels: wavMetadata.channels,
+          bitrateKbps: computeBitrateKbps(
+            wavStats.size,
+            wavMetadata.durationMs
+          ),
+          relativeSidPath: manifestRelativeSidPath,
+          songIndex,
+          renderMode,
+          engine: request.engine,
+          capture: captureStats,
+        });
+      } catch (error) {
+        logger.warn("Failed to register WAV availability asset", error);
+      }
+    }
+
     // Step 2: Encode to M4A if requested
     if (request.formats.includes("m4a")) {
       const m4aPath = path.join(request.outputDir, `${filePrefix}.m4a`);
@@ -132,12 +288,38 @@ export class RenderOrchestrator {
         });
 
         if (result.success) {
+          const fileStats = await fs.stat(m4aPath);
           outputs.push({
             format: "m4a",
             path: m4aPath,
-            sizeBytes: result.outputSizeBytes ?? 0,
+            sizeBytes: fileStats.size,
           });
           logger.debug(`M4A encoded: ${m4aPath}`);
+
+          if (manifestRelativeSidPath && wavMetadata) {
+            try {
+              await this.recordAvailabilityAsset({
+                format: "m4a",
+                filePath: m4aPath,
+                sizeBytes: fileStats.size,
+                codec: "aac",
+                bitrateKbps: computeBitrateKbps(
+                  fileStats.size,
+                  wavMetadata.durationMs
+                ),
+                durationMs: wavMetadata.durationMs,
+                sampleRate: wavMetadata.sampleRate,
+                channels: wavMetadata.channels,
+                relativeSidPath: manifestRelativeSidPath,
+                songIndex,
+                renderMode,
+                engine: request.engine,
+                capture: captureStats,
+              });
+            } catch (error) {
+              logger.warn("Failed to register M4A availability asset", error);
+            }
+          }
         } else {
           errors.push(`M4A encoding failed: ${result.error}`);
         }
@@ -162,12 +344,38 @@ export class RenderOrchestrator {
         });
 
         if (result.success) {
+          const fileStats = await fs.stat(flacPath);
           outputs.push({
             format: "flac",
             path: flacPath,
-            sizeBytes: result.outputSizeBytes ?? 0,
+            sizeBytes: fileStats.size,
           });
           logger.debug(`FLAC encoded: ${flacPath}`);
+
+          if (manifestRelativeSidPath && wavMetadata) {
+            try {
+              await this.recordAvailabilityAsset({
+                format: "flac",
+                filePath: flacPath,
+                sizeBytes: fileStats.size,
+                codec: "flac",
+                bitrateKbps: computeBitrateKbps(
+                  fileStats.size,
+                  wavMetadata.durationMs
+                ),
+                durationMs: wavMetadata.durationMs,
+                sampleRate: wavMetadata.sampleRate,
+                channels: wavMetadata.channels,
+                relativeSidPath: manifestRelativeSidPath,
+                songIndex,
+                renderMode,
+                engine: request.engine,
+                capture: captureStats,
+              });
+            } catch (error) {
+              logger.warn("Failed to register FLAC availability asset", error);
+            }
+          }
         } else {
           errors.push(`FLAC encoding failed: ${result.error}`);
         }
@@ -201,17 +409,16 @@ export class RenderOrchestrator {
     request: RenderRequest,
     wavPath: string,
     chip: "6581" | "8580r5"
-  ): Promise<void> {
+  ): Promise<CaptureStatistics | undefined> {
     switch (request.engine) {
       case "wasm":
         await this.renderWavWasm(request, wavPath);
-        break;
+        return undefined;
       case "sidplayfp-cli":
         await this.renderWavCli(request, wavPath);
-        break;
+        return undefined;
       case "ultimate64":
-        await this.renderWavUltimate64(request, wavPath, chip);
-        break;
+        return this.renderWavUltimate64(request, wavPath, chip);
       default:
         throw new Error(`Unsupported render engine: ${request.engine}`);
     }
@@ -301,7 +508,7 @@ export class RenderOrchestrator {
     request: RenderRequest,
     wavPath: string,
     chip: "6581" | "8580r5"
-  ): Promise<void> {
+  ): Promise<CaptureStatistics | undefined> {
     if (!this.config.ultimate64Client || !this.config.ultimate64Capture) {
       throw new Error(
         "Ultimate 64 client and capture not configured"
@@ -322,6 +529,8 @@ export class RenderOrchestrator {
     let captureCompleted = false;
 
     const requestedDurationMs = request.targetDurationMs ?? 120_000;
+
+    let captureStats: CaptureStatistics | undefined;
 
     const captureResultPromise = new Promise<{
       samples: Int16Array;
@@ -382,6 +591,7 @@ export class RenderOrchestrator {
 
       // Wait for capture to complete
       const { samples, stats } = await captureResultPromise;
+      captureStats = stats;
 
       if (
         typeof request.maxLossRate === "number" &&
@@ -424,6 +634,8 @@ export class RenderOrchestrator {
         }
       }
     }
+
+    return captureStats;
   }
 
   /**
@@ -500,5 +712,109 @@ export class RenderOrchestrator {
       default:
         return { available: false, reason: "Unknown engine" };
     }
+  }
+
+  private buildDefaultRenderMode(engine: RenderEngine): RenderMode {
+    return {
+      location: "server",
+      time: "prepared",
+      technology: engine,
+      target: "wav-m4a-flac",
+    };
+  }
+
+  private resolveRelativeSidPath(sidPath: string): string | null {
+    if (!this.config.hvscRoot) {
+      return null;
+    }
+
+    const relative = path.relative(this.config.hvscRoot, sidPath);
+    if (relative.startsWith("..")) {
+      return null;
+    }
+
+    return toPosixPath(relative);
+  }
+
+  private shouldRegisterAssets(
+    relativeSidPath?: string | null
+  ): relativeSidPath is string {
+    if (this.config.registerAvailabilityAssets === false) {
+      return false;
+    }
+    if (!this.config.availabilityManifestPath) {
+      return false;
+    }
+    return Boolean(relativeSidPath);
+  }
+
+  private async recordAvailabilityAsset(
+    params: RegisterAssetParams
+  ): Promise<void> {
+    if (!this.config.availabilityManifestPath) {
+      return;
+    }
+
+    const storagePath = this.resolveStoragePath(params.filePath);
+    const publicPath = this.buildPublicPath(storagePath);
+
+    const asset: AvailabilityAsset = {
+      id: createAvailabilityAssetId({
+        relativeSidPath: params.relativeSidPath,
+        songIndex: params.songIndex,
+        format: params.format,
+        engine: params.engine,
+        renderMode: params.renderMode,
+      }),
+      relativeSidPath: params.relativeSidPath,
+      songIndex: params.songIndex,
+      format: params.format,
+      engine: params.engine,
+      renderMode: params.renderMode,
+      durationMs: params.durationMs,
+      sampleRate: params.sampleRate,
+      channels: params.channels,
+      sizeBytes: params.sizeBytes,
+      bitrateKbps: params.bitrateKbps,
+      codec: params.codec,
+      storagePath,
+      publicPath,
+      checksum: params.checksum,
+      capture: params.capture
+        ? {
+            ...params.capture,
+            sampleRate: params.sampleRate,
+            channels: params.channels,
+          }
+        : undefined,
+      metadata: params.metadata,
+      generatedAt: new Date().toISOString(),
+    };
+
+    await registerAvailabilityAsset(this.config.availabilityManifestPath, asset, {
+      details: {
+        format: params.format,
+        songIndex: params.songIndex,
+        relativeSidPath: params.relativeSidPath,
+      },
+    });
+  }
+
+  private resolveStoragePath(filePath: string): string {
+    if (this.config.availabilityAssetRoot) {
+      const relative = path.relative(this.config.availabilityAssetRoot, filePath);
+      if (!relative.startsWith("..")) {
+        return toPosixPath(relative);
+      }
+    }
+    return toPosixPath(path.relative(process.cwd(), filePath));
+  }
+
+  private buildPublicPath(storagePath: string): string | undefined {
+    if (!this.config.availabilityPublicBaseUrl) {
+      return undefined;
+    }
+    const base = this.config.availabilityPublicBaseUrl.replace(/\/+$/, "");
+    return `${base}/${storagePath}`;
   }
 }

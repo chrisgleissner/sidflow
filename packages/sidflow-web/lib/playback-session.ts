@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
+import { Readable } from 'node:stream';
+import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import type {
     PlaybackSessionDescriptor,
     PlaybackSessionScope,
     SessionRomUrls,
+    SessionStreamUrls,
 } from '@/lib/types/playback-session';
 
 const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
@@ -14,6 +18,20 @@ const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const ROM_KINDS = ['kernal', 'basic', 'chargen'] as const;
 type SessionRomKind = (typeof ROM_KINDS)[number];
 type SessionRomPaths = Partial<Record<SessionRomKind, string>>;
+
+type StreamFormat = 'wav' | 'm4a' | 'flac';
+
+export interface SessionStreamAsset {
+    format: StreamFormat;
+    filePath: string;
+    sizeBytes: number;
+    durationMs: number;
+    sampleRate: number;
+    channels: number;
+    bitrateKbps?: number;
+    codec?: string;
+    publicPath?: string;
+}
 
 interface PlaybackSessionRecord {
     id: string;
@@ -26,6 +44,7 @@ interface PlaybackSessionRecord {
     lastAccessedAt: number;
     romPaths?: SessionRomPaths;
     fallbackHlsUrl?: string | null;
+    streamAssets?: SessionStreamAsset[];
 }
 
 const sessions = new Map<string, PlaybackSessionRecord>();
@@ -69,6 +88,29 @@ function buildRomUrls(id: string, romPaths?: SessionRomPaths): SessionRomUrls | 
     return hasAny ? urls : undefined;
 }
 
+function buildStreamUrls(id: string, assets?: SessionStreamAsset[] | null | undefined): SessionStreamUrls | undefined {
+    if (!assets || assets.length === 0) {
+        return undefined;
+    }
+
+    const descriptors: SessionStreamUrls = {};
+    for (const asset of assets) {
+        descriptors[asset.format] = {
+            format: asset.format,
+            url: `/api/playback/${id}/${asset.format}`,
+            sizeBytes: asset.sizeBytes,
+            durationMs: asset.durationMs,
+            sampleRate: asset.sampleRate,
+            channels: asset.channels,
+            bitrateKbps: asset.bitrateKbps,
+            codec: asset.codec,
+            publicPath: asset.publicPath,
+        };
+    }
+
+    return Object.keys(descriptors).length > 0 ? descriptors : undefined;
+}
+
 export function createPlaybackSession(options: {
     scope: PlaybackSessionScope;
     sidPath: string;
@@ -77,6 +119,7 @@ export function createPlaybackSession(options: {
     selectedSong: number;
     romPaths?: Partial<Record<SessionRomKind, string | null>> | null;
     fallbackHlsUrl?: string | null;
+    streamAssets?: SessionStreamAsset[];
 }): PlaybackSessionDescriptor {
     const now = Date.now();
     pruneExpiredSessions(now);
@@ -94,10 +137,12 @@ export function createPlaybackSession(options: {
         lastAccessedAt: now,
         romPaths,
         fallbackHlsUrl: options.fallbackHlsUrl ?? null,
+        streamAssets: options.streamAssets,
     };
     sessions.set(id, record);
 
     const romUrls = buildRomUrls(id, romPaths);
+    const streamUrls = buildStreamUrls(id, options.streamAssets);
 
     return {
         sessionId: id,
@@ -108,6 +153,7 @@ export function createPlaybackSession(options: {
         expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
         romUrls,
         fallbackHlsUrl: options.fallbackHlsUrl ?? null,
+        streamUrls,
     };
 }
 
@@ -192,4 +238,127 @@ export async function streamSessionRomFile(id: string, kind: SessionRomKind): Pr
     }
 }
 
-export type { PlaybackSessionDescriptor, PlaybackSessionScope, SessionRomUrls } from '@/lib/types/playback-session';
+export async function streamSessionAssetFile(
+    request: NextRequest,
+    id: string,
+    format: StreamFormat
+): Promise<NextResponse> {
+    const session = getPlaybackSession(id);
+    if (!session) {
+        return NextResponse.json({ success: false, error: 'Playback session not found or expired' }, { status: 404 });
+    }
+
+    const asset = session.streamAssets?.find((entry) => entry.format === format);
+    if (!asset) {
+        return NextResponse.json(
+            { success: false, error: `${format.toUpperCase()} asset not available for this session` },
+            { status: 404 }
+        );
+    }
+
+    const stats = await stat(asset.filePath).catch(() => null);
+    if (!stats || stats.size === 0) {
+        return NextResponse.json(
+            { success: false, error: 'Asset file missing or unreadable for this session' },
+            { status: 410 }
+        );
+    }
+
+    const range = parseRange(request.headers.get('range'), stats.size);
+    if (range === 'invalid') {
+        return NextResponse.json({ success: false, error: 'Invalid Range header' }, { status: 416 });
+    }
+
+    const { start, end } = range ?? { start: 0, end: stats.size - 1 };
+    const chunkSize = end - start + 1;
+    const stream = createReadStream(asset.filePath, { start, end });
+    const body = Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+
+    const headers = new Headers({
+        'Content-Type': getMimeType(format),
+        'Cache-Control': 'private, max-age=300',
+        'Accept-Ranges': 'bytes',
+        'Content-Length': String(chunkSize),
+        'Cross-Origin-Resource-Policy': 'same-origin',
+        'Content-Disposition': `inline; filename="${encodeURIComponent(path.basename(asset.filePath))}"`,
+    });
+
+    if (range) {
+        headers.set('Content-Range', `bytes ${start}-${end}/${stats.size}`);
+    }
+
+    return new NextResponse(body, {
+        status: range ? 206 : 200,
+        headers,
+    });
+}
+
+type ParsedRange = { start: number; end: number } | null | 'invalid';
+
+function parseRange(header: string | null, size: number): ParsedRange {
+    if (!header) {
+        return null;
+    }
+    if (!header.toLowerCase().startsWith('bytes=')) {
+        return 'invalid';
+    }
+
+    const rangeValue = header.slice(6).split(',')[0]?.trim();
+    if (!rangeValue) {
+        return 'invalid';
+    }
+
+    const [startPart, endPart] = rangeValue.split('-', 2);
+    let start: number;
+    let end: number;
+
+    if (!startPart) {
+        const suffix = Number(endPart);
+        if (!Number.isFinite(suffix) || suffix <= 0) {
+            return 'invalid';
+        }
+        start = Math.max(0, size - suffix);
+        end = size - 1;
+    } else {
+        start = Number(startPart);
+        if (!Number.isFinite(start) || start < 0) {
+            return 'invalid';
+        }
+        if (endPart) {
+            end = Number(endPart);
+            if (!Number.isFinite(end) || end < 0) {
+                return 'invalid';
+            }
+        } else {
+            end = size - 1;
+        }
+    }
+
+    start = Math.min(start, size - 1);
+    end = Math.min(end, size - 1);
+    if (start > end) {
+        return 'invalid';
+    }
+
+    return { start, end };
+}
+
+function getMimeType(format: StreamFormat): string {
+    switch (format) {
+        case 'wav':
+            return 'audio/wav';
+        case 'm4a':
+            return 'audio/mp4';
+        case 'flac':
+            return 'audio/flac';
+        default:
+            return 'application/octet-stream';
+    }
+}
+
+export type {
+    PlaybackSessionDescriptor,
+    PlaybackSessionScope,
+    SessionRomUrls,
+    SessionStreamUrls,
+} from '@/lib/types/playback-session';

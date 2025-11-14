@@ -25,3 +25,4 @@ export * from "./ultimate64-capture.js";
 export * from "./render-matrix.js";
 export * from "./audit-trail.js";
 export * from "./canonical-writer.js";
+export * from "./availability-manifest.js";

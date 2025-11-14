@@ -8,6 +8,7 @@ import {
 } from '@/lib/rate-playback';
 import { createPlaybackSession } from '@/lib/playback-session';
 import { ensureHlsForTrack } from '@/lib/server/hls-service';
+import { resolveSessionStreamAssets } from '@/lib/server/availability-service';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { ZodError } from 'zod';
 
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
       relativeBase: 'hvsc',
     });
     const fallbackHlsUrl = await ensureHlsForTrack(track);
+    const streamAssets = await resolveSessionStreamAssets(track);
 
     const session = createPlaybackSession({
       scope: 'manual',
@@ -54,6 +56,7 @@ export async function POST(request: NextRequest) {
         chargen: env.chargenRomPath ?? null,
       },
       fallbackHlsUrl,
+      streamAssets,
     });
 
     const elapsedMs = Date.now() - startTime;
