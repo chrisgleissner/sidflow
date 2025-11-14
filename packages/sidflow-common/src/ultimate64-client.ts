@@ -4,7 +4,6 @@
  */
 
 import { createLogger } from "./logger.js";
-import { readFile } from "node:fs/promises";
 
 const logger = createLogger("ultimate64-client");
 
