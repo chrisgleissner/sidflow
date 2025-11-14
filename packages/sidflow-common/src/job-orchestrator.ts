@@ -196,7 +196,11 @@ export class JobOrchestrator {
    * Mark job as failed
    */
   async failJob(id: string, error: string): Promise<void> {
-    await this.updateJobStatus(id, "failed", { error });
+    const existing = this.manifest.jobs[id];
+    await this.updateJobStatus(id, "failed", {
+      error,
+      resumeData: existing?.metadata.resumeData,
+    });
   }
 
   /**

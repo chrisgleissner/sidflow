@@ -15,6 +15,7 @@ import {
   sidMetadataToJson,
   stringifyDeterministic,
   toPosixRelative,
+  writeCanonicalJsonLines,
   type AudioFeatures,
   type ClassificationRecord,
   type JsonValue,
@@ -1183,7 +1184,7 @@ export async function generateJsonlOutput(
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
   const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
 
-  const records: string[] = [];
+  const records: ClassificationRecord[] = [];
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
@@ -1278,16 +1279,23 @@ export async function generateJsonlOutput(
         record.features = features;
       }
 
-      // Append as JSONL (one JSON object per line)
-      // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
-      records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
+  records.push(record);
 
       processedSongs++;
     }
   }
 
-  // Write all records to file
-  await writeFile(jsonlFile, records.join("\n") + "\n", "utf8");
+  // Write all records to file using canonical writer for determinism + audit logging
+  await writeCanonicalJsonLines(
+    jsonlFile,
+    records as unknown as JsonValue[],
+    {
+      details: {
+        recordCount: records.length,
+        phase: "classification"
+      }
+    }
+  );
 
   const endTime = Date.now();
   return {

@@ -90,6 +90,21 @@ describe("JobOrchestrator", () => {
     expect(updated?.metadata.failedAt).toBeDefined();
   });
 
+  test("preserves resume metadata on failure", async () => {
+    const job = await orchestrator.createJob("pipeline", {
+      stages: [{ type: "fetch" }],
+    });
+
+    await orchestrator.updateJobStatus(job.id, "running", {
+      resumeData: { stageIndex: 1 },
+    });
+
+    await orchestrator.failJob(job.id, "boom");
+
+    const failed = orchestrator.getJob(job.id);
+    expect(failed?.metadata.resumeData).toEqual({ stageIndex: 1 });
+  });
+
   test("lists jobs with filters", async () => {
     await orchestrator.createJob("fetch", {});
     await orchestrator.createJob("classify", { sidPaths: [] });
@@ -157,5 +172,20 @@ describe("JobOrchestrator", () => {
     expect(
       orchestrator.updateJobStatus("nonexistent", "running")
     ).rejects.toThrow("Job nonexistent not found");
+  });
+
+  test("creates pipeline jobs", async () => {
+    const pipeline = await orchestrator.createJob("pipeline", {
+      stages: [
+        { type: "fetch" },
+        { type: "classify" },
+      ],
+      label: "full-refresh",
+    });
+
+    expect(pipeline.type).toBe("pipeline");
+    expect(pipeline.params).toEqual(
+      expect.objectContaining({ stages: expect.any(Array) })
+    );
   });
 });

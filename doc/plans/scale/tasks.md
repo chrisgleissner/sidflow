@@ -35,19 +35,26 @@ Required reading (skim before starting any phase):
 - [x] Wire playback facade to feed consistent telemetry and feedback events regardless of adapter (WASM, CLI, streaming, Ultimate 64).
 
 ## Phase 4 – Admin Background Jobs & Data Governance
-- [ ] Build job orchestration service (queues, manifests, resumable execution) wrapping `sidflow-fetch`, `sidflow-classify`, `sidflow-train`; include unit + integration coverage for restart/idempotency.
+- [x] Build job orchestration service (queues, manifests, resumable execution) wrapping `sidflow-fetch`, `sidflow-classify`, `sidflow-train`; include unit + integration coverage for restart/idempotency.
+- [x] Implement queue runners that invoke the package CLIs end-to-end (fetch→classify→train→render), persist checkpoints/resume data, and expose idempotent restart handling in tests.
+- [x] Wire audit-trail logging + deterministic writes for `data/classified`, `data/feedback`, `data/model`, manifests, and other canonical assets touched by admin flows.
 - [ ] Define render-engine orchestration covering `libsidplayfp-wasm`, optional `sidplayfp` CLI, and Ultimate 64 hardware playback: automate CLI availability checks, surface graceful fallbacks, and document the Ultimate 64 REST/workflow using `doc/plans/scale/c64-rest-api.md`.
+- [ ] Integrate Ultimate 64 capture + render orchestration with admin config (host, ports, credentials), and add documentation snippets that map directly to the REST workflow.
 - [ ] Capture UDP audio from the Ultimate 64 stream, transform it into WAV/M4A/FLAC assets, and publish availability manifests referencing the packet/stream nuances documented in `doc/plans/scale/c64-stream-spec.md`.
+- [ ] Extend classify/render pipelines so captured WAV/M4A/FLAC assets register in availability manifests consumed by `/api/playback/{id}/{format}`, including storage layout and cache invalidation hooks.
 - [ ] Design UDP capture pipeline to track packet sequence numbers, reorder out-of-order deliveries, and detect/compensate for missing packets before transcoding to PCM.
 - [ ] Build resiliency around UDP packet loss: time-based buffering and minimal gap handling; log basic packet loss metrics.
 - [ ] Implement the TypeScript PCM→WAV pipeline (44-byte RIFF header + aggregated s16le samples) so render jobs can materialize `output.wav` for downstream encoding.
 - [ ] Provide WAV→M4A and WAV→FLAC conversion paths: `ffmpeg.wasm` for portable builds and native `ffmpeg` for optimized runners; basic tests for both.
+- [ ] Ensure both ffmpeg.wasm and native ffmpeg encoders run in CI (at least one platform each) with smoke tests covering bitrate/compression targets.
 - [ ] Standardize M4A bitrate at 256k across encoders and configuration; add a smoke test validating target bitrate in produced files.
 - [ ] Expose Render Mode selection (location, time, technology, target) in admin job configuration; validate and reject unsupported combinations per Render Matrix.
+- [ ] Add render-mode aware controls to the admin UI and `/api/admin/render` endpoint so unsupported combinations fail fast with suggested alternatives.
 - [ ] Extend admin UI to monitor HVSC sync status, cache coverage, job progress/logs, and expose targeted backfill/invalidation actions.
 - [ ] Publish model versioning workflow: train, evaluate, approve, and atomically expose new manifests/weights with rollback capability.
 - [ ] Ensure canonical data (`data/classified`, `data/feedback`, `data/model`, manifests) update deterministically and append audit trail entries for all admin actions.
 - [ ] Implement classify conversion pipeline to generate and publish streaming WAV/M4A/FLAC assets with manifests for availability checks.
+- [ ] Add an E2E capture→encode→stream test that exercises Ultimate 64 capture mocks, encoding, manifest publication, and `/api/playback/*` reads under packet-loss scenarios ≤1%.
 
 ### Phase 4 – Acceptance Criteria (MVP)
 - Render Engine Orchestration: selecting a render mode from the Render Matrix validates against supported combinations; unsupported selections are rejected with actionable errors.

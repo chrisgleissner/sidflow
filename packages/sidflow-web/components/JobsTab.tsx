@@ -132,7 +132,7 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
       <div className="flex gap-4">
         <select
           value={filter.type || ''}
-          onChange={(e) => setFilter({ ...filter, type: e.target.value as JobType || undefined })}
+          onChange={(e) => setFilter({ ...filter, type: (e.target.value || undefined) as JobType | undefined })}
           className="px-3 py-2 border rounded"
         >
           <option value="">All Types</option>
@@ -140,6 +140,7 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
           <option value="classify">Classify</option>
           <option value="train">Train</option>
           <option value="render">Render</option>
+          <option value="pipeline">Pipeline</option>
         </select>
 
         <select
@@ -175,6 +176,22 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
           className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
         >
           Create Train Job
+        </button>
+        <button
+          onClick={() =>
+            createJob('pipeline', {
+              allowResume: true,
+              stages: [
+                { type: 'fetch', label: 'Fetch HVSC' },
+                { type: 'classify', label: 'Classify Library' },
+                { type: 'train', label: 'Train Model' },
+                { type: 'render', label: 'Render Assets' },
+              ],
+            })
+          }
+          className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+        >
+          Run Full Pipeline
         </button>
       </div>
 

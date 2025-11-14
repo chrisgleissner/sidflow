@@ -4,5 +4,15 @@
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./data/classified",
   "threads": 0,
-  "classificationDepth": 3
+  "classificationDepth": 3,
+  "render": {
+    "outputPath": "./data/renders",
+    "defaultFormats": ["wav", "m4a", "flac"],
+    "preferredEngines": ["sidplayfp-cli", "ultimate64", "wasm"],
+    "defaultChip": "6581",
+    "ultimate64": {
+      "host": "127.0.0.1:11080",
+      "audioPort": 11001
+    }
+  }
 }

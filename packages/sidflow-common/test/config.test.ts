@@ -34,7 +34,20 @@ describe("config", () => {
       tagsPath: "./tags",
       sidplayPath: "sidplayfp",
       threads: 0,
-      classificationDepth: 3
+      classificationDepth: 3,
+      render: {
+        outputPath: "./renders",
+        defaultFormats: ["wav", "m4a"],
+        preferredEngines: ["wasm", "sidplayfp-cli"],
+        defaultChip: "8580r5",
+        ultimate64: {
+          host: "127.0.0.1:11080",
+          https: true,
+          password: "secret",
+          audioPort: 11002,
+          streamIp: "10.0.0.5"
+        }
+      }
     };
 
     await writeFile(configPath, JSON.stringify(payload), "utf8");
@@ -45,7 +58,11 @@ describe("config", () => {
       hvscPath: path.normalize(payload.hvscPath),
       wavCachePath: path.normalize(payload.wavCachePath),
       tagsPath: path.normalize(payload.tagsPath),
-      sidplayPath: path.normalize(payload.sidplayPath)
+      sidplayPath: path.normalize(payload.sidplayPath),
+      render: {
+        ...payload.render,
+        outputPath: path.normalize(payload.render!.outputPath!)
+      }
     });
 
     // Should return cached config
@@ -53,7 +70,7 @@ describe("config", () => {
     expect(cached).toBe(config);
   });
 
-  it("treats sidplayPath as optional", async () => {
+  it("treats sidplayPath and render as optional", async () => {
     const payload = {
       hvscPath: "./hvsc",
       wavCachePath: "./wav",
@@ -67,6 +84,7 @@ describe("config", () => {
     const config = await loadConfig(configPath);
     expect(config.hvscPath).toBe(path.normalize(payload.hvscPath));
     expect(config.sidplayPath).toBeUndefined();
+    expect(config.render).toBeUndefined();
   });
 
   it("throws SidflowConfigError for malformed config", async () => {
@@ -141,6 +159,24 @@ describe("config", () => {
       threads: 0,
       classificationDepth: 0
     };
+    await writeFile(configPath, JSON.stringify(payload), "utf8");
+    await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
+  });
+
+  it("validates render settings", async () => {
+    const payload = {
+      hvscPath: "./hvsc",
+      wavCachePath: "./wav",
+      tagsPath: "./tags",
+      threads: 1,
+      classificationDepth: 4,
+      render: {
+        defaultFormats: [],
+        preferredEngines: ["invalid"],
+        ultimate64: {}
+      }
+    };
+
     await writeFile(configPath, JSON.stringify(payload), "utf8");
     await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
   });

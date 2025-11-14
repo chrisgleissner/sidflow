@@ -4,7 +4,11 @@
  */
 
 import { createLogger, ensureDir } from "@sidflow/common";
-import type { Ultimate64Client, Ultimate64AudioCapture } from "@sidflow/common";
+import type {
+  Ultimate64Client,
+  Ultimate64AudioCapture,
+  CaptureStatistics,
+} from "@sidflow/common";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { renderWavWithEngine } from "./wav-renderer.js";
@@ -31,6 +35,7 @@ export interface RenderRequest {
   readonly songIndex?: number;
   readonly maxRenderSeconds?: number;
   readonly targetDurationMs?: number;
+  readonly maxLossRate?: number;
 }
 
 export interface RenderResult {
@@ -52,6 +57,8 @@ export interface RenderOrchestratorConfig {
   readonly sidplayfpCliPath?: string;
   readonly m4aBitrate?: number;
   readonly flacCompressionLevel?: number;
+  readonly ultimate64AudioPort?: number;
+  readonly ultimate64StreamIp?: string;
 }
 
 export class RenderOrchestrator {
@@ -303,6 +310,8 @@ export class RenderOrchestrator {
 
     const client = this.config.ultimate64Client;
     const capture = this.config.ultimate64Capture;
+    const audioPort = this.config.ultimate64AudioPort ?? 11001;
+    const streamIp = this.config.ultimate64StreamIp ?? "127.0.0.1";
 
     // Load SID file
     const sidBuffer = new Uint8Array(await readFile(request.sidPath));
@@ -310,38 +319,111 @@ export class RenderOrchestrator {
     // Configure SID chip
     await client.setSidChip(chip);
 
-    // Start audio capture
-    await capture.start(11001); // Default Ultimate 64 audio port
+    let captureCompleted = false;
 
-    // Start playback
-    await client.sidplay({
-      sidBuffer,
-      songNumber: request.songIndex,
+    const requestedDurationMs = request.targetDurationMs ?? 120_000;
+
+    const captureResultPromise = new Promise<{
+      samples: Int16Array;
+      stats: CaptureStatistics;
+    }>((resolve, reject) => {
+      const handleError = (error: Error) => {
+        cleanup();
+        reject(error);
+      };
+      const handleStopped = () => {
+        cleanup();
+        captureCompleted = true;
+        try {
+          const result = capture.stop();
+          resolve(result);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      const cleanup = () => {
+        capture.off("error", handleError);
+        capture.off("stopped", handleStopped);
+      };
+      capture.once("error", handleError);
+      capture.once("stopped", handleStopped);
     });
 
-    // Wait for capture to complete (based on targetDurationMs)
-    await new Promise<void>((resolve) => {
-      capture.once("stopped", () => {
-        resolve();
+    const captureTimeout = setTimeout(() => {
+      if (!captureCompleted) {
+        logger.debug(
+          `Ultimate 64 capture timeout reached after ${requestedDurationMs}ms; stopping capture`
+        );
+        try {
+          capture.stop();
+        } catch (err) {
+          logger.warn("Ultimate 64 capture timeout stop failed", err);
+        }
+      }
+    }, requestedDurationMs + 1000);
+
+    await capture.start(audioPort);
+
+    let streamStarted = false;
+
+    try {
+      await client.startStream({
+        stream: "audio",
+        ip: streamIp,
+        port: audioPort,
       });
-    });
+      streamStarted = true;
 
-    // Stop capture and get samples
-    const { samples } = capture.stop();
+      // Start playback
+      await client.sidplay({
+        sidBuffer,
+        songNumber: request.songIndex,
+      });
 
-    // Convert to WAV
-    // Note: Ultimate 64 outputs at PAL (47983 Hz) or NTSC (47940 Hz) sample rates,
-    // but we use standard 44.1 kHz for compatibility with common audio tools
-    const { encodePcmToWav } = await import("./wav-renderer.js");
-    const STANDARD_SAMPLE_RATE = 44100;
-    const wavBuffer = encodePcmToWav(samples, STANDARD_SAMPLE_RATE, 2);
+      // Wait for capture to complete
+      const { samples, stats } = await captureResultPromise;
 
-    // Write WAV file
-    await import("node:fs/promises").then((fs) =>
-      fs.writeFile(wavPath, wavBuffer)
-    );
+      if (
+        typeof request.maxLossRate === "number" &&
+        stats.lossRate > request.maxLossRate
+      ) {
+        throw new Error(
+          `Ultimate 64 capture loss rate ${(stats.lossRate * 100).toFixed(2)}% exceeded threshold ${(request.maxLossRate * 100).toFixed(2)}%`
+        );
+      }
 
-    logger.debug(`Ultimate 64 capture complete: ${samples.length} samples`);
+      // Convert to WAV
+      // Note: Ultimate 64 outputs at PAL (47983 Hz) or NTSC (47940 Hz) sample rates,
+      // but we use standard 44.1 kHz for compatibility with common audio tools
+      const { encodePcmToWav } = await import("./wav-renderer.js");
+      const STANDARD_SAMPLE_RATE = 44100;
+      const wavBuffer = encodePcmToWav(samples, STANDARD_SAMPLE_RATE, 2);
+
+      // Write WAV file
+      await import("node:fs/promises").then((fs) =>
+        fs.writeFile(wavPath, wavBuffer)
+      );
+
+      logger.debug(`Ultimate 64 capture complete: ${samples.length} samples`);
+    } finally {
+      clearTimeout(captureTimeout);
+
+      if (!captureCompleted) {
+        try {
+          capture.stop();
+        } catch (err) {
+          logger.warn("Ultimate 64 capture stop failed", err);
+        }
+      }
+
+      if (streamStarted) {
+        try {
+          await client.stopStream("audio");
+        } catch (err) {
+          logger.warn("Failed to stop Ultimate 64 audio stream", err);
+        }
+      }
+    }
   }
 
   /**

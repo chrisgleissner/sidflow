@@ -1,8 +1,12 @@
+import type { RenderEngine, RenderFormat } from "./config.js";
+
 /**
- * Job orchestration types for background tasks (fetch, classify, train, render)
+ * Job orchestration types for background tasks (fetch, classify, train, render, pipeline)
  */
 
-export type JobType = 'fetch' | 'classify' | 'train' | 'render';
+export const BASE_JOB_TYPES = ['fetch', 'classify', 'train', 'render'] as const;
+export type BaseJobType = (typeof BASE_JOB_TYPES)[number];
+export type JobType = BaseJobType | 'pipeline';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused';
 
 export interface JobMetadata {
@@ -42,15 +46,39 @@ export interface TrainJobParams {
   readonly evaluate?: boolean;
 }
 
+export type RenderEngineSelection = RenderEngine | "auto";
+
 export interface RenderJobParams {
-  readonly sidPaths: string[];
-  readonly engine: 'wasm' | 'sidplayfp-cli' | 'ultimate64';
-  readonly chip?: '6581' | '8580r5';
-  readonly formats: ('wav' | 'm4a' | 'flac')[];
-  readonly force?: boolean;
+  readonly configPath?: string;
+  readonly sidPaths?: string[];
+  readonly sidListFile?: string;
+  readonly engine?: RenderEngineSelection;
+  readonly preferredEngines?: RenderEngine[];
+  readonly chip?: "6581" | "8580r5";
+  readonly formats?: RenderFormat[];
+  readonly outputPath?: string;
+  readonly targetDurationMs?: number;
+  readonly maxLossRate?: number;
 }
 
-export type JobParams = FetchJobParams | ClassifyJobParams | TrainJobParams | RenderJobParams;
+export interface PipelineStage {
+  readonly type: BaseJobType;
+  readonly params?: FetchJobParams | ClassifyJobParams | TrainJobParams | RenderJobParams;
+  readonly label?: string;
+}
+
+export interface PipelineJobParams {
+  readonly stages: PipelineStage[];
+  readonly allowResume?: boolean;
+  readonly label?: string;
+}
+
+export type JobParams =
+  | FetchJobParams
+  | ClassifyJobParams
+  | TrainJobParams
+  | RenderJobParams
+  | PipelineJobParams;
 
 export interface JobDescriptor {
   readonly id: string;

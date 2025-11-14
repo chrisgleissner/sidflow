@@ -2,19 +2,41 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
+export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
+export type RenderFormat = "wav" | "m4a" | "flac";
+
+export interface Ultimate64RenderConfig {
+  host: string;
+  https?: boolean;
+  password?: string;
+  audioPort?: number;
+  streamIp?: string;
+}
+
+export interface RenderSettings {
+  outputPath?: string;
+  defaultFormats?: RenderFormat[];
+  preferredEngines?: RenderEngine[];
+  defaultChip?: "6581" | "8580r5";
+  ultimate64?: Ultimate64RenderConfig;
+}
+
 export interface SidflowConfig {
   hvscPath: string;
   wavCachePath: string;
   tagsPath: string;
   classifiedPath?: string;
+  sidplayPath?: string;
   threads: number;
   classificationDepth: number;
+  render?: RenderSettings;
 }
 
 export const DEFAULT_CONFIG_FILENAME = ".sidflow.json";
 
 let cachedConfig: SidflowConfig | null = null;
 let cachedPath: string | null = null;
+let sidplayWarningEmitted = false;
 
 export class SidflowConfigError extends Error {
   declare cause?: unknown;
@@ -68,6 +90,13 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
   const overrideSidBase = process.env.SIDFLOW_SID_BASE_PATH;
   if (overrideSidBase && overrideSidBase.trim().length > 0) {
     config.hvscPath = path.normalize(overrideSidBase);
+  }
+
+  if (config.sidplayPath && !sidplayWarningEmitted) {
+    sidplayWarningEmitted = true;
+    process.stderr.write(
+      "[sidflow] Config key \"sidplayPath\" is deprecated. The WASM renderer is now used by default; remove this key once native fallbacks are retired.\n"
+    );
   }
   cachedConfig = config;
   cachedPath = resolvedPath;
@@ -135,7 +164,139 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     wavCachePath: requiredString("wavCachePath"),
     tagsPath: requiredString("tagsPath"),
     classifiedPath: optionalString("classifiedPath"),
+    sidplayPath: optionalString("sidplayPath"),
     threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
-    classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0)
+    classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0),
+    render: parseRenderSettings(record.render, configPath),
   };
+}
+
+function parseRenderSettings(value: unknown, configPath: string): RenderSettings | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    throw new SidflowConfigError(
+      `Config key "render" must be an object in ${configPath}`
+    );
+  }
+
+  const record = value as Record<string, unknown>;
+  const settings: RenderSettings = {};
+
+  if (record.outputPath !== undefined) {
+    if (typeof record.outputPath !== "string" || record.outputPath.trim() === "") {
+      throw new SidflowConfigError(
+        `Config key "render.outputPath" must be a non-empty string`
+      );
+    }
+    settings.outputPath = path.normalize(record.outputPath);
+  }
+
+  if (record.defaultFormats !== undefined) {
+    if (!Array.isArray(record.defaultFormats) || record.defaultFormats.length === 0) {
+      throw new SidflowConfigError(
+        `Config key "render.defaultFormats" must be a non-empty array`
+      );
+    }
+    const allowedFormats: RenderFormat[] = ["wav", "m4a", "flac"];
+    settings.defaultFormats = record.defaultFormats.map((entry, index) => {
+      if (typeof entry !== "string" || !allowedFormats.includes(entry as RenderFormat)) {
+        throw new SidflowConfigError(
+          `Config key "render.defaultFormats[${index}]" must be one of ${allowedFormats.join(", ")}`
+        );
+      }
+      return entry as RenderFormat;
+    });
+  }
+
+  if (record.preferredEngines !== undefined) {
+    if (!Array.isArray(record.preferredEngines) || record.preferredEngines.length === 0) {
+      throw new SidflowConfigError(
+        `Config key "render.preferredEngines" must be a non-empty array`
+      );
+    }
+    const allowedEngines: RenderEngine[] = ["sidplayfp-cli", "ultimate64", "wasm"];
+    settings.preferredEngines = record.preferredEngines.map((entry, index) => {
+      if (typeof entry !== "string" || !allowedEngines.includes(entry as RenderEngine)) {
+        throw new SidflowConfigError(
+          `Config key "render.preferredEngines[${index}]" must be one of ${allowedEngines.join(", ")}`
+        );
+      }
+      return entry as RenderEngine;
+    });
+  }
+
+  if (record.defaultChip !== undefined) {
+    if (record.defaultChip !== "6581" && record.defaultChip !== "8580r5") {
+      throw new SidflowConfigError(
+        `Config key "render.defaultChip" must be either "6581" or "8580r5"`
+      );
+    }
+    settings.defaultChip = record.defaultChip;
+  }
+
+  if (record.ultimate64 !== undefined) {
+    if (!record.ultimate64 || typeof record.ultimate64 !== "object") {
+      throw new SidflowConfigError(
+        `Config key "render.ultimate64" must be an object`
+      );
+    }
+    const ultimateRecord = record.ultimate64 as Record<string, unknown>;
+    const host = ultimateRecord.host;
+    if (typeof host !== "string" || host.trim() === "") {
+      throw new SidflowConfigError(
+        `Config key "render.ultimate64.host" must be a non-empty string`
+      );
+    }
+
+    const ultimate: Ultimate64RenderConfig = {
+      host,
+    };
+
+    if (ultimateRecord.https !== undefined) {
+      if (typeof ultimateRecord.https !== "boolean") {
+        throw new SidflowConfigError(
+          `Config key "render.ultimate64.https" must be a boolean`
+        );
+      }
+      ultimate.https = ultimateRecord.https;
+    }
+
+    if (ultimateRecord.password !== undefined) {
+      if (typeof ultimateRecord.password !== "string") {
+        throw new SidflowConfigError(
+          `Config key "render.ultimate64.password" must be a string`
+        );
+      }
+      ultimate.password = ultimateRecord.password;
+    }
+
+    if (ultimateRecord.audioPort !== undefined) {
+      if (
+        typeof ultimateRecord.audioPort !== "number" ||
+        !Number.isInteger(ultimateRecord.audioPort) ||
+        ultimateRecord.audioPort <= 0
+      ) {
+        throw new SidflowConfigError(
+          `Config key "render.ultimate64.audioPort" must be a positive integer`
+        );
+      }
+      ultimate.audioPort = ultimateRecord.audioPort;
+    }
+
+    if (ultimateRecord.streamIp !== undefined) {
+      if (typeof ultimateRecord.streamIp !== "string" || ultimateRecord.streamIp.trim() === "") {
+        throw new SidflowConfigError(
+          `Config key "render.ultimate64.streamIp" must be a non-empty string`
+        );
+      }
+      ultimate.streamIp = ultimateRecord.streamIp;
+    }
+
+    settings.ultimate64 = ultimate;
+  }
+
+  return settings;
 }

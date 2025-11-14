@@ -48,12 +48,18 @@ export class Ultimate64AudioCapture extends EventEmitter {
   private reorderBuffer: Map<number, AudioPacket> = new Map();
   private expectedSequence = 0;
   private samples: Int16Array[] = [];
+  private readonly port: number;
   private targetDurationMs: number;
   private maxLossRate: number;
   private bufferTimeMs: number;
+  private lastResult: { samples: Int16Array; stats: CaptureStatistics } | null = null;
 
   constructor(options: CaptureOptions) {
     super();
+    if (!Number.isInteger(options.port) || options.port <= 0) {
+      throw new Error("Ultimate64AudioCapture requires a positive port");
+    }
+    this.port = options.port;
     this.targetDurationMs = options.targetDurationMs ?? 0;
     this.maxLossRate = options.maxLossRate ?? 0.01;
     this.bufferTimeMs = options.bufferTimeMs ?? PACKET_TIMEOUT_MS;
@@ -62,12 +68,17 @@ export class Ultimate64AudioCapture extends EventEmitter {
   /**
    * Start capturing UDP audio packets
    */
-  async start(port: number): Promise<void> {
+  async start(port?: number): Promise<void> {
     if (this.capturing) {
       throw new Error("Already capturing");
     }
 
-    logger.debug(`Starting UDP capture on port ${port}`);
+    const listenPort = port ?? this.port;
+    if (!Number.isInteger(listenPort) || listenPort <= 0) {
+      throw new Error("Invalid capture port");
+    }
+
+    logger.debug(`Starting UDP capture on port ${listenPort}`);
 
     this.socket = dgram.createSocket("udp4");
     this.capturing = true;
@@ -78,6 +89,7 @@ export class Ultimate64AudioCapture extends EventEmitter {
     this.reorderBuffer.clear();
     this.expectedSequence = 0;
     this.samples = [];
+    this.lastResult = null;
 
     return new Promise((resolve, reject) => {
       if (!this.socket) {
@@ -95,8 +107,8 @@ export class Ultimate64AudioCapture extends EventEmitter {
         reject(err);
       });
 
-      this.socket.bind(port, () => {
-        logger.debug(`UDP socket bound to port ${port}`);
+      this.socket.bind(listenPort, () => {
+        logger.debug(`UDP socket bound to port ${listenPort}`);
         resolve();
       });
     });
@@ -107,6 +119,9 @@ export class Ultimate64AudioCapture extends EventEmitter {
    */
   stop(): { samples: Int16Array; stats: CaptureStatistics } {
     if (!this.capturing) {
+      if (this.lastResult) {
+        return this.lastResult;
+      }
       throw new Error("Not capturing");
     }
 
@@ -151,9 +166,12 @@ export class Ultimate64AudioCapture extends EventEmitter {
       );
     }
 
+    const result = { samples: allSamples, stats };
+    this.lastResult = result;
+
     this.emit("stopped", stats);
 
-    return { samples: allSamples, stats };
+    return result;
   }
 
   /**
