@@ -961,7 +961,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         notifyStatus(`Error playing folder: ${error instanceof Error ? error.message : String(error)}`, true);
       }
     },
-    [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer, updateUpcoming]
+    [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer, updateUpcoming, playManualTrack]
   );
 
   const submitRating = useCallback(
