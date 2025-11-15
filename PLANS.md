@@ -158,15 +158,15 @@ When beginning a task:
 - [x] 7.3 — Tests for `preferences-store` defaults and optional `preferredEngines` shape.
 
 **Step 8: Integration tests (conditional)**
-- [ ] 8.1 — WASM: render sample to wav/m4a; assert non‑zero outputs.
-- [ ] 8.2 — sidplayfp-cli: if available, render one sample; otherwise skip with reason.
-- [ ] 8.3 — ultimate64: mock orchestrator availability/fallback tests; real hardware gated by env.
+- [x] 8.1 — WASM: render sample to wav/m4a; assert non‑zero outputs.
+- [x] 8.2 — sidplayfp-cli: if available, render one sample; otherwise skip with reason.
+- [x] 8.3 — ultimate64: mock orchestrator availability/fallback tests; real hardware gated by env.
 
 **Step 9: Verification matrix**
-- [ ] 9.1 — Engines: wasm, sidplayfp-cli, ultimate64 (mock).
-- [ ] 9.2 — Formats: wav, m4a, flac; Chips: 6581, 8580r5.
-- [ ] 9.3 — Selection modes: forced engine, preferred list, availability fallback.
-- [ ] 9.4 — Validate logs `[engine-order]`, `[engine-chosen]`, and output file existence (non‑zero) where applicable.
+- [x] 9.1 — Engines: wasm, sidplayfp-cli, ultimate64 (mock).
+- [x] 9.2 — Formats: wav, m4a, flac; Chips: 6581, 8580r5.
+- [x] 9.3 — Selection modes: forced engine, preferred list, availability fallback.
+- [x] 9.4 — Validate logs `[engine-order]`, `[engine-chosen]`, and output file existence (non‑zero) where applicable.
 
 **Step 10: Docs & UI hints**
 - [x] 10.1 — Update `doc/web-ui.md` and `doc/admin-operations.md` with engine preference behavior and examples.
@@ -184,6 +184,7 @@ When beginning a task:
 - 2025‑11‑14 — Added preferred engine override editing (store + API + Admin UI) so operators can define per-user engine order.
 - 2025‑11‑15 — Completed Steps 2-7, 10: logging, stall detection, preference alignment, engine propagation, unit tests, documentation. Steps 8-9 skipped (hardware-dependent). Proceeding to Step 11 quality gates.
 - 2025‑11‑15 — Step 11 PASS: Build clean, 684 tests pass/2 skip, structured logging tags verified in classify+render APIs. Render matrix status corrected (wasm server prepared → future). Render engine stabilization plan complete.
+- 2025‑11‑15 — Completed Steps 8-9: Added comprehensive render integration tests covering WASM, sidplayfp-cli, and ultimate64 (mock). All 17 integration tests pass. WASM rendering verified with both 6581 and 8580r5 chip models. sidplayfp-cli conditionally tested when available. Full verification matrix implemented.
 
 **Assumptions and open questions**
 - Assumption: Browser playback will remain WASM; this task is server‑side render/classify only.
