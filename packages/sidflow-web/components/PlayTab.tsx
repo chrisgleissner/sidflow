@@ -38,6 +38,8 @@ import {
   enqueuePlaylistRebuild,
   flushPlaybackQueue,
 } from '@/lib/offline/playback-queue';
+import { HvscBrowser } from '@/components/HvscBrowser';
+import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/hvsc-playlist-builder';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -92,6 +94,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [volume, setVolume] = useState(1.0);
+  const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song'>('mood');
+  const [playbackModeDescription, setPlaybackModeDescription] = useState<string>('Mood Station');
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -877,6 +881,89 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handlePlaySong = useCallback(
+    async (sidPath: string) => {
+      try {
+        notifyStatus(`Loading: ${sidPath}`, false);
+        const playlist = await buildSongPlaylist(sidPath);
+        if (playlist.length === 0) {
+          notifyStatus('No songs found', true);
+          return;
+        }
+
+        // Clear existing queue and switch to song mode
+        setPlaybackMode('song');
+        setPlaybackModeDescription(playlist[0].displayName);
+
+        // Load and play the song
+        const response = await playManualTrack({ sid_path: sidPath });
+        if (!response.success) {
+          notifyStatus(`Failed to load track: ${formatApiError(response)}`, true);
+          return;
+        }
+
+        const track = assignPlaylistNumber(response.data.track);
+        await loadTrackIntoPlayer(response.data, track.playlistNumber, `Now playing: ${track.displayName}`);
+      } catch (error) {
+        notifyStatus(`Error playing song: ${error instanceof Error ? error.message : String(error)}`, true);
+      }
+    },
+    [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer]
+  );
+
+  const handlePlayFolder = useCallback(
+    async (folderPath: string, recursive: boolean, shuffle: boolean) => {
+      try {
+        const modeDesc = getPlaylistModeDescription(folderPath, recursive, shuffle);
+        notifyStatus(`Building playlist: ${modeDesc}`, false);
+
+        const playlist = await buildFolderPlaylist(folderPath, { recursive, shuffle });
+        if (playlist.length === 0) {
+          notifyStatus('No songs found in folder', true);
+          return;
+        }
+
+        // Switch to folder mode
+        setPlaybackMode('folder');
+        setPlaybackModeDescription(modeDesc);
+
+        // Convert playlist items to PlaylistTrack format and queue them
+        const tracks: PlaylistTrack[] = [];
+        for (const item of playlist) {
+          const response = await playManualTrack({ sid_path: item.sidPath });
+          if (response.success) {
+            const track = assignPlaylistNumber(response.data.track);
+            tracks.push(track);
+          }
+        }
+
+        if (tracks.length === 0) {
+          notifyStatus('Failed to load any tracks', true);
+          return;
+        }
+
+        // Set the first track and add rest to upcoming
+        updateUpcoming(() => tracks.slice(1));
+        
+        // Load and play the first track
+        const firstResponse = await playManualTrack({ sid_path: tracks[0].sidPath });
+        if (!firstResponse.success) {
+          notifyStatus(`Failed to load first track: ${formatApiError(firstResponse)}`, true);
+          return;
+        }
+
+        await loadTrackIntoPlayer(
+          firstResponse.data,
+          tracks[0].playlistNumber,
+          `Playing ${modeDesc} (${tracks.length} songs)`
+        );
+      } catch (error) {
+        notifyStatus(`Error playing folder: ${error instanceof Error ? error.message : String(error)}`, true);
+      }
+    },
+    [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer, updateUpcoming]
+  );
+
   const submitRating = useCallback(
     async (value: number, label: string, advance: boolean) => {
       if (!currentTrack || isRating) {
@@ -1230,7 +1317,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           <CardHeader>
             <CardTitle className="text-sm petscii-text text-accent">Upcoming Tracks</CardTitle>
             <CardDescription className="text-muted-foreground">
-              Fixed queue for this mood
+              {playbackMode === 'mood' ? 'Fixed queue for this mood' : `Playing: ${playbackModeDescription}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1242,6 +1329,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           </CardContent>
         </Card>
       </div>
+
+      <HvscBrowser
+        onPlaySong={handlePlaySong}
+        onPlayFolder={handlePlayFolder}
+        onStatusChange={onStatusChange}
+      />
     </div>
   );
 }
