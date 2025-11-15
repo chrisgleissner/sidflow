@@ -78,54 +78,73 @@ bun run build
 
 ## Web UI
 
-For those who prefer a graphical interface, SID Flow includes a **Next.js + React** control panel.
+For those who prefer a graphical interface, SID Flow includes a **Next.js + React** control panel with two interfaces:
+
+### Two Access Points
+
+- **Public Player** at **<http://localhost:3000>** - Simple playback interface for casual listening
+- **Admin Console** at **<http://localhost:3000/admin>** - Full pipeline control and operations
 
 ```bash
 cd packages/sidflow-web
 bun run dev
 ```
 
-Open **<http://localhost:3000>** in your browser.
+### Admin Authentication
 
-### Wizard
+The admin console requires authentication for security:
+
+- **Default Username:** `admin` (configurable via `SIDFLOW_ADMIN_USER`)
+- **Default Password:** `password` (configurable via `SIDFLOW_ADMIN_PASSWORD`)
+
+⚠️ **Security Warning:** The default password `password` is for development convenience only. **Always set a strong `SIDFLOW_ADMIN_PASSWORD` in production.**
+
+For full authentication details, see [Web UI Documentation](./doc/web-ui.md).
+
+### Public Player Features
+
+The public interface at **<http://localhost:3000>** provides:
+
+- **Play Tab** - Mood-based playback with presets (Quiet, Ambient, Energetic, Dark, Bright, Complex)
+- **Preferences** - Local theme and font settings
+
+### Admin Console Features
+
+The admin interface at **<http://localhost:3000/admin>** provides full system control:
+
+#### Wizard
 
 First-time setup walks you through selecting your HVSC root and confirming cache locations.
 
 ![wizard panel](./doc/web-screenshots/01-wizard.png)
 
-### Preferences
+#### Preferences
 
-Tweak themes, fonts, and runtime options. The dark theme used in screenshots is applied automatically when you seed preferences for docs.
+Tweak themes, fonts, render engines, ROM paths, and collection settings.
 
 ![preferences panel](./doc/web-screenshots/02-prefs.png)
 
-### Fetch HVSC
+#### Fetch HVSC
 
-Kick off or review HVSC synchronisation runs with live progress feedback.
+Download and synchronize the High Voltage SID Collection.
 
 ![fetch panel](./doc/web-screenshots/03-fetch.png)
 
-### Rate
+#### Rate
 
-Play and rate songs based on personal preference. 
-
-You listen to a song and manually rate it based on its energy, complexity, mood, and personal preference.
+Manually rate songs on energy, complexity, mood, and preference to train the recommendation system.
 
 ![rate panel](./doc/web-screenshots/04-rate-playback.png)
 
-### Classify
+#### Classify
 
-Classify songs based on objective similarity. 
-
-This involves converting all tracks of each SID to a WAV file and then automatically analyzing it, using all cores of your CPU.
-
-As it's very CPU intensive, it can take a while for a large song collection.
+Automatically analyze your entire collection using audio features.
 
 ![classify panel](./doc/web-screenshots/05-classify-progress.png)
 
-### Play
+#### Play
 
-Create mood-based queues and drive playback directly from the browser.
+Create mood-based queues with full playback controls and history.
 
 ![play panel](./doc/web-screenshots/07-play.png)
 
@@ -176,7 +195,8 @@ The `.sidflow.json` file contains details about the HVSC download folder and mor
 - **[Technical Reference](doc/technical-reference.md)** – architecture, CLI tools, APIs  
 - **[Developer Guide](doc/developer.md)** – setup, testing, contributions  
 - **[Performance Metrics](doc/performance-metrics.md)** – benchmarks  
-- **[Artifact Governance](doc/artifact-governance.md)** – data management
+- **[Artifact Governance](doc/artifact-governance.md)** – data management  
+- **[Release Readiness](doc/release-readiness.md)** – npm publication strategy and assessment
 
 ---
 

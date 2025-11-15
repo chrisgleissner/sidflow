@@ -31,9 +31,10 @@
 
 - [ ] Environment variables configured
   - [ ] `NODE_ENV=production`
-  - [ ] `ADMIN_USERNAME` (secure value)
-  - [ ] `ADMIN_PASSWORD` (strong password, 16+ chars)
-  - [ ] `ADMIN_SESSION_SECRET` (32+ random bytes)
+  - [ ] `SIDFLOW_ADMIN_USER` (default: `admin`, set custom username for production)
+  - [ ] `SIDFLOW_ADMIN_PASSWORD` (required in production, 16+ chars, default `password` is insecure)
+  - [ ] `SIDFLOW_ADMIN_SECRET` (optional, 16+ chars for cookie signing)
+  - [ ] `SIDFLOW_ADMIN_SESSION_TTL_MS` (optional, default 3600000 = 1 hour)
   - [ ] `SIDFLOW_ROOT` (workspace path)
   - [ ] `SIDFLOW_CONFIG` (`.sidflow.json` path)
   - [ ] `ULTIMATE64_PASSWORD` (if using hardware)

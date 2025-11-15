@@ -464,7 +464,19 @@ Each playback session is automatically tracked and persisted:
 
 ## Web Control Panel
 
-For users who prefer a graphical interface over command-line tools, SIDFlow includes a local web server that provides a browser-based control panel.
+For users who prefer a graphical interface over command-line tools, SIDFlow includes a local web server that provides a browser-based control panel with two interfaces:
+
+### Two Access Points
+
+- **Public Player** at **<http://localhost:3000>** - Simple playback interface for casual listening (no authentication required)
+- **Admin Console** at **<http://localhost:3000/admin>** - Full pipeline control and operations (requires authentication)
+
+**Admin Authentication:**
+- Default username: `admin` (configurable via `SIDFLOW_ADMIN_USER`)
+- Default password: `password` (configurable via `SIDFLOW_ADMIN_PASSWORD`)
+- ⚠️ **Security Warning:** Always set a strong `SIDFLOW_ADMIN_PASSWORD` in production
+
+For full authentication details and security considerations, see [Web UI Documentation](./web-ui.md).
 
 ### Architecture
 
@@ -490,7 +502,7 @@ cd packages/sidflow-web
 bun run dev
 ```
 
-The server starts on **<http://localhost:3000>** by default.
+The server starts with both interfaces available on port 3000.
 
 For production builds:
 
@@ -1308,16 +1320,25 @@ The end-to-end test validates the full workflow:
 
 #### Web Interface Workflow
 
-For users who prefer a graphical interface, the web control panel provides the same functionality:
+For users who prefer a graphical interface, the web control panel provides the same functionality through two interfaces:
 
+**Public Player (<http://localhost:3000>):**
 1. Start the web server: `cd packages/sidflow-web && bun run dev`
 2. Open <http://localhost:3000> in your browser
-3. Use the **Play Controls** to trigger playback with mood presets
-4. Use the **Rating Panel** to rate tracks with visual sliders
-5. View recently played tracks in the **Queue View**
-6. Monitor operations with real-time **Status Display**
+3. Use the **Play Tab** to trigger playback with mood presets
+4. Configure **Preferences** for themes and fonts (saved locally in browser)
 
-The web interface delegates all operations to the CLI tools, ensuring consistent behavior across interfaces.
+**Admin Console (<http://localhost:3000/admin>):**
+1. Navigate to <http://localhost:3000/admin>
+2. Sign in with credentials (default: username `admin`, password `password`)
+3. Use the **Wizard** for initial setup
+4. Use the **Fetch Tab** to download HVSC
+5. Use the **Rating Panel** to rate tracks with visual sliders
+6. Use the **Classify Tab** to analyze your collection
+7. Use the **Train Tab** to update ML models
+8. Monitor operations with real-time **Status Display** and **Jobs Tab**
+
+The web interface delegates all operations to the CLI tools, ensuring consistent behavior across interfaces. See [Web UI Documentation](./web-ui.md) for complete details on authentication and features.
 
 All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is git-ignored by default. The LanceDB database (`data/sidflow.lance/`) and trained model weights (`data/model/*.bin`, `data/model/model.json`) are also git-ignored but can be rebuilt deterministically from source data.
 
