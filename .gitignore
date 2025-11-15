@@ -37,6 +37,10 @@ data/audit/admin-actions.jsonl
 !data/sidflow.lance.manifest.json
 !data/classified/*.jsonl
 !data/feedback/**/*.jsonl
-!data/training/*.jsonl
-!data/model/feature-stats.json
-!data/model/model-metadata.json
+
+# Training logs and model artifacts change on each build/test run
+# Tests should use test-specific directories instead
+data/training/*.jsonl
+data/model/feature-stats.json
+data/model/model-metadata.json
+data/model/model/weights.bin

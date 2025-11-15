@@ -276,16 +276,16 @@ When beginning a task:
 - [x] 1.1 — Add setVolume/getVolume methods to SidflowPlayer, WorkletPlayer, HlsPlayer
 - [x] 1.2 — Implement volume slider UI in Play tab (to right of play controls)
 - [x] 1.3 — Add volume state management and sync with player
-- [x] 1.4 — Add comprehensive unit tests (23 tests)
+- [ ] 1.4 — Add comprehensive unit tests (23 mock-based tests exist, need real player integration tests)
 - [ ] 1.5 — Add e2e test for volume slider interaction
 
 **Step 2: HVSC Folder Browser**
-- [ ] 2.1 — Create `/api/hvsc/browse` endpoint accepting `path` query param
-- [ ] 2.2 — Implement folder traversal (list folders + SID files at path)
+- [x] 2.1 — Create `/api/hvsc/browse` endpoint accepting `path` query param
+- [x] 2.2 — Implement folder traversal (list folders + SID files at path)
 - [ ] 2.3 — Add breadcrumb navigation component for current path
 - [ ] 2.4 — Add folder list UI with expand/collapse for subfolders
 - [ ] 2.5 — Display SID file metadata (title, author, songs count) in list
-- [ ] 2.6 — Unit tests for browse API and folder navigation logic
+- [ ] 2.6 — Unit tests for browse API (26 mock-based tests exist, need integration tests with real API calls)
 - [ ] 2.7 — E2E test for folder navigation and file selection
 
 **Step 3: Direct Playback Modes (overrides mood-based playlists)**

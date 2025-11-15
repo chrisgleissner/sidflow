@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 
-import { describe, expect, it, beforeEach, afterEach, mock } from "bun:test";
+import { describe, expect, it, beforeEach, mock } from "bun:test";
 
 describe("Volume Control", () => {
   describe("SidflowPlayer volume methods", () => {
@@ -197,7 +197,7 @@ describe("Volume Control", () => {
     });
 
     it("volume changes propagate to player immediately", () => {
-      let playerVolume = 1.0;
+      let playerVolume;
       const newVolume = 0.6;
 
       // Simulate immediate update

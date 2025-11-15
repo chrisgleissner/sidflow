@@ -875,7 +875,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     if (player) {
       player.setVolume(volume);
     }
-  }, [volume]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submitRating = useCallback(
     async (value: number, label: string, advance: boolean) => {
@@ -1090,6 +1090,11 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 step={0.01}
                 className="cursor-pointer w-full"
                 title={`Volume: ${Math.round(volume * 100)}%`}
+                aria-label="Volume control"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(volume * 100)}
+                aria-valuetext={`${Math.round(volume * 100)} percent`}
               />
             </div>
             <div className="flex-1 w-full">

@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "@sidflow/common";
 
@@ -32,8 +32,7 @@ export interface HvscBrowseResponse {
  */
 async function getSidSubtuneCount(filePath: string): Promise<number> {
   try {
-    const fs = await import("node:fs/promises");
-    const buffer = await fs.readFile(filePath);
+    const buffer = await readFile(filePath);
     
     // SID header: songs count at offset 0x0E-0x0F (big-endian)
     if (buffer.length >= 0x10) {

@@ -6,8 +6,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { mkdir, rm, writeFile, stat, readFile } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { rm, stat, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
