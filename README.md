@@ -145,11 +145,17 @@ Documentation: [packages/sidflow-web/README.md](packages/sidflow-web/README.md)
 
 If you prefer automation or terminal workflows, use the CLI tools documented in the [Technical Reference](./doc/technical-reference.md).
 
+### Available CLIs
+
+- **[sidflow-fetch](packages/sidflow-fetch/README.md)** - Sync HVSC collection from official mirrors
+- **[sidflow-classify](packages/sidflow-classify/README-INTEGRATION.md)** - Classify songs automatically
+- **[sidflow-train](packages/sidflow-train/README.md)** - Train the ML model on feedback
+- **[sidflow-rate](packages/sidflow-rate/README.md)** - Manually rate songs interactively
+- **[sidflow-play](packages/sidflow-play/README.md)** - Play mood-based playlists
 
 ---
 
 ## Config
-
 
 The `.sidflow.json` file contains details about the HVSC download folder and more:
 
