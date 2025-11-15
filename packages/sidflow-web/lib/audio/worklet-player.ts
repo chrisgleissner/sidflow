@@ -663,6 +663,23 @@ export class WorkletPlayer {
     this.updateState('idle');
   }
 
+  /**
+   * Set the playback volume (0.0 to 1.0)
+   * @param volume - Volume level from 0.0 (silent) to 1.0 (full)
+   */
+  setVolume(volume: number): void {
+    const clamped = Math.min(1, Math.max(0, volume));
+    this.gainNode.gain.value = clamped;
+  }
+
+  /**
+   * Get the current playback volume (0.0 to 1.0)
+   * @returns Current volume level
+   */
+  getVolume(): number {
+    return this.gainNode.gain.value;
+  }
+
   destroy(): void {
     // Stop capture if active
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {

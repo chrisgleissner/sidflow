@@ -699,6 +699,31 @@ export class SidflowPlayer {
         }
     }
 
+    /**
+     * Set the playback volume (0.0 to 1.0)
+     * @param volume - Volume level from 0.0 (silent) to 1.0 (full)
+     */
+    setVolume(volume: number): void {
+        const clamped = clamp(volume, 0, 1);
+        this.gainNode.gain.value = clamped;
+        
+        // Also set volume on worklet and HLS players if active
+        if (this.activePipeline === 'worklet' && this.workletPlayer) {
+            this.workletPlayer.setVolume(clamped);
+        }
+        if (this.activePipeline === 'hls' && this.hlsPlayer) {
+            this.hlsPlayer.setVolume(clamped);
+        }
+    }
+
+    /**
+     * Get the current playback volume (0.0 to 1.0)
+     * @returns Current volume level
+     */
+    getVolume(): number {
+        return this.gainNode.gain.value;
+    }
+
     destroy(): void {
         if (this.activePipeline === 'worklet' && this.workletPlayer) {
             this.workletPlayer.destroy();

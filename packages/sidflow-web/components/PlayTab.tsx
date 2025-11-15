@@ -13,7 +13,7 @@ import {
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
 import type { FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
@@ -91,6 +91,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [isPauseReady, setIsPauseReady] = useState(false);
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [volume, setVolume] = useState(1.0);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -856,6 +857,26 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     [currentTrack, duration]
   );
 
+  const handleVolumeChange = useCallback(
+    (value: number[]) => {
+      const player = playerRef.current;
+      const newVolume = Math.min(Math.max(0, value[0]), 1);
+      setVolume(newVolume);
+      if (player) {
+        player.setVolume(newVolume);
+      }
+    },
+    []
+  );
+
+  // Sync volume with player on mount
+  useEffect(() => {
+    const player = playerRef.current;
+    if (player) {
+      player.setVolume(volume);
+    }
+  }, [volume]);
+
   const submitRating = useCallback(
     async (value: number, label: string, advance: boolean) => {
       if (!currentTrack || isRating) {
@@ -1054,6 +1075,22 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
               >
                 <SkipForward className="h-4 w-4" />
               </Button>
+            </div>
+            <div className="flex items-center gap-2 min-w-[140px]">
+              {volume === 0 ? (
+                <VolumeX className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              ) : (
+                <Volume2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              )}
+              <Slider
+                value={[volume]}
+                onValueChange={handleVolumeChange}
+                min={0}
+                max={1}
+                step={0.01}
+                className="cursor-pointer w-full"
+                title={`Volume: ${Math.round(volume * 100)}%`}
+              />
             </div>
             <div className="flex-1 w-full">
               <Slider
