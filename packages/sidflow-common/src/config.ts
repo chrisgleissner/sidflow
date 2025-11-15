@@ -91,7 +91,10 @@ export function resetConfigCache(): void {
 }
 
 export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
-  const resolvedPath = path.resolve(configPath ?? getDefaultConfigPath());
+  // Check for SIDFLOW_CONFIG environment variable if no explicit path provided
+  const envConfigPath = process.env.SIDFLOW_CONFIG;
+  const effectiveConfigPath = configPath ?? (envConfigPath || getDefaultConfigPath());
+  const resolvedPath = path.resolve(effectiveConfigPath);
 
   if (cachedConfig && cachedPath === resolvedPath) {
     return cachedConfig;
