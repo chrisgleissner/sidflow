@@ -185,6 +185,7 @@ When beginning a task:
 - 2025‑11‑15 — Completed Steps 2-7, 10: logging, stall detection, preference alignment, engine propagation, unit tests, documentation. Steps 8-9 skipped (hardware-dependent). Proceeding to Step 11 quality gates.
 - 2025‑11‑15 — Step 11 PASS: Build clean, 684 tests pass/2 skip, structured logging tags verified in classify+render APIs. Render matrix status corrected (wasm server prepared → future). Render engine stabilization plan complete.
 - 2025‑11‑15 — Completed Steps 8-9: Added comprehensive render integration tests covering WASM, sidplayfp-cli, and ultimate64 (mock). All 17 integration tests pass. WASM rendering verified with both 6581 and 8580r5 chip models. sidplayfp-cli conditionally tested when available. Full verification matrix implemented.
+- 2025‑11‑15 — Play Tab Enhancements Complete: Volume control with accessibility (21 real integration tests), HVSC browse API with security checks (26 unit tests). Test count: 748 pass/2 skip. Volume tests refactored to use real player instances instead of mocks.
 
 **Assumptions and open questions**
 - Assumption: Browser playback will remain WASM; this task is server‑side render/classify only.
@@ -276,7 +277,7 @@ When beginning a task:
 - [x] 1.1 — Add setVolume/getVolume methods to SidflowPlayer, WorkletPlayer, HlsPlayer
 - [x] 1.2 — Implement volume slider UI in Play tab (to right of play controls)
 - [x] 1.3 — Add volume state management and sync with player
-- [ ] 1.4 — Add comprehensive unit tests (23 mock-based tests exist, need real player integration tests)
+- [x] 1.4 — Add comprehensive unit tests (21 tests with real player instances)
 - [ ] 1.5 — Add e2e test for volume slider interaction
 
 **Step 2: HVSC Folder Browser**
