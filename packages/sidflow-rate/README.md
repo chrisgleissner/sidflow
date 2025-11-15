@@ -134,10 +134,10 @@ Ratings are saved as `.sid.tags.json` files:
 ## Programmatic Usage
 
 ```typescript
-import { planTagSession, runTagSession } from "@sidflow/rate";
+import { planTagSession, runTagSession, type TagSessionPlan } from "@sidflow/rate";
 
 // Plan a rating session
-const plan = await planTagSession({
+const plan: TagSessionPlan = await planTagSession({
   hvscPath: "./workspace/hvsc",
   tagsPath: "./workspace/tags",
   filter: "MUSICIANS/H/*",
@@ -148,10 +148,10 @@ console.log(`${plan.unratedCount} songs to rate`);
 
 // Run the session
 await runTagSession(plan, {
-  onProgress: (current, total) => {
+  onProgress: (current: number, total: number) => {
     console.log(`Progress: ${current}/${total}`);
   },
-  onRating: (sidPath, ratings) => {
+  onRating: (sidPath: string, ratings: { e: number; m: number; c: number; p: number }) => {
     console.log(`Rated ${sidPath}:`, ratings);
   }
 });
@@ -210,14 +210,25 @@ Create a rating session plan.
 
 **Returns:** `Promise<TagSessionPlan>`
 
+**TagSessionPlan type:**
+```typescript
+{
+  sidPaths: string[];           // Array of SID file paths to rate
+  unratedCount: number;         // Number of unrated songs
+  totalCount: number;           // Total number of songs
+  hvscPath: string;             // HVSC root path
+  tagsPath: string;             // Tags directory path
+}
+```
+
 ### `runTagSession(plan, callbacks)`
 
 Execute an interactive rating session.
 
 **Parameters:**
 - `plan` — Session plan from `planTagSession`
-- `callbacks.onProgress` — Progress callback (optional)
-- `callbacks.onRating` — Rating callback (optional)
+- `callbacks.onProgress` — Progress callback: `(current: number, total: number) => void` (optional)
+- `callbacks.onRating` — Rating callback: `(sidPath: string, ratings: Tags) => void` (optional)
 
 **Returns:** `Promise<void>`
 
@@ -225,11 +236,34 @@ Execute an interactive rating session.
 
 Load existing tags for a SID file.
 
+**Parameters:**
+- `sidPath` — Path to SID file
+- `tagsPath` — Tags directory path
+
 **Returns:** `Promise<Tags | null>`
+
+**Tags type:**
+```typescript
+{
+  path: string;                 // SID file path
+  e: number;                    // Energy rating (1-5)
+  m: number;                    // Mood rating (1-5)
+  c: number;                    // Complexity rating (1-5)
+  p: number;                    // Personal preference (1-5)
+  ratedAt: string;              // ISO timestamp
+  ratedBy: string;              // User identifier
+  notes?: string;               // Optional notes
+}
+```
 
 ### `saveTags(sidPath, tags, tagsPath)`
 
 Save tags for a SID file.
+
+**Parameters:**
+- `sidPath` — Path to SID file
+- `tags` — Tags object to save
+- `tagsPath` — Tags directory path
 
 **Returns:** `Promise<void>`
 

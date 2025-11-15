@@ -201,11 +201,21 @@ await buildPlaybackDatabase({
 
 Create a new playback session.
 
+**Parameters:**
+- `options.modelPath` — Path to model directory (default: "data/model")
+- `options.classifiedPath` — Path to classified directory (default: "data/classified")
+
 **Returns:** `Promise<PlaybackSession>`
 
 ### `generatePlaylist(options)`
 
 Generate a playlist based on filters.
+
+**Parameters:**
+- `options.session` — Playback session
+- `options.filters` — Filter criteria (energyMin, energyMax, moodMin, moodMax, complexityMin, complexityMax)
+- `options.limit` — Maximum number of songs (optional)
+- `options.shuffle` — Shuffle the playlist (optional)
 
 **Returns:** `Promise<Playlist>`
 
@@ -213,11 +223,52 @@ Generate a playlist based on filters.
 
 Find songs similar to a reference track.
 
+**Parameters:**
+- `options.session` — Playback session
+- `options.referencePath` — Path to reference SID file
+- `options.limit` — Maximum number of similar songs (optional)
+- `options.minSimilarity` — Minimum similarity threshold (optional)
+
 **Returns:** `Promise<SongMatch[]>`
 
 ### `exportPlaylist(options)`
 
 Export a playlist to a file.
+
+**Parameters:**
+- `options.playlist` — Playlist to export
+- `options.format` — Export format ("m3u" or "json")
+- `options.outputPath` — Output file path
+
+**Returns:** `Promise<void>`
+
+### `saveSession(session, path)`
+
+Save playback session state to a file.
+
+**Parameters:**
+- `session` — Playback session to save
+- `path` — File path to save to
+
+**Returns:** `Promise<void>`
+
+### `loadSession(path)`
+
+Load a previously saved playback session.
+
+**Parameters:**
+- `path` — File path to load from
+
+**Returns:** `Promise<PlaybackSession>`
+
+### `buildPlaybackDatabase(options)`
+
+Build LanceDB vector database from classified data.
+
+**Parameters:**
+- `options.classifiedPath` — Path to classified directory
+- `options.modelPath` — Path to model directory
+- `options.databasePath` — Output database path
 
 **Returns:** `Promise<void>`
 
