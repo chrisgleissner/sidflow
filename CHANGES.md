@@ -17,7 +17,7 @@
 ### Code Quality (2025-11-15)
 - Verified all packages properly use shared utilities from `@sidflow/common`
 - Confirmed consistent coding patterns across the monorepo
-- Validated all tests pass (681 pass, 2 skip, 5 fail ffmpeg-related environment issues)
+- Test results: 681 pass, 2 skip, 5 fail (failures due to ffmpeg-related environment issues; not related to documentation changes)
 - Build process verified clean and stable
 
 ## 0.1.0
