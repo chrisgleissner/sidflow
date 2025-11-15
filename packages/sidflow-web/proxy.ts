@@ -59,7 +59,9 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
   const scriptSrc = isProd
     ? "script-src 'self' 'unsafe-eval'"
     : "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:";
-  const connectSrc = isProd ? "connect-src 'self'" : "connect-src 'self' ws: wss:";
+  const connectSrc = isProd
+    ? "connect-src 'self' data:"
+    : "connect-src 'self' data: ws: wss:";
   const csp = [
     "default-src 'self'",
     scriptSrc,

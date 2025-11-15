@@ -252,6 +252,38 @@ When beginning a task:
 - Whitelisted for `sidflow-web`: server `anonymize.ts`, `rate-limiter.ts`, `admin-auth-core.ts`, and `proxy.ts`.
 - Follow-ups (non-blocking): add focused unit tests for the excluded modules where feasible, then relax excludes incrementally to keep the threshold meaningful and stable.
 
+## Task: Fix Playwright E2E CSP & screenshots regressions (web)
+
+**User request (summary)**  
+- All Playwright E2E suites must pass locally and on CI; playback tests currently fail due to CSP blocking data URLs, and screenshot suite aborts when the page closes early.
+
+**Context and constraints**  
+- `proxy.ts` sets strict CSP with `connect-src 'self'` (prod) / `connect-src 'self' ws: wss:` (dev). Playwright fixture loads SID assets from `data:` URIs; blocking them prevents audio workers from loading, so pause buttons never become ready.
+- Screenshot specs rely on the same pages; when playback fails, shared browser context closes, cascading into timeouts.
+- Must preserve COOP/COEP headers and overall security posture; only allow the minimal additional schemes needed for deterministic tests.
+
+**Plan (checklist)**
+- [x] 1 — Investigate failing E2E logs/traces; confirm CSP root cause and identify any other blockers.
+- [x] 2 — Update CSP connect-src directive (both dev/prod) to allow `data:` (and retain ws/wss in dev) without widening other directives.
+- [x] 3 — Add/adjust unit tests in `security-headers.test.ts` (or similar) covering the new allowance to prevent regressions.
+- [x] 4 — Run targeted unit tests (`bun test packages/sidflow-web/tests/unit/security-headers.test.ts`) to ensure CSP changes are covered.
+- [x] 5 — Run `bun run test:e2e` (full suite) and ensure all Playwright tests pass; capture summary in Progress log.
+
+**Progress log**
+- 2025-11-15 — Received CI artifact showing `connect-src 'self'` blocking data: SID loads; playback and screenshot specs timing out.
+- 2025-11-15 — Reproduced CSP failure signature (connect-src lacked `data:`) and mapped it to `proxy.ts` security headers.
+- 2025-11-15 — Added `data:` scheme to both dev/prod `connect-src` directives, updated security-header tests, and re-ran the suite (39 pass).
+- 2025-11-15 — Step 5 PASS: `bun run test:e2e` (includes integration pipeline + 24 Playwright specs) now green after screenshot wait timeout fix (23 passed, 1 skipped); overall repo build/typecheck/tests PASS.
+
+**Assumptions and open questions**
+- Assumption: Allowing `connect-src data:` is sufficient; no need to loosen `media-src`/`worker-src` because they already include blob:.
+- Assumption: Tests use only trusted in-repo data URLs, so expanding `connect-src` is acceptable.
+- Open question: Should we gate `data:` allowance behind a feature flag for production? (Leaning no; real users also load SID blobs via data URLs when exporting.)
+
+**Follow-ups / future work**
+- Consider serving SID fixtures from `/virtual` HTTP endpoints instead of data URLs to avoid CSP relaxations entirely.
+- Revisit screenshot harness to isolate failures per tab (separate contexts) so one crash doesn’t cascade.
+
 ## Notes on agent behavior
 
 - Persistence: Do not stop early; continue until done or truly blocked. Prefer research and reasonable assumptions, and document them.

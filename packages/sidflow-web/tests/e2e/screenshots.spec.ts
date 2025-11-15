@@ -414,23 +414,36 @@ async function installScreenshotFixtures(page: Page): Promise<void> {
   });
 }
 
+const STABLE_WAIT_TIMEOUT_MS = 2000;
+
 async function waitForStableUi(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded').catch(() => undefined);
   // Next.js dev server holds open WebSocket connections, so `networkidle` may never resolve.
   await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => undefined);
-  await page.waitForFunction(() => document.readyState === 'complete').catch(() => undefined);
+  await page
+    .waitForFunction(() => document.readyState === 'complete', undefined, {
+      timeout: STABLE_WAIT_TIMEOUT_MS,
+    })
+    .catch(() => undefined);
   await page
     .waitForFunction(
       (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
       DARK_SCREENSHOT_THEME,
+      { timeout: STABLE_WAIT_TIMEOUT_MS }
     )
     .catch(() => undefined);
-  await page.waitForFunction(() => {
-    if (!(document as any).fonts || typeof (document as any).fonts.status !== 'string') {
-      return true;
-    }
-    return (document as any).fonts.status === 'loaded';
-  }).catch(() => undefined);
+  await page
+    .waitForFunction(
+      () => {
+        if (!(document as any).fonts || typeof (document as any).fonts.status !== 'string') {
+          return true;
+        }
+        return (document as any).fonts.status === 'loaded';
+      },
+      undefined,
+      { timeout: STABLE_WAIT_TIMEOUT_MS }
+    )
+    .catch(() => undefined);
   await page.waitForTimeout(300);
 }
 

@@ -63,6 +63,30 @@ describe('Security headers', () => {
       expect(csp).toContain("base-uri 'self'");
       expect(csp).toContain("form-action 'self'");
     });
+
+    test('CSP connect-src allows data URLs for SID fixtures (non-prod)', async () => {
+      const request = new NextRequest('http://localhost/');
+      const response = await proxy(request);
+
+      const csp = response.headers.get('Content-Security-Policy') ?? '';
+      expect(csp).toContain("connect-src 'self' data:");
+      expect(csp).toContain('ws: wss:');
+    });
+
+    test('CSP connect-src allows data URLs in production mode', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      Reflect.set(process.env, 'NODE_ENV', 'production');
+      try {
+        const request = new NextRequest('https://example.com/');
+        const response = await proxy(request);
+
+        const csp = response.headers.get('Content-Security-Policy') ?? '';
+        expect(csp).toContain("connect-src 'self' data:");
+        expect(csp).not.toContain('ws: wss:');
+      } finally {
+        Reflect.set(process.env, 'NODE_ENV', originalEnv);
+      }
+    });
   });
 
   describe('X-Frame-Options', () => {
