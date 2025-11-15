@@ -47,6 +47,12 @@
 - Run end-to-end validation with `bun run test:e2e` to cover full fetch→classify→play pipeline against `test-data/C64Music`.
 - For config and JSON validations, run `bun run validate:config` and `bun run build:db`; ensure new commands have tests mirroring existing CLI suites (`packages/*/test/cli.test.ts`).
 
+### Running E2E Tests in Remote Agent Sessions
+- **Use Docker for E2E tests**: CI runs e2e tests inside `ghcr.io/chrisgleissner/sidflow-ci:latest` which has Playwright browsers pre-installed.
+- **Run e2e tests in Docker**: `docker run --rm -v $(pwd):/workspace -w /workspace ghcr.io/chrisgleissner/sidflow-ci:latest bash -c "cd packages/sidflow-web && npx playwright test"`
+- **Config resolution**: E2E tests use `SIDFLOW_CONFIG` env var (set in `playwright.config.ts`) to locate `.sidflow.test.json` at repo root. The `loadConfig()` function in `@sidflow/common` respects this env var.
+- **Local testing**: If running locally without Docker, install Playwright browsers first: `cd packages/sidflow-web && npx playwright install chromium`.
+
 ## Coding Practices
 - Stick to strict TypeScript (`tsconfig.base.json`); avoid `any`, keep types explicit, and expose pure helpers for unit testing.
 - Compose functionality from small functions; use concise comments only to explain non-obvious steps (e.g., cache heuristics).

@@ -218,7 +218,7 @@ if (!isPlaywrightRunner) {
 
     test('displays time indicators', async ({ page }) => {
       // Look for time format (MM:SS or HH:MM:SS)
-      const timeDisplay = page.locator('span:has-text(/\\d{1,2}:\\d{2}/i)').first();
+      const timeDisplay = page.locator('span').filter({ hasText: /\d{1,2}:\d{2}/ }).first();
       await expect(timeDisplay).toBeVisible();
     });
   });
