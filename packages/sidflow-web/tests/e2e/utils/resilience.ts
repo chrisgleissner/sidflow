@@ -24,6 +24,20 @@ export interface WaitConfig {
   throwOnTimeout?: boolean;
 }
 
+/**
+ * Check if fonts are loaded.
+ * Centralized utility to avoid inconsistent font checking patterns.
+ * 
+ * @returns true if fonts are loaded or Font API is not available
+ */
+export function checkFontsLoaded(): boolean {
+  const fonts = (document as any).fonts;
+  if (!fonts || typeof fonts.status !== 'string') {
+    return true; // Fonts API not available, assume loaded
+  }
+  return fonts.status === 'loaded';
+}
+
 const DEFAULT_WAIT_CONFIG: Required<WaitConfig> = {
   domTimeout: 10000,
   networkTimeout: 5000,
@@ -98,15 +112,9 @@ export async function waitForStablePageState(
     console.warn('[waitForStablePageState]', msg);
   });
   
-  // Wait for fonts to load
+  // Wait for fonts to load using centralized check
   await page.waitForFunction(
-    () => {
-      const fonts = (document as any).fonts;
-      if (!fonts || typeof fonts.status !== 'string') {
-        return true;
-      }
-      return fonts.status === 'loaded';
-    },
+    checkFontsLoaded,
     undefined,
     { timeout: cfg.fontTimeout }
   ).catch((err) => {
@@ -114,21 +122,18 @@ export async function waitForStablePageState(
     if (cfg.throwOnTimeout) throw new Error(msg);
     console.warn('[waitForStablePageState]', msg);
   });
-  
-  // Small delay to let animations settle
-  await page.waitForTimeout(200);
 }
 
 /**
- * Navigate to a page with resilient error handling.
- * Checks for page closure after navigation.
+ * Navigate to a page with error context and page closure detection.
+ * Provides diagnostic logging for navigation failures.
  * 
  * @param page - Playwright page object
  * @param url - URL to navigate to
  * @param timeout - Navigation timeout in ms (default: 30000)
  * @returns Promise that resolves when navigation completes
  */
-export async function navigateWithRetry(
+export async function navigateWithErrorContext(
   page: Page,
   url: string,
   timeout: number = 30000
@@ -153,105 +158,4 @@ export async function navigateWithRetry(
   }
 }
 
-/**
- * Wait for an element with resilient retry logic.
- * More reliable than a single waitForSelector call in CI.
- * 
- * @param page - Playwright page object
- * @param selector - CSS selector or role selector
- * @param options - Wait options
- */
-export async function waitForElement(
-  page: Page,
-  selector: string,
-  options: {
-    state?: 'attached' | 'detached' | 'visible' | 'hidden';
-    timeout?: number;
-    throwOnTimeout?: boolean;
-  } = {}
-): Promise<void> {
-  const timeout = options.timeout ?? 10000;
-  const state = options.state ?? 'visible';
-  
-  try {
-    await page.waitForSelector(selector, {
-      state,
-      timeout,
-    });
-  } catch (error) {
-    const msg = `Element "${selector}" not found (state: ${state})`;
-    if (options.throwOnTimeout ?? true) {
-      throw new Error(msg);
-    }
-    console.warn('[waitForElement]', msg);
-  }
-}
 
-/**
- * Execute a page action with error handling and logging.
- * Useful for wrapping critical operations.
- * 
- * @param actionName - Name of the action for logging
- * @param action - Async function to execute
- */
-export async function executeWithErrorHandling<T>(
-  actionName: string,
-  action: () => Promise<T>
-): Promise<T> {
-  try {
-    console.log(`[${actionName}] Starting`);
-    const result = await action();
-    console.log(`[${actionName}] Completed successfully`);
-    return result;
-  } catch (error) {
-    console.error(`[${actionName}] Failed:`, error);
-    throw error;
-  }
-}
-
-/**
- * Wait for a condition with exponential backoff retry.
- * Useful for operations that may need multiple attempts in CI.
- * 
- * @param condition - Function that returns a promise resolving to boolean
- * @param options - Retry options
- */
-export async function waitForConditionWithRetry(
-  condition: () => Promise<boolean>,
-  options: {
-    maxAttempts?: number;
-    initialDelay?: number;
-    maxDelay?: number;
-    timeoutMs?: number;
-  } = {}
-): Promise<boolean> {
-  const maxAttempts = options.maxAttempts ?? 5;
-  const initialDelay = options.initialDelay ?? 100;
-  const maxDelay = options.maxDelay ?? 2000;
-  const timeoutMs = options.timeoutMs ?? 10000;
-  
-  const startTime = Date.now();
-  let delay = initialDelay;
-  
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (Date.now() - startTime > timeoutMs) {
-      console.warn('[waitForConditionWithRetry] Timeout exceeded');
-      return false;
-    }
-    
-    try {
-      const result = await condition();
-      if (result) {
-        return true;
-      }
-    } catch (error) {
-      console.warn(`[waitForConditionWithRetry] Attempt ${attempt} failed:`, error);
-    }
-    
-    // Wait before next attempt
-    await new Promise(resolve => setTimeout(resolve, delay));
-    delay = Math.min(delay * 2, maxDelay);
-  }
-  
-  return false;
-}

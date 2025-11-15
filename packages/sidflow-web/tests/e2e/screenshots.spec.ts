@@ -11,7 +11,8 @@ import { configureE2eLogging } from './utils/logging';
 import {
   setupPageCloseMonitoring,
   waitForStablePageState,
-  navigateWithRetry,
+  navigateWithErrorContext,
+  checkFontsLoaded,
 } from './utils/resilience';
 
 configureE2eLogging();
@@ -70,18 +71,6 @@ const TABS: TabScenario[] = [
     label: 'CLASSIFY',
     value: 'classify',
     screenshot: '05-classify.png',
-    setup: async (page) => {
-      // Wait for classify page content to be fully loaded with proper state checks
-      try {
-        await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
-        // Wait for any background tasks to settle
-        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {
-          // Network idle may not occur in dev mode, continue anyway
-        });
-      } catch (error) {
-        console.warn('[CLASSIFY setup] Load state timeout:', error);
-      }
-    },
     verify: async (page) => {
       try {
         // First check if page/context is still valid
@@ -98,16 +87,6 @@ const TABS: TabScenario[] = [
           timeout: 10000 
         }).catch((error) => {
           console.warn('[CLASSIFY verify] Main content area not found:', error.message);
-        });
-        
-        // Wait for fonts and theme to be stable before screenshot
-        await page.waitForFunction(
-          () => document.readyState === 'complete' && 
-                (!(document as any).fonts || (document as any).fonts.status === 'loaded'),
-          undefined,
-          { timeout: 5000 }
-        ).catch(() => {
-          console.warn('[CLASSIFY verify] Font/readyState check timed out');
         });
       } catch (error) {
         console.error('[CLASSIFY verify] Verification failed:', error);
@@ -512,8 +491,8 @@ test.describe('Tab Screenshots', () => {
         const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
         const url = `${basePath}?tab=${tab.value}`;
         
-        // Navigate using resilient utility
-        await navigateWithRetry(page, url, 30000);
+        // Navigate with error context and page closure detection
+        await navigateWithErrorContext(page, url, 30000);
         
         // Run optional setup with error handling
         if (tab.setup) {
@@ -547,9 +526,6 @@ test.describe('Tab Screenshots', () => {
             }
           }
         }, DARK_SCREENSHOT_THEME);
-        
-        // Small delay to ensure theme is applied
-        await page.waitForTimeout(100);
         
         // Take screenshot with error handling
         await page.screenshot({

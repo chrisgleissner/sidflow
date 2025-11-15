@@ -134,13 +134,10 @@ async function waitForTabReady(page: Page, tabName: string): Promise<void> {
   ).catch(() => {
     console.warn(`[${tabName}] Font loading timeout`);
   });
-  
-  // Small final delay to let animations settle
-  await page.waitForTimeout(200);
 }
 ```
 
-### Pattern 2: Resilient Navigation
+### Pattern 2: Navigation with Error Context
 
 ```typescript
 async function navigateToTab(
