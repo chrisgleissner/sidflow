@@ -94,7 +94,10 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
   // Check for SIDFLOW_CONFIG environment variable if no explicit path provided
   const envConfigPath = process.env.SIDFLOW_CONFIG;
   const effectiveConfigPath = configPath ?? (envConfigPath || getDefaultConfigPath());
-  const resolvedPath = path.resolve(effectiveConfigPath);
+  // Use path.resolve only if effectiveConfigPath is not already absolute
+  const resolvedPath = path.isAbsolute(effectiveConfigPath) 
+    ? effectiveConfigPath 
+    : path.resolve(effectiveConfigPath);
 
   if (cachedConfig && cachedPath === resolvedPath) {
     return cachedConfig;
