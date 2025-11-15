@@ -65,8 +65,15 @@ const TABS: TabScenario[] = [
     label: 'CLASSIFY',
     value: 'classify',
     screenshot: '05-classify.png',
+    setup: async (page) => {
+      // Wait for classify page content to be fully loaded
+      await page.waitForTimeout(500);
+    },
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible();
+      // Ensure main content area is visible
+      await page.waitForSelector('[role="main"]', { state: 'visible' }).catch(() => undefined);
+      await page.waitForTimeout(500);
     },
   },
   {
