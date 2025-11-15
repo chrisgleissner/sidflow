@@ -1,150 +1,243 @@
 /// <reference types="bun-types" />
 
-import { describe, expect, it, beforeEach, mock } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 
-describe("Volume Control", () => {
+// Mock AudioContext for browser APIs
+class MockAudioContext {
+  destination = {};
+  sampleRate = 44100;
+  state = 'running' as const;
+  currentTime = 0;
+  
+  private gainNodes: MockGainNode[] = [];
+  private listeners: Map<string, Function[]> = new Map();
+  
+  createGain(): MockGainNode {
+    const node = new MockGainNode();
+    this.gainNodes.push(node);
+    return node;
+  }
+  
+  addEventListener(event: string, handler: Function): void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event)!.push(handler);
+  }
+  
+  removeEventListener(event: string, handler: Function): void {
+    const handlers = this.listeners.get(event);
+    if (handlers) {
+      const index = handlers.indexOf(handler);
+      if (index !== -1) {
+        handlers.splice(index, 1);
+      }
+    }
+  }
+  
+  async resume(): Promise<void> {
+    return Promise.resolve();
+  }
+  
+  async close(): Promise<void> {
+    return Promise.resolve();
+  }
+  
+  getGainNodes(): MockGainNode[] {
+    return this.gainNodes;
+  }
+}
+
+class MockGainNode {
+  gain = { value: 1.0 };
+  
+  connect(): void {
+    // Mock connect
+  }
+  
+  disconnect(): void {
+    // Mock disconnect
+  }
+}
+
+// Mock document for HlsPlayer (creates audio element)
+if (typeof document === 'undefined') {
+  (globalThis as any).document = {
+    createElement: (tag: string) => {
+      if (tag === 'audio') {
+        return {
+          preload: 'auto',
+          crossOrigin: 'anonymous',
+          controls: false,
+          volume: 1.0,
+          paused: true,
+          ended: false,
+          currentTime: 0,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          play: () => Promise.resolve(),
+          pause: () => {},
+          removeAttribute: () => {},
+        };
+      }
+      return {};
+    },
+  };
+}
+
+// Set up global mocks for browser environment
+globalThis.AudioContext = MockAudioContext as any;
+if (typeof window === 'undefined') {
+  (globalThis as any).window = globalThis;
+}
+
+describe("Volume Control - Real Player Integration", () => {
   describe("SidflowPlayer volume methods", () => {
-    let mockGainNode: {
-      gain: { value: number };
-      connect: ReturnType<typeof mock>;
-    };
-    let mockAudioContext: {
-      createGain: ReturnType<typeof mock>;
-      destination: unknown;
-      resume: ReturnType<typeof mock>;
-      close: ReturnType<typeof mock>;
-    };
+    let player: any;
+    let audioContext: MockAudioContext;
 
-    beforeEach(() => {
-      mockGainNode = {
-        gain: { value: 1.0 },
-        connect: mock(() => {}),
-      };
-
-      mockAudioContext = {
-        createGain: mock(() => mockGainNode),
-        destination: {},
-        resume: mock(() => Promise.resolve()),
-        close: mock(() => Promise.resolve()),
-      };
+    beforeEach(async () => {
+      audioContext = new MockAudioContext();
+      // Dynamically import to avoid module caching issues
+      const { SidflowPlayer } = await import("../../lib/player/sidflow-player.js");
+      player = new SidflowPlayer(audioContext as any);
     });
 
-    it("setVolume clamps value between 0 and 1", () => {
-      // Test values within range
-      mockGainNode.gain.value = 1.0;
-      const clampedHalf = Math.min(1, Math.max(0, 0.5));
-      expect(clampedHalf).toBe(0.5);
-
-      // Test value below minimum
-      const clampedLow = Math.min(1, Math.max(0, -0.5));
-      expect(clampedLow).toBe(0);
-
-      // Test value above maximum
-      const clampedHigh = Math.min(1, Math.max(0, 1.5));
-      expect(clampedHigh).toBe(1);
+    afterEach(() => {
+      if (player) {
+        player.destroy();
+      }
     });
 
-    it("setVolume updates gain node value", () => {
-      const targetVolume = 0.7;
-      mockGainNode.gain.value = targetVolume;
-      expect(mockGainNode.gain.value).toBe(0.7);
+    it("initializes with default volume of 1.0", () => {
+      expect(player.getVolume()).toBe(1.0);
     });
 
-    it("getVolume returns current gain value", () => {
-      mockGainNode.gain.value = 0.3;
-      expect(mockGainNode.gain.value).toBe(0.3);
-
-      mockGainNode.gain.value = 1.0;
-      expect(mockGainNode.gain.value).toBe(1.0);
+    it("setVolume updates volume and getVolume returns it", () => {
+      player.setVolume(0.7);
+      expect(player.getVolume()).toBe(0.7);
+      
+      player.setVolume(0.3);
+      expect(player.getVolume()).toBe(0.3);
     });
 
-    it("volume defaults to 1.0 (full volume)", () => {
-      expect(mockGainNode.gain.value).toBe(1.0);
+    it("setVolume clamps values below 0 to 0", () => {
+      player.setVolume(-0.5);
+      expect(player.getVolume()).toBe(0);
+      
+      player.setVolume(-100);
+      expect(player.getVolume()).toBe(0);
+    });
+
+    it("setVolume clamps values above 1 to 1", () => {
+      player.setVolume(1.5);
+      expect(player.getVolume()).toBe(1);
+      
+      player.setVolume(100);
+      expect(player.getVolume()).toBe(1);
+    });
+
+    it("setVolume accepts values in valid range", () => {
+      const testValues = [0, 0.01, 0.25, 0.5, 0.75, 0.99, 1.0];
+      
+      for (const value of testValues) {
+        player.setVolume(value);
+        expect(player.getVolume()).toBe(value);
+      }
     });
 
     it("volume can be set to 0 (muted)", () => {
-      mockGainNode.gain.value = 0;
-      expect(mockGainNode.gain.value).toBe(0);
+      player.setVolume(0);
+      expect(player.getVolume()).toBe(0);
     });
 
-    it("volume changes are granular with 0.01 step", () => {
-      const steps = [0, 0.01, 0.5, 0.99, 1.0];
-      for (const step of steps) {
-        mockGainNode.gain.value = step;
-        expect(mockGainNode.gain.value).toBe(step);
-      }
+    it("volume changes are granular with 0.01 precision", () => {
+      player.setVolume(0.51);
+      expect(player.getVolume()).toBe(0.51);
+      
+      player.setVolume(0.52);
+      expect(player.getVolume()).toBe(0.52);
     });
   });
 
   describe("WorkletPlayer volume methods", () => {
-    let mockGainNode: {
-      gain: { value: number };
-      connect: ReturnType<typeof mock>;
-    };
+    let player: any;
+    let audioContext: MockAudioContext;
 
-    beforeEach(() => {
-      mockGainNode = {
-        gain: { value: 1.0 },
-        connect: mock(() => {}),
-      };
+    beforeEach(async () => {
+      audioContext = new MockAudioContext();
+      const { WorkletPlayer } = await import("../../lib/audio/worklet-player.js");
+      player = new WorkletPlayer(audioContext as any);
     });
 
-    it("setVolume clamps value correctly", () => {
-      const clampToRange = (val: number) => Math.min(1, Math.max(0, val));
-
-      expect(clampToRange(0.5)).toBe(0.5);
-      expect(clampToRange(-0.1)).toBe(0);
-      expect(clampToRange(1.5)).toBe(1);
+    afterEach(() => {
+      if (player) {
+        player.destroy();
+      }
     });
 
-    it("setVolume updates gain node", () => {
-      mockGainNode.gain.value = 0.8;
-      expect(mockGainNode.gain.value).toBe(0.8);
+    it("initializes with default volume of 1.0", () => {
+      expect(player.getVolume()).toBe(1.0);
     });
 
-    it("getVolume returns gain value", () => {
-      mockGainNode.gain.value = 0.6;
-      expect(mockGainNode.gain.value).toBe(0.6);
+    it("setVolume updates volume and getVolume returns it", () => {
+      player.setVolume(0.8);
+      expect(player.getVolume()).toBe(0.8);
+    });
+
+    it("setVolume clamps values correctly", () => {
+      player.setVolume(-0.1);
+      expect(player.getVolume()).toBe(0);
+
+      player.setVolume(1.5);
+      expect(player.getVolume()).toBe(1);
+
+      player.setVolume(0.5);
+      expect(player.getVolume()).toBe(0.5);
     });
   });
 
   describe("HlsPlayer volume methods", () => {
-    let mockAudioElement: {
-      volume: number;
-    };
+    let player: any;
 
-    beforeEach(() => {
-      mockAudioElement = {
-        volume: 1.0,
-      };
+    beforeEach(async () => {
+      const { HlsPlayer } = await import("../../lib/audio/hls-player.js");
+      player = new HlsPlayer();
     });
 
-    it("setVolume clamps value correctly", () => {
-      const clampToRange = (val: number) => Math.min(1, Math.max(0, val));
-
-      expect(clampToRange(0.5)).toBe(0.5);
-      expect(clampToRange(-0.1)).toBe(0);
-      expect(clampToRange(1.5)).toBe(1);
+    afterEach(() => {
+      if (player) {
+        player.destroy();
+      }
     });
 
-    it("setVolume updates audio element volume", () => {
-      mockAudioElement.volume = 0.4;
-      expect(mockAudioElement.volume).toBe(0.4);
+    it("initializes with default volume of 1.0", () => {
+      expect(player.getVolume()).toBe(1.0);
     });
 
-    it("getVolume returns audio element volume or 1.0 if no audio", () => {
-      mockAudioElement.volume = 0.75;
-      expect(mockAudioElement.volume).toBe(0.75);
-
-      // Simulate no audio element
-      const fallbackVolume = 1.0;
-      expect(fallbackVolume).toBe(1.0);
+    it("setVolume updates volume and getVolume returns it", () => {
+      player.setVolume(0.4);
+      expect(player.getVolume()).toBe(0.4);
     });
 
-    it("handles null audio element gracefully", () => {
-      const nullAudio = null;
-      const volume = nullAudio?.volume ?? 1.0;
-      expect(volume).toBe(1.0);
+    it("setVolume clamps values correctly", () => {
+      player.setVolume(-0.1);
+      expect(player.getVolume()).toBe(0);
+
+      player.setVolume(1.5);
+      expect(player.getVolume()).toBe(1);
+
+      player.setVolume(0.75);
+      expect(player.getVolume()).toBe(0.75);
+    });
+
+    it("handles volume operations when audio element exists", () => {
+      // HlsPlayer may not have audio element until load is called
+      // but getVolume should still return a valid value
+      const volume = player.getVolume();
+      expect(typeof volume).toBe("number");
+      expect(volume).toBeGreaterThanOrEqual(0);
+      expect(volume).toBeLessThanOrEqual(1);
     });
   });
 
@@ -183,53 +276,24 @@ describe("Volume Control", () => {
     });
   });
 
-  describe("Volume persistence and initialization", () => {
-    it("volume state initializes to 1.0 (full)", () => {
-      const initialVolume = 1.0;
-      expect(initialVolume).toBe(1.0);
+  describe("Volume control helpers", () => {
+    it("clamp function behavior", () => {
+      const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
+
+      expect(clamp(0.5, 0, 1)).toBe(0.5);
+      expect(clamp(-0.1, 0, 1)).toBe(0);
+      expect(clamp(1.5, 0, 1)).toBe(1);
     });
 
-    it("volume syncs with player on initialization", () => {
-      const playerVolume = 1.0;
-      const stateVolume = 1.0;
-
-      expect(playerVolume).toBe(stateVolume);
-    });
-
-    it("volume changes propagate to player immediately", () => {
-      let playerVolume;
-      const newVolume = 0.6;
-
-      // Simulate immediate update
-      playerVolume = newVolume;
-
-      expect(playerVolume).toBe(0.6);
-    });
-  });
-
-  describe("Volume control edge cases", () => {
-    it("handles very small volume changes", () => {
+    it("handles floating-point precision in volume calculations", () => {
       const volume1 = 0.5;
       const volume2 = 0.51;
       const diff = Math.abs(volume2 - volume1);
 
-      // Use toBeCloseTo to handle floating-point precision
       expect(diff).toBeCloseTo(0.01, 10);
-      expect(diff).toBeLessThanOrEqual(0.02);
     });
 
-    it("handles rapid volume changes", () => {
-      const volumes = [0.1, 0.2, 0.3, 0.4, 0.5];
-      let currentVolume = 1.0;
-
-      for (const vol of volumes) {
-        currentVolume = vol;
-      }
-
-      expect(currentVolume).toBe(0.5);
-    });
-
-    it("volume at boundary values works correctly", () => {
+    it("boundary value clamping", () => {
       const boundaryValues = [0, 0.01, 0.99, 1.0];
 
       for (const value of boundaryValues) {
