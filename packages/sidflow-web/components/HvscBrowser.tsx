@@ -61,7 +61,6 @@ export function HvscBrowser({ onPlaySong, onPlayFolder, onStatusChange }: HvscBr
   const navigateToPath = useCallback(
     (path: string) => {
       void fetchPath(path);
-      setExpandedFolders(new Set());
     },
     [fetchPath]
   );
@@ -78,18 +77,6 @@ export function HvscBrowser({ onPlaySong, onPlayFolder, onStatusChange }: HvscBr
   const navigateToRoot = useCallback(() => {
     navigateToPath('');
   }, [navigateToPath]);
-
-  const toggleFolder = useCallback((folderPath: string) => {
-    setExpandedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(folderPath)) {
-        next.delete(folderPath);
-      } else {
-        next.add(folderPath);
-      }
-      return next;
-    });
-  }, []);
 
   const handlePlaySong = useCallback(
     (item: HvscBrowseItem) => {
