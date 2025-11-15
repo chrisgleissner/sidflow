@@ -38,8 +38,8 @@ import {
   enqueuePlaylistRebuild,
   flushPlaybackQueue,
 } from '@/lib/offline/playback-queue';
-import { HvscBrowser } from '@/components/HvscBrowser';
-import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/hvsc-playlist-builder';
+import { SongBrowser } from '@/components/SongBrowser';
+import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/playlist-builder';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -1330,7 +1330,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         </Card>
       </div>
 
-      <HvscBrowser
+      <SongBrowser
         onPlaySong={handlePlaySong}
         onPlayFolder={handlePlayFolder}
         onStatusChange={onStatusChange}

@@ -1,5 +1,5 @@
 /**
- * End-to-end tests for HVSC Browser and folder playback modes.
+ * End-to-end tests for Song Browser and folder playback modes.
  * Tests navigation, folder browsing, and direct playback features.
  */
 
@@ -11,22 +11,22 @@ configureE2eLogging();
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
 if (!isPlaywrightRunner) {
-  console.warn('[sidflow-web] Skipping Playwright HVSC browser e2e spec; run via `bun run test:e2e`.');
+  console.warn('[sidflow-web] Skipping Playwright song browser e2e spec; run via `bun run test:e2e`.');
 } else {
-  test.describe('HVSC Browser', () => {
+  test.describe('Song Browser', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('http://localhost:3000');
       await page.waitForLoadState('networkidle');
     });
 
-    test('displays HVSC browser component', async ({ page }) => {
+    test('displays song browser component', async ({ page }) => {
       // Navigate to Play tab
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
       await page.waitForTimeout(500);
 
-      // Check for HVSC browser heading
-      const browserHeading = page.getByText(/HVSC COLLECTION BROWSER/i);
+      // Check for song browser heading
+      const browserHeading = page.getByText(/SID COLLECTION BROWSER/i);
       await expect(browserHeading).toBeVisible();
     });
 
@@ -35,9 +35,9 @@ if (!isPlaywrightRunner) {
       await playTab.click();
       await page.waitForTimeout(500);
 
-      // Look for HVSC breadcrumb
-      const hvscBreadcrumb = page.getByRole('button', { name: 'HVSC' });
-      await expect(hvscBreadcrumb).toBeVisible();
+      // Look for Collection breadcrumb
+      const collectionBreadcrumb = page.getByRole('button', { name: 'Collection' });
+      await expect(collectionBreadcrumb).toBeVisible();
     });
 
     test('displays folders and files when available', async ({ page }) => {
@@ -46,7 +46,7 @@ if (!isPlaywrightRunner) {
       await page.waitForTimeout(1000);
 
       // Check if either folders or files section is visible
-      // (actual content depends on HVSC collection being configured)
+      // (actual content depends on local SID collection being configured)
       const hasFolders = await page.getByText(/Folders \(\d+\)/i).count() > 0;
       const hasFiles = await page.getByText(/SID Files \(\d+\)/i).count() > 0;
       const isEmpty = await page.getByText(/This folder is empty/i).count() > 0;
@@ -74,8 +74,8 @@ if (!isPlaywrightRunner) {
         const breadcrumb = page.getByRole('button', { name: folderName || '' });
         await expect(breadcrumb).toBeVisible();
       } else {
-        // If no folders, test passes (HVSC not configured)
-        console.log('No folders found - HVSC may not be configured');
+        // If no folders, test passes (local collection not configured)
+        console.log('No folders found - local SID collection may not be configured');
       }
     });
 

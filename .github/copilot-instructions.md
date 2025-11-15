@@ -14,7 +14,8 @@
 - Prefer minimal, additive edits; keep public APIs stable unless the task requires changes. Preserve repository coding conventions and shared utilities as defined below.
 
 ## Architecture & Data Flow
-- SIDFlow is a CLI-first pipeline: fetch HVSC (`@sidflow/fetch`), classify audio (`@sidflow/classify`), train ML (`@sidflow/train`), and play/recommend (`@sidflow/play`); each stage reads/writes `data/` JSONL and relies on `.sidflow.json` paths.
+- SIDFlow is a CLI-first pipeline: fetch SID collections (currently HVSC via `@sidflow/fetch`), classify audio (`@sidflow/classify`), train ML (`@sidflow/train`), and play/recommend (`@sidflow/play`); each stage reads/writes `data/` JSONL and relies on `.sidflow.json` paths.
+- The project is designed to work with any locally available SID file collection, not just HVSC. While the fetch feature currently focuses on HVSC, the classification, training, playback, and browsing features work with any SID files in the configured collection path.
 - Classification splits into WAV cache rendering, heuristic feature extraction (`heuristicFeatureExtractor`), auto-tag generation, and JSONL emission; reuse the planner in `packages/sidflow-classify/src/index.ts`.
 - Training consumes `data/classified` and `data/feedback` JSONL, merges explicit/implicit samples, and persists LanceDB-ready artifacts under `data/model`; respect feedback weights defined in `@sidflow/train`.
 - Scripts in `scripts/` are thin wrappers invoking the package CLIs; treat them as the contract for end-to-end flows and keep CLI UX stable.
@@ -31,7 +32,7 @@
 - Archive extraction relies on bundled `7zip-min` helpers that should be injected via shared utilities.
 
 ## Data & Persistence
-- `.sidflow.json` defines `hvscPath`, `wavCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
+- `.sidflow.json` defines `hvscPath` (the path to the local SID collection, regardless of source), `wavCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
 - Classification writes metadata and tags using `resolve*` helpers and stores WAV hashes in sidecar `.hash` files—preserve this caching scheme.
 - Feedback lives in date-partitioned `data/feedback/<year>/<month>/events.jsonl`; training and LanceDB builders must tolerate missing folders and skip corrupt lines with warnings, not hard failures.
 - Store derived artifacts (manifest, LanceDB) with deterministic checksums using `generateManifest` in `common/lancedb-builder.ts`.

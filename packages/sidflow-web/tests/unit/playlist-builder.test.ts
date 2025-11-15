@@ -6,7 +6,7 @@ import {
   buildFolderPlaylist,
   getPlaylistModeDescription,
   type PlaylistOptions,
-} from "@/lib/hvsc-playlist-builder";
+} from "@/lib/playlist-builder";
 
 // Mock fetch globally
 const mockFetch = mock(() => Promise.resolve({
@@ -20,7 +20,7 @@ const mockFetch = mock(() => Promise.resolve({
 
 global.fetch = mockFetch as unknown as typeof fetch;
 
-describe("HVSC Playlist Builder", () => {
+describe("Playlist Builder", () => {
   beforeEach(() => {
     mockFetch.mockClear();
   });

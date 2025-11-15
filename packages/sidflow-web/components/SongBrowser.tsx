@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Folder, Music, ChevronRight, Home, Play, List, Shuffle } from 'lucide-react';
 import type { HvscBrowseItem, HvscBrowseResponse } from '@/app/api/hvsc/browse/route';
 
-export interface HvscBrowserProps {
+export interface SongBrowserProps {
   onPlaySong?: (sidPath: string) => void;
   onPlayFolder?: (folderPath: string, recursive: boolean, shuffle: boolean) => void;
   onStatusChange?: (status: string, isError?: boolean) => void;
@@ -17,7 +17,7 @@ interface BreadcrumbSegment {
   path: string;
 }
 
-export function HvscBrowser({ onPlaySong, onPlayFolder, onStatusChange }: HvscBrowserProps) {
+export function SongBrowser({ onPlaySong, onPlayFolder, onStatusChange }: SongBrowserProps) {
   const [currentPath, setCurrentPath] = useState('');
   const [items, setItems] = useState<HvscBrowseItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,7 +42,7 @@ export function HvscBrowser({ onPlaySong, onPlayFolder, onStatusChange }: HvscBr
         }
         setItems(data.items);
         setCurrentPath(data.path);
-        onStatusChange?.(`Browsing: ${data.path || 'HVSC Root'}`, false);
+        onStatusChange?.(`Browsing: ${data.path || 'Collection Root'}`, false);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
@@ -95,7 +95,7 @@ export function HvscBrowser({ onPlaySong, onPlayFolder, onStatusChange }: HvscBr
   );
 
   const breadcrumbs: BreadcrumbSegment[] = [
-    { name: 'HVSC', path: '' },
+    { name: 'Collection', path: '' },
     ...currentPath
       .split('/')
       .filter(Boolean)
@@ -111,9 +111,9 @@ export function HvscBrowser({ onPlaySong, onPlayFolder, onStatusChange }: HvscBr
   return (
     <Card className="c64-border">
       <CardHeader>
-        <CardTitle className="petscii-text text-accent">HVSC COLLECTION BROWSER</CardTitle>
+        <CardTitle className="petscii-text text-accent">SID COLLECTION BROWSER</CardTitle>
         <CardDescription className="text-muted-foreground">
-          Navigate folders and play SID files from the High Voltage SID Collection
+          Navigate folders and play SID files from your local collection
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -1,7 +1,7 @@
 /**
- * HVSC Playlist Builder
+ * Playlist Builder
  * 
- * Builds playlists from HVSC folder structures with support for:
+ * Builds playlists from local SID collection folder structures with support for:
  * - Single song playback
  * - Non-recursive folder playback (current folder only)
  * - Recursive folder playback (folder + subfolders)
@@ -23,7 +23,7 @@ export interface PlaylistTrackItem {
 }
 
 /**
- * Fetch folder contents from HVSC browse API
+ * Fetch folder contents from browse API
  */
 async function fetchFolderContents(path: string): Promise<HvscBrowseResponse> {
   const params = new URLSearchParams();
