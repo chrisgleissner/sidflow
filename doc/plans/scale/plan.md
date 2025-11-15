@@ -5,7 +5,7 @@
 - `doc/technical-reference.md` – architecture, APIs, data flow
 - `doc/plans/scale/c64-rest-api.md` – C64 Ultimate REST control
 - `doc/plans/scale/c64-stream-spec.md` – C64 Ultimate data streams (UDP)
-- `doc/plans/scale/phase-2-plan.md` – Phase 2 implementation blueprint
+- `doc/plans/archive/phase-2-plan.md` – Phase 2 implementation blueprint (archived)
 
 ## Scope & Objectives
 - Deliver client-side SID playback for thousands of concurrent listeners while keeping the server responsible only for orchestration, cached assets, and administration.
