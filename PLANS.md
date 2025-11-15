@@ -253,6 +253,144 @@ When beginning a task:
 - Whitelisted for `sidflow-web`: server `anonymize.ts`, `rate-limiter.ts`, `admin-auth-core.ts`, and `proxy.ts`.
 - Follow-ups (non-blocking): add focused unit tests for the excluded modules where feasible, then relax excludes incrementally to keep the threshold meaningful and stable.
 
+## Task: Play Tab Feature-Rich Enhancements (Modern Music Streaming UX)
+
+**Started:** 2025‑11‑15
+
+**User request (summary)**
+- Transform Play tab into a modern, feature-rich music streaming experience with AI-powered recommendations
+- Add volume slider, folder browser, playback modes, station-from-song, enhanced ratings display
+- Implement unique SID-music-specific AI features that leverage the C64 music collection and ML models
+
+**Context and constraints**
+- Existing Play tab has mood-based playlists and basic playback controls
+- WebPreferences system for user settings; preferences API for storage
+- SIDFlow has trained ML models for rating predictions (E/M/C dimensions)
+- HVSC collection is hierarchical (MUSICIANS → Artist → Song files)
+- Folder paths are relative to `hvscPath` from config
+- Feedback/rating system exists (explicit ratings via rate API, implicit via feedback recorder)
+
+**Plan (checklist)**
+
+**Step 1: Volume Control (COMPLETE)**
+- [x] 1.1 — Add setVolume/getVolume methods to SidflowPlayer, WorkletPlayer, HlsPlayer
+- [x] 1.2 — Implement volume slider UI in Play tab (to right of play controls)
+- [x] 1.3 — Add volume state management and sync with player
+- [x] 1.4 — Add comprehensive unit tests (23 tests)
+- [ ] 1.5 — Add e2e test for volume slider interaction
+
+**Step 2: HVSC Folder Browser**
+- [ ] 2.1 — Create `/api/hvsc/browse` endpoint accepting `path` query param
+- [ ] 2.2 — Implement folder traversal (list folders + SID files at path)
+- [ ] 2.3 — Add breadcrumb navigation component for current path
+- [ ] 2.4 — Add folder list UI with expand/collapse for subfolders
+- [ ] 2.5 — Display SID file metadata (title, author, songs count) in list
+- [ ] 2.6 — Unit tests for browse API and folder navigation logic
+- [ ] 2.7 — E2E test for folder navigation and file selection
+
+**Step 3: Direct Playback Modes (overrides mood-based playlists)**
+- [ ] 3.1 — "Play Song" button on file items → plays that specific song
+- [ ] 3.2 — "Play All in Folder" button → queues all songs in folder (non-recursive)
+- [ ] 3.3 — "Play Folder Tree" button → queues all songs in folder + subfolders (recursive)
+- [ ] 3.4 — "Shuffle Folder Tree" button → same as above but randomized
+- [ ] 3.5 — Update playback state to distinguish "mood station" vs "folder playback" modes
+- [ ] 3.6 — Show current playback mode in UI (e.g., "Energetic Station" vs "MUSICIANS/Hubbard_Rob")
+- [ ] 3.7 — Unit tests for folder queue building (recursive/non-recursive/shuffle)
+- [ ] 3.8 — E2E test for each playback mode
+
+**Step 4: Station from Song (Personalized Radio)**
+- [ ] 4.1 — Add "Start Station" button on current track card
+- [ ] 4.2 — Create `/api/play/station-from-song` endpoint accepting `sid_path`
+- [ ] 4.3 — Backend: fetch track features, find similar tracks via LanceDB vector search
+- [ ] 4.4 — Backend: blend similar tracks with user's historical likes/dislikes
+- [ ] 4.5 — Generate personalized playlist (seed song + 20 similar songs weighted by user prefs)
+- [ ] 4.6 — Display station name as "Station: <song title>"
+- [ ] 4.7 — Allow user to tweak station parameters (more similar / more discovery)
+- [ ] 4.8 — Unit tests for similarity search and personalization logic
+- [ ] 4.9 — E2E test for starting station from song
+
+**Step 5: Enhanced Rating Display (Netflix-style)**
+- [ ] 5.1 — Fetch aggregate ratings from `/api/rate/<sid_path>/aggregate` endpoint
+- [ ] 5.2 — Display personal rating (if exists) with "You rated: ★★★★☆" badge
+- [ ] 5.3 — Display community rating with star visualization (e.g., "★★★★☆ 4.2/5 (1.2K ratings)")
+- [ ] 5.4 — Add hover tooltip showing E/M/C dimension breakdown
+- [ ] 5.5 — Show "Trending" badge for recently popular tracks
+- [ ] 5.6 — Implement `/api/rate/aggregate` endpoint (cached aggregates per track)
+- [ ] 5.7 — Unit tests for aggregate calculation and caching
+- [ ] 5.8 — E2E test for rating display and interaction
+
+**Step 6: AI-Powered Unique Features**
+- [ ] 6.1 — **Mood Transitions**: "Energetic → Ambient" cross-fading station
+- [ ] 6.2 — **Era Explorer**: "1980s SID Hits" or "Golden Age" time-travel playlists
+- [ ] 6.3 — **Composer Discovery**: "If you like Hubbard, try Hülsbeck" recommendations
+- [ ] 6.4 — **Hidden Gems Finder**: surface high-quality but under-played tracks
+- [ ] 6.5 — **Chip Model Stations**: "Pure 6581" or "8580 Showcase" for audiophiles
+- [ ] 6.6 — **Remix Radar**: find different versions/remixes of same tune
+- [ ] 6.7 — **Game Soundtrack Journeys**: "Great Giana Sisters OST" → similar game music
+- [ ] 6.8 — **Live ML Explanations**: "Why this track?" overlay showing feature similarity
+- [ ] 6.9 — **Collaborative Discovery**: "Users who liked X also loved Y"
+- [ ] 6.10 — **Adaptive Stations**: learn from skip/like actions and adjust playlist in real-time
+
+**Step 7: Playback History & Favorites**
+- [ ] 7.1 — Add "Recently Played" section to Play tab (last 50 tracks)
+- [ ] 7.2 — Add "Favorites" collection (heart icon to save tracks)
+- [ ] 7.3 — Store favorites in preferences; sync with server
+- [ ] 7.4 — "Play Favorites Shuffle" button for quick access
+- [ ] 7.5 — Unit tests for favorites persistence
+- [ ] 7.6 — E2E test for adding/removing favorites
+
+**Step 8: Playlist Management**
+- [ ] 8.1 — "Save Current Queue" button → named playlist
+- [ ] 8.2 — Playlist CRUD endpoints (`/api/playlist/*`)
+- [ ] 8.3 — Playlist browser UI in Play tab sidebar
+- [ ] 8.4 — Drag-and-drop reordering within playlist
+- [ ] 8.5 — Share playlist via URL or export as M3U
+- [ ] 8.6 — Unit tests for playlist operations
+- [ ] 8.7 — E2E test for playlist creation and playback
+
+**Step 9: Social & Community Features**
+- [ ] 9.1 — **Listening Activity Stream**: "3 users are currently listening to this track"
+- [ ] 9.2 — **Top Charts**: Daily/Weekly/All-Time most-played tracks
+- [ ] 9.3 — **User Profiles**: public listening stats, top artists, favorite moods
+- [ ] 9.4 — **Comments & Reviews**: per-track discussion threads (optional)
+- [ ] 9.5 — **Badges & Achievements**: "Century Club" (100 tracks rated), "Completionist" (all Hubbard tracks)
+
+**Step 10: Search & Discovery**
+- [ ] 10.1 — Global search bar: search by title, artist, game, year
+- [ ] 10.2 — Advanced filters: chip model, SID model, duration, rating
+- [ ] 10.3 — Search results with instant playback preview
+- [ ] 10.4 — "Surprise Me" button for completely random track
+- [ ] 10.5 — Unit tests for search query parsing and filtering
+- [ ] 10.6 — E2E test for search and filters
+
+**Step 11: Quality Gates & Polish**
+- [ ] 11.1 — Run full test suite; ensure all tests pass
+- [ ] 11.2 — Verify code coverage ≥90% for all new features
+- [ ] 11.3 — Manual testing: take screenshots of each new feature
+- [ ] 11.4 — Performance audit: ensure folder browser handles large directories (1000+ files)
+- [ ] 11.5 — Accessibility audit: keyboard navigation, screen reader support
+- [ ] 11.6 — Update `doc/web-ui.md` with new Play tab features
+- [ ] 11.7 — Create user guide for AI features and station creation
+
+**Progress log**
+- 2025‑11‑15 — Drafted comprehensive plan for modern music streaming features
+- 2025‑11‑15 — Completed Step 1: Volume control with 23 unit tests
+- 2025‑11‑15 — Steps 8-9 render engine integration tests complete (17 tests)
+
+**Assumptions and open questions**
+- Assumption: LanceDB vector search is performant for similarity queries (100ms p99)
+- Assumption: Aggregate rating cache can be refreshed daily via cron job
+- Question: Should we implement real-time presence (WebSocket) or poll-based activity stream?
+- Question: Maximum playlist size before performance degrades? Proposal: 500 tracks
+- Question: Should favorites be per-device or synced across devices via account?
+
+**Follow‑ups / future work**
+- Offline mode: cache favorite tracks for offline playback
+- Desktop app: Electron wrapper for native integrations
+- Smart Home integration: Alexa/Google Home "Play energetic SID music"
+- Visualizer: retro C64 graphics visualizer synced to audio
+- Mobile app: native iOS/Android with CarPlay/Android Auto support
+
 ## Task: Fix Playwright E2E CSP & screenshots regressions (web)
 
 **User request (summary)**  
