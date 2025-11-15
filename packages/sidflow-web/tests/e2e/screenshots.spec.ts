@@ -66,14 +66,48 @@ const TABS: TabScenario[] = [
     value: 'classify',
     screenshot: '05-classify.png',
     setup: async (page) => {
-      // Wait for classify page content to be fully loaded
-      await page.waitForTimeout(500);
+      // Wait for classify page content to be fully loaded with proper state checks
+      try {
+        await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+        // Wait for any background tasks to settle
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {
+          // Network idle may not occur in dev mode, continue anyway
+        });
+      } catch (error) {
+        console.warn('[CLASSIFY setup] Load state timeout:', error);
+      }
     },
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible();
-      // Ensure main content area is visible
-      await page.waitForSelector('[role="main"]', { state: 'visible' }).catch(() => undefined);
-      await page.waitForTimeout(500);
+      try {
+        // First check if page/context is still valid
+        if (page.isClosed()) {
+          throw new Error('Page was closed before verification');
+        }
+        
+        // Wait for heading with extended timeout
+        await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible({ timeout: 10000 });
+        
+        // Ensure main content area is visible with retry logic
+        await page.waitForSelector('[role="main"]', { 
+          state: 'visible', 
+          timeout: 10000 
+        }).catch((error) => {
+          console.warn('[CLASSIFY verify] Main content area not found:', error.message);
+        });
+        
+        // Wait for fonts and theme to be stable before screenshot
+        await page.waitForFunction(
+          () => document.readyState === 'complete' && 
+                (!(document as any).fonts || (document as any).fonts.status === 'loaded'),
+          undefined,
+          { timeout: 5000 }
+        ).catch(() => {
+          console.warn('[CLASSIFY verify] Font/readyState check timed out');
+        });
+      } catch (error) {
+        console.error('[CLASSIFY verify] Verification failed:', error);
+        throw error;
+      }
     },
   },
   {
@@ -421,24 +455,41 @@ async function installScreenshotFixtures(page: Page): Promise<void> {
   });
 }
 
-const STABLE_WAIT_TIMEOUT_MS = 2000;
+const STABLE_WAIT_TIMEOUT_MS = 3000;
 
 async function waitForStableUi(page: Page): Promise<void> {
-  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+  // Check if page is still open before waiting
+  if (page.isClosed()) {
+    throw new Error('Cannot wait for stable UI: page is closed');
+  }
+  
+  await page.waitForLoadState('domcontentloaded').catch((err) => {
+    console.warn('[waitForStableUi] domcontentloaded timeout:', err.message);
+  });
+  
   // Next.js dev server holds open WebSocket connections, so `networkidle` may never resolve.
-  await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => undefined);
+  await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {
+    console.warn('[waitForStableUi] networkidle timeout (expected in dev mode)');
+  });
+  
   await page
     .waitForFunction(() => document.readyState === 'complete', undefined, {
       timeout: STABLE_WAIT_TIMEOUT_MS,
     })
-    .catch(() => undefined);
+    .catch((err) => {
+      console.warn('[waitForStableUi] readyState check timeout:', err.message);
+    });
+  
   await page
     .waitForFunction(
       (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
       DARK_SCREENSHOT_THEME,
       { timeout: STABLE_WAIT_TIMEOUT_MS }
     )
-    .catch(() => undefined);
+    .catch((err) => {
+      console.warn('[waitForStableUi] theme attribute check timeout:', err.message);
+    });
+  
   await page
     .waitForFunction(
       () => {
@@ -450,11 +501,30 @@ async function waitForStableUi(page: Page): Promise<void> {
       undefined,
       { timeout: STABLE_WAIT_TIMEOUT_MS }
     )
-    .catch(() => undefined);
+    .catch((err) => {
+      console.warn('[waitForStableUi] fonts loaded check timeout:', err.message);
+    });
+  
+  // Final small delay to ensure everything settles
   await page.waitForTimeout(300);
 }
 
-test.setTimeout(45000);
+/**
+ * Set up page close monitoring to detect unexpected browser crashes or closures.
+ * This helps diagnose flaky test failures on CI.
+ */
+function setupPageCloseMonitoring(page: Page, testName: string): void {
+  page.on('close', () => {
+    console.error(`[${testName}] Page closed unexpectedly`);
+  });
+  
+  page.on('crash', () => {
+    console.error(`[${testName}] Page crashed`);
+  });
+}
+
+// Increase timeout for screenshot tests to account for CI resource contention
+test.setTimeout(60000);
 test.describe('Tab Screenshots', () => {
   test.beforeAll(() => {
     if (!fs.existsSync(screenshotDir)) {
@@ -462,7 +532,10 @@ test.describe('Tab Screenshots', () => {
     }
   });
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Set up monitoring before fixtures are installed
+    setupPageCloseMonitoring(page, testInfo.title);
+    
     await installScreenshotFixtures(page);
     await applyDarkScreenshotTheme(page);
   });
@@ -475,38 +548,66 @@ test.describe('Tab Screenshots', () => {
 
   for (const tab of TABS) {
     test(`${tab.label} tab screenshot`, async ({ page }) => {
-      const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
-      await page.goto(`${basePath}?tab=${tab.value}`, { waitUntil: 'domcontentloaded' });
-      if (tab.setup) {
-        await tab.setup(page);
-      }
-      await tab.verify(page);
-      await waitForStableUi(page);
-      await page.evaluate((expectedTheme) => {
-        const html = document.documentElement;
-        html.setAttribute('data-theme', expectedTheme);
-        html.classList.remove('font-c64', 'font-sans');
-        html.classList.add('font-mono');
-        const body = document.body;
-        if (body) {
-          delete (body.dataset as Record<string, string | undefined>).persona;
-          body.classList.remove('font-c64', 'font-sans');
-          body.classList.add('font-mono');
-          const computedBackground = getComputedStyle(html).getPropertyValue('--background').trim();
-          if (computedBackground) {
-            body.style.setProperty('background', computedBackground);
-            body.style.setProperty('background-color', computedBackground);
-          } else {
-            body.style.setProperty('background', 'var(--background)');
-            body.style.setProperty('background-color', 'var(--background)');
-          }
+      try {
+        const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
+        
+        // Navigate with extended timeout and wait for network idle
+        await page.goto(`${basePath}?tab=${tab.value}`, { 
+          waitUntil: 'domcontentloaded',
+          timeout: 30000 
+        });
+        
+        // Check if page is still open after navigation
+        if (page.isClosed()) {
+          throw new Error(`Page closed unexpectedly after navigating to ${tab.label} tab`);
         }
-      }, DARK_SCREENSHOT_THEME);
-      await page.waitForTimeout(100);
-      await page.screenshot({
-        path: path.join(screenshotDir, tab.screenshot),
-        fullPage: true,
-      });
+        
+        // Run optional setup with error handling
+        if (tab.setup) {
+          await tab.setup(page);
+        }
+        
+        // Verify tab content is present
+        await tab.verify(page);
+        
+        // Wait for UI to stabilize
+        await waitForStableUi(page);
+        
+        // Apply screenshot theme with error handling
+        await page.evaluate((expectedTheme) => {
+          const html = document.documentElement;
+          html.setAttribute('data-theme', expectedTheme);
+          html.classList.remove('font-c64', 'font-sans');
+          html.classList.add('font-mono');
+          const body = document.body;
+          if (body) {
+            delete (body.dataset as Record<string, string | undefined>).persona;
+            body.classList.remove('font-c64', 'font-sans');
+            body.classList.add('font-mono');
+            const computedBackground = getComputedStyle(html).getPropertyValue('--background').trim();
+            if (computedBackground) {
+              body.style.setProperty('background', computedBackground);
+              body.style.setProperty('background-color', computedBackground);
+            } else {
+              body.style.setProperty('background', 'var(--background)');
+              body.style.setProperty('background-color', 'var(--background)');
+            }
+          }
+        }, DARK_SCREENSHOT_THEME);
+        
+        // Small delay to ensure theme is applied
+        await page.waitForTimeout(100);
+        
+        // Take screenshot with error handling
+        await page.screenshot({
+          path: path.join(screenshotDir, tab.screenshot),
+          fullPage: true,
+          timeout: 10000,
+        });
+      } catch (error) {
+        console.error(`[${tab.label} screenshot] Test failed:`, error);
+        throw error;
+      }
     });
   }
 });
