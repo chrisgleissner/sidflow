@@ -4,6 +4,7 @@ import {
   encodeWavToM4aWasm,
   encodeWavToFlacNative,
   getM4aBitrate,
+  isNativeFfmpegAvailable,
   DEFAULT_M4A_BITRATE,
   DEFAULT_FLAC_COMPRESSION_LEVEL,
 } from "../src/audio-encoding";
@@ -19,7 +20,10 @@ const testM4aPath = path.join(testDir, "test.m4a");
 const testM4aWasmPath = path.join(testDir, "test-wasm.m4a");
 const testFlacPath = path.join(testDir, "test.flac");
 
+let ffmpegAvailable = false;
+
 beforeAll(async () => {
+  ffmpegAvailable = await isNativeFfmpegAvailable();
   if (!existsSync(testDir)) {
     await mkdir(testDir, { recursive: true });
   }
@@ -63,7 +67,10 @@ afterAll(async () => {
 });
 
 describe("Audio Encoding", () => {
-  test("encodeWavToM4aNative creates M4A file", async () => {
+  const testOrSkip = (name: string, fn: () => Promise<void>) =>
+    ffmpegAvailable ? test(name, fn) : test.skip(name, fn);
+
+  testOrSkip("encodeWavToM4aNative creates M4A file", async () => {
     const result = await encodeWavToM4aNative({
       inputPath: testWavPath,
       outputPath: testM4aPath,
@@ -82,7 +89,7 @@ describe("Audio Encoding", () => {
     expect(stats.size).toBeLessThan(100000); // Less than 100KB for 1 second
   });
 
-  test("encodeWavToFlacNative creates FLAC file", async () => {
+  testOrSkip("encodeWavToFlacNative creates FLAC file", async () => {
     const result = await encodeWavToFlacNative({
       inputPath: testWavPath,
       outputPath: testFlacPath,
@@ -100,7 +107,7 @@ describe("Audio Encoding", () => {
     expect(stats.size).toBeGreaterThan(0);
   });
 
-  test("encodeWavToM4aNative uses default 256 kbps when unspecified", async () => {
+  testOrSkip("encodeWavToM4aNative uses default 256 kbps when unspecified", async () => {
     await encodeWavToM4aNative({
       inputPath: testWavPath,
       outputPath: testM4aPath,
@@ -134,7 +141,7 @@ describe("Audio Encoding", () => {
     }
   });
 
-  test("encodeWavToM4aNative with custom bitrate", async () => {
+  testOrSkip("encodeWavToM4aNative with custom bitrate", async () => {
     const customBitrate = 128;
     const result = await encodeWavToM4aNative({
       inputPath: testWavPath,
@@ -152,7 +159,7 @@ describe("Audio Encoding", () => {
     }
   });
 
-  test("encodeWavToFlacNative with custom compression level", async () => {
+  testOrSkip("encodeWavToFlacNative with custom compression level", async () => {
     const result = await encodeWavToFlacNative({
       inputPath: testWavPath,
       outputPath: testFlacPath,
