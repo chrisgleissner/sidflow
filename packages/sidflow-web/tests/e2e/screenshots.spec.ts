@@ -8,6 +8,11 @@ import {
   DARK_SCREENSHOT_THEME,
 } from './utils/theme';
 import { configureE2eLogging } from './utils/logging';
+import {
+  setupPageCloseMonitoring,
+  waitForStablePageState,
+  navigateWithRetry,
+} from './utils/resilience';
 
 configureE2eLogging();
 
@@ -458,28 +463,15 @@ async function installScreenshotFixtures(page: Page): Promise<void> {
 const STABLE_WAIT_TIMEOUT_MS = 3000;
 
 async function waitForStableUi(page: Page): Promise<void> {
-  // Check if page is still open before waiting
-  if (page.isClosed()) {
-    throw new Error('Cannot wait for stable UI: page is closed');
-  }
-  
-  await page.waitForLoadState('domcontentloaded').catch((err) => {
-    console.warn('[waitForStableUi] domcontentloaded timeout:', err.message);
+  // Use the reusable utility for basic stability checks
+  await waitForStablePageState(page, {
+    domTimeout: STABLE_WAIT_TIMEOUT_MS,
+    networkTimeout: 2000,
+    fontTimeout: STABLE_WAIT_TIMEOUT_MS,
+    throwOnTimeout: false,
   });
   
-  // Next.js dev server holds open WebSocket connections, so `networkidle` may never resolve.
-  await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {
-    console.warn('[waitForStableUi] networkidle timeout (expected in dev mode)');
-  });
-  
-  await page
-    .waitForFunction(() => document.readyState === 'complete', undefined, {
-      timeout: STABLE_WAIT_TIMEOUT_MS,
-    })
-    .catch((err) => {
-      console.warn('[waitForStableUi] readyState check timeout:', err.message);
-    });
-  
+  // Check for theme attribute specific to screenshot tests
   await page
     .waitForFunction(
       (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
@@ -489,38 +481,6 @@ async function waitForStableUi(page: Page): Promise<void> {
     .catch((err) => {
       console.warn('[waitForStableUi] theme attribute check timeout:', err.message);
     });
-  
-  await page
-    .waitForFunction(
-      () => {
-        if (!(document as any).fonts || typeof (document as any).fonts.status !== 'string') {
-          return true;
-        }
-        return (document as any).fonts.status === 'loaded';
-      },
-      undefined,
-      { timeout: STABLE_WAIT_TIMEOUT_MS }
-    )
-    .catch((err) => {
-      console.warn('[waitForStableUi] fonts loaded check timeout:', err.message);
-    });
-  
-  // Final small delay to ensure everything settles
-  await page.waitForTimeout(300);
-}
-
-/**
- * Set up page close monitoring to detect unexpected browser crashes or closures.
- * This helps diagnose flaky test failures on CI.
- */
-function setupPageCloseMonitoring(page: Page, testName: string): void {
-  page.on('close', () => {
-    console.error(`[${testName}] Page closed unexpectedly`);
-  });
-  
-  page.on('crash', () => {
-    console.error(`[${testName}] Page crashed`);
-  });
 }
 
 // Increase timeout for screenshot tests to account for CI resource contention
@@ -550,17 +510,10 @@ test.describe('Tab Screenshots', () => {
     test(`${tab.label} tab screenshot`, async ({ page }) => {
       try {
         const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
+        const url = `${basePath}?tab=${tab.value}`;
         
-        // Navigate with extended timeout and wait for network idle
-        await page.goto(`${basePath}?tab=${tab.value}`, { 
-          waitUntil: 'domcontentloaded',
-          timeout: 30000 
-        });
-        
-        // Check if page is still open after navigation
-        if (page.isClosed()) {
-          throw new Error(`Page closed unexpectedly after navigating to ${tab.label} tab`);
-        }
+        // Navigate using resilient utility
+        await navigateWithRetry(page, url, 30000);
         
         // Run optional setup with error handling
         if (tab.setup) {
