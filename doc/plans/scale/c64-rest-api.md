@@ -20,6 +20,17 @@ This document is a concise version of the official [Ultimate REST API guide](htt
 
 The sections below follow the order and wording of the RST reference.
 
+## Render Workflow Reference
+
+SIDFlow render jobs use the REST API plus the Ultimate 64 audio stream to capture real hardware output. The high-level sequence for each SID file is:
+
+1. **Configure + start stream** – `PUT /v1/streams/audio:start?ip={host}:{port}` to direct the audio stream to the capture host. The CLI derives the host/port from `.sidflow.json` (`render.ultimate64.streamIp` and `render.ultimate64.audioPort`).
+2. **Begin UDP capture** – `Ultimate64AudioCapture` binds to the configured UDP port, enqueues packets, and monitors sequence numbers/loss. Packet reordering and silence filling follow the `doc/plans/scale/c64-stream-spec.md` rules. Capture stops automatically after the configured duration plus a 1s grace period.
+3. **Select SID chip + play** – `PUT /v1/configs/sid%20sockets%20configuration/sid%20in%20socket%201` sets the chip profile (`6581` or `8580R5`), then `POST /v1/runners:sidplay?songnr={n}` uploads and starts the SID file. The CLI injects the song buffer directly; no file system staging is required.
+4. **Stop stream + transcode** – once capture reports a loss rate below the configured threshold, the job stops the audio stream via `PUT /v1/streams/audio:stop`, converts PCM samples to a 44.1 kHz WAV, and optionally encodes M4A/FLAC outputs.
+
+The `scripts/sidflow-render` CLI now orchestrates these steps automatically. It will try the requested engine order (Ultimate 64, `sidplayfp`, WASM) and surface detailed availability reasons for each fallback. See `packages/sidflow-classify/src/render/cli.ts` for the exact option set (formats, duration, loss threshold, preferred engines).
+
 ### About
 
 | Method | Path | Parameters | Action |

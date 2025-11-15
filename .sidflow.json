@@ -4,5 +4,29 @@
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./data/classified",
   "threads": 0,
-  "classificationDepth": 3
+  "classificationDepth": 3,
+  "render": {
+    "outputPath": "./data/renders",
+    "defaultFormats": ["wav", "m4a", "flac"],
+  "preferredEngines": ["wasm", "sidplayfp-cli", "ultimate64"],
+    "defaultChip": "6581",
+    "m4aBitrate": 256,
+    "flacCompressionLevel": 5,
+    "audioEncoder": {
+      "implementation": "auto",
+      "wasm": {
+        "corePath": "./node_modules/@ffmpeg/core/dist/ffmpeg-core.js",
+        "wasmPath": "./node_modules/@ffmpeg/core/dist/ffmpeg-core.wasm",
+        "workerPath": "./node_modules/@ffmpeg/core/dist/ffmpeg-core.worker.js"
+      }
+    },
+    "ultimate64": {
+      "host": "127.0.0.1:11080",
+      "audioPort": 11001
+    }
+  },
+  "availability": {
+    "manifestPath": "./data/availability/streams.json",
+    "assetRoot": "./data/renders"
+  }
 }

@@ -7,6 +7,8 @@ import {
   createRateTrackInfo,
 } from '@/lib/rate-playback';
 import { createPlaybackSession } from '@/lib/playback-session';
+import { ensureHlsForTrack } from '@/lib/server/hls-service';
+import { resolveSessionStreamAssets } from '@/lib/server/availability-service';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { ZodError } from 'zod';
 
@@ -34,23 +36,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 404 });
     }
 
-    const payload: RateTrackInfo = await createRateTrackInfo({
+    const track: RateTrackInfo = await createRateTrackInfo({
       env,
       sidPath,
       relativeBase: 'hvsc',
     });
+    const fallbackHlsUrl = await ensureHlsForTrack(track);
+    const streamAssets = await resolveSessionStreamAssets(track);
 
     const session = createPlaybackSession({
       scope: 'manual',
       sidPath,
-      track: payload,
-      durationSeconds: payload.durationSeconds,
-      selectedSong: payload.selectedSong,
+      track,
+      durationSeconds: track.durationSeconds,
+      selectedSong: track.selectedSong,
       romPaths: {
         kernal: env.kernalRomPath ?? null,
         basic: env.basicRomPath ?? null,
         chargen: env.chargenRomPath ?? null,
       },
+      fallbackHlsUrl,
+      streamAssets,
     });
 
     const elapsedMs = Date.now() - startTime;
@@ -65,7 +71,7 @@ export async function POST(request: NextRequest) {
     const response: ApiResponse<{ track: RateTrackInfo; session: typeof session }> = {
       success: true,
       data: {
-        track: payload,
+        track,
         session,
       },
     };

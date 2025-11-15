@@ -1,8 +1,10 @@
 import {
   DEFAULT_RATINGS,
   clampRating,
+  createLogger,
   ensureDir,
   loadConfig,
+  lookupSongDurationsMs,
   pathExists,
   parseSidFile,
   resolveAutoTagFilePath,
@@ -13,6 +15,7 @@ import {
   sidMetadataToJson,
   stringifyDeterministic,
   toPosixRelative,
+  writeCanonicalJsonLines,
   type AudioFeatures,
   type ClassificationRecord,
   type JsonValue,
@@ -27,6 +30,7 @@ import path from "node:path";
 import { WasmRendererPool } from "./render/wasm-render-pool.js";
 import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import {
+  WAV_HASH_EXTENSION,
   computeFileHash,
   renderWavWithEngine,
   type RenderWavOptions
@@ -35,6 +39,7 @@ import {
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
+const classifyLogger = createLogger("classify");
 
 export type ThreadPhase = "analyzing" | "building" | "metadata" | "tagging";
 
@@ -88,7 +93,9 @@ async function runConcurrent<T>(
     while (true) {
       const currentIndex = getNextIndex();
       if (currentIndex === null) {
-        console.error(`[DEBUG] Thread ${threadId} finished after processing ${itemsProcessed} items`);
+        classifyLogger.debug(
+          `Thread ${threadId} finished after processing ${itemsProcessed} items`
+        );
         break;
       }
       itemsProcessed++;
@@ -174,6 +181,13 @@ export async function planClassification(
 const SID_EXTENSION = ".sid";
 
 export type { RenderWavOptions } from "./render/wav-renderer.js";
+export {
+  RenderOrchestrator,
+  type RenderRequest,
+  type RenderResult,
+  type RenderEngine,
+  type RenderFormat,
+} from "./render/render-orchestrator.js";
 
 export function resolveWavPath(
   plan: ClassificationPlan,
@@ -244,7 +258,7 @@ export async function needsWavRefresh(
 
   // Timestamp changed - check if content actually changed by comparing hashes
   // Store hash in a sidecar file to avoid re-computing on every check
-  const hashFile = `${wavFile}.hash`;
+  const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
   if (await pathExists(hashFile)) {
     try {
       const storedHash = await readFile(hashFile, "utf8");
@@ -313,13 +327,33 @@ export async function buildWavCache(
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.hvscPath);
-  console.error(`[DEBUG] collectSidFiles found ${sidFiles.length} SID files in ${plan.hvscPath}`);
+  classifyLogger.debug(
+    `collectSidFiles found ${sidFiles.length} SID files in ${plan.hvscPath}`
+  );
   const rendered: string[] = [];
   const skipped: string[] = [];
   const render = options.render ?? defaultRenderWav;
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
+  const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+
+  const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
+    const existing = songlengthPromises.get(sidFile);
+    if (existing) {
+      return existing;
+    }
+    const pending = lookupSongDurationsMs(sidFile, plan.hvscPath).catch((error) => {
+      classifyLogger.warn(
+        `Failed to resolve song length for ${path.relative(plan.hvscPath, sidFile)}: ${(error as Error).message}`
+      );
+      return undefined;
+    });
+    songlengthPromises.set(sidFile, pending);
+    return pending;
+  };
+
+  let songlengthDebugCount = 0;
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
@@ -370,7 +404,9 @@ export async function buildWavCache(
 
         const needsRefresh = await needsWavRefresh(sidFile, wavFile, shouldForce);
         if (debugLogCount < 5) {
-          console.error(`[DEBUG] needsWavRefresh(${songLabel}): ${needsRefresh}, wavFile: ${wavFile}`);
+          classifyLogger.debug(
+            `needsWavRefresh(${songLabel}): ${needsRefresh}, wavFile: ${wavFile}`
+          );
           debugLogCount++;
         }
         
@@ -404,22 +440,27 @@ export async function buildWavCache(
       // Reporting idle causes UI to show "waiting for work" during phase transition
     }
   );
-
-  console.error(`[DEBUG] Analysis complete: ${songsToRender.length} songs to render, ${songsToSkip.length} to skip`);
+  classifyLogger.debug(
+    `Analysis complete: ${songsToRender.length} songs to render, ${songsToSkip.length} to skip`
+  );
 
   // Building phase: render WAV files for each song
   const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
-  console.error(`[DEBUG] Starting building phase with ${buildConcurrency} threads`);
+  classifyLogger.debug(`Starting building phase with ${buildConcurrency} threads`);
   const rendererPool = render === defaultRenderWav ? new WasmRendererPool(buildConcurrency) : null;
 
   try {
-    console.error(`[DEBUG] About to call runConcurrent for building with ${songsToRender.length} songs`);
+    classifyLogger.debug(
+      `About to call runConcurrent for building with ${songsToRender.length} songs`
+    );
     await runConcurrent(
       songsToRender,
       buildConcurrency,
       async ({ sidFile, songIndex, wavFile, songCount }, context) => {
         if (rendered.length < 3) {
-          console.error(`[DEBUG] Thread ${context.threadId} starting to render: ${wavFile}`);
+          classifyLogger.debug(
+            `Thread ${context.threadId} starting to render: ${wavFile}`
+          );
         }
         const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
         onThreadUpdate?.({
@@ -439,7 +480,30 @@ export async function buildWavCache(
           });
         }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
         
-        const renderOptions = { sidFile, wavFile, songIndex: songCount > 1 ? songIndex : undefined };
+        let targetDurationMs: number | undefined;
+        try {
+          const durations = await getSongDurations(sidFile);
+          if (durations && durations.length > 0) {
+            const index = Math.min(Math.max(songIndex - 1, 0), durations.length - 1);
+            targetDurationMs = durations[index];
+            if (targetDurationMs !== undefined && songlengthDebugCount < 5) {
+              classifyLogger.debug(
+                `Resolved HVSC duration ${targetDurationMs}ms for ${songLabel}`
+              );
+              songlengthDebugCount += 1;
+            }
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          classifyLogger.warn(`Unable to resolve song length for ${songLabel}: ${message}`);
+        }
+
+        const renderOptions = {
+          sidFile,
+          wavFile,
+          songIndex: songCount > 1 ? songIndex : undefined,
+          targetDurationMs
+        };
         let renderSucceeded = false;
         let lastError: Error | null = null;
         
@@ -457,7 +521,9 @@ export async function buildWavCache(
             } catch (error) {
               lastError = error instanceof Error ? error : new Error(String(error));
               if (attempt < 3) {
-                console.error(`[RETRY] Attempt ${attempt}/3 failed for ${songLabel}: ${lastError.message}. Retrying...`);
+                classifyLogger.warn(
+                  `[RETRY] Attempt ${attempt}/3 failed for ${songLabel}: ${lastError.message}. Retrying...`
+                );
               }
             }
           }
@@ -468,7 +534,9 @@ export async function buildWavCache(
         if (renderSucceeded) {
           rendered.push(wavFile);
           if (rendered.length <= 3) {
-            console.error(`[DEBUG] Thread ${context.threadId} successfully rendered: ${wavFile}`);
+            classifyLogger.debug(
+              `Thread ${context.threadId} successfully rendered: ${wavFile}`
+            );
           }
 
           if (onProgress) {
@@ -486,7 +554,9 @@ export async function buildWavCache(
           }
         } else {
           // All retries failed
-          console.error(`[WARN] Failed to render ${songLabel} after 3 attempts: ${lastError?.message}`);
+          classifyLogger.warn(
+            `Failed to render ${songLabel} after 3 attempts: ${lastError?.message}`
+          );
           // Don't add to rendered list, effectively skipping this file
         }
         
@@ -1121,7 +1191,7 @@ export async function generateJsonlOutput(
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
   const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
 
-  const records: string[] = [];
+  const records: ClassificationRecord[] = [];
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
@@ -1216,16 +1286,23 @@ export async function generateJsonlOutput(
         record.features = features;
       }
 
-      // Append as JSONL (one JSON object per line)
-      // Use stringifyDeterministic with no spacing (compact) and trim the trailing newline
-      records.push(stringifyDeterministic(record as unknown as JsonValue, 0).trimEnd());
+  records.push(record);
 
       processedSongs++;
     }
   }
 
-  // Write all records to file
-  await writeFile(jsonlFile, records.join("\n") + "\n", "utf8");
+  // Write all records to file using canonical writer for determinism + audit logging
+  await writeCanonicalJsonLines(
+    jsonlFile,
+    records as unknown as JsonValue[],
+    {
+      details: {
+        recordCount: records.length,
+        phase: "classification"
+      }
+    }
+  );
 
   const endTime = Date.now();
   return {

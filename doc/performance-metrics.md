@@ -32,7 +32,7 @@ SIDFlow uses intelligent caching to avoid unnecessary WAV conversions:
 
 1. **Timestamp check**: If the SID file's timestamp is older than the WAV file, skip conversion
 2. **Hash-based verification**: If timestamp changed but file content is identical (verified via SHA-256 hash), skip conversion
-3. **Hash storage**: SHA-256 hash of each SID file is stored in `{wavfile}.hash` after successful conversion
+3. **Hash storage**: SHA-256 hash of each SID file is stored in `{wavfile}.sha256` after successful conversion
 4. **Smart updates**: Only files with actual content changes trigger WAV regeneration
 
 This ensures that operations like git checkouts or file system moves don't trigger unnecessary reconversions.

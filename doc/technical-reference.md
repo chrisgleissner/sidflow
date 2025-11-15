@@ -195,6 +195,27 @@ Each command can be run via the command line interface from the repository root.
 > [!TIP]
 > The CLI includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`../packages/sidflow-classify/README-INTEGRATION.md`](../packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
 
+#### Render CLI (`scripts/sidflow-render`)
+
+Use the render CLI to convert specific SID tracks into WAV, M4A, and/or FLAC files with fine-grained encoder control:
+
+```sh
+./scripts/sidflow-render --sid Rob_Hubbard/Delta.sid#2 \
+  --formats wav,m4a --engine auto --encoder wasm \
+  --target-duration 120 --ffmpeg-wasm-core ./vendor/ffmpeg-core.js
+```
+
+Key flags:
+
+- `--encoder <auto|native|wasm>` — Choose ffmpeg implementation (falls back to `render.audioEncoder.implementation`)
+- `--ffmpeg-wasm-core`, `--ffmpeg-wasm-wasm`, `--ffmpeg-wasm-worker` — Override the ffmpeg.wasm bundle paths without editing config
+- `--ffmpeg-wasm-log <true|false>` — Toggle verbose ffmpeg.wasm logging
+- `--target-duration <seconds>` / `--max-loss <0-1>` — Control capture duration and tolerated Ultimate64 packet loss
+- `--formats <wav,m4a,flac>` — Emit one or more formats in a single pass
+- `--prefer <engine list>` — Influence engine fallback order (e.g., `ultimate64,sidplayfp-cli,wasm`)
+
+All overrides merge with the `.sidflow.json` `render` block so you can keep defaults in config and override specific runs from the CLI.
+
 #### JSONL Classification Output
 
 The classification pipeline can output results in **JSONL** (JSON Lines) format, with one classification record per line. This format is ideal for:
@@ -626,6 +647,393 @@ bunx playwright test --ui
 
 ---
 
+## Client-Side Playback Architecture
+
+SIDFlow has migrated to a **client-first, local-first architecture** that shifts audio rendering and playback control from server-side processes to the browser. This approach improves scalability, reduces server load, and enables offline functionality.
+
+### Playback Adapters
+
+The playback system uses a **facade pattern** with multiple adapters supporting different rendering technologies:
+
+#### 1. WASM Adapter (Default)
+
+- **Technology**: `libsidplayfp` compiled to WebAssembly
+- **Location**: Client browser (AudioWorklet)
+- **Advantages**: 
+  - Zero server load for playback
+  - Low latency (~10-50ms)
+  - Offline capable
+  - Best audio quality with cycle-accurate emulation
+- **Requirements**: 
+  - Browser with SharedArrayBuffer support (COOP/COEP headers required)
+  - AudioWorklet support
+- **Fallback**: Automatically falls back to HLS streaming if SAB unavailable
+
+#### 2. Streaming Adapter (HLS)
+
+- **Technology**: HTTP Live Streaming with pre-rendered WAV/M4A/FLAC
+- **Location**: Server pre-renders, client streams
+- **Advantages**:
+  - Works on all browsers (no SAB requirement)
+  - Progressive loading
+  - Seekable playback
+- **Use Cases**: 
+  - Browsers without SharedArrayBuffer
+  - iOS/Safari on older versions
+  - Low-power devices
+
+#### 3. CLI Adapter (sidplayfp)
+
+- **Technology**: Native `sidplayfp` binary
+- **Location**: Server-side render, client streams result
+- **Advantages**:
+  - Highest performance for batch rendering
+  - No browser compatibility concerns
+- **Use Cases**:
+  - Admin background jobs
+  - Batch classification workflows
+  - Systems where native binary is preferred
+
+#### 4. Ultimate 64 Adapter
+
+- **Technology**: Real C64 hardware via REST API
+- **Location**: Ultimate 64 device on network
+- **Advantages**:
+  - Authentic hardware sound (SID chip, not emulation)
+  - Real 6581/8580 chips with analog filters
+  - Perfect for archival-quality captures
+- **Use Cases**:
+  - High-fidelity archival recordings
+  - A/B testing against emulation
+  - Hardware enthusiasts
+- **Documentation**: See [Ultimate 64 REST API Spec](plans/scale/c64-rest-api.md)
+
+### Playback Facade
+
+The facade provides a unified interface regardless of adapter:
+
+```typescript
+interface PlaybackFacade {
+  load(sidPath: string, options: PlaybackOptions): Promise<void>;
+  play(): Promise<void>;
+  pause(): void;
+  stop(): void;
+  seek(position: number): void;
+  getState(): PlaybackState;
+}
+```
+
+**Adapter Selection Logic:**
+1. Check user preference (from Preferences UI)
+2. Check browser capabilities (SAB support for WASM)
+3. Check asset availability (streaming manifests)
+4. Check hardware availability (Ultimate 64 endpoint health)
+5. Apply fallback rules (WASM → HLS → fail)
+
+### ROM Management
+
+All playback modes require C64 ROMs for accurate emulation:
+
+**Required ROMs:**
+- `kernal.rom` - C64 Kernal ROM
+- `basic.rom` - C64 BASIC ROM  
+- `chargen.rom` - Character generator ROM
+
+**Validation Workflow:**
+1. User uploads ROM files via Preferences UI
+2. System validates SHA256 checksums against known-good hashes
+3. ROMs cached in IndexedDB for offline access
+4. WASM adapter loads ROMs from IndexedDB on initialization
+
+**Error States:**
+- Missing ROMs: Prompt user to upload with instructions
+- Invalid ROMs: Show specific ROM that failed validation with expected hash
+- Outdated ROMs: Suggest re-upload if checksums don't match
+
+---
+
+## Render Orchestration & Audio Pipeline
+
+For admin operations and streaming workflows, SIDFlow includes a comprehensive render orchestration system that coordinates multiple rendering technologies and formats.
+
+### Render Matrix
+
+The system supports multiple combinations of **location × time × technology × target format**:
+
+| Location | Time | Technology | Target Formats |
+|----------|------|------------|----------------|
+| Client | Real-time | WASM | Live audio (AudioWorklet) |
+| Client | Real-time | HLS | Streamed WAV/M4A/FLAC |
+| Server | Offline | CLI (sidplayfp) | WAV, M4A, FLAC |
+| Ultimate 64 | Real-time | Hardware | WAV (via UDP capture), M4A, FLAC |
+
+**Validation:** The system validates render mode combinations and rejects unsupported configurations with suggested alternatives:
+
+```typescript
+// Example: Invalid combination rejected
+const result = validateRenderMode({
+  location: 'client',
+  time: 'offline',
+  technology: 'wasm'
+});
+// Returns: { valid: false, errors: [...], suggestions: [...] }
+```
+
+### Render Orchestrator
+
+The `RenderOrchestrator` class (in `@sidflow/classify`) coordinates all rendering operations:
+
+**Key Responsibilities:**
+1. Validate render mode against matrix
+2. Invoke appropriate rendering technology
+3. Generate output assets (WAV, M4A, FLAC)
+4. Register assets in availability manifests
+5. Log operations to audit trail
+
+**Supported Operations:**
+
+#### WAV Rendering (WASM)
+```typescript
+await orchestrator.renderWavWasm(
+  sidPath,
+  outputPath,
+  { subtune: 1, duration: 180 }
+);
+```
+
+#### WAV Rendering (CLI)
+```typescript
+await orchestrator.renderWavCli(
+  sidPath,
+  outputPath,
+  { subtune: 1, duration: 180 }
+);
+```
+
+#### Ultimate 64 Capture & Encode
+```typescript
+await orchestrator.renderWavUltimate64(
+  sidPath,
+  outputPath,
+  {
+    host: 'ultimate64.local',
+    port: 64,
+    capturePort: 11000,
+    duration: 180,
+    formats: ['wav', 'm4a', 'flac']
+  }
+);
+```
+
+This automatically:
+1. Triggers Ultimate 64 playback via REST API
+2. Captures UDP audio stream
+3. Reorders packets and handles loss
+4. Encodes to WAV/M4A/FLAC
+5. Registers all formats in availability manifest
+
+### Ultimate 64 Integration
+
+#### Hardware Setup
+
+The Ultimate 64 is a modern FPGA-based C64 that includes:
+- Real 6581/8580 SID chips or FPGA SID emulation
+- REST API for remote control
+- UDP audio streaming capability
+- Network connectivity
+
+**Configuration in `.sidflow.json`:**
+
+```json
+{
+  "render": {
+    "ultimate64": {
+      "host": "ultimate64.local",
+      "port": 64,
+      "username": "admin",
+      "password": "secret",
+      "capturePort": 11000,
+      "sidType": "6581",
+      "clockSpeed": "PAL"
+    }
+  }
+}
+```
+
+#### REST API Workflow
+
+1. **Load SID File**
+   ```http
+   POST http://ultimate64.local:64/api/load
+   Content-Type: application/json
+   
+   { "path": "/path/to/file.sid", "subtune": 1 }
+   ```
+
+2. **Start Playback with UDP Stream**
+   ```http
+   POST http://ultimate64.local:64/api/play
+   Content-Type: application/json
+   
+   { 
+     "streamAudio": true,
+     "streamPort": 11000,
+     "streamHost": "0.0.0.0"
+   }
+   ```
+
+3. **Monitor Status**
+   ```http
+   GET http://ultimate64.local:64/api/status
+   ```
+   
+   Response:
+   ```json
+   {
+     "playing": true,
+     "position": 45.3,
+     "duration": 180.0,
+     "sidType": "6581"
+   }
+   ```
+
+4. **Stop Playback**
+   ```http
+   POST http://ultimate64.local:64/api/stop
+   ```
+
+#### UDP Audio Capture
+
+The Ultimate 64 streams audio as **raw PCM over UDP** with custom packet format:
+
+**Packet Structure** (per [c64-stream-spec.md](plans/scale/c64-stream-spec.md)):
+- Header: 12 bytes
+  - Magic: 4 bytes (`0x55344144` - "U4AD")
+  - Sequence: 4 bytes (uint32, little-endian)
+  - Timestamp: 4 bytes (uint32, milliseconds since start)
+- Payload: Variable (typically 1024 samples = 2048 bytes)
+  - Format: 16-bit signed little-endian (s16le)
+  - Channels: 1 (mono)
+  - Sample Rate: 44100 Hz
+
+**Capture Pipeline:**
+
+1. **Packet Reception**: Listen on UDP port for incoming packets
+2. **Sequence Tracking**: Track packet sequence numbers
+3. **Reordering Buffer**: Handle out-of-order delivery (configurable buffer time)
+4. **Loss Detection**: Detect missing packets via sequence gaps
+5. **Gap Handling**: 
+   - Small gaps (<10ms): Fill with silence
+   - Large gaps: Log warning, continue capture
+   - Excessive loss (>1%): Abort with error
+6. **PCM Aggregation**: Concatenate reordered samples
+7. **WAV Encoding**: Add RIFF header to PCM data
+8. **Format Conversion**: Encode to M4A (256k AAC) and FLAC
+
+**Implementation** (`Ultimate64AudioCapture` class):
+
+```typescript
+const capture = new Ultimate64AudioCapture({
+  port: 11000,
+  bufferTimeMs: 500,  // Reorder window
+  maxLossRate: 0.01   // 1% max acceptable loss
+});
+
+await capture.start();
+// ... playback happens ...
+const pcmData = await capture.stop();
+const stats = capture.getStats(); // { packets, lossRate, reordered }
+```
+
+#### Audio Encoding
+
+**WAV Encoding:**
+- 44-byte RIFF header + raw PCM samples
+- Implemented in `packages/sidflow-classify/src/render/wav-renderer.ts`
+- Function: `encodePcmToWav(pcmSamples: Buffer): Buffer`
+
+**M4A Encoding (AAC 256kbps):**
+```bash
+# Using native ffmpeg (preferred)
+ffmpeg -f s16le -ar 44100 -ac 1 -i input.pcm -c:a aac -b:a 256k output.m4a
+
+# Using ffmpeg.wasm (portable, slower)
+# Same command via WASM API
+```
+
+**FLAC Encoding (lossless):**
+```bash
+# Using native ffmpeg
+ffmpeg -f s16le -ar 44100 -ac 1 -i input.pcm -c:a flac output.flac
+
+# Using ffmpeg.wasm
+# Same command via WASM API
+```
+
+**Encoder Selection:**
+- Native `ffmpeg` used when available (faster, optimized)
+- `ffmpeg.wasm` fallback for portable deployments
+- Both paths validated in CI with smoke tests
+
+### Availability Manifests
+
+All rendered assets are registered in **availability manifests** for efficient lookup by playback endpoints.
+
+**Manifest Structure** (`data/availability/streams.json`):
+
+```json
+{
+  "version": "1.0",
+  "generatedAt": "2025-11-14T12:00:00Z",
+  "assets": {
+    "MUSICIANS/Rob_Hubbard/Delta.sid": {
+      "formats": {
+        "wav": {
+          "path": "/workspace/wav-cache/Rob_Hubbard/Delta.wav",
+          "sizeBytes": 31752044,
+          "duration": 180.0,
+          "checksum": "sha256:abc123...",
+          "renderedAt": "2025-11-14T11:30:00Z",
+          "renderer": "ultimate64"
+        },
+        "m4a": {
+          "path": "/workspace/wav-cache/Rob_Hubbard/Delta.m4a",
+          "sizeBytes": 5760000,
+          "duration": 180.0,
+          "bitrate": 256000,
+          "checksum": "sha256:def456...",
+          "renderedAt": "2025-11-14T11:30:15Z"
+        },
+        "flac": {
+          "path": "/workspace/wav-cache/Rob_Hubbard/Delta.flac",
+          "sizeBytes": 15876022,
+          "duration": 180.0,
+          "checksum": "sha256:ghi789...",
+          "renderedAt": "2025-11-14T11:30:20Z"
+        }
+      }
+    }
+  }
+}
+```
+
+**Manifest Operations:**
+
+- **Registration**: `recordAvailabilityAsset(sidPath, format, metadata)`
+- **Lookup**: `findAvailableFormats(sidPath): ['wav', 'm4a', 'flac']`
+- **Validation**: Check checksums against stored values
+- **Cache Invalidation**: Remove stale entries based on age or file changes
+
+**API Integration:**
+
+The `/api/playback/{id}/{format}` endpoint uses manifests to:
+1. Validate format availability
+2. Resolve physical file path
+3. Stream asset to client
+4. Track access for analytics
+
+---
+
 ## LanceDB Vector Database
 
 SIDFlow uses LanceDB to combine classification data and user feedback into a unified vector database for efficient similarity search and recommendation queries.
@@ -751,7 +1159,24 @@ The configuration file controls all paths and settings:
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./workspace/classified",
   "threads": 0,
-  "classificationDepth": 3
+  "classificationDepth": 3,
+  "render": {
+    "outputPath": "./workspace/renders",
+    "defaultFormats": ["wav", "m4a"],
+    "preferredEngines": ["ultimate64", "sidplayfp-cli"],
+    "defaultChip": "6581",
+    "m4aBitrate": 256,
+    "flacCompressionLevel": 7,
+    "audioEncoder": {
+      "implementation": "auto",
+      "wasm": {
+        "corePath": "./vendor/ffmpeg-core.js",
+        "wasmPath": "./vendor/ffmpeg-core.wasm",
+        "workerPath": "./vendor/ffmpeg-core.worker.js",
+        "log": false
+      }
+    }
+  }
 }
 ```
 
@@ -763,6 +1188,19 @@ The configuration file controls all paths and settings:
 - `classifiedPath` — Output directory for JSONL classification files
 - `threads` — Number of parallel threads for processing (0 = auto-detect)
 - `classificationDepth` — Directory depth for aggregating auto-tags.json files
+- `render` — Optional block for render defaults (described below)
+
+#### Render settings
+
+- `render.outputPath` — Default directory for `sidflow-render` outputs (falls back to `wavCachePath/rendered`)
+- `render.defaultFormats` — Default set of formats (`wav`, `m4a`, `flac`) produced per render request
+- `render.preferredEngines` — Ordered list of engines to try before falling back to WASM (`ultimate64`, `sidplayfp-cli`, `wasm`)
+- `render.defaultChip` — Default SID chip profile for renders (`6581` or `8580r5`)
+- `render.m4aBitrate` — Target AAC bitrate (kbps) used by both native ffmpeg and ffmpeg.wasm (default: 256)
+- `render.flacCompressionLevel` — FLAC compression level (0-12)
+- `render.audioEncoder.implementation` — Lock encoder to `native`, `wasm`, or `auto`
+- `render.audioEncoder.wasm.*` — Override `ffmpeg-core` bundle paths or enable verbose logging when using ffmpeg.wasm
+- `render.ultimate64.*` — Ultimate 64 capture settings (host, HTTPS, password, ports)
 
 ### Validation
 
@@ -885,6 +1323,123 @@ All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is 
 
 ---
 
+## Observability & Monitoring
+
+SIDFlow provides comprehensive observability features for production deployments:
+
+### Health Check Endpoints
+
+**GET `/api/health`**
+
+Returns system health status with checks for:
+- WASM readiness (sidplayfp.wasm availability and size)
+- sidplayfp CLI availability and version
+- Streaming asset availability (manifest presence and asset count)
+- Ultimate 64 connectivity (if configured)
+
+Response format:
+```json
+{
+  "overall": "healthy" | "degraded" | "unhealthy",
+  "timestamp": 1700000000000,
+  "checks": {
+    "wasm": { "status": "healthy", "details": { "sizeBytes": 1234567 } },
+    "sidplayfpCli": { "status": "degraded", "message": "Not configured" },
+    "streamingAssets": { "status": "healthy", "details": { "assetCount": 42 } },
+    "ultimate64": { "status": "healthy", "details": { "connected": true } }
+  }
+}
+```
+
+HTTP Status: 200 (healthy/degraded), 503 (unhealthy)
+
+### Admin Metrics
+
+**GET `/api/admin/metrics`**
+
+Provides aggregated KPIs for job status, cache health, and HVSC sync:
+
+```json
+{
+  "timestamp": 1700000000000,
+  "jobs": {
+    "pending": 0,
+    "running": 1,
+    "completed": 42,
+    "failed": 2,
+    "totalDurationMs": 120000,
+    "avgDurationMs": 2857
+  },
+  "cache": {
+    "wavCacheCount": 1000,
+    "wavCacheSizeBytes": 500000000,
+    "classifiedCount": 950,
+    "oldestCacheFileAge": 604800000,
+    "newestCacheFileAge": 3600000
+  },
+  "sync": {
+    "hvscVersion": "78",
+    "hvscSidCount": 55000,
+    "lastSyncTimestamp": 1699900000000,
+    "syncAgeMs": 100000000
+  }
+}
+```
+
+### Telemetry
+
+**POST `/api/telemetry`**
+
+Client-side telemetry beacon for playback events and performance metrics. Uses `navigator.sendBeacon` for non-blocking fire-and-forget reporting.
+
+Event types:
+- `playback.load.start` / `playback.load.success` / `playback.load.error`
+- `playback.state.change`
+- `playback.error`
+- `playback.performance`
+- `playback.audio.metrics`
+- `playback.fallback`
+
+Performance metrics include:
+- Load duration, render duration, file size
+- Frame timing (avg, worst, over-budget count)
+- Audio underruns, drift, occupancy stats
+
+Telemetry mode controlled by `NEXT_PUBLIC_TELEMETRY_MODE`:
+- `production`: Sends to beacon endpoint
+- `test`: Writes to `window.telemetrySink` array
+- `disabled`: No-op
+
+### Alert Configuration
+
+Configure alerting thresholds in `.sidflow.json`:
+
+```json
+{
+  "alerts": {
+    "enabled": true,
+    "webhookUrl": "https://your-monitoring.com/webhook",
+    "emailRecipients": ["ops@example.com"],
+    "thresholds": {
+      "maxSessionFailureRate": 0.1,
+      "maxCacheAgeMs": 604800000,
+      "maxJobStallMs": 3600000,
+      "maxCpuPercent": 80,
+      "maxMemoryPercent": 90
+    }
+  }
+}
+```
+
+Threshold defaults:
+- `maxSessionFailureRate`: 0.1 (10% failure rate)
+- `maxCacheAgeMs`: 604800000 (7 days)
+- `maxJobStallMs`: 3600000 (1 hour)
+- `maxCpuPercent`: 80%
+- `maxMemoryPercent`: 90%
+
+---
+
 ## Additional Resources
 
 - **[Main README](../README.md)** — User-friendly getting started guide
@@ -892,3 +1447,4 @@ All generated data (HVSC mirror, WAVs, ratings) stays under `workspace/` and is 
 - **[Artifact Governance](artifact-governance.md)** — Canonical vs derived data policies
 - **[Performance Metrics](performance-metrics.md)** — Benchmarking and optimization
 - **[SID Metadata](sid-metadata.md)** — SID file format specifications
+- **[Telemetry](telemetry.md)** — Detailed telemetry implementation guide

@@ -48,6 +48,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install Playwright browsers
+        run: node scripts/ensure-playwright.mjs
+
       - name: Add CLI stubs to PATH
         run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
 
@@ -55,6 +58,8 @@ jobs:
         run: bun run build
 
       - name: Run all tests (unit + E2E with coverage)
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .playwright-browsers
         run: bun run test:all
 
       - name: Check for Playwright report

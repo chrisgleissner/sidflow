@@ -11,21 +11,30 @@
  */
 
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { configureE2eLogging } from './utils/logging';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Longer timeout for audio operations
-test.setTimeout(90000);
+const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
-// Configure browser launch options at top level
-test.use({
-  launchOptions: {
-    args: [
-      '--autoplay-policy=no-user-gesture-required',
-      '--enable-features=SharedArrayBuffer',
-    ],
-  },
-});
+configureE2eLogging();
+
+if (!isPlaywrightRunner) {
+  console.warn('[sidflow-web] Skipping Playwright audio fidelity e2e spec; run via `bun run test:e2e`.');
+} else {
+  // Longer timeout for audio operations
+  test.setTimeout(90000);
+
+  // Configure browser launch options at top level
+  test.use({
+    launchOptions: {
+      args: [
+        '--autoplay-policy=no-user-gesture-required',
+        '--enable-features=SharedArrayBuffer',
+      ],
+    },
+  });
+}
 
 interface AudioTelemetry {
   underruns: number;
@@ -373,16 +382,18 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
   }
 }
 
-test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
-  test('Rate and play tabs initialize shared pipeline', async ({ page }) => {
-    for (const tab of ['rate', 'play'] as const) {
-      const pageErrors: Error[] = [];
-      const errorHandler = (error: Error) => {
-        pageErrors.push(error);
-      };
-      page.on('pageerror', errorHandler);
+if (isPlaywrightRunner) {
+  test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
+    test('Rate and play tabs initialize shared pipeline', async ({ page }) => {
+      for (const tab of ['rate', 'play'] as const) {
+        const pageErrors: Error[] = [];
+        const errorHandler = (error: Error) => {
+          pageErrors.push(error);
+        };
+        page.on('pageerror', errorHandler);
 
-      await page.goto(`/?tab=${tab}`);
+        const basePath = tab === 'rate' ? '/admin' : '/';
+        await page.goto(`${basePath}?tab=${tab}`);
 
       await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
       const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
@@ -396,17 +407,17 @@ test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
       expect(hasTelemetry).toBe(true);
 
       expect(pageErrors).toHaveLength(0);
-      page.off('pageerror', errorHandler);
-    }
+        page.off('pageerror', errorHandler);
+      }
+    });
+
+    // NOTE: Basic worklet playback is already tested in playback.spec.ts "loads and plays a random SID"
+    // This suite focuses specifically on audio fidelity validation with the C4 test SID
   });
 
-  // NOTE: Basic worklet playback is already tested in playback.spec.ts "loads and plays a random SID"
-  // This suite focuses specifically on audio fidelity validation with the C4 test SID
-});
-
-// Full C4 fidelity tests with audio capture
-test.describe('Audio Fidelity - C4 Test SID', () => {
-  test('Rate tab: C4 test SID fidelity', async ({ page }) => {
+  // Full C4 fidelity tests with audio capture
+  test.describe('Audio Fidelity - C4 Test SID', () => {
+    test('Rate tab: C4 test SID fidelity', async ({ page }) => {
     const report = await testTabFidelity(page, 'rate');
 
     console.log(
@@ -420,9 +431,9 @@ test.describe('Audio Fidelity - C4 Test SID', () => {
     expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
     expect(report.dropoutCount).toBe(0);
     expect(report.rmsStability).toBeLessThan(10); // <10% variation
-  });
+    });
 
-  test('Play tab: C4 test SID fidelity', async ({ page }) => {
+    test('Play tab: C4 test SID fidelity', async ({ page }) => {
     const report = await testTabFidelity(page, 'play');
 
     console.log(
@@ -434,6 +445,7 @@ test.describe('Audio Fidelity - C4 Test SID', () => {
     expect(report.fundamentalFrequency).toBeGreaterThan(255); // ~261.63 - 6 Hz tolerance
     expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
     expect(report.dropoutCount).toBe(0);
-    expect(report.rmsStability).toBeLessThan(10);
+      expect(report.rmsStability).toBeLessThan(10);
+    });
   });
-});
+}

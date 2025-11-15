@@ -34,26 +34,44 @@ describe("config", () => {
       tagsPath: "./tags",
       sidplayPath: "sidplayfp",
       threads: 0,
-      classificationDepth: 3
+      classificationDepth: 3,
+      render: {
+        outputPath: "./renders",
+        defaultFormats: ["wav", "m4a"],
+        preferredEngines: ["wasm", "sidplayfp-cli"],
+        defaultChip: "8580r5",
+        ultimate64: {
+          host: "127.0.0.1:11080",
+          https: true,
+          password: "secret",
+          audioPort: 11002,
+          streamIp: "10.0.0.5"
+        }
+      }
     };
 
     await writeFile(configPath, JSON.stringify(payload), "utf8");
 
     const config = await loadConfig(configPath);
-    expect(config).toEqual({
-      ...payload,
-      hvscPath: path.normalize(payload.hvscPath),
-      wavCachePath: path.normalize(payload.wavCachePath),
-      tagsPath: path.normalize(payload.tagsPath),
-      sidplayPath: path.normalize(payload.sidplayPath)
-    });
+    expect(config.hvscPath).toBe(path.normalize(payload.hvscPath));
+    expect(config.wavCachePath).toBe(path.normalize(payload.wavCachePath));
+    expect(config.tagsPath).toBe(path.normalize(payload.tagsPath));
+    expect(config.sidplayPath).toBe(path.normalize(payload.sidplayPath));
+    expect(config.threads).toBe(payload.threads);
+    expect(config.classificationDepth).toBe(payload.classificationDepth);
+    expect(config.render).toBeDefined();
+    expect(config.render?.outputPath).toBe(path.normalize(payload.render!.outputPath!));
+    expect(config.render?.defaultFormats).toEqual(["wav", "m4a"]);
+    expect(config.render?.preferredEngines).toEqual(["wasm", "sidplayfp-cli"]);
+    expect(config.render?.defaultChip).toBe("8580r5");
+    expect(config.render?.ultimate64).toEqual(payload.render!.ultimate64);
 
     // Should return cached config
     const cached = getCachedConfig();
     expect(cached).toBe(config);
   });
 
-  it("treats sidplayPath as optional", async () => {
+  it("treats sidplayPath and render as optional", async () => {
     const payload = {
       hvscPath: "./hvsc",
       wavCachePath: "./wav",
@@ -67,6 +85,7 @@ describe("config", () => {
     const config = await loadConfig(configPath);
     expect(config.hvscPath).toBe(path.normalize(payload.hvscPath));
     expect(config.sidplayPath).toBeUndefined();
+    expect(config.render).toBeUndefined();
   });
 
   it("throws SidflowConfigError for malformed config", async () => {
@@ -141,6 +160,54 @@ describe("config", () => {
       threads: 0,
       classificationDepth: 0
     };
+    await writeFile(configPath, JSON.stringify(payload), "utf8");
+    await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
+  });
+
+  it("validates render settings - empty defaultFormats", async () => {
+    const payload = {
+      hvscPath: "./hvsc",
+      wavCachePath: "./wav",
+      tagsPath: "./tags",
+      threads: 1,
+      classificationDepth: 4,
+      render: {
+        defaultFormats: [],
+      }
+    };
+
+    await writeFile(configPath, JSON.stringify(payload), "utf8");
+    await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
+  });
+
+  it("validates render settings - invalid preferredEngines", async () => {
+    const payload = {
+      hvscPath: "./hvsc",
+      wavCachePath: "./wav",
+      tagsPath: "./tags",
+      threads: 1,
+      classificationDepth: 4,
+      render: {
+        preferredEngines: ["invalid"],
+      }
+    };
+
+    await writeFile(configPath, JSON.stringify(payload), "utf8");
+    await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
+  });
+
+  it("validates render settings - missing ultimate64 host", async () => {
+    const payload = {
+      hvscPath: "./hvsc",
+      wavCachePath: "./wav",
+      tagsPath: "./tags",
+      threads: 1,
+      classificationDepth: 4,
+      render: {
+        ultimate64: {}
+      }
+    };
+
     await writeFile(configPath, JSON.stringify(payload), "utf8");
     await expect(loadConfig(configPath)).rejects.toBeInstanceOf(SidflowConfigError);
   });

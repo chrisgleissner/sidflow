@@ -5,7 +5,7 @@
  * vector database with aggregated feedback statistics.
  */
 
-import { readdir, readFile, writeFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -14,6 +14,8 @@ import type { ClassificationRecord, FeedbackRecord, FeedbackAction } from "./jso
 import { FEEDBACK_WEIGHTS } from "./jsonl-schema.js";
 import { DEFAULT_RATING } from "./ratings.js";
 import { ensureDir } from "./fs.js";
+import { writeCanonicalJsonFile } from "./canonical-writer.js";
+import type { JsonValue } from "./json.js";
 
 /**
  * Average number of records per JSONL file (used for estimating file count).
@@ -380,12 +382,14 @@ export async function generateManifest(
   const manifestDir = path.dirname(manifestPath);
   await ensureDir(manifestDir);
   
-  // Write manifest
-  await writeFile(
-    manifestPath,
-    JSON.stringify(manifest, null, 2) + "\n",
-    "utf8"
-  );
+  await writeCanonicalJsonFile(manifestPath, manifest as unknown as JsonValue, {
+    details: {
+      kind: "lance-manifest",
+      records: result.recordCount,
+      checksumClassified: manifest.source_checksums.classified,
+      checksumFeedback: manifest.source_checksums.feedback
+    }
+  });
   
   return manifest;
 }

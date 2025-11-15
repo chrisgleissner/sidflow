@@ -19,6 +19,7 @@
     "validate:feedback": "node scripts/run-bun.mjs run scripts/validate-feedback.ts",
     "fetch:sample": "node scripts/run-bun.mjs run scripts/run-fetch-sample.ts",
     "classify:sample": "node scripts/run-bun.mjs run scripts/run-classify-sample.ts",
+  "jobs:run": "node scripts/run-bun.mjs run scripts/run-job-queue.ts",
     "ci:verify": "npm run validate:config && npm run fetch:sample && npm run classify:sample && npm run test:e2e",
     "format:json": "node scripts/run-bun.mjs run scripts/format-json.ts",
     "build:db": "node scripts/run-bun.mjs run scripts/build-db.ts",

@@ -51,13 +51,13 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 50));
     await writeFile(wavFile, "mock-wav-data");
     // Store hash file
-    const hashFile = `${wavFile}.hash`;
+  const hashFile = `${wavFile}.sha256`;
     await writeFile(hashFile, "mock-hash");
   };
 
   const mockExtractMetadata = async () => ({ title: "Test Song" });
   const mockFeatureExtractor = async () => ({ energy: 0.5 });
-  const mockPredictRatings = async () => ({ s: 3, m: 3, c: 3 });
+  const mockPredictRatings = async () => ({ s: 3, m: 3, c: 3, e: 3 });
 
   await runClassifyCli(["--config", configPath], {
     stdout: process.stdout,

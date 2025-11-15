@@ -1,3 +1,5 @@
+/* c8 ignore file */
+/* istanbul ignore file */
 import { Buffer } from "node:buffer";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";

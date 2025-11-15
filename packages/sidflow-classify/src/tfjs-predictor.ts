@@ -1,7 +1,13 @@
 import type * as TfJs from "@tensorflow/tfjs";
-import { clampRating, pathExists, type TagRatings } from "@sidflow/common";
+import {
+  clampRating,
+  pathExists,
+  writeCanonicalJsonFile,
+  type JsonValue,
+  type TagRatings
+} from "@sidflow/common";
 import type { FeatureVector, PredictRatings } from "./index.js";
-import { readFile, writeFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureDir } from "@sidflow/common";
 
@@ -203,8 +209,12 @@ export async function saveFeatureStats(stats: FeatureStats, modelPath?: string):
   await ensureDir(dirPath);
   
   const statsPath = path.join(dirPath, "feature-stats.json");
-  const content = JSON.stringify(stats, null, 2);
-  await writeFile(statsPath, content, "utf8");
+  await writeCanonicalJsonFile(statsPath, stats as unknown as JsonValue, {
+    details: {
+      kind: "feature-stats",
+      featureNames: stats.featureNames.length
+    }
+  });
   
   // Update global normalization constants
   FEATURE_MEANS = stats.means;
@@ -233,8 +243,12 @@ export async function saveModelMetadata(metadata: ModelMetadata, modelPath?: str
   await ensureDir(dirPath);
   
   const metadataPath = path.join(dirPath, "model-metadata.json");
-  const content = JSON.stringify(metadata, null, 2);
-  await writeFile(metadataPath, content, "utf8");
+  await writeCanonicalJsonFile(metadataPath, metadata as unknown as JsonValue, {
+    details: {
+      kind: "model-metadata",
+      version: metadata.modelVersion
+    }
+  });
 }
 
 /**

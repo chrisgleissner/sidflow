@@ -6,10 +6,12 @@
  */
 
 import { ensureDir } from "./fs.js";
-import { writeFile, appendFile, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { FeedbackRecord, FeedbackAction } from "./jsonl-schema.js";
+import { appendCanonicalJsonLines } from "./canonical-writer.js";
+import type { JsonValue } from "./json.js";
 
 /**
  * Options for logging feedback events.
@@ -85,19 +87,17 @@ export async function logFeedback(options: LogFeedbackOptions): Promise<string> 
     record.uuid = uuid;
   }
   
-  // Append to JSONL file (one JSON object per line)
-  const line = JSON.stringify(record) + "\n";
-  
-  try {
-    await appendFile(logFile, line, "utf8");
-  } catch (error) {
-    // If file doesn't exist, create it
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      await writeFile(logFile, line, "utf8");
-    } else {
-      throw error;
+  await appendCanonicalJsonLines(
+    logFile,
+    [record as unknown as JsonValue],
+    {
+      details: {
+        partition: `${year}-${month}-${day}`,
+        action,
+        sidPath
+      }
     }
-  }
+  );
   
   return logFile;
 }

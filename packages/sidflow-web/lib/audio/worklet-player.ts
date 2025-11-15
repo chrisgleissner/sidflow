@@ -13,6 +13,7 @@ import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createSABRingBuffer, type SABRingBufferPointers } from './shared/sab-ring-buffer';
 import type { WorkerMessage, WorkerResponse } from './worker/sid-producer.worker';
 import { telemetry } from '@/lib/telemetry';
+import { WorkletGuard, type WorkletGuardOutcome } from '@/lib/player/worklet-guard';
 import { fetchRomAssets, type RomAssetMap } from './fetch-rom-assets';
 
 export type WorkletPlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
@@ -57,9 +58,14 @@ export class WorkletPlayer {
   private readonly audioContext: AudioContext;
   private readonly gainNode: GainNode;
 
+  private static pipelineWarmupPromise: Promise<void> | null = null;
+
   private worker: Worker | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private sabPointers: SABRingBufferPointers | null = null;
+
+  private performanceGuard: WorkletGuard | null = null;
+  private performanceGuardDisabled = false;
 
   private state: WorkletPlayerState = 'idle';
   private readonly listeners: Map<WorkletPlayerEvent, Set<(payload: EventPayloadMap[WorkletPlayerEvent]) => void>> =
@@ -104,6 +110,12 @@ export class WorkletPlayer {
   private workerLoadedAbortSignal: AbortSignal | null = null;
   private workerLoadedAbortHandler: (() => void) | null = null;
 
+  private workerInitializedResolve: (() => void) | null = null;
+  private workerInitializedReject: ((error: Error) => void) | null = null;
+  private workerInitializedTimeout: ReturnType<typeof setTimeout> | null = null;
+  private workerInitializedAbortSignal: AbortSignal | null = null;
+  private workerInitializedAbortHandler: (() => void) | null = null;
+
   private workerReadyResolve: (() => void) | null = null;
   private workerReadyReject: ((error: Error) => void) | null = null;
   private workerReadyTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -127,6 +139,70 @@ export class WorkletPlayer {
         this.telemetry.contextResumeCount++;
       }
     });
+  }
+
+  private static async warmupPipelineAssets(signal?: AbortSignal): Promise<void> {
+    if (typeof fetch === 'undefined') {
+      return;
+    }
+
+    if (WorkletPlayer.pipelineWarmupPromise) {
+      await WorkletPlayer.pipelineWarmupPromise;
+      return;
+    }
+
+    const warmup = (async (): Promise<void> => {
+      const resources = [
+        { url: '/audio/worklet/sid-renderer.worklet.js', kind: 'script' as const },
+        { url: '/audio/worker/sid-producer.worker.js', kind: 'script' as const },
+        { url: '/wasm/libsidplayfp.wasm', kind: 'wasm' as const },
+      ];
+
+      const errors: Error[] = [];
+
+      for (const resource of resources) {
+        if (signal?.aborted) {
+          throw new DOMException('Playback load aborted', 'AbortError');
+        }
+
+        try {
+          const response = await fetch(resource.url, {
+            method: 'GET',
+            credentials: 'same-origin',
+            cache: 'no-cache',
+            signal,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Warmup fetch failed for ${resource.url} (${response.status})`);
+          }
+
+          if (resource.kind === 'wasm') {
+            await response.arrayBuffer();
+          } else {
+            await response.text();
+          }
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            throw error;
+          }
+          errors.push(error instanceof Error ? error : new Error(String(error)));
+        }
+      }
+
+      if (errors.length > 0) {
+        console.warn('[WorkletPlayer] Asset warmup completed with warnings', {
+          errors: errors.map((error) => error.message),
+        });
+      }
+    })();
+
+    WorkletPlayer.pipelineWarmupPromise = warmup.catch((error) => {
+      WorkletPlayer.pipelineWarmupPromise = null;
+      throw error;
+    });
+
+    await WorkletPlayer.pipelineWarmupPromise;
   }
 
   on<Event extends WorkletPlayerEvent>(event: Event, listener: (payload: EventPayloadMap[Event]) => void): void {
@@ -179,6 +255,20 @@ export class WorkletPlayer {
     this.workerLoadedReject = null;
   }
 
+  private clearWorkerInitializedWait(): void {
+    if (this.workerInitializedTimeout) {
+      clearTimeout(this.workerInitializedTimeout);
+      this.workerInitializedTimeout = null;
+    }
+    if (this.workerInitializedAbortSignal && this.workerInitializedAbortHandler) {
+      this.workerInitializedAbortSignal.removeEventListener('abort', this.workerInitializedAbortHandler);
+    }
+    this.workerInitializedAbortSignal = null;
+    this.workerInitializedAbortHandler = null;
+    this.workerInitializedResolve = null;
+    this.workerInitializedReject = null;
+  }
+
   private waitForWorkerLoaded(signal?: AbortSignal): Promise<void> {
     this.clearWorkerLoadedWait();
 
@@ -195,7 +285,7 @@ export class WorkletPlayer {
 
       this.workerLoadedTimeout = setTimeout(() => {
         this.workerLoadedReject?.(new Error('Worker load timeout'));
-      }, 10000);
+      }, 60000);
 
       if (signal) {
         if (signal.aborted) {
@@ -214,6 +304,41 @@ export class WorkletPlayer {
     });
   }
 
+  private waitForWorkerInitialized(signal?: AbortSignal): Promise<void> {
+    this.clearWorkerInitializedWait();
+
+    return new Promise<void>((resolve, reject) => {
+      this.workerInitializedResolve = () => {
+        this.clearWorkerInitializedWait();
+        resolve();
+      };
+
+      this.workerInitializedReject = (error: Error) => {
+        this.clearWorkerInitializedWait();
+        reject(error);
+      };
+
+      this.workerInitializedTimeout = setTimeout(() => {
+        this.workerInitializedReject?.(new Error('Worker init timeout'));
+      }, 20000);
+
+      if (signal) {
+        if (signal.aborted) {
+          this.workerInitializedReject?.(new DOMException('Playback load aborted', 'AbortError'));
+          return;
+        }
+
+        const abortHandler = () => {
+          this.workerInitializedReject?.(new DOMException('Playback load aborted', 'AbortError'));
+        };
+
+        this.workerInitializedAbortSignal = signal;
+        this.workerInitializedAbortHandler = abortHandler;
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+    });
+  }
+
   private clearWorkerReadyWait(): void {
     if (this.workerReadyTimeout) {
       clearTimeout(this.workerReadyTimeout);
@@ -226,24 +351,46 @@ export class WorkletPlayer {
   private waitForWorkerReady(): Promise<void> {
     this.clearWorkerReadyWait();
 
+    const waitStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    console.log('[WorkletPlayer] waitForWorkerReady start', {
+      state: this.state,
+    });
+
     return new Promise<void>((resolve, reject) => {
       this.workerReadyResolve = () => {
         this.clearWorkerReadyWait();
+        const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - waitStartedAt;
+        console.log('[WorkletPlayer] waitForWorkerReady resolved', {
+          state: this.state,
+          duration,
+        });
         resolve();
       };
 
       this.workerReadyReject = (error: Error) => {
         this.clearWorkerReadyWait();
+        const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - waitStartedAt;
+        console.warn('[WorkletPlayer] waitForWorkerReady rejected', {
+          state: this.state,
+          duration,
+          error: error instanceof Error ? error.message : String(error),
+        });
         reject(error);
       };
 
       this.workerReadyTimeout = setTimeout(() => {
+        const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - waitStartedAt;
+        console.warn('[WorkletPlayer] waitForWorkerReady timeout', {
+          state: this.state,
+          duration,
+        });
         this.workerReadyReject?.(new Error('Worker ready timeout'));
       }, 10000);
     });
   }
 
   private rejectWorkerWaits(error: Error): void {
+    this.workerInitializedReject?.(error);
     this.workerLoadedReject?.(error);
     this.workerReadyReject?.(error);
   }
@@ -388,6 +535,21 @@ export class WorkletPlayer {
 
   async play(): Promise<void> {
     console.log('[WorkletPlayer] play() invoked', { state: this.state });
+    // If playback has ended, reload the current track so play() can restart from the beginning.
+    if (this.state === 'ended') {
+      if (this.currentSession && this.currentTrack) {
+        try {
+          await this.load({ session: this.currentSession, track: this.currentTrack });
+        } catch (error) {
+          console.warn('[WorkletPlayer] Failed to reload after ended state:', error);
+          return;
+        }
+      } else {
+        console.warn('[WorkletPlayer] Cannot restart from ended state without session/track');
+        return;
+      }
+    }
+
     if (this.state !== 'ready' && this.state !== 'paused') {
       console.warn('[WorkletPlayer] Cannot play from state:', this.state);
       return;
@@ -397,15 +559,40 @@ export class WorkletPlayer {
       throw new Error('Player not initialized');
     }
 
+    const resumingFromPause = this.state === 'paused';
+
+    // When resuming from pause, start the worklet consumer first so the ring buffer can drain
+    // while the worker performs pre-roll. This avoids a deadlock where the worker waits for
+    // buffer space but the worklet isn't consuming until after 'ready'.
+    if (resumingFromPause) {
+      if (!this.workletConnected) {
+        this.workletNode.connect(this.gainNode);
+        this.workletConnected = true;
+      }
+      await this.audioContext.resume();
+      this.sendWorkletControl({ type: 'start' });
+    }
+
     const readyPromise = this.waitForWorkerReady();
 
     // Start worker rendering (pre-roll happens before resolving ready promise)
     this.worker.postMessage({ type: 'start' } as WorkerMessage);
 
-    await readyPromise;
+    try {
+      await readyPromise;
+    } catch (error) {
+      console.error('[WorkletPlayer] waitForWorkerReady failed during play()', {
+        state: this.state,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
     console.log('[WorkletPlayer] Worker ready resolved, continuing playback setup');
 
-    this.sendWorkletControl({ type: 'start' });
+    // For first-time play (state === 'ready'), start the worklet after pre-roll completes
+    if (!resumingFromPause) {
+      this.sendWorkletControl({ type: 'start' });
+    }
 
     if (this.captureEnabled && !this.captureDestination) {
       this.captureDestination = this.audioContext.createMediaStreamDestination();
@@ -422,12 +609,13 @@ export class WorkletPlayer {
       };
     }
 
-    if (!this.workletConnected) {
-      this.workletNode.connect(this.gainNode);
-      this.workletConnected = true;
+    if (!resumingFromPause) {
+      if (!this.workletConnected) {
+        this.workletNode.connect(this.gainNode);
+        this.workletConnected = true;
+      }
+      await this.audioContext.resume();
     }
-
-    await this.audioContext.resume();
 
     if (this.mediaRecorder && this.mediaRecorder.state === 'inactive') {
       this.mediaRecorder.start(100);
@@ -487,6 +675,17 @@ export class WorkletPlayer {
   }
 
   private async initializeWorklet(signal?: AbortSignal): Promise<void> {
+    try {
+      await WorkletPlayer.warmupPipelineAssets(signal);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      console.warn('[WorkletPlayer] Proceeding without asset warmup', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     // Add worklet module
     const workletUrl = '/audio/worklet/sid-renderer.worklet.js';
     await this.audioContext.audioWorklet.addModule(workletUrl);
@@ -549,10 +748,22 @@ export class WorkletPlayer {
       targetSampleRate: this.audioContext.sampleRate,
     };
 
+    const waitForInit = this.waitForWorkerInitialized(signal);
+
     this.worker.postMessage(initMessage);
 
-    // Wait a bit for initialization
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    try {
+      await waitForInit;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[WorkletPlayer] Worker init acknowledgement not received; continuing', {
+        error: message,
+      });
+    }
     this.throwIfAborted(signal);
 
     console.log('[WorkletPlayer] ✓ Web Worker initialized');
@@ -650,6 +861,17 @@ export class WorkletPlayer {
         this.workerLoadedResolve?.();
         break;
 
+      case 'initialized':
+        console.log('[WorkletPlayer] Worker engine initialized');
+        this.workerInitializedResolve?.();
+        break;
+
+      case 'init-progress':
+        console.log('[WorkletPlayer] Worker init progress', {
+          stage: data.stage,
+        });
+        break;
+
       case 'telemetry':
         this.telemetry.framesProduced = data.framesProduced;
         this.telemetry.backpressureStalls = data.backpressureStalls;
@@ -712,7 +934,105 @@ export class WorkletPlayer {
     }
   }
 
+  private ensurePerformanceGuard(): WorkletGuard | null {
+    if (this.performanceGuardDisabled) {
+      return null;
+    }
+
+    if (this.performanceGuard) {
+      return this.performanceGuard;
+    }
+
+    const guard = new WorkletGuard({
+      onWarning: (sample) => {
+        console.warn('[WorkletPlayer] Worklet guard warning: slow frames detected', {
+          avgFrameDurationMs: sample.avgFrameDurationMs,
+          worstFrameDurationMs: sample.worstFrameDurationMs,
+          overBudgetFrameCount: sample.overBudgetFrameCount,
+          frameCount: sample.frameCount,
+        });
+
+        telemetry.trackPerformance({
+          sessionId: this.currentSession?.sessionId,
+          sidPath: this.currentTrack?.sidPath,
+          metrics: {
+            guardEvent: 'warning',
+            avgFrameDurationMs: sample.avgFrameDurationMs,
+            worstFrameDurationMs: sample.worstFrameDurationMs,
+            overBudgetFrameCount: sample.overBudgetFrameCount,
+            sampleFrameCount: sample.frameCount,
+            warningBudgetMs: sample.warningBudgetMs,
+          },
+        });
+      },
+    });
+
+    if (!guard.isSupported()) {
+      this.performanceGuardDisabled = true;
+      return null;
+    }
+
+    this.performanceGuard = guard;
+    return guard;
+  }
+
+  private startPerformanceGuard(): void {
+    const guard = this.ensurePerformanceGuard();
+    if (!guard) {
+      return;
+    }
+    guard.start();
+  }
+
+  private stopPerformanceGuard(outcome: WorkletGuardOutcome): void {
+    if (!this.performanceGuard) {
+      return;
+    }
+
+    const result = this.performanceGuard.stop(outcome);
+    if (!result) {
+      return;
+    }
+
+    telemetry.trackPerformance({
+      sessionId: this.currentSession?.sessionId,
+      sidPath: this.currentTrack?.sidPath,
+      metrics: {
+        guardEvent: 'summary',
+        guardOutcome: result.outcome,
+        guardDurationMs: result.durationMs,
+        avgFrameDurationMs: result.avgFrameDurationMs,
+        worstFrameDurationMs: result.worstFrameDurationMs,
+        overBudgetFrameCount: result.overBudgetFrameCount,
+        totalFrameCount: result.totalFrames,
+        warningCount: result.warningCount,
+        warningBudgetMs: result.warningBudgetMs,
+        sampleFrameCount: result.lastWarning?.frameCount,
+      },
+    });
+  }
+
+  private mapStateToGuardOutcome(state: WorkletPlayerState): WorkletGuardOutcome {
+    switch (state) {
+      case 'paused':
+        return 'paused';
+      case 'ended':
+        return 'ended';
+      case 'error':
+        return 'error';
+      case 'loading':
+        return 'loading';
+      case 'ready':
+        return 'ready';
+      case 'idle':
+        return 'stopped';
+      default:
+        return 'stopped';
+    }
+  }
+
   private cleanup(): void {
+    this.stopPerformanceGuard('teardown');
     this.rejectWorkerWaits(new DOMException('Playback stopped', 'AbortError'));
 
     // Stop worker
@@ -780,8 +1100,17 @@ export class WorkletPlayer {
     }
 
     const oldState = this.state;
+
+    if (oldState === 'playing' && next !== 'playing') {
+      this.stopPerformanceGuard(this.mapStateToGuardOutcome(next));
+    }
+
     this.state = next;
     this.emit('statechange', next);
+
+    if (next === 'playing' && oldState !== 'playing') {
+      this.startPerformanceGuard();
+    }
 
     telemetry.trackPlaybackStateChange({
       sessionId: this.currentSession?.sessionId,

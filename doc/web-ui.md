@@ -1,14 +1,48 @@
-# SIDFlow Web UI Documentation
+# SIDFlow Web UI
 
-This document provides comprehensive visual documentation of the SIDFlow web interface, showcasing all features and tabs.
+This guide documents the actual, implemented web experience in `packages/sidflow-web` including public vs admin personas, authentication, and how to get music playing on port 3000.
 
 ## Overview
 
-The SIDFlow web interface is a Commodore 64-inspired control panel for managing your SID music collection. It features authentic C64 colors, multiple themes, and intuitive tab-based navigation.
+SIDFlow’s web app has two personas:
+
+- Public player (no login) at `/` with a minimal feature set
+- Admin console (authenticated) at `/admin` with the full pipeline and operations
+
+Both share the same C64‑inspired UI, themes, and tabbed layout.
 
 ## Screenshots
 
-### 1. Wizard Tab
+## Access and roles
+
+- Public (default at `http://localhost:3000/`)
+  - Tabs: Play, Prefs
+  - Great for quick listening without exposing admin operations
+
+- Admin (`http://localhost:3000/admin`)
+  - Tabs: Wizard, Prefs, Fetch, Rate, Classify, Train, Play, Jobs
+  - Used to fetch HVSC, set collection paths/ROMs, run jobs, and inspect history
+
+### Authentication (admin)
+
+Admin uses HTTP Basic auth and an HMAC‑signed session cookie.
+
+- Default username: `admin` (configurable via `SIDFLOW_ADMIN_USER`)
+- Password: `SIDFLOW_ADMIN_PASSWORD` (defaults to `password` if not set)
+- Optional hardening:
+  - `SIDFLOW_ADMIN_SECRET` (>=16 chars) for cookie signing; defaults to `sidflow-${SIDFLOW_ADMIN_PASSWORD}`
+  - `SIDFLOW_ADMIN_SESSION_TTL_MS` (default 3600000 = 1h; minimum 5m)
+- Session cookie: `sidflow_admin_session` on path `/admin`, auto‑renewed when <25% TTL remains
+
+Security note: The default password `password` is for development convenience only. Always set a strong `SIDFLOW_ADMIN_PASSWORD` in production.
+
+If `SIDFLOW_ADMIN_PASSWORD` isn’t set, the app falls back to the insecure default `password` and logs a warning. Configure a real password to disable the warning.
+
+Rate limits: Admin API endpoints are stricter (20/min) than public (100/min).
+
+## Screenshots and tabs
+
+### 1. Wizard (admin)
 
 The Wizard tab guides you through the complete SIDFlow setup process with a step-by-step workflow.
 
@@ -28,27 +62,40 @@ The Wizard tab guides you through the complete SIDFlow setup process with a step
 4. **Train** - Train ML model
 5. **Play** - Enjoy music
 
-### 2. Preferences Tab
+### 2. Preferences
 
-Configure your visual preferences including color schemes and fonts.
+Public and Admin see a Preferences tab tailored to their role.
 
 ![Prefs Tab](web-screenshots/02-prefs.png)
 
-**Features:**
-- **Color Schemes:**
-  - C64 Light Blue (authentic C64 colors)
-  - C64 Dark Mode (black background)
-  - Classic Purple (original theme)
-  - System Default (follows OS settings)
-- **Font Families:**
-  - C64 Font (Press Start 2P - authentic retro)
-  - Monospace (Courier New)
-  - Sans Serif (Arial/Helvetica)
-- Color preview swatches
-- Settings persist across sessions via localStorage
-- Per-browser, per-device configuration
+Public Prefs (local to the browser):
+- Theme and font (applied instantly)
+- Playback engine preference (auto‑fallback if unavailable):
+  - In‑browser WASM (default)
+  - sidplayfp CLI (local bridge)
+  - Streaming WAV / Streaming M4A (server cache)
+  - Ultimate 64 hardware (optional host/HTTPS/secret header)
+- ROM bundle validation workflow (supply your own KERNAL/BASIC/CHARGEN; no redistribution)
+- Offline cache settings (entry/byte limits, prefer offline)
+- Local training controls (enable, iteration budget, sync cadence, allow upload; “Train Now” / “Sync Now”)
 
-### 3. Fetch Tab
+Admin Prefs (server‑side, affects backend):
+- Active collection root (HVSC or a custom subset)
+  - Browse HVSC folders server‑side and "Use This Folder"
+  - Set/clear custom absolute path
+- Render Engine (for server-side classification and admin render operations)
+  - Default engine: libsidplayfp-wasm (portable, no dependencies)
+  - Alternative engines: sidplayfp CLI, Ultimate 64 hardware
+  - Preferred engine order: define fallback sequence when using auto mode
+    - Add/remove engines from preferred order
+    - Reorder with Up/Down buttons
+    - WASM is always appended as final fallback
+    - Empty list uses config defaults from `.sidflow.json`
+- sidplayfp CLI flags: Balanced (default), Fast (`-rif --resid`), or Custom
+- Server ROM paths: KERNAL/BASIC/CHARGEN file paths (with file picker)
+- Theme and font for admin UI (saved locally in your browser)
+
+### 3. Fetch (admin)
 
 Download and synchronize the HVSC (High Voltage SID Collection).
 
@@ -60,12 +107,12 @@ Download and synchronize the HVSC (High Voltage SID Collection).
 - Time estimates provided
 - Optional configuration paths
 
-**What Happens:**
-- Downloads latest HVSC archive
-- Extracts SID files to workspace
-- Takes 5-10 minutes on first run
+What happens:
+- Downloads the latest HVSC archive
+- Extracts SID files to the local workspace
+- First run can take several minutes; subsequent updates are incremental
 
-### 4. Rate Tab
+### 4. Rate (admin)
 
 Submit manual ratings for SID tracks to train the recommendation system.
 
@@ -82,28 +129,41 @@ Submit manual ratings for SID tracks to train the recommendation system.
 - Real-time slider values
 - Descriptive help text for each dimension
 
-### 5. Play Tab
+### 5. Play
 
-Play SID music with optional mood presets and keyboard controls.
+Play music with optional mood presets and keyboard controls. Public users see this tab by default at `/`.
 
 ![Play Tab](web-screenshots/05-play.png)
 
-**Features:**
-- SID file path input
-- Mood preset selection (Quiet, Ambient, Energetic, Dark, Bright, Complex)
-- Keyboard shortcuts panel:
+Features:
+- Mood presets: Quiet, Ambient, Energetic, Dark, Bright, Complex
+- Keyboard shortcuts:
   - **SPACE** - Play/Pause
   - **S** - Stop
   - **N** - Next
   - **P** - Previous
   - **L** - Like
   - **D** - Dislike
-- Playback controls (shown when playing)
-- Position slider
-- Like/Dislike quick rating buttons
-- Current ratings display
+- Position slider, like/dislike, ratings display
+- Admin additionally sees a “Recently Played” panel on the page when tracks are played
 
-## Design System
+How random play works under the hood:
+- Calls `POST /api/play/random` with an optional `preset`
+- Picks a SID using HVSC songlengths; falls back to filesystem scan of the active collection
+- If no SIDs are found, the API returns 404 with `{ error: 'No SID files available', details: 'Unable to locate a SID to play.' }`
+
+Why you might see an “empty playlist” at `/` and how to populate it:
+- The public UI starts empty. It fills only after you play something.
+- Ensure the collection contains SIDs:
+  1) Visit `/admin` and sign in (see Authentication above)
+  2) Open Fetch and download HVSC, or point Admin Prefs → “SID COLLECTION” to a folder that already contains `.sid` files
+  3) Back on `/` (public), choose a mood preset and click Play
+- If you still get a 404 (“No SID files available”), double‑check:
+  - HVSC is present on disk and readable
+  - Admin Prefs “Active collection” path points inside HVSC (or another folder with SIDs)
+  - File extensions are `.sid`
+
+## Design system
 
 ### Authentic C64 Colors
 
@@ -127,7 +187,7 @@ The interface uses the authentic Commodore 64 color palette:
 - **Glow Effects**: Retro neon glow on interactive elements
 - **Progress Bars**: C64-themed progress indicators
 
-## Tab Navigation
+## Tab navigation
 
 Tabs are ordered to follow the typical workflow:
 
@@ -139,7 +199,7 @@ Tabs are ordered to follow the typical workflow:
 6. **TRAIN** - Train ML model
 7. **PLAY** - Play music
 
-## Keyboard Shortcuts
+## Keyboard shortcuts
 
 The interface supports full keyboard navigation:
 
@@ -150,7 +210,7 @@ The interface supports full keyboard navigation:
 - **L** - Like current track (rate 5/5)
 - **D** - Dislike current track (rate 1/1)
 
-## Storage & Persistence
+## Storage & persistence
 
 - User preferences stored in browser localStorage
 - Settings persist across server restarts
@@ -158,14 +218,14 @@ The interface supports full keyboard navigation:
 - No server-side user accounts required
 - Privacy-first: all data stays local
 
-## Responsive Design
+## Responsive design
 
 - Adapts to desktop and mobile screens
 - Tab grid: 4 columns on mobile, 7 columns on desktop
 - Touch-friendly controls
 - Scalable UI elements
 
-## Browser Compatibility
+## Browser compatibility
 
 - Modern browsers with ES6+ support
 - localStorage API required
@@ -180,16 +240,50 @@ The interface supports full keyboard navigation:
 - High contrast color schemes
 - Focus indicators on interactive elements
 
-## Technical Stack
+## Technical stack
 
-- **Next.js 15** - React framework
-- **React 19** - UI library
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **shadcn/ui** - Component library
-- **Bun** - Runtime and package manager
+- Next.js 16 (App Router)
+- React 19
+- TypeScript
+- Tailwind CSS + shadcn/ui
+- Bun (runtime and package manager)
 
-## Future Enhancements
+## Troubleshooting
+
+### Render engine issues
+
+**Problem: Classification stalls with threads stuck in BUILDING phase**
+- Check server logs for `[engine-stall]` or `[engine-chosen]` messages
+- WASM worker may exit with code 0 but produce no audio
+- Try switching to sidplayfp-cli engine in Admin Prefs → Render Engine
+- Check `--prefer` flag order if using auto mode with multiple engines
+
+**Problem: "No audio" errors during classification**
+- WASM engine may have compatibility issues with certain SID files
+- Look for `[engine-stall]` messages indicating consecutive failures
+- Set preferred engine order to try sidplayfp-cli before WASM fallback
+- Ensure sidplayfp CLI is installed and accessible: `which sidplayfp`
+
+**Problem: Engine availability check fails**
+- sidplayfp-cli: verify `sidplayfp` is in PATH or set `sidplayPath` in `.sidflow.json`
+- Ultimate 64: check network connectivity, host/port, and password in render config
+- WASM: should always be available; check browser console for worker errors
+
+**Problem: Preferred engines not respected**
+- Admin Prefs override config-level `render.preferredEngines` in `.sidflow.json`
+- Empty preferred list in Admin Prefs falls back to config defaults
+- Check server logs for `[engine-order]` messages showing resolved order
+- Forced engine (`renderEngine` preference) takes priority over preferred list
+
+### Server logs for debugging
+Monitor console output for structured engine tags:
+- `[engine-order]` — resolved engine priority order
+- `[engine-availability]` — per-engine availability check results
+- `[engine-chosen]` — which engine was selected for each render attempt
+- `[engine-stall]` — thread inactivity or no-audio streak detection
+- `[engine-escalate]` — automatic fallback triggered after repeated failures
+
+## Future enhancements
 
 - Additional color schemes (VIC-20, C128)
 - Custom color picker
@@ -198,18 +292,18 @@ The interface supports full keyboard navigation:
 - Additional keyboard shortcuts
 - Gamepad support
 - Accessibility improvements
+- Real-time engine health monitoring in admin UI
 
-## Getting Started
+## Getting started
 
-1. Start the web server: `cd packages/sidflow-web && bun run dev`
-2. Open http://localhost:3000 in your browser
-3. Click **WIZARD** tab to follow the setup guide
-4. Configure preferences in **PREFS** tab
-5. Start with **FETCH** to download music
-6. **RATE** some tracks to train the system
-7. **CLASSIFY** your collection
-8. **TRAIN** the ML model
-9. **PLAY** and enjoy!
+1) Export admin credentials (required for `/admin`):
+  - `SIDFLOW_ADMIN_PASSWORD=your-strong-password`
+  - Optional: `SIDFLOW_ADMIN_USER=admin`, `SIDFLOW_ADMIN_SECRET=…`, `SIDFLOW_ADMIN_SESSION_TTL_MS=3600000`
+2) Start the dev server: from repo root, `bun run dev` (or `cd packages/sidflow-web && bun run dev`)
+3) Open `http://localhost:3000/admin`, sign in, and run the Wizard → Fetch HVSC
+4) In Admin Prefs, confirm the “Active collection” path, ROM paths (if needed), and any CLI flag tweaks
+5) Open `http://localhost:3000/` for the public player, pick a preset, and press Play
+6) Optional: Rate → Classify → Train for smarter recommendations
 
 ## Support
 

@@ -48,8 +48,8 @@ async function main() {
   const mockRender = async ({ wavFile }: any) => {
     await mkdir(path.dirname(wavFile), { recursive: true });
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate work
-    await writeFile(wavFile, "mock-wav");
-    await writeFile(`${wavFile}.hash`, "mock-hash");
+  await writeFile(wavFile, "mock-wav");
+  await writeFile(`${wavFile}.sha256`, "mock-hash");
   };
 
   const result = await buildWavCache(plan, {

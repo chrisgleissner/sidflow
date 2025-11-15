@@ -5,14 +5,17 @@
  * merging explicit and implicit feedback, and training the model.
  */
 
-import { readdir, readFile, writeFile, appendFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   ensureDir,
+  appendCanonicalJsonLines,
+  writeCanonicalJsonLines,
   pathExists,
   type AudioFeatures,
   type ClassificationRecord,
   type FeedbackRecord,
+  type JsonValue,
   type TagRatings
 } from "@sidflow/common";
 import type { FeatureVector } from "@sidflow/classify";
@@ -273,18 +276,15 @@ export async function saveTrainingSummary(
   await ensureDir(trainingPath);
   
   const logPath = path.join(trainingPath, "training-log.jsonl");
-  const line = JSON.stringify(summary) + "\n";
-  
-  try {
-    await appendFile(logPath, line, "utf8");
-  } catch (error) {
-    // If file doesn't exist, create it
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      await writeFile(logPath, line, "utf8");
-    } else {
-      throw error;
+  await appendCanonicalJsonLines(
+    logPath,
+    [summary as unknown as JsonValue],
+    {
+      details: {
+        kind: "training-summary"
+      }
     }
-  }
+  );
 }
 
 /**
@@ -300,8 +300,12 @@ export async function saveTrainingSamples(
   await ensureDir(trainingPath);
   
   const samplesPath = path.join(trainingPath, "training-samples.jsonl");
-  const lines = samples.map((sample) => JSON.stringify(sample));
-  await writeFile(samplesPath, lines.join("\n") + "\n", "utf8");
+  await writeCanonicalJsonLines(samplesPath, samples as unknown as JsonValue[], {
+    details: {
+      kind: "training-samples",
+      sampleCount: samples.length
+    }
+  });
 }
 
 /**

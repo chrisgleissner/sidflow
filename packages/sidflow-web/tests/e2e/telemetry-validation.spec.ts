@@ -10,19 +10,28 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { configureE2eLogging } from './utils/logging';
 
-// Longer timeout for audio operations
-test.setTimeout(90000);
+const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
-// Configure browser launch options
-test.use({
-  launchOptions: {
-    args: [
-      '--autoplay-policy=no-user-gesture-required',
-      '--enable-features=SharedArrayBuffer',
-    ],
-  },
-});
+configureE2eLogging();
+
+if (!isPlaywrightRunner) {
+  console.warn('[sidflow-web] Skipping Playwright telemetry validation e2e spec; run via `bun run test:e2e`.');
+} else {
+  // Longer timeout for audio operations
+  test.setTimeout(90000);
+
+  // Configure browser launch options
+  test.use({
+    launchOptions: {
+      args: [
+        '--autoplay-policy=no-user-gesture-required',
+        '--enable-features=SharedArrayBuffer',
+      ],
+    },
+  });
+}
 
 interface TelemetryData {
   underruns: number;
@@ -131,6 +140,7 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
   await page.waitForTimeout(4000);
 }
 
+if (isPlaywrightRunner) {
 test.describe('Telemetry Validation', () => {
   test('verifies no underruns during normal playback', async ({ page }) => {
     page.on('console', (msg) => {
@@ -222,7 +232,7 @@ test.describe('Telemetry Validation', () => {
 
   test('verifies telemetry sink works in test mode', async ({ page }) => {
     // Navigate to a page with telemetry
-    await page.goto('/?tab=rate');
+    await page.goto('/admin?tab=rate');
     await page.waitForTimeout(1000);
 
     // Initialize telemetry sink and set mode to test
@@ -260,3 +270,4 @@ test.describe('Telemetry Validation', () => {
     expect(firstEvent).toHaveProperty('timestamp');
   });
 });
+}

@@ -1,4 +1,4 @@
-import { ensureDir } from "@sidflow/common";
+import { createLogger, ensureDir } from "@sidflow/common";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -10,11 +10,16 @@ export interface RenderWavOptions {
   wavFile: string;
   songIndex?: number;
   maxRenderSeconds?: number;
+  targetDurationMs?: number;
 }
 
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
+export const WAV_HASH_EXTENSION = ".sha256";
+const SONG_LENGTH_PADDING_SECONDS = 2;
+
+const renderLogger = createLogger("renderWav");
 
 function resolveMaxRenderSeconds(override?: number): number {
   if (typeof override === "number" && Number.isFinite(override) && override > 0) {
@@ -68,7 +73,7 @@ export async function renderWavWithEngine(
   options: RenderWavOptions
 ): Promise<void> {
   const { sidFile, wavFile, songIndex } = options;
-  
+
   await ensureDir(path.dirname(wavFile));
 
   const sidBuffer = new Uint8Array(await readFile(sidFile));
@@ -76,15 +81,50 @@ export async function renderWavWithEngine(
 
   if (typeof songIndex === "number") {
     const zeroBased = Math.max(0, songIndex - 1);
+    renderLogger.debug(
+      `Selecting song index ${zeroBased} for ${path.basename(sidFile)}`
+    );
     await engine.selectSong(zeroBased);
   }
 
   const sampleRate = engine.getSampleRate();
   const channels = engine.getChannels();
-  const maxSeconds = resolveMaxRenderSeconds(options.maxRenderSeconds);
+  const fallbackSeconds = resolveMaxRenderSeconds(options.maxRenderSeconds);
+
+  let maxSeconds = fallbackSeconds;
+  if (
+    typeof options.targetDurationMs === "number" &&
+    Number.isFinite(options.targetDurationMs) &&
+    options.targetDurationMs > 0
+  ) {
+    const paddedSeconds = Math.max(
+      1,
+      options.targetDurationMs / 1000 + SONG_LENGTH_PADDING_SECONDS
+    );
+    if (paddedSeconds > fallbackSeconds) {
+      renderLogger.debug(
+        `Songlength ${paddedSeconds.toFixed(3)}s clamped to ${fallbackSeconds.toFixed(3)}s for ${path.basename(
+          wavFile
+        )}`
+      );
+    } else {
+      renderLogger.debug(
+        `Songlength target ${paddedSeconds.toFixed(3)}s for ${path.basename(
+          wavFile
+        )}`
+      );
+      maxSeconds = paddedSeconds;
+    }
+  } else {
+    renderLogger.debug(
+      `Using fallback render limit ${fallbackSeconds.toFixed(3)}s for ${path.basename(
+        wavFile
+      )}`
+    );
+  }
+
   const maxSamples = Math.max(1, Math.floor(sampleRate * channels * maxSeconds));
   const chunks: Int16Array[] = [];
-
   let collectedSamples = 0;
   let silentIterations = 0;
   let iterations = 0;
@@ -93,34 +133,37 @@ export async function renderWavWithEngine(
   while (collectedSamples < maxSamples && iterations < maxIterations) {
     iterations += 1;
     const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
-    
+
     if (chunk === null) {
+      renderLogger.debug("Renderer returned null chunk; stopping early");
       break;
     }
+
     if (chunk.length === 0) {
       silentIterations += 1;
       if (silentIterations >= MAX_SILENT_ITERATIONS) {
+        renderLogger.debug("Silent iteration limit reached; stopping");
         break;
       }
       continue;
     }
 
     silentIterations = 0;
-    const copy = chunk.slice();
-    const allowed = Math.min(copy.length, maxSamples - collectedSamples);
+    const allowed = Math.min(chunk.length, maxSamples - collectedSamples);
     if (allowed <= 0) {
       break;
     }
-    const trimmed = allowed === copy.length ? copy : copy.subarray(0, allowed);
-    chunks.push(trimmed);
-    collectedSamples += allowed;
+
+    const slice = allowed === chunk.length ? chunk : chunk.subarray(0, allowed);
+    chunks.push(slice);
+    collectedSamples += slice.length;
   }
 
   if (collectedSamples === 0) {
     throw new Error(`WASM renderer produced no audio for ${sidFile}`);
   }
 
-  console.error(`[DEBUG] renderWav: Assembling PCM data`);
+  renderLogger.debug("Assembling PCM data");
   const pcm = new Int16Array(collectedSamples);
   let writeOffset = 0;
   for (const chunk of chunks) {
@@ -128,18 +171,21 @@ export async function renderWavWithEngine(
     writeOffset += chunk.length;
   }
 
-  console.error(`[DEBUG] renderWav: Encoding to WAV for ${path.basename(wavFile)}`);
+  renderLogger.debug(`Encoding to WAV for ${path.basename(wavFile)}`);
   const wavBuffer = encodePcmToWav(pcm, sampleRate, channels);
-  console.error(`[DEBUG] renderWav: Writing WAV file ${path.basename(wavFile)} (${wavBuffer.length} bytes)`);
+  renderLogger.debug(
+    `Writing WAV file ${path.basename(wavFile)} (${wavBuffer.length} bytes)`
+  );
   await writeFile(wavFile, wavBuffer);
 
-  console.error(`[DEBUG] renderWav: Computing hash for ${path.basename(wavFile)}`);
-  const hashFile = `${wavFile}.hash`;
+  renderLogger.debug(`Computing hash for ${path.basename(wavFile)}`);
+  const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
   try {
     const hash = await computeFileHash(sidFile);
     await writeFile(hashFile, hash, "utf8");
   } catch (err) {
-    console.error(`[DEBUG] renderWav: Hash write failed for ${path.basename(wavFile)}:`, err);
+    renderLogger.warn(`Hash write failed for ${path.basename(wavFile)}`, err);
   }
-  console.error(`[DEBUG] renderWav: ✓ COMPLETE for ${path.basename(wavFile)}`);
+
+  renderLogger.debug(`✓ COMPLETE for ${path.basename(wavFile)}`);
 }

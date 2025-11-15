@@ -14,6 +14,12 @@ if (!process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH) {
   process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH = wasmArtifactPath;
 }
 
+// Provide deterministic defaults for admin authentication during test runs
+process.env.SIDFLOW_ADMIN_USER ??= 'ops';
+process.env.SIDFLOW_ADMIN_PASSWORD ??= 'test-pass-123';
+process.env.SIDFLOW_ADMIN_SECRET ??= 'sidflow-test-secret-456789';
+process.env.SIDFLOW_ADMIN_SESSION_TTL_MS ??= `${60 * 60 * 1000}`;
+
 async function start() {
   // Use test-specific config
   process.env.SIDFLOW_CONFIG = '.sidflow.test.json';

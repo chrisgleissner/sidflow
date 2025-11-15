@@ -15,6 +15,7 @@ import type { FetchProgressSnapshot } from './types/fetch-progress';
 import type { ClassifyProgressSnapshot, ClassifyStorageStats } from './types/classify-progress';
 import type { RateTrackInfo, RateTrackMetadata } from './types/rate-track';
 import type { PlaybackSessionDescriptor } from './types/playback-session';
+import type { RenderTechnology } from '@sidflow/common';
 
 export type { RateTrackInfo, RateTrackMetadata };
 
@@ -37,6 +38,9 @@ export interface PreferencesPayload {
     kernalRomPath?: string | null;
     basicRomPath?: string | null;
     chargenRomPath?: string | null;
+    sidplayfpCliFlags?: string | null;
+    renderEngine?: RenderTechnology;
+    preferredEngines?: RenderTechnology[] | null;
   };
   sidplayfpConfig: {
     path: string;
@@ -111,6 +115,9 @@ export async function updatePreferences(payload: {
   kernalRomPath?: string | null;
   basicRomPath?: string | null;
   chargenRomPath?: string | null;
+  sidplayfpCliFlags?: string | null;
+  renderEngine?: RenderTechnology | null;
+  preferredEngines?: RenderTechnology[] | null;
 }): Promise<ApiResponse<PreferencesPayload>> {
   return apiRequest('/prefs', payload);
 }

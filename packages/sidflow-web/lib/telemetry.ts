@@ -13,7 +13,8 @@ export type TelemetryMode = 'production' | 'test' | 'disabled';
 
 export interface PlaybackTelemetryEvent {
     type: 'playback.load.start' | 'playback.load.success' | 'playback.load.error' |
-    'playback.state.change' | 'playback.error' | 'playback.performance' | 'playback.audio.metrics';
+    'playback.state.change' | 'playback.error' | 'playback.performance' | 'playback.audio.metrics' |
+    'playback.fallback';
     timestamp: number;
     sessionId?: string;
     sidPath?: string;
@@ -25,6 +26,16 @@ export interface PerformanceMetrics {
     renderDurationMs?: number;
     trackDurationSeconds?: number;
     fileSizeBytes?: number;
+    avgFrameDurationMs?: number;
+    worstFrameDurationMs?: number;
+    overBudgetFrameCount?: number;
+    totalFrameCount?: number;
+    warningCount?: number;
+    guardDurationMs?: number;
+    guardOutcome?: string;
+    sampleFrameCount?: number;
+    warningBudgetMs?: number;
+    guardEvent?: 'warning' | 'summary';
 }
 
 export interface AudioMetrics {
@@ -219,6 +230,26 @@ class TelemetryService {
             sessionId: params.sessionId,
             sidPath: params.sidPath,
             metadata,
+        });
+    }
+
+    trackPlaybackFallback(params: {
+        sessionId?: string;
+        sidPath?: string;
+        reason: string;
+        fallbackType: string;
+        metadata?: Record<string, unknown>;
+    }): void {
+        this.track({
+            type: 'playback.fallback',
+            timestamp: Date.now(),
+            sessionId: params.sessionId,
+            sidPath: params.sidPath,
+            metadata: {
+                reason: params.reason,
+                fallbackType: params.fallbackType,
+                ...(params.metadata ?? {}),
+            },
         });
     }
 }

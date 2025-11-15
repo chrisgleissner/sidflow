@@ -1,0 +1,34 @@
+# Cursor Agent Rules for SIDFlow
+
+These rules instruct Cursor to operate autonomously and consistently in this repository. Always load and follow `AGENTS.md` and `PLANS.md` before starting multi-step work.
+
+## Read these first
+- Read `AGENTS.md` at the repo root. Treat it as the central guide for all LLM agents and follow its instructions about ExecPlans and `PLANS.md`.
+- Read `PLANS.md` at the repo root. Treat it as the single source of truth for plan-then-act, progress logging, and validation.
+- Read `.github/copilot-instructions.md` for repository guardrails, conventions, and shared utilities.
+
+## Persistence and autonomy
+- Keep going until the task is fully solved or you are genuinely blocked by missing credentials or external access.
+- Prefer research and reasonable assumptions over asking for clarification; record assumptions in the plan’s Decision Log.
+- Do not ask for permission for logical next steps; take action and validate.
+
+## Workflow
+- Plan-then-act: outline a short contract (inputs/outputs, success criteria), then implement the smallest viable changes.
+- Prefer additive, minimal edits; keep public APIs stable unless the task requires breaking changes.
+- After every 3–5 edits/tool uses, summarize progress and what’s next.
+
+## Validation
+- After substantive edits, run Build, Lint/Typecheck, and Tests. Iterate up to three targeted fixes if failures occur.
+- For CLI or API changes, exercise the smallest representative flow and record expected/observed outputs in the plan.
+
+## Conventions to honor
+- Use shared utilities from `@sidflow/common` (config loader, deterministic JSON, logger, retry, LanceDB builder, fs helpers).
+- Honor `.sidflow.json` config and `--config` overrides; use `resetConfigCache` for long-running tools.
+- For end-to-end flows, prefer the scripts in `scripts/`.
+
+## Reporting
+- Update `PLANS.md` sections: Progress, Surprises & Discoveries, Decision Log, and Outcomes.
+- Keep updates concise and concrete; avoid restating unchanged sections.
+
+## Safe defaults
+- Avoid destructive operations. Prefer idempotent steps and provide rollback notes for risky changes.

@@ -1,6 +1,7 @@
 build-essential
 ca-certificates
 curl
+ffmpeg
 git
 gpg
 jq

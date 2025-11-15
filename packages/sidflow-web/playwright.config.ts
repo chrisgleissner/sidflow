@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const stubToolsPath = path.resolve(configDir, 'tests/stubs');
+const repoRoot = path.resolve(configDir, '..', '..');
+const defaultModelPath = path.resolve(repoRoot, 'data', 'model');
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -19,6 +21,10 @@ const baseUse = {
   trace: 'on-first-retry' as const,
   headless: true,
   video: videoMode,
+  httpCredentials: {
+    username: process.env.SIDFLOW_ADMIN_USER ?? 'ops',
+    password: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123',
+  },
 };
 
 const desktopChrome = devices['Desktop Chrome'];
@@ -67,6 +73,7 @@ export default defineConfig({
       NODE_ENV: 'development',
       HOSTNAME: '0.0.0.0',
       SIDFLOW_CONFIG: '.sidflow.test.json',
+      SIDFLOW_MODEL_PATH: process.env.SIDFLOW_MODEL_PATH ?? defaultModelPath,
     },
   },
 });
