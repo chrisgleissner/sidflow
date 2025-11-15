@@ -270,10 +270,6 @@ describe("HVSC Playlist Builder", () => {
       expect(playlist).toHaveLength(20);
 
       // Check that at least one item is out of order (probabilistic)
-      const inOrder = playlist.every((item, idx) => {
-        const expectedName = `Song${idx.toString().padStart(2, '0')}.sid`;
-        return item.displayName === expectedName;
-      });
 
       // With 20 items, the probability of staying in order is extremely low
       // But we can't guarantee it, so we'll just verify we got all items
