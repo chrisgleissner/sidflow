@@ -240,6 +240,26 @@ export class HlsPlayer {
         this.updateState('idle');
     }
 
+    /**
+     * Set the playback volume (0.0 to 1.0)
+     * @param volume - Volume level from 0.0 (silent) to 1.0 (full)
+     */
+    setVolume(volume: number): void {
+        if (!this.audio) {
+            return;
+        }
+        const clamped = Math.min(1, Math.max(0, volume));
+        this.audio.volume = clamped;
+    }
+
+    /**
+     * Get the current playback volume (0.0 to 1.0)
+     * @returns Current volume level
+     */
+    getVolume(): number {
+        return this.audio?.volume ?? 1.0;
+    }
+
     destroy(): void {
         this.stop();
         this.detachHls();
