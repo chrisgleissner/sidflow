@@ -8,6 +8,12 @@ import {
   DARK_SCREENSHOT_THEME,
 } from './utils/theme';
 import { configureE2eLogging } from './utils/logging';
+import {
+  setupPageCloseMonitoring,
+  waitForStablePageState,
+  navigateWithErrorContext,
+  checkFontsLoaded,
+} from './utils/resilience';
 
 configureE2eLogging();
 
@@ -65,15 +71,27 @@ const TABS: TabScenario[] = [
     label: 'CLASSIFY',
     value: 'classify',
     screenshot: '05-classify.png',
-    setup: async (page) => {
-      // Wait for classify page content to be fully loaded
-      await page.waitForTimeout(500);
-    },
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible();
-      // Ensure main content area is visible
-      await page.waitForSelector('[role="main"]', { state: 'visible' }).catch(() => undefined);
-      await page.waitForTimeout(500);
+      try {
+        // First check if page/context is still valid
+        if (page.isClosed()) {
+          throw new Error('Page was closed before verification');
+        }
+        
+        // Wait for heading with extended timeout
+        await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible({ timeout: 10000 });
+        
+        // Ensure main content area is visible with retry logic
+        await page.waitForSelector('[role="main"]', { 
+          state: 'visible', 
+          timeout: 10000 
+        }).catch((error) => {
+          console.warn('[CLASSIFY verify] Main content area not found:', error.message);
+        });
+      } catch (error) {
+        console.error('[CLASSIFY verify] Verification failed:', error);
+        throw error;
+      }
     },
   },
   {
@@ -421,40 +439,31 @@ async function installScreenshotFixtures(page: Page): Promise<void> {
   });
 }
 
-const STABLE_WAIT_TIMEOUT_MS = 2000;
+const STABLE_WAIT_TIMEOUT_MS = 3000;
 
 async function waitForStableUi(page: Page): Promise<void> {
-  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
-  // Next.js dev server holds open WebSocket connections, so `networkidle` may never resolve.
-  await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => undefined);
-  await page
-    .waitForFunction(() => document.readyState === 'complete', undefined, {
-      timeout: STABLE_WAIT_TIMEOUT_MS,
-    })
-    .catch(() => undefined);
+  // Use the reusable utility for basic stability checks
+  await waitForStablePageState(page, {
+    domTimeout: STABLE_WAIT_TIMEOUT_MS,
+    networkTimeout: 2000,
+    fontTimeout: STABLE_WAIT_TIMEOUT_MS,
+    throwOnTimeout: false,
+  });
+  
+  // Check for theme attribute specific to screenshot tests
   await page
     .waitForFunction(
       (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
       DARK_SCREENSHOT_THEME,
       { timeout: STABLE_WAIT_TIMEOUT_MS }
     )
-    .catch(() => undefined);
-  await page
-    .waitForFunction(
-      () => {
-        if (!(document as any).fonts || typeof (document as any).fonts.status !== 'string') {
-          return true;
-        }
-        return (document as any).fonts.status === 'loaded';
-      },
-      undefined,
-      { timeout: STABLE_WAIT_TIMEOUT_MS }
-    )
-    .catch(() => undefined);
-  await page.waitForTimeout(300);
+    .catch((err) => {
+      console.warn('[waitForStableUi] theme attribute check timeout:', err.message);
+    });
 }
 
-test.setTimeout(45000);
+// Increase timeout for screenshot tests to account for CI resource contention
+test.setTimeout(60000);
 test.describe('Tab Screenshots', () => {
   test.beforeAll(() => {
     if (!fs.existsSync(screenshotDir)) {
@@ -462,7 +471,10 @@ test.describe('Tab Screenshots', () => {
     }
   });
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Set up monitoring before fixtures are installed
+    setupPageCloseMonitoring(page, testInfo.title);
+    
     await installScreenshotFixtures(page);
     await applyDarkScreenshotTheme(page);
   });
@@ -475,38 +487,56 @@ test.describe('Tab Screenshots', () => {
 
   for (const tab of TABS) {
     test(`${tab.label} tab screenshot`, async ({ page }) => {
-      const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
-      await page.goto(`${basePath}?tab=${tab.value}`, { waitUntil: 'domcontentloaded' });
-      if (tab.setup) {
-        await tab.setup(page);
-      }
-      await tab.verify(page);
-      await waitForStableUi(page);
-      await page.evaluate((expectedTheme) => {
-        const html = document.documentElement;
-        html.setAttribute('data-theme', expectedTheme);
-        html.classList.remove('font-c64', 'font-sans');
-        html.classList.add('font-mono');
-        const body = document.body;
-        if (body) {
-          delete (body.dataset as Record<string, string | undefined>).persona;
-          body.classList.remove('font-c64', 'font-sans');
-          body.classList.add('font-mono');
-          const computedBackground = getComputedStyle(html).getPropertyValue('--background').trim();
-          if (computedBackground) {
-            body.style.setProperty('background', computedBackground);
-            body.style.setProperty('background-color', computedBackground);
-          } else {
-            body.style.setProperty('background', 'var(--background)');
-            body.style.setProperty('background-color', 'var(--background)');
-          }
+      try {
+        const basePath = adminTabs.has(tab.value) ? '/admin' : '/';
+        const url = `${basePath}?tab=${tab.value}`;
+        
+        // Navigate with error context and page closure detection
+        await navigateWithErrorContext(page, url, 30000);
+        
+        // Run optional setup with error handling
+        if (tab.setup) {
+          await tab.setup(page);
         }
-      }, DARK_SCREENSHOT_THEME);
-      await page.waitForTimeout(100);
-      await page.screenshot({
-        path: path.join(screenshotDir, tab.screenshot),
-        fullPage: true,
-      });
+        
+        // Verify tab content is present
+        await tab.verify(page);
+        
+        // Wait for UI to stabilize
+        await waitForStableUi(page);
+        
+        // Apply screenshot theme with error handling
+        await page.evaluate((expectedTheme) => {
+          const html = document.documentElement;
+          html.setAttribute('data-theme', expectedTheme);
+          html.classList.remove('font-c64', 'font-sans');
+          html.classList.add('font-mono');
+          const body = document.body;
+          if (body) {
+            delete (body.dataset as Record<string, string | undefined>).persona;
+            body.classList.remove('font-c64', 'font-sans');
+            body.classList.add('font-mono');
+            const computedBackground = getComputedStyle(html).getPropertyValue('--background').trim();
+            if (computedBackground) {
+              body.style.setProperty('background', computedBackground);
+              body.style.setProperty('background-color', computedBackground);
+            } else {
+              body.style.setProperty('background', 'var(--background)');
+              body.style.setProperty('background-color', 'var(--background)');
+            }
+          }
+        }, DARK_SCREENSHOT_THEME);
+        
+        // Take screenshot with error handling
+        await page.screenshot({
+          path: path.join(screenshotDir, tab.screenshot),
+          fullPage: true,
+          timeout: 10000,
+        });
+      } catch (error) {
+        console.error(`[${tab.label} screenshot] Test failed:`, error);
+        throw error;
+      }
     });
   }
 });

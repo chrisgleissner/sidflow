@@ -80,6 +80,7 @@ Do not introduce new top‑level frameworks or major dependencies without a stro
   - Unit tests: `bun run test` (coverage is enforced).
   - End‑to‑end: `bun run test:e2e` when pipeline changes are involved.
   - Config and data validations: `bun run validate:config`, `bun run build:db`, and other scripts as documented.
+- **Before changing or adding e2e tests**, read `doc/testing/e2e-test-resilience-guide.md` for best practices on writing resilient, non‑flaky tests that work reliably in CI environments.
 - When you cannot run tests (environment limits), reason carefully about edge cases and call them out in `PLANS.md` and your final summary.
 - Prefer additive, idempotent changes. Avoid destructive operations (e.g., deleting data or large refactors) unless explicitly requested or clearly necessary; when you must perform them, describe rollback steps in the plan.
 
