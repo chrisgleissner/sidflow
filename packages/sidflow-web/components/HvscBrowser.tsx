@@ -22,7 +22,6 @@ export function HvscBrowser({ onPlaySong, onPlayFolder, onStatusChange }: HvscBr
   const [items, setItems] = useState<HvscBrowseItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   const fetchPath = useCallback(
     async (path: string) => {
