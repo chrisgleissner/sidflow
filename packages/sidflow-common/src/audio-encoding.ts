@@ -33,32 +33,6 @@ const DEFAULT_FFMPEG_WORKER_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.wor
 
 let wasmEncoder: FFmpeg | null = null;
 
-/**
- * Check if native ffmpeg executable is available in PATH
- */
-export async function isNativeFfmpegAvailable(): Promise<boolean> {
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const proc = spawn(FFMPEG_PATH, ["-version"], {
-        stdio: ["ignore", "ignore", "ignore"],
-      });
-      proc.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`ffmpeg exited with code ${code}`));
-        }
-      });
-      proc.on("error", (err) => {
-        reject(err);
-      });
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function tryResolve(moduleId: string): string | undefined {
   const candidates = [moduleId, `@ffmpeg/ffmpeg/node_modules/${moduleId}`];
   for (const specifier of candidates) {
