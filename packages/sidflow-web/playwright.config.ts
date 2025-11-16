@@ -7,6 +7,7 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 const stubToolsPath = path.resolve(configDir, 'tests/stubs');
 const repoRoot = path.resolve(configDir, '..', '..');
 const defaultModelPath = path.resolve(repoRoot, 'data', 'model');
+const testConfigPath = path.resolve(repoRoot, '.sidflow.test.json');
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -72,7 +73,7 @@ export default defineConfig({
       PATH: `${stubToolsPath}${path.delimiter}${process.env.PATH ?? ''}`,
       NODE_ENV: 'development',
       HOSTNAME: '0.0.0.0',
-      SIDFLOW_CONFIG: '.sidflow.test.json',
+      SIDFLOW_CONFIG: testConfigPath,
       SIDFLOW_MODEL_PATH: process.env.SIDFLOW_MODEL_PATH ?? defaultModelPath,
     },
   },
