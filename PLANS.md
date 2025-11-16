@@ -440,3 +440,132 @@ When beginning a task:
 
 - Repository guardrails and conventions: `.github/copilot-instructions.md`.
 - Cursor users: `.cursorrules` at repo root mirrors these expectations and points here first.
+
+## Task: Phase 1 Foundation Enhancement (Quick Wins)
+
+**Started:** 2025‑11‑16
+
+**User request (summary)**
+- Implement highest-impact, lowest-effort features from strategic analysis
+- Focus on making SIDFlow delightful for daily use with better discovery and usability
+- Address critical gaps identified in competitive analysis
+
+**Context and constraints**
+- Strategic feature analysis completed (see `doc/strategic-feature-analysis.md`)
+- Competitive analysis shows SIDFlow has unique strengths (privacy, local-first, open source) but lacks basic discovery/UX features
+- Target: Quick wins that mainstream platforms have but SIDFlow lacks
+- All features must maintain privacy-first, local-first architecture
+- No new external dependencies unless absolutely necessary
+
+**Plan (checklist)**
+
+**Step 1: Favorites Collection System**
+- [ ] 1.1 — Add favorites storage schema to WebPreferences
+- [ ] 1.2 — Create `/api/favorites` endpoints (add, remove, list)
+- [ ] 1.3 — Add heart icon button to track cards (filled vs outline state)
+- [ ] 1.4 — Create Favorites page/tab in public player
+- [ ] 1.5 — Add "Play All Favorites" and "Shuffle Favorites" buttons
+- [ ] 1.6 — Unit tests for favorites API and state management
+- [ ] 1.7 — E2E tests for adding/removing favorites
+
+**Step 2: Recently Played History**
+- [ ] 2.1 — Add playback history storage (circular buffer, max 100 tracks)
+- [ ] 2.2 — Track play events in player components (auto-add to history)
+- [ ] 2.3 — Create "Recently Played" section on Play tab (show last 20)
+- [ ] 2.4 — Add "Play Again" button per history item
+- [ ] 2.5 — Add "Clear History" button
+- [ ] 2.6 — Persist history in browser localStorage
+- [ ] 2.7 — Unit tests for history management
+- [ ] 2.8 — E2E tests for history tracking
+
+**Step 3: Basic Search (Title/Artist)**
+- [ ] 3.1 — Create `/api/search` endpoint accepting query param
+- [ ] 3.2 — Implement search logic (case-insensitive substring match on sid_path)
+- [ ] 3.3 — Parse HVSC path format (MUSICIANS/Artist/Song.sid) for artist extraction
+- [ ] 3.4 — Add search bar component to Play tab (top of page)
+- [ ] 3.5 — Display search results with play button per result
+- [ ] 3.6 — Add debouncing (300ms) to prevent excessive API calls
+- [ ] 3.7 — Show "No results" state when query returns empty
+- [ ] 3.8 — Unit tests for search API and path parsing
+- [ ] 3.9 — E2E tests for search interaction
+
+**Step 4: Global Keyboard Shortcuts**
+- [ ] 4.1 — Create keyboard shortcut manager hook (useKeyboardShortcuts)
+- [ ] 4.2 — Implement shortcuts:
+  - Space: play/pause toggle
+  - Arrow Right: next track
+  - Arrow Left: previous track (or restart if <3s)
+  - Arrow Up: volume up (+5%)
+  - Arrow Down: volume down (-5%)
+  - M: mute toggle
+  - F: toggle favorites for current track
+  - S: focus search bar
+- [ ] 4.3 — Add shortcuts help modal (? key to open)
+- [ ] 4.4 — Ensure shortcuts don't fire when typing in input fields
+- [ ] 4.5 — Add visual feedback for shortcut actions (toast notifications)
+- [ ] 4.6 — Unit tests for keyboard event handling
+- [ ] 4.7 — E2E tests for each shortcut
+
+**Step 5: Top Charts (Most Played)**
+- [ ] 5.1 — Track play counts in feedback system (already exists, verify)
+- [ ] 5.2 — Create `/api/charts` endpoint with filters: `week`, `month`, `all-time`
+- [ ] 5.3 — Aggregate play counts from feedback JSONL files
+- [ ] 5.4 — Create Top Charts page/tab (or section on Play tab)
+- [ ] 5.5 — Display charts with rank, play count, and quick play button
+- [ ] 5.6 — Add time range selector (This Week / This Month / All Time)
+- [ ] 5.7 — Cache chart data (refresh daily)
+- [ ] 5.8 — Unit tests for chart aggregation logic
+- [ ] 5.9 — E2E tests for chart display
+
+**Step 6: Dark Mode Polish**
+- [ ] 6.1 — Audit all components for dark mode support
+- [ ] 6.2 — Fix any components with poor contrast or missing dark variants
+- [ ] 6.3 — Ensure all modals, tooltips, and overlays respect dark mode
+- [ ] 6.4 — Add smooth theme transition animation (200ms)
+- [ ] 6.5 — Persist theme preference in localStorage
+- [ ] 6.6 — Add theme toggle to header (sun/moon icon)
+- [ ] 6.7 — Unit tests for theme persistence
+- [ ] 6.8 — E2E tests for theme switching
+
+**Step 7: Integration & Polish**
+- [ ] 7.1 — Test all new features together (interaction testing)
+- [ ] 7.2 — Performance audit (ensure no regressions)
+- [ ] 7.3 — Accessibility audit (keyboard nav, ARIA labels, screen reader)
+- [ ] 7.4 — Update `doc/web-ui.md` with new features
+- [ ] 7.5 — Create user guide for new features
+- [ ] 7.6 — Take screenshots of all new UI elements
+- [ ] 7.7 — Update README.md feature list
+
+**Step 8: Quality Gates**
+- [ ] 8.1 — Build PASS (bun run build)
+- [ ] 8.2 — Lint/Typecheck PASS (no errors)
+- [ ] 8.3 — Unit tests PASS (≥90% coverage maintained)
+- [ ] 8.4 — E2E tests PASS (all new features tested)
+- [ ] 8.5 — Manual smoke testing on Chrome, Firefox, Safari
+- [ ] 8.6 — Performance benchmarks (no >10% regression)
+
+**Progress log**
+- 2025‑11‑16 — Completed strategic feature analysis. Identified 6 quick-win features for Phase 1.
+- 2025‑11‑16 — Drafted detailed implementation plan with 8 steps and 50+ sub-tasks.
+
+**Assumptions and open questions**
+- Assumption: Feedback system already tracks play events; can reuse for charts.
+- Assumption: WebPreferences localStorage has capacity for favorites list (max ~1000 tracks = ~50KB).
+- Assumption: Search can be client-side initially; server-side index can be added later if needed.
+- Question: Should favorites sync across devices? Answer: Not in Phase 1; local-first for now.
+- Question: Should we implement fuzzy search or exact match? Answer: Start with case-insensitive substring; upgrade to fuzzy later.
+- Question: Keyboard shortcuts configurable by user? Answer: Not in Phase 1; use sensible defaults.
+
+**Success metrics**
+- Daily active usage increases by 30%
+- Average session length increases by 20%
+- User-reported "discoverability" score >4/5
+- Feature adoption: Favorites used by >60% of users within 2 weeks
+
+**Follow‑ups / future work**
+- Phase 2: Discover Weekly, AI-powered recommendations (see `doc/strategic-feature-analysis.md`)
+- Phase 3: Mobile apps, social features
+- Phase 4: Multi-device sync, AI DJ
+- Advanced search: Fuzzy matching, filters by E/M/C/P, BPM range, year
+- Playlist folders and smart playlists
+- Scrobbling integration with Last.fm
