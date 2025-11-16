@@ -37,15 +37,23 @@ export function resolveFromRepoRoot(...segments: string[]): string {
   return path.resolve(getRepoRoot(), ...segments);
 }
 
-export async function getSidflowConfig(configPath?: string): Promise<SidflowConfig> {
-  if (configPath) {
-    return loadConfig(configPath);
+export function resolveConfigPath(explicitPath?: string): string {
+  if (explicitPath) {
+    return explicitPath;
   }
 
   const root = getRepoRoot();
-  // Check for SIDFLOW_CONFIG environment variable first
-  const configFile = process.env.SIDFLOW_CONFIG || '.sidflow.json';
-  const resolvedPath = path.join(root, configFile);
+  const configFile = (process.env.SIDFLOW_CONFIG ?? '.sidflow.json').trim();
+
+  if (configFile.length === 0) {
+    return path.resolve(root, '.sidflow.json');
+  }
+
+  return path.isAbsolute(configFile) ? configFile : path.resolve(root, configFile);
+}
+
+export async function getSidflowConfig(configPath?: string): Promise<SidflowConfig> {
+  const resolvedPath = resolveConfigPath(configPath);
 
   if (cachedConfig && cachedConfigPath === resolvedPath) {
     return cachedConfig;
@@ -55,4 +63,10 @@ export async function getSidflowConfig(configPath?: string): Promise<SidflowConf
   cachedConfig = config;
   cachedConfigPath = resolvedPath;
   return config;
+}
+
+export function resetServerEnvCacheForTests(): void {
+  cachedRoot = null;
+  cachedConfig = null;
+  cachedConfigPath = null;
 }

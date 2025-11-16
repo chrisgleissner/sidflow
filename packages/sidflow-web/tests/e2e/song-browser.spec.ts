@@ -43,7 +43,7 @@ if (!isPlaywrightRunner) {
     test('displays folders and files when available', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      
+
       // Wait for the browser component to finish loading
       await page.waitForTimeout(2000);
 
@@ -215,7 +215,7 @@ if (!isPlaywrightRunner) {
 
     test('displays playback control buttons', async ({ page }) => {
       // Previous button
-      const previousButton = page.getByRole('button', { name: /previous track/i });
+      const previousButton = page.getByRole('button', { name: 'Previous track', exact: true });
       await expect(previousButton).toBeVisible();
 
       // Play/Pause button
@@ -223,7 +223,7 @@ if (!isPlaywrightRunner) {
       await expect(playPauseButton).toBeVisible();
 
       // Next button
-      const nextButton = page.getByRole('button', { name: /next track/i });
+      const nextButton = page.getByRole('button', { name: 'Next track', exact: true });
       await expect(nextButton).toBeVisible();
     });
 

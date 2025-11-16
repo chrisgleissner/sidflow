@@ -23,9 +23,10 @@ process.env.SIDFLOW_ADMIN_SESSION_TTL_MS ??= `${60 * 60 * 1000}`;
 async function start() {
   // Use test-specific config (only set if not already provided)
   if (!process.env.SIDFLOW_CONFIG) {
-    // When running standalone, default to relative path
-    process.env.SIDFLOW_CONFIG = '.sidflow.test.json';
+    // Use repository-root absolute path so nested cwd values don't duplicate segments
+    process.env.SIDFLOW_CONFIG = resolve(repoRoot, '.sidflow.test.json');
   }
+  console.log('[test-server] Using SIDFLOW_CONFIG=', JSON.stringify(process.env.SIDFLOW_CONFIG));
   try {
     const app = next({
       dev: true,
