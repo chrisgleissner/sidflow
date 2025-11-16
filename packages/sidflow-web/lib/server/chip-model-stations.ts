@@ -3,10 +3,14 @@
  */
 
 import { connect, type Table } from 'vectordb';
-import { loadConfig, parseSidFile } from '@sidflow/common';
 import path from 'node:path';
-import { pathExists } from '@sidflow/common';
-import type { DatabaseRecord } from '@sidflow/common';
+import {
+    loadConfig,
+    parseSidFile,
+    pathExists,
+    normalizeSidChip,
+} from '@sidflow/common';
+import type { DatabaseRecord, SidChipModel, SidModel } from '@sidflow/common';
 
 export interface ChipTrack {
     sid_path: string;
@@ -22,7 +26,7 @@ export interface ChipTrack {
 }
 
 export interface ChipModelStationsOptions {
-    chipModel: '6581' | '8580' | '8580r5';
+    chipModel: SidChipModel;
     limit?: number;
 }
 
@@ -87,14 +91,12 @@ function calculateQualityScore(track: DatabaseRecord): number {
  * Normalize chip model name for comparison.
  * Handles variations like "6581", "MOS6581", "6581R4", etc.
  */
-function normalizeChipModel(sidModel: string): string {
-    const normalized = sidModel.toUpperCase().replace(/[^0-9A-Z]/g, '');
+function normalizeChipModel(sidModel: SidModel | undefined | null): SidChipModel | null {
+    if (!sidModel) {
+        return null;
+    }
 
-    if (normalized.includes('6581')) return '6581';
-    if (normalized.includes('8580R5')) return '8580r5';
-    if (normalized.includes('8580')) return '8580';
-
-    return normalized;
+    return normalizeSidChip(sidModel);
 }
 
 /**
@@ -162,7 +164,7 @@ export async function findTracksWithChipModel(
 
                 // Parse SID metadata
                 const sidData = await parseSidFile(fullPath);
-                const normalizedModel = normalizeChipModel(sidData.sidModel);
+                const normalizedModel = normalizeChipModel(sidData.sidModel1);
 
                 if (normalizedModel) {
                     chipParsed++;

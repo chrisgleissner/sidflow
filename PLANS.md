@@ -213,8 +213,8 @@ When beginning a task:
 
 **Step 6.5: Chip Model Stations** ✅
 - [x] 6.5.1 — Create `/api/play/chip-station` endpoint accepting chip model
-- [x] 6.5.2 — Filter tracks by chip model (6581, 8580, 8580r5) from SID metadata
-- [x] 6.5.3 — Add UI: "CHIP MODEL" button with 6581/8580/8580R5 selector grid
+- [x] 6.5.2 — Filter tracks by chip model (6581 or 8580; treat 8580R5 as 8580) from SID metadata
+- [x] 6.5.3 — Add UI: "CHIP MODEL" button with 6581/8580 selector grid
 - [x] 6.5.4 — Unit tests for chip filtering (pending)
 
 **Step 6.6: Remix Radar**
@@ -269,6 +269,7 @@ When beginning a task:
 **Assumptions and open questions**
 - Assumption: LanceDB vector search is fast enough for real-time feature similarity (<200ms)
 - Assumption: Feedback data has sufficient volume for collaborative filtering
+- Assumption: All references to SID chip model 8580R5 are normalized to the canonical "8580" label
 - Question: Should adaptive stations persist learned preferences across sessions? Answer: No, session-only for now
 
 **Follow-ups / future work**

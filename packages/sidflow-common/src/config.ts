@@ -6,6 +6,7 @@ import type {
   AudioEncoderImplementation,
   FfmpegWasmOptions,
 } from "./audio-types.js";
+import { normalizeSidChip, type SidChipModel } from "./chip-model.js";
 
 export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
 export type RenderFormat = "wav" | "m4a" | "flac";
@@ -22,7 +23,7 @@ export interface RenderSettings {
   outputPath?: string;
   defaultFormats?: RenderFormat[];
   preferredEngines?: RenderEngine[];
-  defaultChip?: "6581" | "8580r5";
+  defaultChip?: SidChipModel;
   m4aBitrate?: number;
   flacCompressionLevel?: number;
   audioEncoder?: AudioEncoderConfig;
@@ -272,12 +273,13 @@ function parseRenderSettings(value: unknown, configPath: string): RenderSettings
   }
 
   if (record.defaultChip !== undefined) {
-    if (record.defaultChip !== "6581" && record.defaultChip !== "8580r5") {
+    const normalizedChip = normalizeSidChip(record.defaultChip);
+    if (!normalizedChip) {
       throw new SidflowConfigError(
-        `Config key "render.defaultChip" must be either "6581" or "8580r5"`
+        `Config key "render.defaultChip" must be either "6581" or "8580"`
       );
     }
-    settings.defaultChip = record.defaultChip;
+    settings.defaultChip = normalizedChip;
   }
 
   if (record.m4aBitrate !== undefined) {

@@ -27,3 +27,4 @@ export * from "./audit-trail.js";
 export * from "./canonical-writer.js";
 export * from "./availability-manifest.js";
 export * from "./audio-types.js";
+export * from "./chip-model.js";
