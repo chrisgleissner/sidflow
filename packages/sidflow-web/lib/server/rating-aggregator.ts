@@ -1,6 +1,8 @@
 /**
  * Rating aggregator for calculating community and personal ratings.
  * Aggregates ratings from feedback JSONL files and explicit rating tags.
+ * 
+ * Implements in-memory caching with TTL to avoid re-reading feedback files on each request.
  */
 
 import { readdir, readFile } from 'node:fs/promises';
@@ -8,6 +10,21 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '@sidflow/common';
 import type { FeedbackRecord } from '@sidflow/common';
+
+/**
+ * Cache entry for aggregated feedback data.
+ */
+interface CacheEntry {
+  aggregates: Map<string, FeedbackAggregate>;
+  timestamp: number;
+}
+
+/**
+ * In-memory cache for aggregated feedback.
+ * TTL: 5 minutes (300000ms)
+ */
+const CACHE_TTL = 5 * 60 * 1000;
+let feedbackCache: CacheEntry | null = null;
 
 export interface AggregateRating {
   sid_path: string;
@@ -205,18 +222,48 @@ function estimateDimensions(aggregate: FeedbackAggregate): {
 }
 
 /**
+ * Gets or refreshes the cached feedback aggregates.
+ * Returns cached data if available and fresh, otherwise reads from disk.
+ */
+async function getCachedAggregates(): Promise<Map<string, FeedbackAggregate>> {
+  const now = Date.now();
+  
+  // Check if cache is valid
+  if (feedbackCache && (now - feedbackCache.timestamp) < CACHE_TTL) {
+    return feedbackCache.aggregates;
+  }
+  
+  // Cache miss or expired - read from disk
+  const feedbackPath = path.join(process.cwd(), 'data', 'feedback');
+  const feedbackEvents = await readFeedbackFiles(feedbackPath);
+  const aggregates = aggregateFeedback(feedbackEvents);
+  
+  // Update cache
+  feedbackCache = {
+    aggregates,
+    timestamp: now,
+  };
+  
+  console.log('[rating-aggregator] Cache refreshed with', aggregates.size, 'tracks');
+  
+  return aggregates;
+}
+
+/**
+ * Clears the feedback cache. Useful for testing or forcing a refresh.
+ */
+export function clearCache(): void {
+  feedbackCache = null;
+}
+
+/**
  * Gets aggregate rating for a specific SID path.
+ * Uses in-memory cache to avoid re-reading feedback files on each request.
  */
 export async function getAggregateRating(sidPath: string): Promise<AggregateRating | null> {
   try {
-    const config = await loadConfig();
-    const feedbackPath = path.join(process.cwd(), 'data', 'feedback');
-    
-    // Read all feedback
-    const feedbackEvents = await readFeedbackFiles(feedbackPath);
-    
-    // Aggregate by SID path
-    const aggregates = aggregateFeedback(feedbackEvents);
+    // Get aggregates from cache or disk
+    const aggregates = await getCachedAggregates();
     
     const aggregate = aggregates.get(sidPath);
     if (!aggregate) {
@@ -273,14 +320,14 @@ export async function getAggregateRating(sidPath: string): Promise<AggregateRati
 
 /**
  * Gets aggregate ratings for multiple SID paths (batch operation).
+ * Uses in-memory cache to avoid re-reading feedback files.
  */
 export async function getAggregateRatings(sidPaths: string[]): Promise<Map<string, AggregateRating>> {
   const results = new Map<string, AggregateRating>();
   
   try {
-    const feedbackPath = path.join(process.cwd(), 'data', 'feedback');
-    const feedbackEvents = await readFeedbackFiles(feedbackPath);
-    const aggregates = aggregateFeedback(feedbackEvents);
+    // Get aggregates from cache or disk
+    const aggregates = await getCachedAggregates();
     
     for (const sidPath of sidPaths) {
       const aggregate = aggregates.get(sidPath);

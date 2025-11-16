@@ -1072,16 +1072,16 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         notifyStatus(`${label} recorded for "${currentTrack.displayName}"`);
         
         // Save to localStorage for personal rating display
-        setPersonalRating(currentTrack.sidPath, value, { e: value, m: value, c: value });
+        setPersonalRating(currentTrack.sidPath, value, { e: value, m: value, c: value, p: value });
         setPersonalRatingState({
           rating: value,
           timestamp: new Date().toISOString(),
-          dimensions: { e: value, m: value, c: value },
+          dimensions: { e: value, m: value, c: value, p: value },
         });
         
         recordExplicitRating({
           track: currentTrack,
-          ratings: { e: value, m: value, c: value },
+          ratings: { e: value, m: value, c: value, p: value },
           sessionId: playerRef.current?.getSession()?.sessionId,
           pipeline: getPipelineKind(),
           metadata: {
