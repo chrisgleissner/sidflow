@@ -8,12 +8,13 @@ import {
   playManualTrack,
   rateTrack,
   requestRandomPlayTrack,
+  requestStationFromSong,
   type RateTrackInfo,
   type RateTrackWithSession,
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio } from 'lucide-react';
 import type { FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
@@ -964,6 +965,52 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer, updateUpcoming, playManualTrack]
   );
 
+  const handleStartStation = useCallback(
+    async (sidPath: string) => {
+      try {
+        notifyStatus(`Creating station from "${currentTrack?.displayName}"...`, false);
+        
+        const response = await requestStationFromSong({
+          sid_path: sidPath,
+          limit: 20,
+          similarity: 0.7,
+          discovery: 0.5,
+        });
+        
+        if (!response.success) {
+          notifyStatus(`Failed to create station: ${formatApiError(response)}`, true);
+          return;
+        }
+        
+        const { similarTracks, stationName } = response.data;
+        
+        if (similarTracks.length === 0) {
+          notifyStatus('No similar tracks found for this station', true);
+          return;
+        }
+        
+        // Switch to folder mode with station name
+        setPlaybackMode('folder');
+        setPlaybackModeDescription(stationName);
+        
+        // Convert similar tracks to PlaylistTrack format
+        const tracks: PlaylistTrack[] = [];
+        for (const track of similarTracks) {
+          const numbered = assignPlaylistNumber(track);
+          tracks.push(numbered);
+        }
+        
+        // Queue all tracks
+        updateUpcoming(() => tracks);
+        
+        notifyStatus(`Station ready with ${tracks.length} tracks. Press "Play Next Track" to start.`);
+      } catch (error) {
+        notifyStatus(`Error creating station: ${error instanceof Error ? error.message : String(error)}`, true);
+      }
+    },
+    [currentTrack, notifyStatus, assignPlaylistNumber, updateUpcoming]
+  );
+
   const submitRating = useCallback(
     async (value: number, label: string, advance: boolean) => {
       if (!currentTrack || isRating) {
@@ -1296,6 +1343,17 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   }}
                 >
                   <Forward className="h-4 w-4" /> Next
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => {
+                    void handleStartStation(currentTrack.sidPath);
+                  }}
+                  title="Create a personalized radio station based on this song"
+                >
+                  <Radio className="h-4 w-4" /> Start Station
                 </Button>
               </div>
             </div>
