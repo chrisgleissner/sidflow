@@ -66,6 +66,18 @@ export function setPersonalRating(
   rating: number,
   dimensions?: { e?: number; m?: number; c?: number }
 ): void {
+  // Validate rating is a number between 1 and 5 (inclusive)
+  if (
+    typeof rating !== 'number' ||
+    !Number.isFinite(rating) ||
+    rating < 1 ||
+    rating > 5
+  ) {
+    console.warn(
+      `[personal-ratings] Invalid rating value: ${rating}. Must be a number between 1 and 5.`
+    );
+    return;
+  }
   const ratings = getAllRatings();
   ratings[sidPath] = {
     rating,
