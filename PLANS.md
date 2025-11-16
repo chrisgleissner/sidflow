@@ -306,20 +306,20 @@ When beginning a task:
 - [x] 4.4 — Backend: blend similar tracks with user's historical likes/dislikes
 - [x] 4.5 — Generate personalized playlist (seed song + 20 similar songs weighted by user prefs)
 - [x] 4.6 — Display station name as "Station: <song title>"
-- [x] 4.7 — Station parameters (similarity/discovery) implemented in backend API
+- [x] 4.7 — Allow user to tweak station parameters (UI sliders for similarity/discovery)
 - [x] 4.8 — Unit tests for similarity search and personalization logic (13 tests)
 - [ ] 4.9 — E2E test for starting station from song (deferred)
 
 **Step 5: Enhanced Rating Display (Netflix-style) (COMPLETE)**
 - [x] 5.1 — Fetch aggregate ratings from `/api/rate/aggregate` endpoint
-- [x] 5.2 — Display community rating with star visualization (★★★★☆ 4.2/5 format)
-- [x] 5.3 — Show "Trending" badge for recently popular tracks (orange with TrendingUp icon)
-- [x] 5.4 — Display likes, plays, and recent play counts
-- [x] 5.5 — Implement `/api/rate/aggregate` endpoint with rating aggregation
-- [x] 5.6 — Unit tests for aggregate calculation and caching (14 tests)
-- [ ] 5.7 — E2E test for rating display and interaction (deferred)
-- [ ] 5.8 — Personal rating display (requires user authentication context)
-- [ ] 5.9 — Hover tooltip with E/M/C dimension breakdown (optional enhancement)
+- [x] 5.2 — Display personal rating (if exists) with "You rated: ★★★★★" badge (localStorage)
+- [x] 5.3 — Display community rating with star visualization (★★★★☆ 4.2/5 format)
+- [x] 5.4 — Add hover tooltip showing E/M/C dimension breakdown
+- [x] 5.5 — Show "Trending" badge for recently popular tracks
+- [x] 5.6 — Implement `/api/rate/aggregate` endpoint (cached aggregates per track)
+- [x] 5.7 — Unit tests for aggregate calculation and caching (14 tests)
+- [x] 5.8 — Unit tests for personal ratings (localStorage-based, 15 tests)
+- [ ] 5.9 — E2E test for rating display and interaction (deferred)
 
 **Step 6: AI-Powered Unique Features**
 - [ ] 6.1 — **Mood Transitions**: "Energetic → Ambient" cross-fading station
@@ -391,6 +391,13 @@ When beginning a task:
 - 2025‑11‑16 — Implemented `/api/rate/aggregate` endpoint with trending calculation
 - 2025‑11‑16 — Added star rating visualization (1-5 stars) with trending badge to Play tab
 - 2025‑11‑16 — Added 27 unit tests (13 similarity + 14 rating), Test count: 787 pass, Build clean, CodeQL: 0 alerts
+- 2025‑11‑16 — **Phase 4 & 5 Enhancements COMPLETE**: Station parameter sliders, Personal ratings (localStorage), E/M/C tooltip
+- 2025‑11‑16 — Added UI sliders for station similarity/discovery parameters with Settings button
+- 2025‑11‑16 — Implemented personal-ratings library using localStorage (no server auth required)
+- 2025‑11‑16 — Added "You rated: ★★★★★" badge display with blue stars
+- 2025‑11‑16 — Added hover tooltip on community stars showing E/M/C dimension breakdown
+- 2025‑11‑16 — Reverted uncommitted data files (audit/training logs) per review feedback
+- 2025‑11‑16 — Added 15 unit tests for personal ratings, Test count: 802 pass, Build clean
 
 **Assumptions and open questions**
 - Assumption: LanceDB vector search is performant for similarity queries (100ms p99)

@@ -16,7 +16,7 @@ import {
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio, Star, TrendingUp } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio, Star, TrendingUp, Settings } from 'lucide-react';
 import type { FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
@@ -43,6 +43,7 @@ import {
 } from '@/lib/offline/playback-queue';
 import { SongBrowser } from '@/components/SongBrowser';
 import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/playlist-builder';
+import { getPersonalRating, setPersonalRating, type PersonalRating } from '@/lib/personal-ratings';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -100,6 +101,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song'>('mood');
   const [playbackModeDescription, setPlaybackModeDescription] = useState<string>('Mood Station');
   const [aggregateRating, setAggregateRating] = useState<AggregateRating | null>(null);
+  const [personalRating, setPersonalRatingState] = useState<PersonalRating | null>(null);
+  const [stationSimilarity, setStationSimilarity] = useState(0.7);
+  const [stationDiscovery, setStationDiscovery] = useState(0.5);
+  const [showStationSettings, setShowStationSettings] = useState(false);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -325,27 +330,35 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     trackPlayedHandlerRef.current(sidPath);
   }, []);
 
-  // Fetch aggregate rating when current track changes
+  // Fetch aggregate and personal rating when current track changes
   useEffect(() => {
     if (!currentTrack) {
       setAggregateRating(null);
+      setPersonalRatingState(null);
       return;
     }
 
     let cancelled = false;
 
-    const fetchRating = async () => {
+    const fetchRatings = async () => {
       try {
+        // Fetch aggregate rating from server
         const response = await getAggregateRating(currentTrack.sidPath);
         if (response.success && !cancelled) {
           setAggregateRating(response.data);
         }
+        
+        // Fetch personal rating from localStorage
+        const personal = getPersonalRating(currentTrack.sidPath);
+        if (!cancelled) {
+          setPersonalRatingState(personal);
+        }
       } catch (error) {
-        console.warn('[PlayTab] Failed to fetch aggregate rating:', error);
+        console.warn('[PlayTab] Failed to fetch ratings:', error);
       }
     };
 
-    void fetchRating();
+    void fetchRatings();
 
     return () => {
       cancelled = true;
@@ -1003,8 +1016,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         const response = await requestStationFromSong({
           sid_path: sidPath,
           limit: 20,
-          similarity: 0.7,
-          discovery: 0.5,
+          similarity: stationSimilarity,
+          discovery: stationDiscovery,
         });
         
         if (!response.success) {
@@ -1038,7 +1051,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         notifyStatus(`Error creating station: ${error instanceof Error ? error.message : String(error)}`, true);
       }
     },
-    [currentTrack, notifyStatus, assignPlaylistNumber, updateUpcoming]
+    [currentTrack, notifyStatus, assignPlaylistNumber, updateUpcoming, stationSimilarity, stationDiscovery]
   );
 
   const submitRating = useCallback(
@@ -1057,6 +1070,15 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           return;
         }
         notifyStatus(`${label} recorded for "${currentTrack.displayName}"`);
+        
+        // Save to localStorage for personal rating display
+        setPersonalRating(currentTrack.sidPath, value, { e: value, m: value, c: value });
+        setPersonalRatingState({
+          rating: value,
+          timestamp: new Date().toISOString(),
+          dimensions: { e: value, m: value, c: value },
+        });
+        
         recordExplicitRating({
           track: currentTrack,
           ratings: { e: value, m: value, c: value },
@@ -1328,9 +1350,31 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
               
               {aggregateRating && (
                 <div className="pt-2 border-t border-border/40 space-y-2">
+                  {personalRating && (
+                    <div className="flex items-center gap-2 pb-2">
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`h-3 w-3 ${
+                              i < personalRating.rating
+                                ? 'fill-blue-500 text-blue-500'
+                                : 'text-muted-foreground'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-xs font-semibold text-blue-500">
+                        You rated: {personalRating.rating}/5
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1">
+                      <div 
+                        className="flex items-center gap-1"
+                        title={`Energy: ${aggregateRating.community.dimensions.energy}/5 • Mood: ${aggregateRating.community.dimensions.mood}/5 • Complexity: ${aggregateRating.community.dimensions.complexity}/5`}
+                      >
                         {Array.from({ length: 5 }).map((_, i) => (
                           <Star
                             key={i}
@@ -1425,18 +1469,71 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 >
                   <Forward className="h-4 w-4" /> Next
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  onClick={() => {
-                    void handleStartStation(currentTrack.sidPath);
-                  }}
-                  title="Create a personalized radio station based on this song"
-                >
-                  <Radio className="h-4 w-4" /> Start Station
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => {
+                      void handleStartStation(currentTrack.sidPath);
+                    }}
+                    title="Create a personalized radio station based on this song"
+                  >
+                    <Radio className="h-4 w-4" /> Start Station
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setShowStationSettings(!showStationSettings)}
+                    title="Adjust station parameters"
+                  >
+                    <Settings className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
+              
+              {showStationSettings && (
+                <div className="mt-3 p-3 border border-border/60 rounded bg-muted/20 space-y-3">
+                  <div className="text-sm font-semibold text-foreground">Station Parameters</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Personalization</span>
+                      <span className="font-semibold text-foreground">{Math.round(stationSimilarity * 100)}%</span>
+                    </div>
+                    <Slider
+                      value={[stationSimilarity]}
+                      onValueChange={(value) => setStationSimilarity(value[0])}
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      className="cursor-pointer"
+                      title="Higher = stronger personalization based on your feedback"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Higher values boost tracks you liked and penalize tracks you disliked
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Discovery</span>
+                      <span className="font-semibold text-foreground">{Math.round(stationDiscovery * 100)}%</span>
+                    </div>
+                    <Slider
+                      value={[stationDiscovery]}
+                      onValueChange={(value) => setStationDiscovery(value[0])}
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      className="cursor-pointer"
+                      title="Higher = more exploration of different tracks"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Higher values include more diverse tracks, lower values keep it very similar
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
