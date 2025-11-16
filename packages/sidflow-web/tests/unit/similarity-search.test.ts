@@ -1,7 +1,7 @@
 /**
  * Unit tests for similarity search functionality
  */
-import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 
 describe('Similarity Search', () => {
   describe('Request structure', () => {
