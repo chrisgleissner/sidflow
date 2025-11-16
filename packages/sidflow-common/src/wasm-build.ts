@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { ensureDir, pathExists } from "./fs.js";
 import type { JsonValue } from "./json.js";
@@ -26,7 +27,25 @@ export class WasmBuildMetadataError extends Error {
     }
 }
 
-export const DEFAULT_WASM_BUILD_METADATA_PATH = path.resolve("data/wasm-build.json");
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(MODULE_DIR, "../../..");
+
+export const DEFAULT_WASM_BUILD_METADATA_PATH = path.join(REPO_ROOT, "data/wasm-build.json");
+export const DEFAULT_WASM_UPSTREAM_REPO = "https://github.com/libsidplayfp/libsidplayfp";
+
+export function createDefaultWasmBuildMetadata(): WasmBuildMetadata {
+    return {
+        upstreamRepo: DEFAULT_WASM_UPSTREAM_REPO,
+        latestUpstreamCommit: null,
+        lastChecked: null,
+        lastSuccessfulBuild: {
+            commit: null,
+            timestamp: null,
+            artifact: null,
+            notes: null
+        }
+    };
+}
 
 function coerceNullableString(value: unknown, field: string): string | null {
     if (value === null || value === undefined) {
@@ -60,7 +79,9 @@ function normalizeRecord(record: Partial<WasmBuildRecord> | undefined): WasmBuil
 
 export async function readWasmBuildMetadata(metadataPath: string): Promise<WasmBuildMetadata> {
     if (!(await pathExists(metadataPath))) {
-        throw new WasmBuildMetadataError(`WASM build metadata not found at ${metadataPath}`);
+        const defaultMetadata = createDefaultWasmBuildMetadata();
+        await writeWasmBuildMetadata(metadataPath, defaultMetadata);
+        return defaultMetadata;
     }
 
     let raw: string;

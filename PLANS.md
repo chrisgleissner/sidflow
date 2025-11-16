@@ -399,6 +399,8 @@ When beginning a task:
 - 2025‑11‑16 — Added UI sliders for station similarity/discovery parameters with Settings button
 - 2025‑11‑16 — Implemented personal-ratings library using localStorage (no server auth required)
 - 2025‑11‑16 — Added "You rated: ★★★★★" badge display with blue stars
+- 2025‑11‑16 — Added SidflowPlayer legacy crossfade pipeline (per-source gain nodes + config API) with new unit tests to unlock Mood Transition groundwork
+- 2025‑11‑16 — Fixed build regressions by rooting `DEFAULT_WASM_BUILD_METADATA_PATH` at repo root, regenerating `@sidflow/common` dist output so the WASM metadata file auto-bootstrap now works in CI and locally
 - 2025‑11‑16 — Added hover tooltip on community stars showing E/M/C dimension breakdown
 - 2025‑11‑16 — Reverted uncommitted data files (audit/training logs) per review feedback
 - 2025‑11‑16 — Added 15 unit tests for personal ratings, Test count: 802 pass, Build clean

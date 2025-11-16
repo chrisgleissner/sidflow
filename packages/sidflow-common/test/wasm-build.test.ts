@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
     DEFAULT_WASM_BUILD_METADATA_PATH,
+    DEFAULT_WASM_UPSTREAM_REPO,
     markWasmBuildComplete,
     readWasmBuildMetadata,
     recordWasmUpstreamCheck,
@@ -48,6 +49,17 @@ describe("wasm-build metadata helpers", () => {
 
         const metadata = await readWasmBuildMetadata(metadataPath);
         expect(metadata).toEqual(sample);
+    });
+
+    it("creates default metadata when file is missing", async () => {
+        const metadata = await readWasmBuildMetadata(metadataPath);
+        expect(metadata.upstreamRepo).toBe(DEFAULT_WASM_UPSTREAM_REPO);
+        expect(metadata.latestUpstreamCommit).toBeNull();
+        expect(metadata.lastSuccessfulBuild.commit).toBeNull();
+
+        const contents = await readFile(metadataPath, "utf8");
+        const parsed = JSON.parse(contents) as WasmBuildMetadata;
+        expect(parsed).toEqual(metadata);
     });
 
     it("serializes metadata deterministically", async () => {
