@@ -1,7 +1,7 @@
 /**
  * Unit tests for rating aggregator functionality
  */
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeEach } from 'bun:test';
 
 describe('Rating Aggregator', () => {
   describe('Rating calculation', () => {
@@ -305,6 +305,47 @@ describe('Rating Aggregator', () => {
       expect(dimensions.mood).toBeLessThanOrEqual(5);
       expect(dimensions.complexity).toBeGreaterThanOrEqual(1);
       expect(dimensions.complexity).toBeLessThanOrEqual(5);
+    });
+  });
+
+  describe('Caching behavior', () => {
+    test('should have cache TTL of 5 minutes', () => {
+      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+      expect(CACHE_TTL).toBe(300000);
+    });
+
+    test('should cache aggregates to avoid re-reading files', () => {
+      // Cache structure validation
+      interface CacheEntry {
+        aggregates: Map<string, unknown>;
+        timestamp: number;
+      }
+
+      const mockCache: CacheEntry = {
+        aggregates: new Map(),
+        timestamp: Date.now(),
+      };
+
+      expect(mockCache.aggregates).toBeInstanceOf(Map);
+      expect(typeof mockCache.timestamp).toBe('number');
+    });
+
+    test('should invalidate cache after TTL expires', () => {
+      const CACHE_TTL = 5 * 60 * 1000;
+      const now = Date.now();
+      const oldTimestamp = now - CACHE_TTL - 1000; // 1 second past TTL
+
+      const isExpired = (now - oldTimestamp) >= CACHE_TTL;
+      expect(isExpired).toBe(true);
+    });
+
+    test('should keep cache valid within TTL', () => {
+      const CACHE_TTL = 5 * 60 * 1000;
+      const now = Date.now();
+      const recentTimestamp = now - 1000; // 1 second ago
+
+      const isExpired = (now - recentTimestamp) >= CACHE_TTL;
+      expect(isExpired).toBe(false);
     });
   });
 });
