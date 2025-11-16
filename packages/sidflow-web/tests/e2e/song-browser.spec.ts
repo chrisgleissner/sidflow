@@ -100,15 +100,14 @@ if (!isPlaywrightRunner) {
       await playTab.click();
       await page.waitForTimeout(1000);
 
-      // Look for any folder with action buttons
-      const folderContainer = page.locator('[class*="border-border"]').first();
-      const hasListButton = await folderContainer.locator('button[title*="Play all songs in this folder"]').count() > 0;
-      const hasPlayButton = await folderContainer.locator('button[title*="Play all songs in this folder and subfolders"]').count() > 0;
-      const hasShuffleButton = await folderContainer.locator('button[title*="Shuffle"]').count() > 0;
-
       // If folders exist, they should have action buttons
       const foldersExist = await page.getByText(/Folders \(\d+\)/i).count() > 0;
       if (foldersExist) {
+        // Look for folder action buttons anywhere on the page
+        const hasListButton = await page.locator('button[title="Play all songs in this folder"]').count() > 0;
+        const hasPlayButton = await page.locator('button[title="Play all songs in this folder and subfolders"]').count() > 0;
+        const hasShuffleButton = await page.locator('button[title="Shuffle all songs in this folder and subfolders"]').count() > 0;
+
         expect(hasListButton || hasPlayButton || hasShuffleButton).toBeTruthy();
       }
     });

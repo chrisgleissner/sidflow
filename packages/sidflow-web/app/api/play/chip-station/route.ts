@@ -47,9 +47,12 @@ export async function POST(request: NextRequest) {
 
         const env = await resolvePlaybackEnvironment();
 
+        // Normalize chip model (8580r5 -> 8580)
+        const normalizedChipModel = chipModel === '8580r5' ? '8580' : chipModel;
+
         // Find tracks with this chip model
         const chipTracks = await findTracksWithChipModel({
-            chipModel,
+            chipModel: normalizedChipModel,
             limit,
         });
 

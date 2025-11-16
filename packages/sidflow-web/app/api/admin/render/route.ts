@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
     const chip = body.chip === "8580r5" ? "8580r5" : "6581";
     const preferredEngines = Array.isArray(body.preferredEngines)
       ? body.preferredEngines
-          .map((entry: unknown) => coerceEngine(entry))
-          .filter((engine: RenderEngine | null): engine is RenderEngine => engine !== null)
+        .map((entry: unknown) => coerceEngine(entry))
+        .filter((engine: RenderEngine | null): engine is RenderEngine => engine !== null)
       : [];
     const resolvedEngine = coerceEngine(body.engine);
     const engineSelection: RenderEngine | "auto" | undefined =
@@ -169,8 +169,8 @@ function resolveFormats(
   const rawList: unknown[] = Array.isArray(requestedFormats)
     ? requestedFormats
     : typeof requestedFormats === "string"
-    ? requestedFormats.split(",")
-    : defaultFormats ?? FORMAT_OPTIONS;
+      ? requestedFormats.split(",")
+      : defaultFormats ?? FORMAT_OPTIONS;
 
   const resolved: RenderFormat[] = [];
   for (const entry of rawList) {
@@ -238,10 +238,10 @@ function normalizeMaxLoss(value: unknown): number {
   return DEFAULT_MAX_LOSS;
 }
 
-function resolveSidPath(sidPath: string, sidPath: string): string {
+function resolveSidPath(sidPath: string, rootPath: string): string {
   return path.isAbsolute(sidPath)
     ? path.normalize(sidPath)
-    : path.join(sidPath, sidPath);
+    : path.join(rootPath, sidPath);
 }
 
 function createOrchestrator(

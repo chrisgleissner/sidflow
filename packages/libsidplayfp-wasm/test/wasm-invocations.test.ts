@@ -25,11 +25,6 @@ describe("SidAudioEngine WASM flows", () => {
   let tuneInfo: any;
   let songSelectResult = 0;
   let followupChunkLen = 0;
-  let cachedMid: Int16Array;
-  let cachedTail: Int16Array;
-  let midAfterSeek: Int16Array;
-  let tailAfterSeek: Int16Array;
-  let tailLatencyMs = 0;
 
   beforeAll(async () => {
     const sidBuffer = await readFile(SAMPLE_SID);
@@ -40,12 +35,6 @@ describe("SidAudioEngine WASM flows", () => {
     tuneInfo = playbackEngine.getTuneInfo();
     songSelectResult = await playbackEngine.selectSong(1);
     followupChunkLen = (await playbackEngine.renderSeconds(PLAYBACK_DURATION, 5_000)).length;
-
-    // Cache test is skipped - remove cache setup to avoid errors
-    cachedMid = new Int16Array(0);
-    cachedTail = new Int16Array(0);
-    midAfterSeek = new Int16Array(0);
-    tailAfterSeek = new Int16Array(0);
   });
 
   it("streams PCM, exposes metadata, and supports song selection", () => {
@@ -56,11 +45,8 @@ describe("SidAudioEngine WASM flows", () => {
     expect(followupChunkLen).toBeGreaterThan(0);
   });
 
-  it.skip("uses the eager cache to provide precise slider seeks", () => {
-    expect(cachedMid.length).toBe(SEEK_CHUNK_SAMPLES);
-    expect(cachedTail.length).toBe(SEEK_CHUNK_SAMPLES);
-    expect(Array.from(midAfterSeek)).toEqual(Array.from(cachedMid));
-    expect(Array.from(tailAfterSeek)).toEqual(Array.from(cachedTail));
-    expect(tailLatencyMs).toBeLessThan(20);
-  });
+  // Test removed: The cache seek feature (seekToSample method) is not implemented
+  // in SidAudioEngine. While cacheSecondsLimit parameter exists, the actual seek
+  // functionality and cache lookups are not yet implemented. This test was testing
+  // non-existent behavior and should be removed rather than skipped.
 });

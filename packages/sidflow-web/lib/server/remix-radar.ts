@@ -38,6 +38,14 @@ const STOP_WORDS = new Set([
     'featuring',
     'game',
     'c64',
+    'the',
+    'a',
+    'an',
+    'and',
+    'or',
+    'of',
+    'in',
+    'on',
 ]);
 
 /**

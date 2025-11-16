@@ -5,6 +5,8 @@ import type { NextConfig } from "next";
 const classifyDistEntry = fileURLToPath(new URL("../sidflow-classify/dist/index.js", import.meta.url));
 
 const nextConfig: NextConfig = {
+  // Exclude server-only packages with native modules from client bundle
+  serverExternalPackages: ['vectordb', '@sidflow/classify'],
   // Turbopack configuration for Next.js 16+
   turbopack: {
     resolveAlias: {

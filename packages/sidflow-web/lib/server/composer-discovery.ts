@@ -37,7 +37,8 @@ interface ComposerProfile {
 async function getTable(): Promise<Table | null> {
     try {
         const config = await loadConfig();
-        const modelPath = config.train?.modelPath ?? path.join(process.cwd(), 'data', 'model');
+        // Model path is typically data/model relative to workspace root
+        const modelPath = path.join(process.cwd(), 'data', 'model');
         const dbPath = path.join(modelPath, 'lancedb');
 
         if (!(await pathExists(dbPath))) {
@@ -188,8 +189,9 @@ export async function findSimilarComposers(
 
     try {
         // Query all tracks (or a large sample)
+        const emptyVector = new Array(4).fill(0); // E/M/C/P dimensions
         const results = await table
-            .search()
+            .search(emptyVector)
             .limit(1000) // Sample up to 1000 tracks
             .execute();
 

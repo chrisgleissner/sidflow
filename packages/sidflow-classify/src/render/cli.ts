@@ -378,7 +378,11 @@ export async function runRenderCli(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const chip = options.chip ?? config.render?.defaultChip ?? "6581";
+  let chip = options.chip ?? config.render?.defaultChip ?? "6581";
+  // Map normalized "8580" back to "8580r5" for render interface compatibility
+  if (chip === "8580") {
+    chip = "8580r5";
+  }
   const engines = resolveEngineOrder(options, config);
 
   const encoderOverrides = resolveAudioEncoderOptions(options, config);

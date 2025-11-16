@@ -41,7 +41,8 @@ export interface SimilaritySearchOptions {
 async function getTable(): Promise<Table | null> {
   try {
     const config = await loadConfig();
-    const modelPath = config.train?.modelPath ?? path.join(process.cwd(), 'data', 'model');
+    // Model path is typically data/model relative to workspace root
+    const modelPath = path.join(process.cwd(), 'data', 'model');
     const dbPath = path.join(modelPath, 'lancedb');
 
     if (!(await pathExists(dbPath))) {
@@ -69,9 +70,10 @@ async function getTable(): Promise<Table | null> {
  */
 async function findSeedTrack(table: Table, seedSidPath: string): Promise<DatabaseRecord | null> {
   try {
-    // Query for the exact seed track
+    // Query for the exact seed track using empty vector (we're filtering by path)
+    const emptyVector = new Array(4).fill(0); // E/M/C/P dimensions
     const results = await table
-      .search()
+      .search(emptyVector)
       .filter(`sid_path = '${seedSidPath.replace(/'/g, "''")}'`)
       .limit(1)
       .execute();

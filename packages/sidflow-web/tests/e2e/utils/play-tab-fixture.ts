@@ -2,8 +2,8 @@ import type { BrowserContext, Page } from '@playwright/test';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { RateTrackInfo } from '../../lib/types/rate-track';
-import type { PlaybackSessionDescriptor } from '../../lib/types/playback-session';
+import type { RateTrackInfo } from '@/lib/types/rate-track';
+import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TEST_SID_PATH = path.resolve(CURRENT_DIR, '../../../../libsidplayfp-wasm/test-tone-c4.sid');

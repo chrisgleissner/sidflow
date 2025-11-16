@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { loadConfig } from "@sidflow/common";
+import { getRepoRoot, getSidflowConfig } from "@/lib/server-env";
 
 export interface HvscBrowseItem {
   name: string;
@@ -54,8 +54,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<HvscBrowse
     const requestedPath = searchParams.get("path") || "";
 
     // Load config to get sidPath
-    const config = await loadConfig();
-    const hvscRoot = config.sidPath;
+    const repoRoot = getRepoRoot();
+    const config = await getSidflowConfig();
+    const hvscRoot = path.resolve(repoRoot, config.sidPath);
 
     if (!hvscRoot) {
       return NextResponse.json({

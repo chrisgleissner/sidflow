@@ -33,7 +33,8 @@ export interface EraExplorerOptions {
 async function getTable(): Promise<Table | null> {
     try {
         const config = await loadConfig();
-        const modelPath = config.train?.modelPath ?? path.join(process.cwd(), 'data', 'model');
+        // Model path is typically data/model relative to workspace root
+        const modelPath = path.join(process.cwd(), 'data', 'model');
         const dbPath = path.join(modelPath, 'lancedb');
 
         if (!(await pathExists(dbPath))) {
@@ -134,8 +135,9 @@ export async function findTracksInEra(
     try {
         // Query a large set of tracks with decent quality
         // Filter for tracks with e,m,c >= 2 to focus on quality content
+        const emptyVector = new Array(4).fill(0); // E/M/C/P dimensions
         const results = await table
-            .search()
+            .search(emptyVector)
             .filter('e >= 2 AND m >= 2 AND c >= 2')
             .limit(500) // Sample up to 500 tracks
             .execute();

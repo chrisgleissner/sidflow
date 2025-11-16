@@ -39,7 +39,8 @@ export interface MoodTransitionOptions {
 async function getTable(): Promise<Table | null> {
     try {
         const config = await loadConfig();
-        const modelPath = config.train?.modelPath ?? path.join(process.cwd(), 'data', 'model');
+        // Model path is typically data/model relative to workspace root
+        const modelPath = path.join(process.cwd(), 'data', 'model');
         const dbPath = path.join(modelPath, 'lancedb');
 
         if (!(await pathExists(dbPath))) {
@@ -104,7 +105,9 @@ async function findTracksNearMood(
 
         const filter = `e >= ${minE} AND e <= ${maxE} AND m >= ${minM} AND m <= ${maxM} AND c >= ${minC} AND c <= ${maxC}`;
 
-        const results = await table.search().filter(filter).limit(limit * 10).execute();
+        // Perform vector search with target mood vector
+        const targetVector = [targetMood.e, targetMood.m, targetMood.c, 0]; // E/M/C/P dimensions
+        const results = await table.search(targetVector).filter(filter).limit(limit * 10).execute();
 
         // Calculate distance from target and sort
         const tracks: TransitionTrack[] = results.map((record) => {

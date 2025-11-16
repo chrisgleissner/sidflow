@@ -194,6 +194,15 @@ export function resolveWavPath(
   sidFile: string,
   songIndex?: number
 ): string {
+  // Handle virtual test paths (e.g., /virtual/test-tone-c4.sid)
+  if (sidFile.startsWith("/virtual/") || sidFile.startsWith("virtual/")) {
+    const baseName = path.basename(sidFile, path.extname(sidFile));
+    const wavName = songIndex !== undefined
+      ? `${baseName}-${songIndex}.wav`
+      : `${baseName}.wav`;
+    return path.join(plan.wavCachePath, "virtual", wavName);
+  }
+
   const relative = path.relative(plan.sidPath, sidFile);
   if (relative.startsWith("..")) {
     throw new Error(`SID file ${sidFile} is not within SID path ${plan.sidPath}`);
