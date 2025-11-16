@@ -6,7 +6,7 @@ import {
   fetchHvsc,
   fetchHvscProgress,
   getClassifyProgress,
-  getHvscPaths,
+  getSidCollectionPaths,
   getPreferences,
   getRatePlaybackStatus,
   getRatingHistory,
@@ -22,7 +22,7 @@ import {
 import type {
   ClassifyProgressWithStorage,
   FolderListing,
-  HvscPathsPayload,
+  SidCollectionPathsPayload,
   PreferencesPayload,
   RatePlaybackStatus,
   RateTrackWithSession,
@@ -181,7 +181,7 @@ const ratePlaybackStatusSample: RatePlaybackStatus = {
   track: sampleTrackInfo,
 };
 
-const sidPathsPayload: HvscPathsPayload = {
+const sidPathsPayload: SidCollectionPathsPayload = {
   sidPath: '/hvsc',
   musicPath: '/hvsc/MUSIC',
   activeCollectionPath: '/collections/active',
@@ -240,70 +240,70 @@ describe('api-client POST helpers', () => {
     expectedBody: string;
     response: ApiResponse<any>;
   }> = [
-    {
-      name: 'playTrack',
-      endpoint: '/api/play',
-      invoke: () => playTrack(playRequest),
-      expectedBody: JSON.stringify(playRequest),
-      response: { success: true, data: { output: 'ready' } },
-    },
-    {
-      name: 'playManualTrack',
-      endpoint: '/api/play/manual',
-      invoke: () => playManualTrack(playRequest),
-      expectedBody: JSON.stringify(playRequest),
-      response: { success: true, data: sampleRateTrackWithSession },
-    },
-    {
-      name: 'rateTrack',
-      endpoint: '/api/rate',
-      invoke: () => rateTrack(rateRequest),
-      expectedBody: JSON.stringify(rateRequest),
-      response: { success: true, data: { message: 'saved', tagPath: '/tags/example.json' } },
-    },
-    {
-      name: 'classifyPath',
-      endpoint: '/api/classify',
-      invoke: () => classifyPath(),
-      expectedBody: JSON.stringify({}),
-      response: { success: true, data: { output: 'ok', logs: 'log output', progress: classifyProgressSnapshot } },
-    },
-    {
-      name: 'updatePreferences',
-      endpoint: '/api/prefs',
-      invoke: () => updatePreferences(preferencesUpdate),
-      expectedBody: JSON.stringify(preferencesUpdate),
-      response: { success: true, data: preferencesPayload },
-    },
-    {
-      name: 'fetchHvsc',
-      endpoint: '/api/fetch',
-      invoke: () => fetchHvsc(fetchRequest),
-      expectedBody: JSON.stringify(fetchRequest),
-      response: { success: true, data: { output: 'fetch-started', logs: 'log output', progress: fetchProgressSnapshot } },
-    },
-    {
-      name: 'trainModel',
-      endpoint: '/api/train',
-      invoke: () => trainModel(trainRequest),
-      expectedBody: JSON.stringify(trainRequest),
-      response: { success: true, data: { output: 'trained' } },
-    },
-    {
-      name: 'controlRatePlayback',
-      endpoint: '/api/rate/control',
-      invoke: () => controlRatePlayback(rateControlRequest),
-      expectedBody: JSON.stringify(rateControlRequest),
-      response: { success: true, data: { message: 'ok' } },
-    },
-    {
-      name: 'controlClassification',
-      endpoint: '/api/classify/control',
-      invoke: () => controlClassification('pause'),
-      expectedBody: JSON.stringify({ action: 'pause' }),
-      response: { success: true, data: { progress: classifyProgressWithStorage } },
-    },
-  ];
+      {
+        name: 'playTrack',
+        endpoint: '/api/play',
+        invoke: () => playTrack(playRequest),
+        expectedBody: JSON.stringify(playRequest),
+        response: { success: true, data: { output: 'ready' } },
+      },
+      {
+        name: 'playManualTrack',
+        endpoint: '/api/play/manual',
+        invoke: () => playManualTrack(playRequest),
+        expectedBody: JSON.stringify(playRequest),
+        response: { success: true, data: sampleRateTrackWithSession },
+      },
+      {
+        name: 'rateTrack',
+        endpoint: '/api/rate',
+        invoke: () => rateTrack(rateRequest),
+        expectedBody: JSON.stringify(rateRequest),
+        response: { success: true, data: { message: 'saved', tagPath: '/tags/example.json' } },
+      },
+      {
+        name: 'classifyPath',
+        endpoint: '/api/classify',
+        invoke: () => classifyPath(),
+        expectedBody: JSON.stringify({}),
+        response: { success: true, data: { output: 'ok', logs: 'log output', progress: classifyProgressSnapshot } },
+      },
+      {
+        name: 'updatePreferences',
+        endpoint: '/api/prefs',
+        invoke: () => updatePreferences(preferencesUpdate),
+        expectedBody: JSON.stringify(preferencesUpdate),
+        response: { success: true, data: preferencesPayload },
+      },
+      {
+        name: 'fetchHvsc',
+        endpoint: '/api/fetch',
+        invoke: () => fetchHvsc(fetchRequest),
+        expectedBody: JSON.stringify(fetchRequest),
+        response: { success: true, data: { output: 'fetch-started', logs: 'log output', progress: fetchProgressSnapshot } },
+      },
+      {
+        name: 'trainModel',
+        endpoint: '/api/train',
+        invoke: () => trainModel(trainRequest),
+        expectedBody: JSON.stringify(trainRequest),
+        response: { success: true, data: { output: 'trained' } },
+      },
+      {
+        name: 'controlRatePlayback',
+        endpoint: '/api/rate/control',
+        invoke: () => controlRatePlayback(rateControlRequest),
+        expectedBody: JSON.stringify(rateControlRequest),
+        response: { success: true, data: { message: 'ok' } },
+      },
+      {
+        name: 'controlClassification',
+        endpoint: '/api/classify/control',
+        invoke: () => controlClassification('pause'),
+        expectedBody: JSON.stringify({ action: 'pause' }),
+        response: { success: true, data: { progress: classifyProgressWithStorage } },
+      },
+    ];
 
   for (const scenario of postScenarios) {
     it(`${scenario.name} posts JSON payload to ${scenario.endpoint}`, async () => {
@@ -378,15 +378,15 @@ describe('api-client fetch wrappers', () => {
     expect(result).toEqual(response);
   });
 
-  it('getHvscPaths retrieves configured HVSC paths', async () => {
-    const response: ApiResponse<HvscPathsPayload> = { success: true, data: sidPathsPayload };
+  it('getSidCollectionPaths retrieves configured SID collection paths', async () => {
+    const response: ApiResponse<SidCollectionPathsPayload> = { success: true, data: sidPathsPayload };
     mockFetch(response);
 
-    const result = await getHvscPaths();
+    const result = await getSidCollectionPaths();
 
     expect(fetchCalls).toHaveLength(1);
     const call = fetchCalls[0];
-    expect(call.url).toBe('/api/config/hvsc');
+    expect(call.url).toBe('/api/config/sid');
     expect(result).toEqual(response);
   });
 

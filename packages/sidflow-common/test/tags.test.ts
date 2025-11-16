@@ -22,7 +22,7 @@ describe("tag path helpers", () => {
     );
   });
 
-  it("throws when sid file is outside hvsc path", () => {
+  it("throws when sid file is outside SID path", () => {
     expect(() => {
       resolveRelativeSidPath(sidPath, path.join("/tmp", "song.sid"));
     }).toThrow("SID file");

@@ -33,7 +33,7 @@ export interface HvscBrowseResponse {
 async function getSidSubtuneCount(filePath: string): Promise<number> {
   try {
     const buffer = await readFile(filePath);
-    
+
     // SID header: songs count at offset 0x0E-0x0F (big-endian)
     if (buffer.length >= 0x10) {
       const songs = (buffer[0x0e] << 8) | buffer[0x0f];
@@ -62,13 +62,13 @@ export async function GET(request: NextRequest): Promise<NextResponse<HvscBrowse
         success: false,
         path: requestedPath,
         items: [],
-        error: "HVSC path not configured",
+        error: "SID path not configured",
       }, { status: 500 });
     }
 
     // Resolve and validate the full path
     const fullPath = path.join(hvscRoot, requestedPath);
-    
+
     // Security: ensure path is within hvscRoot
     const resolvedPath = path.resolve(fullPath);
     const resolvedRoot = path.resolve(hvscRoot);
@@ -103,14 +103,14 @@ export async function GET(request: NextRequest): Promise<NextResponse<HvscBrowse
 
     // Read directory contents
     const entries = await readdir(resolvedPath, { withFileTypes: true });
-    
+
     // Process entries
     const items: HvscBrowseItem[] = [];
-    
+
     for (const entry of entries) {
       const entryPath = path.join(resolvedPath, entry.name);
       const relativePath = path.relative(resolvedRoot, entryPath);
-      
+
       if (entry.isDirectory()) {
         items.push({
           name: entry.name,
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<HvscBrowse
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".sid")) {
         const stats = await stat(entryPath);
         const songs = await getSidSubtuneCount(entryPath);
-        
+
         items.push({
           name: entry.name,
           path: relativePath,

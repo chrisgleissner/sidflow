@@ -208,15 +208,15 @@ export async function requestStationFromSong(
   return response.json();
 }
 
-export interface HvscPathsPayload {
+export interface SidCollectionPathsPayload {
   sidPath: string;
   musicPath: string;
   activeCollectionPath: string;
   preferenceSource: 'default' | 'custom';
 }
 
-export async function getHvscPaths(): Promise<ApiResponse<HvscPathsPayload>> {
-  const response = await fetch(`${API_BASE}/config/hvsc`, {
+export async function getSidCollectionPaths(): Promise<ApiResponse<SidCollectionPathsPayload>> {
+  const response = await fetch(`${API_BASE}/config/sid`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',

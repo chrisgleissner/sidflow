@@ -186,7 +186,7 @@ if (isPlaywrightRunner) {
     },
   };
 
-  const HVSC_PATHS_PAYLOAD = {
+  const SID_COLLECTION_PATHS_PAYLOAD = {
     sidPath: '/workspace/hvsc',
     musicPath: '/workspace/hvsc/C64Music',
     activeCollectionPath: '/workspace/hvsc/C64Music',
@@ -398,11 +398,11 @@ if (isPlaywrightRunner) {
       });
     });
 
-    await context.route('**/api/config/hvsc', async (route) => {
+    await context.route('**/api/config/sid', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, data: HVSC_PATHS_PAYLOAD }),
+        body: JSON.stringify({ success: true, data: SID_COLLECTION_PATHS_PAYLOAD }),
       });
     });
 

@@ -32,7 +32,7 @@
 - Archive extraction relies on bundled `7zip-min` helpers that should be injected via shared utilities.
 
 ## Data & Persistence
-- `.sidflow.json` defines `hvscPath` (the path to the local SID collection, regardless of source), `wavCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
+- `.sidflow.json` defines `sidPath` (the path to the local SID collection, regardless of source), `wavCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
 - Classification writes metadata and tags using `resolve*` helpers and stores WAV hashes in sidecar `.hash` files—preserve this caching scheme.
 - Feedback lives in date-partitioned `data/feedback/<year>/<month>/events.jsonl`; training and LanceDB builders must tolerate missing folders and skip corrupt lines with warnings, not hard failures.
 - Store derived artifacts (manifest, LanceDB) with deterministic checksums using `generateManifest` in `common/lancedb-builder.ts`.

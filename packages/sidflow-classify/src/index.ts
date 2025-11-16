@@ -88,7 +88,7 @@ async function runConcurrent<T>(
     const threadId = workerIndex + 1;
     // Yield immediately to prevent all workers from grabbing indices synchronously
     await Promise.resolve();
-    
+
     let itemsProcessed = 0;
     while (true) {
       const currentIndex = getNextIndex();
@@ -196,7 +196,7 @@ export function resolveWavPath(
 ): string {
   const relative = path.relative(plan.sidPath, sidFile);
   if (relative.startsWith("..")) {
-    throw new Error(`SID file ${sidFile} is not within HVSC path ${plan.sidPath}`);
+    throw new Error(`SID file ${sidFile} is not within SID path ${plan.sidPath}`);
   }
 
   const directory = path.dirname(relative);
@@ -409,7 +409,7 @@ export async function buildWavCache(
           );
           debugLogCount++;
         }
-        
+
         if (needsRefresh) {
           songsToRender.push({ sidFile, songIndex, wavFile, songCount });
         } else {
@@ -469,7 +469,7 @@ export async function buildWavCache(
           status: "working",
           file: songLabel
         });
-        
+
         // Start heartbeat to prevent thread from appearing stale during long renders
         const heartbeatInterval = setInterval(() => {
           onThreadUpdate?.({
@@ -479,7 +479,7 @@ export async function buildWavCache(
             file: songLabel
           });
         }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
-        
+
         let targetDurationMs: number | undefined;
         try {
           const durations = await getSongDurations(sidFile);
@@ -506,7 +506,7 @@ export async function buildWavCache(
         };
         let renderSucceeded = false;
         let lastError: Error | null = null;
-        
+
         try {
           // Retry up to 3 times for rendering failures
           for (let attempt = 1; attempt <= 3; attempt++) {
@@ -530,7 +530,7 @@ export async function buildWavCache(
         } finally {
           clearInterval(heartbeatInterval);
         }
-        
+
         if (renderSucceeded) {
           rendered.push(wavFile);
           if (rendered.length <= 3) {
@@ -559,7 +559,7 @@ export async function buildWavCache(
           );
           // Don't add to rendered list, effectively skipping this file
         }
-        
+
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "building",
@@ -1286,7 +1286,7 @@ export async function generateJsonlOutput(
         record.features = features;
       }
 
-  records.push(record);
+      records.push(record);
 
       processedSongs++;
     }

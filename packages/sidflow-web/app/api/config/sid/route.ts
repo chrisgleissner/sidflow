@@ -29,7 +29,7 @@ export async function GET() {
   } catch (error) {
     const response: ApiResponse = {
       success: false,
-      error: 'Failed to load SID path',
+      error: 'Failed to load SID collection path',
       details: error instanceof Error ? error.message : String(error),
     };
     return NextResponse.json(response, { status: 500 });

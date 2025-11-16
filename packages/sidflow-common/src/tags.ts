@@ -6,7 +6,7 @@ export const METADATA_EXTENSION = ".sid.meta.json" as const;
 function assertSidWithinHvsc(sidPath: string, sidFile: string): string {
   const relative = path.relative(sidPath, sidFile);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`SID file ${sidFile} is not within HVSC path ${sidPath}`);
+    throw new Error(`SID file ${sidFile} is not within SID path ${sidPath}`);
   }
   return relative;
 }

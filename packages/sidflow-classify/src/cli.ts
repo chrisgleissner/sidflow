@@ -328,7 +328,7 @@ export async function runClassifyCli(
     // Determine thread count
     const threads = plan.config.threads || os.cpus().length;
     runtime.stdout.write(`Starting classification (threads: ${threads})\n`);
-    runtime.stdout.write(`HVSC path: ${resolvedPlan.sidPath}\n`);
+    runtime.stdout.write(`SID path: ${resolvedPlan.sidPath}\n`);
     runtime.stdout.write(`WAV cache path: ${resolvedPlan.wavCachePath}\n\n`);
 
     // Create progress logger
