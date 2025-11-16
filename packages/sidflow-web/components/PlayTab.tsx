@@ -61,6 +61,24 @@ const PRESETS = [
 
 type MoodPreset = (typeof PRESETS)[number]['value'];
 
+// Map presets to E/M/C mood vectors
+const PRESET_TO_EMC: Record<MoodPreset, { e: number; m: number; c: number }> = {
+  quiet: { e: 1.5, m: 3.0, c: 2.0 },      // Low energy, neutral mood, simple
+  ambient: { e: 2.0, m: 3.5, c: 2.5 },    // Low-medium energy, slightly uplifting
+  energetic: { e: 4.5, m: 4.0, c: 3.5 },  // High energy, uplifting, moderate complexity
+  dark: { e: 2.5, m: 1.5, c: 3.0 },       // Medium energy, melancholic, somewhat complex
+  bright: { e: 4.0, m: 4.5, c: 3.0 },     // High energy, very uplifting
+  complex: { e: 3.0, m: 3.0, c: 4.5 },    // Medium energy, neutral mood, highly complex
+};
+
+// Era presets for decade-based exploration
+const ERA_PRESETS: Record<'1980s' | '1990s' | '2000s' | 'golden', { start: number; end: number; label: string }> = {
+  '1980s': { start: 1980, end: 1989, label: '1980s SID Hits' },
+  '1990s': { start: 1990, end: 1999, label: '1990s Classics' },
+  '2000s': { start: 2000, end: 2009, label: '2000s Era' },
+  'golden': { start: 1985, end: 1992, label: 'Golden Age (1985-1992)' },
+};
+
 const HISTORY_LIMIT = 3;
 const UPCOMING_DISPLAY_LIMIT = 3;
 const INITIAL_PLAYLIST_SIZE = 12;
@@ -105,6 +123,18 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [stationSimilarity, setStationSimilarity] = useState(0.7);
   const [stationDiscovery, setStationDiscovery] = useState(0.5);
   const [showStationSettings, setShowStationSettings] = useState(false);
+  const [showMoodTransition, setShowMoodTransition] = useState(false);
+  const [transitionStart, setTransitionStart] = useState<MoodPreset>('quiet');
+  const [transitionEnd, setTransitionEnd] = useState<MoodPreset>('energetic');
+  const [showEraExplorer, setShowEraExplorer] = useState(false);
+  const [eraPreset, setEraPreset] = useState<'1980s' | '1990s' | '2000s' | 'golden' | 'custom'>('golden');
+  const [customYearStart, setCustomYearStart] = useState(1985);
+  const [customYearEnd, setCustomYearEnd] = useState(1992);
+  const [showComposerDiscovery, setShowComposerDiscovery] = useState(false);
+  const [similarComposers, setSimilarComposers] = useState<Array<{ composer: string; similarity_score: number }>>([]);
+  const [isLoadingHiddenGems, setIsLoadingHiddenGems] = useState(false);
+  const [showChipModelSelector, setShowChipModelSelector] = useState(false);
+  const [isLoadingChipStation, setIsLoadingChipStation] = useState(false);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -347,7 +377,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         if (response.success && !cancelled) {
           setAggregateRating(response.data);
         }
-        
+
         // Fetch personal rating from localStorage
         const personal = getPersonalRating(currentTrack.sidPath);
         if (!cancelled) {
@@ -988,7 +1018,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
 
         // Set the first track and add rest to upcoming
         updateUpcoming(() => tracks.slice(1));
-        
+
         // Load and play the first track
         const firstResponse = await playManualTrack({ sid_path: tracks[0].sidPath });
         if (!firstResponse.success) {
@@ -1012,46 +1042,311 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     async (sidPath: string) => {
       try {
         notifyStatus(`Creating station from "${currentTrack?.displayName}"...`, false);
-        
+
         const response = await requestStationFromSong({
           sid_path: sidPath,
           limit: 20,
           similarity: stationSimilarity,
           discovery: stationDiscovery,
         });
-        
+
         if (!response.success) {
           notifyStatus(`Failed to create station: ${formatApiError(response)}`, true);
           return;
         }
-        
+
         const { similarTracks, stationName } = response.data;
-        
+
         if (similarTracks.length === 0) {
           notifyStatus('No similar tracks found for this station', true);
           return;
         }
-        
+
         // Switch to folder mode with station name
         setPlaybackMode('folder');
         setPlaybackModeDescription(stationName);
-        
+
         // Convert similar tracks to PlaylistTrack format
         const tracks: PlaylistTrack[] = [];
         for (const track of similarTracks) {
           const numbered = assignPlaylistNumber(track);
           tracks.push(numbered);
         }
-        
+
         // Queue all tracks
         updateUpcoming(() => tracks);
-        
+
         notifyStatus(`Station ready with ${tracks.length} tracks. Press "Play Next Track" to start.`);
       } catch (error) {
         notifyStatus(`Error creating station: ${error instanceof Error ? error.message : String(error)}`, true);
       }
     },
     [currentTrack, notifyStatus, assignPlaylistNumber, updateUpcoming, stationSimilarity, stationDiscovery]
+  );
+
+  const handleMoodTransition = useCallback(
+    async () => {
+      try {
+        const startMood = PRESET_TO_EMC[transitionStart];
+        const endMood = PRESET_TO_EMC[transitionEnd];
+
+        notifyStatus(`Creating mood transition: ${PRESETS.find(p => p.value === transitionStart)?.label} → ${PRESETS.find(p => p.value === transitionEnd)?.label}...`, false);
+
+        const response = await fetch('/api/play/mood-transition', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start_mood: startMood,
+            end_mood: endMood,
+            limit: 7,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          notifyStatus(`Failed to create mood transition: ${data.error}`, true);
+          return;
+        }
+
+        const { tracks: transitionTracks, stationName } = data.data;
+
+        if (transitionTracks.length === 0) {
+          notifyStatus('No tracks found for this mood transition', true);
+          return;
+        }
+
+        // Switch to folder mode with transition name
+        setPlaybackMode('folder');
+        setPlaybackModeDescription(stationName);
+
+        // Convert to PlaylistTrack format
+        const tracks: PlaylistTrack[] = [];
+        for (const track of transitionTracks) {
+          const numbered = assignPlaylistNumber(track);
+          tracks.push(numbered);
+        }
+
+        // Queue all tracks
+        updateUpcoming(() => tracks);
+
+        notifyStatus(`Mood transition ready with ${tracks.length} tracks. Press "Play Next Track" to start.`);
+        setShowMoodTransition(false);
+      } catch (error) {
+        notifyStatus(`Error creating mood transition: ${error instanceof Error ? error.message : String(error)}`, true);
+      }
+    },
+    [transitionStart, transitionEnd, notifyStatus, assignPlaylistNumber, updateUpcoming]
+  );
+
+  const handleEraStation = useCallback(
+    async () => {
+      try {
+        let yearStart: number;
+        let yearEnd: number;
+        let eraLabel: string;
+
+        if (eraPreset === 'custom') {
+          yearStart = customYearStart;
+          yearEnd = customYearEnd;
+          eraLabel = `${yearStart}-${yearEnd}`;
+        } else {
+          const preset = ERA_PRESETS[eraPreset];
+          yearStart = preset.start;
+          yearEnd = preset.end;
+          eraLabel = preset.label;
+        }
+
+        notifyStatus(`Creating era station: ${eraLabel}...`, false);
+
+        const response = await fetch('/api/play/era-station', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            yearStart,
+            yearEnd,
+            limit: 20,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          notifyStatus(`Failed to create era station: ${data.error}`, true);
+          return;
+        }
+
+        const { tracks: eraTracks, stationName } = data.data;
+
+        if (eraTracks.length === 0) {
+          notifyStatus(`No tracks found for era ${eraLabel}`, true);
+          return;
+        }
+
+        // Switch to folder mode with era name
+        setPlaybackMode('folder');
+        setPlaybackModeDescription(stationName);
+
+        // Convert to PlaylistTrack format
+        const tracks: PlaylistTrack[] = [];
+        for (const track of eraTracks) {
+          const numbered = assignPlaylistNumber(track);
+          tracks.push(numbered);
+        }
+
+        // Queue all tracks
+        updateUpcoming(() => tracks);
+
+        notifyStatus(`Era station ready with ${tracks.length} tracks. Press "Play Next Track" to start.`);
+        setShowEraExplorer(false);
+      } catch (error) {
+        notifyStatus(`Error creating era station: ${error instanceof Error ? error.message : String(error)}`, true);
+      }
+    },
+    [eraPreset, customYearStart, customYearEnd, notifyStatus, assignPlaylistNumber, updateUpcoming]
+  );
+
+  const handleFindSimilarComposers = useCallback(
+    async () => {
+      if (!currentTrack || !currentTrack.metadata.author) {
+        notifyStatus('No track playing or composer information missing', true);
+        return;
+      }
+
+      try {
+        notifyStatus(`Finding composers similar to ${currentTrack.metadata.author}...`, false);
+
+        const response = await fetch('/api/play/similar-composers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            composer: currentTrack.metadata.author,
+            limit: 5,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          notifyStatus(`Failed to find similar composers: ${data.error}`, true);
+          return;
+        }
+
+        setSimilarComposers(data.data.similar_composers);
+        setShowComposerDiscovery(true);
+        notifyStatus(`Found ${data.data.similar_composers.length} similar composers`);
+      } catch (error) {
+        notifyStatus(`Error finding similar composers: ${error instanceof Error ? error.message : String(error)}`, true);
+      }
+    },
+    [currentTrack, notifyStatus]
+  );
+
+  const handleFindHiddenGems = useCallback(
+    async () => {
+      try {
+        setIsLoadingHiddenGems(true);
+        notifyStatus('Finding hidden gems...', false);
+
+        const response = await fetch('/api/play/hidden-gems', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            limit: 20,
+            minRating: 4.0,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          notifyStatus(`Failed to find hidden gems: ${data.error}`, true);
+          return;
+        }
+
+        const { tracks: gemTracks, stationName } = data.data;
+
+        if (gemTracks.length === 0) {
+          notifyStatus('No hidden gems found', true);
+          return;
+        }
+
+        // Switch to folder mode with gems name
+        setPlaybackMode('folder');
+        setPlaybackModeDescription(stationName);
+
+        // Convert to PlaylistTrack format
+        const tracks: PlaylistTrack[] = [];
+        for (const track of gemTracks) {
+          const numbered = assignPlaylistNumber(track);
+          tracks.push(numbered);
+        }
+
+        // Queue all tracks
+        updateUpcoming(() => tracks);
+
+        notifyStatus(`Hidden gems ready with ${tracks.length} tracks. Press "Play Next Track" to start.`);
+      } catch (error) {
+        notifyStatus(`Error finding hidden gems: ${error instanceof Error ? error.message : String(error)}`, true);
+      } finally {
+        setIsLoadingHiddenGems(false);
+      }
+    },
+    [notifyStatus, assignPlaylistNumber, updateUpcoming]
+  );
+
+  const handleCreateChipStation = useCallback(
+    async (chipModel: '6581' | '8580' | '8580r5') => {
+      try {
+        setIsLoadingChipStation(true);
+        notifyStatus(`Creating ${chipModel} station...`, false);
+
+        const response = await fetch('/api/play/chip-station', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chipModel,
+            limit: 20,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          notifyStatus(`Failed to create chip station: ${data.error}`, true);
+          return;
+        }
+
+        const { tracks: chipTracks, stationName } = data.data;
+
+        if (chipTracks.length === 0) {
+          notifyStatus(`No tracks found for ${chipModel}`, true);
+          return;
+        }
+
+        // Switch to folder mode with chip name
+        setPlaybackMode('folder');
+        setPlaybackModeDescription(stationName);
+
+        // Convert to PlaylistTrack format
+        const tracks: PlaylistTrack[] = [];
+        for (const track of chipTracks) {
+          const numbered = assignPlaylistNumber(track);
+          tracks.push(numbered);
+        }
+
+        // Queue all tracks
+        updateUpcoming(() => tracks);
+
+        notifyStatus(`${stationName} ready with ${tracks.length} tracks. Press "Play Next Track" to start.`);
+        setShowChipModelSelector(false);
+      } catch (error) {
+        notifyStatus(`Error creating chip station: ${error instanceof Error ? error.message : String(error)}`, true);
+      } finally {
+        setIsLoadingChipStation(false);
+      }
+    },
+    [notifyStatus, assignPlaylistNumber, updateUpcoming]
   );
 
   const submitRating = useCallback(
@@ -1070,7 +1365,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           return;
         }
         notifyStatus(`${label} recorded for "${currentTrack.displayName}"`);
-        
+
         // Save to localStorage for personal rating display
         setPersonalRating(currentTrack.sidPath, value, { e: value, m: value, c: value, p: value });
         setPersonalRatingState({
@@ -1078,7 +1373,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           timestamp: new Date().toISOString(),
           dimensions: { e: value, m: value, c: value, p: value },
         });
-        
+
         recordExplicitRating({
           track: currentTrack,
           ratings: { e: value, m: value, c: value, p: value },
@@ -1226,6 +1521,188 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 <Play className="h-4 w-4" />
                 {upcomingTracks.length === 0 ? 'PLAYLIST EMPTY' : 'PLAY NEXT TRACK'}
               </Button>
+              <Button
+                onClick={() => setShowMoodTransition(!showMoodTransition)}
+                variant="outline"
+                className="w-full gap-2"
+                title="Create smooth mood transition playlist"
+              >
+                <Forward className="h-4 w-4" />
+                MOOD TRANSITION
+              </Button>
+              {showMoodTransition && (
+                <div className="p-3 border border-border/60 rounded bg-muted/20 space-y-3">
+                  <div className="text-sm font-semibold text-foreground">Mood Transition</div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">From</label>
+                    <Select value={transitionStart} onValueChange={(value) => setTransitionStart(value as MoodPreset)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRESETS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">To</label>
+                    <Select value={transitionEnd} onValueChange={(value) => setTransitionEnd(value as MoodPreset)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRESETS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleMoodTransition}
+                    disabled={isLoading}
+                    className="w-full gap-2"
+                  >
+                    <Play className="h-4 w-4" />
+                    CREATE TRANSITION
+                  </Button>
+                </div>
+              )}
+              <Button
+                onClick={() => setShowEraExplorer(!showEraExplorer)}
+                variant="outline"
+                className="w-full gap-2"
+                title="Explore music from specific time periods"
+              >
+                <Music2 className="h-4 w-4" />
+                ERA EXPLORER
+              </Button>
+              {showEraExplorer && (
+                <div className="p-3 border border-border/60 rounded bg-muted/20 space-y-3">
+                  <div className="text-sm font-semibold text-foreground">Era Explorer</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant={eraPreset === '1980s' ? 'default' : 'outline'}
+                      onClick={() => setEraPreset('1980s')}
+                    >
+                      1980s
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={eraPreset === '1990s' ? 'default' : 'outline'}
+                      onClick={() => setEraPreset('1990s')}
+                    >
+                      1990s
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={eraPreset === '2000s' ? 'default' : 'outline'}
+                      onClick={() => setEraPreset('2000s')}
+                    >
+                      2000s
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={eraPreset === 'golden' ? 'default' : 'outline'}
+                      onClick={() => setEraPreset('golden')}
+                    >
+                      Golden Age
+                    </Button>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={eraPreset === 'custom' ? 'default' : 'outline'}
+                    onClick={() => setEraPreset('custom')}
+                    className="w-full"
+                  >
+                    Custom Range
+                  </Button>
+                  {eraPreset === 'custom' && (
+                    <div className="space-y-2">
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="number"
+                          value={customYearStart}
+                          onChange={(e) => setCustomYearStart(parseInt(e.target.value) || 1980)}
+                          min={1980}
+                          max={2030}
+                          className="w-20 px-2 py-1 text-sm border rounded"
+                        />
+                        <span className="text-xs text-muted-foreground">to</span>
+                        <input
+                          type="number"
+                          value={customYearEnd}
+                          onChange={(e) => setCustomYearEnd(parseInt(e.target.value) || 1992)}
+                          min={1980}
+                          max={2030}
+                          className="w-20 px-2 py-1 text-sm border rounded"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <Button
+                    onClick={handleEraStation}
+                    disabled={isLoading}
+                    className="w-full gap-2"
+                  >
+                    <Play className="h-4 w-4" />
+                    CREATE ERA STATION
+                  </Button>
+                </div>
+              )}
+              <Button
+                onClick={handleFindHiddenGems}
+                disabled={isLoading || isLoadingHiddenGems}
+                variant="outline"
+                className="w-full gap-2"
+                title="Discover high-quality underplayed tracks"
+              >
+                <Star className="h-4 w-4" />
+                {isLoadingHiddenGems ? 'FINDING GEMS...' : 'HIDDEN GEMS'}
+              </Button>
+              <Button
+                onClick={() => setShowChipModelSelector(!showChipModelSelector)}
+                variant="outline"
+                className="w-full gap-2"
+                title="Explore tracks by SID chip model"
+              >
+                <Settings className="h-4 w-4" />
+                CHIP MODEL
+              </Button>
+              {showChipModelSelector && (
+                <div className="p-3 border border-border/60 rounded bg-muted/20 space-y-3">
+                  <div className="text-sm font-semibold text-foreground">Chip Model Station</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleCreateChipStation('6581')}
+                      disabled={isLoadingChipStation}
+                    >
+                      6581
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleCreateChipStation('8580')}
+                      disabled={isLoadingChipStation}
+                    >
+                      8580
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleCreateChipStation('8580r5')}
+                      disabled={isLoadingChipStation}
+                    >
+                      8580R5
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -1347,7 +1824,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   <InfoRow label="SID Model" value={currentTrack.metadata.sidModel} />
                 </div>
               </div>
-              
+
               {aggregateRating && (
                 <div className="pt-2 border-t border-border/40 space-y-2">
                   {personalRating && (
@@ -1356,11 +1833,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                         {Array.from({ length: 5 }).map((_, i) => (
                           <Star
                             key={i}
-                            className={`h-3 w-3 ${
-                              i < personalRating.rating
+                            className={`h-3 w-3 ${i < personalRating.rating
                                 ? 'fill-blue-500 text-blue-500'
                                 : 'text-muted-foreground'
-                            }`}
+                              }`}
                           />
                         ))}
                       </div>
@@ -1371,18 +1847,17 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   )}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div 
+                      <div
                         className="flex items-center gap-1"
                         title={`Energy: ${aggregateRating.community.dimensions.energy}/5 • Mood: ${aggregateRating.community.dimensions.mood}/5 • Complexity: ${aggregateRating.community.dimensions.complexity}/5`}
                       >
                         {Array.from({ length: 5 }).map((_, i) => (
                           <Star
                             key={i}
-                            className={`h-4 w-4 ${
-                              i < Math.round(aggregateRating.community.averageRating)
+                            className={`h-4 w-4 ${i < Math.round(aggregateRating.community.averageRating)
                                 ? 'fill-yellow-500 text-yellow-500'
                                 : 'text-muted-foreground'
-                            }`}
+                              }`}
                           />
                         ))}
                       </div>
@@ -1491,8 +1966,44 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                     <Settings className="h-3 w-3" />
                   </Button>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={handleFindSimilarComposers}
+                  disabled={!currentTrack.metadata.author}
+                  title="Find composers with similar musical styles"
+                >
+                  <Music2 className="h-4 w-4" /> Similar Composers
+                </Button>
               </div>
-              
+
+              {showComposerDiscovery && similarComposers.length > 0 && (
+                <div className="mt-3 p-3 border border-border/60 rounded bg-muted/20 space-y-2">
+                  <div className="text-sm font-semibold text-foreground">
+                    Composers Similar to {currentTrack.metadata.author}
+                  </div>
+                  <div className="space-y-1">
+                    {similarComposers.map((similar, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-foreground">{similar.composer}</span>
+                        <span className="text-muted-foreground">
+                          {(similar.similarity_score * 100).toFixed(0)}% similar
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowComposerDiscovery(false)}
+                    className="w-full mt-2"
+                  >
+                    Close
+                  </Button>
+                </div>
+              )}
+
               {showStationSettings && (
                 <div className="mt-3 p-3 border border-border/60 rounded bg-muted/20 space-y-3">
                   <div className="text-sm font-semibold text-foreground">Station Parameters</div>

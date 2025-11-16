@@ -170,6 +170,10 @@ export class WorkletPlayer {
     this.gainNode.gain.value = clamped;
   }
 
+  getVolume(): number {
+    return this.gainNode.gain.value;
+  }
+
   private clearWorkerLoadedWait(): void {
     if (this.workerLoadedTimeout) {
       clearTimeout(this.workerLoadedTimeout);
