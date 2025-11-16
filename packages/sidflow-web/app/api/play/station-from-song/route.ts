@@ -70,9 +70,9 @@ export async function POST(request: NextRequest) {
 
     // Find similar tracks using vector similarity search
     // Discovery parameter adjusts the balance between similarity and exploration
-    // 0 = very similar (min similarity 0.8)
-    // 0.5 = balanced (min similarity 0.5)
-    // 1.0 = more exploration (min similarity 0.3)
+    // 0   = very similar      (min similarity 0.8)
+    // 0.5 = balanced          (min similarity 0.55)
+    // 1.0 = more exploration  (min similarity 0.3)
     const minSimilarity = Math.max(0.3, 0.8 - discovery * 0.5);
     
     // Similarity parameter adjusts boost factors
