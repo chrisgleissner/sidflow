@@ -182,6 +182,32 @@ export async function requestRandomRateTrack(): Promise<ApiResponse<RateTrackWit
   return response.json();
 }
 
+export interface StationFromSongRequest {
+  sid_path: string;
+  limit?: number;
+  similarity?: number;
+  discovery?: number;
+}
+
+export interface StationFromSongResponse {
+  seedTrack: RateTrackInfo;
+  similarTracks: RateTrackInfo[];
+  stationName: string;
+}
+
+export async function requestStationFromSong(
+  request: StationFromSongRequest
+): Promise<ApiResponse<StationFromSongResponse>> {
+  const response = await fetch(`${API_BASE}/play/station-from-song`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+  return response.json();
+}
+
 export interface HvscPathsPayload {
   hvscPath: string;
   musicPath: string;
