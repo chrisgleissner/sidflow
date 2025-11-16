@@ -209,7 +209,6 @@ function estimateDimensions(aggregate: FeedbackAggregate): {
  */
 export async function getAggregateRating(sidPath: string): Promise<AggregateRating | null> {
   try {
-    const config = await loadConfig();
     const feedbackPath = path.join(process.cwd(), 'data', 'feedback');
     
     // Read all feedback
