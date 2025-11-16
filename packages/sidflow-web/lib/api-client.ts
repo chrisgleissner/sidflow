@@ -225,6 +225,43 @@ export async function getHvscPaths(): Promise<ApiResponse<HvscPathsPayload>> {
   return response.json();
 }
 
+export interface AggregateRating {
+  sid_path: string;
+  community: {
+    averageRating: number;
+    totalRatings: number;
+    likes: number;
+    dislikes: number;
+    skips: number;
+    plays: number;
+    dimensions: {
+      energy: number;
+      mood: number;
+      complexity: number;
+    };
+  };
+  trending: {
+    score: number;
+    recentPlays: number;
+    isTrending: boolean;
+  };
+  personal?: {
+    rating: number;
+    timestamp: string;
+  };
+}
+
+export async function getAggregateRating(sidPath: string): Promise<ApiResponse<AggregateRating>> {
+  const params = new URLSearchParams({ sid_path: sidPath });
+  const response = await fetch(`${API_BASE}/rate/aggregate?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
 export type ClassifyProgressWithStorage = ClassifyProgressSnapshot & { storage?: ClassifyStorageStats };
 
 export async function getClassifyProgress(): Promise<ApiResponse<ClassifyProgressWithStorage>> {

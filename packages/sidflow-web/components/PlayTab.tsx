@@ -9,12 +9,14 @@ import {
   rateTrack,
   requestRandomPlayTrack,
   requestStationFromSong,
+  getAggregateRating,
   type RateTrackInfo,
   type RateTrackWithSession,
+  type AggregateRating,
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio, Star, TrendingUp } from 'lucide-react';
 import type { FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
@@ -97,6 +99,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [volume, setVolume] = useState(1.0);
   const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song'>('mood');
   const [playbackModeDescription, setPlaybackModeDescription] = useState<string>('Mood Station');
+  const [aggregateRating, setAggregateRating] = useState<AggregateRating | null>(null);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -321,6 +324,33 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const notifyTrackPlayed = useCallback((sidPath: string) => {
     trackPlayedHandlerRef.current(sidPath);
   }, []);
+
+  // Fetch aggregate rating when current track changes
+  useEffect(() => {
+    if (!currentTrack) {
+      setAggregateRating(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchRating = async () => {
+      try {
+        const response = await getAggregateRating(currentTrack.sidPath);
+        if (response.success && !cancelled) {
+          setAggregateRating(response.data);
+        }
+      } catch (error) {
+        console.warn('[PlayTab] Failed to fetch aggregate rating:', error);
+      }
+    };
+
+    void fetchRating();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTrack]);
 
   const prefetchKeyForTrack = useCallback((track: RateTrackInfo | PlaylistTrack | null | undefined): string | null => {
     if (!track || !track.sidPath) {
@@ -1295,6 +1325,57 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   <InfoRow label="SID Model" value={currentTrack.metadata.sidModel} />
                 </div>
               </div>
+              
+              {aggregateRating && (
+                <div className="pt-2 border-t border-border/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`h-4 w-4 ${
+                              i < Math.round(aggregateRating.community.averageRating)
+                                ? 'fill-yellow-500 text-yellow-500'
+                                : 'text-muted-foreground'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm font-semibold text-foreground">
+                        {aggregateRating.community.averageRating.toFixed(1)}/5
+                      </span>
+                      {aggregateRating.community.totalRatings > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          ({aggregateRating.community.totalRatings} {aggregateRating.community.totalRatings === 1 ? 'rating' : 'ratings'})
+                        </span>
+                      )}
+                    </div>
+                    {aggregateRating.trending.isTrending && (
+                      <div className="flex items-center gap-1 text-xs font-semibold text-orange-500">
+                        <TrendingUp className="h-3 w-3" />
+                        <span>Trending</span>
+                      </div>
+                    )}
+                  </div>
+                  {aggregateRating.community.totalRatings > 0 && (
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <div className="flex items-center gap-3">
+                        <span>{aggregateRating.community.likes} likes</span>
+                        <span>•</span>
+                        <span>{aggregateRating.community.plays} plays</span>
+                        {aggregateRating.trending.recentPlays > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>{aggregateRating.trending.recentPlays} recent</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2 pt-2">
                 <Button
                   variant="outline"
