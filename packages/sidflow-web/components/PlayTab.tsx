@@ -13,7 +13,7 @@ import {
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Heart } from 'lucide-react';
 import type { FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
@@ -40,6 +40,7 @@ import {
 } from '@/lib/offline/playback-queue';
 import { SongBrowser } from '@/components/SongBrowser';
 import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/playlist-builder';
+import { FavoriteButton } from '@/components/FavoriteButton';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -1249,6 +1250,13 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 pt-2">
+                <FavoriteButton
+                  sidPath={currentTrack.sidPath}
+                  size="sm"
+                  variant="outline"
+                  showLabel
+                  onStatusChange={notifyStatus}
+                />
                 <Button
                   variant="outline"
                   size="sm"
