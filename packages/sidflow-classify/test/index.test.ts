@@ -48,7 +48,7 @@ describe("planClassification", () => {
     const dir = await mkdtemp(TEMP_PREFIX);
     const configPath = path.join(dir, ".sidflow.json");
     const payload = {
-      hvscPath: "./hvsc",
+      sidPath: "./hvsc",
       wavCachePath: "./wav",
       tagsPath: "./tags",
       threads: 2,
@@ -59,7 +59,7 @@ describe("planClassification", () => {
     const plan = await planClassification({ configPath, forceRebuild: true });
     expect(plan.forceRebuild).toBeTrue();
     expect(plan.classificationDepth).toBe(5);
-    expect(plan.hvscPath).toBe(path.normalize(payload.hvscPath));
+    expect(plan.sidPath).toBe(path.normalize(payload.sidPath));
 
     await rm(dir, { recursive: true, force: true });
   });
@@ -71,7 +71,7 @@ describe("classification helpers", () => {
       config: {} as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: "/repo/hvsc",
+      sidPath: "/repo/hvsc",
       wavCachePath: "/repo/wav-cache",
       tagsPath: "/repo/tags"
     } as unknown as ClassificationPlan;
@@ -86,7 +86,7 @@ describe("classification helpers", () => {
       config: {} as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: "/repo/hvsc",
+      sidPath: "/repo/hvsc",
       wavCachePath: "/repo/wav-cache",
       tagsPath: "/repo/tags"
     } as unknown as ClassificationPlan;
@@ -101,13 +101,13 @@ describe("classification helpers", () => {
 
   it("collects sid files recursively", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
-    await mkdir(path.join(hvscPath, "A"), { recursive: true });
-    const sidA = path.join(hvscPath, "A", "first.sid");
-    const sidB = path.join(hvscPath, "second.SID");
+    const sidPath = path.join(root, "hvsc");
+    await mkdir(path.join(sidPath, "A"), { recursive: true });
+    const sidA = path.join(sidPath, "A", "first.sid");
+    const sidB = path.join(sidPath, "second.SID");
     await Promise.all([writeFile(sidA, "a"), writeFile(sidB, "b")]);
 
-    const result = await collectSidFiles(hvscPath);
+    const result = await collectSidFiles(sidPath);
     expect(result).toEqual([sidA, sidB]);
 
     await rm(root, { recursive: true, force: true });
@@ -154,17 +154,17 @@ describe("classification helpers", () => {
 
   it("builds wav cache using injected renderer", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
-    await mkdir(hvscPath, { recursive: true });
-    const sidFile = path.join(hvscPath, "song.sid");
+    await mkdir(sidPath, { recursive: true });
+    const sidFile = path.join(sidPath, "song.sid");
     await writeFile(sidFile, "content");
 
     const plan = {
       config: {} as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath,
+      sidPath,
       wavCachePath,
       tagsPath: path.join(root, "tags")
     } as unknown as ClassificationPlan;
@@ -211,20 +211,20 @@ describe("classification helpers", () => {
 
   it("reports progress during WAV cache building", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
-    await mkdir(hvscPath, { recursive: true });
+    await mkdir(sidPath, { recursive: true });
 
     // Create multiple SID files to test progress
     for (let i = 0; i < 5; i++) {
-      await writeFile(path.join(hvscPath, `song${i}.sid`), `content${i}`);
+      await writeFile(path.join(sidPath, `song${i}.sid`), `content${i}`);
     }
 
     const plan = {
       config: {} as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath,
+      sidPath,
       wavCachePath,
       tagsPath: path.join(root, "tags")
     } as unknown as ClassificationPlan;
@@ -260,12 +260,12 @@ describe("classification helpers", () => {
 
   it("handles multi-song SID files", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
-    await mkdir(hvscPath, { recursive: true });
+    await mkdir(sidPath, { recursive: true });
 
     // Create a valid multi-song SID file (3 songs)
-    const sidFile = path.join(hvscPath, "multi.sid");
+    const sidFile = path.join(sidPath, "multi.sid");
     const sidBuffer = Buffer.alloc(124);
 
     // Magic ID: "PSID"
@@ -303,7 +303,7 @@ describe("classification helpers", () => {
       config: {} as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath,
+      sidPath,
       wavCachePath,
       tagsPath: path.join(root, "tags")
     } as unknown as ClassificationPlan;
@@ -339,10 +339,10 @@ describe("classification helpers", () => {
 
   it("passes HVSC song lengths to renderer", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
-    const docsPath = path.join(hvscPath, "C64Music", "DOCUMENTS");
-    const demoDir = path.join(hvscPath, "C64Music", "DEMOS", "A-F");
+    const docsPath = path.join(sidPath, "C64Music", "DOCUMENTS");
+    const demoDir = path.join(sidPath, "C64Music", "DEMOS", "A-F");
 
     await mkdir(demoDir, { recursive: true });
     await mkdir(docsPath, { recursive: true });
@@ -363,7 +363,7 @@ describe("classification helpers", () => {
       config: {} as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath,
+      sidPath,
       wavCachePath,
       tagsPath: path.join(root, "tags")
     } as unknown as ClassificationPlan;
@@ -495,20 +495,20 @@ describe("generateAutoTags", () => {
   it("writes metadata and auto-tag files with mixed sources", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     try {
-      const hvscPath = path.join(root, "hvsc");
+      const sidPath = path.join(root, "hvsc");
       const wavCachePath = path.join(root, "wav");
       const tagsPath = path.join(root, "tags");
       const classifiedPath = path.join(root, "classified");
       await Promise.all([
-        mkdir(path.join(hvscPath, "MUSICIANS"), { recursive: true }),
+        mkdir(path.join(sidPath, "MUSICIANS"), { recursive: true }),
         mkdir(wavCachePath, { recursive: true }),
         mkdir(tagsPath, { recursive: true }),
         mkdir(classifiedPath, { recursive: true })
       ]);
 
-      const multiSid = path.join(hvscPath, "MUSICIANS", "Multi.sid");
-      const manualSid = path.join(hvscPath, "MUSICIANS", "Manual.sid");
-      const partialSid = path.join(hvscPath, "MUSICIANS", "Partial.sid");
+      const multiSid = path.join(sidPath, "MUSICIANS", "Multi.sid");
+      const manualSid = path.join(sidPath, "MUSICIANS", "Manual.sid");
+      const partialSid = path.join(sidPath, "MUSICIANS", "Partial.sid");
 
       await Promise.all([
         writeFile(
@@ -526,7 +526,7 @@ describe("generateAutoTags", () => {
       ]);
 
       const config: ClassificationPlan["config"] = {
-        hvscPath,
+        sidPath,
         wavCachePath,
         tagsPath,
         threads: 2,
@@ -540,12 +540,12 @@ describe("generateAutoTags", () => {
         tagsPath,
         forceRebuild: false,
         classificationDepth: config.classificationDepth,
-        hvscPath
+        sidPath
       };
 
       // Prepare WAV cache files
       for (const sidFile of [multiSid, manualSid, partialSid]) {
-        const relative = resolveRelativeSidPath(hvscPath, sidFile);
+        const relative = resolveRelativeSidPath(sidPath, sidFile);
         const baseDir = path.join(wavCachePath, path.dirname(relative));
         await mkdir(baseDir, { recursive: true });
         if (sidFile === multiSid) {
@@ -560,7 +560,7 @@ describe("generateAutoTags", () => {
       }
 
       // Manual tags: full ratings for manualSid, partial for partialSid
-      const manualTagPath = resolveManualTagPath(hvscPath, tagsPath, manualSid);
+      const manualTagPath = resolveManualTagPath(sidPath, tagsPath, manualSid);
       await mkdir(path.dirname(manualTagPath), { recursive: true });
       await writeFile(
         manualTagPath,
@@ -568,7 +568,7 @@ describe("generateAutoTags", () => {
         "utf8"
       );
 
-      const partialTagPath = resolveManualTagPath(hvscPath, tagsPath, partialSid);
+      const partialTagPath = resolveManualTagPath(sidPath, tagsPath, partialSid);
       await mkdir(path.dirname(partialTagPath), { recursive: true });
       await writeFile(
         partialTagPath,
@@ -629,19 +629,19 @@ describe("generateJsonlOutput", () => {
   it("exports JSONL for songs with and without WAV cache", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     try {
-      const hvscPath = path.join(root, "hvsc");
+      const sidPath = path.join(root, "hvsc");
       const wavCachePath = path.join(root, "wav");
       const tagsPath = path.join(root, "tags");
       const classifiedPath = path.join(root, "classified");
       await Promise.all([
-        mkdir(path.join(hvscPath, "DEMOS"), { recursive: true }),
+        mkdir(path.join(sidPath, "DEMOS"), { recursive: true }),
         mkdir(wavCachePath, { recursive: true }),
         mkdir(tagsPath, { recursive: true }),
         mkdir(classifiedPath, { recursive: true })
       ]);
 
-      const wavSid = path.join(hvscPath, "DEMOS", "WithWav.sid");
-      const noWavSid = path.join(hvscPath, "DEMOS", "NoWav.sid");
+      const wavSid = path.join(sidPath, "DEMOS", "WithWav.sid");
+      const noWavSid = path.join(sidPath, "DEMOS", "NoWav.sid");
 
       await Promise.all([
         writeFile(
@@ -655,7 +655,7 @@ describe("generateJsonlOutput", () => {
       ]);
 
       const config: ClassificationPlan["config"] = {
-        hvscPath,
+        sidPath,
         wavCachePath,
         tagsPath,
         threads: 1,
@@ -669,7 +669,7 @@ describe("generateJsonlOutput", () => {
         tagsPath,
         forceRebuild: false,
         classificationDepth: config.classificationDepth,
-        hvscPath
+        sidPath
       };
 
       // Prepare WAV file for first SID
@@ -678,7 +678,7 @@ describe("generateJsonlOutput", () => {
       await writeFile(wavPath, "wav-data");
 
       // Manual tags
-      const manualTagPath = resolveManualTagPath(hvscPath, tagsPath, wavSid);
+      const manualTagPath = resolveManualTagPath(sidPath, tagsPath, wavSid);
       await mkdir(path.dirname(manualTagPath), { recursive: true });
       await writeFile(manualTagPath, JSON.stringify({ e: 4, m: 3, c: 5 }), "utf8");
 

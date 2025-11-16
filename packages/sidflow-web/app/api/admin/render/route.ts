@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const config = await loadConfig(body.configPath);
-    const absoluteSidPath = resolveSidPath(config.hvscPath, sidPath);
+    const absoluteSidPath = resolveSidPath(config.sidPath, sidPath);
 
     const formats = resolveFormats(body.formats, config.render?.defaultFormats);
     if (formats.length === 0) {
@@ -238,10 +238,10 @@ function normalizeMaxLoss(value: unknown): number {
   return DEFAULT_MAX_LOSS;
 }
 
-function resolveSidPath(hvscPath: string, sidPath: string): string {
+function resolveSidPath(sidPath: string, sidPath: string): string {
   return path.isAbsolute(sidPath)
     ? path.normalize(sidPath)
-    : path.join(hvscPath, sidPath);
+    : path.join(sidPath, sidPath);
 }
 
 function createOrchestrator(
@@ -266,7 +266,7 @@ function createOrchestrator(
     });
   }
 
-  const hvscRoot = path.resolve(config.hvscPath);
+  const hvscRoot = path.resolve(config.sidPath);
   const availabilityManifestPath = config.availability?.manifestPath
     ? path.resolve(config.availability.manifestPath)
     : undefined;

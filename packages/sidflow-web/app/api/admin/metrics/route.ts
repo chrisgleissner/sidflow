@@ -44,7 +44,7 @@ export async function GET() {
   const config = await getSidflowConfig();
 
     // Collect job metrics
-    const jobMetrics = await collectJobMetrics(config.hvscPath);
+    const jobMetrics = await collectJobMetrics(config.sidPath);
 
     // Collect cache metrics
     const cacheMetrics = await collectCacheMetrics(
@@ -53,7 +53,7 @@ export async function GET() {
     );
 
     // Collect sync metrics
-    const syncMetrics = await collectSyncMetrics(config.hvscPath);
+    const syncMetrics = await collectSyncMetrics(config.sidPath);
 
     const metrics: AdminMetrics = {
       timestamp: Date.now(),
@@ -79,8 +79,8 @@ export async function GET() {
   }
 }
 
-async function collectJobMetrics(hvscPath: string): Promise<JobMetrics> {
-  const jobQueuePath = path.join(hvscPath, "..", "data", "jobs");
+async function collectJobMetrics(sidPath: string): Promise<JobMetrics> {
+  const jobQueuePath = path.join(sidPath, "..", "data", "jobs");
 
   let pending = 0;
   let running = 0;
@@ -203,7 +203,7 @@ async function collectCacheMetrics(
   };
 }
 
-async function collectSyncMetrics(hvscPath: string): Promise<SyncMetrics> {
+async function collectSyncMetrics(sidPath: string): Promise<SyncMetrics> {
   let hvscVersion: string | undefined;
   let lastSyncTimestamp: number | undefined;
   let syncAgeMs: number | undefined;
@@ -211,7 +211,7 @@ async function collectSyncMetrics(hvscPath: string): Promise<SyncMetrics> {
 
   // Check for HVSC version file
   try {
-    const versionPath = path.join(hvscPath, "..", "workspace", "hvsc-version.json");
+    const versionPath = path.join(sidPath, "..", "workspace", "hvsc-version.json");
     const content = await readFile(versionPath, "utf-8");
     const versionData = JSON.parse(content);
     hvscVersion = versionData.version;
@@ -244,7 +244,7 @@ async function collectSyncMetrics(hvscPath: string): Promise<SyncMetrics> {
       return count;
     };
 
-    hvscSidCount = await countSidFiles(hvscPath);
+    hvscSidCount = await countSidFiles(sidPath);
   } catch {
     // HVSC directory doesn't exist
   }

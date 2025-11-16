@@ -8,7 +8,7 @@ import type { RateTrackInfo } from '@/lib/types/rate-track';
 export interface PlaybackEnvironment {
   config: SidflowConfig;
   root: string;
-  hvscPath: string; // physical HVSC root
+  sidPath: string; // physical HVSC root
   collectionRoot: string;
   musicRoot: string;
   tagsPath: string;
@@ -23,7 +23,7 @@ export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment>
   return {
     config: context.config,
     root,
-    hvscPath: context.hvscRoot,
+    sidPath: context.hvscRoot,
     collectionRoot: context.collectionRoot,
     musicRoot: context.collectionRoot,
     tagsPath: context.tagsPath,
@@ -69,7 +69,7 @@ export async function resolveSidPath(
   }
 
   const normalized = trimmed.replace(/^\.\/+/, '');
-  const direct = path.join(env.hvscPath, normalized);
+  const direct = path.join(env.sidPath, normalized);
   if (await pathExists(direct)) {
     return direct;
   }
@@ -93,7 +93,7 @@ export async function createRateTrackInfo(options: {
   const metadata = await parseSidFile(sidPath);
   const durationSeconds = parseDurationSeconds(lengthHint);
   const fileSize = (await stat(sidPath)).size;
-  const relativeRoot = relativeBase === 'hvsc' ? env.hvscPath : env.collectionRoot;
+  const relativeRoot = relativeBase === 'hvsc' ? env.sidPath : env.collectionRoot;
   const relativePath = path.relative(relativeRoot, sidPath);
   return {
     sidPath,

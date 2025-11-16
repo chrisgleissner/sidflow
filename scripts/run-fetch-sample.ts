@@ -99,7 +99,7 @@ async function main(): Promise<void> {
 
     const configPath = path.join(working, "sample.sidflow.json");
     const config: SidflowConfig = {
-      hvscPath: hvscDir,
+      sidPath: hvscDir,
       wavCachePath: wavCache,
       tagsPath,
       threads: 0,

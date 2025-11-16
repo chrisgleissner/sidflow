@@ -10,6 +10,11 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
 - Update the plan and progress sections as work proceeds.
 - Record assumptions, decisions, and known gaps so future contributors can continue smoothly.
 
+## TOC
+
+<!-- TOC -->
+<!-- /TOC -->
+
 ## How to use this file
 
 For each substantial user request or multi‑step feature, create a new Task section like this:
@@ -49,6 +54,46 @@ Guidelines:
 - Progress through steps sequentially. Do not start on a step until all previous steps are done and their test coverage exceeds 90%.
 - Perform a full build after the final task of a step. If any errors occur, fix them and rerun all tests until they are green. 
 - Then Git commit and push all changes with a conventional commit message indicating the step is complete.
+
+## Maintenance rules (required for all agents)
+
+### Table of Contents
+
+- Maintain an automatically generated TOC using the “<!-- TOC --> … <!-- /TOC -->” block at the top of this file.
+- After adding, removing, or renaming a Task section, regenerate the TOC using the standard Markdown All-in-One command.
+- Do not manually edit TOC entries.
+
+### Pruning and archiving
+
+To prevent uncontrolled growth of this file:
+
+- Keep only active tasks and the last 2–3 days of progress logs in this file.
+- When a Task is completed, move the entire Task section to `doc/plans/archive/YYYY-MM-DD-<task-name>.md`.
+- When progress logs exceed 30 lines, summarize older entries into a single “Historical summary” bullet at the bottom of the Task.
+- Do not delete information; always archive it.
+
+### Structure rules
+
+- Each substantial task must begin with a second-level header:
+
+  `## Task: <short title>`
+
+- Sub-sections must follow this order:
+  - User request (summary)
+  - Context and constraints
+  - Plan (checklist)
+  - Progress log
+  - Assumptions and open questions
+  - Follow-ups / future work
+
+- Agents must not introduce new section layouts.
+
+### Plan-then-act contract
+
+- Agents must keep the checklist strictly synchronized with actual work.  
+- Agents must append short progress notes after each major step.  
+- Agents must ensure that Build, Lint/Typecheck, and Tests are PASS before a Task is marked complete.  
+- All assumptions must be recorded in the “Assumptions and open questions” section.
 
 # SIDFlow Execution Plan (ExecPlan)
 
@@ -272,7 +317,7 @@ When beginning a task:
 - WebPreferences system for user settings; preferences API for storage
 - SIDFlow has trained ML models for rating predictions (E/M/C dimensions)
 - HVSC collection is hierarchical (MUSICIANS → Artist → Song files)
-- Folder paths are relative to `hvscPath` from config
+- Folder paths are relative to `sidPath` from config
 - Feedback/rating system exists (explicit ratings via rate API, implicit via feedback recorder)
 
 **Plan (checklist)**
@@ -487,6 +532,35 @@ When beginning a task:
 **Follow-ups / future work**
 - Consider serving SID fixtures from `/virtual` HTTP endpoints instead of data URLs to avoid CSP relaxations entirely.
 - Revisit screenshot harness to isolate failures per tab (separate contexts) so one crash doesn’t cascade.
+
+## Task: SID collection path refresh & Play screenshot fix
+
+**User request (summary)**
+- Eliminate remaining Play tab screenshot failures (404 banner) by ensuring the SID browser can read the sample collection during tests.
+- Remove `sidPath` entirely across configs/APIs/UI and replace it with a single `sidPath` field (no backward compatibility).
+
+**Context and constraints**
+- `.sidflow.json` must now expose only `sidPath`; every consumer (config loader, APIs, UI, scripts) needs to read that field.
+- Playwright screenshots stub `/api/config/hvsc`; the UI still expects `sidPath`/`musicPath` fields, resulting in mismatched paths when using generic SID folders.
+- Fetch CLI remains HVSC-specific, but it should emit `sidPath` in generated configs rather than `sidPath`.
+- Tests rely on `test-data/C64Music`; screenshot fixtures run without launching the full fetch/classify pipeline and must remain deterministic.
+
+- [x] Step 1 — Investigate the `07-play` screenshot failure: review Playwright logs, mocked API responses, and server routes to pinpoint the 404 source.
+- [ ] Step 2 — Replace every `sidPath` usage (config loader, APIs, scripts, UI) with a canonical `sidPath`, removing legacy handling entirely.
+- [ ] Step 3 — Update Play tab browser components, preferences UI, and screenshot fixtures to consume `sidPath` and resolve paths against `test-data/C64Music`.
+- [ ] Step 4 — Migrate repo configs (`.sidflow.json`, `.sidflow.test.json`) plus docs to the new terminology; ensure no mention of `sidPath` remains.
+- [ ] Step 5 — Run targeted validations (`bun run build`, focused unit tests, Playwright screenshot suite) to confirm the renamed fields and path resolution behave as expected and the screenshot no longer shows 404.
+
+**Progress log**
+- 2025-11-16 — Task created; planning in progress.
+- 2025-11-16 — Updated plan per new requirement: remove `sidPath` entirely (no backward compatibility) and marked investigation step complete.
+
+**Assumptions and open questions**
+- Assumption: Immediate `sidPath` rollout is acceptable because user explicitly dropped backward compatibility.
+- Open question: None; proceed directly with full rename.
+
+**Follow-ups / future work**
+- Audit CLI help text and documentation to ensure “HVSC” references remain only where truly HVSC-specific (e.g., fetch command).
 
 ## Notes on agent behavior
 

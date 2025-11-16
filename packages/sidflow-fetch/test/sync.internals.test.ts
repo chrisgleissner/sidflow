@@ -46,7 +46,7 @@ describe("sync internals", () => {
   it("resolves the version metadata path", async () => {
     const dir = await createTempDir();
     const config = {
-      hvscPath: path.join(dir, "hvsc"),
+      sidPath: path.join(dir, "hvsc"),
       wavCachePath: path.join(dir, "wav"),
       tagsPath: path.join(dir, "tags"),
       sidplayPath: "/usr/bin/sidplayfp",

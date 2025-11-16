@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         }
 
         const fileStats = await stat(similar.sid_path);
-        const length = await lookupSongLength(similar.sid_path, env.hvscPath, env.musicRoot);
+        const length = await lookupSongLength(similar.sid_path, env.sidPath, env.musicRoot);
 
         const track = await createRateTrackInfo({
           env,

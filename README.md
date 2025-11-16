@@ -176,11 +176,11 @@ If you prefer automation or terminal workflows, use the CLI tools documented in 
 
 ## Config
 
-The `.sidflow.json` file contains details about the HVSC download folder and more:
+The `.sidflow.json` file defines where SIDFlow should read your SID collection along with other runtime paths:
 
 ```json
 {
-  "hvscPath": "./workspace/hvsc",
+  "sidPath": "./workspace/hvsc",
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "threads": 0,

@@ -21,12 +21,12 @@ import {
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-auto-tags-");
 
-function createPlan(hvscPath: string, wavCachePath: string, tagsPath: string): ClassificationPlan {
+function createPlan(sidPath: string, wavCachePath: string, tagsPath: string): ClassificationPlan {
   return {
     config: {} as ClassificationPlan["config"],
     forceRebuild: false,
     classificationDepth: 3,
-    hvscPath,
+    sidPath,
     wavCachePath,
     tagsPath
   } as unknown as ClassificationPlan;
@@ -35,22 +35,22 @@ function createPlan(hvscPath: string, wavCachePath: string, tagsPath: string): C
 describe("generateAutoTags", () => {
   it("merges manual and auto tags respecting precedence", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await Promise.all([
-      mkdir(path.join(hvscPath, "C64Music", "MUSICIANS", "A"), { recursive: true }),
-      mkdir(path.join(hvscPath, "C64Music", "MUSICIANS", "B"), { recursive: true }),
+      mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "A"), { recursive: true }),
+      mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "B"), { recursive: true }),
       mkdir(wavCachePath, { recursive: true }),
       mkdir(tagsPath, { recursive: true })
     ]);
 
-    const plan = createPlan(hvscPath, wavCachePath, tagsPath);
-    const manualSid = path.join(hvscPath, "C64Music", "MUSICIANS", "A", "Manual.sid");
-    const autoSid = path.join(hvscPath, "C64Music", "MUSICIANS", "B", "Auto.sid");
+    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const manualSid = path.join(sidPath, "C64Music", "MUSICIANS", "A", "Manual.sid");
+    const autoSid = path.join(sidPath, "C64Music", "MUSICIANS", "B", "Auto.sid");
     await Promise.all([writeFile(manualSid, "manual"), writeFile(autoSid, "auto")]);
 
-    const manualTagPath = resolveManualTagPath(hvscPath, tagsPath, manualSid);
+    const manualTagPath = resolveManualTagPath(sidPath, tagsPath, manualSid);
     await ensureDir(path.dirname(manualTagPath));
     await writeFile(
       manualTagPath,
@@ -97,11 +97,11 @@ describe("generateAutoTags", () => {
     expect(result.metrics.predictionsGenerated).toBe(1);
     expect(result.metrics.durationMs).toBeGreaterThanOrEqual(0);
 
-    const manualMetadataPath = resolveMetadataPath(hvscPath, tagsPath, manualSid);
+    const manualMetadataPath = resolveMetadataPath(sidPath, tagsPath, manualSid);
     const manualMetadata = JSON.parse(await readFile(manualMetadataPath, "utf8")) as Record<string, unknown>;
     expect(manualMetadata).toEqual(metadataByFile[manualSid] as Record<string, unknown>);
 
-    const autoMetadataPath = resolveMetadataPath(hvscPath, tagsPath, autoSid);
+    const autoMetadataPath = resolveMetadataPath(sidPath, tagsPath, autoSid);
     const autoMetadata = JSON.parse(await readFile(autoMetadataPath, "utf8")) as Record<string, unknown>;
     expect(autoMetadata).toEqual(metadataByFile[autoSid] as Record<string, unknown>);
 
@@ -122,20 +122,20 @@ describe("generateAutoTags", () => {
 
   it("fills missing manual fields using predictions", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await Promise.all([
-      mkdir(path.join(hvscPath, "C64Music", "MUSICIANS", "C"), { recursive: true }),
+      mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "C"), { recursive: true }),
       mkdir(wavCachePath, { recursive: true }),
       mkdir(tagsPath, { recursive: true })
     ]);
 
-    const plan = createPlan(hvscPath, wavCachePath, tagsPath);
-    const sidFile = path.join(hvscPath, "C64Music", "MUSICIANS", "C", "Mixed.sid");
+    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const sidFile = path.join(sidPath, "C64Music", "MUSICIANS", "C", "Mixed.sid");
     await writeFile(sidFile, "mixed");
 
-    const tagPath = resolveManualTagPath(hvscPath, tagsPath, sidFile);
+    const tagPath = resolveManualTagPath(sidPath, tagsPath, sidFile);
     await ensureDir(path.dirname(tagPath));
     await writeFile(
       tagPath,

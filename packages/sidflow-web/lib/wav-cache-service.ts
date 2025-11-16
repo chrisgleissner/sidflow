@@ -39,7 +39,7 @@ async function getPlan(): Promise<ClassificationPlan> {
       const plan = await planClassification({ configPath });
       return {
         ...plan,
-        hvscPath: resolveFromRepoRoot(plan.hvscPath),
+        sidPath: resolveFromRepoRoot(plan.sidPath),
         wavCachePath: resolveFromRepoRoot(plan.wavCachePath),
         tagsPath: resolveFromRepoRoot(plan.tagsPath),
       } satisfies ClassificationPlan;

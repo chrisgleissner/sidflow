@@ -65,7 +65,7 @@ The `sidflow-fetch` CLI synchronizes your local HVSC mirror:
 import { syncHvsc } from "@sidflow/fetch";
 
 const result = await syncHvsc({
-  hvscPath: "./workspace/hvsc",
+  sidPath: "./workspace/hvsc",
   mirrorUrl: "https://www.hvsc.de/downloads",
   force: false,
   onProgress: (status) => {
@@ -93,7 +93,7 @@ The HVSC path is configured in `.sidflow.json`:
 
 ```json
 {
-  "hvscPath": "./workspace/hvsc"
+  "sidPath": "./workspace/hvsc"
 }
 ```
 
@@ -155,7 +155,7 @@ After fetching HVSC content, you can:
 Synchronize local HVSC mirror with remote.
 
 **Parameters:**
-- `options.hvscPath` — Local HVSC directory path
+- `options.sidPath` — Local HVSC directory path
 - `options.mirrorUrl` — HVSC mirror base URL (optional)
 - `options.force` — Force complete re-download (optional)
 - `options.onProgress` — Progress callback (optional)
@@ -168,13 +168,13 @@ Fetch the list of available HVSC archives from the mirror.
 
 **Returns:** `Promise<HvscManifest>`
 
-### `loadHvscVersion(hvscPath)`
+### `loadHvscVersion(sidPath)`
 
 Load version information from local HVSC directory.
 
 **Returns:** `Promise<HvscVersion | null>`
 
-### `saveHvscVersion(hvscPath, version)`
+### `saveHvscVersion(sidPath, version)`
 
 Save version information to local HVSC directory.
 

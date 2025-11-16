@@ -209,7 +209,7 @@ export async function requestStationFromSong(
 }
 
 export interface HvscPathsPayload {
-  hvscPath: string;
+  sidPath: string;
   musicPath: string;
   activeCollectionPath: string;
   preferenceSource: 'default' | 'custom';

@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     });
 
     const env = await resolvePlaybackEnvironment();
-    const sidPath = await pickRandomSid(env.hvscPath, env.collectionRoot, preset);
+    const sidPath = await pickRandomSid(env.sidPath, env.collectionRoot, preset);
 
     if (!sidPath || !(await pathExists(sidPath))) {
       const response: ApiResponse = {
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
     }
 
     const fileStats = await stat(sidPath);
-    const length = await lookupSongLength(sidPath, env.hvscPath, env.musicRoot);
+    const length = await lookupSongLength(sidPath, env.sidPath, env.musicRoot);
 
     const track = await createRateTrackInfo({
       env,

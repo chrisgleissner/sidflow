@@ -142,7 +142,7 @@ function formatSongLabel(
   songCount: number,
   songIndex: number
 ): string {
-  const relative = toPosixRelative(path.relative(plan.hvscPath, sidFile));
+  const relative = toPosixRelative(path.relative(plan.sidPath, sidFile));
   if (songCount > 1) {
     return `${relative} [${songIndex}]`;
   }
@@ -160,7 +160,7 @@ export interface ClassificationPlan {
   tagsPath: string;
   forceRebuild: boolean;
   classificationDepth: number;
-  hvscPath: string;
+  sidPath: string;
 }
 
 export async function planClassification(
@@ -174,7 +174,7 @@ export async function planClassification(
     tagsPath: config.tagsPath,
     forceRebuild: options.forceRebuild ?? false,
     classificationDepth: config.classificationDepth,
-    hvscPath: config.hvscPath
+    sidPath: config.sidPath
   };
 }
 
@@ -194,9 +194,9 @@ export function resolveWavPath(
   sidFile: string,
   songIndex?: number
 ): string {
-  const relative = path.relative(plan.hvscPath, sidFile);
+  const relative = path.relative(plan.sidPath, sidFile);
   if (relative.startsWith("..")) {
-    throw new Error(`SID file ${sidFile} is not within HVSC path ${plan.hvscPath}`);
+    throw new Error(`SID file ${sidFile} is not within HVSC path ${plan.sidPath}`);
   }
 
   const directory = path.dirname(relative);
@@ -326,9 +326,9 @@ export async function buildWavCache(
   options: BuildWavCacheOptions = {}
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
-  const sidFiles = await collectSidFiles(plan.hvscPath);
+  const sidFiles = await collectSidFiles(plan.sidPath);
   classifyLogger.debug(
-    `collectSidFiles found ${sidFiles.length} SID files in ${plan.hvscPath}`
+    `collectSidFiles found ${sidFiles.length} SID files in ${plan.sidPath}`
   );
   const rendered: string[] = [];
   const skipped: string[] = [];
@@ -343,9 +343,9 @@ export async function buildWavCache(
     if (existing) {
       return existing;
     }
-    const pending = lookupSongDurationsMs(sidFile, plan.hvscPath).catch((error) => {
+    const pending = lookupSongDurationsMs(sidFile, plan.sidPath).catch((error) => {
       classifyLogger.warn(
-        `Failed to resolve song length for ${path.relative(plan.hvscPath, sidFile)}: ${(error as Error).message}`
+        `Failed to resolve song length for ${path.relative(plan.sidPath, sidFile)}: ${(error as Error).message}`
       );
       return undefined;
     });
@@ -697,11 +697,11 @@ interface ManualTagRecord {
 }
 
 async function loadManualTagRecord(
-  hvscPath: string,
+  sidPath: string,
   tagsPath: string,
   sidFile: string
 ): Promise<ManualTagRecord | null> {
-  const tagPath = resolveManualTagPath(hvscPath, tagsPath, sidFile);
+  const tagPath = resolveManualTagPath(sidPath, tagsPath, sidFile);
   if (!(await pathExists(tagPath))) {
     return null;
   }
@@ -848,7 +848,7 @@ async function writeMetadataRecord(
   metadata: SidMetadata,
   cachedFullMetadata?: SidFileMetadata
 ): Promise<string> {
-  const metadataPath = resolveMetadataPath(plan.hvscPath, plan.tagsPath, sidFile);
+  const metadataPath = resolveMetadataPath(plan.sidPath, plan.tagsPath, sidFile);
   await ensureDir(path.dirname(metadataPath));
 
   // Build metadata object with simple fields
@@ -935,7 +935,7 @@ export async function generateAutoTags(
   options: GenerateAutoTagsOptions = {}
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
-  const sidFiles = await collectSidFiles(plan.hvscPath);
+  const sidFiles = await collectSidFiles(plan.sidPath);
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
@@ -958,7 +958,7 @@ export async function generateAutoTags(
   let metadataProcessed = 0;
 
   for (const sidFile of sidFiles) {
-    const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
+    const relativePath = resolveRelativeSidPath(plan.sidPath, sidFile);
     const posixRelative = toPosixRelative(relativePath);
 
     const metadata = await extractMetadata({
@@ -971,7 +971,7 @@ export async function generateAutoTags(
     metadataFiles.push(metadataPath);
 
     const songCount = fullMetadata?.songs ?? 1;
-    const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
+    const manualRecord = await loadManualTagRecord(plan.sidPath, plan.tagsPath, sidFile);
 
     for (let songIndex = 1; songIndex <= songCount; songIndex++) {
       if (onProgress && metadataProcessed % AUTOTAG_PROGRESS_INTERVAL === 0) {
@@ -1177,7 +1177,7 @@ export async function generateJsonlOutput(
   options: GenerateJsonlOptions = {}
 ): Promise<GenerateJsonlResult> {
   const startTime = Date.now();
-  const sidFiles = await collectSidFiles(plan.hvscPath);
+  const sidFiles = await collectSidFiles(plan.sidPath);
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? heuristicFeatureExtractor;
   const predictRatings = options.predictRatings ?? heuristicPredictRatings;
@@ -1199,7 +1199,7 @@ export async function generateJsonlOutput(
   let processedSongs = 0;
 
   for (const sidFile of sidFiles) {
-    const relativePath = resolveRelativeSidPath(plan.hvscPath, sidFile);
+    const relativePath = resolveRelativeSidPath(plan.sidPath, sidFile);
     const posixRelative = toPosixRelative(relativePath);
 
     // Load metadata once per SID file
@@ -1227,7 +1227,7 @@ export async function generateJsonlOutput(
       }
 
       // Load manual ratings if available
-      const manualRecord = await loadManualTagRecord(plan.hvscPath, plan.tagsPath, sidFile);
+      const manualRecord = await loadManualTagRecord(plan.sidPath, plan.tagsPath, sidFile);
 
       // Extract features and generate ratings for this song
       const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);

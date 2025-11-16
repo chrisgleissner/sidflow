@@ -8,18 +8,18 @@ export async function GET() {
   try {
     const config = await getSidflowConfig();
     const root = getRepoRoot();
-    const hvscPath = path.resolve(root, config.hvscPath);
-    const musicPath = path.join(hvscPath, 'C64Music');
+    const sidPath = path.resolve(root, config.sidPath);
+    const musicPath = path.join(sidPath, 'C64Music');
     const collectionContext = await resolveSidCollectionContext();
     const response: ApiResponse<{
-      hvscPath: string;
+      sidPath: string;
       musicPath: string;
       activeCollectionPath: string;
       preferenceSource: 'default' | 'custom';
     }> = {
       success: true,
       data: {
-        hvscPath,
+        sidPath,
         musicPath,
         activeCollectionPath: collectionContext.collectionRoot,
         preferenceSource: collectionContext.preferenceSource,

@@ -3,28 +3,28 @@ import path from "node:path";
 export const MANUAL_TAG_EXTENSION = ".sid.tags.json" as const;
 export const METADATA_EXTENSION = ".sid.meta.json" as const;
 
-function assertSidWithinHvsc(hvscPath: string, sidFile: string): string {
-  const relative = path.relative(hvscPath, sidFile);
+function assertSidWithinHvsc(sidPath: string, sidFile: string): string {
+  const relative = path.relative(sidPath, sidFile);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`SID file ${sidFile} is not within HVSC path ${hvscPath}`);
+    throw new Error(`SID file ${sidFile} is not within HVSC path ${sidPath}`);
   }
   return relative;
 }
 
-export function resolveRelativeSidPath(hvscPath: string, sidFile: string): string {
-  return assertSidWithinHvsc(hvscPath, sidFile);
+export function resolveRelativeSidPath(sidPath: string, sidFile: string): string {
+  return assertSidWithinHvsc(sidPath, sidFile);
 }
 
-export function resolveManualTagPath(hvscPath: string, tagsPath: string, sidFile: string): string {
-  const relative = resolveRelativeSidPath(hvscPath, sidFile);
+export function resolveManualTagPath(sidPath: string, tagsPath: string, sidFile: string): string {
+  const relative = resolveRelativeSidPath(sidPath, sidFile);
   const directory = path.dirname(relative);
   const baseName = path.basename(sidFile, ".sid");
   const filename = `${baseName}${MANUAL_TAG_EXTENSION}`;
   return path.join(tagsPath, directory, filename);
 }
 
-export function resolveMetadataPath(hvscPath: string, tagsPath: string, sidFile: string): string {
-  const relative = resolveRelativeSidPath(hvscPath, sidFile);
+export function resolveMetadataPath(sidPath: string, tagsPath: string, sidFile: string): string {
+  const relative = resolveRelativeSidPath(sidPath, sidFile);
   const directory = path.dirname(relative);
   const baseName = path.basename(sidFile, ".sid");
   const filename = `${baseName}${METADATA_EXTENSION}`;

@@ -149,7 +149,7 @@ Each command can be run via the command line interface from the repository root.
 
 **Outputs**
 
-- Updated SID tree under `hvscPath`  
+- Updated SID tree under `sidPath`  
 - Refreshed `hvsc-version.json` containing version and checksum data  
 
 ---
@@ -1166,7 +1166,7 @@ The configuration file controls all paths and settings:
 
 ```json
 {
-  "hvscPath": "./workspace/hvsc",
+  "sidPath": "./workspace/hvsc",
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./workspace/classified",
@@ -1194,7 +1194,7 @@ The configuration file controls all paths and settings:
 
 **Field descriptions:**
 
-- `hvscPath` — Root directory for SID files (can be HVSC or custom collection)
+- `sidPath` — Root directory for SID files (can be HVSC or custom collection)
 - `wavCachePath` — Cache directory for converted WAV files
 - `tagsPath` — Directory for manual and auto-generated rating tags
 - `classifiedPath` — Output directory for JSONL classification files

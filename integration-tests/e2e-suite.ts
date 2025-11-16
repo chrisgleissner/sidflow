@@ -106,7 +106,7 @@ async function listSidFiles(dir: string): Promise<string[]> {
 
 describe("End-to-End SIDFlow Pipeline", () => {
   let tempRoot: string;
-  let hvscPath: string;
+  let sidPath: string;
   let wavCachePath: string;
   let tagsPath: string;
   let classifiedPath: string;
@@ -124,7 +124,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
     // Create temporary directories
     tempRoot = await mkdtemp(TEMP_PREFIX);
-    hvscPath = path.join(tempRoot, "hvsc");
+    sidPath = path.join(tempRoot, "hvsc");
     wavCachePath = path.join(tempRoot, "wav-cache");
     tagsPath = path.join(tempRoot, "tags");
     classifiedPath = path.join(tempRoot, "classified");
@@ -132,10 +132,10 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
     // Copy test SID files to temp hvsc directory
     const testDataSrc = path.join(TEST_DATA_PATH, "C64Music");
-    const testDataDest = path.join(hvscPath, "C64Music");
+    const testDataDest = path.join(sidPath, "C64Music");
 
     // Create hvsc directory first
-    await mkdir(hvscPath, { recursive: true });
+    await mkdir(sidPath, { recursive: true });
 
     // Use shell to copy the entire directory structure
     const copyResult = await Bun.spawn(["cp", "-r", testDataSrc, testDataDest]).exited;
@@ -143,7 +143,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
       throw new Error("Failed to copy test data");
     }
 
-    const sidFiles = await listSidFiles(hvscPath);
+    const sidFiles = await listSidFiles(sidPath);
     sidFileCount = sidFiles.length;
     totalSongCount = 0;
 
@@ -158,7 +158,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
     // Create config
     const config = {
-      hvscPath,
+      sidPath,
       wavCachePath,
       tagsPath,
       classifiedPath,
@@ -220,11 +220,11 @@ describe("End-to-End SIDFlow Pipeline", () => {
     const fullWavPath = path.join(wavCachePath, wavFile!);
     const relativeWavPath = wavFile!;
     const sidRelativeWithIndex = relativeWavPath.replace(/\.wav$/i, ".sid");
-    let sidFile = path.join(hvscPath, sidRelativeWithIndex);
+    let sidFile = path.join(sidPath, sidRelativeWithIndex);
 
     if (!existsSync(sidFile)) {
       const sidRelativeWithoutIndex = sidRelativeWithIndex.replace(/-(\d+)\.sid$/i, ".sid");
-      const fallback = path.join(hvscPath, sidRelativeWithoutIndex);
+      const fallback = path.join(sidPath, sidRelativeWithoutIndex);
       if (existsSync(fallback)) {
         sidFile = fallback;
       } else {
@@ -308,7 +308,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
   it("creates playback controller with classified songs", () => {
     const controller = createPlaybackController({
-      rootPath: hvscPath
+      rootPath: sidPath
     });
 
     expect(controller).toBeDefined();
@@ -317,7 +317,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
 
   it("loads queue with mock recommendations", () => {
     const controller = createPlaybackController({
-      rootPath: hvscPath
+      rootPath: sidPath
     });
 
     // Mock recommendations based on classified songs

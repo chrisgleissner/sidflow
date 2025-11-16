@@ -55,7 +55,7 @@ describe('server-env config resolution', () => {
         const tempDir = await mkdtemp(path.join(os.tmpdir(), 'sidflow-config-'));
         const tempConfigPath = path.join(tempDir, 'config.json');
         const configPayload: SidflowConfig = {
-            hvscPath: tempDir,
+            sidPath: tempDir,
             wavCachePath: tempDir,
             tagsPath: tempDir,
             threads: 1,
@@ -65,7 +65,7 @@ describe('server-env config resolution', () => {
         await writeFile(tempConfigPath, JSON.stringify(configPayload), 'utf8');
 
         const config = await getSidflowConfig(tempConfigPath);
-        expect(config.hvscPath).toBe(tempDir);
+        expect(config.sidPath).toBe(tempDir);
         expect(config.wavCachePath).toBe(tempDir);
 
         await rm(tempDir, { recursive: true, force: true });

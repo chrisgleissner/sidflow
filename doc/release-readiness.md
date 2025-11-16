@@ -158,7 +158,7 @@ npm install @sidflow/common
 import { loadConfig } from '@sidflow/common';
 
 const config = await loadConfig('/path/to/.sidflow.json');
-console.log(config.hvscPath);
+console.log(config.sidPath);
 ```
 
 **Resolution Required:**

@@ -181,8 +181,8 @@ const ratePlaybackStatusSample: RatePlaybackStatus = {
   track: sampleTrackInfo,
 };
 
-const hvscPathsPayload: HvscPathsPayload = {
-  hvscPath: '/hvsc',
+const sidPathsPayload: HvscPathsPayload = {
+  sidPath: '/hvsc',
   musicPath: '/hvsc/MUSIC',
   activeCollectionPath: '/collections/active',
   preferenceSource: 'default',
@@ -379,7 +379,7 @@ describe('api-client fetch wrappers', () => {
   });
 
   it('getHvscPaths retrieves configured HVSC paths', async () => {
-    const response: ApiResponse<HvscPathsPayload> = { success: true, data: hvscPathsPayload };
+    const response: ApiResponse<HvscPathsPayload> = { success: true, data: sidPathsPayload };
     mockFetch(response);
 
     const result = await getHvscPaths();

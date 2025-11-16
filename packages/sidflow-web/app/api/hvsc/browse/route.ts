@@ -53,9 +53,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<HvscBrowse
     const searchParams = request.nextUrl.searchParams;
     const requestedPath = searchParams.get("path") || "";
 
-    // Load config to get hvscPath
+    // Load config to get sidPath
     const config = await loadConfig();
-    const hvscRoot = config.hvscPath;
+    const hvscRoot = config.sidPath;
 
     if (!hvscRoot) {
       return NextResponse.json({

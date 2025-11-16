@@ -158,7 +158,7 @@ describe("runPlayCli", () => {
     let sessionEnds = 0;
 
     const config = {
-      hvscPath: "/music",
+      sidPath: "/music",
       wavCachePath: "/wav",
       tagsPath: "/tags",
       threads: 4,
@@ -307,7 +307,7 @@ describe("runPlayCli", () => {
     ], {
       stdout,
       loadConfig: async () => ({
-        hvscPath: "/music",
+        sidPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
@@ -363,7 +363,7 @@ describe("runPlayCli", () => {
     const exitCode = await runPlayCli(["--mood", "unknown"], {
       stderr,
       loadConfig: async () => ({
-        hvscPath: "/music",
+        sidPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
@@ -411,7 +411,7 @@ describe("runPlayCli", () => {
     const exitCode = await runPlayCli([], {
       stderr,
       loadConfig: async () => ({
-        hvscPath: "/music",
+        sidPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
@@ -466,7 +466,7 @@ describe("runPlayCli", () => {
     const exitCode = await runPlayCli(["--filters", "invalid"], {
       stderr,
       loadConfig: async () => ({
-        hvscPath: "/music",
+        sidPath: "/music",
         wavCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,

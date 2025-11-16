@@ -23,7 +23,7 @@ Install dependencies once: `bun install`.
 
 | Key | Purpose |
 | --- | --- |
-| `hvscPath` | Mirrors the HVSC tree produced by `sidflow fetch`. |
+| `sidPath` | Mirrors the HVSC tree produced by `sidflow fetch`. |
 | `wavCachePath` | Receives rendered WAV files. |
 | `tagsPath` | Stores manual and automatic tag files. |
 | `threads` | Worker pool size (`0` = auto). |
@@ -110,7 +110,7 @@ workspace/
   hvsc/          # HVSC mirror maintained by fetch CLI
   wav-cache/     # WAV renders and audio features (future phases)
   tags/          # Manual and auto-generated tags
-hvsc-version.json  # Version manifest stored alongside hvscPath
+hvsc-version.json  # Version manifest stored alongside sidPath
 
 The entire `workspace/` directory is git-ignored; keep long-lived local mirrors and experiments there without touching version control.
 ```

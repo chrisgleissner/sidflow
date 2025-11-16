@@ -3,7 +3,7 @@ export async function createFetchBootstrap(options = {}) {
     const config = await loadConfig(options.configPath);
     return {
         config,
-        hvscPath: config.hvscPath,
+        sidPath: config.sidPath,
         wavCachePath: config.wavCachePath,
         tagsPath: config.tagsPath
     };

@@ -51,7 +51,8 @@ export interface AlertConfig {
 }
 
 export interface SidflowConfig {
-  hvscPath: string;
+  /** Canonical SID collection root */
+  sidPath: string;
   wavCachePath: string;
   tagsPath: string;
   classifiedPath?: string;
@@ -126,7 +127,8 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
   const config = validateConfig(data, resolvedPath);
   const overrideSidBase = process.env.SIDFLOW_SID_BASE_PATH;
   if (overrideSidBase && overrideSidBase.trim().length > 0) {
-    config.hvscPath = path.normalize(overrideSidBase);
+    const normalizedOverride = path.normalize(overrideSidBase);
+    config.sidPath = normalizedOverride;
   }
 
   if (config.sidplayPath && !sidplayWarningEmitted) {
@@ -196,8 +198,10 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     return path.normalize(raw);
   };
 
+  const sidPath = requiredString("sidPath");
+
   return {
-    hvscPath: requiredString("hvscPath"),
+    sidPath,
     wavCachePath: requiredString("wavCachePath"),
     tagsPath: requiredString("tagsPath"),
     classifiedPath: optionalString("classifiedPath"),

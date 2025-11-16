@@ -30,7 +30,7 @@ export interface TagSessionPlan {
   config: SidflowConfig;
   random: boolean;
   tagsPath: string;
-  hvscPath: string;
+  sidPath: string;
 }
 
 export async function planTagSession(
@@ -44,12 +44,12 @@ export async function planTagSession(
     config,
     random: options.random ?? false,
     tagsPath: config.tagsPath,
-    hvscPath: config.hvscPath
+    sidPath: config.sidPath
   };
 }
 
-export function createTagFilePath(hvscPath: string, tagsPath: string, sidFile: string): string {
-  return resolveManualTagPath(hvscPath, tagsPath, sidFile);
+export function createTagFilePath(sidPath: string, tagsPath: string, sidFile: string): string {
+  return resolveManualTagPath(sidPath, tagsPath, sidFile);
 }
 
 export async function ensureDirectory(filePath: string): Promise<void> {
@@ -110,7 +110,7 @@ export async function writeManualTag(
   await writeFile(tagFilePath, stringifyDeterministic(record));
 }
 
-export async function findUntaggedSids(hvscPath: string, tagsPath: string): Promise<string[]> {
+export async function findUntaggedSids(sidPath: string, tagsPath: string): Promise<string[]> {
   const results: string[] = [];
 
   async function walk(current: string): Promise<void> {
@@ -127,19 +127,19 @@ export async function findUntaggedSids(hvscPath: string, tagsPath: string): Prom
       if (!fullPath.toLowerCase().endsWith(".sid")) {
         continue;
       }
-      const tagPath = resolveManualTagPath(hvscPath, tagsPath, fullPath);
+      const tagPath = resolveManualTagPath(sidPath, tagsPath, fullPath);
       if (!(await tagFileExists(tagPath))) {
         results.push(fullPath);
       }
     }
   }
 
-  const rootStats = await stat(hvscPath);
+  const rootStats = await stat(sidPath);
   if (!rootStats.isDirectory()) {
     return results;
   }
 
-  await walk(hvscPath);
+  await walk(sidPath);
   results.sort((a, b) => a.localeCompare(b));
   return results;
 }

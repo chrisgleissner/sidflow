@@ -12,32 +12,32 @@ import {
 } from "@sidflow/common";
 
 describe("tag path helpers", () => {
-  const hvscPath = path.join("/repo", "hvsc");
+  const sidPath = path.join("/repo", "hvsc");
   const tagsPath = path.join("/repo", "tags");
 
   it("computes relative sid paths", () => {
-    const sidFile = path.join(hvscPath, "C64Music", "Authors", "Track.sid");
-    expect(resolveRelativeSidPath(hvscPath, sidFile)).toBe(
+    const sidFile = path.join(sidPath, "C64Music", "Authors", "Track.sid");
+    expect(resolveRelativeSidPath(sidPath, sidFile)).toBe(
       path.join("C64Music", "Authors", "Track.sid")
     );
   });
 
   it("throws when sid file is outside hvsc path", () => {
     expect(() => {
-      resolveRelativeSidPath(hvscPath, path.join("/tmp", "song.sid"));
+      resolveRelativeSidPath(sidPath, path.join("/tmp", "song.sid"));
     }).toThrow("SID file");
   });
 
   it("resolves manual tag path mirroring hvsc layout", () => {
-    const sidFile = path.join(hvscPath, "C64Music", "Authors", "Track.sid");
-    expect(resolveManualTagPath(hvscPath, tagsPath, sidFile)).toBe(
+    const sidFile = path.join(sidPath, "C64Music", "Authors", "Track.sid");
+    expect(resolveManualTagPath(sidPath, tagsPath, sidFile)).toBe(
       path.join(tagsPath, "C64Music", "Authors", "Track.sid.tags.json")
     );
   });
 
   it("resolves metadata path beside manual tags", () => {
-    const sidFile = path.join(hvscPath, "Track.sid");
-    expect(resolveMetadataPath(hvscPath, tagsPath, sidFile)).toBe(
+    const sidFile = path.join(sidPath, "Track.sid");
+    expect(resolveMetadataPath(sidPath, tagsPath, sidFile)).toBe(
       path.join(tagsPath, "Track.sid.meta.json")
     );
   });

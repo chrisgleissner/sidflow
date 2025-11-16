@@ -20,7 +20,7 @@ describe("planTagSession", () => {
     const dir = await mkdtemp(TEMP_PREFIX);
     const configPath = path.join(dir, ".sidflow.json");
     const payload = {
-      hvscPath: "./hvsc",
+      sidPath: "./hvsc",
       wavCachePath: "./wav",
       tagsPath: "./tags",
       threads: 4,
@@ -37,28 +37,28 @@ describe("planTagSession", () => {
 
 describe("tagging workflow helpers", () => {
   it("resolves tag file paths relative to HVSC root", () => {
-    const hvscPath = "/workspace/hvsc";
+    const sidPath = "/workspace/hvsc";
     const tagsPath = "/workspace/tags";
     const sidFile = "/workspace/hvsc/C64Music/first.sid";
     const expected = path.join(tagsPath, "C64Music", "first.sid.tags.json");
-    expect(createTagFilePath(hvscPath, tagsPath, sidFile)).toBe(expected);
+    expect(createTagFilePath(sidPath, tagsPath, sidFile)).toBe(expected);
   });
 
   it("finds untagged SIDs and skips tagged ones", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const tagsPath = path.join(root, "tags");
-    await Promise.all([mkdir(hvscPath, { recursive: true }), mkdir(tagsPath, { recursive: true })]);
+    await Promise.all([mkdir(sidPath, { recursive: true }), mkdir(tagsPath, { recursive: true })]);
 
-    const firstSid = path.join(hvscPath, "first.sid");
-    const secondSid = path.join(hvscPath, "second.sid");
+    const firstSid = path.join(sidPath, "first.sid");
+    const secondSid = path.join(sidPath, "second.sid");
     await Promise.all([writeFile(firstSid, "one"), writeFile(secondSid, "two")]);
 
-    const taggedPath = createTagFilePath(hvscPath, tagsPath, secondSid);
+    const taggedPath = createTagFilePath(sidPath, tagsPath, secondSid);
     await mkdir(path.dirname(taggedPath), { recursive: true });
     await writeFile(taggedPath, "{}\n");
 
-    const result = await findUntaggedSids(hvscPath, tagsPath);
+    const result = await findUntaggedSids(sidPath, tagsPath);
     expect(result).toEqual([firstSid]);
 
     await rm(root, { recursive: true, force: true });

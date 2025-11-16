@@ -39,7 +39,7 @@ Create `.sidflow.json` at the repo root:
 
 ```json
 {
-  "hvscPath": "./workspace/hvsc",
+  "sidPath": "./workspace/hvsc",
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "sidplayPath": "sidplayfp",
@@ -65,7 +65,7 @@ Create `.sidflow.json` at the repo root:
 - Deltas: `https://hvsc.brona.dk/HVSC/HVSC_Update_<n>.7z`
 
 **Behavior:**
-- If `hvscPath` is empty or missing → download and extract the latest base archive automatically.
+- If `sidPath` is empty or missing → download and extract the latest base archive automatically.
 - Scrape the HVSC directory listing to discover the highest available `HVSC_Update_<n>.7z` and compare to the locally recorded version. Download/apply any newer deltas in ascending order.
 - Record and update state in `hvsc-version.json` (last base version, last applied delta, timestamps, checksums).
 - Use 7‑Zip (system binary or library) to extract `.7z` archives.
@@ -73,7 +73,7 @@ Create `.sidflow.json` at the repo root:
 - No need to specify what to download; `sidflow fetch` is fully automatic.
 
 **CLI examples:**
-- `sidflow fetch` — smart base/delta sync to `hvscPath`.
+- `sidflow fetch` — smart base/delta sync to `sidPath`.
 - Accepts `--sidplay` to override the player path for optional post‑fetch conversion tasks.
 
 ### 3.2 `sidflow-tag` — Manual Classification & Playback
@@ -164,7 +164,7 @@ File structure:
 
 | Type | Location | Notes |
 |------|----------|-------|
-| HVSC tree | `hvscPath` (e.g., `./workspace/hvsc`) | Mirrors original HVSC layout |
+| HVSC tree | `sidPath` (e.g., `./workspace/hvsc`) | Mirrors original HVSC layout |
 | Manual tags | Adjacent `*.sid.tags.json` | Git‑tracked, tiny diffs |
 | Auto tags | `auto-tags.json` aggregated per folder at `classificationDepth` | Generated, re‑creatable |
 | WAV cache | `wavCachePath` (e.g., `./workspace/wav-cache/…`) | Skipped if present & fresh |

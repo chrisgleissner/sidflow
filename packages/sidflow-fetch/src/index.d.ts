@@ -4,7 +4,7 @@ export interface FetchBootstrapOptions {
 }
 export interface FetchBootstrapContext {
     config: SidflowConfig;
-    hvscPath: string;
+    sidPath: string;
     wavCachePath: string;
     tagsPath: string;
 }

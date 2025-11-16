@@ -36,7 +36,7 @@ This is an internal workspace package. It's automatically available to other pac
 import { loadConfig } from "@sidflow/common";
 
 const config = await loadConfig(); // Loads .sidflow.json
-console.log(config.hvscPath);
+console.log(config.sidPath);
 ```
 
 ### Deterministic JSON

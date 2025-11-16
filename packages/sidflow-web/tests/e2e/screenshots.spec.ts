@@ -187,7 +187,7 @@ if (isPlaywrightRunner) {
   };
 
   const HVSC_PATHS_PAYLOAD = {
-    hvscPath: '/workspace/hvsc',
+    sidPath: '/workspace/hvsc',
     musicPath: '/workspace/hvsc/C64Music',
     activeCollectionPath: '/workspace/hvsc/C64Music',
     preferenceSource: 'default' as const,

@@ -383,7 +383,7 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
       await runtime.exportPlaylist(playlist, {
         outputPath: options.export,
         format,
-        rootPath: config.hvscPath
+        rootPath: config.sidPath
       });
       runtime.stdout.write(`Playlist exported to ${options.export}\n`);
     }
@@ -398,7 +398,7 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
     await playbackLock.stopExistingPlayback("sidflow-play");
 
     const controller = runtime.createPlaybackController({
-      rootPath: config.hvscPath,
+      rootPath: config.sidPath,
       minDuration: options.minDuration,
       playbackLock,
       playbackSource: "sidflow-play",
