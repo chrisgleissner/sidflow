@@ -30,6 +30,10 @@ const DEFAULT_PREFERENCES: WebPreferences = {
 };
 
 function resolvePreferencesPath(): string {
+  // Allow override for testing
+  if (process.env.SIDFLOW_PREFS_PATH) {
+    return process.env.SIDFLOW_PREFS_PATH;
+  }
   const repoRoot = getRepoRoot();
   return path.join(repoRoot, PREFERENCES_FILENAME);
 }

@@ -273,3 +273,45 @@ export async function getRatingHistory(params: {
   });
   return response.json();
 }
+
+/**
+ * Favorites API
+ */
+
+export interface FavoritesResponse {
+  favorites: string[];
+}
+
+export async function getFavorites(): Promise<ApiResponse<FavoritesResponse>> {
+  const response = await fetch(`${API_BASE}/favorites`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function addFavorite(sidPath: string): Promise<ApiResponse<{ favorites: string[]; added: boolean; message?: string }>> {
+  const response = await fetch(`${API_BASE}/favorites`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ sid_path: sidPath }),
+  });
+  return response.json();
+}
+
+export async function removeFavorite(sidPath: string): Promise<ApiResponse<{ favorites: string[]; removed: boolean }>> {
+  const response = await fetch(`${API_BASE}/favorites`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ sid_path: sidPath }),
+  });
+  return response.json();
+}
