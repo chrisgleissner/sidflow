@@ -386,9 +386,9 @@ When beginning a task:
 **Assumptions and open questions**
 - Assumption: LanceDB vector search is performant for similarity queries (100ms p99)
 - Assumption: Aggregate rating cache can be refreshed daily via cron job
-- Question: Should we implement real-time presence (WebSocket) or poll-based activity stream?
-- Question: Maximum playlist size before performance degrades? Proposal: 500 tracks
-- Question: Should favorites be per-device or synced across devices via account?
+- Question: Should we implement real-time presence (WebSocket) or poll-based activity stream? Answer: poll-based
+- Question: Maximum playlist size before performance degrades? Proposal: 500 tracks. Answer: 200 tracks
+- Question: Should favorites be per-device or synced across devices via account? Answer: per device for now, maybe sync in future. 
 
 **Follow‑ups / future work**
 - Offline mode: cache favorite tracks for offline playback
@@ -423,7 +423,7 @@ When beginning a task:
 **Assumptions and open questions**
 - Assumption: Allowing `connect-src data:` is sufficient; no need to loosen `media-src`/`worker-src` because they already include blob:.
 - Assumption: Tests use only trusted in-repo data URLs, so expanding `connect-src` is acceptable.
-- Open question: Should we gate `data:` allowance behind a feature flag for production? (Leaning no; real users also load SID blobs via data URLs when exporting.)
+- Open question: Should we gate `data:` allowance behind a feature flag for production? (Leaning no; real users also load SID blobs via data URLs when exporting.) Answer: yes. We want to be able to limit how much a user can download in a simple way. Not 100 percent certain this was your question. Clarify. 
 
 **Follow-ups / future work**
 - Consider serving SID fixtures from `/virtual` HTTP endpoints instead of data URLs to avoid CSP relaxations entirely.
