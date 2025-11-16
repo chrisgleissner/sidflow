@@ -16,7 +16,7 @@ import {
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio, Star, TrendingUp, Settings } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio, Star, TrendingUp, Settings, Shuffle } from 'lucide-react';
 import type { FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
@@ -133,6 +133,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [showComposerDiscovery, setShowComposerDiscovery] = useState(false);
   const [similarComposers, setSimilarComposers] = useState<Array<{ composer: string; similarity_score: number }>>([]);
   const [isLoadingHiddenGems, setIsLoadingHiddenGems] = useState(false);
+  const [isFindingRemixes, setIsFindingRemixes] = useState(false);
+  const [remixInsights, setRemixInsights] = useState<Array<{ sidPath: string; displayName: string; titleSimilarity: number; styleMatch: number }>>([]);
   const [showChipModelSelector, setShowChipModelSelector] = useState(false);
   const [isLoadingChipStation, setIsLoadingChipStation] = useState(false);
   const isAudioLoadingRef = useRef(isAudioLoading);
@@ -156,6 +158,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  useEffect(() => {
+    setRemixInsights([]);
+  }, [currentTrack?.sidPath]);
 
   const refreshQueueCount = useCallback(async () => {
     const count = await countPendingPlaybackRequests();
@@ -1295,6 +1301,73 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     [notifyStatus, assignPlaylistNumber, updateUpcoming]
   );
 
+  const handleFindRemixes = useCallback(async () => {
+    if (!currentTrack) {
+      return;
+    }
+    try {
+      setIsFindingRemixes(true);
+      notifyStatus('Scanning for remixes...', false);
+
+      const response = await fetch('/api/play/find-remixes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sid_path: currentTrack.sidPath,
+          limit: 15,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        notifyStatus(`Failed to find remixes: ${data.error}`, true);
+        return;
+      }
+
+      const { tracks: remixTracks, stationName, explanations } = data.data;
+
+      if (!Array.isArray(remixTracks) || remixTracks.length === 0) {
+        notifyStatus('No remixes discovered for this track', true);
+        return;
+      }
+
+      setPlaybackMode('folder');
+      setPlaybackModeDescription(stationName);
+
+      const numberedTracks: PlaylistTrack[] = remixTracks.map((track: RateTrackInfo) => assignPlaylistNumber(track));
+      updateUpcoming(() => numberedTracks);
+
+      const explanationMap = new Map<string, { titleSimilarity: number; styleMatch: number }>();
+      if (Array.isArray(explanations)) {
+        for (const explanation of explanations) {
+          explanationMap.set(explanation.sidPath, {
+            titleSimilarity: explanation.titleSimilarity,
+            styleMatch: explanation.styleMatch,
+          });
+        }
+      }
+
+      setRemixInsights(
+        numberedTracks.slice(0, 5).map((track) => {
+          const explanation = explanationMap.get(track.sidPath);
+          return {
+            sidPath: track.sidPath,
+            displayName: track.displayName,
+            titleSimilarity: explanation?.titleSimilarity ?? 0,
+            styleMatch: explanation?.styleMatch ?? 0,
+          };
+        })
+      );
+
+      notifyStatus(`Remix radar queued ${numberedTracks.length} tracks. Press "Play Next Track" to start.`);
+    } catch (error) {
+      notifyStatus(`Error finding remixes: ${error instanceof Error ? error.message : String(error)}`, true);
+    } finally {
+      setIsFindingRemixes(false);
+    }
+  }, [assignPlaylistNumber, currentTrack, notifyStatus, updateUpcoming]);
+
   const handleCreateChipStation = useCallback(
     async (chipModel: '6581' | '8580' | '8580r5') => {
       try {
@@ -1834,8 +1907,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                           <Star
                             key={i}
                             className={`h-3 w-3 ${i < personalRating.rating
-                                ? 'fill-blue-500 text-blue-500'
-                                : 'text-muted-foreground'
+                              ? 'fill-blue-500 text-blue-500'
+                              : 'text-muted-foreground'
                               }`}
                           />
                         ))}
@@ -1855,8 +1928,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                           <Star
                             key={i}
                             className={`h-4 w-4 ${i < Math.round(aggregateRating.community.averageRating)
-                                ? 'fill-yellow-500 text-yellow-500'
-                                : 'text-muted-foreground'
+                              ? 'fill-yellow-500 text-yellow-500'
+                              : 'text-muted-foreground'
                               }`}
                           />
                         ))}
@@ -1970,6 +2043,17 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   variant="outline"
                   size="sm"
                   className="gap-1"
+                  onClick={handleFindRemixes}
+                  disabled={isFindingRemixes}
+                  title="Find covers, remixes, and reinterpretations"
+                >
+                  <Shuffle className="h-4 w-4" />
+                  {isFindingRemixes ? 'SCANNING…' : 'Find Remixes'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
                   onClick={handleFindSimilarComposers}
                   disabled={!currentTrack.metadata.author}
                   title="Find composers with similar musical styles"
@@ -2000,6 +2084,35 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                     className="w-full mt-2"
                   >
                     Close
+                  </Button>
+                </div>
+              )}
+
+              {remixInsights.length > 0 && (
+                <div className="mt-3 p-3 border border-border/60 rounded bg-accent/5 space-y-2">
+                  <div className="text-sm font-semibold text-foreground">
+                    Remix Radar Highlights
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    {remixInsights.map((insight) => (
+                      <div key={insight.sidPath} className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-foreground truncate" title={insight.displayName}>
+                          {insight.displayName}
+                        </span>
+                        <span className="text-muted-foreground whitespace-nowrap">
+                          Title {(insight.titleSimilarity * 100).toFixed(0)}% • Style{' '}
+                          {(insight.styleMatch * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setRemixInsights([])}
+                    className="w-full mt-2"
+                  >
+                    Hide Remix Insights
                   </Button>
                 </div>
               )}
