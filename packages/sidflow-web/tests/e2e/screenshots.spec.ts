@@ -505,11 +505,12 @@ if (isPlaywrightRunner) {
     await playNextButton.waitFor({ state: 'visible', timeout: 15000 });
     await playNextButton.click();
 
-    // Wait for the now playing card to populate
+    // Wait for the now playing card to populate and pause button to be ready
     await page.waitForSelector('text=/Test Tone C4/i', { timeout: 15000 });
-
-    // Ensure UI settles with the playing track visible
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => {
+      const pauseButton = document.querySelector('button[aria-label*="Pause playback"]');
+      return pauseButton && !pauseButton.hasAttribute('disabled');
+    }, { timeout: 10000 });
   }
 
   const playTabScenario = TABS.find((tab) => tab.value === 'play');

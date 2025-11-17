@@ -261,7 +261,6 @@ if (!isPlaywrightRunner) {
             console.log('Pause button count (random SID test):', await page.getByRole('button', { name: /pause playback/i }).count());
             try {
                 const pauseButton = await waitForPauseButtonReady(page, 'random SID test');
-                await page.waitForTimeout(500);
                 const html = await pauseButton.first().evaluate((el) => el.outerHTML);
                 console.log('Pause button HTML (random SID test):', html);
             } catch (error) {
@@ -280,8 +279,13 @@ if (!isPlaywrightRunner) {
             await expect(positionSlider).toBeVisible();
             await expect(positionSlider).not.toBeDisabled();
 
-            // Wait a bit to ensure playback is happening
-            await page.waitForTimeout(1000);
+            // Wait for playback to produce frames
+            await page.waitForFunction(() => {
+                const player = (window as any).__sidflowPlayer;
+                if (!player || typeof player.getTelemetry !== 'function') return false;
+                const telemetry = player.getTelemetry();
+                return telemetry.framesConsumed > 0;
+            }, { timeout: 5000 });
 
             // Test pause functionality
             const pauseButton = page.getByRole('button', { name: /pause playback/i });
@@ -291,7 +295,6 @@ if (!isPlaywrightRunner) {
 
             // Verify playback can be resumed (button changes back, but we won't test further pause)
             await resumeButton.click();
-            await page.waitForTimeout(500); // Brief wait for state to update
 
             // Verify telemetry shows audio is being produced (worklet pipeline is working)
             const telemetry = await page.evaluate(() => {
@@ -314,7 +317,9 @@ if (!isPlaywrightRunner) {
             }
         });
 
-        // TODO: Re-enable once seek operations are properly implemented
+        // TODO: Re-enable once seek operations are properly implemented.
+        // Seek functionality requires proper player state synchronization when clicking on the slider.
+        // See: Radix UI slider click events need to trigger player.seek() method.
         test.skip('handles seek operations', async ({ page }) => {
             await page.goto('/admin?tab=rate');
 
@@ -457,7 +462,6 @@ if (!isPlaywrightRunner) {
             // Wait for playback to start - pause button appears and is enabled
             try {
                 await waitForPauseButtonReady(page, 'play tab playlist test');
-                await page.waitForTimeout(500); // Let audio pipeline stabilize
             } catch (error) {
                 console.log('PlayTab playback test failed waiting for pause button');
                 console.log('Console messages (last 40):', consoleMessages.slice(-40));
@@ -511,7 +515,6 @@ if (!isPlaywrightRunner) {
             // Wait for playback to start (pause button appears and is enabled)
             try {
                 await waitForPauseButtonReady(page, 'play tab metadata test');
-                await page.waitForTimeout(500); // Let audio pipeline stabilize
             } catch (error) {
                 console.log('Test failed waiting for pause button');
                 console.log('Page errors:', pageErrors);
@@ -534,7 +537,12 @@ if (!isPlaywrightRunner) {
 
             const playButton = page.getByRole('button', { name: /play next track/i });
             await expect(playButton).toBeEnabled({ timeout: 60000 });
-            await page.waitForTimeout(2000); // Allow current track prefetch to settle before simulating offline mode
+
+            // Wait for player to be ready before going offline
+            await page.waitForFunction(() => {
+                const player = (window as any).__sidflowPlayer;
+                return player && typeof player.getState === 'function';
+            }, { timeout: 10000 });
 
             const consoleMessages: string[] = [];
             page.on('console', (message) => {
@@ -639,7 +647,12 @@ if (!isPlaywrightRunner) {
                 await playButton.click();
 
                 await waitForPauseButtonReady(page, 'wasm asset loading test');
-                await page.waitForTimeout(500);
+
+                // Check if page is still open before continuing
+                if (page.isClosed()) {
+                    console.warn('[wasm-test] Page closed after playback start, likely browser crash');
+                    throw new Error('Page closed during test');
+                }
 
                 if (wasmRequests.size === 0) {
                     await page
@@ -650,8 +663,29 @@ if (!isPlaywrightRunner) {
                         .catch(() => undefined);
                 }
 
-                // Wait for potential WASM load
-                await page.waitForTimeout(1000);
+                // Wait for WASM module to be loaded
+                if (!page.isClosed()) {
+                    await page.waitForFunction(() => {
+                        return performance.getEntriesByType('resource').some(entry => entry.name.includes('.wasm'));
+                    }, { timeout: 5000 }).catch(() => { });
+                }
+
+                // Check again before evaluate
+                if (page.isClosed()) {
+                    console.warn('[wasm-test] Page closed before collecting WASM entries');
+                    // If we have any WASM requests from listeners, use those
+                    if (wasmRequests.size > 0) {
+                        const wasmUrls = Array.from(wasmRequests);
+                        expect(wasmUrls.length).toBeGreaterThan(0);
+                        const wasmUrl = wasmUrls.find((url) => url.includes('libsidplayfp')) ?? wasmUrls[0];
+                        expect(wasmUrl).toBeDefined();
+                        const wasmPath = new URL(wasmUrl!).pathname;
+                        expect(wasmPath.endsWith('.wasm')).toBeTruthy();
+                        expect(wasmPath.includes('/wasm/')).toBeTruthy();
+                        return;
+                    }
+                    throw new Error('Page closed before WASM verification could complete');
+                }
 
                 const performanceWasmEntries = await page.evaluate(() =>
                     performance
@@ -720,7 +754,7 @@ if (!isPlaywrightRunner) {
                     // Wait for either playback to start or error to be handled
                     // Check for either pause button (success) or play button still there (error/no change)
                     await Promise.race([
-                        page.getByRole('button', { name: /pause playback/i }).waitFor({ timeout: 8000 }).catch(() => {}),
+                        page.getByRole('button', { name: /pause playback/i }).waitFor({ timeout: 8000 }).catch(() => { }),
                         page.waitForTimeout(8000)
                     ]);
 
@@ -745,14 +779,14 @@ if (!isPlaywrightRunner) {
 
                     // Check if this is a page crash or element not found (likely crash-related)
                     const isCrashRelated = errorMessage.includes('crashed') ||
-                                          errorMessage.includes('closed') ||
-                                          errorMessage.includes('Target page') ||
-                                          errorMessage.includes('toBeVisible');
+                        errorMessage.includes('closed') ||
+                        errorMessage.includes('Target page') ||
+                        errorMessage.includes('toBeVisible');
 
                     if (isCrashRelated && attempt < maxAttempts) {
                         console.log(`Attempt ${attempt}/${maxAttempts} failed (likely browser crash), retrying...`);
                         // Reload the page and try again
-                        await page.reload({ timeout: 10000 }).catch(() => {});
+                        await page.reload({ timeout: 10000 }).catch(() => { });
                         continue;
                     }
 

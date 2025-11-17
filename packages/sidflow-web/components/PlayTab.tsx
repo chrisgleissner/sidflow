@@ -144,7 +144,6 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [showChipModelSelector, setShowChipModelSelector] = useState(false);
   const [isLoadingChipStation, setIsLoadingChipStation] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
-  const [historyVersion, setHistoryVersion] = useState(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
@@ -591,7 +590,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         }
         void cacheTrack(payload.track, payload.session ?? null, maxCacheEntries);
         notifyTrackPlayed(normalized.sidPath);
-        
+
         // Add to playback history
         addToPlaybackHistory({
           sidPath: normalized.sidPath,
@@ -602,7 +601,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
             length: normalized.metadata.length,
           },
         });
-        
+
         return true;
       } catch (error) {
         if (!abortController.signal.aborted) {
@@ -1556,46 +1555,46 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     onPlayPause: useCallback(() => {
       void handlePlayPause();
     }, [handlePlayPause]),
-    
+
     onNext: useCallback(() => {
       void playNextFromQueue();
     }, [playNextFromQueue]),
-    
+
     onPrevious: useCallback(() => {
       void handlePreviousTrack();
     }, [handlePreviousTrack]),
-    
+
     onVolumeUp: useCallback(() => {
       const newVolume = Math.min(volume + 0.1, 1.0);
       setVolume(newVolume);
       notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
     }, [volume, notifyStatus]),
-    
+
     onVolumeDown: useCallback(() => {
       const newVolume = Math.max(volume - 0.1, 0);
       setVolume(newVolume);
       notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
     }, [volume, notifyStatus]),
-    
+
     onMute: useCallback(() => {
       const newVolume = volume > 0 ? 0 : 1.0;
       setVolume(newVolume);
       notifyStatus(newVolume === 0 ? 'Muted' : 'Unmuted', false);
     }, [volume, notifyStatus]),
-    
+
     onToggleFavorite: useCallback(() => {
       // This will be handled by the FavoriteButton component
       // Just show a hint to use the heart button
       notifyStatus('Use the heart button to toggle favorites', false);
     }, [notifyStatus]),
-    
+
     onSearch: useCallback(() => {
       if (searchInputRef.current) {
         searchInputRef.current.focus();
         notifyStatus('Search focused', false);
       }
     }, [notifyStatus]),
-    
+
     onShowHelp: useCallback(() => {
       setShowShortcutsHelp(true);
     }, []),
@@ -1631,10 +1630,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           </div>
         </div>
       )}
-      
+
       {/* Search Bar */}
       <div className="mb-4">
-        <SearchBar 
+        <SearchBar
           onPlayTrack={handlePlaySong}
           onStatusChange={notifyStatus}
           searchInputRef={searchInputRef}
@@ -1646,7 +1645,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         open={showShortcutsHelp}
         onOpenChange={setShowShortcutsHelp}
       />
-      
+
       <Card className="c64-border">
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

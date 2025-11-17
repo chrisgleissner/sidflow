@@ -23,9 +23,8 @@ if (!isPlaywrightRunner) {
       // Navigate to Play tab
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
 
-      // Check for song browser heading
+      // Wait for song browser heading to appear
       const browserHeading = page.getByText(/SID COLLECTION BROWSER/i);
       await expect(browserHeading).toBeVisible();
     });
@@ -33,7 +32,6 @@ if (!isPlaywrightRunner) {
     test('shows breadcrumb navigation', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
 
       // Look for Collection breadcrumb
       const collectionBreadcrumb = page.getByRole('button', { name: 'Collection' });
@@ -43,9 +41,6 @@ if (!isPlaywrightRunner) {
     test('displays folders and files when available', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-
-      // Wait for the browser component to finish loading
-      await page.waitForTimeout(2000);
 
       // Check if either folders or files section is visible, or if there's a valid state message
       // (actual content depends on local SID collection being configured)
@@ -75,7 +70,6 @@ if (!isPlaywrightRunner) {
     test('navigates to folder when clicked', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(1000);
 
       // Try to click first folder if available
       const firstFolder = page.locator('button:has-text("MUSICIANS"), button:has-text("DEMOS"), button:has-text("GAMES")').first();
@@ -84,7 +78,6 @@ if (!isPlaywrightRunner) {
       if (folderCount > 0) {
         const folderName = await firstFolder.textContent();
         await firstFolder.click();
-        await page.waitForTimeout(500);
 
         // Breadcrumb should update
         const breadcrumb = page.getByRole('button', { name: folderName || '' });
@@ -98,7 +91,6 @@ if (!isPlaywrightRunner) {
     test('shows folder action buttons', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(1000);
 
       // If folders exist, they should have action buttons
       const foldersExist = await page.getByText(/Folders \(\d+\)/i).count() > 0;
@@ -115,7 +107,6 @@ if (!isPlaywrightRunner) {
     test('shows file play buttons', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(1000);
 
       // Look for SID files
       const fileSection = page.getByText(/SID Files \(\d+\)/i);
@@ -135,7 +126,6 @@ if (!isPlaywrightRunner) {
       await page.waitForLoadState('networkidle');
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
     });
 
     test('volume slider is visible', async ({ page }) => {
@@ -173,7 +163,6 @@ if (!isPlaywrightRunner) {
       await page.waitForLoadState('networkidle');
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
     });
 
     test('shows default mood station mode', async ({ page }) => {
@@ -209,7 +198,6 @@ if (!isPlaywrightRunner) {
       await page.waitForLoadState('networkidle');
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
     });
 
     test('displays playback control buttons', async ({ page }) => {
