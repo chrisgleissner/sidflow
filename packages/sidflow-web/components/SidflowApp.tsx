@@ -16,6 +16,7 @@ import { FavoritesTab } from '@/components/FavoritesTab';
 import { QueueView } from '@/components/QueueView';
 import { useToastContext } from '@/context/toast-context';
 import { AdminCapabilityProvider, type Persona } from '@/context/admin-capability';
+import { FavoritesProvider } from '@/contexts/FavoritesContext';
 
 type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs' | 'favorites';
 
@@ -199,7 +200,8 @@ export function SidflowApp({ persona }: SidflowAppProps) {
 
   return (
     <AdminCapabilityProvider persona={persona}>
-      <div className="min-h-screen bg-background" data-persona={persona} suppressHydrationWarning>
+      <FavoritesProvider>
+        <div className="min-h-screen bg-background" data-persona={persona} suppressHydrationWarning>
         <main className="max-w-7xl mx-auto">
           <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
             <div className="flex items-center gap-4">
@@ -277,6 +279,7 @@ export function SidflowApp({ persona }: SidflowAppProps) {
           </div>
         </main>
       </div>
+      </FavoritesProvider>
     </AdminCapabilityProvider>
   );
 }

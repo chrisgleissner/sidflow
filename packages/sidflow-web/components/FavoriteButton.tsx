@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { addFavorite, removeFavorite, getFavorites } from '@/lib/api-client';
+import { addFavorite, removeFavorite } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
+import { useFavorites } from '@/contexts/FavoritesContext';
 
 interface FavoriteButtonProps {
   sidPath: string;
@@ -23,32 +24,10 @@ export function FavoriteButton({
   onStatusChange,
   onFavoriteChange,
 }: FavoriteButtonProps) {
-  const [isFavorite, setIsFavorite] = useState(false);
+  const { favorites, addToContext, removeFromContext } = useFavorites();
   const [isLoading, setIsLoading] = useState(false);
-
-  // Load initial favorite state
-  useEffect(() => {
-    let mounted = true;
-    
-    const loadFavoriteState = async () => {
-      try {
-        const response = await getFavorites();
-        if (response.success && mounted) {
-          const favorites = response.data.favorites;
-          setIsFavorite(favorites.includes(sidPath));
-        }
-      } catch (error) {
-        // Silently fail for initial load
-        console.error('Failed to load favorite state:', error);
-      }
-    };
-    
-    void loadFavoriteState();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [sidPath]);
+  
+  const isFavorite = favorites.has(sidPath);
 
   const handleToggleFavorite = useCallback(async () => {
     if (isLoading) return;
@@ -59,7 +38,7 @@ export function FavoriteButton({
         // Remove from favorites
         const response = await removeFavorite(sidPath);
         if (response.success) {
-          setIsFavorite(false);
+          removeFromContext(sidPath);
           onFavoriteChange?.(false);
           onStatusChange?.('Removed from favorites');
         } else {
@@ -69,7 +48,7 @@ export function FavoriteButton({
         // Add to favorites
         const response = await addFavorite(sidPath);
         if (response.success) {
-          setIsFavorite(true);
+          addToContext(sidPath);
           onFavoriteChange?.(true);
           onStatusChange?.('Added to favorites');
         } else {
@@ -84,7 +63,7 @@ export function FavoriteButton({
     } finally {
       setIsLoading(false);
     }
-  }, [isFavorite, isLoading, sidPath, onFavoriteChange, onStatusChange]);
+  }, [isFavorite, isLoading, sidPath, addToContext, removeFromContext, onFavoriteChange, onStatusChange]);
 
   return (
     <Button
