@@ -68,12 +68,19 @@ if (!isPlaywrightRunner) {
   async function bootstrapPlayTab(page: Page) {
     await page.goto('/?tab=play');
     await waitForQueueReset(page);
-    await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 15000 });
 
     const playButton = page.getByRole('button', { name: /play next track/i });
     await expect(playButton).toBeEnabled({ timeout: 60000 });
     await playButton.click();
-    await expect(page.getByRole('button', { name: /pause playback/i })).toBeEnabled({ timeout: 60000 });
+    
+    // Wait for pause button to appear (may start disabled)
+    const pauseButton = page.getByRole('button', { name: /pause playback/i });
+    await expect(pauseButton).toBeVisible({ timeout: 30000 });
+    
+    // Wait for it to become enabled (player ready)
+    // In CI this can take longer due to WASM/audio initialization
+    await expect(pauseButton).toBeEnabled({ timeout: 90000 });
   }
 
   test.describe.serial('PlayTab Personalized Features', () => {

@@ -148,6 +148,97 @@ Create mood-based queues with full playback controls and history.
 
 ![play panel](./doc/web-screenshots/07-play.png)
 
+### Phase 1 Enhancement Features
+
+The public and admin interfaces have been enhanced with powerful discovery and personalization features:
+
+#### 🔍 Smart Search
+
+- Real-time search with instant results
+- Search by song title or artist name
+- Results dropdown with play-on-click
+- Keyboard shortcut: **S** to focus search
+- 300ms debounce for smooth typing
+
+#### ❤️ Favorites Collection
+
+- Heart icon to favorite tracks instantly
+- Dedicated Favorites tab for quick access
+- "Play All Favorites" and "Shuffle Favorites" buttons
+- Syncs across browser sessions
+- Build your curated collection
+
+#### 📊 Top Charts
+
+- See most-played tracks by the community
+- Filter by time range: This Week, This Month, All Time
+- Discover popular artists and rising trends
+- Track metadata with play counts
+- Quick play from any chart entry
+
+#### ⌨️ Enhanced Keyboard Shortcuts
+
+- **SPACE** - Play/Pause
+- **Arrow Keys** - Next/Previous, Volume Up/Down
+- **M** - Mute toggle
+- **S** - Focus search bar
+- **F** - Focus favorites
+- **?** - Show shortcuts help
+- Smart context: Auto-disabled in input fields
+
+#### 🎨 Theme System
+
+- Three themes: C64 Light, C64 Dark, Classic
+- Instant theme switching from Prefs tab
+- Theme persistence across sessions
+- Dark mode for extended listening
+
+#### 📻 ML-Powered Station from Song
+
+- "Start Station" button creates personalized radio
+- Based on vector similarity + your preferences
+- Adjustable parameters:
+  - **Personalization** (0-100%): Boost liked tracks
+  - **Discovery** (0-100%): Similar vs exploration
+- Plays 20 smart-curated tracks
+- Station name displays seed song
+
+#### ⭐ Enhanced Rating Display
+
+- Personal rating badge: "You rated: ★★★★☆"
+- Community rating with count: "★★★★☆ 4.2/5 (1.2K)"
+- Hover tooltip shows E/M/C dimensions
+- "Trending" badge for hot tracks
+- Visual feedback for likes/plays
+
+#### 🗂️ HVSC Browser
+
+- Navigate folder structure with breadcrumbs
+- Browse by composer, game, or demo group
+- Play individual songs or entire folders
+- Folder actions:
+  - Play All in Folder (non-recursive)
+  - Play Folder Tree (recursive)
+  - Shuffle Folder Tree
+- File metadata display (title, author, subsongs)
+
+#### 🔊 Volume Control
+
+- Volume slider with speaker icon
+- Range: 0-100% with 1% precision
+- Keyboard: Arrow Up/Down (+/-10%), M to mute
+- Visual feedback for volume level
+- Mute preserves volume setting
+
+#### 🕐 Recently Played History
+
+- Automatic tracking of last 100 tracks
+- Display last 20 in Play tab sidebar
+- "Play Again" button per entry
+- "Clear History" to reset
+- Circular buffer prevents unbounded growth
+
+For a complete user guide covering all features, see [User Guide](./doc/user-guide.md).
 
 ### Additional Features
 

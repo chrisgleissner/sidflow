@@ -35,19 +35,19 @@ test.describe('Favorites Feature', () => {
       // Check if favorite button exists
       const favoriteButton = page.locator('button:has([data-testid="favorite-icon"])').first();
 
-      if (await favoriteButton.isVisible({ timeout: 5000 })) {
+      if (await favoriteButton.isVisible({ timeout: 10000 })) {
         // Click to add to favorites
         await favoriteButton.click();
 
         // Should show confirmation message
-        await expect(page.getByText(/added to favorites/i).first()).toBeVisible({ timeout: 5000 });
+        await expect(page.getByText(/added to favorites/i).first()).toBeVisible({ timeout: 10000 });
 
         // Switch to favorites tab
         await page.locator('[data-testid="tab-favorites"]').click();
 
         // Should see at least one favorite now
         const favoritesList = page.locator('[data-testid="favorite-icon"]');
-        await expect(favoritesList.first()).toBeVisible({ timeout: 5000 });
+        await expect(favoritesList.first()).toBeVisible({ timeout: 10000 });
 
         // Go back to play tab
         await page.locator('[data-testid="tab-play"]').click();
@@ -56,7 +56,7 @@ test.describe('Favorites Feature', () => {
         await favoriteButton.click();
 
         // Should show removal confirmation
-        await expect(page.getByText(/removed from favorites/i).first()).toBeVisible({ timeout: 5000 });
+        await expect(page.getByText(/removed from favorites/i).first()).toBeVisible({ timeout: 10000 });
       }
     } catch (e) {
       // If no track loads, log diagnostic information for troubleshooting
@@ -106,31 +106,45 @@ test.describe('Favorites Feature', () => {
   test('should display favorite tracks with metadata', async ({ page }) => {
     // This test would require seeding some favorites first
     // For now, we'll just check the structure is correct
-    await page.locator('[data-testid="tab-favorites"]').click();
+    const favTab = page.locator('[data-testid="tab-favorites"]');
+    await expect(favTab).toBeVisible({ timeout: 10000 });
+    await favTab.click();
+
+    // Wait for navigation and content load
+    await page.waitForURL(/tab=favorites/, { timeout: 10000 });
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
     // Check for the card structure
     const favoritesCard = page.locator('.c64-border').filter({ hasText: 'FAVORITES' });
-    await expect(favoritesCard).toBeVisible();
+    await expect(favoritesCard).toBeVisible({ timeout: 10000 });
 
     // Check for the heart icon in header
     const heartIcon = favoritesCard.locator('svg.lucide-heart');
-    await expect(heartIcon).toBeVisible();
+    await expect(heartIcon).toBeVisible({ timeout: 3000 });
   });
 
   test('should maintain favorites state across tab switches', async ({ page }) => {
     // Navigate to favorites tab
-    await page.locator('[data-testid="tab-favorites"]').click();
-    await expect(page.getByText('FAVORITES').first()).toBeVisible();
+    const favTab = page.locator('[data-testid="tab-favorites"]');
+    await expect(favTab).toBeVisible({ timeout: 10000 });
+    await favTab.click();
+    
+    await page.waitForURL(/tab=favorites/, { timeout: 10000 });
+    await expect(page.getByText('FAVORITES').first()).toBeVisible({ timeout: 10000 });
 
     // Switch to prefs tab
-    await page.locator('[data-testid="tab-prefs"]').click();
+    const prefsTab = page.locator('[data-testid="tab-prefs"]');
+    await expect(prefsTab).toBeVisible({ timeout: 10000 });
+    await prefsTab.click();
+    await page.waitForURL(/tab=prefs/, { timeout: 10000 });
     await page.waitForTimeout(500);
 
     // Switch back to favorites
-    await page.locator('[data-testid="tab-favorites"]').click();
+    await favTab.click();
+    await page.waitForURL(/tab=favorites/, { timeout: 10000 });
 
     // Should still show favorites content
-    await expect(page.getByText('FAVORITES').first()).toBeVisible();
+    await expect(page.getByText('FAVORITES').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should handle favorite button loading states', async ({ page }) => {

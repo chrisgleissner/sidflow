@@ -152,16 +152,116 @@ How random play works under the hood:
 - Picks a SID using HVSC songlengths; falls back to filesystem scan of the active collection
 - If no SIDs are found, the API returns 404 with `{ error: 'No SID files available', details: 'Unable to locate a SID to play.' }`
 
-Why you might see an “empty playlist” at `/` and how to populate it:
+Why you might see an "empty playlist" at `/` and how to populate it:
 - The public UI starts empty. It fills only after you play something.
 - Ensure the collection contains SIDs:
   1) Visit `/admin` and sign in (see Authentication above)
-  2) Open Fetch and download HVSC, or point Admin Prefs → “SID COLLECTION” to a folder that already contains `.sid` files
+  2) Open Fetch and download HVSC, or point Admin Prefs → "SID COLLECTION" to a folder that already contains `.sid` files
   3) Back on `/` (public), choose a mood preset and click Play
-- If you still get a 404 (“No SID files available”), double‑check:
+- If you still get a 404 ("No SID files available"), double‑check:
   - HVSC is present on disk and readable
-  - Admin Prefs “Active collection” path points inside HVSC (or another folder with SIDs)
+  - Admin Prefs "Active collection" path points inside HVSC (or another folder with SIDs)
   - File extensions are `.sid`
+
+### Enhanced Play Tab Features
+
+#### Search Bar
+
+- Real-time search with 300ms debounce
+- Case-insensitive title and artist matching
+- Results dropdown with instant playback
+- Clear button to reset search
+- Keyboard shortcut: Press **S** to focus search bar
+
+#### Favorites System
+
+- Heart icon on track cards to add/remove favorites
+- Dedicated Favorites tab showing all favorited tracks
+- "Play All Favorites" and "Shuffle Favorites" buttons
+- Syncs across browser sessions via localStorage
+- Quick access to your most-loved tracks
+
+#### Recently Played History
+
+- Automatic tracking of last 100 tracks played
+- Display of most recent 20 tracks in Play tab sidebar
+- "Play Again" button per history entry
+- "Clear History" to reset
+- Circular buffer prevents unbounded growth
+
+#### Top Charts
+
+- Dedicated Top Charts tab showing most-played tracks
+- Time range filters: This Week, This Month, All Time
+- Displays rank, play count, and track metadata
+- Quick play button per chart entry
+- Data cached for 24 hours for performance
+
+#### Keyboard Shortcuts
+
+- **SPACE** - Play/Pause toggle
+- **Arrow Right** - Next track
+- **Arrow Left** - Previous track
+- **Arrow Up** - Volume up (+10%)
+- **Arrow Down** - Volume down (-10%)
+- **M** - Mute toggle
+- **F** - Focus favorites button
+- **S** - Focus search bar
+- **?** - Show keyboard shortcuts help
+- Shortcuts disabled when typing in input fields
+
+#### Theme System
+
+- Three themes: C64 Light, C64 Dark, Classic
+- Instant theme switching from Prefs tab
+- Theme persists in localStorage
+- Dark mode optimized for extended listening sessions
+
+#### ML-Powered Station from Song
+
+- "Start Station" button on currently playing track
+- Creates personalized radio station based on:
+  - Vector similarity search via LanceDB
+  - Your historical likes/dislikes
+  - 20 similar tracks weighted by preferences
+- Adjustable parameters:
+  - Personalization (0-100%): Boost liked tracks, penalize disliked
+  - Discovery (0-100%): More similar vs more exploration
+- Station name displays as "Station: [song title]"
+
+#### Enhanced Rating Display
+
+- Personal rating badge: "You rated: ★★★★☆"
+- Community rating with stars: "★★★★☆ 4.2/5 (1.2K ratings)"
+- Hover tooltip showing E/M/C dimension breakdown
+- "Trending" badge for recently popular tracks
+- Likes, plays, and recent play counts visible
+
+#### Song Browser
+
+- Navigate HVSC folder structure
+- Breadcrumb navigation (e.g., Collection → MUSICIANS → Hubbard_Rob)
+- Play individual songs or entire folders
+- Folder actions:
+  - "Play All in Folder" - Queue all songs (non-recursive)
+  - "Play Folder Tree" - Queue folder + subfolders
+  - "Shuffle Folder Tree" - Randomize folder tree playback
+- File metadata display (title, author, subsongs)
+
+#### Volume Control
+
+- Volume slider with icon (speaker/mute)
+- Range: 0-100% with 1% precision
+- Visual feedback for volume level
+- Mute toggle preserves volume level
+- Syncs across player instances
+
+#### Playback Modes
+
+- Mood Station (default): ML-recommended tracks
+- Folder Playback: Songs from browsed folder
+- Station from Song: Personalized radio
+- Current mode displayed in UI (e.g., "Energetic Station" or "MUSICIANS/Hubbard_Rob")
 
 ## Design system
 
