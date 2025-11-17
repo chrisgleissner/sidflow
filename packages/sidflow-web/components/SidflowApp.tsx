@@ -12,11 +12,14 @@ import { ClassifyTab } from '@/components/ClassifyTab';
 import { TrainTab } from '@/components/TrainTab';
 import { PlayTab } from '@/components/PlayTab';
 import { JobsTab } from '@/components/JobsTab';
+import { FavoritesTab } from '@/components/FavoritesTab';
+import { TopChartsTab } from '@/components/TopChartsTab';
 import { QueueView } from '@/components/QueueView';
 import { useToastContext } from '@/context/toast-context';
 import { AdminCapabilityProvider, type Persona } from '@/context/admin-capability';
+import { FavoritesProvider } from '@/contexts/FavoritesContext';
 
-type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs';
+type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs' | 'favorites' | 'charts';
 
 interface QueueItem {
   path: string;
@@ -86,6 +89,20 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     ),
   },
   {
+    key: 'favorites',
+    label: 'FAVORITES',
+    icon: '❤️',
+    render: ({ onStatusChange }) => <FavoritesTab onStatusChange={onStatusChange} />,
+  },
+  {
+    key: 'charts',
+    label: 'TOP CHARTS',
+    icon: '📊',
+    render: ({ onStatusChange, onTrackPlayed }) => (
+      <TopChartsTab onPlayTrack={onTrackPlayed} onStatusChange={onStatusChange} />
+    ),
+  },
+  {
     key: 'jobs',
     label: 'JOBS',
     icon: '📋',
@@ -99,7 +116,7 @@ export function SidflowApp({ persona }: SidflowAppProps) {
   const searchParams = useSearchParams();
 
   const allowedTabs: TabKey[] = useMemo(
-    () => (persona === 'admin' ? TAB_DEFINITIONS.map((tab) => tab.key) : ['play', 'prefs']),
+    () => (persona === 'admin' ? TAB_DEFINITIONS.map((tab) => tab.key) : ['play', 'favorites', 'charts', 'prefs']),
     [persona]
   );
 
@@ -192,7 +209,8 @@ export function SidflowApp({ persona }: SidflowAppProps) {
 
   return (
     <AdminCapabilityProvider persona={persona}>
-      <div className="min-h-screen bg-background" data-persona={persona} suppressHydrationWarning>
+      <FavoritesProvider>
+        <div className="min-h-screen bg-background" data-persona={persona} suppressHydrationWarning>
         <main className="max-w-7xl mx-auto">
           <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
             <div className="flex items-center gap-4">
@@ -270,6 +288,7 @@ export function SidflowApp({ persona }: SidflowAppProps) {
           </div>
         </main>
       </div>
+      </FavoritesProvider>
     </AdminCapabilityProvider>
   );
 }

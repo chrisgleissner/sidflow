@@ -14,6 +14,8 @@ export interface WebPreferences {
   // Preferred server-side render engine for admin operations
   renderEngine?: RenderTechnology;
   preferredEngines?: RenderTechnology[] | null;
+  // Favorites collection (stored as sid_path array)
+  favorites?: string[];
 }
 
 const DEFAULT_PREFERENCES: WebPreferences = {
@@ -24,9 +26,14 @@ const DEFAULT_PREFERENCES: WebPreferences = {
   sidplayfpCliFlags: null,
   renderEngine: 'wasm',
   preferredEngines: null,
+  favorites: [],
 };
 
 function resolvePreferencesPath(): string {
+  // Allow override for testing
+  if (process.env.SIDFLOW_PREFS_PATH) {
+    return process.env.SIDFLOW_PREFS_PATH;
+  }
   const repoRoot = getRepoRoot();
   return path.join(repoRoot, PREFERENCES_FILENAME);
 }
