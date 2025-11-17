@@ -1,5 +1,4 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import 'fake-indexeddb/auto';
 
 import {
   __resetFeedbackStorageForTests,
@@ -8,12 +7,19 @@ import {
 } from '@/lib/feedback/storage';
 import { __flushFeedbackWorkerForTests, recordImplicitFeedback, recordRatingFeedback } from '@/lib/feedback/worker';
 import type { TagRatings } from '@sidflow/common';
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 
 const ratings: TagRatings = { e: 5, m: 4, c: 3 };
 
 beforeAll(() => {
   if (typeof globalThis.window === 'undefined') {
     (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
+  }
+  if (!globalThis.window.indexedDB) {
+    (globalThis.window as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
+  }
+  if (!globalThis.IDBKeyRange) {
+    (globalThis.window as unknown as { IDBKeyRange: typeof IDBKeyRange }).IDBKeyRange = IDBKeyRange;
   }
 });
 

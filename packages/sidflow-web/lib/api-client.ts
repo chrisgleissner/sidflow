@@ -273,3 +273,109 @@ export async function getRatingHistory(params: {
   });
   return response.json();
 }
+
+/**
+ * Favorites API
+ */
+
+export interface FavoritesResponse {
+  favorites: string[];
+}
+
+export async function getFavorites(): Promise<ApiResponse<FavoritesResponse>> {
+  const response = await fetch(`${API_BASE}/favorites`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function addFavorite(sidPath: string): Promise<ApiResponse<{ favorites: string[]; added: boolean; message?: string }>> {
+  const response = await fetch(`${API_BASE}/favorites`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ sid_path: sidPath }),
+  });
+  return response.json();
+}
+
+export async function removeFavorite(sidPath: string): Promise<ApiResponse<{ favorites: string[]; removed: boolean }>> {
+  const response = await fetch(`${API_BASE}/favorites`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ sid_path: sidPath }),
+  });
+  return response.json();
+}
+
+/**
+ * Search API
+ */
+
+export interface SearchResult {
+  sidPath: string;
+  displayName: string;
+  artist: string;
+  matchedIn: string[];
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+  total: number;
+  limit: number;
+}
+
+export async function searchTracks(query: string, limit?: number): Promise<ApiResponse<SearchResponse>> {
+  const params = new URLSearchParams({ q: query });
+  if (limit) {
+    params.set('limit', String(limit));
+  }
+  
+  const response = await fetch(`${API_BASE}/search?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+/**
+ * Charts API
+ */
+
+export interface ChartEntry {
+  sidPath: string;
+  playCount: number;
+  displayName: string;
+  artist: string;
+}
+
+export interface ChartsResponse {
+  range: 'week' | 'month' | 'all';
+  charts: ChartEntry[];
+}
+
+export async function getCharts(range: 'week' | 'month' | 'all' = 'week', limit?: number): Promise<ApiResponse<ChartsResponse>> {
+  const params = new URLSearchParams({ range });
+  if (limit) {
+    params.set('limit', String(limit));
+  }
+  
+  const response = await fetch(`${API_BASE}/charts?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}

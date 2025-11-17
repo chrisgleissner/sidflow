@@ -8,8 +8,7 @@ import {
   removeRomBundle,
 } from '@/lib/preferences/storage';
 import { DEFAULT_BROWSER_PREFERENCES } from '@/lib/preferences/schema';
-
-import 'fake-indexeddb/auto';
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 
 class MemoryStorage implements Storage {
   private store = new Map<string, string>();
@@ -36,6 +35,12 @@ class MemoryStorage implements Storage {
 beforeAll(() => {
   if (typeof globalThis.window === 'undefined') {
     (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
+  }
+  if (!globalThis.window.indexedDB) {
+    (globalThis.window as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
+  }
+  if (!globalThis.IDBKeyRange) {
+    (globalThis as unknown as { IDBKeyRange: typeof IDBKeyRange }).IDBKeyRange = IDBKeyRange;
   }
   if (!globalThis.window.localStorage) {
     (globalThis.window as unknown as { localStorage: Storage }).localStorage = new MemoryStorage();

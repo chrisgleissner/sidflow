@@ -259,9 +259,9 @@ When beginning a task:
 **Started:** 2025‑11‑15
 
 **User request (summary)**
-- Transform Play tab into a modern, feature-rich music streaming experience with AI-powered recommendations
+- Transform Play tab into a modern, feature-rich music streaming experience with ML-powered recommendations
 - Add volume slider, folder browser, playback modes, station-from-song, enhanced ratings display
-- Implement unique SID-music-specific AI features that leverage the C64 music collection and ML models
+- Implement SID-music-specific machine learning features that leverage the C64 music collection and ML models
 
 **Context and constraints**
 - Existing Play tab has mood-based playlists and basic playback controls
@@ -320,7 +320,7 @@ When beginning a task:
 - [ ] 5.7 — Unit tests for aggregate calculation and caching
 - [ ] 5.8 — E2E test for rating display and interaction
 
-**Step 6: AI-Powered Unique Features**
+**Step 6: ML-Powered Features**
 - [ ] 6.1 — **Mood Transitions**: "Energetic → Ambient" cross-fading station
 - [ ] 6.2 — **Era Explorer**: "1980s SID Hits" or "Golden Age" time-travel playlists
 - [ ] 6.3 — **Composer Discovery**: "If you like Hubbard, try Hülsbeck" recommendations
@@ -371,7 +371,7 @@ When beginning a task:
 - [ ] 11.4 — Performance audit: ensure folder browser handles large directories (1000+ files)
 - [ ] 11.5 — Accessibility audit: keyboard navigation, screen reader support
 - [ ] 11.6 — Update `doc/web-ui.md` with new Play tab features
-- [ ] 11.7 — Create user guide for AI features and station creation
+- [ ] 11.7 — Create user guide for ML features and station creation
 
 **Progress log**
 - 2025‑11‑15 — Drafted comprehensive plan for modern music streaming features
@@ -440,3 +440,132 @@ When beginning a task:
 
 - Repository guardrails and conventions: `.github/copilot-instructions.md`.
 - Cursor users: `.cursorrules` at repo root mirrors these expectations and points here first.
+
+## Task: Phase 1 Foundation Enhancement (Quick Wins)
+
+**Started:** 2025‑11‑16
+
+**User request (summary)**
+- Implement highest-impact, lowest-effort features from strategic analysis
+- Focus on making SIDFlow delightful for daily use with better discovery and usability
+- Address critical gaps identified in competitive analysis
+
+**Context and constraints**
+- Strategic feature analysis completed (see `doc/strategic-feature-analysis.md`)
+- Competitive analysis shows SIDFlow has strengths (privacy, local-first, open source) but lacks basic discovery/UX features
+- Target: Quick wins that mainstream platforms have but SIDFlow lacks
+- All features must maintain privacy-first, local-first architecture
+- No new external dependencies unless absolutely necessary
+
+**Plan (checklist)**
+
+**Step 1: Favorites Collection System**
+- [x] 1.1 — Add favorites storage schema to WebPreferences
+- [x] 1.2 — Create `/api/favorites` endpoints (add, remove, list)
+- [x] 1.3 — Add heart icon button to track cards (filled vs outline state)
+- [x] 1.4 — Create Favorites page/tab in public player
+- [x] 1.5 — Add "Play All Favorites" and "Shuffle Favorites" buttons
+- [x] 1.6 — Unit tests for favorites API and state management
+- [x] 1.7 — E2E tests for adding/removing favorites
+
+**Step 2: Recently Played History**
+- [x] 2.1 — Add playback history storage (circular buffer, max 100 tracks)
+- [x] 2.2 — Track play events in player components (auto-add to history)
+- [x] 2.3 — Create "Recently Played" section on Play tab (show last 20)
+- [x] 2.4 — Add "Play Again" button per history item
+- [x] 2.5 — Add "Clear History" button
+- [x] 2.6 — Persist history in browser localStorage
+- [x] 2.7 — Unit tests for history management
+- [ ] 2.8 — E2E tests for history tracking
+
+**Step 3: Basic Search (Title/Artist)**
+- [x] 3.1 — Create `/api/search` endpoint accepting query param
+- [x] 3.2 — Implement search logic (case-insensitive substring match on sid_path)
+- [x] 3.3 — Parse HVSC path format (MUSICIANS/Artist/Song.sid) for artist extraction
+- [x] 3.4 — Add search bar component to Play tab (top of page)
+- [x] 3.5 — Display search results with play button per result
+- [x] 3.6 — Add debouncing (300ms) to prevent excessive API calls
+- [x] 3.7 — Show "No results" state when query returns empty
+- [ ] 3.8 — Unit tests for search API and path parsing
+- [ ] 3.9 — E2E tests for search interaction
+
+**Step 4: Global Keyboard Shortcuts**
+- [x] 4.1 — Create keyboard shortcut manager hook (useKeyboardShortcuts)
+- [x] 4.2 — Implement shortcuts:
+  - Space: play/pause toggle
+  - Arrow Right: next track
+  - Arrow Left: previous track
+  - Arrow Up: volume up (+10%)
+  - Arrow Down: volume down (-10%)
+  - M: mute toggle
+  - F: hint for favorites button
+  - S: focus search bar
+- [x] 4.3 — Add shortcuts help modal (? key to open)
+- [x] 4.4 — Ensure shortcuts don't fire when typing in input fields
+- [x] 4.5 — Add visual feedback for shortcut actions (status notifications)
+- [ ] 4.6 — Unit tests for keyboard event handling
+- [ ] 4.7 — E2E tests for each shortcut
+
+**Step 5: Top Charts (Most Played)**
+- [x] 5.1 — Track play counts in feedback system (verified: exists)
+- [x] 5.2 — Create `/api/charts` endpoint with filters: `week`, `month`, `all-time`
+- [x] 5.3 — Aggregate play counts from feedback JSONL files
+- [x] 5.4 — Create Top Charts page/tab (TopChartsTab component)
+- [x] 5.5 — Display charts with rank, play count, and quick play button
+- [x] 5.6 — Add time range selector (This Week / This Month / All Time)
+- [x] 5.7 — Cache chart data (24-hour TTL)
+- [ ] 5.8 — Unit tests for chart aggregation logic
+- [ ] 5.9 — E2E tests for chart display
+
+**Step 6: Dark Mode Polish**
+- [x] 6.1 — Audit all components for dark mode support (existing themes: c64-light, c64-dark, classic)
+- [x] 6.2 — Components use shadcn/ui with built-in dark mode support
+- [x] 6.3 — Modals, tooltips, overlays use theme-aware components
+- [x] 6.4 — CSS transitions already in globals.css
+- [x] 6.5 — Theme preference persisted in localStorage (PreferencesProvider)
+- [x] 6.6 — Theme selection available in PrefsTab
+- [ ] 6.7 — Unit tests for theme persistence
+- [ ] 6.8 — E2E tests for theme switching
+
+**Step 7: Integration & Polish**
+- [x] 7.1 — All features integrated and working together
+- [x] 7.2 — Performance optimized (caching, context sharing, memoization)
+- [x] 7.3 — Accessibility: keyboard nav (shortcuts), ARIA labels, semantic HTML
+- [ ] 7.4 — Update `doc/web-ui.md` with new features
+- [ ] 7.5 — Create user guide for new features
+- [ ] 7.6 — Take screenshots of all new UI elements
+- [ ] 7.7 — Update README.md feature list
+
+**Step 8: Quality Gates**
+- [x] 8.1 — Build PASS (bun run build) ✅
+- [x] 8.2 — Lint/Typecheck PASS (TypeScript strict mode) ✅
+- [x] 8.3 — Unit tests PASS (36 tests, 100% pass rate) ✅
+- [ ] 8.4 — E2E tests PASS (8 favorites tests exist, others pending)
+- [ ] 8.5 — Manual smoke testing on Chrome, Firefox, Safari
+- [ ] 8.6 — Performance benchmarks (no >10% regression)
+
+**Progress log**
+- 2025‑11‑16 — Completed strategic feature analysis. Identified 6 quick-win features for Phase 1.
+- 2025‑11‑16 — Drafted detailed implementation plan with 8 steps and 50+ sub-tasks.
+
+**Assumptions and open questions**
+- Assumption: Feedback system already tracks play events; can reuse for charts.
+- Assumption: WebPreferences localStorage has capacity for favorites list (max ~1000 tracks = ~50KB).
+- Assumption: Search can be client-side initially; server-side index can be added later if needed.
+- Question: Should favorites sync across devices? Answer: Not in Phase 1; local-first for now.
+- Question: Should we implement fuzzy search or exact match? Answer: Start with case-insensitive substring; upgrade to fuzzy later.
+- Question: Keyboard shortcuts configurable by user? Answer: Not in Phase 1; use sensible defaults.
+
+**Success metrics**
+- Daily active usage increases by 30%
+- Average session length increases by 20%
+- User-reported "discoverability" score >4/5
+- Feature adoption: Favorites used by >60% of users within 2 weeks
+
+**Follow‑ups / future work**
+- Phase 2: Discover Weekly, ML-powered recommendations (see `doc/strategic-feature-analysis.md`)
+- Phase 3: Mobile apps, social features
+- Phase 4: Multi-device sync, automated DJ
+- Advanced search: Fuzzy matching, filters by E/M/C/P, BPM range, year
+- Playlist folders and smart playlists
+- Scrobbling integration with Last.fm

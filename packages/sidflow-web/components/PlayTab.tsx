@@ -40,6 +40,11 @@ import {
 } from '@/lib/offline/playback-queue';
 import { SongBrowser } from '@/components/SongBrowser';
 import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/playlist-builder';
+import { FavoriteButton } from '@/components/FavoriteButton';
+import { addToPlaybackHistory, getRecentHistory, clearPlaybackHistory, type PlaybackHistoryEntry } from '@/lib/playback-history';
+import { SearchBar } from '@/components/SearchBar';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -93,9 +98,12 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [isPauseReady, setIsPauseReady] = useState(false);
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [volume, setVolume] = useState(1.0);
   const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song'>('mood');
   const [playbackModeDescription, setPlaybackModeDescription] = useState<string>('Mood Station');
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -117,6 +125,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  // Memoize recently played history to avoid re-fetching on every render
+  const recentHistory = useMemo(() => getRecentHistory(20), [historyVersion]);
 
   const refreshQueueCount = useCallback(async () => {
     const count = await countPendingPlaybackRequests();
@@ -499,6 +510,18 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         }
         void cacheTrack(payload.track, payload.session ?? null, maxCacheEntries);
         notifyTrackPlayed(normalized.sidPath);
+        
+        // Add to playback history
+        addToPlaybackHistory({
+          sidPath: normalized.sidPath,
+          displayName: normalized.displayName,
+          metadata: {
+            author: normalized.metadata.author,
+            released: normalized.metadata.released,
+            length: normalized.metadata.length,
+          },
+        });
+        
         return true;
       } catch (error) {
         if (!abortController.signal.aborted) {
@@ -1060,6 +1083,56 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     );
   };
 
+  // Keyboard shortcuts handlers - must be after all handlers are defined
+  useKeyboardShortcuts({
+    onPlayPause: useCallback(() => {
+      void handlePlayPause();
+    }, [handlePlayPause]),
+    
+    onNext: useCallback(() => {
+      void playNextFromQueue();
+    }, [playNextFromQueue]),
+    
+    onPrevious: useCallback(() => {
+      void handlePreviousTrack();
+    }, [handlePreviousTrack]),
+    
+    onVolumeUp: useCallback(() => {
+      const newVolume = Math.min(volume + 0.1, 1.0);
+      setVolume(newVolume);
+      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
+    }, [volume, notifyStatus]),
+    
+    onVolumeDown: useCallback(() => {
+      const newVolume = Math.max(volume - 0.1, 0);
+      setVolume(newVolume);
+      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
+    }, [volume, notifyStatus]),
+    
+    onMute: useCallback(() => {
+      const newVolume = volume > 0 ? 0 : 1.0;
+      setVolume(newVolume);
+      notifyStatus(newVolume === 0 ? 'Muted' : 'Unmuted', false);
+    }, [volume, notifyStatus]),
+    
+    onToggleFavorite: useCallback(() => {
+      // This will be handled by the FavoriteButton component
+      // Just show a hint to use the heart button
+      notifyStatus('Use the heart button to toggle favorites', false);
+    }, [notifyStatus]),
+    
+    onSearch: useCallback(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        notifyStatus('Search focused', false);
+      }
+    }, [notifyStatus]),
+    
+    onShowHelp: useCallback(() => {
+      setShowShortcutsHelp(true);
+    }, []),
+  }, hasHydrated);
+
   return (
     <div className="space-y-4">
       {hasHydrated && (!isOnline || pendingQueueCount > 0) && (
@@ -1090,6 +1163,22 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           </div>
         </div>
       )}
+      
+      {/* Search Bar */}
+      <div className="mb-4">
+        <SearchBar 
+          onPlayTrack={handlePlaySong}
+          onStatusChange={notifyStatus}
+          searchInputRef={searchInputRef}
+        />
+      </div>
+
+      {/* Keyboard Shortcuts Help Modal */}
+      <KeyboardShortcutsHelp
+        open={showShortcutsHelp}
+        onOpenChange={setShowShortcutsHelp}
+      />
+      
       <Card className="c64-border">
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1249,6 +1338,13 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 pt-2">
+                <FavoriteButton
+                  sidPath={currentTrack.sidPath}
+                  size="sm"
+                  variant="outline"
+                  showLabel
+                  onStatusChange={notifyStatus}
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -1329,6 +1425,69 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="c64-border">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm petscii-text text-accent">Recently Played</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Last 20 tracks from all sessions
+              </CardDescription>
+            </div>
+            {hasHydrated && recentHistory.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm('Clear all playback history?')) {
+                    clearPlaybackHistory();
+                    setHistoryVersion(v => v + 1);
+                    notifyStatus('Playback history cleared');
+                  }
+                }}
+                className="text-xs"
+              >
+                Clear History
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!hasHydrated ? (
+            <p className="text-xs text-muted-foreground">Loading...</p>
+          ) : recentHistory.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No recent playback history</p>
+          ) : (
+            <div className="space-y-2">
+              {recentHistory.map((entry) => (
+                <div
+                  key={`${entry.sidPath}-${entry.timestamp}`}
+                  className="flex items-center justify-between rounded border border-border/50 px-2 py-1 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-foreground truncate">
+                      {entry.displayName}
+                    </p>
+                    <p className="text-muted-foreground truncate">
+                      {entry.metadata?.author ?? '—'} • {new Date(entry.timestamp).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 flex-shrink-0"
+                    onClick={() => handlePlaySong(entry.sidPath)}
+                    title="Play this song"
+                  >
+                    <Play className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <SongBrowser
         onPlaySong={handlePlaySong}

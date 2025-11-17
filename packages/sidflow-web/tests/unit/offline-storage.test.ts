@@ -1,5 +1,4 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import 'fake-indexeddb/auto';
 import { cacheTrack, listCachedTracks } from '@/lib/offline/playback-cache';
 import {
   countPendingPlaybackRequests,
@@ -12,6 +11,7 @@ import {
   getPlaybackQueueRecords,
 } from '@/lib/preferences/storage';
 import type { RateTrackInfo } from '@/lib/api-client';
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 
 class MemoryStorage implements Storage {
   private store = new Map<string, string>();
@@ -38,6 +38,12 @@ class MemoryStorage implements Storage {
 beforeAll(() => {
   if (typeof globalThis.window === 'undefined') {
     (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
+  }
+  if (!globalThis.window.indexedDB) {
+    (globalThis.window as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
+  }
+  if (!globalThis.IDBKeyRange) {
+    (globalThis as unknown as { IDBKeyRange: typeof IDBKeyRange }).IDBKeyRange = IDBKeyRange;
   }
   if (!globalThis.window.localStorage) {
     (globalThis.window as unknown as { localStorage: Storage }).localStorage = new MemoryStorage();

@@ -1,5 +1,4 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test';
-import 'fake-indexeddb/auto';
 
 const trainerInstances: StubTrainer[] = [];
 const syncInstances: StubSync[] = [];
@@ -94,9 +93,16 @@ const { DEFAULT_BROWSER_PREFERENCES } = await import('@/lib/preferences/schema')
 const { emitFeedbackEvent } = await import('@/lib/feedback/events');
 
 describe('feedback runtime', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
+    const { IDBFactory, IDBKeyRange } = await import('fake-indexeddb');
     if (typeof globalThis.window === 'undefined') {
       (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
+    }
+    if (!globalThis.window.indexedDB) {
+      (globalThis.window as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
+    }
+    if (!globalThis.IDBKeyRange) {
+      (globalThis as unknown as { IDBKeyRange: typeof IDBKeyRange }).IDBKeyRange = IDBKeyRange;
     }
     if (typeof globalThis.navigator === 'undefined') {
       (globalThis as unknown as { navigator: { onLine: boolean } }).navigator = { onLine: true };
