@@ -27,6 +27,32 @@ export const DEFAULT_AUDIO_ENCODER_IMPLEMENTATION: AudioEncoderImplementation = 
 const FFMPEG_PATH = "ffmpeg";
 const FFPROBE_PATH = "ffprobe";
 
+/**
+ * Check if ffmpeg is available in the system PATH
+ */
+export async function isFfmpegAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(FFMPEG_PATH, ["-version"], {
+      stdio: "ignore",
+    });
+    child.on("error", () => resolve(false));
+    child.on("exit", (code) => resolve(code === 0));
+  });
+}
+
+/**
+ * Check if ffprobe is available in the system PATH
+ */
+export async function isFfprobeAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(FFPROBE_PATH, ["-version"], {
+      stdio: "ignore",
+    });
+    child.on("error", () => resolve(false));
+    child.on("exit", (code) => resolve(code === 0));
+  });
+}
+
 const DEFAULT_FFMPEG_CORE_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.js");
 const DEFAULT_FFMPEG_WASM_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.wasm");
 const DEFAULT_FFMPEG_WORKER_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.worker.js");

@@ -6,6 +6,8 @@ import {
   getM4aBitrate,
   DEFAULT_M4A_BITRATE,
   DEFAULT_FLAC_COMPRESSION_LEVEL,
+  isFfmpegAvailable,
+  isFfprobeAvailable,
 } from "../src/audio-encoding";
 import { encodePcmToWav } from "../../sidflow-classify/src/render/wav-renderer";
 import { writeFile, unlink, mkdir } from "node:fs/promises";
@@ -19,7 +21,13 @@ const testM4aPath = path.join(testDir, "test.m4a");
 const testM4aWasmPath = path.join(testDir, "test-wasm.m4a");
 const testFlacPath = path.join(testDir, "test.flac");
 
+let ffmpegAvailable = false;
+let ffprobeAvailable = false;
+
 beforeAll(async () => {
+  // Check if ffmpeg and ffprobe are available
+  ffmpegAvailable = await isFfmpegAvailable();
+  ffprobeAvailable = await isFfprobeAvailable();
   if (!existsSync(testDir)) {
     await mkdir(testDir, { recursive: true });
   }
@@ -64,6 +72,11 @@ afterAll(async () => {
 
 describe("Audio Encoding", () => {
   test("encodeWavToM4aNative creates M4A file", async () => {
+    if (!ffmpegAvailable) {
+      console.log("Skipping test: ffmpeg not available in PATH");
+      return;
+    }
+
     const result = await encodeWavToM4aNative({
       inputPath: testWavPath,
       outputPath: testM4aPath,
@@ -83,6 +96,11 @@ describe("Audio Encoding", () => {
   });
 
   test("encodeWavToFlacNative creates FLAC file", async () => {
+    if (!ffmpegAvailable) {
+      console.log("Skipping test: ffmpeg not available in PATH");
+      return;
+    }
+
     const result = await encodeWavToFlacNative({
       inputPath: testWavPath,
       outputPath: testFlacPath,
@@ -101,6 +119,10 @@ describe("Audio Encoding", () => {
   });
 
   test("encodeWavToM4aNative uses default 256 kbps when unspecified", async () => {
+    if (!ffmpegAvailable || !ffprobeAvailable) {
+      console.log("Skipping test: ffmpeg or ffprobe not available in PATH");
+      return;
+    }
     await encodeWavToM4aNative({
       inputPath: testWavPath,
       outputPath: testM4aPath,
@@ -119,6 +141,11 @@ describe("Audio Encoding", () => {
   // environments where it's actually used. Native ffmpeg encoding is tested above.
 
   test("encodeWavToM4aNative with custom bitrate", async () => {
+    if (!ffmpegAvailable || !ffprobeAvailable) {
+      console.log("Skipping test: ffmpeg or ffprobe not available in PATH");
+      return;
+    }
+
     const customBitrate = 128;
     const result = await encodeWavToM4aNative({
       inputPath: testWavPath,
@@ -137,6 +164,10 @@ describe("Audio Encoding", () => {
   });
 
   test("encodeWavToFlacNative with custom compression level", async () => {
+    if (!ffmpegAvailable) {
+      console.log("Skipping test: ffmpeg not available in PATH");
+      return;
+    }
     const result = await encodeWavToFlacNative({
       inputPath: testWavPath,
       outputPath: testFlacPath,

@@ -46,6 +46,7 @@
 - Use Bun’s test runner (`bun run test`) and keep coverage ≥90% (Codecov enforced); add focused unit tests under `packages/*/test`.
 - Run end-to-end validation with `bun run test:e2e` to cover full fetch→classify→play pipeline against `test-data/C64Music`.
 - For config and JSON validations, run `bun run validate:config` and `bun run build:db`; ensure new commands have tests mirroring existing CLI suites (`packages/*/test/cli.test.ts`).
+- **CRITICAL**: All tests must pass before completing any work. It is never acceptable to leave failing tests, even if they appear to be pre-existing. Investigate and fix all test failures, or skip tests that require unavailable external dependencies (e.g., ffmpeg). The build must be left in better condition than it was found.
 
 ### Running E2E Tests in Remote Agent Sessions
 - **Use Docker for E2E tests**: CI runs e2e tests inside `ghcr.io/chrisgleissner/sidflow-ci:latest` which has Playwright browsers pre-installed.
