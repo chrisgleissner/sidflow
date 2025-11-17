@@ -259,9 +259,9 @@ When beginning a task:
 **Started:** 2025‑11‑15
 
 **User request (summary)**
-- Transform Play tab into a modern, feature-rich music streaming experience with AI-powered recommendations
+- Transform Play tab into a modern, feature-rich music streaming experience with ML-powered recommendations
 - Add volume slider, folder browser, playback modes, station-from-song, enhanced ratings display
-- Implement unique SID-music-specific AI features that leverage the C64 music collection and ML models
+- Implement SID-music-specific machine learning features that leverage the C64 music collection and ML models
 
 **Context and constraints**
 - Existing Play tab has mood-based playlists and basic playback controls
@@ -320,7 +320,7 @@ When beginning a task:
 - [ ] 5.7 — Unit tests for aggregate calculation and caching
 - [ ] 5.8 — E2E test for rating display and interaction
 
-**Step 6: AI-Powered Unique Features**
+**Step 6: ML-Powered Features**
 - [ ] 6.1 — **Mood Transitions**: "Energetic → Ambient" cross-fading station
 - [ ] 6.2 — **Era Explorer**: "1980s SID Hits" or "Golden Age" time-travel playlists
 - [ ] 6.3 — **Composer Discovery**: "If you like Hubbard, try Hülsbeck" recommendations
@@ -371,7 +371,7 @@ When beginning a task:
 - [ ] 11.4 — Performance audit: ensure folder browser handles large directories (1000+ files)
 - [ ] 11.5 — Accessibility audit: keyboard navigation, screen reader support
 - [ ] 11.6 — Update `doc/web-ui.md` with new Play tab features
-- [ ] 11.7 — Create user guide for AI features and station creation
+- [ ] 11.7 — Create user guide for ML features and station creation
 
 **Progress log**
 - 2025‑11‑15 — Drafted comprehensive plan for modern music streaming features
@@ -452,7 +452,7 @@ When beginning a task:
 
 **Context and constraints**
 - Strategic feature analysis completed (see `doc/strategic-feature-analysis.md`)
-- Competitive analysis shows SIDFlow has unique strengths (privacy, local-first, open source) but lacks basic discovery/UX features
+- Competitive analysis shows SIDFlow has strengths (privacy, local-first, open source) but lacks basic discovery/UX features
 - Target: Quick wins that mainstream platforms have but SIDFlow lacks
 - All features must maintain privacy-first, local-first architecture
 - No new external dependencies unless absolutely necessary
@@ -563,9 +563,9 @@ When beginning a task:
 - Feature adoption: Favorites used by >60% of users within 2 weeks
 
 **Follow‑ups / future work**
-- Phase 2: Discover Weekly, AI-powered recommendations (see `doc/strategic-feature-analysis.md`)
+- Phase 2: Discover Weekly, ML-powered recommendations (see `doc/strategic-feature-analysis.md`)
 - Phase 3: Mobile apps, social features
-- Phase 4: Multi-device sync, AI DJ
+- Phase 4: Multi-device sync, automated DJ
 - Advanced search: Fuzzy matching, filters by E/M/C/P, BPM range, year
 - Playlist folders and smart playlists
 - Scrobbling integration with Last.fm

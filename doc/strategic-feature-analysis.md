@@ -10,13 +10,13 @@
 
 ### Core USP (Unique Selling Proposition)
 
-**SIDFlow is the world's first AI-powered music streaming platform purpose-built for C64/SID music lovers, offering intelligent mood-based discovery of vintage computer music through modern machine learning.**
+**SIDFlow is a music streaming platform purpose-built for C64/SID music lovers, offering intelligent mood-based discovery of vintage computer music through modern machine learning.**
 
 **Key Differentiators:**
-1. **Niche Focus:** Only platform dedicated to SID music with specialized classification
+1. **Niche Focus:** Platform dedicated to SID music with specialized classification
 2. **Local-First:** Privacy-respecting, offline-capable architecture
 3. **Community-Driven:** Open source with transparent ML models
-4. **Technical Excellence:** Cycle-accurate emulation meets modern AI
+4. **Technical Excellence:** Cycle-accurate emulation meets modern machine learning
 
 ---
 
@@ -205,17 +205,17 @@
 
 ### Analyzed Platforms
 
-#### Mainstream AI Music Streaming
-1. **Spotify** — Market leader with extensive AI features
+#### Mainstream Music Streaming
+1. **Spotify** — Market leader with extensive ML-based features
 2. **YouTube Music** — Google's platform with massive catalog
 3. **Pandora** — Pioneer with Music Genome Project
 4. **Apple Music** — Integrated ecosystem with spatial audio
 5. **Tidal** — High-fidelity with artist focus
-6. **Amazon Music** — AI-powered with Alexa integration
+6. **Amazon Music** — ML-powered with Alexa integration
 
 #### Niche/Specialty Platforms
 7. **Last.fm** — Social scrobbling and recommendations
-8. **SoundCloud** — Creator-first with discovery AI
+8. **SoundCloud** — Creator-first with discovery features
 9. **Bandcamp** — Independent artist marketplace
 10. **Mixcloud** — DJ sets and radio shows
 
@@ -300,12 +300,12 @@
 | | Spatial audio | ❌ | 🟡 | 🟡 | ❌ | ❌ | ❌ |
 | | High-res audio (FLAC/lossless) | ✅ | ✅ | 🟡 | ❌ | ❌ | 🟡 |
 | | Custom audio settings | 🟡 | ✅ | ✅ | 🟡 | ❌ | ❌ |
-| **AI/ML Features** |
-| | AI DJ / Voice commentary | ❌ | ✅ | 🟡 | ❌ | ❌ | ❌ |
+| **ML Features** |
+| | Automated DJ / Voice commentary | ❌ | ✅ | 🟡 | ❌ | ❌ | ❌ |
 | | Prompt-based playlist generation | ❌ | ✅ | 🟡 | ❌ | ❌ | ❌ |
 | | Mood detection (facial/voice) | ❌ | 🟡 | ❌ | ❌ | ❌ | ❌ |
 | | Personalized radio stations | 🟡 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| | AI-generated summaries | ❌ | 🟡 | 🟡 | ❌ | ❌ | ❌ |
+| | ML-generated summaries | ❌ | 🟡 | 🟡 | ❌ | ❌ | ❌ |
 | **Developer & Data** |
 | | Open source | 🎯 | ❌ | ❌ | ❌ | ✅ | 🟡 |
 | | API access | ✅ | ✅ | 🟡 | 🟡 | ✅ | ❌ |
@@ -350,8 +350,8 @@
 - **Offline sync:** No download-for-offline on mobile
 - **Mobile-specific UI:** Desktop-first design
 
-#### 6. AI Enhancements (Impact: MEDIUM-HIGH)
-- **AI DJ:** No voice commentary or explanations
+#### 6. ML-Based Enhancements (Impact: MEDIUM-HIGH)
+- **Automated DJ:** No voice commentary or explanations
 - **Prompt-based generation:** No "create playlist for X" natural language
 - **Weekly discoveries:** No automated "Discover Weekly" equivalent
 - **Daily mixes:** No personalized daily playlists
@@ -368,8 +368,8 @@
 
 ### Unique Strengths (SIDFlow Advantages)
 
-#### What SIDFlow Has That Competitors Don't
-1. **Niche specialization:** Only platform dedicated to SID music
+#### SIDFlow Advantages
+1. **Niche specialization:** Platform dedicated to SID music
 2. **Privacy-first:** Fully local, no cloud dependency
 3. **Open source:** Transparent algorithms and data
 4. **Real hardware support:** Ultimate 64 integration
@@ -412,7 +412,7 @@
 | # | Feature | Category | Effort | Impact | Priority Score |
 |---|---------|----------|--------|--------|----------------|
 | 7 | **PWA optimization** | Mobile | M | H | ⭐⭐⭐⭐⭐ |
-| 8 | **Discover Weekly equivalent** | AI/Discovery | M | H | ⭐⭐⭐⭐⭐ |
+| 8 | **Discover Weekly equivalent** | ML/Discovery | M | H | ⭐⭐⭐⭐⭐ |
 | 9 | **Similar song radio (enhanced)** | Recommendations | M | H | ⭐⭐⭐⭐⭐ |
 | 10 | **Smart playlists** | Playlist Mgmt | M | H | ⭐⭐⭐⭐ |
 | 11 | **Crossfade** | Playback | M | M | ⭐⭐⭐⭐ |
@@ -427,8 +427,8 @@
 | # | Feature | Category | Effort | Impact | Priority Score |
 |---|---------|----------|--------|--------|----------------|
 | 17 | **Native mobile apps** | Mobile | H | H | ⭐⭐⭐⭐⭐ |
-| 18 | **AI DJ with explanations** | AI/UX | H | H | ⭐⭐⭐⭐⭐ |
-| 19 | **Prompt-based playlist generation** | AI/Discovery | H | H | ⭐⭐⭐⭐⭐ |
+| 18 | **Automated DJ with explanations** | ML/UX | H | H | ⭐⭐⭐⭐⭐ |
+| 19 | **Prompt-based playlist generation** | ML/Discovery | H | H | ⭐⭐⭐⭐⭐ |
 | 20 | **Multi-device sync** | UX | H | H | ⭐⭐⭐⭐ |
 | 21 | **Native desktop apps** | UX | H | M | ⭐⭐⭐ |
 | 22 | **Collaborative playlists** | Social | H | M | ⭐⭐⭐ |
@@ -464,7 +464,7 @@
 - Average session length increases by 20%
 - User-reported "discoverability" score >4/5
 
-### Phase 2: AI-Powered Discovery (Months 4-6)
+### Phase 2: ML-Powered Discovery (Months 4-6)
 **Goal:** Match mainstream platforms' recommendation quality
 
 **Features to Implement:**
@@ -502,7 +502,7 @@
 18. ✅ **Multi-device sync** (cross-device state)
 19. ✅ **Audio normalization** (consistent volume)
 20. ✅ **Crossfade** (smooth transitions)
-21. ✅ **AI DJ** (voice explanations for recommendations)
+21. ✅ **Automated DJ** (voice explanations for recommendations)
 
 **Success Metrics:**
 - Native app downloads >10,000
@@ -517,32 +517,32 @@
 > "Listen to C64 music based on your mood – automatically classified and ready to play."
 
 ### Problems:
-- Doesn't emphasize AI/ML intelligence
+- Doesn't emphasize ML intelligence
 - Doesn't highlight privacy/local-first
 - Doesn't differentiate from simple music players
 - Doesn't convey the technical sophistication
 
 ### Proposed USP (Sharper, More Compelling)
 
-#### Option A: AI-First Positioning
-> **"AI-Powered C64 Music Discovery: Your intelligent companion for exploring 60,000+ SID tracks, with mood-based recommendations that learn from your taste and run 100% locally."**
+#### Option A: ML-First Positioning
+> **"ML-Powered C64 Music Discovery: Your intelligent companion for exploring 60,000+ SID tracks, with mood-based recommendations that learn from your taste and run 100% locally."**
 
 #### Option B: Privacy-First Positioning
-> **"The Privacy-Respecting Music Streaming Platform for C64 Lovers: Smart playlists powered by local AI, offline playback, and real hardware support—without cloud tracking."**
+> **"The Privacy-Respecting Music Streaming Platform for C64 Lovers: Smart playlists powered by local machine learning, offline playback, and real hardware support—without cloud tracking."**
 
-#### Option C: Niche Expert Positioning
-> **"SIDFlow: The World's Most Intelligent SID Music Platform. Machine learning meets vintage computing for unprecedented music discovery, all running on your hardware."**
+#### Option C: Technical Positioning
+> **"SIDFlow: Machine learning meets vintage computing for intelligent music discovery, all running on your hardware."**
 
 ### Recommended: Hybrid USP
-> **"Rediscover Your C64 Collection with AI-Powered Intelligence"**
+> **"Rediscover Your C64 Collection with Machine Learning"**
 >
-> SIDFlow is the world's first local-first music streaming platform purpose-built for SID music lovers. Using machine learning trained on 4 dimensions (energy, mood, complexity, preference), it transforms your HVSC archive into smart, mood-based playlists that improve with every listen—all running privately on your hardware with optional real C64 support.
+> SIDFlow is a local-first music streaming platform for C64/SID music lovers. Using machine learning trained on 4 dimensions (energy, mood, complexity, preference), it transforms your HVSC archive into smart, mood-based playlists that improve with every listen—all running privately on your hardware with optional real C64 support.
 
 **Why This Works:**
 1. ✅ **Clear target:** "C64 Collection" = instant recognition
-2. ✅ **Differentiator:** "AI-Powered Intelligence" = modern tech
+2. ✅ **Differentiator:** "Machine Learning" = modern tech
 3. ✅ **Privacy:** "local-first" = trust & control
-4. ✅ **Unique tech:** "4 dimensions" + "real C64" = expertise
+4. ✅ **Technical:** "4 dimensions" + "real C64" = sophistication
 5. ✅ **Value prop:** "improves with every listen" = ongoing benefit
 
 ---
@@ -550,7 +550,7 @@
 ## Part 8: Marketing Messaging
 
 ### Elevator Pitch (30 seconds)
-"Ever wished Spotify existed for SID music? SIDFlow is that—but better. It uses machine learning to automatically organize your entire C64 collection by mood, energy, and complexity, then generates personalized playlists that adapt to your taste. Unlike mainstream platforms, everything runs locally on your hardware, so your listening data stays private. You can even use real Ultimate 64 hardware for authentic sound. It's open source, offline-capable, and built by the community for the community."
+"SIDFlow uses machine learning to automatically organize your entire C64 collection by mood, energy, and complexity, then generates personalized playlists that adapt to your taste. Unlike mainstream platforms, everything runs locally on your hardware, so your listening data stays private. You can even use real Ultimate 64 hardware for authentic sound. It's open source, offline-capable, and built by the community for the community."
 
 ### Feature Highlights (Website Copy)
 
@@ -575,7 +575,7 @@
 
 ### Spotify's Strengths
 - **Discover Weekly:** Hyper-personalized, updated every Monday
-- **AI DJ:** Voice commentary with context
+- **Automated DJ:** Voice commentary with context
 - **Blend:** Collaborative playlists that merge tastes
 - **Canvas:** Video loops for visual experience
 - **Collaborative filtering:** 500M+ users for patterns
@@ -622,7 +622,7 @@
 
 ### Medium-Term Goals (6 Months)
 12. Native mobile apps (React Native or Flutter)
-13. AI DJ with explanations
+13. Automated DJ with explanations
 14. Prompt-based playlist generation
 15. Multi-device sync via optional cloud
 16. Audio normalization and crossfade
