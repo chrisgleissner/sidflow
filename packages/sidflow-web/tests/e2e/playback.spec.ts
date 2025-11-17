@@ -624,10 +624,6 @@ if (!isPlaywrightRunner) {
     test.describe('WASM Asset Loading', () => {
         test('loads WASM module from /wasm/ path', async ({ page }) => {
             const wasmRequests = new Set<string>();
-            const wasmRouteHandler = async (route: Route) => {
-                wasmRequests.add(route.request().url());
-                await route.continue();
-            };
             const trackWasmRequest = (request: Request) => {
                 const url = request.url();
                 if (url.includes('.wasm')) {
@@ -636,8 +632,6 @@ if (!isPlaywrightRunner) {
             };
 
             page.on('request', trackWasmRequest);
-            page.context().on('request', trackWasmRequest);
-            await page.context().route('**/*.wasm*', wasmRouteHandler);
 
             try {
                 await page.goto('/admin?tab=rate');
@@ -646,61 +640,14 @@ if (!isPlaywrightRunner) {
                 const playButton = page.getByRole('button', { name: /play random sid/i });
                 await playButton.click();
 
-                await waitForPauseButtonReady(page, 'wasm asset loading test');
+                // Wait for WASM request to be made
+                await page.waitForEvent('request', {
+                    predicate: (req) => req.url().includes('.wasm'),
+                    timeout: 30000,
+                });
 
-                // Check if page is still open before continuing
-                if (page.isClosed()) {
-                    console.warn('[wasm-test] Page closed after playback start, likely browser crash');
-                    throw new Error('Page closed during test');
-                }
-
-                if (wasmRequests.size === 0) {
-                    await page
-                        .waitForEvent('request', {
-                            predicate: (req) => req.url().includes('.wasm'),
-                            timeout: 15000,
-                        })
-                        .catch(() => undefined);
-                }
-
-                // Wait for WASM module to be loaded
-                if (!page.isClosed()) {
-                    await page.waitForFunction(() => {
-                        return performance.getEntriesByType('resource').some(entry => entry.name.includes('.wasm'));
-                    }, { timeout: 5000 }).catch(() => { });
-                }
-
-                // Check again before evaluate
-                if (page.isClosed()) {
-                    console.warn('[wasm-test] Page closed before collecting WASM entries');
-                    // If we have any WASM requests from listeners, use those
-                    if (wasmRequests.size > 0) {
-                        const wasmUrls = Array.from(wasmRequests);
-                        expect(wasmUrls.length).toBeGreaterThan(0);
-                        const wasmUrl = wasmUrls.find((url) => url.includes('libsidplayfp')) ?? wasmUrls[0];
-                        expect(wasmUrl).toBeDefined();
-                        const wasmPath = new URL(wasmUrl!).pathname;
-                        expect(wasmPath.endsWith('.wasm')).toBeTruthy();
-                        expect(wasmPath.includes('/wasm/')).toBeTruthy();
-                        return;
-                    }
-                    throw new Error('Page closed before WASM verification could complete');
-                }
-
-                const performanceWasmEntries = await page.evaluate(() =>
-                    performance
-                        .getEntriesByType('resource')
-                        .filter((entry) => entry.name.includes('.wasm'))
-                        .map((entry) => entry.name)
-                );
-                for (const entry of performanceWasmEntries) {
-                    wasmRequests.add(entry);
-                }
-
+                // Verify the WASM requests
                 const wasmUrls = Array.from(wasmRequests);
-                if (wasmUrls.length === 0) {
-                    console.warn('[wasm-test] no wasm requests detected', Array.from(wasmRequests));
-                }
                 expect(wasmUrls.length).toBeGreaterThan(0);
 
                 const wasmUrl = wasmUrls.find((url) => url.includes('libsidplayfp')) ?? wasmUrls[0];
@@ -711,8 +658,6 @@ if (!isPlaywrightRunner) {
                 expect(wasmPath.includes('/wasm/')).toBeTruthy();
             } finally {
                 page.off('request', trackWasmRequest);
-                page.context().off('request', trackWasmRequest);
-                await page.context().unroute('**/*.wasm*', wasmRouteHandler);
             }
         });
     });
