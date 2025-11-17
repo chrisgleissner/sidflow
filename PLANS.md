@@ -507,13 +507,13 @@ When beginning a task:
 - [ ] 4.7 — E2E tests for each shortcut
 
 **Step 5: Top Charts (Most Played)**
-- [ ] 5.1 — Track play counts in feedback system (already exists, verify)
-- [ ] 5.2 — Create `/api/charts` endpoint with filters: `week`, `month`, `all-time`
-- [ ] 5.3 — Aggregate play counts from feedback JSONL files
-- [ ] 5.4 — Create Top Charts page/tab (or section on Play tab)
-- [ ] 5.5 — Display charts with rank, play count, and quick play button
-- [ ] 5.6 — Add time range selector (This Week / This Month / All Time)
-- [ ] 5.7 — Cache chart data (refresh daily)
+- [x] 5.1 — Track play counts in feedback system (verified: exists)
+- [x] 5.2 — Create `/api/charts` endpoint with filters: `week`, `month`, `all-time`
+- [x] 5.3 — Aggregate play counts from feedback JSONL files
+- [x] 5.4 — Create Top Charts page/tab (TopChartsTab component)
+- [x] 5.5 — Display charts with rank, play count, and quick play button
+- [x] 5.6 — Add time range selector (This Week / This Month / All Time)
+- [x] 5.7 — Cache chart data (24-hour TTL)
 - [ ] 5.8 — Unit tests for chart aggregation logic
 - [ ] 5.9 — E2E tests for chart display
 

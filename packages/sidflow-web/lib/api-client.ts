@@ -348,3 +348,34 @@ export async function searchTracks(query: string, limit?: number): Promise<ApiRe
   });
   return response.json();
 }
+
+/**
+ * Charts API
+ */
+
+export interface ChartEntry {
+  sidPath: string;
+  playCount: number;
+  displayName: string;
+  artist: string;
+}
+
+export interface ChartsResponse {
+  range: 'week' | 'month' | 'all';
+  charts: ChartEntry[];
+}
+
+export async function getCharts(range: 'week' | 'month' | 'all' = 'week', limit?: number): Promise<ApiResponse<ChartsResponse>> {
+  const params = new URLSearchParams({ range });
+  if (limit) {
+    params.set('limit', String(limit));
+  }
+  
+  const response = await fetch(`${API_BASE}/charts?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}

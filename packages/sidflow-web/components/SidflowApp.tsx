@@ -13,12 +13,13 @@ import { TrainTab } from '@/components/TrainTab';
 import { PlayTab } from '@/components/PlayTab';
 import { JobsTab } from '@/components/JobsTab';
 import { FavoritesTab } from '@/components/FavoritesTab';
+import { TopChartsTab } from '@/components/TopChartsTab';
 import { QueueView } from '@/components/QueueView';
 import { useToastContext } from '@/context/toast-context';
 import { AdminCapabilityProvider, type Persona } from '@/context/admin-capability';
 import { FavoritesProvider } from '@/contexts/FavoritesContext';
 
-type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs' | 'favorites';
+type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs' | 'favorites' | 'charts';
 
 interface QueueItem {
   path: string;
@@ -94,6 +95,14 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     render: ({ onStatusChange }) => <FavoritesTab onStatusChange={onStatusChange} />,
   },
   {
+    key: 'charts',
+    label: 'TOP CHARTS',
+    icon: '📊',
+    render: ({ onStatusChange, onTrackPlayed }) => (
+      <TopChartsTab onPlayTrack={onTrackPlayed} onStatusChange={onStatusChange} />
+    ),
+  },
+  {
     key: 'jobs',
     label: 'JOBS',
     icon: '📋',
@@ -107,7 +116,7 @@ export function SidflowApp({ persona }: SidflowAppProps) {
   const searchParams = useSearchParams();
 
   const allowedTabs: TabKey[] = useMemo(
-    () => (persona === 'admin' ? TAB_DEFINITIONS.map((tab) => tab.key) : ['play', 'favorites', 'prefs']),
+    () => (persona === 'admin' ? TAB_DEFINITIONS.map((tab) => tab.key) : ['play', 'favorites', 'charts', 'prefs']),
     [persona]
   );
 
