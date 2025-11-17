@@ -129,66 +129,6 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   // Memoize recently played history to avoid re-fetching on every render
   const recentHistory = useMemo(() => getRecentHistory(20), [historyVersion]);
 
-  // Keyboard shortcuts handlers
-  useKeyboardShortcuts({
-    onPlayPause: useCallback(() => {
-      if (isPlaying) {
-        handlePausePlay();
-      } else if (currentTrack) {
-        handlePausePlay();
-      } else {
-        // Start playback if nothing is playing
-        void handlePlayPreset(preset);
-      }
-      notifyStatus(isPlaying ? 'Paused' : 'Playing', false);
-    }, [isPlaying, currentTrack, preset, handlePausePlay, handlePlayPreset, notifyStatus]),
-    
-    onNext: useCallback(() => {
-      void handleSkipNext();
-      notifyStatus('Next track', false);
-    }, [handleSkipNext, notifyStatus]),
-    
-    onPrevious: useCallback(() => {
-      void handleSkipPrevious();
-      notifyStatus('Previous track', false);
-    }, [handleSkipPrevious, notifyStatus]),
-    
-    onVolumeUp: useCallback(() => {
-      const newVolume = Math.min(volume + 0.1, 1.0);
-      setVolume(newVolume);
-      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
-    }, [volume, notifyStatus]),
-    
-    onVolumeDown: useCallback(() => {
-      const newVolume = Math.max(volume - 0.1, 0);
-      setVolume(newVolume);
-      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
-    }, [volume, notifyStatus]),
-    
-    onMute: useCallback(() => {
-      const newVolume = volume > 0 ? 0 : 1.0;
-      setVolume(newVolume);
-      notifyStatus(newVolume === 0 ? 'Muted' : 'Unmuted', false);
-    }, [volume, notifyStatus]),
-    
-    onToggleFavorite: useCallback(() => {
-      // This will be handled by the FavoriteButton component
-      // Just show a hint to use the heart button
-      notifyStatus('Use the heart button to toggle favorites', false);
-    }, [notifyStatus]),
-    
-    onSearch: useCallback(() => {
-      if (searchInputRef.current) {
-        searchInputRef.current.focus();
-        notifyStatus('Search focused', false);
-      }
-    }, [notifyStatus]),
-    
-    onShowHelp: useCallback(() => {
-      setShowShortcutsHelp(true);
-    }, []),
-  }, hasHydrated);
-
   const refreshQueueCount = useCallback(async () => {
     const count = await countPendingPlaybackRequests();
     console.debug('[PlayTab] refreshQueueCount', { count });
@@ -1142,6 +1082,56 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
       </div>
     );
   };
+
+  // Keyboard shortcuts handlers - must be after all handlers are defined
+  useKeyboardShortcuts({
+    onPlayPause: useCallback(() => {
+      void handlePlayPause();
+    }, [handlePlayPause]),
+    
+    onNext: useCallback(() => {
+      void playNextFromQueue();
+    }, [playNextFromQueue]),
+    
+    onPrevious: useCallback(() => {
+      void handlePreviousTrack();
+    }, [handlePreviousTrack]),
+    
+    onVolumeUp: useCallback(() => {
+      const newVolume = Math.min(volume + 0.1, 1.0);
+      setVolume(newVolume);
+      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
+    }, [volume, notifyStatus]),
+    
+    onVolumeDown: useCallback(() => {
+      const newVolume = Math.max(volume - 0.1, 0);
+      setVolume(newVolume);
+      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
+    }, [volume, notifyStatus]),
+    
+    onMute: useCallback(() => {
+      const newVolume = volume > 0 ? 0 : 1.0;
+      setVolume(newVolume);
+      notifyStatus(newVolume === 0 ? 'Muted' : 'Unmuted', false);
+    }, [volume, notifyStatus]),
+    
+    onToggleFavorite: useCallback(() => {
+      // This will be handled by the FavoriteButton component
+      // Just show a hint to use the heart button
+      notifyStatus('Use the heart button to toggle favorites', false);
+    }, [notifyStatus]),
+    
+    onSearch: useCallback(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        notifyStatus('Search focused', false);
+      }
+    }, [notifyStatus]),
+    
+    onShowHelp: useCallback(() => {
+      setShowShortcutsHelp(true);
+    }, []),
+  }, hasHydrated);
 
   return (
     <div className="space-y-4">
