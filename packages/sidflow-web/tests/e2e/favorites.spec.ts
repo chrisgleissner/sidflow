@@ -112,7 +112,7 @@ test.describe('Favorites Feature', () => {
 
     // Wait for navigation and content load
     await page.waitForURL(/tab=favorites/, { timeout: 10000 });
-    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
 
     // Check for the card structure
     const favoritesCard = page.locator('.c64-border').filter({ hasText: 'FAVORITES' });
@@ -128,7 +128,7 @@ test.describe('Favorites Feature', () => {
     const favTab = page.locator('[data-testid="tab-favorites"]');
     await expect(favTab).toBeVisible({ timeout: 10000 });
     await favTab.click();
-    
+
     await page.waitForURL(/tab=favorites/, { timeout: 10000 });
     await expect(page.getByText('FAVORITES').first()).toBeVisible({ timeout: 10000 });
 

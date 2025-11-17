@@ -127,14 +127,14 @@ if (!isPlaywrightRunner) {
       // If folders exist, they should have action buttons
       const folderHeading = page.getByText(/Folders \(\d+\)/i);
       const foldersExist = await folderHeading.count() > 0;
-      
+
       if (foldersExist) {
         // Wait for folder list to be visible
         await expect(folderHeading.first()).toBeVisible({ timeout: 5000 });
-        
+
         // Wait for buttons to render
         await page.waitForTimeout(500);
-        
+
         // Look for folder action buttons anywhere on the page
         const hasListButton = await page.locator('button[title="Play all songs in this folder"]').count() > 0;
         const hasPlayButton = await page.locator('button[title="Play all songs in this folder and subfolders"]').count() > 0;
