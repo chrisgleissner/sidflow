@@ -3,6 +3,8 @@
  * Stores the last 100 played tracks in a circular buffer
  */
 
+import { stringifyDeterministic } from '@sidflow/common';
+
 export interface PlaybackHistoryEntry {
   sidPath: string;
   displayName: string;
@@ -66,7 +68,7 @@ export function addToPlaybackHistory(entry: Omit<PlaybackHistoryEntry, 'timestam
     // Limit to MAX_HISTORY_SIZE
     const trimmed = updated.slice(0, MAX_HISTORY_SIZE);
     
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    localStorage.setItem(HISTORY_KEY, stringifyDeterministic(trimmed));
   } catch (error) {
     console.error('Failed to add to playback history:', error);
   }
@@ -106,7 +108,7 @@ export function removeFromHistory(sidPath: string): void {
   try {
     const history = getPlaybackHistory();
     const filtered = history.filter(h => h.sidPath !== sidPath);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(filtered));
+    localStorage.setItem(HISTORY_KEY, stringifyDeterministic(filtered));
   } catch (error) {
     console.error('Failed to remove from history:', error);
   }
