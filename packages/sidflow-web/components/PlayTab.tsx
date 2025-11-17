@@ -13,7 +13,7 @@ import {
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Heart } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
 import type { FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
@@ -96,6 +96,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [isPauseReady, setIsPauseReady] = useState(false);
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [volume, setVolume] = useState(1.0);
   const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song'>('mood');
   const [playbackModeDescription, setPlaybackModeDescription] = useState<string>('Mood Station');
@@ -120,6 +121,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  // Memoize recently played history to avoid re-fetching on every render
+  const recentHistory = useMemo(() => getRecentHistory(20), [historyVersion]);
 
   const refreshQueueCount = useCallback(async () => {
     const count = await countPendingPlaybackRequests();
@@ -1370,17 +1374,15 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 Last 20 tracks from all sessions
               </CardDescription>
             </div>
-            {hasHydrated && getRecentHistory().length > 0 && (
+            {hasHydrated && recentHistory.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   if (confirm('Clear all playback history?')) {
                     clearPlaybackHistory();
+                    setHistoryVersion(v => v + 1);
                     notifyStatus('Playback history cleared');
-                    // Force re-render by updating a dummy state
-                    setHasHydrated(false);
-                    setTimeout(() => setHasHydrated(true), 0);
                   }
                 }}
                 className="text-xs"
@@ -1393,11 +1395,11 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         <CardContent>
           {!hasHydrated ? (
             <p className="text-xs text-muted-foreground">Loading...</p>
-          ) : getRecentHistory().length === 0 ? (
+          ) : recentHistory.length === 0 ? (
             <p className="text-xs text-muted-foreground">No recent playback history</p>
           ) : (
             <div className="space-y-2">
-              {getRecentHistory(20).map((entry) => (
+              {recentHistory.map((entry) => (
                 <div
                   key={`${entry.sidPath}-${entry.timestamp}`}
                   className="flex items-center justify-between rounded border border-border/50 px-2 py-1 text-xs"

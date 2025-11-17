@@ -21,7 +21,7 @@ const MAX_HISTORY_SIZE = 100;
  * Get playback history from localStorage
  */
 export function getPlaybackHistory(): PlaybackHistoryEntry[] {
-  if (typeof window === 'undefined' && typeof localStorage === 'undefined') {
+  if (typeof window === 'undefined') {
     return [];
   }
   
@@ -44,7 +44,7 @@ export function getPlaybackHistory(): PlaybackHistoryEntry[] {
  * Maintains circular buffer of MAX_HISTORY_SIZE entries
  */
 export function addToPlaybackHistory(entry: Omit<PlaybackHistoryEntry, 'timestamp'>): void {
-  if (typeof window === 'undefined' && typeof localStorage === 'undefined') {
+  if (typeof window === 'undefined') {
     return;
   }
   
@@ -76,7 +76,7 @@ export function addToPlaybackHistory(entry: Omit<PlaybackHistoryEntry, 'timestam
  * Clear all playback history
  */
 export function clearPlaybackHistory(): void {
-  if (typeof window === 'undefined' && typeof localStorage === 'undefined') {
+  if (typeof window === 'undefined') {
     return;
   }
   
@@ -99,7 +99,7 @@ export function getRecentHistory(limit: number = 20): PlaybackHistoryEntry[] {
  * Remove a specific entry from history
  */
 export function removeFromHistory(sidPath: string): void {
-  if (typeof window === 'undefined' && typeof localStorage === 'undefined') {
+  if (typeof window === 'undefined') {
     return;
   }
   

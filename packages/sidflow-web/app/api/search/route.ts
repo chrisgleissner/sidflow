@@ -23,6 +23,10 @@ interface SearchResult {
   matchedIn: string[];
 }
 
+// Cache for classified tracks to avoid re-reading file on every search
+let tracksCache: { tracks: ClassifiedTrack[]; timestamp: number } | null = null;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Parse HVSC-style path to extract artist and title
  * Example: "MUSICIANS/Hubbard_Rob/Delta.sid" → { artist: "Rob Hubbard", title: "Delta" }
@@ -63,25 +67,45 @@ export async function GET(request: NextRequest) {
 
     const normalizedQuery = query.trim().toLowerCase();
 
-    // Read classified tracks
+    // Read classified tracks with caching
     const repoRoot = getRepoRoot();
     const classifiedPath = path.join(repoRoot, 'data', 'classified', 'sample.jsonl');
     
     let tracks: ClassifiedTrack[] = [];
-    try {
-      const content = await fs.readFile(classifiedPath, 'utf-8');
-      const lines = content.trim().split('\n');
-      tracks = lines.map(line => JSON.parse(line) as ClassifiedTrack);
-    } catch (error) {
-      // If no classified data, return empty results
-      return NextResponse.json({
-        success: true,
-        data: {
-          query,
-          results: [],
-          total: 0,
-        },
-      });
+    
+    // Check cache first
+    if (tracksCache && Date.now() - tracksCache.timestamp < CACHE_TTL) {
+      tracks = tracksCache.tracks;
+    } else {
+      // Load and parse tracks
+      try {
+        const content = await fs.readFile(classifiedPath, 'utf-8');
+        const lines = content.trim().split('\n');
+        tracks = lines
+          .filter(line => line.trim().length > 0)
+          .map(line => {
+            try {
+              return JSON.parse(line) as ClassifiedTrack;
+            } catch (err) {
+              console.warn(`Skipping malformed JSONL line: ${line.substring(0, 50)}...`);
+              return null;
+            }
+          })
+          .filter((track): track is ClassifiedTrack => track !== null);
+        
+        // Update cache
+        tracksCache = { tracks, timestamp: Date.now() };
+      } catch (error) {
+        // If no classified data, return empty results
+        return NextResponse.json({
+          success: true,
+          data: {
+            query,
+            results: [],
+            total: 0,
+          },
+        });
+      }
     }
 
     // Search through tracks

@@ -95,6 +95,15 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
     }
   }, [onPlayTrack, onStatusChange]);
 
+  const shuffleArray = useCallback(<T,>(array: T[]): T[] => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }, []);
+
   const handlePlayAll = useCallback(async (shuffle: boolean = false) => {
     if (favorites.length === 0) {
       onStatusChange('No favorites to play', true);
@@ -103,9 +112,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
 
     setIsPlayingAll(true);
     try {
-      const tracksToPlay = shuffle
-        ? [...favorites].sort(() => Math.random() - 0.5)
-        : favorites;
+      const tracksToPlay = shuffle ? shuffleArray(favorites) : favorites;
 
       // For now, just play the first track
       // TODO: Implement queue system for playing all
@@ -122,7 +129,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
     } finally {
       setIsPlayingAll(false);
     }
-  }, [favorites, handlePlayTrack, onStatusChange]);
+  }, [favorites, handlePlayTrack, onStatusChange, shuffleArray]);
 
   const handleClearAll = useCallback(async () => {
     if (!confirm(`Remove all ${favorites.length} favorites?`)) {
@@ -130,9 +137,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
     }
 
     try {
-      for (const favorite of favorites) {
-        await removeFavorite(favorite.sidPath);
-      }
+      await Promise.all(favorites.map(favorite => removeFavorite(favorite.sidPath)));
       setFavorites([]);
       onStatusChange('Cleared all favorites');
     } catch (error) {

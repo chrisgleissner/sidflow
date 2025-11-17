@@ -460,32 +460,32 @@ When beginning a task:
 **Plan (checklist)**
 
 **Step 1: Favorites Collection System**
-- [ ] 1.1 — Add favorites storage schema to WebPreferences
-- [ ] 1.2 — Create `/api/favorites` endpoints (add, remove, list)
-- [ ] 1.3 — Add heart icon button to track cards (filled vs outline state)
-- [ ] 1.4 — Create Favorites page/tab in public player
-- [ ] 1.5 — Add "Play All Favorites" and "Shuffle Favorites" buttons
-- [ ] 1.6 — Unit tests for favorites API and state management
-- [ ] 1.7 — E2E tests for adding/removing favorites
+- [x] 1.1 — Add favorites storage schema to WebPreferences
+- [x] 1.2 — Create `/api/favorites` endpoints (add, remove, list)
+- [x] 1.3 — Add heart icon button to track cards (filled vs outline state)
+- [x] 1.4 — Create Favorites page/tab in public player
+- [x] 1.5 — Add "Play All Favorites" and "Shuffle Favorites" buttons
+- [x] 1.6 — Unit tests for favorites API and state management
+- [x] 1.7 — E2E tests for adding/removing favorites
 
 **Step 2: Recently Played History**
-- [ ] 2.1 — Add playback history storage (circular buffer, max 100 tracks)
-- [ ] 2.2 — Track play events in player components (auto-add to history)
-- [ ] 2.3 — Create "Recently Played" section on Play tab (show last 20)
-- [ ] 2.4 — Add "Play Again" button per history item
-- [ ] 2.5 — Add "Clear History" button
-- [ ] 2.6 — Persist history in browser localStorage
-- [ ] 2.7 — Unit tests for history management
+- [x] 2.1 — Add playback history storage (circular buffer, max 100 tracks)
+- [x] 2.2 — Track play events in player components (auto-add to history)
+- [x] 2.3 — Create "Recently Played" section on Play tab (show last 20)
+- [x] 2.4 — Add "Play Again" button per history item
+- [x] 2.5 — Add "Clear History" button
+- [x] 2.6 — Persist history in browser localStorage
+- [x] 2.7 — Unit tests for history management
 - [ ] 2.8 — E2E tests for history tracking
 
 **Step 3: Basic Search (Title/Artist)**
-- [ ] 3.1 — Create `/api/search` endpoint accepting query param
-- [ ] 3.2 — Implement search logic (case-insensitive substring match on sid_path)
-- [ ] 3.3 — Parse HVSC path format (MUSICIANS/Artist/Song.sid) for artist extraction
-- [ ] 3.4 — Add search bar component to Play tab (top of page)
-- [ ] 3.5 — Display search results with play button per result
-- [ ] 3.6 — Add debouncing (300ms) to prevent excessive API calls
-- [ ] 3.7 — Show "No results" state when query returns empty
+- [x] 3.1 — Create `/api/search` endpoint accepting query param
+- [x] 3.2 — Implement search logic (case-insensitive substring match on sid_path)
+- [x] 3.3 — Parse HVSC path format (MUSICIANS/Artist/Song.sid) for artist extraction
+- [x] 3.4 — Add search bar component to Play tab (top of page)
+- [x] 3.5 — Display search results with play button per result
+- [x] 3.6 — Add debouncing (300ms) to prevent excessive API calls
+- [x] 3.7 — Show "No results" state when query returns empty
 - [ ] 3.8 — Unit tests for search API and path parsing
 - [ ] 3.9 — E2E tests for search interaction
 

@@ -30,7 +30,12 @@ const localStorageMock = (() => {
 
 describe('Playback History', () => {
   beforeEach(() => {
-    // Setup localStorage mock
+    // Setup window and localStorage mocks
+    Object.defineProperty(global, 'window', {
+      value: {},
+      writable: true,
+      configurable: true,
+    });
     Object.defineProperty(global, 'localStorage', {
       value: localStorageMock,
       writable: true,
