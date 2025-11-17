@@ -315,3 +315,36 @@ export async function removeFavorite(sidPath: string): Promise<ApiResponse<{ fav
   });
   return response.json();
 }
+
+/**
+ * Search API
+ */
+
+export interface SearchResult {
+  sidPath: string;
+  displayName: string;
+  artist: string;
+  matchedIn: string[];
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+  total: number;
+  limit: number;
+}
+
+export async function searchTracks(query: string, limit?: number): Promise<ApiResponse<SearchResponse>> {
+  const params = new URLSearchParams({ q: query });
+  if (limit) {
+    params.set('limit', String(limit));
+  }
+  
+  const response = await fetch(`${API_BASE}/search?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}

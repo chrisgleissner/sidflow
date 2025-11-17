@@ -42,6 +42,7 @@ import { SongBrowser } from '@/components/SongBrowser';
 import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/playlist-builder';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { addToPlaybackHistory, getRecentHistory, clearPlaybackHistory, type PlaybackHistoryEntry } from '@/lib/playback-history';
+import { SearchBar } from '@/components/SearchBar';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -1104,6 +1105,15 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           </div>
         </div>
       )}
+      
+      {/* Search Bar */}
+      <div className="mb-4">
+        <SearchBar 
+          onPlayTrack={handlePlaySong}
+          onStatusChange={notifyStatus}
+        />
+      </div>
+      
       <Card className="c64-border">
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
