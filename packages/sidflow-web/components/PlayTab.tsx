@@ -41,6 +41,7 @@ import {
 import { SongBrowser } from '@/components/SongBrowser';
 import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, type PlaylistTrackItem } from '@/lib/playlist-builder';
 import { FavoriteButton } from '@/components/FavoriteButton';
+import { addToPlaybackHistory, getRecentHistory, clearPlaybackHistory, type PlaybackHistoryEntry } from '@/lib/playback-history';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -500,6 +501,18 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         }
         void cacheTrack(payload.track, payload.session ?? null, maxCacheEntries);
         notifyTrackPlayed(normalized.sidPath);
+        
+        // Add to playback history
+        addToPlaybackHistory({
+          sidPath: normalized.sidPath,
+          displayName: normalized.displayName,
+          metadata: {
+            author: normalized.metadata.author,
+            released: normalized.metadata.released,
+            length: normalized.metadata.length,
+          },
+        });
+        
         return true;
       } catch (error) {
         if (!abortController.signal.aborted) {
@@ -1337,6 +1350,71 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="c64-border">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-sm petscii-text text-accent">Recently Played</CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Last 20 tracks from all sessions
+              </CardDescription>
+            </div>
+            {hasHydrated && getRecentHistory().length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm('Clear all playback history?')) {
+                    clearPlaybackHistory();
+                    notifyStatus('Playback history cleared');
+                    // Force re-render by updating a dummy state
+                    setHasHydrated(false);
+                    setTimeout(() => setHasHydrated(true), 0);
+                  }
+                }}
+                className="text-xs"
+              >
+                Clear History
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!hasHydrated ? (
+            <p className="text-xs text-muted-foreground">Loading...</p>
+          ) : getRecentHistory().length === 0 ? (
+            <p className="text-xs text-muted-foreground">No recent playback history</p>
+          ) : (
+            <div className="space-y-2">
+              {getRecentHistory(20).map((entry) => (
+                <div
+                  key={`${entry.sidPath}-${entry.timestamp}`}
+                  className="flex items-center justify-between rounded border border-border/50 px-2 py-1 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-foreground truncate">
+                      {entry.displayName}
+                    </p>
+                    <p className="text-muted-foreground truncate">
+                      {entry.metadata?.author ?? '—'} • {new Date(entry.timestamp).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 flex-shrink-0"
+                    onClick={() => handlePlaySong(entry.sidPath)}
+                    title="Play this song"
+                  >
+                    <Play className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <SongBrowser
         onPlaySong={handlePlaySong}
