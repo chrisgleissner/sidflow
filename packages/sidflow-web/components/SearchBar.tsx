@@ -11,15 +11,17 @@ import { formatApiError } from '@/lib/format-error';
 interface SearchBarProps {
   onPlayTrack?: (sidPath: string) => void;
   onStatusChange?: (status: string, isError?: boolean) => void;
+  searchInputRef?: React.MutableRefObject<HTMLInputElement | null>;
 }
 
-export function SearchBar({ onPlayTrack, onStatusChange }: SearchBarProps) {
+export function SearchBar({ onPlayTrack, onStatusChange, searchInputRef }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const searchBoxRef = useRef<HTMLDivElement>(null);
+  const internalInputRef = useRef<HTMLInputElement>(null);
 
   // Close results when clicking outside
   useEffect(() => {
@@ -110,11 +112,19 @@ export function SearchBar({ onPlayTrack, onStatusChange }: SearchBarProps) {
     };
   }, []);
 
+  // Expose the input ref to parent if provided
+  useEffect(() => {
+    if (searchInputRef && internalInputRef.current) {
+      searchInputRef.current = internalInputRef.current;
+    }
+  }, [searchInputRef]);
+
   return (
     <div className="relative w-full" ref={searchBoxRef}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
+          ref={internalInputRef}
           type="text"
           placeholder="Search by title or artist..."
           value={query}

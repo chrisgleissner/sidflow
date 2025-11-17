@@ -490,19 +490,19 @@ When beginning a task:
 - [ ] 3.9 — E2E tests for search interaction
 
 **Step 4: Global Keyboard Shortcuts**
-- [ ] 4.1 — Create keyboard shortcut manager hook (useKeyboardShortcuts)
-- [ ] 4.2 — Implement shortcuts:
+- [x] 4.1 — Create keyboard shortcut manager hook (useKeyboardShortcuts)
+- [x] 4.2 — Implement shortcuts:
   - Space: play/pause toggle
   - Arrow Right: next track
-  - Arrow Left: previous track (or restart if <3s)
-  - Arrow Up: volume up (+5%)
-  - Arrow Down: volume down (-5%)
+  - Arrow Left: previous track
+  - Arrow Up: volume up (+10%)
+  - Arrow Down: volume down (-10%)
   - M: mute toggle
-  - F: toggle favorites for current track
+  - F: hint for favorites button
   - S: focus search bar
-- [ ] 4.3 — Add shortcuts help modal (? key to open)
-- [ ] 4.4 — Ensure shortcuts don't fire when typing in input fields
-- [ ] 4.5 — Add visual feedback for shortcut actions (toast notifications)
+- [x] 4.3 — Add shortcuts help modal (? key to open)
+- [x] 4.4 — Ensure shortcuts don't fire when typing in input fields
+- [x] 4.5 — Add visual feedback for shortcut actions (status notifications)
 - [ ] 4.6 — Unit tests for keyboard event handling
 - [ ] 4.7 — E2E tests for each shortcut
 

@@ -43,6 +43,8 @@ import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, typ
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { addToPlaybackHistory, getRecentHistory, clearPlaybackHistory, type PlaybackHistoryEntry } from '@/lib/playback-history';
 import { SearchBar } from '@/components/SearchBar';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -100,6 +102,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [volume, setVolume] = useState(1.0);
   const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song'>('mood');
   const [playbackModeDescription, setPlaybackModeDescription] = useState<string>('Mood Station');
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
   const isMountedRef = useRef(true);
@@ -124,6 +128,66 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
 
   // Memoize recently played history to avoid re-fetching on every render
   const recentHistory = useMemo(() => getRecentHistory(20), [historyVersion]);
+
+  // Keyboard shortcuts handlers
+  useKeyboardShortcuts({
+    onPlayPause: useCallback(() => {
+      if (isPlaying) {
+        handlePausePlay();
+      } else if (currentTrack) {
+        handlePausePlay();
+      } else {
+        // Start playback if nothing is playing
+        void handlePlayPreset(preset);
+      }
+      notifyStatus(isPlaying ? 'Paused' : 'Playing', false);
+    }, [isPlaying, currentTrack, preset, handlePausePlay, handlePlayPreset, notifyStatus]),
+    
+    onNext: useCallback(() => {
+      void handleSkipNext();
+      notifyStatus('Next track', false);
+    }, [handleSkipNext, notifyStatus]),
+    
+    onPrevious: useCallback(() => {
+      void handleSkipPrevious();
+      notifyStatus('Previous track', false);
+    }, [handleSkipPrevious, notifyStatus]),
+    
+    onVolumeUp: useCallback(() => {
+      const newVolume = Math.min(volume + 0.1, 1.0);
+      setVolume(newVolume);
+      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
+    }, [volume, notifyStatus]),
+    
+    onVolumeDown: useCallback(() => {
+      const newVolume = Math.max(volume - 0.1, 0);
+      setVolume(newVolume);
+      notifyStatus(`Volume: ${Math.round(newVolume * 100)}%`, false);
+    }, [volume, notifyStatus]),
+    
+    onMute: useCallback(() => {
+      const newVolume = volume > 0 ? 0 : 1.0;
+      setVolume(newVolume);
+      notifyStatus(newVolume === 0 ? 'Muted' : 'Unmuted', false);
+    }, [volume, notifyStatus]),
+    
+    onToggleFavorite: useCallback(() => {
+      // This will be handled by the FavoriteButton component
+      // Just show a hint to use the heart button
+      notifyStatus('Use the heart button to toggle favorites', false);
+    }, [notifyStatus]),
+    
+    onSearch: useCallback(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        notifyStatus('Search focused', false);
+      }
+    }, [notifyStatus]),
+    
+    onShowHelp: useCallback(() => {
+      setShowShortcutsHelp(true);
+    }, []),
+  }, hasHydrated);
 
   const refreshQueueCount = useCallback(async () => {
     const count = await countPendingPlaybackRequests();
@@ -1115,8 +1179,15 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         <SearchBar 
           onPlayTrack={handlePlaySong}
           onStatusChange={notifyStatus}
+          searchInputRef={searchInputRef}
         />
       </div>
+
+      {/* Keyboard Shortcuts Help Modal */}
+      <KeyboardShortcutsHelp
+        open={showShortcutsHelp}
+        onOpenChange={setShowShortcutsHelp}
+      />
       
       <Card className="c64-border">
         <CardHeader>
