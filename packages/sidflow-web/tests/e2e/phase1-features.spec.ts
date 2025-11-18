@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Phase 1 Features', () => {
     test.beforeEach(async ({ page }) => {
-        await page.goto('/?tab=play');
+        await page.goto('/?tab=play', { waitUntil: 'domcontentloaded' });
         await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 15000 });
     });
 

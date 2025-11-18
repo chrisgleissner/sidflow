@@ -19,7 +19,9 @@ test.describe('Favorites Feature', () => {
 
     // Click favorites tab
     await favoritesTab.click();
-    await page.waitForTimeout(2000); // Wait for tab content to load
+    
+    // Wait for loading state to disappear
+    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
 
     // Should show empty state initially (use first match to avoid ambiguity)
     await expect(page.getByText('No favorites yet').first()).toBeVisible();
@@ -71,7 +73,9 @@ test.describe('Favorites Feature', () => {
   test('should show play all and shuffle buttons when favorites exist', async ({ page }) => {
     // Navigate to favorites tab
     await page.locator('[data-testid="tab-favorites"]').click();
-    await page.waitForTimeout(2000); // Wait for tab content to load
+    
+    // Wait for loading state to disappear
+    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
 
     // Check for action buttons (they should be disabled when empty)
     const playAllButton = page.getByRole('button', { name: /play all/i });
@@ -88,7 +92,9 @@ test.describe('Favorites Feature', () => {
   test('should show clear all button only when favorites exist', async ({ page }) => {
     // Navigate to favorites tab
     await page.locator('[data-testid="tab-favorites"]').click();
-    await page.waitForTimeout(2000); // Wait for tab content to load
+    
+    // Wait for loading state to disappear
+    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
 
     // Clear All button should not be visible when empty
     const clearAllButton = page.getByRole('button', { name: /clear all/i });
@@ -99,7 +105,9 @@ test.describe('Favorites Feature', () => {
     // This test would require seeding some favorites first
     // For now, we'll just check the structure is correct
     await page.locator('[data-testid="tab-favorites"]').click();
-    await page.waitForTimeout(2000); // Wait for tab content to load
+    
+    // Wait for loading state to disappear
+    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
 
     // Check for the card structure
     const favoritesCard = page.locator('.c64-border').filter({ hasText: 'FAVORITES' });
@@ -143,7 +151,9 @@ test.describe('Favorites Feature', () => {
   test('should show appropriate empty state messaging', async ({ page }) => {
     // Navigate to favorites tab
     await page.locator('[data-testid="tab-favorites"]').click();
-    await page.waitForTimeout(2000); // Wait for tab content to load
+    
+    // Wait for loading state to disappear
+    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
 
     // Check empty state elements (use first match to avoid ambiguity)
     await expect(page.getByText('No favorites yet').first()).toBeVisible();
