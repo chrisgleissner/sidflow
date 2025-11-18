@@ -4,6 +4,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 
 process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ??= '1';
+process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';

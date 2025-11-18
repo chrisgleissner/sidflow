@@ -101,15 +101,16 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
 
   await page.waitForFunction(() => (window as any).__testPlayerReady === true, { timeout: 5000 });
 
-  await page.evaluate(async () => {
-    const testSession = {
-      sessionId: 'telemetry-test-' + Date.now(),
-      sidUrl: '/test-tone-c4.sid',
-      scope: 'test' as const,
-      durationSeconds: TRACK_DURATION_SECONDS,
-      selectedSong: 0,
-      expiresAt: new Date(Date.now() + 60000).toISOString(),
-    };
+  await page.evaluate(
+    async ({ durationSeconds }) => {
+      const testSession = {
+        sessionId: 'telemetry-test-' + Date.now(),
+        sidUrl: '/test-tone-c4.sid',
+        scope: 'test' as const,
+        durationSeconds,
+        selectedSong: 0,
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
+      };
 
     const testTrack = {
       sidPath: '/test-tone-c4.sid',
@@ -129,7 +130,7 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
         clock: 'PAL',
         fileSizeBytes: 380,
       },
-      durationSeconds: TRACK_DURATION_SECONDS,
+      durationSeconds,
     };
 
     const player = (window as any).__testPlayer;
@@ -139,13 +140,15 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
 
     await player.load({ session: testSession, track: testTrack });
     await player.play();
-  });
+  },
+  { durationSeconds: TRACK_DURATION_SECONDS });
 
   // Wait for playback to complete
   await page.waitForTimeout(PLAYBACK_WAIT_MS);
 }
 
 if (isPlaywrightRunner) {
+test.describe.configure({ mode: 'serial' });
 test.describe('Telemetry Validation', () => {
   test('verifies no underruns during normal playback', async ({ page }) => {
     page.on('console', (msg) => {
