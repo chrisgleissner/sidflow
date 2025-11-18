@@ -41,6 +41,13 @@ const TABS: TabScenario[] = [
     screenshot: '01-wizard.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /setup wizard/i })).toBeVisible();
+      // Wait for loading spinner to disappear
+      await page.waitForFunction(() => {
+        const loader = document.querySelector('.animate-spin');
+        return loader === null;
+      }, { timeout: 10000 }).catch(() => { });
+      // Ensure content is fully rendered
+      await page.waitForTimeout(1000);
     },
   },
   {
@@ -49,6 +56,13 @@ const TABS: TabScenario[] = [
     screenshot: '02-prefs.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /preferences/i })).toBeVisible();
+      // Wait for loading spinner to disappear
+      await page.waitForFunction(() => {
+        const loader = document.querySelector('.animate-spin');
+        return loader === null;
+      }, { timeout: 10000 }).catch(() => { });
+      // Ensure content is fully rendered
+      await page.waitForTimeout(1000);
     },
   },
   {
@@ -57,6 +71,13 @@ const TABS: TabScenario[] = [
     screenshot: '03-fetch.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /fetch hvsc/i })).toBeVisible();
+      // Wait for loading spinner to disappear
+      await page.waitForFunction(() => {
+        const loader = document.querySelector('.animate-spin');
+        return loader === null;
+      }, { timeout: 10000 }).catch(() => { });
+      // Ensure main content is loaded (not showing "Loading...")
+      await page.waitForTimeout(1000);
     },
   },
   {
@@ -65,6 +86,13 @@ const TABS: TabScenario[] = [
     screenshot: '04-rate.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
+      // Wait for loading spinner to disappear
+      await page.waitForFunction(() => {
+        const loader = document.querySelector('.animate-spin');
+        return loader === null;
+      }, { timeout: 10000 }).catch(() => { });
+      // Ensure content is fully rendered
+      await page.waitForTimeout(1000);
     },
   },
   {
@@ -81,6 +109,12 @@ const TABS: TabScenario[] = [
         // Wait for heading with extended timeout
         await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible({ timeout: 10000 });
 
+        // Wait for loading spinner to disappear
+        await page.waitForFunction(() => {
+          const loader = document.querySelector('.animate-spin');
+          return loader === null;
+        }, { timeout: 10000 }).catch(() => { });
+
         // Ensure main content area is visible with retry logic
         await page.waitForSelector('[role="main"]', {
           state: 'visible',
@@ -88,6 +122,9 @@ const TABS: TabScenario[] = [
         }).catch((error) => {
           console.warn('[CLASSIFY verify] Main content area not found:', error.message);
         });
+        
+        // Ensure content is fully rendered
+        await page.waitForTimeout(1000);
       } catch (error) {
         console.error('[CLASSIFY verify] Verification failed:', error);
         throw error;
@@ -100,6 +137,13 @@ const TABS: TabScenario[] = [
     screenshot: '06-train.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /train model/i })).toBeVisible();
+      // Wait for loading spinner to disappear
+      await page.waitForFunction(() => {
+        const loader = document.querySelector('.animate-spin');
+        return loader === null;
+      }, { timeout: 10000 }).catch(() => { });
+      // Ensure content is fully rendered
+      await page.waitForTimeout(1000);
     },
   },
   {
@@ -108,6 +152,13 @@ const TABS: TabScenario[] = [
     screenshot: '07-play.png',
     verify: async (page) => {
       await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
+      // Wait for loading spinner to disappear
+      await page.waitForFunction(() => {
+        const loader = document.querySelector('.animate-spin');
+        return loader === null;
+      }, { timeout: 10000 }).catch(() => { });
+      // Ensure content is fully rendered
+      await page.waitForTimeout(1000);
     },
   },
 ];

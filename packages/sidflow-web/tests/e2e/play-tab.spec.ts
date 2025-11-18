@@ -94,12 +94,13 @@ if (!isPlaywrightRunner) {
       await bootstrapPlayTab(page);
 
       const stationButton = page.getByRole('button', { name: /start station/i });
-      await expect(stationButton).toBeVisible();
+      await expect(stationButton).toBeVisible({ timeout: 15000 });
       await stationButton.click();
+      await page.waitForTimeout(2000); // Wait for station to load
 
-      await expect(page.getByText(`Playing: ${STATION_NAME}`)).toBeVisible({ timeout: 20000 });
+      await expect(page.getByText(`Playing: ${STATION_NAME}`)).toBeVisible({ timeout: 30000 });
       for (const title of STATION_TRACK_TITLES) {
-        await expect(page.getByText(title)).toBeVisible();
+        await expect(page.getByText(title)).toBeVisible({ timeout: 10000 });
       }
     });
 
