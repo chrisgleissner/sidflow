@@ -56,7 +56,7 @@ Validate edits with `bun run validate:config`.
 | `bun run fetch:sample` | Spin up a local mirror and run the `sidflow fetch` CLI end-to-end (used in CI). |
 | `bun run classify:sample` | Execute the end-to-end classification sample, including metadata extraction and auto-tag heuristics. |
 | `npm run analyze:e2e` | Summarize the latest Playwright JSON report and list the slowest specs/tests. |
-| `npm run profile:e2e -- [--workers N] [--spec path] [--grep expr]` | Run Playwright with `pidstat` + V8 CPU profiles and emit `tmp/profiles/.../` artifacts (flamegraph HTML, CPU summary, raw profiles). |
+| `npm run profile:e2e -- [--workers N] [--spec path] [--grep expr]`<br>`bun run profile:e2e -- --grep "search results"` | Run Playwright with `pidstat` + V8 CPU profiles and emit `tmp/profiles/.../` artifacts (flamegraph HTML, CPU summary, raw profiles). |
 
 CI mirrors these steps before uploading coverage to Codecov.
 
@@ -990,6 +990,15 @@ describe("Playback Latency", () => {
   });
 });
 ```
+
+### E2E Profiling Workflow
+
+- Use `bun run profile:e2e` (or `npm run profile:e2e`) with Playwright flags to focus on the slowest specs identified by `npm run analyze:e2e`.  
+  Examples: `bun run profile:e2e -- --grep "clear search results" --workers=2` or `bun run profile:e2e -- --spec packages/sidflow-web/tests/e2e/play-tab.spec.ts`.
+- The script attaches `pidstat -rud -p ALL 10`, so CPU %, RAM %, and IO wait for every process are logged every 10s in `tmp/profiles/<run>/pidstat.log`.
+- V8 CPU profiles are captured automatically with `--cpu-prof`; a ready-to-open flamegraph HTML (`flamegraph.html`) and copy/paste friendly stack summary (`cpu-summary.txt`) are emitted alongside the raw `.cpuprofile` files.
+- Share the `cpu-summary.txt` contents with LLM agents for quick hotspot analysis, and open `flamegraph.html` in a browser (it redirects to a bundled Speedscope viewer for zooming and deep dives).
+- When profiling completes, the CLI prints the artifact paths; keep these with your experiment logs so regressions can be compared run-to-run.
 
 ---
 

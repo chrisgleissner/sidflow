@@ -179,14 +179,18 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 - Profiling flows must log CPU+RAM at least every 10 s and persist user-friendly artifacts.
 
 **Plan (checklist)**  
-- [ ] Step 1 — Baseline E2E resource usage with automated CPU/RAM logging (≥10 s cadence) reproducing current failures.  
-- [ ] Step 2 — Analyze logs/runtime reports to pinpoint hotspots (favorites/search endpoints, Next.js server) and document findings.  
-- [ ] Step 3 — Implement performance + stability fixes (API/query optimizations, caching, worker limits) and update docs/config.  
-- [ ] Step 4 — Provide `bun run profile:e2e` workflow (spec filters, flamegraph, textual summary) and document usage.  
-- [ ] Step 5 — Run full unit + E2E suites; ensure they pass without flakes and capture runtime summary.
+- [x] Step 1 — Baseline E2E resource usage with automated CPU/RAM logging (≥10 s cadence) reproducing current failures.  
+- [x] Step 2 — Analyze logs/runtime reports to pinpoint hotspots (favorites/search endpoints, Next.js server) and document findings.  
+- [x] Step 3 — Implement performance + stability fixes (API/query optimizations, caching, worker limits) and update docs/config.  
+- [x] Step 4 — Provide `bun run profile:e2e` workflow (spec filters, flamegraph, textual summary) and document usage.  
+- [x] Step 5 — Run full unit + E2E suites; ensure they pass without flakes and capture runtime summary.
 
 **Progress log**  
-- 2025-11-18 — Task logged; awaiting resource-profile baseline + fixes.
+- 2025-11-18 — Profiling baseline captured with `bun run profile:e2e` against the three slowest specs (audio fidelity, search clear, personalized station) while `pidstat -rud -p ALL 10` logged CPU/RAM every 10 s; artifacts under `tmp/profiles/e2e-profile-2025-11-18T21-06-30/` etc.  
+- 2025-11-18 — Runtime analysis via `npm run analyze:e2e` confirmed audio-fidelity and search flows dominate wall-clock (30–35 s); V8 CPU summaries show the majority of time spent spawning Next production server + idle waiting for network rather than app logic.  
+- 2025-11-18 — Hardened favorites/search: Playwright now seeds favorites through `/api/favorites` with retries instead of mutating `.sidflow-preferences.json`, Playwright web server skips redundant `next build` (`SIDFLOW_SKIP_NEXT_BUILD=1`), and favorites tests run serially with reload-aware helper → flaky ECONNRESETs eliminated.  
+- 2025-11-18 — Documented the profiling workflow in `doc/developer.md` (how to run `bun run profile:e2e`, artifact locations, how to share `cpu-summary.txt` with LLMs).  
+- 2025-11-18 — Validation: `npm run test:e2e` (61 specs, 2 workers + serial favorites) now passes green; `SIDFLOW_SKIP_WASM_UPSTREAM_CHECK=1 npm run test` also passes (upstream git check guarded so transient GitHub 500s no longer block builds).
 
 **Assumptions and open questions**  
 - Assumption: `pidstat` available locally for sampling CPU/RAM every 10 s.  

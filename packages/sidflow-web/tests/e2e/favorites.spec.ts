@@ -1,28 +1,88 @@
-import { test, expect } from '@playwright/test';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 
 const SAMPLE_FAVORITES = [
   'C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid',
   'C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid',
 ];
 
-const PREFS_PATH = path.resolve(process.cwd(), '..', '..', '.sidflow-preferences.json');
-
-async function ensureFavorites(desired: string[]): Promise<void> {
-  await writeFavoritesToDisk([...desired]);
+async function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function writeFavoritesToDisk(favorites: string[]): Promise<void> {
-  let prefs: Record<string, unknown> = {};
-  try {
-    const raw = await fs.readFile(PREFS_PATH, 'utf8');
-    prefs = JSON.parse(raw);
-  } catch {
-    // ignore missing prefs
+async function withApiRetry<T>(operation: () => Promise<T>, description: string): Promise<T> {
+  const attempts = 5;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) {
+        break;
+      }
+      await wait(500 * attempt);
+    }
   }
-  prefs.favorites = favorites;
-  await fs.writeFile(PREFS_PATH, JSON.stringify(prefs, null, 2));
+  throw new Error(
+    `${description} failed after ${attempts} attempts: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
+}
+
+async function fetchFavorites(request: APIRequestContext): Promise<string[]> {
+  return withApiRetry(async () => {
+    const response = await request.get('/api/favorites', { timeout: 15_000 });
+    if (!response.ok()) {
+      throw new Error(`Failed to load favorites: ${response.status()} ${await response.text()}`);
+    }
+    const payload = (await response.json()) as { data?: { favorites?: string[] } };
+    return payload.data?.favorites ?? [];
+  }, 'fetch favorites');
+}
+
+async function mutateFavorite(
+  request: APIRequestContext,
+  method: 'POST' | 'DELETE',
+  sidPath: string
+): Promise<void> {
+  await withApiRetry(async () => {
+    const response =
+      method === 'POST'
+        ? await request.post('/api/favorites', {
+            data: { sid_path: sidPath },
+            headers: { 'content-type': 'application/json' },
+            timeout: 15_000,
+          })
+        : await request.delete('/api/favorites', {
+            data: { sid_path: sidPath },
+            headers: { 'content-type': 'application/json' },
+            timeout: 15_000,
+          });
+    if (!response.ok()) {
+      throw new Error(
+        `Failed to ${method === 'POST' ? 'add' : 'remove'} favorite ${sidPath}: ${response.status()} ${await response.text()}`
+      );
+    }
+  }, `${method === 'POST' ? 'add' : 'remove'} favorite`);
+}
+
+async function ensureFavorites(request: APIRequestContext, desired: string[]): Promise<void> {
+  const desiredSet = new Set(desired);
+  const current = await fetchFavorites(request);
+  const currentSet = new Set(current);
+
+  for (const sidPath of current) {
+    if (!desiredSet.has(sidPath)) {
+      await mutateFavorite(request, 'DELETE', sidPath);
+    }
+  }
+
+  for (const sidPath of desired) {
+    if (!currentSet.has(sidPath)) {
+      await mutateFavorite(request, 'POST', sidPath);
+    }
+  }
 }
 
 async function openFavoritesTab(
@@ -73,9 +133,9 @@ const TIMEOUTS = {
 
 test.describe('Favorites Feature', () => {
   test.describe.configure({ mode: 'serial' });
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
     test.setTimeout(TIMEOUTS.TEST);
-    await ensureFavorites([]);
+    await ensureFavorites(request, []);
 
     // Navigate to the public player with longer timeout
     await page.goto('/', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
@@ -85,8 +145,8 @@ test.describe('Favorites Feature', () => {
     await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
   });
 
-  test('should display favorites tab for public users', async ({ page }) => {
-    await ensureFavorites([]);
+  test('should display favorites tab for public users', async ({ page, request }) => {
+    await ensureFavorites(request, []);
     // Open favorites tab (handles loading states)
     await openFavoritesTab(page);
 
@@ -95,25 +155,25 @@ test.describe('Favorites Feature', () => {
     await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
   });
 
-  test('should reflect favorites when entries are added or removed', async ({ page }) => {
+  test('should reflect favorites when entries are added or removed', async ({ page, request }) => {
     const samplePath = SAMPLE_FAVORITES[0];
-    await ensureFavorites([]);
+    await ensureFavorites(request, []);
 
     await openFavoritesTab(page);
     await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
-    await ensureFavorites([samplePath]);
+    await ensureFavorites(request, [samplePath]);
     await openFavoritesTab(page, { reload: true });
     await expect(page.getByText('FAVORITES').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
     await expect(page.getByText('Play All').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
-    await ensureFavorites([]);
+    await ensureFavorites(request, []);
     await openFavoritesTab(page, { reload: true });
     await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
   });
 
-  test('should show play all and shuffle buttons when favorites exist', async ({ page }) => {
-    await ensureFavorites([SAMPLE_FAVORITES[0]]);
+  test('should show play all and shuffle buttons when favorites exist', async ({ page, request }) => {
+    await ensureFavorites(request, [SAMPLE_FAVORITES[0]]);
 
     await openFavoritesTab(page, { reload: true });
 
@@ -129,18 +189,18 @@ test.describe('Favorites Feature', () => {
     await expect(shuffleButton).toBeEnabled();
   });
 
-  test('should show clear all button only when favorites exist', async ({ page }) => {
-    await ensureFavorites([]);
+  test('should show clear all button only when favorites exist', async ({ page, request }) => {
+    await ensureFavorites(request, []);
     await openFavoritesTab(page);
     await expect(page.getByRole('button', { name: /clear all/i })).not.toBeVisible();
 
-    await ensureFavorites([SAMPLE_FAVORITES[0], SAMPLE_FAVORITES[1]]);
+    await ensureFavorites(request, [SAMPLE_FAVORITES[0], SAMPLE_FAVORITES[1]]);
     await openFavoritesTab(page, { reload: true });
     await expect(page.getByRole('button', { name: /clear all/i })).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
   });
 
-  test('should display favorite tracks with metadata', async ({ page }) => {
-    await ensureFavorites(SAMPLE_FAVORITES);
+  test('should display favorite tracks with metadata', async ({ page, request }) => {
+    await ensureFavorites(request, SAMPLE_FAVORITES);
     await openFavoritesTab(page, { reload: true });
 
     // Check for the card structure
@@ -156,8 +216,8 @@ test.describe('Favorites Feature', () => {
     }
   });
 
-  test('should maintain favorites state across tab switches', async ({ page }) => {
-    await ensureFavorites([]);
+  test('should maintain favorites state across tab switches', async ({ page, request }) => {
+    await ensureFavorites(request, []);
     // Navigate to favorites tab
     await openFavoritesTab(page);
     await expect(page.getByText('FAVORITES').first()).toBeVisible();
@@ -173,8 +233,8 @@ test.describe('Favorites Feature', () => {
     await expect(page.getByText('FAVORITES').first()).toBeVisible();
   });
 
-  test('should handle favorite button loading states', async ({ page }) => {
-    await ensureFavorites([]);
+  test('should handle favorite button loading states', async ({ page, request }) => {
+    await ensureFavorites(request, []);
     // Go to play tab
     await page.locator('[data-testid="tab-play"]').click();
 
@@ -188,8 +248,8 @@ test.describe('Favorites Feature', () => {
     }
   });
 
-  test('should show appropriate empty state messaging', async ({ page }) => {
-    await ensureFavorites([]);
+  test('should show appropriate empty state messaging', async ({ page, request }) => {
+    await ensureFavorites(request, []);
     // Navigate to favorites tab
     await openFavoritesTab(page, { reload: true });
 

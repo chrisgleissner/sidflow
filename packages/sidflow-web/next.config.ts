@@ -3,10 +3,24 @@ import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
 const webRoot = fileURLToPath(new URL("./", import.meta.url));
-const ffmpegStubRelative = path.relative(webRoot, path.resolve(webRoot, "ffmpeg-core-stub.js"));
+const ffmpegStubRelativePath = path.relative(webRoot, path.resolve(webRoot, "ffmpeg-core-stub.js"));
+const ffmpegStubModuleSpecifier = ffmpegStubRelativePath.startsWith(".")
+  ? ffmpegStubRelativePath
+  : `./${ffmpegStubRelativePath}`;
 const disableRender = process.env.SIDFLOW_DISABLE_RENDER === '1';
 
 const serverExternalPackages = ['vectordb', '@sidflow/classify'];
+
+const ffmpegStubAliases: Record<string, string | string[] | Record<string, string | string[]>> =
+  disableRender
+    ? {
+        "@ffmpeg/ffmpeg": ffmpegStubModuleSpecifier,
+        "@ffmpeg/core/dist/ffmpeg-core.js": ffmpegStubModuleSpecifier,
+        "@ffmpeg/core/dist/ffmpeg-core.wasm": ffmpegStubModuleSpecifier,
+        "@ffmpeg/core/dist/ffmpeg-core.wasm_.loader.mjs": ffmpegStubModuleSpecifier,
+        "@ffmpeg/core/dist/ffmpeg-core.worker.js": ffmpegStubModuleSpecifier,
+      }
+    : {};
 
 const nextConfig: NextConfig = {
   // Exclude server-only packages with native modules from client bundle
@@ -17,15 +31,7 @@ const nextConfig: NextConfig = {
       // Stub Node-only module that libsidplayfp.js tries to import during SSR
       // This prevents the WASM wrapper from being bundled into error pages
       module: { browser: "./empty-stub.js" },
-      ...(disableRender
-        ? {
-            "@ffmpeg/ffmpeg": ffmpegStubRelative,
-            "@ffmpeg/core/dist/ffmpeg-core.js": ffmpegStubRelative,
-            "@ffmpeg/core/dist/ffmpeg-core.wasm": ffmpegStubRelative,
-            "@ffmpeg/core/dist/ffmpeg-core.wasm_.loader.mjs": ffmpegStubRelative,
-            "@ffmpeg/core/dist/ffmpeg-core.worker.js": ffmpegStubRelative,
-          }
-        : {}),
+      ...ffmpegStubAliases,
     },
   },
   // Keep webpack config for legacy builds

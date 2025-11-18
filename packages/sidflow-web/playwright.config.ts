@@ -47,7 +47,7 @@ const requestedServerMode = process.env.SIDFLOW_E2E_SERVER_MODE ?? 'production';
 const normalizedServerMode = requestedServerMode.toLowerCase().startsWith('prod') ? 'production' : 'development';
 const serverNodeEnv = normalizedServerMode === 'production' ? 'production' : 'development';
 const webServerTimeout = normalizedServerMode === 'production' ? 240 * 1000 : 180 * 1000;
-const skipNextBuildFlag = process.env.SIDFLOW_SKIP_NEXT_BUILD;
+const skipNextBuildFlag = process.env.SIDFLOW_SKIP_NEXT_BUILD ?? '1';
 const serverNodeOptions = process.env.SIDFLOW_WEB_SERVER_NODE_OPTIONS;
 const parsedWorkers = Number(
   process.env.SIDFLOW_E2E_WORKERS ?? (process.env.CI ? 3 : 2)
