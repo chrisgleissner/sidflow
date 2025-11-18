@@ -100,7 +100,12 @@ export async function POST(request: NextRequest) {
                 stationName,
             },
         };
-        return NextResponse.json(response, { status: 200 });
+        return NextResponse.json(response, {
+            status: 200,
+            headers: {
+                'Cache-Control': 'public, max-age=1800, s-maxage=3600', // 30min client, 1hr CDN
+            },
+        });
     } catch (error) {
         console.error('[API] /api/play/hidden-gems - Error:', error);
         const response: ApiResponse = {

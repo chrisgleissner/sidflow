@@ -29,27 +29,28 @@ function parseSidPath(sidPath: string): { artist: string; title: string } {
   const parts = sidPath.split('/');
   const filename = parts[parts.length - 1];
   const title = filename.replace('.sid', '').replace(/_/g, ' ');
-  
+
   let artist = 'Unknown';
   if (parts.length >= 2) {
     const artistPart = parts[parts.length - 2];
     artist = artistPart.replace(/_/g, ' ');
   }
-  
+
   return { artist, title };
 }
 
 /**
  * Aggregate play counts from feedback JSONL files
+ * Optimized to reduce stat() calls and skip unnecessary directories
  */
 async function aggregatePlayCounts(timeRange: 'week' | 'month' | 'all'): Promise<Map<string, number>> {
   const repoRoot = getRepoRoot();
   const feedbackDir = path.join(repoRoot, 'data', 'feedback');
-  
+
   const playCounts = new Map<string, number>();
   const now = new Date();
   const cutoffDate = new Date();
-  
+
   // Calculate cutoff date based on time range
   if (timeRange === 'week') {
     cutoffDate.setDate(now.getDate() - 7);
@@ -59,57 +60,54 @@ async function aggregatePlayCounts(timeRange: 'week' | 'month' | 'all'): Promise
     // all-time: use a very old date
     cutoffDate.setFullYear(2000);
   }
-  
+
   try {
-    // Read all feedback files
-    const years = await fs.readdir(feedbackDir);
-    
+    // Read all feedback files - use withFileTypes for faster directory checks
+    const years = await fs.readdir(feedbackDir, { withFileTypes: true });
+
     for (const year of years) {
-      const yearPath = path.join(feedbackDir, year);
-      const yearStat = await fs.stat(yearPath);
-      if (!yearStat.isDirectory()) continue;
-      
-      const months = await fs.readdir(yearPath);
-      
+      if (!year.isDirectory()) continue;
+
+      const yearPath = path.join(feedbackDir, year.name);
+      const months = await fs.readdir(yearPath, { withFileTypes: true });
+
       for (const month of months) {
-        const monthPath = path.join(yearPath, month);
-        const monthStat = await fs.stat(monthPath);
-        if (!monthStat.isDirectory()) continue;
-        
-        const days = await fs.readdir(monthPath);
-        
+        if (!month.isDirectory()) continue;
+
+        const monthPath = path.join(yearPath, month.name);
+        const days = await fs.readdir(monthPath, { withFileTypes: true });
+
         for (const day of days) {
-          const dayPath = path.join(monthPath, day);
-          const dayStat = await fs.stat(dayPath);
-          if (!dayStat.isDirectory()) continue;
-          
-          const eventsFile = path.join(dayPath, 'events.jsonl');
-          
+          if (!day.isDirectory()) continue;
+
+          const eventsFile = path.join(monthPath, day.name, 'events.jsonl');
+
           try {
             const content = await fs.readFile(eventsFile, 'utf-8');
-            const lines = content.trim().split('\n');
-            
+            const lines = content.split('\n');
+
             for (const line of lines) {
-              if (line.trim().length === 0) continue;
-              
+              if (line.length === 0) continue;
+
               try {
                 const event = JSON.parse(line) as FeedbackEvent;
-                
+
                 // Only count play events
                 if (event.action !== 'play') continue;
-                
+
                 // Check if event is within time range
                 const eventDate = new Date(event.ts);
                 if (eventDate < cutoffDate) continue;
-                
+
                 // Increment play count
                 const count = playCounts.get(event.sid_path) || 0;
                 playCounts.set(event.sid_path, count + 1);
-              } catch (err) {
-                console.warn(`Skipping malformed feedback line: ${line.substring(0, 50)}...`);
+              } catch {
+                // Skip malformed lines silently for performance
+                continue;
               }
             }
-          } catch (err) {
+          } catch {
             // Skip missing or unreadable files
             continue;
           }
@@ -119,7 +117,7 @@ async function aggregatePlayCounts(timeRange: 'week' | 'month' | 'all'): Promise
   } catch (err) {
     console.error('Error reading feedback directory:', err);
   }
-  
+
   return playCounts;
 }
 
@@ -132,7 +130,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const range = (searchParams.get('range') || 'week') as 'week' | 'month' | 'all';
     const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100);
-    
+
     // Validate range
     if (!['week', 'month', 'all'].includes(range)) {
       return NextResponse.json({
@@ -141,9 +139,9 @@ export async function GET(request: NextRequest) {
         details: 'Range must be one of: week, month, all',
       }, { status: 400 });
     }
-    
+
     const cacheKey = `${range}-${limit}`;
-    
+
     // Check cache first
     if (chartsCache[cacheKey] && Date.now() - chartsCache[cacheKey].timestamp < CACHE_TTL) {
       return NextResponse.json({
@@ -152,12 +150,16 @@ export async function GET(request: NextRequest) {
           range,
           charts: chartsCache[cacheKey].entries,
         },
+      }, {
+        headers: {
+          'Cache-Control': 'public, max-age=3600, s-maxage=7200', // 1hr client, 2hr CDN
+        },
       });
     }
-    
+
     // Aggregate play counts
     const playCounts = await aggregatePlayCounts(range);
-    
+
     // Convert to sorted array
     const entries: ChartEntry[] = Array.from(playCounts.entries())
       .map(([sidPath, playCount]) => {
@@ -171,18 +173,22 @@ export async function GET(request: NextRequest) {
       })
       .sort((a, b) => b.playCount - a.playCount)
       .slice(0, limit);
-    
+
     // Update cache
     chartsCache[cacheKey] = {
       entries,
       timestamp: Date.now(),
     };
-    
+
     return NextResponse.json({
       success: true,
       data: {
         range,
         charts: entries,
+      },
+    }, {
+      headers: {
+        'Cache-Control': 'public, max-age=3600, s-maxage=7200', // 1hr client, 2hr CDN
       },
     });
   } catch (error) {

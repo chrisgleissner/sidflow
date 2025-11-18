@@ -7,6 +7,7 @@ import { loadConfig } from '@sidflow/common';
 import path from 'node:path';
 import { pathExists } from '@sidflow/common';
 import type { DatabaseRecord } from '@sidflow/common';
+import { hiddenGemsCache, tableCache, getCachedDbConnection, createCacheKey } from './cache';
 
 export interface HiddenGemTrack {
     sid_path: string;
@@ -29,8 +30,17 @@ export interface HiddenGemsOptions {
 
 /**
  * Connects to the LanceDB database and returns the sidflow table.
+ * Uses caching to avoid repeated connections.
  */
 async function getTable(): Promise<Table | null> {
+    const cacheKey = 'sidflow-table';
+
+    // Check cache first
+    const cachedTable = tableCache.get(cacheKey);
+    if (cachedTable) {
+        return cachedTable;
+    }
+
     try {
         const config = await loadConfig();
         const modelPath = path.join(process.cwd(), 'data', 'model');
@@ -41,7 +51,7 @@ async function getTable(): Promise<Table | null> {
             return null;
         }
 
-        const db = await connect(dbPath);
+        const db = await getCachedDbConnection(dbPath);
         const tableNames = await db.tableNames();
 
         if (!tableNames.includes('sidflow')) {
@@ -49,7 +59,12 @@ async function getTable(): Promise<Table | null> {
             return null;
         }
 
-        return await db.openTable('sidflow');
+        const table = await db.openTable('sidflow');
+
+        // Cache the table connection
+        tableCache.set(cacheKey, table);
+
+        return table;
     } catch (error) {
         console.error('[hidden-gems] Failed to connect to LanceDB:', error);
         return null;
@@ -108,6 +123,14 @@ export async function findHiddenGems(
     options: HiddenGemsOptions
 ): Promise<HiddenGemTrack[]> {
     const { limit = 20, minRating = 4.0 } = options;
+
+    // Check cache first
+    const cacheKey = createCacheKey('hidden-gems', limit, minRating);
+    const cached = hiddenGemsCache.get(cacheKey);
+    if (cached) {
+        console.log('[hidden-gems] Cache hit');
+        return cached;
+    }
 
     console.log('[hidden-gems] Finding hidden gems:', {
         limit,
@@ -183,6 +206,9 @@ export async function findHiddenGems(
         const topGems = gems.slice(0, limit);
 
         console.log('[hidden-gems] Found', topGems.length, 'hidden gems');
+
+        // Cache the result
+        hiddenGemsCache.set(cacheKey, topGems);
 
         return topGems;
     } catch (error) {

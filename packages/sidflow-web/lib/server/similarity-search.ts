@@ -7,6 +7,7 @@ import { loadConfig } from '@sidflow/common';
 import path from 'node:path';
 import { pathExists } from '@sidflow/common';
 import type { DatabaseRecord } from '@sidflow/common';
+import { similarityCache, tableCache, getCachedDbConnection, createCacheKey } from './cache';
 
 export interface SimilarTrack {
   sid_path: string;
@@ -37,8 +38,17 @@ export interface SimilaritySearchOptions {
 
 /**
  * Connects to the LanceDB database and returns the sidflow table.
+ * Uses caching to avoid repeated connections.
  */
 async function getTable(): Promise<Table | null> {
+  const cacheKey = 'sidflow-table';
+
+  // Check cache first
+  const cachedTable = tableCache.get(cacheKey);
+  if (cachedTable) {
+    return cachedTable;
+  }
+
   try {
     const config = await loadConfig();
     // Model path is typically data/model relative to workspace root
@@ -50,7 +60,7 @@ async function getTable(): Promise<Table | null> {
       return null;
     }
 
-    const db = await connect(dbPath);
+    const db = await getCachedDbConnection(dbPath);
     const tableNames = await db.tableNames();
 
     if (!tableNames.includes('sidflow')) {
@@ -58,7 +68,12 @@ async function getTable(): Promise<Table | null> {
       return null;
     }
 
-    return await db.openTable('sidflow');
+    const table = await db.openTable('sidflow');
+
+    // Cache the table connection
+    tableCache.set(cacheKey, table);
+
+    return table;
   } catch (error) {
     console.error('[similarity-search] Failed to connect to LanceDB:', error);
     return null;
@@ -100,10 +115,10 @@ async function performVectorSearch(
 ): Promise<SimilarTrack[]> {
   try {
     // Perform vector similarity search
-    // Fetch more than requested to account for filtering
+    // Fetch more than requested to account for filtering (2x is sufficient)
     const results = await table
       .search(vector)
-      .limit(limit * 3)
+      .limit(limit * 2)
       .execute();
 
     // Filter out the seed track and convert to SimilarTrack format
@@ -198,6 +213,14 @@ export async function findSimilarTracks(
     dislikeBoost = 0.5,
   } = options;
 
+  // Check cache first
+  const cacheKey = createCacheKey('similarity', seedSidPath, limit, minSimilarity, likeBoost, dislikeBoost);
+  const cached = similarityCache.get(cacheKey);
+  if (cached) {
+    console.log('[similarity-search] Cache hit for:', seedSidPath);
+    return cached;
+  }
+
   console.log('[similarity-search] Finding similar tracks for:', {
     seedSidPath,
     limit,
@@ -239,6 +262,9 @@ export async function findSimilarTracks(
     count: filtered.length,
     topScore: filtered[0]?.similarity_score,
   });
+
+  // Cache the result
+  similarityCache.set(cacheKey, filtered);
 
   return filtered;
 }

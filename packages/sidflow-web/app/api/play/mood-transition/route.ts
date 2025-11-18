@@ -122,7 +122,12 @@ export async function POST(request: NextRequest) {
                 stationName,
             },
         };
-        return NextResponse.json(response, { status: 200 });
+        return NextResponse.json(response, {
+            status: 200,
+            headers: {
+                'Cache-Control': 'public, max-age=600, s-maxage=900', // 10min client, 15min CDN
+            },
+        });
     } catch (error) {
         console.error('[API] /api/play/mood-transition - Error:', error);
         const response: ApiResponse = {

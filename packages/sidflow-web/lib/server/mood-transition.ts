@@ -7,6 +7,7 @@ import { loadConfig } from '@sidflow/common';
 import path from 'node:path';
 import { pathExists } from '@sidflow/common';
 import type { DatabaseRecord } from '@sidflow/common';
+import { moodTransitionCache, tableCache, getCachedDbConnection, createCacheKey } from './cache';
 
 export interface MoodVector {
     e: number; // Energy (1-5)
@@ -35,8 +36,17 @@ export interface MoodTransitionOptions {
 
 /**
  * Connects to the LanceDB database and returns the sidflow table.
+ * Uses caching to avoid repeated connections.
  */
 async function getTable(): Promise<Table | null> {
+    const cacheKey = 'sidflow-table';
+
+    // Check cache first
+    const cachedTable = tableCache.get(cacheKey);
+    if (cachedTable) {
+        return cachedTable;
+    }
+
     try {
         const config = await loadConfig();
         // Model path is typically data/model relative to workspace root
@@ -48,7 +58,7 @@ async function getTable(): Promise<Table | null> {
             return null;
         }
 
-        const db = await connect(dbPath);
+        const db = await getCachedDbConnection(dbPath);
         const tableNames = await db.tableNames();
 
         if (!tableNames.includes('sidflow')) {
@@ -56,7 +66,12 @@ async function getTable(): Promise<Table | null> {
             return null;
         }
 
-        return await db.openTable('sidflow');
+        const table = await db.openTable('sidflow');
+
+        // Cache the table connection
+        tableCache.set(cacheKey, table);
+
+        return table;
     } catch (error) {
         console.error('[mood-transition] Failed to connect to LanceDB:', error);
         return null;
@@ -107,7 +122,7 @@ async function findTracksNearMood(
 
         // Perform vector search with target mood vector
         const targetVector = [targetMood.e, targetMood.m, targetMood.c, 0]; // E/M/C/P dimensions
-        const results = await table.search(targetVector).filter(filter).limit(limit * 10).execute();
+        const results = await table.search(targetVector).filter(filter).limit(limit * 5).execute();
 
         // Calculate distance from target and sort
         const tracks: TransitionTrack[] = results.map((record) => {
@@ -161,6 +176,14 @@ export async function findMoodTransitionTracks(
     options: MoodTransitionOptions
 ): Promise<TransitionTrack[]> {
     const { startMood, endMood, steps = 7 } = options;
+
+    // Check cache first
+    const cacheKey = createCacheKey('mood-transition', startMood, endMood, steps);
+    const cached = moodTransitionCache.get(cacheKey);
+    if (cached) {
+        console.log('[mood-transition] Cache hit');
+        return cached;
+    }
 
     console.log('[mood-transition] Creating transition:', {
         startMood,
@@ -239,6 +262,9 @@ export async function findMoodTransitionTracks(
         tracksFound: transitionTracks.length,
         path: transitionTracks.map((t) => ({ e: t.e, m: t.m, c: t.c })),
     });
+
+    // Cache the result
+    moodTransitionCache.set(cacheKey, transitionTracks);
 
     return transitionTracks;
 }

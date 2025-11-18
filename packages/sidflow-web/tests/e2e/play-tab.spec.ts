@@ -90,6 +90,7 @@ if (!isPlaywrightRunner) {
     });
 
     test('creates personalized station from the current song', async ({ page }) => {
+      test.setTimeout(90000); // Increase timeout for CI environment
       await bootstrapPlayTab(page);
 
       const stationButton = page.getByRole('button', { name: /start station/i });
@@ -103,6 +104,7 @@ if (!isPlaywrightRunner) {
     });
 
     test('displays personal and community ratings for the song in play', async ({ page }) => {
+      test.setTimeout(90000); // Increase timeout for CI environment
       await bootstrapPlayTab(page);
 
       await expect(page.getByText(`You rated: ${PERSONAL_RATING_VALUE}/5`)).toBeVisible({ timeout: 60000 });

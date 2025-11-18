@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     // 0.5 = balanced          (min similarity 0.55)
     // 1.0 = more exploration  (min similarity 0.3)
     const minSimilarity = Math.max(0.3, 0.8 - discovery * 0.5);
-    
+
     // Similarity parameter adjusts boost factors
     // Higher similarity means stronger personalization based on user feedback
     const likeBoost = 1.0 + similarity * 1.0; // 1.0 to 2.0
@@ -139,7 +139,12 @@ export async function POST(request: NextRequest) {
         stationName,
       },
     };
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'public, max-age=300, s-maxage=600', // 5min client, 10min CDN
+      },
+    });
   } catch (error) {
     console.error('[API] /api/play/station-from-song - Error:', error);
     const response: ApiResponse = {

@@ -49,7 +49,12 @@ export async function GET(request: NextRequest) {
       success: true,
       data: aggregateRating,
     };
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'public, max-age=300, s-maxage=600', // 5min client, 10min CDN
+      },
+    });
   } catch (error) {
     console.error('[API] /api/rate/aggregate - Error:', error);
     const response: ApiResponse = {

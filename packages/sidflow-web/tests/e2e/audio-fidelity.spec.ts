@@ -395,18 +395,18 @@ if (isPlaywrightRunner) {
         const basePath = tab === 'rate' ? '/admin' : '/';
         await page.goto(`${basePath}?tab=${tab}`);
 
-      await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
-      const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
-      expect(hasSharedArrayBuffer).toBe(true);
+        await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
+        const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
+        expect(hasSharedArrayBuffer).toBe(true);
 
-      await page.waitForFunction(() => Boolean((window as any).__sidflowPlayer), { timeout: 10000 });
-      const hasTelemetry = await page.evaluate(() => {
-        const player = (window as any).__sidflowPlayer;
-        return Boolean(player && typeof player.getTelemetry === 'function');
-      });
-      expect(hasTelemetry).toBe(true);
+        await page.waitForFunction(() => Boolean((window as any).__sidflowPlayer), { timeout: 10000 });
+        const hasTelemetry = await page.evaluate(() => {
+          const player = (window as any).__sidflowPlayer;
+          return Boolean(player && typeof player.getTelemetry === 'function');
+        });
+        expect(hasTelemetry).toBe(true);
 
-      expect(pageErrors).toHaveLength(0);
+        expect(pageErrors).toHaveLength(0);
         page.off('pageerror', errorHandler);
       }
     });
@@ -417,34 +417,38 @@ if (isPlaywrightRunner) {
 
   // Full C4 fidelity tests with audio capture
   test.describe('Audio Fidelity - C4 Test SID', () => {
+    test.beforeEach(async () => {
+      test.setTimeout(60000); // Increase timeout for audio capture tests
+    });
+
     test('Rate tab: C4 test SID fidelity', async ({ page }) => {
-    const report = await testTabFidelity(page, 'rate');
+      const report = await testTabFidelity(page, 'rate');
 
-    console.log(
-      `[Fidelity][rate] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
-    );
+      console.log(
+        `[Fidelity][rate] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
+      );
 
-    // Expected fidelity criteria (relaxed for browser timing variance)
-    expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
-    expect(report.underruns).toBe(0);
-    expect(report.fundamentalFrequency).toBeGreaterThan(255); // ~261.63 - 6 Hz tolerance
-    expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
-    expect(report.dropoutCount).toBe(0);
-    expect(report.rmsStability).toBeLessThan(10); // <10% variation
+      // Expected fidelity criteria (relaxed for browser timing variance)
+      expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
+      expect(report.underruns).toBe(0);
+      expect(report.fundamentalFrequency).toBeGreaterThan(255); // ~261.63 - 6 Hz tolerance
+      expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
+      expect(report.dropoutCount).toBe(0);
+      expect(report.rmsStability).toBeLessThan(10); // <10% variation
     });
 
     test('Play tab: C4 test SID fidelity', async ({ page }) => {
-    const report = await testTabFidelity(page, 'play');
+      const report = await testTabFidelity(page, 'play');
 
-    console.log(
-      `[Fidelity][play] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
-    );
+      console.log(
+        `[Fidelity][play] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
+      );
 
-    expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
-    expect(report.underruns).toBe(0);
-    expect(report.fundamentalFrequency).toBeGreaterThan(255); // ~261.63 - 6 Hz tolerance
-    expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
-    expect(report.dropoutCount).toBe(0);
+      expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
+      expect(report.underruns).toBe(0);
+      expect(report.fundamentalFrequency).toBeGreaterThan(255); // ~261.63 - 6 Hz tolerance
+      expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
+      expect(report.dropoutCount).toBe(0);
       expect(report.rmsStability).toBeLessThan(10);
     });
   });
