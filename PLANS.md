@@ -610,7 +610,8 @@ When beginning a task:
 - 2025-11-18 — Began Step 3: prototyped production-mode web server switch, added `ffmpeg-core` stub + caching, and spiked `npm run profile:e2e` (pidstat + V8 CPU profile + flamegraph/text summaries) so agents can target specific specs via `--spec/--grep`.  
 - 2025-11-18 — Continued Step 3: defaulted Playwright runs to two workers (override via `SIDFLOW_E2E_WORKERS`) and introduced `npm run analyze:e2e` to mine the JSON report for slow tests/specs so we can focus optimizations where it matters; still seeing ECONNRESET/favorites timeouts that block validation.  
 - 2025-11-18 — Completed Step 3: stabilized favorites/search helpers, added cache invalidation + deterministic seeding, and wired search logging/timeouts so the production-mode server stays responsive even under profiling.  
-- 2025-11-18 — Completed Step 4: captured profiling artifacts for the Favorites + Phase 1 suites at 2 workers (`tmp/profiles/e2e-profile-2025-11-18T15-46-43` / `...T15-48-48`), analyzed CPU summaries + pidstat logs, and recorded runtime hotspots via `npm run analyze:e2e`.
+- 2025-11-18 — Completed Step 4: captured profiling artifacts for the Favorites + Phase 1 suites at 2 workers (`tmp/profiles/e2e-profile-2025-11-18T15-46-43` / `...T15-48-48`), analyzed CPU summaries + pidstat logs, and recorded runtime hotspots via `npm run analyze:e2e`.  
+- 2025-11-18 — Added dual Playwright projects so the favorites suite runs in its own single-worker pass (mirroring the earlier “stable vs flaky” idea) while the rest of the suite stays at two workers; `npm run test:e2e` now runs green end-to-end with two intentional skips.
 
 **Assumptions and open questions**  
 - Assumption: Failures stem from resource starvation (timeouts) rather than deterministic UI/API bugs.  

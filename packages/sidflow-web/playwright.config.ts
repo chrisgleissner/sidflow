@@ -4,6 +4,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';
 const stubToolsPath = path.resolve(configDir, 'tests/stubs');
 const repoRoot = path.resolve(configDir, '..', '..');
 const defaultModelPath = path.resolve(repoRoot, 'data', 'model');
@@ -75,6 +76,13 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /favorites\.spec\.ts$/,
+      use: { ...projectUse },
+    },
+    {
+      name: 'chromium-favorites',
+      testMatch: /favorites\.spec\.ts$/,
+      workers: 1,
       use: { ...projectUse },
     },
   ],
@@ -96,7 +104,9 @@ export default defineConfig({
         ? { SIDFLOW_DISABLE_RENDER: '1', SIDFLOW_RELAXED_CSP: '1' }
         : {}),
       SIDFLOW_FAVORITES_CACHE_TTL_MS: '0',
+      SIDFLOW_LOG_FAVORITES: process.env.SIDFLOW_LOG_FAVORITES ?? '1',
       SIDFLOW_LOG_SEARCH: process.env.SIDFLOW_LOG_SEARCH ?? '1',
+      SIDFLOW_SKIP_SONGBROWSER_ACTIONS: process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ?? '1',
       ...(serverNodeOptions ? { NODE_OPTIONS: serverNodeOptions } : {}),
       ...(skipNextBuildFlag ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
     },

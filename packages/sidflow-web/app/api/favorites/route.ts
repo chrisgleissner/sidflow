@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCachedFavorites, addFavorite, removeFavorite } from '@/lib/server/favorites-cache';
 
+const enableFavoritesLogs = process.env.SIDFLOW_LOG_FAVORITES === '1';
+
+function log(message: string, meta?: Record<string, unknown>) {
+  if (!enableFavoritesLogs) {
+    return;
+  }
+  const serializedMeta = meta ? ` ${JSON.stringify(meta)}` : '';
+  console.info(`[favorites-api] ${message}${serializedMeta}`);
+}
+
 export const dynamic = 'force-dynamic';
 
 /**
@@ -9,13 +19,16 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   try {
+    const startedAt = Date.now();
+    log('GET start');
     const favorites = await getCachedFavorites();
-    
+    log('GET success', { durationMs: Date.now() - startedAt, count: favorites.length });
     return NextResponse.json({
       success: true,
       data: { favorites },
     });
   } catch (error) {
+    log('GET failure', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,
@@ -47,8 +60,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const startedAt = Date.now();
+    log('POST start', { sid_path });
     const result = await addFavorite(sid_path);
-
+    log('POST success', { durationMs: Date.now() - startedAt, added: result.added });
     return NextResponse.json({
       success: true,
       data: {
@@ -58,6 +73,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    log('POST failure', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,
@@ -89,8 +105,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const startedAt = Date.now();
+    log('DELETE start', { sid_path });
     const result = await removeFavorite(sid_path);
-
+    log('DELETE success', { durationMs: Date.now() - startedAt, removed: result.removed });
     return NextResponse.json({
       success: true,
       data: {
@@ -99,6 +117,7 @@ export async function DELETE(request: NextRequest) {
       },
     });
   } catch (error) {
+    log('DELETE failure', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,
