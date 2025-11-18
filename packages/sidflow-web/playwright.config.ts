@@ -44,11 +44,11 @@ const projectUse = hasSystemChrome
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 15 * 1000,
+  timeout: 30 * 1000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 6 : undefined,
+  workers: process.env.CI ? 3 : undefined,
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],

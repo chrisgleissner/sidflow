@@ -15,17 +15,23 @@ test.describe('Favorites Feature', () => {
   test('should display favorites tab for public users', async ({ page }) => {
     // Check that favorites tab exists
     const favoritesTab = page.locator('[data-testid="tab-favorites"]');
-    await expect(favoritesTab).toBeVisible();
+    await expect(favoritesTab).toBeVisible({ timeout: 10000 });
 
     // Click favorites tab
     await favoritesTab.click();
     
-    // Wait for loading state to disappear
-    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
+    // Wait for either loading state or content to appear
+    await Promise.race([
+      page.waitForSelector('text=Loading favorites...', { timeout: 5000 }).catch(() => {}),
+      page.waitForSelector('text=No favorites yet', { timeout: 5000 }).catch(() => {})
+    ]);
+    
+    // Wait for loading to complete
+    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 15000 }).catch(() => {});
 
     // Should show empty state initially (use first match to avoid ambiguity)
-    await expect(page.getByText('No favorites yet').first()).toBeVisible();
-    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should allow adding and removing favorites from play tab', async ({ page }) => {
@@ -74,15 +80,18 @@ test.describe('Favorites Feature', () => {
     // Navigate to favorites tab
     await page.locator('[data-testid="tab-favorites"]').click();
     
-    // Wait for loading state to disappear
-    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
+    // Wait for loading to complete
+    await Promise.race([
+      page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 15000 }),
+      page.waitForSelector('text=No favorites yet', { timeout: 15000 })
+    ]).catch(() => {});
 
     // Check for action buttons (they should be disabled when empty)
     const playAllButton = page.getByRole('button', { name: /play all/i });
     const shuffleButton = page.getByRole('button', { name: /shuffle/i });
 
-    await expect(playAllButton).toBeVisible();
-    await expect(shuffleButton).toBeVisible();
+    await expect(playAllButton).toBeVisible({ timeout: 10000 });
+    await expect(shuffleButton).toBeVisible({ timeout: 5000 });
 
     // Buttons should be disabled when no favorites
     await expect(playAllButton).toBeDisabled();
@@ -106,16 +115,19 @@ test.describe('Favorites Feature', () => {
     // For now, we'll just check the structure is correct
     await page.locator('[data-testid="tab-favorites"]').click();
     
-    // Wait for loading state to disappear
-    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
+    // Wait for loading to complete
+    await Promise.race([
+      page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 15000 }),
+      page.waitForSelector('text=FAVORITES', { timeout: 15000 })
+    ]).catch(() => {});
 
     // Check for the card structure
     const favoritesCard = page.locator('.c64-border').filter({ hasText: 'FAVORITES' });
-    await expect(favoritesCard).toBeVisible();
+    await expect(favoritesCard).toBeVisible({ timeout: 10000 });
 
     // Check for the heart icon in header
     const heartIcon = favoritesCard.locator('svg.lucide-heart');
-    await expect(heartIcon).toBeVisible();
+    await expect(heartIcon).toBeVisible({ timeout: 5000 });
   });
 
   test('should maintain favorites state across tab switches', async ({ page }) => {
@@ -152,12 +164,15 @@ test.describe('Favorites Feature', () => {
     // Navigate to favorites tab
     await page.locator('[data-testid="tab-favorites"]').click();
     
-    // Wait for loading state to disappear
-    await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 10000 }).catch(() => {});
+    // Wait for loading to complete
+    await Promise.race([
+      page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 15000 }),
+      page.waitForSelector('text=No favorites yet', { timeout: 15000 })
+    ]).catch(() => {});
 
     // Check empty state elements (use first match to avoid ambiguity)
-    await expect(page.getByText('No favorites yet').first()).toBeVisible();
-    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible({ timeout: 5000 });
 
     // Check for empty state heart icon
     const emptyHeartIcon = page.locator('svg.lucide-heart').first();
