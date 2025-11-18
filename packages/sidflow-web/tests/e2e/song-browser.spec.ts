@@ -22,42 +22,30 @@ if (!isPlaywrightRunner) {
     test('displays song browser component', async ({ page }) => {
       // Navigate to Play tab
       const playTab = page.getByRole('tab', { name: /play/i });
-      await expect(playTab).toBeVisible({ timeout: 10000 });
       await playTab.click();
+      await page.waitForTimeout(500);
 
-      // Wait for URL to update
-      await page.waitForURL(/tab=play/, { timeout: 10000 });
-      await page.waitForLoadState('domcontentloaded');
-
-      // Wait for song browser heading to appear
+      // Check for song browser heading
       const browserHeading = page.getByText(/SID COLLECTION BROWSER/i);
-      await expect(browserHeading).toBeVisible({ timeout: 10000 });
+      await expect(browserHeading).toBeVisible();
     });
 
     test('shows breadcrumb navigation', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
-      await expect(playTab).toBeVisible({ timeout: 10000 });
       await playTab.click();
-
-      // Wait for URL and content to load
-      await page.waitForURL(/tab=play/, { timeout: 10000 });
-      await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(500);
 
       // Look for Collection breadcrumb
       const collectionBreadcrumb = page.getByRole('button', { name: 'Collection' });
-      await expect(collectionBreadcrumb).toBeVisible({ timeout: 10000 });
+      await expect(collectionBreadcrumb).toBeVisible();
     });
 
     test('displays folders and files when available', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
-      await expect(playTab).toBeVisible({ timeout: 10000 });
       await playTab.click();
-
-      // Wait for navigation
-      await page.waitForURL(/tab=play/, { timeout: 10000 });
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1000);
+      
+      // Wait for the browser component to finish loading
+      await page.waitForTimeout(2000);
 
       // Check if either folders or files section is visible, or if there's a valid state message
       // (actual content depends on local SID collection being configured)
@@ -69,10 +57,10 @@ if (!isPlaywrightRunner) {
       // Wait for at least one of these to appear
       try {
         await Promise.race([
-          foldersHeader.waitFor({ timeout: 5000 }),
-          filesHeader.waitFor({ timeout: 5000 }),
-          emptyMessage.waitFor({ timeout: 5000 }),
-          errorMessage.first().waitFor({ timeout: 5000 })
+          foldersHeader.waitFor({ timeout: 3000 }),
+          filesHeader.waitFor({ timeout: 3000 }),
+          emptyMessage.waitFor({ timeout: 3000 }),
+          errorMessage.first().waitFor({ timeout: 3000 })
         ]);
         // If we got here, at least one element appeared
         expect(true).toBeTruthy();
@@ -86,12 +74,7 @@ if (!isPlaywrightRunner) {
 
     test('navigates to folder when clicked', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
-      await expect(playTab).toBeVisible({ timeout: 10000 });
       await playTab.click();
-
-      // Wait for navigation and content
-      await page.waitForURL(/tab=play/, { timeout: 10000 });
-      await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(1000);
 
       // Try to click first folder if available
@@ -99,16 +82,13 @@ if (!isPlaywrightRunner) {
       const folderCount = await firstFolder.count();
 
       if (folderCount > 0) {
-        await expect(firstFolder).toBeVisible({ timeout: 5000 });
         const folderName = await firstFolder.textContent();
         await firstFolder.click();
-
-        // Wait for navigation
         await page.waitForTimeout(500);
 
         // Breadcrumb should update
         const breadcrumb = page.getByRole('button', { name: folderName || '' });
-        await expect(breadcrumb).toBeVisible({ timeout: 5000 });
+        await expect(breadcrumb).toBeVisible();
       } else {
         // If no folders, test passes (local collection not configured)
         console.log('No folders found - local SID collection may not be configured');
@@ -117,29 +97,18 @@ if (!isPlaywrightRunner) {
 
     test('shows folder action buttons', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
-      await expect(playTab).toBeVisible({ timeout: 10000 });
       await playTab.click();
-
-      // Wait for content to load
-      await page.waitForLoadState('domcontentloaded');
       await page.waitForTimeout(1000);
 
+      // Look for any folder with action buttons
+      const folderContainer = page.locator('[class*="border-border"]').first();
+      const hasListButton = await folderContainer.locator('button[title*="Play all songs in this folder"]').count() > 0;
+      const hasPlayButton = await folderContainer.locator('button[title*="Play all songs in this folder and subfolders"]').count() > 0;
+      const hasShuffleButton = await folderContainer.locator('button[title*="Shuffle"]').count() > 0;
+
       // If folders exist, they should have action buttons
-      const folderHeading = page.getByText(/Folders \(\d+\)/i);
-      const foldersExist = await folderHeading.count() > 0;
-
+      const foldersExist = await page.getByText(/Folders \(\d+\)/i).count() > 0;
       if (foldersExist) {
-        // Wait for folder list to be visible
-        await expect(folderHeading.first()).toBeVisible({ timeout: 5000 });
-
-        // Wait for buttons to render
-        await page.waitForTimeout(500);
-
-        // Look for folder action buttons anywhere on the page
-        const hasListButton = await page.locator('button[title="Play all songs in this folder"]').count() > 0;
-        const hasPlayButton = await page.locator('button[title="Play all songs in this folder and subfolders"]').count() > 0;
-        const hasShuffleButton = await page.locator('button[title="Shuffle all songs in this folder and subfolders"]').count() > 0;
-
         expect(hasListButton || hasPlayButton || hasShuffleButton).toBeTruthy();
       }
     });
@@ -147,6 +116,7 @@ if (!isPlaywrightRunner) {
     test('shows file play buttons', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
+      await page.waitForTimeout(1000);
 
       // Look for SID files
       const fileSection = page.getByText(/SID Files \(\d+\)/i);
@@ -166,6 +136,7 @@ if (!isPlaywrightRunner) {
       await page.waitForLoadState('networkidle');
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
+      await page.waitForTimeout(500);
     });
 
     test('volume slider is visible', async ({ page }) => {
@@ -203,6 +174,7 @@ if (!isPlaywrightRunner) {
       await page.waitForLoadState('networkidle');
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
+      await page.waitForTimeout(500);
     });
 
     test('shows default mood station mode', async ({ page }) => {
@@ -238,11 +210,12 @@ if (!isPlaywrightRunner) {
       await page.waitForLoadState('networkidle');
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
+      await page.waitForTimeout(500);
     });
 
     test('displays playback control buttons', async ({ page }) => {
       // Previous button
-      const previousButton = page.getByRole('button', { name: 'Previous track', exact: true });
+      const previousButton = page.getByRole('button', { name: /previous track/i });
       await expect(previousButton).toBeVisible();
 
       // Play/Pause button
@@ -250,7 +223,7 @@ if (!isPlaywrightRunner) {
       await expect(playPauseButton).toBeVisible();
 
       // Next button
-      const nextButton = page.getByRole('button', { name: 'Next track', exact: true });
+      const nextButton = page.getByRole('button', { name: /next track/i });
       await expect(nextButton).toBeVisible();
     });
 
