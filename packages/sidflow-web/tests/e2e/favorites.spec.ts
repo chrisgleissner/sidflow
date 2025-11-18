@@ -21,10 +21,10 @@ test.describe('Favorites Feature', () => {
     await favoritesTab.click();
     
     // Wait for either loading state or content to appear
-    await Promise.race([
-      page.waitForSelector('text=Loading favorites...', { timeout: 5000 }).catch(() => {}),
-      page.waitForSelector('text=No favorites yet', { timeout: 5000 }).catch(() => {})
-    ]);
+    await Promise.any([
+      page.waitForSelector('text=Loading favorites...', { timeout: 5000 }),
+      page.waitForSelector('text=No favorites yet', { timeout: 5000 })
+    ]).catch(() => {});
     
     // Wait for loading to complete
     await page.waitForSelector('text=Loading favorites...', { state: 'hidden', timeout: 15000 }).catch(() => {});
