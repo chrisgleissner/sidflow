@@ -122,7 +122,7 @@ const TABS: TabScenario[] = [
         }).catch((error) => {
           console.warn('[CLASSIFY verify] Main content area not found:', error.message);
         });
-        
+
         // Ensure content is fully rendered
         await page.waitForTimeout(1000);
       } catch (error) {
