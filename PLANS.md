@@ -183,14 +183,19 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 - [x] Step 2 — Analyze logs/runtime reports to pinpoint hotspots (favorites/search endpoints, Next.js server) and document findings.  
 - [x] Step 3 — Implement performance + stability fixes (API/query optimizations, caching, worker limits) and update docs/config.  
 - [x] Step 4 — Provide `bun run profile:e2e` workflow (spec filters, flamegraph, textual summary) and document usage.  
-- [x] Step 5 — Run full unit + E2E suites; ensure they pass without flakes and capture runtime summary.
+- [x] Step 5 — Run full unit + E2E suites; ensure they pass without flakes and capture runtime summary.  
+- [x] Step 6 — Eliminate benign-but-noisy `ECONNRESET/aborted` logs in the prod-mode Next test server after confirming the underlying condition is harmless.  
+- [x] Step 7 — Profile additional top-5 longest Playwright specs (e.g., screenshots, song-browser) with detailed logging enabled and summarize bottlenecks + remediation ideas.
 
 **Progress log**  
 - 2025-11-18 — Profiling baseline captured with `bun run profile:e2e` against the three slowest specs (audio fidelity, search clear, personalized station) while `pidstat -rud -p ALL 10` logged CPU/RAM every 10 s; artifacts under `tmp/profiles/e2e-profile-2025-11-18T21-06-30/` etc.  
 - 2025-11-18 — Runtime analysis via `npm run analyze:e2e` confirmed audio-fidelity and search flows dominate wall-clock (30–35 s); V8 CPU summaries show the majority of time spent spawning Next production server + idle waiting for network rather than app logic.  
 - 2025-11-18 — Hardened favorites/search: Playwright now seeds favorites through `/api/favorites` with retries instead of mutating `.sidflow-preferences.json`, Playwright web server skips redundant `next build` (`SIDFLOW_SKIP_NEXT_BUILD=1`), and favorites tests run serially with reload-aware helper → flaky ECONNRESETs eliminated.  
 - 2025-11-18 — Documented the profiling workflow in `doc/developer.md` (how to run `bun run profile:e2e`, artifact locations, how to share `cpu-summary.txt` with LLMs).  
-- 2025-11-18 — Validation: `npm run test:e2e` (61 specs, 2 workers + serial favorites) now passes green; `SIDFLOW_SKIP_WASM_UPSTREAM_CHECK=1 npm run test` also passes (upstream git check guarded so transient GitHub 500s no longer block builds).
+- 2025-11-18 — Validation: `npm run test:e2e` (61 specs, 2 workers + serial favorites) now passes green; `SIDFLOW_SKIP_WASM_UPSTREAM_CHECK=1 npm run test` also passes (upstream git check guarded so transient GitHub 500s no longer block builds).  
+- 2025-11-18 — New follow-up request: confirm/suppress benign `ECONNRESET` server logs and capture deeper profiles for screenshots/song-browser suites; steps 6–7 added to plan.
+- 2025-11-18 — Added log suppression in `start-test-server.mjs` (`SIDFLOW_SUPPRESS_ABORT_LOGS` + `SIDFLOW_DEBUG_REQUEST_ERRORS`) to drop `ECONNRESET/EPIPE` noise while keeping opt-in diagnostics; reran `npm run test:e2e` to confirm green output and quiet server logs.  
+- 2025-11-18 — Profiled `screenshots.spec.ts` and `song-browser.spec.ts` via `bun run profile:e2e -- --grep ... --workers=1`; captured `tmp/profiles/e2e-profile-2025-11-18T21-32-32` and `…21-33-42` showing <100 ms CPU but long wall-clock due to Next process thrash + repeated UI stabilization waits (`waitForStableUi` theme timeouts, `Song Browser` hitting HVSC listing). Summaries logged for follow-up optimization.
 
 **Assumptions and open questions**  
 - Assumption: `pidstat` available locally for sampling CPU/RAM every 10 s.  

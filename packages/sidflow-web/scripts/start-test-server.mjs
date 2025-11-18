@@ -75,6 +75,54 @@ async function ensureProductionBuild() {
   await runNextBuild();
 }
 
+const debugRequestErrors = process.env.SIDFLOW_DEBUG_REQUEST_ERRORS === '1';
+const suppressAbortLogs = process.env.SIDFLOW_SUPPRESS_ABORT_LOGS !== '0';
+
+function isAbortLike(value) {
+  if (!value) {
+    return false;
+  }
+  if (value instanceof Error) {
+    const msg = typeof value.message === 'string' ? value.message.toLowerCase() : '';
+    return (
+      value.code === 'ECONNRESET' ||
+      value.code === 'EPIPE' ||
+      msg === 'aborted' ||
+      msg.includes('error: aborted') ||
+      msg.includes('write epipe')
+    );
+  }
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    return lower.includes('error: aborted') || lower.includes('write epipe');
+  }
+  if (typeof value === 'object') {
+    const maybeCode = value.code;
+    const msg = typeof value.message === 'string' ? value.message.toLowerCase() : '';
+    return (
+      maybeCode === 'ECONNRESET' ||
+      maybeCode === 'EPIPE' ||
+      msg === 'aborted' ||
+      msg.includes('error: aborted') ||
+      msg.includes('write epipe')
+    );
+  }
+  return false;
+}
+
+if (suppressAbortLogs) {
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    if (args.some((arg) => isAbortLike(arg))) {
+      if (debugRequestErrors) {
+        originalConsoleError('[test-server] suppressed abort log', ...args);
+      }
+      return;
+    }
+    originalConsoleError(...args);
+  };
+}
+
 async function start() {
   // Use test-specific config (only set if not already provided)
   if (!process.env.SIDFLOW_CONFIG) {
@@ -110,10 +158,41 @@ async function start() {
 
     const server = createServer((req, res) => {
       handle(req, res).catch((err) => {
+        const code = err?.code;
+        const message = typeof err?.message === 'string' ? err.message : '';
+        const isAbort = isAbortLike(err);
+        if (debugRequestErrors) {
+          console.error('[test-server] request error', {
+            code,
+            name: err?.name,
+            message,
+            stack: err?.stack,
+          });
+        }
+        if (isAbort) {
+          // Client navigated away before Next.js finished responding; ignore to avoid noisy logs.
+          if (!res.writableEnded) {
+            res.destroy();
+          }
+          return;
+        }
         console.error('Unhandled request error', err);
-        res.statusCode = 500;
-        res.end('Internal Server Error');
+        if (!res.headersSent) {
+          res.statusCode = 500;
+        }
+        if (!res.writableEnded) {
+          res.end('Internal Server Error');
+        }
       });
+    });
+
+    server.on('clientError', (err, socket) => {
+      if (err?.code === 'ECONNRESET' || err?.code === 'EPIPE') {
+        socket.destroy();
+        return;
+      }
+      console.error('[test-server] clientError', err);
+      socket.destroy();
     });
 
     const shutdown = (signal) => {

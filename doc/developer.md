@@ -58,6 +58,8 @@ Validate edits with `bun run validate:config`.
 | `npm run analyze:e2e` | Summarize the latest Playwright JSON report and list the slowest specs/tests. |
 | `npm run profile:e2e -- [--workers N] [--spec path] [--grep expr]`<br>`bun run profile:e2e -- --grep "search results"` | Run Playwright with `pidstat` + V8 CPU profiles and emit `tmp/profiles/.../` artifacts (flamegraph HTML, CPU summary, raw profiles). |
 
+> The prod-mode Playwright server suppresses benign `Error: aborted`/`EPIPE` noise automatically. Set `SIDFLOW_SUPPRESS_ABORT_LOGS=0` to re-enable the raw logs or `SIDFLOW_DEBUG_REQUEST_ERRORS=1` for verbose diagnostics when triaging server crashes.
+
 CI mirrors these steps before uploading coverage to Codecov.
 
 ---
