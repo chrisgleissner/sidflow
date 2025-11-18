@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { getRepoRoot } from '@/lib/server-env';
+import { getSearchIndex } from '@/lib/server/search-index';
+
+const enableSearchLogs = process.env.SIDFLOW_LOG_SEARCH === '1';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,10 +22,6 @@ interface SearchResult {
   artist: string;
   matchedIn: string[];
 }
-
-// Cache for classified tracks to avoid re-reading file on every search
-let tracksCache: { tracks: ClassifiedTrack[]; timestamp: number } | null = null;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Parse HVSC-style path to extract artist and title
@@ -56,6 +52,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
+    const logPrefix = `[search-api] q=${JSON.stringify(query)} limit=${limit}`;
 
     if (!query || query.trim().length === 0) {
       return NextResponse.json({
@@ -66,81 +63,36 @@ export async function GET(request: NextRequest) {
     }
 
     const normalizedQuery = query.trim().toLowerCase();
-
-    // Read classified tracks with caching
-    const repoRoot = getRepoRoot();
-    const classifiedPath = path.join(repoRoot, 'data', 'classified', 'sample.jsonl');
-    
-    let tracks: ClassifiedTrack[] = [];
-    
-    // Check cache first
-    if (tracksCache && Date.now() - tracksCache.timestamp < CACHE_TTL) {
-      tracks = tracksCache.tracks;
-    } else {
-      // Load and parse tracks
-      try {
-        const content = await fs.readFile(classifiedPath, 'utf-8');
-        const lines = content.trim().split('\n');
-        tracks = lines
-          .filter(line => line.trim().length > 0)
-          .map(line => {
-            try {
-              return JSON.parse(line) as ClassifiedTrack;
-            } catch (err) {
-              console.warn(`Skipping malformed JSONL line: ${line.substring(0, 50)}...`);
-              return null;
-            }
-          })
-          .filter((track): track is ClassifiedTrack => track !== null);
-        
-        // Update cache
-        tracksCache = { tracks, timestamp: Date.now() };
-      } catch (error) {
-        // If no classified data, return empty results
-        return NextResponse.json({
-          success: true,
-          data: {
-            query,
-            results: [],
-            total: 0,
-          },
-        });
-      }
+    const startedAt = Date.now();
+    if (enableSearchLogs) {
+      console.info(`${logPrefix} — start`);
     }
 
-    // Search through tracks
-    const results: SearchResult[] = [];
-    
-    for (const track of tracks) {
-      const { artist, title } = parseSidPath(track.sid_path);
-      const sidPathLower = track.sid_path.toLowerCase();
-      const artistLower = artist.toLowerCase();
-      const titleLower = title.toLowerCase();
-      
+    // Query cached search index
+    const searchIndex = getSearchIndex();
+    const matchedRecords = await searchIndex.query(normalizedQuery, { limit });
+    const results: SearchResult[] = matchedRecords.map((record) => {
+      const { artist, title } = parseSidPath(record.sidPath);
       const matchedIn: string[] = [];
-      
-      if (titleLower.includes(normalizedQuery)) {
+      if (title.toLowerCase().includes(normalizedQuery)) {
         matchedIn.push('title');
       }
-      if (artistLower.includes(normalizedQuery)) {
+      if (artist.toLowerCase().includes(normalizedQuery)) {
         matchedIn.push('artist');
       }
-      if (sidPathLower.includes(normalizedQuery) && matchedIn.length === 0) {
+      if (matchedIn.length === 0) {
         matchedIn.push('path');
       }
-      
-      if (matchedIn.length > 0) {
-        results.push({
-          sidPath: track.sid_path,
-          displayName: title,
-          artist,
-          matchedIn,
-        });
-      }
-      
-      if (results.length >= limit) {
-        break;
-      }
+      return {
+        sidPath: record.sidPath,
+        displayName: title,
+        artist,
+        matchedIn,
+      };
+    });
+
+    if (enableSearchLogs) {
+      console.info(`${logPrefix} — results=${results.length} duration=${Date.now() - startedAt}ms`);
     }
 
     return NextResponse.json({
@@ -153,6 +105,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (enableSearchLogs) {
+      console.error('[search-api] failed', error);
+    }
     return NextResponse.json(
       {
         success: false,

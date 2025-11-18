@@ -25,6 +25,8 @@
     "@sidflow/classify": "workspace:*",
     "@sidflow/common": "workspace:*",
     "@sidflow/libsidplayfp-wasm": "workspace:*",
+    "@ffmpeg/ffmpeg": "0.11.6",
+    "@ffmpeg/core": "0.11.0",
     "@tensorflow/tfjs": "^4.22.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

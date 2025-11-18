@@ -26,9 +26,12 @@
     "release:prepare": "node scripts/run-bun.mjs run scripts/ci/release-prepare.ts --",
     "changes:entry": "node scripts/run-bun.mjs run scripts/ci/extract-changes-entry.ts",
     "check:packages": "node scripts/run-bun.mjs run scripts/ci/check-packages.ts",
+    "profile:e2e": "node scripts/profile-e2e.mjs",
+    "analyze:e2e": "node scripts/run-bun.mjs run scripts/report-e2e-runtime.ts",
     "setup:tests": "node scripts/run-bun.mjs install --frozen-lockfile && node scripts/ensure-playwright.mjs"
   },
   "devDependencies": {
+    "speedscope": "^1.20.4",
     "@testing-library/react": "^16.3.0",
     "@testing-library/react-hooks": "^8.0.1",
     "@types/node": "^20.11.30",

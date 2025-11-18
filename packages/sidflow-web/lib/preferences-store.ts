@@ -38,6 +38,10 @@ function resolvePreferencesPath(): string {
   return path.join(repoRoot, PREFERENCES_FILENAME);
 }
 
+export function getPreferencesFilePath(): string {
+  return resolvePreferencesPath();
+}
+
 async function readPreferencesFile(): Promise<WebPreferences | null> {
   try {
     const filePath = resolvePreferencesPath();

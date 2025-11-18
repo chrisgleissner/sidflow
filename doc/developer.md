@@ -55,6 +55,8 @@ Validate edits with `bun run validate:config`.
 | `./scripts/sidflow-rate` | Launch the interactive rating CLI (TTY required). |
 | `bun run fetch:sample` | Spin up a local mirror and run the `sidflow fetch` CLI end-to-end (used in CI). |
 | `bun run classify:sample` | Execute the end-to-end classification sample, including metadata extraction and auto-tag heuristics. |
+| `npm run analyze:e2e` | Summarize the latest Playwright JSON report and list the slowest specs/tests. |
+| `npm run profile:e2e -- [--workers N] [--spec path] [--grep expr]` | Run Playwright with `pidstat` + V8 CPU profiles and emit `tmp/profiles/.../` artifacts (flamegraph HTML, CPU summary, raw profiles). |
 
 CI mirrors these steps before uploading coverage to Codecov.
 

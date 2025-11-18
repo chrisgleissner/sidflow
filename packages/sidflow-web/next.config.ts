@@ -2,21 +2,30 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
-const classifyDistEntry = fileURLToPath(new URL("../sidflow-classify/dist/index.js", import.meta.url));
+const webRoot = fileURLToPath(new URL("./", import.meta.url));
+const ffmpegStubRelative = path.relative(webRoot, path.resolve(webRoot, "ffmpeg-core-stub.js"));
+const disableRender = process.env.SIDFLOW_DISABLE_RENDER === '1';
+
+const serverExternalPackages = ['vectordb', '@sidflow/classify'];
 
 const nextConfig: NextConfig = {
   // Exclude server-only packages with native modules from client bundle
-  serverExternalPackages: ['vectordb', '@sidflow/classify'],
+  serverExternalPackages,
   // Turbopack configuration for Next.js 16+
   turbopack: {
     resolveAlias: {
       // Stub Node-only module that libsidplayfp.js tries to import during SSR
       // This prevents the WASM wrapper from being bundled into error pages
       module: { browser: "./empty-stub.js" },
-      "@sidflow/classify": path.relative(
-        fileURLToPath(new URL("./", import.meta.url)),
-        classifyDistEntry
-      ),
+      ...(disableRender
+        ? {
+            "@ffmpeg/ffmpeg": ffmpegStubRelative,
+            "@ffmpeg/core/dist/ffmpeg-core.js": ffmpegStubRelative,
+            "@ffmpeg/core/dist/ffmpeg-core.wasm": ffmpegStubRelative,
+            "@ffmpeg/core/dist/ffmpeg-core.wasm_.loader.mjs": ffmpegStubRelative,
+            "@ffmpeg/core/dist/ffmpeg-core.worker.js": ffmpegStubRelative,
+          }
+        : {}),
     },
   },
   // Keep webpack config for legacy builds
@@ -24,12 +33,22 @@ const nextConfig: NextConfig = {
     config.resolve ??= {};
     config.resolve.alias = {
       ...config.resolve.alias,
-      "@sidflow/classify": classifyDistEntry,
     };
     config.resolve.fallback = {
       ...config.resolve.fallback,
       module: false,
     };
+    if (disableRender) {
+      const stubPath = path.resolve(webRoot, "ffmpeg-core-stub.js");
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "@ffmpeg/ffmpeg": stubPath,
+        "@ffmpeg/core/dist/ffmpeg-core.js": stubPath,
+        "@ffmpeg/core/dist/ffmpeg-core.wasm": stubPath,
+        "@ffmpeg/core/dist/ffmpeg-core.wasm_.loader.mjs": stubPath,
+        "@ffmpeg/core/dist/ffmpeg-core.worker.js": stubPath,
+      };
+    }
     return config;
   },
 };

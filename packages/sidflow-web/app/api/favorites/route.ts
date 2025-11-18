@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWebPreferences, updateWebPreferences } from '@/lib/preferences-store';
+import { getCachedFavorites, addFavorite, removeFavorite } from '@/lib/server/favorites-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,8 +9,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   try {
-    const prefs = await getWebPreferences();
-    const favorites = prefs.favorites || [];
+    const favorites = await getCachedFavorites();
     
     return NextResponse.json({
       success: true,
@@ -48,29 +47,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const prefs = await getWebPreferences();
-    const currentFavorites = prefs.favorites || [];
-    
-    // Add if not already present
-    if (!currentFavorites.includes(sid_path)) {
-      const updatedFavorites = [...currentFavorites, sid_path];
-      await updateWebPreferences({ favorites: updatedFavorites });
-      
-      return NextResponse.json({
-        success: true,
-        data: { 
-          favorites: updatedFavorites,
-          added: true,
-        },
-      });
-    }
+    const result = await addFavorite(sid_path);
 
     return NextResponse.json({
       success: true,
-      data: { 
-        favorites: currentFavorites,
-        added: false,
-        message: 'Already in favorites',
+      data: {
+        favorites: result.favorites,
+        added: result.added,
+        message: result.added ? undefined : 'Already in favorites',
       },
     });
   } catch (error) {
@@ -105,17 +89,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const prefs = await getWebPreferences();
-    const currentFavorites = prefs.favorites || [];
-    const updatedFavorites = currentFavorites.filter(path => path !== sid_path);
-    
-    await updateWebPreferences({ favorites: updatedFavorites });
-    
+    const result = await removeFavorite(sid_path);
+
     return NextResponse.json({
       success: true,
-      data: { 
-        favorites: updatedFavorites,
-        removed: currentFavorites.length > updatedFavorites.length,
+      data: {
+        favorites: result.favorites,
+        removed: result.removed,
       },
     });
   } catch (error) {

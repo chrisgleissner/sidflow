@@ -56,12 +56,15 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
   // Content Security Policy
   // In development we relax script-src/connect-src to allow Next.js dev client and hydration.
   const isProd = process.env.NODE_ENV === 'production';
-  const scriptSrc = isProd
-    ? "script-src 'self' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:";
-  const connectSrc = isProd
-    ? "connect-src 'self' data:"
-    : "connect-src 'self' data: ws: wss:";
+  const relaxedCsp = process.env.SIDFLOW_RELAXED_CSP === '1';
+  const allowInline = !isProd || relaxedCsp;
+  const allowWebSockets = !isProd || relaxedCsp;
+  const scriptSrc = allowInline
+    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
+    : "script-src 'self' 'unsafe-eval'";
+  const connectSrc = allowWebSockets
+    ? "connect-src 'self' data: ws: wss:"
+    : "connect-src 'self' data:";
   const csp = [
     "default-src 'self'",
     scriptSrc,

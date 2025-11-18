@@ -34,6 +34,8 @@ if (!isPlaywrightRunner) {
       ],
     },
   });
+
+  test.describe.configure({ mode: 'serial' });
 }
 
 interface AudioTelemetry {

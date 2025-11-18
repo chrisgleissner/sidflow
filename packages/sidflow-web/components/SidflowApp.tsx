@@ -38,6 +38,7 @@ interface TabDefinition {
     onStatusChange: (status: string, isError?: boolean) => void;
     onTrackPlayed: (sidPath: string) => void;
     onSwitchTab: (tab: string) => void;
+    isActive: boolean;
   }) => ReactNode;
 }
 
@@ -92,7 +93,9 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     key: 'favorites',
     label: 'FAVORITES',
     icon: '❤️',
-    render: ({ onStatusChange }) => <FavoritesTab onStatusChange={onStatusChange} />,
+    render: ({ onStatusChange, isActive }) => (
+      <FavoritesTab onStatusChange={onStatusChange} isActive={isActive} />
+    ),
   },
   {
     key: 'charts',
@@ -272,6 +275,7 @@ export function SidflowApp({ persona }: SidflowAppProps) {
                           onStatusChange: handleStatusChange,
                           onTrackPlayed: handleTrackPlayed,
                           onSwitchTab: handleSwitchTab,
+                          isActive: activeTab === tab.key,
                         })}
                       </TabsContent>
                     );

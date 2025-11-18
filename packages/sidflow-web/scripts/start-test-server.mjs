@@ -1,5 +1,8 @@
 import { createServer } from 'http';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import next from 'next';
 
@@ -9,6 +12,7 @@ const hostname = process.env.HOSTNAME ?? '0.0.0.0';
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(thisDir, '../../..');
 const wasmArtifactPath = resolve(repoRoot, 'packages/libsidplayfp-wasm/dist/libsidplayfp.wasm');
+const require = createRequire(import.meta.url);
 
 if (!process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH) {
   process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH = wasmArtifactPath;
@@ -20,6 +24,57 @@ process.env.SIDFLOW_ADMIN_PASSWORD ??= 'test-pass-123';
 process.env.SIDFLOW_ADMIN_SECRET ??= 'sidflow-test-secret-456789';
 process.env.SIDFLOW_ADMIN_SESSION_TTL_MS ??= `${60 * 60 * 1000}`;
 
+const modeArg = process.argv.find((arg) => arg.startsWith('--mode='));
+const configuredMode = modeArg?.split('=')[1] ?? process.env.SIDFLOW_TEST_SERVER_MODE ?? 'development';
+const serverMode = configuredMode.toLowerCase().startsWith('prod') ? 'production' : 'development';
+const isProductionMode = serverMode === 'production';
+process.env.NODE_ENV = isProductionMode ? 'production' : 'development';
+
+async function runNextBuild() {
+  const nodeBinary = process.env.SIDFLOW_NODE_BINARY ?? 'node';
+  const nextCli = require.resolve('next/dist/bin/next');
+  console.log('[test-server] Building Next.js app for production mode...');
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(nodeBinary, [nextCli, 'build'], {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+      },
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`next build exited with code ${code ?? -1}`));
+      }
+    });
+  });
+}
+
+async function ensureProductionBuild() {
+  if (!isProductionMode) {
+    return;
+  }
+
+  const skipBuild = process.env.SIDFLOW_SKIP_NEXT_BUILD === '1';
+  const buildMarker = resolve(process.cwd(), '.next', 'BUILD_ID');
+
+  if (skipBuild && existsSync(buildMarker)) {
+    console.warn('[test-server] SIDFLOW_SKIP_NEXT_BUILD=1 — reusing existing Next.js build.');
+    return;
+  }
+
+  if (skipBuild && !existsSync(buildMarker)) {
+    console.warn('[test-server] SIDFLOW_SKIP_NEXT_BUILD=1 but no build output found; running next build.');
+  }
+
+  await runNextBuild();
+}
+
 async function start() {
   // Use test-specific config (only set if not already provided)
   if (!process.env.SIDFLOW_CONFIG) {
@@ -27,9 +82,14 @@ async function start() {
     process.env.SIDFLOW_CONFIG = resolve(repoRoot, '.sidflow.test.json');
   }
   console.log('[test-server] Using SIDFLOW_CONFIG=', JSON.stringify(process.env.SIDFLOW_CONFIG));
+  console.log(`[test-server] Mode=${serverMode} pid=${process.pid}`);
   try {
+    if (isProductionMode) {
+      await ensureProductionBuild();
+    }
+
     const app = next({
-      dev: true,
+      dev: !isProductionMode,
       hostname,
       port,
       dir: process.cwd(),
@@ -79,9 +139,9 @@ async function start() {
       });
     });
 
-    console.log(`Next dev server ready on http://${hostname}:${port}`);
+    console.log(`Next ${isProductionMode ? 'production' : 'dev'} server ready on http://${hostname}:${port}`);
   } catch (error) {
-    console.error('Failed to start Next dev server for tests', error);
+    console.error('Failed to start Next test server', error);
     process.exit(1);
   }
 }
