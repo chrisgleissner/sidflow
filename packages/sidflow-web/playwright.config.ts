@@ -64,7 +64,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'bun ./scripts/setup-test-workspace.mjs && bun ./scripts/start-test-server.mjs',
+    command: 'bun ./scripts/setup-test-workspace.mjs && bun run build:worklet && bun ./scripts/start-test-server.mjs',
     url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 180 * 1000,
