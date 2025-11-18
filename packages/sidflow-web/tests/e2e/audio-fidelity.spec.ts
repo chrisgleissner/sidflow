@@ -15,6 +15,9 @@ import { configureE2eLogging } from './utils/logging';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const FAST_AUDIO_TESTS =
+  (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
+
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
 configureE2eLogging();
@@ -65,7 +68,7 @@ interface FidelityReport {
   errors: string[];
 }
 
-const FIDELITY_DURATION_SECONDS = 1.0;
+const FIDELITY_DURATION_SECONDS = FAST_AUDIO_TESTS ? 0.4 : 1.0;
 
 /**
  * Measure fundamental frequency using zero-crossing method.

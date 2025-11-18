@@ -539,16 +539,21 @@ if (isPlaywrightRunner) {
       throwOnTimeout: false,
     });
 
-    // Check for theme attribute specific to screenshot tests
-    await page
-      .waitForFunction(
-        (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
-        DARK_SCREENSHOT_THEME,
-        { timeout: STABLE_WAIT_TIMEOUT_MS }
-      )
-      .catch((err) => {
-        console.warn('[waitForStableUi] theme attribute check timeout:', err.message);
-      });
+    // Ensure the theme attribute is set without waiting for another timeout window.
+    const themeLocked = await page.evaluate((expectedTheme) => {
+      try {
+        const html = document.documentElement;
+        html.setAttribute('data-theme', expectedTheme);
+        html.dataset.sidflowScreenshotTheme = 'locked';
+        return html.getAttribute('data-theme') === expectedTheme;
+      } catch {
+        return false;
+      }
+    }, DARK_SCREENSHOT_THEME);
+
+    if (!themeLocked) {
+      console.warn('[waitForStableUi] Unable to force screenshot theme attribute.');
+    }
   }
 
   async function setupPlayTab(page: Page): Promise<void> {

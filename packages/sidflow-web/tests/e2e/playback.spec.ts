@@ -11,6 +11,9 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const FAST_AUDIO_TESTS =
+  (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
+
 configureE2eLogging();
 
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
@@ -45,7 +48,7 @@ if (!isPlaywrightRunner) {
             length: '00:03',
             fileSizeBytes: TEST_SID_BUFFER.length,
         },
-        durationSeconds: 3,
+        durationSeconds: FAST_AUDIO_TESTS ? 1 : 3,
     } as const;
 
     function createStubTrack() {
@@ -66,7 +69,7 @@ if (!isPlaywrightRunner) {
             sessionId,
             sidUrl: TEST_SID_DATA_URL,
             scope,
-            durationSeconds: STUB_TRACK_TEMPLATE.durationSeconds,
+        durationSeconds: STUB_TRACK_TEMPLATE.durationSeconds,
             selectedSong: STUB_TRACK_TEMPLATE.selectedSong,
             expiresAt,
             fallbackHlsUrl: null,

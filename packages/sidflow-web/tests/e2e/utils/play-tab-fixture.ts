@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 
+const FAST_AUDIO_TESTS =
+  (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
+
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const TEST_SID_PATH = path.resolve(CURRENT_DIR, '../../../../libsidplayfp-wasm/test-tone-c4.sid');
 const TEST_SID_BUFFER = readFileSync(TEST_SID_PATH);
@@ -134,7 +137,7 @@ function buildTrack(slug: string, displayName: string): RateTrackInfo {
       length: '00:03',
       fileSizeBytes: TEST_SID_BUFFER.length,
     },
-    durationSeconds: 3,
+    durationSeconds: FAST_AUDIO_TESTS ? 1 : 3,
   };
 }
 
@@ -143,7 +146,7 @@ function registerSession(scope: 'play' | 'manual', track?: RateTrackInfo): Playb
     sessionId: `${scope}-session-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     sidUrl: TEST_SID_DATA_URL,
     scope,
-    durationSeconds: track?.durationSeconds ?? 3,
+    durationSeconds: track?.durationSeconds ?? (FAST_AUDIO_TESTS ? 1 : 3),
     selectedSong: track?.selectedSong ?? 1,
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     romUrls: {},

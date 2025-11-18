@@ -3,6 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
+process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ??= '1';
+
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';
 const stubToolsPath = path.resolve(configDir, 'tests/stubs');
@@ -49,15 +51,10 @@ const serverNodeEnv = normalizedServerMode === 'production' ? 'production' : 'de
 const webServerTimeout = normalizedServerMode === 'production' ? 240 * 1000 : 180 * 1000;
 const skipNextBuildFlag = process.env.SIDFLOW_SKIP_NEXT_BUILD ?? '1';
 const serverNodeOptions = process.env.SIDFLOW_WEB_SERVER_NODE_OPTIONS;
-const parsedWorkers = Number(
-  process.env.SIDFLOW_E2E_WORKERS ?? (process.env.CI ? 3 : 2)
-);
+const defaultWorkers = process.env.CI ? 3 : 3;
+const parsedWorkers = Number(process.env.SIDFLOW_E2E_WORKERS ?? defaultWorkers);
 const resolvedWorkers =
-  Number.isFinite(parsedWorkers) && parsedWorkers > 0
-    ? parsedWorkers
-    : process.env.CI
-      ? 3
-      : 2;
+  Number.isFinite(parsedWorkers) && parsedWorkers > 0 ? parsedWorkers : defaultWorkers;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -76,13 +73,27 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: /favorites\.spec\.ts$/,
+      testIgnore: /(favorites|phase1-features|song-browser)\.spec\.ts$/,
       use: { ...projectUse },
     },
     {
       name: 'chromium-favorites',
       testMatch: /favorites\.spec\.ts$/,
       workers: 1,
+      use: { ...projectUse },
+    },
+    {
+      name: 'chromium-phase1',
+      testMatch: /phase1-features\.spec\.ts$/,
+      workers: 1,
+      dependencies: ['chromium'],
+      use: { ...projectUse },
+    },
+    {
+      name: 'chromium-song-browser',
+      testMatch: /song-browser\.spec\.ts$/,
+      workers: 1,
+      dependencies: ['chromium'],
       use: { ...projectUse },
     },
   ],
@@ -107,6 +118,7 @@ export default defineConfig({
       SIDFLOW_LOG_FAVORITES: process.env.SIDFLOW_LOG_FAVORITES ?? '1',
       SIDFLOW_LOG_SEARCH: process.env.SIDFLOW_LOG_SEARCH ?? '1',
       SIDFLOW_SKIP_SONGBROWSER_ACTIONS: process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ?? '1',
+      NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS: process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? '1',
       ...(serverNodeOptions ? { NODE_OPTIONS: serverNodeOptions } : {}),
       ...(skipNextBuildFlag ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
     },

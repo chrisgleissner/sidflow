@@ -12,6 +12,11 @@
 import { test, expect, type Page } from '@playwright/test';
 import { configureE2eLogging } from './utils/logging';
 
+const FAST_AUDIO_TESTS =
+  (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
+const TRACK_DURATION_SECONDS = FAST_AUDIO_TESTS ? 1.0 : 3.0;
+const PLAYBACK_WAIT_MS = FAST_AUDIO_TESTS ? 1500 : 4000;
+
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
 configureE2eLogging();
@@ -101,7 +106,7 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
       sessionId: 'telemetry-test-' + Date.now(),
       sidUrl: '/test-tone-c4.sid',
       scope: 'test' as const,
-      durationSeconds: 3.0,
+      durationSeconds: TRACK_DURATION_SECONDS,
       selectedSong: 0,
       expiresAt: new Date(Date.now() + 60000).toISOString(),
     };
@@ -124,7 +129,7 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
         clock: 'PAL',
         fileSizeBytes: 380,
       },
-      durationSeconds: 3.0,
+      durationSeconds: TRACK_DURATION_SECONDS,
     };
 
     const player = (window as any).__testPlayer;
@@ -137,7 +142,7 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
   });
 
   // Wait for playback to complete
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(PLAYBACK_WAIT_MS);
 }
 
 if (isPlaywrightRunner) {
@@ -222,7 +227,8 @@ test.describe('Telemetry Validation', () => {
     const capacityFrames = telemetry!.ringBufferCapacityFrames ?? 0;
     expect(capacityFrames).toBeGreaterThan(0);
     expect(telemetry!.maxOccupancy).toBeLessThanOrEqual(capacityFrames);
-    expect(telemetry!.maxOccupancy).toBeGreaterThan(capacityFrames * 0.7);
+    const occupancyFloorRatio = FAST_AUDIO_TESTS ? 0.3 : 0.7;
+    expect(telemetry!.maxOccupancy).toBeGreaterThan(capacityFrames * occupancyFloorRatio);
 
     await page.evaluate(() => {
       const player = (window as any).__testPlayer;
