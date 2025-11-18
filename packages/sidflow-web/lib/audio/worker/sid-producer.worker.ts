@@ -24,7 +24,7 @@ if (typeof self !== 'undefined' && typeof self.location === 'object') {
 const FAST_AUDIO_TESTS =
   fastFromQuery ||
   (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS === '1') ||
-  (typeof self !== 'undefined' && (self as Record<string, unknown>)['NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS'] === '1');
+  (typeof self !== 'undefined' && (self as any)['NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS'] === '1');
 
 const INT16_SCALE = 1 / 0x8000;
 
