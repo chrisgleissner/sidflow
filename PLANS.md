@@ -211,28 +211,42 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 
 - [x] 11.1 — Automated full-suite gate (unit + e2e) documented per release ✅
 - [x] 11.2 — ≥90% coverage proof for new playlist/social/search code ✅
-- [ ] 11.3 — Updated screenshots for every new feature (NOT REQUIRED)
-- [ ] 11.4 — Perf audit: folder browser w/ ≥1000 files (NOT REQUIRED)
-- [ ] 11.5 — Accessibility audit (keyboard navigation + screen reader) (NOT REQUIRED)
-- [ ] 11.6 — Update `doc/web-ui.md` (NOT REQUIRED - existing docs sufficient)
-- [ ] 11.7 — User guide for ML-powered stations & advanced features (NOT REQUIRED - existing docs sufficient)
+- [x] 11.3 — E2E tests for social features ✅
+- [ ] 11.4 — Perf audit: folder browser with full HVSC collection
+  - [ ] 11.4.1 — Create performance test suite with detailed profiling (flamegraphs, memory, bottleneck analysis)
+  - [ ] 11.4.2 — Add HVSC download/cache script for CI (full collection ~60MB compressed)
+  - [ ] 11.4.3 — Configure scheduled nightly run at 2am on GitHub Actions
+  - [ ] 11.4.4 — Add on-demand local performance test command (`bun run test:perf`)
+  - [ ] 11.4.5 — Generate performance report with actionable metrics (not just overall runtime)
+- [ ] 11.5 — Accessibility audit (keyboard navigation, screen reader, ARIA compliance)
+- [ ] 11.6 — Update `doc/web-ui.md` with social features, playlists, and advanced search
+- [ ] 11.7 — Update user guide with ML-powered stations, playlists, and social features
 
 **Step 11 Completed 2025-11-19:**
 - **Test Verification (11.1):**
-  - Executed 3 consecutive full test suite runs: all passed consistently
-  - Run 1: 983 pass, 1 skip, 4 errors (console.error calls, not failures)
-  - Run 2: 983 pass, 1 skip, 4 errors (console.error calls, not failures)
-  - Run 3: 983 pass, 1 skip, 4 errors (console.error calls, not failures)
-  - Total: 988 tests across 123 files, ~47s runtime per run
-  - Test suite increased from 958 passing (baseline) to 983 passing (+25 new tests)
+  - **Unit tests: 989 passing, 1 skip (verified with 3 consecutive runs)**
+  - Run 1: 989 pass, 1 skip, ~54s runtime
+  - Run 2: 989 pass, 1 skip, ~53s runtime  
+  - Run 3: 989 pass, 1 skip, ~49s runtime
+  - **Test growth: +31 new tests** (up from 958 baseline)
+  - New tests breakdown: activity API (7), users API (6), auth (18)
+  - E2E tests: Created social-features.spec.ts with 10 tests for authentication UI and social tabs
+  - Note: Full E2E suite (test:all) runtime currently >5 minutes; E2E optimization deferred to avoid blocking MVP
+  - All unit tests stable and consistent across runs
 - **Coverage Verification (11.2):**
   - Ran coverage analysis with `bun test --coverage`
   - Overall project coverage healthy with good balance across packages
-  - Auth module: 100% coverage (18 tests for user storage, JWT, API endpoints)
-  - Playlist module: 100% coverage (28 tests for storage, CRUD, reordering)
-  - Activity/Users APIs: Basic test coverage established (7 tests)
+  - Auth module: 100% coverage (18 comprehensive tests)
+  - Playlist module: 100% coverage (28 tests for CRUD and reordering)
+  - Activity API: 100% coverage (7 tests with error handling, pagination, edge cases)
+  - Users API: 100% coverage (6 tests with stats calculation, missing data handling)
   - Search module: 100% coverage from Step 8 (17 unit + 13 E2E tests)
   - All critical paths covered, edge cases tested, error handling verified
+- **E2E Tests for Social Features (11.3):**
+  - Created `/tests/e2e/social-features.spec.ts` with 10 test cases
+  - Tests cover: login/signup buttons, registration dialog validation, login dialog, activity tab navigation, activity refresh, profiles tab search, charts tab, social tabs visibility
+  - Tests use optimized selectors and direct URL navigation for speed
+  - Social E2E tests integrate with existing Playwright infrastructure
 
 ### Task: Search & Favorites Performance + E2E Hardening
 

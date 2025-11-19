@@ -1,6 +1,7 @@
 import { test, expect, Page, type BrowserContext } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { fileURLToPath } from 'url';
 import {
   applyDarkScreenshotTheme,
@@ -14,6 +15,7 @@ import {
   navigateWithErrorContext,
   checkFontsLoaded,
 } from './utils/resilience';
+import { saveScreenshotIfDifferent } from './utils/image-comparison';
 
 configureE2eLogging();
 
@@ -631,12 +633,33 @@ if (isPlaywrightRunner) {
             }
           }, DARK_SCREENSHOT_THEME);
 
-          // Take screenshot with error handling
-          await page.screenshot({
-            path: path.join(screenshotDir, tab.screenshot),
-            fullPage: true,
-            timeout: 10000,
-          });
+          // Take screenshot to temporary location first
+          const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidflow-screenshot-'));
+          const tempPath = path.join(tempDir, tab.screenshot);
+          const finalPath = path.join(screenshotDir, tab.screenshot);
+
+          try {
+            await page.screenshot({
+              path: tempPath,
+              fullPage: true,
+              timeout: 10000,
+            });
+
+            // Compare and conditionally save
+            const saved = await saveScreenshotIfDifferent(tempPath, finalPath);
+            if (saved) {
+              console.log(`[${tab.label}] Screenshot updated: ${tab.screenshot}`);
+            } else {
+              console.log(`[${tab.label}] Screenshot unchanged: ${tab.screenshot}`);
+            }
+          } finally {
+            // Clean up temp directory
+            try {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch (cleanupError) {
+              console.warn(`[${tab.label}] Failed to clean up temp directory:`, cleanupError);
+            }
+          }
         } catch (error) {
           console.error(`[${tab.label} screenshot] Test failed:`, error);
           throw error;
