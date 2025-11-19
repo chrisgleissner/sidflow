@@ -15,7 +15,7 @@ import {
     SheetTrigger,
 } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { List, Play, Trash2, Clock, Music } from 'lucide-react';
+import { List, Play, Trash2, Clock, Music, Download, Share2 } from 'lucide-react';
 import { listPlaylists, deletePlaylist } from '@/lib/api-client';
 import type { Playlist } from '@/lib/types/playlist';
 
@@ -83,6 +83,29 @@ export function PlaylistBrowser({ onLoadPlaylist }: PlaylistBrowserProps) {
     const handleLoadPlaylist = (playlist: Playlist) => {
         onLoadPlaylist?.(playlist);
         setOpen(false);
+    };
+
+    const handleExport = (id: string, name: string) => {
+        // Download M3U file
+        const url = `/api/playlists/${id}/export`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${name}.m3u`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleShare = async (id: string, name: string) => {
+        const url = `${window.location.origin}${window.location.pathname}?playlist=${id}`;
+
+        try {
+            await navigator.clipboard.writeText(url);
+            alert(`Playlist URL copied to clipboard!\n\n${url}`);
+        } catch (err) {
+            // Fallback: show prompt
+            prompt('Copy this URL to share the playlist:', url);
+        }
     };
 
     return (
@@ -163,7 +186,24 @@ export function PlaylistBrowser({ onLoadPlaylist }: PlaylistBrowserProps) {
                                             <Button
                                                 variant="outline"
                                                 size="sm"
+                                                onClick={() => handleExport(playlist.id, playlist.name)}
+                                                title="Export as M3U"
+                                            >
+                                                <Download className="h-3 w-3" />
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleShare(playlist.id, playlist.name)}
+                                                title="Share playlist URL"
+                                            >
+                                                <Share2 className="h-3 w-3" />
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
                                                 onClick={() => handleDelete(playlist.id, playlist.name)}
+                                                title="Delete playlist"
                                             >
                                                 <Trash2 className="h-3 w-3" />
                                             </Button>

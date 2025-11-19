@@ -47,3 +47,6 @@ data/model/model/weights.bin
 
 # Playlist storage (test artifacts, should not be committed)
 data/playlists/
+
+# User data (contains password hashes, should not be committed)
+data/users/

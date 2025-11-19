@@ -164,7 +164,7 @@ describe("Step 8: Integration tests (render engines)", () => {
     it.skip("renders SID to WAV if sidplayfp is available", async () => {
       // SKIPPED: This test requires sidplayfp-cli binary which is not available in CI
       const available = await isSidplayfpCliAvailable();
-      
+
       if (!available) {
         console.log("[render-integration] sidplayfp-cli not available, skipping test");
         return;
@@ -189,7 +189,7 @@ describe("Step 8: Integration tests (render engines)", () => {
 
     it("skips gracefully when sidplayfp is not available", async () => {
       const available = await isSidplayfpCliAvailable();
-      
+
       if (available) {
         console.log("[render-integration] sidplayfp-cli is available, test not applicable");
         return;
@@ -219,7 +219,7 @@ describe("Step 8: Integration tests (render engines)", () => {
       // In real environments, this would check network connectivity
       // For tests, we mock unavailability
       const mockAvailable = false;
-      
+
       expect(mockAvailable).toBe(false);
       console.log("[render-integration] ultimate64 mock: not available (expected)");
     });
@@ -304,7 +304,7 @@ describe("Step 9: Verification matrix", () => {
 
     it("validates preferred engine list with fallback", async () => {
       const engineOrder: RenderEngine[] = ["sidplayfp-cli", "ultimate64", "wasm"];
-      
+
       expect(engineOrder[0]).toBe("sidplayfp-cli");
       expect(engineOrder[engineOrder.length - 1]).toBe("wasm");
       console.log("[render-integration] Preferred list with fallback ✓");
@@ -313,10 +313,10 @@ describe("Step 9: Verification matrix", () => {
     it("validates availability-based fallback to WASM", async () => {
       const cliAvailable = await isSidplayfpCliAvailable();
       const ultimate64Available = false;
-      
+
       // In absence of other engines, should fall back to WASM
       const fallbackEngine: RenderEngine = "wasm";
-      
+
       expect(fallbackEngine).toBe("wasm");
       console.log(`[render-integration] Fallback mode: WASM (cli=${cliAvailable}, u64=${ultimate64Available}) ✓`);
     });
@@ -342,7 +342,7 @@ describe("Step 9: Verification matrix", () => {
 
       expect(success).toBe(true);
       const stats = await stat(outputPath);
-      
+
       // We expect at least 1KB for any valid WAV file
       // The actual render may be shorter than requested due to song length
       const minExpectedSize = 1000;

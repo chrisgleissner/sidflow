@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -10,6 +11,7 @@ import {
   requestRandomPlayTrack,
   requestStationFromSong,
   getAggregateRating,
+  getPlaylist,
   type RateTrackInfo,
   type RateTrackWithSession,
   type AggregateRating,
@@ -1089,14 +1091,8 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         for (const item of playlist.tracks) {
           const response = await playManualTrack({ sid_path: item.sidPath });
           if (response.success) {
-            const track = assignPlaylistNumber({
-              ...response.data.track,
-              title: item.title || response.data.track.title,
-              artist: item.artist || response.data.track.artist,
-              year: item.year || response.data.track.year,
-              game: item.game || response.data.track.game,
-              lengthSeconds: item.lengthSeconds || response.data.track.lengthSeconds,
-            });
+            // Use the track data from API (playlist items store metadata separately)
+            const track = assignPlaylistNumber(response.data.track);
             tracks.push(track);
           }
         }
@@ -1127,6 +1123,35 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     },
     [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer, updateUpcoming, playManualTrack]
   );
+
+  // Handle ?playlist=id URL parameter for sharing
+  const searchParams = useSearchParams();
+  const playlistIdFromUrl = searchParams.get('playlist');
+  const hasLoadedPlaylistFromUrlRef = useRef(false);
+
+  useEffect(() => {
+    if (!playlistIdFromUrl || hasLoadedPlaylistFromUrlRef.current) {
+      return;
+    }
+
+    hasLoadedPlaylistFromUrlRef.current = true;
+
+    void (async () => {
+      try {
+        notifyStatus('Loading shared playlist...', false);
+        const response = await getPlaylist(playlistIdFromUrl);
+
+        if (response && typeof response === 'object' && 'id' in response) {
+          const playlist = response as Playlist;
+          await handleLoadPlaylist(playlist);
+        } else {
+          notifyStatus('Playlist not found', true);
+        }
+      } catch (error) {
+        notifyStatus(`Failed to load playlist: ${error instanceof Error ? error.message : 'Unknown error'}`, true);
+      }
+    })();
+  }, [playlistIdFromUrl, notifyStatus, handleLoadPlaylist]);
 
   const handleStartStation = useCallback(
     async (sidPath: string) => {

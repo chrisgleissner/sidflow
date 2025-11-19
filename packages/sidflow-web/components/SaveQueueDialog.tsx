@@ -51,11 +51,11 @@ export function SaveQueueDialog({ currentQueue, onSaved }: SaveQueueDialogProps)
         try {
             const tracks = currentQueue.map((track) => ({
                 sidPath: track.sidPath,
-                title: track.title,
-                artist: track.artist,
-                year: track.year,
-                game: track.game,
-                lengthSeconds: track.lengthSeconds,
+                title: track.metadata.title || track.displayName,
+                artist: track.metadata.author,
+                year: undefined, // Not available in RateTrackInfo.metadata
+                game: undefined, // Not available in RateTrackInfo.metadata
+                lengthSeconds: track.durationSeconds,
             }));
 
             const response = await createPlaylist(name.trim(), description.trim() || undefined, tracks);
