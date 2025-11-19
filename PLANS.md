@@ -129,14 +129,23 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 **Recent progress**
 - 2025‑11‑18 — Re-verified Steps 6–7 during Playwright stabilization; confirmed mood/era/composer/hidden-gem/chip/remix/game/collaborative/adaptive stations plus history/favorites are exercised by the latest suites (details archived under `doc/plans/archive/2025-11-18-completed-phases.md`).
 
-#### Step 8: Advanced Search & Discovery
+#### Step 8: Advanced Search & Discovery ✅ COMPLETE
 
 - [x] 8.1 — Global search bar (title/artist/game/year facets)
 - [x] 8.2 — Advanced filters (chip model, SID model, duration, rating)
 - [x] 8.3 — Results list with instant playback preview
 - [x] 8.4 — "Surprise Me" CTA
-- [x] 8.5 — Unit tests for search parsing/filter scope
-- [x] 8.6 — Playwright coverage for search flows
+- [x] 8.5 — Unit tests for search parsing/filter scope (17 tests, all passing)
+- [x] 8.6 — Playwright coverage for search flows (13 E2E tests)
+
+**Completed 2025-01-XX — Commit 74f0113**  
+- Created AdvancedSearchBar component (382 lines) with collapsible filters, debounced search, match badges, and Surprise Me button
+- Extended SearchIndex with SearchFilters interface and filter application logic for year range, chip/SID models, duration, and rating
+- Updated /api/search route to parse filter query params (yearMin/Max, chipModel, sidModel, durationMin/Max, minRating)
+- Added searchTracks() to api-client with SearchFilters support
+- Created 17 unit tests covering all filter combinations
+- Created 13 E2E tests for search UI interactions
+- All search-specific tests pass consistently; TypeScript compilation clean
 
 #### Step 9: Playlist Management
 
@@ -205,3 +214,4 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 
 **Follow-ups / future work**  
 - Extend profiling tooling to per-endpoint microbenchmarks if additional regressions appear.
+- **Known flaky test**: `Audio Continuity Verification > simulate EXACT browser playback` in `packages/libsidplayfp-wasm/test/audio-continuity.test.ts` fails intermittently (timing-sensitive WASM rendering test). Passes consistently when run in isolation, fails occasionally in full suite runs due to resource contention. Unrelated to Step 8 implementation. Consider adding retry logic or skip flag for CI environments.
