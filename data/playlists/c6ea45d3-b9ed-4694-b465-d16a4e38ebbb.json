@@ -1,0 +1,14 @@
+{
+  "id": "c6ea45d3-b9ed-4694-b465-d16a4e38ebbb",
+  "name": "Test Playlist",
+  "description": "My favorite tracks",
+  "tracks": [
+    {
+      "sidPath": "/path/track1.sid",
+      "order": 0
+    }
+  ],
+  "createdAt": "2025-11-19T14:16:53.265Z",
+  "updatedAt": "2025-11-19T14:16:53.265Z",
+  "trackCount": 1
+}

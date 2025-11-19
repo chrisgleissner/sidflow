@@ -49,6 +49,9 @@ import { addToPlaybackHistory, getRecentHistory, clearPlaybackHistory, type Play
 import { AdvancedSearchBar } from '@/components/AdvancedSearchBar';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
+import { SaveQueueDialog } from '@/components/SaveQueueDialog';
+import { PlaylistBrowser } from '@/components/PlaylistBrowser';
+import type { Playlist } from '@/lib/types/playlist';
 
 interface PlayTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -122,7 +125,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
   const [volume, setVolume] = useState(1.0);
-  const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song'>('mood');
+  const [playbackMode, setPlaybackMode] = useState<'mood' | 'folder' | 'song' | 'playlist'>('mood');
   const [playbackModeDescription, setPlaybackModeDescription] = useState<string>('Mood Station');
   const [aggregateRating, setAggregateRating] = useState<AggregateRating | null>(null);
   const [personalRating, setPersonalRatingState] = useState<PersonalRating | null>(null);
@@ -1067,6 +1070,64 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer, updateUpcoming, playManualTrack]
   );
 
+  const handleLoadPlaylist = useCallback(
+    async (playlist: Playlist) => {
+      try {
+        notifyStatus(`Loading playlist: ${playlist.name}`, false);
+
+        if (playlist.tracks.length === 0) {
+          notifyStatus('Playlist is empty', true);
+          return;
+        }
+
+        // Switch to playlist mode
+        setPlaybackMode('playlist');
+        setPlaybackModeDescription(playlist.name);
+
+        // Convert playlist tracks to PlaylistTrack format
+        const tracks: PlaylistTrack[] = [];
+        for (const item of playlist.tracks) {
+          const response = await playManualTrack({ sid_path: item.sidPath });
+          if (response.success) {
+            const track = assignPlaylistNumber({
+              ...response.data.track,
+              title: item.title || response.data.track.title,
+              artist: item.artist || response.data.track.artist,
+              year: item.year || response.data.track.year,
+              game: item.game || response.data.track.game,
+              lengthSeconds: item.lengthSeconds || response.data.track.lengthSeconds,
+            });
+            tracks.push(track);
+          }
+        }
+
+        if (tracks.length === 0) {
+          notifyStatus('Failed to load any tracks from playlist', true);
+          return;
+        }
+
+        // Set the first track and add rest to upcoming
+        updateUpcoming(() => tracks.slice(1));
+
+        // Load and play the first track
+        const firstResponse = await playManualTrack({ sid_path: tracks[0].sidPath });
+        if (!firstResponse.success) {
+          notifyStatus(`Failed to load first track: ${formatApiError(firstResponse)}`, true);
+          return;
+        }
+
+        await loadTrackIntoPlayer(
+          firstResponse.data,
+          tracks[0].playlistNumber,
+          `Playing playlist: ${playlist.name} (${tracks.length} songs)`
+        );
+      } catch (error) {
+        notifyStatus(`Error loading playlist: ${error instanceof Error ? error.message : String(error)}`, true);
+      }
+    },
+    [notifyStatus, assignPlaylistNumber, loadTrackIntoPlayer, updateUpcoming, playManualTrack]
+  );
+
   const handleStartStation = useCallback(
     async (sidPath: string) => {
       try {
@@ -1647,6 +1708,17 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           }}
           searchInputRef={searchInputRef}
         />
+      </div>
+
+      {/* Playlist Management */}
+      <div className="mb-4 flex gap-2">
+        <SaveQueueDialog
+          currentQueue={[currentTrack, ...upcomingTracks].filter((t): t is PlaylistTrack => t !== null)}
+          onSaved={(playlistId) => {
+            notifyStatus('Playlist saved successfully!', false);
+          }}
+        />
+        <PlaylistBrowser onLoadPlaylist={handleLoadPlaylist} />
       </div>
 
       {/* Keyboard Shortcuts Help Modal */}

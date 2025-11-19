@@ -1,0 +1,13 @@
+{
+  "id": "fdf8188d-03e2-4e0d-b29e-ebd3544c057b",
+  "name": "Second Playlist",
+  "tracks": [
+    {
+      "sidPath": "/path/track2.sid",
+      "order": 0
+    }
+  ],
+  "createdAt": "2025-11-19T14:15:57.413Z",
+  "updatedAt": "2025-11-19T14:15:57.413Z",
+  "trackCount": 1
+}

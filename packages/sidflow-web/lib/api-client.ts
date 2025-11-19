@@ -465,3 +465,67 @@ export async function getCharts(range: 'week' | 'month' | 'all' = 'week', limit?
   });
   return response.json();
 }
+
+/**
+ * Playlist API functions
+ */
+
+export async function listPlaylists() {
+  const response = await fetch(`${API_BASE}/playlists`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function getPlaylist(id: string) {
+  const response = await fetch(`${API_BASE}/playlists/${id}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function createPlaylist(name: string, description: string | undefined, tracks: Array<{ sidPath: string; title?: string; artist?: string; year?: number; game?: string; lengthSeconds?: number }>) {
+  const response = await fetch(`${API_BASE}/playlists`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name, description, tracks }),
+  });
+  return response.json();
+}
+
+export async function updatePlaylist(id: string, updates: { name?: string; description?: string; tracks?: Array<{ sidPath: string; title?: string; artist?: string; year?: number; game?: string; lengthSeconds?: number }> }) {
+  const response = await fetch(`${API_BASE}/playlists/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  });
+  return response.json();
+}
+
+export async function deletePlaylist(id: string) {
+  const response = await fetch(`${API_BASE}/playlists/${id}`, {
+    method: 'DELETE',
+  });
+  return response.json();
+}
+
+export async function reorderPlaylistTracks(id: string, trackOrder: string[]) {
+  const response = await fetch(`${API_BASE}/playlists/${id}/reorder`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ trackOrder }),
+  });
+  return response.json();
+}

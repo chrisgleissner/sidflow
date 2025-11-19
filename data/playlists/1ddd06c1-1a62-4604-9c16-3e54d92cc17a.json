@@ -1,0 +1,20 @@
+{
+  "id": "1ddd06c1-1a62-4604-9c16-3e54d92cc17a",
+  "name": "Test Playlist",
+  "description": "My test playlist",
+  "tracks": [
+    {
+      "sidPath": "/path/track1.sid",
+      "title": "Track 1",
+      "order": 0
+    },
+    {
+      "sidPath": "/path/track2.sid",
+      "title": "Track 2",
+      "order": 1
+    }
+  ],
+  "createdAt": "2025-11-19T14:16:44.097Z",
+  "updatedAt": "2025-11-19T14:16:44.097Z",
+  "trackCount": 2
+}

@@ -1,0 +1,20 @@
+{
+  "id": "27370dd5-e885-49bf-88ab-33d5aaf89c69",
+  "name": "Test Playlist",
+  "tracks": [
+    {
+      "sidPath": "/path/track1.sid",
+      "lengthSeconds": 180,
+      "order": 0
+    },
+    {
+      "sidPath": "/path/track2.sid",
+      "lengthSeconds": 210,
+      "order": 1
+    }
+  ],
+  "createdAt": "2025-11-19T14:16:53.265Z",
+  "updatedAt": "2025-11-19T14:16:53.265Z",
+  "trackCount": 2,
+  "totalDuration": 390
+}

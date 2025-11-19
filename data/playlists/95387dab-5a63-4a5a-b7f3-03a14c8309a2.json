@@ -1,0 +1,13 @@
+{
+  "id": "95387dab-5a63-4a5a-b7f3-03a14c8309a2",
+  "name": "First Playlist",
+  "tracks": [
+    {
+      "sidPath": "/path/track1.sid",
+      "order": 0
+    }
+  ],
+  "createdAt": "2025-11-19T14:15:57.402Z",
+  "updatedAt": "2025-11-19T14:15:57.402Z",
+  "trackCount": 1
+}

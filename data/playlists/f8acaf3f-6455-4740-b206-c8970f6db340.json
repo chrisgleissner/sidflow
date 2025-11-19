@@ -1,0 +1,14 @@
+{
+  "id": "f8acaf3f-6455-4740-b206-c8970f6db340",
+  "name": "Updated Name",
+  "tracks": [
+    {
+      "sidPath": "/path/track1.sid",
+      "order": 0
+    }
+  ],
+  "createdAt": "2025-11-19T14:16:44.176Z",
+  "updatedAt": "2025-11-19T14:16:44.179Z",
+  "trackCount": 1,
+  "description": "New description"
+}

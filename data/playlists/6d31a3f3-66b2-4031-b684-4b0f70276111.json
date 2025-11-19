@@ -1,0 +1,24 @@
+{
+  "id": "6d31a3f3-66b2-4031-b684-4b0f70276111",
+  "name": "Test Playlist",
+  "tracks": [
+    {
+      "sidPath": "/path/track3.sid",
+      "title": "Track 3",
+      "order": 0
+    },
+    {
+      "sidPath": "/path/track1.sid",
+      "title": "Track 1",
+      "order": 1
+    },
+    {
+      "sidPath": "/path/track2.sid",
+      "title": "Track 2",
+      "order": 2
+    }
+  ],
+  "createdAt": "2025-11-19T14:16:37.282Z",
+  "updatedAt": "2025-11-19T14:16:37.282Z",
+  "trackCount": 3
+}
