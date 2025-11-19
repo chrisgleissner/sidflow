@@ -1,5 +1,6 @@
 [test]
 # Exclude E2E specs from bun test (they run via playwright test)
 exclude = [
-  "packages/sidflow-web/tests/e2e/**"
+  "packages/sidflow-web/tests/e2e/**",
+  "**/*.spec.ts"
 ]
