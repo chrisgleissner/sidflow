@@ -118,8 +118,9 @@ Help improve recommendations by rating tracks:
 
 - **Like**: Click the thumbs-up button (or press **L**)
 - **Dislike**: Click the thumbs-down button (or press **D**)
-- Your ratings train the ML model to better match your taste
-- Ratings are saved and used for future recommendations
+- Your ratings are saved as feedback data
+- Can be used to train ML models (optional, via sidflow-train CLI)
+- Ratings influence station generation and recommendations
 
 ## Managing Favorites
 
@@ -338,7 +339,7 @@ Create custom playlists to organize your favorite tracks and share them with oth
 
 ## ML-Powered Stations
 
-SIDFlow uses machine learning to create personalized radio stations based on songs you love.
+SIDFlow uses LanceDB vector similarity search to create personalized radio stations based on songs you love. The system finds similar tracks using audio feature vectors and applies personalization based on your listening history.
 
 ### Creating a Station
 
@@ -353,9 +354,9 @@ SIDFlow uses machine learning to create personalized radio stations based on son
    - Appears on the now-playing card
 
 3. **Station generation**
-   - ML analyzes the track's audio features
-   - Searches for 20 similar tracks via LanceDB
-   - Weights results by your listening history
+   - System analyzes the track's feature vector
+   - Searches for 20 similar tracks via LanceDB similarity search
+   - Weights results by your listening history (likes/dislikes/skips)
 
 #### Station Parameters
 

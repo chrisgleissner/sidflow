@@ -33,8 +33,19 @@ SID Flow uses three main technical components for song analysis, classification,
 - **Output**: Numeric feature vector per song — e.g. energy, RMS, spectral centroid, rolloff, zero-crossing rate, BPM, and duration
 - **Usage**: Provides the raw measurable properties of each song; these values form the input to all later stages
 
-### 2. TensorFlow.js (Supervised Prediction / Learning)
+### 2. Rating Prediction (Heuristic or ML)
 
+SIDFlow supports two rating prediction methods:
+
+#### Default: Heuristic Predictor
+- **Purpose**: Generates deterministic ratings based on file metadata and structure
+- **Type**: Deterministic seed-based algorithm (no training required)
+- **Input**: File path, metadata (title, author), file sizes
+- **Output**: Stable ratings (e, m, c) derived from computed seeds
+- **Usage**: Fast, reproducible baseline ratings; same file always gets same ratings
+- **Implementation**: `heuristicPredictRatings` in `@sidflow/classify`
+
+#### Optional: TensorFlow.js (Supervised Learning)
 - **Purpose**: Learns the subjective relationship between extracted features and how users perceive songs
 - **Type**: Supervised regression model trained on user feedback (explicit ratings and implicit likes/dislikes/skips)
 - **Input**: Feature vectors + labelled training data
@@ -44,6 +55,7 @@ SID Flow uses three main technical components for song analysis, classification,
   - **c** – complexity/melodic & structural sophistication (1-5)
   - plus an optional confidence value
 - **Usage**: Converts objective signal descriptors into human-meaningful perception ratings and adapts over time as more feedback is collected
+- **Activation**: Use `--predictor-module` flag with `sidflow-classify`
 - **Training**: Periodically retrained via `sidflow-train` CLI command
 
 ### 3. LanceDB (Vector Store / Clustering / Retrieval)
@@ -60,9 +72,9 @@ SID Flow uses three main technical components for song analysis, classification,
 ### Overall Relationship
 
 ```
-Essentia.js → Extracts objective features
+Essentia.js → Extracts objective features (optional, for ML predictor)
      ↓
-TensorFlow.js → Learns and predicts subjective ratings from those features
+Heuristic OR TensorFlow.js → Predicts ratings (default: heuristic seeds; optional: ML from features)
      ↓
 LanceDB → Organizes, clusters, and retrieves songs based on combined feature + rating vectors
 ```
@@ -193,7 +205,7 @@ Each command can be run via the command line interface from the repository root.
 - `--config <path>` — override default `.sidflow.json`
 
 > [!TIP]
-> The CLI includes Essentia.js for feature extraction and TensorFlow.js for rating prediction. Features extracted include energy, RMS, spectral centroid, spectral rolloff, zero crossing rate, and BPM. The TF.js model uses a lightweight neural network architecture. For production use, train the model with your labeled data. See [`../packages/sidflow-classify/README-INTEGRATION.md`](../packages/sidflow-classify/README-INTEGRATION.md) for details on customization and training.
+> By default, classification uses a deterministic heuristic predictor based on file paths and metadata. For ML-based ratings, use `--predictor-module` to load a TensorFlow.js model. The CLI supports Essentia.js for audio feature extraction (energy, RMS, spectral centroid, rolloff, zero-crossing rate, BPM) when using ML prediction. See [`../packages/sidflow-classify/README.md`](../packages/sidflow-classify/README.md) for predictor options and [`README-INTEGRATION.md`](../packages/sidflow-classify/README-INTEGRATION.md) for ML training details.
 
 #### Render CLI (`scripts/sidflow-render`)
 
