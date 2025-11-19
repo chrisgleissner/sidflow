@@ -1218,7 +1218,10 @@ The configuration file controls all paths and settings:
 
 - `render.outputPath` — Default directory for `sidflow-render` outputs (falls back to `wavCachePath/rendered`)
 - `render.defaultFormats` — Default set of formats (`wav`, `m4a`, `flac`) produced per render request
-- `render.preferredEngines` — Ordered list of engines to try before falling back to WASM (`ultimate64`, `sidplayfp-cli`, `wasm`)
+- `render.preferredEngines` — Ordered list of engines to try (`libsidplayfp-wasm`, `sidplayfp-cli`, `ultimate64`)
+  - `libsidplayfp-wasm`: Cross-platform WebAssembly version of libsidplayfp (default, no external dependencies)
+  - `sidplayfp-cli`: Native command-line tool (requires sidplayfp binary installed on system)
+  - `ultimate64`: Hardware-based rendering via Ultimate 64 device
 - `render.defaultChip` — Default SID chip profile for renders (`6581` or `8580r5`)
 - `render.m4aBitrate` — Target AAC bitrate (kbps) used by both native ffmpeg and ffmpeg.wasm (default: 256)
 - `render.flacCompressionLevel` — FLAC compression level (0-12)

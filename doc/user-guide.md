@@ -25,6 +25,22 @@ A beginner-friendly guide to using SIDFlow's web interface for exploring, playin
 
 SIDFlow is a music player for C64 SID files that combines machine learning with a modern web interface. It helps you discover great C64 music based on your preferences and listening history.
 
+### Playback Technology
+
+SIDFlow uses **libsidplayfp** for accurate SID emulation:
+
+- **libsidplayfp-wasm**: Cross-platform WebAssembly version (default)
+  - Works in all modern browsers without external dependencies
+  - Compiled from libsidplayfp library for maximum compatibility
+  - Recommended for most users
+
+- **sidplayfp CLI**: Native command-line tool (optional)
+  - Requires sidplayfp binary installed on the server
+  - May offer slightly better performance on some systems
+  - Configured via admin preferences
+
+Both use the same libsidplayfp library core for consistent, authentic SID sound emulation.
+
 ### First Steps
 
 1. **Open the Player**
