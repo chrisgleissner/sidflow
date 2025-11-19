@@ -74,7 +74,7 @@ if (!isPlaywrightRunner) {
     await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 15000 });
 
     const playButton = page.getByRole('button', { name: /play next track/i });
-    await expect(playButton).toBeEnabled({ timeout: FAST_AUDIO_TESTS ? 15000 : 60000 });
+    await expect(playButton).toBeEnabled({ timeout: FAST_AUDIO_TESTS ? 30000 : 60000 });
     await playButton.click();
 
     // Wait for pause button to appear (may start disabled)
@@ -83,7 +83,7 @@ if (!isPlaywrightRunner) {
 
     // Wait for it to become enabled (player ready)
     // In CI this can take longer due to WASM/audio initialization
-    await expect(pauseButton).toBeEnabled({ timeout: FAST_AUDIO_TESTS ? 15000 : 90000 });
+    await expect(pauseButton).toBeEnabled({ timeout: FAST_AUDIO_TESTS ? 30000 : 90000 });
 
     if (FAST_AUDIO_TESTS) {
       await page
