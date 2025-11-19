@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { stat } from 'node:fs/promises';
-import { parseSidFile, pathExists, type SidflowConfig } from '@sidflow/common';
+import { getOrParseMetadata, pathExists, type SidflowConfig } from '@sidflow/common';
 import { getRepoRoot } from '@/lib/server-env';
 import { resolveSidCollectionContext } from '@/lib/sid-collection';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
@@ -90,7 +90,7 @@ export async function createRateTrackInfo(options: {
   lengthHint?: string;
 }): Promise<RateTrackInfo> {
   const { env, sidPath, relativeBase, lengthHint } = options;
-  const metadata = await parseSidFile(sidPath);
+  const metadata = await getOrParseMetadata(sidPath);
   const durationSeconds = parseDurationSeconds(lengthHint);
   const fileSize = (await stat(sidPath)).size;
   const relativeRoot = relativeBase === 'hvsc' ? env.sidPath : env.collectionRoot;

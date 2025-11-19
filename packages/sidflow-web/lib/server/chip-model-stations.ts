@@ -6,7 +6,7 @@ import { connect, type Table } from 'vectordb';
 import path from 'node:path';
 import {
     loadConfig,
-    parseSidFile,
+    getOrParseMetadata,
     pathExists,
     normalizeSidChip,
 } from '@sidflow/common';
@@ -163,7 +163,7 @@ export async function findTracksWithChipModel(
                 }
 
                 // Parse SID metadata
-                const sidData = await parseSidFile(fullPath);
+                const sidData = await getOrParseMetadata(fullPath);
                 const normalizedModel = normalizeChipModel(sidData.sidModel1);
 
                 if (normalizedModel) {

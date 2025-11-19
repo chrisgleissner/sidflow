@@ -3,7 +3,7 @@
  */
 
 import { connect, type Table } from 'vectordb';
-import { loadConfig, parseSidFile } from '@sidflow/common';
+import { loadConfig, getOrParseMetadata } from '@sidflow/common';
 import path from 'node:path';
 import { pathExists } from '@sidflow/common';
 import type { DatabaseRecord } from '@sidflow/common';
@@ -166,7 +166,7 @@ export async function findTracksInEra(
                 }
 
                 // Parse SID metadata
-                const sidData = await parseSidFile(fullPath);
+                const sidData = await getOrParseMetadata(fullPath);
                 const year = extractYear(sidData.released);
 
                 if (year !== null) {
