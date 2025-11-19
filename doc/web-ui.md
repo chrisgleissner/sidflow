@@ -263,6 +263,258 @@ Why you might see an "empty playlist" at `/` and how to populate it:
 - Station from Song: Personalized radio
 - Current mode displayed in UI (e.g., "Energetic Station" or "MUSICIANS/Hubbard_Rob")
 
+### 6. Social Features
+
+SIDFlow includes social features to connect with other users and see community activity.
+
+#### User Authentication
+
+![Login Dialog](web-screenshots/06-social-login.png)
+
+**Registration:**
+- Username (3-20 alphanumeric characters)
+- Password (minimum 8 characters)
+- Automatic login after successful registration
+- Client-side validation before submission
+
+**Login:**
+- Username and password authentication
+- JWT token authentication (7-day expiration)
+- Secure HTTP-only cookies
+- Password hashed with bcrypt (10 salt rounds)
+
+**User Menu:**
+- Displays logged-in username
+- Logout button
+- Always visible when authenticated
+
+#### Activity Stream
+
+![Activity Tab](web-screenshots/07-activity.png)
+
+The Activity tab shows real-time community activity:
+
+**Features:**
+- Live feed of user actions (likes, plays, ratings, playlist creation)
+- Pagination support (default: 20 events, max: 100)
+- Refresh button for latest activity
+- Event types:
+  - ❤️ **Like** - User liked a track
+  - ▶️ **Play** - Track playback started
+  - ⭐ **Rating** - Track rated with dimensions
+  - 📁 **Playlist** - Playlist created or modified
+- Time-ordered display (newest first)
+- User attribution for each event
+- Track metadata (title, artist) displayed
+
+**Event Details:**
+- Username who performed the action
+- Action type with icon
+- Track or playlist name
+- Timestamp (relative time format)
+- Additional metadata (e.g., rating values, dimensions)
+
+#### User Profiles
+
+![Profiles Tab](web-screenshots/08-profiles.png)
+
+Browse and search user profiles:
+
+**Profile Information:**
+- Username and join date
+- Total tracks rated
+- Total likes given
+- Total plays counted
+- Favorite tracks list
+- Activity statistics
+
+**Search Features:**
+- Username search with case-insensitive matching
+- Instant results display
+- Profile cards with key stats
+- "View Profile" button for detailed view
+
+**Profile Stats:**
+- Total ratings submitted
+- Average rating given
+- Most-liked genres (when available)
+- Recently played tracks
+- Top-rated tracks by user
+
+#### Charts & Leaderboards
+
+![Charts Tab](web-screenshots/09-charts.png)
+
+Discover trending tracks and top performers:
+
+**Time Range Filters:**
+- This Week - Last 7 days of activity
+- This Month - Last 30 days
+- All Time - Complete history
+
+**Chart Data:**
+- Rank (1-20, customizable up to 100)
+- Track name and artist
+- Play count
+- Like count
+- Average rating with star display
+- "Trending" badge for rapidly rising tracks
+
+**Sorting:**
+- Primary sort: Play count descending
+- Secondary sort: Like count (tiebreaker)
+- Tertiary sort: Average rating
+
+**Chart Entry Actions:**
+- Quick play button
+- View track details
+- Add to playlist (when logged in)
+- Share track link
+
+### 7. Playlists
+
+Create, manage, and share custom playlists.
+
+#### Playlist Management
+
+**Create Playlist:**
+- Name (required, max 100 characters)
+- Description (optional)
+- Add tracks via drag-and-drop or "Add to Playlist" button
+- Maximum 1000 tracks per playlist
+
+**Edit Playlist:**
+- Rename playlist
+- Update description
+- Reorder tracks with drag-and-drop
+- Remove tracks
+- Add more tracks
+
+**Playlist Actions:**
+- **Play All** - Queue all tracks in order
+- **Shuffle** - Randomize playback order
+- **Export M3U** - Download standard M3U playlist file
+- **Share** - Generate shareable URL
+- **Delete** - Remove playlist (confirmation required)
+
+#### Playlist Features
+
+**Track Management:**
+- Display track number, title, artist
+- Subtune selector for multi-subtune SID files
+- Duration display (when available)
+- Drag handles for reordering
+
+**M3U Export:**
+- Standard M3U format
+- Absolute paths for local playback
+- Compatible with VLC, foobar2000, other players
+- Preserves subtune selections (#SUBSONG directive)
+
+**Playlist Sharing:**
+- Generate unique URL for playlist
+- Public access (no login required to view)
+- Read-only for non-owners
+- Owner can edit via shared link
+- Share via copy-paste or QR code (future)
+
+**Storage:**
+- Stored server-side in `data/playlists/`
+- JSON format for easy backup/restore
+- Auto-save on every change
+- Versioned for conflict resolution
+
+### 8. Advanced Search
+
+![Advanced Search](web-screenshots/10-search.png)
+
+Powerful search with multiple filters and options.
+
+#### Search Bar
+
+**Text Search:**
+- Real-time search with 300ms debounce
+- Case-insensitive matching
+- Searches: Title, Artist, Author fields
+- Minimum 2 characters required
+- Maximum 50 results returned (adjustable)
+
+**Search Modifiers:**
+- Quoted phrases: `"test drive"` for exact match
+- Wildcards: `hub*` matches "Hubbard", "Hub", etc.
+- Field-specific: `artist:Hubbard` or `title:Commando`
+
+#### Filter Panel
+
+**Year Filters:**
+- Minimum year (1980-2024)
+- Maximum year (1980-2024)
+- Range slider for easy selection
+- Shows number of matching tracks
+
+**Chip Model Filters:**
+- MOS 6581 (R3/R4) - Original C64 SID chip
+- MOS 8580 - C64C/C128 SID chip
+- Any - Include all chip types
+- Multiple selection supported
+
+**Duration Filters:**
+- Minimum duration (seconds)
+- Maximum duration (seconds)
+- Range slider (0-600 seconds typical)
+- Filter out too-short intros or too-long tracks
+
+**Rating Filters:**
+- Minimum rating (1-5 stars)
+- Filter by community rating
+- Personal rating filter (when logged in)
+- Unrated tracks option
+
+#### Search Results
+
+**Result Display:**
+- Track title and artist
+- Year and chip model badges
+- Duration display
+- Star rating with count
+- Play button for instant playback
+- Add to playlist button
+
+**Result Actions:**
+- **Play** - Start playback immediately
+- **Add to Favorites** - Heart icon toggle
+- **Add to Playlist** - Select from playlists
+- **View Details** - Full track metadata
+- **Start Station** - Create radio station from track
+
+**Result Sorting:**
+- Relevance (default) - Best match first
+- Rating - Highest rated first
+- Year - Newest or oldest first
+- Duration - Shortest or longest first
+- Title - Alphabetical A-Z or Z-A
+
+#### Special Features
+
+**Surprise Me:**
+- Random track button
+- Respects active filters
+- Discovers hidden gems
+- Different result each time
+- Weighted by rating (optional)
+
+**Search History:**
+- Last 10 searches saved
+- Quick re-run of previous searches
+- Clear history option
+- Stored in localStorage
+
+**Saved Searches:**
+- Name and save filter combinations
+- Quick access to common queries
+- Edit/delete saved searches
+- Share saved search URL
+
 ## Design system
 
 ### Authentic C64 Colors

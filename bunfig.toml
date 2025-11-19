@@ -1,0 +1,7 @@
+[test]
+# Exclude E2E specs from bun test (they run via playwright test)
+exclude = [
+  "**/tests/e2e/**/*.spec.ts",
+  "**/tests/e2e/**",
+  "**/*.spec.ts"
+]

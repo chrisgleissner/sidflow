@@ -12,7 +12,9 @@
     "test": "node ../../scripts/run-bun.mjs test tests/unit/",
     "pretest:e2e": "node ./scripts/ensure-playwright-browser.mjs",
     "test:e2e": "playwright test",
-    "test:all": "npm run pretest:e2e && node ../../scripts/run-bun.mjs test tests/unit/ && playwright test"
+    "test:all": "npm run pretest:e2e && node ../../scripts/run-bun.mjs test tests/unit/ && playwright test",
+    "test:perf": "npm run pretest:e2e && playwright test tests/e2e/performance.spec.ts --workers=1",
+    "test:a11y": "npm run pretest:e2e && playwright test tests/e2e/accessibility.spec.ts"
   },
   "dependencies": {
     "@ffmpeg/core": "0.11.0",

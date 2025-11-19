@@ -10,10 +10,14 @@ A beginner-friendly guide to using SIDFlow's web interface for exploring, playin
 4. [Managing Favorites](#managing-favorites)
 5. [Exploring Top Charts](#exploring-top-charts)
 6. [Browsing Your Collection](#browsing-your-collection)
-7. [Personalizing Your Experience](#personalizing-your-experience)
-8. [Understanding Ratings](#understanding-ratings)
-9. [Keyboard Shortcuts](#keyboard-shortcuts)
-10. [Tips and Tricks](#tips-and-tricks)
+7. [Creating and Managing Playlists](#creating-and-managing-playlists)
+8. [ML-Powered Stations](#ml-powered-stations)
+9. [Social Features](#social-features)
+10. [Advanced Search](#advanced-search)
+11. [Personalizing Your Experience](#personalizing-your-experience)
+12. [Understanding Ratings](#understanding-ratings)
+13. [Keyboard Shortcuts](#keyboard-shortcuts)
+14. [Tips and Tricks](#tips-and-tricks)
 
 ## Getting Started
 
@@ -226,6 +230,557 @@ Help improve recommendations by rating tracks:
 - Shows your current path (e.g., Collection → MUSICIANS → Hubbard_Rob)
 - Click any breadcrumb to jump to that level
 - Quick way to move up the folder tree
+
+## Creating and Managing Playlists
+
+Create custom playlists to organize your favorite tracks and share them with others.
+
+### Creating a Playlist
+
+1. **Open playlist dialog**
+   - Click "New Playlist" button in the Play tab
+   - Or use the Playlists menu
+
+2. **Name your playlist**
+   - Enter a descriptive name (max 100 characters)
+   - Examples: "Energetic Favorites", "Hubbard Classics", "Game Music"
+
+3. **Add description** (optional)
+   - Describe the theme or mood
+   - Helps you remember the playlist's purpose
+
+4. **Add tracks**
+   - Use "Add to Playlist" button on any playing track
+   - Drag and drop from search results
+   - Browse folders and add multiple tracks
+
+### Managing Playlists
+
+#### Viewing Playlists
+
+- All your playlists appear in the Playlists menu
+- Click any playlist to view its contents
+- See track count, total duration, and creation date
+
+#### Editing Playlists
+
+1. **Rename playlist**
+   - Click the edit icon next to playlist name
+   - Update name or description
+   - Changes save automatically
+
+2. **Reorder tracks**
+   - Drag and drop tracks to new positions
+   - Use up/down arrows for precise control
+   - Order is preserved for playback
+
+3. **Remove tracks**
+   - Click the X button next to any track
+   - Confirms before removing
+   - Can always re-add later
+
+4. **Add more tracks**
+   - Use "Add to Playlist" from anywhere
+   - Select which playlist to add to
+   - No limit on playlist size (up to 1000 tracks)
+
+#### Playlist Actions
+
+- **Play All** - Queue all tracks in order
+- **Shuffle** - Randomize playback order
+- **Export M3U** - Download standard playlist file
+- **Share** - Get shareable URL for others
+- **Delete** - Remove playlist (confirmation required)
+
+### Exporting Playlists
+
+#### M3U Format
+
+1. **Download M3U file**
+   - Click "Export M3U" button
+   - Saves as standard .m3u playlist file
+   - Compatible with most music players
+
+2. **Use in other players**
+   - VLC, foobar2000, Winamp, iTunes
+   - Absolute paths for local playback
+   - Preserves subtune selections
+
+3. **Backup and restore**
+   - Save playlists as files
+   - Import in other SIDFlow instances
+   - Share via email or cloud storage
+
+### Sharing Playlists
+
+#### Generate Share Link
+
+1. **Create shareable URL**
+   - Click "Share" button in playlist
+   - Copy the generated URL
+   - Share via email, chat, or social media
+
+2. **Public access**
+   - Anyone with the link can view the playlist
+   - No login required to see tracks
+   - Read-only for non-owners
+
+3. **Edit shared playlists**
+   - Original owner can edit via the shared link
+   - Changes reflect immediately for all viewers
+   - Delete removes the shared link
+
+#### Share via QR Code (future)
+
+- Generate QR code for mobile sharing
+- Scan with phone to open playlist
+- Great for sharing in person
+
+## ML-Powered Stations
+
+SIDFlow uses machine learning to create personalized radio stations based on songs you love.
+
+### Creating a Station
+
+#### From Currently Playing Track
+
+1. **Find a track you love**
+   - Play any track that matches your mood
+   - Let it play for a few seconds
+
+2. **Start the station**
+   - Click "Start Station" button
+   - Appears on the now-playing card
+
+3. **Station generation**
+   - ML analyzes the track's audio features
+   - Searches for 20 similar tracks via LanceDB
+   - Weights results by your listening history
+
+#### Station Parameters
+
+**Personalization Slider** (0-100%)
+
+- **High (75-100%)**: Strong preference weighting
+  - Boosts tracks you've liked before
+  - Penalizes tracks you've disliked
+  - Great for familiar, comfortable listening
+
+- **Medium (25-75%)**: Balanced approach
+  - Moderate preference influence
+  - Good mix of known and new
+
+- **Low (0-25%)**: Pure similarity
+  - Ignores your listening history
+  - Discovers new artists and styles
+  - Explores beyond your usual preferences
+
+**Discovery Slider** (0-100%)
+
+- **High (75-100%)**: Exploration mode
+  - Looser similarity matching
+  - More musical diversity
+  - Discovers unexpected gems
+
+- **Medium (25-75%)**: Balanced discovery
+  - Moderate similarity threshold
+  - Mix of close and distant matches
+
+- **Low (0-25%)**: Tight similarity
+  - Very close matches only
+  - Tracks sound similar to seed song
+  - Consistent listening experience
+
+### Using Stations
+
+#### Playback Behavior
+
+- Station name displays as "Station: [song title]"
+- Plays through 20 tracks automatically
+- Can skip forward/backward through station
+- Like/dislike still affects future stations
+
+#### Creating Multiple Stations
+
+- Start new stations from any playing track
+- Each station has unique track selection
+- Experiment with different seed songs
+- Discover different facets of the collection
+
+#### Station Tips
+
+1. **Seed song selection matters**
+   - Choose a track that captures the mood you want
+   - High-quality tracks often produce better stations
+
+2. **Adjust parameters for mood**
+   - Relaxing: Low discovery, high personalization
+   - Adventurous: High discovery, low personalization
+   - Familiar: High personalization, low discovery
+
+3. **Like/dislike to refine**
+   - Rate station tracks to improve future recommendations
+   - ML learns from every interaction
+   - Stations get better over time
+
+### How It Works (Technical)
+
+#### Vector Similarity Search
+
+- Each track represented as feature vector
+- Extracted from audio analysis (tempo, energy, timbre)
+- LanceDB indexes for fast similarity queries
+- Euclidean distance measures closeness
+
+#### Personalization Scoring
+
+- Positive feedback (likes): +0.2 boost per like
+- Negative feedback (dislikes): -0.3 penalty per dislike
+- Skip penalty: -0.05 per skip
+- Combined with base similarity score
+
+#### Discovery Factor
+
+- Adjusts minimum similarity threshold
+- High discovery: Accept scores as low as 0.4
+- Low discovery: Require scores above 0.7
+- Adds randomness to prevent repetition
+
+## Social Features
+
+Connect with other SIDFlow users and see what the community is listening to.
+
+### Creating an Account
+
+#### Registration
+
+1. **Click "Sign Up" button**
+   - Located in top-right corner
+   - Opens registration dialog
+
+2. **Choose username**
+   - 3-20 alphanumeric characters
+   - Case-insensitive (stored as lowercase)
+   - Must be unique across all users
+
+3. **Set password**
+   - Minimum 8 characters
+   - Mix of letters, numbers, symbols recommended
+   - Securely hashed with bcrypt
+
+4. **Automatic login**
+   - Successfully registered users are logged in automatically
+   - Session lasts 7 days
+   - Secure JWT authentication
+
+### Logging In
+
+- Enter username and password
+- Click "Log In" button
+- Session saved in secure HTTP-only cookie
+- Stay logged in across browser sessions
+
+### Viewing Community Activity
+
+#### Activity Stream
+
+1. **Open Activity tab**
+   - Click "Activity" in main navigation
+   - See real-time feed of user actions
+
+2. **Event types shown**
+   - ❤️ **Like** - User liked a track
+   - ▶️ **Play** - Track playback started
+   - ⭐ **Rating** - Track rated with dimensions
+   - 📁 **Playlist** - Playlist created or modified
+
+3. **Event information**
+   - Username who performed action
+   - Track or playlist name
+   - Timestamp (relative, e.g., "2 hours ago")
+   - Additional details (rating values, etc.)
+
+4. **Refresh feed**
+   - Click "Refresh" button for latest activity
+   - Pagination: Default 20 events, max 100
+   - Automatically updates on navigation
+
+### Exploring User Profiles
+
+#### Finding Users
+
+1. **Open Profiles tab**
+   - Click "Profiles" in main navigation
+   - See search bar and user list
+
+2. **Search for users**
+   - Type username in search box
+   - Case-insensitive matching
+   - Instant results as you type
+
+3. **Browse popular users**
+   - Sorted by activity level
+   - See top contributors
+   - Discover active community members
+
+#### Viewing Profiles
+
+**Profile Information Displayed:**
+
+- Username and join date
+- Total tracks rated
+- Total likes given
+- Total plays counted
+- Favorite tracks (when public)
+- Activity statistics
+
+**Profile Stats:**
+
+- Total ratings submitted
+- Average rating given
+- Most-liked genres (when available)
+- Recently played tracks
+- Top-rated tracks by that user
+
+#### Following Users (future)
+
+- Follow users to see their activity
+- Get notified of their ratings and playlists
+- Discover music through trusted sources
+
+### Viewing Charts and Leaderboards
+
+#### Top Charts
+
+1. **Open Charts tab**
+   - Click "Charts" in main navigation
+   - See top-played tracks
+
+2. **Filter by time range**
+   - **This Week** - Last 7 days
+   - **This Month** - Last 30 days
+   - **All Time** - Complete history
+
+3. **Chart data shown**
+   - Rank (1-100, customizable)
+   - Track name and artist
+   - Play count
+   - Like count
+   - Average rating with stars
+   - "Trending" badge for rising tracks
+
+#### Playing from Charts
+
+- Click play button next to any chart entry
+- Instantly starts playing that track
+- Adds to playback history
+- Counts toward your play statistics
+
+#### Leaderboards (future)
+
+- Top raters by activity
+- Most-followed users
+- Best playlist creators
+- Community contributors
+
+### Privacy and Security
+
+#### What's Public
+
+- Username
+- Tracks you've rated (unless private)
+- Public playlists
+- Like/play counts (aggregate)
+
+#### What's Private
+
+- Password (hashed, never stored plain)
+- Email address (if provided)
+- Private playlists
+- Personal listening history
+
+#### Security Features
+
+- Passwords hashed with bcrypt (10 salt rounds)
+- JWT tokens with 7-day expiration
+- Secure HTTP-only cookies
+- Rate limiting on login attempts
+- CSRF protection on forms
+
+## Advanced Search
+
+Find exactly what you're looking for with powerful search filters.
+
+### Basic Text Search
+
+1. **Open search bar**
+   - Located at top of Play tab
+   - Press **S** keyboard shortcut to focus
+
+2. **Enter search query**
+   - Type artist name, track title, or author
+   - Minimum 2 characters required
+   - Results update as you type (300ms debounce)
+
+3. **View results**
+   - Up to 50 matches shown
+   - Displays title, artist, year, rating
+   - Play button for instant playback
+
+### Using Filters
+
+#### Open Filter Panel
+
+- Click "Filters" button next to search bar
+- Expands to show all filter options
+- Filters combine with text search
+
+#### Year Filters
+
+1. **Set year range**
+   - Adjust minimum year slider (1980-2024)
+   - Adjust maximum year slider (1980-2024)
+   - Shows matching track count
+
+2. **Common presets**
+   - 1980s classics: 1980-1989
+   - 1990s era: 1990-1999
+   - Modern remakes: 2000-2024
+
+#### Chip Model Filters
+
+**Available Options:**
+
+- **MOS 6581** - Original C64 SID chip (R3/R4)
+- **MOS 8580** - C64C/C128 SID chip
+- **Any** - Include all chip types
+
+**Usage:**
+
+- Select one or multiple chips
+- Helps find authentic vs enhanced sounds
+- Useful for hardware-specific playlists
+
+#### Duration Filters
+
+1. **Set duration range**
+   - Minimum duration in seconds (0-600)
+   - Maximum duration in seconds (0-600)
+   - Drag sliders or type exact values
+
+2. **Common uses**
+   - Filter out short intros: Min 60 seconds
+   - Exclude long tracks: Max 180 seconds
+   - Find specific lengths for playlists
+
+#### Rating Filters
+
+1. **Minimum community rating**
+   - Filter by star rating (1-5)
+   - Shows only tracks above threshold
+   - Discover highly-rated gems
+
+2. **Personal rating filter** (when logged in)
+   - Show only tracks you've rated
+   - Filter by your own ratings
+   - Revisit favorites quickly
+
+3. **Include unrated option**
+   - Show tracks without ratings
+   - Discover overlooked music
+   - Help fill gaps in ratings
+
+### Search Modifiers
+
+#### Quoted Phrases
+
+- Use quotes for exact match: `"test drive"`
+- Searches for exact phrase, not individual words
+- Case-insensitive matching
+
+#### Wildcards
+
+- Asterisk matches any characters: `hub*`
+- Finds "Hubbard", "Hub", "Hubbell", etc.
+- Useful for partial names
+
+#### Field-Specific Search
+
+- **By artist**: `artist:Hubbard`
+- **By title**: `title:Commando`
+- **By year**: `year:1985`
+- Combine with other terms
+
+### Sorting Results
+
+**Sort Options:**
+
+- **Relevance** (default) - Best match first
+- **Rating** - Highest rated first
+- **Year** - Newest or oldest first
+- **Duration** - Shortest or longest first
+- **Title** - Alphabetical A-Z or Z-A
+
+**Changing Sort:**
+
+1. Click sort dropdown
+2. Select desired sort method
+3. Results update immediately
+
+### Special Features
+
+#### Surprise Me Button
+
+- Random track respecting filters
+- Discovers hidden gems
+- Different result each click
+- Optional: Weight by rating for quality
+
+#### Search History
+
+- Last 10 searches automatically saved
+- Quick re-run of previous searches
+- Stored in browser localStorage
+- "Clear History" button available
+
+#### Saved Searches
+
+1. **Save a search**
+   - Configure filters and text
+   - Click "Save Search" button
+   - Name the search (e.g., "Energetic 80s")
+
+2. **Access saved searches**
+   - Dropdown shows all saved searches
+   - One-click to run saved search
+   - Edit or delete saved searches
+
+3. **Share saved searches**
+   - Generate URL with search parameters
+   - Share with other users
+   - Bookmark for quick access
+
+### Search Tips
+
+1. **Start broad, then filter**
+   - Begin with text search
+   - Add filters to narrow results
+   - Remove filters if too few results
+
+2. **Combine multiple filters**
+   - Year + chip model + rating
+   - Creates very specific queries
+   - Finds exactly what you want
+
+3. **Use wildcards for discovery**
+   - `*commando*` finds variations
+   - Discovers related tracks
+   - Explores themes and remixes
+
+4. **Save common searches**
+   - Frequently used filters
+   - Genre-specific queries
+   - Quick access to favorites
 
 ## Personalizing Your Experience
 

@@ -28,7 +28,9 @@
     "check:packages": "node scripts/run-bun.mjs run scripts/ci/check-packages.ts",
     "profile:e2e": "node scripts/profile-e2e.mjs",
     "analyze:e2e": "node scripts/run-bun.mjs run scripts/report-e2e-runtime.ts",
-    "setup:tests": "node scripts/run-bun.mjs install --frozen-lockfile && node scripts/ensure-playwright.mjs"
+    "setup:tests": "node scripts/run-bun.mjs install --frozen-lockfile && node scripts/ensure-playwright.mjs",
+    "test:perf": "npm run build && cd packages/sidflow-web && npm run test:perf",
+    "test:a11y": "npm run build && cd packages/sidflow-web && npm run test:a11y"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.0",
