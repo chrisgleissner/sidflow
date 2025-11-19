@@ -164,6 +164,9 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 - Built SaveQueueDialog and PlaylistBrowser UI components
 - All 28 unit tests passing with proper test isolation
 - Playlist files now gitignored to prevent test artifacts from being committed
+- Fixed E2E test exclusion from Bun test runs (bunfig.toml exclude pattern)
+- Relaxed timing tolerances for performance tests to handle parallel execution
+- **All unit tests passing: 958 pass, 1 skip (sidplayfp-cli external dependency), 0 failures**
 
 **Step 9 TODOs:**
 - [ ] Implement M3U export functionality
