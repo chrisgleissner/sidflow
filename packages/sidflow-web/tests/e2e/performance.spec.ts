@@ -281,7 +281,15 @@ async function generatePerformanceReport(allMetrics: PerformanceMetrics[]): Prom
     console.log(`[Performance] Generated report: ${reportPath}`);
 }
 
+// Skip performance tests unless explicitly enabled via environment variable
+// These tests require full HVSC collection and are meant for:
+// - On-demand local runs via `bun run test:perf` (sets SIDFLOW_RUN_PERF_TESTS=1)
+// - Nightly CI runs at 2am via GitHub Actions
+const skipPerformanceTests = !process.env.SIDFLOW_RUN_PERF_TESTS;
+
 test.describe('Performance Tests (Full HVSC Collection)', () => {
+    test.skip(skipPerformanceTests, 'Performance tests skipped (set SIDFLOW_RUN_PERF_TESTS=1 to enable)');
+
     const allMetrics: PerformanceMetrics[] = [];
 
     test.afterAll(async () => {
