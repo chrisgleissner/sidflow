@@ -621,12 +621,18 @@ README statements "learns from feedback" and "improves over time" are ACCURATE f
   - [ ] 7.7 — Test telemetry collection and dashboard rendering
 - [x] Phase 8: Testing & Documentation ✅ COMPLETE
   - [x] 8.1 — Create stale cache test cases: 50 new tests total (perf-utils: 22, config-cache: 8, metadata-cache: 11, feature-cache: 9)
-  - [x] 8.2 — Run full test suite 3x: ✅ Integration E2E (8/8 pass), ✅ Unit tests (1048 passing)
+  - [x] 8.2 — Run full test suite 3x: ✅ Integration E2E (8/8 pass), ✅ Unit tests (1057 passing)
   - [x] 8.3 — Coverage: 64.46% source-only (new cache modules at 100%)
   - [ ] 8.4 — Update technical-reference.md with caching strategies (DEFERRED to future PR)
   - [ ] 8.5 — Update performance-metrics.md with before/after comparisons (DEFERRED to future PR)
   - [ ] 8.6 — Document cache invalidation rules in artifact-governance.md (DEFERRED to future PR)
   - [ ] 8.7 — Document telemetry system and dashboard in web-ui.md (DEFERRED - telemetry dashboard not implemented)
+- [ ] Phase 9: Coverage Improvement to 92% — IN PROGRESS
+  - [ ] 9.1 — Create tests for uncovered utility modules (chip-model, playback-lock, jsonl-schema, audit-trail, audio-types)
+  - [ ] 9.2 — Expand error path coverage in existing tests (config, fs, lancedb-builder, retry, feedback)
+  - [ ] 9.3 — Add edge cases to classification tests (feature-cache, essentia-features, cli)
+  - [ ] 9.4 — Run coverage script and verify >= 92% threshold
+  - [ ] 9.5 — Run all tests 3x consecutively to verify stability
 
 **Progress log**
 - 2025-11-19 — Phase 1.1 COMPLETE: Created perf-utils.ts (377 lines) with PerfTimer, measureAsync, CheckpointLogger, BatchTimer; 22 tests passing
