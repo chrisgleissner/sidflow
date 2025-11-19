@@ -1,3 +1,4 @@
+/// <reference path="./7zip-min.d.ts" />
 import path from "node:path";
 
 import { ensureDir } from "./fs.js";
