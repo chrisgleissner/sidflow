@@ -46,7 +46,7 @@ import { buildSongPlaylist, buildFolderPlaylist, getPlaylistModeDescription, typ
 import { getPersonalRating, setPersonalRating, type PersonalRating } from '@/lib/personal-ratings';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { addToPlaybackHistory, getRecentHistory, clearPlaybackHistory, type PlaybackHistoryEntry } from '@/lib/playback-history';
-import { SearchBar } from '@/components/SearchBar';
+import { AdvancedSearchBar } from '@/components/AdvancedSearchBar';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 
@@ -1631,11 +1631,20 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         </div>
       )}
 
-      {/* Search Bar */}
+      {/* Advanced Search Bar */}
       <div className="mb-4">
-        <SearchBar
+        <AdvancedSearchBar
           onPlayTrack={handlePlaySong}
           onStatusChange={notifyStatus}
+          onSurpriseMe={() => {
+            void requestRandomPlayTrack().then((response) => {
+              if (response.success) {
+                handlePlaySong(response.data.track.sidPath);
+              } else {
+                notifyStatus(`Random track failed: ${formatApiError(response)}`, true);
+              }
+            });
+          }}
           searchInputRef={searchInputRef}
         />
       </div>

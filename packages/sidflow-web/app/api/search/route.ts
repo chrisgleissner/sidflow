@@ -44,15 +44,48 @@ function parseSidPath(sidPath: string): { artist: string; title: string } {
 }
 
 /**
- * GET /api/search?q=query&limit=20
- * Search for SID tracks by title or artist
+ * GET /api/search?q=query&limit=20&yearMin=1985&yearMax=1990&chipModel=6581&sidModel=MOS6581&durationMin=60&durationMax=300&minRating=3
+ * Search for SID tracks by title or artist with optional filters
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
-    const logPrefix = `[search-api] q=${JSON.stringify(query)} limit=${limit}`;
+    
+    // Parse filter parameters
+    const filters: {
+      yearMin?: number;
+      yearMax?: number;
+      chipModel?: string;
+      sidModel?: string;
+      durationMin?: number;
+      durationMax?: number;
+      minRating?: number;
+    } = {};
+    
+    const yearMin = searchParams.get('yearMin');
+    if (yearMin) filters.yearMin = parseInt(yearMin, 10);
+    
+    const yearMax = searchParams.get('yearMax');
+    if (yearMax) filters.yearMax = parseInt(yearMax, 10);
+    
+    const chipModel = searchParams.get('chipModel');
+    if (chipModel) filters.chipModel = chipModel;
+    
+    const sidModel = searchParams.get('sidModel');
+    if (sidModel) filters.sidModel = sidModel;
+    
+    const durationMin = searchParams.get('durationMin');
+    if (durationMin) filters.durationMin = parseInt(durationMin, 10);
+    
+    const durationMax = searchParams.get('durationMax');
+    if (durationMax) filters.durationMax = parseInt(durationMax, 10);
+    
+    const minRating = searchParams.get('minRating');
+    if (minRating) filters.minRating = parseFloat(minRating);
+    
+    const logPrefix = `[search-api] q=${JSON.stringify(query)} limit=${limit} filters=${JSON.stringify(filters)}`;
 
     if (!query || query.trim().length === 0) {
       return NextResponse.json({
@@ -68,9 +101,9 @@ export async function GET(request: NextRequest) {
       console.info(`${logPrefix} — start`);
     }
 
-    // Query cached search index
+    // Query cached search index with filters
     const searchIndex = getSearchIndex();
-    const matchedRecords = await searchIndex.query(normalizedQuery, { limit });
+    const matchedRecords = await searchIndex.query(normalizedQuery, { limit, filters });
     const results: SearchResult[] = matchedRecords.map((record) => {
       const { artist, title } = parseSidPath(record.sidPath);
       const matchedIn: string[] = [];

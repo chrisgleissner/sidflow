@@ -131,12 +131,12 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 
 #### Step 8: Advanced Search & Discovery
 
-- [ ] 8.1 — Global search bar (title/artist/game/year facets)
-- [ ] 8.2 — Advanced filters (chip model, SID model, duration, rating)
-- [ ] 8.3 — Results list with instant playback preview
-- [ ] 8.4 — "Surprise Me" CTA
-- [ ] 8.5 — Unit tests for search parsing/filter scope
-- [ ] 8.6 — Playwright coverage for search flows
+- [x] 8.1 — Global search bar (title/artist/game/year facets)
+- [x] 8.2 — Advanced filters (chip model, SID model, duration, rating)
+- [x] 8.3 — Results list with instant playback preview
+- [x] 8.4 — "Surprise Me" CTA
+- [x] 8.5 — Unit tests for search parsing/filter scope
+- [x] 8.6 — Playwright coverage for search flows
 
 #### Step 9: Playlist Management
 

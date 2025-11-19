@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { GET, POST, DELETE } from '@/app/api/favorites/route';
 import { getWebPreferences, updateWebPreferences } from '@/lib/preferences-store';
+import { resetFavoritesCache } from '@/lib/server/favorites-cache';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -17,6 +18,9 @@ describe('Favorites API', () => {
     
     // Override preferences path for testing
     process.env.SIDFLOW_PREFS_PATH = testPrefsPath;
+    
+    // Reset the favorites cache to ensure clean state
+    resetFavoritesCache();
   });
 
   afterEach(async () => {

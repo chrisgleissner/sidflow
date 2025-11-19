@@ -115,14 +115,6 @@ const TABS: TabScenario[] = [
           return loader === null;
         }, { timeout: 10000 }).catch(() => { });
 
-        // Ensure main content area is visible with retry logic
-        await page.waitForSelector('[role="main"]', {
-          state: 'visible',
-          timeout: 10000
-        }).catch((error) => {
-          console.warn('[CLASSIFY verify] Main content area not found:', error.message);
-        });
-
         // Ensure content is fully rendered
         await page.waitForTimeout(1000);
       } catch (error) {

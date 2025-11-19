@@ -11,6 +11,12 @@ interface ClassifiedTrack {
     p?: number;
   };
   features?: Record<string, number>;
+  metadata?: {
+    chipModel?: string;
+    sidModel?: string;
+    year?: number;
+    duration?: number;
+  };
 }
 
 interface SearchRecord {
@@ -18,10 +24,35 @@ interface SearchRecord {
   displayName: string;
   artist: string;
   normalized: string;
+  year?: number;
+  ratings?: {
+    e?: number;
+    m?: number;
+    c?: number;
+    p?: number;
+  };
+  features?: Record<string, number>;
+  metadata?: {
+    chipModel?: string;
+    sidModel?: string;
+    year?: number;
+    duration?: number;
+  };
+}
+
+export interface SearchFilters {
+  yearMin?: number;
+  yearMax?: number;
+  chipModel?: string;
+  sidModel?: string;
+  durationMin?: number;
+  durationMax?: number;
+  minRating?: number;
 }
 
 interface SearchQueryOptions {
   limit: number;
+  filters?: SearchFilters;
 }
 
 const DEFAULT_LIMIT = 20;
@@ -61,6 +92,10 @@ export class SearchIndex {
               displayName: title,
               artist,
               normalized: `${title.toLowerCase()} ${artist.toLowerCase()} ${track.sid_path.toLowerCase()}`,
+              year: track.metadata?.year,
+              ratings: track.ratings,
+              features: track.features,
+              metadata: track.metadata,
             });
           } catch {
             // ignore malformed lines
@@ -92,10 +127,39 @@ export class SearchIndex {
 
     await this.ensureFresh();
     const limit = options?.limit && options.limit > 0 ? options.limit : DEFAULT_LIMIT;
+    const filters = options?.filters;
 
     const matches: SearchRecord[] = [];
     for (const record of this.records) {
       if (record.normalized.includes(query)) {
+        // Apply filters if present
+        if (filters) {
+          if (filters.yearMin !== undefined && (!record.year || record.year < filters.yearMin)) {
+            continue;
+          }
+          if (filters.yearMax !== undefined && (!record.year || record.year > filters.yearMax)) {
+            continue;
+          }
+          if (filters.chipModel && record.metadata?.chipModel !== filters.chipModel) {
+            continue;
+          }
+          if (filters.sidModel && record.metadata?.sidModel !== filters.sidModel) {
+            continue;
+          }
+          if (filters.durationMin !== undefined && (!record.metadata?.duration || record.metadata.duration < filters.durationMin)) {
+            continue;
+          }
+          if (filters.durationMax !== undefined && (!record.metadata?.duration || record.metadata.duration > filters.durationMax)) {
+            continue;
+          }
+          if (filters.minRating !== undefined) {
+            const avgRating = record.ratings ? ((record.ratings.e ?? 0) + (record.ratings.m ?? 0) + (record.ratings.c ?? 0)) / 3 : 0;
+            if (avgRating < filters.minRating) {
+              continue;
+            }
+          }
+        }
+
         matches.push(record);
         if (matches.length >= limit) {
           break;
