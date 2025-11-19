@@ -60,17 +60,17 @@ async function run() {
   // 1) Run tests with lcov output
   // Find all test files (same as package.json test script)
   const findProc = Bun.spawn([
-    "find", 
-    "packages/*/test", 
-    "packages/sidflow-web/tests/unit", 
+    "find",
+    "packages/*/test",
+    "packages/sidflow-web/tests/unit",
     "integration-tests",
-    "-name", "*.test.ts", 
+    "-name", "*.test.ts",
     "-type", "f"
   ], { stdout: "pipe", stderr: "inherit" });
   await findProc.exited;
   const testFilesRaw = await new Response(findProc.stdout).text();
   const testFiles = testFilesRaw.trim().split(/\r?\n/).filter(Boolean);
-  
+
   const test = Bun.spawn([
     "bun",
     "test",
