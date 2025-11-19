@@ -15,10 +15,10 @@ describe('Favorites API', () => {
     } catch (error) {
       // Ignore if file doesn't exist
     }
-    
+
     // Override preferences path for testing
     process.env.SIDFLOW_PREFS_PATH = testPrefsPath;
-    
+
     // Reset the favorites cache to ensure clean state
     resetFavoritesCache();
   });
@@ -30,7 +30,7 @@ describe('Favorites API', () => {
     } catch (error) {
       // Ignore if file doesn't exist
     }
-    
+
     // Restore environment
     delete process.env.SIDFLOW_PREFS_PATH;
   });
@@ -39,7 +39,7 @@ describe('Favorites API', () => {
     it('should return empty favorites array initially', async () => {
       const response = await GET();
       const data = await response.json();
-      
+
       expect(data.success).toBe(true);
       expect(data.data.favorites).toEqual([]);
     });
@@ -47,10 +47,10 @@ describe('Favorites API', () => {
     it('should return existing favorites', async () => {
       // Setup: add some favorites
       await updateWebPreferences({ favorites: ['MUSICIANS/Hubbard_Rob/Delta.sid', 'MUSICIANS/Galway_Martin/Parallax.sid'] });
-      
+
       const response = await GET();
       const data = await response.json();
-      
+
       expect(data.success).toBe(true);
       expect(data.data.favorites).toHaveLength(2);
       expect(data.data.favorites).toContain('MUSICIANS/Hubbard_Rob/Delta.sid');
@@ -65,14 +65,14 @@ describe('Favorites API', () => {
         body: JSON.stringify({ sid_path: 'MUSICIANS/Hubbard_Rob/Delta.sid' }),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await POST(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(true);
       expect(data.data.added).toBe(true);
       expect(data.data.favorites).toContain('MUSICIANS/Hubbard_Rob/Delta.sid');
-      
+
       // Verify it was actually saved
       const prefs = await getWebPreferences();
       expect(prefs.favorites).toContain('MUSICIANS/Hubbard_Rob/Delta.sid');
@@ -81,16 +81,16 @@ describe('Favorites API', () => {
     it('should not add duplicate favorites', async () => {
       // Setup: add a favorite first
       await updateWebPreferences({ favorites: ['MUSICIANS/Hubbard_Rob/Delta.sid'] });
-      
+
       const request = new Request('http://localhost/api/favorites', {
         method: 'POST',
         body: JSON.stringify({ sid_path: 'MUSICIANS/Hubbard_Rob/Delta.sid' }),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await POST(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(true);
       expect(data.data.added).toBe(false);
       expect(data.data.message).toBe('Already in favorites');
@@ -103,10 +103,10 @@ describe('Favorites API', () => {
         body: JSON.stringify({}),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await POST(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(false);
       expect(data.error).toBe('Invalid request');
       expect(response.status).toBe(400);
@@ -118,10 +118,10 @@ describe('Favorites API', () => {
         body: JSON.stringify({ sid_path: 123 }),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await POST(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(false);
       expect(data.error).toBe('Invalid request');
       expect(response.status).toBe(400);
@@ -133,7 +133,7 @@ describe('Favorites API', () => {
         'MUSICIANS/Galway_Martin/Parallax.sid',
         'MUSICIANS/Daglish_Ben/The_Last_Ninja.sid',
       ];
-      
+
       for (const sidPath of paths) {
         const request = new Request('http://localhost/api/favorites', {
           method: 'POST',
@@ -142,7 +142,7 @@ describe('Favorites API', () => {
         });
         await POST(request as any);
       }
-      
+
       const prefs = await getWebPreferences();
       expect(prefs.favorites).toHaveLength(3);
       paths.forEach(p => expect(prefs.favorites).toContain(p));
@@ -152,19 +152,19 @@ describe('Favorites API', () => {
   describe('DELETE /api/favorites', () => {
     it('should remove an existing favorite', async () => {
       // Setup: add favorites
-      await updateWebPreferences({ 
-        favorites: ['MUSICIANS/Hubbard_Rob/Delta.sid', 'MUSICIANS/Galway_Martin/Parallax.sid'] 
+      await updateWebPreferences({
+        favorites: ['MUSICIANS/Hubbard_Rob/Delta.sid', 'MUSICIANS/Galway_Martin/Parallax.sid']
       });
-      
+
       const request = new Request('http://localhost/api/favorites', {
         method: 'DELETE',
         body: JSON.stringify({ sid_path: 'MUSICIANS/Hubbard_Rob/Delta.sid' }),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await DELETE(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(true);
       expect(data.data.removed).toBe(true);
       expect(data.data.favorites).toHaveLength(1);
@@ -174,16 +174,16 @@ describe('Favorites API', () => {
 
     it('should handle removing non-existent favorite', async () => {
       await updateWebPreferences({ favorites: ['MUSICIANS/Galway_Martin/Parallax.sid'] });
-      
+
       const request = new Request('http://localhost/api/favorites', {
         method: 'DELETE',
         body: JSON.stringify({ sid_path: 'MUSICIANS/Hubbard_Rob/Delta.sid' }),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await DELETE(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(true);
       expect(data.data.removed).toBe(false);
       expect(data.data.favorites).toHaveLength(1);
@@ -195,10 +195,10 @@ describe('Favorites API', () => {
         body: JSON.stringify({}),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await DELETE(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(false);
       expect(data.error).toBe('Invalid request');
       expect(response.status).toBe(400);
@@ -206,20 +206,20 @@ describe('Favorites API', () => {
 
     it('should clear all favorites when removing last one', async () => {
       await updateWebPreferences({ favorites: ['MUSICIANS/Hubbard_Rob/Delta.sid'] });
-      
+
       const request = new Request('http://localhost/api/favorites', {
         method: 'DELETE',
         body: JSON.stringify({ sid_path: 'MUSICIANS/Hubbard_Rob/Delta.sid' }),
         headers: { 'Content-Type': 'application/json' },
       });
-      
+
       const response = await DELETE(request as any);
       const data = await response.json();
-      
+
       expect(data.success).toBe(true);
       expect(data.data.removed).toBe(true);
       expect(data.data.favorites).toHaveLength(0);
-      
+
       const prefs = await getWebPreferences();
       expect(prefs.favorites).toEqual([]);
     });

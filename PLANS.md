@@ -25,7 +25,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
     - [Plan-then-act contract](#plan-then-act-contract)
   - [Active tasks](#active-tasks)
     - [Task: Play Tab Feature-Rich Enhancements (Modern Music Streaming UX)](#task-play-tab-feature-rich-enhancements-modern-music-streaming-ux)
-      - [Step 8: Advanced Search \& Discovery](#step-8-advanced-search--discovery)
+      - [Step 8: Advanced Search \& Discovery ✅ COMPLETE](#step-8-advanced-search--discovery--complete)
       - [Step 9: Playlist Management](#step-9-playlist-management)
       - [Step 10: Social \& Community](#step-10-social--community)
       - [Step 11: Quality Gates \& Polish](#step-11-quality-gates--polish)
@@ -149,13 +149,26 @@ Play tab already ships Mood Transitions, Era Explorer, composer discovery, hidde
 
 #### Step 9: Playlist Management
 
-- [ ] 9.1 — "Save Current Queue" UX (name input + button)
-- [ ] 9.2 — Playlist CRUD endpoints (`/api/playlists`)
-- [ ] 9.3 — Playlist browser drawer in Play tab
-- [ ] 9.4 — Drag-and-drop reordering within playlists
+- [x] 9.1 — "Save Current Queue" UX (name input + button) ✅
+- [x] 9.2 — Playlist CRUD endpoints (`/api/playlists`) ✅
+- [x] 9.3 — Playlist browser drawer in Play tab ✅
+- [ ] 9.4 — Drag-and-drop reordering within playlists (SKIPPED - requires dnd-kit library)
 - [ ] 9.5 — Sharing/export (URL + M3U)
-- [ ] 9.6 — Unit tests for playlist storage/reordering
+- [x] 9.6 — Unit tests for playlist storage/reordering (28 tests passing) ✅
 - [ ] 9.7 — E2E for playlist creation/edit/playback
+- [x] 9.8 — Gitignore playlist test artifacts (data/playlists/) ✅
+
+**Step 9 Progress:**
+- Created playlist types, storage layer with JSON persistence
+- Implemented 5 API routes: GET/POST /api/playlists, GET/PUT/DELETE /api/playlists/[id], POST /api/playlists/[id]/reorder
+- Built SaveQueueDialog and PlaylistBrowser UI components
+- All 28 unit tests passing with proper test isolation
+- Playlist files now gitignored to prevent test artifacts from being committed
+
+**Step 9 TODOs:**
+- [ ] Implement M3U export functionality
+- [ ] Implement URL sharing for playlists
+- [ ] Create E2E tests for playlist flows
 
 #### Step 10: Social & Community
 

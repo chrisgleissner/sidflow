@@ -31,7 +31,7 @@ function parseSidPath(sidPath: string): { artist: string; title: string } {
   const parts = sidPath.split('/');
   const filename = parts[parts.length - 1];
   const title = filename.replace('.sid', '').replace(/_/g, ' ');
-  
+
   // Extract artist from path
   let artist = 'Unknown';
   if (parts.length >= 2) {
@@ -39,7 +39,7 @@ function parseSidPath(sidPath: string): { artist: string; title: string } {
     // Handle formats like "Hubbard_Rob" or "Rob_Hubbard"
     artist = artistPart.replace(/_/g, ' ');
   }
-  
+
   return { artist, title };
 }
 
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
-    
+
     // Parse filter parameters
     const filters: {
       yearMin?: number;
@@ -63,28 +63,28 @@ export async function GET(request: NextRequest) {
       durationMax?: number;
       minRating?: number;
     } = {};
-    
+
     const yearMin = searchParams.get('yearMin');
     if (yearMin) filters.yearMin = parseInt(yearMin, 10);
-    
+
     const yearMax = searchParams.get('yearMax');
     if (yearMax) filters.yearMax = parseInt(yearMax, 10);
-    
+
     const chipModel = searchParams.get('chipModel');
     if (chipModel) filters.chipModel = chipModel;
-    
+
     const sidModel = searchParams.get('sidModel');
     if (sidModel) filters.sidModel = sidModel;
-    
+
     const durationMin = searchParams.get('durationMin');
     if (durationMin) filters.durationMin = parseInt(durationMin, 10);
-    
+
     const durationMax = searchParams.get('durationMax');
     if (durationMax) filters.durationMax = parseInt(durationMax, 10);
-    
+
     const minRating = searchParams.get('minRating');
     if (minRating) filters.minRating = parseFloat(minRating);
-    
+
     const logPrefix = `[search-api] q=${JSON.stringify(query)} limit=${limit} filters=${JSON.stringify(filters)}`;
 
     if (!query || query.trim().length === 0) {

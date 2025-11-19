@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const FAST_AUDIO_TESTS =
-  (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
+    (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
 
 configureE2eLogging();
 
@@ -69,7 +69,7 @@ if (!isPlaywrightRunner) {
             sessionId,
             sidUrl: TEST_SID_DATA_URL,
             scope,
-        durationSeconds: STUB_TRACK_TEMPLATE.durationSeconds,
+            durationSeconds: STUB_TRACK_TEMPLATE.durationSeconds,
             selectedSong: STUB_TRACK_TEMPLATE.selectedSong,
             expiresAt,
             fallbackHlsUrl: null,

@@ -44,3 +44,6 @@ data/training/*.jsonl
 data/model/feature-stats.json
 data/model/model-metadata.json
 data/model/model/weights.bin
+
+# Playlist storage (test artifacts, should not be committed)
+data/playlists/

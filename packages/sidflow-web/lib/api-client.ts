@@ -425,7 +425,7 @@ export async function searchTracks(
     if (filters.durationMax !== undefined) params.set('durationMax', String(filters.durationMax));
     if (filters.minRating !== undefined) params.set('minRating', String(filters.minRating));
   }
-  
+
   const response = await fetch(`${API_BASE}/search?${params.toString()}`, {
     method: 'GET',
     headers: {
@@ -456,7 +456,7 @@ export async function getCharts(range: 'week' | 'month' | 'all' = 'week', limit?
   if (limit) {
     params.set('limit', String(limit));
   }
-  
+
   const response = await fetch(`${API_BASE}/charts?${params.toString()}`, {
     method: 'GET',
     headers: {
