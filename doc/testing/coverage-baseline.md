@@ -101,7 +101,7 @@ Some code may remain below 90% by design:
 ## Codecov Configuration
 
 Updated `.codecov.yml` to:
-- Accept current 56.45% baseline
+- Accept current 65.89% baseline
 - Require 80% coverage for new patches (working toward 90%)
 - Allow 2% threshold decrease while stabilizing
 - Set informational mode OFF to enforce checks
