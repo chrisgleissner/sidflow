@@ -22,7 +22,7 @@ describe('Remix Radar helpers', () => {
         });
 
         test('filters single character tokens', () => {
-            expect(tokenizeTitle('A B C Game')).toEqual(['game']);
+            expect(tokenizeTitle('A B C Quest')).toEqual(['quest']);
         });
 
         test('returns sorted tokens', () => {
