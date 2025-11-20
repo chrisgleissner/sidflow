@@ -110,9 +110,50 @@ To prevent uncontrolled growth of this file:
 
 ## Active tasks
 
-**No active tasks at this time.**
+### Task: Fix E2E Test Regression & Improve Coverage (2025-11-20)
 
-All recent work has been completed and archived. See the Archived Tasks section below for recently completed work.
+**User request (summary)**
+- A) E2E tests do not run at all - SEVERE REGRESSION
+- B) Coverage for several files is critically low
+
+**Context and constraints**
+- E2E test files were renamed from `.spec.ts` to `.e2e.ts` but Playwright config still looks for `.spec.ts`
+- Current coverage: 68.55% overall, but many critical files below 50%
+- Test count: 1133 pass, 2 skip, 0 fail (unit tests working)
+- E2E tests: 0 found (Playwright reports "No tests found")
+
+**Plan (checklist)**
+- [x] Phase 1: Fix E2E test regression (CRITICAL)
+  - [x] 1.1 — Identify root cause: `.e2e.ts` vs `.spec.ts` mismatch
+  - [x] 1.2 — Rename all 13 `.e2e.ts` files back to `.spec.ts`
+  - [x] 1.3 — Verify Playwright finds all tests (89 tests found)
+  - [ ] 1.4 — Run E2E tests to confirm they pass
+  
+- [ ] Phase 2: Improve coverage for critically low files
+  - [ ] 2.1 — Identify files with <30% coverage needing tests
+  - [ ] 2.2 — Create tests for sidflow-web lib files (cli-executor, rate-playback, similarity-search)
+  - [ ] 2.3 — Create tests for sidflow-common dist files (feedback, job-runner, lancedb-builder)
+  - [ ] 2.4 — Create tests for audio encoding and playback files
+  - [ ] 2.5 — Verify coverage improvement to target levels
+
+- [ ] Phase 3: Final validation
+  - [ ] 3.1 — Run full test suite (unit + E2E) 3x consecutively
+  - [ ] 3.2 — Verify coverage ≥70% (stepping stone to 92%)
+  - [ ] 3.3 — Document known gaps and follow-up work
+
+**Progress log**
+- 2025-11-20 — Identified root cause: E2E test files renamed to `.e2e.ts` but Playwright config expects `.spec.ts`
+- 2025-11-20 — Starting Phase 1.2: Renaming E2E test files
+
+**Assumptions and open questions**
+- Assumption: E2E tests were working before recent rename
+- Assumption: Coverage gaps are due to missing tests, not dead code
+- Question: Should we standardize on `.e2e.ts` or `.spec.ts` for E2E tests?
+
+**Follow-ups / future work**
+- Decide on test file naming convention and document it
+- Set up pre-commit hook to prevent config/filename mismatches
+- Create coverage improvement roadmap to reach 92% target
 
 ## Archived Tasks
 
