@@ -76,7 +76,7 @@ def main(argv: list[str]) -> int:
         Exit code (0 for success, non-zero for errors)
     """
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description='Package SIDFlow release as a zip archive',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
@@ -109,6 +109,9 @@ def main(argv: list[str]) -> int:
         print(f"Successfully packaged release from {args.src_dir} to {args.target_dir}")
         return 0
     except FileNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except NotADirectoryError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except PermissionError as exc:
