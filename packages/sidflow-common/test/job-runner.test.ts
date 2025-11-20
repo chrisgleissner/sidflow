@@ -2,6 +2,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { JobOrchestrator } from "../src/job-orchestrator";
 import { JobRunner, type JobExecutionPlan } from "../src/job-runner";
+import { createDefaultJobCommandFactory } from "../src/job-runner";
 import type { JobDescriptor } from "../src/job-types";
 import { unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -27,8 +28,6 @@ function createPlan(type: "fetch" | "classify" | "train" | "render", exitCode = 
     ],
   };
 }
-
-import { createDefaultJobCommandFactory } from "../src/job-runner";
 
 describe("JobRunner", () => {
   let orchestrator: JobOrchestrator;
@@ -349,5 +348,97 @@ describe("createDefaultJobCommandFactory", () => {
 
     const plan = factory(job);
     expect(plan).toBeNull();
+  });
+
+  test("handles edge case numeric parameters - very large values", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        epochs: 1000000,
+        batchSize: 999999,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].command.args).toContain("--epochs");
+    expect(plan!.stages[0].command.args).toContain("1000000");
+    expect(plan!.stages[0].command.args).toContain("--batch-size");
+    expect(plan!.stages[0].command.args).toContain("999999");
+  });
+
+  test("handles edge case numeric parameters - very small values", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        learningRate: 1e-10,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    const args = plan!.stages[0].command.args;
+    const lrIndex = args.indexOf("--learning-rate");
+    expect(lrIndex).toBeGreaterThan(-1);
+    expect(Number(args[lrIndex + 1])).toBeCloseTo(1e-10, 15);
+  });
+
+  test("handles edge case numeric parameters - zero values", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        epochs: 0,
+        batchSize: 0,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].command.args).toContain("--epochs");
+    expect(plan!.stages[0].command.args).toContain("0");
+    expect(plan!.stages[0].command.args).toContain("--batch-size");
+    expect(plan!.stages[0].command.args).toContain("0");
+  });
+
+  test("handles edge case numeric parameters - Number.MIN_VALUE", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        learningRate: Number.MIN_VALUE,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    const args = plan!.stages[0].command.args;
+    const lrIndex = args.indexOf("--learning-rate");
+    expect(lrIndex).toBeGreaterThan(-1);
+    // MIN_VALUE is 5e-324, so we verify it's close to that
+    expect(Number(args[lrIndex + 1])).toBeGreaterThan(0);
+    expect(Number(args[lrIndex + 1])).toBeLessThan(1e-300);
   });
 });
