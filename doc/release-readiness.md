@@ -270,6 +270,13 @@ console.log(config.sidPath);
 
 ## Alternative Distribution Methods
 
+### Release Zip Artifact (Current Default)
+
+- GitHub releases now attach `sidflow-<version>.zip`, which contains the entire workspace, dependencies, and the production-built Next.js standalone server.
+- Operators can unpack, set `SIDFLOW_ADMIN_PASSWORD`, and run `./scripts/start-release-server.sh` (or `bun run start:release`) with no additional build/install steps.
+- The archive keeps CLI scripts + `node_modules` intact, so fetch/classify/train flows still run locally (requires Bun to be installed on the host).
+- A post-release smoke test job verifies each archive by booting it inside CI and curling `/api/health`.
+
 ### Docker Images (Recommended for v0.1.0)
 
 **Publish Docker images instead of npm packages:**

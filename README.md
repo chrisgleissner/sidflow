@@ -78,6 +78,45 @@ cd sidflow
 bun run build
 ```
 
+## Production Release Artifact (Zip)
+
+Each GitHub release now includes `sidflow-<version>.zip`, a ready-to-run bundle with:
+
+- The full workspace (source, config, CLI scripts, and data templates)
+- Installed dependencies (`node_modules`) so CLIs keep working
+- A production Next.js build at `packages/sidflow-web/.next/standalone`
+
+Get started:
+
+1. **Download & extract**
+   ```bash
+   curl -L -o sidflow.zip https://github.com/chrisgleissner/sidflow/releases/download/v0.1.0/sidflow-0.1.0.zip
+   unzip sidflow.zip
+   cd sidflow-0.1.0
+   ```
+2. **Set secrets / ports**
+   ```bash
+   export SIDFLOW_ADMIN_USER=admin
+   export SIDFLOW_ADMIN_PASSWORD='<strong-production-secret>'
+   export PORT=3000   # optional
+   ```
+3. **Start the production server**
+   ```bash
+   ./scripts/start-release-server.sh
+   # or
+   bun run start:release
+   ```
+   The helper script wires `NODE_ENV=production`, defaults `SIDFLOW_ROOT` to the extracted folder, and runs the standalone Next.js server (`node packages/sidflow-web/.next/standalone/server.js`).
+4. **Operate the pipeline**
+   - Use the web UI at <http://localhost:3000> / `/admin`
+   - CLI-backed actions (fetch/classify/train) still shell out to `scripts/sidflow-*`, so keep Bun installed for those jobs
+
+   **Note:**  
+   - The production server itself only requires Node.js to run (`node packages/sidflow-web/.next/standalone/server.js`).  
+   - Bun is only required for CLI operations such as fetch, classify, and train.  
+   - You can run the server with just Node.js installed, but will need Bun if you want to use the CLI tools.
+This flow differs from dev mode: no hot reload, deterministic static assets, and the output matches what ships to production. Stop the server with `Ctrl+C` when finished.
+
 ---
 
 ## Web UI

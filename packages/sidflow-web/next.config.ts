@@ -31,6 +31,7 @@ const ffmpegStubAliases: Record<string, string | string[] | Record<string, strin
 };
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // Exclude server-only packages with native modules from client bundle
   serverExternalPackages,
   // Turbopack configuration for Next.js 16+

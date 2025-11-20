@@ -14,10 +14,9 @@ jobs:
     permissions:
       contents: write
       packages: read
-    env:
-      BUN_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     outputs:
       pkg_version: ${{ steps.version.outputs.version }}
+      release_zip: ${{ steps.package_release.outputs.zip_name }}
 
     steps:
       - name: Checkout repository
@@ -66,6 +65,11 @@ jobs:
       - name: Build workspace
         run: bun run build
 
+      - name: Build production web bundle
+        run: |
+          cd packages/sidflow-web
+          bun run build
+
       - name: Verify package contents
         run: bun run check:packages --source local
 
@@ -92,24 +96,93 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: bun run --silent scripts/ci/update-release-notes.ts
 
-      - name: Publish packages to npm
+      - name: Package release artifact
+        id: package_release
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SRC_DIR: ${{ github.workspace }}
         run: |
-          if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "NPM_TOKEN secret not set" >&2
-            exit 1
-          fi
-          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          for pkg in packages/*; do
-            if [ -f "$pkg/package.json" ]; then
-              (cd "$pkg" && npm publish --access public)
+          set -euxo pipefail
+          ARCHIVE_NAME="sidflow-${VERSION}"
+          STAGING_ROOT="${RUNNER_TEMP}/${ARCHIVE_NAME}"
+          TARGET_DIR="${STAGING_ROOT}/${ARCHIVE_NAME}"
+          rm -rf "${STAGING_ROOT}"
+          mkdir -p "${STAGING_ROOT}"
+          export TARGET_DIR
+          python3 scripts/ci/package-release.py
+          ZIP_PATH="${GITHUB_WORKSPACE}/${ARCHIVE_NAME}.zip"
+          (cd "${STAGING_ROOT}" && zip -rq "${ZIP_PATH}" "${ARCHIVE_NAME}")
+          echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ARCHIVE_NAME}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidflow-release-zip
+          path: ${{ steps.package_release.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Attach zip to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package_release.outputs.zip_path }}
+          fail_on_unmatched_files: true
+
+  smoke_test_release:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sidflow-release-zip
+
+      - name: Extract release zip
+        run: |
+          unzip "${{ needs.release.outputs.release_zip }}" -d extracted
+
+      - name: Start packaged server
+        working-directory: extracted
+        env:
+          VERSION: ${{ needs.release.outputs.pkg_version }}
+        run: |
+          set -euxo pipefail
+          RELEASE_DIR="sidflow-${VERSION}"
+          cd "${RELEASE_DIR}"
+          export SIDFLOW_ADMIN_USER=admin
+          export SIDFLOW_ADMIN_PASSWORD=release-smoke-secret
+          ./scripts/start-release-server.sh >"${RUNNER_TEMP}/release.log" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/release.pid"
+          # Wait for server to become healthy (max 30s)
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:3000/api/health > /dev/null; then
+              echo "Server is healthy"
+              break
             fi
+            sleep 1
           done
 
-  verify_npm:
-    needs: release
-    uses: ./.github/workflows/package-check.yaml
-    with:
-      package_source: npm
-      package_version: ${{ needs.release.outputs.pkg_version }}
+          # Optionally, fail if not healthy after 30s
+          if ! curl -sf http://127.0.0.1:3000/api/health > /dev/null; then
+            echo "Server did not become healthy after 30 seconds" >&2
+            exit 1
+          fi
+      - name: Smoke test /api/health
+        run: |
+          curl -f --retry 5 --retry-delay 5 http://127.0.0.1:3000/api/health
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f "${RUNNER_TEMP}/release.pid" ]; then
+            kill "$(cat "${RUNNER_TEMP}/release.pid")" || true
+          fi
+
+      - name: Upload release server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-logs
+          path: ${{ runner.temp }}/release.log
+          if-no-files-found: ignore

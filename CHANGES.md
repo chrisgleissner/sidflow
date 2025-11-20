@@ -20,6 +20,12 @@
 - Test results: 681 pass, 2 skip, 5 fail (failures due to ffmpeg-related environment issues; not related to documentation changes)
 - Build process verified clean and stable
 
+### Release Automation (2025-11-20)
+- Replaced npm publication with a GitHub release zip that bundles the full workspace plus the production-built web UI
+- Added a `scripts/start-release-server.sh` helper (also available via `bun run start:release`) for booting the packaged `.next/standalone` server
+- Documented the production artifact workflow in `README.md`
+- Added a release smoke test that extracts the zip, launches the packaged server, and curls `/api/health`
+
 ## 0.1.0
 
 - Initial release candidate of the SIDFlow workspace packages.
