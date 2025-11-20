@@ -111,6 +111,10 @@ Get started:
    - Use the web UI at <http://localhost:3000> / `/admin`
    - CLI-backed actions (fetch/classify/train) still shell out to `scripts/sidflow-*`, so keep Bun installed for those jobs
 
+   **Note:**  
+   - The production server itself only requires Node.js to run (`node packages/sidflow-web/.next/standalone/server.js`).  
+   - Bun is only required for CLI operations such as fetch, classify, and train.  
+   - You can run the server with just Node.js installed, but will need Bun if you want to use the CLI tools.
 This flow differs from dev mode: no hot reload, deterministic static assets, and the output matches what ships to production. Stop the server with `Ctrl+C` when finished.
 
 ---
