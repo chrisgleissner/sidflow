@@ -2,7 +2,7 @@
  * Tests for server/cache.ts LRU cache implementation
  */
 
-import { describe, expect, test, beforeEach } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { LRUCache, createCacheKey, clearAllCaches, getAllCacheStats } from '@/lib/server/cache';
 
 describe('LRUCache', () => {
