@@ -1,0 +1,7 @@
+{
+  "name": "@sidflow/web-tests",
+  "type": "module",
+  "exports": {
+    "@playwright/test": "./e2e/test-hooks.ts"
+  }
+}

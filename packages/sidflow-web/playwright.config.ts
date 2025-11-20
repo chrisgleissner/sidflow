@@ -64,10 +64,15 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: resolvedWorkers,
+  globalSetup: './tests/e2e/global-setup.ts',
+  globalTeardown: './tests/e2e/global-teardown.ts',
+  // Enable code coverage collection
+  testMatch: /.*\.spec\.ts$/,
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'playwright-report/report.json' }],
+    ['./tests/e2e/coverage-reporter.ts'],
   ],
   use: baseUse,
 
@@ -76,24 +81,29 @@ export default defineConfig({
       name: 'chromium',
       testIgnore: /(favorites|phase1-features|song-browser)\.spec\.ts$/,
       use: { ...projectUse },
+      // Enable JS coverage for this project
+      metadata: { coverage: true },
     },
     {
       name: 'chromium-favorites',
       testMatch: /favorites\.spec\.ts$/,
       workers: 1,
       use: { ...projectUse },
+      metadata: { coverage: true },
     },
     {
       name: 'chromium-phase1',
       testMatch: /phase1-features\.spec\.ts$/,
       workers: 1,
       use: { ...projectUse },
+      metadata: { coverage: true },
     },
     {
       name: 'chromium-song-browser',
       testMatch: /song-browser\.spec\.ts$/,
       workers: 1,
       use: { ...projectUse },
+      metadata: { coverage: true },
     },
   ],
 
