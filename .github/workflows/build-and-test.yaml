@@ -18,8 +18,8 @@ permissions:
   id-token: write
 
 jobs:
-  unit-tests:
-    name: Unit Tests
+  build:
+    name: Build & Prepare
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
@@ -47,6 +47,48 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build project
+        run: bun run build
+
+      - name: Build audio worklet
+        run: cd packages/sidflow-web && npm run build:worklet
+
+      - name: Install Playwright browsers
+        run: node scripts/ensure-playwright.mjs
+
+      - name: Cache Playwright browsers
+        uses: actions/cache/save@v4
+        with:
+          path: .playwright-browsers
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('packages/sidflow-web/package.json') }}
+
+  unit-tests:
+    name: Unit Tests
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Restore WASM upstream cache
+        uses: actions/cache@v4
+        with:
+          path: packages/libsidplayfp-wasm/.cache/upstream
+          key: wasm-upstream-${{ runner.os }}-${{ hashFiles('packages/libsidplayfp-wasm/docker/entrypoint.sh', 'packages/libsidplayfp-wasm/scripts/build.sh') }}
+          restore-keys: |
+            wasm-upstream-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
       - name: Add CLI stubs to PATH
         run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
 
@@ -65,6 +107,7 @@ jobs:
 
   e2e-tests:
     name: E2E Tests (Shard ${{ matrix.shard }}/3)
+    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -92,14 +135,15 @@ jobs:
           restore-keys: |
             wasm-upstream-${{ runner.os }}-
 
-      - name: Bun version
-        run: bun --version
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install Playwright browsers
-        run: node scripts/ensure-playwright.mjs
+      - name: Restore Playwright browsers
+        uses: actions/cache/restore@v4
+        with:
+          path: .playwright-browsers
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('packages/sidflow-web/package.json') }}
+          fail-on-cache-miss: true
 
       - name: Add CLI stubs to PATH
         run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
