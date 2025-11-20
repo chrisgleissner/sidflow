@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { getRepoRoot, getSidflowConfig } from "@/lib/server-env";
 
@@ -28,21 +28,84 @@ export interface HvscBrowseResponse {
 }
 
 /**
- * Parse SID file header to extract subtune count
+ * Cache directory listings to avoid repeated disk scans when tests hammer the same paths.
+ * HVSC content is immutable during tests, so a generous TTL is safe.
+ */
+const DIRECTORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const directoryCache = new Map<string, { items: HvscBrowseItem[]; timestamp: number }>();
+
+/**
+ * Parse SID file header to extract subtune count without reading the entire file.
  */
 async function getSidSubtuneCount(filePath: string): Promise<number> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    const buffer = await readFile(filePath);
-
-    // SID header: songs count at offset 0x0E-0x0F (big-endian)
-    if (buffer.length >= 0x10) {
-      const songs = (buffer[0x0e] << 8) | buffer[0x0f];
-      return songs > 0 ? songs : 1;
-    }
-    return 1;
+    handle = await open(filePath, "r");
+    const buffer = Buffer.alloc(0x10);
+    await handle.read(buffer, 0, buffer.length, 0);
+    const songs = (buffer[0x0e] << 8) | buffer[0x0f];
+    return songs > 0 ? songs : 1;
   } catch {
     return 1;
+  } finally {
+    await handle?.close().catch(() => {});
   }
+}
+
+async function listDirectoryItems(
+  resolvedPath: string,
+  resolvedRoot: string
+): Promise<HvscBrowseItem[]> {
+  const cacheKey = `${resolvedRoot}::${resolvedPath}`;
+  const cached = directoryCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < DIRECTORY_CACHE_TTL_MS) {
+    return cached.items;
+  }
+
+  const entries = await readdir(resolvedPath, { withFileTypes: true });
+
+  const tasks = entries.map(async (entry) => {
+    const entryPath = path.join(resolvedPath, entry.name);
+    const relativePath = path.relative(resolvedRoot, entryPath);
+
+    if (entry.isDirectory()) {
+      return {
+        name: entry.name,
+        path: relativePath,
+        type: "folder" as const,
+      };
+    }
+
+    if (entry.isFile() && entry.name.toLowerCase().endsWith(".sid")) {
+      const [fileStats, songs] = await Promise.all([
+        stat(entryPath),
+        getSidSubtuneCount(entryPath),
+      ]);
+
+      return {
+        name: entry.name,
+        path: relativePath,
+        type: "file" as const,
+        size: fileStats.size,
+        songs,
+      };
+    }
+
+    return null;
+  });
+
+  const rawItems: (HvscBrowseItem | null)[] = await Promise.all(tasks);
+  const items = rawItems.filter((item): item is HvscBrowseItem => item !== null);
+
+  items.sort((a, b) => {
+    if (a.type !== b.type) {
+      return a.type === "folder" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+
+  directoryCache.set(cacheKey, { items, timestamp: Date.now() });
+  return items;
 }
 
 /**
@@ -102,43 +165,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<HvscBrowse
       }, { status: 404 });
     }
 
-    // Read directory contents
-    const entries = await readdir(resolvedPath, { withFileTypes: true });
-
-    // Process entries
-    const items: HvscBrowseItem[] = [];
-
-    for (const entry of entries) {
-      const entryPath = path.join(resolvedPath, entry.name);
-      const relativePath = path.relative(resolvedRoot, entryPath);
-
-      if (entry.isDirectory()) {
-        items.push({
-          name: entry.name,
-          path: relativePath,
-          type: "folder",
-        });
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".sid")) {
-        const stats = await stat(entryPath);
-        const songs = await getSidSubtuneCount(entryPath);
-
-        items.push({
-          name: entry.name,
-          path: relativePath,
-          type: "file",
-          size: stats.size,
-          songs,
-        });
-      }
-    }
-
-    // Sort: folders first, then files, both alphabetically
-    items.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === "folder" ? -1 : 1;
-      }
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    });
+    const items = await listDirectoryItems(resolvedPath, resolvedRoot);
 
     // Determine parent path
     const parent = requestedPath

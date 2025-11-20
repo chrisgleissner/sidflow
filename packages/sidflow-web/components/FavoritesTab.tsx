@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Heart, Play, Shuffle, Trash2, Music2, Loader2 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { formatApiError } from '@/lib/format-error';
 interface FavoritesTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
   onPlayTrack?: (session: RateTrackWithSession) => void;
+  isActive?: boolean;
 }
 
 interface FavoriteTrack {
@@ -18,10 +19,11 @@ interface FavoriteTrack {
   isLoading?: boolean;
 }
 
-export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps) {
+export function FavoritesTab({ onStatusChange, onPlayTrack, isActive = false }: FavoritesTabProps) {
   const [favorites, setFavorites] = useState<FavoriteTrack[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
+  const wasActiveRef = useRef<boolean>(isActive);
 
   const loadFavorites = useCallback(async () => {
     setIsLoading(true);
@@ -52,6 +54,13 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
   useEffect(() => {
     void loadFavorites();
   }, [loadFavorites]);
+
+  useEffect(() => {
+    if (isActive && !wasActiveRef.current) {
+      void loadFavorites();
+    }
+    wasActiveRef.current = isActive;
+  }, [isActive, loadFavorites]);
 
   const handleRemoveFavorite = useCallback(async (sidPath: string) => {
     try {

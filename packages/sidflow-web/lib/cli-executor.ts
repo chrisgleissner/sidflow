@@ -19,6 +19,60 @@ export interface ExecuteOptions {
   env?: Record<string, string>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  bypassQueue?: boolean; // Skip throttling for this execution
+}
+
+/**
+ * Simple concurrency queue to throttle child process spawns.
+ * Prevents resource exhaustion when many CLI commands run simultaneously.
+ */
+class ConcurrencyQueue {
+  private readonly maxConcurrent: number;
+  private running = 0;
+  private readonly queue: Array<() => void> = [];
+
+  constructor(maxConcurrent = 4) {
+    this.maxConcurrent = maxConcurrent;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.running < this.maxConcurrent) {
+      this.running += 1;
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.queue.push(() => {
+        this.running += 1;
+        resolve();
+      });
+    });
+  }
+
+  release(): void {
+    this.running -= 1;
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    }
+  }
+
+  getStats(): { running: number; queued: number } {
+    return { running: this.running, queued: this.queue.length };
+  }
+}
+
+const globalQueue = new ConcurrencyQueue(
+  process.env.SIDFLOW_CLI_MAX_CONCURRENT
+    ? parseInt(process.env.SIDFLOW_CLI_MAX_CONCURRENT, 10)
+    : 4
+);
+
+/**
+ * Get current CLI executor queue statistics
+ */
+export function getCliExecutorStats(): { running: number; queued: number } {
+  return globalQueue.getStats();
 }
 
 function resolveWorkingDirectory(explicit?: string): string {
@@ -108,67 +162,79 @@ export async function executeCli(
     ...options.env,
   };
 
-  return new Promise<CliResult>((resolve) => {
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    let settled = false;
+  // Acquire slot from queue unless bypassed
+  if (!options.bypassQueue) {
+    await globalQueue.acquire();
+  }
 
-    const finish = (result: CliResult) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      resolve(result);
-    };
+  try {
+    return await new Promise<CliResult>((resolve) => {
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let settled = false;
 
-    const proc = spawn(resolvedCommand, args, {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+      const finish = (result: CliResult) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
 
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      stdoutChunks.push(Buffer.from(chunk));
-      if (options.onStdout) {
-        options.onStdout(chunk.toString());
-      }
-    });
-
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      stderrChunks.push(Buffer.from(chunk));
-      if (options.onStderr) {
-        options.onStderr(chunk.toString());
-      }
-    });
-
-    proc.on('error', (error) => {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      finish({
-        success: false,
-        stdout: '',
-        stderr: `Failed to execute command: ${errorMessage}`,
-        exitCode: -1,
+      const proc = spawn(resolvedCommand, args, {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
-    });
 
-    proc.on('close', (code) => {
-      finish({
-        success: code === 0,
-        stdout: Buffer.concat(stdoutChunks).toString(),
-        stderr: Buffer.concat(stderrChunks).toString(),
-        exitCode: code ?? -1,
+      proc.stdout?.on('data', (chunk: Buffer) => {
+        stdoutChunks.push(Buffer.from(chunk));
+        if (options.onStdout) {
+          options.onStdout(chunk.toString());
+        }
       });
-    });
 
-    const timer = setTimeout(() => {
-      proc.kill();
-      finish({
-        success: false,
-        stdout: Buffer.concat(stdoutChunks).toString(),
-        stderr: `Command timed out after ${timeout}ms`,
-        exitCode: -1,
+      proc.stderr?.on('data', (chunk: Buffer) => {
+        stderrChunks.push(Buffer.from(chunk));
+        if (options.onStderr) {
+          options.onStderr(chunk.toString());
+        }
       });
-    }, timeout);
-  });
+
+      proc.on('error', (error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        finish({
+          success: false,
+          stdout: '',
+          stderr: `Failed to execute command: ${errorMessage}`,
+          exitCode: -1,
+        });
+      });
+
+      proc.on('close', (code) => {
+        finish({
+          success: code === 0,
+          stdout: Buffer.concat(stdoutChunks).toString(),
+          stderr: Buffer.concat(stderrChunks).toString(),
+          exitCode: code ?? -1,
+        });
+      });
+
+      const timer = setTimeout(() => {
+        proc.kill();
+        finish({
+          success: false,
+          stdout: Buffer.concat(stdoutChunks).toString(),
+          stderr: `Command timed out after ${timeout}ms`,
+          exitCode: -1,
+        });
+      }, timeout);
+    });
+  } finally {
+    // Always release queue slot
+    if (!options.bypassQueue) {
+      globalQueue.release();
+    }
+  }
 }

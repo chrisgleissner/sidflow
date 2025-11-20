@@ -29,6 +29,7 @@ export declare class SidAudioEngine {
     private chargenRom;
     private romSupportDisabled;
     private romFailureLogged;
+    private readonly bufferPool;
     constructor(options?: SidAudioEngineOptions);
     private ensureModule;
     private createConfiguredContext;
@@ -59,5 +60,10 @@ export declare class SidAudioEngine {
     private startCache;
     private buildCacheBuffer;
     private cacheAvailable;
+    /**
+     * Clear buffer pool and cached data to free memory.
+     * Call this when the engine instance is no longer needed.
+     */
+    dispose(): void;
 }
 //# sourceMappingURL=player.d.ts.map

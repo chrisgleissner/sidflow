@@ -14,12 +14,16 @@ import { PlayTab } from '@/components/PlayTab';
 import { JobsTab } from '@/components/JobsTab';
 import { FavoritesTab } from '@/components/FavoritesTab';
 import { TopChartsTab } from '@/components/TopChartsTab';
+import { ActivityTab } from '@/components/ActivityTab';
+import { ProfileTab } from '@/components/ProfileTab';
 import { QueueView } from '@/components/QueueView';
 import { useToastContext } from '@/context/toast-context';
 import { AdminCapabilityProvider, type Persona } from '@/context/admin-capability';
 import { FavoritesProvider } from '@/contexts/FavoritesContext';
+import { AuthProvider } from '@/lib/auth-context';
+import { UserMenu } from '@/components/UserMenu';
 
-type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs' | 'favorites' | 'charts';
+type TabKey = 'wizard' | 'prefs' | 'fetch' | 'rate' | 'classify' | 'train' | 'play' | 'jobs' | 'favorites' | 'charts' | 'activity' | 'profiles';
 
 interface QueueItem {
   path: string;
@@ -38,6 +42,7 @@ interface TabDefinition {
     onStatusChange: (status: string, isError?: boolean) => void;
     onTrackPlayed: (sidPath: string) => void;
     onSwitchTab: (tab: string) => void;
+    isActive: boolean;
   }) => ReactNode;
 }
 
@@ -92,7 +97,9 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     key: 'favorites',
     label: 'FAVORITES',
     icon: '❤️',
-    render: ({ onStatusChange }) => <FavoritesTab onStatusChange={onStatusChange} />,
+    render: ({ onStatusChange, isActive }) => (
+      <FavoritesTab onStatusChange={onStatusChange} isActive={isActive} />
+    ),
   },
   {
     key: 'charts',
@@ -101,6 +108,18 @@ const TAB_DEFINITIONS: TabDefinition[] = [
     render: ({ onStatusChange, onTrackPlayed }) => (
       <TopChartsTab onPlayTrack={onTrackPlayed} onStatusChange={onStatusChange} />
     ),
+  },
+  {
+    key: 'activity',
+    label: 'ACTIVITY',
+    icon: '📡',
+    render: ({ onStatusChange }) => <ActivityTab onStatusChange={onStatusChange} />,
+  },
+  {
+    key: 'profiles',
+    label: 'PROFILES',
+    icon: '👤',
+    render: ({ onStatusChange }) => <ProfileTab onStatusChange={onStatusChange} />,
   },
   {
     key: 'jobs',
@@ -116,7 +135,7 @@ export function SidflowApp({ persona }: SidflowAppProps) {
   const searchParams = useSearchParams();
 
   const allowedTabs: TabKey[] = useMemo(
-    () => (persona === 'admin' ? TAB_DEFINITIONS.map((tab) => tab.key) : ['play', 'favorites', 'charts', 'prefs']),
+    () => (persona === 'admin' ? TAB_DEFINITIONS.map((tab) => tab.key) : ['play', 'favorites', 'charts', 'activity', 'profiles', 'prefs']),
     [persona]
   );
 
@@ -209,86 +228,90 @@ export function SidflowApp({ persona }: SidflowAppProps) {
 
   return (
     <AdminCapabilityProvider persona={persona}>
-      <FavoritesProvider>
-        <div className="min-h-screen bg-background" data-persona={persona} suppressHydrationWarning>
-        <main className="max-w-7xl mx-auto">
-          <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
-            <div className="flex items-center gap-4">
-              <Image
-                src="/logo-small.png"
-                alt="SIDFlow"
-                width={60}
-                height={40}
-                className="w-[60px] h-[40px]"
-                priority
-              />
-              <div className="flex-1">
-                <h1 className="text-xl font-bold text-foreground tracking-tight leading-tight">
-                  SIDFlow
-                </h1>
-                <p className="text-xs text-muted-foreground leading-tight">
-                  {persona === 'admin'
-                    ? 'COMMODORE 64 MUSIC CONTROL & OPERATIONS'
-                    : 'COMMODORE 64 MUSIC PLAYER'}
-                </p>
-              </div>
-              <div className="hidden md:flex items-center gap-3 text-xs font-mono text-muted-foreground">
-                {visibleTabs.map((tab) => (
-                  <span key={tab.key} className="px-2 py-1 bg-accent/20 rounded">
-                    {tab.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </header>
+      <AuthProvider>
+        <FavoritesProvider>
+          <div className="min-h-screen bg-background" data-persona={persona} suppressHydrationWarning>
+            <main className="max-w-7xl mx-auto">
+              <header className="bg-card border-b-4 border-border px-6 py-3 shadow-lg">
+                <div className="flex items-center gap-4">
+                  <Image
+                    src="/logo-small.png"
+                    alt="SIDFlow"
+                    width={60}
+                    height={40}
+                    className="w-[60px] h-[40px]"
+                    priority
+                  />
+                  <div className="flex-1">
+                    <h1 className="text-xl font-bold text-foreground tracking-tight leading-tight">
+                      SIDFlow
+                    </h1>
+                    <p className="text-xs text-muted-foreground leading-tight">
+                      {persona === 'admin'
+                        ? 'COMMODORE 64 MUSIC CONTROL & OPERATIONS'
+                        : 'COMMODORE 64 MUSIC PLAYER'}
+                    </p>
+                  </div>
+                  <div className="hidden md:flex items-center gap-3 text-xs font-mono text-muted-foreground">
+                    {visibleTabs.map((tab) => (
+                      <span key={tab.key} className="px-2 py-1 bg-accent/20 rounded">
+                        {tab.label}
+                      </span>
+                    ))}
+                  </div>
+                  <UserMenu />
+                </div>
+              </header>
 
-          <div className="p-4 md:p-6 space-y-4">
-            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-              <div className="flex flex-col lg:flex-row gap-4">
-                <TabsList className="flex flex-row lg:flex-col lg:w-48 justify-start gap-2 h-auto p-2 bg-card border-2 border-border overflow-x-auto lg:overflow-x-visible flex-nowrap lg:flex-wrap">
-                  {visibleTabs.map((tab) => (
-                    <TabsTrigger
-                      key={tab.key}
-                      value={tab.key}
-                      className="font-bold text-xs lg:text-sm py-2"
-                      aria-label={tab.label}
-                      data-testid={`tab-${tab.key}`}
-                    >
-                      <span className="mr-2" aria-hidden>{tab.icon}</span>
-                      {tab.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+              <div className="p-4 md:p-6 space-y-4">
+                <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+                  <div className="flex flex-col lg:flex-row gap-4">
+                    <TabsList className="flex flex-row lg:flex-col lg:w-48 justify-start gap-2 h-auto p-2 bg-card border-2 border-border overflow-x-auto lg:overflow-x-visible flex-nowrap lg:flex-wrap">
+                      {visibleTabs.map((tab) => (
+                        <TabsTrigger
+                          key={tab.key}
+                          value={tab.key}
+                          className="font-bold text-xs lg:text-sm py-2"
+                          aria-label={tab.label}
+                          data-testid={`tab-${tab.key}`}
+                        >
+                          <span className="mr-2" aria-hidden>{tab.icon}</span>
+                          {tab.label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
 
-                <div className="flex-1">
-                  {visibleTabs.map((tab) => {
-                    const def = tabLookup.get(tab.key);
-                    if (!def) {
-                      return null;
-                    }
-                    return (
-                      <TabsContent key={tab.key} value={tab.key} className="mt-0">
-                        {def.render({
-                          onStatusChange: handleStatusChange,
-                          onTrackPlayed: handleTrackPlayed,
-                          onSwitchTab: handleSwitchTab,
-                        })}
-                      </TabsContent>
-                    );
-                  })}
+                    <div className="flex-1">
+                      {visibleTabs.map((tab) => {
+                        const def = tabLookup.get(tab.key);
+                        if (!def) {
+                          return null;
+                        }
+                        return (
+                          <TabsContent key={tab.key} value={tab.key} className="mt-0">
+                            {def.render({
+                              onStatusChange: handleStatusChange,
+                              onTrackPlayed: handleTrackPlayed,
+                              onSwitchTab: handleSwitchTab,
+                              isActive: activeTab === tab.key,
+                            })}
+                          </TabsContent>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </Tabs>
+
+                {persona === 'admin' && queue.length > 0 && <QueueView queue={queue} />}
+
+                <div className="text-center text-xs text-muted-foreground py-3 font-mono border-t border-border/50 mt-6">
+                  <p>{persona === 'admin' ? 'OPERATIONS READY.' : 'READY TO PLAY.'}</p>
                 </div>
               </div>
-            </Tabs>
-
-            {persona === 'admin' && queue.length > 0 && <QueueView queue={queue} />}
-
-            <div className="text-center text-xs text-muted-foreground py-3 font-mono border-t border-border/50 mt-6">
-              <p>{persona === 'admin' ? 'OPERATIONS READY.' : 'READY TO PLAY.'}</p>
-            </div>
+            </main>
           </div>
-        </main>
-      </div>
-      </FavoritesProvider>
+        </FavoritesProvider>
+      </AuthProvider>
     </AdminCapabilityProvider>
   );
 }

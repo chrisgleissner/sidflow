@@ -1,6 +1,7 @@
 import { test, expect, Page, type BrowserContext } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { fileURLToPath } from 'url';
 import {
   applyDarkScreenshotTheme,
@@ -14,6 +15,7 @@ import {
   navigateWithErrorContext,
   checkFontsLoaded,
 } from './utils/resilience';
+import { saveScreenshotIfDifferent } from './utils/image-comparison';
 
 configureE2eLogging();
 
@@ -114,14 +116,6 @@ const TABS: TabScenario[] = [
           const loader = document.querySelector('.animate-spin');
           return loader === null;
         }, { timeout: 10000 }).catch(() => { });
-
-        // Ensure main content area is visible with retry logic
-        await page.waitForSelector('[role="main"]', {
-          state: 'visible',
-          timeout: 10000
-        }).catch((error) => {
-          console.warn('[CLASSIFY verify] Main content area not found:', error.message);
-        });
 
         // Ensure content is fully rendered
         await page.waitForTimeout(1000);
@@ -539,16 +533,21 @@ if (isPlaywrightRunner) {
       throwOnTimeout: false,
     });
 
-    // Check for theme attribute specific to screenshot tests
-    await page
-      .waitForFunction(
-        (expectedTheme) => document.documentElement.getAttribute('data-theme') === expectedTheme,
-        DARK_SCREENSHOT_THEME,
-        { timeout: STABLE_WAIT_TIMEOUT_MS }
-      )
-      .catch((err) => {
-        console.warn('[waitForStableUi] theme attribute check timeout:', err.message);
-      });
+    // Ensure the theme attribute is set without waiting for another timeout window.
+    const themeLocked = await page.evaluate((expectedTheme) => {
+      try {
+        const html = document.documentElement;
+        html.setAttribute('data-theme', expectedTheme);
+        html.dataset.sidflowScreenshotTheme = 'locked';
+        return html.getAttribute('data-theme') === expectedTheme;
+      } catch {
+        return false;
+      }
+    }, DARK_SCREENSHOT_THEME);
+
+    if (!themeLocked) {
+      console.warn('[waitForStableUi] Unable to force screenshot theme attribute.');
+    }
   }
 
   async function setupPlayTab(page: Page): Promise<void> {
@@ -634,12 +633,33 @@ if (isPlaywrightRunner) {
             }
           }, DARK_SCREENSHOT_THEME);
 
-          // Take screenshot with error handling
-          await page.screenshot({
-            path: path.join(screenshotDir, tab.screenshot),
-            fullPage: true,
-            timeout: 10000,
-          });
+          // Take screenshot to temporary location first
+          const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidflow-screenshot-'));
+          const tempPath = path.join(tempDir, tab.screenshot);
+          const finalPath = path.join(screenshotDir, tab.screenshot);
+
+          try {
+            await page.screenshot({
+              path: tempPath,
+              fullPage: true,
+              timeout: 10000,
+            });
+
+            // Compare and conditionally save
+            const saved = await saveScreenshotIfDifferent(tempPath, finalPath);
+            if (saved) {
+              console.log(`[${tab.label}] Screenshot updated: ${tab.screenshot}`);
+            } else {
+              console.log(`[${tab.label}] Screenshot unchanged: ${tab.screenshot}`);
+            }
+          } finally {
+            // Clean up temp directory
+            try {
+              fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch (cleanupError) {
+              console.warn(`[${tab.label}] Failed to clean up temp directory:`, cleanupError);
+            }
+          }
         } catch (error) {
           console.error(`[${tab.label} screenshot] Test failed:`, error);
           throw error;

@@ -397,12 +397,35 @@ export interface SearchResponse {
   limit: number;
 }
 
-export async function searchTracks(query: string, limit?: number): Promise<ApiResponse<SearchResponse>> {
+export interface SearchFilters {
+  yearMin?: number;
+  yearMax?: number;
+  chipModel?: string;
+  sidModel?: string;
+  durationMin?: number;
+  durationMax?: number;
+  minRating?: number;
+}
+
+export async function searchTracks(
+  query: string,
+  limit?: number,
+  filters?: SearchFilters
+): Promise<ApiResponse<SearchResponse>> {
   const params = new URLSearchParams({ q: query });
   if (limit) {
     params.set('limit', String(limit));
   }
-  
+  if (filters) {
+    if (filters.yearMin !== undefined) params.set('yearMin', String(filters.yearMin));
+    if (filters.yearMax !== undefined) params.set('yearMax', String(filters.yearMax));
+    if (filters.chipModel) params.set('chipModel', filters.chipModel);
+    if (filters.sidModel) params.set('sidModel', filters.sidModel);
+    if (filters.durationMin !== undefined) params.set('durationMin', String(filters.durationMin));
+    if (filters.durationMax !== undefined) params.set('durationMax', String(filters.durationMax));
+    if (filters.minRating !== undefined) params.set('minRating', String(filters.minRating));
+  }
+
   const response = await fetch(`${API_BASE}/search?${params.toString()}`, {
     method: 'GET',
     headers: {
@@ -433,12 +456,76 @@ export async function getCharts(range: 'week' | 'month' | 'all' = 'week', limit?
   if (limit) {
     params.set('limit', String(limit));
   }
-  
+
   const response = await fetch(`${API_BASE}/charts?${params.toString()}`, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
     },
+  });
+  return response.json();
+}
+
+/**
+ * Playlist API functions
+ */
+
+export async function listPlaylists() {
+  const response = await fetch(`${API_BASE}/playlists`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function getPlaylist(id: string) {
+  const response = await fetch(`${API_BASE}/playlists/${id}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  return response.json();
+}
+
+export async function createPlaylist(name: string, description: string | undefined, tracks: Array<{ sidPath: string; title?: string; artist?: string; year?: number; game?: string; lengthSeconds?: number }>) {
+  const response = await fetch(`${API_BASE}/playlists`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name, description, tracks }),
+  });
+  return response.json();
+}
+
+export async function updatePlaylist(id: string, updates: { name?: string; description?: string; tracks?: Array<{ sidPath: string; title?: string; artist?: string; year?: number; game?: string; lengthSeconds?: number }> }) {
+  const response = await fetch(`${API_BASE}/playlists/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  });
+  return response.json();
+}
+
+export async function deletePlaylist(id: string) {
+  const response = await fetch(`${API_BASE}/playlists/${id}`, {
+    method: 'DELETE',
+  });
+  return response.json();
+}
+
+export async function reorderPlaylistTracks(id: string, trackOrder: string[]) {
+  const response = await fetch(`${API_BASE}/playlists/${id}/reorder`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ trackOrder }),
   });
   return response.json();
 }

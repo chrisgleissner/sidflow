@@ -1,5 +1,36 @@
 import { loadLibsidplayfp } from './index.js';
 const DEFAULT_CACHE_SECONDS = 600;
+const BUFFER_POOL_SIZE = 8;
+const BUFFER_SIZE_SAMPLES = 88200; // 1 second stereo at 44.1kHz
+/**
+ * Simple buffer pool to reduce GC pressure during playback.
+ * Manages Int16Array instances for reuse across render operations.
+ */
+class BufferPool {
+    pool = [];
+    maxSize;
+    bufferSize;
+    constructor(maxSize = BUFFER_POOL_SIZE, bufferSize = BUFFER_SIZE_SAMPLES) {
+        this.maxSize = maxSize;
+        this.bufferSize = bufferSize;
+    }
+    acquire() {
+        const buffer = this.pool.pop();
+        if (buffer) {
+            buffer.fill(0); // Clear for reuse
+            return buffer;
+        }
+        return new Int16Array(this.bufferSize);
+    }
+    release(buffer) {
+        if (this.pool.length < this.maxSize && buffer.length === this.bufferSize) {
+            this.pool.push(buffer);
+        }
+    }
+    clear() {
+        this.pool.length = 0;
+    }
+}
 export class SidAudioEngine {
     modulePromise;
     module;
@@ -24,12 +55,17 @@ export class SidAudioEngine {
     chargenRom = null;
     romSupportDisabled = false;
     romFailureLogged = false;
+    bufferPool;
     constructor(options = {}) {
         const { module: moduleOverride, sampleRate, stereo, cacheSecondsLimit, ...loaderOptions } = options;
         this.sampleRate = sampleRate ?? 44100;
         this.stereo = stereo ?? true;
         this.maxCacheSeconds = cacheSecondsLimit ?? DEFAULT_CACHE_SECONDS;
         this.modulePromise = moduleOverride ?? loadLibsidplayfp(loaderOptions);
+        // Initialize buffer pool with size appropriate for sample rate and stereo
+        const framesPerBuffer = Math.max(1, Math.floor(this.sampleRate));
+        const samplesPerBuffer = framesPerBuffer * (this.stereo ? 2 : 1);
+        this.bufferPool = new BufferPool(BUFFER_POOL_SIZE, samplesPerBuffer);
     }
     async ensureModule() {
         if (this.module) {
@@ -48,19 +84,13 @@ export class SidAudioEngine {
     }
     async loadPatchedBuffer(patched) {
         const ctx = await this.createConfiguredContext();
-        console.log('[SidAudioEngine] loadSidBuffer → ctx.loadSidBuffer start', {
-            bytes: patched.length,
-        });
         if (!ctx.loadSidBuffer(patched)) {
             throw new Error(ctx.getLastError());
         }
-        console.log('[SidAudioEngine] loadSidBuffer → ctx.loadSidBuffer complete');
         this.applySystemROMs(ctx);
-        console.log('[SidAudioEngine] loadSidBuffer → ctx.setSystemROMs complete');
         if (!ctx.reset()) {
             throw new Error(ctx.getLastError());
         }
-        console.log('[SidAudioEngine] loadSidBuffer → ctx.reset complete');
         this.context = ctx;
         this.configured = true;
         return ctx;
@@ -73,19 +103,12 @@ export class SidAudioEngine {
     }
     applySystemROMs(ctx) {
         if (this.romSupportDisabled) {
-            console.log('[SidAudioEngine] ROM support disabled, skipping apply');
             return;
         }
         if (!this.kernalRom && !this.basicRom && !this.chargenRom) {
-            console.log('[SidAudioEngine] No custom ROMs to apply');
             return;
         }
         try {
-            console.log('[SidAudioEngine] Applying ROMs', {
-                kernal: this.kernalRom?.length ?? 0,
-                basic: this.basicRom?.length ?? 0,
-                chargen: this.chargenRom?.length ?? 0,
-            });
             const success = ctx.setSystemROMs(this.kernalRom ?? null, this.basicRom ?? null, this.chargenRom ?? null);
             if (!success) {
                 throw new Error(ctx.getLastError());
@@ -452,6 +475,7 @@ export class SidAudioEngine {
             if (chunk === null || chunk.length === 0) {
                 break;
             }
+            // Store a defensive copy - render() returns WASM memory that may be reused
             const copy = chunk.slice();
             chunks.push(copy);
             collected += copy.length;
@@ -460,6 +484,7 @@ export class SidAudioEngine {
             return;
         }
         // Combine all chunks into final cache buffer
+        // Use single allocation instead of pool (this buffer lives for entire cache lifetime)
         const combined = new Int16Array(collected);
         let offset = 0;
         for (const chunk of chunks) {
@@ -475,6 +500,15 @@ export class SidAudioEngine {
         return (!!this.cachedPcm &&
             this.cacheSampleRate === this.sampleRate &&
             this.cacheChannels === (this.stereo ? 2 : 1));
+    }
+    /**
+     * Clear buffer pool and cached data to free memory.
+     * Call this when the engine instance is no longer needed.
+     */
+    dispose() {
+        this.bufferPool.clear();
+        this.resetCacheState();
+        this.originalSidBuffer = null;
     }
 }
 //# sourceMappingURL=player.js.map

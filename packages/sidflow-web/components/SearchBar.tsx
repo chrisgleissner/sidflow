@@ -158,7 +158,10 @@ export function SearchBar({ onPlayTrack, onStatusChange, searchInputRef }: Searc
 
       {/* Search Results Dropdown */}
       {showResults && results.length > 0 && (
-        <Card className="absolute top-full mt-2 w-full z-50 max-h-96 overflow-y-auto shadow-lg">
+        <Card
+          className="absolute top-full mt-2 w-full z-50 max-h-96 overflow-y-auto shadow-lg"
+          data-testid="search-results"
+        >
           <CardContent className="p-2">
             <div className="space-y-1">
               {results.map((result) => (

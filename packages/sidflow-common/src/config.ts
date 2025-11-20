@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import type {
@@ -7,6 +7,12 @@ import type {
   FfmpegWasmOptions,
 } from "./audio-types.js";
 import { normalizeSidChip, type SidChipModel } from "./chip-model.js";
+import {
+  cacheConfig,
+  getEnhancedCachedConfig,
+  invalidateConfigCache,
+  recordConfigLoadTime,
+} from "./config-cache.js";
 
 export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
 export type RenderFormat = "wav" | "m4a" | "flac";
@@ -90,9 +96,12 @@ export function getDefaultConfigPath(cwd: string = process.cwd()): string {
 export function resetConfigCache(): void {
   cachedConfig = null;
   cachedPath = null;
+  invalidateConfigCache();
 }
 
 export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
+  const startTime = performance.now();
+
   // Check for SIDFLOW_CONFIG environment variable if no explicit path provided
   const envConfigPath = process.env.SIDFLOW_CONFIG;
   const effectiveConfigPath = configPath ?? (envConfigPath || getDefaultConfigPath());
@@ -101,13 +110,25 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
     ? effectiveConfigPath
     : path.resolve(effectiveConfigPath);
 
+  // Try enhanced cache first (with hash validation)
+  const cachedResult = await getEnhancedCachedConfig(resolvedPath);
+  if (cachedResult) {
+    recordConfigLoadTime(performance.now() - startTime);
+    return cachedResult;
+  }
+
+  // Fallback to legacy cache check (will be removed once enhanced cache proven)
   if (cachedConfig && cachedPath === resolvedPath) {
+    recordConfigLoadTime(performance.now() - startTime);
     return cachedConfig;
   }
 
   let fileContents: string;
+  let fileMtime: number;
   try {
     fileContents = await readFile(resolvedPath, "utf8");
+    const stats = await stat(resolvedPath);
+    fileMtime = stats.mtimeMs;
   } catch (error) {
     throw new SidflowConfigError(
       `Unable to read SIDFlow config at ${resolvedPath}`,
@@ -138,8 +159,13 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
       "[sidflow] Config key \"sidplayPath\" is deprecated. The WASM renderer is now used by default; remove this key once native fallbacks are retired.\n"
     );
   }
+
+  // Update both legacy and enhanced caches
   cachedConfig = config;
   cachedPath = resolvedPath;
+  await cacheConfig(config, resolvedPath, fileContents, fileMtime);
+
+  recordConfigLoadTime(performance.now() - startTime);
   return config;
 }
 

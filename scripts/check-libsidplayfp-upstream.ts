@@ -74,6 +74,10 @@ async function resolveLatestCommit(upstreamRepo: string): Promise<string> {
 }
 
 async function main(): Promise<void> {
+    if (process.env.SIDFLOW_SKIP_WASM_UPSTREAM_CHECK === "1") {
+        console.warn("[wasm] SIDFLOW_SKIP_WASM_UPSTREAM_CHECK=1 — skipping upstream git ls-remote (assuming cached build is valid).");
+        return;
+    }
     const { options } = parseArgs(process.argv.slice(2));
     const metadata = await readWasmBuildMetadata(options.metadataPath);
     const commit = await resolveLatestCommit(metadata.upstreamRepo);

@@ -29,6 +29,15 @@ export function getRepoRoot(): string {
     currentDir = parent;
   }
 
+  const configFromEnv = process.env.SIDFLOW_CONFIG;
+  if (configFromEnv) {
+    const resolvedConfig = path.isAbsolute(configFromEnv)
+      ? configFromEnv
+      : path.resolve(configFromEnv);
+    cachedRoot = path.dirname(resolvedConfig);
+    return cachedRoot;
+  }
+
   cachedRoot = process.cwd();
   return cachedRoot;
 }

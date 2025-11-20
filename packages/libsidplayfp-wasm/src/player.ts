@@ -6,6 +6,42 @@ import type {
 import { loadLibsidplayfp } from './index.js';
 
 const DEFAULT_CACHE_SECONDS = 600;
+const BUFFER_POOL_SIZE = 8;
+const BUFFER_SIZE_SAMPLES = 88200; // 1 second stereo at 44.1kHz
+
+/**
+ * Simple buffer pool to reduce GC pressure during playback.
+ * Manages Int16Array instances for reuse across render operations.
+ */
+class BufferPool {
+  private readonly pool: Int16Array[] = [];
+  private readonly maxSize: number;
+  private readonly bufferSize: number;
+
+  constructor(maxSize = BUFFER_POOL_SIZE, bufferSize = BUFFER_SIZE_SAMPLES) {
+    this.maxSize = maxSize;
+    this.bufferSize = bufferSize;
+  }
+
+  acquire(): Int16Array {
+    const buffer = this.pool.pop();
+    if (buffer) {
+      buffer.fill(0); // Clear for reuse
+      return buffer;
+    }
+    return new Int16Array(this.bufferSize);
+  }
+
+  release(buffer: Int16Array): void {
+    if (this.pool.length < this.maxSize && buffer.length === this.bufferSize) {
+      this.pool.push(buffer);
+    }
+  }
+
+  clear(): void {
+    this.pool.length = 0;
+  }
+}
 
 export interface SidAudioEngineOptions extends SidPlayerContextOptions {
   sampleRate?: number;
@@ -38,6 +74,7 @@ export class SidAudioEngine {
   private chargenRom: Uint8Array | null = null;
   private romSupportDisabled = false;
   private romFailureLogged = false;
+  private readonly bufferPool: BufferPool;
 
   constructor(options: SidAudioEngineOptions = {}) {
     const {
@@ -51,6 +88,11 @@ export class SidAudioEngine {
     this.stereo = stereo ?? true;
     this.maxCacheSeconds = cacheSecondsLimit ?? DEFAULT_CACHE_SECONDS;
     this.modulePromise = moduleOverride ?? loadLibsidplayfp(loaderOptions);
+
+    // Initialize buffer pool with size appropriate for sample rate and stereo
+    const framesPerBuffer = Math.max(1, Math.floor(this.sampleRate));
+    const samplesPerBuffer = framesPerBuffer * (this.stereo ? 2 : 1);
+    this.bufferPool = new BufferPool(BUFFER_POOL_SIZE, samplesPerBuffer);
   }
 
   private async ensureModule(): Promise<LibsidplayfpWasmModule> {
@@ -522,6 +564,8 @@ export class SidAudioEngine {
       if (chunk === null || chunk.length === 0) {
         break;
       }
+
+      // Store a defensive copy - render() returns WASM memory that may be reused
       const copy = chunk.slice();
       chunks.push(copy);
       collected += copy.length;
@@ -532,6 +576,7 @@ export class SidAudioEngine {
     }
 
     // Combine all chunks into final cache buffer
+    // Use single allocation instead of pool (this buffer lives for entire cache lifetime)
     const combined = new Int16Array(collected);
     let offset = 0;
     for (const chunk of chunks) {
@@ -550,5 +595,15 @@ export class SidAudioEngine {
       this.cacheSampleRate === this.sampleRate &&
       this.cacheChannels === (this.stereo ? 2 : 1)
     );
+  }
+
+  /**
+   * Clear buffer pool and cached data to free memory.
+   * Call this when the engine instance is no longer needed.
+   */
+  dispose(): void {
+    this.bufferPool.clear();
+    this.resetCacheState();
+    this.originalSidBuffer = null;
   }
 }

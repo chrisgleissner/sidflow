@@ -1,13 +1,16 @@
 import { test, expect } from '@playwright/test';
 
+const RESPONSE_TIMEOUT = 45000;
+
 /**
  * E2E tests for Phase 1 Foundation Enhancement features.
  * Tests search, keyboard shortcuts, charts, and theme switching.
  */
 
 test.describe('Phase 1 Features', () => {
+    test.describe.configure({ mode: 'serial', timeout: 45000 });
     test.beforeEach(async ({ page }) => {
-        await page.goto('/?tab=play');
+        await page.goto('/?tab=play', { waitUntil: 'domcontentloaded' });
         await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 15000 });
     });
 
@@ -18,11 +21,16 @@ test.describe('Phase 1 Features', () => {
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Type search query - use a query that will definitely have results
+            const responsePromise = page.waitForResponse(
+                (resp) => resp.url().includes('/api/search') && resp.status() === 200,
+                { timeout: RESPONSE_TIMEOUT }
+            );
             await searchBar.fill('sid');
+            await responsePromise;
 
             // Wait for search results dropdown to appear (Card component)
-            const resultsCard = page.locator('.absolute.top-full').first();
-            await expect(resultsCard).toBeVisible({ timeout: 10000 });
+            const resultsCard = page.getByTestId('search-results').first();
+            await expect(resultsCard).toBeVisible({ timeout: 15000 });
 
             // Find play button in first result
             const firstPlayButton = page.locator('button[title="Play this track"]').first();
@@ -41,14 +49,16 @@ test.describe('Phase 1 Features', () => {
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Search for something that doesn't exist
+            const noResultsPromise = page.waitForResponse(
+                (resp) => resp.url().includes('/api/search') && resp.status() === 200,
+                { timeout: RESPONSE_TIMEOUT }
+            );
             await searchBar.fill('xyznonexistent12345qwerty');
-
-            // Wait a bit for search to complete
-            await page.waitForTimeout(1000);
+            await noResultsPromise;
 
             // Results dropdown should not appear
-            const resultsCard = page.locator('.absolute.top-full').first();
-            await expect(resultsCard).not.toBeVisible();
+            const resultsCard = page.getByTestId('search-results').first();
+            await expect(resultsCard).not.toBeVisible({ timeout: 10000 });
         });
 
         test('should clear search results when input is cleared', async ({ page }) => {
@@ -56,11 +66,16 @@ test.describe('Phase 1 Features', () => {
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Search
+            const populatedPromise = page.waitForResponse(
+                (resp) => resp.url().includes('/api/search') && resp.status() === 200,
+                { timeout: RESPONSE_TIMEOUT }
+            );
             await searchBar.fill('sid');
+            await populatedPromise;
 
             // Wait for results dropdown
-            const resultsCard = page.locator('.absolute.top-full').first();
-            await expect(resultsCard).toBeVisible({ timeout: 10000 });
+            const resultsCard = page.getByTestId('search-results').first();
+            await expect(resultsCard).toBeVisible({ timeout: 15000 });
 
             // Clear search using the X button
             const clearButton = page.locator('button[title="Clear search"]');

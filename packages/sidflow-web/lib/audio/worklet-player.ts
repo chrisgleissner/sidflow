@@ -15,6 +15,11 @@ import type { WorkerMessage, WorkerResponse } from './worker/sid-producer.worker
 import { telemetry } from '@/lib/telemetry';
 import { fetchRomAssets, type RomAssetMap } from './fetch-rom-assets';
 
+const FAST_AUDIO_TESTS =
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS === '1') ||
+  (typeof globalThis !== 'undefined' &&
+    (globalThis as Record<string, unknown>)['NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS'] === '1');
+
 export type WorkletPlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'ended' | 'error';
 
 type WorkletPlayerEvent = 'statechange' | 'loadprogress' | 'error';
@@ -95,7 +100,7 @@ export class WorkletPlayer {
     ringBufferCapacityFrames: 0,
   };
 
-  private readonly RING_BUFFER_CAPACITY_FRAMES = 262144; // ~5.9s at 44.1kHz
+  private readonly RING_BUFFER_CAPACITY_FRAMES = FAST_AUDIO_TESTS ? 32768 : 262144; // ~0.7s vs 5.9s at 44.1kHz
   private readonly CHANNEL_COUNT = 2; // Stereo
 
   private workerLoadedResolve: (() => void) | null = null;
@@ -534,7 +539,10 @@ export class WorkletPlayer {
     }
 
     // Create worker
-    this.worker = new Worker('/audio/worker/sid-producer.worker.js', {
+    const workerUrl = FAST_AUDIO_TESTS
+      ? '/audio/worker/sid-producer.worker.js?fast=1'
+      : '/audio/worker/sid-producer.worker.js';
+    this.worker = new Worker(workerUrl, {
       type: 'module',
     });
 
