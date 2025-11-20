@@ -1,4 +1,4 @@
 [test]
 preload = ["./tests/setup.ts"]
-# Exclude E2E specs from bun test (they run via playwright test)
-exclude = ["**/tests/e2e/**/*.spec.ts"]
+# Exclude E2E tests from bun test (they run via playwright test)
+exclude = ["**/tests/e2e/**/*.e2e.ts", "**/tests/e2e/**/*.spec.ts"]

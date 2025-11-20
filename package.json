@@ -12,7 +12,7 @@
     "build": "node scripts/run-bun.mjs install --frozen-lockfile && node scripts/run-bun.mjs run wasm:check-upstream && tsc -b",
     "wasm:check-upstream": "node scripts/run-bun.mjs run scripts/check-libsidplayfp-upstream.ts",
     "wasm:build": "node scripts/run-bun.mjs run scripts/build-libsidplayfp-wasm.ts",
-    "test": "npm run build && node scripts/run-bun.mjs test $(find packages/*/test packages/sidflow-web/tests/unit integration-tests -name '*.test.ts' -type f 2>/dev/null) --coverage --coverage-reporter=text --coverage-reporter=lcov --exclude='**/*.spec.ts'",
+    "test": "npm run build && node scripts/run-bun.mjs test $(find packages/*/test packages/sidflow-web/tests/unit integration-tests -name '*.test.ts' -type f 2>/dev/null) --coverage --coverage-reporter=text --coverage-reporter=lcov --exclude='**/*.spec.ts' --exclude='**/tests/e2e/**'",
     "test:e2e": "npm run build && node scripts/run-bun.mjs test ./integration-tests/e2e-suite.ts && cd packages/sidflow-web && npm run test:e2e",
     "test:all": "npm run test; TEST_EXIT=$?; cd packages/sidflow-web && npm run build:worklet && npm run test:e2e; PLAYWRIGHT_EXIT=$?; exit $((TEST_EXIT + PLAYWRIGHT_EXIT))",
     "validate:config": "node scripts/run-bun.mjs run scripts/validate-config.ts",

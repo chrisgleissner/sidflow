@@ -9,18 +9,26 @@ const ffmpegStubModuleSpecifier = ffmpegStubRelativePath.startsWith(".")
   : `./${ffmpegStubRelativePath}`;
 const disableRender = process.env.SIDFLOW_DISABLE_RENDER === '1';
 
-const serverExternalPackages = ['vectordb', '@sidflow/classify'];
+const serverExternalPackages = [
+  'vectordb',
+  '@sidflow/classify', 
+  'ws', 
+  '@ffmpeg/ffmpeg', 
+  '@ffmpeg/core',
+  // Prevent ffmpeg WASM loader from being bundled
+  '@ffmpeg/core/dist/ffmpeg-core.wasm',
+  '@ffmpeg/core/dist/ffmpeg-core.wasm_.loader.mjs',
+];
 
-const ffmpegStubAliases: Record<string, string | string[] | Record<string, string | string[]>> =
-  disableRender
-    ? {
-        "@ffmpeg/ffmpeg": ffmpegStubModuleSpecifier,
-        "@ffmpeg/core/dist/ffmpeg-core.js": ffmpegStubModuleSpecifier,
-        "@ffmpeg/core/dist/ffmpeg-core.wasm": ffmpegStubModuleSpecifier,
-        "@ffmpeg/core/dist/ffmpeg-core.wasm_.loader.mjs": ffmpegStubModuleSpecifier,
-        "@ffmpeg/core/dist/ffmpeg-core.worker.js": ffmpegStubModuleSpecifier,
-      }
-    : {};
+// Always stub ffmpeg for client-side builds to prevent WASM loader issues
+const ffmpegStubAliases: Record<string, string | string[] | Record<string, string | string[]>> = {
+  "@ffmpeg/ffmpeg": ffmpegStubModuleSpecifier,
+  "@ffmpeg/core": ffmpegStubModuleSpecifier,
+  "@ffmpeg/core/dist/ffmpeg-core.js": ffmpegStubModuleSpecifier,
+  "@ffmpeg/core/dist/ffmpeg-core.wasm": ffmpegStubModuleSpecifier,
+  "@ffmpeg/core/dist/ffmpeg-core.wasm_.loader.mjs": ffmpegStubModuleSpecifier,
+  "@ffmpeg/core/dist/ffmpeg-core.worker.js": ffmpegStubModuleSpecifier,
+};
 
 const nextConfig: NextConfig = {
   // Exclude server-only packages with native modules from client bundle
@@ -31,6 +39,8 @@ const nextConfig: NextConfig = {
       // Stub Node-only module that libsidplayfp.js tries to import during SSR
       // This prevents the WASM wrapper from being bundled into error pages
       module: { browser: "./empty-stub.js" },
+      // Stub ws module which is used by ffmpeg in Node.js environments
+      ws: "./empty-stub.js",
       ...ffmpegStubAliases,
     },
   },

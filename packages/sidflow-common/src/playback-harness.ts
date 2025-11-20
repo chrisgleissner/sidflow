@@ -9,9 +9,10 @@ import {
     type SpawnOptionsWithoutStdio
 } from "node:child_process";
 import loadLibsidplayfp, {
-    SidAudioEngine,
-    type LibsidplayfpWasmModule
+    SidAudioEngine
 } from "@sidflow/libsidplayfp-wasm";
+// Import type directly from the libsidplayfp module to work around Next.js module resolution
+import type { LibsidplayfpWasmModule } from "@sidflow/libsidplayfp-wasm/dist/libsidplayfp.js";
 
 type SpawnFunction = (
     command: string,
