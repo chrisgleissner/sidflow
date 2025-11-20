@@ -18,8 +18,8 @@ permissions:
   id-token: write
 
 jobs:
-  build:
-    name: Build & Prepare
+  test:
+    name: Build and Test
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
@@ -47,88 +47,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build project
-        run: bun run build
-
-      - name: Build audio worklet
-        run: cd packages/sidflow-web && npm run build:worklet
-
-  unit-tests:
-    name: Unit Tests
-    needs: build
-    runs-on: ubuntu-latest
-    container:
-      image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          fetch-depth: 0
-
-      - name: Restore WASM upstream cache
-        uses: actions/cache@v4
-        with:
-          path: packages/libsidplayfp-wasm/.cache/upstream
-          key: wasm-upstream-${{ runner.os }}-${{ hashFiles('packages/libsidplayfp-wasm/docker/entrypoint.sh', 'packages/libsidplayfp-wasm/scripts/build.sh') }}
-          restore-keys: |
-            wasm-upstream-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Add CLI stubs to PATH
-        run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
-
-      - name: Build project
-        run: bun run build
-
-      - name: Run unit tests with coverage
-        run: bun test $(find packages/*/test packages/sidflow-web/tests/unit integration-tests -name '*.test.ts' -type f 2>/dev/null) --coverage --coverage-reporter=text --coverage-reporter=lcov --exclude='**/*.spec.ts' --exclude='**/tests/e2e/**'
-
-      - name: Upload unit test coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-unit
-          path: coverage/
-          retention-days: 1
-
-  e2e-tests:
-    name: E2E Tests (Shard ${{ matrix.shard }}/5)
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5]
-    outputs:
-      playwright-report-ready: ${{ steps.detect-playwright-report.outputs.available }}
-    runs-on: ubuntu-latest
-    container:
-      image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          fetch-depth: 0
-
-      - name: Restore WASM upstream cache
-        uses: actions/cache@v4
-        with:
-          path: packages/libsidplayfp-wasm/.cache/upstream
-          key: wasm-upstream-${{ runner.os }}-${{ hashFiles('packages/libsidplayfp-wasm/docker/entrypoint.sh', 'packages/libsidplayfp-wasm/scripts/build.sh') }}
-          restore-keys: |
-            wasm-upstream-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
       - name: Install Playwright browsers
         run: cd packages/sidflow-web && npx playwright install --with-deps chromium
 
@@ -138,11 +56,8 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Build audio worklet
-        run: cd packages/sidflow-web && npm run build:worklet
-
-      - name: Run E2E tests with coverage (Shard ${{ matrix.shard }}/5)
-        run: cd packages/sidflow-web && npx playwright test --shard=${{ matrix.shard }}/5
+      - name: Run all tests (unit + E2E with coverage)
+        run: bun run test:all
 
       - name: Check for Playwright report
         id: detect-playwright-report
@@ -163,11 +78,20 @@ jobs:
           report-file: packages/sidflow-web/playwright-report/report.json
           job-summary: true
 
+      - name: Upload coverage reports to Codecov
+        if: ${{ github.event_name == 'push' }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/lcov.info
+          fail_ci_if_error: false
+          verbose: true
+
       - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-html-report-shard-${{ matrix.shard }}
+          name: playwright-html-report
           path: packages/sidflow-web/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
@@ -176,7 +100,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results-shard-${{ matrix.shard }}
+          name: playwright-test-results
           path: packages/sidflow-web/test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -185,48 +109,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tab-screenshots-shard-${{ matrix.shard }}
+          name: tab-screenshots
           path: doc/web-screenshots/
           if-no-files-found: ignore
           retention-days: 7
-
-  codecov:
-    name: Upload Coverage
-    needs: [unit-tests, e2e-tests]
-    if: ${{ always() && !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          fetch-depth: 0
-
-      - name: Download unit test coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-unit
-          path: coverage-unit
-
-      - name: Prepare coverage for upload
-        run: |
-          mkdir -p coverage
-          # E2E tests don't generate coverage (Playwright tests run in browser)
-          # Only upload unit test coverage
-          if [ -f coverage-unit/lcov.info ]; then
-            cp coverage-unit/lcov.info coverage/lcov.info
-            echo "Using unit test coverage"
-          else
-            echo "No coverage found"
-            exit 1
-          fi
-          echo "Coverage report:"
-          ls -lh coverage/
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/lcov.info
-          fail_ci_if_error: false
-          verbose: true
