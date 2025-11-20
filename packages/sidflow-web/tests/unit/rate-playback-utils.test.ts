@@ -73,9 +73,11 @@ describe('parseDurationSeconds', () => {
         expect(parseDurationSeconds('10000')).toBe(10000);
     });
 
-    test('should handle decimal seconds in MM:SS format', () => {
-        // Decimal seconds should be parsed if valid number
-        expect(parseDurationSeconds('3:30')).toBe(210);
+    test('should handle decimal seconds in MM:SS and numeric formats', () => {
+        // Decimal seconds in MM:SS format: 3 minutes, 30.5 seconds = 210.5
+        expect(parseDurationSeconds('3:30.5')).toBe(210.5);
+        // Decimal seconds as numeric string
+        expect(parseDurationSeconds('210.5')).toBe(210.5);
     });
 
     test('should trim whitespace (implicitly through Number parsing)', () => {
