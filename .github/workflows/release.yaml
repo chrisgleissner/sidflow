@@ -109,22 +109,7 @@ jobs:
           rm -rf "${STAGING_ROOT}"
           mkdir -p "${STAGING_ROOT}"
           export TARGET_DIR
-          python3 - <<'PY'
-import os
-import pathlib
-import shutil
-
-src = pathlib.Path(os.environ["SRC_DIR"]).resolve()
-dst = pathlib.Path(os.environ["TARGET_DIR"]).resolve()
-if dst.exists():
-    shutil.rmtree(dst)
-
-def ignore(directory, entries):
-    ignored = {'.git'}
-    return [name for name in entries if name in ignored]
-
-shutil.copytree(src, dst, ignore=ignore)
-PY
+          python3 scripts/ci/package-release.py
           ZIP_PATH="${GITHUB_WORKSPACE}/${ARCHIVE_NAME}.zip"
           (cd "${STAGING_ROOT}" && zip -rq "${ZIP_PATH}" "${ARCHIVE_NAME}")
           echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
