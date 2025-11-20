@@ -120,8 +120,11 @@ if dst.exists():
     shutil.rmtree(dst)
 
 def ignore(directory, entries):
-    ignored = {'.git'}
-    return [name for name in entries if name in ignored]
+    ignored = {
+        '.git', 'coverage', '.bun', '.playwright-browsers', 'test-workspace', 'tmp', '.DS_Store'
+    }
+    # Exclude files ending with .log as well
+    return [name for name in entries if name in ignored or name.endswith('.log')]
 
 shutil.copytree(src, dst, ignore=ignore)
 PY
