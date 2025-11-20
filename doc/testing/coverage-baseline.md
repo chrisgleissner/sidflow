@@ -42,13 +42,7 @@ Files with >400 uncovered lines (highest ROI for unit tests):
    - Type: Audio Worklet player implementation
    - Test Strategy: Unit tests with AudioWorklet mocks
 
-3. **packages/libsidplayfp-wasm/dist/player.js**
-   - Coverage: 10.8% (52/480 lines)
-   - Uncovered: 428 lines
-   - Type: WASM player wrapper
-   - Test Strategy: Integration tests only (WASM boundary)
-
-4. **packages/sidflow-classify/src/render/cli.ts**
+3. **packages/sidflow-classify/src/render/cli.ts**
    - Coverage: 36.4% (238/654 lines)
    - Uncovered: 416 lines
    - Type: CLI rendering orchestration
