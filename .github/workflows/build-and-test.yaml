@@ -106,12 +106,12 @@ jobs:
           retention-days: 1
 
   e2e-tests:
-    name: E2E Tests (Shard ${{ matrix.shard }}/3)
+    name: E2E Tests (Shard ${{ matrix.shard }}/5)
     needs: build
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5]
     outputs:
       playwright-report-ready: ${{ steps.detect-playwright-report.outputs.available }}
     runs-on: ubuntu-latest
@@ -154,10 +154,10 @@ jobs:
       - name: Build audio worklet
         run: cd packages/sidflow-web && npm run build:worklet
 
-      - name: Run E2E tests with coverage (Shard ${{ matrix.shard }}/3)
+      - name: Run E2E tests with coverage (Shard ${{ matrix.shard }}/5)
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
-        run: cd packages/sidflow-web && npx playwright test --shard=${{ matrix.shard }}/3
+        run: cd packages/sidflow-web && npx playwright test --shard=${{ matrix.shard }}/5
 
       - name: Check for Playwright report
         id: detect-playwright-report
@@ -217,7 +217,7 @@ jobs:
   codecov:
     name: Upload Coverage
     needs: [unit-tests, e2e-tests]
-    if: ${{ always() && (needs.unit-tests.result == 'success' || needs.e2e-tests.result == 'success') }}
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -253,6 +253,20 @@ jobs:
           path: coverage-e2e-shard-3
         continue-on-error: true
 
+      - name: Download E2E test coverage (shard 4)
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-e2e-shard-4
+          path: coverage-e2e-shard-4
+        continue-on-error: true
+
+      - name: Download E2E test coverage (shard 5)
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-e2e-shard-5
+          path: coverage-e2e-shard-5
+        continue-on-error: true
+
       - name: Merge coverage reports
         run: |
           mkdir -p coverage
@@ -261,7 +275,7 @@ jobs:
             cp coverage-unit/lcov.info coverage/lcov.info
           fi
           # Append E2E coverage from all shards if available
-          for shard in 1 2 3; do
+          for shard in 1 2 3 4 5; do
             if [ -f coverage-e2e-shard-${shard}/lcov.info ]; then
               echo "Merging coverage from E2E shard ${shard}"
               if [ -f coverage/lcov.info ]; then
