@@ -18,7 +18,53 @@ permissions:
   id-token: write
 
 jobs:
-  test:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Restore WASM upstream cache
+        uses: actions/cache@v4
+        with:
+          path: packages/libsidplayfp-wasm/.cache/upstream
+          key: wasm-upstream-${{ runner.os }}-${{ hashFiles('packages/libsidplayfp-wasm/docker/entrypoint.sh', 'packages/libsidplayfp-wasm/scripts/build.sh') }}
+          restore-keys: |
+            wasm-upstream-${{ runner.os }}-
+
+      - name: Bun version
+        run: bun --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Add CLI stubs to PATH
+        run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
+
+      - name: Build project
+        run: bun run build
+
+      - name: Run unit tests with coverage
+        run: bun test $(find packages/*/test packages/sidflow-web/tests/unit integration-tests -name '*.test.ts' -type f 2>/dev/null) --coverage --coverage-reporter=text --coverage-reporter=lcov --exclude='**/*.spec.ts' --exclude='**/tests/e2e/**'
+
+      - name: Upload unit test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage/
+          retention-days: 1
+
+  e2e-tests:
+    name: E2E Tests
     outputs:
       playwright-report-ready: ${{ steps.detect-playwright-report.outputs.available }}
     runs-on: ubuntu-latest
@@ -57,10 +103,13 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Run all tests (unit + E2E with coverage)
+      - name: Run E2E tests with coverage
         env:
           PLAYWRIGHT_BROWSERS_PATH: .playwright-browsers
-        run: bun run test:all
+        run: |
+          cd packages/sidflow-web
+          npm run build:worklet
+          npm run test:e2e
 
       - name: Check for Playwright report
         id: detect-playwright-report
@@ -81,14 +130,14 @@ jobs:
           report-file: packages/sidflow-web/playwright-report/report.json
           job-summary: true
 
-      - name: Upload coverage reports to Codecov
-        if: ${{ github.event_name == 'push' }}
-        uses: codecov/codecov-action@v5
+      - name: Upload E2E test coverage
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/lcov.info
-          fail_ci_if_error: true
-          verbose: true
+          name: coverage-e2e
+          path: packages/sidflow-web/coverage/
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Upload Playwright HTML report
         if: always()
@@ -117,9 +166,60 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  codecov:
+    name: Upload Coverage
+    needs: [unit-tests, e2e-tests]
+    if: ${{ always() && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Download unit test coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage-unit
+
+      - name: Download E2E test coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-e2e
+          path: coverage-e2e
+        continue-on-error: true
+
+      - name: Merge coverage reports
+        run: |
+          mkdir -p coverage
+          # Copy unit test coverage as base
+          if [ -f coverage-unit/lcov.info ]; then
+            cp coverage-unit/lcov.info coverage/lcov.info
+          fi
+          # Append E2E coverage if available
+          if [ -f coverage-e2e/lcov.info ]; then
+            if [ -f coverage/lcov.info ]; then
+              cat coverage-e2e/lcov.info >> coverage/lcov.info
+            else
+              cp coverage-e2e/lcov.info coverage/lcov.info
+            fi
+          fi
+          echo "Merged coverage report:"
+          ls -lh coverage/
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/lcov.info
+          fail_ci_if_error: false
+          verbose: true
+
   # publish-playwright-report:
-  #   needs: test
-  #   if: ${{ always() && needs.test.outputs.playwright-report-ready == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+  #   needs: e2e-tests
+  #   if: ${{ always() && needs.e2e-tests.outputs.playwright-report-ready == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
   #   runs-on: ubuntu-latest
   #   permissions:
   #     pages: write

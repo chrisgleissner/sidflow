@@ -199,12 +199,9 @@ test.describe('Advanced Search & Discovery', () => {
         // Click Surprise Me
         await surpriseButton.click();
 
-        // Wait for playback to start
-        await page.waitForTimeout(2000);
-
-        // Verify that the pause button appears (indicating playback started)
+        // Wait for playback to start (pause button appears when playing)
         const pauseButton = page.getByRole('button', { name: /pause/i });
-        await expect(pauseButton).toBeVisible({ timeout: 10000 });
+        await expect(pauseButton).toBeVisible({ timeout: 15000 });
     });
 
     test('should handle search for artist names', async ({ page }) => {
