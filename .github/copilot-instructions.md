@@ -45,18 +45,29 @@
 ## Testing & Quality Gates
 
 ### Test Coverage Requirements
-- **Target Coverage**: ≥90% (current baseline: 68.55% as of 2025-11-20)
-- Coverage is measured across all source files in `packages/*/src/`
+- **Target Coverage**: ≥90%
+- **Current Baseline**: 65.89% (11,929/18,105 lines) as of 2025-11-20
+- Coverage is measured across source files in `packages/*/src/` (excluding `dist/` build artifacts)
 - Use Bun's test runner (`bun run test`) with `--coverage` flag
 - Add focused unit tests under `packages/*/test` for all new features
 - Files marked with `/* c8 ignore file */` are intentionally excluded (integration/system code)
 
-### Coverage Improvement Plan (68.55% → 90%)
-Priority areas for adding test coverage:
-1. **CLI modules** (52-84% coverage): Requires mocking stdin/stdout, process args, and child processes
-2. **Browser-only modules** (0-9% coverage): server/cache.ts, lib/similarity-search.ts, lib/telemetry.ts - needs jsdom or E2E coverage
-3. **Rendering infrastructure** (62-82% coverage): render/cli.ts, render/orchestrator.ts - requires audio pipeline mocks
-4. **Job orchestration** (existing tests cover core logic): Focus on edge cases and error handling
+**Note**: Codecov integration was added in PR #46 (2025-11-20). The current 65.89% represents the first automated measurement. Previous "90%" references were documentation goals, not actual measurements.
+
+### Coverage Improvement Plan (65.89% → 90%)
+Priority areas by package (excluding dist/ artifacts):
+1. **sidflow-web** browser code: Needs unit tests with Web API mocks or E2E coverage
+   - player/sidflow-player.ts (568 lines, 24.8%)
+   - audio/worklet-player.ts (523 lines, 23.3%)
+   - feedback/storage.ts (402 lines, 16.6%)
+2. **sidflow-common** infrastructure: High ROI for unit tests
+   - audio-encoding.ts (382 lines, 27.8%)
+   - playback-harness.ts (296 lines, 10.0%)
+   - job-runner.ts (206 lines, 34.4%)
+3. **sidflow-classify** rendering: Needs CLI mocking infrastructure
+   - render/cli.ts (416 lines, 36.4%)
+   - render/render-orchestrator.ts (317 lines, 53.9%)
+4. **libsidplayfp-wasm** (35.90%): WASM boundary - integration tests only
 
 ### Unit Test Stability
 - **CRITICAL**: All unit tests must pass 3x consecutively before code is considered complete
