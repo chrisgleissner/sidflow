@@ -24,7 +24,7 @@ This is the **first automated coverage measurement** for the SIDFlow project. Co
 | sidflow-web | 54.51% | 4,417 | 8,103 | 2,874 lines |
 | sidflow-common | 45.87% | 3,752 | 8,179 | 3,611 lines |
 | libsidplayfp-wasm | 35.90% | 368 | 1,025 | 553 lines |
-| **TOTAL** | **56.45%** | **12,830** | **22,727** | **7,616 lines** |
+| **TOTAL** | **65.89%** | **11,929** | **18,105** | **4,375 lines** |
 
 ## Top Priority Files for Coverage Improvement
 
