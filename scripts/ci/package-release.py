@@ -44,7 +44,9 @@ def package_release(src_dir: pathlib.Path, target_dir: pathlib.Path) -> None:
         
     Raises:
         FileNotFoundError: If source directory doesn't exist
+        NotADirectoryError: If source path is not a directory
         PermissionError: If insufficient permissions to read/write
+        shutil.Error: If errors occur during the copy operation
         OSError: For other filesystem errors
     """
     src = src_dir.resolve()
