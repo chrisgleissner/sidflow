@@ -21,11 +21,11 @@ import shutil
 import sys
 
 
-def ignore_patterns(directory: str, entries: list[str]) -> list[str]:
+def ignore_patterns(_directory: str, entries: list[str]) -> list[str]:
     """Return list of entries to ignore during copy.
     
     Args:
-        directory: The directory being copied
+        _directory: The directory being copied (unused, required by shutil.copytree)
         entries: List of files/directories in the directory
         
     Returns:
@@ -112,11 +112,11 @@ def main(argv: list[str]) -> int:
     except PermissionError as exc:
         print(f"Permission error: {exc}", file=sys.stderr)
         return 1
+    except shutil.Error as exc:
+        print(f"Copy error: {exc}", file=sys.stderr)
+        return 1
     except OSError as exc:
         print(f"Filesystem error: {exc}", file=sys.stderr)
-        return 1
-    except Exception as exc:  # pragma: no cover
-        print(f"Unexpected error: {exc}", file=sys.stderr)
         return 1
 
 
