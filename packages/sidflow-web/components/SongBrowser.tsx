@@ -124,6 +124,7 @@ export function SongBrowser({ onPlaySong, onPlayFolder, onStatusChange }: SongBr
             size="sm"
             onClick={navigateToRoot}
             disabled={isLoading || currentPath === ''}
+            aria-label="Go to root directory"
             className="gap-1 h-7 px-2"
           >
             <Home className="h-3 w-3" />
@@ -263,6 +264,7 @@ export function SongBrowser({ onPlaySong, onPlayFolder, onStatusChange }: SongBr
                       size="icon"
                       className="h-7 w-7 flex-shrink-0"
                       onClick={() => handlePlaySong(file)}
+                      aria-label={`Play ${file.name}`}
                       title={`Play ${file.name}`}
                       disabled={!onPlaySong}
                     >

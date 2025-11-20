@@ -203,7 +203,8 @@ export function AdvancedSearchBar({
                             }}
                             className="pl-10 pr-20"
                             aria-label="Search for SID tracks"
-                            data-testid="advanced-search-input"
+                            data-testid="search-input"
+                            data-advanced-search="true"
                         />
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                             {isSearching && (

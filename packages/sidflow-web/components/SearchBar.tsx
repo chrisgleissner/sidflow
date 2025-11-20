@@ -50,7 +50,7 @@ export function SearchBar({ onPlayTrack, onStatusChange, searchInputRef }: Searc
       if (response.success) {
         setResults(response.data.results);
         setShowResults(true);
-        
+
         if (response.data.results.length === 0) {
           onStatusChange?.(`No results found for "${searchQuery}"`, false);
         }

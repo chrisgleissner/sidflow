@@ -247,6 +247,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack, isActive = false }: 
                       className="h-8 w-8"
                       onClick={() => handlePlayTrack(favorite.sidPath)}
                       disabled={favorite.isLoading}
+                      aria-label="Play this track"
                       title="Play this track"
                     >
                       {favorite.isLoading ? (
@@ -260,6 +261,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack, isActive = false }: 
                       variant="ghost"
                       className="h-8 w-8 text-destructive hover:text-destructive"
                       onClick={() => handleRemoveFavorite(favorite.sidPath)}
+                      aria-label="Remove from favorites"
                       title="Remove from favorites"
                     >
                       <Trash2 className="h-4 w-4" />

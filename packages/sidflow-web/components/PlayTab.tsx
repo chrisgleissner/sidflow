@@ -1623,6 +1623,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 variant="ghost"
                 className="h-6 w-6"
                 onClick={() => replayFromHistory(track)}
+                aria-label="Replay this song"
                 title="Replay this song"
               >
                 <Play className="h-3 w-3" />
@@ -1982,6 +1983,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 size="icon"
                 onClick={handlePreviousTrack}
                 disabled={!currentTrack || playedTracks.length === 0 || isLoading || isAudioLoading}
+                aria-label="Previous track"
                 title="Previous track"
               >
                 <SkipBack className="h-4 w-4" />
@@ -2002,6 +2004,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 size="icon"
                 onClick={playNextFromQueue}
                 disabled={upcomingTracks.length === 0 || isLoading || isAudioLoading}
+                aria-label="Next track"
                 title="Next track"
               >
                 <SkipForward className="h-4 w-4" />

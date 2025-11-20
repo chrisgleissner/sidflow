@@ -40,26 +40,22 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should support Escape key to close dialogs', async ({ page }) => {
-            await page.goto('/?tab=play');
+            await page.goto('/');
             await page.waitForLoadState('networkidle');
 
-            // Try to open a dialog (folder browser, search, etc.)
-            try {
-                const browseButton = page.locator('button:has-text("Browse"), button:has-text("Search")').first();
-                await browseButton.click();
-                await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
+            // Open login dialog
+            const loginButton = page.getByRole('button', { name: /log in/i });
+            await loginButton.click();
+            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
 
-                // Press Escape to close
-                await page.keyboard.press('Escape');
-                await page.waitForTimeout(500);
+            // Press Escape to close
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(500);
 
-                // Verify dialog is closed
-                const dialogVisible = await page.locator('[role="dialog"]').isVisible();
-                expect(dialogVisible).toBeFalsy();
-                console.log('[A11y] Escape key successfully closes dialog');
-            } catch (e) {
-                console.log('[A11y] No dialog found to test Escape key');
-            }
+            // Verify dialog is closed
+            const dialogVisible = await page.locator('[role="dialog"]').isVisible();
+            expect(dialogVisible).toBeFalsy();
+            console.log('[A11y] Escape key successfully closes dialog');
         });
 
         test('should support Space and Enter to activate buttons', async ({ page }) => {
@@ -329,65 +325,58 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should trap focus in modal dialogs', async ({ page }) => {
-            await page.goto('/?tab=play');
+            await page.goto('/');
             await page.waitForLoadState('networkidle');
 
-            // Open a dialog
-            try {
-                const browseButton = page.locator('button:has-text("Browse")').first();
-                await browseButton.click();
-                await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
+            // Open login dialog
+            const loginButton = page.getByRole('button', { name: /log in/i });
+            await loginButton.click();
+            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
 
-                // Tab through elements - focus should stay within dialog
-                const initialFocus = await page.evaluate(() => document.activeElement?.tagName);
+            // Tab through elements - focus should stay within dialog
+            const initialFocus = await page.evaluate(() => document.activeElement?.tagName);
+            console.log(`[A11y] Initial focus: ${initialFocus}`);
 
-                for (let i = 0; i < 20; i++) {
-                    await page.keyboard.press('Tab');
-                }
-
-                // Check if focus is still within dialog
-                const focusInDialog = await page.evaluate(() => {
-                    const focused = document.activeElement;
-                    const dialog = document.querySelector('[role="dialog"]');
-                    return dialog?.contains(focused) || false;
-                });
-
-                console.log(`[A11y] Focus trapped in dialog: ${focusInDialog}`);
-                expect(focusInDialog).toBeTruthy();
-
-                // Close dialog
-                await page.keyboard.press('Escape');
-            } catch (e) {
-                console.log('[A11y] No dialog available for focus trap test');
+            for (let i = 0; i < 20; i++) {
+                await page.keyboard.press('Tab');
             }
+
+            // Check if focus is still within dialog
+            const focusInDialog = await page.evaluate(() => {
+                const focused = document.activeElement;
+                const dialog = document.querySelector('[role="dialog"]');
+                return dialog?.contains(focused) || false;
+            });
+
+            console.log(`[A11y] Focus trapped in dialog: ${focusInDialog}`);
+            expect(focusInDialog).toBeTruthy();
+
+            // Close dialog
+            await page.keyboard.press('Escape');
         });
 
         test('should restore focus after closing dialog', async ({ page }) => {
-            await page.goto('/?tab=play');
+            await page.goto('/');
             await page.waitForLoadState('networkidle');
 
-            // Open and close a dialog, check focus restoration
-            try {
-                const browseButton = page.locator('button:has-text("Browse")').first();
-                await browseButton.focus();
+            // Open and close login dialog, check focus restoration
+            const loginButton = page.getByRole('button', { name: /log in/i });
+            await loginButton.focus();
 
-                const beforeOpen = await page.evaluate(() => document.activeElement?.textContent);
+            const beforeOpen = await page.evaluate(() => document.activeElement?.textContent);
 
-                await browseButton.click();
-                await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
+            await loginButton.click();
+            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
 
-                await page.keyboard.press('Escape');
-                await page.waitForTimeout(500);
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(500);
 
-                const afterClose = await page.evaluate(() => document.activeElement?.textContent);
+            const afterClose = await page.evaluate(() => document.activeElement?.textContent);
 
-                console.log(`[A11y] Focus before dialog: "${beforeOpen}", after: "${afterClose}"`);
+            console.log(`[A11y] Focus before dialog: "${beforeOpen}", after: "${afterClose}"`);
 
-                // Focus should ideally return to the button that opened the dialog
-                expect(afterClose).toBeTruthy();
-            } catch (e) {
-                console.log('[A11y] Could not test focus restoration');
-            }
+            // Focus should ideally return to the button that opened the dialog
+            expect(afterClose).toBeTruthy();
         });
     });
 
