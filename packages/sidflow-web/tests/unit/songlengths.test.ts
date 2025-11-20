@@ -8,7 +8,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const TEST_DIR = join(tmpdir(), `songlengths-test-${Date.now()}`);
+const TEST_DIR = join(tmpdir(), `songlengths-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 beforeEach(() => {
     // Clear caches before each test
