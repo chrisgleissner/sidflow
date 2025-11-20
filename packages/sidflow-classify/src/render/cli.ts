@@ -334,7 +334,7 @@ export async function runRenderCli(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const hvscPath = config.hvscPath;
+  const sidPath = config.sidPath;
   const outputDir = path.resolve(
     options.outputPath ?? config.render?.outputPath ?? path.join(config.wavCachePath, "rendered")
   );
@@ -372,13 +372,17 @@ export async function runRenderCli(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const resolvedSids = await resolveSidEntries(sidSpecs, hvscPath);
+  const resolvedSids = await resolveSidEntries(sidSpecs, sidPath);
   if (resolvedSids.length === 0) {
     logger.error("No valid SID paths were found.");
     return 1;
   }
 
-  const chip = options.chip ?? config.render?.defaultChip ?? "6581";
+  let chip = options.chip ?? config.render?.defaultChip ?? "6581";
+  // Map normalized "8580" back to "8580r5" for render interface compatibility
+  if (chip === "8580") {
+    chip = "8580r5";
+  }
   const engines = resolveEngineOrder(options, config);
 
   const encoderOverrides = resolveAudioEncoderOptions(options, config);
@@ -667,12 +671,12 @@ async function loadDefaultSidList(): Promise<SidSpec[]> {
   return loadSidListFile(samplePath);
 }
 
-async function resolveSidEntries(specs: SidSpec[], hvscPath: string): Promise<ResolvedSidEntry[]> {
+async function resolveSidEntries(specs: SidSpec[], sidPath: string): Promise<ResolvedSidEntry[]> {
   const resolved: ResolvedSidEntry[] = [];
   const seen = new Set<string>();
 
   for (const spec of specs) {
-    const mapping = resolveSidPath(hvscPath, spec.path);
+    const mapping = resolveSidPath(sidPath, spec.path);
     const absolutePath = mapping.absolutePath;
     const relativePath = mapping.relativePath;
     const key = `${absolutePath}#${spec.songIndex ?? 0}`;
@@ -695,21 +699,21 @@ async function resolveSidEntries(specs: SidSpec[], hvscPath: string): Promise<Re
   return resolved;
 }
 
-function resolveSidPath(hvscPath: string, input: string): {
+function resolveSidPath(sidPath: string, input: string): {
   absolutePath: string;
   relativePath: string;
 } {
   const normalizedInput = input.replace(/\\/g, "/");
   if (path.isAbsolute(normalizedInput)) {
     const absolutePath = path.normalize(normalizedInput);
-    const relativePath = path.relative(hvscPath, absolutePath).replace(/\\/g, "/");
+    const relativePath = path.relative(sidPath, absolutePath).replace(/\\/g, "/");
     return {
       absolutePath,
       relativePath,
     };
   }
   const relative = normalizedInput.replace(/^\/+/, "");
-  const absolutePath = path.resolve(hvscPath, relative);
+  const absolutePath = path.resolve(sidPath, relative);
   return {
     absolutePath,
     relativePath: relative,
@@ -739,7 +743,7 @@ function createOrchestrator(
     });
   }
 
-  const hvscRoot = path.resolve(config.hvscPath);
+  const hvscRoot = path.resolve(config.sidPath);
   const availabilityManifestPath = config.availability?.manifestPath
     ? path.resolve(config.availability.manifestPath)
     : undefined;

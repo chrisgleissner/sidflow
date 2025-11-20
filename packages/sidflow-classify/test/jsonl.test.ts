@@ -19,7 +19,7 @@ describe("generateJsonlOutput", () => {
   test("generates JSONL file with classification records", async () => {
     const plan: ClassificationPlan = {
       config: {
-        hvscPath: testDir,
+        sidPath: testDir,
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
@@ -30,7 +30,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir
+      sidPath: testDir
     };
 
     // Mock feature extractor
@@ -81,7 +81,7 @@ describe("generateJsonlOutput", () => {
 
     const plan: ClassificationPlan = {
       config: {
-        hvscPath: testDir,
+        sidPath: testDir,
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
@@ -92,7 +92,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir
+      sidPath: testDir
     };
 
     const mockFeatureExtractor = async (): Promise<FeatureVector> => ({
@@ -138,7 +138,7 @@ describe("generateJsonlOutput", () => {
     // For now, we verify the structure without WAV files
     const plan: ClassificationPlan = {
       config: {
-        hvscPath: testDir,
+        sidPath: testDir,
         wavCachePath: path.join(testDir, "wav-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
@@ -149,7 +149,7 @@ describe("generateJsonlOutput", () => {
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath: testDir
+      sidPath: testDir
     };
 
     const result = await generateJsonlOutput(plan, {});

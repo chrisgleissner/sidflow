@@ -12,16 +12,16 @@ interface SonglengthsData {
 const songlengthsCache = new Map<string, Promise<SonglengthsData>>();
 const lengthCache = new Map<string, string | null>();
 
-export async function loadSonglengthsData(hvscPath: string): Promise<SonglengthsData> {
-  if (songlengthsCache.has(hvscPath)) {
-    return songlengthsCache.get(hvscPath)!;
+export async function loadSonglengthsData(sidPath: string): Promise<SonglengthsData> {
+  if (songlengthsCache.has(sidPath)) {
+    return songlengthsCache.get(sidPath)!;
   }
 
   const loader = (async () => {
     const candidates = [
-      path.join(hvscPath, 'DOCUMENTS', 'Songlengths.md5'),
-      path.join(hvscPath, 'C64Music', 'DOCUMENTS', 'Songlengths.md5'),
-      path.join(hvscPath, 'update', 'DOCUMENTS', 'Songlengths.md5'),
+      path.join(sidPath, 'DOCUMENTS', 'Songlengths.md5'),
+      path.join(sidPath, 'C64Music', 'DOCUMENTS', 'Songlengths.md5'),
+      path.join(sidPath, 'update', 'DOCUMENTS', 'Songlengths.md5'),
     ];
 
     for (const candidate of candidates) {
@@ -66,7 +66,7 @@ export async function loadSonglengthsData(hvscPath: string): Promise<Songlengths
     return { map: new Map<string, string>(), paths: [], lengthByPath: new Map() };
   })();
 
-  songlengthsCache.set(hvscPath, loader);
+  songlengthsCache.set(sidPath, loader);
   return loader;
 }
 
@@ -82,13 +82,13 @@ async function computeFileMd5(filePath: string): Promise<string> {
 
 export async function lookupSongLength(
   filePath: string,
-  hvscPath: string,
+  sidPath: string,
   musicRoot: string
 ): Promise<string | undefined> {
   if (lengthCache.has(filePath)) {
     return lengthCache.get(filePath) ?? undefined;
   }
-  const { map, lengthByPath } = await loadSonglengthsData(hvscPath);
+  const { map, lengthByPath } = await loadSonglengthsData(sidPath);
   const relativePosix = path.relative(musicRoot, filePath).split(path.sep).join('/');
   const fromCatalog = lengthByPath.get(relativePosix);
   if (fromCatalog) {

@@ -25,20 +25,20 @@ export async function syncHvsc(options: HvscSyncOptions = {}): Promise<HvscSyncR
   const config = await loadConfig(options.configPath);
   const logger = options.dependencies?.logger ?? createLogger("sidflow-fetch");
   const dependencies = withDefaultDependencies(options.dependencies);
-  const hvscPath = path.resolve(config.hvscPath);
+  const sidPath = path.resolve(config.sidPath);
   const versionPath = resolveVersionPath(config, options.hvscVersionPath);
 
   await ensureDir(path.dirname(versionPath));
-  await ensureDir(hvscPath);
+  await ensureDir(sidPath);
 
   const manifest = await dependencies.fetchManifest(options.remoteBaseUrl ?? DEFAULT_BASE_URL);
   const currentVersion = await loadHvscVersion(versionPath);
 
-  const hvscEmpty = await isDirectoryEmpty(hvscPath);
+  const hvscEmpty = await isDirectoryEmpty(sidPath);
   const baseResult = await syncBase({
     config,
     manifest,
-    hvscPath,
+    sidPath,
     hvscEmpty,
     currentVersion,
     dependencies,
@@ -48,7 +48,7 @@ export async function syncHvsc(options: HvscSyncOptions = {}): Promise<HvscSyncR
 
   const appliedDeltas = await syncDeltas({
     manifest,
-    hvscPath,
+    sidPath,
     versionPath,
     currentVersion: baseResult.record,
     dependencies,
@@ -66,7 +66,7 @@ export async function syncHvsc(options: HvscSyncOptions = {}): Promise<HvscSyncR
 interface SyncBaseContext {
   config: SidflowConfig;
   manifest: HvscManifest;
-  hvscPath: string;
+  sidPath: string;
   hvscEmpty: boolean;
   currentVersion: HvscVersionRecord | null;
   dependencies: ResolvedDependencies;
@@ -80,7 +80,7 @@ interface SyncBaseResult {
 }
 
 async function syncBase(context: SyncBaseContext): Promise<SyncBaseResult> {
-  const { manifest, hvscPath, currentVersion, hvscEmpty, dependencies, versionPath, logger } = context;
+  const { manifest, sidPath, currentVersion, hvscEmpty, dependencies, versionPath, logger } = context;
   const remoteVersion = manifest.base.version;
   const localVersion = currentVersion?.baseVersion ?? null;
 
@@ -100,14 +100,14 @@ async function syncBase(context: SyncBaseContext): Promise<SyncBaseResult> {
 
   logger.info(`Syncing HVSC base archive v${remoteVersion}`);
 
-  await rm(hvscPath, { recursive: true, force: true });
-  await mkdir(hvscPath, { recursive: true });
+  await rm(sidPath, { recursive: true, force: true });
+  await mkdir(sidPath, { recursive: true });
 
   logger.info(`Downloading base archive ${manifest.base.filename}`);
   const baseProgress = createProgressReporter(logger, manifest.base.filename);
   const archivePath = await downloadArchive(manifest.base, dependencies, baseProgress);
   logger.info(`Download complete: ${manifest.base.filename}`);
-  await dependencies.extractArchive(archivePath, hvscPath);
+  await dependencies.extractArchive(archivePath, sidPath);
   const checksum = await dependencies.computeChecksum(archivePath);
 
   const timestamp = dependencies.now().toISOString();
@@ -131,7 +131,7 @@ async function syncBase(context: SyncBaseContext): Promise<SyncBaseResult> {
 
 interface SyncDeltasContext {
   manifest: HvscManifest;
-  hvscPath: string;
+  sidPath: string;
   versionPath: string;
   currentVersion: HvscVersionRecord;
   dependencies: ResolvedDependencies;
@@ -139,7 +139,7 @@ interface SyncDeltasContext {
 }
 
 async function syncDeltas(context: SyncDeltasContext): Promise<number[]> {
-  const { manifest, hvscPath, currentVersion, dependencies, versionPath, logger } = context;
+  const { manifest, sidPath, currentVersion, dependencies, versionPath, logger } = context;
   const applied = new Set(currentVersion.deltas.map((delta) => delta.version));
   let record = currentVersion;
   const appliedNow: number[] = [];
@@ -158,7 +158,7 @@ async function syncDeltas(context: SyncDeltasContext): Promise<number[]> {
     const progress = createProgressReporter(logger, descriptor.filename);
     const archivePath = await downloadArchive(descriptor, dependencies, progress);
     logger.info(`Download complete: ${descriptor.filename}`);
-    await dependencies.extractArchive(archivePath, hvscPath);
+    await dependencies.extractArchive(archivePath, sidPath);
     const checksum = await dependencies.computeChecksum(archivePath);
 
     const timestamp = dependencies.now().toISOString();
@@ -381,7 +381,7 @@ function resolveVersionPath(config: SidflowConfig, override?: string): string {
   if (override) {
     return path.resolve(override);
   }
-  const hvscDir = path.resolve(config.hvscPath);
+  const hvscDir = path.resolve(config.sidPath);
   const parent = path.dirname(hvscDir);
   return path.join(parent, VERSION_FILENAME);
 }

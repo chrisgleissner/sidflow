@@ -240,9 +240,9 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
               className="px-3 py-2 border rounded"
             >
               <option value="auto">Auto (fallback)</option>
-              <option value="wasm">WASM (local)</option>
-              <option value="sidplayfp-cli">sidplayfp CLI</option>
-              <option value="ultimate64">Ultimate 64</option>
+              <option value="wasm">libsidplayfp-wasm (WASM, cross-platform)</option>
+              <option value="sidplayfp-cli">sidplayfp CLI (native binary)</option>
+              <option value="ultimate64">Ultimate 64 (hardware)</option>
             </select>
           </label>
           <label className="flex flex-col text-sm font-medium gap-1">
@@ -301,15 +301,14 @@ export function JobsTab({ onStatusChange }: JobsTabProps) {
                       {job.type}
                     </span>
                     <span
-                      className={`px-2 py-1 text-xs font-semibold rounded ${
-                        job.status === 'completed'
+                      className={`px-2 py-1 text-xs font-semibold rounded ${job.status === 'completed'
                           ? 'bg-green-100 dark:bg-green-900'
                           : job.status === 'failed'
-                          ? 'bg-red-100 dark:bg-red-900'
-                          : job.status === 'running'
-                          ? 'bg-blue-100 dark:bg-blue-900'
-                          : 'bg-gray-100 dark:bg-gray-900'
-                      }`}
+                            ? 'bg-red-100 dark:bg-red-900'
+                            : job.status === 'running'
+                              ? 'bg-blue-100 dark:bg-blue-900'
+                              : 'bg-gray-100 dark:bg-gray-900'
+                        }`}
                     >
                       {job.status}
                     </span>

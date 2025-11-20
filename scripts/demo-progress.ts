@@ -13,18 +13,18 @@ async function main() {
   const testRoot = path.join(tmpdir(), "sidflow-progress-demo");
   await rm(testRoot, { recursive: true, force: true }).catch(() => { });
 
-  const hvscPath = path.join(testRoot, "hvsc");
+  const sidPath = path.join(testRoot, "hvsc");
   const wavCachePath = path.join(testRoot, "wav");
   const tagsPath = path.join(testRoot, "tags");
 
-  await mkdir(hvscPath, { recursive: true });
+  await mkdir(sidPath, { recursive: true });
   await mkdir(wavCachePath, { recursive: true });
   await mkdir(tagsPath, { recursive: true });
 
   // Create some test SID files
   console.log("Creating test files...");
   for (let i = 0; i < 20; i++) {
-    await writeFile(path.join(hvscPath, `song${i}.sid`), `test-content-${i}`);
+    await writeFile(path.join(sidPath, `song${i}.sid`), `test-content-${i}`);
   }
 
   // Create config file
@@ -32,7 +32,7 @@ async function main() {
   await writeFile(
     configPath,
     JSON.stringify({
-      hvscPath,
+      sidPath,
       wavCachePath,
       tagsPath,
       threads: 2,

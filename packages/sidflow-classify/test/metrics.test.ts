@@ -16,12 +16,12 @@ import { ensureDir, resolveManualTagPath, stringifyDeterministic } from "@sidflo
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-metrics-");
 
-function createPlan(hvscPath: string, wavCachePath: string, tagsPath: string): ClassificationPlan {
+function createPlan(sidPath: string, wavCachePath: string, tagsPath: string): ClassificationPlan {
   return {
     config: {} as ClassificationPlan["config"],
     forceRebuild: false,
     classificationDepth: 3,
-    hvscPath,
+    sidPath,
     wavCachePath,
     tagsPath
   } as unknown as ClassificationPlan;
@@ -30,17 +30,17 @@ function createPlan(hvscPath: string, wavCachePath: string, tagsPath: string): C
 describe("performance metrics", () => {
   it("tracks buildWavCache metrics accurately", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
-    await mkdir(hvscPath, { recursive: true });
+    await mkdir(sidPath, { recursive: true });
 
-    const plan = createPlan(hvscPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, wavCachePath, tagsPath);
 
     // Create 5 SID files
     await Promise.all(
       [1, 2, 3, 4, 5].map(async (i) => {
-        const sidFile = path.join(hvscPath, `song${i}.sid`);
+        const sidFile = path.join(sidPath, `song${i}.sid`);
         await writeFile(sidFile, `content${i}`);
       })
     );
@@ -83,17 +83,17 @@ describe("performance metrics", () => {
 
   it("tracks generateAutoTags metrics with mixed sources", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
-    await mkdir(path.join(hvscPath, "Music"), { recursive: true });
+    await mkdir(path.join(sidPath, "Music"), { recursive: true });
 
-    const plan = createPlan(hvscPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, wavCachePath, tagsPath);
 
     // Create 3 SID files: 1 manual, 1 auto, 1 mixed
-    const manualSid = path.join(hvscPath, "Music", "manual.sid");
-    const autoSid = path.join(hvscPath, "Music", "auto.sid");
-    const mixedSid = path.join(hvscPath, "Music", "mixed.sid");
+    const manualSid = path.join(sidPath, "Music", "manual.sid");
+    const autoSid = path.join(sidPath, "Music", "auto.sid");
+    const mixedSid = path.join(sidPath, "Music", "mixed.sid");
 
     await Promise.all([
       writeFile(manualSid, "manual"),
@@ -102,7 +102,7 @@ describe("performance metrics", () => {
     ]);
 
     // Add manual tag for first file (complete)
-    const manualTagPath = resolveManualTagPath(hvscPath, tagsPath, manualSid);
+    const manualTagPath = resolveManualTagPath(sidPath, tagsPath, manualSid);
     await ensureDir(path.dirname(manualTagPath));
     await writeFile(
       manualTagPath,
@@ -116,7 +116,7 @@ describe("performance metrics", () => {
     );
 
     // Add partial manual tag for mixed file
-    const mixedTagPath = resolveManualTagPath(hvscPath, tagsPath, mixedSid);
+    const mixedTagPath = resolveManualTagPath(sidPath, tagsPath, mixedSid);
     await ensureDir(path.dirname(mixedTagPath));
     await writeFile(
       mixedTagPath,
@@ -159,18 +159,18 @@ describe("performance metrics", () => {
 
   it("tracks zero predictions when all files have complete manual tags", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
-    await mkdir(path.join(hvscPath, "Music"), { recursive: true });
+    await mkdir(path.join(sidPath, "Music"), { recursive: true });
 
-    const plan = createPlan(hvscPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, wavCachePath, tagsPath);
 
-    const sidFile = path.join(hvscPath, "Music", "complete.sid");
+    const sidFile = path.join(sidPath, "Music", "complete.sid");
     await writeFile(sidFile, "content");
 
     // Add complete manual tag
-    const tagPath = resolveManualTagPath(hvscPath, tagsPath, sidFile);
+    const tagPath = resolveManualTagPath(sidPath, tagsPath, sidFile);
     await ensureDir(path.dirname(tagPath));
     await writeFile(
       tagPath,
@@ -210,12 +210,12 @@ describe("performance metrics", () => {
 
   it("records timing even for empty file sets", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
-    await mkdir(hvscPath, { recursive: true });
+    await mkdir(sidPath, { recursive: true });
 
-    const plan = createPlan(hvscPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, wavCachePath, tagsPath);
 
     const wavResult = await buildWavCache(plan, {
       render: async ({ wavFile }: { wavFile: string }) => {

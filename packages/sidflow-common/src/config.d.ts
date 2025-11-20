@@ -1,5 +1,5 @@
 export interface SidflowConfig {
-    hvscPath: string;
+    sidPath: string;
     wavCachePath: string;
     tagsPath: string;
     sidplayPath?: string;

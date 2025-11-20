@@ -32,7 +32,7 @@
 - Archive extraction relies on bundled `7zip-min` helpers that should be injected via shared utilities.
 
 ## Data & Persistence
-- `.sidflow.json` defines `hvscPath` (the path to the local SID collection, regardless of source), `wavCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
+- `.sidflow.json` defines `sidPath` (the path to the local SID collection, regardless of source), `wavCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
 - Classification writes metadata and tags using `resolve*` helpers and stores WAV hashes in sidecar `.hash` files—preserve this caching scheme.
 - Feedback lives in date-partitioned `data/feedback/<year>/<month>/events.jsonl`; training and LanceDB builders must tolerate missing folders and skip corrupt lines with warnings, not hard failures.
 - Store derived artifacts (manifest, LanceDB) with deterministic checksums using `generateManifest` in `common/lancedb-builder.ts`.
@@ -43,9 +43,60 @@
 - Archive extraction uses the `7zip-min` npm dependency bundled with the workspace.
 
 ## Testing & Quality Gates
-- Use Bun’s test runner (`bun run test`) and keep coverage ≥90% (Codecov enforced); add focused unit tests under `packages/*/test`.
-- Run end-to-end validation with `bun run test:e2e` to cover full fetch→classify→play pipeline against `test-data/C64Music`.
-- For config and JSON validations, run `bun run validate:config` and `bun run build:db`; ensure new commands have tests mirroring existing CLI suites (`packages/*/test/cli.test.ts`).
+
+### Test Coverage Requirements
+- **Target Coverage**: ≥90% (current baseline: 68.55% as of 2025-11-20)
+- Coverage is measured across all source files in `packages/*/src/`
+- Use Bun's test runner (`bun run test`) with `--coverage` flag
+- Add focused unit tests under `packages/*/test` for all new features
+- Files marked with `/* c8 ignore file */` are intentionally excluded (integration/system code)
+
+### Coverage Improvement Plan (68.55% → 90%)
+Priority areas for adding test coverage:
+1. **CLI modules** (52-84% coverage): Requires mocking stdin/stdout, process args, and child processes
+2. **Browser-only modules** (0-9% coverage): server/cache.ts, lib/similarity-search.ts, lib/telemetry.ts - needs jsdom or E2E coverage
+3. **Rendering infrastructure** (62-82% coverage): render/cli.ts, render/orchestrator.ts - requires audio pipeline mocks
+4. **Job orchestration** (existing tests cover core logic): Focus on edge cases and error handling
+
+### Unit Test Stability
+- **CRITICAL**: All unit tests must pass 3x consecutively before code is considered complete
+- Current stability: 1148/1150 tests passing consistently (99.8% pass rate)
+- Verify with: `bun run test && bun run test && bun run test`
+- Unit tests run in ~46s and must remain stable across runs
+
+### E2E Test Requirements
+- Run end-to-end validation with `bun run test:e2e` to cover full fetch→classify→play pipeline
+- **Performance Requirements**:
+  - No single E2E test may exceed 20 seconds
+  - Total E2E suite runtime must be under 4 minutes (current: 3.9min)
+  - Tests run with 3 Playwright workers in parallel
+- **Stability Requirements**:
+  - E2E tests must pass 3x consecutively
+  - Current status: 79/89 tests passing, 10 flaky tests being fixed
+  - Known flaky patterns: Missing data-testid attributes, waitForTimeout usage
+- **Best Practices**:
+  - Never use `waitForTimeout` - always use proper `waitFor` conditions with specific selectors
+  - Always add `data-testid` attributes to interactive elements
+  - Use `aria-label` for buttons with icon-only content
+  - Read `doc/testing/e2e-test-resilience-guide.md` before writing E2E tests
+
+### Quality Gate Checklist
+Before completing any substantial work, verify:
+1. ✅ Build passes: `bun run build`
+2. ✅ Lint/typecheck passes: `tsc -b`
+3. ✅ Unit tests pass 3x: `bun run test` (run 3 times)
+4. ✅ E2E tests pass: `bun run test:e2e`
+5. ✅ Coverage reported: Check final coverage % in test output
+6. ✅ Performance verified: E2E runtime < 4min
+
+### Test Execution in CI
+- **CRITICAL**: All tests must pass before completing any work. It is never acceptable to leave failing tests, even if they appear to be pre-existing
+- **ABSOLUTE REQUIREMENT**: 100% of tests must pass 3 times consecutively before any work is considered complete. "Mostly working" or "89% passing" is NEVER acceptable.
+- **NO EXCEPTIONS**: Every single test must pass. If a test cannot pass due to missing dependencies, it must be explicitly skipped with a clear comment explaining why.
+- Investigate and fix all test failures, or skip tests that require unavailable external dependencies (e.g., ffmpeg)
+- The build must be left in better condition than it was found
+- For config and JSON validations, run `bun run validate:config` and `bun run build:db`
+- Ensure new commands have tests mirroring existing CLI suites (`packages/*/test/cli.test.ts`)
 
 ### Running E2E Tests in Remote Agent Sessions
 - **Use Docker for E2E tests**: CI runs e2e tests inside `ghcr.io/chrisgleissner/sidflow-ci:latest` which has Playwright browsers pre-installed.

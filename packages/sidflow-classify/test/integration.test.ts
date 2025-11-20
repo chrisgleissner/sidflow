@@ -51,22 +51,22 @@ function generateTestWav(durationSeconds: number, frequency: number, sampleRate:
 describe("End-to-End SIDFlow Pipeline", () => {
   it("extracts features from WAV files", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
-    const hvscPath = path.join(root, "hvsc");
+    const sidPath = path.join(root, "hvsc");
     const wavCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
 
     console.log(`[TEST] Created temp directory: ${root}`);
-    console.log(`[TEST] hvscPath: ${hvscPath}`);
+    console.log(`[TEST] sidPath: ${sidPath}`);
     console.log(`[TEST] wavCachePath: ${wavCachePath}`);
     console.log(`[TEST] tagsPath: ${tagsPath}`);
 
     // Create directory structure
-    await mkdir(path.join(hvscPath, "MUSICIANS", "Test"), { recursive: true });
+    await mkdir(path.join(sidPath, "MUSICIANS", "Test"), { recursive: true });
     console.log(`[TEST] Created directory structure`);
 
     // Create test SID files
-    const sidFile1 = path.join(hvscPath, "MUSICIANS", "Test", "song1.sid");
-    const sidFile2 = path.join(hvscPath, "MUSICIANS", "Test", "song2.sid");
+    const sidFile1 = path.join(sidPath, "MUSICIANS", "Test", "song1.sid");
+    const sidFile2 = path.join(sidPath, "MUSICIANS", "Test", "song2.sid");
     await writeFile(sidFile1, Buffer.from("dummy sid 1"));
     await writeFile(sidFile2, Buffer.from("dummy sid 2"));
     console.log(`[TEST] Created SID files: ${sidFile1}, ${sidFile2}`);
@@ -74,7 +74,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     // Create a mock plan - using proper type construction
     const plan: ClassificationPlan = {
       config: {
-        hvscPath,
+        sidPath,
         wavCachePath,
         tagsPath,
         threads: 0,
@@ -82,7 +82,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
       } as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
-      hvscPath,
+      sidPath,
       wavCachePath,
       tagsPath
     };
@@ -99,7 +99,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     // Step 1: Build WAV cache
     console.log(`[TEST] Starting buildWavCache...`);
     console.log(`[TEST] Plan configuration:`, JSON.stringify({
-      hvscPath: plan.hvscPath,
+      sidPath: plan.sidPath,
       wavCachePath: plan.wavCachePath,
       tagsPath: plan.tagsPath
     }, null, 2));

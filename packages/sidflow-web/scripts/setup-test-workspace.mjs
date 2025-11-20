@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, rmSync, cpSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,10 +7,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
 const testWorkspace = resolve(repoRoot, 'test-workspace');
 const testData = resolve(repoRoot, 'test-data');
+const prefsFile = resolve(repoRoot, '.sidflow-preferences.json');
 
 console.log('Setting up test workspace...');
 console.log(`  Source: ${testData}`);
 console.log(`  Target: ${testWorkspace}`);
+
+// Reset preferences to avoid conflicts with production sidBasePath
+if (existsSync(prefsFile)) {
+    console.log('  Resetting preferences for test run...');
+    try {
+        const prefs = JSON.parse(readFileSync(prefsFile, 'utf8'));
+        // Clear sidBasePath so tests use config's sidPath instead
+        delete prefs.sidBasePath;
+        writeFileSync(prefsFile, JSON.stringify(prefs, null, 2));
+        console.log('  ✓ Preferences reset (sidBasePath cleared)');
+    } catch (err) {
+        console.warn(`  ⚠ Could not reset preferences: ${err.message}`);
+    }
+}
 
 // Clean existing test-workspace
 if (existsSync(testWorkspace)) {

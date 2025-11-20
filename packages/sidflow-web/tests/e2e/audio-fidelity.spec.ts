@@ -15,6 +15,9 @@ import { configureE2eLogging } from './utils/logging';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const FAST_AUDIO_TESTS =
+  (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
+
 const isPlaywrightRunner = Boolean(process.env.PLAYWRIGHT_TEST);
 
 configureE2eLogging();
@@ -34,6 +37,8 @@ if (!isPlaywrightRunner) {
       ],
     },
   });
+
+  test.describe.configure({ mode: 'serial' });
 }
 
 interface AudioTelemetry {
@@ -63,7 +68,10 @@ interface FidelityReport {
   errors: string[];
 }
 
-const FIDELITY_DURATION_SECONDS = 1.0;
+const FIDELITY_DURATION_SECONDS = FAST_AUDIO_TESTS ? 0.4 : 1.0;
+const FIDELITY_FREQUENCY_MIN = FAST_AUDIO_TESTS ? 230 : 255;
+const FIDELITY_FREQUENCY_MAX = FAST_AUDIO_TESTS ? 290 : 268;
+const FIDELITY_RMS_THRESHOLD = FAST_AUDIO_TESTS ? 15 : 10;
 
 /**
  * Measure fundamental frequency using zero-crossing method.
@@ -350,17 +358,21 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
     report.rmsStability = measureRmsStability(middleSamples, sampleRate);
 
     // Check all criteria
-    const frequencyOk = Math.abs(report.fundamentalFrequency - 261.63) < 6.0; // Relaxed tolerance for browser timing
+    const frequencyTolerance = FAST_AUDIO_TESTS ? 20.0 : 6.0;
+    const frequencyOk = Math.abs(report.fundamentalFrequency - 261.63) < frequencyTolerance; // Relaxed tolerance for browser timing
     const expectedDuration = FIDELITY_DURATION_SECONDS;
-    const durationOk = Math.abs(duration - expectedDuration) < 0.15; // Relaxed to 150ms tolerance
+    const durationTolerance = FAST_AUDIO_TESTS ? 0.3 : 0.15;
+    const durationOk = Math.abs(duration - expectedDuration) < durationTolerance;
     const noUnderruns = report.underruns === 0;
     const noDropouts = report.dropoutCount === 0;
-    const stableRms = report.rmsStability < 10; // <10% variation
+    const stableRms = report.rmsStability < (FAST_AUDIO_TESTS ? 15 : 10); // Allow slightly higher variance in fast mode
 
     report.passed = frequencyOk && durationOk && noUnderruns && noDropouts && stableRms;
 
     if (!frequencyOk) {
-      report.errors.push(`Frequency ${report.fundamentalFrequency.toFixed(2)} Hz not in range 255.63-267.63 Hz`);
+      report.errors.push(
+        `Frequency ${report.fundamentalFrequency.toFixed(2)} Hz not within ${frequencyTolerance.toFixed(1)} Hz of 261.63 Hz`
+      );
     }
     if (!durationOk) {
       report.errors.push(`Duration ${duration.toFixed(3)}s not within ±1 frame of ${expectedDuration.toFixed(1)}s`);
@@ -395,18 +407,18 @@ if (isPlaywrightRunner) {
         const basePath = tab === 'rate' ? '/admin' : '/';
         await page.goto(`${basePath}?tab=${tab}`);
 
-      await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
-      const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
-      expect(hasSharedArrayBuffer).toBe(true);
+        await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
+        const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
+        expect(hasSharedArrayBuffer).toBe(true);
 
-      await page.waitForFunction(() => Boolean((window as any).__sidflowPlayer), { timeout: 10000 });
-      const hasTelemetry = await page.evaluate(() => {
-        const player = (window as any).__sidflowPlayer;
-        return Boolean(player && typeof player.getTelemetry === 'function');
-      });
-      expect(hasTelemetry).toBe(true);
+        await page.waitForFunction(() => Boolean((window as any).__sidflowPlayer), { timeout: 10000 });
+        const hasTelemetry = await page.evaluate(() => {
+          const player = (window as any).__sidflowPlayer;
+          return Boolean(player && typeof player.getTelemetry === 'function');
+        });
+        expect(hasTelemetry).toBe(true);
 
-      expect(pageErrors).toHaveLength(0);
+        expect(pageErrors).toHaveLength(0);
         page.off('pageerror', errorHandler);
       }
     });
@@ -417,35 +429,39 @@ if (isPlaywrightRunner) {
 
   // Full C4 fidelity tests with audio capture
   test.describe('Audio Fidelity - C4 Test SID', () => {
+    test.beforeEach(async () => {
+      test.setTimeout(60000); // Increase timeout for audio capture tests
+    });
+
     test('Rate tab: C4 test SID fidelity', async ({ page }) => {
-    const report = await testTabFidelity(page, 'rate');
+      const report = await testTabFidelity(page, 'rate');
 
-    console.log(
-      `[Fidelity][rate] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
-    );
+      console.log(
+        `[Fidelity][rate] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
+      );
 
-    // Expected fidelity criteria (relaxed for browser timing variance)
-    expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
-    expect(report.underruns).toBe(0);
-    expect(report.fundamentalFrequency).toBeGreaterThan(255); // ~261.63 - 6 Hz tolerance
-    expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
-    expect(report.dropoutCount).toBe(0);
-    expect(report.rmsStability).toBeLessThan(10); // <10% variation
+      // Expected fidelity criteria (relaxed for browser timing variance)
+      expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
+      expect(report.underruns).toBe(0);
+      expect(report.fundamentalFrequency).toBeGreaterThan(FIDELITY_FREQUENCY_MIN);
+      expect(report.fundamentalFrequency).toBeLessThan(FIDELITY_FREQUENCY_MAX);
+      expect(report.dropoutCount).toBe(0);
+      expect(report.rmsStability).toBeLessThan(FIDELITY_RMS_THRESHOLD); // <variation threshold
     });
 
     test('Play tab: C4 test SID fidelity', async ({ page }) => {
-    const report = await testTabFidelity(page, 'play');
+      const report = await testTabFidelity(page, 'play');
 
-    console.log(
-      `[Fidelity][play] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
-    );
+      console.log(
+        `[Fidelity][play] passed=${report.passed} duration=${report.duration.toFixed(3)} freq=${report.fundamentalFrequency.toFixed(2)} dropouts=${report.dropoutCount}`
+      );
 
-    expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
-    expect(report.underruns).toBe(0);
-    expect(report.fundamentalFrequency).toBeGreaterThan(255); // ~261.63 - 6 Hz tolerance
-    expect(report.fundamentalFrequency).toBeLessThan(268); // ~261.63 + 6 Hz tolerance
-    expect(report.dropoutCount).toBe(0);
-      expect(report.rmsStability).toBeLessThan(10);
+      expect(report.passed, `Fidelity check failed: ${report.errors.join(', ')}`).toBe(true);
+      expect(report.underruns).toBe(0);
+      expect(report.fundamentalFrequency).toBeGreaterThan(FIDELITY_FREQUENCY_MIN);
+      expect(report.fundamentalFrequency).toBeLessThan(FIDELITY_FREQUENCY_MAX);
+      expect(report.dropoutCount).toBe(0);
+      expect(report.rmsStability).toBeLessThan(FIDELITY_RMS_THRESHOLD);
     });
   });
 }

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { stat } from 'node:fs/promises';
-import { parseSidFile, pathExists, type SidflowConfig } from '@sidflow/common';
+import { getOrParseMetadata, pathExists, type SidflowConfig } from '@sidflow/common';
 import { getRepoRoot } from '@/lib/server-env';
 import { resolveSidCollectionContext } from '@/lib/sid-collection';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
@@ -8,7 +8,7 @@ import type { RateTrackInfo } from '@/lib/types/rate-track';
 export interface PlaybackEnvironment {
   config: SidflowConfig;
   root: string;
-  hvscPath: string; // physical HVSC root
+  sidPath: string; // physical HVSC root
   collectionRoot: string;
   musicRoot: string;
   tagsPath: string;
@@ -23,7 +23,7 @@ export async function resolvePlaybackEnvironment(): Promise<PlaybackEnvironment>
   return {
     config: context.config,
     root,
-    hvscPath: context.hvscRoot,
+    sidPath: context.hvscRoot,
     collectionRoot: context.collectionRoot,
     musicRoot: context.collectionRoot,
     tagsPath: context.tagsPath,
@@ -69,7 +69,7 @@ export async function resolveSidPath(
   }
 
   const normalized = trimmed.replace(/^\.\/+/, '');
-  const direct = path.join(env.hvscPath, normalized);
+  const direct = path.join(env.sidPath, normalized);
   if (await pathExists(direct)) {
     return direct;
   }
@@ -90,10 +90,10 @@ export async function createRateTrackInfo(options: {
   lengthHint?: string;
 }): Promise<RateTrackInfo> {
   const { env, sidPath, relativeBase, lengthHint } = options;
-  const metadata = await parseSidFile(sidPath);
+  const metadata = await getOrParseMetadata(sidPath);
   const durationSeconds = parseDurationSeconds(lengthHint);
   const fileSize = (await stat(sidPath)).size;
-  const relativeRoot = relativeBase === 'hvsc' ? env.hvscPath : env.collectionRoot;
+  const relativeRoot = relativeBase === 'hvsc' ? env.sidPath : env.collectionRoot;
   const relativePath = path.relative(relativeRoot, sidPath);
   return {
     sidPath,

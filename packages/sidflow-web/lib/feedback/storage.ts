@@ -66,8 +66,18 @@ export type ModelSnapshotInsert = Omit<ModelSnapshotRecord, 'id' | 'createdAt'> 
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+function resolveIndexedDb(): IDBFactory | null {
+  if (typeof indexedDB !== 'undefined' && indexedDB) {
+    return indexedDB;
+  }
+  if (typeof window !== 'undefined' && window.indexedDB) {
+    return window.indexedDB;
+  }
+  return null;
+}
+
 function hasIndexedDb(): boolean {
-  return typeof window !== 'undefined' && 'indexedDB' in window;
+  return resolveIndexedDb() !== null;
 }
 
 function createIndexes(store: IDBObjectStore, indexes: StoreIndexDefinition[]): void {
@@ -79,14 +89,15 @@ function createIndexes(store: IDBObjectStore, indexes: StoreIndexDefinition[]): 
 }
 
 async function openDatabase(): Promise<IDBDatabase> {
-  if (!hasIndexedDb()) {
+  const indexedDb = resolveIndexedDb();
+  if (!indexedDb) {
     throw new Error('IndexedDB is unavailable in this environment');
   }
   if (dbPromise) {
     return dbPromise;
   }
   dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDb.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -470,11 +481,12 @@ export async function readLatestModelSnapshot(): Promise<ModelSnapshotRecord | n
 }
 
 async function deleteDatabase(): Promise<void> {
-  if (typeof indexedDB === 'undefined') {
+  const indexedDb = resolveIndexedDb();
+  if (!indexedDb) {
     return;
   }
   await new Promise<void>((resolve) => {
-    const request = indexedDB.deleteDatabase(DB_NAME);
+    const request = indexedDb.deleteDatabase(DB_NAME);
     request.onsuccess = () => resolve();
     request.onerror = () => resolve();
     request.onblocked = () => resolve();

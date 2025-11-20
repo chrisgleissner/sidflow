@@ -32,7 +32,7 @@ async function getPlan() {
         })
             .then((plan) => ({
                 ...plan,
-                hvscPath: absolutize(plan.hvscPath),
+                sidPath: absolutize(plan.sidPath),
                 wavCachePath: absolutize(plan.wavCachePath),
                 tagsPath: absolutize(plan.tagsPath),
             }))

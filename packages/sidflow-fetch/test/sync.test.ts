@@ -10,7 +10,7 @@ const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-fetch-");
 
 interface Harness {
   configPath: string;
-  hvscPath: string;
+  sidPath: string;
   dataDir: string;
   cleanup: () => Promise<void>;
 }
@@ -18,11 +18,11 @@ interface Harness {
 async function createHarness(): Promise<Harness> {
   const root = await mkdtemp(TEMP_PREFIX);
   const dataDir = path.join(root, "workspace");
-  const hvscPath = path.join(dataDir, "hvsc");
-  await mkdir(hvscPath, { recursive: true });
+  const sidPath = path.join(dataDir, "hvsc");
+  await mkdir(sidPath, { recursive: true });
 
   const config = {
-    hvscPath,
+    sidPath,
     wavCachePath: path.join(dataDir, "wav"),
     tagsPath: path.join(dataDir, "tags"),
     sidplayPath: "sidplayfp",
@@ -34,7 +34,7 @@ async function createHarness(): Promise<Harness> {
 
   return {
     configPath,
-    hvscPath,
+    sidPath,
     dataDir,
     cleanup: async () => {
       await rm(root, { recursive: true, force: true });

@@ -21,4 +21,24 @@ describe('formatApiError', () => {
 
     expect(formatApiError(response)).toBe('Validation failed – Missing title field');
   });
+
+  it('handles Error instances gracefully', () => {
+    const err = new Error('Network unreachable');
+    expect(formatApiError(err)).toBe('Network unreachable');
+  });
+
+  it('returns string inputs verbatim', () => {
+    expect(formatApiError('Timed out')).toBe('Timed out');
+  });
+
+  it('falls back to summary for arbitrary objects', () => {
+    const result = formatApiError({ code: 503, message: 'Overloaded' });
+    expect(result).toContain('503');
+    expect(result).toContain('Overloaded');
+  });
+
+  it('returns generic message for nullish inputs', () => {
+    expect(formatApiError(null)).toBe('Unknown error');
+    expect(formatApiError(undefined)).toBe('Unknown error');
+  });
 });

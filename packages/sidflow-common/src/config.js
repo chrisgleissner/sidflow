@@ -43,7 +43,7 @@ export async function loadConfig(configPath) {
     const config = validateConfig(data, resolvedPath);
     const overrideSidBase = process.env.SIDFLOW_SID_BASE_PATH;
     if (overrideSidBase && overrideSidBase.trim().length > 0) {
-        config.hvscPath = path.normalize(overrideSidBase);
+        config.sidPath = path.normalize(overrideSidBase);
     }
     if (config.sidplayPath && !sidplayWarningEmitted) {
         sidplayWarningEmitted = true;
@@ -180,7 +180,7 @@ function validateConfig(value, configPath) {
     };
 
     return {
-        hvscPath: requiredString("hvscPath"),
+        sidPath: requiredString("sidPath"),
         wavCachePath: requiredString("wavCachePath"),
         tagsPath: requiredString("tagsPath"),
         classifiedPath: optionalString("classifiedPath"),

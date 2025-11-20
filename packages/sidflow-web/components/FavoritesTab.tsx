@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Heart, Play, Shuffle, Trash2, Music2, Loader2 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { formatApiError } from '@/lib/format-error';
 interface FavoritesTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
   onPlayTrack?: (session: RateTrackWithSession) => void;
+  isActive?: boolean;
 }
 
 interface FavoriteTrack {
@@ -18,10 +19,11 @@ interface FavoriteTrack {
   isLoading?: boolean;
 }
 
-export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps) {
+export function FavoritesTab({ onStatusChange, onPlayTrack, isActive = false }: FavoritesTabProps) {
   const [favorites, setFavorites] = useState<FavoriteTrack[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
+  const wasActiveRef = useRef<boolean>(isActive);
 
   const loadFavorites = useCallback(async () => {
     setIsLoading(true);
@@ -53,6 +55,13 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
     void loadFavorites();
   }, [loadFavorites]);
 
+  useEffect(() => {
+    if (isActive && !wasActiveRef.current) {
+      void loadFavorites();
+    }
+    wasActiveRef.current = isActive;
+  }, [isActive, loadFavorites]);
+
   const handleRemoveFavorite = useCallback(async (sidPath: string) => {
     try {
       const response = await removeFavorite(sidPath);
@@ -72,10 +81,10 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
 
   const handlePlayTrack = useCallback(async (sidPath: string) => {
     try {
-      setFavorites(prev => prev.map(f => 
+      setFavorites(prev => prev.map(f =>
         f.sidPath === sidPath ? { ...f, isLoading: true } : f
       ));
-      
+
       const response = await playManualTrack({ sid_path: sidPath });
       if (response.success) {
         onPlayTrack?.(response.data);
@@ -89,7 +98,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
         true
       );
     } finally {
-      setFavorites(prev => prev.map(f => 
+      setFavorites(prev => prev.map(f =>
         f.sidPath === sidPath ? { ...f, isLoading: false } : f
       ));
     }
@@ -238,6 +247,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
                       className="h-8 w-8"
                       onClick={() => handlePlayTrack(favorite.sidPath)}
                       disabled={favorite.isLoading}
+                      aria-label="Play this track"
                       title="Play this track"
                     >
                       {favorite.isLoading ? (
@@ -251,6 +261,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack }: FavoritesTabProps)
                       variant="ghost"
                       className="h-8 w-8 text-destructive hover:text-destructive"
                       onClick={() => handleRemoveFavorite(favorite.sidPath)}
+                      aria-label="Remove from favorites"
                       title="Remove from favorites"
                     >
                       <Trash2 className="h-4 w-4" />

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { classifyPath, getHvscPaths, getClassifyProgress, controlClassification, type ClassifyProgressWithStorage } from '@/lib/api-client';
+import { classifyPath, getSidCollectionPaths, getClassifyProgress, controlClassification, type ClassifyProgressWithStorage } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 
 interface ClassifyTabProps {
@@ -75,7 +75,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   useEffect(() => {
     let mounted = true;
     const loadPaths = async () => {
-      const response = await getHvscPaths();
+      const response = await getSidCollectionPaths();
       if (mounted && response.success) {
         const preferred = response.data.activeCollectionPath ?? response.data.musicPath;
         setDefaultPath(preferred);
@@ -113,7 +113,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   const handleClassify = useCallback(async () => {
     const target = path || defaultPath;
     if (!target) {
-      onStatusChange('Unable to determine HVSC path', true);
+      onStatusChange('Unable to determine SID path', true);
       return;
     }
 
@@ -137,7 +137,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
 
   const threadStatuses = useMemo(() => progress?.perThread ?? [], [progress]);
   const storageStats = progress?.storage;
-  
+
   // Helper to format elapsed time as "XXs"
   const formatElapsed = useCallback((startedAt?: number) => {
     if (!startedAt) return '';
@@ -212,7 +212,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-3">
             <label htmlFor="classify-path" className="text-xs font-semibold tracking-tight text-muted-foreground">
-              HVSC PATH
+              SID PATH
             </label>
             <input
               id="classify-path"
@@ -310,8 +310,8 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 const headline = isWorking
                   ? thread.currentFile ?? (isStale ? 'Working (no recent update)' : 'Working...')
                   : 'Waiting for work';
-                const phaseText = isStale 
-                  ? `${phaseLabel} (STALE)` 
+                const phaseText = isStale
+                  ? `${phaseLabel} (STALE)`
                   : (isWorking && elapsed ? `${phaseLabel}${elapsed}` : phaseLabel);
                 return (
                   <div
@@ -323,9 +323,8 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                       <span className={isWorking ? 'text-accent' : 'text-muted-foreground'}>{phaseText}</span>
                     </div>
                     <p
-                      className={`mt-1 font-mono ${
-                        isWorking ? 'text-foreground' : 'text-muted-foreground'
-                      }`}
+                      className={`mt-1 font-mono ${isWorking ? 'text-foreground' : 'text-muted-foreground'
+                        }`}
                       title={headline}
                     >
                       {headline}

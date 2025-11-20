@@ -126,7 +126,7 @@ export async function runTagCli(argv: string[]): Promise<number> {
 
   const session = await planTagSession({ configPath: options.configPath, random: options.random });
   const playbackHarness = new SidPlaybackHarness();
-  const queue = await findUntaggedSids(session.hvscPath, session.tagsPath);
+  const queue = await findUntaggedSids(session.sidPath, session.tagsPath);
 
   if (queue.length === 0) {
     process.stdout.write("All SIDs are already tagged.\n");
@@ -140,7 +140,7 @@ export async function runTagCli(argv: string[]): Promise<number> {
   printInstructions();
 
   const formatRelativeSid = (sidFile: string): string => {
-    const relative = path.relative(session.hvscPath, sidFile);
+    const relative = path.relative(session.sidPath, sidFile);
     if (!relative || relative.startsWith("..")) {
       return sidFile;
     }
@@ -185,7 +185,7 @@ export async function runTagCli(argv: string[]): Promise<number> {
       isSaving = true;
       try {
         const sidFile = queue[currentIndex];
-        const tagPath = createTagFilePath(session.hvscPath, session.tagsPath, sidFile);
+        const tagPath = createTagFilePath(session.sidPath, session.tagsPath, sidFile);
         await writeManualTag(tagPath, state.ratings, new Date());
         process.stdout.write(`Saved tags to ${tagPath}\n`);
         currentIndex += 1;

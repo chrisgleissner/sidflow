@@ -1,5 +1,5 @@
 {
-    "hvscPath": "./test-workspace/hvsc",
+    "sidPath": "./test-workspace/hvsc",
     "wavCachePath": "./test-workspace/wav-cache",
     "tagsPath": "./test-workspace/tags",
     "classifiedPath": "./data/classified",

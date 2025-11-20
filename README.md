@@ -14,9 +14,9 @@ Listen to C64 music based on your mood – automatically classified (under devel
 
 ## Overview
 
-**SID Flow** helps you rediscover your C64 music collection by automatically organizing songs by *energy*, *mood*, and *complexity*.  Whether you have thousands of SID files from the [High Voltage SID Collection](https://www.hvsc.c64.org/) or your own archive, SID Flow creates personalized playlists that match exactly how you feel.  
+**SID Flow** helps you rediscover your C64 music collection by automatically organizing songs by *energy*, *mood*, and *complexity*.  Whether you have thousands of SID files from the [High Voltage SID Collection](https://www.hvsc.c64.org/) or your own archive, SID Flow creates mood-based playlists and radio stations tailored to your taste.  
 
-No more random browsing – just tell it what kind of music you want, and it plays the perfect songs.
+No more random browsing – just tell it what kind of music you want, and it will build a queue for you.
 
 ---
 
@@ -25,12 +25,16 @@ No more random browsing – just tell it what kind of music you want, and it pla
 ✨ **Smart Classification**
 
 - Automatically rates songs for energy, mood, and complexity
-- Uses audio analysis and learns from feedback
-- Improves over time based on your ratings
+- Uses audio feature extraction (tempo, spectral centroid, RMS energy)
+- Default: deterministic heuristic based on file paths and metadata
+- Optional: ML-based rating with TensorFlow.js (`--predictor-module`)
 
-🎵 **Mood-Based Playlists**
+🎵 **Personalized Recommendations**
 
-- Create playlists like "energetic," "quiet," or "dark"
+- Learns from your likes, dislikes, and listening patterns
+- Stations improve over time based on your feedback
+- LanceDB vector similarity search finds tracks you'll love
+- Adjustable personalization and discovery balance
 
 🎮 **Easy to Use**
 
@@ -132,7 +136,7 @@ Download and synchronize the High Voltage SID Collection.
 
 #### Rate
 
-Manually rate songs on energy, complexity, mood, and preference to train the recommendation system.
+Manually rate songs on energy, complexity, mood, and preference. Ratings are collected as feedback data that can be used to train personalized models.
 
 ![rate panel](./doc/web-screenshots/04-rate-playback.png)
 
@@ -148,6 +152,97 @@ Create mood-based queues with full playback controls and history.
 
 ![play panel](./doc/web-screenshots/07-play.png)
 
+### Phase 1 Enhancement Features
+
+The public and admin interfaces have been enhanced with powerful discovery and personalization features:
+
+#### 🔍 Smart Search
+
+- Real-time search with instant results
+- Search by song title or artist name
+- Results dropdown with play-on-click
+- Keyboard shortcut: **S** to focus search
+- 300ms debounce for smooth typing
+
+#### ❤️ Favorites Collection
+
+- Heart icon to favorite tracks instantly
+- Dedicated Favorites tab for quick access
+- "Play All Favorites" and "Shuffle Favorites" buttons
+- Syncs across browser sessions
+- Build your curated collection
+
+#### 📊 Top Charts
+
+- See most-played tracks by the community
+- Filter by time range: This Week, This Month, All Time
+- Discover popular artists and rising trends
+- Track metadata with play counts
+- Quick play from any chart entry
+
+#### ⌨️ Enhanced Keyboard Shortcuts
+
+- **SPACE** - Play/Pause
+- **Arrow Keys** - Next/Previous, Volume Up/Down
+- **M** - Mute toggle
+- **S** - Focus search bar
+- **F** - Focus favorites
+- **?** - Show shortcuts help
+- Smart context: Auto-disabled in input fields
+
+#### 🎨 Theme System
+
+- Three themes: C64 Light, C64 Dark, Classic
+- Instant theme switching from Prefs tab
+- Theme persistence across sessions
+- Dark mode for extended listening
+
+#### 📻 ML-Powered Station from Song
+
+- "Start Station" button creates radio based on a seed song
+- Uses LanceDB vector similarity search to find similar tracks
+- Adjustable parameters:
+  - **Personalization** (0-100%): Weight user feedback (likes/dislikes)
+  - **Discovery** (0-100%): Balance similarity vs variety
+- Generates a 20-track queue
+- Station name displays seed song
+
+#### ⭐ Enhanced Rating Display
+
+- Personal rating badge: "You rated: ★★★★☆"
+- Community rating with count: "★★★★☆ 4.2/5 (1.2K)"
+- Hover tooltip shows E/M/C dimensions
+- "Trending" badge for hot tracks
+- Visual feedback for likes/plays
+
+#### 🗂️ HVSC Browser
+
+- Navigate folder structure with breadcrumbs
+- Browse by composer, game, or demo group
+- Play individual songs or entire folders
+- Folder actions:
+  - Play All in Folder (non-recursive)
+  - Play Folder Tree (recursive)
+  - Shuffle Folder Tree
+- File metadata display (title, author, subsongs)
+
+#### 🔊 Volume Control
+
+- Volume slider with speaker icon
+- Range: 0-100% with 1% precision
+- Keyboard: Arrow Up/Down (+/-10%), M to mute
+- Visual feedback for volume level
+- Mute preserves volume setting
+
+#### 🕐 Recently Played History
+
+- Automatic tracking of last 100 tracks
+- Display last 20 in Play tab sidebar
+- "Play Again" button per entry
+- "Clear History" to reset
+- Circular buffer prevents unbounded growth
+
+For a complete user guide covering all features, see [User Guide](./doc/user-guide.md).
 
 ### Additional Features
 
@@ -176,11 +271,11 @@ If you prefer automation or terminal workflows, use the CLI tools documented in 
 
 ## Config
 
-The `.sidflow.json` file contains details about the HVSC download folder and more:
+The `.sidflow.json` file defines where SIDFlow should read your SID collection along with other runtime paths:
 
 ```json
 {
-  "hvscPath": "./workspace/hvsc",
+  "sidPath": "./workspace/hvsc",
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "threads": 0,
@@ -207,5 +302,5 @@ SID Flow is [GPLv2](LICENSE)-licensed and builds upon outstanding open-source so
 | Component | License | Source | Credit |
 |------------|----------|---------|-----|
 | **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) | Fastest Typescript runtime |
-| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | Most accurate software SID emulator |
+| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | Most accurate software SID emulator (compiled to WASM for cross-platform playback) |
 | **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) | Largest SID collection |

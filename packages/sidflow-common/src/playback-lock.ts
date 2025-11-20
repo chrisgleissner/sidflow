@@ -19,8 +19,8 @@ export interface PlaybackLockMetadata {
 const LOCK_FILENAME = ".sidflow-playback.lock";
 
 function getLockPath(config: SidflowConfig): string {
-  const hvscDir = path.resolve(config.hvscPath);
-  const parentDir = path.dirname(hvscDir);
+  const collectionDir = path.resolve(config.sidPath);
+  const parentDir = path.dirname(collectionDir);
   return path.join(parentDir, LOCK_FILENAME);
 }
 

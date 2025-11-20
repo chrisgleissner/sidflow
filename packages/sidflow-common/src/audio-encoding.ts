@@ -27,42 +27,107 @@ export const DEFAULT_AUDIO_ENCODER_IMPLEMENTATION: AudioEncoderImplementation = 
 const FFMPEG_PATH = "ffmpeg";
 const FFPROBE_PATH = "ffprobe";
 
-const DEFAULT_FFMPEG_CORE_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.js");
-const DEFAULT_FFMPEG_WASM_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.wasm");
-const DEFAULT_FFMPEG_WORKER_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.worker.js");
+/**
+ * Check if ffmpeg is available in the system PATH
+ */
+export async function isFfmpegAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(FFMPEG_PATH, ["-version"], {
+      stdio: "ignore",
+    });
+    child.on("error", () => resolve(false));
+    child.on("exit", (code) => resolve(code === 0));
+  });
+}
 
-let wasmEncoder: FFmpeg | null = null;
+/**
+ * Check if ffprobe is available in the system PATH
+ */
+export async function isFfprobeAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(FFPROBE_PATH, ["-version"], {
+      stdio: "ignore",
+    });
+    child.on("error", () => resolve(false));
+    child.on("exit", (code) => resolve(code === 0));
+  });
+}
 
-function tryResolve(moduleId: string): string | undefined {
-  const candidates = [moduleId, `@ffmpeg/ffmpeg/node_modules/${moduleId}`];
-  for (const specifier of candidates) {
-    try {
-      return require.resolve(specifier);
-    } catch {
-      continue;
-    }
-  }
+const FFMPEG_STATIC_RESOLUTION: Record<string, readonly string[]> = {
+  "@ffmpeg/core/dist/ffmpeg-core.js": ["@ffmpeg/core/dist/ffmpeg-core.js"],
+  "@ffmpeg/core/dist/ffmpeg-core.wasm": ["@ffmpeg/core/dist/ffmpeg-core.wasm"],
+  "@ffmpeg/core/dist/ffmpeg-core.worker.js": ["@ffmpeg/core/dist/ffmpeg-core.worker.js"],
+} as const;
 
-  const resolver = (import.meta as ImportMeta & {
-    resolve?(specifier: string): string;
-  }).resolve;
+const literalRequireResolvers = new Map<string, () => string>([
+  ["@ffmpeg/core/dist/ffmpeg-core.js", () => require.resolve("@ffmpeg/core/dist/ffmpeg-core.js")],
+  ["@ffmpeg/core/dist/ffmpeg-core.wasm", () => require.resolve("@ffmpeg/core/dist/ffmpeg-core.wasm")],
+  [
+    "@ffmpeg/core/dist/ffmpeg-core.worker.js",
+    () => require.resolve("@ffmpeg/core/dist/ffmpeg-core.worker.js"),
+  ],
+]);
+
+function resolveWithRequire(specifier: string): string | undefined {
+  const resolver = literalRequireResolvers.get(specifier);
   if (!resolver) {
     return undefined;
   }
+  try {
+    return resolver();
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveWithImportMeta(
+  resolver: ((specifier: string) => string) | undefined,
+  specifier: string
+): string | undefined {
+  if (!resolver) {
+    return undefined;
+  }
+  try {
+    const resolvedUrl = resolver(specifier);
+    return resolvedUrl.startsWith("file://")
+      ? fileURLToPath(resolvedUrl)
+      : resolvedUrl;
+  } catch {
+    return undefined;
+  }
+}
+
+function tryResolve(moduleId: string): string | undefined {
+  const staticCandidates =
+    FFMPEG_STATIC_RESOLUTION[moduleId as keyof typeof FFMPEG_STATIC_RESOLUTION];
+  const candidates = staticCandidates ?? [moduleId];
 
   for (const specifier of candidates) {
-    try {
-      const resolvedUrl = resolver(specifier);
-      return resolvedUrl.startsWith("file://")
-        ? fileURLToPath(resolvedUrl)
-        : resolvedUrl;
-    } catch {
-      continue;
+    const resolved = resolveWithRequire(specifier);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  const metaResolver = (import.meta as ImportMeta & {
+    resolve?(specifier: string): string;
+  }).resolve;
+
+  for (const specifier of candidates) {
+    const resolved = resolveWithImportMeta(metaResolver, specifier);
+    if (resolved) {
+      return resolved;
     }
   }
 
   return resolveFromBunStore(moduleId);
 }
+
+const DEFAULT_FFMPEG_CORE_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.js");
+const DEFAULT_FFMPEG_WASM_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.wasm");
+const DEFAULT_FFMPEG_WORKER_PATH = tryResolve("@ffmpeg/core/dist/ffmpeg-core.worker.js");
+
+let wasmEncoder: FFmpeg | null = null;
 
 function resolveFromBunStore(moduleId: string): string | undefined {
   if (!moduleId.startsWith("@ffmpeg/core/")) {

@@ -88,6 +88,12 @@ type WasmModule = Awaited<ReturnType<typeof loadLibsidplayfp>>;
 
 const INT16_SCALE = 1 / 0x8000;
 const MIN_PLAYABLE_DURATION = 5;
+const CROSSFADE_STOP_EPSILON = 0.05;
+
+interface LegacyPlaybackNode {
+    source: AudioBufferSourceNode;
+    gainNode: GainNode;
+}
 
 function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
@@ -104,7 +110,7 @@ export class SidflowPlayer {
     private readonly audioContext: AudioContext;
     private readonly gainNode: GainNode;
     private enginePromise: Promise<SidAudioEngine> | null = null;
-    private bufferSource: AudioBufferSourceNode | null = null;
+    private bufferSource: LegacyPlaybackNode | null = null;
     private audioBuffer: AudioBuffer | null = null;
     private durationSeconds = 0;
     private startTime = 0;
@@ -121,6 +127,9 @@ export class SidflowPlayer {
     private workletPlayer: WorkletPlayer | null = null;
     private hlsPlayer: HlsPlayer | null = null;
     private activePipeline: 'worklet' | 'legacy' | 'hls' = 'legacy';
+    private readonly fadingSources: Set<LegacyPlaybackNode> = new Set();
+    private pendingCrossfade = false;
+    private crossfadeDurationSeconds = 0;
 
     constructor(context?: AudioContext) {
         const AudioContextCtor = typeof AudioContext !== 'undefined'
@@ -329,7 +338,16 @@ export class SidflowPlayer {
         const pipeline = this.determinePipeline(session);
         this.activePipeline = pipeline;
 
-        this.stopLegacyPlayback();
+        const shouldCrossfade = pipeline === 'legacy'
+            && this.crossfadeDurationSeconds > 0
+            && this.bufferSource !== null
+            && this.state === 'playing';
+
+        this.pendingCrossfade = shouldCrossfade;
+
+        if (!shouldCrossfade) {
+            this.stopLegacyPlayback();
+        }
         try {
             this.workletPlayer?.stop();
         } catch {
@@ -619,24 +637,38 @@ export class SidflowPlayer {
             this.emit('error', error instanceof Error ? error : new Error(String(error)));
         });
 
-        this.stopLegacyPlayback();
+        const previousSource = this.pendingCrossfade ? this.bufferSource : null;
+        const shouldCrossfade = Boolean(previousSource && this.crossfadeDurationSeconds > 0);
+
+        if (!shouldCrossfade) {
+            this.stopLegacyPlayback();
+        }
+
         const source = this.audioContext.createBufferSource();
         source.buffer = this.audioBuffer;
-        source.connect(this.gainNode);
+
+        const gainNode = this.audioContext.createGain();
+        gainNode.gain.value = shouldCrossfade ? 0 : 1;
+        source.connect(gainNode);
+        gainNode.connect(this.gainNode);
+
+        const legacyNode: LegacyPlaybackNode = { source, gainNode };
         source.onended = () => {
-            if (this.bufferSource !== source) {
-                return;
-            }
-            this.bufferSource = null;
-            this.pauseOffset = 0;
-            this.updateState('ended');
+            this.handleLegacySourceEnded(legacyNode);
         };
 
         const offset = clamp(this.pauseOffset, 0, this.audioBuffer.duration);
         source.start(0, offset);
-        this.bufferSource = source;
+        this.bufferSource = legacyNode;
         this.startTime = this.audioContext.currentTime - offset;
+        this.pauseOffset = 0;
         this.updateState('playing');
+
+        if (shouldCrossfade && previousSource) {
+            this.startLegacyCrossfade(previousSource, legacyNode);
+        }
+
+        this.pendingCrossfade = false;
     }
 
     pause(): void {
@@ -706,7 +738,7 @@ export class SidflowPlayer {
     setVolume(volume: number): void {
         const clamped = clamp(volume, 0, 1);
         this.gainNode.gain.value = clamped;
-        
+
         // Also set volume on worklet and HLS players if active
         if (this.activePipeline === 'worklet' && this.workletPlayer) {
             this.workletPlayer.setVolume(clamped);
@@ -722,6 +754,18 @@ export class SidflowPlayer {
      */
     getVolume(): number {
         return this.gainNode.gain.value;
+    }
+
+    setCrossfadeDuration(seconds: number): void {
+        const normalized = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+        this.crossfadeDurationSeconds = normalized;
+        if (normalized === 0) {
+            this.pendingCrossfade = false;
+        }
+    }
+
+    getCrossfadeDuration(): number {
+        return this.crossfadeDurationSeconds;
     }
 
     destroy(): void {
@@ -761,18 +805,78 @@ export class SidflowPlayer {
 
     private stopLegacyPlayback(): void {
         if (this.bufferSource) {
-            try {
-                this.bufferSource.onended = null;
-                this.bufferSource.stop();
-            } catch {
-                // Ignore
-            }
-            try {
-                this.bufferSource.disconnect();
-            } catch {
-                // Ignore
-            }
+            this.cleanupLegacyNode(this.bufferSource, true);
             this.bufferSource = null;
+        }
+        if (this.fadingSources.size > 0) {
+            for (const node of this.fadingSources) {
+                this.cleanupLegacyNode(node, true);
+            }
+            this.fadingSources.clear();
+        }
+        this.pendingCrossfade = false;
+    }
+
+    private handleLegacySourceEnded(node: LegacyPlaybackNode): void {
+        if (this.bufferSource === node) {
+            this.cleanupLegacyNode(node, false);
+            this.bufferSource = null;
+            this.pauseOffset = 0;
+            this.updateState('ended');
+            return;
+        }
+
+        if (this.fadingSources.has(node)) {
+            this.fadingSources.delete(node);
+            this.cleanupLegacyNode(node, false);
+        }
+    }
+
+    private startLegacyCrossfade(outgoing: LegacyPlaybackNode, incoming: LegacyPlaybackNode): void {
+        this.fadingSources.add(outgoing);
+        const now = this.audioContext.currentTime;
+        const duration = this.crossfadeDurationSeconds;
+
+        outgoing.gainNode.gain.cancelScheduledValues(now);
+        outgoing.gainNode.gain.setValueAtTime(outgoing.gainNode.gain.value, now);
+        outgoing.gainNode.gain.linearRampToValueAtTime(0, now + duration);
+
+        incoming.gainNode.gain.cancelScheduledValues(now);
+        incoming.gainNode.gain.setValueAtTime(0, now);
+        incoming.gainNode.gain.linearRampToValueAtTime(1, now + duration);
+
+        try {
+            outgoing.source.stop(now + duration + CROSSFADE_STOP_EPSILON);
+        } catch {
+            // Ignore stop errors
+        }
+    }
+
+    private cleanupLegacyNode(node: LegacyPlaybackNode | null, stopSource: boolean): void {
+        if (!node) {
+            return;
+        }
+        try {
+            node.source.onended = null;
+        } catch {
+            // Ignore
+        }
+        if (stopSource) {
+            try {
+                node.source.stop();
+            } catch {
+                // Ignore
+            }
+        }
+        try {
+            node.source.disconnect();
+        } catch {
+            // Ignore
+        }
+        try {
+            node.gainNode.disconnect();
+        } catch {
+            // Ignore
         }
     }
 

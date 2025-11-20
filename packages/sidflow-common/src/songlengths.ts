@@ -78,13 +78,13 @@ async function resolveSonglengthsFile(root: string): Promise<{ filePath: string 
   return { filePath: null, musicRoot: await inferDefaultMusicRoot(root) };
 }
 
-export async function loadSonglengthsData(hvscPath: string): Promise<SonglengthsData> {
-  if (songlengthsCache.has(hvscPath)) {
-    return songlengthsCache.get(hvscPath)!;
+export async function loadSonglengthsData(sidPath: string): Promise<SonglengthsData> {
+  if (songlengthsCache.has(sidPath)) {
+    return songlengthsCache.get(sidPath)!;
   }
 
   const loader = (async () => {
-    const { filePath, musicRoot } = await resolveSonglengthsFile(hvscPath);
+    const { filePath, musicRoot } = await resolveSonglengthsFile(sidPath);
     if (!filePath) {
       return {
         map: new Map<string, string>(),
@@ -135,7 +135,7 @@ export async function loadSonglengthsData(hvscPath: string): Promise<Songlengths
     return { map, paths, lengthByPath, musicRoot, sourcePath: filePath } satisfies SonglengthsData;
   })();
 
-  songlengthsCache.set(hvscPath, loader);
+  songlengthsCache.set(sidPath, loader);
   return loader;
 }
 
@@ -157,11 +157,11 @@ async function computeFileMd5(filePath: string): Promise<string> {
 
 function computeRelativeKey(
   filePath: string,
-  hvscPath: string,
+  sidPath: string,
   musicRoot?: string
 ): string | null {
   try {
-    const relative = resolveRelativeSidPath(hvscPath, filePath);
+    const relative = resolveRelativeSidPath(sidPath, filePath);
     if (relative) {
       return stripHvscPrefixes(relative);
     }
@@ -181,17 +181,17 @@ function computeRelativeKey(
 
 export async function lookupSongLength(
   filePath: string,
-  hvscPath: string,
+  sidPath: string,
   musicRoot?: string
 ): Promise<string | undefined> {
-  const cacheKey = `${hvscPath}::${filePath}`;
+  const cacheKey = `${sidPath}::${filePath}`;
   if (lengthCache.has(cacheKey)) {
     const cached = lengthCache.get(cacheKey);
     return cached ?? undefined;
   }
 
-  const data = await loadSonglengthsData(hvscPath);
-  const relativeKey = computeRelativeKey(filePath, hvscPath, musicRoot ?? data.musicRoot);
+  const data = await loadSonglengthsData(sidPath);
+  const relativeKey = computeRelativeKey(filePath, sidPath, musicRoot ?? data.musicRoot);
   if (relativeKey) {
     const fromPath = data.lengthByPath.get(relativeKey);
     if (fromPath) {
@@ -242,16 +242,16 @@ export function parseSonglengthValue(value: string): number[] {
 
 export async function lookupSongDurationsMs(
   filePath: string,
-  hvscPath: string,
+  sidPath: string,
   musicRoot?: string
 ): Promise<number[] | undefined> {
-  const cacheKey = `${hvscPath}::${filePath}`;
+  const cacheKey = `${sidPath}::${filePath}`;
   if (durationCache.has(cacheKey)) {
     const cached = durationCache.get(cacheKey);
     return cached ?? undefined;
   }
 
-  const value = await lookupSongLength(filePath, hvscPath, musicRoot);
+  const value = await lookupSongLength(filePath, sidPath, musicRoot);
   if (!value) {
     durationCache.set(cacheKey, null);
     return undefined;
@@ -264,11 +264,11 @@ export async function lookupSongDurationsMs(
 
 export async function lookupSongDurationMs(
   filePath: string,
-  hvscPath: string,
+  sidPath: string,
   songIndex = 1,
   musicRoot?: string
 ): Promise<number | undefined> {
-  const durations = await lookupSongDurationsMs(filePath, hvscPath, musicRoot);
+  const durations = await lookupSongDurationsMs(filePath, sidPath, musicRoot);
   if (!durations || durations.length === 0) {
     return undefined;
   }

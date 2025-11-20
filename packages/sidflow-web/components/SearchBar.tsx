@@ -50,7 +50,7 @@ export function SearchBar({ onPlayTrack, onStatusChange, searchInputRef }: Searc
       if (response.success) {
         setResults(response.data.results);
         setShowResults(true);
-        
+
         if (response.data.results.length === 0) {
           onStatusChange?.(`No results found for "${searchQuery}"`, false);
         }
@@ -148,6 +148,7 @@ export function SearchBar({ onPlayTrack, onStatusChange, searchInputRef }: Searc
               size="icon"
               className="h-6 w-6"
               onClick={handleClearSearch}
+              aria-label="Clear search"
               title="Clear search"
             >
               <X className="h-3 w-3" />
@@ -158,7 +159,10 @@ export function SearchBar({ onPlayTrack, onStatusChange, searchInputRef }: Searc
 
       {/* Search Results Dropdown */}
       {showResults && results.length > 0 && (
-        <Card className="absolute top-full mt-2 w-full z-50 max-h-96 overflow-y-auto shadow-lg">
+        <Card
+          className="absolute top-full mt-2 w-full z-50 max-h-96 overflow-y-auto shadow-lg"
+          data-testid="search-results"
+        >
           <CardContent className="p-2">
             <div className="space-y-1">
               {results.map((result) => (
@@ -176,6 +180,7 @@ export function SearchBar({ onPlayTrack, onStatusChange, searchInputRef }: Searc
                     size="icon"
                     className="h-8 w-8 flex-shrink-0"
                     onClick={() => handlePlayResult(result.sidPath, result.displayName)}
+                    aria-label="Play this track"
                     title="Play this track"
                   >
                     <Play className="h-4 w-4" />

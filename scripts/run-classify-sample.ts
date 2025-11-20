@@ -17,19 +17,19 @@ import { ensureDir } from "../packages/sidflow-common/src/fs.js";
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-sample-");
 
 async function createConfig(root: string): Promise<string> {
-  const hvscPath = path.join(root, "hvsc");
+  const sidPath = path.join(root, "hvsc");
   const wavCachePath = path.join(root, "wav-cache");
   const tagsPath = path.join(root, "tags");
 
   await Promise.all([
-    mkdir(path.join(hvscPath, "C64Music", "MUSICIANS", "A"), { recursive: true }),
-    mkdir(path.join(hvscPath, "C64Music", "MUSICIANS", "B"), { recursive: true }),
+    mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "A"), { recursive: true }),
+    mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "B"), { recursive: true }),
     mkdir(wavCachePath, { recursive: true }),
     mkdir(tagsPath, { recursive: true })
   ]);
 
-  const manualSid = path.join(hvscPath, "C64Music", "MUSICIANS", "A", "Manual.sid");
-  const autoSid = path.join(hvscPath, "C64Music", "MUSICIANS", "B", "Auto.sid");
+  const manualSid = path.join(sidPath, "C64Music", "MUSICIANS", "A", "Manual.sid");
+  const autoSid = path.join(sidPath, "C64Music", "MUSICIANS", "B", "Auto.sid");
   await Promise.all([writeFile(manualSid, "manual"), writeFile(autoSid, "auto")]);
 
   const manualTagPath = path.join(tagsPath, "C64Music", "MUSICIANS", "A", "Manual.sid.sid.tags.json");
@@ -47,7 +47,7 @@ async function createConfig(root: string): Promise<string> {
 
   const configPath = path.join(root, "sample.sidflow.json");
   const config = {
-    hvscPath,
+    sidPath,
     wavCachePath,
     tagsPath,
     threads: 0,

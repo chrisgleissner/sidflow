@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import type {
@@ -6,6 +6,13 @@ import type {
   AudioEncoderImplementation,
   FfmpegWasmOptions,
 } from "./audio-types.js";
+import { normalizeSidChip, type SidChipModel } from "./chip-model.js";
+import {
+  cacheConfig,
+  getEnhancedCachedConfig,
+  invalidateConfigCache,
+  recordConfigLoadTime,
+} from "./config-cache.js";
 
 export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
 export type RenderFormat = "wav" | "m4a" | "flac";
@@ -22,7 +29,7 @@ export interface RenderSettings {
   outputPath?: string;
   defaultFormats?: RenderFormat[];
   preferredEngines?: RenderEngine[];
-  defaultChip?: "6581" | "8580r5";
+  defaultChip?: SidChipModel;
   m4aBitrate?: number;
   flacCompressionLevel?: number;
   audioEncoder?: AudioEncoderConfig;
@@ -51,7 +58,8 @@ export interface AlertConfig {
 }
 
 export interface SidflowConfig {
-  hvscPath: string;
+  /** Canonical SID collection root */
+  sidPath: string;
   wavCachePath: string;
   tagsPath: string;
   classifiedPath?: string;
@@ -88,24 +96,39 @@ export function getDefaultConfigPath(cwd: string = process.cwd()): string {
 export function resetConfigCache(): void {
   cachedConfig = null;
   cachedPath = null;
+  invalidateConfigCache();
 }
 
 export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
+  const startTime = performance.now();
+
   // Check for SIDFLOW_CONFIG environment variable if no explicit path provided
   const envConfigPath = process.env.SIDFLOW_CONFIG;
   const effectiveConfigPath = configPath ?? (envConfigPath || getDefaultConfigPath());
   // Use path.resolve only if effectiveConfigPath is not already absolute
-  const resolvedPath = path.isAbsolute(effectiveConfigPath) 
-    ? effectiveConfigPath 
+  const resolvedPath = path.isAbsolute(effectiveConfigPath)
+    ? effectiveConfigPath
     : path.resolve(effectiveConfigPath);
 
+  // Try enhanced cache first (with hash validation)
+  const cachedResult = await getEnhancedCachedConfig(resolvedPath);
+  if (cachedResult) {
+    recordConfigLoadTime(performance.now() - startTime);
+    return cachedResult;
+  }
+
+  // Fallback to legacy cache check (will be removed once enhanced cache proven)
   if (cachedConfig && cachedPath === resolvedPath) {
+    recordConfigLoadTime(performance.now() - startTime);
     return cachedConfig;
   }
 
   let fileContents: string;
+  let fileMtime: number;
   try {
     fileContents = await readFile(resolvedPath, "utf8");
+    const stats = await stat(resolvedPath);
+    fileMtime = stats.mtimeMs;
   } catch (error) {
     throw new SidflowConfigError(
       `Unable to read SIDFlow config at ${resolvedPath}`,
@@ -126,7 +149,8 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
   const config = validateConfig(data, resolvedPath);
   const overrideSidBase = process.env.SIDFLOW_SID_BASE_PATH;
   if (overrideSidBase && overrideSidBase.trim().length > 0) {
-    config.hvscPath = path.normalize(overrideSidBase);
+    const normalizedOverride = path.normalize(overrideSidBase);
+    config.sidPath = normalizedOverride;
   }
 
   if (config.sidplayPath && !sidplayWarningEmitted) {
@@ -135,8 +159,13 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
       "[sidflow] Config key \"sidplayPath\" is deprecated. The WASM renderer is now used by default; remove this key once native fallbacks are retired.\n"
     );
   }
+
+  // Update both legacy and enhanced caches
   cachedConfig = config;
   cachedPath = resolvedPath;
+  await cacheConfig(config, resolvedPath, fileContents, fileMtime);
+
+  recordConfigLoadTime(performance.now() - startTime);
   return config;
 }
 
@@ -196,8 +225,10 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     return path.normalize(raw);
   };
 
+  const sidPath = requiredString("sidPath");
+
   return {
-    hvscPath: requiredString("hvscPath"),
+    sidPath,
     wavCachePath: requiredString("wavCachePath"),
     tagsPath: requiredString("tagsPath"),
     classifiedPath: optionalString("classifiedPath"),
@@ -268,12 +299,13 @@ function parseRenderSettings(value: unknown, configPath: string): RenderSettings
   }
 
   if (record.defaultChip !== undefined) {
-    if (record.defaultChip !== "6581" && record.defaultChip !== "8580r5") {
+    const normalizedChip = normalizeSidChip(record.defaultChip);
+    if (!normalizedChip) {
       throw new SidflowConfigError(
-        `Config key "render.defaultChip" must be either "6581" or "8580r5"`
+        `Config key "render.defaultChip" must be either "6581" or "8580"`
       );
     }
-    settings.defaultChip = record.defaultChip;
+    settings.defaultChip = normalizedChip;
   }
 
   if (record.m4aBitrate !== undefined) {

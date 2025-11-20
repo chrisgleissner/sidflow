@@ -23,13 +23,13 @@ describe("defaultRenderWav with worker pool", () => {
     const previousMaxSeconds = process.env.SIDFLOW_MAX_RENDER_SECONDS;
     process.env.SIDFLOW_MAX_RENDER_SECONDS = "0.5";
     try {
-      const hvscPath = path.join(root, "hvsc");
+      const sidPath = path.join(root, "hvsc");
       const wavCachePath = path.join(root, "wav");
       const tagsPath = path.join(root, "tags");
       const classifiedPath = path.join(root, "classified");
 
       await Promise.all([
-        mkdir(hvscPath, { recursive: true }),
+        mkdir(sidPath, { recursive: true }),
         mkdir(wavCachePath, { recursive: true }),
         mkdir(tagsPath, { recursive: true }),
         mkdir(classifiedPath, { recursive: true })
@@ -37,13 +37,13 @@ describe("defaultRenderWav with worker pool", () => {
 
       const sidFiles: string[] = [];
       for (let index = 0; index < 2; index += 1) {
-        const sidFile = path.join(hvscPath, `song-${index}.sid`);
+        const sidFile = path.join(sidPath, `song-${index}.sid`);
         await copySampleSid(sidFile);
         sidFiles.push(sidFile);
       }
 
       const config: ClassificationPlan["config"] = {
-        hvscPath,
+        sidPath,
         wavCachePath,
         tagsPath,
         threads: 2,
@@ -55,7 +55,7 @@ describe("defaultRenderWav with worker pool", () => {
         config,
         wavCachePath,
         tagsPath,
-        hvscPath,
+        sidPath,
         forceRebuild: false,
         classificationDepth: 1
       };

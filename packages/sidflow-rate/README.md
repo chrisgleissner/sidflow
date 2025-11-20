@@ -138,7 +138,7 @@ import { planTagSession, runTagSession, type TagSessionPlan } from "@sidflow/rat
 
 // Plan a rating session
 const plan: TagSessionPlan = await planTagSession({
-  hvscPath: "./workspace/hvsc",
+  sidPath: "./workspace/hvsc",
   tagsPath: "./workspace/tags",
   filter: "MUSICIANS/H/*",
   unratedOnly: true
@@ -203,7 +203,7 @@ The package maintains session state for resuming:
 Create a rating session plan.
 
 **Parameters:**
-- `options.hvscPath` — HVSC directory path
+- `options.sidPath` — HVSC directory path
 - `options.tagsPath` — Tags directory path
 - `options.filter` — Path filter pattern (optional)
 - `options.unratedOnly` — Only include unrated songs (optional)
@@ -216,7 +216,7 @@ Create a rating session plan.
   sidPaths: string[];           // Array of SID file paths to rate
   unratedCount: number;         // Number of unrated songs
   totalCount: number;           // Total number of songs
-  hvscPath: string;             // HVSC root path
+  sidPath: string;             // HVSC root path
   tagsPath: string;             // Tags directory path
 }
 ```

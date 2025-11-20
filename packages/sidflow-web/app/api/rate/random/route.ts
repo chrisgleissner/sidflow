@@ -15,12 +15,12 @@ import { resolveSessionStreamAssets } from '@/lib/server/availability-service';
 type RateTrackPayload = RateTrackInfo;
 
 // Cache untagged SIDs list for 5 minutes to avoid slow directory scans
-let untaggedCache: { sids: string[]; timestamp: number; hvscPath: string; tagsPath: string } | null = null;
+let untaggedCache: { sids: string[]; timestamp: number; sidPath: string; tagsPath: string } | null = null;
 let cacheBuilding = false;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const QUICK_SCAN_LIMIT = 50; // Only scan first N files for instant response
 
-async function quickFindUntaggedSid(hvscPath: string, tagsPath: string): Promise<string | null> {
+async function quickFindUntaggedSid(sidPath: string, tagsPath: string): Promise<string | null> {
   // Quick scan: find first untagged SID in a shallow search
   async function quickWalk(dir: string, depth: number = 0): Promise<string | null> {
     if (depth > 3) return null; // Don't go too deep
@@ -32,7 +32,7 @@ async function quickFindUntaggedSid(hvscPath: string, tagsPath: string): Promise
       for (const entry of entries) {
         if (entry.isFile() && entry.name.toLowerCase().endsWith('.sid')) {
           const fullPath = path.join(dir, entry.name);
-          const tagPath = createTagFilePath(hvscPath, tagsPath, fullPath);
+          const tagPath = createTagFilePath(sidPath, tagsPath, fullPath);
           if (!(await pathExists(tagPath))) {
             return fullPath;
           }
@@ -53,30 +53,30 @@ async function quickFindUntaggedSid(hvscPath: string, tagsPath: string): Promise
     return null;
   }
   
-  return quickWalk(hvscPath);
+  return quickWalk(sidPath);
 }
 
-async function getCachedUntaggedSids(hvscPath: string, tagsPath: string): Promise<string[]> {
+async function getCachedUntaggedSids(sidPath: string, tagsPath: string): Promise<string[]> {
   const now = Date.now();
   if (
     untaggedCache &&
-    untaggedCache.hvscPath === hvscPath &&
+    untaggedCache.sidPath === sidPath &&
     untaggedCache.tagsPath === tagsPath &&
     now - untaggedCache.timestamp < CACHE_TTL_MS
   ) {
     return untaggedCache.sids;
   }
 
-  const sids = await findUntaggedSids(hvscPath, tagsPath);
-  untaggedCache = { sids, timestamp: now, hvscPath, tagsPath };
+  const sids = await findUntaggedSids(sidPath, tagsPath);
+  untaggedCache = { sids, timestamp: now, sidPath, tagsPath };
   return sids;
 }
 
-function startBackgroundCacheBuild(hvscPath: string, tagsPath: string): void {
+function startBackgroundCacheBuild(sidPath: string, tagsPath: string): void {
   if (cacheBuilding) return;
   
   cacheBuilding = true;
-  getCachedUntaggedSids(hvscPath, tagsPath)
+  getCachedUntaggedSids(sidPath, tagsPath)
     .then(() => {
       console.log('[rate/random] Background cache build complete');
     })
@@ -97,7 +97,7 @@ async function pickRandomUntaggedSid(
   const now = Date.now();
   if (
     untaggedCache &&
-    untaggedCache.hvscPath === collectionRoot &&
+    untaggedCache.sidPath === collectionRoot &&
     untaggedCache.tagsPath === tagsPath &&
     now - untaggedCache.timestamp < CACHE_TTL_MS &&
     untaggedCache.sids.length > 0
@@ -127,7 +127,7 @@ export async function POST() {
     });
 
     const env = await resolvePlaybackEnvironment();
-    const sidPath = await pickRandomUntaggedSid(env.hvscPath, env.musicRoot, env.tagsPath);
+    const sidPath = await pickRandomUntaggedSid(env.sidPath, env.musicRoot, env.tagsPath);
     if (!sidPath) {
       console.log('[API] /api/rate/random - No untagged SIDs found');
       const response: ApiResponse = {
@@ -148,7 +148,7 @@ export async function POST() {
       );
     }
 
-    const length = await lookupSongLength(sidPath, env.hvscPath, env.musicRoot);
+    const length = await lookupSongLength(sidPath, env.sidPath, env.musicRoot);
 
     const track = await createRateTrackInfo({
       env,

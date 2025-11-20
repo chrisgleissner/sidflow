@@ -1,7 +1,10 @@
 export * from "./config.js";
+export * from "./config-cache.js";
+export * from "./metadata-cache.js";
 export * from "./logger.js";
 export * from "./json.js";
 export * from "./retry.js";
+export * from "./perf-utils.js";
 export { ensureDir, pathExists } from "./fs.js";
 export * from "./tags.js";
 export * from "./ratings.js";
@@ -27,3 +30,4 @@ export * from "./audit-trail.js";
 export * from "./canonical-writer.js";
 export * from "./availability-manifest.js";
 export * from "./audio-types.js";
+export * from "./chip-model.js";

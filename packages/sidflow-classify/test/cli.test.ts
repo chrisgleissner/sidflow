@@ -9,7 +9,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { parseClassifyArgs, runClassifyCli } from "../src/cli.js";
 
 interface TestSidflowConfig {
-  hvscPath: string;
+  sidPath: string;
   wavCachePath: string;
   tagsPath: string;
   threads: number;
@@ -20,7 +20,7 @@ interface TestClassificationPlan {
   config: TestSidflowConfig;
   forceRebuild: boolean;
   classificationDepth: number;
-  hvscPath: string;
+  sidPath: string;
   wavCachePath: string;
   tagsPath: string;
 }
@@ -64,7 +64,7 @@ interface TestGenerateAutoTagsResult {
 function createPlan(): TestClassificationPlan {
   return {
     config: {
-      hvscPath: "/workspace/hvsc",
+      sidPath: "/workspace/hvsc",
       wavCachePath: "/workspace/wav",
       tagsPath: "/workspace/tags",
       threads: 0,
@@ -72,7 +72,7 @@ function createPlan(): TestClassificationPlan {
     },
     forceRebuild: false,
     classificationDepth: 2,
-    hvscPath: "/workspace/hvsc",
+    sidPath: "/workspace/hvsc",
     wavCachePath: "/workspace/wav",
     tagsPath: "/workspace/tags"
   } satisfies TestClassificationPlan;

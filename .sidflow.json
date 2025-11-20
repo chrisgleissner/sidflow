@@ -1,5 +1,5 @@
 {
-  "hvscPath": "./workspace/hvsc",
+  "sidPath": "./workspace/hvsc",
   "wavCachePath": "./workspace/wav-cache",
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./data/classified",
@@ -7,8 +7,16 @@
   "classificationDepth": 3,
   "render": {
     "outputPath": "./data/renders",
-    "defaultFormats": ["wav", "m4a", "flac"],
-  "preferredEngines": ["wasm", "sidplayfp-cli", "ultimate64"],
+    "defaultFormats": [
+      "wav",
+      "m4a",
+      "flac"
+    ],
+    "preferredEngines": [
+      "wasm",
+      "sidplayfp-cli",
+      "ultimate64"
+    ],
     "defaultChip": "6581",
     "m4aBitrate": 256,
     "flacCompressionLevel": 5,

@@ -7,8 +7,8 @@ export type DiskUsageStats = ClassifyStorageStats;
 export async function getClassificationDiskUsage(): Promise<ClassifyStorageStats | null> {
   try {
     const context = await resolveSidCollectionContext();
-    const hvscPath = context.collectionRoot;
-    const stats = await statfs(hvscPath);
+    const sidPath = context.collectionRoot;
+    const stats = await statfs(sidPath);
     const totalBytes = Number(stats.blocks) * Number(stats.bsize);
     const freeBytes = Number(stats.bavail) * Number(stats.bsize);
     const usedBytes = totalBytes - freeBytes;

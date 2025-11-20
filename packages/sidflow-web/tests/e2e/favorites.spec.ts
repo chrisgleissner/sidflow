@@ -1,131 +1,251 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+
+const SAMPLE_FAVORITES = [
+  'C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid',
+  'C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid',
+];
+
+const favoritesFixturesInstalled = new WeakMap<BrowserContext, { favorites: string[] }>();
+
+async function installFavoritesFixtures(page: Page): Promise<void> {
+  const context = page.context();
+  if (favoritesFixturesInstalled.has(context)) {
+    return;
+  }
+  const state = { favorites: [] as string[] };
+  favoritesFixturesInstalled.set(context, state);
+
+  await context.route('**/api/favorites', async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { favorites: state.favorites } }),
+      });
+      return;
+    }
+
+    if (method === 'POST' || method === 'DELETE') {
+      const raw = request.postData();
+      let payload: { sid_path?: string } = {};
+      try {
+        payload = raw ? JSON.parse(raw) : {};
+      } catch {
+        payload = {};
+      }
+      const sidPath = payload.sid_path;
+      if (!sidPath) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: false, error: 'sid_path required' }),
+        });
+        return;
+      }
+      if (method === 'POST' && !state.favorites.includes(sidPath)) {
+        state.favorites.push(sidPath);
+      }
+      if (method === 'DELETE') {
+        state.favorites = state.favorites.filter((entry) => entry !== sidPath);
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { favorites: state.favorites } }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+}
+
+async function ensureFavorites(page: Page, desired: string[]): Promise<void> {
+  const state = favoritesFixturesInstalled.get(page.context());
+  if (!state) {
+    throw new Error('Favorites fixtures not installed');
+  }
+  state.favorites = [...desired];
+}
+
+async function waitForFavoritesRefresh(page: Page): Promise<void> {
+  const responsePromise = page.waitForResponse(
+    (resp) => resp.url().includes('/api/favorites') && resp.request().method() === 'GET',
+    { timeout: TIMEOUTS.PAGE_LOAD }
+  ).catch(() => {});
+  await responsePromise;
+  await page
+    .waitForSelector('text=Loading favorites...', {
+      state: 'hidden',
+      timeout: TIMEOUTS.LOADING_STATE,
+    })
+    .catch(() => {});
+}
+
+async function openFavoritesTab(
+  page: Parameters<typeof test>[0]['page'],
+  options: { reload?: boolean } = {}
+): Promise<void> {
+  const attemptToOpen = async () => {
+    const responsePromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/favorites') && resp.request().method() === 'GET',
+      { timeout: TIMEOUTS.PAGE_LOAD }
+    ).catch(() => {});
+    await page.locator('[data-testid="tab-favorites"]').click();
+    await Promise.any([
+      page.waitForSelector('text=Loading favorites...', { timeout: TIMEOUTS.ELEMENT_QUICK }),
+      page.waitForSelector('text=No favorites yet', { timeout: TIMEOUTS.ELEMENT_QUICK }),
+    ]).catch(() => {});
+    await responsePromise;
+    await page
+      .waitForSelector('text=Loading favorites...', {
+        state: 'hidden',
+        timeout: TIMEOUTS.LOADING_STATE,
+      })
+      .catch(() => {});
+  };
+
+  if (options.reload) {
+    await page.locator('[data-testid="tab-play"]').click();
+    await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await attemptToOpen();
+      return;
+    } catch {
+      if (attempt === 1) {
+        throw new Error('Favorites tab failed to load after retry');
+      }
+      await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
+    }
+  }
+}
+
+// Timeout constants for consistent test behavior
+const TIMEOUTS = {
+  TEST: 45000,          // Overall test timeout
+  PAGE_LOAD: 30000,     // Page navigation timeout
+  ELEMENT_VISIBLE: 10000, // Wait for element to be visible
+  ELEMENT_QUICK: 5000,  // Quick element checks
+  LOADING_STATE: 45000, // Wait for loading states to complete (server under load)
+  HMR_SETTLE: 500,      // Let HMR/hot-reload settle
+} as const;
 
 test.describe('Favorites Feature', () => {
+  test.describe.configure({ mode: 'serial' });
   test.beforeEach(async ({ page }) => {
-    // Navigate to the public player
-    await page.goto('/');
-    
+    test.setTimeout(TIMEOUTS.TEST);
+    await installFavoritesFixtures(page);
+    await ensureFavorites(page, []);
+
+    // Navigate to the public player with longer timeout
+    await page.goto('/', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForTimeout(TIMEOUTS.HMR_SETTLE); // Let HMR settle
+
     // Wait for the page to load
-    await page.waitForSelector('[data-testid="tab-play"]', { timeout: 10000 });
+    await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
   });
 
-  test('should display favorites tab for public users', async ({ page }) => {
-    // Check that favorites tab exists
-    const favoritesTab = page.locator('[data-testid="tab-favorites"]');
-    await expect(favoritesTab).toBeVisible();
-    
-    // Click favorites tab
-    await favoritesTab.click();
-    
+  test('should display favorites tab for public users', async ({ page, request }) => {
+    await ensureFavorites(page, []);
+    // Open favorites tab (handles loading states)
+    await openFavoritesTab(page);
+
     // Should show empty state initially (use first match to avoid ambiguity)
-    await expect(page.getByText('No favorites yet').first()).toBeVisible();
-    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
   });
 
-  test('should allow adding and removing favorites from play tab', async ({ page }) => {
-    test.setTimeout(60000); // Increase timeout since track loading can be slow
-    
-    // Start on Play tab
-    const playTab = page.locator('[data-testid="tab-play"]').click();
-    
-    // Wait for a track to load (this might take a moment in real scenario)
-    try {
-      await page.waitForSelector('[data-testid="favorite-icon"]', { timeout: 30000 });
-      
-      // Check if favorite button exists
-      const favoriteButton = page.locator('button:has([data-testid="favorite-icon"])').first();
-      
-      if (await favoriteButton.isVisible({ timeout: 5000 })) {
-        // Click to add to favorites
-        await favoriteButton.click();
-        
-        // Should show confirmation message
-        await expect(page.getByText(/added to favorites/i).first()).toBeVisible({ timeout: 5000 });
-        
-        // Switch to favorites tab
-        await page.locator('[data-testid="tab-favorites"]').click();
-        
-        // Should see at least one favorite now
-        const favoritesList = page.locator('[data-testid="favorite-icon"]');
-        await expect(favoritesList.first()).toBeVisible({ timeout: 5000 });
-        
-        // Go back to play tab
-        await page.locator('[data-testid="tab-play"]').click();
-        
-        // Click favorite button again to remove
-        await favoriteButton.click();
-        
-        // Should show removal confirmation
-        await expect(page.getByText(/removed from favorites/i).first()).toBeVisible({ timeout: 5000 });
-      }
-    } catch (e) {
-      // If no track loads, skip this test since we can't test the feature without data
-      test.skip();
-    }
+  test('should reflect favorites when entries are added or removed', async ({ page, request }) => {
+    const samplePath = SAMPLE_FAVORITES[0];
+    await ensureFavorites(page, []);
+
+    await openFavoritesTab(page);
+    await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+
+    await ensureFavorites(page, [samplePath]);
+    await openFavoritesTab(page, { reload: true });
+    await expect(page.getByText('FAVORITES').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+    await expect(page.getByText('Play All').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+
+    await ensureFavorites(page, []);
+    await openFavoritesTab(page, { reload: true });
+    await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
   });
 
-  test('should show play all and shuffle buttons when favorites exist', async ({ page }) => {
-    // Navigate to favorites tab
-    await page.locator('[data-testid="tab-favorites"]').click();
-    
+  test('should show play all and shuffle buttons when favorites exist', async ({ page, request }) => {
+    await ensureFavorites(page, [SAMPLE_FAVORITES[0]]);
+
+    await openFavoritesTab(page, { reload: true });
+
     // Check for action buttons (they should be disabled when empty)
     const playAllButton = page.getByRole('button', { name: /play all/i });
     const shuffleButton = page.getByRole('button', { name: /shuffle/i });
-    
-    await expect(playAllButton).toBeVisible();
-    await expect(shuffleButton).toBeVisible();
-    
-    // Buttons should be disabled when no favorites
-    await expect(playAllButton).toBeDisabled();
-    await expect(shuffleButton).toBeDisabled();
+
+    await expect(playAllButton).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+    await expect(shuffleButton).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
+
+    // Buttons should be enabled when favorites exist
+    await expect(playAllButton).toBeEnabled();
+    await expect(shuffleButton).toBeEnabled();
   });
 
-  test('should show clear all button only when favorites exist', async ({ page }) => {
-    // Navigate to favorites tab
-    await page.locator('[data-testid="tab-favorites"]').click();
-    
-    // Clear All button should not be visible when empty
-    const clearAllButton = page.getByRole('button', { name: /clear all/i });
-    await expect(clearAllButton).not.toBeVisible();
+  test('should show clear all button only when favorites exist', async ({ page, request }) => {
+    await ensureFavorites(page, []);
+    await openFavoritesTab(page);
+    await expect(page.getByRole('button', { name: /clear all/i })).not.toBeVisible();
+
+    await ensureFavorites(page, [SAMPLE_FAVORITES[0], SAMPLE_FAVORITES[1]]);
+    await openFavoritesTab(page, { reload: true });
+    await expect(page.getByRole('button', { name: /clear all/i })).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
   });
 
-  test('should display favorite tracks with metadata', async ({ page }) => {
-    // This test would require seeding some favorites first
-    // For now, we'll just check the structure is correct
-    await page.locator('[data-testid="tab-favorites"]').click();
-    
+  test('should display favorite tracks with metadata', async ({ page, request }) => {
+    await ensureFavorites(page, SAMPLE_FAVORITES);
+    await openFavoritesTab(page, { reload: true });
+
     // Check for the card structure
     const favoritesCard = page.locator('.c64-border').filter({ hasText: 'FAVORITES' });
-    await expect(favoritesCard).toBeVisible();
-    
-    // Check for the heart icon in header
-    const heartIcon = favoritesCard.locator('svg.lucide-heart');
-    await expect(heartIcon).toBeVisible();
+    await expect(favoritesCard).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+
+    // Check for the heart icon in header (limit to header icon)
+    const heartIcon = favoritesCard.locator('svg.lucide-heart').first();
+    await expect(heartIcon).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
+
+    for (const sidPath of SAMPLE_FAVORITES) {
+      await expect(page.getByText(sidPath).first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+    }
   });
 
-  test('should maintain favorites state across tab switches', async ({ page }) => {
+  test('should maintain favorites state across tab switches', async ({ page, request }) => {
+    await ensureFavorites(page, []);
     // Navigate to favorites tab
-    await page.locator('[data-testid="tab-favorites"]').click();
+    await openFavoritesTab(page);
     await expect(page.getByText('FAVORITES').first()).toBeVisible();
-    
+
     // Switch to prefs tab
     await page.locator('[data-testid="tab-prefs"]').click();
     await page.waitForTimeout(500);
-    
+
     // Switch back to favorites
-    await page.locator('[data-testid="tab-favorites"]').click();
-    
+    await openFavoritesTab(page);
+
     // Should still show favorites content
     await expect(page.getByText('FAVORITES').first()).toBeVisible();
   });
 
-  test('should handle favorite button loading states', async ({ page }) => {
+  test('should handle favorite button loading states', async ({ page, request }) => {
+    await ensureFavorites(page, []);
     // Go to play tab
     await page.locator('[data-testid="tab-play"]').click();
-    
+
     // If a favorite button exists, check it doesn't show loading spinner initially
     const favoriteButton = page.locator('button:has([data-testid="favorite-icon"])').first();
-    
+
     if (await favoriteButton.isVisible()) {
       // Should not have a loading spinner
       const loadingSpinner = favoriteButton.locator('.animate-spin');
@@ -133,14 +253,15 @@ test.describe('Favorites Feature', () => {
     }
   });
 
-  test('should show appropriate empty state messaging', async ({ page }) => {
+  test('should show appropriate empty state messaging', async ({ page, request }) => {
+    await ensureFavorites(page, []);
     // Navigate to favorites tab
-    await page.locator('[data-testid="tab-favorites"]').click();
-    
+    await openFavoritesTab(page, { reload: true });
+
     // Check empty state elements (use first match to avoid ambiguity)
-    await expect(page.getByText('No favorites yet').first()).toBeVisible();
-    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible();
-    
+    await expect(page.getByText('No favorites yet').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+    await expect(page.getByText('Add songs using the heart icon while playing', { exact: false }).first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
+
     // Check for empty state heart icon
     const emptyHeartIcon = page.locator('svg.lucide-heart').first();
     await expect(emptyHeartIcon).toBeVisible();

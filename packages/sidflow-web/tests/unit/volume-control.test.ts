@@ -8,23 +8,23 @@ class MockAudioContext {
   sampleRate = 44100;
   state = 'running' as const;
   currentTime = 0;
-  
+
   private gainNodes: MockGainNode[] = [];
   private listeners: Map<string, Function[]> = new Map();
-  
+
   createGain(): MockGainNode {
     const node = new MockGainNode();
     this.gainNodes.push(node);
     return node;
   }
-  
+
   addEventListener(event: string, handler: Function): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
     this.listeners.get(event)!.push(handler);
   }
-  
+
   removeEventListener(event: string, handler: Function): void {
     const handlers = this.listeners.get(event);
     if (handlers) {
@@ -34,15 +34,15 @@ class MockAudioContext {
       }
     }
   }
-  
+
   async resume(): Promise<void> {
     return Promise.resolve();
   }
-  
+
   async close(): Promise<void> {
     return Promise.resolve();
   }
-  
+
   getGainNodes(): MockGainNode[] {
     return this.gainNodes;
   }
@@ -50,11 +50,11 @@ class MockAudioContext {
 
 class MockGainNode {
   gain = { value: 1.0 };
-  
+
   connect(): void {
     // Mock connect
   }
-  
+
   disconnect(): void {
     // Mock disconnect
   }
@@ -73,11 +73,11 @@ if (typeof document === 'undefined') {
           paused: true,
           ended: false,
           currentTime: 0,
-          addEventListener: () => {},
-          removeEventListener: () => {},
+          addEventListener: () => { },
+          removeEventListener: () => { },
           play: () => Promise.resolve(),
-          pause: () => {},
-          removeAttribute: () => {},
+          pause: () => { },
+          removeAttribute: () => { },
         };
       }
       return {};
@@ -116,7 +116,7 @@ describe("Volume Control - Real Player Integration", () => {
     it("setVolume updates volume and getVolume returns it", () => {
       player.setVolume(0.7);
       expect(player.getVolume()).toBe(0.7);
-      
+
       player.setVolume(0.3);
       expect(player.getVolume()).toBe(0.3);
     });
@@ -124,7 +124,7 @@ describe("Volume Control - Real Player Integration", () => {
     it("setVolume clamps values below 0 to 0", () => {
       player.setVolume(-0.5);
       expect(player.getVolume()).toBe(0);
-      
+
       player.setVolume(-100);
       expect(player.getVolume()).toBe(0);
     });
@@ -132,14 +132,14 @@ describe("Volume Control - Real Player Integration", () => {
     it("setVolume clamps values above 1 to 1", () => {
       player.setVolume(1.5);
       expect(player.getVolume()).toBe(1);
-      
+
       player.setVolume(100);
       expect(player.getVolume()).toBe(1);
     });
 
     it("setVolume accepts values in valid range", () => {
       const testValues = [0, 0.01, 0.25, 0.5, 0.75, 0.99, 1.0];
-      
+
       for (const value of testValues) {
         player.setVolume(value);
         expect(player.getVolume()).toBe(value);
@@ -154,9 +154,23 @@ describe("Volume Control - Real Player Integration", () => {
     it("volume changes are granular with 0.01 precision", () => {
       player.setVolume(0.51);
       expect(player.getVolume()).toBe(0.51);
-      
+
       player.setVolume(0.52);
       expect(player.getVolume()).toBe(0.52);
+    });
+
+    it("crossfade duration defaults to 0", () => {
+      expect(player.getCrossfadeDuration()).toBe(0);
+    });
+
+    it("setCrossfadeDuration accepts positive values", () => {
+      player.setCrossfadeDuration(3.5);
+      expect(player.getCrossfadeDuration()).toBeCloseTo(3.5);
+    });
+
+    it("setCrossfadeDuration clamps negative values to 0", () => {
+      player.setCrossfadeDuration(-2);
+      expect(player.getCrossfadeDuration()).toBe(0);
     });
   });
 

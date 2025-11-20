@@ -12,6 +12,20 @@
 import loadLibsidplayfp, { SidAudioEngine } from '@sidflow/libsidplayfp-wasm';
 import { SABRingBufferProducer, type SABRingBufferPointers } from '../shared/sab-ring-buffer';
 
+let fastFromQuery = false;
+if (typeof self !== 'undefined' && typeof self.location === 'object') {
+  try {
+    fastFromQuery = new URL(self.location.href).searchParams.get('fast') === '1';
+  } catch {
+    fastFromQuery = false;
+  }
+}
+
+const FAST_AUDIO_TESTS =
+  fastFromQuery ||
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS === '1') ||
+  (typeof self !== 'undefined' && (self as any)['NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS'] === '1');
+
 const INT16_SCALE = 1 / 0x8000;
 
 interface InitMessage {
@@ -106,13 +120,13 @@ class SidProducerWorker {
   private shouldStop = false;
   private renderLoopPromise: Promise<void> | null = null;
 
-  // Keep roughly 30% of the ring buffer primed (~0.9s with default capacity).
-  private readonly PRE_ROLL_TARGET_RATIO = 0.3;
-  private readonly MIN_PREROLL_FRAMES = 8192;
+  // Keep the buffer primed; use much smaller targets when running in fast-test mode.
+  private readonly PRE_ROLL_TARGET_RATIO = FAST_AUDIO_TESTS ? 0.08 : 0.3;
+  private readonly MIN_PREROLL_FRAMES = FAST_AUDIO_TESTS ? 2048 : 8192;
   private preRollFrames = this.MIN_PREROLL_FRAMES;
 
-  private renderChunkFrames = 2048; // Render chunk size in frames (aligned to blockSize)
-  private renderCyclesPerChunk = 120_000;
+  private renderChunkFrames = FAST_AUDIO_TESTS ? 512 : 2048; // Render chunk size in frames (aligned to blockSize)
+  private renderCyclesPerChunk = FAST_AUDIO_TESTS ? 40_000 : 120_000;
 
   private engineInitPromise: Promise<void> | null = null;
   private engineInitialized = false;
@@ -276,7 +290,7 @@ class SidProducerWorker {
 
   private async renderLoop(): Promise<void> {
     let telemetryCounter = 0;
-    const telemetryInterval = 50; // Send telemetry every 50 chunks
+    const telemetryInterval = FAST_AUDIO_TESTS ? 10 : 50; // Send telemetry more frequently in fast-test mode
 
     while (!this.shouldStop) {
       let produced = 0;
