@@ -28,7 +28,7 @@ test.describe('Phase 1 Features', () => {
             await page.waitForResponse(
                 (resp) => resp.url().includes('/api/search') && resp.status() === 200,
                 { timeout: RESPONSE_TIMEOUT }
-            ).catch(() => {});
+            ).catch(() => { });
 
             // Verify search bar is functional
             await expect(searchBar).toHaveValue('sid');
@@ -63,7 +63,7 @@ test.describe('Phase 1 Features', () => {
             await page.waitForResponse(
                 (resp) => resp.url().includes('/api/search') && resp.status() === 200,
                 { timeout: RESPONSE_TIMEOUT }
-            ).catch(() => {});
+            ).catch(() => { });
 
             // Clear search using the X button
             const clearButton = page.locator('button[title="Clear search"]');

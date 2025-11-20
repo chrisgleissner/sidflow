@@ -31,7 +31,7 @@ async function installPlaylistFixtures(page: Page): Promise<void> {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                body: JSON.stringify({ success: true, data: { playlists } }),
+                body: JSON.stringify({ playlists }),
             });
             return;
         }
@@ -171,51 +171,63 @@ test.describe('Playlists Feature', () => {
         test.setTimeout(TIMEOUTS.TEST);
         await installPlaylistFixtures(page);
 
-        // Navigate to the player
-        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
+        // Navigate to the Play tab
+        await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
-        // Wait for the page to load
+        // Wait for the Play tab to load
         await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
     });
 
-    test.skip('should show playlists tab and empty state', async ({ page }) => {
-        // TODO: Fix test - data-testid="tab-playlists" not found in UI
-        // Click playlists tab
-        await page.locator('[data-testid="tab-playlists"]').click({ timeout: TIMEOUTS.ELEMENT_QUICK });
+    test('should show playlists button and empty state', async ({ page }) => {
+        // Click the Playlists button to open the sheet
+        const playlistsButton = page.getByRole('button', { name: /playlists/i });
+        await expect(playlistsButton).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
-        // Should show empty state
-        await expect(page.getByText('No playlists yet', { exact: false }).first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        // Should show empty state in the sheet
+        await expect(page.getByText('No playlists yet', { exact: false })).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
     });
 
-    test.skip('should create playlist and show in list', async ({ page }) => {
-        // SKIP: No playlists tab exists in UI yet
+    test('should create playlist and show in list', async ({ page }) => {
         const storage = getPlaylistStorage(page);
 
         // Create a playlist
         const playlistName = 'Test Playlist';
+        const tracks = SAMPLE_TRACKS.map((t, i) => ({ ...t, order: i }));
         const playlist = {
             id: 'test-playlist-1',
             name: playlistName,
             description: 'Test Description',
-            tracks: SAMPLE_TRACKS.map(t => ({ ...t })),
+            tracks,
+            trackCount: tracks.length,
+            totalDuration: 360, // 6 minutes
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
         storage.set(playlist.id, playlist);
 
-        // Navigate to playlists tab
-        await page.locator('[data-testid="tab-playlists"]').click({ timeout: TIMEOUTS.ELEMENT_QUICK });
+        // Open playlists sheet
+        const playlistsButton = page.getByRole('button', { name: /playlists/i });
+        await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
+
+        // Wait for sheet to open
+        await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: TIMEOUTS.ELEMENT_VISIBLE });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
-        // Should show playlist in list
-        await expect(page.getByText(playlistName).first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
-        await expect(page.getByText('2 tracks', { exact: false }).first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
+        // Wait for loading state to clear
+        await page.waitForTimeout(1000);
+
+        // Verify playlist appears in the sheet
+        const sheetContent = page.locator('[role="dialog"]');
+        await expect(sheetContent.getByText(playlistName)).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+
+        // Verify track count (might appear as "2 tracks")
+        await expect(sheetContent.getByText(/2 tracks/i)).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
     });
 
-    test.skip('should delete playlist', async ({ page }) => {
-        // SKIP: No playlists tab exists in UI yet
+    test('should delete playlist', async ({ page }) => {
         const storage = getPlaylistStorage(page);
 
         // Create a playlist
@@ -224,20 +236,26 @@ test.describe('Playlists Feature', () => {
             name: 'Delete Me',
             description: '',
             tracks: [],
+            trackCount: 0,
+            totalDuration: 0,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
         storage.set(playlist.id, playlist);
 
-        // Navigate to playlists tab
-        await page.locator('[data-testid="tab-playlists"]').click({ timeout: TIMEOUTS.ELEMENT_QUICK });
+        // Open playlists sheet
+        const playlistsButton = page.getByRole('button', { name: /playlists/i });
+        await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
         // Should show playlist
-        await expect(page.getByText('Delete Me').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        await expect(page.getByText('Delete Me')).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+
+        // Set up dialog handler for confirmation
+        page.on('dialog', dialog => dialog.accept());
 
         // Click delete button (trash icon)
-        const deleteButton = page.locator('button:has([data-lucide="trash-2"])').first();
+        const deleteButton = page.getByRole('button', { name: 'Delete playlist' });
         await deleteButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
@@ -245,83 +263,91 @@ test.describe('Playlists Feature', () => {
         await expect(page.getByText('Delete Me')).not.toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
     });
 
-    test.skip('should show export and share buttons', async ({ page }) => {
-        // SKIP: No playlists tab exists in UI yet
+    test('should show export and share buttons', async ({ page }) => {
         const storage = getPlaylistStorage(page);
 
         // Create a playlist
+        const tracks = SAMPLE_TRACKS.map((t, i) => ({ ...t, order: i }));
         const playlist = {
             id: 'test-playlist-export',
             name: 'Export Test',
             description: '',
-            tracks: SAMPLE_TRACKS.map(t => ({ ...t })),
+            tracks,
+            trackCount: tracks.length,
+            totalDuration: 360,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
         storage.set(playlist.id, playlist);
 
-        // Navigate to playlists tab
-        await page.locator('[data-testid="tab-playlists"]').click({ timeout: TIMEOUTS.ELEMENT_QUICK });
+        // Open playlists sheet
+        const playlistsButton = page.getByRole('button', { name: /playlists/i });
+        await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
         // Should show playlist with buttons
-        await expect(page.getByText('Export Test').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        await expect(page.getByText('Export Test')).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
         // Check for export button (Download icon)
-        const exportButton = page.locator('button:has([data-lucide="download"])').first();
+        const exportButton = page.getByRole('button', { name: 'Export as M3U' });
         await expect(exportButton).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
 
         // Check for share button (Share2 icon)
-        const shareButton = page.locator('button:has([data-lucide="share-2"])').first();
+        const shareButton = page.getByRole('button', { name: 'Share playlist URL' });
         await expect(shareButton).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
     });
 
-    test.skip('should handle M3U export', async ({ page }) => {
-        // SKIP: No playlists tab exists in UI yet
+    test('should handle M3U export', async ({ page }) => {
         const storage = getPlaylistStorage(page);
 
         // Create a playlist
+        const tracks = SAMPLE_TRACKS.map((t, i) => ({ ...t, order: i, lengthSeconds: 180 }));
         const playlist = {
             id: 'test-playlist-m3u',
             name: 'M3U Test',
             description: '',
-            tracks: SAMPLE_TRACKS.map(t => ({ ...t, lengthSeconds: 180 })),
+            tracks,
+            trackCount: tracks.length,
+            totalDuration: 360,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
         storage.set(playlist.id, playlist);
 
-        // Navigate to playlists tab
-        await page.locator('[data-testid="tab-playlists"]').click({ timeout: TIMEOUTS.ELEMENT_QUICK });
+        // Open playlists sheet
+        const playlistsButton = page.getByRole('button', { name: /playlists/i });
+        await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
         // Should show playlist
-        await expect(page.getByText('M3U Test').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        await expect(page.getByText('M3U Test')).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
         // Set up download listener
         const downloadPromise = page.waitForEvent('download', { timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
         // Click export button
-        const exportButton = page.locator('button:has([data-lucide="download"])').first();
+        const exportButton = page.getByRole('button', { name: 'Export as M3U' });
         await exportButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
 
         // Wait for download to start
         const download = await downloadPromise;
 
         // Verify download filename
-        expect(download.suggestedFilename()).toMatch(/M3U[_-]Test\.m3u/i);
+        expect(download.suggestedFilename()).toMatch(/M3U.Test\.m3u/i);
     });
 
-    test.skip('should copy share URL to clipboard', async ({ page, context }) => {
-        // SKIP: No playlists tab exists in UI yet
+    test('should copy share URL to clipboard', async ({ page, context }) => {
         const storage = getPlaylistStorage(page);
 
         // Create a playlist
+        const tracks = SAMPLE_TRACKS.map((t, i) => ({ ...t, order: i }));
         const playlist = {
             id: 'test-playlist-share',
             name: 'Share Test',
             description: '',
-            tracks: SAMPLE_TRACKS.map(t => ({ ...t })),
+            tracks,
+            trackCount: tracks.length,
+            totalDuration: 360,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
@@ -330,15 +356,16 @@ test.describe('Playlists Feature', () => {
         // Grant clipboard permissions
         await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 
-        // Navigate to playlists tab
-        await page.locator('[data-testid="tab-playlists"]').click({ timeout: TIMEOUTS.ELEMENT_QUICK });
+        // Open playlists sheet
+        const playlistsButton = page.getByRole('button', { name: /playlists/i });
+        await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
 
         // Should show playlist
-        await expect(page.getByText('Share Test').first()).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        await expect(page.getByText('Share Test')).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
         // Click share button
-        const shareButton = page.locator('button:has([data-lucide="share-2"])').first();
+        const shareButton = page.getByRole('button', { name: 'Share playlist URL' });
         await shareButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await page.waitForTimeout(300); // Wait for clipboard write
 

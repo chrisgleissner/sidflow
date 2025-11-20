@@ -81,10 +81,10 @@ export function FavoritesTab({ onStatusChange, onPlayTrack, isActive = false }: 
 
   const handlePlayTrack = useCallback(async (sidPath: string) => {
     try {
-      setFavorites(prev => prev.map(f => 
+      setFavorites(prev => prev.map(f =>
         f.sidPath === sidPath ? { ...f, isLoading: true } : f
       ));
-      
+
       const response = await playManualTrack({ sid_path: sidPath });
       if (response.success) {
         onPlayTrack?.(response.data);
@@ -98,7 +98,7 @@ export function FavoritesTab({ onStatusChange, onPlayTrack, isActive = false }: 
         true
       );
     } finally {
-      setFavorites(prev => prev.map(f => 
+      setFavorites(prev => prev.map(f =>
         f.sidPath === sidPath ? { ...f, isLoading: false } : f
       ));
     }

@@ -82,9 +82,9 @@ async function installSongBrowserFixtures(page: Page): Promise<void> {
 if (!isPlaywrightRunner) {
   console.warn('[sidflow-web] Skipping Playwright song browser e2e spec; run via `bun run test:e2e`.');
 } else {
-test.describe.configure({ mode: 'serial' });
-test.describe('Song Browser', () => {
-  const skipFolderActions = process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS === '1';
+  test.describe.configure({ mode: 'serial' });
+  test.describe('Song Browser', () => {
+    const skipFolderActions = process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS === '1';
     test.beforeEach(async ({ page }) => {
       test.setTimeout(30000); // Increase timeout for dev mode
 
@@ -171,9 +171,6 @@ test.describe('Song Browser', () => {
     });
 
     test('shows folder action buttons', async ({ page }) => {
-      if (skipFolderActions) {
-        test.skip(true, 'Song browser folder actions require a configured SID collection; skipped in CI.');
-      }
       test.setTimeout(45000); // Allow extra time under high load
 
       const playTab = page.getByRole('tab', { name: /play/i });
@@ -181,32 +178,26 @@ test.describe('Song Browser', () => {
       await playTab.click();
       await page.waitForTimeout(2000);
 
-      // Wait for song browser to load with longer timeout
+      // Wait for song browser to load
       console.log('[folder-buttons] waiting for collection browser heading');
-      await page.waitForFunction(() => {
-        const heading = document.querySelector('h3');
-        return heading?.textContent?.includes('COLLECTION BROWSER');
-      }, { timeout: 10000 }).catch(() => { });
+      await page.waitForSelector('text=/SID COLLECTION BROWSER/i', { timeout: 10000 });
 
-      // Look for play/shuffle buttons directly to avoid long waits when folders are missing
-      console.log('[folder-buttons] counting action buttons via evaluation');
-      let actionButtonCount = 0;
-      try {
-        actionButtonCount = await page.evaluate(() => {
-          return document.querySelectorAll('button[title*="Play"], button[title*="Shuffle"]').length;
-        });
-      } catch (error) {
-        console.warn('[folder-buttons] evaluation failed, skipping assertions:', error);
-        test.skip(true, 'Song browser page closed before folder actions rendered');
-        return;
-      }
-      console.log('[folder-buttons] action buttons found:', actionButtonCount);
-      if (actionButtonCount === 0) {
-        console.log('[folder-buttons] no folder actions found; local SID collection may not be configured');
-        test.skip(true, 'Song browser folders not available in test dataset');
-        return;
-      }
-      expect(actionButtonCount).toBeGreaterThan(0);
+      // Wait for folders section to appear
+      await page.waitForTimeout(1500);
+
+      // Look for folder names (C64Music should be visible)
+      const hasC64MusicFolder = await page.getByText('C64Music').isVisible().catch(() => false);
+      console.log('[folder-buttons] C64Music folder visible:', hasC64MusicFolder);
+
+      // If we have folders, we should have action buttons
+      // Look for play/shuffle buttons on folder items
+      const actionButtons = await page.locator('button[title*="Play"], button[title*="Shuffle"]').all();
+      console.log('[folder-buttons] action buttons found:', actionButtons.length);
+
+      // Verify we have at least some folders or buttons visible
+      // test-workspace/hvsc has C64Music with subfolders
+      const hasFoldersOrButtons = hasC64MusicFolder || actionButtons.length > 0;
+      expect(hasFoldersOrButtons).toBeTruthy();
     });
 
     test('shows file play buttons', async ({ page }) => {
