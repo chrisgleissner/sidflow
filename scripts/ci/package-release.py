@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Package SIDFlow release as a zip archive.
+"""Package SIDFlow release by staging files for archiving.
 
-This script prepares a release archive by copying the repository contents
-(excluding .git) to a staging directory and creating a zip file suitable
-for distribution. It's designed to be used in CI/CD workflows.
+This script prepares a release by copying the repository contents
+(excluding .git) to a staging directory. The calling workflow script
+handles zip creation from the staged files. Designed for CI/CD workflows.
 
 The script expects two environment variables:
 - SRC_DIR: Source directory containing the repository files
 - TARGET_DIR: Destination directory where files will be staged
-
-The staging and archiving is handled by the calling workflow script.
 """
 
 from __future__ import annotations
