@@ -147,6 +147,25 @@ describe('LRUCache', () => {
         expect(cache.size).toBe(1);
     });
 
+    test('should update position when overwriting keys (LRU semantics)', () => {
+        const cache = new LRUCache<string>({ ttl: 10000, maxSize: 3 });
+        
+        cache.set('key1', 'v1');
+        cache.set('key2', 'v2');
+        cache.set('key3', 'v3');
+        
+        // Overwrite key1 - should move to end (most recently used)
+        cache.set('key1', 'updated');
+        
+        // Add key4, should evict key2 (oldest), not key1 (just updated)
+        cache.set('key4', 'v4');
+        
+        expect(cache.get('key1')).toBe('updated'); // Should exist
+        expect(cache.get('key2')).toBeUndefined(); // Should be evicted
+        expect(cache.get('key3')).toBe('v3');
+        expect(cache.get('key4')).toBe('v4');
+    });
+
     test('should handle edge case of maxSize=1', () => {
         const cache = new LRUCache<string>({ ttl: 1000, maxSize: 1 });
         
