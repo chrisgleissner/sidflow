@@ -23,6 +23,7 @@
     "ci:verify": "npm run validate:config && npm run fetch:sample && npm run classify:sample && npm run test:e2e",
     "format:json": "node scripts/run-bun.mjs run scripts/format-json.ts",
     "build:db": "node scripts/run-bun.mjs run scripts/build-db.ts",
+    "start:release": "bash scripts/start-release-server.sh",
     "release:prepare": "node scripts/run-bun.mjs run scripts/ci/release-prepare.ts --",
     "changes:entry": "node scripts/run-bun.mjs run scripts/ci/extract-changes-entry.ts",
     "check:packages": "node scripts/run-bun.mjs run scripts/ci/check-packages.ts",
