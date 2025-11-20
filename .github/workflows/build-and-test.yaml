@@ -53,15 +53,6 @@ jobs:
       - name: Build audio worklet
         run: cd packages/sidflow-web && npm run build:worklet
 
-      - name: Install Playwright browsers
-        run: node scripts/ensure-playwright.mjs
-
-      - name: Cache Playwright browsers
-        uses: actions/cache/save@v4
-        with:
-          path: .playwright-browsers
-          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('packages/sidflow-web/package.json') }}
-
   unit-tests:
     name: Unit Tests
     needs: build
@@ -138,12 +129,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Restore Playwright browsers
-        uses: actions/cache/restore@v4
-        with:
-          path: .playwright-browsers
-          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('packages/sidflow-web/package.json') }}
-          fail-on-cache-miss: true
+      - name: Install Playwright browsers
+        run: node scripts/ensure-playwright.mjs
 
       - name: Add CLI stubs to PATH
         run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
@@ -155,8 +142,6 @@ jobs:
         run: cd packages/sidflow-web && npm run build:worklet
 
       - name: Run E2E tests with coverage (Shard ${{ matrix.shard }}/5)
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
         run: cd packages/sidflow-web && npx playwright test --shard=${{ matrix.shard }}/5
 
       - name: Check for Playwright report
