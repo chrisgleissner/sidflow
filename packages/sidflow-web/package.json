@@ -12,9 +12,13 @@
     "test": "node ../../scripts/run-bun.mjs test tests/unit/",
     "pretest:e2e": "node ./scripts/ensure-playwright-browser.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:coverage": "bash -c 'set -e; rm -rf .next .nyc_output; cp .babelrc.coverage.json .babelrc.json; echo \"[coverage] Babel config swapped for instrumentation\"; E2E_COVERAGE=true playwright test; EXIT_CODE=$?; echo \"[coverage] Restoring babel config\"; echo \"{\\\"presets\\\":[\\\"next/babel\\\"],\\\"plugins\\\":[]}\" > .babelrc.json; exit $EXIT_CODE'",
     "test:all": "npm run pretest:e2e && node ../../scripts/run-bun.mjs test tests/unit/ && playwright test",
     "test:perf": "npm run pretest:e2e && SIDFLOW_RUN_PERF_TESTS=1 playwright test tests/e2e/performance.spec.ts --workers=1",
-    "test:a11y": "npm run pretest:e2e && playwright test tests/e2e/accessibility.spec.ts"
+    "test:a11y": "npm run pretest:e2e && playwright test tests/e2e/accessibility.spec.ts",
+    "coverage:merge": "nyc merge .nyc_output .nyc_output/coverage.json",
+    "coverage:report": "nyc report --reporter=lcov --reporter=text --reporter=html",
+    "coverage:e2e": "npm run test:e2e:coverage && npm run coverage:merge && npm run coverage:report"
   },
   "dependencies": {
     "@ffmpeg/core": "0.11.0",
@@ -46,6 +50,10 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5",
+    "@babel/preset-typescript": "^7.28.5",
     "@playwright/test": "^1.48.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcrypt": "^6.0.0",
@@ -53,10 +61,16 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "babel-loader": "^10.0.0",
+    "babel-plugin-istanbul": "^7.0.1",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
     "fake-indexeddb": "^5.0.2",
+    "istanbul-lib-coverage": "^3.2.2",
+    "nyc": "^17.1.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "v8-to-istanbul": "^9.3.0",
+    "vite-plugin-istanbul": "^7.2.1"
   }
 }

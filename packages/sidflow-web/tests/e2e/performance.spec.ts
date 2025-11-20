@@ -32,7 +32,7 @@
  * - Markdown summary report for human readability and LLM ingestion
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test-hooks';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'url';

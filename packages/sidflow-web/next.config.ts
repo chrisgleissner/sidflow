@@ -45,7 +45,7 @@ const nextConfig: NextConfig = {
     },
   },
   // Keep webpack config for legacy builds
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     config.resolve ??= {};
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -65,6 +65,9 @@ const nextConfig: NextConfig = {
         "@ffmpeg/core/dist/ffmpeg-core.worker.js": stubPath,
       };
     }
+    
+    // Babel handles instrumentation via BABEL_ENV=test, no webpack override needed
+    
     return config;
   },
 };

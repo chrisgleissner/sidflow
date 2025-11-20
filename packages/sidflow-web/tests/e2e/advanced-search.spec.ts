@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-hooks';
 
 test.describe('Advanced Search & Discovery', () => {
     test.beforeEach(async ({ page }) => {

@@ -173,6 +173,48 @@ describe('Personal Ratings', () => {
         expect(retrieved?.rating).toBe(rating);
       }
     });
+
+    test('should reject rating below 1', () => {
+      const sidPath = '/test/invalid.sid';
+      setPersonalRating(sidPath, 0);
+      expect(getPersonalRating(sidPath)).toBeNull();
+      
+      setPersonalRating(sidPath, -1);
+      expect(getPersonalRating(sidPath)).toBeNull();
+    });
+
+    test('should reject rating above 5', () => {
+      const sidPath = '/test/invalid.sid';
+      setPersonalRating(sidPath, 6);
+      expect(getPersonalRating(sidPath)).toBeNull();
+      
+      setPersonalRating(sidPath, 10);
+      expect(getPersonalRating(sidPath)).toBeNull();
+    });
+
+    test('should reject non-finite numbers', () => {
+      const sidPath = '/test/invalid.sid';
+      setPersonalRating(sidPath, NaN);
+      expect(getPersonalRating(sidPath)).toBeNull();
+      
+      setPersonalRating(sidPath, Infinity);
+      expect(getPersonalRating(sidPath)).toBeNull();
+      
+      setPersonalRating(sidPath, -Infinity);
+      expect(getPersonalRating(sidPath)).toBeNull();
+    });
+
+    test('should reject non-number types', () => {
+      const sidPath = '/test/invalid.sid';
+      setPersonalRating(sidPath, '3' as any);
+      expect(getPersonalRating(sidPath)).toBeNull();
+      
+      setPersonalRating(sidPath, null as any);
+      expect(getPersonalRating(sidPath)).toBeNull();
+      
+      setPersonalRating(sidPath, undefined as any);
+      expect(getPersonalRating(sidPath)).toBeNull();
+    });
   });
 
   describe('localStorage persistence', () => {

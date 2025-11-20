@@ -1,0 +1,22 @@
+{
+  "all": false,
+  "instrument": false,
+  "sourceMap": false,
+  "include": [
+    "app/**/*.{js,ts,tsx}",
+    "lib/**/*.{js,ts,tsx}",
+    "components/**/*.{js,ts,tsx}"
+  ],
+  "exclude": [
+    "**/*.test.{js,ts,tsx}",
+    "**/*.spec.{js,ts,tsx}",
+    "**/tests/**",
+    "**/dist/**",
+    "**/*.d.ts",
+    "**/node_modules/**",
+    ".next/**"
+  ],
+  "reporter": ["lcov", "text", "html"],
+  "report-dir": "coverage-e2e",
+  "temp-dir": ".nyc_output"
+}

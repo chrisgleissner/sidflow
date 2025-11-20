@@ -64,10 +64,15 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: resolvedWorkers,
+  globalSetup: './tests/e2e/global-setup.ts',
+  globalTeardown: './tests/e2e/global-teardown.ts',
+  // Enable code coverage collection
+  testMatch: /.*\.spec\.ts$/,
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'playwright-report/report.json' }],
+    ['./tests/e2e/coverage-reporter.ts'],
   ],
   use: baseUse,
 
@@ -76,24 +81,29 @@ export default defineConfig({
       name: 'chromium',
       testIgnore: /(favorites|phase1-features|song-browser)\.spec\.ts$/,
       use: { ...projectUse },
+      // Enable JS coverage for this project
+      metadata: { coverage: true },
     },
     {
       name: 'chromium-favorites',
       testMatch: /favorites\.spec\.ts$/,
       workers: 1,
       use: { ...projectUse },
+      metadata: { coverage: true },
     },
     {
       name: 'chromium-phase1',
       testMatch: /phase1-features\.spec\.ts$/,
       workers: 1,
       use: { ...projectUse },
+      metadata: { coverage: true },
     },
     {
       name: 'chromium-song-browser',
       testMatch: /song-browser\.spec\.ts$/,
       workers: 1,
       use: { ...projectUse },
+      metadata: { coverage: true },
     },
   ],
 
@@ -119,7 +129,10 @@ export default defineConfig({
       SIDFLOW_SKIP_SONGBROWSER_ACTIONS: process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ?? '1',
       NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS: process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? '1',
       ...(serverNodeOptions ? { NODE_OPTIONS: serverNodeOptions } : {}),
-      ...(skipNextBuildFlag ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
+      // Skip build flag - but force rebuild when E2E_COVERAGE is enabled
+      ...(skipNextBuildFlag && process.env.E2E_COVERAGE !== 'true' ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
+      // Pass E2E_COVERAGE to enable instrumentation
+      ...(process.env.E2E_COVERAGE === 'true' ? { E2E_COVERAGE: 'true' } : {}),
     },
   },
 });

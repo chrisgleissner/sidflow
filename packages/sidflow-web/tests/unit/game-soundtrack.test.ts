@@ -62,4 +62,57 @@ describe('Game Soundtrack helpers', () => {
         const title = extractGameTitle(metadata, '/music.sid');
         expect(title).toBe('');
     });
+
+    test('normalizeGameTitle handles null and undefined', () => {
+        expect(normalizeGameTitle(null)).toBe('');
+        expect(normalizeGameTitle(undefined)).toBe('');
+        expect(normalizeGameTitle('')).toBe('');
+    });
+
+    test('normalizeGameTitle removes brackets and parentheses', () => {
+        expect(normalizeGameTitle('Game (1984)')).toBe('game 1984');
+        expect(normalizeGameTitle('Game [Remix]')).toBe('game remix');
+        expect(normalizeGameTitle('Game {Special}')).toBe('game special');
+    });
+
+    test('normalizeGameTitle normalizes spaces', () => {
+        expect(normalizeGameTitle('Game  Title')).toBe('game title');
+        expect(normalizeGameTitle('Game   --   Title')).toBe('game title');
+        expect(normalizeGameTitle('  Game Title  ')).toBe('game title');
+    });
+
+    test('extractGameTitle handles deep paths', () => {
+        const metadata = {
+            title: '',
+            author: '',
+            released: '',
+            songs: 1,
+            startSong: 1,
+            sidType: 'PSID',
+            version: 2,
+            sidModel: '6581',
+            clock: 'PAL',
+            length: '',
+            fileSizeBytes: 0,
+        };
+        expect(extractGameTitle(metadata, '/very/deep/path/Commando/track.sid')).toBe('Commando');
+    });
+
+    test('extractGameTitle handles special characters in folders', () => {
+        const metadata = {
+            title: '',
+            author: '',
+            released: '',
+            songs: 1,
+            startSong: 1,
+            sidType: 'PSID',
+            version: 2,
+            sidModel: '6581',
+            clock: 'PAL',
+            length: '',
+            fileSizeBytes: 0,
+        };
+        expect(extractGameTitle(metadata, '/path/Game-Title!/music.sid')).toBe('GameTitle');
+        expect(extractGameTitle(metadata, '/path/Game_(1984)/track.sid')).toBe('Game 1984');
+    });
 });

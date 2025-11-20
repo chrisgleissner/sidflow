@@ -4,7 +4,7 @@
  * with no server-side PCM streaming.
  */
 
-import { test, expect, type Locator, type Page, type Request, type Route } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Request, type Route } from './test-hooks';
 import { createLogger } from '@sidflow/common';
 import { configureE2eLogging } from './utils/logging';
 import path from 'node:path';

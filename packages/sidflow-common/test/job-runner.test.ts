@@ -2,6 +2,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { JobOrchestrator } from "../src/job-orchestrator";
 import { JobRunner, type JobExecutionPlan } from "../src/job-runner";
+import { createDefaultJobCommandFactory } from "../src/job-runner";
 import type { JobDescriptor } from "../src/job-types";
 import { unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -156,5 +157,288 @@ process.exit(0);
     const secondAttempt = await runner.processNextJob();
     expect(secondAttempt?.status).toBe("completed");
     expect(secondAttempt?.metadata.resumeData).toBeUndefined();
+  });
+});
+
+describe("createDefaultJobCommandFactory", () => {
+  test("creates factory for fetch job with minimal params", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "fetch",
+      status: "pending",
+      params: {},
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan).not.toBeNull();
+    expect(plan!.stages.length).toBe(1);
+    expect(plan!.stages[0].type).toBe("fetch");
+    expect(plan!.stages[0].command.command).toBe("/repo/scripts/sidflow-fetch");
+  });
+
+  test("creates factory for fetch job with all params", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "fetch",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        remoteBaseUrl: "https://example.com",
+        hvscVersionPath: "/version.txt",
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].command.args).toContain("--config");
+    expect(plan!.stages[0].command.args).toContain("/config.json");
+    expect(plan!.stages[0].command.args).toContain("--remote");
+    expect(plan!.stages[0].command.args).toContain("https://example.com");
+    expect(plan!.stages[0].command.args).toContain("--version-file");
+    expect(plan!.stages[0].command.args).toContain("/version.txt");
+  });
+
+  test("creates factory for classify job with params", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "classify",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        forceRebuild: true,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].type).toBe("classify");
+    expect(plan!.stages[0].command.args).toContain("--config");
+    expect(plan!.stages[0].command.args).toContain("--force-rebuild");
+  });
+
+  test("creates factory for train job with all params", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        epochs: 100,
+        batchSize: 32,
+        learningRate: 0.001,
+        evaluate: false,
+        force: true,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].type).toBe("train");
+    expect(plan!.stages[0].command.args).toContain("--epochs");
+    expect(plan!.stages[0].command.args).toContain("100");
+    expect(plan!.stages[0].command.args).toContain("--batch-size");
+    expect(plan!.stages[0].command.args).toContain("32");
+    expect(plan!.stages[0].command.args).toContain("--learning-rate");
+    expect(plan!.stages[0].command.args).toContain("0.001");
+    expect(plan!.stages[0].command.args).toContain("--no-evaluate");
+    expect(plan!.stages[0].command.args).toContain("--force");
+  });
+
+  test("creates factory for render job with params", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "render",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        engine: "wasm",
+        preferredEngines: ["wasm", "native"],
+        formats: ["wav", "m4a"],
+        chip: "6581",
+        outputPath: "/output",
+        targetDurationMs: 5000,
+        maxLossRate: 0.1,
+        sidPaths: ["/path1.sid", "/path2.sid"],
+        sidListFile: "/list.txt",
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].type).toBe("render");
+    expect(plan!.stages[0].command.args).toContain("--engine");
+    expect(plan!.stages[0].command.args).toContain("wasm");
+    expect(plan!.stages[0].command.args).toContain("--prefer");
+    expect(plan!.stages[0].command.args).toContain("wasm,native");
+    expect(plan!.stages[0].command.args).toContain("--formats");
+    expect(plan!.stages[0].command.args).toContain("wav,m4a");
+    expect(plan!.stages[0].command.args).toContain("--chip");
+    expect(plan!.stages[0].command.args).toContain("6581");
+    expect(plan!.stages[0].command.args).toContain("--output");
+    expect(plan!.stages[0].command.args).toContain("/output");
+    expect(plan!.stages[0].command.args).toContain("--target-duration");
+    expect(plan!.stages[0].command.args).toContain("5");
+    expect(plan!.stages[0].command.args).toContain("--max-loss");
+    {
+      const args = plan!.stages[0].command.args;
+      const maxLossIdx = args.indexOf("--max-loss");
+      expect(maxLossIdx).toBeGreaterThan(-1);
+      expect(Number(args[maxLossIdx + 1])).toBeCloseTo(0.1, 10);
+    }
+    expect(plan!.stages[0].command.args).toContain("--sid");
+    expect(plan!.stages[0].command.args).toContain("/path1.sid");
+    expect(plan!.stages[0].command.args).toContain("/path2.sid");
+    expect(plan!.stages[0].command.args).toContain("--sid-file");
+    expect(plan!.stages[0].command.args).toContain("/list.txt");
+  });
+
+  test("creates factory for pipeline job", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "pipeline",
+      status: "pending",
+      params: {
+        stages: [
+          { type: "fetch", label: "fetch" },
+          { type: "classify", label: "classify" },
+          { type: "train", label: "train" },
+        ],
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan).not.toBeNull();
+    expect(plan!.stages.length).toBe(3);
+    expect(plan!.stages[0].type).toBe("fetch");
+    expect(plan!.stages[1].type).toBe("classify");
+    expect(plan!.stages[2].type).toBe("train");
+  });
+
+  test("returns null for unknown job type", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "unknown" as any,
+      status: "pending",
+      params: {},
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan).toBeNull();
+  });
+
+  test("handles edge case numeric parameters - very large values", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        epochs: 1000000,
+        batchSize: 999999,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].command.args).toContain("--epochs");
+    expect(plan!.stages[0].command.args).toContain("1000000");
+    expect(plan!.stages[0].command.args).toContain("--batch-size");
+    expect(plan!.stages[0].command.args).toContain("999999");
+  });
+
+  test("handles edge case numeric parameters - very small values", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        learningRate: 1e-10,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    const args = plan!.stages[0].command.args;
+    const lrIndex = args.indexOf("--learning-rate");
+    expect(lrIndex).toBeGreaterThan(-1);
+    expect(Number(args[lrIndex + 1])).toBeCloseTo(1e-10, 15);
+  });
+
+  test("handles edge case numeric parameters - zero values", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        epochs: 0,
+        batchSize: 0,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    expect(plan!.stages[0].command.args).toContain("--epochs");
+    expect(plan!.stages[0].command.args).toContain("0");
+    expect(plan!.stages[0].command.args).toContain("--batch-size");
+    expect(plan!.stages[0].command.args).toContain("0");
+  });
+
+  test("handles edge case numeric parameters - Number.MIN_VALUE", () => {
+    const factory = createDefaultJobCommandFactory({ repoRoot: "/repo" });
+    const job: JobDescriptor = {
+      id: "test",
+      type: "train",
+      status: "pending",
+      params: {
+        configPath: "/config.json",
+        learningRate: Number.MIN_VALUE,
+      },
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const plan = factory(job);
+    const args = plan!.stages[0].command.args;
+    const lrIndex = args.indexOf("--learning-rate");
+    expect(lrIndex).toBeGreaterThan(-1);
+    // MIN_VALUE is 5e-324, so we verify it's close to that
+    expect(Number(args[lrIndex + 1])).toBeGreaterThan(0);
+    expect(Number(args[lrIndex + 1])).toBeLessThan(1e-300);
   });
 });
