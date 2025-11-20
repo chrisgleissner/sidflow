@@ -64,12 +64,9 @@ test.describe('Social Features', () => {
         const activityTab = page.locator('[role="tab"]', { hasText: /activity/i });
         await activityTab.click();
 
-        // Wait for activity content
-        await page.waitForTimeout(500);
-
-        // Should see activity stream or empty state
-        const activityContent = page.locator('[role="tabpanel"]');
-        await expect(activityContent).toBeVisible();
+        // Wait for activity content using specific selector
+        const activityContent = page.getByRole('tabpanel', { name: /activity/i });
+        await expect(activityContent).toBeVisible({ timeout: 5000 });
     });
 
     test('should display activity refresh button', async ({ page }) => {

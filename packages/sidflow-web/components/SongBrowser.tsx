@@ -201,6 +201,7 @@ export function SongBrowser({ onPlaySong, onPlayFolder, onStatusChange }: SongBr
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => handlePlayFolder(folder.path, false, false)}
+                        aria-label="Play all songs in this folder"
                         title="Play all songs in this folder"
                         disabled={!onPlayFolder}
                       >
@@ -211,6 +212,7 @@ export function SongBrowser({ onPlaySong, onPlayFolder, onStatusChange }: SongBr
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => handlePlayFolder(folder.path, true, false)}
+                        aria-label="Play all songs in this folder and subfolders"
                         title="Play all songs in this folder and subfolders"
                         disabled={!onPlayFolder}
                       >
@@ -221,6 +223,7 @@ export function SongBrowser({ onPlaySong, onPlayFolder, onStatusChange }: SongBr
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => handlePlayFolder(folder.path, true, true)}
+                        aria-label="Shuffle all songs in this folder and subfolders"
                         title="Shuffle all songs in this folder and subfolders"
                         disabled={!onPlayFolder}
                       >

@@ -215,6 +215,7 @@ export function AdvancedSearchBar({
                                     size="icon"
                                     className="h-6 w-6"
                                     onClick={handleClearSearch}
+                                    aria-label="Clear search"
                                     title="Clear search"
                                 >
                                     <X className="h-3 w-3" />
@@ -255,6 +256,7 @@ export function AdvancedSearchBar({
                                                 size="icon"
                                                 className="h-8 w-8 flex-shrink-0"
                                                 onClick={() => handlePlayResult(result.sidPath, result.displayName)}
+                                                aria-label="Play this track"
                                                 title="Play this track"
                                             >
                                                 <Play className="h-4 w-4" />

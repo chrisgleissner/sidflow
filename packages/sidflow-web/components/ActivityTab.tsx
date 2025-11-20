@@ -99,6 +99,8 @@ export function ActivityTab({ onStatusChange }: ActivityTabProps) {
                         variant="outline"
                         onClick={loadActivity}
                         disabled={isLoading}
+                        aria-label="Refresh activity"
+                        data-testid="activity-refresh-button"
                     >
                         {isLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />

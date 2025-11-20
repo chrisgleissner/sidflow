@@ -56,6 +56,8 @@ export function UserMenu() {
                     size="sm"
                     variant="ghost"
                     onClick={() => setShowLogin(true)}
+                    aria-label="Log in"
+                    data-testid="user-menu-login"
                 >
                     <LogIn className="h-4 w-4 mr-1" />
                     <span className="hidden sm:inline">Login</span>
@@ -64,6 +66,8 @@ export function UserMenu() {
                     size="sm"
                     variant="default"
                     onClick={() => setShowRegister(true)}
+                    aria-label="Sign up"
+                    data-testid="user-menu-signup"
                 >
                     <UserPlus className="h-4 w-4 mr-1" />
                     <span className="hidden sm:inline">Sign Up</span>
