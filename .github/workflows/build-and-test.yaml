@@ -64,7 +64,11 @@ jobs:
           retention-days: 1
 
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (Shard ${{ matrix.shard }}/3)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     outputs:
       playwright-report-ready: ${{ steps.detect-playwright-report.outputs.available }}
     runs-on: ubuntu-latest
@@ -103,13 +107,13 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Run E2E tests with coverage
+      - name: Run E2E tests with coverage (Shard ${{ matrix.shard }}/3)
         env:
           PLAYWRIGHT_BROWSERS_PATH: .playwright-browsers
         run: |
           cd packages/sidflow-web
           npm run build:worklet
-          npm run test:e2e
+          npx playwright test --shard=${{ matrix.shard }}/3
 
       - name: Check for Playwright report
         id: detect-playwright-report
@@ -134,7 +138,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-e2e
+          name: coverage-e2e-shard-${{ matrix.shard }}
           path: packages/sidflow-web/coverage/
           if-no-files-found: ignore
           retention-days: 1
@@ -143,7 +147,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-html-report
+          name: playwright-html-report-shard-${{ matrix.shard }}
           path: packages/sidflow-web/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
@@ -152,7 +156,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-test-results
+          name: playwright-test-results-shard-${{ matrix.shard }}
           path: packages/sidflow-web/test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -161,7 +165,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tab-screenshots
+          name: tab-screenshots-shard-${{ matrix.shard }}
           path: doc/web-screenshots/
           if-no-files-found: ignore
           retention-days: 7
@@ -184,11 +188,25 @@ jobs:
           name: coverage-unit
           path: coverage-unit
 
-      - name: Download E2E test coverage
+      - name: Download E2E test coverage (shard 1)
         uses: actions/download-artifact@v4
         with:
-          name: coverage-e2e
-          path: coverage-e2e
+          name: coverage-e2e-shard-1
+          path: coverage-e2e-shard-1
+        continue-on-error: true
+
+      - name: Download E2E test coverage (shard 2)
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-e2e-shard-2
+          path: coverage-e2e-shard-2
+        continue-on-error: true
+
+      - name: Download E2E test coverage (shard 3)
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-e2e-shard-3
+          path: coverage-e2e-shard-3
         continue-on-error: true
 
       - name: Merge coverage reports
@@ -198,14 +216,17 @@ jobs:
           if [ -f coverage-unit/lcov.info ]; then
             cp coverage-unit/lcov.info coverage/lcov.info
           fi
-          # Append E2E coverage if available
-          if [ -f coverage-e2e/lcov.info ]; then
-            if [ -f coverage/lcov.info ]; then
-              cat coverage-e2e/lcov.info >> coverage/lcov.info
-            else
-              cp coverage-e2e/lcov.info coverage/lcov.info
+          # Append E2E coverage from all shards if available
+          for shard in 1 2 3; do
+            if [ -f coverage-e2e-shard-${shard}/lcov.info ]; then
+              echo "Merging coverage from E2E shard ${shard}"
+              if [ -f coverage/lcov.info ]; then
+                cat coverage-e2e-shard-${shard}/lcov.info >> coverage/lcov.info
+              else
+                cp coverage-e2e-shard-${shard}/lcov.info coverage/lcov.info
+              fi
             fi
-          fi
+          done
           echo "Merged coverage report:"
           ls -lh coverage/
 
@@ -216,30 +237,3 @@ jobs:
           files: coverage/lcov.info
           fail_ci_if_error: false
           verbose: true
-
-  # publish-playwright-report:
-  #   needs: e2e-tests
-  #   if: ${{ always() && needs.e2e-tests.outputs.playwright-report-ready == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     pages: write
-  #     id-token: write
-  #     contents: read
-  #   environment:
-  #     name: github-pages
-  #     url: ${{ steps.deploy.outputs.page_url }}
-  #   steps:
-  #     - name: Download Playwright HTML report artifact
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: playwright-html-report
-  #         path: playwright-html
-
-  #     - name: Upload GitHub Pages artifact
-  #       uses: actions/upload-pages-artifact@v3
-  #       with:
-  #         path: playwright-html
-
-  #     - name: Deploy Playwright report
-  #       id: deploy
-  #       uses: actions/deploy-pages@v4
