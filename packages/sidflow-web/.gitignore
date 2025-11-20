@@ -51,3 +51,4 @@ next-env.d.ts
 # E2E Coverage
 .nyc_output/
 coverage-e2e/
+.babelrc.coverage.json
