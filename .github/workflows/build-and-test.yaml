@@ -18,8 +18,8 @@ permissions:
   id-token: write
 
 jobs:
-  build:
-    name: Build
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
@@ -53,53 +53,6 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Build audio worklet
-        run: cd packages/sidflow-web && npm run build:worklet
-
-      - name: Install Playwright browsers
-        run: node scripts/ensure-playwright.mjs
-
-      - name: Cache build artifacts
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-            packages/*/dist
-            packages/sidflow-web/public/audio-processor.js
-            .playwright-browsers
-          key: build-${{ github.sha }}-${{ github.run_id }}
-
-  unit-tests:
-    name: Unit Tests
-    needs: build
-    runs-on: ubuntu-latest
-    container:
-      image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          fetch-depth: 0
-
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-            packages/*/dist
-            packages/sidflow-web/public/audio-processor.js
-          key: build-${{ github.sha }}-${{ github.run_id }}
-          fail-on-cache-miss: true
-
-      - name: Add CLI stubs to PATH
-        run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
-
       - name: Run unit tests with coverage
         run: bun test $(find packages/*/test packages/sidflow-web/tests/unit integration-tests -name '*.test.ts' -type f 2>/dev/null) --coverage --coverage-reporter=text --coverage-reporter=lcov --exclude='**/*.spec.ts' --exclude='**/tests/e2e/**'
 
@@ -112,7 +65,6 @@ jobs:
 
   e2e-tests:
     name: E2E Tests (Shard ${{ matrix.shard }}/3)
-    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -132,24 +84,35 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
 
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v4
+      - name: Restore WASM upstream cache
+        uses: actions/cache@v4
         with:
-          path: |
-            node_modules
-            packages/*/node_modules
-            packages/*/dist
-            packages/sidflow-web/public/audio-processor.js
-            .playwright-browsers
-          key: build-${{ github.sha }}-${{ github.run_id }}
-          fail-on-cache-miss: true
+          path: packages/libsidplayfp-wasm/.cache/upstream
+          key: wasm-upstream-${{ runner.os }}-${{ hashFiles('packages/libsidplayfp-wasm/docker/entrypoint.sh', 'packages/libsidplayfp-wasm/scripts/build.sh') }}
+          restore-keys: |
+            wasm-upstream-${{ runner.os }}-
+
+      - name: Bun version
+        run: bun --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: node scripts/ensure-playwright.mjs
 
       - name: Add CLI stubs to PATH
         run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
 
+      - name: Build project
+        run: bun run build
+
+      - name: Build audio worklet
+        run: cd packages/sidflow-web && npm run build:worklet
+
       - name: Run E2E tests with coverage (Shard ${{ matrix.shard }}/3)
         env:
-          PLAYWRIGHT_BROWSERS_PATH: .playwright-browsers
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
         run: cd packages/sidflow-web && npx playwright test --shard=${{ matrix.shard }}/3
 
       - name: Check for Playwright report

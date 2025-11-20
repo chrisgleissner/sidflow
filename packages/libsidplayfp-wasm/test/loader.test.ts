@@ -22,10 +22,10 @@ describe("libsidplayfp wasm loader", () => {
 
     it("renders zero samples when no SID is loaded", async () => {
         const engine = new SidAudioEngine();
-        
+
         // Ensure the engine is properly initialized before attempting render
         await new Promise(resolve => setTimeout(resolve, 10));
-        
+
         const result = await engine.renderSeconds(0.5);
         expect(result.length).toBe(0);
 
