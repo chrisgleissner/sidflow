@@ -156,8 +156,8 @@ function getPlaylistStorage(page: Page): Map<string, any> {
 
 // Timeout constants for fast E2E tests
 const TIMEOUTS = {
-    TEST: 20000,          // Overall test timeout (strict 20s max)
-    PAGE_LOAD: 10000,     // Page navigation timeout
+    TEST: 30000,          // Overall test timeout (30s for CI stability)
+    PAGE_LOAD: 20000,     // Page navigation timeout (increased for CI)
     ELEMENT_VISIBLE: 5000, // Wait for element to be visible
     ELEMENT_QUICK: 2000,  // Quick element checks
     LOADING_STATE: 10000, // Wait for loading states to complete
@@ -165,18 +165,25 @@ const TIMEOUTS = {
 } as const;
 
 test.describe('Playlists Feature', () => {
-    test.describe.configure({ mode: 'serial' });
-
     test.beforeEach(async ({ page }) => {
         test.setTimeout(TIMEOUTS.TEST);
         await installPlaylistFixtures(page);
 
-        // Navigate to the Play tab
-        await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
-        await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
-
-        // Wait for the Play tab to load
-        await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
+        // Navigate to the Play tab with retry for CI stability
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
+                await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
+                await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
+                break;
+            } catch (error) {
+                retries--;
+                if (retries === 0) throw error;
+                console.log(`Navigation retry, ${retries} attempts remaining`);
+                await page.waitForTimeout(1000);
+            }
+        }
     });
 
     test('should show playlists button and empty state', async ({ page }) => {

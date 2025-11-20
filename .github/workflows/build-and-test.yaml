@@ -130,7 +130,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: node scripts/ensure-playwright.mjs
+        run: cd packages/sidflow-web && npx playwright install --with-deps chromium
 
       - name: Add CLI stubs to PATH
         run: echo "${GITHUB_WORKSPACE}/packages/sidflow-web/tests/stubs" >> "$GITHUB_PATH"
@@ -162,15 +162,6 @@ jobs:
         with:
           report-file: packages/sidflow-web/playwright-report/report.json
           job-summary: true
-
-      - name: Upload E2E test coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-e2e-shard-${{ matrix.shard }}
-          path: packages/sidflow-web/coverage/
-          if-no-files-found: ignore
-          retention-days: 1
 
       - name: Upload Playwright HTML report
         if: always()
@@ -217,60 +208,19 @@ jobs:
           name: coverage-unit
           path: coverage-unit
 
-      - name: Download E2E test coverage (shard 1)
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-e2e-shard-1
-          path: coverage-e2e-shard-1
-        continue-on-error: true
-
-      - name: Download E2E test coverage (shard 2)
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-e2e-shard-2
-          path: coverage-e2e-shard-2
-        continue-on-error: true
-
-      - name: Download E2E test coverage (shard 3)
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-e2e-shard-3
-          path: coverage-e2e-shard-3
-        continue-on-error: true
-
-      - name: Download E2E test coverage (shard 4)
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-e2e-shard-4
-          path: coverage-e2e-shard-4
-        continue-on-error: true
-
-      - name: Download E2E test coverage (shard 5)
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-e2e-shard-5
-          path: coverage-e2e-shard-5
-        continue-on-error: true
-
-      - name: Merge coverage reports
+      - name: Prepare coverage for upload
         run: |
           mkdir -p coverage
-          # Copy unit test coverage as base
+          # E2E tests don't generate coverage (Playwright tests run in browser)
+          # Only upload unit test coverage
           if [ -f coverage-unit/lcov.info ]; then
             cp coverage-unit/lcov.info coverage/lcov.info
+            echo "Using unit test coverage"
+          else
+            echo "No coverage found"
+            exit 1
           fi
-          # Append E2E coverage from all shards if available
-          for shard in 1 2 3 4 5; do
-            if [ -f coverage-e2e-shard-${shard}/lcov.info ]; then
-              echo "Merging coverage from E2E shard ${shard}"
-              if [ -f coverage/lcov.info ]; then
-                cat coverage-e2e-shard-${shard}/lcov.info >> coverage/lcov.info
-              else
-                cp coverage-e2e-shard-${shard}/lcov.info coverage/lcov.info
-              fi
-            fi
-          done
-          echo "Merged coverage report:"
+          echo "Coverage report:"
           ls -lh coverage/
 
       - name: Upload coverage to Codecov

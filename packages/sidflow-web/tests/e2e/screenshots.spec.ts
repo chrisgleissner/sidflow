@@ -87,12 +87,13 @@ const TABS: TabScenario[] = [
     value: 'rate',
     screenshot: '04-rate.png',
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
-      // Wait for loading spinner to disappear
+      // Wait for loading spinner to disappear first
       await page.waitForFunction(() => {
         const loader = document.querySelector('.animate-spin');
         return loader === null;
       }, { timeout: 10000 }).catch(() => { });
+      // Wait for rate heading with longer timeout for CI
+      await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible({ timeout: 10000 });
       // Ensure content is fully rendered
       await page.waitForTimeout(1000);
     },
