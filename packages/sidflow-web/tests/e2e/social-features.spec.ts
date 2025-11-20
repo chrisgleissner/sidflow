@@ -2,7 +2,7 @@
  * E2E tests for social features: authentication, activity stream, user profiles
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-hooks';
 
 test.describe('Social Features', () => {
     test('should display login and signup buttons when not authenticated', async ({ page }) => {

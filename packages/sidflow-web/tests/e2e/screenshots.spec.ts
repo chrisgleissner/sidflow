@@ -1,4 +1,4 @@
-import { test, expect, Page, type BrowserContext } from '@playwright/test';
+import { test, expect, Page, type BrowserContext } from './test-hooks';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';

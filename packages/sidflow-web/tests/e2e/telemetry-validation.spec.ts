@@ -9,7 +9,7 @@
  * - Telemetry is accessible via window.telemetrySink in test mode
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test-hooks';
 import { configureE2eLogging } from './utils/logging';
 
 const FAST_AUDIO_TESTS =

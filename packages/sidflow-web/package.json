@@ -12,7 +12,7 @@
     "test": "node ../../scripts/run-bun.mjs test tests/unit/",
     "pretest:e2e": "node ./scripts/ensure-playwright-browser.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:coverage": "COVERAGE=true playwright test",
+    "test:e2e:coverage": "rm -rf .next && cp .babelrc.coverage.json .babelrc.json && E2E_COVERAGE=true playwright test; cp .babelrc.json .babelrc.json.bak && echo '{\"presets\":[\"next/babel\"],\"plugins\":[]}' > .babelrc.json",
     "test:all": "npm run pretest:e2e && node ../../scripts/run-bun.mjs test tests/unit/ && playwright test",
     "test:perf": "npm run pretest:e2e && SIDFLOW_RUN_PERF_TESTS=1 playwright test tests/e2e/performance.spec.ts --workers=1",
     "test:a11y": "npm run pretest:e2e && playwright test tests/e2e/accessibility.spec.ts",
@@ -52,6 +52,7 @@
   "devDependencies": {
     "@babel/core": "^7.28.5",
     "@babel/preset-env": "^7.28.5",
+    "@babel/preset-react": "^7.28.5",
     "@babel/preset-typescript": "^7.28.5",
     "@playwright/test": "^1.48.0",
     "@tailwindcss/postcss": "^4",

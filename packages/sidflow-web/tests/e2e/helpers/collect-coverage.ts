@@ -6,6 +6,7 @@ export async function collectCoverage(page: Page, testName: string) {
   const coverage = await page.evaluate(() => (window as any).__coverage__);
   
   if (!coverage) {
+    console.log(`[collect-coverage] No coverage data for test: ${testName}`);
     return;
   }
 
@@ -16,4 +17,6 @@ export async function collectCoverage(page: Page, testName: string) {
   const filepath = join(nycOutput, filename);
   
   writeFileSync(filepath, JSON.stringify(coverage, null, 2));
+  const fileCount = Object.keys(coverage).length;
+  console.log(`[collect-coverage] Saved coverage for ${fileCount} files: ${filename}`);
 }

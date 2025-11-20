@@ -129,7 +129,10 @@ export default defineConfig({
       SIDFLOW_SKIP_SONGBROWSER_ACTIONS: process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ?? '1',
       NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS: process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? '1',
       ...(serverNodeOptions ? { NODE_OPTIONS: serverNodeOptions } : {}),
-      ...(skipNextBuildFlag ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
+      // Skip build flag - but force rebuild when E2E_COVERAGE is enabled
+      ...(skipNextBuildFlag && process.env.E2E_COVERAGE !== 'true' ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
+      // Pass E2E_COVERAGE to enable instrumentation
+      ...(process.env.E2E_COVERAGE === 'true' ? { E2E_COVERAGE: 'true' } : {}),
     },
   },
 });

@@ -10,7 +10,7 @@
  * - RMS stability (±0.5 dB in middle 2.5s)
  */
 
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { test, expect, type Page, type BrowserContext } from './test-hooks';
 import { configureE2eLogging } from './utils/logging';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

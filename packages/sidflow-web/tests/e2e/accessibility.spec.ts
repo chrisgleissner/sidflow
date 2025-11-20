@@ -7,7 +7,7 @@
  * Run with: bun run test:a11y or npm run test:e2e -- accessibility.spec.ts
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test-hooks';
 
 test.describe('Accessibility Audit', () => {
     test.beforeEach(async ({ page }) => {

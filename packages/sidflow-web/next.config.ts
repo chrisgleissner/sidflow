@@ -66,22 +66,7 @@ const nextConfig: NextConfig = {
       };
     }
     
-    // Add Istanbul instrumentation for E2E coverage
-    if (process.env.COVERAGE === 'true' && !isServer) {
-      config.module = config.module || {};
-      config.module.rules = config.module.rules || [];
-      config.module.rules.push({
-        test: /\.(tsx?|jsx?)$/,
-        exclude: /node_modules/,
-        use: {
-          loader: 'babel-loader',
-          options: {
-            plugins: ['istanbul'],
-          },
-        },
-        enforce: 'post',
-      });
-    }
+    // Babel handles instrumentation via BABEL_ENV=test, no webpack override needed
     
     return config;
   },

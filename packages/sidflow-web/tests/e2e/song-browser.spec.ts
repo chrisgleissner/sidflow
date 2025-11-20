@@ -3,7 +3,7 @@
  * Tests navigation, folder browsing, and direct playback features.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test-hooks';
 import { configureE2eLogging } from './utils/logging';
 
 configureE2eLogging();

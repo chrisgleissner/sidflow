@@ -1,5 +1,7 @@
 {
-  "all": true,
+  "all": false,
+  "instrument": false,
+  "sourceMap": false,
   "include": [
     "app/**/*.{js,ts,tsx}",
     "lib/**/*.{js,ts,tsx}",

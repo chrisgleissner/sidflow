@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from './test-hooks';
 import { configureE2eLogging } from './utils/logging';
 import {
   installPlayTabRoutes,
