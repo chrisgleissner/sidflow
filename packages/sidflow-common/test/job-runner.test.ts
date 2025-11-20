@@ -296,7 +296,12 @@ describe("createDefaultJobCommandFactory", () => {
     expect(plan!.stages[0].command.args).toContain("--target-duration");
     expect(plan!.stages[0].command.args).toContain("5");
     expect(plan!.stages[0].command.args).toContain("--max-loss");
-    expect(plan!.stages[0].command.args).toContain("0.1");
+    {
+      const args = plan!.stages[0].command.args;
+      const maxLossIdx = args.indexOf("--max-loss");
+      expect(maxLossIdx).toBeGreaterThan(-1);
+      expect(Number(args[maxLossIdx + 1])).toBeCloseTo(0.1, 10);
+    }
     expect(plan!.stages[0].command.args).toContain("--sid");
     expect(plan!.stages[0].command.args).toContain("/path1.sid");
     expect(plan!.stages[0].command.args).toContain("/path2.sid");
