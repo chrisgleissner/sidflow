@@ -5,10 +5,6 @@ on:
     tags:
       - "*.*.*"
       - "v*.*.*"
-  create:
-    tags:
-      - "*.*.*"
-      - "v*.*.*"
   release:
     types: [published]
   workflow_dispatch:
@@ -426,9 +422,9 @@ jobs:
           if ! curl -sf http://127.0.0.1:3000/api/health > /dev/null; then
             echo "ERROR: Server did not become healthy after 30 seconds" >&2
             echo "Last 50 lines of server log:" >&2
-          tail -n 50 "${RUNNER_TEMP}/release.log" >&2
-          exit 1
-        fi
+            tail -n 50 "${RUNNER_TEMP}/release.log" >&2
+            exit 1
+          fi
       - name: Smoke test /api/health
         run: |
           # Test health endpoint and verify JSON response
