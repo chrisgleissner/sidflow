@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.4 (2025-11-21)
+
+- fix(release): create next symlink in standalone build for smoke test compatibility
+- fix(release): correct YAML syntax errors in workflow
+- fix(ci): prevent Copilot Setup workflow from triggering on tag pushes
+
 ## 0.3.3 (2025-11-21)
 
 - fix(release): correct YAML syntax errors in workflow
