@@ -163,9 +163,14 @@ jobs:
         run: |
           set -euo pipefail
           ENTRY_DELIM="EOF_CHANGELOG"
+          ENTRY_CONTENT="$(bun run --silent changes:entry "${VERSION}" || true)"
           {
             echo "entry<<${ENTRY_DELIM}"
-            bun run --silent changes:entry "${VERSION}"
+            if [ -n "${ENTRY_CONTENT}" ]; then
+              echo "${ENTRY_CONTENT}"
+            else
+              echo "No changelog entry found for ${VERSION}."
+            fi
             echo "${ENTRY_DELIM}"
           } >> "$GITHUB_OUTPUT"
 
