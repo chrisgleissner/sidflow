@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.3.5 (2025-11-21)
+
+- fix(release): use NODE_PATH for module resolution and reduce health check timeout to 10s
+- fix(release): use NODE_PATH for Next.js module resolution instead of symlinks
+- fix(release): create next symlink in standalone build for smoke test compatibility
+- fix(release): correct YAML syntax errors in workflow
+- fix(ci): prevent Copilot Setup workflow from triggering on tag pushes
+
 ## 0.3.4 (2025-11-21)
 
 - fix(release): create next symlink in standalone build for smoke test compatibility
