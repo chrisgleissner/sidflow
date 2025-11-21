@@ -81,9 +81,8 @@ export function generatePlaywrightScriptContent(
         }
         case "startPlayback": {
           const playStep = step as StartPlaybackStep;
-          return `  await page.waitForTimeout(500); // allow stream start${
-            playStep.expectStream ? " (expect stream)" : ""
-          }`;
+          return `  await page.waitForTimeout(500); // allow stream start${playStep.expectStream ? " (expect stream)" : ""
+            }`;
         }
         case "favoriteToggle": {
           const favStep = step as FavoriteToggleStep;
