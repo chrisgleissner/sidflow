@@ -23,8 +23,6 @@ export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-3000}"
 export SIDFLOW_ADMIN_USER="${SIDFLOW_ADMIN_USER:-admin}"
 export SIDFLOW_ADMIN_PASSWORD="${SIDFLOW_ADMIN_PASSWORD:-change-me}"
-# Add standalone node_modules to NODE_PATH for module resolution
-export NODE_PATH="${STANDALONE_DIR}/node_modules:${NODE_PATH:-}"
 
 echo "Starting SIDFlow release server on http://${HOST}:${PORT}"
 echo "  SIDFLOW_ROOT=${SIDFLOW_ROOT}"
