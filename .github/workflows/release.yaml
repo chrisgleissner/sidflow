@@ -16,7 +16,8 @@ jobs:
       packages: read
     outputs:
       pkg_version: ${{ steps.version.outputs.version }}
-      release_zip: ${{ steps.package_release.outputs.zip_name }}
+      release_artifact_name: ${{ steps.package_prep.outputs.artifact_name }}
+      release_zip: ${{ steps.fetch_artifact_zip.outputs.zip_path }}
 
     steps:
       - name: Checkout repository
@@ -323,7 +324,7 @@ jobs:
           NODE
 
       - name: Package release artifact
-        id: package_release
+        id: package_prep
         env:
           VERSION: ${{ steps.version.outputs.version }}
           SRC_DIR: ${{ github.workspace }}
@@ -336,22 +337,57 @@ jobs:
           mkdir -p "${STAGING_ROOT}"
           export TARGET_DIR STAGING_ROOT ARCHIVE_NAME
           python3 scripts/ci/package-release.py
-          ZIP_PATH="${GITHUB_WORKSPACE}/${ARCHIVE_NAME}.zip"
-          (cd "${STAGING_ROOT}" && zip -rq "${ZIP_PATH}" "${ARCHIVE_NAME}")
-          echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
-          echo "zip_name=${ARCHIVE_NAME}.zip" >> "$GITHUB_OUTPUT"
+          # Remove bulky non-release artifacts to cut archive size and avoid disk pressure
+          rm -rf \
+            "${TARGET_DIR}/coverage" \
+            "${TARGET_DIR}/tmp" \
+            "${TARGET_DIR}/test-results" \
+            "${TARGET_DIR}/performance/results" \
+            "${TARGET_DIR}/packages/sidflow-web/.next/cache" || true
+          # Expose paths and artifact name for later steps
+          {
+            echo "TARGET_DIR=${TARGET_DIR}"
+            echo "STAGING_ROOT=${STAGING_ROOT}"
+            echo "ARCHIVE_NAME=${ARCHIVE_NAME}"
+            echo "artifact_name=${ARCHIVE_NAME}"
+          } >> "$GITHUB_ENV"
+          echo "artifact_name=${ARCHIVE_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload release artifact
+      - name: Upload release artifact (auto-zipped by Actions)
+        id: upload_release_artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sidflow-release-zip
-          path: ${{ steps.package_release.outputs.zip_path }}
+          name: ${{ steps.package_prep.outputs.artifact_name }}
+          path: ${{ env.TARGET_DIR }}
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Fetch artifact zip for release upload
+        id: fetch_artifact_zip
+        env:
+          ARTIFACT_ID: ${{ steps.upload_release_artifact.outputs.artifact-id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          DEST="${RUNNER_TEMP}/release-asset.zip"
+          curl -sSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/octet-stream" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            -o "${DEST}"
+          echo "zip_path=${DEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup staging directory
+        if: always()
+        run: |
+          if [ -n "${STAGING_ROOT:-}" ]; then
+            rm -rf "${STAGING_ROOT}"
+          fi
 
       - name: Attach zip to GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.package_release.outputs.zip_path }}
+          files: ${{ steps.fetch_artifact_zip.outputs.zip_path }}
           fail_on_unmatched_files: true
 
   smoke_test_release:
@@ -362,11 +398,8 @@ jobs:
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
-          name: sidflow-release-zip
-
-      - name: Extract release zip
-        run: |
-          unzip "${{ needs.release.outputs.release_zip }}" -d extracted
+          name: ${{ needs.release.outputs.release_artifact_name }}
+          path: extracted
 
       - name: Start packaged server
         working-directory: extracted
@@ -375,7 +408,7 @@ jobs:
         run: |
           set -euxo pipefail
           RELEASE_DIR="sidflow-${VERSION}"
-          cd "${RELEASE_DIR}"
+          cd "extracted/${RELEASE_DIR}"
           export SIDFLOW_ADMIN_USER=admin
           export SIDFLOW_ADMIN_PASSWORD=release-smoke-secret
           ./scripts/start-release-server.sh >"${RUNNER_TEMP}/release.log" 2>&1 &
