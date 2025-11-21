@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 (2025-11-21)
+
+- Release created from tag
+
 ## 0.2.2 (2025-11-21)
 
 - Release created from tag
