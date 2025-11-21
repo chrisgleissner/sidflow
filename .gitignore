@@ -50,3 +50,6 @@ data/playlists/
 
 # User data (contains password hashes, should not be committed)
 data/users/
+
+# Performance test results
+performance/results/

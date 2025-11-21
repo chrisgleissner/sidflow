@@ -5,7 +5,8 @@ import {
   DEFAULT_JOURNEY_DIR,
   DEFAULT_RESULTS_ROOT,
   DEFAULT_TMP_ROOT,
-  runUnifiedPerformance
+  runUnifiedPerformance,
+  type ExecutorKind
 } from "../packages/sidflow-performance/src/index.js";
 
 async function main() {
@@ -35,7 +36,21 @@ async function main() {
     config?.web?.baseUrl ??
     (envKind === "ci" ? "http://localhost:3000" : "http://localhost:3000");
 
-  const executors = values.executor ?? ["playwright", "k6"];
+  const executorStrings = values.executor ?? ["playwright", "k6"];
+
+  // Validate that all executor strings are valid ExecutorKind values
+  const validExecutors = new Set<string>(["playwright", "k6"]);
+  
+  function isExecutorKind(value: string): value is ExecutorKind {
+    return validExecutors.has(value);
+  }
+
+  const executors = executorStrings.filter(isExecutorKind);
+
+  if (executors.length !== executorStrings.length) {
+    const invalid = executorStrings.filter(e => !isExecutorKind(e));
+    throw new Error(`Invalid executor(s): ${invalid.join(", ")}. Valid options: ${Array.from(validExecutors).join(", ")}`);
+  }
 
   const pacingSeconds = values.pacing ? Number(values.pacing) : undefined;
 
@@ -49,7 +64,7 @@ async function main() {
       enableRemote: values["enable-remote"],
       pacingSeconds
     },
-    executors: executors as any,
+    executors,
     journeyFilter: values.journey as string[] | undefined,
     execute: values.execute,
     reporter: (msg) => console.log(msg)
