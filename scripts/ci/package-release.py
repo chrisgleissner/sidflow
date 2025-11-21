@@ -22,12 +22,10 @@ from typing import Iterable
 
 IGNORED_DIRS = {
     ".git",
-    ".bun",
     ".turbo",
     "workspace",
     "performance",
     "data",
-    "doc",
     "integration-tests",
     "test-data",
     "coverage",

@@ -133,6 +133,7 @@ To prevent uncontrolled growth of this file:
 **Progress log**
 - 2025-11-22 — Added disk usage logging around packaging to debug CI hangs
 - 2025-11-22 — Switched packaging to direct zip writer with aggressive pruning (excludes .git, .bun, workspace, performance, data, doc, tests, caches) to avoid staging and reduce disk use
+- 2025-11-22 — Adjusted packaging to retain runtime dependencies (.bun and node_modules) after artifact inspection showed missing Next.js modules in 0.2.8 bundle
 
 **Assumptions and open questions**
 - Assumption: node_modules and .next/standalone are required for release; other caches can be pruned

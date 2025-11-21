@@ -88,11 +88,14 @@ Each GitHub release now includes `sidflow-<version>.zip`, a ready-to-run bundle 
 
 Get started:
 
-1. **Download & extract**
+1. **Download & extract**  
+   Use the latest release tag from GitHub:
    ```bash
-   curl -L -o sidflow.zip https://github.com/chrisgleissner/sidflow/releases/download/v0.1.0/sidflow-0.1.0.zip
+   LATEST_TAG="$(curl -s https://api.github.com/repos/chrisgleissner/sidflow/releases/latest | jq -r .tag_name)"
+   VERSION="${LATEST_TAG#v}"
+   curl -L -o sidflow.zip "https://github.com/chrisgleissner/sidflow/releases/download/${LATEST_TAG}/sidflow-${VERSION}.zip"
    unzip sidflow.zip
-   cd sidflow-0.1.0
+   cd "sidflow-${VERSION}"
    ```
 2. **Set secrets / ports**
    ```bash
@@ -114,6 +117,7 @@ Get started:
    **Note:**  
    - The production server itself only requires Node.js to run (`node packages/sidflow-web/.next/standalone/server.js`).  
    - Bun is only required for CLI operations such as fetch, classify, and train.  
+   - Bun is MIT-licensed but statically links LGPL-2 JavaScriptCore/WebKit; if you prefer to control relinking, install Bun separately and use your own binary for the CLIs.
    - You can run the server with just Node.js installed, but will need Bun if you want to use the CLI tools.
 This flow differs from dev mode: no hot reload, deterministic static assets, and the output matches what ships to production. Stop the server with `Ctrl+C` when finished.
 
