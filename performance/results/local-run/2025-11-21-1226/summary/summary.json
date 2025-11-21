@@ -1,0 +1,46 @@
+{
+  "k6Metrics": {
+    "play-start-stream-u1": {
+      "errorRate": 0.5,
+      "p95": 7.908878649999999,
+      "throughput": 0.2218539927119863
+    }
+  },
+  "scripts": [
+    {
+      "command": [
+        "bun",
+        "run",
+        "/home/chris/dev/c64/sidflow/performance/tmp/2025-11-21-1226/playwright/play-start-stream-u001.spec.ts"
+      ],
+      "env": {
+        "BASE_URL": "http://localhost:3000",
+        "NODE_PATH": "/home/chris/dev/c64/sidflow/packages/sidflow-performance/node_modules"
+      },
+      "executor": "playwright",
+      "journeyId": "play-start-stream",
+      "resultDir": "/home/chris/dev/c64/sidflow/performance/results/local-run/2025-11-21-1226/playwright/play-start-stream/u001",
+      "scriptPath": "/home/chris/dev/c64/sidflow/performance/tmp/2025-11-21-1226/playwright/play-start-stream-u001.spec.ts",
+      "users": 1
+    },
+    {
+      "command": [
+        "k6",
+        "run",
+        "/home/chris/dev/c64/sidflow/performance/tmp/2025-11-21-1226/k6/play-start-stream-u001.js"
+      ],
+      "env": {
+        "BASE_URL": "http://localhost:3000",
+        "K6_SUMMARY_EXPORT": "/home/chris/dev/c64/sidflow/performance/results/local-run/2025-11-21-1226/k6/play-start-stream/u001/summary.json",
+        "K6_WEB_DASHBOARD": "true",
+        "K6_WEB_DASHBOARD_EXPORT": "/home/chris/dev/c64/sidflow/performance/results/local-run/2025-11-21-1226/k6/play-start-stream/u001/report.html"
+      },
+      "executor": "k6",
+      "journeyId": "play-start-stream",
+      "resultDir": "/home/chris/dev/c64/sidflow/performance/results/local-run/2025-11-21-1226/k6/play-start-stream/u001",
+      "scriptPath": "/home/chris/dev/c64/sidflow/performance/tmp/2025-11-21-1226/k6/play-start-stream-u001.js",
+      "users": 1
+    }
+  ],
+  "timestamp": "2025-11-21-1226"
+}

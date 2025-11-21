@@ -33,20 +33,40 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       
+      - name: Install k6
+        run: sudo apt-get update && sudo apt-get install -y k6
+      
       - name: Build project
         run: bun run build
         env:
           SIDFLOW_SKIP_WASM_UPSTREAM_CHECK: '1'
+
+      - name: Build web app
+        run: cd packages/sidflow-web && npm run build
       
       - name: Install Playwright browsers
         run: cd packages/sidflow-web && npx playwright install chromium
       
-      - name: Run performance tests
-        run: bun run test:perf
+      - name: Start web server
+        run: |
+          cd packages/sidflow-web
+          PORT=3000 npm run start -- --hostname 0.0.0.0 --port 3000 > /tmp/perf-server.log 2>&1 &
+          echo $! > /tmp/perf-server.pid
+          sleep 10
+
+      - name: Run unified performance runner (Playwright + k6)
+        run: npm run perf:run -- --env ci --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
         env:
           CI: true
-          SIDFLOW_CONFIG: ${{ github.workspace }}/.sidflow.test.json
           SIDFLOW_SKIP_WASM_UPSTREAM_CHECK: '1'
+      
+      - name: Stop web server
+        if: always()
+        run: |
+          if [ -f /tmp/perf-server.pid ]; then
+            kill $(cat /tmp/perf-server.pid) || true
+          fi
+          tail -n 200 /tmp/perf-server.log || true
       
       - name: Upload performance metrics
         if: always()
@@ -54,7 +74,8 @@ jobs:
         with:
           name: performance-metrics-${{ github.run_number }}
           path: |
-            tmp/performance/
+            performance/results/
+            performance/tmp/
             packages/sidflow-web/playwright-report/
           retention-days: 30
       
@@ -63,7 +84,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: performance-report-${{ github.run_number }}
-          path: tmp/performance/*.md
+          path: |
+            performance/results/**/report.md
+            performance/results/**/summary/summary.json
           retention-days: 90
       
       - name: Comment PR with performance results

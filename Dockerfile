@@ -2,7 +2,8 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     BUN_INSTALL=/usr/local \
-    BUN_VERSION=1.3.1
+    BUN_VERSION=1.3.1 \
+    K6_VERSION=0.52.0
 
 # Copy apt packages list
 COPY apt-packages.txt /tmp/apt-packages.txt
@@ -31,6 +32,13 @@ RUN set -eux; \
     install -m 0755 /tmp/bun/bun-linux-x64/bun /usr/local/bin/bun; \
     ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
     rm -rf /tmp/bun /tmp/bun.zip
+
+# Install k6 (prebaked for perf runs in CI images)
+RUN set -eux; \
+    curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" -o /tmp/k6.tar.gz; \
+    tar -xzf /tmp/k6.tar.gz -C /tmp; \
+    install -m 0755 /tmp/k6-v${K6_VERSION}-linux-amd64/k6 /usr/local/bin/k6; \
+    rm -rf /tmp/k6.tar.gz /tmp/k6-v${K6_VERSION}-linux-amd64
 
 # Set up workspace
 WORKDIR /workspace

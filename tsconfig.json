@@ -5,6 +5,9 @@
       "path": "./packages/libsidplayfp-wasm"
     },
     {
+      "path": "./packages/sidflow-performance"
+    },
+    {
       "path": "./packages/sidflow-common"
     },
     {

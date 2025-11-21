@@ -117,6 +117,21 @@ Get started:
    - You can run the server with just Node.js installed, but will need Bun if you want to use the CLI tools.
 This flow differs from dev mode: no hot reload, deterministic static assets, and the output matches what ships to production. Stop the server with `Ctrl+C` when finished.
 
+## Performance Tests
+
+Run the unified performance suite (Playwright + k6) with the shared runner:
+
+```bash
+# Build and start the web app first (see Production Release Artifact above)
+npm run perf:run -- --env local --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
+```
+
+- Local mode downsizes to a quick smoke (1 user, minimal iterations, relaxed thresholds).
+- CI/nightly mode runs full variants; see [`doc/performance/performance-test.md`](doc/performance/performance-test.md) for details and flags.
+- Remote/staging runs stay disabled unless you pass `--env remote --enable-remote --base-url <url>` intentionally.
+- k6 HTML dashboards come from `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report.html`.
+- CI Docker image already prebakes k6 v0.52.0 and Playwright Chromium to avoid slow downloads.
+
 ---
 
 ## Web UI
