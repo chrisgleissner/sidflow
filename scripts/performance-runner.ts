@@ -39,14 +39,17 @@ async function main() {
   const executorStrings = values.executor ?? ["playwright", "k6"];
 
   // Validate that all executor strings are valid ExecutorKind values
-  const validExecutors: ExecutorKind[] = ["playwright", "k6"];
-  const executors = executorStrings.filter((e): e is ExecutorKind => 
-    validExecutors.includes(e as ExecutorKind)
-  );
+  const validExecutors = new Set<string>(["playwright", "k6"]);
+  
+  function isExecutorKind(value: string): value is ExecutorKind {
+    return validExecutors.has(value);
+  }
+
+  const executors = executorStrings.filter(isExecutorKind);
 
   if (executors.length !== executorStrings.length) {
-    const invalid = executorStrings.filter(e => !validExecutors.includes(e as ExecutorKind));
-    throw new Error(`Invalid executor(s): ${invalid.join(", ")}. Valid options: ${validExecutors.join(", ")}`);
+    const invalid = executorStrings.filter(e => !isExecutorKind(e));
+    throw new Error(`Invalid executor(s): ${invalid.join(", ")}. Valid options: ${Array.from(validExecutors).join(", ")}`);
   }
 
   const pacingSeconds = values.pacing ? Number(values.pacing) : undefined;
