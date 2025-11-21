@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.3.8 (2025-11-21)
+
+- fix(release): package only required .bun modules (~20MB vs 249MB)
+
 ## 0.3.7 (2025-11-21)
 
 - fix(release): correct next module dereferencing logic
