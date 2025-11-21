@@ -20,16 +20,24 @@ export function stepToK6Request(
   mapping: K6ActionMapping = defaultK6Mapping
 ): string {
   switch (step.action) {
-    case "navigate":
-      return `http.get(baseUrl + "${mapping.healthEndpoint}", params); // mirror page load for ${step.target}`;
+    case "navigate": {
+      // Type guard: step is now narrowed to NavigateStep
+      const navStep = step;
+      return `http.get(baseUrl + "${mapping.healthEndpoint}", params); // mirror page load for ${navStep.target}`;
+    }
     case "click":
     case "waitForText":
       return "// UI-only step; no protocol call";
-    case "type":
-      return `http.get(baseUrl + "${mapping.searchEndpoint}?q=${encodeURIComponent((step as any).value)}", params);`;
+    case "type": {
+      // Type guard: step is now narrowed to TypeStep
+      const typeStep = step;
+      return `http.get(baseUrl + "${mapping.searchEndpoint}?q=${encodeURIComponent(typeStep.value)}", params);`;
+    }
     case "selectTrack": {
-      const selected = spec.data?.trackRefs?.[step.trackRef];
-      const path = selected?.sidPath ?? step.trackRef;
+      // Type guard: step is now narrowed to SelectTrackStep
+      const selectStep = step;
+      const selected = spec.data?.trackRefs?.[selectStep.trackRef];
+      const path = selected?.sidPath ?? selectStep.trackRef;
       return [
         `const playRes = http.post(baseUrl + "${mapping.playEndpoint}", JSON.stringify({ sid_path: "${path}" }), params);`,
         `const playJson = playRes.json();`,
@@ -39,6 +47,7 @@ export function stepToK6Request(
     case "startPlayback":
       return `http.get(streamUrl || baseUrl + "${mapping.healthEndpoint}", params); // playback start`;
     case "favoriteToggle": {
+      // Type guard: step is now narrowed to FavoriteToggleStep
       const favStep = step;
       return `http.${favStep.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${favStep.trackRef}" }), params);`;
     }
