@@ -1,6 +1,15 @@
 import path from "node:path";
 import { DEFAULT_PACING_SECONDS } from "./constants.js";
-import { type JourneySpec } from "./types.js";
+import {
+  type ClickStep,
+  type FavoriteToggleStep,
+  type JourneySpec,
+  type NavigateStep,
+  type SelectTrackStep,
+  type StartPlaybackStep,
+  type TypeStep,
+  type WaitForTextStep,
+} from "./types.js";
 
 export interface PlaywrightOptions {
   baseUrl: string;
@@ -21,10 +30,13 @@ export function generatePlaywrightScriptContent(
   const stepLines = spec.steps
     .map((step) => {
       switch (step.action) {
-        case "navigate":
-          return `  await page.goto(baseUrl + ${JSON.stringify((step as any).target)});`;
+        case "navigate": {
+          const navStep = step as NavigateStep;
+          return `  await page.goto(baseUrl + ${JSON.stringify(navStep.target)});`;
+        }
         case "click": {
-          const selector = JSON.stringify((step as any).selector);
+          const clickStep = step as ClickStep;
+          const selector = JSON.stringify(clickStep.selector);
           return [
             `  try {`,
             `    await page.waitForSelector(${selector}, { timeout: ${selectorTimeoutMs} });`,
@@ -35,8 +47,9 @@ export function generatePlaywrightScriptContent(
           ].join("\n");
         }
         case "type": {
-          const selector = JSON.stringify((step as any).selector);
-          const value = JSON.stringify((step as any).value);
+          const typeStep = step as TypeStep;
+          const selector = JSON.stringify(typeStep.selector);
+          const value = JSON.stringify(typeStep.value);
           return [
             `  try {`,
             `    await page.waitForSelector(${selector}, { timeout: ${selectorTimeoutMs} });`,
@@ -46,32 +59,43 @@ export function generatePlaywrightScriptContent(
             `  }`
           ].join("\n");
         }
-        case "waitForText":
+        case "waitForText": {
+          const waitStep = step as WaitForTextStep;
           return [
             `  try {`,
-            `    await page.getByText(${JSON.stringify((step as any).text)}).waitFor({ timeout: ${selectorTimeoutMs} });`,
+            `    await page.getByText(${JSON.stringify(waitStep.text)}).waitFor({ timeout: ${selectorTimeoutMs} });`,
             `  } catch (err) {`,
-            `    console.warn("waitForText skipped", ${JSON.stringify((step as any).text)}, err?.message ?? err);`,
+            `    console.warn("waitForText skipped", ${JSON.stringify(waitStep.text)}, err?.message ?? err);`,
             `  }`
           ].join("\n");
-        case "selectTrack":
+        }
+        case "selectTrack": {
+          const selectStep = step as SelectTrackStep;
           return [
             `  try {`,
-            `    await page.getByTestId(${JSON.stringify(`track-${(step as any).trackRef}`)}).click({ timeout: ${selectorTimeoutMs} });`,
+            `    await page.getByTestId(${JSON.stringify(`track-${selectStep.trackRef}`)}).click({ timeout: ${selectorTimeoutMs} });`,
             `  } catch (err) {`,
-            `    console.warn("selectTrack skipped", ${JSON.stringify((step as any).trackRef)}, err?.message ?? err);`,
+            `    console.warn("selectTrack skipped", ${JSON.stringify(selectStep.trackRef)}, err?.message ?? err);`,
             `  }`
           ].join("\n");
-        case "startPlayback":
+        }
+        case "startPlayback": {
+          const playStep = step as StartPlaybackStep;
           return `  await page.waitForTimeout(500); // allow stream start${
-            (step as any).expectStream ? " (expect stream)" : ""
+            playStep.expectStream ? " (expect stream)" : ""
           }`;
-        case "favoriteToggle":
+        }
+        case "favoriteToggle": {
+          const favStep = step as FavoriteToggleStep;
           return `  await page.getByTestId(${JSON.stringify(
-            `favorite-${(step as any).trackRef}`
+            `favorite-${favStep.trackRef}`
           )}).click();`;
-        default:
-          return `  // Unsupported action: ${(step as any).action}`;
+        }
+        default: {
+          // Exhaustive check: all JourneyStep actions should be handled above
+          const _exhaustiveCheck: never = step;
+          return `  // Unsupported action`;
+        }
       }
     })
     .map((line) => `${line}\n  await page.waitForTimeout(pacingMs);`)

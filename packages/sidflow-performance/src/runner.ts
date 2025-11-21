@@ -54,7 +54,7 @@ export async function runUnifiedPerformance(options: RunnerOptions): Promise<Run
   await mkdirp(runRoot);
   await mkdirp(path.join(tmpRoot, timestamp));
 
-  const journeys = await loadJourneysFromDir(journeyDir, { pacingSeconds: options.pacingSeconds });
+  const journeys = await loadJourneysFromDir(journeyDir, { pacingSeconds: options.environment.pacingSeconds });
   const filteredJourneys = options.journeyFilter?.length
     ? journeys.filter((j) => options.journeyFilter?.includes(j.id))
     : journeys;
