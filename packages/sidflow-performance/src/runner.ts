@@ -100,7 +100,7 @@ export async function runUnifiedPerformance(options: RunnerOptions): Promise<Run
   if (options.execute) {
     for (const script of scripts) {
       const retries = script.executor === "playwright" ? options.playwrightRetries ?? 0 : 0;
-      await runCommandWithRetries(script, retries, options.commandRunner, runRoot);
+      await runCommandWithRetries(script, retries, options.commandRunner);
     }
     await evaluateK6Slo(scripts, maxErrorRate);
   }

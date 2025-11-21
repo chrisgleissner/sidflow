@@ -51,7 +51,6 @@ async function main() {
     },
     executors: executors as any,
     journeyFilter: values.journey as string[] | undefined,
-    pacingSeconds,
     execute: values.execute,
     reporter: (msg) => console.log(msg)
   });
