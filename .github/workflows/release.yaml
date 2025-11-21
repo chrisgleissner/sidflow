@@ -150,11 +150,16 @@ jobs:
 
       - name: Extract changelog entry
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          ENTRY="$(bun run --silent changes:entry ${{ steps.version.outputs.version }})"
-          echo "entry<<'EOF'" >> "$GITHUB_OUTPUT"
-          echo "$ENTRY" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          ENTRY_DELIM="EOF_CHANGELOG"
+          {
+            echo "entry<<${ENTRY_DELIM}"
+            bun run --silent changes:entry "${VERSION}"
+            echo "${ENTRY_DELIM}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Format release notes
         id: notes
@@ -190,8 +195,15 @@ jobs:
             bodyLines.push(`**Full Changelog**: https://github.com/${process.env.GITHUB_REPOSITORY}/compare/${previousTag}...${currentTag}`);
           }
 
-          const output = bodyLines.join('\n').replace(/\n{3,}/g, '\n\n');
-          writeFileSync(process.env.GITHUB_OUTPUT, `body<<EOF\n${output}\nEOF\n`, { flag: 'a' });
+          const outputFile = process.env.GITHUB_OUTPUT;
+          if (!outputFile) {
+            console.error('GITHUB_OUTPUT is not set; cannot export release notes.');
+            process.exit(1);
+          }
+
+          const body = bodyLines.join('\n').replace(/\n{3,}/g, '\n\n');
+          const delimiter = 'EOF_RELEASE_BODY';
+          writeFileSync(outputFile, `body<<${delimiter}\n${body}\n${delimiter}\n`, { flag: 'a' });
           NODE
 
       - name: Update GitHub release notes

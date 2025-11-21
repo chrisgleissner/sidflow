@@ -24,7 +24,6 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
     - [Structure rules](#structure-rules)
     - [Plan-then-act contract](#plan-then-act-contract)
   - [Active tasks](#active-tasks)
-    - [Task: Containerized Perf Tooling & Prebaked Binaries (2025-11-21)](#task-containerized-perf-tooling--prebaked-binaries-2025-11-21)
     - [Task: Achieve >90% Coverage & Fix All E2E Tests (2025-11-20)](#task-achieve-90-coverage--fix-all-e2e-tests-2025-11-20)
   - [Archived Tasks](#archived-tasks)
 
@@ -111,113 +110,6 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
-
-### Task: Enable Skipped Tests & Fix Test Suite (2025-11-21)
-
-**User request (summary)**
-- Enable 2 skipped tests: sidplayfp-cli engine test and C4 tone continuity test
-- Fix 1 failing test: playwright-executor unsupported action handling
-- Verify performance test smoke test works
-- Ensure all tests pass 3x consecutively
-- Update developer.md to clearly document all test types
-
-**Context and constraints**
-- Unit tests must be stable and pass 3x consecutively before merging
-- E2E tests run via Playwright with Chromium in Docker for CI
-- Performance tests are subset of E2E tests with SIDFLOW_RUN_PERF_TESTS=1
-- Test suite runtime: unit ~50s, E2E <4min (target)
-
-**Plan (checklist)**
-- [x] 1 — Fix playwright-executor test (add action name to unsupported action message)
-- [x] 2 — Enable sidplayfp-cli engine test (sidplayfp binary already installed)
-- [x] 3 — Enable C4 tone continuity test (already has tolerant thresholds: 6Hz freq, 30% amplitude)
-- [x] 4 — Verify performance test smoke test works
-- [x] 5 — Update developer.md with clear test type documentation
-- [x] 6 — Clean up stale performance test artifacts causing false failures
-- [x] 7 — Verify all unit tests pass (1343 tests, 0 skipped, 0 failed)
-
-**Progress log**
-- 2025-11-21 — Fixed playwright-executor test by adding action name to unsupported action error message
-- 2025-11-21 — Enabled sidplayfp-cli engine test; test gracefully skips if binary not available
-- 2025-11-21 — Enabled C4 tone continuity test; updated comment to reflect tolerant thresholds already in place
-- 2025-11-21 — Verified performance test starts successfully (timeout after 10s confirmed test is running)
-- 2025-11-21 — Updated developer.md with comprehensive test type documentation including unit, E2E, performance, and accessibility tests
-- 2025-11-21 — Cleaned up stale artifacts in performance/tmp/ that were causing 30 false test failures
-- 2025-11-21 — All unit tests passing: 1343 pass, 0 skip, 0 fail, 4861 expect() calls in ~50s
-- 2025-11-21 — Fixed hanging performance tests (Recommendation Engine and Playlist Operations) with resilient selectors
-- 2025-11-21 — Fixed failing performance tests (HVSC Fetch and Folder Browser) with relaxed timeouts and try-catch
-- 2025-11-21 — All 10 performance tests passing in ~59 seconds
-- 2025-11-21 — Fixed release workflow Git ownership error by adding safe.directory configuration after checkout
-- 2025-11-21 — COMPLETE: All 7 checklist items completed, all tests passing, documentation updated, CI fixed
-
-### Task: Fix Release Build and Smoke Test (2025-11-21)
-
-**User request (summary)**
-- Investigate the entire release build and smoke test workflow
-- Identify and fix issues that would prevent successful release packaging
-- Ensure smoke test validates release artifact correctly
-
-**Context and constraints**
-- Release builds use Next.js standalone mode with output in .next/standalone
-- Smoke test extracts zip and runs packaged server in GitHub Actions
-- Health check must work with standalone paths (not dev-mode relative paths)
-
-**Plan (checklist)**
-- [x] 1 — Examine release workflow structure and all scripts
-- [x] 2 — Check release scripts for Git dependencies and path issues
-- [x] 3 — Verify smoke test implementation and validation
-- [x] 4 — Test release build locally to identify path resolution issues
-- [x] 5 — Fix health check path issues for standalone builds
-- [x] 6 — Fix data manifest availability in standalone mode
-- [x] 7 — Improve release server script with better logging
-- [x] 8 — Enhance smoke test validation and error reporting
-
-**Progress log**
-- 2025-11-21 — Analyzed release.yaml workflow: builds workspace, creates standalone Next.js build, packages as zip, extracts and smoke tests
-- 2025-11-21 — Reviewed all CI scripts: release-prepare.ts, extract-changes-entry.ts, format-release-notes.ts, update-release-notes.ts, package-release.py
-- 2025-11-21 — Identified issues: health check uses relative paths that don't work in standalone; SIDFLOW_ROOT needs proper setup
-- 2025-11-21 — Fixed health check: use path.join(process.cwd(), 'public', ...) for WASM, use SIDFLOW_ROOT for data manifest
-- 2025-11-21 — Improved start-release-server.sh: correct working directory to standalone server dir, add logging
-- 2025-11-21 — Enhanced smoke test: verify JSON response fields, show server logs on failure, report health check timing
-- 2025-11-21 — Build passed: TypeScript compilation successful with all fixes applied
-- 2025-11-21 — COMPLETE: All release build issues fixed, smoke test enhanced with better validation and debugging
-- 2025-11-21 — User requested: eliminate manual release-prepare step, auto-generate CHANGES.md on tag push (like reference workflow)
-- 2025-11-21 — Inlined find-previous-tag, format-release-notes, and update-release-notes logic directly in workflow using node heredocs
-- 2025-11-21 — Modified release-prepare.ts to auto-generate CHANGES.md entries without requiring manual prep
-- 2025-11-21 — Tested script: correctly inserts "## {version} ({date})" entry after "# Changelog" header
-- 2025-11-21 — COMPLETE: Release workflow now fully automated - just push a tag via GitHub UI and workflow handles everything
-
-**Assumptions and open questions**
-- Assumption: CI has sidplayfp installed (test skips gracefully if not)
-- Assumption: C4 tone test thresholds (6Hz freq error, 30% amplitude variation) are sufficient for CI stability
-- Assumption: bunfig.toml exclusion patterns prevent E2E tests from running during unit test phase
-
-**Follow-ups / future work**
-- Monitor C4 tone test stability in CI over next few runs
-- Consider adding explicit check for sidplayfp availability in CI setup
-- Ensure test:all script properly sequences unit + E2E tests with correct exit codes
-
-### Task: Containerized Perf Tooling & Prebaked Binaries (2025-11-21)
-
-**User request (summary)**
-- Prebake k6 (and other lazily downloaded binaries) into the CI Dockerfile to support k6-based perf runs.
-- Keep perf test tooling resilient, fast, and maintainable with documentation updates.
-
-**Context and constraints**
-- Docker image underpins CI; perf workflow requires k6 and Playwright browsers.
-- Avoid slow or flaky downloads during CI by installing binaries at build time.
-- Local runs should remain fast (smoke-mode) while CI/nightly can run fuller matrices.
-
-**Plan (checklist)**
-- [x] 1 — Inventory lazily downloaded binaries (k6, Playwright Chromium).
-- [x] 2 — Update Dockerfile to install k6 at build time; verify no other downloads remain.
-- [x] 3 — Update docs (developer guide, perf guide, README) with perf runner usage and prebaked binaries.
-- [x] 4 — Validate perf runner locally (smoke) and ensure tests pass 3x consecutively.
-
-**Progress log**
-- 2025-11-21 — Added k6 prebake to `Dockerfile` (v0.52.0) alongside Playwright; local smoke perf run via `npm run perf:run -- --env local ...` completes with best-effort selectors and relaxed thresholds.
-- 2025-11-21 — Ran full doc sweep (README + `doc/**`), wired perf runner guidance/links, and highlighted remote guard + k6 HTML export; local perf smoke run produced `performance/results/2025-11-21-1250` with k6 summary/report; `npm run test` green 3x consecutively with core-source coverage ~73% (excluding generated/dist/audio-player files).
-
 
 ### Task: Achieve >90% Coverage & Fix All E2E Tests (2025-11-20)
 
@@ -322,8 +214,12 @@ To prevent uncontrolled growth of this file:
 
 ## Archived Tasks
 
-All completed tasks have been moved to [`doc/plans/archive/`](doc/plans/archive/). Recent archives (2025-11-19 to 2025-11-21):
+All completed tasks have been moved to [`doc/plans/archive/`](doc/plans/archive/). Recent archives (2025-11-19 to 2025-11-22):
 
+- **2025-11-22**: [Repair Release Workflow Changelog Extraction](doc/plans/archive/2025-11-22-repair-release-workflow-changelog-extraction.md) ✅
+- **2025-11-21**: [Enable Skipped Tests & Fix Test Suite](doc/plans/archive/2025-11-21-enable-skipped-tests-and-fix-test-suite.md) ✅
+- **2025-11-21**: [Fix Release Build and Smoke Test](doc/plans/archive/2025-11-21-fix-release-build-and-smoke-test.md) ✅
+- **2025-11-21**: [Containerized Perf Tooling & Prebaked Binaries](doc/plans/archive/2025-11-21-containerized-perf-tooling-and-prebaked-binaries.md) ✅
 - **2025-11-21**: [Unified Performance Testing Rollout](doc/plans/archive/2025-11-21-unified-performance-testing-rollout.md) ✅
   - Shipped unified perf runner (Playwright + k6), CI wiring, and artifact/reporting pipeline with shared journey specs.
 - **2025-11-21**: [Unified Performance Testing Framework](doc/plans/archive/2025-11-21-unified-performance-testing-framework.md) ✅
