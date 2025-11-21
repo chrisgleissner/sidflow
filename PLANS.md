@@ -24,7 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
     - [Structure rules](#structure-rules)
     - [Plan-then-act contract](#plan-then-act-contract)
   - [Active tasks](#active-tasks)
-    - [Task: Release Artifact Distribution (2025-11-20)](#task-release-artifact-distribution-2025-11-20)
+    - [Task: Unified Performance Testing Rollout (2025-11-21)](#task-unified-performance-testing-rollout-2025-11-21)
     - [Task: Achieve \>90% Coverage \& Fix All E2E Tests (2025-11-20)](#task-achieve-90-coverage--fix-all-e2e-tests-2025-11-20)
   - [Archived Tasks](#archived-tasks)
 
@@ -112,42 +112,37 @@ To prevent uncontrolled growth of this file:
 
 ## Active tasks
 
-### Task: Release Artifact Distribution (2025-11-20)
+### Task: Unified Performance Testing Rollout (2025-11-21)
 
 **User request (summary)**
-- Replace npm publication with a GitHub release zip that boots the full SIDFlow website
-- Extend README with production startup instructions for the packaged build (distinct from dev mode)
-- Add a post-release smoke test that validates the packaged artifact
+- Execute the unified performance-testing rollout (Playwright + k6) using shared journey specs and artifact expectations from `doc/performance/unified-performance-testing-rollout.md`.
+- Deliver end-to-end runner, reporting, and CI/nightly wiring so journeys run in both browser and protocol modes with consistent pacing.
 
 **Context and constraints**
-- Current release workflow (`.github/workflows/release.yaml`) bumps versions and publishes every workspace package to npm
-- The web experience lives in `packages/sidflow-web` (Next.js 16) and today assumes `next build` is run at deployment time
-- Admin APIs invoke CLI scripts under `scripts/`, so the release artifact must keep those assets plus Bun tooling available
-- Smoke test should unpack the new artifact, start the packaged server, and hit a representative endpoint (`/api/health`)
+- Journeys defined once and reused by both executors; pacing fixed at one interaction every 3 seconds.
+- Playwright runs 1- and 10-user variants; k6 runs 1-, 10-, and 100-user variants with protocol-level mappings for each action.
+- Artifacts must include k6 CSV + HTML dashboard + stdout summary, Playwright browser timings/HAR, JSON summaries for LLM guidance, and nightly Markdown linking to timestamped outputs.
+- Unified runner must support local ad-hoc runs and nightly CI, leveraging the shared config loader and existing CLI-first patterns.
 
-- **Plan (checklist)**
-- [x] 1 — Audit the release pipeline and capture all assets the artifact must contain
-- [x] 2 — Enable a production-ready Next.js build (e.g., standalone output) and add a helper start script + README instructions
-- [x] 3 — Implement packaging logic + workflow changes to create and upload the release zip
-- [x] 4 — Update README/CHANGES to describe the new artifact and startup process
-- [x] 5 — Add a post-release smoke test job that downloads the zip, extracts it, boots the server, and validates `/api/health`
-- [x] 6 — Run targeted validation (build/tests as feasible) and log results
+**Plan (checklist)**
+- [ ] 1 — Baseline alignment: confirm target environments (local ad-hoc, CI with in-job server, remote/staging/prod guarded + disabled by default), storage layout for `journeys/`, `executors/`, `results/`, `summary/`, and config loader usage.
+- [ ] 2 — Journey spec + mapping: finalize schema (id/description/steps/data bindings/pacing=3s), authoring guide, and API/action mappings for protocol-mode behaviour.
+- [ ] 3 — Executors: implement Playwright executor (pacing + HAR/trace outputs) and k6 executor (pacing + 1/10/100 users + CSV/HTML) that consume shared specs.
+- [ ] 4 — Summaries & reporting: build summarisation module emitting p95/p99/throughput/error-rate JSON, timestamped results layout, and Markdown report linking artifacts with retention notes.
+- [ ] 5 — Unified runner & CI: orchestrate local quick-run flags and nightly full runs; wire CI job to upload artifacts and nightly Markdown.
+- [ ] 6 — Hardening: add SLO thresholds, retries for flaky browser runs, and regression detection across nightly runs.
 
 **Progress log**
-- 2025-11-20 — Task opened, plan drafted
-- 2025-11-20 — Audited existing release workflow + asset requirements; decided to package the whole workspace with the built Next.js standalone output
-- 2025-11-20 — Enabled Next.js `output: "standalone"`, added `scripts/start-release-server.sh` + `start:release` script, and documented the new release artifact flow in `README.md` + `doc/release-readiness.md`
-- 2025-11-20 — Reworked `.github/workflows/release.yaml` to build the web bundle, copy the full workspace into `sidflow-<version>.zip`, upload it to the GitHub release, and added a `smoke_test_release` job that boots the packaged server and hits `/api/health`
-- 2025-11-20 — Ran `npm run build` + `npm run test` (Bun-installed toolchain); both passed, with the expected `wasm:check-upstream` reminder to rebuild libsidplayfp artifacts
+- 2025-11-21 — Task opened; scaffolded rollout plan from `doc/performance/unified-performance-testing-rollout.md` and sequenced implementation steps. Added environment targets: local, CI (server started in-job), guarded remote/staging/prod (disabled by default without explicit base URL + enable flag).
+- 2025-11-21 — Documented k6 HTML dashboard generation via `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report.html k6 run script.js` in architecture + rollout docs.
 
 **Assumptions and open questions**
-- Assumption: Bundling workspace dependencies and CLI scripts inside the zip is acceptable for now
-- Assumption: Smoke test may curl `http://localhost:3000/api/health` as proof of life
-- Open questions: None; proceed with these assumptions
+- Assumption: Architecture docs in `doc/performance/` are the accepted contract for implementation.
+- Assumption: Headless Playwright is acceptable for CI; pacing stays fixed at 3s per interaction.
+- Open question: Target base URLs and auth credentials for nightly CI vs local runs to be confirmed during baseline alignment.
 
 **Follow-ups / future work**
-- Consider lighter-weight distribution (Docker image) once the zip workflow is validated
-- Add pre-release artifact verification to PR CI
+- Extend to trend analysis across nightly runs and auto-open regressions once initial rollout stabilizes.
 
 ### Task: Achieve >90% Coverage & Fix All E2E Tests (2025-11-20)
 
@@ -252,30 +247,26 @@ To prevent uncontrolled growth of this file:
 
 ## Archived Tasks
 
-All completed tasks have been moved to [`doc/plans/archive/`](doc/plans/archive/). Recent archives (2025-11-19 to 2025-11-20):
+All completed tasks have been moved to [`doc/plans/archive/`](doc/plans/archive/). Recent archives (2025-11-19 to 2025-11-21):
 
+- **2025-11-21**: [Unified Performance Testing Framework](doc/plans/archive/2025-11-21-unified-performance-testing-framework.md) ✅
+  - Documented rollout plan and target architecture for shared journey specs, Playwright + k6 executors, and artifact outputs.
+- **2025-11-20**: [Release Artifact Distribution](doc/plans/archive/2025-11-20-release-artifact-distribution.md) ✅
+  - Switched to GitHub release zip with standalone Next.js build, helper start script, and smoke test hitting `/api/health`.
 - **2025-11-20**: [Fix E2E Test Regression & Coverage Analysis](doc/plans/archive/2025-11-20-e2e-test-regression-fix.md) ✅
-  - Fixed critical E2E test regression (file naming mismatch), 77/89 tests passing
-  - Renamed 13 test files from `.e2e.ts` to `.spec.ts` to match Playwright config
-  - Documented 12 known flaky tests and coverage baseline (68.55%)
-
+  - Fixed Playwright test discovery, renamed 13 specs, documented flaky tests and coverage baseline.
 - **2025-11-19**: [Play Tab Feature-Rich Enhancements (Steps 8-11)](doc/plans/archive/2025-11-19-play-tab-enhancements-steps-8-11.md) ✅
-  - Advanced search with filters, playlist management, social features, quality gates
-
+  - Advanced search with filters, playlist management, social features, quality gates.
 - **2025-11-19**: [Search & Favorites Performance + E2E Hardening](doc/plans/archive/2025-11-19-search-favorites-performance-e2e.md) ✅
-  - E2E profiling infrastructure, test stability fixes, log management
-
+  - E2E profiling infrastructure, test stability fixes, log management.
 - **2025-11-19**: [Codebase Audit & Documentation Accuracy Review (Round 1)](doc/plans/archive/2025-11-19-codebase-audit-round-1.md) ✅
-  - Line-by-line review, documentation fixes, missing README creation
-
+  - Line-by-line review, documentation fixes, missing README creation.
 - **2025-11-19**: [Performance & Caching Optimization](doc/plans/archive/2025-11-19-performance-caching-optimization.md) ✅
-  - Config/metadata/feature caching, buffer pooling, CLI throttling
-
+  - Config/metadata/feature caching, buffer pooling, CLI throttling.
 - **2025-11-19**: [Render Engine Naming Clarification](doc/plans/archive/2025-11-19-render-engine-naming.md) ✅
-  - Clarified libsidplayfp-wasm naming in all user-facing contexts
-
+  - Clarified libsidplayfp-wasm naming in all user-facing contexts.
 - **2025-11-19**: [Comprehensive Line-by-Line Audit (Round 2)](doc/plans/archive/2025-11-19-codebase-audit-round-2.md) ✅
-  - Second detailed audit achieving perfection in code and documentation
+  - Second detailed audit achieving perfection in code and documentation.
 
 **Earlier archives**: See [`doc/plans/archive/`](doc/plans/archive/) directory for complete history including:
 - 2025-11-18: E2E test stabilization and performance profiling
