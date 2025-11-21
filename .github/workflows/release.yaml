@@ -149,16 +149,6 @@ jobs:
       - name: Build workspace
         run: bun run build
 
-      - name: Install npm dependencies for standalone build
-        run: |
-          cd packages/sidflow-web
-          npm install --legacy-peer-deps
-
-      - name: Build production web bundle with npm
-        run: |
-          cd packages/sidflow-web
-          npm run build
-
       - name: Copy only required .bun packages
         run: |
           cd packages/sidflow-web/.next/standalone
