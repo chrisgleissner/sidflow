@@ -1,38 +1,5 @@
 # Changelog
 
-## 0.2.9 (2025-11-21)
-
-- fix(release): adjust packaging to retain runtime dependencies after artifact inspection
-
-## 0.2.8 (2025-11-21)
-
-- fix(release): improve release packaging reliability with enhanced logging and aggressive pruning
-
-## 0.2.7 (2025-11-21)
-
-- fix(release): enhance release preparation to include previous tag in changelog entry
-- chore: remove outdated coverage analysis document
-- fix(release): update artifact handling in release workflow for consistency and clarity
-
-## 0.2.6 (2025-11-21)
-
-- fix(release): update artifact handling in release workflow for improved clarity and efficiency
-
-## 0.2.5 (2025-11-21)
-
-- fix(release): update release workflow to use dynamic ref and export additional variables
-
-## 0.2.4 (2025-11-21)
-
-- Release created from tag
-
-## 0.2.3 (2025-11-21)
-
-- Release created from tag
-
-## 0.2.2 (2025-11-21)
-
-- Release created from tag
 
 ## 0.1.0
 
