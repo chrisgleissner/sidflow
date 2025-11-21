@@ -21,13 +21,16 @@ export function stepToK6Request(
 ): string {
   switch (step.action) {
     case "navigate":
+      // TypeScript narrows step to NavigateStep within this case
       return `http.get(baseUrl + "${mapping.healthEndpoint}", params); // mirror page load for ${step.target}`;
     case "click":
     case "waitForText":
       return "// UI-only step; no protocol call";
     case "type":
-      return `http.get(baseUrl + "${mapping.searchEndpoint}?q=${encodeURIComponent((step as any).value)}", params);`;
+      // TypeScript narrows step to TypeStep within this case
+      return `http.get(baseUrl + "${mapping.searchEndpoint}?q=${encodeURIComponent(step.value)}", params);`;
     case "selectTrack": {
+      // TypeScript narrows step to SelectTrackStep within this case
       const selected = spec.data?.trackRefs?.[step.trackRef];
       const path = selected?.sidPath ?? step.trackRef;
       return [
@@ -38,10 +41,9 @@ export function stepToK6Request(
     }
     case "startPlayback":
       return `http.get(streamUrl || baseUrl + "${mapping.healthEndpoint}", params); // playback start`;
-    case "favoriteToggle": {
-      const favStep = step;
-      return `http.${favStep.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${favStep.trackRef}" }), params);`;
-    }
+    case "favoriteToggle":
+      // TypeScript narrows step to FavoriteToggleStep within this case
+      return `http.${step.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${step.trackRef}" }), params);`;
     default:
       return "// Unsupported action";
   }
