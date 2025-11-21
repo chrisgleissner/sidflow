@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.9 (2025-11-21)
+
+- fix(release): adjust packaging to retain runtime dependencies after artifact inspection
+
 ## 0.2.8 (2025-11-21)
 
 - fix(release): improve release packaging reliability with enhanced logging and aggressive pruning
