@@ -54,7 +54,7 @@ export async function runUnifiedPerformance(options: RunnerOptions): Promise<Run
   await mkdirp(runRoot);
   await mkdirp(path.join(tmpRoot, timestamp));
 
-  const journeys = await loadJourneysFromDir(journeyDir, { pacingSeconds: options.pacingSeconds });
+  const journeys = await loadJourneysFromDir(journeyDir, { pacingSeconds: options.environment.pacingSeconds });
   const filteredJourneys = options.journeyFilter?.length
     ? journeys.filter((j) => options.journeyFilter?.includes(j.id))
     : journeys;
@@ -100,7 +100,7 @@ export async function runUnifiedPerformance(options: RunnerOptions): Promise<Run
   if (options.execute) {
     for (const script of scripts) {
       const retries = script.executor === "playwright" ? options.playwrightRetries ?? 0 : 0;
-      await runCommandWithRetries(script, retries, options.commandRunner, runRoot);
+      await runCommandWithRetries(script, retries, options.commandRunner);
     }
     await evaluateK6Slo(scripts, maxErrorRate);
   }
