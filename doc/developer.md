@@ -48,8 +48,11 @@ Validate edits with `bun run validate:config`.
 | Command | Result |
 | --- | --- |
 | `bun run build` | Install dependencies (frozen-lockfile) and compile all packages with project references. |
-| `bun run test` | Build then run the Bun test suite with coverage reporting. |
-| `bun run test:e2e` | Run end-to-end integration test with real SID files. |
+| `bun run test` | Build then run unit tests with coverage reporting (excludes E2E and performance tests). |
+| `bun run test:e2e` | Run end-to-end Playwright tests with real SID files (requires Playwright browsers installed). |
+| `bun run test:perf` | Run performance tests (subset of E2E tests with `SIDFLOW_RUN_PERF_TESTS=1`, single worker). |
+| `bun run test:a11y` | Run accessibility tests (subset of E2E tests focused on WCAG compliance). |
+| `bun run test:all` | Run unit tests followed by E2E tests (comprehensive local validation). |
 | `npm run perf:run -- --env local --base-url http://localhost:3000 --execute` | Unified performance runner (Playwright + k6); see [`doc/performance/performance-test.md`](doc/performance/performance-test.md). |
 | `bun run validate:config` | Smoke-test the active configuration file. |
 | `./scripts/sidflow-fetch` | Run the fetch CLI with Bun hidden behind a repo-local shim. |
@@ -60,6 +63,32 @@ Validate edits with `bun run validate:config`.
 | `npm run profile:e2e -- [--workers N] [--spec path] [--grep expr]`<br>`bun run profile:e2e -- --grep "search results"` | Run Playwright with `pidstat` + V8 CPU profiles and emit `tmp/profiles/.../` artifacts (flamegraph HTML, CPU summary, raw profiles). |
 
 > The prod-mode Playwright server suppresses benign `Error: aborted`/`EPIPE` noise automatically. Set `SIDFLOW_SUPPRESS_ABORT_LOGS=0` to re-enable the raw logs or `SIDFLOW_DEBUG_REQUEST_ERRORS=1` for verbose diagnostics when triaging server crashes.
+
+### Test Types and Requirements
+
+**Unit Tests** (`bun run test`)
+- Fast, isolated tests using Bun's test runner
+- Excludes E2E tests (*.spec.ts files) and performance tests
+- Runs in ~50 seconds with coverage reporting
+- Required to pass 3x consecutively before merging
+
+**E2E Tests** (`bun run test:e2e`)
+- Full browser tests using Playwright with Chromium
+- Requires Playwright browsers: `cd packages/sidflow-web && npx playwright install chromium`
+- Can run locally or in Docker: `docker run --rm -v $(pwd):/workspace -w /workspace ghcr.io/chrisgleissner/sidflow-ci:latest bash -c "cd packages/sidflow-web && npx playwright test"`
+- Expected runtime: < 4 minutes with 3 parallel workers
+- Read `doc/testing/e2e-test-resilience-guide.md` for best practices
+
+**Performance Tests** (`bun run test:perf`)
+- Subset of E2E tests focused on performance metrics
+- Runs with `SIDFLOW_RUN_PERF_TESTS=1` environment variable
+- Single worker to avoid interference
+- Collects detailed timing, memory, and CPU metrics
+
+**Accessibility Tests** (`bun run test:a11y`)
+- Subset of E2E tests focused on WCAG 2.1 AA compliance
+- Tests keyboard navigation, ARIA attributes, screen reader support
+- See `doc/accessibility-audit.md` for standards
 
 CI mirrors these steps before uploading coverage to Codecov.
 

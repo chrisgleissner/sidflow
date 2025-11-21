@@ -94,7 +94,8 @@ export function generatePlaywrightScriptContent(
         default: {
           // Exhaustive check: all JourneyStep actions should be handled above
           const _exhaustiveCheck: never = step;
-          return `  // Unsupported action`;
+          const actionName = (step as any).action ?? "unknown";
+          return `  // Unsupported action: ${actionName}`;
         }
       }
     })
