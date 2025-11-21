@@ -181,6 +181,11 @@ To prevent uncontrolled growth of this file:
 - 2025-11-21 — Enhanced smoke test: verify JSON response fields, show server logs on failure, report health check timing
 - 2025-11-21 — Build passed: TypeScript compilation successful with all fixes applied
 - 2025-11-21 — COMPLETE: All release build issues fixed, smoke test enhanced with better validation and debugging
+- 2025-11-21 — User requested: eliminate manual release-prepare step, auto-generate CHANGES.md on tag push (like reference workflow)
+- 2025-11-21 — Inlined find-previous-tag, format-release-notes, and update-release-notes logic directly in workflow using node heredocs
+- 2025-11-21 — Modified release-prepare.ts to auto-generate CHANGES.md entries without requiring manual prep
+- 2025-11-21 — Tested script: correctly inserts "## {version} ({date})" entry after "# Changelog" header
+- 2025-11-21 — COMPLETE: Release workflow now fully automated - just push a tag via GitHub UI and workflow handles everything
 
 **Assumptions and open questions**
 - Assumption: CI has sidplayfp installed (test skips gracefully if not)
