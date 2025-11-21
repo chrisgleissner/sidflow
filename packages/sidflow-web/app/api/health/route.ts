@@ -4,6 +4,7 @@ import { stat, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import path from "node:path";
 
 const execAsync = promisify(exec);
 
@@ -80,7 +81,8 @@ export async function GET() {
 async function checkWasmReadiness(): Promise<HealthStatus> {
   try {
     // Check if WASM files are accessible
-    const wasmPath = "public/wasm/sidplayfp.wasm";
+    // In standalone builds, public/ is in the process cwd
+    const wasmPath = path.join(process.cwd(), "public", "wasm", "sidplayfp.wasm");
 
     try {
       await access(wasmPath, constants.R_OK);
@@ -160,7 +162,9 @@ async function checkSidplayfpCli(): Promise<HealthStatus> {
 async function checkStreamingAssets(): Promise<HealthStatus> {
   try {
     const config = await loadConfig();
-    const manifestPath = "data/sidflow.lance.manifest.json";
+    // Use SIDFLOW_ROOT if set (for standalone builds), otherwise use process.cwd()
+    const rootDir = process.env.SIDFLOW_ROOT || process.cwd();
+    const manifestPath = path.join(rootDir, "data", "sidflow.lance.manifest.json");
 
     try {
       const manifest = await loadAvailabilityManifest(manifestPath);
