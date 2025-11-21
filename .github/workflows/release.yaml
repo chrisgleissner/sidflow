@@ -149,6 +149,12 @@ jobs:
       - name: Build workspace
         run: bun run build
 
+      - name: Build Next.js standalone
+        run: |
+          cd packages/sidflow-web
+          bun run build:worklet
+          bun run build
+
       - name: Copy only required .bun packages
         run: |
           cd packages/sidflow-web/.next/standalone
