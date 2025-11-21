@@ -158,8 +158,8 @@ jobs:
       - name: Install production dependencies for standalone
         run: |
           cd packages/sidflow-web/.next/standalone/packages/sidflow-web
-          # Copy package.json from source
-          cp /github/workspace/packages/sidflow-web/package.json .
+          # Copy package.json from source (use relative path from repo root)
+          cp ../../../../package.json .
           # Install only production dependencies
           bun install --production --no-save
           # Clean up package.json copy
