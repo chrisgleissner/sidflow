@@ -285,8 +285,7 @@ async function mkdirp(dir: string) {
 async function runCommandWithRetries(
   script: GeneratedScript,
   retries: number,
-  runner: RunnerOptions["commandRunner"],
-  cwd: string
+  runner: RunnerOptions["commandRunner"]
 ) {
   let attempt = 0;
   const exec = runner ?? defaultCommandRunner;
