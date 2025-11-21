@@ -155,39 +155,15 @@ jobs:
           bun run build:worklet
           bun run build
 
-      - name: Copy only required .bun packages
+      - name: Install production dependencies for standalone
         run: |
-          cd packages/sidflow-web/.next/standalone
-          
-          # Find which .bun packages are actually referenced by symlinks
-          required_packages=$(find node_modules -type l -exec readlink {} \; | grep "^\.bun" | cut -d/ -f2 | sort -u || true)
-          
-          if [ -n "$required_packages" ]; then
-            echo "Required .bun packages:"
-            echo "$required_packages"
-            
-            # Copy only the required packages to a temporary location
-            mkdir -p /tmp/bun-packages
-            cd node_modules/.bun
-            for pkg in $required_packages; do
-              if [ -d "$pkg" ]; then
-                size=$(du -sh "$pkg" | cut -f1)
-                echo "Copying $pkg ($size)..."
-                cp -r "$pkg" /tmp/bun-packages/
-              fi
-            done
-            
-            # Remove the full .bun directory and replace with minimal version
-            cd ..
-            rm -rf .bun
-            mkdir .bun
-            mv /tmp/bun-packages/* .bun/
-            
-            echo "Reduced .bun directory size:"
-            du -sh .bun
-          else
-            echo "No .bun packages required"
-          fi
+          cd packages/sidflow-web/.next/standalone/packages/sidflow-web
+          # Copy package.json from source
+          cp /github/workspace/packages/sidflow-web/package.json .
+          # Install only production dependencies
+          bun install --production --no-save
+          # Clean up package.json copy
+          rm package.json
 
       - name: Verify package contents
         run: bun run check:packages --source local
