@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7 (2025-11-21)
+
+- fix(release): enhance release preparation to include previous tag in changelog entry
+- chore: remove outdated coverage analysis document
+- fix(release): update artifact handling in release workflow for consistency and clarity
+
 ## 0.2.6 (2025-11-21)
 
 - fix(release): update artifact handling in release workflow for improved clarity and efficiency
