@@ -20,24 +20,19 @@ export function stepToK6Request(
   mapping: K6ActionMapping = defaultK6Mapping
 ): string {
   switch (step.action) {
-    case "navigate": {
-      // Type guard: step is now narrowed to NavigateStep
-      const navStep = step;
-      return `http.get(baseUrl + "${mapping.healthEndpoint}", params); // mirror page load for ${navStep.target}`;
-    }
+    case "navigate":
+      // TypeScript narrows step to NavigateStep within this case
+      return `http.get(baseUrl + "${mapping.healthEndpoint}", params); // mirror page load for ${step.target}`;
     case "click":
     case "waitForText":
       return "// UI-only step; no protocol call";
-    case "type": {
-      // Type guard: step is now narrowed to TypeStep
-      const typeStep = step;
-      return `http.get(baseUrl + "${mapping.searchEndpoint}?q=${encodeURIComponent(typeStep.value)}", params);`;
-    }
+    case "type":
+      // TypeScript narrows step to TypeStep within this case
+      return `http.get(baseUrl + "${mapping.searchEndpoint}?q=${encodeURIComponent(step.value)}", params);`;
     case "selectTrack": {
-      // Type guard: step is now narrowed to SelectTrackStep
-      const selectStep = step;
-      const selected = spec.data?.trackRefs?.[selectStep.trackRef];
-      const path = selected?.sidPath ?? selectStep.trackRef;
+      // TypeScript narrows step to SelectTrackStep within this case
+      const selected = spec.data?.trackRefs?.[step.trackRef];
+      const path = selected?.sidPath ?? step.trackRef;
       return [
         `const playRes = http.post(baseUrl + "${mapping.playEndpoint}", JSON.stringify({ sid_path: "${path}" }), params);`,
         `const playJson = playRes.json();`,
@@ -46,11 +41,9 @@ export function stepToK6Request(
     }
     case "startPlayback":
       return `http.get(streamUrl || baseUrl + "${mapping.healthEndpoint}", params); // playback start`;
-    case "favoriteToggle": {
-      // Type guard: step is now narrowed to FavoriteToggleStep
-      const favStep = step;
-      return `http.${favStep.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${favStep.trackRef}" }), params);`;
-    }
+    case "favoriteToggle":
+      // TypeScript narrows step to FavoriteToggleStep within this case
+      return `http.${step.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${step.trackRef}" }), params);`;
     default:
       return "// Unsupported action";
   }
