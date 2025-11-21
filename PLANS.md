@@ -24,6 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
     - [Structure rules](#structure-rules)
     - [Plan-then-act contract](#plan-then-act-contract)
   - [Active tasks](#active-tasks)
+    - [Task: Release Packaging Reliability (2025-11-22)](#task-release-packaging-reliability-2025-11-22)
     - [Task: Achieve \>90% Coverage \& Fix All E2E Tests (2025-11-20)](#task-achieve-90-coverage--fix-all-e2e-tests-2025-11-20)
   - [Archived Tasks](#archived-tasks)
 
@@ -110,6 +111,35 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Release Packaging Reliability (2025-11-22)
+
+**User request (summary)**
+- Ensure release bundling completes without disk exhaustion or hangs
+- Guarantee smoke test succeeds with correctly structured artifacts
+
+**Context and constraints**
+- Packaging copies full workspace (including node_modules and standalone build) and zips it; size roughly 600MB locally, ~1.3GB in CI
+- Artifact must remain self-contained (dependencies included) while pruning non-essential cache/temp data
+- CI disk is limited; zip must finish reliably with visibility into size/time
+
+**Plan (checklist)**
+- [x] 1 — Measure staging size and zip duration locally with current workflow settings and added logging
+- [x] 2 — Identify and remove additional non-essential folders/files to shrink artifact without breaking release server
+- [x] 3 — Add concise progress logging/guards around zip to surface hangs or disk pressure
+- [ ] 4 — Validate artifact structure and run smoke test locally from bundle
+- [ ] 5 — Align workflow with findings (pruning + logging) and ensure smoke test path robustness
+
+**Progress log**
+- 2025-11-22 — Added disk usage logging around packaging to debug CI hangs
+- 2025-11-22 — Switched packaging to direct zip writer with aggressive pruning (excludes .git, .bun, workspace, performance, data, doc, tests, caches) to avoid staging and reduce disk use
+
+**Assumptions and open questions**
+- Assumption: node_modules and .next/standalone are required for release; other caches can be pruned
+- Open question: Further pruning needed to meet CI disk/time limits?
+
+**Follow-ups / future work**
+- Consider slimmer distribution (exclude non-runtime docs/tests) if CI limits persist
 
 ### Task: Achieve >90% Coverage & Fix All E2E Tests (2025-11-20)
 

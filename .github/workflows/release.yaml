@@ -333,30 +333,22 @@ jobs:
         run: |
           set -euxo pipefail
           ARCHIVE_NAME="sidflow-${VERSION}"
-          STAGING_ROOT="${RUNNER_TEMP}/${ARCHIVE_NAME}"
-          TARGET_DIR="${STAGING_ROOT}/${ARCHIVE_NAME}"
-          rm -rf "${STAGING_ROOT}"
-          mkdir -p "${STAGING_ROOT}"
-          export TARGET_DIR STAGING_ROOT ARCHIVE_NAME
+          ZIP_NAME="${ARCHIVE_NAME}.zip"
+          ZIP_PATH="${GITHUB_WORKSPACE}/${ZIP_NAME}"
+          export SRC_DIR ARCHIVE_NAME ZIP_PATH
+          echo "Filesystem usage before packaging:"
+          df -h .
           python3 scripts/ci/package-release.py
-          # Remove bulky non-release artifacts to cut archive size and avoid disk pressure
-          rm -rf \
-            "${TARGET_DIR}/coverage" \
-            "${TARGET_DIR}/tmp" \
-            "${TARGET_DIR}/test-results" \
-            "${TARGET_DIR}/performance/results" \
-            "${TARGET_DIR}/packages/sidflow-web/.next/cache" || true
-          # Expose paths and artifact name for later steps
+          echo "Created zip: ${ZIP_PATH}"
+          ls -lh "${ZIP_PATH}"
+          echo "Filesystem usage after packaging:"
+          df -h .
           {
-            echo "TARGET_DIR=${TARGET_DIR}"
-            echo "STAGING_ROOT=${STAGING_ROOT}"
-            echo "ARCHIVE_NAME=${ARCHIVE_NAME}"
-            echo "ZIP_NAME=${ARCHIVE_NAME}.zip"
-            echo "ZIP_PATH=${RUNNER_TEMP}/${ARCHIVE_NAME}.zip"
+            echo "ZIP_NAME=${ZIP_NAME}"
+            echo "ZIP_PATH=${ZIP_PATH}"
+            echo "TARGET_DIR=${ARCHIVE_NAME}"
           } >> "$GITHUB_ENV"
           ZIP_NAME="${ARCHIVE_NAME}.zip"
-          ZIP_PATH="${RUNNER_TEMP}/${ARCHIVE_NAME}.zip"
-          (cd "${STAGING_ROOT}" && zip -rq "${ZIP_PATH}" "${ARCHIVE_NAME}")
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
 
