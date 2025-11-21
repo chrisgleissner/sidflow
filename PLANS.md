@@ -24,7 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
     - [Structure rules](#structure-rules)
     - [Plan-then-act contract](#plan-then-act-contract)
   - [Active tasks](#active-tasks)
-    - [Task: Achieve >90% Coverage & Fix All E2E Tests (2025-11-20)](#task-achieve-90-coverage--fix-all-e2e-tests-2025-11-20)
+    - [Task: Achieve \>90% Coverage \& Fix All E2E Tests (2025-11-20)](#task-achieve-90-coverage--fix-all-e2e-tests-2025-11-20)
   - [Archived Tasks](#archived-tasks)
 
 <!-- /TOC -->

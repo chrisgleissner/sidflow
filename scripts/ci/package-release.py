@@ -60,8 +60,15 @@ def package_release(src_dir: pathlib.Path, target_dir: pathlib.Path) -> None:
     if dst.exists():
         shutil.rmtree(dst)
     
-    # Copy with ignore filter
-    shutil.copytree(src, dst, ignore=ignore_patterns)
+    # Copy while preserving symlinks so dangling references (e.g., external docs or
+    # build-time links) do not cause hard failures during packaging.
+    shutil.copytree(
+        src,
+        dst,
+        ignore=ignore_patterns,
+        symlinks=True,
+        ignore_dangling_symlinks=True,
+    )
 
 
 def main(argv: list[str]) -> int:
