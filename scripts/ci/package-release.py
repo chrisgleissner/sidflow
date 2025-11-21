@@ -22,6 +22,7 @@ from typing import Iterable
 
 IGNORED_DIRS = {
     ".git",
+    ".bun",
     ".turbo",
     "workspace",
     "performance",
@@ -37,20 +38,10 @@ IGNORED_DIRS = {
 IGNORED_PATH_PREFIXES = {
     pathlib.PurePosixPath("packages/sidflow-web/.next/cache"),
     pathlib.PurePosixPath("node_modules/.cache"),
-    pathlib.PurePosixPath(".bun"),  # Ignore .bun except in standalone
-}
-
-ALLOWED_BUN_PATHS = {
-    pathlib.PurePosixPath("packages/sidflow-web/.next/standalone/node_modules/.bun"),
 }
 
 
 def should_skip_dir(rel_dir: pathlib.PurePosixPath) -> bool:
-    # Check if this path is explicitly allowed (e.g., standalone .bun)
-    for allowed in ALLOWED_BUN_PATHS:
-        if rel_dir.as_posix().startswith(allowed.as_posix()):
-            return False
-    
     if rel_dir.name in IGNORED_DIRS:
         return True
     for prefix in IGNORED_PATH_PREFIXES:
