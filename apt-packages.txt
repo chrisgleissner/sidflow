@@ -10,6 +10,7 @@ npm
 python3
 sidplayfp
 unzip
+zip
 bash
 wget
 libnss3
