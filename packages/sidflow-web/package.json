@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ../../scripts/run-bun.mjs run build:worklet && next dev",
-    "build": "node ../../scripts/run-bun.mjs run build:worklet && next build && node ../../scripts/run-bun.mjs run postbuild",
-    "postbuild": "bash -c 'cd .next/standalone/node_modules && ln -sf .bun/next@*/node_modules/next next 2>/dev/null || true'",
+    "build": "node ../../scripts/run-bun.mjs run build:worklet && next build",
     "build:worklet": "node ../../scripts/run-bun.mjs run scripts/build-worklet.ts",
     "start": "next start",
     "lint": "eslint",
