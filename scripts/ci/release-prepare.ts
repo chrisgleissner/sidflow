@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,7 +31,25 @@ async function updatePackageJson(filePath: string, version: string): Promise<voi
   await writeFile(filePath, `${JSON.stringify(json, null, 2)}\n`, "utf8");
 }
 
-async function ensureChangesEntry(version: string): Promise<void> {
+function getCommitMessages(previousTag?: string): string[] {
+  try {
+    const range = previousTag ? `${previousTag}..HEAD` : "";
+    const output = execSync(
+      `git log ${range} --no-merges --format=%s`,
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    return output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .filter((line) => !line.toLowerCase().startsWith("chore: prepare release"));
+  } catch (error) {
+    console.warn("Unable to read commit messages for changelog:", error);
+    return [];
+  }
+}
+
+async function ensureChangesEntry(version: string, previousTag?: string): Promise<void> {
   try {
     const body = await readFile(changesPath, "utf8");
     const pattern = new RegExp(`^##\\s+(?:v)?${version.replaceAll(".", "\\.")}\\b`, "m");
@@ -42,6 +61,7 @@ async function ensureChangesEntry(version: string): Promise<void> {
     }
 
     const today = new Date().toISOString().split('T')[0];
+    const commits = getCommitMessages(previousTag);
     
     // Insert new version entry after "# Changelog" header
     const lines = body.split('\n');
@@ -54,8 +74,17 @@ async function ensureChangesEntry(version: string): Promise<void> {
         insertIndex++;
       }
       
+      const entryLines = [
+        `## ${version} (${today})`,
+        "",
+        ...(commits.length > 0
+          ? commits.map((commit) => `- ${commit}`)
+          : ["- No notable changes; see git history."]),
+        "",
+      ];
+
       // Insert new version section
-      lines.splice(insertIndex, 0, `## ${version} (${today})`, '', '- Release created from tag', '');
+      lines.splice(insertIndex, 0, ...entryLines);
       await writeFile(changesPath, lines.join('\n'), "utf8");
       console.log(`Auto-generated CHANGES.md entry for ${version}`);
     } else {
@@ -72,7 +101,8 @@ async function ensureChangesEntry(version: string): Promise<void> {
 async function main(): Promise<void> {
   const args = Bun.argv.slice(2).filter((arg) => arg !== "--");
   const version = normalizeVersion(args[0]);
-  await ensureChangesEntry(version);
+  const previousTag = process.env.PREVIOUS_TAG;
+  await ensureChangesEntry(version, previousTag);
 
   await updatePackageJson(path.join(repoRoot, "package.json"), version);
 

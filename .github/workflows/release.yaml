@@ -121,6 +121,8 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run release:prepare
+        env:
+          PREVIOUS_TAG: ${{ steps.previous.outputs.tag }}
         run: bun run release:prepare -- ${{ steps.version.outputs.version }}
 
       - name: Configure git
