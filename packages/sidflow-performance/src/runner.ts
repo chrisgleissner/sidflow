@@ -21,7 +21,6 @@ export interface RunnerOptions {
   environment: RunnerEnvironment;
   executors?: ExecutorKind[];
   journeyFilter?: string[];
-  pacingSeconds?: number;
   userVariants?: Partial<UserVariants>;
   execute?: boolean;
   reporter?: (line: string) => void;
