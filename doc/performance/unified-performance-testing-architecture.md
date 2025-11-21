@@ -84,7 +84,7 @@ Minimal JSON structure to avoid duplication:
 - Outputs per variant (under `performance/results/<ts>/k6/<journey>/u<users>/`):
   - `metrics.csv` (k6 CSV output).
   - `report.html` (self-contained HTML dashboard).
-  - `summary.json` (k6 summary export) and summary stats always printed to stdout.
+  - `summary.json` (k6 summary export via `K6_SUMMARY_EXPORT`) and summary stats always printed to stdout.
 - HTML dashboard generation uses k6’s built-in web dashboard export:
   ```shell
   K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report.html k6 run script.js
@@ -100,6 +100,11 @@ Minimal JSON structure to avoid duplication:
   - Aggregates artifacts under executor-specific directories.
 - Local mode: allow `--journey`/`--executor` filters and headful Playwright for debugging.
 - Nightly mode: full matrix run with artifact collection + Markdown report emission.
+- CLI entrypoint: `npm run perf:run -- --env ci --base-url http://localhost:3000 --execute` (defined in `scripts/performance-runner.ts`, powered by `@sidflow/performance` package).
+- Execution safeguards:
+  - Remote runs require `--enable-remote` plus a base URL.
+  - K6 runs emit `summary.json` and are gated by `maxErrorRate` (default 0.05).
+  - Playwright commands support configurable retries to blunt flaky browser steps.
 
 ## Summaries & Reporting
 
@@ -107,6 +112,7 @@ Minimal JSON structure to avoid duplication:
   - Reads k6 CSV files + `summary.json` to compute p50/p95/p99, throughput, error rates per journey/variant.
   - Reads Playwright `har.json` or `timings.json` to extract navigation/request timings and failure counts.
   - Emits `performance/results/<ts>/summary/summary.json` + `coverage.json` for LLM consumption.
+- Local-mode safeguards: runner downsizes to single-user variants, minimal iterations, relaxed error thresholds, and skips missing selectors to keep smoke runs fast and resilient.
 - Markdown report (`performance/results/<ts>/report.md`):
   - Links to each CSV, HTML dashboard, browser timing artifact, and JSON summary.
   - Highlights p95/p99 deltas and error rates; flags regressions against previous runs when available.

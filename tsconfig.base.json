@@ -33,6 +33,9 @@
       "@sidflow/rate": [
         "packages/sidflow-rate/src/index.ts"
       ],
+      "@sidflow/performance": [
+        "packages/sidflow-performance/src/index.ts"
+      ],
       "@sidflow/libsidplayfp-wasm": [
         "packages/libsidplayfp-wasm/src/index.ts"
       ]

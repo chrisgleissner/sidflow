@@ -63,3 +63,5 @@ Goal: ship a unified performance-testing system for the Next.js web UI and SID-s
 - **Nightly CI**: runs on GitHub runner; workflow starts the web server inside the job, then executes Playwright (1/10 users) followed by k6 (1/10/100 users); uploads CSV/HTML/HAR/JSON/Markdown artifacts.
 - **Remote/staging/prod (future)**: runner accepts `--env remote --base-url <url>` (or config equivalent) plus an explicit `--enable-remote` guard to target a pre-deployed environment. Default is disabled; without the guard or base URL, the runner must refuse remote execution to prevent accidental prod hits.
 - Environment config via the shared loader (base URL, auth, dataset knob, pacing override if needed), reused by both executors and runner.
+- **Runner CLI**: `npm run perf:run -- --env ci --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute` (Playwright + k6). Remote targets require `--enable-remote`.
+- **K6 HTML dashboard**: `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report.html` (baked into runner env).

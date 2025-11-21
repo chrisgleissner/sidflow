@@ -1,0 +1,22 @@
+{
+  "name": "@sidflow/performance",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "bun test --coverage"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0",
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.1"
+  }
+}

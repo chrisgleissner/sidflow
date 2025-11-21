@@ -48,8 +48,9 @@ Validate edits with `bun run validate:config`.
 | Command | Result |
 | --- | --- |
 | `bun run build` | Install dependencies (frozen-lockfile) and compile all packages with project references. |
-| `bun run test` | Build then run the Bun test suite with coverage (≥90% enforced). |
+| `bun run test` | Build then run the Bun test suite with coverage reporting. |
 | `bun run test:e2e` | Run end-to-end integration test with real SID files. |
+| `npm run perf:run -- --env local --base-url http://localhost:3000 --execute` | Unified performance runner (Playwright + k6); see [`doc/performance/performance-test.md`](doc/performance/performance-test.md). |
 | `bun run validate:config` | Smoke-test the active configuration file. |
 | `./scripts/sidflow-fetch` | Run the fetch CLI with Bun hidden behind a repo-local shim. |
 | `./scripts/sidflow-rate` | Launch the interactive rating CLI (TTY required). |
@@ -104,6 +105,7 @@ All packages share `tsconfig.base.json` and strict TypeScript settings; avoid in
 - Mock filesystem/network interactions with temporary directories and fetch stubs; see `packages/sidflow-fetch/test` for patterns.
 - Coverage reports print uncovered lines—address these before sending PRs.
 - Remember to restore any monkey-patched globals (e.g., `fetch`, `process.stdout.write`) during tests.
+- Performance runs: `npm run perf:run -- --env local --base-url http://localhost:3000 --execute` (see [`doc/performance/performance-test.md`](doc/performance/performance-test.md)). Remote/staging targets remain disabled unless you pass `--env remote --enable-remote --base-url <url>`. k6 dashboards export with `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report.html`, and the CI Docker image already ships k6 v0.52.0 + Playwright Chromium to avoid runtime downloads.
 
 ---
 

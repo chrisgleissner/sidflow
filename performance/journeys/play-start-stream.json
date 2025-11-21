@@ -1,0 +1,18 @@
+{
+  "id": "play-start-stream",
+  "description": "Search, pick a track, start SID stream, and let it play briefly",
+  "pacingSeconds": 3,
+  "steps": [
+    { "action": "navigate", "target": "/" },
+    { "action": "click", "selector": "[data-testid='search-input']" },
+    { "action": "type", "selector": "[data-testid='search-input']", "value": "ambient" },
+    { "action": "waitForText", "text": "results" },
+    { "action": "selectTrack", "trackRef": "firstResult" },
+    { "action": "startPlayback", "expectStream": true }
+  ],
+  "data": {
+    "trackRefs": {
+      "firstResult": { "sidPath": "C64Music/MUSICIANS/Test_Artist/test1.sid" }
+    }
+  }
+}

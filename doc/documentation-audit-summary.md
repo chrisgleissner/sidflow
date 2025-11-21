@@ -6,6 +6,14 @@
 
 ---
 
+## 2025-11-21 Update
+
+- Performed a line-by-line doc sweep (README + all `doc/**`) to align with the unified performance runner and prebaked CI binaries.
+- Added explicit performance runner guidance and links in the developer guide, README, and `doc/performance/performance-test.md` (remote targets require `--enable-remote`, k6 dashboards export via `K6_WEB_DASHBOARD_EXPORT`).
+- Documented that the CI Docker image now ships k6 v0.52.0 and Playwright Chromium to avoid lazy downloads during perf runs.
+
+---
+
 ## Executive Summary
 
 A comprehensive audit of the SIDFlow documentation revealed several inaccuracies and omissions, primarily related to the Web UI access points and authentication. These issues have been corrected, and a comprehensive release readiness assessment has been added.
