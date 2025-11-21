@@ -409,8 +409,8 @@ jobs:
           export SIDFLOW_ADMIN_PASSWORD=release-smoke-secret
           ./scripts/start-release-server.sh >"${RUNNER_TEMP}/release.log" 2>&1 &
           echo $! > "${RUNNER_TEMP}/release.pid"
-          # Wait for server to become healthy (max 30s)
-          for i in {1..30}; do
+          # Wait for server to become healthy (max 10s)
+          for i in {1..10}; do
             if curl -sf http://127.0.0.1:3000/api/health > /dev/null; then
               echo "Server is healthy after ${i} seconds"
               break
@@ -420,7 +420,7 @@ jobs:
 
           # Verify server health after wait loop
           if ! curl -sf http://127.0.0.1:3000/api/health > /dev/null; then
-            echo "ERROR: Server did not become healthy after 30 seconds" >&2
+            echo "ERROR: Server did not become healthy after 10 seconds" >&2
             echo "Last 50 lines of server log:" >&2
             tail -n 50 "${RUNNER_TEMP}/release.log" >&2
             exit 1
