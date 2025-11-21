@@ -341,26 +341,23 @@ jobs:
           set -euxo pipefail
           STANDALONE_DIR="packages/sidflow-web/.next/standalone"
           STANDALONE_NM="${STANDALONE_DIR}/node_modules"
-          
-          # Copy actual next module from .bun to node_modules
-          if [ -L "${STANDALONE_NM}/next" ]; then
-            TARGET=$(readlink -f "${STANDALONE_NM}/next")
-            rm "${STANDALONE_NM}/next"
-            cp -r "${TARGET}" "${STANDALONE_NM}/next"
-            echo "Dereferenced next symlink"
-          fi
-          
-          # Also copy to packages/sidflow-web node_modules if needed
           PKG_NM="${STANDALONE_DIR}/packages/sidflow-web/node_modules"
+          
+          # Copy actual next module from package dir to standalone root
           if [ -L "${PKG_NM}/next" ]; then
             TARGET=$(readlink -f "${PKG_NM}/next")
             rm "${PKG_NM}/next"
             cp -r "${TARGET}" "${PKG_NM}/next"
             echo "Dereferenced next symlink in package dir"
+            
+            # Also copy to standalone root for NODE_PATH resolution
+            mkdir -p "${STANDALONE_NM}"
+            cp -r "${TARGET}" "${STANDALONE_NM}/next"
+            echo "Copied next to standalone root"
           fi
           
-          # Verify next module exists
-          ls -la "${STANDALONE_NM}/next" | head -5
+          # Verify next module exists in both locations
+          ls -d "${PKG_NM}/next" "${STANDALONE_NM}/next"
           echo "Next.js module dereferenced successfully"
 
       - name: Package release artifact
