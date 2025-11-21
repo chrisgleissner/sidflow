@@ -34,8 +34,32 @@ async function ensureChangesEntry(version: string): Promise<void> {
   try {
     const body = await readFile(changesPath, "utf8");
     const pattern = new RegExp(`^##\\s+(?:v)?${version.replaceAll(".", "\\.")}\\b`, "m");
-    if (!pattern.test(body)) {
-      die(`CHANGES.md is missing a \"## ${version}\" entry. Please add release notes before running release:prepare.`);
+    
+    // If version entry already exists, we're done
+    if (pattern.test(body)) {
+      console.log(`CHANGES.md already has entry for ${version}`);
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Insert new version entry after "# Changelog" header
+    const lines = body.split('\n');
+    const changelogIndex = lines.findIndex(line => /^#\s+Changelog/i.test(line));
+    
+    if (changelogIndex >= 0) {
+      // Find the next non-empty line after "# Changelog"
+      let insertIndex = changelogIndex + 1;
+      while (insertIndex < lines.length && lines[insertIndex].trim() === '') {
+        insertIndex++;
+      }
+      
+      // Insert new version section
+      lines.splice(insertIndex, 0, `## ${version} (${today})`, '', '- Release created from tag', '');
+      await writeFile(changesPath, lines.join('\n'), "utf8");
+      console.log(`Auto-generated CHANGES.md entry for ${version}`);
+    } else {
+      die(`CHANGES.md is missing a \"## ${version}\" entry and could not auto-generate one.`);
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -59,7 +83,7 @@ async function main(): Promise<void> {
     await updatePackageJson(pkgJsonPath, version);
   }
 
-  await $({ cwd: repoRoot })`bun install`;
+  await $`bun install`.cwd(repoRoot);
   console.log(`Updated workspace versions to ${version} and refreshed bun.lock`);
 }
 
