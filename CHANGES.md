@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.8 (2025-11-21)
+
+- fix(release): improve release packaging reliability with enhanced logging and aggressive pruning
+
 ## 0.2.7 (2025-11-21)
 
 - fix(release): enhance release preparation to include previous tag in changelog entry
