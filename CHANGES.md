@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.3.10 (2025-11-22)
+
+- feat: Generate package.json for standalone build without workspace dependencies
+
 ## 0.3.9 (2025-11-22)
 
 - Update PLANS.md
