@@ -169,6 +169,7 @@ To prevent uncontrolled growth of this file:
 - 2025-11-23 — Audited runtime/tooling gaps (no Node in builder, x64-only Bun, missing CLI deps, GHCR visibility bug) and updated Dockerfile.production with arch-aware Bun, runtime apt tools (ffmpeg/sidplayfp), SIDFLOW_ROOT config, and workspace assets for CLIs
 - 2025-11-23 — Fixed release workflow checkout/tagging (use release tag ref, latest on tags, correct GHCR visibility endpoint) and refreshed Docker README with CLI/volume guidance
 - 2025-11-23 — Validation: manual review only (Docker build/tests not executed in this session)
+- 2025-11-23 — Simplified release: publish Docker image only; removed zip packaging/docs; release workflow now builds/pushes GHCR image
 
 **Assumptions and open questions**
 - Assumption: Including ffmpeg and sidplayfp in runtime image is acceptable size-wise

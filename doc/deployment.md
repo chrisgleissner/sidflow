@@ -30,6 +30,7 @@ npm run docker:smoke
 ```
 
 What it does:
+
 - Builds `Dockerfile.production` and tags the image (`IMAGE_TAG`, default `sidflow:local`)
 - Runs a container with admin creds, waits for Docker health to turn `healthy`
 - Calls `/api/health` and shows the response
@@ -57,6 +58,7 @@ Prereqs: Docker daemon available; no HVSC volumes required for the smoke test.
 ## Environment
 
 Common variables:
+
 - `SIDFLOW_ADMIN_USER` / `SIDFLOW_ADMIN_PASSWORD` (required)
 - `HOST` (default `0.0.0.0`), `PORT` (default `3000`)
 - `SIDFLOW_ROOT` (default `/sidflow`)
