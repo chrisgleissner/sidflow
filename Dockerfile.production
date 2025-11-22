@@ -85,13 +85,6 @@ RUN set -eux; \
         cp -r .next/static "${STANDALONE_ROOT}/.next/"; \
     fi
 
-# Install production dependencies into standalone directory
-RUN set -eux; \
-    cd packages/sidflow-web/.next/standalone/packages/sidflow-web; \
-    cp ../../../../package.json .; \
-    bun install --production --no-save; \
-    rm package.json
-
 # ============================================================================
 # Stage 2: Runtime - Minimal production image
 # ============================================================================
