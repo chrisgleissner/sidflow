@@ -1,0 +1,203 @@
+# Production Docker image for SIDFlow web server
+# This is a hardened, minimal runtime image for the Next.js standalone server
+# Build with: docker build -f Dockerfile.production -t sidflow:latest .
+
+ARG BUN_VERSION=1.3.1
+
+# ============================================================================
+# Stage 1: Builder - Build the Next.js application and bundle runtime deps
+# ============================================================================
+FROM node:22-slim AS builder
+ARG BUN_VERSION
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    BUN_INSTALL=/usr/local \
+    BUN_INSTALL_CACHE=/root/.bun-install/cache \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+# Install build dependencies (with cached APT)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        unzip \
+        git \
+        python3; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Bun (arch-aware for multi-platform builds)
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "${arch}" in \
+        x86_64) bun_arch="x64" ;; \
+        aarch64|arm64) bun_arch="aarch64" ;; \
+        *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${bun_arch}.zip" -o /tmp/bun.zip; \
+    unzip /tmp/bun.zip -d /tmp/bun; \
+    install -m 0755 /tmp/bun/bun-linux-${bun_arch}/bun /usr/local/bin/bun; \
+    ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
+    rm -rf /tmp/bun /tmp/bun.zip
+
+WORKDIR /build
+
+# Copy package files and install dependencies
+COPY package.json bun.lock* ./
+COPY packages/sidflow-web/package.json ./packages/sidflow-web/
+COPY packages/sidflow-common/package.json ./packages/sidflow-common/
+COPY packages/sidflow-classify/package.json ./packages/sidflow-classify/
+COPY packages/libsidplayfp-wasm/package.json ./packages/libsidplayfp-wasm/
+COPY packages/sidflow-fetch/package.json ./packages/sidflow-fetch/
+COPY packages/sidflow-play/package.json ./packages/sidflow-play/
+COPY packages/sidflow-rate/package.json ./packages/sidflow-rate/
+COPY packages/sidflow-train/package.json ./packages/sidflow-train/
+COPY packages/sidflow-performance/package.json ./packages/sidflow-performance/
+
+RUN --mount=type=cache,target=/root/.bun-install/cache,sharing=locked \
+    --mount=type=cache,target=/root/.cache/bun,sharing=locked \
+    set -eux; \
+    rm -rf /root/.bun-install/cache/* /root/.cache/bun/* || true; \
+    bun install --frozen-lockfile --verbose
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN set -eux; \
+    bun run build; \
+    cd packages/sidflow-web; \
+    bun run build:worklet; \
+    bun run build
+
+# Copy static assets into standalone directory (required for Next.js standalone)
+RUN set -eux; \
+    cd packages/sidflow-web; \
+    STANDALONE_ROOT=".next/standalone/packages/sidflow-web"; \
+    if [ -d "public" ]; then \
+        cp -r public "${STANDALONE_ROOT}/"; \
+    fi; \
+    if [ -d ".next/static" ]; then \
+        mkdir -p "${STANDALONE_ROOT}/.next"; \
+        cp -r .next/static "${STANDALONE_ROOT}/.next/"; \
+    fi
+
+# ============================================================================
+# Stage 2: Runtime - Minimal production image
+# ============================================================================
+FROM node:22-slim AS runtime
+ARG BUN_VERSION
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    BUN_INSTALL=/usr/local
+
+# Install runtime dependencies: CLI tools and codecs required by SIDFlow
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        curl \
+        ffmpeg \
+        git \
+        jq \
+        python3 \
+        sidplayfp \
+        unzip \
+        zip \
+        wget \
+        libnss3 \
+        libnspr4 \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libcups2 \
+        libdrm2 \
+        libdbus-1-3 \
+        libxkbcommon0 \
+        libatspi2.0-0 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxrandr2 \
+        libgbm1 \
+        libpango-1.0-0 \
+        libcairo2 \
+        libasound2 \
+        libxshmfence1 \
+        fonts-liberation \
+        fonts-noto-color-emoji; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Bun for CLI workflows (arch-aware for arm64/amd64)
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "${arch}" in \
+        x86_64) bun_arch="x64" ;; \
+        aarch64|arm64) bun_arch="aarch64" ;; \
+        *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${bun_arch}.zip" -o /tmp/bun.zip; \
+    unzip /tmp/bun.zip -d /tmp/bun; \
+    install -m 0755 /tmp/bun/bun-linux-${bun_arch}/bun /usr/local/bin/bun; \
+    ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
+    rm -rf /tmp/bun /tmp/bun.zip
+
+# Create non-root user for security
+RUN set -eux; \
+    groupadd --gid 1001 sidflow; \
+    useradd --uid 1001 --gid sidflow --shell /bin/bash --create-home sidflow
+
+WORKDIR /app
+
+# Copy standalone server from builder
+COPY --from=builder --chown=sidflow:sidflow /build/packages/sidflow-web/.next/standalone ./
+
+# Copy workspace files for CLI flows (config, scripts, packages, dependencies)
+COPY --from=builder --chown=sidflow:sidflow /build/.sidflow.json /sidflow/.sidflow.json
+COPY --from=builder --chown=sidflow:sidflow /build/package.json /sidflow/package.json
+COPY --from=builder --chown=sidflow:sidflow /build/bun.lock* /sidflow/
+COPY --from=builder --chown=sidflow:sidflow /build/bunfig.toml /sidflow/bunfig.toml
+COPY --from=builder --chown=sidflow:sidflow /build/tsconfig.base.json /sidflow/tsconfig.base.json
+COPY --from=builder --chown=sidflow:sidflow /build/tsconfig.json /sidflow/tsconfig.json
+COPY --from=builder --chown=sidflow:sidflow /build/scripts /sidflow/scripts
+COPY --from=builder --chown=sidflow:sidflow /build/packages /sidflow/packages
+COPY --from=builder --chown=sidflow:sidflow /build/node_modules /sidflow/node_modules
+
+# Prune redundant Next.js build and pre-create default data directories
+RUN set -eux; \
+    rm -rf /sidflow/packages/sidflow-web/.next; \
+    install -d -o sidflow -g sidflow \
+      /sidflow/workspace/hvsc \
+      /sidflow/workspace/wav-cache \
+      /sidflow/workspace/tags \
+      /sidflow/data/classified \
+      /sidflow/data/renders \
+      /sidflow/data/availability
+
+# Set secure environment defaults
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    NEXT_TELEMETRY_DISABLED=1 \
+    SIDFLOW_ROOT=/sidflow
+
+# Expose application port
+EXPOSE 3000
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+# Switch to non-root user
+USER sidflow
+
+# Start the Next.js standalone server
+# The standalone server is located at packages/sidflow-web/server.js
+WORKDIR /app/packages/sidflow-web
+CMD ["node", "server.js"]

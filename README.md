@@ -121,6 +121,24 @@ Get started:
    - You can run the server with just Node.js installed, but will need Bun if you want to use the CLI tools.
 This flow differs from dev mode: no hot reload, deterministic static assets, and the output matches what ships to production. Stop the server with `Ctrl+C` when finished.
 
+## Run with Docker
+
+See **Deployment Guide** for full Docker instructions, CLI usage, health checks, and smoke-testing: [doc/deployment.md](doc/deployment.md).
+
+Standard production scenario:
+
+```bash
+docker run -p 3000:3000 \
+  -e SIDFLOW_ADMIN_USER=admin \
+  -e SIDFLOW_ADMIN_PASSWORD='strong-password' \
+  -v /path/to/hvsc:/sidflow/workspace/hvsc \
+  -v /path/to/wav-cache:/sidflow/workspace/wav-cache \
+  -v /path/to/tags:/sidflow/workspace/tags \
+  -v /path/to/data:/sidflow/data \
+  ghcr.io/chrisgleissner/sidflow:latest
+```
+Web UI: <http://localhost:3000> (admin at `/admin`).
+
 ## Performance Tests
 
 Run the unified performance suite (Playwright + k6) with the shared runner:
