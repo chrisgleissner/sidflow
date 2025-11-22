@@ -1,0 +1,68 @@
+# Docker build context ignore file for SIDFlow production image
+# Excludes non-essential files to reduce build context size
+
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+.gitlab-ci.yml
+azure-pipelines.yml
+
+# Build outputs and caches
+.next/cache
+.turbo
+.bun
+node_modules/.cache
+coverage
+tmp
+test-results
+test-workspace
+.nyc_output
+
+# Development and testing
+integration-tests
+test-data
+performance/results
+performance/tmp
+workspace
+
+# Documentation
+doc
+*.md
+!README.md
+
+# Data and state
+data
+*.lance
+*.manifest.json
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (secrets should be passed at runtime)
+.env
+.env.local
+.env.*.local
+
+# Package manager files (we copy these explicitly)
+# .npmrc
+# .yarnrc
+
+# Miscellaneous
+*.zip
+*.tar.gz
+*.tgz

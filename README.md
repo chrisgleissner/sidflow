@@ -121,6 +121,121 @@ Get started:
    - You can run the server with just Node.js installed, but will need Bun if you want to use the CLI tools.
 This flow differs from dev mode: no hot reload, deterministic static assets, and the output matches what ships to production. Stop the server with `Ctrl+C` when finished.
 
+## Run with Docker
+
+The easiest way to run SIDFlow in production is with Docker. Each release publishes multi-platform images (linux/amd64, linux/arm64) to the [GitHub Container Registry](https://github.com/chrisgleissner/sidflow/pkgs/container/sidflow).
+
+### Quick Start
+
+Pull and run the latest release:
+
+```bash
+docker run -p 3000:3000 \
+  -e SIDFLOW_ADMIN_USER=admin \
+  -e SIDFLOW_ADMIN_PASSWORD='your-strong-password' \
+  ghcr.io/chrisgleissner/sidflow:latest
+```
+
+The web UI will be available at <http://localhost:3000>.
+
+### Features
+
+✨ **Zero Host Dependencies**
+- No need to install Bun, Node.js, sidplayfp, or any other tools
+- Self-contained runtime with all dependencies included
+- Works on any system with Docker installed
+
+🔒 **Hardened Security**
+- Runs as non-root user (uid 1001)
+- Minimal attack surface (node:22-slim base)
+- Secure defaults (telemetry disabled, production mode)
+
+🏥 **Built-in Health Checks**
+- Automatic container health monitoring via `/api/health` endpoint
+- Docker HEALTHCHECK validates server is responding
+- 40-second startup grace period, then checks every 30 seconds
+
+🌐 **Multi-Platform Support**
+- Native images for amd64 (Intel/AMD) and arm64 (Apple Silicon, ARM servers)
+- Optimized for each architecture
+
+### Available Tags
+
+- `ghcr.io/chrisgleissner/sidflow:latest` — Latest stable release
+- `ghcr.io/chrisgleissner/sidflow:0.3.8` — Specific version
+- `ghcr.io/chrisgleissner/sidflow:0.3` — Latest patch in minor version
+
+### Configuration
+
+Configure the server with environment variables:
+
+```bash
+docker run -p 3000:3000 \
+  -e SIDFLOW_ADMIN_USER=admin \
+  -e SIDFLOW_ADMIN_PASSWORD='production-secret' \
+  -e HOST=0.0.0.0 \
+  -e PORT=3000 \
+  ghcr.io/chrisgleissner/sidflow:latest
+```
+
+### Data Persistence (Optional)
+
+To persist your SID collection, ratings, and cache across container restarts:
+
+```bash
+docker run -p 3000:3000 \
+  -e SIDFLOW_ADMIN_USER=admin \
+  -e SIDFLOW_ADMIN_PASSWORD='production-secret' \
+  -v /path/to/your/data:/app/data \
+  -v /path/to/your/hvsc:/app/hvsc \
+  ghcr.io/chrisgleissner/sidflow:latest
+```
+
+### Health Check
+
+The container includes a built-in health check that monitors the `/api/health` endpoint. Check health status with:
+
+```bash
+docker ps
+# Look for "healthy" in the STATUS column
+
+docker inspect --format='{{.State.Health.Status}}' <container-id>
+# Should return "healthy"
+```
+
+### What's Included
+
+The Docker image contains:
+- ✅ Next.js standalone web server (production build)
+- ✅ All runtime dependencies (`node_modules`)
+- ✅ Static assets (`public/`, `.next/static`)
+- ✅ Node.js 22 LTS runtime
+- ✅ Health check monitoring
+- ❌ Build tools (Bun, TypeScript compiler, etc.) — excluded for minimal size
+- ❌ CLI tools (fetch, classify, train) — use the ZIP release for full pipeline
+
+**Important:** The Docker image runs the web server only. For CLI operations (fetch HVSC, classify, train), use the ZIP release artifact or build from source.
+
+### Troubleshooting
+
+View container logs:
+
+```bash
+docker logs <container-id>
+```
+
+Enter the running container for debugging:
+
+```bash
+docker exec -it <container-id> bash
+```
+
+Test health endpoint manually:
+
+```bash
+curl http://localhost:3000/api/health
+```
+
 ## Performance Tests
 
 Run the unified performance suite (Playwright + k6) with the shared runner:

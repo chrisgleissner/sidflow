@@ -1,0 +1,116 @@
+# Production Docker image for SIDFlow web server
+# This is a hardened, minimal runtime image for the Next.js standalone server
+# Build with: docker build -f Dockerfile.production -t sidflow:latest .
+
+# ============================================================================
+# Stage 1: Builder - Build the Next.js application
+# ============================================================================
+FROM ubuntu:24.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    BUN_VERSION=1.3.1 \
+    NODE_ENV=production
+
+# Install build dependencies
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        curl \
+        unzip \
+        ca-certificates \
+        git \
+        python3; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Bun
+RUN set -eux; \
+    curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" -o /tmp/bun.zip; \
+    unzip /tmp/bun.zip -d /tmp/bun; \
+    install -m 0755 /tmp/bun/bun-linux-x64/bun /usr/local/bin/bun; \
+    ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
+    rm -rf /tmp/bun /tmp/bun.zip
+
+WORKDIR /build
+
+# Copy package files and install dependencies
+COPY package.json bun.lock* ./
+COPY packages/sidflow-web/package.json ./packages/sidflow-web/
+COPY packages/sidflow-common/package.json ./packages/sidflow-common/
+COPY packages/sidflow-classify/package.json ./packages/sidflow-classify/
+COPY packages/libsidplayfp-wasm/package.json ./packages/libsidplayfp-wasm/
+
+RUN bun install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN set -eux; \
+    bun run build; \
+    cd packages/sidflow-web; \
+    bun run build:worklet; \
+    bun run build
+
+# Copy static assets into standalone directory (required for Next.js standalone)
+RUN set -eux; \
+    cd packages/sidflow-web; \
+    STANDALONE_ROOT=".next/standalone/packages/sidflow-web"; \
+    if [ -d "public" ]; then \
+        cp -r public "${STANDALONE_ROOT}/"; \
+    fi; \
+    if [ -d ".next/static" ]; then \
+        mkdir -p "${STANDALONE_ROOT}/.next"; \
+        cp -r .next/static "${STANDALONE_ROOT}/.next/"; \
+    fi
+
+# Install production dependencies into standalone directory
+RUN set -eux; \
+    cd packages/sidflow-web/.next/standalone/packages/sidflow-web; \
+    cp ../../../../package.json .; \
+    bun install --production --no-save; \
+    rm package.json
+
+# ============================================================================
+# Stage 2: Runtime - Minimal production image
+# ============================================================================
+FROM node:22-slim AS runtime
+
+# Install runtime dependencies: curl for healthcheck, ca-certificates for HTTPS
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN set -eux; \
+    groupadd --gid 1001 sidflow; \
+    useradd --uid 1001 --gid sidflow --shell /bin/bash --create-home sidflow
+
+WORKDIR /app
+
+# Copy standalone server from builder
+COPY --from=builder --chown=sidflow:sidflow /build/packages/sidflow-web/.next/standalone ./
+
+# Set secure environment defaults
+ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    NEXT_TELEMETRY_DISABLED=1
+
+# Expose application port
+EXPOSE 3000
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+# Switch to non-root user
+USER sidflow
+
+# Start the Next.js standalone server
+# The standalone server is located at packages/sidflow-web/server.js
+WORKDIR /app/packages/sidflow-web
+CMD ["node", "server.js"]
