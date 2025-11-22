@@ -22,7 +22,7 @@ jobs:
     env:
       TAG_NAME: ${{ github.event.inputs.tag || github.ref_name }}
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -43,6 +43,31 @@ jobs:
           fi
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog entry
+        id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          START_LINE=$(grep -n "^## ${VERSION} " CHANGES.md | cut -d: -f1 | head -n1 || true)
+          if [ -z "${START_LINE}" ]; then
+            {
+              echo "entry<<EOF"
+              echo ""
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TAIL_FROM=$((START_LINE+1))
+          TAIL_CONTENT=$(tail -n +"${TAIL_FROM}" CHANGES.md)
+          ENTRY=$(printf "%s\n" "${TAIL_CONTENT}" | awk '/^## /{exit} {print}')
+          ENTRY_TRIMMED=$(printf "%s\n" "${ENTRY}" | sed '/^[[:space:]]*$/d')
+          {
+            echo "entry<<EOF"
+            echo "${ENTRY_TRIMMED}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -84,3 +109,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
+
+      - name: Update GitHub release notes
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          BODY: ${{ steps.changelog.outputs.entry }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          NOTES_FILE="$(mktemp)"
+          IMAGE_LINE="Docker image: ghcr.io/${REPO}:${TAG}"
+          if [ -n "${BODY}" ]; then
+            printf "%s\n\n%s\n" "${BODY}" "${IMAGE_LINE}" > "${NOTES_FILE}"
+          else
+            printf "%s\n" "${IMAGE_LINE}" > "${NOTES_FILE}"
+          fi
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release edit "${TAG}" --notes-file "${NOTES_FILE}" --title "${TAG}"
+          else
+            gh release create "${TAG}" --notes-file "${NOTES_FILE}" --title "${TAG}"
+          fi
