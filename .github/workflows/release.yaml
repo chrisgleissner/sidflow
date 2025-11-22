@@ -5,15 +5,22 @@ on:
     tags:
       - "*.*.*"
       - "v*.*.*"
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v0.3.10)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-docker-${{ github.ref_name || github.event.inputs.tag || 'manual' }}
+  cancel-in-progress: false
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     env:
-      TAG_NAME: ${{ github.event.release.tag_name || github.ref_name }}
+      TAG_NAME: ${{ github.event.inputs.tag || github.ref_name }}
     permissions:
       contents: read
       packages: write
@@ -30,6 +37,10 @@ jobs:
         run: |
           TAG="${TAG_NAME}"
           CLEAN="${TAG#v}"
+          if [ -z "${CLEAN}" ] || ! printf '%s' "${CLEAN}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid or empty tag: '${TAG}'. Provide a semver tag (e.g. v0.3.10)." >&2
+            exit 1
+          fi
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
@@ -55,7 +66,7 @@ jobs:
             type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }}
             type=semver,pattern={{major}},value=${{ steps.version.outputs.version }}
-            type=raw,value=latest,enable={{is_tag}}
+            type=raw,value=latest
           labels: |
             org.opencontainers.image.title=SIDFlow
             org.opencontainers.image.description=C64 music player with mood-based classification
