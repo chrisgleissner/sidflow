@@ -241,7 +241,7 @@ To prevent uncontrolled growth of this file:
 - 2025-11-21 — ✅ Task completed successfully
 
 **Assumptions and open questions**
-- Assumption: imbios/bun-node:18-slim provides both Bun and Node runtimes
+- Assumption: node:22-slim provides the Node.js runtime needed for Next.js standalone
 - Assumption: Next.js standalone server only needs Node (not Bun) at runtime
 - Assumption: Runtime dependencies (ffmpeg, sidplayfp) not needed in minimal container (web server only)
 - Open: Should we provide separate images for full pipeline (with ffmpeg/sidplayfp) vs web-only?
