@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 0.3.9 (2025-11-22)
+
+- Update PLANS.md
+- Update Dockerfile.production
+- feat: Enhance Docker setup with smoke testing and deployment documentation
+- feat: Add Docker release image and GHCR publishing
+
 ## 0.3.8 (2025-11-21)
 
 - fix(release): package only required .bun modules (~20MB vs 249MB)
