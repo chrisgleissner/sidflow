@@ -112,6 +112,80 @@ To prevent uncontrolled growth of this file:
 
 ## Active tasks
 
+### Task: Docker Release Image & GHCR Publishing (2025-11-21)
+
+**User request (summary)**
+- Extend release.yaml to publish hardened Docker images to public GHCR
+- Fix broken ZIP-based release startup (incomplete Next.js standalone)
+- Implement container health validation in release workflow
+- Support multi-platform builds (linux/amd64, linux/arm64)
+- Update README.md with Docker deployment instructions
+
+**Context and constraints**
+- Current Dockerfile is a CI/build container, not suitable for runtime
+- ZIP release fails with "Cannot find module 'next'" due to incomplete standalone export
+- Need to follow Next.js standalone best practices: copy public and .next/static into standalone
+- Must use minimal base image (Bun+Node) with hardened security (non-root, read-only filesystem)
+- Health check must validate /api/health endpoint inside container
+- Images must be published as public packages to ghcr.io/<owner>/<repo>
+
+**Plan (checklist)**
+- [x] 1 — Create comprehensive plan and todo list
+- [x] 2 — Analyze current Dockerfile and identify runtime requirements
+- [x] 3 — Fix ZIP release packaging to include complete Next.js standalone tree
+  - [x] 3a — Update release.yaml to copy public and .next/static into standalone
+  - [x] 3b — Verify standalone tree completeness before packaging
+- [x] 4 — Create hardened production Dockerfile
+  - [x] 4a — Multi-stage build: builder + runtime
+  - [x] 4b — Runtime base: node:22-slim (minimal Node.js)
+  - [x] 4c — Non-root user with restrictive permissions
+  - [x] 4d — Copy only runtime artifacts (standalone, public, static)
+  - [x] 4e — Add HEALTHCHECK with curl to /api/health
+  - [x] 4f — Set secure environment defaults (NODE_ENV=production)
+- [x] 5 — Extend release.yaml workflow
+  - [x] 5a — Add Docker build-push-action step
+  - [x] 5b — Configure multi-platform builds (amd64, arm64)
+  - [x] 5c — Authenticate with GITHUB_TOKEN to GHCR
+  - [x] 5d — Tag images with :latest and :<version>
+  - [x] 5e — Set image visibility to public
+- [x] 6 — Add container health validation
+  - [x] 6a — Start container from fresh image
+  - [x] 6b — Wait for Docker HEALTHCHECK to pass
+  - [x] 6c — Fail workflow if container doesn't become healthy
+  - [x] 6d — Clean up test container
+- [x] 7 — Update README.md
+  - [x] 7a — Add "Run with Docker" section
+  - [x] 7b — Document no host dependencies required
+  - [x] 7c — Note health check and standalone server details
+  - [x] 7d — Mention corrected ZIP release
+- [x] 8 — Build and validate changes
+  - [x] 8a — Run build and typecheck
+  - [x] 8b — Validate YAML syntax
+  - [x] 8c — Verify new files created correctly
+
+**Progress log**
+- 2025-11-21 — Task started, created plan and analyzed current state
+- 2025-11-21 — Identified root cause: standalone missing public/.next/static assets
+- 2025-11-21 — Fixed release.yaml to copy public and .next/static into standalone tree
+- 2025-11-21 — Created Dockerfile.production with hardened multi-stage build (node:22-slim runtime)
+- 2025-11-21 — Extended release.yaml with Docker build-push (multi-platform amd64/arm64)
+- 2025-11-21 — Added validate_docker_image job with health check verification
+- 2025-11-21 — Updated README.md with comprehensive Docker deployment documentation
+- 2025-11-21 — Validated all changes: build passed, YAML valid, files created correctly
+- 2025-11-21 — ✅ Task completed successfully
+
+**Assumptions and open questions**
+- Assumption: imbios/bun-node:18-slim provides both Bun and Node runtimes
+- Assumption: Next.js standalone server only needs Node (not Bun) at runtime
+- Assumption: Runtime dependencies (ffmpeg, sidplayfp) not needed in minimal container (web server only)
+- Open: Should we provide separate images for full pipeline (with ffmpeg/sidplayfp) vs web-only?
+
+**Follow-ups / future work**
+- [ ] Consider separate "full" image with ffmpeg/sidplayfp for CLI operations
+- [ ] Add Docker Compose example for production deployment
+- [ ] Document volume mounts for data persistence
+- [ ] Add security scanning (Trivy) to release workflow
+
 ### Task: Release Packaging Reliability (2025-11-22)
 
 **User request (summary)**
