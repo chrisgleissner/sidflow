@@ -82,6 +82,10 @@ bun run build
 
 Releases publish Docker images. See the **Deployment Guide** for full Docker instructions, CLI usage, health checks, and smoke-testing: [doc/deployment.md](doc/deployment.md).
 
+**Docker images:**  
+- `ghcr.io/chrisgleissner/sidflow:<version>` (e.g., `v0.3.10`)  
+- `ghcr.io/chrisgleissner/sidflow:latest`
+
 ## Run with Docker
 
 See **Deployment Guide** for full Docker instructions, CLI usage, health checks, and smoke-testing: [doc/deployment.md](doc/deployment.md).
