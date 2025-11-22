@@ -180,13 +180,38 @@ jobs:
 
       - name: Install production dependencies for standalone
         run: |
+          set -euxo pipefail
           cd packages/sidflow-web/.next/standalone/packages/sidflow-web
-          # Copy package.json from source (use relative path from repo root)
-          cp ../../../../package.json .
+          # Generate a package.json without workspace:* deps so Bun can install in the standalone tree
+          node <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+
+          const sourcePkgPath = path.resolve(process.cwd(), '../../../../package.json');
+          const webPkgPath = path.resolve(process.cwd(), '../../../../packages/sidflow-web/package.json');
+          const fallback = JSON.parse(readFileSync(sourcePkgPath, 'utf8'));
+          const webPkg = JSON.parse(readFileSync(webPkgPath, 'utf8'));
+
+          // Start from the web package dependencies but drop workspace references
+          const filteredDeps = Object.fromEntries(
+            Object.entries(webPkg.dependencies || {}).filter(
+              ([name, version]) => !(name.startsWith('@sidflow/') || (typeof version === 'string' && version.startsWith('workspace:')))
+            )
+          );
+
+          const out = {
+            name: webPkg.name || fallback.name || 'sidflow-standalone',
+            version: webPkg.version || fallback.version,
+            private: true,
+            type: 'module',
+            dependencies: filteredDeps,
+          };
+
+          writeFileSync(path.resolve(process.cwd(), 'package.json'), JSON.stringify(out, null, 2));
+          NODE
+
           # Install only production dependencies
           bun install --production --no-save
-          # Clean up package.json copy
-          rm package.json
 
       - name: Verify package contents
         run: bun run check:packages --source local
