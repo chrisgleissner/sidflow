@@ -32,7 +32,8 @@
     "perf:run": "node scripts/run-bun.mjs run scripts/performance-runner.ts --",
     "setup:tests": "node scripts/run-bun.mjs install --frozen-lockfile && node scripts/ensure-playwright.mjs",
     "test:perf": "npm run build && cd packages/sidflow-web && npm run test:perf",
-    "test:a11y": "npm run build && cd packages/sidflow-web && npm run test:a11y"
+    "test:a11y": "npm run build && cd packages/sidflow-web && npm run test:a11y",
+    "docker:smoke": "bash scripts/docker-smoke.sh"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.0",
