@@ -159,7 +159,7 @@ describe("playwright-executor", () => {
       expect(content).toContain('await page.click("#submit-button")');
       expect(content).toContain("try {");
       expect(content).toContain("} catch (err) {");
-      expect(content).toContain('console.warn("click skipped"');
+      expect(content).toContain('console.error("[click failed]');
     });
 
     it("converts type step with error handling", () => {
@@ -176,7 +176,7 @@ describe("playwright-executor", () => {
       expect(content).toContain('await page.fill("#search", "test query")');
       expect(content).toContain("try {");
       expect(content).toContain("} catch (err) {");
-      expect(content).toContain('console.warn("type skipped"');
+      expect(content).toContain('console.error("[type failed]');
     });
 
     it("converts waitForText step with error handling", () => {
@@ -192,7 +192,7 @@ describe("playwright-executor", () => {
       expect(content).toContain('await page.getByText("Loading complete").waitFor(');
       expect(content).toContain("try {");
       expect(content).toContain("} catch (err) {");
-      expect(content).toContain('console.warn("waitForText skipped"');
+      expect(content).toContain('console.error("[waitForText failed]');
     });
 
     it("converts selectTrack step with testId", () => {
@@ -208,7 +208,7 @@ describe("playwright-executor", () => {
       expect(content).toContain('await page.getByTestId("track-track123").click(');
       expect(content).toContain("try {");
       expect(content).toContain("} catch (err) {");
-      expect(content).toContain('console.warn("selectTrack skipped"');
+      expect(content).toContain('console.error("[selectTrack failed]');
     });
 
     it("converts startPlayback step without expectStream", () => {
