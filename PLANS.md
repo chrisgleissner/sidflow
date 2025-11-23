@@ -169,6 +169,9 @@ To prevent uncontrolled growth of this file:
 - 2025-11-23 — Fixed 4 playwright-executor test expectations (console.error vs console.warn)
 - 2025-11-23 — All tests passing: playwright-executor tests verified (56/56 pass)
 - 2025-11-23 — Committed test fixes (commit a6d29d0) and pushed to main
+- 2025-11-23 — **CRITICAL FIX**: Docker build failing in CI - cannot skip tsc -b, Next.js requires dist/ outputs
+- 2025-11-23 — Fixed build-docker.sh: removed SIDFLOW_SKIP_TSC, always run tsc -b (with npx)
+- 2025-11-23 — Fixed Dockerfile.production: removed export SIDFLOW_SKIP_TSC=1 line
 
 **Assumptions and open questions**
 - Assumption: Standalone server path is `packages/sidflow-web/.next/standalone/packages/sidflow-web/server.js` ✅ Verified during local test

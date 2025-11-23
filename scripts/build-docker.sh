@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Build script for Docker images - optimized for multi-arch builds
-# Skips TSC when SIDFLOW_SKIP_TSC=1 (TypeScript checking already done in CI)
 
 set -euo pipefail
 
@@ -16,13 +15,10 @@ node scripts/run-bun.mjs install --frozen-lockfile
 echo "[build] Checking WASM upstream..."
 node scripts/run-bun.mjs run wasm:check-upstream
 
-# Run TypeScript compilation unless SIDFLOW_SKIP_TSC is set
-if [ "${SIDFLOW_SKIP_TSC:-}" = "1" ]; then
-  echo "[build] Skipping TypeScript type checking (SIDFLOW_SKIP_TSC=1)"
-  echo "[build] Type checking already performed in CI pipeline"
-else
-  echo "[build] Running TypeScript compilation..."
-  tsc -b
-fi
+# Run TypeScript compilation
+# Note: We must run tsc -b to generate dist/ outputs for monorepo packages
+# Next.js imports from @sidflow/common, @sidflow/classify etc require these
+echo "[build] Running TypeScript compilation..."
+npx tsc -b
 
 echo "[build] Build complete"
