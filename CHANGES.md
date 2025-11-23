@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 0.3.23 (2025-11-23)
+
+- feat(release): auto-generate CHANGES.md from commits on tag push
+
+
 ## 0.3.10 (2025-11-22)
 
 - feat: Generate package.json for standalone build without workspace dependencies
