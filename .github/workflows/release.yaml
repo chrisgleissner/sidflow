@@ -75,7 +75,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          # Use docker-container driver for better multi-platform support
+          # Configure buildx with latest buildkit and host networking
+          driver: docker-container  # Explicit driver selection
           driver-opts: |
             image=moby/buildkit:latest
             network=host
