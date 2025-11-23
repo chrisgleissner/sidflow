@@ -55,13 +55,16 @@ jobs:
       - name: Start web server
         run: |
           cd packages/sidflow-web
-          PORT=3000 npm run start -- --hostname 0.0.0.0 --port 3000 > /tmp/perf-server.log 2>&1 &
+          # Use standalone server (npm start doesn't work with standalone output)
+          # Point to repo root config file since standalone doesn't include it
+          SIDFLOW_CONFIG="$PWD/../../.sidflow.json" node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
           
           # Wait for server to be ready with proper health check
+          # Accept any response (200 or 503) since server may be degraded without full dependencies
           echo "Waiting for server to be ready..."
           for i in {1..60}; do
-            if curl -f -s http://localhost:3000/api/health > /dev/null 2>&1; then
+            if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
               echo "Server is ready after ${i} seconds"
               break
             fi

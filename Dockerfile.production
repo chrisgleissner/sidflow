@@ -67,8 +67,7 @@ RUN --mount=type=cache,target=/root/.bun-install/cache,sharing=locked \
 COPY . .
 
 # Build the application
-# For ARM64 emulated builds, skip TSC type checking (already done in CI)
-# and provide progress updates to avoid timeout appearance
+# Skip TSC type checking (already done in CI) to speed up Docker builds
 RUN set -eux; \
     export SIDFLOW_SKIP_TSC=1; \
     export NEXT_TELEMETRY_DISABLED=1; \
@@ -78,12 +77,10 @@ RUN set -eux; \
     cd packages/sidflow-web; \
     echo "[build] Building audio worklet..."; \
     bun run build:worklet; \
-    echo "[build] Building Next.js app (this may take 5-10 minutes on emulated ARM64)..."; \
-    echo "[build] Progress updates every 30 seconds:"; \
-    (while sleep 30; do echo "[build] Still building Next.js... ($(date +%H:%M:%S))"; done) & \
-    PROGRESS_PID=$!; \
-    time bun run build; \
-    kill $PROGRESS_PID 2>/dev/null || true; \
+    echo "[build] Building Next.js app..."; \
+    echo "[build] Started at: $(date +%H:%M:%S)"; \
+    bun run build; \
+    echo "[build] Completed at: $(date +%H:%M:%S)"; \
     echo "[build] Next.js build complete"
 
 # Copy static assets into standalone directory (required for Next.js standalone)
