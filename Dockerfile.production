@@ -176,6 +176,9 @@ COPY --from=builder --chown=sidflow:sidflow /build/scripts /sidflow/scripts
 COPY --from=builder --chown=sidflow:sidflow /build/packages /sidflow/packages
 COPY --from=builder --chown=sidflow:sidflow /build/node_modules /sidflow/node_modules
 
+# Make startup script executable
+RUN chmod +x /sidflow/scripts/docker-startup.sh
+
 # Prune redundant Next.js build and pre-create default data directories
 RUN set -eux; \
     rm -rf /sidflow/packages/sidflow-web/.next; \
@@ -206,7 +209,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Switch to non-root user
 USER sidflow
 
-# Start the Next.js standalone server
-# The standalone server is located at packages/sidflow-web/server.js
-WORKDIR /app/packages/sidflow-web
-CMD ["node", "server.js"]
+# Set working directory to /sidflow so relative paths in config resolve correctly
+# The config file uses ./workspace/hvsc which needs to resolve to /sidflow/workspace/hvsc
+WORKDIR /sidflow
+
+# Start server via diagnostic startup script, then run standalone server
+# The startup script will check all paths, log diagnostics, then exec the server
+CMD ["/sidflow/scripts/docker-startup.sh", "node", "/app/packages/sidflow-web/server.js"]

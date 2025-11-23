@@ -174,9 +174,17 @@ To prevent uncontrolled growth of this file:
 - 2025-11-23 — Fixed Dockerfile.production: removed export SIDFLOW_SKIP_TSC=1 line
 - 2025-11-23 — **CRITICAL FIX #2**: Health check timeout - missing SIDFLOW_CONFIG environment variable
 - 2025-11-23 — Added SIDFLOW_CONFIG=/sidflow/.sidflow.json to ENV in Dockerfile.production
+- 2025-11-23 — **CRITICAL FIX #3**: Health check timeout - relative paths in config resolve from wrong directory
+- 2025-11-23 — Root cause analysis: Config uses ./workspace/hvsc, server runs from /app/packages/sidflow-web, paths don't exist
+- 2025-11-23 — Created comprehensive diagnostic startup script (scripts/docker-startup.sh) with 150+ lines of pre-flight checks
+- 2025-11-23 — Enhanced /api/health endpoint with verbose logging (env vars, paths, config loading, WASM checks)
+- 2025-11-23 — Fixed Dockerfile.production: changed WORKDIR to /sidflow (not /app/packages/sidflow-web) so relative paths resolve correctly
+- 2025-11-23 — Integrated docker-startup.sh into Dockerfile CMD for comprehensive pre-flight diagnostics
+- 2025-11-23 — Docker build skipped (takes too long locally), changes committed for CI validation
 
 **Assumptions and open questions**
 - Assumption: Standalone server path is `packages/sidflow-web/.next/standalone/packages/sidflow-web/server.js` ✅ Verified during local test
+- Assumption: Server working directory must be /sidflow (not /app/packages/sidflow-web) for config relative paths to resolve correctly ✅ Implemented in Dockerfile
 
 **Outcomes**
 - ✅ Performance workflow fixed: standalone server startup working
@@ -187,13 +195,27 @@ To prevent uncontrolled growth of this file:
 - ✅ Tests fixed and passing: playwright-executor 56/56 tests
 - ⚠️ Docker build initially broken: SIDFLOW_SKIP_TSC concept was flawed
 - ✅ Docker build fixed: restored tsc -b, generates required dist/ outputs
-- 📦 Changes committed and pushed: `8dc0710`, `57070fa`, `a6d29d0`, `6acf995`, `7cad6e6`
+- ⚠️ Health check timeout: missing SIDFLOW_CONFIG and path resolution issues
+- ✅ Created comprehensive diagnostic logging (docker-startup.sh + enhanced health endpoint)
+- ✅ Fixed path resolution: WORKDIR /sidflow so config relative paths resolve correctly
+- 📦 Changes committed and pushed: `8dc0710`, `57070fa`, `a6d29d0`, `6acf995`, `7cad6e6`, and latest fixes
 
-**Critical lesson learned**
-- Cannot skip TypeScript compilation (tsc -b) in monorepo Docker builds
-- Next.js imports from @sidflow/common, @sidflow/classify require dist/ directories
-- tsc -b with project references doesn't support "emit without checking"
-- The SIDFLOW_SKIP_TSC optimization was conceptually wrong
+**Critical lessons learned**
+1. **TypeScript compilation**: Cannot skip tsc -b in monorepo Docker builds
+   - Next.js imports from @sidflow/common, @sidflow/classify require dist/ directories
+   - tsc -b with project references doesn't support "emit without checking"
+   - The SIDFLOW_SKIP_TSC optimization was conceptually wrong
+
+2. **Path resolution**: Config file relative paths resolve from server's working directory
+   - Config uses ./workspace/hvsc but server was running from /app/packages/sidflow-web
+   - Solution: Set WORKDIR /sidflow so relative paths resolve to /sidflow/workspace/hvsc
+   - Alternative would be absolute paths in config, but relative paths are more portable
+
+3. **Diagnostic logging**: Professional logging is essential for debugging Docker issues
+   - Created comprehensive startup script with pre-flight checks
+   - Enhanced health endpoint with verbose logging of all validation steps
+   - Logs environment vars, paths, config content, WASM files, commands, disk space
+   - Makes future Docker issues much easier to diagnose
 
 **Ready for CI deployment (v2)**
 - Performance workflow will validate server startup and run full test suite

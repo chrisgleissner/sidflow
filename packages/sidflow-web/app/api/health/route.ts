@@ -31,6 +31,12 @@ interface SystemHealth {
 }
 
 export async function GET() {
+  console.log("[Health Check] Starting health check at", new Date().toISOString());
+  console.log("[Health Check] Process CWD:", process.cwd());
+  console.log("[Health Check] SIDFLOW_CONFIG:", process.env.SIDFLOW_CONFIG || "(not set)");
+  console.log("[Health Check] SIDFLOW_ROOT:", process.env.SIDFLOW_ROOT || "(not set)");
+  console.log("[Health Check] NODE_ENV:", process.env.NODE_ENV);
+
   const checks: {
     wasm: HealthStatus;
     sidplayfpCli: HealthStatus;
@@ -44,12 +50,17 @@ export async function GET() {
 
   // Check Ultimate 64 if configured
   try {
+    console.log("[Health Check] Attempting to load config for Ultimate 64 check...");
     const config = await loadConfig();
+    console.log("[Health Check] Config loaded successfully");
     if (config.render?.ultimate64?.host) {
+      console.log("[Health Check] Ultimate 64 configured, checking connectivity...");
       checks.ultimate64 = await checkUltimate64(config.render.ultimate64);
+    } else {
+      console.log("[Health Check] Ultimate 64 not configured");
     }
-  } catch {
-    // Config loading failed or Ultimate 64 not configured
+  } catch (error) {
+    console.error("[Health Check] Failed to load config for Ultimate 64:", error);
   }
 
   // Determine overall health
@@ -70,6 +81,9 @@ export async function GET() {
 
   const httpStatus = overall === "healthy" ? 200 : overall === "degraded" ? 200 : 503;
 
+  console.log("[Health Check] Overall status:", overall, "- HTTP", httpStatus);
+  console.log("[Health Check] Check results:", JSON.stringify(checks, null, 2));
+
   return NextResponse.json(health, {
     status: httpStatus,
     headers: {
@@ -83,29 +97,35 @@ async function checkWasmReadiness(): Promise<HealthStatus> {
     // Check if WASM files are accessible
     // In standalone builds, public/ is in the process cwd
     const wasmPath = path.join(process.cwd(), "public", "wasm", "sidplayfp.wasm");
+    console.log("[Health Check] Checking WASM at:", wasmPath);
 
     try {
       await access(wasmPath, constants.R_OK);
       const stats = await stat(wasmPath);
+      console.log("[Health Check] WASM file found, size:", stats.size, "bytes");
 
       if (stats.size === 0) {
+        console.error("[Health Check] WASM file is empty!");
         return {
           status: "unhealthy",
           message: "WASM file is empty",
         };
       }
 
+      console.log("[Health Check] WASM check: healthy");
       return {
         status: "healthy",
         details: { sizeBytes: stats.size },
       };
-    } catch {
+    } catch (error) {
+      console.warn("[Health Check] WASM file not found (will be generated on first use):", error);
       return {
         status: "degraded",
         message: "WASM file not found (will be generated on first use)",
       };
     }
   } catch (error) {
+    console.error("[Health Check] WASM check failed:", error);
     return {
       status: "unhealthy",
       message: error instanceof Error ? error.message : String(error),
@@ -115,10 +135,13 @@ async function checkWasmReadiness(): Promise<HealthStatus> {
 
 async function checkSidplayfpCli(): Promise<HealthStatus> {
   try {
+    console.log("[Health Check] Loading config for sidplayfp CLI check...");
     const config = await loadConfig();
     const sidplayPath = config.sidplayPath;
+    console.log("[Health Check] sidplayPath from config:", sidplayPath || "(not configured)");
 
     if (!sidplayPath) {
+      console.log("[Health Check] sidplayfp CLI not configured (optional)");
       return {
         status: "degraded",
         message: "sidplayfp CLI not configured (optional feature)",
@@ -127,24 +150,28 @@ async function checkSidplayfpCli(): Promise<HealthStatus> {
 
     try {
       await access(sidplayPath, constants.X_OK);
+      console.log("[Health Check] sidplayfp binary is executable");
 
       // Try to execute --version
       try {
         const { stdout } = await execAsync(`"${sidplayPath}" --version`);
         const version = stdout.trim().split("\n")[0];
+        console.log("[Health Check] sidplayfp version:", version);
 
         return {
           status: "healthy",
           details: { version, path: sidplayPath },
         };
-      } catch {
+      } catch (error) {
+        console.error("[Health Check] sidplayfp version check failed:", error);
         return {
           status: "degraded",
           message: "sidplayfp binary found but version check failed",
           details: { path: sidplayPath },
         };
       }
-    } catch {
+    } catch (error) {
+      console.error("[Health Check] sidplayfp binary not executable:", error);
       return {
         status: "degraded",
         message: "sidplayfp binary not executable",
@@ -152,6 +179,7 @@ async function checkSidplayfpCli(): Promise<HealthStatus> {
       };
     }
   } catch (error) {
+    console.error("[Health Check] Failed to check sidplayfp CLI:", error);
     return {
       status: "degraded",
       message: "sidplayfp CLI not configured (optional)",
@@ -161,21 +189,28 @@ async function checkSidplayfpCli(): Promise<HealthStatus> {
 
 async function checkStreamingAssets(): Promise<HealthStatus> {
   try {
+    console.log("[Health Check] Loading config for streaming assets check...");
     const config = await loadConfig();
+    console.log("[Health Check] Config loaded, checking manifest...");
+    
     // Use SIDFLOW_ROOT if set (for standalone builds), otherwise use process.cwd()
     const rootDir = process.env.SIDFLOW_ROOT || process.cwd();
     const manifestPath = path.join(rootDir, "data", "sidflow.lance.manifest.json");
+    console.log("[Health Check] Looking for manifest at:", manifestPath);
 
     try {
       const manifest = await loadAvailabilityManifest(manifestPath);
+      console.log("[Health Check] Manifest loaded, asset count:", manifest?.assets?.length || 0);
 
       if (!manifest || !manifest.assets || manifest.assets.length === 0) {
+        console.warn("[Health Check] No streaming assets available yet");
         return {
           status: "degraded",
           message: "No streaming assets available yet",
         };
       }
 
+      console.log("[Health Check] Streaming assets check: healthy");
       return {
         status: "healthy",
         details: {
@@ -183,13 +218,15 @@ async function checkStreamingAssets(): Promise<HealthStatus> {
           version: manifest.version,
         },
       };
-    } catch {
+    } catch (error) {
+      console.warn("[Health Check] Availability manifest not found:", error);
       return {
         status: "degraded",
         message: "Availability manifest not found (no assets rendered yet)",
       };
     }
   } catch (error) {
+    console.error("[Health Check] Streaming assets check failed:", error);
     return {
       status: "unhealthy",
       message: error instanceof Error ? error.message : String(error),

@@ -84,7 +84,7 @@ Releases publish Docker images. See the **Deployment Guide** for full Docker ins
 
 **Docker images:**  
 - `ghcr.io/chrisgleissner/sidflow:<version>` (e.g., `v0.3.10`)  
-- `ghcr.io/chrisgleissner/sidflow:latest`
+- [ghcr.io/chrisgleissner/sidflow:latest](https://github.com/chrisgleissner/sidflow/pkgs/container/sidflow)
 
 ## Run with Docker
 
