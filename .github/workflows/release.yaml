@@ -103,7 +103,6 @@ jobs:
             org.opencontainers.image.vendor=${{ github.repository_owner }}
 
       - name: Build and push Docker image
-        id: docker_build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -157,7 +156,7 @@ jobs:
               fi
               
               echo "✓ Health endpoint responding correctly"
-              cat /tmp/health-response.json | jq '.' 2>/dev/null || cat /tmp/health-response.json
+              jq '.' /tmp/health-response.json 2>/dev/null || cat /tmp/health-response.json
               
               # Cleanup
               docker stop "${CONTAINER_ID}" && docker rm "${CONTAINER_ID}"
