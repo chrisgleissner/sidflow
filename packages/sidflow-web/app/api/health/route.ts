@@ -155,15 +155,33 @@ async function checkSidplayfpCli(): Promise<HealthStatus> {
       await access(sidplayPath, constants.X_OK);
       console.log("[Health Check] sidplayfp binary is executable");
 
-      // sidplayfp doesn't have --version flag, try to get version from package manager
+      // sidplayfp doesn't have --version flag, validate by running with no args (shows help)
       let version = "unknown";
       try {
-        const { stdout } = await execAsync("dpkg-query -W -f='${Version}' sidplayfp 2>/dev/null");
-        version = stdout.trim() || "unknown";
-        console.log("[Health Check] sidplayfp version from dpkg:", version);
-      } catch {
-        // Version detection failed, but binary exists and is executable
-        console.log("[Health Check] Could not detect sidplayfp version, but binary is present");
+        // Running sidplayfp with no args returns usage info (exit code 1) - that's expected
+        const { stdout, stderr } = await execAsync(`"${sidplayPath}" 2>&1 || true`);
+        const output = stdout || stderr;
+        // Check for "Syntax: sidplayfp" in output to confirm it's working
+        if (output.includes("Syntax: sidplayfp")) {
+          console.log("[Health Check] sidplayfp responding correctly");
+          // Try to get version from package manager
+          try {
+            const { stdout: versionOutput } = await execAsync("dpkg-query -W -f='${Version}' sidplayfp 2>/dev/null || echo 'unknown'");
+            version = versionOutput.trim() || "unknown";
+          } catch {
+            version = "present";
+          }
+        } else {
+          console.warn("[Health Check] sidplayfp output unexpected:", output.substring(0, 100));
+        }
+        console.log("[Health Check] sidplayfp version:", version);
+      } catch (error) {
+        console.error("[Health Check] sidplayfp execution check failed:", error);
+        return {
+          status: "degraded",
+          message: "sidplayfp binary found but execution check failed",
+          details: { path: sidplayPath },
+        };
       }
 
       return {
