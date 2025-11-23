@@ -34,7 +34,12 @@ jobs:
         run: bun install --frozen-lockfile
       
       - name: Install k6
-        run: sudo apt-get update && sudo apt-get install -y k6
+        run: |
+          K6_VERSION=0.52.0
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" -o /tmp/k6.tar.gz
+          tar -xzf /tmp/k6.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/k6-v${K6_VERSION}-linux-amd64/k6 /usr/local/bin/k6
+          rm -rf /tmp/k6.tar.gz /tmp/k6-v${K6_VERSION}-linux-amd64
       
       - name: Build project
         run: bun run build
