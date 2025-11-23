@@ -25,6 +25,7 @@ interface SystemHealth {
   checks: {
     wasm: HealthStatus;
     sidplayfpCli: HealthStatus;
+    ffmpeg: HealthStatus;
     streamingAssets: HealthStatus;
     ultimate64?: HealthStatus;
   };
@@ -40,11 +41,13 @@ export async function GET() {
   const checks: {
     wasm: HealthStatus;
     sidplayfpCli: HealthStatus;
+    ffmpeg: HealthStatus;
     streamingAssets: HealthStatus;
     ultimate64?: HealthStatus;
   } = {
     wasm: await checkWasmReadiness(),
     sidplayfpCli: await checkSidplayfpCli(),
+    ffmpeg: await checkFfmpeg(),
     streamingAssets: await checkStreamingAssets(),
   };
 
@@ -183,6 +186,38 @@ async function checkSidplayfpCli(): Promise<HealthStatus> {
     return {
       status: "degraded",
       message: "sidplayfp CLI not configured (optional)",
+    };
+  }
+}
+
+async function checkFfmpeg(): Promise<HealthStatus> {
+  try {
+    console.log("[Health Check] Checking ffmpeg availability...");
+
+    // Check if ffmpeg is in PATH
+    try {
+      const { stdout } = await execAsync("ffmpeg -version");
+      const versionLine = stdout.trim().split("\n")[0];
+      const versionMatch = versionLine.match(/ffmpeg version ([^ ]+)/);
+      const version = versionMatch ? versionMatch[1] : versionLine;
+      console.log("[Health Check] ffmpeg version:", version);
+
+      return {
+        status: "healthy",
+        details: { version },
+      };
+    } catch (error) {
+      console.error("[Health Check] ffmpeg not found or not executable:", error);
+      return {
+        status: "unhealthy",
+        message: "ffmpeg not available (required for audio encoding)",
+      };
+    }
+  } catch (error) {
+    console.error("[Health Check] Failed to check ffmpeg:", error);
+    return {
+      status: "unhealthy",
+      message: error instanceof Error ? error.message : String(error),
     };
   }
 }

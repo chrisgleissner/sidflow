@@ -81,6 +81,15 @@ check_command "ffmpeg" || ((FAILED++))
 check_command "curl" || ((FAILED++))
 echo ""
 
+echo "=== Binary Versions ==="
+if command -v sidplayfp >/dev/null 2>&1; then
+    echo "sidplayfp: $(sidplayfp --version 2>&1 | head -1)"
+fi
+if command -v ffmpeg >/dev/null 2>&1; then
+    echo "ffmpeg: $(ffmpeg -version 2>&1 | head -1)"
+fi
+echo ""
+
 echo "=== Config File Content ==="
 if [ -f "${SIDFLOW_CONFIG:-/sidflow/.sidflow.json}" ]; then
     echo "Config path: ${SIDFLOW_CONFIG:-/sidflow/.sidflow.json}"
