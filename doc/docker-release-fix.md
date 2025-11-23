@@ -60,7 +60,8 @@ Added comprehensive smoke test after image upload:
 - name: Smoke test Docker image
   run: |
     # Pull the uploaded image (verifies upload succeeded)
-    docker pull "ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}"
+    IMAGE_TAG="ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}"
+    docker pull "${IMAGE_TAG}"
     
     # Start container and wait for health check
     CONTAINER_ID=$(docker run -d -p 3000:3000 --name sidflow-smoke-test "${IMAGE_TAG}")
