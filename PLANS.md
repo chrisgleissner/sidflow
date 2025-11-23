@@ -185,6 +185,10 @@ To prevent uncontrolled growth of this file:
 - 2025-11-23 — Fixed WASM file paths: health check was looking for sidplayfp.wasm, actual file is libsidplayfp.wasm
 - 2025-11-23 — Fixed startup script WASM checks: now looks in /app/packages/sidflow-web/public/wasm/ (where they're copied during build)
 - 2025-11-23 — Verified WASM flow: dist/ → build:worklet → public/wasm/ → standalone build → runtime
+- 2025-11-23 — **CI smoke test passed** but revealed sidplayfp "not configured" (degraded status)
+- 2025-11-23 — Added sidplayPath: "/usr/bin/sidplayfp" to .sidflow.json config
+- 2025-11-23 — Added ffmpeg health check (required for audio encoding, returns unhealthy if missing)
+- 2025-11-23 — Enhanced startup script to log binary versions (sidplayfp, ffmpeg)
 
 **Assumptions and open questions**
 - Assumption: Standalone server path is `packages/sidflow-web/.next/standalone/packages/sidflow-web/server.js` ✅ Verified during local test
@@ -202,7 +206,10 @@ To prevent uncontrolled growth of this file:
 - ⚠️ Health check timeout: missing SIDFLOW_CONFIG and path resolution issues
 - ✅ Created comprehensive diagnostic logging (docker-startup.sh + enhanced health endpoint)
 - ✅ Fixed path resolution: WORKDIR /sidflow so config relative paths resolve correctly
-- 📦 Changes committed and pushed: `8dc0710`, `57070fa`, `a6d29d0`, `6acf995`, `7cad6e6`, and latest fixes
+- ✅ Fixed WASM paths: libsidplayfp.wasm (not sidplayfp.wasm)
+- ✅ CI smoke test passed with comprehensive health check output
+- ✅ Added sidplayPath config and ffmpeg health check
+- 📦 Changes committed and pushed: `8dc0710`, `57070fa`, `a6d29d0`, `6acf995`, `7cad6e6`, `80f9788`, `09ed13a`, `1c4bed0`
 
 **Critical lessons learned**
 1. **TypeScript compilation**: Cannot skip tsc -b in monorepo Docker builds
