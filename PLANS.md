@@ -181,6 +181,10 @@ To prevent uncontrolled growth of this file:
 - 2025-11-23 — Fixed Dockerfile.production: changed WORKDIR to /sidflow (not /app/packages/sidflow-web) so relative paths resolve correctly
 - 2025-11-23 — Integrated docker-startup.sh into Dockerfile CMD for comprehensive pre-flight diagnostics
 - 2025-11-23 — Docker build skipped (takes too long locally), changes committed for CI validation
+- 2025-11-23 — **CRITICAL FIX #4**: CI health check failed - WASM files not found
+- 2025-11-23 — Fixed WASM file paths: health check was looking for sidplayfp.wasm, actual file is libsidplayfp.wasm
+- 2025-11-23 — Fixed startup script WASM checks: now looks in /app/packages/sidflow-web/public/wasm/ (where they're copied during build)
+- 2025-11-23 — Verified WASM flow: dist/ → build:worklet → public/wasm/ → standalone build → runtime
 
 **Assumptions and open questions**
 - Assumption: Standalone server path is `packages/sidflow-web/.next/standalone/packages/sidflow-web/server.js` ✅ Verified during local test
@@ -216,6 +220,13 @@ To prevent uncontrolled growth of this file:
    - Enhanced health endpoint with verbose logging of all validation steps
    - Logs environment vars, paths, config content, WASM files, commands, disk space
    - Makes future Docker issues much easier to diagnose
+   - CI failure immediately showed exact problem: WASM file not found with specific path
+
+4. **WASM file naming and paths**: Build artifacts have specific names and locations
+   - Source files: libsidplayfp.wasm (not sidplayfp.wasm)
+   - Build step: build:worklet copies to public/wasm/ directory
+   - Standalone build: public/ is copied into standalone server directory
+   - Runtime: Health check must look in process.cwd()/public/wasm/libsidplayfp.wasm
 
 **Ready for CI deployment (v2)**
 - Performance workflow will validate server startup and run full test suite
