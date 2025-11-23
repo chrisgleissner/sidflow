@@ -123,6 +123,8 @@ jobs:
           
           # Use the first tag from meta output (the version tag)
           IMAGE_TAG="ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}"
+          CONTAINER_NAME="sidflow-smoke-test-${{ github.run_id }}"
+          PORT=3000
           
           echo "Starting smoke test for ${IMAGE_TAG}"
           
@@ -132,7 +134,7 @@ jobs:
           
           # Start the container
           echo "Starting container..."
-          CONTAINER_ID=$(docker run -d -p 3000:3000 --name sidflow-smoke-test "${IMAGE_TAG}")
+          CONTAINER_ID=$(docker run -d -p ${PORT}:3000 --name "${CONTAINER_NAME}" "${IMAGE_TAG}")
           
           echo "Container started: ${CONTAINER_ID}"
           
@@ -148,7 +150,7 @@ jobs:
               
               # Also verify the health endpoint directly
               echo "Verifying /api/health endpoint..."
-              if ! curl -fsS http://localhost:3000/api/health > /tmp/health-response.json; then
+              if ! curl -fsS "http://localhost:${PORT}/api/health" > /tmp/health-response.json; then
                 echo "✗ Health endpoint returned error"
                 docker logs "${CONTAINER_ID}"
                 docker stop "${CONTAINER_ID}" && docker rm "${CONTAINER_ID}"
@@ -156,6 +158,7 @@ jobs:
               fi
               
               echo "✓ Health endpoint responding correctly"
+              # Format JSON output with jq if available, otherwise use raw output
               jq '.' /tmp/health-response.json 2>/dev/null || cat /tmp/health-response.json
               
               # Cleanup
