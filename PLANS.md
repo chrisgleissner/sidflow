@@ -172,6 +172,8 @@ To prevent uncontrolled growth of this file:
 - 2025-11-23 — **CRITICAL FIX**: Docker build failing in CI - cannot skip tsc -b, Next.js requires dist/ outputs
 - 2025-11-23 — Fixed build-docker.sh: removed SIDFLOW_SKIP_TSC, always run tsc -b (with npx)
 - 2025-11-23 — Fixed Dockerfile.production: removed export SIDFLOW_SKIP_TSC=1 line
+- 2025-11-23 — **CRITICAL FIX #2**: Health check timeout - missing SIDFLOW_CONFIG environment variable
+- 2025-11-23 — Added SIDFLOW_CONFIG=/sidflow/.sidflow.json to ENV in Dockerfile.production
 
 **Assumptions and open questions**
 - Assumption: Standalone server path is `packages/sidflow-web/.next/standalone/packages/sidflow-web/server.js` ✅ Verified during local test
