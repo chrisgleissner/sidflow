@@ -183,13 +183,20 @@ To prevent uncontrolled growth of this file:
 - ✅ Server logging enhanced: startup/during/after tests, full artifact
 - ✅ All local validation passing: TypeScript, YAML, workflow mechanics
 - ✅ Tests fixed and passing: playwright-executor 56/56 tests
-- ⏭️ Docker build verification deferred to CI (too slow for local testing)
-- 📦 Changes committed and pushed: `8dc0710`, `57070fa`, `a6d29d0`
+- ⚠️ Docker build initially broken: SIDFLOW_SKIP_TSC concept was flawed
+- ✅ Docker build fixed: restored tsc -b, generates required dist/ outputs
+- 📦 Changes committed and pushed: `8dc0710`, `57070fa`, `a6d29d0`, `6acf995`, `7cad6e6`
 
-**Ready for CI deployment**
+**Critical lesson learned**
+- Cannot skip TypeScript compilation (tsc -b) in monorepo Docker builds
+- Next.js imports from @sidflow/common, @sidflow/classify require dist/ directories
+- tsc -b with project references doesn't support "emit without checking"
+- The SIDFLOW_SKIP_TSC optimization was conceptually wrong
+
+**Ready for CI deployment (v2)**
 - Performance workflow will validate server startup and run full test suite
-- Release workflow will build and publish Docker image with optimized build time
-- All changes tested locally and ready for production deployment
+- Release workflow will build and publish Docker image (build time ~3-5min with tsc)
+- All changes tested and Docker build fix verified locally
 - Assumption: Health check endpoint /api/health works identically for `npm start` and standalone server
 - Assumption: Performance tests don't require specific build flags beyond standard production build
 - Open: Should we add explicit standalone build verification step to performance workflow?
