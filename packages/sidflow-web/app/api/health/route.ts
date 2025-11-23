@@ -96,7 +96,7 @@ async function checkWasmReadiness(): Promise<HealthStatus> {
   try {
     // Check if WASM files are accessible
     // In standalone builds, public/ is in the process cwd
-    const wasmPath = path.join(process.cwd(), "public", "wasm", "sidplayfp.wasm");
+    const wasmPath = path.join(process.cwd(), "public", "wasm", "libsidplayfp.wasm");
     console.log("[Health Check] Checking WASM at:", wasmPath);
 
     try {
@@ -192,7 +192,7 @@ async function checkStreamingAssets(): Promise<HealthStatus> {
     console.log("[Health Check] Loading config for streaming assets check...");
     const config = await loadConfig();
     console.log("[Health Check] Config loaded, checking manifest...");
-    
+
     // Use SIDFLOW_ROOT if set (for standalone builds), otherwise use process.cwd()
     const rootDir = process.env.SIDFLOW_ROOT || process.cwd();
     const manifestPath = path.join(rootDir, "data", "sidflow.lance.manifest.json");

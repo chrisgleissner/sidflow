@@ -66,8 +66,11 @@ check_path "/app/packages/sidflow-web/.next" "Next.js build" || ((FAILED++))
 echo ""
 
 echo "=== WASM Files Check ==="
-check_path "/sidflow/packages/libsidplayfp-wasm/dist/sidplayfp.wasm" "SIDPlayFP WASM" || ((FAILED++))
-check_path "/sidflow/packages/libsidplayfp-wasm/dist/sidplayfp.js" "SIDPlayFP JS" || ((FAILED++))
+# WASM files are copied to Next.js public/wasm during build:worklet
+check_path "/app/packages/sidflow-web/public/wasm/libsidplayfp.wasm" "SIDPlayFP WASM (public)" || ((FAILED++))
+check_path "/app/packages/sidflow-web/public/wasm/libsidplayfp.js" "SIDPlayFP JS (public)" || ((FAILED++))
+# Source files should also exist in packages
+check_path "/sidflow/packages/libsidplayfp-wasm/dist/libsidplayfp.wasm" "SIDPlayFP WASM (source)" || echo "  (optional - only needed for CLI usage)"
 echo ""
 
 echo "=== Command Availability ==="
