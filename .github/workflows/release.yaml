@@ -176,7 +176,8 @@ jobs:
           
           echo "✗ Health check timeout after ${TIMEOUT}s"
           docker logs "${CONTAINER_ID}"
-          docker stop "${CONTAINER_ID}" && docker rm "${CONTAINER_ID}"
+          docker stop "${CONTAINER_ID}" 2>/dev/null || true
+          docker rm "${CONTAINER_ID}" 2>/dev/null || true
           exit 1
 
       - name: Update GitHub release notes
