@@ -117,9 +117,6 @@ jobs:
           # Disable attestations completely to reduce manifest size and upload issues
           provenance: false
           sbom: false
-          # Limit build parallelism to reduce memory and registry pressure
-          build-args: |
-            BUILDKIT_MULTI_PLATFORM=1
 
       - name: Smoke test Docker image
         run: |
@@ -152,8 +149,7 @@ jobs:
               
               # Also verify the health endpoint directly
               echo "Verifying /api/health endpoint..."
-              HEALTH_RESPONSE=$(curl -f http://localhost:3000/api/health || echo "FAILED")
-              if [ "${HEALTH_RESPONSE}" = "FAILED" ]; then
+              if ! curl -fsS http://localhost:3000/api/health > /tmp/health-response.json; then
                 echo "✗ Health endpoint returned error"
                 docker logs "${CONTAINER_ID}"
                 docker stop "${CONTAINER_ID}" && docker rm "${CONTAINER_ID}"
@@ -161,7 +157,7 @@ jobs:
               fi
               
               echo "✓ Health endpoint responding correctly"
-              echo "${HEALTH_RESPONSE}" | jq '.' || echo "${HEALTH_RESPONSE}"
+              cat /tmp/health-response.json | jq '.' 2>/dev/null || cat /tmp/health-response.json
               
               # Cleanup
               docker stop "${CONTAINER_ID}" && docker rm "${CONTAINER_ID}"
