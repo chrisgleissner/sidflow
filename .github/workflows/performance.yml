@@ -57,10 +57,39 @@ jobs:
           cd packages/sidflow-web
           PORT=3000 npm run start -- --hostname 0.0.0.0 --port 3000 > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
-          sleep 10
+          
+          # Wait for server to be ready with proper health check
+          echo "Waiting for server to be ready..."
+          for i in {1..60}; do
+            if curl -f -s http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "Server is ready after ${i} seconds"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "ERROR: Server failed to start within 60 seconds"
+              echo "=== Last 100 lines of server log ==="
+              tail -n 100 /tmp/perf-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          
+          # Show last 20 lines of server log to confirm startup
+          echo "=== Server startup (last 20 lines) ==="
+          tail -n 20 /tmp/perf-server.log
 
       - name: Run unified performance runner (Playwright + k6)
-        run: npm run perf:run -- --env ci --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
+        run: |
+          echo "=== Starting performance tests ==="
+          npm run perf:run -- --env ci --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
+          EXIT_CODE=$?
+          
+          # Always show server log excerpt after test run
+          echo ""
+          echo "=== Server activity during tests (last 50 lines) ==="
+          tail -n 50 /tmp/perf-server.log || true
+          
+          exit $EXIT_CODE
         env:
           CI: true
           SIDFLOW_SKIP_WASM_UPSTREAM_CHECK: '1'
@@ -68,10 +97,22 @@ jobs:
       - name: Stop web server
         if: always()
         run: |
+          echo "=== Stopping web server ==="
           if [ -f /tmp/perf-server.pid ]; then
             kill $(cat /tmp/perf-server.pid) || true
           fi
+          
+          echo ""
+          echo "=== Full server log (last 200 lines) ==="
           tail -n 200 /tmp/perf-server.log || true
+      
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs-${{ github.run_number }}
+          path: /tmp/perf-server.log
+          retention-days: 7
       
       - name: Upload performance metrics
         if: always()

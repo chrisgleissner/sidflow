@@ -25,7 +25,7 @@ export function generatePlaywrightScriptContent(
   const pacingSeconds = spec.pacingSeconds ?? options.pacingSeconds ?? DEFAULT_PACING_SECONDS;
   const baseUrlLiteral = JSON.stringify(options.baseUrl);
   const headless = options.headless ?? true;
-  const selectorTimeoutMs = 3000;
+  const selectorTimeoutMs = 30000;
 
   const stepLines = spec.steps
     .map((step) => {
@@ -42,7 +42,8 @@ export function generatePlaywrightScriptContent(
             `    await page.waitForSelector(${selector}, { timeout: ${selectorTimeoutMs} });`,
             `    await page.click(${selector});`,
             `  } catch (err) {`,
-            `    console.warn("click skipped", ${selector}, err?.message ?? err);`,
+            `    console.error("[click failed] selector=" + ${selector} + " url=" + page.url() + " error=" + (err?.message ?? err));`,
+            `    console.error("Stack:", err?.stack ?? 'no stack');`,
             `  }`
           ].join("\n");
         }
@@ -55,7 +56,8 @@ export function generatePlaywrightScriptContent(
             `    await page.waitForSelector(${selector}, { timeout: ${selectorTimeoutMs} });`,
             `    await page.fill(${selector}, ${value});`,
             `  } catch (err) {`,
-            `    console.warn("type skipped", ${selector}, err?.message ?? err);`,
+            `    console.error("[type failed] selector=" + ${selector} + " url=" + page.url() + " error=" + (err?.message ?? err));`,
+            `    console.error("Stack:", err?.stack ?? 'no stack');`,
             `  }`
           ].join("\n");
         }
@@ -65,7 +67,8 @@ export function generatePlaywrightScriptContent(
             `  try {`,
             `    await page.getByText(${JSON.stringify(waitStep.text)}).waitFor({ timeout: ${selectorTimeoutMs} });`,
             `  } catch (err) {`,
-            `    console.warn("waitForText skipped", ${JSON.stringify(waitStep.text)}, err?.message ?? err);`,
+            `    console.error("[waitForText failed] text=" + ${JSON.stringify(waitStep.text)} + " url=" + page.url() + " error=" + (err?.message ?? err));`,
+            `    console.error("Stack:", err?.stack ?? 'no stack');`,
             `  }`
           ].join("\n");
         }
@@ -75,7 +78,8 @@ export function generatePlaywrightScriptContent(
             `  try {`,
             `    await page.getByTestId(${JSON.stringify(`track-${selectStep.trackRef}`)}).click({ timeout: ${selectorTimeoutMs} });`,
             `  } catch (err) {`,
-            `    console.warn("selectTrack skipped", ${JSON.stringify(selectStep.trackRef)}, err?.message ?? err);`,
+            `    console.error("[selectTrack failed] trackRef=" + ${JSON.stringify(selectStep.trackRef)} + " url=" + page.url() + " error=" + (err?.message ?? err));`,
+            `    console.error("Stack:", err?.stack ?? 'no stack');`,
             `  }`
           ].join("\n");
         }
@@ -110,7 +114,23 @@ export function generatePlaywrightScriptContent(
     `  const browser = await chromium.launch({ headless: ${headless} });`,
     `  const context = await browser.newContext({ baseURL: baseUrl, viewport: { width: 1280, height: 720 } });`,
     `  const page = await context.newPage();`,
+    `  `,
+    `  // Capture console messages for debugging`,
+    `  page.on('console', msg => {`,
+    `    const type = msg.type();`,
+    `    const text = msg.text();`,
+    `    if (type === 'error' || type === 'warning') {`,
+    `      console.log(\`[browser \${type}] \${text}\`);`,
+    `    }`,
+    `  });`,
+    `  `,
+    `  page.on('pageerror', err => {`,
+    `    console.error('[browser pageerror]', err.message);`,
+    `  });`,
+    `  `,
+    `  console.log(\`[journey] Starting at \${baseUrl}\`);`,
     `  await page.goto(baseUrl);`,
+    `  console.log(\`[journey] Navigation complete, page title: \${await page.title()}\`);`,
     stepLines,
     `  await browser.close();`,
     `}`,
