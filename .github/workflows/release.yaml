@@ -74,6 +74,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # Configure buildx with latest buildkit and host networking
+          driver: docker-container  # Explicit driver selection
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -108,7 +114,74 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Disable attestations completely to reduce manifest size and upload issues
           provenance: false
+          sbom: false
+
+      - name: Smoke test Docker image
+        run: |
+          set -euo pipefail
+          
+          # Use the first tag from meta output (the version tag)
+          IMAGE_TAG="ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}"
+          CONTAINER_NAME="sidflow-smoke-test-${{ github.run_id }}"
+          PORT=3000
+          
+          echo "Starting smoke test for ${IMAGE_TAG}"
+          
+          # Pull the image (this verifies upload succeeded)
+          echo "Pulling image..."
+          docker pull "${IMAGE_TAG}"
+          
+          # Start the container
+          echo "Starting container..."
+          CONTAINER_ID=$(docker run -d -p ${PORT}:3000 --name "${CONTAINER_NAME}" "${IMAGE_TAG}")
+          
+          echo "Container started: ${CONTAINER_ID}"
+          
+          # Wait for health check to pass (max 2 minutes)
+          echo "Waiting for health check..."
+          TIMEOUT=120
+          ELAPSED=0
+          INTERVAL=5
+          
+          while [[ $ELAPSED -lt $TIMEOUT ]]; do
+            if docker inspect --format='{{.State.Health.Status}}' "${CONTAINER_ID}" 2>/dev/null | grep -q "healthy"; then
+              echo "✓ Health check passed after ${ELAPSED}s"
+              
+              # Also verify the health endpoint directly
+              echo "Verifying /api/health endpoint..."
+              if ! curl -fsS "http://localhost:${PORT}/api/health" > /tmp/health-response.json; then
+                echo "✗ Health endpoint returned error"
+                docker logs "${CONTAINER_ID}"
+                docker stop "${CONTAINER_ID}" 2>/dev/null || true
+                docker rm "${CONTAINER_ID}" 2>/dev/null || true
+                exit 1
+              fi
+              
+              echo "✓ Health endpoint responding correctly"
+              # Format JSON output with jq if available, otherwise use raw output
+              jq '.' /tmp/health-response.json 2>/dev/null || cat /tmp/health-response.json
+              
+              # Cleanup
+              docker stop "${CONTAINER_ID}" 2>/dev/null || true
+              docker rm "${CONTAINER_ID}" 2>/dev/null || true
+              echo "✓ Smoke test passed"
+              exit 0
+            fi
+            
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "${CONTAINER_ID}" 2>/dev/null || echo "unknown")
+            echo "Health status: ${HEALTH_STATUS} (${ELAPSED}s elapsed)"
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          
+          echo "✗ Health check timeout after ${TIMEOUT}s"
+          docker logs "${CONTAINER_ID}"
+          docker stop "${CONTAINER_ID}" 2>/dev/null || true
+          docker rm "${CONTAINER_ID}" 2>/dev/null || true
+          exit 1
 
       - name: Update GitHub release notes
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
