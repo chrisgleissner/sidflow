@@ -155,24 +155,21 @@ async function checkSidplayfpCli(): Promise<HealthStatus> {
       await access(sidplayPath, constants.X_OK);
       console.log("[Health Check] sidplayfp binary is executable");
 
-      // Try to execute --version
+      // sidplayfp doesn't have --version flag, try to get version from package manager
+      let version = "unknown";
       try {
-        const { stdout } = await execAsync(`"${sidplayPath}" --version`);
-        const version = stdout.trim().split("\n")[0];
-        console.log("[Health Check] sidplayfp version:", version);
-
-        return {
-          status: "healthy",
-          details: { version, path: sidplayPath },
-        };
-      } catch (error) {
-        console.error("[Health Check] sidplayfp version check failed:", error);
-        return {
-          status: "degraded",
-          message: "sidplayfp binary found but version check failed",
-          details: { path: sidplayPath },
-        };
+        const { stdout } = await execAsync("dpkg-query -W -f='${Version}' sidplayfp 2>/dev/null");
+        version = stdout.trim() || "unknown";
+        console.log("[Health Check] sidplayfp version from dpkg:", version);
+      } catch {
+        // Version detection failed, but binary exists and is executable
+        console.log("[Health Check] Could not detect sidplayfp version, but binary is present");
       }
+
+      return {
+        status: "healthy",
+        details: { version, path: sidplayPath },
+      };
     } catch (error) {
       console.error("[Health Check] sidplayfp binary not executable:", error);
       return {
