@@ -44,6 +44,63 @@ jobs:
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Auto-generate CHANGES.md entry if missing
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Check if this version already exists in CHANGES.md
+          if grep -q "^## ${VERSION} " CHANGES.md; then
+            echo "✓ CHANGES.md already has entry for ${VERSION}"
+            exit 0
+          fi
+          
+          echo "Generating CHANGES.md entry for ${VERSION}..."
+          
+          # Find previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -2 | tail -1 || echo "")
+          
+          if [ -z "${PREV_TAG}" ]; then
+            echo "No previous tag found, collecting all commits"
+            COMMITS=$(git log --oneline --pretty=format:"- %s" HEAD)
+          else
+            echo "Previous tag: ${PREV_TAG}"
+            COMMITS=$(git log --oneline --pretty=format:"- %s" "${PREV_TAG}..HEAD")
+          fi
+          
+          # Create temporary file with new entry
+          {
+            echo ""
+            echo "## ${VERSION} ($(date +%Y-%m-%d))"
+            echo ""
+            echo "${COMMITS}"
+            echo ""
+          } > /tmp/new-entry.md
+          
+          # Prepend to CHANGES.md (after the title)
+          {
+            head -n 2 CHANGES.md  # Keep "# Changelog" and blank line
+            cat /tmp/new-entry.md
+            tail -n +3 CHANGES.md
+          } > /tmp/CHANGES.md.new
+          
+          mv /tmp/CHANGES.md.new CHANGES.md
+          
+          echo "✓ Added CHANGES.md entry for ${VERSION}"
+          
+          # Configure git for commit
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Commit and push the changes
+          git add CHANGES.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update CHANGES.md for ${VERSION}"
+            git push origin HEAD:main
+          fi
+
       - name: Extract changelog entry
         id: changelog
         env:
