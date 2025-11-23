@@ -144,7 +144,7 @@ jobs:
           ELAPSED=0
           INTERVAL=5
           
-          while [ $ELAPSED -lt $TIMEOUT ]; do
+          while [[ $ELAPSED -lt $TIMEOUT ]]; do
             if docker inspect --format='{{.State.Health.Status}}' "${CONTAINER_ID}" 2>/dev/null | grep -q "healthy"; then
               echo "✓ Health check passed after ${ELAPSED}s"
               
