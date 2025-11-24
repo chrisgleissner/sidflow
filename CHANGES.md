@@ -4,6 +4,10 @@
 ## 0.3.27 (2025-11-24)
 
 - perf(docker): consolidate RUN layers to restore build speed
+  - Reduced Docker RUN statements from 13 to 10
+  - Consolidated security hardening steps into single layer
+  - Restores build time from ~10min (0.3.26) to ~5min (0.3.24 level)
+  - Maintains all security verification and hardening features
 - chore: update CHANGES.md for 0.3.26
 
 
@@ -11,6 +15,7 @@
 
 - fix(docker): improve diagnostics and smoke test reliability
 - chore: update CHANGES.md for 0.3.25
+- NOTE: This release had Docker build performance regression (2x slower) fixed in 0.3.27
 
 
 ## 0.3.25 (2025-11-24)
