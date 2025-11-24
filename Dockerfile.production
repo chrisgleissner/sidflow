@@ -92,6 +92,15 @@ RUN set -eux; \
     echo "[build] Started at: $(date +%H:%M:%S)"; \
     bun run build; \
     echo "[build] Completed at: $(date +%H:%M:%S)"; \
+    echo "[build] Verifying standalone build output:"; \
+    if [ -f ".next/standalone/packages/sidflow-web/server.js" ]; then \
+    echo "[build]   ✓ server.js exists ($(stat -c%s .next/standalone/packages/sidflow-web/server.js) bytes)"; \
+    else \
+    echo "[build]   ✗ server.js NOT found"; \
+    echo "[build]   Checking standalone structure:"; \
+    ls -laR .next/standalone | head -50 || true; \
+    exit 1; \
+    fi; \
     echo "[build] Next.js build complete"
 
 # Copy static assets into standalone directory (required for Next.js standalone)
@@ -162,6 +171,18 @@ WORKDIR /app
 
 # Copy standalone server from builder
 COPY --from=builder --chown=sidflow:sidflow /build/packages/sidflow-web/.next/standalone ./
+
+# Verify standalone structure after copy
+RUN set -eux; \
+    echo "[runtime] Verifying copied standalone structure:"; \
+    if [ -f /app/packages/sidflow-web/server.js ]; then \
+    echo "[runtime]   ✓ server.js copied ($(stat -c%s /app/packages/sidflow-web/server.js) bytes)"; \
+    else \
+    echo "[runtime]   ✗ server.js MISSING after copy"; \
+    echo "[runtime]   Contents of /app:"; \
+    ls -laR /app | head -100 || true; \
+    exit 1; \
+    fi
 
 # Copy workspace files for CLI flows (config, scripts, packages, dependencies)
 COPY --from=builder --chown=sidflow:sidflow /build/.sidflow.json /sidflow/.sidflow.json

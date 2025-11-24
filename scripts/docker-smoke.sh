@@ -54,9 +54,30 @@ if (( attempt == max_attempts )); then
   exit 1
 fi
 
+echo "[docker-smoke] Waiting for server to be ready to accept connections..."
+sleep 5
+
 echo "[docker-smoke] Curling health endpoint ${HEALTH_URL}"
-if ! curl -fsS "${HEALTH_URL}" | tee /tmp/sidflow-docker-health.json; then
-  echo "[docker-smoke] Health endpoint failed"
+retry=0
+max_retries=10
+while (( retry < max_retries )); do
+  if curl -fsS "${HEALTH_URL}" > /tmp/sidflow-docker-health.json 2>&1; then
+    echo "[docker-smoke] Health endpoint responded successfully"
+    cat /tmp/sidflow-docker-health.json
+    break
+  fi
+  retry=$(( retry + 1 ))
+  if (( retry < max_retries )); then
+    echo "[docker-smoke] Health endpoint not ready (attempt $retry/$max_retries), retrying..."
+    sleep 2
+  fi
+done
+
+if (( retry == max_retries )); then
+  echo "[docker-smoke] Health endpoint failed after $max_retries attempts"
+  echo "[docker-smoke] Last curl output:"
+  cat /tmp/sidflow-docker-health.json 2>/dev/null || echo "(no output)"
+  echo "[docker-smoke] Container logs:"
   docker logs "${CONTAINER_ID}" || true
   exit 1
 fi
