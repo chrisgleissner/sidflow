@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.26 (2025-11-24)
+
+- fix(docker): improve diagnostics and smoke test reliability
+- chore: update CHANGES.md for 0.3.25
+
+
 ## 0.3.25 (2025-11-24)
 
 - Merge pull request #64 from chrisgleissner/fix/performance-and-security-hardening
