@@ -74,11 +74,11 @@ jobs:
           cd packages/sidflow-web
           # Use standalone server (npm start doesn't work with standalone output)
           # Point to repo root config file since standalone doesn't include it
-          # CRITICAL: Enable SIDFLOW_RELAXED_CSP=1 to allow Next.js inline hydration scripts.
-          # Without this, CSP blocks React mounting and tests fail with selector timeouts.
-          # Next.js standalone injects inline scripts for hydration that require 'unsafe-inline' CSP.
-          # Note: Next.js standalone always runs with NODE_ENV=production internally, regardless of
-          # what we set externally, so we must use SIDFLOW_RELAXED_CSP=1 for testing environments.
+          # NOTE: SIDFLOW_RELAXED_CSP=1 is required ONLY for CI/E2E testing environments to allow Next.js inline hydration scripts.
+          # In CI, Playwright/E2E tests require relaxed CSP because Next.js standalone injects inline scripts for hydration,
+          # which are blocked by strict CSP. Without this, React mounting fails and tests time out.
+          # Production deployments SHOULD NOT set SIDFLOW_RELAXED_CSP=1; the default strict CSP is recommended for security.
+          # Next.js standalone always runs with NODE_ENV=production internally, so this variable is only for test environments.
           SIDFLOW_RELAXED_CSP=1 SIDFLOW_CONFIG="$PWD/../../.sidflow.json" node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
           
