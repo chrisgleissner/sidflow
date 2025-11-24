@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.27 (2025-11-24)
+
+- perf(docker): consolidate RUN layers to restore build speed
+- chore: update CHANGES.md for 0.3.26
+
+
 ## 0.3.26 (2025-11-24)
 
 - fix(docker): improve diagnostics and smoke test reliability
