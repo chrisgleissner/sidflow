@@ -209,7 +209,7 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     SIDFLOW_ROOT=/sidflow \
     SIDFLOW_CONFIG=/sidflow/.sidflow.json \
-    PATH="/usr/local/bin:/usr/bin:/bin" \
+    PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
     UMASK=0027
 
 # Expose application port
