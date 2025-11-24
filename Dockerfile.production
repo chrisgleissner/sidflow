@@ -198,8 +198,8 @@ RUN set -eux; \
 # Security hardening: Set restrictive permissions on read-only application files
 # Keep workspace and data writable for the sidflow user
 RUN set -eux; \
-    chmod -R o-rwx /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true; \
-    chmod -R g-w /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true
+    chmod -R o-rwx /sidflow/packages /sidflow/scripts /sidflow/node_modules /app || true; \
+    chmod -R g-w /sidflow/packages /sidflow/scripts /sidflow/node_modules /app || true
 
 # Set secure environment defaults
 ENV NODE_ENV=production \
