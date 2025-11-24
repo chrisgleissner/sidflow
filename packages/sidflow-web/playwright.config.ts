@@ -132,7 +132,7 @@ export default defineConfig({
       // Skip build flag - but force rebuild when E2E_COVERAGE is enabled
       ...(skipNextBuildFlag && process.env.E2E_COVERAGE !== 'true' ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
       // Pass E2E_COVERAGE to enable instrumentation
-      ...(process.env.E2E_COVERAGE === 'true' ? { E2E_COVERAGE: 'true' } : {}),
+      ...(process.env.E2E_COVERAGE === 'true' ? { E2E_COVERAGE: 'true', BABEL_ENV: 'coverage' } : {}),
     },
   },
 });

@@ -9,6 +9,7 @@ import {
   findUntaggedSids,
   interpretKey,
   planTagSession,
+  shuffleInPlace,
   writeManualTag,
   type KeyState
 } from "@sidflow/rate";
@@ -94,5 +95,54 @@ describe("tagging workflow helpers", () => {
 
     result = interpretKey("Q", state);
     expect(result.action).toBe("quit");
+  });
+
+  it("clears pending dimension on invalid key", () => {
+    const state: KeyState = { ratings: { ...DEFAULT_RATINGS }, pendingDimension: "e" };
+    const result = interpretKey("x", state);
+    expect(result.state.pendingDimension).toBeUndefined();
+    expect(result.action).toBe("none");
+  });
+
+  it("includes preference rating when present", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const target = path.join(root, "tag-with-p.json");
+
+    await writeManualTag(target, { e: 5, m: 3, c: 4, p: 5 }, new Date("2025-01-15T00:00:00.000Z"));
+
+    const contents = await readFile(target, "utf8");
+    const parsed = JSON.parse(contents) as Record<string, unknown>;
+    expect(parsed.p).toBe(5);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("handles non-directory root path gracefully", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const filePath = path.join(root, "file.txt");
+    await writeFile(filePath, "not a directory");
+
+    const result = await findUntaggedSids(filePath, root);
+    expect(result).toEqual([]);
+
+    await rm(root, { recursive: true, force: true });
+  });
+});
+
+describe("shuffleInPlace", () => {
+  it("shuffles array deterministically with seeded random", () => {
+    const values = ["a", "b", "c", "d", "e"];
+    const seededRandom = () => 0.5;
+    shuffleInPlace(values, seededRandom);
+    expect(values.length).toBe(5);
+    expect(values).toContain("a");
+  });
+
+  it("shuffles array with default Math.random", () => {
+    const values = ["x", "y", "z"];
+    const original = [...values];
+    shuffleInPlace(values);
+    expect(values.length).toBe(3);
+    expect(values.sort()).toEqual(original.sort());
   });
 });

@@ -57,17 +57,17 @@ async function convertToLcov(coverage: any[], outputDir: string) {
   for (const entry of coverage) {
     try {
       // Filter relevant files
-      if (!entry.url || entry.url.startsWith('data:') || 
-          entry.url.includes('node_modules') ||
-          entry.url.includes('webpack') ||
-          !entry.url.includes('localhost')) {
+      if (!entry.url || entry.url.startsWith('data:') ||
+        entry.url.includes('node_modules') ||
+        entry.url.includes('webpack') ||
+        !entry.url.includes('localhost')) {
         continue;
       }
 
       // Extract file path from URL
       const url = new URL(entry.url);
       const pathname = url.pathname;
-      
+
       // Skip if no source
       if (!entry.source) {
         continue;
@@ -76,7 +76,7 @@ async function convertToLcov(coverage: any[], outputDir: string) {
       const converter = v8toIstanbul(pathname, 0, { source: entry.source });
       await converter.load();
       converter.applyCoverage(entry.functions);
-      
+
       const result = converter.toIstanbul();
       Object.assign(istanbulCoverage, result);
     } catch (error) {
@@ -90,7 +90,30 @@ async function convertToLcov(coverage: any[], outputDir: string) {
 
   console.log(`[coverage] Converted to Istanbul format: ${Object.keys(istanbulCoverage).length} files`);
 
+  // Convert Istanbul format to lcov format
+  await convertIstanbulToLcov(istanbulCoverage, outputDir);
+
   return istanbulCoverage;
+}
+
+/**
+ * Convert Istanbul coverage to lcov format
+ */
+async function convertIstanbulToLcov(coverage: Record<string, any>, outputDir: string) {
+  const istanbulLibCoverage = await import('istanbul-lib-coverage');
+  const istanbulLibReport = await import('istanbul-lib-report');
+  const istanbulReports = await import('istanbul-reports');
+
+  const coverageMap = istanbulLibCoverage.createCoverageMap(coverage);
+  const context = istanbulLibReport.createContext({
+    dir: outputDir,
+    coverageMap,
+  });
+
+  const lcovReport = istanbulReports.create('lcovonly');
+  lcovReport.execute(context);
+
+  console.log(`[coverage] ✓ Generated lcov.info in ${outputDir}`);
 }
 
 /**

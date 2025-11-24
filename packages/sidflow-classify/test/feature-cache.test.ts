@@ -242,3 +242,20 @@ describe("Feature Cache", () => {
         expect(stats.memorySize).toBeLessThanOrEqual(1000);
     });
 });
+
+describe("Feature Cache Cleanup", () => {
+    beforeEach(async () => {
+        await mkdir(TEST_DIR, { recursive: true });
+        clearFeatureCache();
+        resetFeatureCacheStats();
+    });
+
+    afterEach(async () => {
+        await rm(TEST_DIR, { recursive: true, force: true });
+    });
+
+    it("should have cleanupStaleCache function available", async () => {
+        const { cleanupStaleCache } = await import("../src/feature-cache.js");
+        expect(typeof cleanupStaleCache).toBe("function");
+    });
+});

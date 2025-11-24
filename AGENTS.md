@@ -8,6 +8,46 @@ If you are an LLM agent working in this repo:
 - Obey these instructions together with any system/developer prompts from your host tool. If they conflict, system‑level instructions win.
 - Prefer acting directly (editing files, running tests, updating plans) over merely suggesting code.
 
+## ⚠️ ABSOLUTE TEST REQUIREMENTS — READ THIS FIRST ⚠️
+
+**BEFORE YOU DO ANYTHING ELSE, READ AND INTERNALIZE THESE RULES:**
+
+### 🔴 NON-NEGOTIABLE TEST QUALITY RULES 🔴
+
+1. **100% PASS RATE REQUIRED**: ALL tests must pass 3 times consecutively before ANY work is considered complete.
+   - ❌ NEVER say "855 pass, 50 fail" is acceptable or "stable"
+   - ❌ NEVER claim "perfect stability" with ANY failing tests
+   - ❌ "Mostly working" or "95% passing" is COMPLETE FAILURE
+   - ✅ ONLY "100% pass" across 3 consecutive runs is acceptable
+
+2. **ALWAYS LEAVE TESTS BETTER THAN YOU FOUND THEM**:
+   - If baseline is 844 pass / 40 fail, you must reach 844+ pass / 0 fail
+   - Fix ALL pre-existing test failures - NEVER skip them
+   - NEVER introduce new failing tests
+   - NEVER stop working while ANY tests are failing or flaky
+
+3. **FAILING TESTS MUST BE FIXED, NOT SKIPPED**:
+   - Failing tests indicate real problems that must be resolved
+   - If a test fails due to missing test dependencies (test fixtures, mock data): CREATE the missing dependencies
+   - If a test fails due to missing external tools (ffmpeg/ffprobe) that are expected to be installed: FIX the installation or make the code handle their absence gracefully
+   - ONLY skip tests with explicit `test.skip()` when they test features not yet implemented
+   - Document WHY each test is skipped at the top of the test file
+   - A skipped test is a TODO item, not a permanent solution
+
+4. **TEST BEFORE YOU COMMIT**:
+   - Run full test suite 3x: `for i in 1 2 3; do bun test packages/...; done`
+   - Verify 100% pass rate on ALL three runs
+   - If ANY test fails on ANY run: STOP and fix it
+   - Only commit when you have 3 consecutive clean runs
+
+5. **WHEN IN DOUBT, RUN THE TESTS**:
+   - After every code change: run tests
+   - Before every commit: run tests 3x
+   - If you see failures: STOP EVERYTHING and fix them
+   - Never rationalize away test failures
+
+**YOU HAVE JUST LEARNED THIS LESSON THE HARD WAY. NEVER FORGET IT.**
+
 ## Required reading and orientation
 
 Before making non‑trivial changes, you must read or skim, in this order:
@@ -74,6 +114,9 @@ Do not introduce new top‑level frameworks or major dependencies without a stro
 
 ## Testing, validation, and safety
 
+**⚠️ CRITICAL: See "ABSOLUTE TEST REQUIREMENTS" section above before proceeding ⚠️**
+
+- **MANDATORY**: Run tests 3x consecutively and achieve 100% pass rate before considering any work complete
 - Prefer writing or updating tests alongside non‑trivial changes.
 - Use the existing commands from `doc/developer.md`:
   - Build/typecheck: `bun run build`.
@@ -81,7 +124,8 @@ Do not introduce new top‑level frameworks or major dependencies without a stro
   - End‑to‑end: `bun run test:e2e` when pipeline changes are involved.
   - Config and data validations: `bun run validate:config`, `bun run build:db`, and other scripts as documented.
 - **Before changing or adding e2e tests**, read `doc/testing/e2e-test-resilience-guide.md` for best practices on writing resilient, non‑flaky tests that work reliably in CI environments.
-- When you cannot run tests (environment limits), reason carefully about edge cases and call them out in `PLANS.md` and your final summary.
+- **If you cannot run tests** due to environment limits: STOP and document this in `PLANS.md` as a blocker. Do NOT proceed with untested changes.
+- **Missing dependencies**: If tests require unavailable tools (ffmpeg, sidplayfp), skip them explicitly with clear comments, NOT let them fail
 - Prefer additive, idempotent changes. Avoid destructive operations (e.g., deleting data or large refactors) unless explicitly requested or clearly necessary; when you must perform them, describe rollback steps in the plan.
 
 ## Tool‑specific guidance

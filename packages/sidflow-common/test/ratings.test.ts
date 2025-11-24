@@ -26,4 +26,27 @@ describe("ratings", () => {
     expect(clampRating(2.5)).toBe(2.5);
     expect(clampRating(4.7)).toBe(4.7);
   });
+
+  test("clampRating handles boundary values exactly", () => {
+    expect(clampRating(RATING_MIN)).toBe(RATING_MIN);
+    expect(clampRating(RATING_MAX)).toBe(RATING_MAX);
+  });
+
+  test("clampRating handles infinity", () => {
+    expect(clampRating(Infinity)).toBe(RATING_MAX);
+    expect(clampRating(-Infinity)).toBe(RATING_MIN);
+  });
+
+  test("clampRating handles zero", () => {
+    expect(clampRating(0)).toBe(RATING_MIN);
+  });
+
+  test("clampRating handles negative decimals", () => {
+    expect(clampRating(-0.5)).toBe(RATING_MIN);
+  });
+
+  test("clampRating handles large positive decimals", () => {
+    expect(clampRating(5.9)).toBe(RATING_MAX);
+    expect(clampRating(10.5)).toBe(RATING_MAX);
+  });
 });

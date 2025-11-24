@@ -30,6 +30,15 @@ jobs:
           restore-keys: |
             hvsc-
       
+      - name: Cache classified data
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/classified
+          key: classified-${{ hashFiles('data/classified/sample.jsonl') }}
+          restore-keys: |
+            classified-
+      
       - name: Install dependencies
         run: bun install --frozen-lockfile
       
@@ -49,6 +58,14 @@ jobs:
       - name: Build web app
         run: cd packages/sidflow-web && npm run build
       
+      - name: Copy static assets for standalone server
+        run: |
+          cd packages/sidflow-web
+          # Next.js standalone build requires manual copy of static assets
+          cp -r .next/static .next/standalone/packages/sidflow-web/.next/static
+          cp -r public .next/standalone/packages/sidflow-web/public
+          echo "✓ Static assets copied to standalone build"
+      
       - name: Install Playwright browsers
         run: cd packages/sidflow-web && npx playwright install chromium
       
@@ -57,7 +74,12 @@ jobs:
           cd packages/sidflow-web
           # Use standalone server (npm start doesn't work with standalone output)
           # Point to repo root config file since standalone doesn't include it
-          SIDFLOW_CONFIG="$PWD/../../.sidflow.json" node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
+          # NOTE: SIDFLOW_RELAXED_CSP=1 is required ONLY for CI/E2E testing environments to allow Next.js inline hydration scripts.
+          # In CI, Playwright/E2E tests require relaxed CSP because Next.js standalone injects inline scripts for hydration,
+          # which are blocked by strict CSP. Without this, React mounting fails and tests time out.
+          # Production deployments SHOULD NOT set SIDFLOW_RELAXED_CSP=1; the default strict CSP is recommended for security.
+          # Next.js standalone always runs with NODE_ENV=production internally, so this variable is only for test environments.
+          SIDFLOW_RELAXED_CSP=1 SIDFLOW_CONFIG="$PWD/../../.sidflow.json" node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
           
           # Wait for server to be ready with proper health check
@@ -84,6 +106,10 @@ jobs:
       - name: Run unified performance runner (Playwright + k6)
         run: |
           echo "=== Starting performance tests ==="
+          # NOTE: We test against standalone server directly rather than Docker container for performance.
+          # Docker adds ~10s startup overhead and requires managing container lifecycle/volumes/networking.
+          # Direct server approach is simpler, faster, and equally effective for performance measurement.
+          # Docker-based integration testing is already covered by release workflow smoke tests.
           npm run perf:run -- --env ci --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
           EXIT_CODE=$?
           

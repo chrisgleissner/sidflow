@@ -67,4 +67,44 @@ describe("retry", () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("succeeds immediately without retries if function succeeds", async () => {
+    let attempts = 0;
+    const result = await retry(async () => {
+      attempts++;
+      return 42;
+    }, { retries: 5 });
+    expect(result).toBe(42);
+    expect(attempts).toBe(1);
+  });
+
+  it("handles retries with default options", async () => {
+    let attempts = 0;
+    await expect(retry(async () => {
+      attempts++;
+      throw new Error("fail");
+    })).rejects.toThrow("fail");
+    expect(attempts).toBeGreaterThan(1);
+  });
+
+  it("handles async onRetry callback errors gracefully", async () => {
+    let retryCallbackCalled = false;
+    try {
+      await retry(async () => {
+        throw new Error("main");
+      }, {
+        retries: 1,
+        onRetry: async () => {
+          retryCallbackCalled = true;
+          throw new Error("callback error");
+        }
+      });
+      // Should not reach here
+      expect(false).toBe(true);
+    } catch (error) {
+      // Either error is acceptable - callback error takes precedence if thrown
+      expect(retryCallbackCalled).toBe(true);
+      expect(error instanceof Error).toBe(true);
+    }
+  });
 });

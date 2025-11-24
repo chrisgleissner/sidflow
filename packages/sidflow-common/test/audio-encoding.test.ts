@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll, mock } from "bun:test";
 import {
   encodeWavToM4aNative,
   encodeWavToM4aWasm,
@@ -6,8 +6,11 @@ import {
   getM4aBitrate,
   DEFAULT_M4A_BITRATE,
   DEFAULT_FLAC_COMPRESSION_LEVEL,
+  DEFAULT_AUDIO_ENCODER_IMPLEMENTATION,
   isFfmpegAvailable,
   isFfprobeAvailable,
+  encodeWavToM4a,
+  encodeWavToFlac,
 } from "../src/audio-encoding";
 import { encodePcmToWav } from "../../sidflow-classify/src/render/wav-renderer";
 import { writeFile, unlink, mkdir } from "node:fs/promises";
@@ -214,5 +217,138 @@ describe("Audio Encoding", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
+  });
+
+  test("isFfmpegAvailable returns boolean", async () => {
+    const result = await isFfmpegAvailable();
+    expect(typeof result).toBe("boolean");
+  });
+
+  test("isFfprobeAvailable returns boolean", async () => {
+    const result = await isFfprobeAvailable();
+    expect(typeof result).toBe("boolean");
+  });
+
+  test("DEFAULT_M4A_BITRATE is 256", () => {
+    expect(DEFAULT_M4A_BITRATE).toBe(256);
+  });
+
+  test("DEFAULT_FLAC_COMPRESSION_LEVEL is 5", () => {
+    expect(DEFAULT_FLAC_COMPRESSION_LEVEL).toBe(5);
+  });
+
+  test("DEFAULT_AUDIO_ENCODER_IMPLEMENTATION is auto", () => {
+    expect(DEFAULT_AUDIO_ENCODER_IMPLEMENTATION).toBe("auto");
+  });
+
+  test("encodeWavToM4a uses native implementation when specified", async () => {
+    if (!ffmpegAvailable) {
+      console.log("Skipping test: ffmpeg not available in PATH");
+      return;
+    }
+
+    const result = await encodeWavToM4a({
+      inputPath: testWavPath,
+      outputPath: testM4aPath,
+      implementation: "native",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.implementation).toBe("native");
+    expect(existsSync(testM4aPath)).toBe(true);
+  });
+
+  test("encodeWavToFlac uses native implementation when specified", async () => {
+    if (!ffmpegAvailable) {
+      console.log("Skipping test: ffmpeg not available in PATH");
+      return;
+    }
+
+    const result = await encodeWavToFlac({
+      inputPath: testWavPath,
+      outputPath: testFlacPath,
+      implementation: "native",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.implementation).toBe("native");
+    expect(existsSync(testFlacPath)).toBe(true);
+  });
+
+  test("encodeWavToM4aNative returns error message on failure", async () => {
+    const result = await encodeWavToM4aNative({
+      inputPath: "/definitely/nonexistent/path/file.wav",
+      outputPath: testM4aPath,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).not.toBe("");
+    expect(result.implementation).toBe("native");
+  });
+
+  test("encodeWavToFlacNative returns error message on failure", async () => {
+    const result = await encodeWavToFlacNative({
+      inputPath: "/definitely/nonexistent/path/file.wav",
+      outputPath: testFlacPath,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).not.toBe("");
+    expect(result.implementation).toBe("native");
+  });
+
+  test("getM4aBitrate returns null for nonexistent file", async () => {
+    const bitrate = await getM4aBitrate("/nonexistent/file.m4a");
+    expect(bitrate).toBeNull();
+  });
+
+  test("getM4aBitrate returns null for invalid file", async () => {
+    const invalidPath = path.join(testDir, "invalid.m4a");
+    await writeFile(invalidPath, "not a valid M4A file");
+
+    const bitrate = await getM4aBitrate(invalidPath);
+    expect(bitrate).toBeNull();
+
+    await unlink(invalidPath);
+  });
+
+  test("encodeWavToM4aNative includes implementation in result", async () => {
+    const result = await encodeWavToM4aNative({
+      inputPath: "/nonexistent.wav",
+      outputPath: testM4aPath,
+    });
+
+    expect(result.implementation).toBe("native");
+  });
+
+  test("encodeWavToFlacNative includes implementation in result", async () => {
+    const result = await encodeWavToFlacNative({
+      inputPath: "/nonexistent.wav",
+      outputPath: testFlacPath,
+    });
+
+    expect(result.implementation).toBe("native");
+  });
+
+  test("encodeWavToM4aNative respects output path", async () => {
+    const customOutput = path.join(testDir, "custom-output.m4a");
+    const result = await encodeWavToM4aNative({
+      inputPath: "/nonexistent.wav",
+      outputPath: customOutput,
+    });
+
+    expect(result.outputPath).toBe(customOutput);
+  });
+
+  test("encodeWavToFlacNative respects output path", async () => {
+    const customOutput = path.join(testDir, "custom-output.flac");
+    const result = await encodeWavToFlacNative({
+      inputPath: "/nonexistent.wav",
+      outputPath: customOutput,
+    });
+
+    expect(result.outputPath).toBe(customOutput);
   });
 });
