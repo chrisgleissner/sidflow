@@ -55,6 +55,10 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
 
   // Content Security Policy
   // In development we relax script-src/connect-src to allow Next.js dev client and hydration.
+  // IMPORTANT: Next.js standalone production builds inject inline hydration scripts that require
+  // 'unsafe-inline'. Without it, React won't mount and the app appears broken. In production,
+  // set SIDFLOW_RELAXED_CSP=1 for environments that need inline scripts (testing, specific deployments).
+  // For maximum security, consider using nonces or hashes instead of 'unsafe-inline' in the future.
   const isProd = process.env.NODE_ENV === 'production';
   const relaxedCsp = process.env.SIDFLOW_RELAXED_CSP === '1';
   const allowInline = !isProd || relaxedCsp;

@@ -49,6 +49,32 @@ echo "SIDFLOW_CONFIG=${SIDFLOW_CONFIG:-<not set>}"
 echo "SIDFLOW_ROOT=${SIDFLOW_ROOT:-<not set>}"
 echo "PORT=${PORT:-<not set>}"
 echo "HOSTNAME=${HOSTNAME:-<not set>}"
+# Redact sensitive variables
+if [ -n "${ADMIN_USERNAME:-}" ]; then
+    echo "ADMIN_USERNAME=<redacted>"
+fi
+if [ -n "${ADMIN_PASSWORD:-}" ]; then
+    echo "ADMIN_PASSWORD=<redacted>"
+fi
+if [ -n "${SECRET_KEY:-}" ]; then
+    echo "SECRET_KEY=<redacted>"
+fi
+echo ""
+
+echo "=== Mount Ownership Validation ==="
+# Validate that mounted volumes are owned by sidflow user (UID 1001)
+EXPECTED_UID=1001
+for mount_path in "/sidflow/workspace" "/sidflow/data"; do
+    if [ -d "$mount_path" ]; then
+        actual_uid=$(stat -c%u "$mount_path")
+        if [ "$actual_uid" != "$EXPECTED_UID" ]; then
+            echo "⚠ Warning: $mount_path owned by UID $actual_uid, expected $EXPECTED_UID"
+            echo "  Container may have permission issues writing to mounted volumes"
+        else
+            echo "✓ $mount_path owned by correct UID ($actual_uid)"
+        fi
+    fi
+done
 echo ""
 
 echo "=== Critical Paths Check ==="
