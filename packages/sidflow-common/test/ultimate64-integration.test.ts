@@ -355,4 +355,83 @@ describe("Ultimate 64 Integration (Mock Server)", () => {
 
     expect(capture.getBufferTimeMs()).toBe(250);
   });
+
+  test("UDP Audio Capture: rejects invalid port in constructor", () => {
+    expect(() => {
+      new Ultimate64AudioCapture({
+        port: -1,
+      });
+    }).toThrow("Ultimate64AudioCapture requires a positive port");
+
+    expect(() => {
+      new Ultimate64AudioCapture({
+        port: 0,
+      });
+    }).toThrow("Ultimate64AudioCapture requires a positive port");
+
+    expect(() => {
+      new Ultimate64AudioCapture({
+        port: 1.5,
+      });
+    }).toThrow("Ultimate64AudioCapture requires a positive port");
+  });
+
+  test("UDP Audio Capture: throws when starting while already capturing", async () => {
+    const capturePort = udpPort + 500;
+    const capture = new Ultimate64AudioCapture({
+      port: capturePort,
+      targetDurationMs: 100,
+    });
+
+    await capture.start(capturePort);
+
+    // Try to start again while already running
+    await expect(capture.start(capturePort)).rejects.toThrow("Already capturing");
+
+    // Clean up
+    capture.stop();
+  });
+
+  test("UDP Audio Capture: throws when starting with invalid port", async () => {
+    const capture = new Ultimate64AudioCapture({
+      port: 9999, // Valid default
+    });
+
+    // Try to start with invalid port
+    await expect(capture.start(-1)).rejects.toThrow("Invalid capture port");
+    await expect(capture.start(0)).rejects.toThrow("Invalid capture port");
+  });
+
+  test("UDP Audio Capture: allows calling stop() multiple times and returns cached result", async () => {
+    const capturePort = udpPort + 600;
+    const capture = new Ultimate64AudioCapture({
+      port: capturePort,
+      targetDurationMs: 50,
+    });
+
+    await capture.start(capturePort);
+
+    // Send a few packets
+    for (let seq = 0; seq < 5; seq++) {
+      const packet = Buffer.alloc(AUDIO_PACKET_SIZE);
+      packet.writeUInt16LE(seq, 0);
+      for (let i = 0; i < SAMPLES_PER_PACKET * 2; i++) {
+        packet.writeInt16LE(100, 2 + i * 2);
+      }
+      udpServer.send(packet, capturePort, "127.0.0.1");
+    }
+
+    // Wait for target duration
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Call stop multiple times
+    const result1 = capture.stop();
+    const result2 = capture.stop();
+    const result3 = capture.stop();
+
+    // All should return the same cached result
+    expect(result1).toBe(result2);
+    expect(result2).toBe(result3);
+    expect(result1.stats.packetsReceived).toBeGreaterThan(0);
+  });
 });
