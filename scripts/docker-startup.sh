@@ -50,14 +50,14 @@ echo "SIDFLOW_ROOT=${SIDFLOW_ROOT:-<not set>}"
 echo "PORT=${PORT:-<not set>}"
 echo "HOSTNAME=${HOSTNAME:-<not set>}"
 # Redact sensitive variables
-if [ -n "${ADMIN_USERNAME:-}" ]; then
-    echo "ADMIN_USERNAME=<redacted>"
+if [ -n "${SIDFLOW_ADMIN_USER:-}" ]; then
+    echo "SIDFLOW_ADMIN_USER=<redacted>"
 fi
-if [ -n "${ADMIN_PASSWORD:-}" ]; then
-    echo "ADMIN_PASSWORD=<redacted>"
+if [ -n "${SIDFLOW_ADMIN_PASSWORD:-}" ]; then
+    echo "SIDFLOW_ADMIN_PASSWORD=<redacted>"
 fi
-if [ -n "${SECRET_KEY:-}" ]; then
-    echo "SECRET_KEY=<redacted>"
+if [ -n "${SIDFLOW_ADMIN_SECRET:-}" ]; then
+    echo "SIDFLOW_ADMIN_SECRET=<redacted>"
 fi
 echo ""
 
