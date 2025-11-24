@@ -56,8 +56,15 @@ jobs:
       - name: Build project
         run: bun run build
 
-      - name: Run all tests (unit + E2E with coverage)
-        run: bun run test:all
+      - name: Run unit tests with coverage
+        run: bun run test
+
+      - name: Run E2E tests with coverage
+        run: cd packages/sidflow-web && E2E_COVERAGE=true npx playwright test --project=chromium
+
+      - name: Merge unit + E2E coverage
+        if: always()
+        run: bun run scripts/merge-coverage.ts
 
       - name: Check for Playwright report
         id: detect-playwright-report
@@ -78,12 +85,13 @@ jobs:
           report-file: packages/sidflow-web/playwright-report/report.json
           job-summary: true
 
-      - name: Upload coverage reports to Codecov
+      - name: Upload merged coverage to Codecov
         if: ${{ github.event_name == 'push' }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/lcov.info
+          files: coverage-merged/lcov.info
+          flags: merged,unit,e2e
           fail_ci_if_error: false
           verbose: true
 
