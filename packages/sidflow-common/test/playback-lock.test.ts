@@ -228,4 +228,18 @@ describe("PlaybackLock", () => {
     // Note: Read permission errors are difficult to test reliably in CI
     // as they require actual filesystem permission manipulation
   });
+
+  describe("createPlaybackLock", () => {
+    it("creates lock with path derived from config", async () => {
+      const { createPlaybackLock } = await import("../src/playback-lock.js");
+      const config = {
+        sidPath: path.join(tempDir, "C64Music"),
+        wavCachePath: path.join(tempDir, "wav-cache"),
+        tagsPath: path.join(tempDir, "tags"),
+      };
+      const lock = await createPlaybackLock(config);
+      expect(lock.path).toContain(".sidflow-playback.lock");
+      expect(lock.path).not.toContain("C64Music");
+    });
+  });
 });
