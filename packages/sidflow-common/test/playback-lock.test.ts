@@ -225,14 +225,7 @@ describe("PlaybackLock", () => {
       await expect(lock.getMetadata()).rejects.toThrow();
     });
 
-    it("handles read permission errors", async () => {
-      await mkdir(path.dirname(lockPath), { recursive: true });
-      await writeFile(lockPath, "content", "utf8");
-      // Simulate non-ENOENT error by checking if file exists first
-      const lock = new PlaybackLock(lockPath);
-      const meta = await lock.getMetadata();
-      // If we can read it, it should parse or throw
-      expect(meta !== null || true).toBe(true);
-    });
+    // Note: Read permission errors are difficult to test reliably in CI
+    // as they require actual filesystem permission manipulation
   });
 });

@@ -349,7 +349,7 @@ describe("Metadata Cache", () => {
 
     it("should handle cache size limits correctly", async () => {
         const stats1 = getMetadataCacheStats();
-        expect(stats1.size).toBe(0);
+        expect(stats1.currentSize).toBe(0);
 
         const sidPath = path.join(TEST_DIR, "test16.sid");
         const sidData = createTestSidFile();
@@ -357,7 +357,7 @@ describe("Metadata Cache", () => {
 
         await getOrParseMetadata(sidPath);
         const stats2 = getMetadataCacheStats();
-        expect(stats2.size).toBe(1);
+        expect(stats2.currentSize).toBe(1);
     });
 
     it("should preserve cache across multiple accesses", async () => {
