@@ -15,12 +15,14 @@ export default async function globalSetup(config: FullConfig) {
     const babelrcPath = join(process.cwd(), '.babelrc.json');
     if (existsSync(babelrcPath)) {
       const babelrc = JSON.parse(readFileSync(babelrcPath, 'utf-8'));
-      const hasIstanbul = babelrc.plugins?.includes('babel-plugin-istanbul');
+      const hasIstanbul = babelrc.plugins?.includes('babel-plugin-istanbul') || 
+                          babelrc.env?.coverage?.plugins?.includes('babel-plugin-istanbul');
       if (hasIstanbul) {
-        console.log('[E2E Coverage] ✓ Babel config has istanbul plugin');
+        console.log('[E2E Coverage] ✓ Babel config has istanbul plugin (env: ' + (process.env.BABEL_ENV || 'default') + ')');
       } else {
         console.warn('[E2E Coverage] ⚠️  WARNING: .babelrc.json does not include babel-plugin-istanbul!');
         console.warn('[E2E Coverage] Current plugins:', babelrc.plugins);
+        console.warn('[E2E Coverage] Current env.coverage:', babelrc.env?.coverage);
       }
     } else {
       console.warn('[E2E Coverage] ⚠️  WARNING: .babelrc.json not found!');
