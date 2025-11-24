@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process';
 
 export default async function globalTeardown() {
   console.log('[E2E Coverage] Processing coverage files...');
-  
+
   if (process.env.E2E_COVERAGE !== 'true') {
     return;
   }
@@ -20,7 +20,7 @@ export default async function globalTeardown() {
 async function generateLcov() {
   const nycOutputDir = join(process.cwd(), '.nyc_output');
   const coverageE2eDir = join(process.cwd(), 'coverage-e2e');
-  
+
   if (!existsSync(nycOutputDir)) {
     console.log('[E2E Coverage] No .nyc_output directory found');
     return;
@@ -28,7 +28,7 @@ async function generateLcov() {
 
   // Read all coverage JSON files from .nyc_output
   const files = readdirSync(nycOutputDir).filter(f => f.endsWith('.json'));
-  
+
   if (files.length === 0) {
     console.log('[E2E Coverage] No coverage files found in .nyc_output');
     return;
@@ -68,7 +68,7 @@ async function generateLcov() {
       return line;
     });
     writeFileSync(lcovPath, fixedLines.join('\n'));
-    
+
     const fileCount = fixedLines.filter(l => l.startsWith('SF:')).length;
     console.log(`[E2E Coverage] ✓ Generated lcov.info covering ${fileCount} files: ${lcovPath}`);
   } else {

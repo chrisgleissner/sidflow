@@ -1,1 +1,13 @@
-{"presets":["next/babel"],"plugins":[],"env":{"coverage":{"plugins":["babel-plugin-istanbul"]}}}
+{
+    "presets": [
+        "next/babel"
+    ],
+    "plugins": [],
+    "env": {
+        "coverage": {
+            "plugins": [
+                "babel-plugin-istanbul"
+            ]
+        }
+    }
+}
