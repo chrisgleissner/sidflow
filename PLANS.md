@@ -617,12 +617,18 @@ To prevent uncontrolled growth of this file:
   - [x] 4b — Confirm standalone server respects SIDFLOW_RELAXED_CSP (NODE_ENV=development doesn't work with standalone)
   - [x] 4c — Removed 'unsafe-inline' nonce/hash requirement, using SIDFLOW_RELAXED_CSP=1 for testing
   - [x] 4d — Documented in proxy.ts comments
-- [ ] 5 — Local validation (definite proof required)
-  - [ ] 5a — Build project: `bun run build`
-  - [ ] 5b — Build web app with standalone output: `cd packages/sidflow-web && npm run build`
-  - [ ] 5c — Start standalone server: `NODE_ENV=development node .next/standalone/packages/sidflow-web/server.js`
-  - [ ] 5d — Verify search-input renders with correct data-testid in browser DevTools
-  - [ ] 5e — Verify search results render with data-testid='track-*' attributes
+- [ ] 5 — Fix standalone build static assets (BLOCKER)
+  - [x] 5a — Identify issue: `.next/static` folder not copied to standalone build
+  - [x] 5b — Add copy step to performance workflow (.github/workflows/performance.yml)
+  - [ ] 5c — Test standalone server locally with static assets
+  - [ ] 5d — Verify React hydrates and search-input element appears
+- [ ] 6 — Local validation (definite proof required)
+  - [x] 6a — Build project: `bun run build`
+  - [x] 6b — Build web app with standalone output: `cd packages/sidflow-web && npm run build`
+  - [ ] 6c — Copy static assets to standalone build
+  - [ ] 6d — Start standalone server with SIDFLOW_RELAXED_CSP=1
+  - [ ] 6e — Verify search-input renders with correct data-testid
+  - [ ] 6f — Verify search results render with data-testid='track-*' attributes
   - [ ] 5f — Run performance tests locally: `npm run perf:run -- --env local --base-url http://localhost:3000 --execute`
   - [ ] 5g — Capture screenshot/logs showing all Playwright tests pass
   - [ ] 5h — Capture K6 summary showing 0% failure rate
@@ -652,8 +658,12 @@ To prevent uncontrolled growth of this file:
 - 2025-11-24 — Checklist progress: Steps 1-4 complete, Step 5 in progress (local validation)
 - 2025-11-24 — Updated security-headers tests to match new CSP behavior (relaxed CSP requires explicit flag)
 - 2025-11-24 — Committed all fixes (commit 5b76ff6): SearchBar data-testid, sample.jsonl ambient tracks, CSP proxy logic, workflow SIDFLOW_RELAXED_CSP
-- 2025-11-24 — Local validation complete: Build ✓, Server startup ✓, CSP verification ✓, Unit tests ✓ (2014 pass)
-- 2025-11-24 — Ready for CI validation and full performance test run
+- 2025-11-24 — **BLOCKER DISCOVERED**: Next.js standalone build missing `.next/static` folder - React not hydrating, all JS chunks return 404
+- 2025-11-24 — Root cause: Next.js standalone requires manual copy of `.next/static` and `public/` folders after build
+- 2025-11-24 — This affects CI workflow - performance tests cannot pass without static assets
+- 2025-11-24 — **PARTIAL FIX**: Added static asset copy step to performance workflow
+- 2025-11-24 — **STATUS**: Tasks 1-4 complete (code fixes), Task 5-6 IN PROGRESS (validation blocked by standalone build setup)
+- 2025-11-24 — Next step: Commit workflow fix, test standalone build manually, then provide definite proof
 
 **Assumptions and open questions**
 - Assumption: Search-input selector timeout is NOT the root cause (data-testid exists) — likely React hydration blocked by CSP

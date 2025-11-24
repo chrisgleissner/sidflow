@@ -58,6 +58,14 @@ jobs:
       - name: Build web app
         run: cd packages/sidflow-web && npm run build
       
+      - name: Copy static assets for standalone server
+        run: |
+          cd packages/sidflow-web
+          # Next.js standalone build requires manual copy of static assets
+          cp -r .next/static .next/standalone/packages/sidflow-web/.next/static
+          cp -r public .next/standalone/packages/sidflow-web/public
+          echo "✓ Static assets copied to standalone build"
+      
       - name: Install Playwright browsers
         run: cd packages/sidflow-web && npx playwright install chromium
       
