@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 0.3.24 (2025-11-24)
+
+- Merge pull request #63 from chrisgleissner/cursor/harden-production-docker-image-security-gpt-5.1-codex-25ec
+- Add task for Production Docker Security Hardening
+- chore: update CHANGES.md for 0.3.23
+
+
 ## 0.3.23 (2025-11-23)
 
 - feat(release): auto-generate CHANGES.md from commits on tag push
