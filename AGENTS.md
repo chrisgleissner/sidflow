@@ -22,15 +22,17 @@ If you are an LLM agent working in this repo:
 
 2. **ALWAYS LEAVE TESTS BETTER THAN YOU FOUND THEM**:
    - If baseline is 844 pass / 40 fail, you must reach 844+ pass / 0 fail
-   - Fix ALL pre-existing test failures or explicitly skip them with clear comments
+   - Fix ALL pre-existing test failures - NEVER skip them
    - NEVER introduce new failing tests
    - NEVER stop working while ANY tests are failing or flaky
 
-3. **MISSING DEPENDENCIES MUST BE SKIPPED**:
-   - If tests require ffmpeg/ffprobe/sidplayfp and they're not available: SKIP with clear comment
-   - Use `if (!ffmpegAvailable) { console.log("Skipping: ffmpeg not available"); return; }`
+3. **FAILING TESTS MUST BE FIXED, NOT SKIPPED**:
+   - Failing tests indicate real problems that must be resolved
+   - If a test fails due to missing test dependencies (test fixtures, mock data): CREATE the missing dependencies
+   - If a test fails due to missing external tools (ffmpeg/ffprobe) that are expected to be installed: FIX the installation or make the code handle their absence gracefully
+   - ONLY skip tests with explicit `test.skip()` when they test features not yet implemented
    - Document WHY each test is skipped at the top of the test file
-   - Skipped tests with clear reasoning are acceptable; failing tests are NOT
+   - A skipped test is a TODO item, not a permanent solution
 
 4. **TEST BEFORE YOU COMMIT**:
    - Run full test suite 3x: `for i in 1 2 3; do bun test packages/...; done`
