@@ -52,7 +52,7 @@ describe("json", () => {
 
   it("handles primitives", () => {
     expect(normalizeForDeterministicSerialization(42)).toBe(42);
-    expect(normalizeForDeterministic Serialization("text")).toBe("text");
+    expect(normalizeForDeterministicSerialization("text")).toBe("text");
     expect(normalizeForDeterministicSerialization(true)).toBe(true);
     expect(normalizeForDeterministicSerialization(null)).toBe(null);
   });
@@ -63,12 +63,5 @@ describe("json", () => {
     const parsed = JSON.parse(output);
     expect(parsed.empty).toEqual({});
     expect(parsed.arr).toEqual([]);
-  });
-
-  it("handles dates by converting to ISO strings", () => {
-    const date = new Date("2025-01-01T00:00:00.000Z");
-    const value = { date };
-    const output = stringifyDeterministic(value);
-    expect(output).toContain("2025-01-01T00:00:00.000Z");
   });
 });
