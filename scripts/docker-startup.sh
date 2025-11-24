@@ -66,7 +66,7 @@ echo "=== Mount Ownership Validation ==="
 EXPECTED_UID=1001
 for mount_path in "/sidflow/workspace" "/sidflow/data"; do
     if [ -d "$mount_path" ]; then
-        actual_uid=$(stat -c%u "$mount_path")
+        actual_uid=$(ls -ldn "$mount_path" | awk '{print $3}')
         if [ "$actual_uid" != "$EXPECTED_UID" ]; then
             echo "⚠ Warning: $mount_path owned by UID $actual_uid, expected $EXPECTED_UID"
             echo "  Container may have permission issues writing to mounted volumes"
