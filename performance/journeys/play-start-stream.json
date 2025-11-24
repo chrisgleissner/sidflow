@@ -17,6 +17,8 @@
       "value": "ambient"
     },
     {
+      // The display name "Ambient Dream" is derived from the file name "Ambient_Dream.sid"
+      // by replacing underscores with spaces. If the display name logic changes, update this test accordingly.
       "action": "waitForText",
       "text": "Ambient Dream"
     },
