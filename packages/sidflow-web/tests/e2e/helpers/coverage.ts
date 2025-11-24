@@ -90,7 +90,30 @@ async function convertToLcov(coverage: any[], outputDir: string) {
 
   console.log(`[coverage] Converted to Istanbul format: ${Object.keys(istanbulCoverage).length} files`);
 
+  // Convert Istanbul format to lcov format
+  await convertIstanbulToLcov(istanbulCoverage, outputDir);
+
   return istanbulCoverage;
+}
+
+/**
+ * Convert Istanbul coverage to lcov format
+ */
+async function convertIstanbulToLcov(coverage: Record<string, any>, outputDir: string) {
+  const istanbulLibCoverage = await import('istanbul-lib-coverage');
+  const istanbulLibReport = await import('istanbul-lib-report');
+  const istanbulReports = await import('istanbul-reports');
+
+  const coverageMap = istanbulLibCoverage.createCoverageMap(coverage);
+  const context = istanbulLibReport.createContext({
+    dir: outputDir,
+    coverageMap,
+  });
+
+  const lcovReport = istanbulReports.create('lcovonly');
+  lcovReport.execute(context);
+
+  console.log(`[coverage] ✓ Generated lcov.info in ${outputDir}`);
 }
 
 /**
