@@ -31,6 +31,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
     - [Task: Docker Release Image \& GHCR Publishing (2025-11-21)](#task-docker-release-image--ghcr-publishing-2025-11-21)
     - [Task: Release Packaging Reliability (2025-11-22)](#task-release-packaging-reliability-2025-11-22)
     - [Task: Achieve \>90% Coverage \& Fix All E2E Tests (2025-11-20)](#task-achieve-90-coverage--fix-all-e2e-tests-2025-11-20)
+    - [Task: Fix Nightly Performance Test Failures (2025-11-24)](#task-fix-nightly-performance-test-failures-2025-11-24)
   - [Archived Tasks](#archived-tasks)
 
 <!-- /TOC -->
