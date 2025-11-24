@@ -1,3 +1,5 @@
 {"features":{"bpm":128,"energy":0.42,"rms":0.15,"spectralCentroid":2150},"ratings":{"c":5,"e":3,"m":4,"p":4},"source":"explicit","weight":1}
 {"features":{"bpm":96,"energy":0.18,"rms":0.09,"spectralCentroid":1850},"ratings":{"c":4,"e":2,"m":5,"p":5},"source":"explicit","weight":1}
 {"features":{"bpm":140,"energy":0.68,"rms":0.22,"spectralCentroid":2400},"ratings":{"c":5,"e":5,"m":5,"p":5},"source":"explicit","weight":1}
+{"features":{"bpm":80,"energy":0.15,"rms":0.08,"spectralCentroid":1600},"ratings":{"c":4,"e":2,"m":5,"p":5},"source":"explicit","weight":1}
+{"features":{"bpm":70,"energy":0.12,"rms":0.07,"spectralCentroid":1400},"ratings":{"c":4,"e":2,"m":4,"p":4},"source":"explicit","weight":1}

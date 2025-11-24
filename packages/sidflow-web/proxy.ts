@@ -59,10 +59,12 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
   // 'unsafe-inline'. Without it, React won't mount and the app appears broken. In production,
   // set SIDFLOW_RELAXED_CSP=1 for environments that need inline scripts (testing, specific deployments).
   // For maximum security, consider using nonces or hashes instead of 'unsafe-inline' in the future.
-  const isProd = process.env.NODE_ENV === 'production';
+  
+  // Next.js standalone builds always set NODE_ENV=production internally, even if we pass NODE_ENV=development
+  // Therefore, we must use SIDFLOW_RELAXED_CSP=1 to allow inline scripts in testing/CI environments
   const relaxedCsp = process.env.SIDFLOW_RELAXED_CSP === '1';
-  const allowInline = !isProd || relaxedCsp;
-  const allowWebSockets = !isProd || relaxedCsp;
+  const allowInline = relaxedCsp;
+  const allowWebSockets = relaxedCsp;
   const scriptSrc = allowInline
     ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
     : "script-src 'self' 'unsafe-eval'";
@@ -103,8 +105,8 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
   ].join(', ');
   response.headers.set('Permissions-Policy', permissions);
 
-  // HSTS - enforce HTTPS in production
-  if (process.env.NODE_ENV === 'production') {
+  // HSTS - enforce HTTPS in production (skip in relaxed CSP mode for testing)
+  if (!relaxedCsp) {
     response.headers.set(
       'Strict-Transport-Security',
       'max-age=31536000; includeSubDomains; preload'

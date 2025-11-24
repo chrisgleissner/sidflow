@@ -64,27 +64,33 @@ describe('Security headers', () => {
       expect(csp).toContain("form-action 'self'");
     });
 
-    test('CSP connect-src allows data URLs for SID fixtures (non-prod)', async () => {
+    test('CSP connect-src allows data URLs for SID fixtures (default mode)', async () => {
       const request = new NextRequest('http://localhost/');
       const response = await proxy(request);
 
       const csp = response.headers.get('Content-Security-Policy') ?? '';
       expect(csp).toContain("connect-src 'self' data:");
-      expect(csp).toContain('ws: wss:');
+      // WebSocket support requires SIDFLOW_RELAXED_CSP=1
+      expect(csp).not.toContain('ws: wss:');
     });
 
-    test('CSP connect-src allows data URLs in production mode', async () => {
-      const originalEnv = process.env.NODE_ENV;
-      Reflect.set(process.env, 'NODE_ENV', 'production');
+    test('CSP connect-src allows WebSockets when SIDFLOW_RELAXED_CSP=1', async () => {
+      const originalEnv = process.env.SIDFLOW_RELAXED_CSP;
+      Reflect.set(process.env, 'SIDFLOW_RELAXED_CSP', '1');
       try {
-        const request = new NextRequest('https://example.com/');
+        const request = new NextRequest('http://localhost/');
         const response = await proxy(request);
 
         const csp = response.headers.get('Content-Security-Policy') ?? '';
-        expect(csp).toContain("connect-src 'self' data:");
-        expect(csp).not.toContain('ws: wss:');
+        expect(csp).toContain("connect-src 'self' data: ws: wss:");
+        // Relaxed CSP also enables unsafe-inline for scripts
+        expect(csp).toContain("script-src 'self' 'unsafe-eval' 'unsafe-inline'");
       } finally {
-        Reflect.set(process.env, 'NODE_ENV', originalEnv);
+        if (originalEnv === undefined) {
+          delete process.env.SIDFLOW_RELAXED_CSP;
+        } else {
+          Reflect.set(process.env, 'SIDFLOW_RELAXED_CSP', originalEnv);
+        }
       }
     });
   });

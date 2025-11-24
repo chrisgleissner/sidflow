@@ -30,6 +30,15 @@ jobs:
           restore-keys: |
             hvsc-
       
+      - name: Cache classified data
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/classified
+          key: classified-${{ hashFiles('data/classified/sample.jsonl') }}
+          restore-keys: |
+            classified-
+      
       - name: Install dependencies
         run: bun install --frozen-lockfile
       
@@ -60,8 +69,9 @@ jobs:
           # CRITICAL: Enable SIDFLOW_RELAXED_CSP=1 to allow Next.js inline hydration scripts.
           # Without this, CSP blocks React mounting and tests fail with selector timeouts.
           # Next.js standalone injects inline scripts for hydration that require 'unsafe-inline' CSP.
-          # Set NODE_ENV=development to bypass production CSP checks (testing environment)
-          NODE_ENV=development SIDFLOW_CONFIG="$PWD/../../.sidflow.json" node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
+          # Note: Next.js standalone always runs with NODE_ENV=production internally, regardless of
+          # what we set externally, so we must use SIDFLOW_RELAXED_CSP=1 for testing environments.
+          SIDFLOW_RELAXED_CSP=1 SIDFLOW_CONFIG="$PWD/../../.sidflow.json" node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
           
           # Wait for server to be ready with proper health check
