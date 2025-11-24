@@ -24,6 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
     - [Structure rules](#structure-rules)
     - [Plan-then-act contract](#plan-then-act-contract)
   - [Active tasks](#active-tasks)
+    - [Task: Production Docker Security Hardening (2025-11-23)](#task-production-docker-security-hardening-2025-11-23)
     - [Task: Fix Performance Test \& Docker Release Workflows (2025-11-23)](#task-fix-performance-test--docker-release-workflows-2025-11-23)
     - [Task: Local Docker Build \& Smoke Flow (2025-11-23)](#task-local-docker-build--smoke-flow-2025-11-23)
     - [Task: Production Docker Runtime Completeness (2025-11-23)](#task-production-docker-runtime-completeness-2025-11-23)
@@ -115,6 +116,44 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Production Docker Security Hardening (2025-11-23)
+
+**User request (summary)**  
+- Harden the production Docker image and startup scripts so the container is resilient against privilege escalation and tampering without regressing health checks or build/test flows.
+- Close remaining loopholes (package bloat, permissive filesystem, unsigned downloads) to make it impractical for an attacker to take over the host through this image.
+
+**Context and constraints**  
+- Production image doubles as CLI runtime (Bun, ffmpeg, sidplayfp) and must keep `/sidflow` writable for bind-mounted HVSC/workspace data.
+- `/api/health` must continue to report green in CI and diagnostic script `scripts/docker-startup.sh` must still run before the server starts.
+- Repository rules require plan-then-act workflow with documentation in `PLANS.md`, minimal additive changes, and validation via `bun run build`/`bun run test`.
+- Docker build is expensive locally; if full builds cannot run in this session, document the limitation and rely on CI for confirmation.
+
+**Plan (checklist)**  
+- [ ] 1 — Audit current Dockerfile.production and startup scripts for security gaps
+  - [ ] 1a — Inventory installed packages, SUID binaries, and writable paths inside the runtime image
+  - [ ] 1b — Separate required runtime components from optional tooling to guide pruning
+- [ ] 2 — Apply Dockerfile hardening
+  - [ ] 2a — Add supply-chain protections (SHA verification for Bun downloads, pinned package versions)
+  - [ ] 2b — Remove unnecessary packages, strip SUID bits, enforce restrictive permissions/umask, and consider read-only filesystem defaults
+  - [ ] 2c — Introduce entrypoint improvements (tini or equivalent), sanitized PATH, non-root enforcement, drop Linux capabilities
+  - [ ] 2d — Update `scripts/docker-startup.sh` to fail fast, redact secrets, and validate mount ownership
+- [ ] 3 — Update docs (README + `doc/deployment.md`) with new hardening expectations and required runtime flags/volumes
+- [ ] 4 — Validate changes
+  - [ ] 4a — Run `bun run build` and `bun run test`
+  - [ ] 4b — Attempt `docker build -f Dockerfile.production` (or document if skipped) and ensure health check remains green
+
+**Progress log**  
+- 2025-11-23 — Task created after reviewing AGENTS.md, PLANS.md, README, developer guide, and technical reference; prepared high-level plan for Docker hardening.
+
+**Assumptions and open questions**  
+- Assumption: Removing Playwright/Chromium libraries from runtime image will not break production workload (web server + CLI tools only).
+- Assumption: We can drop default Linux capabilities (NET_RAW, etc.) without affecting Next.js server or CLI operations.
+- Open: Need confirmation whether CI relies on current extra fonts/lib packages for PDF/image generation; pending audit.
+
+**Follow-ups / future work**  
+- Integrate container image scanning (Trivy/Grype) into CI post-hardening.
+- Split web-only vs CLI-inclusive images if size/security trade-offs justify.
 
 ### Task: Fix Performance Test & Docker Release Workflows (2025-11-23)
 
