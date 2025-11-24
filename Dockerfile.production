@@ -7,6 +7,10 @@
 # - Size reduction: Removed Playwright libs (~150MB), removed wget
 # - Runtime: tini init, SUID stripped, restrictive file permissions
 # - Security: Non-root user, read-only mounts recommended, minimal capabilities
+#
+# Performance Optimization:
+# - Consolidated verification and security steps to minimize layers
+# - Reduced from 13 to 10 RUN statements for better layer caching
 
 ARG BUN_VERSION=1.3.1
 ARG NODE_BASE_DIGEST=sha256:64ba3c3c4f07e1943a555334cc177563f166136a47182be6bb9765e9754d1b3b
@@ -92,16 +96,8 @@ RUN set -eux; \
     echo "[build] Started at: $(date +%H:%M:%S)"; \
     bun run build; \
     echo "[build] Completed at: $(date +%H:%M:%S)"; \
-    echo "[build] Verifying standalone build output:"; \
-    if [ -f ".next/standalone/packages/sidflow-web/server.js" ]; then \
-    echo "[build]   ✓ server.js exists ($(stat -c%s .next/standalone/packages/sidflow-web/server.js) bytes)"; \
-    else \
-    echo "[build]   ✗ server.js NOT found"; \
-    echo "[build]   Checking standalone structure:"; \
-    ls -laR .next/standalone | head -50 || true; \
-    exit 1; \
-    fi; \
-    echo "[build] Next.js build complete"
+    test -f ".next/standalone/packages/sidflow-web/server.js" || { echo "[build] ERROR: server.js not generated"; exit 1; }; \
+    echo "[build] Next.js build complete (server.js: $(stat -c%s .next/standalone/packages/sidflow-web/server.js) bytes)"
 
 # Copy static assets into standalone directory (required for Next.js standalone)
 RUN set -eux; \
@@ -172,18 +168,6 @@ WORKDIR /app
 # Copy standalone server from builder
 COPY --from=builder --chown=sidflow:sidflow /build/packages/sidflow-web/.next/standalone ./
 
-# Verify standalone structure after copy
-RUN set -eux; \
-    echo "[runtime] Verifying copied standalone structure:"; \
-    if [ -f /app/packages/sidflow-web/server.js ]; then \
-    echo "[runtime]   ✓ server.js copied ($(stat -c%s /app/packages/sidflow-web/server.js) bytes)"; \
-    else \
-    echo "[runtime]   ✗ server.js MISSING after copy"; \
-    echo "[runtime]   Contents of /app:"; \
-    ls -laR /app | head -100 || true; \
-    exit 1; \
-    fi
-
 # Copy workspace files for CLI flows (config, scripts, packages, dependencies)
 COPY --from=builder --chown=sidflow:sidflow /build/.sidflow.json /sidflow/.sidflow.json
 COPY --from=builder --chown=sidflow:sidflow /build/package.json /sidflow/package.json
@@ -198,8 +182,9 @@ COPY --from=builder --chown=sidflow:sidflow /build/node_modules /sidflow/node_mo
 # Make startup script executable
 RUN chmod +x /sidflow/scripts/docker-startup.sh
 
-# Prune redundant Next.js build and pre-create default data directories
+# Security hardening and directory setup (consolidated for layer efficiency)
 RUN set -eux; \
+    echo "[security] Starting hardening and setup..."; \
     rm -rf /sidflow/packages/sidflow-web/.next; \
     install -d -o sidflow -g sidflow \
     /sidflow/workspace/hvsc \
@@ -207,20 +192,13 @@ RUN set -eux; \
     /sidflow/workspace/tags \
     /sidflow/data/classified \
     /sidflow/data/renders \
-    /sidflow/data/availability
-
-# Security hardening: Strip SUID/SGID bits from binaries to prevent privilege escalation
-# Only keep essential ones (su, sudo are already not installed in node:22-slim)
-RUN set -eux; \
-    find /usr/bin /usr/sbin /bin /sbin -type f \( -perm -4000 -o -perm -2000 \) \
-    -exec ls -la {} \; \
-    -exec chmod -s {} \; || true
-
-# Security hardening: Set restrictive permissions on read-only application files
-# Keep workspace and data writable for the sidflow user
-RUN set -eux; \
-    chmod -R o-rwx /sidflow/packages /sidflow/scripts /sidflow/node_modules /app || true; \
-    chmod -R g-w /sidflow/packages /sidflow/scripts /sidflow/node_modules /app || true
+    /sidflow/data/availability; \
+    test -f /app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \
+    echo "[security] Server validated ($(stat -c%s /app/packages/sidflow-web/server.js) bytes)"; \
+    find /usr/bin /usr/sbin /bin /sbin -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} \; 2>/dev/null || true; \
+    chmod -R o-rwx /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true; \
+    chmod -R g-w /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true; \
+    echo "[security] Hardening complete"
 
 # Set secure environment defaults
 ENV NODE_ENV=production \
