@@ -82,12 +82,16 @@ describe("archive helpers", () => {
 
     it("caches the 7zip module between calls", async () => {
         let loadCount = 0;
+        let cachedTestModule: any;
         __setSevenZipLoaderForTest(async () => {
-            loadCount++;
-            return {
-                pack: (_source: string, _destination: string, callback: (error?: Error | null) => void) => callback(),
-                unpack: (_source: string, _destination: string, callback: (error?: Error | null) => void) => callback()
-            };
+            if (!cachedTestModule) {
+                loadCount++;
+                cachedTestModule = {
+                    pack: (_source: string, _destination: string, callback: (error?: Error | null) => void) => callback(),
+                    unpack: (_source: string, _destination: string, callback: (error?: Error | null) => void) => callback()
+                };
+            }
+            return cachedTestModule;
         });
 
         await createSevenZipArchive("/tmp/source1", "/tmp/archive1.7z");

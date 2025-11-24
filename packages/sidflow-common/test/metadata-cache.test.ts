@@ -281,4 +281,102 @@ describe("Metadata Cache", () => {
         expect(stats.hits + stats.misses).toBeGreaterThanOrEqual(10);
         expect(stats.currentSize).toBe(1);
     });
+
+    it("should handle invalid cache entry gracefully", async () => {
+        const sidPath = path.join(TEST_DIR, "test11.sid");
+
+        // Try to get metadata for non-existent file
+        const cached = await getCachedMetadata(sidPath);
+        expect(cached).toBeNull();
+
+        const stats = getMetadataCacheStats();
+        expect(stats.misses).toBeGreaterThan(0);
+    });
+
+    it("should update cache stats correctly", async () => {
+        const sidPath = path.join(TEST_DIR, "test12.sid");
+        const sidData = createTestSidFile();
+        await writeFile(sidPath, sidData);
+
+        resetMetadataCacheStats();
+
+        // First access - miss
+        await getOrParseMetadata(sidPath);
+        let stats = getMetadataCacheStats();
+        expect(stats.misses).toBe(1);
+        expect(stats.hits).toBe(0);
+
+        // Second access - hit
+        await getOrParseMetadata(sidPath);
+        stats = getMetadataCacheStats();
+        expect(stats.hits).toBe(1);
+        expect(stats.misses).toBe(1);
+    });
+
+    it("should cache without mtime when stat fails", async () => {
+        const sidPath = path.join(TEST_DIR, "test14.sid");
+        const sidData = createTestSidFile();
+        await writeFile(sidPath, sidData);
+
+        // Parse and cache
+        await getOrParseMetadata(sidPath);
+
+        // Remove file so stat fails next time
+        await rm(sidPath, { force: true });
+
+        // Should still have cached entry but next access will invalidate
+        const cached = await getCachedMetadata(sidPath);
+        expect(cached).toBeNull(); // File doesn't exist, cache invalidated
+    });
+
+    it("should track average load times", async () => {
+        const sidPath1 = path.join(TEST_DIR, "test15a.sid");
+        const sidPath2 = path.join(TEST_DIR, "test15b.sid");
+        const sidData = createTestSidFile();
+        await writeFile(sidPath1, sidData);
+        await writeFile(sidPath2, sidData);
+
+        resetMetadataCacheStats();
+
+        // Parse both (cache misses)
+        await getOrParseMetadata(sidPath1);
+        await getOrParseMetadata(sidPath2);
+
+        const stats = getMetadataCacheStats();
+        expect(stats.avgLoadTimeMs).toBeGreaterThan(0);
+        expect(stats.misses).toBe(2);
+    });
+
+    it("should handle cache size limits correctly", async () => {
+        const stats1 = getMetadataCacheStats();
+        expect(stats1.size).toBe(0);
+
+        const sidPath = path.join(TEST_DIR, "test16.sid");
+        const sidData = createTestSidFile();
+        await writeFile(sidPath, sidData);
+
+        await getOrParseMetadata(sidPath);
+        const stats2 = getMetadataCacheStats();
+        expect(stats2.size).toBe(1);
+    });
+
+    it("should preserve cache across multiple accesses", async () => {
+        const sidPath = path.join(TEST_DIR, "test17.sid");
+        const sidData = createTestSidFile();
+        await writeFile(sidPath, sidData);
+
+        resetMetadataCacheStats();
+
+        // First access
+        const meta1 = await getOrParseMetadata(sidPath);
+        expect(meta1).not.toBeNull();
+
+        // Second access should hit cache
+        const meta2 = await getOrParseMetadata(sidPath);
+        expect(meta2).toEqual(meta1);
+
+        const stats = getMetadataCacheStats();
+        expect(stats.hits).toBe(1);
+        expect(stats.misses).toBe(1);
+    });
 });

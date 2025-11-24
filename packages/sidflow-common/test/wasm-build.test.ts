@@ -110,4 +110,79 @@ describe("wasm-build metadata helpers", () => {
     it("exposes a default metadata path", () => {
         expect(DEFAULT_WASM_BUILD_METADATA_PATH.endsWith("data/wasm-build.json")).toBe(true);
     });
+
+    it("throws error for invalid JSON", async () => {
+        await writeFile(metadataPath, "{ invalid json");
+        await expect(readWasmBuildMetadata(metadataPath)).rejects.toThrow(/invalid JSON/);
+    });
+
+    it("throws error for non-object metadata", async () => {
+        await writeFile(metadataPath, '"not an object"');
+        await expect(readWasmBuildMetadata(metadataPath)).rejects.toThrow(/must be an object/);
+    });
+
+    it("throws error for missing upstreamRepo", async () => {
+        await writeFile(metadataPath, JSON.stringify({ upstreamRepo: "" }));
+        await expect(readWasmBuildMetadata(metadataPath)).rejects.toThrow(/non-empty upstreamRepo/);
+    });
+
+    it("throws error for non-string upstreamRepo", async () => {
+        await writeFile(metadataPath, JSON.stringify({ upstreamRepo: 123 }));
+        await expect(readWasmBuildMetadata(metadataPath)).rejects.toThrow(/non-empty upstreamRepo/);
+    });
+
+    it("handles nullable fields correctly", async () => {
+        const metadata = {
+            upstreamRepo: "https://github.com/test/repo",
+            latestUpstreamCommit: null,
+            lastChecked: null,
+            lastSuccessfulBuild: {
+                commit: null,
+                timestamp: null,
+                artifact: null,
+                notes: null
+            }
+        };
+        await writeFile(metadataPath, JSON.stringify(metadata));
+
+        const read = await readWasmBuildMetadata(metadataPath);
+        expect(read.latestUpstreamCommit).toBeNull();
+        expect(read.lastChecked).toBeNull();
+        expect(read.lastSuccessfulBuild.commit).toBeNull();
+    });
+
+    it("handles missing lastSuccessfulBuild fields", async () => {
+        const metadata = {
+            upstreamRepo: "https://github.com/test/repo",
+            latestUpstreamCommit: null,
+            lastChecked: null,
+            lastSuccessfulBuild: {}
+        };
+        await writeFile(metadataPath, JSON.stringify(metadata));
+
+        const read = await readWasmBuildMetadata(metadataPath);
+        expect(read.lastSuccessfulBuild.commit).toBeNull();
+        expect(read.lastSuccessfulBuild.timestamp).toBeNull();
+        expect(read.lastSuccessfulBuild.artifact).toBeNull();
+    });
+
+    it("throws error for non-string commit field", async () => {
+        const metadata = {
+            upstreamRepo: "https://github.com/test/repo",
+            latestUpstreamCommit: 123,
+            lastChecked: null,
+            lastSuccessfulBuild: {}
+        };
+        await writeFile(metadataPath, JSON.stringify(metadata));
+
+        await expect(readWasmBuildMetadata(metadataPath)).rejects.toThrow(/Expected "latestUpstreamCommit"/);
+    });
+
+    it("preserves notes field when marking build complete", () => {
+        const sample = createSampleMetadata();
+        sample.lastSuccessfulBuild.notes = "Test note";
+
+        const completed = markWasmBuildComplete(sample, "def", new Date("2025-11-08T12:00:00Z"), "dist/libsidplayfp.wasm");
+        expect(completed.lastSuccessfulBuild.notes).toBe("Test note");
+    });
 });

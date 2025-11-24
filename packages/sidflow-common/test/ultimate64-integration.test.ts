@@ -65,8 +65,33 @@ describe("Ultimate 64 Integration (Mock Server)", () => {
         return;
       }
 
-      // Handle config endpoint
+      // Handle config categories endpoint
+      if (req.url === "/v1/configs" && req.method === "GET") {
+        res.writeHead(200);
+        res.end(JSON.stringify({ categories: ["SID", "Audio", "Video"], errors: [] }));
+        return;
+      }
+
+      // Handle specific config endpoint
+      if (req.url?.startsWith("/v1/configs/") && !req.url.includes(":") && req.method === "GET") {
+        const match = req.url.match(/\/v1\/configs\/([^?]+)/);
+        if (match) {
+          const category = decodeURIComponent(match[1]);
+          res.writeHead(200);
+          res.end(JSON.stringify({ category, items: [{ name: "item1", value: "value1" }], errors: [] }));
+          return;
+        }
+      }
+
+      // Handle config set endpoint
       if (req.url?.includes("/v1/configs/") && req.method === "PUT") {
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true, errors: [] }));
+        return;
+      }
+
+      // Handle machine reset endpoint
+      if (req.url?.includes("/v1/machine:reset") && req.method === "PUT") {
         res.writeHead(200);
         res.end(JSON.stringify({ success: true, errors: [] }));
         return;
@@ -161,10 +186,25 @@ describe("Ultimate 64 Integration (Mock Server)", () => {
     expect(true).toBe(true);
   });
 
+  test("REST API: Get configuration categories", async () => {
+    const response = await client.getConfigCategories();
+    expect(response.errors).toEqual([]);
+  });
+
+  test("REST API: Get specific configuration", async () => {
+    const response = await client.getConfig("SID");
+    expect(response.errors).toEqual([]);
+  });
+
+  test("REST API: Reset machine", async () => {
+    const response = await client.reset();
+    expect(response.errors).toEqual([]);
+  });
+
   test("UDP Audio Capture: Receive and process packets", async () => {
     // Use a different port for each test to avoid EADDRINUSE
     const capturePort = udpPort + 100;
-    
+
     const capture = new Ultimate64AudioCapture({
       port: capturePort,
       maxLossRate: 0.1,
@@ -227,7 +267,7 @@ describe("Ultimate 64 Integration (Mock Server)", () => {
 
   test("UDP Audio Capture: Handle packet reordering", async () => {
     const capturePort = udpPort + 200;
-    
+
     const capture = new Ultimate64AudioCapture({
       port: capturePort,
       maxLossRate: 0.1,
@@ -268,7 +308,7 @@ describe("Ultimate 64 Integration (Mock Server)", () => {
 
   test("UDP Audio Capture: Handle sequence number wraparound", async () => {
     const capturePort = udpPort + 300;
-    
+
     const capture = new Ultimate64AudioCapture({
       port: capturePort,
       maxLossRate: 0.1,

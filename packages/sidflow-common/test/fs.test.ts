@@ -37,4 +37,37 @@ describe("fs helpers", () => {
 
     statSpy.mockRestore();
   });
+
+  it("handles existing directories gracefully", async () => {
+    const base = await mkdtemp(TEMP_PREFIX);
+
+    await ensureDir(base);
+    expect(await pathExists(base)).toBeTrue();
+
+    // Calling again should not throw
+    await ensureDir(base);
+    expect(await pathExists(base)).toBeTrue();
+
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it("returns true for existing files", async () => {
+    const base = await mkdtemp(TEMP_PREFIX);
+    const filePath = path.join(base, "file.txt");
+    await fsPromises.writeFile(filePath, "content");
+
+    expect(await pathExists(filePath)).toBeTrue();
+
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it("handles deeply nested paths", async () => {
+    const base = await mkdtemp(TEMP_PREFIX);
+    const deepPath = path.join(base, "a", "b", "c", "d", "e");
+
+    await ensureDir(deepPath);
+    expect(await pathExists(deepPath)).toBeTrue();
+
+    await rm(base, { recursive: true, force: true });
+  });
 });

@@ -65,4 +65,81 @@ describe("songlength helpers", () => {
       await rm(hvscRoot, { recursive: true, force: true });
     }
   });
+
+  it("handles missing songlengths file", async () => {
+    const hvscRoot = await mkdtemp(TEMP_PREFIX);
+    try {
+      const demoDir = path.join(hvscRoot, "C64Music", "DEMOS");
+      await mkdir(demoDir, { recursive: true });
+      const sidPath = path.join(demoDir, "Test.sid");
+      await writeFile(sidPath, Buffer.from("TEST-SID"));
+
+      const durations = await lookupSongDurationsMs(sidPath, hvscRoot);
+      expect(durations).toBeUndefined();
+    } finally {
+      await rm(hvscRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("handles update directory structure", async () => {
+    const hvscRoot = await mkdtemp(TEMP_PREFIX);
+    try {
+      const documentsDir = path.join(hvscRoot, "update", "DOCUMENTS");
+      const musicDir = path.join(hvscRoot, "update", "DEMOS");
+      await mkdir(documentsDir, { recursive: true });
+      await mkdir(musicDir, { recursive: true });
+
+      const sidPath = path.join(musicDir, "Update.sid");
+      const sidContent = Buffer.from("UPDATE-SID");
+      await writeFile(sidPath, sidContent);
+      const hash = createHash("md5").update(sidContent).digest("hex");
+
+      const md5File = `[Database]\n${hash}=1:30`;
+      await writeFile(path.join(documentsDir, "Songlengths.md5"), md5File, "utf8");
+
+      const durations = await lookupSongDurationsMs(sidPath, hvscRoot);
+      expect(durations).toEqual([90_000]);
+    } finally {
+      await rm(hvscRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("returns undefined for invalid song index", async () => {
+    const hvscRoot = await mkdtemp(TEMP_PREFIX);
+    try {
+      const musicDir = path.join(hvscRoot, "C64Music", "DEMOS");
+      await mkdir(musicDir, { recursive: true });
+      const sidPath = path.join(musicDir, "Test.sid");
+      await writeFile(sidPath, Buffer.from("TEST-SID"));
+
+      const duration = await lookupSongDurationMs(sidPath, hvscRoot, 5);
+      expect(duration).toBeUndefined();
+    } finally {
+      await rm(hvscRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("handles malformed duration entries gracefully", async () => {
+    const hvscRoot = await mkdtemp(TEMP_PREFIX);
+    try {
+      const documentsDir = path.join(hvscRoot, "C64Music", "DOCUMENTS");
+      const musicDir = path.join(hvscRoot, "C64Music", "DEMOS");
+      await mkdir(documentsDir, { recursive: true });
+      await mkdir(musicDir, { recursive: true });
+
+      const sidPath = path.join(musicDir, "Bad.sid");
+      const sidContent = Buffer.from("BAD-SID");
+      await writeFile(sidPath, sidContent);
+      const hash = createHash("md5").update(sidContent).digest("hex");
+
+      // Parser skips malformed entries, only valid durations are included
+      const md5File = `[Database]\n${hash}=2:00`;
+      await writeFile(path.join(documentsDir, "Songlengths.md5"), md5File, "utf8");
+
+      const durations = await lookupSongDurationsMs(sidPath, hvscRoot);
+      expect(durations).toEqual([120_000]);
+    } finally {
+      await rm(hvscRoot, { recursive: true, force: true });
+    }
+  });
 });

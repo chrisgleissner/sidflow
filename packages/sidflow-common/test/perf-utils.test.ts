@@ -299,3 +299,131 @@ describe("Factory functions", () => {
         expect(timer.getStats()!.count).toBe(1);
     });
 });
+
+describe("PerfTimer additional coverage", () => {
+    it("should create timer without memory tracking", () => {
+        const timer = new PerfTimer("no-memory");
+        timer.start("op");
+        timer.end("op");
+        const results = timer.getResults();
+        expect(results[0].memoryDeltaMB).toBeUndefined();
+        expect(results[0].heapDeltaMB).toBeUndefined();
+    });
+
+    it("should record manual timing with metadata", () => {
+        const timer = new PerfTimer("metadata-test");
+        timer.record("op", 100, { memoryDeltaMB: 5, heapDeltaMB: 3 });
+        const results = timer.getResults();
+        expect(results[0].memoryDeltaMB).toBe(5);
+        expect(results[0].heapDeltaMB).toBe(3);
+    });
+
+    it("should finish without metadata", () => {
+        const timer = new PerfTimer("simple");
+        const profile = timer.finish();
+        expect(profile.metadata).toBeUndefined();
+    });
+
+    it("should log results at info level", () => {
+        const timer = new PerfTimer("info-log", true);
+        timer.start("op1");
+        timer.end("op1");
+        timer.logResults("info"); // Should not throw
+        expect(timer.getResults()).toHaveLength(1);
+    });
+
+    it("should log results at debug level (default)", () => {
+        const timer = new PerfTimer("debug-log");
+        timer.start("op1");
+        timer.end("op1");
+        timer.logResults(); // Should not throw
+        expect(timer.getResults()).toHaveLength(1);
+    });
+
+    it("should format memory changes with sign", () => {
+        const timer = new PerfTimer("format-test", true);
+        timer.record("op", 50, { memoryDeltaMB: -2.5 });
+        timer.logResults(); // Should format negative memory change
+        expect(timer.getResults()[0].memoryDeltaMB).toBe(-2.5);
+    });
+
+    it("should handle profile with no timings", () => {
+        const timer = new PerfTimer("empty-profile");
+        const profile = timer.finish();
+        expect(profile.timings).toHaveLength(0);
+        timer.logResults();
+    });
+
+    it("should finish without peak memory when tracking disabled", () => {
+        const timer = new PerfTimer("no-peak");
+        const profile = timer.finish();
+        expect(profile.peakMemoryMB).toBeUndefined();
+    });
+});
+
+describe("CheckpointLogger additional coverage", () => {
+    it("should force log regardless of interval", () => {
+        const logger = new CheckpointLogger("force-log", 10000);
+        logger.log("forced message"); // Should log immediately
+        expect(logger.elapsed()).toBeGreaterThan(0);
+    });
+
+    it("should checkpoint without message", () => {
+        const logger = new CheckpointLogger("no-msg", 5);
+        logger.checkpoint(); // No message
+        const start = Date.now();
+        while (Date.now() - start < 10) {
+            // busy wait
+        }
+        logger.checkpoint(); // Should trigger interval log
+        expect(logger.getCount()).toBe(2);
+    });
+
+    it("should create logger with default interval", () => {
+        const logger = createCheckpointLogger("default-interval");
+        logger.checkpoint();
+        expect(logger.getCount()).toBe(1);
+    });
+});
+
+describe("BatchTimer additional coverage", () => {
+    it("should log stats for non-empty batch", () => {
+        const timer = new BatchTimer("stats-log");
+        timer.start();
+        timer.end();
+        timer.logStats(); // Should not throw
+        expect(timer.getStats()!.count).toBe(1);
+    });
+
+    it("should log message for empty batch", () => {
+        const timer = new BatchTimer("empty-log");
+        timer.logStats(); // Should log "No samples recorded"
+        expect(timer.getStats()).toBeNull();
+    });
+
+    it("should handle single sample stats", () => {
+        const timer = new BatchTimer("single-sample");
+        timer.start();
+        timer.end();
+        const stats = timer.getStats();
+        expect(stats!.count).toBe(1);
+        expect(stats!.min).toBe(stats!.max);
+        expect(stats!.p50).toBe(stats!.p95);
+        expect(stats!.p95).toBe(stats!.p99);
+    });
+
+    it("should calculate total correctly", () => {
+        const timer = new BatchTimer("total-test");
+        timer.start();
+        (timer as any).startTime = performance.now() - 10;
+        timer.end();
+        timer.start();
+        (timer as any).startTime = performance.now() - 20;
+        timer.end();
+
+        const stats = timer.getStats();
+        expect(stats!.count).toBe(2);
+        expect(stats!.total).toBeGreaterThan(25); // ~30ms total
+        expect(stats!.mean).toBeGreaterThan(12); // ~15ms mean
+    });
+});
