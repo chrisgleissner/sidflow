@@ -193,7 +193,7 @@ RUN set -eux; \
 RUN set -eux; \
     find /usr/bin /usr/sbin /bin /sbin -type f \( -perm -4000 -o -perm -2000 \) \
     -exec ls -la {} \; \
-    -exec chmod -s {} \; 2>/dev/null || true
+    -exec chmod -s {} \; || true
 
 # Security hardening: Set restrictive permissions on read-only application files
 # Keep workspace and data writable for the sidflow user
