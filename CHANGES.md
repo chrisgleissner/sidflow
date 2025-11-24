@@ -1,6 +1,53 @@
 # Changelog
 
 
+## 0.3.25 (2025-11-24)
+
+- Merge pull request #64 from chrisgleissner/fix/performance-and-security-hardening
+- docs: update PLANS.md with Session 5 test fixes
+- fix: achieve 100% unit test pass rate and stable E2E coverage
+- Refactor Babel configuration and enhance E2E coverage setup
+- docs: update PLANS.md with Session 4 E2E coverage aggregation fix
+- fix: aggregate E2E coverage files into lcov.info for merge
+- ci: add BABEL_ENV=coverage to E2E test command
+- fix: enable E2E coverage instrumentation with BABEL_ENV=coverage
+- fix: remove broken indexeddb-mock.ts that broke E2E coverage builds
+- fix: correct test requirements in AGENTS.md and remove invalid test
+- fix: correct typo in normalizeForDeterministicSerialization function call and remove redundant date handling test
+- docs: update PLANS.md - Phase 2 restructured for E2E coverage approach
+- feat: integrate E2E coverage with unit tests for Codecov
+- docs: update PLANS.md with coverage progress (74.26% → 74.38%)
+- test: add createPlaybackLock tests (78.41% → 86.36%)
+- test: add ultimate64-capture edge case tests (68.29% → 94.30%)
+- fix: resolve failing tests and enforce 100% pass rate requirements in plans
+- fix: correct broken tests to achieve 100% pass rate
+- test: enhance coverage with additional test cases for various modules
+- Merge pull request #65 from chrisgleissner/copilot/sub-pr-64
+- test(engine-factory): add comprehensive tests for engine creation and overrides
+- fix: Update docker-startup.sh to redact correct env variable names
+- fix(plans): Update active tasks and improve coverage goals in PLANS.md
+- Update Dockerfile.production
+- Update performance/journeys/play-start-stream.json
+- Update scripts/docker-startup.sh
+- Update scripts/docker-startup.sh
+- Update Dockerfile.production
+- Update Dockerfile.production
+- Initial plan
+- Update .github/workflows/performance.yml
+- docs(plans): Archive tasks for local Docker build and release packaging reliability
+- docs(plans): Archive completed tasks and clean up PLANS.md
+- fix(perf): Update plans and enhance performance test journey for reliability
+- docs(plans): Mark all validation tasks complete
+- docs(plans): Document complete fix for performance test failures
+- fix(perf): Add track-firstResult testid to AdvancedSearchBar and fix journey
+- fix(perf): Add static asset copy step for standalone server
+- docs(plans): Update performance test fix progress
+- fix(perf): Fix nightly performance test failures
+- fix(perf): set NODE_ENV=development for performance tests
+- chore: update CHANGES.md for 0.3.24
+- fix(perf): enable SIDFLOW_RELAXED_CSP for Next.js hydration
+
+
 ## 0.3.24 (2025-11-24)
 
 - Merge pull request #63 from chrisgleissner/cursor/harden-production-docker-image-security-gpt-5.1-codex-25ec
