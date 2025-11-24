@@ -233,10 +233,11 @@ export function AdvancedSearchBar({
                         >
                             <CardContent className="p-2">
                                 <div className="space-y-1">
-                                    {results.map((result) => (
+                                    {results.map((result, index) => (
                                         <div
                                             key={result.sidPath}
                                             className="flex items-center justify-between rounded p-2 hover:bg-muted/50 transition-colors"
+                                            data-testid={index === 0 ? 'track-firstResult' : `track-result-${index}`}
                                         >
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-semibold text-sm truncate">{result.displayName}</p>

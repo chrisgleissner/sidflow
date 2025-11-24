@@ -6,7 +6,7 @@
     { "action": "navigate", "target": "/" },
     { "action": "click", "selector": "[data-testid='search-input']" },
     { "action": "type", "selector": "[data-testid='search-input']", "value": "ambient" },
-    { "action": "waitForText", "text": "results" },
+    { "action": "waitForText", "text": "Ambient Dream" },
     { "action": "selectTrack", "trackRef": "firstResult" },
     { "action": "startPlayback", "expectStream": true }
   ],
