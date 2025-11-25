@@ -237,7 +237,7 @@ cloudflared tunnel create sidflow
 
 ```yaml
 tunnel: <your-tunnel-id>
-credentials-file: /home/pi/.cloudflared/<your-tunnel-id>.json
+credentials-file: ~/.cloudflared/<your-tunnel-id>.json
 
 ingress:
   - hostname: sidflow.yourdomain.com
