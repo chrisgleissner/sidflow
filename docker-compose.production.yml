@@ -73,6 +73,7 @@ services:
           mode: 1777
     
     # Health check using the /api/health endpoint
+    # Note: curl is included in the production image (see Dockerfile.production)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s

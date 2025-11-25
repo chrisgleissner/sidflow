@@ -297,18 +297,25 @@ async function checkUltimate64(config: {
   port?: number;
 }): Promise<HealthStatus> {
   try {
-    // Host may contain port (e.g., "c64u:80"), so parse it
+    // Host may contain port (e.g., "c64u:80" or "[::1]:80"), so parse it
     let host = config.host;
     let port = config.port ?? 80; // Default to HTTP port 80
     
-    // Check if host contains a port
-    const colonIndex = host.lastIndexOf(":");
-    if (colonIndex !== -1) {
-      const potentialPort = host.substring(colonIndex + 1);
-      const parsedPort = parseInt(potentialPort, 10);
-      if (!isNaN(parsedPort) && parsedPort > 0 && parsedPort <= 65535) {
-        host = host.substring(0, colonIndex);
-        port = parsedPort;
+    // Handle IPv6 addresses in brackets (e.g., "[::1]:80")
+    const ipv6Match = host.match(/^\[([^\]]+)\]:(\d+)$/);
+    if (ipv6Match) {
+      host = ipv6Match[1];
+      port = parseInt(ipv6Match[2], 10);
+    } else if (!host.startsWith("[")) {
+      // For non-IPv6, check if host contains a port after the last colon
+      const colonIndex = host.lastIndexOf(":");
+      if (colonIndex !== -1) {
+        const potentialPort = host.substring(colonIndex + 1);
+        const parsedPort = parseInt(potentialPort, 10);
+        if (!isNaN(parsedPort) && parsedPort > 0 && parsedPort <= 65535) {
+          host = host.substring(0, colonIndex);
+          port = parsedPort;
+        }
       }
     }
 

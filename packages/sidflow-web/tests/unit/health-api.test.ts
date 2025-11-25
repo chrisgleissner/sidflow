@@ -87,19 +87,23 @@ describe("Health Check API", () => {
     const response = await GET();
     const data = await response.json();
 
-    // Even if streamingAssets and ultimate64 are degraded/unhealthy,
-    // the overall status should only consider critical checks (wasm, sidplayfpCli, ffmpeg)
+    // Check if optional checks are degraded/unhealthy
+    const streamingStatus = data.checks.streamingAssets?.status;
+    const ultimate64Status = data.checks.ultimate64?.status;
     const optionalChecksDegraded = 
-      (data.checks.streamingAssets?.status === "degraded" || data.checks.streamingAssets?.status === "unhealthy") &&
-      (data.checks.ultimate64?.status === "degraded" || data.checks.ultimate64?.status === "unhealthy" || !data.checks.ultimate64);
+      ["degraded", "unhealthy"].includes(streamingStatus) ||
+      ["degraded", "unhealthy"].includes(ultimate64Status) ||
+      !data.checks.ultimate64;
     
-    // If all critical checks are healthy, overall should be healthy regardless of optional checks
-    const criticalChecksHealthy = 
-      data.checks.wasm?.status === "healthy" &&
-      data.checks.sidplayfpCli?.status === "healthy" &&
-      data.checks.ffmpeg?.status === "healthy";
+    // Check if all critical checks are healthy
+    const criticalChecks = ["wasm", "sidplayfpCli", "ffmpeg"];
+    const allCriticalHealthy = criticalChecks.every(
+      (name) => data.checks[name]?.status === "healthy"
+    );
 
-    if (optionalChecksDegraded && criticalChecksHealthy) {
+    // If optional checks are degraded but critical checks are healthy,
+    // overall should be healthy
+    if (optionalChecksDegraded && allCriticalHealthy) {
       expect(data.overall).toBe("healthy");
     }
   });
