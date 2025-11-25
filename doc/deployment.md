@@ -259,6 +259,30 @@ In Cloudflare dashboard, add a CNAME record for `sidflow.yourdomain.com` pointin
 
 ### Container Management
 
+For manual management, see the commands below. For automated management, use the deployment scripts in `scripts/deploy/`.
+
+**Using Deployment Scripts (Recommended):**
+
+```bash
+# View status
+/opt/sidflow/scripts/status.sh
+
+# View logs
+/opt/sidflow/scripts/logs.sh -f
+
+# Update to latest version
+/opt/sidflow/scripts/update.sh -t latest
+
+# Update to specific version
+/opt/sidflow/scripts/update.sh -t v0.3.28
+
+# Stop/Start
+/opt/sidflow/scripts/stop.sh
+/opt/sidflow/scripts/start.sh --wait
+```
+
+**Using Docker Compose Directly:**
+
 ```bash
 # Stop SIDFlow
 docker compose -f docker-compose.production.yml down
@@ -285,6 +309,29 @@ The volume mount approach ensures all important data is stored outside the conta
 | `/opt/sidflow/data/wav-cache` | Rendered audio | Low (can regenerate) |
 | `/opt/sidflow/data/tags` | User ratings/tags | **High** |
 | `/opt/sidflow/data/sidflow` | LanceDB, classifications | Medium (can regenerate) |
+
+**Using Backup Script (Recommended):**
+
+```bash
+# Create backup
+/opt/sidflow/scripts/backup.sh
+
+# Full backup (includes HVSC and wav-cache)
+/opt/sidflow/scripts/backup.sh --full
+
+# Backup to custom location
+/opt/sidflow/scripts/backup.sh -o /mnt/backup
+
+# Restore from backup
+/opt/sidflow/scripts/restore.sh -i /opt/sidflow/backups/sidflow-prd-*.tar.gz
+```
+
+**Cron Setup for Automated Daily Backups:**
+
+```bash
+# Add to crontab (runs at 2 AM daily)
+(crontab -l 2>/dev/null; echo "0 2 * * * /opt/sidflow/scripts/backup.sh --quiet") | crontab -
+```
 
 **Simple backup script:**
 
@@ -367,3 +414,132 @@ sudo nano /etc/dphys-swapfile  # Increase CONF_SWAPSIZE
 sudo dphys-swapfile setup
 sudo dphys-swapfile swapon
 ```
+
+## Automated CI/CD Deployment
+
+SIDFlow supports automated deployment from GitHub Actions to your Raspberry Pi via webhook. This enables continuous deployment while keeping your Pi secure behind a Cloudflare Tunnel.
+
+### Architecture Overview
+
+```
+GitHub Actions → Cloudflare Tunnel → Webhook Server → Docker Update
+     (release)        (secure)          (auth)         (deploy)
+```
+
+### Setup Webhook Server
+
+1. **Install the webhook server as a systemd service:**
+
+```bash
+# Create service file
+sudo tee /etc/systemd/system/sidflow-webhook.service > /dev/null << 'EOF'
+[Unit]
+Description=SIDFlow Deployment Webhook Server
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=root
+Environment=WEBHOOK_SECRET=your-secure-secret-here
+ExecStart=/opt/sidflow/scripts/webhook-server.sh -p 9000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start
+sudo systemctl daemon-reload
+sudo systemctl enable sidflow-webhook
+sudo systemctl start sidflow-webhook
+
+# Check status
+sudo systemctl status sidflow-webhook
+```
+
+2. **Configure Cloudflare Tunnel to expose the webhook:**
+
+```yaml
+# ~/.cloudflared/config.yml
+tunnel: <your-tunnel-id>
+credentials-file: ~/.cloudflared/<your-tunnel-id>.json
+
+ingress:
+  - hostname: sidflow.yourdomain.com
+    service: http://localhost:3000
+  - hostname: deploy.yourdomain.com
+    service: http://localhost:9000
+  - service: http_status:404
+```
+
+3. **Restart cloudflared:**
+
+```bash
+sudo systemctl restart cloudflared
+```
+
+### Configure GitHub Secrets
+
+Add the following secrets to your GitHub repository (Settings → Secrets and variables → Actions):
+
+| Secret | Description | Example |
+|--------|-------------|---------|
+| `DEPLOY_WEBHOOK_URL` | Webhook server URL | `https://deploy.yourdomain.com` |
+| `DEPLOY_WEBHOOK_SECRET` | Webhook authentication secret | Same as `WEBHOOK_SECRET` above |
+
+### Configure GitHub Environments
+
+Create two environments in your repository (Settings → Environments):
+
+1. **staging**
+   - No protection rules (auto-deploy)
+   - Variable: `STAGING_URL` = `https://stg.sidflow.yourdomain.com`
+
+2. **production**
+   - Required reviewers (for manual approval)
+   - Variable: `PRODUCTION_URL` = `https://sidflow.yourdomain.com`
+
+### Deployment Flow
+
+When you create a new release:
+
+1. **Build Phase**: Docker image is built and pushed to GHCR
+2. **Staging Deploy**: Automatically deploys to staging environment
+3. **Production Deploy**: Waits for manual approval, then deploys to production
+
+```mermaid
+graph LR
+    A[Push Tag] --> B[Build Image]
+    B --> C[Deploy STG]
+    C --> D{Approval?}
+    D -->|Yes| E[Deploy PRD]
+    D -->|No| F[Stop]
+```
+
+### Manual Deployment Trigger
+
+You can manually trigger deployment via workflow_dispatch:
+
+1. Go to Actions → "Release Docker Image" workflow
+2. Click "Run workflow"
+3. Enter the tag version
+4. Select deployment options (staging/production)
+
+### Webhook API Reference
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/deploy/stg?secret=XXX&tag=v1.0.0` | POST | Deploy to staging |
+| `/deploy/prd?secret=XXX&tag=v1.0.0` | POST | Deploy to production |
+
+### Security Considerations
+
+- **Webhook Secret**: Use a strong, random secret (32+ characters)
+- **HTTPS Only**: Always use Cloudflare Tunnel for secure webhook access
+- **Separate Hostnames**: Use different subdomains for app and webhook
+- **Minimal Exposure**: Only expose the webhook endpoint needed
+- **Audit Logging**: All webhook requests are logged to `/var/log/sidflow-webhook.log`
