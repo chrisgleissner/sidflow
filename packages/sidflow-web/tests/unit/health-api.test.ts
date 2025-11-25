@@ -91,9 +91,8 @@ describe("Health Check API", () => {
     const streamingStatus = data.checks.streamingAssets?.status;
     const ultimate64Status = data.checks.ultimate64?.status;
     const optionalChecksDegraded = 
-      ["degraded", "unhealthy"].includes(streamingStatus) ||
-      ["degraded", "unhealthy"].includes(ultimate64Status) ||
-      !data.checks.ultimate64;
+      (streamingStatus && ["degraded", "unhealthy"].includes(streamingStatus)) ||
+      (ultimate64Status && ["degraded", "unhealthy"].includes(ultimate64Status));
     
     // Check if all critical checks are healthy
     const criticalChecks = ["wasm", "sidplayfpCli", "ffmpeg"];
