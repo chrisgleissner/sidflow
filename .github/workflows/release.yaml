@@ -321,8 +321,14 @@ jobs:
           echo "✅ Deployment triggered successfully"
           echo "Response: $RESPONSE"
           
-          # Wait for deployment to complete (poll health endpoint)
-          HEALTH_URL="${WEBHOOK_URL%/deploy*}/api/health"
+          # Derive health URL from staging URL or webhook URL
+          STAGING_URL="${{ vars.STAGING_URL }}"
+          if [[ -n "${STAGING_URL:-}" ]]; then
+            HEALTH_URL="${STAGING_URL}/api/health"
+          else
+            # Fallback: try to construct from webhook URL (may not work)
+            HEALTH_URL="${WEBHOOK_URL%/*}/api/health"
+          fi
           echo "Waiting for health check at ${HEALTH_URL}..."
           
           for i in {1..24}; do
@@ -379,8 +385,14 @@ jobs:
           echo "✅ Deployment triggered successfully"
           echo "Response: $RESPONSE"
           
-          # Wait for deployment to complete
-          HEALTH_URL="${WEBHOOK_URL%/deploy*}/api/health"
+          # Derive health URL from production URL or webhook URL
+          PRODUCTION_URL="${{ vars.PRODUCTION_URL }}"
+          if [[ -n "${PRODUCTION_URL:-}" ]]; then
+            HEALTH_URL="${PRODUCTION_URL}/api/health"
+          else
+            # Fallback: try to construct from webhook URL (may not work)
+            HEALTH_URL="${WEBHOOK_URL%/*}/api/health"
+          fi
           echo "Waiting for health check at ${HEALTH_URL}..."
           
           for i in {1..24}; do

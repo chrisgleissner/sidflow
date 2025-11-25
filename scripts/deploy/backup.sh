@@ -194,15 +194,25 @@ fi
 # Create backup manifest
 log_info "Creating backup manifest..."
 if [[ "$DRY_RUN" != "true" ]]; then
+    # Build contents array without jq dependency
+    CONTENTS_JSON=""
+    for archive in "$TEMP_DIR"/*.tar.gz; do
+        [[ -f "$archive" ]] || continue
+        name=$(basename "$archive" .tar.gz)
+        if [[ -n "$CONTENTS_JSON" ]]; then
+            CONTENTS_JSON="$CONTENTS_JSON, \"$name\""
+        else
+            CONTENTS_JSON="\"$name\""
+        fi
+    done
+    
     cat > "$TEMP_DIR/manifest.json" << EOF
 {
   "timestamp": "$(date -Iseconds)",
   "environment": "$ENVIRONMENT",
   "type": "$(if [[ "$FULL_BACKUP" == "true" ]]; then echo "full"; else echo "incremental"; fi)",
   "source_dir": "$DATA_DIR",
-  "contents": [
-    $(ls -1 "$TEMP_DIR"/*.tar.gz 2>/dev/null | xargs -I{} basename {} | sed 's/.tar.gz//' | jq -R . | paste -sd, -)
-  ],
+  "contents": [$CONTENTS_JSON],
   "host": "$(hostname)",
   "user": "$(whoami)"
 }

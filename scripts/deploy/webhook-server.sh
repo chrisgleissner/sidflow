@@ -94,6 +94,15 @@ while [[ $# -gt 0 ]]; do
             LOG_FILE="$2"
             shift 2
             ;;
+        --handle-request)
+            # Internal flag: called by socat to handle a single request
+            # Read environment from parent process
+            SECRET="${WEBHOOK_SECRET:-}"
+            INSTALL_DIR="${SIDFLOW_INSTALL_DIR:-/opt/sidflow}"
+            LOG_FILE="${WEBHOOK_LOG_FILE:-/var/log/sidflow-webhook.log}"
+            handle_request
+            exit 0
+            ;;
         -h|--help)
             show_help
             ;;
@@ -237,6 +246,11 @@ handle_request() {
 
 log_info "Starting webhook server on port $PORT..."
 log_request "Server started on port $PORT"
+
+# Export environment variables for child processes
+export WEBHOOK_SECRET="$SECRET"
+export SIDFLOW_INSTALL_DIR="$INSTALL_DIR"
+export WEBHOOK_LOG_FILE="$LOG_FILE"
 
 # Use socat if available (more robust), otherwise fallback to netcat
 if command -v socat >/dev/null 2>&1; then

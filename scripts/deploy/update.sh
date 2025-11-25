@@ -119,11 +119,18 @@ BACKUP_SCRIPT="$INSTALL_DIR/scripts/backup.sh"
 [[ -f "$COMPOSE_FILE" ]] || die "Compose file not found: $COMPOSE_FILE. Run install.sh first."
 [[ -f "$ENV_FILE" ]] || die "Environment file not found: $ENV_FILE. Run install.sh first."
 
+# Get current image from compose file (works without jq)
+CURRENT_IMAGE_FROM_COMPOSE=""
+if command -v jq >/dev/null 2>&1; then
+    CURRENT_IMAGE_FROM_COMPOSE=$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null | jq -r '.services.sidflow.image // "unknown"' 2>/dev/null || echo "")
+fi
+[[ -z "$CURRENT_IMAGE_FROM_COMPOSE" ]] && CURRENT_IMAGE_FROM_COMPOSE=$(grep -E '^\s*image:' "$COMPOSE_FILE" 2>/dev/null | head -1 | sed 's/.*image:\s*//' || echo "unknown")
+
 log_info "SIDFlow Update"
 log_info "=============="
 log_info "Environment:     $ENVIRONMENT"
 log_info "Install dir:     $INSTALL_DIR"
-log_info "Current image:   $(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null | jq -r '.services.sidflow.image // "unknown"' 2>/dev/null || echo "unknown")"
+log_info "Current image:   $CURRENT_IMAGE_FROM_COMPOSE"
 log_info "Target image:    $DOCKER_IMAGE:$IMAGE_TAG"
 echo
 
