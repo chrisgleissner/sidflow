@@ -1,6 +1,15 @@
 # Changelog
 
 
+## 0.3.28 (2025-11-25)
+
+- Merge pull request #66 from chrisgleissner/copilot/fix-docker-image-health-check
+- Fix Docker image health check by setting /app ownership before chmod
+- Initial plan
+- chore: update CHANGES.md for 0.3.27
+- chore: update CHANGES.md for 0.3.27
+
+
 ## 0.3.27 (2025-11-24)
 
 - perf(docker): consolidate RUN layers to restore build speed
