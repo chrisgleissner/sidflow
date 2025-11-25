@@ -348,6 +348,8 @@ jobs:
   deploy-prd:
     needs: [docker, deploy-stg]
     runs-on: ubuntu-latest
+    # Minimal permissions - these jobs only make external HTTP calls
+    permissions: {}
     if: |
       always() && 
       needs.docker.result == 'success' && 
