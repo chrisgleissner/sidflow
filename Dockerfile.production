@@ -196,6 +196,7 @@ RUN set -eux; \
     test -f /app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \
     echo "[security] Server validated ($(stat -c%s /app/packages/sidflow-web/server.js) bytes)"; \
     find /usr/bin /usr/sbin /bin /sbin -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} \; 2>/dev/null || true; \
+    chown sidflow:sidflow /app; \
     chmod -R o-rwx /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true; \
     chmod -R g-w /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true; \
     echo "[security] Hardening complete"
