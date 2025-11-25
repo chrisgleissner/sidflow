@@ -19,6 +19,12 @@ interface HealthStatus {
   details?: Record<string, unknown>;
 }
 
+/**
+ * Checks that are optional - degraded/unhealthy status on these
+ * does not affect the overall system health
+ */
+const OPTIONAL_CHECKS = new Set(["ultimate64", "streamingAssets"]);
+
 interface SystemHealth {
   overall: "healthy" | "degraded" | "unhealthy";
   timestamp: number;
@@ -66,13 +72,15 @@ export async function GET() {
     console.error("[Health Check] Failed to load config for Ultimate 64:", error);
   }
 
-  // Determine overall health
-  const statuses = Object.values(checks).map((c) => c.status);
+  // Determine overall health (only consider critical checks)
+  const criticalStatuses = Object.entries(checks)
+    .filter(([name]) => !OPTIONAL_CHECKS.has(name))
+    .map(([, check]) => check.status);
   let overall: "healthy" | "degraded" | "unhealthy" = "healthy";
 
-  if (statuses.includes("unhealthy")) {
+  if (criticalStatuses.includes("unhealthy")) {
     overall = "unhealthy";
-  } else if (statuses.includes("degraded")) {
+  } else if (criticalStatuses.includes("degraded")) {
     overall = "degraded";
   }
 
@@ -289,15 +297,27 @@ async function checkUltimate64(config: {
   port?: number;
 }): Promise<HealthStatus> {
   try {
-    const host = config.host;
-    const port = config.port ?? 64;
+    // Host may contain port (e.g., "c64u:80"), so parse it
+    let host = config.host;
+    let port = config.port ?? 80; // Default to HTTP port 80
+    
+    // Check if host contains a port
+    const colonIndex = host.lastIndexOf(":");
+    if (colonIndex !== -1) {
+      const potentialPort = host.substring(colonIndex + 1);
+      const parsedPort = parseInt(potentialPort, 10);
+      if (!isNaN(parsedPort) && parsedPort > 0 && parsedPort <= 65535) {
+        host = host.substring(0, colonIndex);
+        port = parsedPort;
+      }
+    }
 
-    // Try to connect to Ultimate 64 REST API
+    // Try to connect to Ultimate 64 REST API using GET /v1/version
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2000); // 2s timeout
 
-      const response = await fetch(`http://${host}:${port}/v1/status`, {
+      const response = await fetch(`http://${host}:${port}/v1/version`, {
         signal: controller.signal,
       });
 

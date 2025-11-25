@@ -13,6 +13,11 @@ test-workspace/
 tmp
 _codeql_detected_source_root
 
+# Environment files (may contain secrets)
+.env
+.env.local
+.env.production
+
 # Test artifacts
 packages/libsidplayfp-wasm/test-output.wav
 

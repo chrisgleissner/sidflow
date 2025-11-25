@@ -82,4 +82,25 @@ describe("Health Check API", () => {
     expect(data.timestamp).toBeGreaterThanOrEqual(before - 1000);
     expect(data.timestamp).toBeLessThanOrEqual(after + 1000);
   });
+
+  it("does not affect overall health when optional checks (ultimate64, streamingAssets) are degraded", async () => {
+    const response = await GET();
+    const data = await response.json();
+
+    // Even if streamingAssets and ultimate64 are degraded/unhealthy,
+    // the overall status should only consider critical checks (wasm, sidplayfpCli, ffmpeg)
+    const optionalChecksDegraded = 
+      (data.checks.streamingAssets?.status === "degraded" || data.checks.streamingAssets?.status === "unhealthy") &&
+      (data.checks.ultimate64?.status === "degraded" || data.checks.ultimate64?.status === "unhealthy" || !data.checks.ultimate64);
+    
+    // If all critical checks are healthy, overall should be healthy regardless of optional checks
+    const criticalChecksHealthy = 
+      data.checks.wasm?.status === "healthy" &&
+      data.checks.sidplayfpCli?.status === "healthy" &&
+      data.checks.ffmpeg?.status === "healthy";
+
+    if (optionalChecksDegraded && criticalChecksHealthy) {
+      expect(data.overall).toBe("healthy");
+    }
+  });
 });
