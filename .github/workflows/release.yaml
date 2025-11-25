@@ -276,12 +276,18 @@ jobs:
 
   # Deploy to staging environment via webhook
   # Requires DEPLOY_WEBHOOK_URL and DEPLOY_WEBHOOK_SECRET secrets
+  # 
+  # TO ENABLE: Remove 'false &&' from the 'if' condition below after setting up:
+  #   1. Cloudflare Tunnel on your Raspberry Pi
+  #   2. DEPLOY_WEBHOOK_URL and DEPLOY_WEBHOOK_SECRET secrets in GitHub
+  #   3. (Optional) STAGING_URL variable in the 'staging' environment
   deploy-stg:
     needs: docker
     runs-on: ubuntu-latest
     # Minimal permissions - these jobs only make external HTTP calls
     permissions: {}
     if: |
+      false &&
       always() && 
       needs.docker.result == 'success' && 
       (github.event_name == 'push' || github.event.inputs.deploy_stg == 'true')
@@ -345,12 +351,19 @@ jobs:
           echo "⚠️ Health check timeout (deployment may still be in progress)"
 
   # Deploy to production environment (requires manual approval)
+  # 
+  # TO ENABLE: Remove 'false &&' from the 'if' condition below after setting up:
+  #   1. Cloudflare Tunnel on your Raspberry Pi
+  #   2. DEPLOY_WEBHOOK_URL and DEPLOY_WEBHOOK_SECRET secrets in GitHub
+  #   3. (Optional) PRODUCTION_URL variable in the 'production' environment
+  #   4. Required reviewers in the 'production' environment for manual approval
   deploy-prd:
     needs: [docker, deploy-stg]
     runs-on: ubuntu-latest
     # Minimal permissions - these jobs only make external HTTP calls
     permissions: {}
     if: |
+      false &&
       always() && 
       needs.docker.result == 'success' && 
       (needs.deploy-stg.result == 'success' || needs.deploy-stg.result == 'skipped') &&
