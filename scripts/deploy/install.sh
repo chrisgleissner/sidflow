@@ -287,7 +287,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "4"
+          cpus: "8"
           memory: 2g
         reservations:
           cpus: "1"
