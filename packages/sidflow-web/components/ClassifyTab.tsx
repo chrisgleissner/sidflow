@@ -265,8 +265,8 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 disabled={isLoading || isRunning}
                 className="h-4 w-4 rounded border-border bg-input text-accent focus:ring-2 focus:ring-ring cursor-pointer"
               />
-              <label htmlFor="force-rebuild" className={`text-xs cursor-pointer select-none flex-1 ${forceRebuild ? 'text-red-400 font-semibold' : 'text-muted-foreground'}`}>
-                ⚠️ Force rebuild (delete and re-render ALL WAV files)
+              <label htmlFor="force-rebuild" className="text-xs cursor-pointer select-none flex-1 text-muted-foreground">
+                Force rebuild (delete and re-render all WAV files)
               </label>
             </div>
             <div className="flex flex-col gap-2">

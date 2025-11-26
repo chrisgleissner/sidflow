@@ -167,6 +167,69 @@ else
 fi
 echo "================================================================"
 echo ""
+
+echo "=== Initializing sidplayfp configuration ==="
+# Create persistent sidplayfp.ini if it doesn't exist
+SIDPLAYFP_INI="/sidflow/data/.sidplayfp.ini"
+SIDPLAYFP_CONFIG_DIR="/home/sidflow/.config/sidplayfp"
+
+if [ ! -f "$SIDPLAYFP_INI" ]; then
+    echo "Creating default sidplayfp.ini at $SIDPLAYFP_INI"
+    cat > "$SIDPLAYFP_INI" << 'EOF'
+[SIDPlayfp]
+Version = 2
+Songlength Database = /sidflow/workspace/hvsc/update/DOCUMENTS/Songlengths.md5
+Default Play Length = 03:30
+Default Record Length = 03:30
+Kernal Rom = /sidflow/workspace/roms/kernal.901227-03.bin
+Basic Rom = /sidflow/workspace/roms/basic.901226-01.bin
+Chargen Rom = /sidflow/workspace/roms/characters.901225-01.bin
+
+[Console]
+Ansi = true
+
+[Audio]
+Frequency = 48000
+Channels = 1
+BitsPerSample = 16
+
+[Emulation]
+Engine = RESIDFP
+C64Model = PAL
+ForceC64Model = false
+SidModel = MOS6581
+ForceSidModel = false
+UseFilter = true
+FilterBias = 0
+FilterCurve6581 = 0.5
+FilterCurve8580 = 12500
+EOF
+    echo "✓ Created default sidplayfp.ini"
+else
+    echo "✓ Using existing sidplayfp.ini"
+fi
+
+# Create symlink to persistent location
+mkdir -p "$SIDPLAYFP_CONFIG_DIR"
+ln -sf "$SIDPLAYFP_INI" "$SIDPLAYFP_CONFIG_DIR/sidplayfp.ini"
+echo "✓ Linked sidplayfp.ini from persistent storage"
+
+# Provision ROMs if missing (user must provide these copyrighted files)
+ROM_DIR="/sidflow/workspace/roms"
+if [ ! -f "$ROM_DIR/kernal.901227-03.bin" ] || [ ! -f "$ROM_DIR/basic.901226-01.bin" ] || [ ! -f "$ROM_DIR/characters.901225-01.bin" ]; then
+    echo "⚠ WARNING: C64 ROM files not found in $ROM_DIR"
+    echo "  Required files:"
+    echo "    - kernal.901227-03.bin (8192 bytes)"
+    echo "    - basic.901226-01.bin (8192 bytes)"
+    echo "    - characters.901225-01.bin (4096 bytes)"
+    echo "  These are copyrighted files that must be obtained legally."
+    echo "  Place them in the workspace/roms directory and restart the container."
+    mkdir -p "$ROM_DIR"
+else
+    echo "✓ C64 ROM files present"
+fi
+
+echo ""
 echo "Starting Next.js server..."
 echo "  Command: $*"
 echo "  Working directory: $(pwd)"
