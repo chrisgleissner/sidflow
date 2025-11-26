@@ -209,8 +209,18 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
         </CardDescription>
         {progress?.renderEngine && (
           <div className="mt-2 rounded border border-accent/30 bg-accent/10 px-3 py-2">
-            <p className="text-xs font-semibold text-muted-foreground">RENDER ENGINE</p>
-            <p className="font-mono text-sm font-bold text-accent">{progress.renderEngine.toUpperCase()}</p>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-muted-foreground">ENGINE PREFERENCE</p>
+                <p className="font-mono text-xs text-muted-foreground">{progress.renderEngine.toUpperCase()}</p>
+              </div>
+              {progress.activeEngine && (
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-muted-foreground">ACTIVE NOW</p>
+                  <p className="font-mono text-sm font-bold text-accent">{progress.activeEngine.toUpperCase()}</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </CardHeader>

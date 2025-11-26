@@ -35,7 +35,8 @@ function resolvePreferencesPath(): string {
     return process.env.SIDFLOW_PREFS_PATH;
   }
   const repoRoot = getRepoRoot();
-  return path.join(repoRoot, PREFERENCES_FILENAME);
+  // Store preferences in /data directory which is writable, not in read-only /sidflow root
+  return path.join(repoRoot, 'data', PREFERENCES_FILENAME);
 }
 
 export function getPreferencesFilePath(): string {

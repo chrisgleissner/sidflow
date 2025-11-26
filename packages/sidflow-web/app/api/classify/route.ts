@@ -53,28 +53,42 @@ export async function POST(request: NextRequest) {
       preferredEngines.push('wasm');
     }
 
-    // Determine which engine description to show
+    // Determine which engine description to show and override config if needed
     let engineDescription: string;
+    let effectiveEngineOrder: RenderTechnology[];
+    
     if (prefs.renderEngine && prefs.renderEngine !== 'wasm') {
+      // Force a specific engine as first preference
+      effectiveEngineOrder = [prefs.renderEngine, ...preferredEngines.filter(e => e !== prefs.renderEngine)];
       engineDescription = prefs.renderEngine;
       console.log(`[engine-order] Forced engine from preferences: ${prefs.renderEngine}`);
     } else if (preferredEngines.length > 0) {
+      effectiveEngineOrder = preferredEngines;
       engineDescription = preferredEngines.join(' → ');
       console.log(`[engine-order] Preferred engine order: ${engineDescription}`);
     } else {
+      effectiveEngineOrder = ['wasm'];
       engineDescription = 'wasm';
       console.log(`[engine-order] Using default WASM engine`);
     }
     
     beginClassifyProgress(threads, engineDescription);
     console.log('[engine-order] Classification starting');
+    console.log(`[engine-order] Effective engine order: ${effectiveEngineOrder.join(' → ')}`);
+
+    // Write temporary config with forced engine order
+    const tempConfigPath = path.join(root, 'data', '.sidflow-classify-temp.json');
+    const tempConfig = {
+      ...config,
+      render: {
+        ...config.render,
+        preferredEngines: effectiveEngineOrder,
+      },
+    };
+    await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
 
   const command = 'sidflow-classify';
-  const cliArgs: string[] = [];
-  
-  // Note: sidflow-classify CLI currently uses render engines from config.render.preferredEngines
-  // The --engine and --prefer flags are not yet implemented in the CLI
-  // Engine preferences are logged above but passed via config file, not CLI args
+  const cliArgs: string[] = ['--config', tempConfigPath];
   
     const cliEnv = {
       ...buildCliEnvOverrides(collection),

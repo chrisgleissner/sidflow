@@ -28,6 +28,7 @@ export interface ClassifyProgressSnapshot {
   threads: number;
   perThread: ClassifyThreadStatus[];
   renderEngine?: string;
+  activeEngine?: string;
   message?: string;
   error?: string;
   isActive: boolean;

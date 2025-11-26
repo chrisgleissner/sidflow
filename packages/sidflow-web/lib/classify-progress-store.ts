@@ -113,6 +113,8 @@ export function beginClassifyProgress(threads: number, renderEngine?: string): v
   snapshot.isPaused = false;
   snapshot.startedAt = Date.now();
   snapshot.renderEngine = renderEngine;
+  // Set active engine to the first preference (what's actually being used)
+  snapshot.activeEngine = renderEngine?.split(' → ')[0];
   ensureThreads(threads);
 }
 
@@ -284,6 +286,7 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     threads: snapshot.threads,
     perThread: snapshot.perThread.map((thread) => ({ ...thread })),
     renderEngine: snapshot.renderEngine,
+    activeEngine: snapshot.activeEngine,
     message: snapshot.message,
     error: snapshot.error,
     isActive: snapshot.isActive,
