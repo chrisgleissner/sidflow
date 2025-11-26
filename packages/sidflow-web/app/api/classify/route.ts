@@ -66,13 +66,10 @@ export async function POST(request: NextRequest) {
   const command = 'sidflow-classify';
   const cliArgs: string[] = [];
   
-  // Pass engine preferences to classify CLI
-  if (prefs.renderEngine && prefs.renderEngine !== 'wasm') {
-    cliArgs.push('--engine', prefs.renderEngine);
-  } else if (preferredEngines.length > 1) {
-    // Pass preferred order (excluding the final wasm fallback as it's implicit)
-    cliArgs.push('--prefer', preferredEngines.slice(0, -1).join(','));
-  }
+  // Note: sidflow-classify CLI currently uses render engines from config.render.preferredEngines
+  // The --engine and --prefer flags are not yet implemented in the CLI
+  // Engine preferences are logged above but passed via config file, not CLI args
+  
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
       SIDFLOW_SID_BASE_PATH: classificationPath,
