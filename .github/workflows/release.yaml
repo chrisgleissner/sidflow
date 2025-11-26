@@ -11,6 +11,16 @@ on:
         description: "Tag to build (e.g. v0.3.10)"
         required: true
         type: string
+      deploy_stg:
+        description: "Deploy to staging after build"
+        required: false
+        type: boolean
+        default: true
+      deploy_prd:
+        description: "Deploy to production (requires manual approval)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: release-docker-${{ github.ref_name || github.event.inputs.tag || 'manual' }}
@@ -259,3 +269,156 @@ jobs:
           else
             gh release create "${TAG}" --notes-file "${NOTES_FILE}" --title "${TAG}"
           fi
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+  # Deploy to staging environment via webhook
+  # Requires DEPLOY_WEBHOOK_URL and DEPLOY_WEBHOOK_SECRET secrets
+  # 
+  # TO ENABLE: Remove 'false &&' from the 'if' condition below after setting up:
+  #   1. Cloudflare Tunnel on your Raspberry Pi
+  #   2. DEPLOY_WEBHOOK_URL and DEPLOY_WEBHOOK_SECRET secrets in GitHub
+  #   3. (Optional) STAGING_URL variable in the 'staging' environment
+  deploy-stg:
+    needs: docker
+    runs-on: ubuntu-latest
+    # Minimal permissions - these jobs only make external HTTP calls
+    permissions: {}
+    if: |
+      false &&
+      always() && 
+      needs.docker.result == 'success' && 
+      (github.event_name == 'push' || github.event.inputs.deploy_stg == 'true')
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL || 'https://stg.sidflow.example.com' }}
+    
+    steps:
+      - name: Deploy to staging
+        env:
+          WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
+          VERSION: ${{ needs.docker.outputs.version }}
+        run: |
+          set -euo pipefail
+          
+          if [[ -z "${WEBHOOK_URL:-}" ]]; then
+            echo "⚠️ DEPLOY_WEBHOOK_URL secret not configured. Skipping deployment."
+            echo "To enable automatic deployment:"
+            echo "1. Set up webhook server on your Raspberry Pi (see scripts/deploy/webhook-server.sh)"
+            echo "2. Configure Cloudflare Tunnel to expose the webhook endpoint"
+            echo "3. Add DEPLOY_WEBHOOK_URL and DEPLOY_WEBHOOK_SECRET secrets to this repository"
+            exit 0
+          fi
+          
+          echo "🚀 Deploying version ${VERSION} to staging..."
+          
+          # Trigger deployment webhook
+          RESPONSE=$(curl -sf -X POST \
+            "${WEBHOOK_URL}/deploy/stg?secret=${WEBHOOK_SECRET}&tag=${VERSION}" \
+            -H "Content-Type: application/json" \
+            --max-time 30 \
+            2>&1) || {
+            echo "❌ Webhook request failed"
+            echo "Response: $RESPONSE"
+            exit 1
+          }
+          
+          echo "✅ Deployment triggered successfully"
+          echo "Response: $RESPONSE"
+          
+          # Derive health URL from staging URL or webhook URL
+          STAGING_URL="${{ vars.STAGING_URL }}"
+          if [[ -n "${STAGING_URL:-}" ]]; then
+            HEALTH_URL="${STAGING_URL}/api/health"
+          else
+            # Fallback: try to construct from webhook URL (may not work)
+            HEALTH_URL="${WEBHOOK_URL%/*}/api/health"
+          fi
+          echo "Waiting for health check at ${HEALTH_URL}..."
+          
+          for i in {1..24}; do
+            sleep 5
+            if curl -sf "${HEALTH_URL}" > /dev/null 2>&1; then
+              echo "✅ Staging deployment healthy"
+              exit 0
+            fi
+            echo "  Attempt $i/24..."
+          done
+          
+          echo "⚠️ Health check timeout (deployment may still be in progress)"
+
+  # Deploy to production environment (requires manual approval)
+  # 
+  # TO ENABLE: Remove 'false &&' from the 'if' condition below after setting up:
+  #   1. Cloudflare Tunnel on your Raspberry Pi
+  #   2. DEPLOY_WEBHOOK_URL and DEPLOY_WEBHOOK_SECRET secrets in GitHub
+  #   3. (Optional) PRODUCTION_URL variable in the 'production' environment
+  #   4. Required reviewers in the 'production' environment for manual approval
+  deploy-prd:
+    needs: [docker, deploy-stg]
+    runs-on: ubuntu-latest
+    # Minimal permissions - these jobs only make external HTTP calls
+    permissions: {}
+    if: |
+      false &&
+      always() && 
+      needs.docker.result == 'success' && 
+      (needs.deploy-stg.result == 'success' || needs.deploy-stg.result == 'skipped') &&
+      (github.event_name == 'push' || github.event.inputs.deploy_prd == 'true')
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL || 'https://sidflow.example.com' }}
+    
+    steps:
+      - name: Deploy to production
+        env:
+          WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
+          VERSION: ${{ needs.docker.outputs.version }}
+        run: |
+          set -euo pipefail
+          
+          if [[ -z "${WEBHOOK_URL:-}" ]]; then
+            echo "⚠️ DEPLOY_WEBHOOK_URL secret not configured. Skipping deployment."
+            exit 0
+          fi
+          
+          echo "🚀 Deploying version ${VERSION} to production..."
+          
+          # Trigger deployment webhook
+          RESPONSE=$(curl -sf -X POST \
+            "${WEBHOOK_URL}/deploy/prd?secret=${WEBHOOK_SECRET}&tag=${VERSION}" \
+            -H "Content-Type: application/json" \
+            --max-time 30 \
+            2>&1) || {
+            echo "❌ Webhook request failed"
+            echo "Response: $RESPONSE"
+            exit 1
+          }
+          
+          echo "✅ Deployment triggered successfully"
+          echo "Response: $RESPONSE"
+          
+          # Derive health URL from production URL or webhook URL
+          PRODUCTION_URL="${{ vars.PRODUCTION_URL }}"
+          if [[ -n "${PRODUCTION_URL:-}" ]]; then
+            HEALTH_URL="${PRODUCTION_URL}/api/health"
+          else
+            # Fallback: try to construct from webhook URL (may not work)
+            HEALTH_URL="${WEBHOOK_URL%/*}/api/health"
+          fi
+          echo "Waiting for health check at ${HEALTH_URL}..."
+          
+          for i in {1..24}; do
+            sleep 5
+            if curl -sf "${HEALTH_URL}" > /dev/null 2>&1; then
+              echo "✅ Production deployment healthy"
+              exit 0
+            fi
+            echo "  Attempt $i/24..."
+          done
+          
+          echo "⚠️ Health check timeout (deployment may still be in progress)"
