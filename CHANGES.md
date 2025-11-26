@@ -1,6 +1,19 @@
 # Changelog
 
 
+## 0.3.32 (2025-11-26)
+
+- feat: add default sidplayfp.ini creation and configuration in docker startup script
+- feat: add force rebuild option to classification process with confirmation prompt
+- fix: increase CPU limit for deployment resources in install script
+- refactor: update Dockerfile and install script for consistent non-root execution
+- feat: enhance classification process with effective engine order and UI updates
+- feat: enhance classification process with render engine tracking and UI display
+- refactor: remove unused engine preference handling in classify CLI arguments
+- fix: optimize tmpfs configuration in installation script for better resource management
+- chore: update CHANGES.md for 0.3.31
+
+
 ## 0.3.31 (2025-11-26)
 
 - refactor: improve workspace and data directory handling in health checks and installation scripts
