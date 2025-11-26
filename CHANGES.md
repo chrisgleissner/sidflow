@@ -1,6 +1,26 @@
 # Changelog
 
 
+## 0.3.29 (2025-11-26)
+
+- fix: update E2E test configuration to use environment variables for base URL and server host
+- Merge pull request #67 from chrisgleissner/copilot/fix-health-check-endpoints
+- fix: add missing parseHostAndPort helper function for health check
+- chore: disable deployment jobs until Cloudflare tunnel is configured
+- fix: add missing permissions block to deploy-prd job
+- Changes before error encountered
+- fix: address code review feedback on deployment scripts and workflow
+- feat: add deployment scripts and automated CI/CD workflow for Raspberry Pi
+- Update packages/sidflow-web/app/api/health/route.ts
+- Update packages/sidflow-web/tests/unit/health-api.test.ts
+- Update docker-compose.production.yml
+- Update doc/deployment.md
+- fix: address code review feedback - improve IPv6 handling and test readability
+- fix: health check treats Ultimate64 and streaming assets as optional, use correct U64 defaults
+- Initial plan
+- chore: update CHANGES.md for 0.3.28
+
+
 ## 0.3.28 (2025-11-25)
 
 - Merge pull request #66 from chrisgleissner/copilot/fix-docker-image-health-check
