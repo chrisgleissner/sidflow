@@ -198,9 +198,6 @@ COPY --from=builder --chown=sidflow:sidflow /build/scripts /sidflow/scripts
 COPY --from=builder --chown=sidflow:sidflow /build/packages /sidflow/packages
 COPY --from=builder --chown=sidflow:sidflow /build/node_modules /sidflow/node_modules
 
-# Make startup script executable
-RUN chmod 755 /sidflow/scripts/docker-startup.sh
-
 # Security hardening and directory setup (consolidated for layer efficiency)
 RUN set -eux; \
     echo "[security] Starting hardening and setup..."; \
@@ -255,12 +252,5 @@ WORKDIR /sidflow
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Start server via diagnostic startup script, then run standalone server
-# The startup script will check all paths, log diagnostics, then exec the server
-# 
-# Security recommendations for docker run:
-#   --cap-drop=ALL --cap-add=CHOWN,SETUID,SETGID,NET_BIND_SERVICE \
-#   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=100m \
-#   --security-opt=no-new-privileges:true \
-#   -v ./workspace:/sidflow/workspace \
-#   -v ./data:/sidflow/data
+# The startup script checks paths, logs diagnostics, then execs the server
 CMD ["/sidflow/scripts/docker-startup.sh", "node", "/app/packages/sidflow-web/server.js"]
