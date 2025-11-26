@@ -60,10 +60,13 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse): Nex
   // set SIDFLOW_RELAXED_CSP=1 for environments that need inline scripts (testing, specific deployments).
   // For maximum security, consider using nonces or hashes instead of 'unsafe-inline' in the future.
 
-  // Next.js standalone builds always set NODE_ENV=production internally, even if we pass NODE_ENV=development
-  // Therefore, we must use SIDFLOW_RELAXED_CSP=1 to allow inline scripts in testing/CI environments
+  // Next.js app-dir streaming injects inline bootstrap scripts; without allowing inline scripts
+  // the UI will stay stuck on the fallback ("Loading..."). Default to allowing inline scripts,
+  // but permit a strict opt-out via SIDFLOW_STRICT_CSP=1. SIDFLOW_RELAXED_CSP=1 also enables
+  // WebSockets for dev/CI scenarios.
+  const strictCsp = process.env.SIDFLOW_STRICT_CSP === '1';
   const relaxedCsp = process.env.SIDFLOW_RELAXED_CSP === '1';
-  const allowInline = relaxedCsp;
+  const allowInline = !strictCsp || relaxedCsp;
   const allowWebSockets = relaxedCsp;
   const scriptSrc = allowInline
     ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"

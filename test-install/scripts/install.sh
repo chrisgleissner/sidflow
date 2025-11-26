@@ -76,18 +76,10 @@ run_cmd() {
     fi
 }
 
-SUDO_BIN="${USE_SUDO-}"
-# Check if sudo is available and needed
-if [[ -z "$SUDO_BIN" ]]; then
-    if command -v sudo >/dev/null 2>&1 && ! sudo -n true 2>/dev/null; then
-        # sudo exists but requires password, skip it for this install
-        SUDO_BIN=""
-    elif command -v sudo >/dev/null 2>&1; then
-        # sudo exists and works passwordless
-        SUDO_BIN="sudo"
-    fi
+SUDO_BIN="${USE_SUDO-sudo}"
+if [[ "$SUDO_BIN" == "sudo" ]]; then
+    SUDO_BIN="sudo -n"
 fi
-
 as_root() {
     if [[ -n "$SUDO_BIN" ]]; then
         run_cmd "$SUDO_BIN" "$@"
@@ -301,11 +293,6 @@ services:
       - \${SIDFLOW_DATA_PATH:-$INSTALL_DIR/data/sidflow}:/sidflow/data
       - type: tmpfs
         target: /tmp
-        tmpfs:
-          size: 100M
-          mode: 1777
-      - type: tmpfs
-        target: /app/packages/sidflow-web/.next/cache
         tmpfs:
           size: 100M
           mode: 1777

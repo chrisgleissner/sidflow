@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadConfig, loadAvailabilityManifest } from "@sidflow/common";
+import { resolveConfigPath } from "@/lib/server-env";
 import { stat, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { exec } from "node:child_process";
@@ -29,6 +30,8 @@ interface SystemHealth {
   overall: "healthy" | "degraded" | "unhealthy";
   timestamp: number;
   checks: {
+    workspace: HealthStatus;
+    ui: HealthStatus;
     wasm: HealthStatus;
     sidplayfpCli: HealthStatus;
     ffmpeg: HealthStatus;
@@ -45,12 +48,16 @@ export async function GET() {
   console.log("[Health Check] NODE_ENV:", process.env.NODE_ENV);
 
   const checks: {
+    workspace: HealthStatus;
+    ui: HealthStatus;
     wasm: HealthStatus;
     sidplayfpCli: HealthStatus;
     ffmpeg: HealthStatus;
     streamingAssets: HealthStatus;
     ultimate64?: HealthStatus;
   } = {
+    workspace: await checkWorkspacePaths(),
+    ui: await checkUiRoutes(),
     wasm: await checkWasmReadiness(),
     sidplayfpCli: await checkSidplayfpCli(),
     ffmpeg: await checkFfmpeg(),
@@ -245,6 +252,67 @@ async function checkFfmpeg(): Promise<HealthStatus> {
   }
 }
 
+async function checkWorkspacePaths(): Promise<HealthStatus> {
+  try {
+    console.log("[Health Check] Validating workspace paths and permissions...");
+    const configPath = resolveConfigPath();
+    const configDir = path.dirname(configPath);
+    const config = await loadConfig(configPath);
+    console.log("[Health Check] Using config", { configPath, configDir, sidPath: config.sidPath, wavCachePath: config.wavCachePath, tagsPath: config.tagsPath });
+    const requiredPaths = [
+      { name: "HVSC", path: config.sidPath, mode: constants.R_OK }, // HVSC is mounted read-only
+      { name: "WAV cache", path: config.wavCachePath, mode: constants.R_OK | constants.W_OK },
+      { name: "Tags", path: config.tagsPath, mode: constants.R_OK | constants.W_OK },
+      // Data directories live beside .sidflow.json
+      { name: "Classified data", path: path.resolve(configDir, "data/classified"), mode: constants.R_OK | constants.W_OK },
+      { name: "Renders data", path: path.resolve(configDir, "data/renders"), mode: constants.R_OK | constants.W_OK },
+      { name: "Availability data", path: path.resolve(configDir, "data/availability"), mode: constants.R_OK | constants.W_OK },
+    ];
+
+    const failures: string[] = [];
+
+    for (const entry of requiredPaths) {
+      const targetPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(configDir, entry.path);
+      const mode = entry.mode ?? (constants.R_OK | constants.W_OK);
+      try {
+        await access(targetPath, mode);
+        const stats = await stat(targetPath);
+        if (!stats.isDirectory()) {
+          failures.push(`${entry.name} is not a directory: ${targetPath}`);
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        console.warn(`[Health Check] Workspace path check failed for ${entry.name}: ${targetPath} (${reason})`);
+        failures.push(`${entry.name} missing or not writable: ${targetPath}`);
+      }
+    }
+
+    if (failures.length > 0) {
+      return {
+        status: "unhealthy",
+        message: "Workspace paths invalid",
+        details: { failures },
+      };
+    }
+
+    return {
+      status: "healthy",
+      details: {
+        hvsc: config.sidPath,
+        wavCache: config.wavCachePath,
+        tags: config.tagsPath,
+      },
+    };
+  } catch (error) {
+    console.error("[Health Check] Workspace validation failed:", error);
+    return {
+      status: "unhealthy",
+      message: "Workspace validation failed",
+      details: { error: error instanceof Error ? error.message : String(error) },
+    };
+  }
+}
+
 async function checkStreamingAssets(): Promise<HealthStatus> {
   try {
     console.log("[Health Check] Loading config for streaming assets check...");
@@ -290,6 +358,79 @@ async function checkStreamingAssets(): Promise<HealthStatus> {
       message: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+async function checkUiRoutes(): Promise<HealthStatus> {
+  const port = process.env.PORT || "3000";
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const adminUser = process.env.SIDFLOW_ADMIN_USER;
+  const adminPass = process.env.SIDFLOW_ADMIN_PASSWORD;
+  const adminAuthHeader =
+    adminUser && adminPass ? { Authorization: `Basic ${Buffer.from(`${adminUser}:${adminPass}`).toString("base64")}` } : {};
+
+  async function checkPath(pathname: string, keyword: string): Promise<string | null> {
+    try {
+      const url = `${baseUrl}${pathname}`;
+      const headers: Record<string, string> = { Host: "localhost" };
+      if (pathname.startsWith("/admin") && Object.keys(adminAuthHeader).length > 0) {
+        Object.assign(headers, adminAuthHeader);
+      }
+      const res = await fetch(url, { cache: "no-store", headers });
+      if (!res.ok) {
+        return `${pathname} responded ${res.status}`;
+      }
+      const body = await res.text();
+      if (!body) {
+        return `${pathname} returned empty body`;
+      }
+      
+      // Check for bailout to client-side rendering
+      if (body.includes('BAILOUT_TO_CLIENT_SIDE_RENDERING')) {
+        return `${pathname} bailed out to client-side rendering`;
+      }
+      
+      // Check if page is stuck on "Loading..." fallback
+      // A properly rendered page should have more than just the loading fallback
+      const hasLoadingOnly = body.includes('Loading...') && !body.includes('<main') && !body.includes('id="__next"');
+      if (hasLoadingOnly) {
+        return `${pathname} stuck on "Loading..." fallback`;
+      }
+      
+      // Check for expected content keyword
+      if (!body.includes(keyword)) {
+        return `${pathname} rendered without expected content (missing: "${keyword}")`;
+      }
+      
+      // Verify actual UI components are present (not just the Next.js shell)
+      const hasUIComponents = body.includes('class=') || body.includes('className=') || body.includes('data-testid=');
+      if (!hasUIComponents) {
+        return `${pathname} missing UI components (possible hydration failure)`;
+      }
+      
+      return null;
+    } catch (err) {
+      return `${pathname} fetch failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  const failures: string[] = [];
+  const publicErr = await checkPath("/", "PLAY SID MUSIC");
+  if (publicErr) failures.push(publicErr);
+  const adminErr = await checkPath("/admin", "SETUP WIZARD");
+  if (adminErr) failures.push(adminErr);
+
+  if (failures.length > 0) {
+    return {
+      status: "unhealthy",
+      message: "UI routes not rendering",
+      details: { failures },
+    };
+  }
+
+  return {
+    status: "healthy",
+    details: { public: "ok", admin: "ok" },
+  };
 }
 
 /**

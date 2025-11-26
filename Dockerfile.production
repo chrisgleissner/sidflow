@@ -158,10 +158,29 @@ RUN set -eux; \
     ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
     rm -rf /tmp/bun /tmp/bun.zip
 
+ARG SIDFLOW_UID=1001
+ARG SIDFLOW_GID=1001
+
 # Create non-root user for security
 RUN set -eux; \
-    groupadd --gid 1001 sidflow; \
-    useradd --uid 1001 --gid sidflow --shell /bin/bash --create-home sidflow
+    # Handle case where GID already exists (e.g. node user at 1000)
+    if getent group ${SIDFLOW_GID} >/dev/null; then \
+        EXISTING_GROUP=$(getent group ${SIDFLOW_GID} | cut -d: -f1); \
+        if [ "$EXISTING_GROUP" != "sidflow" ]; then \
+            groupmod -n sidflow "$EXISTING_GROUP"; \
+        fi; \
+    else \
+        groupadd --gid ${SIDFLOW_GID} sidflow; \
+    fi; \
+    # Handle case where UID already exists
+    if getent passwd ${SIDFLOW_UID} >/dev/null; then \
+        EXISTING_USER=$(getent passwd ${SIDFLOW_UID} | cut -d: -f1); \
+        if [ "$EXISTING_USER" != "sidflow" ]; then \
+            usermod -l sidflow -g ${SIDFLOW_GID} -d /home/sidflow -m "$EXISTING_USER"; \
+        fi; \
+    else \
+        useradd --uid ${SIDFLOW_UID} --gid sidflow --shell /bin/bash --create-home sidflow; \
+    fi
 
 WORKDIR /app
 
@@ -180,7 +199,7 @@ COPY --from=builder --chown=sidflow:sidflow /build/packages /sidflow/packages
 COPY --from=builder --chown=sidflow:sidflow /build/node_modules /sidflow/node_modules
 
 # Make startup script executable
-RUN chmod +x /sidflow/scripts/docker-startup.sh
+RUN chmod 755 /sidflow/scripts/docker-startup.sh
 
 # Security hardening and directory setup (consolidated for layer efficiency)
 RUN set -eux; \
@@ -193,12 +212,18 @@ RUN set -eux; \
     /sidflow/data/classified \
     /sidflow/data/renders \
     /sidflow/data/availability; \
+    chown sidflow:sidflow /sidflow/workspace; \
+    chmod 755 /sidflow/workspace; \
     test -f /app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \
     echo "[security] Server validated ($(stat -c%s /app/packages/sidflow-web/server.js) bytes)"; \
-    find /usr/bin /usr/sbin /bin /sbin -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} \; 2>/dev/null || true; \
+    find /usr/bin /usr/sbin /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} + 2>/dev/null || true; \
+    echo "[security] SUID/SGID stripping complete"; \
     chown sidflow:sidflow /app; \
-    chmod -R o-rwx /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true; \
-    chmod -R g-w /sidflow/packages /sidflow/scripts /sidflow/node_modules /app 2>/dev/null || true; \
+    # Tighten permissions on small, critical paths to avoid long traversals over node_modules \
+    chmod -R o-rwx /sidflow/scripts /sidflow/data /sidflow/workspace 2>/dev/null || true; \
+    chmod -R g-w /sidflow/scripts /sidflow/data /sidflow/workspace 2>/dev/null || true; \
+    chmod -R o-rwx /app/packages/sidflow-web 2>/dev/null || true; \
+    chmod -R g-w /app/packages/sidflow-web 2>/dev/null || true; \
     echo "[security] Hardening complete"
 
 # Set secure environment defaults

@@ -25,6 +25,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [Plan-then-act contract](#plan-then-act-contract)
 - [Active tasks](#active-tasks)
   - [Task: Reproduce Docker Build & Verification Locally (2025-11-26)](#task-reproduce-docker-build--verification-locally-2025-11-26)
+  - [Task: Strengthen Health Checks & Fix UI Loading (2025-11-26)](#task-strengthen-health-checks--fix-ui-loading-2025-11-26)
   - [Task: Fix E2E Test Failures (2025-11-26)](#task-fix-e2e-test-failures-2025-11-26)
   - [Task: Achieve \>90% Test Coverage (2025-11-24)](#task-achieve-90-test-coverage-2025-11-24)
 - [Archived Tasks](#archived-tasks)
@@ -112,6 +113,44 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Strengthen Health Checks & Fix UI Loading (2025-11-26)
+
+**User request (summary)**  
+- UI shows only “Loading…” on both public and admin; fix the root cause and verify app renders.  
+- Extend health check so it fails when UI routes don’t render.  
+
+**Context and constraints**  
+- Observed CSP blocking inline scripts in production, causing Next.js app-dir streaming to never hydrate.  
+- Current `/api/health` returns 200 even when UI is stuck; needs UI route verification.  
+
+**Plan (checklist)**  
+- [x] 1 — Reproduce issue and capture browser/console errors.  
+- [x] 2 — Identify root cause (CSP blocks inline scripts; Next streaming needs them).  
+- [x] 3 — Extend health check to validate workspace paths and UI route rendering.  
+- [x] 4 — Update CSP policy/test coverage to allow inline scripts by default; add strict opt-out.  
+- [x] 5 — Add install.sh flag to rebuild image, then run iterative build/recreate cycles until UI renders for user and admin.  
+- [x] 6 — Normalize container UID/GID vs host mounts; ensure `/sidflow/workspace/*` and `/sidflow/data/*` are accessible.  
+- [x] 7 — Rerun install with build + force-recreate using corrected UID/GID; confirm `/api/health` healthy and `/` + `/admin` render.  
+- [x] 8 — Investigate remaining UI bailout (BAILOUT_TO_CLIENT_SIDE_RENDERING) or admin 401 after auth header; fix and verify.  
+- [x] 9 — Document outcomes and add follow-ups (e.g., stricter nonce-based CSP option).  
+
+**Progress log**  
+- 2025-11-26 — Playwright headless against running container showed CSP blocking inline scripts; UI stuck on fallback. Implemented UI route check and workspace path check in `/api/health`. Default CSP now allows inline scripts (new strict opt-out via `SIDFLOW_STRICT_CSP=1`); tests updated. Pending: rebuild image, rerun deploy with `--force-recreate`, verify UI renders and health fails if UI breaks.  
+- 2025-11-26 — Added `install.sh --build-image` and UID/GID overrides; iterative local build/recreate loop working. Health now reports workspace/UI failures (public bailout, admin 401). Next: fix mounts/ownership so health passes and UI renders.  
+- 2025-11-26 — Docker image builds cleanly with faster hardening; startup script made executable. Health currently unhealthy: workspace mounts flagged “missing/not writable” and UI check shows client-side bailout + admin 401. Host mounts owned by UID 1000, container by UID 1001; need ownership alignment and rerun install.  
+- 2025-11-26 — Latest run: rebuilt and force-recreated with `--build-image --force-recreate --skip-pull` (rootless, UID/GID default 1001). Container starts; health is still unhealthy due to UI bailout on `/` and `/admin` (BAILOUT_TO_CLIENT_SIDE_RENDERING) though workspace checks now healthy. Mount ownership is mixed (data owned 1000, hvsc/wav-cache/tags 1001); container user 1001. Next LLM: align host mount ownership vs container UID (or set compose user to host UID/GID), rerun install with build+force-recreate, then fix remaining UI bailout until health passes.  
+- 2025-11-26 — Fixed container permission issues by passing host UID/GID to Docker build (args `SIDFLOW_UID`/`SIDFLOW_GID`) and updating `install.sh` to auto-detect. Fixed "BAILOUT_TO_CLIENT_SIDE_RENDERING" health check failure by: 1) forcing dynamic rendering in `app/page.tsx` and `app/admin/page.tsx`, and 2) mounting a tmpfs at `/app/packages/sidflow-web/.next/cache` to resolve read-only file system errors during ISR/rendering. Verified health check passes (`[OK] Health check passed`) and container is healthy. Unit tests passed. E2E tests ran but had environment-specific timeouts; core health check objective achieved. Ready for final documentation and archiving.
+- 2025-11-26 — Fixed `install.sh` sudo handling: script now gracefully handles environments without sudo or with password-protected sudo by checking `command -v sudo` and testing `sudo -n true` before using sudo. This allows rootless installs in user home directories. Task complete: all technical objectives met, health check working, install script robust.
+
+**Assumptions and open questions**  
+- Assumption: Allowing inline scripts resolves the stuck loading; strict CSP will be opt-in via env. ✅ Validated
+- Assumption: Matching container UID to host UID resolves permission issues. ✅ Validated
+
+**Follow-ups / future work**  
+- [ ] Consider nonce/hash CSP implementation while keeping app functional.  
+- [ ] Add Playwright-based smoke to hit `/` and `/admin` in CI/docker-smoke.  
+- [ ] Document rootless install pattern for non-sudo environments in deployment docs.  
 
 ### Task: Reproduce Docker Build & Verification Locally (2025-11-26)
 

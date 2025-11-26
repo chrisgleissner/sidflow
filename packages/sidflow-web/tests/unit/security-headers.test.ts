@@ -37,6 +37,15 @@ describe('Security headers', () => {
       expect(csp).toContain("style-src 'self' 'unsafe-inline'");
     });
 
+    test('CSP allows inline scripts by default for Next.js streaming', async () => {
+      const request = new NextRequest('http://localhost/');
+      const response = await proxy(request);
+
+      const csp = response.headers.get('Content-Security-Policy') ?? '';
+      const scriptSrc = csp.split(';').find((part) => part.trim().startsWith('script-src')) ?? '';
+      expect(scriptSrc).toContain("script-src 'self' 'unsafe-eval' 'unsafe-inline'");
+    });
+
     test('CSP allows blob URLs for media and workers', async () => {
       const request = new NextRequest('http://localhost/');
       const response = await proxy(request);
@@ -90,6 +99,25 @@ describe('Security headers', () => {
           delete process.env.SIDFLOW_RELAXED_CSP;
         } else {
           Reflect.set(process.env, 'SIDFLOW_RELAXED_CSP', originalEnv);
+        }
+      }
+    });
+
+    test('CSP strict mode disables inline scripts', async () => {
+      const originalStrict = process.env.SIDFLOW_STRICT_CSP;
+      Reflect.set(process.env, 'SIDFLOW_STRICT_CSP', '1');
+      try {
+        const request = new NextRequest('http://localhost/');
+        const response = await proxy(request);
+        const csp = response.headers.get('Content-Security-Policy') ?? '';
+        const scriptSrc = csp.split(';').find((part) => part.trim().startsWith('script-src')) ?? '';
+        expect(scriptSrc).toContain("script-src 'self' 'unsafe-eval'");
+        expect(scriptSrc).not.toContain("'unsafe-inline'");
+      } finally {
+        if (originalStrict === undefined) {
+          delete process.env.SIDFLOW_STRICT_CSP;
+        } else {
+          Reflect.set(process.env, 'SIDFLOW_STRICT_CSP', originalStrict);
         }
       }
     });

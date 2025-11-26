@@ -62,16 +62,19 @@ fi
 echo ""
 
 echo "=== Mount Ownership Validation ==="
-# Validate that mounted volumes are owned by sidflow user (UID 1001)
-EXPECTED_UID=1001
+# Validate that mounted volumes are accessible to the current user
+# Use actual current UID, not hardcoded value
+CURRENT_UID=$(id -u)
 for mount_path in "/sidflow/workspace" "/sidflow/data"; do
     if [ -d "$mount_path" ]; then
         actual_uid=$(ls -ldn "$mount_path" | awk '{print $3}')
-        if [ "$actual_uid" != "$EXPECTED_UID" ]; then
-            echo "⚠ Warning: $mount_path owned by UID $actual_uid, expected $EXPECTED_UID"
-            echo "  Container may have permission issues writing to mounted volumes"
+        # Check if we can actually write (best test)
+        if touch "$mount_path/.write-test" 2>/dev/null; then
+            rm -f "$mount_path/.write-test"
+            echo "✓ $mount_path is writable (owned by UID $actual_uid, running as UID $CURRENT_UID)"
         else
-            echo "✓ $mount_path owned by correct UID ($actual_uid)"
+            echo "⚠ Warning: $mount_path NOT writable (owned by UID $actual_uid, running as UID $CURRENT_UID)"
+            echo "  Container may have permission issues writing to mounted volumes"
         fi
     fi
 done
@@ -80,15 +83,22 @@ echo ""
 echo "=== Critical Paths Check ==="
 FAILED=0
 
+# Critical paths that MUST exist (exit if missing)
+check_path "/app/packages/sidflow-web/server.js" "Next.js server" || { echo "FATAL: Next.js server missing"; exit 1; }
+check_path "/app/packages/sidflow-web/.next" "Next.js build" || { echo "FATAL: Next.js build missing"; exit 1; }
+
+# Required config
 check_path "/sidflow/.sidflow.json" "Config file" || ((FAILED++))
-check_path "/sidflow/workspace/hvsc" "HVSC directory" || ((FAILED++))
-check_path "/sidflow/workspace/wav-cache" "WAV cache directory" || ((FAILED++))
-check_path "/sidflow/workspace/tags" "Tags directory" || ((FAILED++))
-check_path "/sidflow/data/classified" "Classified data directory" || ((FAILED++))
-check_path "/sidflow/data/renders" "Renders directory" || ((FAILED++))
-check_path "/sidflow/data/availability" "Availability directory" || ((FAILED++))
-check_path "/app/packages/sidflow-web/server.js" "Next.js server" || ((FAILED++))
-check_path "/app/packages/sidflow-web/.next" "Next.js build" || ((FAILED++))
+
+# Data directories (auto-create if missing)
+for dir in "/sidflow/workspace/hvsc" "/sidflow/workspace/wav-cache" "/sidflow/workspace/tags" "/sidflow/data/classified" "/sidflow/data/renders" "/sidflow/data/availability"; do
+  if [ ! -d "$dir" ]; then
+    echo "⚠ Creating missing directory: $dir"
+    mkdir -p "$dir" 2>/dev/null || echo "  (unable to create, will try at runtime)"
+  else
+    echo "✓ $dir exists"
+  fi
+done
 echo ""
 
 echo "=== WASM Files Check ==="
