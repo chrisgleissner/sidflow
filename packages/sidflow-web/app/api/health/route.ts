@@ -292,6 +292,33 @@ async function checkStreamingAssets(): Promise<HealthStatus> {
   }
 }
 
+/**
+ * Parse host and port from a string that may contain both.
+ * Handles IPv6 addresses in bracket notation (e.g., [::1]:80)
+ * and regular hostname:port or IPv4:port formats.
+ */
+function parseHostAndPort(host: string, defaultPort: number): { host: string; port: number } {
+  // IPv6 with port: [::1]:80
+  const ipv6Match = host.match(/^\[([^\]]+)\]:(\d+)$/);
+  if (ipv6Match) {
+    return { host: ipv6Match[1], port: parseInt(ipv6Match[2], 10) };
+  }
+  
+  // Hostname or IPv4 with optional port: c64u:80 or 192.168.1.1:80
+  if (!host.startsWith("[")) {
+    const colonIndex = host.lastIndexOf(":");
+    if (colonIndex !== -1) {
+      const potentialPort = host.substring(colonIndex + 1);
+      const parsedPort = parseInt(potentialPort, 10);
+      if (!isNaN(parsedPort) && parsedPort > 0 && parsedPort <= 65535) {
+        return { host: host.substring(0, colonIndex), port: parsedPort };
+      }
+    }
+  }
+  
+  return { host, port: defaultPort };
+}
+
 async function checkUltimate64(config: {
   host: string;
   port?: number;
