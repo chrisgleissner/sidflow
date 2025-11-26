@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.3.30 (2025-11-26)
+
+- Add scripts for SIDFlow management: logs, restore, start, status, stop, update, and webhook server
+- feat: add task to reproduce Docker build and verification locally
+- fix: update model configuration and replace outdated screenshots
+- chore: update CHANGES.md for 0.3.29
+
+
 ## 0.3.29 (2025-11-26)
 
 - fix: update E2E test configuration to use environment variables for base URL and server host
