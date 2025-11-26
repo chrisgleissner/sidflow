@@ -12,6 +12,16 @@ const stubToolsPath = path.resolve(configDir, 'tests/stubs');
 const repoRoot = path.resolve(configDir, '..', '..');
 const defaultModelPath = path.resolve(repoRoot, 'data', 'model');
 const testConfigPath = path.resolve(repoRoot, '.sidflow.test.json');
+const defaultBaseUrl = process.env.SIDFLOW_E2E_BASE_URL ?? 'http://127.0.0.1:3000';
+const parsedBaseUrl = (() => {
+  try {
+    return new URL(defaultBaseUrl);
+  } catch {
+    return null;
+  }
+})();
+const webServerHost = process.env.SIDFLOW_E2E_HOST ?? parsedBaseUrl?.hostname ?? '127.0.0.1';
+const webServerPort = process.env.SIDFLOW_E2E_PORT ?? parsedBaseUrl?.port ?? '3000';
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -22,7 +32,7 @@ const hasSystemChrome = Boolean(chromeExecutable && existsSync(chromeExecutable)
 const videoMode: 'on' | 'off' | 'retain-on-failure' = process.env.CI ? 'retain-on-failure' : 'on';
 
 const baseUse = {
-  baseURL: 'http://localhost:3000',
+  baseURL: defaultBaseUrl,
   trace: 'on-first-retry' as const,
   headless: true,
   video: videoMode,
@@ -109,14 +119,15 @@ export default defineConfig({
 
   webServer: {
     command: 'bun ./scripts/setup-test-workspace.mjs && bun run build:worklet && node ./scripts/start-test-server.mjs',
-    url: 'http://127.0.0.1:3000',
+    url: defaultBaseUrl,
     reuseExistingServer: !process.env.CI,
     timeout: webServerTimeout,
     env: {
       // Add stub CLI tools to PATH for testing
       PATH: `${stubToolsPath}${path.delimiter}${process.env.PATH ?? ''}`,
       NODE_ENV: serverNodeEnv,
-      HOSTNAME: '0.0.0.0',
+      HOSTNAME: webServerHost,
+      PORT: webServerPort,
       SIDFLOW_CONFIG: testConfigPath,
       SIDFLOW_MODEL_PATH: process.env.SIDFLOW_MODEL_PATH ?? defaultModelPath,
       SIDFLOW_TEST_SERVER_MODE: normalizedServerMode,

@@ -18,14 +18,15 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
 - [PLANS.md — Multi‑hour plans for SIDFlow](#plansmd--multihour-plans-for-sidflow)
   - [Table of Contents](#table-of-contents)
   - [How to use this file](#how-to-use-this-file)
-  - [Maintenance rules (required for all agents)](#maintenance-rules-required-for-all-agents)
-    - [Table of Contents](#table-of-contents-1)
-    - [Pruning and archiving](#pruning-and-archiving)
-    - [Structure rules](#structure-rules)
-    - [Plan-then-act contract](#plan-then-act-contract)
-  - [Active tasks](#active-tasks)
-    - [Task: Achieve \>90% Test Coverage (2025-11-24)](#task-achieve-90-test-coverage-2025-11-24)
-  - [Archived Tasks](#archived-tasks)
+- [Maintenance rules (required for all agents)](#maintenance-rules-required-for-all-agents)
+  - [Table of Contents](#table-of-contents-1)
+  - [Pruning and archiving](#pruning-and-archiving)
+  - [Structure rules](#structure-rules)
+  - [Plan-then-act contract](#plan-then-act-contract)
+- [Active tasks](#active-tasks)
+  - [Task: Fix E2E Test Failures (2025-11-26)](#task-fix-e2e-test-failures-2025-11-26)
+  - [Task: Achieve \>90% Test Coverage (2025-11-24)](#task-achieve-90-test-coverage-2025-11-24)
+- [Archived Tasks](#archived-tasks)
 
 <!-- /TOC -->
 
@@ -110,6 +111,38 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Fix E2E Test Failures (2025-11-26)
+
+**User request (summary)**  
+- Investigate the large number of Playwright E2E failures and plan fixes.
+- Execute the plan until the E2E suite is stable.
+
+**Context and constraints**  
+- Web UI Playwright suite currently fails with mass `ERR_CONNECTION_REFUSED` when navigating to `http://localhost:3000/...`.
+- Playwright config starts the test server via `webServer` using `start-test-server.mjs` (Next app, production mode by default).
+- `localhost` resolves to `::1` on this host; the Next server binds to `0.0.0.0`, causing IPv6 connection refusals.
+
+**Plan (checklist)**  
+- [x] 1 — Reproduce full E2E run to capture failure set and logs.  
+- [x] 2 — Identify root cause for connection refusals (IPv6 `localhost` vs IPv4-only server).  
+- [x] 3 — Patch Playwright config to use an IPv4 base URL/host for the test server.  
+- [x] 4 — Re-run full E2E suite (target: 0 failures) and triage any remaining functional issues.  
+- [x] 5 — Fix remaining failing specs, rerun tests 3× clean, and capture results.  
+- [x] 6 — Document changes and update PLANS.md/notes with outcomes and follow-ups.  
+
+**Progress log**  
+- 2025-11-26 — Ran `bun run test:e2e`: unit integration suite passed (8/8). Playwright run: 5 passed, 43 skipped, 67 failed, mostly `ERR_CONNECTION_REFUSED` for `http://localhost:3000/...`. Suspected cause: IPv6 `localhost` resolving to `::1` while Next server binds `0.0.0.0` (IPv4), leaving browser unable to reach the app. Manual server start works in dev/prod when accessed via 127.0.0.1. Plan to force IPv4 base URL for tests.  
+- 2025-11-26 — Applied fix: Playwright baseURL/webServer now default to `http://127.0.0.1:3000` with explicit HOSTNAME/PORT env to avoid IPv6 localhost resolution issues.  
+- 2025-11-26 — Validation: `bun run test:e2e` now passes fully. Ran 3 consecutive times (all green): 8/8 integration tests + 115/115 Playwright specs, 0 failures each run. Screenshots auto-refreshed for prefs/play tabs.  
+
+**Assumptions and open questions**  
+- Assumption (validated): Switching Playwright baseURL/host to `127.0.0.1` eliminates connection refusals on hosts where `localhost` resolves to `::1`.  
+- Open question: After fixing connectivity, additional functional regressions may surface; handle iteratively.  
+
+**Follow-ups / future work**  
+- [ ] If IPv4 fix is insufficient, adjust server hostname binding to include IPv6 (`::`) or dual-stack.  
+- [ ] Audit remaining failures (if any) for actual UI regressions vs. test flakiness.  
 
 ### Task: Achieve >90% Test Coverage (2025-11-24)
 
