@@ -259,19 +259,25 @@ async function checkWorkspacePaths(): Promise<HealthStatus> {
     const configDir = path.dirname(configPath);
     const config = await loadConfig(configPath);
     console.log("[Health Check] Using config", { configPath, configDir, sidPath: config.sidPath, wavCachePath: config.wavCachePath, tagsPath: config.tagsPath });
-    const requiredPaths = [
-      { name: "HVSC", path: config.sidPath, mode: constants.R_OK }, // HVSC is mounted read-only
+    // Critical paths required for basic operation
+    const criticalPaths = [
+      { name: "HVSC", path: config.sidPath, mode: constants.R_OK },
       { name: "WAV cache", path: config.wavCachePath, mode: constants.R_OK | constants.W_OK },
       { name: "Tags", path: config.tagsPath, mode: constants.R_OK | constants.W_OK },
-      // Data directories live beside .sidflow.json
+    ];
+
+    // Data directories that will be created on-demand if needed
+    const optionalPaths = [
       { name: "Classified data", path: path.resolve(configDir, "data/classified"), mode: constants.R_OK | constants.W_OK },
       { name: "Renders data", path: path.resolve(configDir, "data/renders"), mode: constants.R_OK | constants.W_OK },
       { name: "Availability data", path: path.resolve(configDir, "data/availability"), mode: constants.R_OK | constants.W_OK },
     ];
 
     const failures: string[] = [];
+    const warnings: string[] = [];
 
-    for (const entry of requiredPaths) {
+    // Check critical paths - these must exist and be accessible
+    for (const entry of criticalPaths) {
       const targetPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(configDir, entry.path);
       const mode = entry.mode ?? (constants.R_OK | constants.W_OK);
       try {
@@ -287,21 +293,45 @@ async function checkWorkspacePaths(): Promise<HealthStatus> {
       }
     }
 
+    // Check optional paths - warn but don't fail (they'll be created on-demand)
+    for (const entry of optionalPaths) {
+      const targetPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(configDir, entry.path);
+      try {
+        await access(targetPath, constants.R_OK | constants.W_OK);
+        const stats = await stat(targetPath);
+        if (!stats.isDirectory()) {
+          warnings.push(`${entry.name} exists but is not a directory: ${targetPath}`);
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        console.info(`[Health Check] Optional path not accessible (will create on-demand): ${entry.name} at ${targetPath} (${reason})`);
+        warnings.push(`${entry.name} will be created on-demand`);
+      }
+    }
+
     if (failures.length > 0) {
       return {
         status: "unhealthy",
-        message: "Workspace paths invalid",
-        details: { failures },
+        message: "Critical workspace paths invalid",
+        details: { failures, warnings },
       };
+    }
+
+    // Optional paths not being accessible is normal on first start or in restricted environments
+    // Return healthy since core functionality works - data dirs will be created on-demand
+    const details: Record<string, any> = {
+      hvsc: config.sidPath,
+      wavCache: config.wavCachePath,
+      tags: config.tagsPath,
+    };
+
+    if (warnings.length > 0) {
+      details.notes = warnings;
     }
 
     return {
       status: "healthy",
-      details: {
-        hvsc: config.sidPath,
-        wavCache: config.wavCachePath,
-        tags: config.tagsPath,
-      },
+      details,
     };
   } catch (error) {
     console.error("[Health Check] Workspace validation failed:", error);

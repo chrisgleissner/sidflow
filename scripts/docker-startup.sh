@@ -90,11 +90,24 @@ check_path "/app/packages/sidflow-web/.next" "Next.js build" || { echo "FATAL: N
 # Required config
 check_path "/sidflow/.sidflow.json" "Config file" || ((FAILED++))
 
-# Data directories (auto-create if missing)
-for dir in "/sidflow/workspace/hvsc" "/sidflow/workspace/wav-cache" "/sidflow/workspace/tags" "/sidflow/data/classified" "/sidflow/data/renders" "/sidflow/data/availability"; do
+# Data directories (check and auto-create if possible)
+for dir in "/sidflow/workspace/hvsc" "/sidflow/workspace/wav-cache" "/sidflow/workspace/tags"; do
   if [ ! -d "$dir" ]; then
-    echo "⚠ Creating missing directory: $dir"
+    echo "⚠ Creating missing workspace directory: $dir"
     mkdir -p "$dir" 2>/dev/null || echo "  (unable to create, will try at runtime)"
+  else
+    echo "✓ $dir exists"
+  fi
+done
+
+# Data directories (create if writable, otherwise note they'll be created on-demand)
+for dir in "/sidflow/data/classified" "/sidflow/data/renders" "/sidflow/data/availability"; do
+  if [ ! -d "$dir" ]; then
+    if mkdir -p "$dir" 2>/dev/null; then
+      echo "✓ Created data directory: $dir"
+    else
+      echo "⚠ Data directory $dir will be created on-demand (parent not writable)"
+    fi
   else
     echo "✓ $dir exists"
   fi

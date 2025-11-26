@@ -37,7 +37,13 @@ PORT="3000"
 ADMIN_USER="admin"
 ADMIN_PASSWORD="${SIDFLOW_ADMIN_PASSWORD:-}"
 ENVIRONMENT="prd"
-DOCKER_IMAGE="${SIDFLOW_IMAGE:-ghcr.io/chrisgleissner/sidflow}"
+# If SIDFLOW_IMAGE already contains a tag (e.g., sidflow:local), don't append IMAGE_TAG later
+if [[ "${SIDFLOW_IMAGE:-}" =~ : ]]; then
+  DOCKER_IMAGE="${SIDFLOW_IMAGE}"
+  IMAGE_TAG=""  # Don't append tag since image already has one
+else
+  DOCKER_IMAGE="${SIDFLOW_IMAGE:-ghcr.io/chrisgleissner/sidflow}"
+fi
 SKIP_PULL=false
 DRY_RUN=false
 FORCE_RECREATE=false
@@ -112,7 +118,10 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -t|--tag)
-            IMAGE_TAG="$2"
+            # Only set IMAGE_TAG if DOCKER_IMAGE doesn't already contain a tag
+            if [[ ! "${DOCKER_IMAGE}" =~ : ]]; then
+              IMAGE_TAG="$2"
+            fi
             shift 2
             ;;
         -p|--port)
@@ -193,27 +202,26 @@ log_info "SIDFlow Installation"
 log_info "===================="
 log_info "Environment:     $ENVIRONMENT"
 log_info "Install dir:     $INSTALL_DIR"
-log_info "Docker image:    $DOCKER_IMAGE:$IMAGE_TAG"
+if [[ -n "$IMAGE_TAG" ]]; then
+  log_info "Docker image:    $DOCKER_IMAGE:$IMAGE_TAG"
+else
+  log_info "Docker image:    $DOCKER_IMAGE"
+fi
 log_info "Port:            $PORT"
 log_info "Admin user:      $ADMIN_USER"
 echo
 
 # Create directory structure
 log_info "Creating directory structure..."
-# Include classified/renders/availability so health checks don't fail on first start
-as_root mkdir -p "$INSTALL_DIR"/{data/{hvsc,wav-cache,tags,sidflow/{classified,renders,availability}},config,scripts,backups}
+# Create workspace subdirectories (hvsc, wav-cache, tags) and data subdirectories
+as_root mkdir -p "$INSTALL_DIR"/{workspace/{hvsc,wav-cache,tags},data/{classified,renders,availability},config,scripts,backups}
 
-# Set ownership for container (UID 1001)
-log_info "Setting directory ownership (UID 1001:1001)..."
+# Set ownership for container (UID matches container user)
+log_info "Setting directory ownership (UID ${CONTAINER_UID}:${CONTAINER_GID})..."
 if [[ -n "$SUDO_BIN" ]]; then
-    as_root chown -R "${CONTAINER_UID}:${CONTAINER_GID}" "$INSTALL_DIR/data"
-    # Ensure the workspace mounts (hvsc/wav-cache/tags) are writable by the container user
-    as_root chown -R "${CONTAINER_UID}:${CONTAINER_GID}" "$INSTALL_DIR/data/hvsc" "$INSTALL_DIR/data/wav-cache" "$INSTALL_DIR/data/tags" "$INSTALL_DIR/data/sidflow"
-    # Ensure workspace root exists and is writable for the container user
-    as_root mkdir -p "$INSTALL_DIR/workspace"
-    as_root chown -R "${CONTAINER_UID}:${CONTAINER_GID}" "$INSTALL_DIR/workspace"
+    # Ensure workspace and data directories are owned by container user
+    as_root chown -R "${CONTAINER_UID}:${CONTAINER_GID}" "$INSTALL_DIR/workspace" "$INSTALL_DIR/data"
 else
-    run_cmd mkdir -p "$INSTALL_DIR/workspace"
     run_cmd chmod -R 777 "$INSTALL_DIR/data" "$INSTALL_DIR/workspace" || true
 fi
 
@@ -231,10 +239,10 @@ SIDFLOW_ADMIN_USER=$ADMIN_USER
 SIDFLOW_ADMIN_PASSWORD=$ADMIN_PASSWORD
 
 # Paths (relative to docker-compose.production.yml location)
-SIDFLOW_SID_PATH=$INSTALL_DIR/data/hvsc
-SIDFLOW_WAV_CACHE=$INSTALL_DIR/data/wav-cache
-SIDFLOW_TAGS_PATH=$INSTALL_DIR/data/tags
-SIDFLOW_DATA_PATH=$INSTALL_DIR/data/sidflow
+SIDFLOW_SID_PATH=$INSTALL_DIR/workspace/hvsc
+SIDFLOW_WAV_CACHE=$INSTALL_DIR/workspace/wav-cache
+SIDFLOW_TAGS_PATH=$INSTALL_DIR/workspace/tags
+SIDFLOW_DATA_PATH=$INSTALL_DIR/data
 
 # Port mapping
 SIDFLOW_PORT=$PORT
@@ -256,7 +264,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
 
 services:
   sidflow:
-    image: $DOCKER_IMAGE:$IMAGE_TAG
+    image: ${IMAGE_TAG:+$DOCKER_IMAGE:$IMAGE_TAG}${IMAGE_TAG:-$DOCKER_IMAGE}
     container_name: sidflow-$ENVIRONMENT
     restart: unless-stopped
     
@@ -295,10 +303,8 @@ services:
       - SIDFLOW_EXPECT_UID=${CONTAINER_UID}
     
     volumes:
-      - \${SIDFLOW_SID_PATH:-$INSTALL_DIR/data/hvsc}:/sidflow/workspace/hvsc:ro
-      - \${SIDFLOW_WAV_CACHE:-$INSTALL_DIR/data/wav-cache}:/sidflow/workspace/wav-cache
-      - \${SIDFLOW_TAGS_PATH:-$INSTALL_DIR/data/tags}:/sidflow/workspace/tags
-      - \${SIDFLOW_DATA_PATH:-$INSTALL_DIR/data/sidflow}:/sidflow/data
+      - $INSTALL_DIR/workspace:/sidflow/workspace:rw
+      - $INSTALL_DIR/data:/sidflow/data:rw
       - type: tmpfs
         target: /tmp
         tmpfs:
@@ -349,8 +355,13 @@ fi
 
 # Pull Docker image
 if [[ "$SKIP_PULL" != "true" ]]; then
-    log_info "Pulling Docker image: $DOCKER_IMAGE:$IMAGE_TAG"
-    run_cmd docker pull "$DOCKER_IMAGE:$IMAGE_TAG"
+    if [[ -n "$IMAGE_TAG" ]]; then
+      log_info "Pulling Docker image: $DOCKER_IMAGE:$IMAGE_TAG"
+      run_cmd docker pull "$DOCKER_IMAGE:$IMAGE_TAG"
+    else
+      log_info "Pulling Docker image: $DOCKER_IMAGE"
+      run_cmd docker pull "$DOCKER_IMAGE"
+    fi
     log_success "Docker image pulled"
 fi
 
