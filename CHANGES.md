@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.31 (2025-11-26)
+
+- refactor: improve workspace and data directory handling in health checks and installation scripts
+- chore: update CHANGES.md for 0.3.30
+
+
 ## 0.3.30 (2025-11-26)
 
 - Add scripts for SIDFlow management: logs, restore, start, status, stop, update, and webhook server
