@@ -305,16 +305,10 @@ services:
     volumes:
       - $INSTALL_DIR/workspace:/sidflow/workspace:rw
       - $INSTALL_DIR/data:/sidflow/data:rw
-      - type: tmpfs
-        target: /tmp
-        tmpfs:
-          size: 100M
-          mode: 1777
-      - type: tmpfs
-        target: /app/packages/sidflow-web/.next/cache
-        tmpfs:
-          size: 100M
-          mode: 1777
+    
+    tmpfs:
+      - /tmp:exec,mode=1777
+      - /app/packages/sidflow-web/.next/cache:uid=${CONTAINER_UID},gid=${CONTAINER_GID},mode=0755
     
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
