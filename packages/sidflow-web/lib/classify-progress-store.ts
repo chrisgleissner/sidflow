@@ -106,12 +106,14 @@ function applyThreadStatusUpdate(update: {
   });
 }
 
-export function beginClassifyProgress(initialThreads = 1) {
+export function beginClassifyProgress(threads: number, renderEngine?: string): void {
   snapshot = createInitialSnapshot();
+  snapshot.phase = 'analyzing';
   snapshot.isActive = true;
   snapshot.isPaused = false;
   snapshot.startedAt = Date.now();
-  ensureThreads(initialThreads);
+  snapshot.renderEngine = renderEngine;
+  ensureThreads(threads);
 }
 
 export function completeClassifyProgress(message?: string) {
@@ -281,6 +283,7 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     percentComplete: snapshot.percentComplete,
     threads: snapshot.threads,
     perThread: snapshot.perThread.map((thread) => ({ ...thread })),
+    renderEngine: snapshot.renderEngine,
     message: snapshot.message,
     error: snapshot.error,
     isActive: snapshot.isActive,

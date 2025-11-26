@@ -40,8 +40,7 @@ export async function POST(request: NextRequest) {
       : collection.collectionRoot;
     await fs.stat(classificationPath);
     const threads = config.threads && config.threads > 0 ? config.threads : os.cpus().length;
-    beginClassifyProgress(threads);
-
+    
     // Resolve engine preferences
     const preferredEngines: RenderTechnology[] = [];
     if (prefs.preferredEngines && prefs.preferredEngines.length > 0) {
@@ -54,14 +53,21 @@ export async function POST(request: NextRequest) {
       preferredEngines.push('wasm');
     }
 
-    console.log('[engine-order] Classification starting');
+    // Determine which engine description to show
+    let engineDescription: string;
     if (prefs.renderEngine && prefs.renderEngine !== 'wasm') {
+      engineDescription = prefs.renderEngine;
       console.log(`[engine-order] Forced engine from preferences: ${prefs.renderEngine}`);
     } else if (preferredEngines.length > 0) {
-      console.log(`[engine-order] Preferred engine order: ${preferredEngines.join(' → ')}`);
+      engineDescription = preferredEngines.join(' → ');
+      console.log(`[engine-order] Preferred engine order: ${engineDescription}`);
     } else {
+      engineDescription = 'wasm';
       console.log(`[engine-order] Using default WASM engine`);
     }
+    
+    beginClassifyProgress(threads, engineDescription);
+    console.log('[engine-order] Classification starting');
 
   const command = 'sidflow-classify';
   const cliArgs: string[] = [];

@@ -207,6 +207,12 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
         <CardDescription className="text-muted-foreground">
           Build WAV cache and generate metadata for your HVSC mirror
         </CardDescription>
+        {progress?.renderEngine && (
+          <div className="mt-2 rounded border border-accent/30 bg-accent/10 px-3 py-2">
+            <p className="text-xs font-semibold text-muted-foreground">RENDER ENGINE</p>
+            <p className="font-mono text-sm font-bold text-accent">{progress.renderEngine.toUpperCase()}</p>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
