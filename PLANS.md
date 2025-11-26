@@ -24,6 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [Structure rules](#structure-rules)
   - [Plan-then-act contract](#plan-then-act-contract)
 - [Active tasks](#active-tasks)
+  - [Task: Reproduce Docker Build & Verification Locally (2025-11-26)](#task-reproduce-docker-build--verification-locally-2025-11-26)
   - [Task: Fix E2E Test Failures (2025-11-26)](#task-fix-e2e-test-failures-2025-11-26)
   - [Task: Achieve \>90% Test Coverage (2025-11-24)](#task-achieve-90-test-coverage-2025-11-24)
 - [Archived Tasks](#archived-tasks)
@@ -111,6 +112,34 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Reproduce Docker Build & Verification Locally (2025-11-26)
+
+**User request (summary)**  
+- Reproduce the Docker image build and verification flow locally as done in CI.  
+- Confirm the image builds and passes the smoke/health check.  
+
+**Context and constraints**  
+- Production image built via `Dockerfile.production`; CI smoke uses `scripts/docker-smoke.sh`.  
+- Build pipeline uses Bun/Next standalone output; health verified at `/api/health`.  
+- Must avoid altering user data; run containers ephemeral.  
+
+**Plan (checklist)**  
+- [x] 1 — Review Docker build and smoke scripts to mirror CI behavior.  
+- [x] 2 — Run local Docker build + smoke test (`scripts/docker-smoke.sh`) and capture results.  
+- [x] 3 — Summarize outcomes and note any follow-ups or issues.  
+
+**Progress log**  
+- 2025-11-26 — Task created; ready to run docker-smoke locally.  
+- 2025-11-26 — Ran `bash scripts/docker-smoke.sh`: built image `sidflow:local` from `Dockerfile.production` (Next.js standalone verified, server.js 7167 bytes), started container `sidflow-smoke`, health OK with expected degraded checks for streaming assets and Ultimate64. Smoke test passed.  
+
+**Assumptions and open questions**  
+- Assumption: `scripts/docker-smoke.sh` matches CI verification steps.  
+- Open: None currently.  
+
+**Follow-ups / future work**  
+- [ ] If smoke fails, triage build logs and health endpoint for root cause.  
+- [ ] Document any required env overrides for developer machines.  
 
 ### Task: Fix E2E Test Failures (2025-11-26)
 
