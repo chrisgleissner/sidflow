@@ -90,6 +90,12 @@ export async function POST(request: NextRequest) {
   const command = 'sidflow-classify';
   const cliArgs: string[] = ['--config', tempConfigPath];
   
+    // Add force-rebuild flag if requested
+    if (validatedData.forceRebuild) {
+      cliArgs.push('--force-rebuild');
+      console.log('[classify] Force rebuild enabled - will re-render all WAV files');
+    }
+  
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
       SIDFLOW_SID_BASE_PATH: classificationPath,

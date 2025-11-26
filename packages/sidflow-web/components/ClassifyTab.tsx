@@ -62,6 +62,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   const [path, setPath] = useState('');
   const [defaultPath, setDefaultPath] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [forceRebuild, setForceRebuild] = useState(false);
   const [progress, setProgress] = useState<ClassifyProgressWithStorage | null>(null);
   const [, setTick] = useState(0);
 
@@ -117,11 +118,27 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
       return;
     }
 
+    // Confirm force rebuild if enabled
+    if (forceRebuild) {
+      const confirmed = window.confirm(
+        'WARNING: Force rebuild will DELETE and RE-RENDER all WAV files in the cache.\n\n' +
+        'This will:\n' +
+        '• Delete all existing WAV files\n' +
+        '• Re-render thousands of files (may take hours)\n' +
+        '• Use significant CPU and disk I/O\n\n' +
+        'Are you sure you want to continue?'
+      );
+      if (!confirmed) {
+        onStatusChange('Force rebuild cancelled');
+        return;
+      }
+    }
+
     setIsLoading(true);
-    onStatusChange('Starting classification...');
+    onStatusChange(forceRebuild ? 'Starting FORCE REBUILD...' : 'Starting classification...');
 
     try {
-      const response = await classifyPath({ path: target });
+      const response = await classifyPath({ path: target, forceRebuild });
       if (response.success) {
         onStatusChange('Classification completed successfully');
         await refreshProgress();
@@ -133,7 +150,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [path, defaultPath, onStatusChange, refreshProgress]);
+  }, [path, defaultPath, forceRebuild, onStatusChange, refreshProgress]);
 
   const threadStatuses = useMemo(() => progress?.perThread ?? [], [progress]);
   const storageStats = progress?.storage;
@@ -239,6 +256,19 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
               className="w-full px-3 py-2 bg-input border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isLoading || isRunning}
             />
+            <div className={`flex items-center gap-2 px-3 py-2 rounded border ${forceRebuild ? 'border-red-500/50 bg-red-500/10' : 'border-border/30 bg-muted/20'} transition-colors`}>
+              <input
+                id="force-rebuild"
+                type="checkbox"
+                checked={forceRebuild}
+                onChange={(e) => setForceRebuild(e.target.checked)}
+                disabled={isLoading || isRunning}
+                className="h-4 w-4 rounded border-border bg-input text-accent focus:ring-2 focus:ring-ring cursor-pointer"
+              />
+              <label htmlFor="force-rebuild" className={`text-xs cursor-pointer select-none flex-1 ${forceRebuild ? 'text-red-400 font-semibold' : 'text-muted-foreground'}`}>
+                ⚠️ Force rebuild (delete and re-render ALL WAV files)
+              </label>
+            </div>
             <div className="flex flex-col gap-2">
               <div className="relative">
                 <Button

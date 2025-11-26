@@ -33,6 +33,7 @@ export const ClassifyRequestSchema = z.object({
     .trim()
     .min(1, 'Path must not be empty')
     .optional(),
+  forceRebuild: z.boolean().optional(),
 });
 
 export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;
