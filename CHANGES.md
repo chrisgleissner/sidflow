@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.3.37 (2025-11-27)
+
+- docs: note docker health fix coverage
+- fix: add 'roms' directory creation in Dockerfile.production for improved structure
+- fix: precreate workspace/data subdirectories in Dockerfile.production for improved permissions and testing
+- chore: update CHANGES.md for 0.3.36
+
+
 ## 0.3.36 (2025-11-27)
 
 - refactor: simplify target duration handling in renderWavWithEngine function
