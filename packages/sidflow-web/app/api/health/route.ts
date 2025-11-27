@@ -372,22 +372,11 @@ async function checkStreamingAssets(): Promise<HealthStatus> {
 async function checkUiRoutes(): Promise<HealthStatus> {
   const port = process.env.PORT || "3000";
   const baseUrl = `http://127.0.0.1:${port}`;
-  const adminUser = process.env.SIDFLOW_ADMIN_USER;
-  const adminPass = process.env.SIDFLOW_ADMIN_PASSWORD;
-  const adminAuthHeader =
-    adminUser && adminPass ? { Authorization: `Basic ${Buffer.from(`${adminUser}:${adminPass}`).toString("base64")}` } : {};
 
   async function checkPath(pathname: string, keyword: string): Promise<string | null> {
     try {
       const url = `${baseUrl}${pathname}`;
-      const headers: Record<string, string> = { 
-        Host: "localhost",
-        // Add internal header so health check can bypass auth when probing admin routes
-        "x-sidflow-internal-health-check": "true"
-      };
-      if (pathname.startsWith("/admin") && Object.keys(adminAuthHeader).length > 0) {
-        Object.assign(headers, adminAuthHeader);
-      }
+      const headers: Record<string, string> = { Host: "localhost" };
       const res = await fetch(url, { cache: "no-store", headers });
       if (!res.ok) {
         return `${pathname} responded ${res.status}`;
@@ -403,7 +392,6 @@ async function checkUiRoutes(): Promise<HealthStatus> {
       }
       
       // Check if page is stuck on "Loading..." fallback
-      // A properly rendered page should have more than just the loading fallback
       const hasLoadingOnly = body.includes('Loading...') && !body.includes('<main') && !body.includes('id="__next"');
       if (hasLoadingOnly) {
         return `${pathname} stuck on "Loading..." fallback`;
@@ -414,7 +402,7 @@ async function checkUiRoutes(): Promise<HealthStatus> {
         return `${pathname} rendered without expected content (missing: "${keyword}")`;
       }
       
-      // Verify actual UI components are present (not just the Next.js shell)
+      // Verify actual UI components are present
       const hasUIComponents = body.includes('class=') || body.includes('className=') || body.includes('data-testid=');
       if (!hasUIComponents) {
         return `${pathname} missing UI components (possible hydration failure)`;
@@ -428,11 +416,9 @@ async function checkUiRoutes(): Promise<HealthStatus> {
 
   const failures: string[] = [];
   
+  // Only check public route - admin routes require authentication which is correct behavior
   const publicErr = await checkPath("/", "PLAY SID MUSIC");
   if (publicErr) failures.push(publicErr);
-  
-  const adminErr = await checkPath("/admin", "SETUP WIZARD");
-  if (adminErr) failures.push(adminErr);
 
   if (failures.length > 0) {
     return {
@@ -444,7 +430,7 @@ async function checkUiRoutes(): Promise<HealthStatus> {
 
   return {
     status: "healthy",
-    details: { public: "ok", admin: "ok" },
+    details: { public: "ok" },
   };
 }
 
