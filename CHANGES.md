@@ -1,6 +1,18 @@
 # Changelog
 
 
+## 0.3.33 (2025-11-27)
+
+- fix: remove obsolete middleware.ts file
+- feat(deployment): Update Fly.io configuration and deployment scripts
+- feat: mark WAV rendering simplification task as complete
+- Simplify WAV rendering: Let sidplayfp-cli use Songlengths.md5 directly
+- Fix WAV duration truncation (15s → correct durations)
+- feat: add task for investigating WAV duration truncation issue during classification
+- feat: integrate RenderOrchestrator for sidplayfp-cli rendering and improve argument formatting
+- chore: update CHANGES.md for 0.3.32
+
+
 ## 0.3.32 (2025-11-26)
 
 - feat: add default sidplayfp.ini creation and configuration in docker startup script
