@@ -134,11 +134,12 @@ To prevent uncontrolled growth of this file:
 - [x] 1 — Reproduce failure with current GHCR image to capture permission/health behavior.
 - [x] 2 — Ensure `/sidflow/workspace` and `/sidflow/data` exist in the image and are writable by the `node` user; guard ROM config creation against `set -e` exits.
 - [x] 3 — Rebuild image and run docker smoke/health check to confirm `/api/health` reachable without volumes.
-- [ ] 4 — Run test suite 3× (`bun run test`) to confirm no regressions.
+- [x] 4 — Run test suite 3× (`bun run test`) to confirm no regressions.
 
 **Progress log**
 - 2025-11-27 — Reproduced CI failure with `ghcr.io/chrisgleissner/sidflow:0.3.35`: `/sidflow` owned by root, `workspace`/`data` dirs missing, startup `mkdir` fails (permission denied) before server launches; container health becomes unhealthy and host curl to `/api/health` is connection refused.
 - 2025-11-27 — Added baked-in `/sidflow/workspace` and `/sidflow/data` owned by `node` in `Dockerfile.production`, chowned `/sidflow`, and made ROM directory creation non-fatal in `docker-startup.sh`. `PORT=3300 IMAGE_TAG=sidflow:local-permfix scripts/docker-smoke.sh` now passes; `/api/health` responds successfully with sidplayfp.ini created.
+- 2025-11-27 — Completed validation: `bun run test` passed 3× consecutively (1440 pass, 0 fail per run).
 
 **Assumptions and open questions**
 - Assumption: Pre-creating workspace/data owned by `node` will keep Fly.io `/mnt/data` symlink logic working (symlink replaces the directories).

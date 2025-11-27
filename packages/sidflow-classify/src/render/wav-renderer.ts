@@ -17,7 +17,9 @@ export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
 export const WAV_HASH_EXTENSION = ".sha256";
-const SONG_LENGTH_PADDING_SECONDS = 2;
+// Minimal padding to account for rounding and fade-out
+// The 2x safety margin in maxIterations calculation ensures we don't cut off early
+const SONG_LENGTH_PADDING_SECONDS = 0;
 
 const renderLogger = createLogger("renderWav");
 

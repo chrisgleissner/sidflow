@@ -188,9 +188,12 @@ RUN set -eux; \
     test -d /sidflow/app/packages/sidflow-web/.next || { echo "[security] ERROR: .next build not found"; exit 1; }; \
     echo "[security] Server validated ($(stat -c%s /sidflow/app/packages/sidflow-web/server.js) bytes)"; \
     install -d -o node -g node -m 0775 /sidflow/workspace /sidflow/data; \
-    install -d -o node -g node -m 0775 /opt/sidflow/tmp; \
+    install -d -o node -g node -m 0775 \
+        /sidflow/workspace/hvsc /sidflow/workspace/wav-cache /sidflow/workspace/tags \
+        /sidflow/data/classified /sidflow/data/renders /sidflow/data/availability \
+        /opt/sidflow/tmp; \
     chown node:node /sidflow; \
-    echo "[security] Initialized /sidflow/workspace, /sidflow/data, and /opt/sidflow/tmp for node user"; \
+    echo "[security] Initialized /sidflow workspace/data tree and /opt/sidflow/tmp for node user"; \
     # Create symlink so CLI scripts can find config from WORKDIR=/sidflow \
     ln -sf /sidflow/app/.sidflow.json /sidflow/.sidflow.json; \
     echo "[security] Config symlink created"; \
