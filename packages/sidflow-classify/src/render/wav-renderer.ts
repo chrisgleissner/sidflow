@@ -17,9 +17,6 @@ export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
 export const WAV_HASH_EXTENSION = ".sha256";
-// Minimal padding to account for rounding and fade-out
-// The 2x safety margin in maxIterations calculation ensures we don't cut off early
-const SONG_LENGTH_PADDING_SECONDS = 0;
 
 const renderLogger = createLogger("renderWav");
 
@@ -99,23 +96,20 @@ export async function renderWavWithEngine(
     Number.isFinite(options.targetDurationMs) &&
     options.targetDurationMs > 0
   ) {
-    const paddedSeconds = Math.max(
-      1,
-      options.targetDurationMs / 1000 + SONG_LENGTH_PADDING_SECONDS
-    );
-    if (paddedSeconds > fallbackSeconds) {
+    const targetSeconds = Math.max(1, options.targetDurationMs / 1000);
+    if (targetSeconds > fallbackSeconds) {
       renderLogger.debug(
-        `Songlength ${paddedSeconds.toFixed(3)}s clamped to ${fallbackSeconds.toFixed(3)}s for ${path.basename(
+        `Songlength ${targetSeconds.toFixed(3)}s clamped to ${fallbackSeconds.toFixed(3)}s for ${path.basename(
           wavFile
         )}`
       );
     } else {
       renderLogger.debug(
-        `Songlength target ${paddedSeconds.toFixed(3)}s for ${path.basename(
+        `Songlength target ${targetSeconds.toFixed(3)}s for ${path.basename(
           wavFile
         )}`
       );
-      maxSeconds = paddedSeconds;
+      maxSeconds = targetSeconds;
     }
   } else {
     renderLogger.debug(
