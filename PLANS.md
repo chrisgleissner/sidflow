@@ -114,6 +114,34 @@ To prevent uncontrolled growth of this file:
 
 ## Active tasks
 
+### Task: Fix Docker Health Check Permission Regression (2025-11-27)
+
+**User request (summary)**
+- Docker health check in CI fails after tagging the GHCR image; host curl to `/api/health` returns connection refused.
+- Startup diagnostics show permission errors creating `/sidflow/workspace` and `/sidflow/data/.sidplayfp.ini` in the container.
+
+**Context and constraints**
+- Image runs as `node` (UID 1000); `/sidflow` currently root-owned with no baked-in workspace/data directories.
+- `scripts/docker-startup.sh` must remain compatible with Fly.io symlink setup and Pi/K8s bind mounts while handling missing volumes gracefully.
+- CI smoke/verify runs the container without mounted volumes, so the image must boot cleanly in that scenario.
+
+**Plan (checklist)**
+- [x] 1 — Reproduce failure with current GHCR image to capture permission/health behavior.
+- [ ] 2 — Ensure `/sidflow/workspace` and `/sidflow/data` exist in the image and are writable by the `node` user; guard ROM config creation against `set -e` exits.
+- [ ] 3 — Rebuild image and run docker smoke/health check to confirm `/api/health` reachable without volumes.
+- [ ] 4 — Run test suite 3× (`bun run test`) to confirm no regressions.
+
+**Progress log**
+- 2025-11-27 — Reproduced CI failure with `ghcr.io/chrisgleissner/sidflow:0.3.35`: `/sidflow` owned by root, `workspace`/`data` dirs missing, startup `mkdir` fails (permission denied) before server launches; container health becomes unhealthy and host curl to `/api/health` is connection refused.
+
+**Assumptions and open questions**
+- Assumption: Pre-creating workspace/data owned by `node` will keep Fly.io `/mnt/data` symlink logic working (symlink replaces the directories).
+- Assumption: docker-smoke runs without mounted volumes and needs startup to succeed in that scenario.
+
+**Follow-ups / future work**
+- Consider an explicit pre-flight failure when base dirs are not writable before health checks run.
+- Potentially wire tagged-image smoke into the release workflow to catch regressions.
+
 ### Task: Fix Docker CLI Executable Resolution (2025-11-27)
 
 **User request (summary)**

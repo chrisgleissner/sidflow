@@ -128,7 +128,11 @@ export async function renderWavWithEngine(
   let collectedSamples = 0;
   let silentIterations = 0;
   let iterations = 0;
-  const maxIterations = Math.max(64, Math.ceil(maxSamples / RENDER_CYCLES_PER_CHUNK) * 4);
+  // Calculate max iterations based on expected samples per cycle
+  // At PAL clock (~985kHz) and 44.1kHz sample rate, ~20,000 cycles produces ~1,800 samples
+  // Use a conservative estimate: aim for 2x the iterations needed to ensure we don't stop early
+  const estimatedSamplesPerChunk = (RENDER_CYCLES_PER_CHUNK / 985_000) * sampleRate * channels;
+  const maxIterations = Math.max(64, Math.ceil(maxSamples / estimatedSamplesPerChunk) * 2);
 
   while (collectedSamples < maxSamples && iterations < maxIterations) {
     iterations += 1;
