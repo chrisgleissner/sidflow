@@ -287,12 +287,10 @@ export async function needsWavRefresh(
 export type RenderWav = (options: RenderWavOptions) => Promise<void>;
 
 export const defaultRenderWav: RenderWav = async (options) => {
-  const config = await loadConfig();
+  const config = await loadConfig(process.env.SIDFLOW_CONFIG);
   const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
-  
-  // Check if we should use sidplayfp-cli
   const useCli = preferredEngines[0] === 'sidplayfp-cli';
-  
+
   if (useCli) {
     // Use sidplayfp-cli via RenderOrchestrator
     const orchestrator = new RenderOrchestrator({
@@ -493,7 +491,11 @@ export async function buildWavCache(
   // Building phase: render WAV files for each song
   const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
   classifyLogger.debug(`Starting building phase with ${buildConcurrency} threads`);
-  const rendererPool = render === defaultRenderWav ? new WasmRendererPool(buildConcurrency) : null;
+  
+  // Only use WasmRendererPool if using default render AND first preferred engine is WASM
+  const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
+  const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
+  const rendererPool = shouldUsePool ? new WasmRendererPool(buildConcurrency) : null;
 
   try {
     classifyLogger.debug(

@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
+import { resetConfigCache } from "@sidflow/common";
 import {
   buildWavCache,
   defaultExtractMetadata,
@@ -315,6 +316,13 @@ export async function runClassifyCli(
   }
 
   try {
+    // Set SIDFLOW_CONFIG environment variable so all subsequent loadConfig() calls use this config
+    if (options.configPath) {
+      process.env.SIDFLOW_CONFIG = path.resolve(options.configPath);
+      // Reset config cache to ensure the new env var is picked up
+      resetConfigCache();
+    }
+    
     const plan = await runtime.planClassification({
       configPath: options.configPath,
       forceRebuild: options.forceRebuild ?? false

@@ -66,6 +66,7 @@ async function inferDefaultMusicRoot(root: string): Promise<string> {
 
 async function resolveSonglengthsFile(root: string): Promise<{ filePath: string | null; musicRoot: string }>
 {
+  // Try current directory first
   for (const resolveCandidate of SONG_LENGTH_CANDIDATES) {
     const candidate = resolveCandidate(root);
     try {
@@ -75,6 +76,28 @@ async function resolveSonglengthsFile(root: string): Promise<{ filePath: string 
       continue;
     }
   }
+
+  // If not found, search parent directories up to 5 levels
+  let currentPath = root;
+  for (let i = 0; i < 5; i++) {
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) {
+      // Reached filesystem root
+      break;
+    }
+    currentPath = parentPath;
+
+    for (const resolveCandidate of SONG_LENGTH_CANDIDATES) {
+      const candidate = resolveCandidate(currentPath);
+      try {
+        await access(candidate.filePath);
+        return { filePath: candidate.filePath, musicRoot: candidate.musicRoot };
+      } catch {
+        continue;
+      }
+    }
+  }
+
   return { filePath: null, musicRoot: await inferDefaultMusicRoot(root) };
 }
 

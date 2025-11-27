@@ -490,13 +490,20 @@ export class RenderOrchestrator {
       args.push("-o", String(request.songIndex));
     }
 
+    // Use maxRenderSeconds if provided, otherwise convert targetDurationMs to seconds
+    // Add 2 seconds padding to ensure complete render
+    let timeLimit: number | undefined;
     if (request.maxRenderSeconds) {
-      args.push("-t", String(request.maxRenderSeconds));
+      timeLimit = request.maxRenderSeconds;
+    } else if (request.targetDurationMs) {
+      timeLimit = Math.ceil(request.targetDurationMs / 1000) + 2;
+    }
+
+    if (timeLimit) {
+      args.push(`-t${timeLimit}`);  // sidplayfp requires -t<num> format, no space
     }
 
     args.push(request.sidPath);
-
-    logger.debug(`Running: ${sidplayfpPath} ${args.join(" ")}`);
 
     await new Promise<void>((resolve, reject) => {
       const proc = spawn(sidplayfpPath, args, {
@@ -504,9 +511,14 @@ export class RenderOrchestrator {
       });
 
       let stderr = "";
+      let stdout = "";
 
       proc.stderr?.on("data", (data) => {
         stderr += data.toString();
+      });
+
+      proc.stdout?.on("data", (data) => {
+        stdout += data.toString();
       });
 
       proc.on("close", (code) => {
