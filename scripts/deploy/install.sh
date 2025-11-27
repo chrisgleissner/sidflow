@@ -87,11 +87,8 @@ run_cmd() {
 SUDO_BIN="${USE_SUDO-}"
 # Check if sudo is available and needed
 if [[ -z "$SUDO_BIN" ]]; then
-    if command -v sudo >/dev/null 2>&1 && ! sudo -n true 2>/dev/null; then
-        # sudo exists but requires password, skip it for this install
-        SUDO_BIN=""
-    elif command -v sudo >/dev/null 2>&1; then
-        # sudo exists and works passwordless
+    if command -v sudo >/dev/null 2>&1; then
+        # sudo exists - use it (will prompt for password if needed)
         SUDO_BIN="sudo"
     fi
 fi
@@ -178,7 +175,7 @@ done
 # Resolve INSTALL_DIR to absolute path if it's not already
 if [[ "$INSTALL_DIR" != /* ]]; then
     # Create the directory if it doesn't exist so we can resolve its path
-    mkdir -p "$INSTALL_DIR"
+    as_root mkdir -p "$INSTALL_DIR"
     INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd)"
 fi
 
