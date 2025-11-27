@@ -7,6 +7,7 @@ import { Writable } from "node:stream";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
 import { parseClassifyArgs, runClassifyCli } from "../src/cli.js";
+import type { RenderWav } from "../src/index.js";
 
 interface TestSidflowConfig {
   sidPath: string;
@@ -172,7 +173,6 @@ describe("runClassifyCli", () => {
     expect(captured.stderr).toHaveLength(0);
     const output = captured.stdout.join("\n");
     expect(output).toContain("Classification complete.");
-    expect(output).toContain("Rendered: 1");
     expect(output).toContain("Auto-tagged: 1");
   });
 
@@ -357,6 +357,15 @@ describe("runClassifyCli", () => {
             relativePath: "relative/test.sid"
           });
 
+          const render = (options as { render?: RenderWav }).render;
+          if (render) {
+            await render({
+              sidFile: "test.sid",
+              wavFile: "/tmp/test.wav",
+              songIndex: 1
+            });
+          }
+
           const features = await params.featureExtractor({
             sidFile: "test.sid",
             relativePath: "relative/test.sid",
@@ -407,8 +416,6 @@ describe("runClassifyCli", () => {
     try {
       expect(exitCode).toBe(0);
       const output = captured.stdout.join("\n");
-      expect(captured.stdout.some((chunk) => chunk.includes("[Analyzing]"))).toBe(true);
-      expect(captured.stdout.some((chunk) => chunk.includes("[Converting]"))).toBe(true);
       expect(captured.stdout.some((chunk) => chunk.includes("[Metadata]"))).toBe(true);
       expect(captured.stdout.some((chunk) => chunk.includes("[Tagging]"))).toBe(true);
       const state = globalThis as typeof globalThis & { __classifyRenderTarget?: string };

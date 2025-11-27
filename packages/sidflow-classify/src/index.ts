@@ -949,6 +949,7 @@ export interface GenerateAutoTagsOptions {
   onProgress?: AutoTagProgressCallback;
   threads?: number;
   onThreadUpdate?: (update: ThreadActivityUpdate) => void;
+  render?: RenderWav;
 }
 
 export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
@@ -977,6 +978,7 @@ interface AutoTagJob {
   metadata: SidMetadata;
   manualRecord: ManualTagRecord | null;
   wavPath: string;
+  targetDurationMs?: number;
 }
 
 export async function generateAutoTags(
@@ -990,6 +992,7 @@ export async function generateAutoTags(
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
+  const render = options.render ?? defaultRenderWav;
 
   const autoTagged: string[] = [];
   const manualEntries: string[] = [];
@@ -999,6 +1002,22 @@ export async function generateAutoTags(
   let predictionsGenerated = 0;
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
+  const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+
+  const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
+    const existing = songlengthPromises.get(sidFile);
+    if (existing) {
+      return existing;
+    }
+    const pending = lookupSongDurationsMs(sidFile, plan.sidPath).catch((error) => {
+      classifyLogger.warn(
+        `Failed to resolve song length for ${path.relative(plan.sidPath, sidFile)}: ${(error as Error).message}`
+      );
+      return undefined;
+    });
+    songlengthPromises.set(sidFile, pending);
+    return pending;
+  };
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
@@ -1021,6 +1040,7 @@ export async function generateAutoTags(
 
     const songCount = fullMetadata?.songs ?? 1;
     const manualRecord = await loadManualTagRecord(plan.sidPath, plan.tagsPath, sidFile);
+    const durations = await getSongDurations(sidFile);
 
     for (let songIndex = 1; songIndex <= songCount; songIndex++) {
       if (onProgress && metadataProcessed % AUTOTAG_PROGRESS_INTERVAL === 0) {
@@ -1044,7 +1064,8 @@ export async function generateAutoTags(
         songCount,
         metadata,
         manualRecord,
-        wavPath
+        wavPath,
+        targetDurationMs: durations?.[Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1)]
       });
     }
   }
@@ -1066,9 +1087,12 @@ export async function generateAutoTags(
 
     if (needsAuto) {
       if (!(await pathExists(job.wavPath))) {
-        throw new Error(
-          `Missing WAV cache for ${job.posixRelative} song ${job.songIndex}. Run buildWavCache before generateAutoTags.`
-        );
+        await render({
+          sidFile: job.sidFile,
+          wavFile: job.wavPath,
+          songIndex: job.songCount > 1 ? job.songIndex : undefined,
+          targetDurationMs: job.targetDurationMs
+        });
       }
 
       if (onProgress) {

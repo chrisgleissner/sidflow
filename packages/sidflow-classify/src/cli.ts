@@ -348,17 +348,6 @@ export async function runClassifyCli(
       render = await runtime.loadRenderModule(options.renderModule);
     }
 
-    const wavResult = await runtime.buildWavCache(resolvedPlan, {
-      forceRebuild: options.forceRebuild,
-      render,
-      threads,
-      onThreadUpdate: threadLogger,
-      onProgress: (progress) => progressLogger.logWavProgress(progress)
-    });
-
-    progressLogger.clearLine();
-    runtime.stdout.write("\n");
-
     let featureExtractor: FeatureExtractor = heuristicFeatureExtractor;
     if (options.featureModule) {
       featureExtractor = await runtime.loadFeatureModule(options.featureModule);
@@ -379,6 +368,7 @@ export async function runClassifyCli(
       featureExtractor,
       predictRatings,
       threads,
+      render,
       onThreadUpdate: threadLogger,
       onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
     });
@@ -388,7 +378,6 @@ export async function runClassifyCli(
 
     const summary = [
       "Classification complete.",
-      ...summariseWavResult(wavResult),
       ...summariseAutoTags(autoTagsResult)
     ];
     runtime.stdout.write(`${summary.join("\n")}\n`);
