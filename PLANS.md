@@ -24,10 +24,15 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [Structure rules](#structure-rules)
   - [Plan-then-act contract](#plan-then-act-contract)
 - [Active tasks](#active-tasks)
-  - [Task: Reproduce Docker Build & Verification Locally (2025-11-26)](#task-reproduce-docker-build--verification-locally-2025-11-26)
+  - [Task: Fix Docker Health Check Permission Regression (2025-11-27)](#task-fix-docker-health-check-permission-regression-2025-11-27)
+  - [Task: Fix Docker CLI Executable Resolution (2025-11-27)](#task-fix-docker-cli-executable-resolution-2025-11-27)
+  - [Task: Set Up Fly.io Deployment Infrastructure (2025-11-27)](#task-set-up-flyio-deployment-infrastructure-2025-11-27)
+  - [Task: Root Cause WAV Duration Truncation (2025-11-27) [COMPLETED]](#task-root-cause-wav-duration-truncation-2025-11-27-completed)
+  - [Task: ✅ COMPLETE - Simplify WAV Rendering - Let sidplayfp Use Songlengths.md5 Directly (2025-11-27)](#task-%e2%9c%85-complete---simplify-wav-rendering---let-sidplayfp-use-songlengthsmd5-directly-2025-11-27)
   - [Task: Strengthen Health Checks & Fix UI Loading (2025-11-26)](#task-strengthen-health-checks--fix-ui-loading-2025-11-26)
+  - [Task: Reproduce Docker Build & Verification Locally (2025-11-26)](#task-reproduce-docker-build--verification-locally-2025-11-26)
   - [Task: Fix E2E Test Failures (2025-11-26)](#task-fix-e2e-test-failures-2025-11-26)
-  - [Task: Achieve \>90% Test Coverage (2025-11-24)](#task-achieve-90-test-coverage-2025-11-24)
+  - [Task: Achieve >90% Test Coverage (2025-11-24)](#task-achieve-90%25-test-coverage-2025-11-24)
 - [Archived Tasks](#archived-tasks)
 
 <!-- /TOC -->
