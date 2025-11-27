@@ -114,6 +114,96 @@ To prevent uncontrolled growth of this file:
 
 ## Active tasks
 
+### Task: Root Cause WAV Duration Truncation (2025-11-27)
+
+**User request (summary)**
+- WAV files systematically rendering too short (e.g., 15s instead of 46s)
+- Issue persists across "almost all" files even after multiple configuration fixes
+- Direct sidplayfp-cli execution produces correct durations, but classification produces short files
+- User confirmed: using sidplayfp-cli (not WASM), interruptions occur even without silence
+
+**Context and constraints**
+- **Environment**: Docker production container (sidflow-prd) with sidplayfp-cli 2.4.0, libsidplayfp 2.4.2
+- **Test case**: `DEMOS/0-9/1st_Chaff.sid` should be 46s, but renders as ~15s during classification
+- **Direct test**: `sidplayfp -w/tmp/test.wav /sidflow/workspace/hvsc/C64Music/DEMOS/0-9/1st_Chaff.sid` produces correct 48s output (Song Length: 00:46.000)
+- **Configuration verified**:
+  - sidplayfp.ini correctly configured with Songlengths.md5 at `/sidflow/workspace/hvsc/update/DOCUMENTS/Songlengths.md5` (5.09 MB)
+  - ROM files present at `/sidflow/workspace/roms/` (kernal, basic, characters)
+  - Container paths verified correct (not host paths)
+  - Persistent configuration in `/sidflow/data/.sidplayfp.ini` symlinked to config directory
+- **Previous fixes attempted**:
+  - Updated sidplayfp.ini to use Songlengths.md5 (was using obsolete Songlengths.txt)
+  - Modified classification to use RenderOrchestrator respecting preferredEngines config
+  - Added force rebuild capability
+  - Deployed multiple times with image rebuilds
+- **Known working**: Direct sidplayfp-cli invocation outside classification pipeline
+
+**Plan (checklist)**
+
+**Phase 1: Quick Code Analysis (5 min)** — Search for root cause in code before expensive debugging
+- [ ] 1.1 — Search codebase for duration limits: `rg -i "maxRenderSeconds|15|time.*limit|duration.*limit" packages/sidflow-classify/ packages/sidflow-web/app/api/classify/`
+- [ ] 1.2 — Trace RenderRequest creation: Check `defaultRenderWav` in `packages/sidflow-classify/src/index.ts` for maxRenderSeconds being set
+- [ ] 1.3 — Check if preferredEngines config is loading correctly: Verify `.sidflow.json` has sidplayfp-cli in preferredEngines array
+- [ ] 1.4 — Verify RenderOrchestrator command building: Review `executeRender` in `render-orchestrator.ts` for unexpected flags (especially `-t`)
+
+**Phase 2: Instrumentation & Live Debugging (10 min)** — Add logging and capture real invocation
+- [ ] 2.1 — Add debug logging to `render-orchestrator.ts`: Log full command array, environment (HOME, USER, PWD), and config file path before spawning sidplayfp-cli
+- [ ] 2.2 — Add exit code and stderr capture: Log process exit code and any error output after execution
+- [ ] 2.3 — Rebuild and deploy with instrumentation: `docker build`, `docker stop/rm`, `docker run` with new image
+- [ ] 2.4 — Trigger test classification via UI force rebuild: Select single file (1st_Chaff.sid), enable force rebuild, capture logs from `docker logs -f sidflow-prd`
+- [ ] 2.5 — Compare captured command vs working direct invocation: Identify any differences in flags, paths, or arguments
+
+**Phase 3: Environment & Config Verification (5 min)** — Verify runtime context matches assumptions
+- [ ] 3.1 — Verify config accessibility in sidflow user context: `docker exec -u sidflow sidflow-prd bash -c "cat ~/.config/sidplayfp/sidplayfp.ini && echo '---' && ls -la ~/.config/sidplayfp/"`
+- [ ] 3.2 — Check Songlengths.md5 entry for test file: `docker exec sidflow-prd bash -c "md5sum /sidflow/workspace/hvsc/C64Music/DEMOS/0-9/1st_Chaff.sid && grep $(md5sum /sidflow/workspace/hvsc/C64Music/DEMOS/0-9/1st_Chaff.sid | cut -d' ' -f1) /sidflow/workspace/hvsc/update/DOCUMENTS/Songlengths.md5"`
+- [ ] 3.3 — Verify actual WAV output duration: `docker exec sidflow-prd ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 /sidflow/workspace/wav-cache/<most-recent>.wav`
+
+**Phase 4: Comparative Testing (5 min)** — Isolate whether issue is engine-specific or systemic
+- [ ] 4.1 — Test WASM engine render: Temporarily change preferredEngines to `["wasm"]` in config, trigger classification, check duration
+- [ ] 4.2 — If WASM correct but sidplayfp-cli wrong: Issue is in sidplayfp-cli invocation (focus on command-line args)
+- [ ] 4.3 — If both wrong: Issue is in pre-render logic (maxRenderSeconds, Songlengths.md5 lookup, or song subsong selection)
+
+**Phase 5: Root Cause Fix & Validation (5 min)** — Implement fix based on findings
+- [ ] 5.1 — Implement targeted fix based on root cause (most likely: remove/fix maxRenderSeconds, fix command args, or fix config path)
+- [ ] 5.2 — Rebuild and redeploy: Build, stop, remove, run with new image
+- [ ] 5.3 — Validate fix: Force rebuild test file, verify WAV duration matches expected 46s
+- [ ] 5.4 — Spot-check additional files: Test 3-5 other files with known durations
+- [ ] 5.5 — Run unit tests to ensure no regressions: `docker exec sidflow-prd bun test packages/sidflow-classify/`
+
+**Likely Root Causes (prioritized by probability)**
+1. **maxRenderSeconds hardcoded or defaulting to 15s** — Most likely; check RenderRequest creation
+2. **sidplayfp-cli receiving `-t 15` flag** — Check command building in RenderOrchestrator
+3. **Config file not loaded** — HOME or config path wrong during classification (vs startup)
+4. **Default subsong being selected instead of main** — Subsongs often shorter than main song
+5. **WASM engine being used despite config** — preferredEngines not respected (already fixed once, could regress)
+
+**Progress log**
+- 2025-11-27 — Task created. Research so far:
+  - Initial issue: WAV files rendering 15s instead of 46s
+  - Fixed sidplayfp.ini to use Songlengths.md5 instead of Songlengths.txt
+  - Fixed classification to respect preferredEngines config (was always using WASM)
+  - Verified container paths are correct (/sidflow/... not /opt/sidflow/...)
+  - Verified Songlengths.md5 and ROM files exist and are accessible
+  - Confirmed direct sidplayfp-cli invocation produces correct 48s output
+  - User reports systemic issue across "almost all" files
+  - Issue persists after multiple configuration fixes and deployments
+
+**Assumptions and open questions**
+- Assumption: The issue is in how sidplayfp-cli is being invoked during classification, not in the binary itself (validated by direct invocation working)
+- Assumption: Configuration file is correct but may not be loaded in classification context
+- Open: Is maxRenderSeconds or similar timeout being applied?
+- Open: Does sidplayfp-cli receive different arguments during classification vs direct invocation?
+- Open: Is the config file actually being read by sidplayfp-cli during classification?
+- Open: Could there be a working directory or environment variable issue?
+
+**Follow-ups / future work**
+- [ ] Add integration test that validates WAV duration matches Songlengths.md5 expectations
+- [ ] Add health check that validates a known file renders with correct duration
+- [ ] Document classification pipeline render behavior in technical-reference.md
+- [ ] Consider adding --verify-duration flag to classification that checks output matches expected
+
+---
+
 ### Task: Strengthen Health Checks & Fix UI Loading (2025-11-26)
 
 **User request (summary)**  
