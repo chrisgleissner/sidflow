@@ -24,6 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [Structure rules](#structure-rules)
   - [Plan-then-act contract](#plan-then-act-contract)
 - [Active tasks](#active-tasks)
+  - [Task: Inline Render + Classify Per Song (2025-11-27)](#task-inline-render--classify-per-song-2025-11-27)
   - [Task: Prevent Runaway sidplayfp Renders Ignoring Songlengths (2025-11-27)](#task-prevent-runaway-sidplayfp-renders-ignoring-songlengths-2025-11-27)
   - [Task: Fix Docker Health Check Permission Regression (2025-11-27)](#task-fix-docker-health-check-permission-regression-2025-11-27)
   - [Task: Fix Docker CLI Executable Resolution (2025-11-27)](#task-fix-docker-cli-executable-resolution-2025-11-27)
@@ -119,6 +120,33 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Inline Render + Classify Per Song (2025-11-27)
+
+**User request (summary)**
+- Stop the two-phase classify flow that renders all WAVs first; classify each SID immediately after rendering so work isn’t lost if runs are interrupted.
+- Ensure classified output is produced even when long batches are stopped mid-run.
+
+**Context and constraints**
+- Existing CLI runs `buildWavCache` then `generateAutoTags`, requiring all WAVs to finish before tagging.
+- Needs to stay compatible with current render engine selection and custom render modules.
+- Must retain Songlengths-based limits and avoid runaway renders.
+
+**Plan (checklist)**
+- [x] 1 — Confirm pipeline renders all WAVs before tagging and identify where to interleave classification.
+- [x] 2 — Update classification to render on-demand per song (with Songlengths-derived limits) and remove the upfront WAV pass in the CLI.
+- [x] 3 — Add/adjust tests to cover on-demand rendering in classify CLI.
+- [x] 4 — Run full test suite 3× clean.
+
+**Progress log**
+- 2025-11-27 — Implemented on-demand rendering inside `generateAutoTags` (uses Songlengths + padding, falls back to max render seconds) and removed the separate `buildWavCache` pass from `runClassifyCli`. CLI now renders each song immediately before feature extraction. Added CLI test coverage for the new flow. `bun run test` passed 3× (1442/0 each).
+
+**Assumptions and open questions**
+- Assumption: On-demand rendering is acceptable for existing users; those wanting a pre-built cache can still call `buildWavCache` separately.
+- Open: Consider a CLI flag to keep the two-phase flow if needed for large batches.
+
+**Follow-ups / future work**
+- Document the new on-demand classify behavior and how to run a pre-cache pass if desired.
 
 ### Task: Prevent Runaway sidplayfp Renders Ignoring Songlengths (2025-11-27)
 
