@@ -35,6 +35,7 @@ import {
   renderWavWithEngine,
   type RenderWavOptions
 } from "./render/wav-renderer.js";
+import { RenderOrchestrator, type RenderEngine } from "./render/render-orchestrator.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -286,8 +287,44 @@ export async function needsWavRefresh(
 export type RenderWav = (options: RenderWavOptions) => Promise<void>;
 
 export const defaultRenderWav: RenderWav = async (options) => {
-  const engine = await createEngine();
-  await renderWavWithEngine(engine, options);
+  const config = await loadConfig();
+  const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
+  
+  // Check if we should use sidplayfp-cli
+  const useCli = preferredEngines[0] === 'sidplayfp-cli';
+  
+  if (useCli) {
+    // Use sidplayfp-cli via RenderOrchestrator
+    const orchestrator = new RenderOrchestrator({
+      sidplayfpCliPath: config.sidplayPath,
+      hvscRoot: config.sidPath,
+    });
+    const outputDir = path.dirname(options.wavFile);
+    await ensureDir(outputDir);
+    
+    await orchestrator.render({
+      sidPath: options.sidFile,
+      outputDir,
+      engine: 'sidplayfp-cli',
+      formats: ['wav'],
+      songIndex: options.songIndex,
+      targetDurationMs: options.targetDurationMs,
+    });
+    
+    // Rename to expected location
+    const baseName = path.basename(options.sidFile, '.sid');
+    const trackSuffix = options.songIndex !== undefined ? `-${options.songIndex}` : '';
+    const chip = config.render?.defaultChip ?? '6581';
+    const renderedFile = path.join(outputDir, `${baseName}${trackSuffix}-sidplayfp-cli-${chip}.wav`);
+    if (renderedFile !== options.wavFile) {
+      const fs = await import('node:fs/promises');
+      await fs.rename(renderedFile, options.wavFile);
+    }
+  } else {
+    // Use WASM engine (default)
+    const engine = await createEngine();
+    await renderWavWithEngine(engine, options);
+  }
 };
 
 export interface WavCacheProgress {

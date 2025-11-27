@@ -484,7 +484,7 @@ export class RenderOrchestrator {
     const { spawn } = await import("node:child_process");
     const sidplayfpPath = this.config.sidplayfpCliPath ?? "sidplayfp";
 
-    const args = ["-w", wavPath];
+    const args = [`-w${wavPath}`];
 
     if (request.songIndex !== undefined) {
       args.push("-o", String(request.songIndex));
