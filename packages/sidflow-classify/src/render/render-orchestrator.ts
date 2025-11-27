@@ -26,7 +26,7 @@ import type {
 } from "@sidflow/common";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { renderWavWithEngine } from "./wav-renderer.js";
+import { renderWavWithEngine, resolveTimeLimitSeconds } from "./wav-renderer.js";
 import { createEngine } from "./engine-factory.js";
 
 const logger = createLogger("render-orchestrator");
@@ -485,15 +485,17 @@ export class RenderOrchestrator {
     const sidplayfpPath = this.config.sidplayfpCliPath ?? "sidplayfp";
 
     const args = [`-w${wavPath}`];
+    const timeLimitSeconds = resolveTimeLimitSeconds(
+      request.targetDurationMs,
+      request.maxRenderSeconds
+    );
 
     if (request.songIndex !== undefined) {
       args.push("-o", String(request.songIndex));
     }
 
-    // Only use explicit time limit if maxRenderSeconds is provided
-    // Otherwise, let sidplayfp-cli use Songlengths.md5 automatically via its config
-    if (request.maxRenderSeconds) {
-      args.push(`-t${request.maxRenderSeconds}`);
+    if (Number.isFinite(timeLimitSeconds) && timeLimitSeconds > 0) {
+      args.push(`-t${Math.ceil(timeLimitSeconds)}`);
     }
 
     args.push(request.sidPath);
@@ -505,6 +507,16 @@ export class RenderOrchestrator {
 
       let stderr = "";
       let stdout = "";
+      const watchdogMs = Math.max(
+        5_000,
+        Math.ceil(timeLimitSeconds * 1000) + 5_000
+      );
+      const watchdog = setTimeout(() => {
+        logger.warn(
+          `sidplayfp-cli exceeded ${timeLimitSeconds.toFixed(3)}s limit; terminating process`
+        );
+        proc.kill("SIGKILL");
+      }, watchdogMs);
 
       proc.stderr?.on("data", (data) => {
         stderr += data.toString();
@@ -515,6 +527,7 @@ export class RenderOrchestrator {
       });
 
       proc.on("close", (code) => {
+        clearTimeout(watchdog);
         if (code === 0) {
           resolve();
         } else {
@@ -527,6 +540,7 @@ export class RenderOrchestrator {
       });
 
       proc.on("error", (err) => {
+        clearTimeout(watchdog);
         reject(err);
       });
     });

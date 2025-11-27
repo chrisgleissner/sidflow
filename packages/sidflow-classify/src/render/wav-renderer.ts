@@ -17,10 +17,11 @@ export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
 export const WAV_HASH_EXTENSION = ".sha256";
+const TARGET_DURATION_PADDING_SECONDS = 2;
 
 const renderLogger = createLogger("renderWav");
 
-function resolveMaxRenderSeconds(override?: number): number {
+export function resolveMaxRenderSeconds(override?: number): number {
   if (typeof override === "number" && Number.isFinite(override) && override > 0) {
     return override;
   }
@@ -32,6 +33,25 @@ function resolveMaxRenderSeconds(override?: number): number {
     }
   }
   return MAX_RENDER_SECONDS;
+}
+
+export function resolveTimeLimitSeconds(
+  targetDurationMs?: number,
+  override?: number
+): number {
+  const fallbackSeconds = resolveMaxRenderSeconds(override);
+
+  if (
+    typeof targetDurationMs === "number" &&
+    Number.isFinite(targetDurationMs) &&
+    targetDurationMs > 0
+  ) {
+    const targetSeconds = targetDurationMs / 1000;
+    const padded = Math.max(1, targetSeconds + TARGET_DURATION_PADDING_SECONDS);
+    return Math.min(padded, fallbackSeconds);
+  }
+
+  return fallbackSeconds;
 }
 
 export async function computeFileHash(filePath: string): Promise<string> {
@@ -89,8 +109,11 @@ export async function renderWavWithEngine(
   const sampleRate = engine.getSampleRate();
   const channels = engine.getChannels();
   const fallbackSeconds = resolveMaxRenderSeconds(options.maxRenderSeconds);
+  const maxSeconds = resolveTimeLimitSeconds(
+    options.targetDurationMs,
+    options.maxRenderSeconds
+  );
 
-  let maxSeconds = fallbackSeconds;
   if (
     typeof options.targetDurationMs === "number" &&
     Number.isFinite(options.targetDurationMs) &&
@@ -105,11 +128,10 @@ export async function renderWavWithEngine(
       );
     } else {
       renderLogger.debug(
-        `Songlength target ${targetSeconds.toFixed(3)}s for ${path.basename(
+        `Songlength target ${targetSeconds.toFixed(3)}s with padding for ${path.basename(
           wavFile
         )}`
       );
-      maxSeconds = targetSeconds;
     }
   } else {
     renderLogger.debug(

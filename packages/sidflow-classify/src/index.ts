@@ -306,6 +306,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
       engine: 'sidplayfp-cli',
       formats: ['wav'],
       songIndex: options.songIndex,
+      maxRenderSeconds: options.maxRenderSeconds,
       targetDurationMs: options.targetDurationMs,
     });
     

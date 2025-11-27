@@ -24,6 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [Structure rules](#structure-rules)
   - [Plan-then-act contract](#plan-then-act-contract)
 - [Active tasks](#active-tasks)
+  - [Task: Prevent Runaway sidplayfp Renders Ignoring Songlengths (2025-11-27)](#task-prevent-runaway-sidplayfp-renders-ignoring-songlengths-2025-11-27)
   - [Task: Fix Docker Health Check Permission Regression (2025-11-27)](#task-fix-docker-health-check-permission-regression-2025-11-27)
   - [Task: Fix Docker CLI Executable Resolution (2025-11-27)](#task-fix-docker-cli-executable-resolution-2025-11-27)
   - [Task: Set Up Fly.io Deployment Infrastructure (2025-11-27)](#task-set-up-flyio-deployment-infrastructure-2025-11-27)
@@ -118,6 +119,35 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Prevent Runaway sidplayfp Renders Ignoring Songlengths (2025-11-27)
+
+**User request (summary)**
+- Rare classification runs render indefinitely and produce multi-GB WAVs despite Songlengths.md5 entries (e.g., `/GAMES/M-R/Mexico_86.sid` at 0:18.193 and `/DEMOS/M-R/New_Scener.sid` at 1:52.76).
+- Enforce Songlengths-based limits so sidplayfp-cli stops at expected durations.
+
+**Context and constraints**
+- sidplayfp-cli should honor Songlengths.md5 via config but may miss/ignore it in multithreaded classification.
+- Need a hard cap to prevent runaway renders while keeping expected lengths intact (small padding ok).
+- Must keep existing render engine selection behavior unchanged.
+
+**Plan (checklist)**
+- [x] 1 — Inspect render pipeline to see how Songlengths/limits reach sidplayfp-cli and where they are dropped.
+- [x] 2 — Apply a Songlength-derived + fallback time limit (and watchdog) to sidplayfp-cli renders.
+- [x] 3 — Add regression tests ensuring CLI renders apply the computed time limit.
+- [x] 4 — Run `bun run test` 3× clean and record results.
+
+**Progress log**
+- 2025-11-27 — Task created after reports of sidplayfp-cli running for 1–2 hours on Mexico_86.sid and New_Scener.sid with multi-GB WAV outputs despite Songlengths entries.
+- 2025-11-27 — Added shared time-limit resolver (Songlengths + 2s padding, clamped by SIDFLOW_MAX_RENDER_SECONDS) and applied it to sidplayfp-cli with a watchdog kill; `defaultRenderWav` now forwards `maxRenderSeconds` to the orchestrator. Added CLI regression test to assert `-t` uses Songlength-derived and fallback caps. `bun run test` passed 3× consecutively (1442 pass each run).
+
+**Assumptions and open questions**
+- Assumption: sidplayfp occasionally misses Songlengths and needs an explicit limit to stay bounded.
+- Open question: Any legitimate >10 minute tracks that require raising the cap via `SIDFLOW_MAX_RENDER_SECONDS`?
+
+**Follow-ups / future work**
+- Consider emitting render duration vs expected duration telemetry to catch regressions early.
+- Add a user-configurable max render duration in `.sidflow.json` if needed for edge cases.
 
 ### Task: Fix Docker Health Check Permission Regression (2025-11-27)
 
