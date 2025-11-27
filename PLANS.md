@@ -138,9 +138,9 @@ To prevent uncontrolled growth of this file:
 
 **Progress log**
 - 2025-11-27 — Reproduced CI failure with `ghcr.io/chrisgleissner/sidflow:0.3.35`: `/sidflow` owned by root, `workspace`/`data` dirs missing, startup `mkdir` fails (permission denied) before server launches; container health becomes unhealthy and host curl to `/api/health` is connection refused.
-- 2025-11-27 — Added baked-in `/sidflow/workspace` and `/sidflow/data` owned by `node` in `Dockerfile.production`, chowned `/sidflow`, and made ROM directory creation non-fatal in `docker-startup.sh`. `PORT=3300 IMAGE_TAG=sidflow:local-permfix scripts/docker-smoke.sh` now passes; `/api/health` responds successfully with sidplayfp.ini created.
+- 2025-11-27 — Verified current `Dockerfile.production` pre-creates `/sidflow/workspace` and `/sidflow/data` (owned by `node`) and `docker-startup.sh` already guards ROM directory creation. Rebuilt locally (`PORT=3300 IMAGE_TAG=sidflow:local-permfix scripts/docker-smoke.sh`) and `/api/health` responds successfully with sidplayfp.ini created.
 - 2025-11-27 — Completed validation: `bun run test` passed 3× consecutively (1440 pass, 0 fail per run).
-- 2025-11-27 — Precreated workspace/data subdirectories in `Dockerfile.production` (hvsc, wav-cache, tags, classified, renders, availability) with node ownership; set SIDFLOW_TMPDIR baked path. Re-ran `bun run test` 3× (1440 pass each).
+- 2025-11-27 — Documented that `Dockerfile.production` also pre-creates workspace/data subdirectories (hvsc, wav-cache, tags, classified, renders, availability) and baked `SIDFLOW_TMPDIR`; re-ran `bun run test` 3× (1440 pass each).
 
 **Assumptions and open questions**
 - Assumption: Pre-creating workspace/data owned by `node` will keep Fly.io `/mnt/data` symlink logic working (symlink replaces the directories).

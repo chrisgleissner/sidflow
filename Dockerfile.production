@@ -189,7 +189,7 @@ RUN set -eux; \
     echo "[security] Server validated ($(stat -c%s /sidflow/app/packages/sidflow-web/server.js) bytes)"; \
     install -d -o node -g node -m 0775 /sidflow/workspace /sidflow/data; \
     install -d -o node -g node -m 0775 \
-        /sidflow/workspace/hvsc /sidflow/workspace/wav-cache /sidflow/workspace/tags \
+        /sidflow/workspace/hvsc /sidflow/workspace/wav-cache /sidflow/workspace/tags /sidflow/workspace/roms \
         /sidflow/data/classified /sidflow/data/renders /sidflow/data/availability \
         /opt/sidflow/tmp; \
     chown node:node /sidflow; \
