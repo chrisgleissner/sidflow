@@ -187,6 +187,9 @@ RUN set -eux; \
     test -f /sidflow/app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \
     test -d /sidflow/app/packages/sidflow-web/.next || { echo "[security] ERROR: .next build not found"; exit 1; }; \
     echo "[security] Server validated ($(stat -c%s /sidflow/app/packages/sidflow-web/server.js) bytes)"; \
+    # Create symlink so CLI scripts can find config from WORKDIR=/sidflow \
+    ln -sf /sidflow/app/.sidflow.json /sidflow/.sidflow.json; \
+    echo "[security] Config symlink created"; \
     find /usr/bin /usr/sbin /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} + 2>/dev/null || true; \
     echo "[security] SUID/SGID stripping complete"; \
     # Tighten permissions on app scripts and web packages \
@@ -204,7 +207,8 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     SIDFLOW_ROOT=/sidflow \
     SIDFLOW_CONFIG=/sidflow/app/.sidflow.json \
-    PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
+    SIDFLOW_CLI_DIR=/sidflow/app/scripts \
+    PATH="/sidflow/app/scripts:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
     UMASK=0027
 
 # Expose application port

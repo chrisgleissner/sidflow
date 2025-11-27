@@ -114,6 +114,54 @@ To prevent uncontrolled growth of this file:
 
 ## Active tasks
 
+### Task: Fix Docker CLI Executable Resolution (2025-11-27)
+
+**User request (summary)**
+- Fix "spawn sidflow-fetch ENOENT" error in Docker container
+- Verify fetch and classify commands work end-to-end
+- Ensure Docker container is production-ready
+
+**Context and constraints**
+- **Environment**: Docker container with WORKDIR=/sidflow, app code at /sidflow/app
+- **CLI scripts**: Shell wrappers in /sidflow/app/scripts that exec TypeScript source via bun
+- **Config location**: .sidflow.json at /sidflow/app/.sidflow.json
+- **Resolution logic**: cli-executor.ts searches for scripts using SIDFLOW_CLI_DIR env var
+
+**Plan (checklist)**
+- [x] 1 — Investigate "spawn sidflow-fetch ENOENT" error root cause
+- [x] 2 — Identify that CLI scripts exist but resolveCommand() couldn't find them
+- [x] 3 — Add SIDFLOW_CLI_DIR=/sidflow/app/scripts to Dockerfile environment
+- [x] 4 — Create symlink /sidflow/.sidflow.json → /sidflow/app/.sidflow.json for CLI scripts
+- [x] 5 — Rebuild Docker image and verify fetch command works
+- [x] 6 — Test health check endpoint confirms all systems healthy
+- [x] 7 — Document fixes in PLANS.md
+
+**Progress log**
+- 2025-11-27 18:48 UTC: **COMPLETE** — All CLI commands now working in Docker
+  - **Root cause**: cli-executor's `resolveCommand()` function searches for scripts in `${baseDir}/scripts` by walking up from cwd
+  - **Problem 1**: WORKDIR=/sidflow, scripts at /sidflow/app/scripts, so walk-up never found them
+  - **Problem 2**: Config at /sidflow/app/.sidflow.json but CLI scripts look for /sidflow/.sidflow.json
+  - **Fix 1**: Added `SIDFLOW_CLI_DIR=/sidflow/app/scripts` to Dockerfile.production line 207
+  - **Fix 2**: Added symlink creation in Dockerfile.production security hardening section
+  - **Verification**: `curl -X POST http://localhost:3080/api/fetch` returns success:true
+  - **Health check**: All critical systems (workspace, ui, wasm, sidplayfpCli, ffmpeg) report healthy
+
+**Files changed**
+- `Dockerfile.production` (lines 200-209, 185-197):
+  - Added SIDFLOW_CLI_DIR environment variable
+  - Added config symlink creation in security hardening RUN block
+
+**Assumptions and open questions**
+- ✅ ASSUMPTION VALIDATED: cli-executor.ts prioritizes SIDFLOW_CLI_DIR over path walking
+- ✅ ASSUMPTION VALIDATED: Symlink works for bun's config resolution
+- ❓ Should we test full HVSC fetch (20GB+) or just smoke test with maxDeltas:0?
+- ❓ Should we test classify workflow or leave that for integration tests?
+
+**Follow-ups / future work**
+- Consider documenting SIDFLOW_CLI_DIR in technical reference (currently only in code comments)
+- Add integration test that verifies CLI command resolution in Docker
+- Consider if cli-executor should check SIDFLOW_ROOT as an additional fallback
+
 ### Task: Set Up Fly.io Deployment Infrastructure (2025-11-27)
 
 **User request (summary)**
