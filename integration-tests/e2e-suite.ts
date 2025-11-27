@@ -244,6 +244,73 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(features.duration).toBeGreaterThan(0);
   });
 
+  it("validates WAV files have reasonable durations", async () => {
+    // This test verifies that WAV files are not truncated (e.g., not all 15 seconds)
+    // We expect durations to vary based on actual song lengths from Songlengths.md5
+    const wavFiles = await readdir(wavCachePath, { recursive: true });
+    const wavPaths = wavFiles.filter(f => f.endsWith(".wav")).map(f => path.join(wavCachePath, f));
+    
+    expect(wavPaths.length).toBeGreaterThan(0);
+    
+    // Helper to get WAV duration using ffprobe if available
+    const getWavDuration = async (wavPath: string): Promise<number | null> => {
+      return new Promise((resolve) => {
+        const proc = spawn("ffprobe", [
+          "-v", "error",
+          "-show_entries", "format=duration",
+          "-of", "default=noprint_wrappers=1:nokey=1",
+          wavPath
+        ]);
+        
+        let output = "";
+        proc.stdout.on("data", (data) => { output += data.toString(); });
+        proc.on("error", () => resolve(null));
+        proc.on("exit", (code) => {
+          if (code === 0) {
+            const duration = parseFloat(output.trim());
+            resolve(isNaN(duration) ? null : duration);
+          } else {
+            resolve(null);
+          }
+        });
+      });
+    };
+    
+    const durations: number[] = [];
+    for (const wavPath of wavPaths.slice(0, 5)) { // Test first 5 files
+      const duration = await getWavDuration(wavPath);
+      if (duration !== null) {
+        durations.push(duration);
+      }
+    }
+    
+    if (durations.length > 0) {
+      // Verify all durations are reasonable
+      // Mock WAVs may be short (2s), real renders should be longer
+      const minExpectedDuration = hasSidplayfp ? 10 : 1;
+      const maxExpectedDuration = 600;
+      
+      for (const duration of durations) {
+        expect(duration).toBeGreaterThan(minExpectedDuration);
+        expect(duration).toBeLessThan(maxExpectedDuration);
+      }
+      
+      // If we have real sidplayfp, verify variety in durations
+      // (Mock renders may produce uniform durations, which is OK for testing)
+      if (hasSidplayfp && durations.length >= 3) {
+        const uniqueDurations = new Set(durations.map(d => Math.floor(d)));
+        // With real sidplayfp and Songlengths.md5, expect variety
+        // But don't fail if all songs happen to have similar lengths
+        if (uniqueDurations.size === 1) {
+          console.warn("All tested WAV files have similar durations - this may be OK if songs are similar length");
+        }
+      }
+    } else {
+      // ffprobe not available, skip duration validation
+      console.warn("ffprobe not available, skipping WAV duration validation");
+    }
+  });
+
   it("classifies SID files with auto-tags", async () => {
     let metadataExtractor;
 

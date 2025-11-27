@@ -490,17 +490,10 @@ export class RenderOrchestrator {
       args.push("-o", String(request.songIndex));
     }
 
-    // Use maxRenderSeconds if provided, otherwise convert targetDurationMs to seconds
-    // Add 2 seconds padding to ensure complete render
-    let timeLimit: number | undefined;
+    // Only use explicit time limit if maxRenderSeconds is provided
+    // Otherwise, let sidplayfp-cli use Songlengths.md5 automatically via its config
     if (request.maxRenderSeconds) {
-      timeLimit = request.maxRenderSeconds;
-    } else if (request.targetDurationMs) {
-      timeLimit = Math.ceil(request.targetDurationMs / 1000) + 2;
-    }
-
-    if (timeLimit) {
-      args.push(`-t${timeLimit}`);  // sidplayfp requires -t<num> format, no space
+      args.push(`-t${request.maxRenderSeconds}`);
     }
 
     args.push(request.sidPath);
