@@ -5,7 +5,7 @@ export * from "./logger.js";
 export * from "./json.js";
 export * from "./retry.js";
 export * from "./perf-utils.js";
-export { ensureDir, pathExists } from "./fs.js";
+export { ensureDir, getTmpDir, pathExists } from "./fs.js";
 export * from "./tags.js";
 export * from "./ratings.js";
 export * from "./jsonl-schema.js";

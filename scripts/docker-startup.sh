@@ -267,7 +267,9 @@ if [ ! -f "$ROM_DIR/kernal.901227-03.bin" ] || [ ! -f "$ROM_DIR/basic.901226-01.
     echo "    - characters.901225-01.bin (4096 bytes)"
     echo "  These are copyrighted files that must be obtained legally."
     echo "  Place them in the workspace/roms directory and restart the container."
-    mkdir -p "$ROM_DIR"
+    if ! mkdir -p "$ROM_DIR" 2>/dev/null; then
+        echo "⚠ Unable to create $ROM_DIR (check workspace volume permissions)"
+    fi
 else
     echo "✓ C64 ROM files present"
 fi

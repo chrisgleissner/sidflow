@@ -1,11 +1,10 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, opendir, rm, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 
-import { createLogger, ensureDir, extractSevenZipArchive, loadConfig, retry, type SidflowConfig } from "@sidflow/common";
+import { createLogger, ensureDir, extractSevenZipArchive, getTmpDir, loadConfig, retry, type SidflowConfig } from "@sidflow/common";
 
 import { fetchHvscManifest, DEFAULT_BASE_URL } from "./manifest.js";
 import { loadHvscVersion, saveHvscVersion } from "./version.js";
@@ -188,7 +187,7 @@ async function downloadArchive(
   dependencies: ResolvedDependencies,
   onProgress?: DownloadProgressHandler
 ): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "sidflow-hvsc-"));
+  const tempDir = await mkdtemp(path.join(getTmpDir(), "sidflow-hvsc-"));
   const destination = path.join(tempDir, descriptor.filename);
   await dependencies.downloadArchive(descriptor, destination, onProgress);
   return destination;

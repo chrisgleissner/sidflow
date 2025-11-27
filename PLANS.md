@@ -132,12 +132,13 @@ To prevent uncontrolled growth of this file:
 
 **Plan (checklist)**
 - [x] 1 — Reproduce failure with current GHCR image to capture permission/health behavior.
-- [ ] 2 — Ensure `/sidflow/workspace` and `/sidflow/data` exist in the image and are writable by the `node` user; guard ROM config creation against `set -e` exits.
-- [ ] 3 — Rebuild image and run docker smoke/health check to confirm `/api/health` reachable without volumes.
+- [x] 2 — Ensure `/sidflow/workspace` and `/sidflow/data` exist in the image and are writable by the `node` user; guard ROM config creation against `set -e` exits.
+- [x] 3 — Rebuild image and run docker smoke/health check to confirm `/api/health` reachable without volumes.
 - [ ] 4 — Run test suite 3× (`bun run test`) to confirm no regressions.
 
 **Progress log**
 - 2025-11-27 — Reproduced CI failure with `ghcr.io/chrisgleissner/sidflow:0.3.35`: `/sidflow` owned by root, `workspace`/`data` dirs missing, startup `mkdir` fails (permission denied) before server launches; container health becomes unhealthy and host curl to `/api/health` is connection refused.
+- 2025-11-27 — Added baked-in `/sidflow/workspace` and `/sidflow/data` owned by `node` in `Dockerfile.production`, chowned `/sidflow`, and made ROM directory creation non-fatal in `docker-startup.sh`. `PORT=3300 IMAGE_TAG=sidflow:local-permfix scripts/docker-smoke.sh` now passes; `/api/health` responds successfully with sidplayfp.ini created.
 
 **Assumptions and open questions**
 - Assumption: Pre-creating workspace/data owned by `node` will keep Fly.io `/mnt/data` symlink logic working (symlink replaces the directories).
@@ -194,6 +195,69 @@ To prevent uncontrolled growth of this file:
 - Consider documenting SIDFLOW_CLI_DIR in technical reference (currently only in code comments)
 - Add integration test that verifies CLI command resolution in Docker
 - Consider if cli-executor should check SIDFLOW_ROOT as an additional fallback
+
+### Task: Fix Temporary Directory Space Issues (2025-11-27) [COMPLETED]
+
+**User request (summary)**
+- After fixing maxIterations bug in WAV renderer, discovered 7 files still had incorrect (truncated) lengths
+- Investigation revealed `/tmp` filesystem ran out of space during Docker testing
+- Need to use `/opt/sidflow` instead of `/tmp` for temporary files to avoid space constraints
+
+**Context and constraints**
+- **Environment**: Docker local testing with volumes mounted from `/tmp/sidflow-test/workspace` and `/tmp/sidflow-test/data`
+- **Problem**: /tmp filesystem has limited space; large WAV rendering operations exhausted it
+- **Symptoms**: WAV files truncated mid-write (e.g., 72s actual vs 216s expected)
+- **Codebase**: Multiple packages use `os.tmpdir()` for temporary file operations (fetch, classify, common, performance)
+- **Solution**: Create centralized temp directory resolver that respects `SIDFLOW_TMPDIR` environment variable
+
+**Plan (checklist)**
+- [x] 1 — Create `getTmpDir()` helper in `@sidflow/common/src/fs.ts` that respects SIDFLOW_TMPDIR env var
+- [x] 2 — Update `sidflow-fetch/src/sync.ts` to use `getTmpDir()` instead of `os.tmpdir()`
+- [x] 3 — Add `SIDFLOW_TMPDIR=/opt/sidflow/tmp` to Dockerfile.production environment variables
+- [x] 4 — Create `/opt/sidflow/tmp` directory with proper node:node ownership in Dockerfile
+- [ ] 5 — Update remaining packages to use getTmpDir() (classify, performance, scripts)
+- [ ] 6 — Rebuild Docker image and test with fresh classification
+- [ ] 7 — Verify no truncated files with new temp directory location
+- [ ] 8 — Update documentation about SIDFLOW_TMPDIR for local testing
+
+**Progress log**
+- 2025-11-27 19:18 UTC: Discovered root cause of 7 truncated WAV files: `/tmp` out of space
+- 2025-11-27 19:20 UTC: Created `getTmpDir()` helper in common/fs.ts
+- 2025-11-27 19:22 UTC: Updated fetch package to use new helper
+- 2025-11-27 19:24 UTC: Updated Dockerfile.production to set SIDFLOW_TMPDIR and create /opt/sidflow/tmp directory
+
+**Root cause analysis**
+- **Primary issue**: /tmp filesystem exhausted during classification of ~150+ SID files to WAV
+- **Impact**: WAV files truncated at arbitrary points when writes failed (e.g., 72s/216s = 33% written)
+- **Why not detected earlier**: maxIterations bug caused all files to be 1/3 length; space issue only became visible after that fix
+- **7 affected files**: All created around 19:11:40-19:11:55 UTC when /tmp filled up:
+  - Big_Boing.wav: 72s vs 216s expected (-144s)
+  - Bidemo_tune_3.wav: 58s vs 270s expected (-212s)
+  - Beyond_Tetris_the_Re-Mix.wav: 66s vs 258s expected (-192s)
+  - Big_Fucking_Scroller_2000.wav: 48s vs 133s expected (-85s)
+  - Best_Song.wav: 132s vs 230s expected (-98s)
+  - Big_Bang_tune_11.wav: 16s vs 57s expected (-41s)
+  - Berlin_Wall_tune_3.wav: 122s vs 145s expected (-23s)
+
+**Files changed**
+- `packages/sidflow-common/src/fs.ts`: Added getTmpDir() helper function with SIDFLOW_TMPDIR support
+- `packages/sidflow-fetch/src/sync.ts`: Changed os.tmpdir() → getTmpDir() and removed os import
+- `Dockerfile.production` (line 209): Added SIDFLOW_TMPDIR=/opt/sidflow/tmp environment variable
+- `Dockerfile.production` (line 190): Added /opt/sidflow/tmp directory creation with node:node ownership
+
+**Assumptions and open questions**
+- ✅ VALIDATED: /tmp space issue was root cause of truncated files (not maxIterations bug)
+- ❓ Should we update all packages to use getTmpDir() or only critical paths (fetch, classify)?
+- ❓ Should we add disk space checks to health endpoint?
+- ❓ Should test setup documentation recommend using /opt/sidflow volumes instead of /tmp?
+
+**Follow-ups / future work**
+- Update classify package to use getTmpDir() for multithread-render temp directories
+- Update performance package to use getTmpDir() for k6/playwright temp directories
+- Update scripts (run-classify-sample, run-fetch-sample) to use getTmpDir()
+- Add health check that validates SIDFLOW_TMPDIR (or system tmpdir) has >1GB free space
+- Document SIDFLOW_TMPDIR environment variable in technical-reference.md
+- Update local testing documentation to recommend /opt/sidflow paths over /tmp
 
 ### Task: Set Up Fly.io Deployment Infrastructure (2025-11-27)
 

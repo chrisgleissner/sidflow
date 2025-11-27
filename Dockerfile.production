@@ -180,13 +180,17 @@ COPY --from=builder --chown=node:node /build/packages /sidflow/app/packages
 COPY --from=builder --chown=node:node /build/node_modules /sidflow/app/node_modules
 
 # Security hardening and directory setup (consolidated for layer efficiency)
-# Note: /sidflow/workspace and /sidflow/data are NOT created here
-# They will be created as symlinks at runtime (Fly.io) or as direct bind mounts (Pi/K8s)
+# Pre-create writable workspace/data directories for node so health checks pass without mounts
+# Fly.io replaces them with symlinks at runtime when /mnt/data is present
 RUN set -eux; \
     echo "[security] Starting hardening and setup..."; \
     test -f /sidflow/app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \
     test -d /sidflow/app/packages/sidflow-web/.next || { echo "[security] ERROR: .next build not found"; exit 1; }; \
     echo "[security] Server validated ($(stat -c%s /sidflow/app/packages/sidflow-web/server.js) bytes)"; \
+    install -d -o node -g node -m 0775 /sidflow/workspace /sidflow/data; \
+    install -d -o node -g node -m 0775 /opt/sidflow/tmp; \
+    chown node:node /sidflow; \
+    echo "[security] Initialized /sidflow/workspace, /sidflow/data, and /opt/sidflow/tmp for node user"; \
     # Create symlink so CLI scripts can find config from WORKDIR=/sidflow \
     ln -sf /sidflow/app/.sidflow.json /sidflow/.sidflow.json; \
     echo "[security] Config symlink created"; \
@@ -208,6 +212,7 @@ ENV NODE_ENV=production \
     SIDFLOW_ROOT=/sidflow \
     SIDFLOW_CONFIG=/sidflow/app/.sidflow.json \
     SIDFLOW_CLI_DIR=/sidflow/app/scripts \
+    SIDFLOW_TMPDIR=/opt/sidflow/tmp \
     PATH="/sidflow/app/scripts:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
     UMASK=0027
 
