@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.35 (2025-11-27)
+
+- feat: add symlink for config resolution and update Docker environment for CLI scripts
+- chore: update CHANGES.md for 0.3.34
+
+
 ## 0.3.34 (2025-11-27)
 
 - security: revert insecure health check bypass mechanism
