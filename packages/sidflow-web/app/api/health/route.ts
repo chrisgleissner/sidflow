@@ -380,7 +380,11 @@ async function checkUiRoutes(): Promise<HealthStatus> {
   async function checkPath(pathname: string, keyword: string): Promise<string | null> {
     try {
       const url = `${baseUrl}${pathname}`;
-      const headers: Record<string, string> = { Host: "localhost" };
+      const headers: Record<string, string> = { 
+        Host: "localhost",
+        // Add internal header so health check can bypass auth when probing admin routes
+        "x-sidflow-internal-health-check": "true"
+      };
       if (pathname.startsWith("/admin") && Object.keys(adminAuthHeader).length > 0) {
         Object.assign(headers, adminAuthHeader);
       }
@@ -423,40 +427,24 @@ async function checkUiRoutes(): Promise<HealthStatus> {
   }
 
   const failures: string[] = [];
-  const warnings: string[] = [];
   
   const publicErr = await checkPath("/", "PLAY SID MUSIC");
   if (publicErr) failures.push(publicErr);
   
   const adminErr = await checkPath("/admin", "SETUP WIZARD");
-  if (adminErr) {
-    // Admin route 401 is expected if credentials aren't configured (CI smoke tests, fresh deployments)
-    // Only fail if it's a different error (500, timeout, etc)
-    if (adminErr.includes("responded 401")) {
-      warnings.push("Admin route requires authentication (expected without credentials)");
-    } else {
-      failures.push(adminErr);
-    }
-  }
+  if (adminErr) failures.push(adminErr);
 
   if (failures.length > 0) {
     return {
       status: "unhealthy",
       message: "UI routes not rendering",
-      details: { failures, warnings },
+      details: { failures },
     };
-  }
-
-  const details: Record<string, any> = { public: "ok" };
-  if (warnings.length === 0) {
-    details.admin = "ok";
-  } else {
-    details.admin = "protected (401 expected without credentials)";
   }
 
   return {
     status: "healthy",
-    details,
+    details: { public: "ok", admin: "ok" },
   };
 }
 
