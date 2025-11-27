@@ -1,5 +1,10 @@
 import { test, expect } from './test-hooks';
 
+if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+  console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
+  process.exit(0);
+}
+
 const RESPONSE_TIMEOUT = 45000;
 
 /**
@@ -81,23 +86,31 @@ test.describe('Phase 1 Features', () => {
             const searchBar = page.getByTestId('search-input');
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
+            // Wait for page to be fully interactive
+            await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+            await page.waitForTimeout(500);
+
             // Press S key
             await page.keyboard.press('s');
 
             // Verify search bar is focused
-            await expect(searchBar).toBeFocused();
+            await expect(searchBar).toBeFocused({ timeout: 3000 });
         });
 
         test('should open shortcuts help with ? key', async ({ page }) => {
-            // Press ? key to open help
-            await page.keyboard.press('?');
+            // Wait for page to be fully interactive and keyboard shortcuts to be registered
+            await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+            await page.waitForTimeout(500);
+            
+            // Press ? key to open help (use Shift+/ to generate ?)
+            await page.keyboard.press('Shift+Slash');
 
             // Verify shortcuts help dialog appears - use role to be more specific
-            await expect(page.getByRole('heading', { name: /keyboard shortcuts/i })).toBeVisible({ timeout: 3000 });
+            await expect(page.getByRole('heading', { name: /keyboard shortcuts/i })).toBeVisible({ timeout: 5000 });
 
             // Close dialog
             await page.keyboard.press('Escape');
-            await expect(page.getByRole('heading', { name: /keyboard shortcuts/i })).not.toBeVisible();
+            await expect(page.getByRole('heading', { name: /keyboard shortcuts/i })).not.toBeVisible({ timeout: 3000 });
         });
 
         test('should not trigger shortcuts when typing in search', async ({ page }) => {

@@ -1,0 +1,91 @@
+# Fly.io configuration for SIDFlow
+# Documentation: https://fly.io/docs/reference/configuration/
+
+app = "sidflow"
+primary_region = "lhr" # see https://fly.io/docs/reference/regions/
+
+# Kill signal and grace period
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  # Build from local Dockerfile for testing
+  dockerfile = "Dockerfile.production"
+
+[deploy]
+  strategy = "rolling"
+  max_unavailable = 0.5
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  # Universal paths: /sidflow/app = code (immutable), /sidflow/workspace + /sidflow/data = persistent
+  SIDFLOW_ROOT = "/sidflow"
+  SIDFLOW_CONFIG = "/sidflow/app/.sidflow.json"
+
+[experimental]
+  auto_rollback = true
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 3000
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["http", "tls"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 250
+    soft_limit = 200
+
+  [[services.tcp_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/health"
+    protocol = "http"
+    tls_skip_verify = false
+
+    [services.http_checks.headers]
+      User-Agent = "Fly-HealthCheck"
+
+# Persistent volume for workspace and data
+# IMPORTANT: Fly.io only supports ONE volume per machine
+# Architecture: /sidflow/app/       - Application code (immutable from Docker image)
+#              /sidflow/workspace/  - HVSC collection, WAV cache, tags (persistent volume via symlink)
+#              /sidflow/data/       - Classified data, renders, feedback (persistent volume via symlink)
+# Volume mounts at /mnt/data to avoid shadowing /sidflow/app
+# Startup script creates symlinks: /sidflow/workspace -> /mnt/data/workspace
+#                                  /sidflow/data -> /mnt/data/data
+# Free tier allows 3GB total. Create with:
+#   fly volumes create sidflow_data --region lhr --size 3 --app sidflow-stg
+# For production with payment method, increase size as needed (e.g., 10-50GB)
+[[mounts]]
+  source = "sidflow_data"  
+  destination = "/mnt/data"
+
+# Resource allocation
+# Free tier: 256MB RAM, shared-cpu-1x
+# For production: upgrade to performance-1x or higher
+[vm]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# Scale configuration
+[scaling]
+  min_machines = 1
+  max_machines = 3

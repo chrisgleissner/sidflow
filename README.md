@@ -80,11 +80,29 @@ bun run build
 
 ## Deployment
 
-Releases publish Docker images. See the **Deployment Guide** for full Docker instructions, CLI usage, health checks, and smoke-testing: [doc/deployment.md](doc/deployment.md).
+SIDFlow supports two deployment platforms:
+
+- **[Fly.io](doc/fly-deployment.md)** (Recommended) - Cloud platform with automatic scaling, global edge network, and instant deployment
+- **[Docker / Raspberry Pi](doc/deployment.md)** - Self-hosted deployment on local hardware or cloud VMs
 
 **Docker images:**  
 - `ghcr.io/chrisgleissner/sidflow:<version>` (e.g., `v0.3.10`)  
 - [ghcr.io/chrisgleissner/sidflow:latest](https://github.com/chrisgleissner/sidflow/pkgs/container/sidflow)
+
+### Quick Deploy to Fly.io
+
+```bash
+# Install flyctl
+curl -L https://fly.io/install.sh | sh
+
+# Deploy to staging
+./scripts/deploy/fly-deploy.sh -e stg
+
+# Deploy to production
+./scripts/deploy/fly-deploy.sh -e prd -t v0.3.29
+```
+
+See **[Fly.io Deployment Guide](doc/fly-deployment.md)** for complete instructions.
 
 ## Run with Docker
 

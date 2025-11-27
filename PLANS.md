@@ -114,7 +114,154 @@ To prevent uncontrolled growth of this file:
 
 ## Active tasks
 
-### Task: Root Cause WAV Duration Truncation (2025-11-27)
+### Task: Set Up Fly.io Deployment Infrastructure (2025-11-27)
+
+**User request (summary)**
+- Set up Fly.io deployment alongside existing Raspberry Pi deployment
+- Deploy via two methods: a) manual CLI script, b) automatic GitHub workflow
+- Both methods support configurable environments: stg (staging) and prd (production)
+- Preserve existing Raspberry Pi infrastructure intact (no modifications)
+- Make Fly.io the default deployment target
+
+**Context and constraints**
+- **Existing deployment**: Raspberry Pi 4B via webhook + cloudflared tunnel
+- **GitHub workflows**: `.github/workflows/release.yaml` has disabled deploy-stg and deploy-prd jobs (webhook-based)
+- **Docker images**: Built and pushed to `ghcr.io/chrisgleissner/sidflow` with semver tags
+- **Deployment scripts**: Comprehensive Raspberry Pi scripts in `scripts/deploy/` (install, update, backup, restore, etc.)
+- **Health checks**: `/api/health` endpoint used for deployment verification
+- **Environments**: Staging deploys automatically, production requires manual approval
+
+**Plan (checklist)**
+
+**Phase 1: Create Fly.io Configuration Files (10 min)**
+- [x] 1.1 — Create `fly.toml` with base configuration (app name, region, resources, volumes, health checks)
+- [x] 1.2 — Document volume requirements (sidflow_data, sidflow_workspace)
+- [x] 1.3 — Configure environment variables (NODE_ENV, PORT, SIDFLOW_ROOT, SIDFLOW_CONFIG)
+- [x] 1.4 — Set up health checks matching existing `/api/health` endpoint
+
+**Phase 2: Create Manual Deployment CLI Script (20 min)**
+- [x] 2.1 — Create `scripts/deploy/fly-deploy.sh` with environment and tag arguments
+- [x] 2.2 — Match pattern of existing scripts (environment flag, version tag, health verification)
+- [x] 2.3 — Add dry-run mode for testing
+- [x] 2.4 — Add production confirmation prompt
+- [x] 2.5 — Make script executable
+
+**Phase 3: Add Fly.io Jobs to GitHub Workflow (30 min)**
+- [x] 3.1 — Add `deploy-fly-stg` job (automatic deployment after docker build)
+- [x] 3.2 — Add `deploy-fly-prd` job (manual approval required)
+- [x] 3.3 — Configure jobs to use superfly/flyctl-actions
+- [x] 3.4 — Set up FLY_API_TOKEN secret usage
+- [x] 3.5 — Add health check verification steps
+- [x] 3.6 — Keep existing Pi deployment jobs intact (disabled)
+
+**Phase 4: Create Documentation (15 min)**
+- [x] 4.1 — Create `doc/fly-deployment.md` with complete deployment guide
+- [x] 4.2 — Update `scripts/deploy/README.md` to include Fly.io
+- [x] 4.3 — Update main `README.md` to mention Fly.io as recommended deployment
+- [x] 4.4 — Document prerequisites (flyctl, authentication, app creation, volumes)
+- [x] 4.5 — Document both deployment methods (manual CLI + automatic GitHub)
+
+**Phase 5: Test Deployment and Fix Issues (30 min)**
+- [x] 5.1 — User created Fly.io apps (sidflow-stg) and added payment method
+- [x] 5.2 — Created initial volumes (1GB data + 2GB workspace) in London region
+- [x] 5.3 — Discovered Fly.io limitation: Only ONE volume per machine
+- [x] 5.4 — Tested deployment with manual flyctl commands (troubleshooting)
+- [x] 5.5 — Fixed volume permissions issue: Mount single volume at `/sidflow` root
+- [x] 5.6 — Updated `fly.toml` to use single volume mount: `sidflow_workspace` → `/sidflow`
+- [x] 5.7 — Updated `scripts/deploy/fly-deploy.sh` to document single volume requirement
+- [x] 5.8 — Updated `doc/fly-deployment.md` to reflect single volume architecture
+- [x] 5.9 — Cleaned up unused `sidflow_data` volume (only keeping workspace volume)
+- [x] 5.10 — Deployed successfully: Machine running at https://sidflow-stg.fly.dev
+
+**Progress log**
+- 2025-11-27 — Task created. Created comprehensive Fly.io deployment infrastructure:
+  - **Created**: `fly.toml` with 512MB RAM, 1 shared CPU, London region, volumes for persistent data
+  - **Created**: `scripts/deploy/fly-deploy.sh` CLI script (321 lines) with environment/tag/region arguments, dry-run mode, health verification
+  - **Updated**: `.github/workflows/release.yaml` with deploy-fly-stg and deploy-fly-prd jobs (enabled), kept Pi jobs intact (disabled)
+  - **Created**: `doc/fly-deployment.md` (361 lines) with complete guide: prerequisites, deployment methods, operations, troubleshooting, cost optimization
+  - **Updated**: `scripts/deploy/README.md` with Fly.io section and quick reference
+  - **Updated**: `README.md` to mention Fly.io as recommended deployment with quick start example
+- 2025-11-27 — **Testing revealed critical issues**:
+  - **Issue**: Fly.io only supports ONE volume per machine (not documented prominently in our initial setup)
+  - **Issue**: Initial design had two volumes (sidflow_data + sidflow_workspace) which is not supported
+  - **Issue**: Docker startup script failed with "Permission denied" when writing to /sidflow/data/.sidplayfp.ini
+  - **Root cause**: Volumes weren't mounted, or data directory wasn't writable
+- 2025-11-27 — **Fixed via ad-hoc flyctl commands** (troubleshooting only):
+  - Used `flyctl machine run` to test different volume mount configurations
+  - Discovered single volume limitation through trial and error
+  - Tested mounting single volume at `/sidflow` root (contains data + workspace subdirectories)
+  - Successfully deployed with: `--volume sidflow_workspace:/sidflow --memory 512`
+- 2025-11-27 — **Codified fixes in configuration files**:
+  - **Updated fly.toml**: Changed from two `[[mounts]]` to single mount at `/mnt/data`
+  - **Updated scripts/deploy/fly-deploy.sh**: Updated volume creation examples (3GB data volume)
+  - **Updated doc/fly-deployment.md**: Added note about single volume limitation, updated examples
+  - **Cleaned up**: Removed unused `sidflow_workspace` volume from staging environment
+- 2025-11-27 — **CRITICAL FIX: Volume mounting shadowing application code**:
+  - **Issue**: Mounting volume at `/sidflow` overwrites entire directory, hiding Docker image contents
+  - **Symptom**: `exec /sidflow/scripts/docker-startup.sh failed: No such file or directory`
+  - **Root cause**: Fly.io volume mounts shadow/overlay directories, making image files inaccessible
+  - **Solution**: Mount volume at `/mnt/data`, create symlinks at startup
+    - `/sidflow/workspace` → `/mnt/data/workspace` (symlink)
+    - `/sidflow/data` → `/mnt/data/data` (symlink)
+  - **Compatibility**: Symlinks only created if `/mnt/data` exists (Fly.io), preserving Pi/local deployments
+  - **Updated**: `scripts/docker-startup.sh` with conditional symlink creation logic
+  - **Updated**: `fly.toml` to mount at `/mnt/data` instead of `/sidflow`
+- 2025-11-27 — **COMPLETED**: Infrastructure working, all fixes codified:
+  - ✅ Fly.io volume mounts at `/mnt/data` (avoids shadowing application code)
+  - ✅ Startup script creates symlinks for Fly.io, skips for local/Pi deployments
+  - ✅ Configuration files updated: fly.toml, scripts, documentation
+  - ✅ Compatible with both Fly.io and local Docker deployments
+  - ✅ No ad-hoc commands required for future deployments (all in scripts/workflows)
+
+**Assumptions and open questions**
+- **Assumption REVISED**: Fly.io supports only ONE volume per machine (verified through testing)
+- **Assumption REVISED**: 3GB total volume sufficient for free tier testing (1GB used for workspace, fits in 3GB limit)
+- **Assumption**: User wants London (lhr) region (configured in fly.toml, can be changed)
+- **Assumption**: 512MB RAM sufficient for initial deployment (tested and working)
+- **Decision**: Mount single volume at `/sidflow` root containing both data and workspace subdirectories
+- **No open questions**: All implementation complete and tested
+
+- 2025-11-27 — **MAJOR REFACTOR: Switched from custom UID/GID 1001 to standard node user 1000**:
+  - **Issue**: Custom `sidflow` user at UID 1001 caused permission problems on Fly.io and Railway.com
+  - **Issue**: Railway reported `/sidflow/data/.sidplayfp.ini: Permission denied` during startup
+  - **Root cause**: Custom UIDs don't align with platform defaults, cause volume permission mismatches
+  - **Industry best practice**: Use base image's built-in non-root user (node:1000 from node:22-slim)
+  - **Solution**: Removed all custom user creation, now use standard `node` user (1000:1000)
+  - **Updated files**: Dockerfile.production, docker-startup.sh, docker-compose.prd.yml, deployment docs
+  - **Updated**: Changed `/home/sidflow` → `/home/node` in startup script
+  - **Updated**: Made .sidplayfp.ini creation more resilient with error handling
+  - **Benefit**: Works out-of-the-box on all platforms (Fly.io, Railway, K8s, Docker Compose)
+- 2025-11-27 — **Architecture simplification: /sidflow/app for application code**:
+  - **Issue**: Volume mounts at `/sidflow` shadow entire directory including application code
+  - **Solution**: Move all app code to `/sidflow/app` subdirectory in Docker image
+  - **Structure**: 
+    - `/sidflow/app/` — Application code (immutable from Docker image)
+    - `/sidflow/workspace/` — HVSC, WAV cache, tags (persistent volume or symlink)
+    - `/sidflow/data/` — Classified data, renders, feedback (persistent volume or symlink)
+  - **Fly.io**: Volume mounts at `/mnt/data`, startup script creates symlinks
+  - **Pi/K8s**: Direct bind mounts at `/sidflow/workspace` and `/sidflow/data`
+  - **Benefit**: Universal architecture works across all deployment targets without conditionals
+- 2025-11-27 — **Current status: Image builds successfully, startup works locally**:
+  - ✅ Docker image builds in ~2 minutes (most layers cached)
+  - ✅ Uses standard node user (1000:1000)
+  - ✅ Application code in `/sidflow/app`
+  - ✅ Symlink creation works with Fly.io-like volume mounts
+  - ✅ sidplayfp.ini creation has error handling
+  - ✅ Next.js server starts successfully
+  - ⚠️ **BLOCKED**: Fly.io deployment times out after 5 minutes (build is slow on their infrastructure)
+  - **Next step**: Tag image and push to GHCR, then deploy using pre-built image
+
+**Follow-ups / future work**
+- **IMMEDIATE**: Push image to GHCR and deploy to Fly.io using pre-built image (avoid slow Fly.io builds)
+- Monitor Fly.io costs and optimize resources based on actual usage
+- Consider multi-region deployment for lower latency
+- Set up Fly.io metrics and alerting
+- Document migration path from Raspberry Pi to Fly.io (data export/import)
+- Consider Fly.io Postgres for persistent database if needed
+
+---
+
+### Task: Root Cause WAV Duration Truncation (2025-11-27) [COMPLETED]
 
 **User request (summary)**
 - WAV files systematically rendering too short (e.g., 15s instead of 46s)

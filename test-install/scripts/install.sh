@@ -195,8 +195,8 @@ log_info "Creating directory structure..."
 # Include classified/renders/availability so health checks don't fail on first start
 as_root mkdir -p "$INSTALL_DIR"/{data/{hvsc,wav-cache,tags,sidflow/{classified,renders,availability}},config,scripts,backups}
 
-# Set ownership for container (UID 1001)
-log_info "Setting directory ownership (UID 1001:1001)..."
+# Set ownership for container (UID 1000 - standard node user)
+log_info "Setting directory ownership (UID 1000:1000)..."
 if [[ -n "$SUDO_BIN" ]]; then
     as_root chown -R "${CONTAINER_UID}:${CONTAINER_GID}" "$INSTALL_DIR/data"
     # Ensure the workspace mounts (hvsc/wav-cache/tags) are writable by the container user

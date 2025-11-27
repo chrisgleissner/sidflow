@@ -193,7 +193,7 @@ done
 
 # Fix ownership
 log_info "Setting directory ownership..."
-run_cmd sudo chown -R 1001:1001 "$DATA_DIR"
+run_cmd sudo chown -R 1000:1000 "$DATA_DIR"
 log_success "Ownership set"
 
 # Start container

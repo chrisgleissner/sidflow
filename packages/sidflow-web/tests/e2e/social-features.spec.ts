@@ -1,4 +1,9 @@
 /**
+
+if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+  console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
+  process.exit(0);
+}
  * E2E tests for social features: authentication, activity stream, user profiles
  */
 

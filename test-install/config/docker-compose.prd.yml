@@ -38,7 +38,7 @@ services:
       - SIDFLOW_ADMIN_USER=${SIDFLOW_ADMIN_USER:-admin}
       - SIDFLOW_ADMIN_PASSWORD=${SIDFLOW_ADMIN_PASSWORD:?SIDFLOW_ADMIN_PASSWORD is required}
       - SIDFLOW_ROOT=/sidflow
-      - SIDFLOW_CONFIG=/sidflow/.sidflow.json
+      - SIDFLOW_CONFIG=/sidflow/app/.sidflow.json
       - SIDFLOW_EXPECT_UID=1000
     
     volumes:

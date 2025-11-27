@@ -28,7 +28,7 @@ docker run -p 3000:3000 \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,size=100m \
   --security-opt=no-new-privileges:true \
-  --user 1001:1001 \
+  --user 1000:1000 \
   -v /path/to/hvsc:/sidflow/workspace/hvsc:ro \
   -v /path/to/wav-cache:/sidflow/workspace/wav-cache \
   -v /path/to/tags:/sidflow/workspace/tags \
@@ -38,7 +38,7 @@ docker run -p 3000:3000 \
 
 **Security Features:**
 
-- ✅ Non-root runtime (UID/GID 1001)
+- ✅ Non-root runtime (UID/GID 1000, standard node user)
 - ✅ SHA256-verified Bun downloads
 - ✅ Pinned base image (`node:22-slim@sha256:...`)
 - ✅ SUID/SGID bits stripped from all binaries
@@ -54,7 +54,7 @@ docker run -p 3000:3000 \
 - `--read-only`: Make root filesystem read-only (requires `--tmpfs /tmp`)
 - `--tmpfs /tmp`: Writable temporary space with noexec/nosuid
 - `--security-opt=no-new-privileges`: Prevent privilege escalation
-- `--user 1001:1001`: Run as non-root sidflow user
+- `--user 1000:1000`: Run as non-root node user (standard from base image)
 - Mount HVSC as `:ro` (read-only) since it's never written to
 
 **Key Information:**
@@ -155,14 +155,14 @@ This section covers deploying SIDFlow on a Raspberry Pi with Docker Compose, des
 
 ### Directory Setup
 
-Create the data directories with correct ownership. The SIDFlow container runs as UID/GID 1001:
+Create the data directories with correct ownership. The SIDFlow container runs as UID/GID 1000 (standard node user):
 
 ```bash
 # Create base directory
 sudo mkdir -p /opt/sidflow/data/{hvsc,wav-cache,tags,sidflow}
 
-# Set ownership to match container user (1001:1001)
-sudo chown -R 1001:1001 /opt/sidflow/data
+# Set ownership to match container user (1000:1000 - standard node user)
+sudo chown -R 1000:1000 /opt/sidflow/data
 
 # Copy your HVSC collection (or fetch it later)
 # sudo cp -r /path/to/your/hvsc/* /opt/sidflow/data/hvsc/
@@ -385,13 +385,13 @@ docker compose -f docker-compose.production.yml logs
 
 # Verify directory ownership
 ls -la /opt/sidflow/data/
-# All directories should be owned by 1001:1001
+# All directories should be owned by 1000:1000 (node user)
 ```
 
 **Permission denied errors:**
 ```bash
 # Fix ownership
-sudo chown -R 1001:1001 /opt/sidflow/data
+sudo chown -R 1000:1000 /opt/sidflow/data
 ```
 
 **Health check failing:**

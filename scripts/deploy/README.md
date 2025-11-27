@@ -1,20 +1,51 @@
 # SIDFlow Deployment Scripts
 
-This directory contains scripts for deploying and managing SIDFlow on production servers, particularly Raspberry Pi systems.
+This directory contains scripts for deploying and managing SIDFlow on production servers.
+
+## Deployment Targets
+
+SIDFlow supports two deployment platforms:
+
+1. **Fly.io** (Default) - Cloud platform with automatic scaling and global edge network
+2. **Raspberry Pi** (Optional) - Self-hosted on local hardware
+
+See [doc/fly-deployment.md](../../doc/fly-deployment.md) for detailed Fly.io deployment guide.
 
 ## Quick Reference
 
-| Script | Purpose | Example |
-|--------|---------|---------|
-| `install.sh` | Initial deployment | `install.sh -P 'password'` |
-| `update.sh` | Update to new version | `update.sh -t v0.3.28` |
-| `backup.sh` | Backup data | `backup.sh --full` |
-| `restore.sh` | Restore from backup | `restore.sh -i backup.tar.gz` |
-| `status.sh` | Check status | `status.sh --json` |
-| `logs.sh` | View logs | `logs.sh -f` |
-| `start.sh` | Start container | `start.sh --wait` |
-| `stop.sh` | Stop container | `stop.sh --force` |
-| `webhook-server.sh` | Webhook for CI/CD | `webhook-server.sh -s secret` |
+| Script | Purpose | Platform | Example |
+|--------|---------|----------|---------|
+| `fly-deploy.sh` | Deploy to Fly.io | Fly.io | `fly-deploy.sh -e stg` |
+| `install.sh` | Initial deployment | Raspberry Pi | `install.sh -P 'password'` |
+| `update.sh` | Update to new version | Raspberry Pi | `update.sh -t v0.3.28` |
+| `backup.sh` | Backup data | Raspberry Pi | `backup.sh --full` |
+| `restore.sh` | Restore from backup | Raspberry Pi | `restore.sh -i backup.tar.gz` |
+| `status.sh` | Check status | Raspberry Pi | `status.sh --json` |
+| `logs.sh` | View logs | Raspberry Pi | `logs.sh -f` |
+| `start.sh` | Start container | Raspberry Pi | `start.sh --wait` |
+| `stop.sh` | Stop container | Raspberry Pi | `stop.sh --force` |
+| `webhook-server.sh` | Webhook for CI/CD | Raspberry Pi | `webhook-server.sh -s secret` |
+
+## Fly.io Deployment (Recommended)
+
+### Quick Start
+
+```bash
+# Deploy latest to staging
+./scripts/deploy/fly-deploy.sh -e stg
+
+# Deploy specific version to production
+./scripts/deploy/fly-deploy.sh -e prd -t v0.3.29
+```
+
+See [doc/fly-deployment.md](../../doc/fly-deployment.md) for complete guide including:
+- Prerequisites and setup
+- Automatic GitHub Actions deployment
+- Manual CLI deployment
+- Monitoring and operations
+- Troubleshooting
+
+## Raspberry Pi Deployment
 
 ## Installation
 
@@ -240,10 +271,10 @@ After installation:
 
 # Verify ownership
 ls -la /opt/sidflow/data/
-# Should be 1001:1001
+# Should be 1000:1000 (standard node user)
 
 # Fix ownership
-sudo chown -R 1001:1001 /opt/sidflow/data
+sudo chown -R 1000:1000 /opt/sidflow/data
 ```
 
 ### Health check failing

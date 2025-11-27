@@ -1,4 +1,9 @@
 /**
+
+if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+  console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
+  process.exit(0);
+}
  * Performance test suite for SIDFlow web UI with full HVSC collection
  * 
  * This suite is designed to:

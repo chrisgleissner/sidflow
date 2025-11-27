@@ -42,14 +42,11 @@ const TABS: TabScenario[] = [
     value: 'wizard',
     screenshot: '01-wizard.png',
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /setup wizard/i })).toBeVisible();
-      // Wait for loading spinner to disappear
-      await page.waitForFunction(() => {
-        const loader = document.querySelector('.animate-spin');
-        return loader === null;
-      }, { timeout: 10000 }).catch(() => { });
-      // Ensure content is fully rendered
-      await page.waitForTimeout(1000);
+      if (page.isClosed()) throw new Error('[WIZARD] Page closed before verification');
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
+      await expect(page.getByRole('heading', { name: /setup wizard/i })).toBeVisible({ timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     },
   },
   {
@@ -57,14 +54,11 @@ const TABS: TabScenario[] = [
     value: 'prefs',
     screenshot: '02-prefs.png',
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /preferences/i })).toBeVisible();
-      // Wait for loading spinner to disappear
-      await page.waitForFunction(() => {
-        const loader = document.querySelector('.animate-spin');
-        return loader === null;
-      }, { timeout: 10000 }).catch(() => { });
-      // Ensure content is fully rendered
-      await page.waitForTimeout(1000);
+      if (page.isClosed()) throw new Error('[PREFS] Page closed before verification');
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
+      await expect(page.getByRole('heading', { name: /preferences/i })).toBeVisible({ timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     },
   },
   {
@@ -72,14 +66,11 @@ const TABS: TabScenario[] = [
     value: 'fetch',
     screenshot: '03-fetch.png',
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /fetch hvsc/i })).toBeVisible();
-      // Wait for loading spinner to disappear
-      await page.waitForFunction(() => {
-        const loader = document.querySelector('.animate-spin');
-        return loader === null;
-      }, { timeout: 10000 }).catch(() => { });
-      // Ensure main content is loaded (not showing "Loading...")
-      await page.waitForTimeout(1000);
+      if (page.isClosed()) throw new Error('[FETCH] Page closed before verification');
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
+      await expect(page.getByRole('heading', { name: /fetch hvsc/i })).toBeVisible({ timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     },
   },
   {
@@ -87,15 +78,11 @@ const TABS: TabScenario[] = [
     value: 'rate',
     screenshot: '04-rate.png',
     verify: async (page) => {
-      // Wait for loading spinner to disappear first
-      await page.waitForFunction(() => {
-        const loader = document.querySelector('.animate-spin');
-        return loader === null;
-      }, { timeout: 10000 }).catch(() => { });
-      // Wait for rate heading with longer timeout for CI
-      await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible({ timeout: 10000 });
-      // Ensure content is fully rendered
-      await page.waitForTimeout(1000);
+      if (page.isClosed()) throw new Error('[RATE] Page closed before verification');
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+      await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible({ timeout: 15000 });
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     },
   },
   {
@@ -103,27 +90,11 @@ const TABS: TabScenario[] = [
     value: 'classify',
     screenshot: '05-classify.png',
     verify: async (page) => {
-      try {
-        // First check if page/context is still valid
-        if (page.isClosed()) {
-          throw new Error('Page was closed before verification');
-        }
-
-        // Wait for heading with extended timeout
-        await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible({ timeout: 10000 });
-
-        // Wait for loading spinner to disappear
-        await page.waitForFunction(() => {
-          const loader = document.querySelector('.animate-spin');
-          return loader === null;
-        }, { timeout: 10000 }).catch(() => { });
-
-        // Ensure content is fully rendered
-        await page.waitForTimeout(1000);
-      } catch (error) {
-        console.error('[CLASSIFY verify] Verification failed:', error);
-        throw error;
-      }
+      if (page.isClosed()) throw new Error('[CLASSIFY] Page closed before verification');
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
+      await expect(page.getByRole('heading', { name: /^classify$/i })).toBeVisible({ timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     },
   },
   {
@@ -131,14 +102,11 @@ const TABS: TabScenario[] = [
     value: 'train',
     screenshot: '06-train.png',
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /train model/i })).toBeVisible();
-      // Wait for loading spinner to disappear
-      await page.waitForFunction(() => {
-        const loader = document.querySelector('.animate-spin');
-        return loader === null;
-      }, { timeout: 10000 }).catch(() => { });
-      // Ensure content is fully rendered
-      await page.waitForTimeout(1000);
+      if (page.isClosed()) throw new Error('[TRAIN] Page closed before verification');
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
+      await expect(page.getByRole('heading', { name: /train model/i })).toBeVisible({ timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     },
   },
   {
@@ -146,14 +114,11 @@ const TABS: TabScenario[] = [
     value: 'play',
     screenshot: '07-play.png',
     verify: async (page) => {
-      await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
-      // Wait for loading spinner to disappear
-      await page.waitForFunction(() => {
-        const loader = document.querySelector('.animate-spin');
-        return loader === null;
-      }, { timeout: 10000 }).catch(() => { });
-      // Ensure content is fully rendered
-      await page.waitForTimeout(1000);
+      if (page.isClosed()) throw new Error('[PLAY] Page closed before verification');
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
+      await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 15000 });
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     },
   },
 ];

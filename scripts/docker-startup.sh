@@ -61,6 +61,38 @@ if [ -n "${SIDFLOW_ADMIN_SECRET:-}" ]; then
 fi
 echo ""
 
+echo "=== Volume Mount Setup ==="
+# Universal architecture:
+#   /sidflow/app/       - Application code (immutable from Docker image)
+#   /sidflow/workspace/ - HVSC collection, WAV cache, tags (persistent volume)
+#   /sidflow/data/      - Classified data, renders, feedback (persistent volume)
+# 
+# Fly.io: Volume mounts at /mnt/data, we create symlinks to avoid shadowing /sidflow/app
+# Pi/K8s: Direct bind mounts at /sidflow/workspace and /sidflow/data
+#
+if [ -d "/mnt/data" ]; then
+    echo "Fly.io deployment detected (/mnt/data volume exists)"
+    
+    # Create workspace and data subdirectories in the volume
+    mkdir -p /mnt/data/workspace /mnt/data/data
+    
+    # Remove any existing directories/symlinks and create fresh symlinks
+    for target in workspace data; do
+        if [ -L "/sidflow/$target" ]; then
+            rm "/sidflow/$target"
+        elif [ -d "/sidflow/$target" ]; then
+            # Backup any existing data (shouldn't happen, but be safe)
+            mv "/sidflow/$target" "/sidflow/$target.bak.$(date +%s)" 2>/dev/null || rm -rf "/sidflow/$target"
+        fi
+        ln -s "/mnt/data/$target" "/sidflow/$target"
+        echo "  ✓ Created symlink: /sidflow/$target -> /mnt/data/$target"
+    done
+else
+    echo "Local/Pi/K8s deployment detected (no /mnt/data)"
+    echo "Using direct mount points: /sidflow/workspace and /sidflow/data"
+fi
+echo ""
+
 echo "=== Mount Ownership Validation ==="
 # Validate that mounted volumes are accessible to the current user
 # Use actual current UID, not hardcoded value
@@ -84,29 +116,32 @@ echo "=== Critical Paths Check ==="
 FAILED=0
 
 # Critical paths that MUST exist (exit if missing)
-check_path "/app/packages/sidflow-web/server.js" "Next.js server" || { echo "FATAL: Next.js server missing"; exit 1; }
-check_path "/app/packages/sidflow-web/.next" "Next.js build" || { echo "FATAL: Next.js build missing"; exit 1; }
+check_path "/sidflow/app/packages/sidflow-web/server.js" "Next.js server" || { echo "FATAL: Next.js server missing"; exit 1; }
+check_path "/sidflow/app/packages/sidflow-web/.next" "Next.js build" || { echo "FATAL: Next.js build missing"; exit 1; }
 
 # Required config
-check_path "/sidflow/.sidflow.json" "Config file" || ((FAILED++))
+check_path "/sidflow/app/.sidflow.json" "Config file" || ((FAILED++))
 
-# Data directories (check and auto-create if possible)
+# Create workspace subdirectories
 for dir in "/sidflow/workspace/hvsc" "/sidflow/workspace/wav-cache" "/sidflow/workspace/tags"; do
   if [ ! -d "$dir" ]; then
-    echo "⚠ Creating missing workspace directory: $dir"
-    mkdir -p "$dir" 2>/dev/null || echo "  (unable to create, will try at runtime)"
+    if mkdir -p "$dir" 2>/dev/null; then
+      echo "✓ Created workspace directory: $dir"
+    else
+      echo "⚠ Unable to create $dir (will try at runtime)"
+    fi
   else
     echo "✓ $dir exists"
   fi
 done
 
-# Data directories (create if writable, otherwise note they'll be created on-demand)
+# Create data subdirectories
 for dir in "/sidflow/data/classified" "/sidflow/data/renders" "/sidflow/data/availability"; do
   if [ ! -d "$dir" ]; then
     if mkdir -p "$dir" 2>/dev/null; then
       echo "✓ Created data directory: $dir"
     else
-      echo "⚠ Data directory $dir will be created on-demand (parent not writable)"
+      echo "⚠ Unable to create $dir (will try at runtime)"
     fi
   else
     echo "✓ $dir exists"
@@ -116,10 +151,10 @@ echo ""
 
 echo "=== WASM Files Check ==="
 # WASM files are copied to Next.js public/wasm during build:worklet
-check_path "/app/packages/sidflow-web/public/wasm/libsidplayfp.wasm" "SIDPlayFP WASM (public)" || ((FAILED++))
-check_path "/app/packages/sidflow-web/public/wasm/libsidplayfp.js" "SIDPlayFP JS (public)" || ((FAILED++))
+check_path "/sidflow/app/packages/sidflow-web/public/wasm/libsidplayfp.wasm" "SIDPlayFP WASM (public)" || ((FAILED++))
+check_path "/sidflow/app/packages/sidflow-web/public/wasm/libsidplayfp.js" "SIDPlayFP JS (public)" || ((FAILED++))
 # Source files should also exist in packages
-check_path "/sidflow/packages/libsidplayfp-wasm/dist/libsidplayfp.wasm" "SIDPlayFP WASM (source)" || echo "  (optional - only needed for CLI usage)"
+check_path "/sidflow/app/packages/libsidplayfp-wasm/dist/libsidplayfp.wasm" "SIDPlayFP WASM (source)" || echo "  (optional - only needed for CLI usage)"
 echo ""
 
 echo "=== Command Availability ==="
@@ -140,9 +175,9 @@ fi
 echo ""
 
 echo "=== Config File Content ==="
-if [ -f "${SIDFLOW_CONFIG:-/sidflow/.sidflow.json}" ]; then
-    echo "Config path: ${SIDFLOW_CONFIG:-/sidflow/.sidflow.json}"
-    cat "${SIDFLOW_CONFIG:-/sidflow/.sidflow.json}" | head -30
+if [ -f "${SIDFLOW_CONFIG:-/sidflow/app/.sidflow.json}" ]; then
+    echo "Config path: ${SIDFLOW_CONFIG:-/sidflow/app/.sidflow.json}"
+    cat "${SIDFLOW_CONFIG:-/sidflow/app/.sidflow.json}" | head -30
 else
     echo "✗ Config file not found!"
     ((FAILED++))
@@ -150,7 +185,7 @@ fi
 echo ""
 
 echo "=== Disk Space ==="
-df -h /sidflow /app /tmp | tail -n +2
+df -h /sidflow /tmp | tail -n +2
 echo ""
 
 echo "=== Network Check ==="
@@ -171,11 +206,14 @@ echo ""
 echo "=== Initializing sidplayfp configuration ==="
 # Create persistent sidplayfp.ini if it doesn't exist
 SIDPLAYFP_INI="/sidflow/data/.sidplayfp.ini"
-SIDPLAYFP_CONFIG_DIR="/home/sidflow/.config/sidplayfp"
+SIDPLAYFP_CONFIG_DIR="/home/node/.config/sidplayfp"
+
+# Ensure data directory exists and is writable before attempting to write config
+mkdir -p /sidflow/data 2>/dev/null || true
 
 if [ ! -f "$SIDPLAYFP_INI" ]; then
     echo "Creating default sidplayfp.ini at $SIDPLAYFP_INI"
-    cat > "$SIDPLAYFP_INI" << 'EOF'
+    if cat > "$SIDPLAYFP_INI" 2>/dev/null << 'EOF'
 [SIDPlayfp]
 Version = 2
 Songlength Database = /sidflow/workspace/hvsc/update/DOCUMENTS/Songlengths.md5
@@ -204,15 +242,20 @@ FilterBias = 0
 FilterCurve6581 = 0.5
 FilterCurve8580 = 12500
 EOF
-    echo "✓ Created default sidplayfp.ini"
+    then
+        echo "✓ Created default sidplayfp.ini"
+    else
+        echo "⚠ Unable to create $SIDPLAYFP_INI (will use defaults)"
+    fi
 else
     echo "✓ Using existing sidplayfp.ini"
 fi
 
-# Create symlink to persistent location
-mkdir -p "$SIDPLAYFP_CONFIG_DIR"
-ln -sf "$SIDPLAYFP_INI" "$SIDPLAYFP_CONFIG_DIR/sidplayfp.ini"
-echo "✓ Linked sidplayfp.ini from persistent storage"
+# Create symlink to persistent location (best effort)
+if mkdir -p "$SIDPLAYFP_CONFIG_DIR" 2>/dev/null && [ -f "$SIDPLAYFP_INI" ]; then
+    ln -sf "$SIDPLAYFP_INI" "$SIDPLAYFP_CONFIG_DIR/sidplayfp.ini" 2>/dev/null || true
+    echo "✓ Linked sidplayfp.ini from persistent storage"
+fi
 
 # Provision ROMs if missing (user must provide these copyrighted files)
 ROM_DIR="/sidflow/workspace/roms"

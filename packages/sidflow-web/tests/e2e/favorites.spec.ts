@@ -1,5 +1,10 @@
 import { test, expect, type BrowserContext, type Page } from './test-hooks';
 
+if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+  console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
+  process.exit(0);
+}
+
 const SAMPLE_FAVORITES = [
   'C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid',
   'C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid',

@@ -49,10 +49,10 @@ DRY_RUN=false
 FORCE_RECREATE=false
 BUILD_IMAGE=false
 DOCKERFILE_PATH="${SIDFLOW_DOCKERFILE:-Dockerfile.production}"
-# Default to UID/GID 1001 (sidflow user from Dockerfile) instead of current user
-# This ensures consistent non-root execution regardless of how install.sh is invoked
-CONTAINER_UID="${SIDFLOW_CONTAINER_UID:-1001}"
-CONTAINER_GID="${SIDFLOW_CONTAINER_GID:-1001}"
+# Default to UID/GID 1000 (standard node user from base image)
+# This avoids permission mismatches when bind-mounting host directories
+CONTAINER_UID="${SIDFLOW_CONTAINER_UID:-1000}"
+CONTAINER_GID="${SIDFLOW_CONTAINER_GID:-1000}"
 
 # Colors for output
 RED='\033[0;31m'

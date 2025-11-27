@@ -144,6 +144,9 @@ export default defineConfig({
       ...(skipNextBuildFlag && process.env.E2E_COVERAGE !== 'true' ? { SIDFLOW_SKIP_NEXT_BUILD: skipNextBuildFlag } : {}),
       // Pass E2E_COVERAGE to enable instrumentation
       ...(process.env.E2E_COVERAGE === 'true' ? { E2E_COVERAGE: 'true', BABEL_ENV: 'coverage' } : {}),
+      // Pass admin credentials to server so middleware can validate them
+      SIDFLOW_ADMIN_USER: process.env.SIDFLOW_ADMIN_USER ?? 'ops',
+      SIDFLOW_ADMIN_PASSWORD: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123',
     },
   },
 });

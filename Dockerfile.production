@@ -158,69 +158,43 @@ RUN set -eux; \
     ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
     rm -rf /tmp/bun /tmp/bun.zip
 
-ARG SIDFLOW_UID=1001
-ARG SIDFLOW_GID=1001
+# Use the node user (1000:1000) from the base image for security
+# This is the standard approach for Node.js containers and works across all platforms
+# (Fly.io, Railway, Kubernetes, Docker Compose) without permission issues
 
-# Create non-root user for security
-RUN set -eux; \
-    # Handle case where GID already exists (e.g. node user at 1000)
-    if getent group ${SIDFLOW_GID} >/dev/null; then \
-        EXISTING_GROUP=$(getent group ${SIDFLOW_GID} | cut -d: -f1); \
-        if [ "$EXISTING_GROUP" != "sidflow" ]; then \
-            groupmod -n sidflow "$EXISTING_GROUP"; \
-        fi; \
-    else \
-        groupadd --gid ${SIDFLOW_GID} sidflow; \
-    fi; \
-    # Handle case where UID already exists
-    if getent passwd ${SIDFLOW_UID} >/dev/null; then \
-        EXISTING_USER=$(getent passwd ${SIDFLOW_UID} | cut -d: -f1); \
-        if [ "$EXISTING_USER" != "sidflow" ]; then \
-            usermod -l sidflow -g ${SIDFLOW_GID} -d /home/sidflow -m "$EXISTING_USER"; \
-        fi; \
-    else \
-        useradd --uid ${SIDFLOW_UID} --gid sidflow --shell /bin/bash --create-home sidflow; \
-    fi
-
-WORKDIR /app
+WORKDIR /sidflow/app
 
 # Copy standalone server from builder
-COPY --from=builder --chown=sidflow:sidflow /build/packages/sidflow-web/.next/standalone ./
+COPY --from=builder --chown=node:node /build/packages/sidflow-web/.next/standalone ./
 
 # Copy workspace files for CLI flows (config, scripts, packages, dependencies)
-COPY --from=builder --chown=sidflow:sidflow /build/.sidflow.json /sidflow/.sidflow.json
-COPY --from=builder --chown=sidflow:sidflow /build/package.json /sidflow/package.json
-COPY --from=builder --chown=sidflow:sidflow /build/bun.lock* /sidflow/
-COPY --from=builder --chown=sidflow:sidflow /build/bunfig.toml /sidflow/bunfig.toml
-COPY --from=builder --chown=sidflow:sidflow /build/tsconfig.base.json /sidflow/tsconfig.base.json
-COPY --from=builder --chown=sidflow:sidflow /build/tsconfig.json /sidflow/tsconfig.json
-COPY --from=builder --chown=sidflow:sidflow /build/scripts /sidflow/scripts
-COPY --from=builder --chown=sidflow:sidflow /build/packages /sidflow/packages
-COPY --from=builder --chown=sidflow:sidflow /build/node_modules /sidflow/node_modules
+# All application code goes under /sidflow/app so volume mounts at /sidflow don't shadow it
+COPY --from=builder --chown=node:node /build/.sidflow.json /sidflow/app/.sidflow.json
+COPY --from=builder --chown=node:node /build/package.json /sidflow/app/package.json
+COPY --from=builder --chown=node:node /build/bun.lock* /sidflow/app/
+COPY --from=builder --chown=node:node /build/bunfig.toml /sidflow/app/bunfig.toml
+COPY --from=builder --chown=node:node /build/tsconfig.base.json /sidflow/app/tsconfig.base.json
+COPY --from=builder --chown=node:node /build/tsconfig.json /sidflow/app/tsconfig.json
+COPY --from=builder --chown=node:node /build/scripts /sidflow/app/scripts
+COPY --from=builder --chown=node:node /build/packages /sidflow/app/packages
+COPY --from=builder --chown=node:node /build/node_modules /sidflow/app/node_modules
 
 # Security hardening and directory setup (consolidated for layer efficiency)
+# Note: /sidflow/workspace and /sidflow/data are NOT created here
+# They will be created as symlinks at runtime (Fly.io) or as direct bind mounts (Pi/K8s)
 RUN set -eux; \
     echo "[security] Starting hardening and setup..."; \
-    rm -rf /sidflow/packages/sidflow-web/.next; \
-    install -d -o sidflow -g sidflow \
-    /sidflow/workspace/hvsc \
-    /sidflow/workspace/wav-cache \
-    /sidflow/workspace/tags \
-    /sidflow/data/classified \
-    /sidflow/data/renders \
-    /sidflow/data/availability; \
-    chown sidflow:sidflow /sidflow/workspace; \
-    chmod 755 /sidflow/workspace; \
-    test -f /app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \
-    echo "[security] Server validated ($(stat -c%s /app/packages/sidflow-web/server.js) bytes)"; \
+    test -f /sidflow/app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \
+    test -d /sidflow/app/packages/sidflow-web/.next || { echo "[security] ERROR: .next build not found"; exit 1; }; \
+    echo "[security] Server validated ($(stat -c%s /sidflow/app/packages/sidflow-web/server.js) bytes)"; \
     find /usr/bin /usr/sbin /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} + 2>/dev/null || true; \
     echo "[security] SUID/SGID stripping complete"; \
-    chown sidflow:sidflow /app; \
-    # Tighten permissions on small, critical paths to avoid long traversals over node_modules \
-    chmod -R o-rwx /sidflow/scripts /sidflow/data /sidflow/workspace 2>/dev/null || true; \
-    chmod -R g-w /sidflow/scripts /sidflow/data /sidflow/workspace 2>/dev/null || true; \
-    chmod -R o-rwx /app/packages/sidflow-web 2>/dev/null || true; \
-    chmod -R g-w /app/packages/sidflow-web 2>/dev/null || true; \
+    chown -R node:node /sidflow; \
+    # Tighten permissions on app scripts and web packages \
+    chmod -R o-rwx /sidflow/app/scripts 2>/dev/null || true; \
+    chmod -R g-w /sidflow/app/scripts 2>/dev/null || true; \
+    chmod -R o-rwx /sidflow/app/packages/sidflow-web 2>/dev/null || true; \
+    chmod -R g-w /sidflow/app/packages/sidflow-web 2>/dev/null || true; \
     echo "[security] Hardening complete"
 
 # Set secure environment defaults
@@ -230,7 +204,7 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     NEXT_TELEMETRY_DISABLED=1 \
     SIDFLOW_ROOT=/sidflow \
-    SIDFLOW_CONFIG=/sidflow/.sidflow.json \
+    SIDFLOW_CONFIG=/sidflow/app/.sidflow.json \
     PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
     UMASK=0027
 
@@ -241,11 +215,13 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3000/api/health || exit 1
 
-# Switch to non-root user
-USER sidflow
+# Switch to non-root user (standard node user from base image: 1000:1000)
+USER node
 
 # Set working directory to /sidflow so relative paths in config resolve correctly
 # The config file uses ./workspace/hvsc which needs to resolve to /sidflow/workspace/hvsc
+# App code lives under /sidflow/app, persistent data under /sidflow/workspace and /sidflow/data
+# This structure allows volume mounts at /sidflow without shadowing the application code
 WORKDIR /sidflow
 
 # Use tini as init to handle signals properly and reap zombie processes
@@ -253,4 +229,4 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Start server via diagnostic startup script, then run standalone server
 # The startup script checks paths, logs diagnostics, then execs the server
-CMD ["/sidflow/scripts/docker-startup.sh", "node", "/app/packages/sidflow-web/server.js"]
+CMD ["/sidflow/app/scripts/docker-startup.sh", "node", "/sidflow/app/packages/sidflow-web/server.js"]
