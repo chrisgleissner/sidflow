@@ -218,7 +218,7 @@ User correctly pointed out: The `-t` flag should NOT be needed if sidplayfp.ini 
 
 ---
 
-### Task: Simplify WAV Rendering - Let sidplayfp Use Songlengths.md5 Directly (2025-11-27)
+### Task: ✅ COMPLETE - Simplify WAV Rendering - Let sidplayfp Use Songlengths.md5 Directly (2025-11-27)
 
 **User request (summary)**
 - Remove overcomplicated manual songlength lookup and `-t` flag injection
