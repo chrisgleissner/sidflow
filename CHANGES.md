@@ -1,6 +1,16 @@
 # Changelog
 
 
+## 0.3.34 (2025-11-27)
+
+- security: revert insecure health check bypass mechanism
+- feat: health check bypasses auth using internal header
+- fix: make health check more lenient for CI smoke tests
+- perf: remove redundant chown in Dockerfile.production
+- fix: install.sh now correctly uses sudo for privileged operations
+- chore: update CHANGES.md for 0.3.33
+
+
 ## 0.3.33 (2025-11-27)
 
 - fix: remove obsolete middleware.ts file
