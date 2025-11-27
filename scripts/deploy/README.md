@@ -58,6 +58,8 @@ chmod +x install.sh
 ./install.sh -P 'your-secure-password'
 ```
 
+**Note**: The script will use `sudo` for operations requiring elevated privileges (creating `/opt/sidflow`, setting permissions). You'll be prompted for your password if needed.
+
 ### With Specific Version
 
 ```bash

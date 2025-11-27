@@ -189,7 +189,6 @@ RUN set -eux; \
     echo "[security] Server validated ($(stat -c%s /sidflow/app/packages/sidflow-web/server.js) bytes)"; \
     find /usr/bin /usr/sbin /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} + 2>/dev/null || true; \
     echo "[security] SUID/SGID stripping complete"; \
-    chown -R node:node /sidflow; \
     # Tighten permissions on app scripts and web packages \
     chmod -R o-rwx /sidflow/app/scripts 2>/dev/null || true; \
     chmod -R g-w /sidflow/app/scripts 2>/dev/null || true; \
