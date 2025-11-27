@@ -1,6 +1,16 @@
 # Changelog
 
 
+## 0.3.36 (2025-11-27)
+
+- refactor: simplify target duration handling in renderWavWithEngine function
+- fix: update directory creation in Dockerfile and adjust logging in PLANS.md for improved clarity
+- fix: use /opt/sidflow/tmp instead of /tmp to avoid space issues
+- feat: update active tasks in PLANS.md for Docker health check and WAV rendering improvements
+- feat: add WAV length verification script to ensure correct durations against HVSC database
+- chore: update CHANGES.md for 0.3.35
+
+
 ## 0.3.35 (2025-11-27)
 
 - feat: add symlink for config resolution and update Docker environment for CLI scripts
