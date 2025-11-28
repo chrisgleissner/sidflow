@@ -275,6 +275,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
             <div className={`flex items-center gap-2 px-3 py-2 rounded border ${forceRebuild ? 'border-red-500/50 bg-red-500/10' : 'border-border/30 bg-muted/20'} transition-colors`}>
               <input
                 id="force-rebuild"
+                data-testid="force-rebuild-checkbox"
                 type="checkbox"
                 checked={forceRebuild}
                 onChange={(e) => setForceRebuild(e.target.checked)}
@@ -288,6 +289,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
             <div className="flex flex-col gap-2">
               <div className="relative">
                 <Button
+                  data-testid="start-classify-button"
                   onClick={handleClassify}
                   disabled={isLoading || isRunning}
                   className="w-full retro-glow peer"

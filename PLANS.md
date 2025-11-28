@@ -36,6 +36,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [Task: Reproduce Docker Build & Verification Locally (2025-11-26)](#task-reproduce-docker-build--verification-locally-2025-11-26)
   - [Task: Fix E2E Test Failures (2025-11-26)](#task-fix-e2e-test-failures-2025-11-26)
   - [Task: Achieve >90% Test Coverage (2025-11-24)](#task-achieve-90%25-test-coverage-2025-11-24)
+- [Backlog](#backlog)
 - [Archived Tasks](#archived-tasks)
 
 <!-- /TOC -->
@@ -281,11 +282,21 @@ To prevent uncontrolled growth of this file:
   - Added documentation clarifying rootless Docker support
   - Prevents sudo prompts when running with rootless Docker
 
+**Critical fix for inline rendering visibility (2025-11-28)**
+- **Root cause**: When `generateAutoTags` renders WAVs inline (lines 1199-1206), it never emitted "building" phase thread updates
+- **Impact**: User saw only "Extracting Features & Tagging" even with force rebuild, never saw "Rendering"
+- **Fix**: Added thread update emissions around inline render call:
+  - Emit `phase: "building"` before `await render()`
+  - Emit `phase: "tagging"` after render completes
+- **Verification**: CLI test shows threads now properly display "Rendering" during inline WAV creation
+- File: `packages/sidflow-classify/src/index.ts` lines 1199-1220
+
 **Deployment completed (2025-11-28)**
-- Docker image rebuilt with Dockerfile.production
+- Docker image rebuilt with Dockerfile.production (includes inline rendering thread update fix)
 - Deployed to ~/sidflow-deploy on port 3001 (port 3000 was in use by previous instance)
 - Health check passed: all components healthy except Ultimate64 (expected, not configured)
 - Access at: http://localhost:3001
+- Ready for user testing with force rebuild
 
 **Terminology clarification for documentation**
 - **Analyzing**: Scanning SID collection, reading file headers, checking what needs work
@@ -1202,7 +1213,31 @@ Phase 3: Validation and documentation
 - [ ] Add Web API mocks for browser-only modules (player, worklet, feedback storage)
 - [ ] Consider E2E test improvements to complement unit test coverage gaps
 
+## Backlog
 
+### Pause/Resume Progress Bar Synchronization Issue
+
+**User request (summary)**  
+When pausing a song, the progress bar resets to position 0, but the song continues playing from where it was paused (correct behavior). This causes the progress bar and actual playback position to go out of sync.
+
+**Scope**  
+Fix this in all places where songs can be played: Play tab, Rate tab, and any other playback locations.
+
+**Priority**  
+Medium - UX issue that doesn't affect core functionality but creates confusing visual feedback.
+
+**Related components**  
+- `packages/sidflow-web/audio/sidflow-player.ts` - Main player implementation
+- `packages/sidflow-web/components/PlayTab.tsx` - Play tab UI
+- `packages/sidflow-web/components/RateTab.tsx` - Rate tab UI
+- Any other components with playback controls
+
+**Next steps when addressing**  
+1. Investigate current pause/resume implementation in sidflow-player.ts
+2. Identify where progress bar reset occurs during pause
+3. Preserve playback position state across pause/resume
+4. Verify fix in all playback locations (Play, Rate, etc.)
+5. Add E2E test to verify progress bar maintains position on pause
 
 ## Archived Tasks
 

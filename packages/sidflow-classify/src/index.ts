@@ -1205,12 +1205,26 @@ export async function generateAutoTags(
           file: songLabel
         });
         
-        await render({
-          sidFile: job.sidFile,
-          wavFile: job.wavPath,
-          songIndex: job.songCount > 1 ? job.songIndex : undefined,
-          targetDurationMs: job.targetDurationMs
-        });
+        // Start heartbeat to prevent thread from appearing stale during long renders
+        const heartbeatInterval = setInterval(() => {
+          onThreadUpdate?.({
+            threadId: context.threadId,
+            phase: "building",
+            status: "working",
+            file: songLabel
+          });
+        }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
+        
+        try {
+          await render({
+            sidFile: job.sidFile,
+            wavFile: job.wavPath,
+            songIndex: job.songCount > 1 ? job.songIndex : undefined,
+            targetDurationMs: job.targetDurationMs
+          });
+        } finally {
+          clearInterval(heartbeatInterval);
+        }
         
         // Switch back to tagging phase after rendering
         onThreadUpdate?.({
