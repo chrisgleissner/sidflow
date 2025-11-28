@@ -412,7 +412,7 @@ describe('Security headers', () => {
 
     test('security headers applied to rate limit error responses', async () => {
       // Exhaust rate limit
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 300; i++) {
         await proxy(
           new NextRequest('http://localhost/api/health', {
             headers: { 'x-forwarded-for': '203.0.113.100' },

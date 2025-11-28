@@ -10,6 +10,7 @@ import {
   buildWavCache,
   defaultExtractMetadata,
   generateAutoTags,
+  generateJsonlOutput,
   heuristicFeatureExtractor,
   heuristicPredictRatings,
   planClassification,
@@ -19,6 +20,7 @@ import {
   type ExtractMetadata,
   type FeatureExtractor,
   type GenerateAutoTagsResult,
+  type GenerateJsonlResult,
   type PredictRatings,
   type RenderWav,
   type ThreadActivityUpdate,
@@ -135,6 +137,7 @@ interface ClassifyCliRuntime {
   planClassification: typeof planClassification;
   buildWavCache: typeof buildWavCache;
   generateAutoTags: typeof generateAutoTags;
+  generateJsonlOutput: typeof generateJsonlOutput;
   loadFeatureModule: (specifier: string) => Promise<FeatureExtractor>;
   loadPredictorModule: (specifier: string) => Promise<PredictRatings>;
   loadMetadataModule: (specifier: string) => Promise<ExtractMetadata>;
@@ -147,6 +150,7 @@ const defaultRuntime: ClassifyCliRuntime = {
   planClassification,
   buildWavCache,
   generateAutoTags,
+  generateJsonlOutput,
   loadFeatureModule: (specifier) =>
     loadModule<FeatureExtractor>(specifier, ["default", "featureExtractor", "extractFeatures"]),
   loadPredictorModule: (specifier) =>
@@ -242,22 +246,50 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
       const remaining = progress.totalFiles - progress.processedFiles;
       const file = progress.currentFile ? ` - ${progress.currentFile}` : "";
 
-      if (progress.phase === "metadata") {
-        stdout.write(
-          `\r[Metadata] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
-        );
-      } else {
-        stdout.write(
-          `\r[Tagging] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
-        );
+      // Map internal phases to user-friendly labels
+      let phaseLabel: string;
+      switch (progress.phase) {
+        case "metadata":
+          phaseLabel = "Reading Metadata";
+          break;
+        case "tagging":
+          phaseLabel = "Extracting Features";
+          break;
+        case "jsonl":
+          phaseLabel = "Writing Features";
+          break;
+        default:
+          phaseLabel = progress.phase;
       }
+
+      stdout.write(
+        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
+      );
     },
 
     logThread(update: ThreadActivityUpdate): void {
-      const phase = update.phase.toUpperCase();
-      const status = update.status.toUpperCase();
-      const file = update.file ? ` ${update.file}` : "";
-      writeThreadLine(`[Thread ${update.threadId}][${phase}][${status}]${file}`);
+      // Map internal phases to user-friendly action verbs
+      let action: string;
+      switch (update.phase) {
+        case "analyzing":
+          action = "Analyzing";
+          break;
+        case "building":
+          action = "Rendering";
+          break;
+        case "metadata":
+          action = "Reading metadata";
+          break;
+        case "tagging":
+          action = "Extracting features";
+          break;
+        default:
+          action = update.phase;
+      }
+
+      const status = update.status === "working" ? action : update.status.toUpperCase();
+      const file = update.file ? `: ${update.file}` : "";
+      writeThreadLine(`[Thread ${update.threadId}] ${status}${file}`);
     },
 
     clearLine(): void {
@@ -291,6 +323,15 @@ function summariseAutoTags(result: GenerateAutoTagsResult): string[] {
     `  Metadata files: ${result.metadataFiles.length}`,
     `  Tag files: ${result.tagFiles.length}`,
     `  Duration: ${formatDuration(metrics.durationMs)}`
+  ];
+}
+
+function summariseJsonlOutput(result: GenerateJsonlResult): string[] {
+  return [
+    "Feature extraction:",
+    `  Records written: ${result.recordCount}`,
+    `  Output file: ${result.jsonlFile}`,
+    `  Duration: ${formatDuration(result.durationMs)}`
   ];
 }
 
@@ -363,6 +404,7 @@ export async function runClassifyCli(
       extractMetadata = await runtime.loadMetadataModule(options.metadataModule);
     }
 
+    // Step 1: Generate auto-tags (ratings only)
     const autoTagsResult = await runtime.generateAutoTags(resolvedPlan, {
       extractMetadata,
       featureExtractor,
@@ -375,10 +417,24 @@ export async function runClassifyCli(
 
     progressLogger.clearLine();
     runtime.stdout.write("\n");
+    
+    // Step 2: Generate JSONL output with features + ratings + metadata
+    runtime.stdout.write("Extracting features to JSONL...\n");
+    const jsonlResult = await runtime.generateJsonlOutput(resolvedPlan, {
+      extractMetadata,
+      featureExtractor,
+      predictRatings,
+      onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
+    });
+
+    progressLogger.clearLine();
+    runtime.stdout.write("\n");
 
     const summary = [
       "Classification complete.",
-      ...summariseAutoTags(autoTagsResult)
+      ...summariseAutoTags(autoTagsResult),
+      "",
+      ...summariseJsonlOutput(jsonlResult)
     ];
     runtime.stdout.write(`${summary.join("\n")}\n`);
     return 0;

@@ -112,6 +112,33 @@ Follow the existing conventions rather than inventing new ones:
 
 Do not introduce new top‑level frameworks or major dependencies without a strong justification that is consistent with the existing design documents and rollout plans.
 
+## Maintenance scripts and operational discipline
+
+**CRITICAL: Never interact directly with Docker, system services, or application infrastructure using ad-hoc commands.**
+
+All operational tasks must be performed through dedicated maintenance scripts in the `scripts/` directory:
+
+- **Docker builds**: Use `scripts/build-docker.sh`, NOT `docker build` directly
+- **Docker deployment**: Use `scripts/deploy/install.sh`, NOT `docker run` or `docker-compose` directly
+- **Container management**: Extend scripts in `scripts/deploy/` for stop/start/restart/logs operations
+- **Database operations**: Use `scripts/build-db.ts` and related validation scripts
+- **CI/test operations**: Use package.json scripts (`bun run test`, `bun run build`, etc.)
+
+**Rationale**: 
+- Maintenance scripts encode institutional knowledge (correct flags, environment variables, paths)
+- Scripts are version-controlled, reviewed, and tested
+- Ad-hoc commands lead to configuration drift and undocumented changes
+- Scripts serve as living documentation of operational procedures
+
+**If a needed script doesn't exist**:
+1. Create it in the appropriate `scripts/` subdirectory
+2. Make it idempotent and safe (check preconditions, provide clear error messages)
+3. Document its purpose and usage in a comment header
+4. Update `doc/developer.md` or `doc/deployment.md` as appropriate
+5. Then use the new script for the task at hand
+
+**Exception**: Exploratory commands during development (e.g., `grep`, `find`, `cat`, one-off TypeScript checks) are fine, but anything that modifies system state or interacts with running services must go through a script.
+
 ## Testing, validation, and safety
 
 **⚠️ CRITICAL: See "ABSOLUTE TEST REQUIREMENTS" section above before proceeding ⚠️**

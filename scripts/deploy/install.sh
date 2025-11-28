@@ -3,6 +3,11 @@
 # SIDFlow Production Installation Script
 # Performs initial deployment of SIDFlow on a Raspberry Pi or similar host
 #
+# IMPORTANT: This script auto-detects whether sudo is needed for Docker operations.
+#            - Rootless Docker: Run directly as your user
+#            - Standard Docker: Run with sudo (script will detect and use it)
+#            - Override: Set USE_SUDO="" to force no-sudo mode
+#
 # Usage: install.sh [OPTIONS]
 #
 # Options:
@@ -84,12 +89,26 @@ run_cmd() {
     fi
 }
 
-SUDO_BIN="${USE_SUDO-}"
-# Check if sudo is available and needed
-if [[ -z "$SUDO_BIN" ]]; then
-    if command -v sudo >/dev/null 2>&1; then
-        # sudo exists - use it (will prompt for password if needed)
-        SUDO_BIN="sudo"
+# Check if USE_SUDO is explicitly set (even to empty string)
+if [[ -v USE_SUDO ]]; then
+    # USE_SUDO was set by user - respect it (even if empty for no-sudo mode)
+    SUDO_BIN="$USE_SUDO"
+else
+    # USE_SUDO not set - auto-detect
+    if [[ "$EUID" -eq 0 ]]; then
+        # Already running as root - don't use sudo
+        SUDO_BIN=""
+    else
+        # Not root - check if we can run Docker without sudo (rootless mode)
+        if docker info >/dev/null 2>&1; then
+            # Docker works without sudo - likely rootless mode
+            SUDO_BIN=""
+        elif command -v sudo >/dev/null 2>&1; then
+            # Need sudo for Docker
+            SUDO_BIN="sudo"
+        else
+            SUDO_BIN=""
+        fi
     fi
 fi
 
@@ -256,6 +275,13 @@ fi
 COMPOSE_FILE="$INSTALL_DIR/config/docker-compose.$ENVIRONMENT.yml"
 log_info "Creating Docker Compose file: $COMPOSE_FILE"
 
+# Determine final image reference
+if [[ -n "$IMAGE_TAG" ]]; then
+  FINAL_IMAGE="$DOCKER_IMAGE:$IMAGE_TAG"
+else
+  FINAL_IMAGE="$DOCKER_IMAGE"
+fi
+
 if [[ "$DRY_RUN" != "true" ]]; then
     tee_root "$COMPOSE_FILE" > /dev/null << EOF
 # SIDFlow $ENVIRONMENT Docker Compose Configuration
@@ -263,7 +289,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
 
 services:
   sidflow:
-    image: ${IMAGE_TAG:+$DOCKER_IMAGE:$IMAGE_TAG}${IMAGE_TAG:-$DOCKER_IMAGE}
+    image: $FINAL_IMAGE
     container_name: sidflow-$ENVIRONMENT
     restart: unless-stopped
     
@@ -329,18 +355,25 @@ fi
 
 # Build Docker image locally if requested
 if [[ "$BUILD_IMAGE" == "true" ]]; then
-    log_info "Building Docker image locally: $DOCKER_IMAGE:$IMAGE_TAG (Dockerfile: $DOCKERFILE_PATH)"
+    # Determine build target tag
+    if [[ -n "$IMAGE_TAG" ]]; then
+        BUILD_TAG="$DOCKER_IMAGE:$IMAGE_TAG"
+    else
+        BUILD_TAG="$DOCKER_IMAGE"
+    fi
+    
+    log_info "Building Docker image locally: $BUILD_TAG (Dockerfile: $DOCKERFILE_PATH)"
     log_info "Using UID: $CONTAINER_UID, GID: $CONTAINER_GID"
     if [[ "$DRY_RUN" != "true" ]]; then
         docker build \
             --build-arg SIDFLOW_UID="$CONTAINER_UID" \
             --build-arg SIDFLOW_GID="$CONTAINER_GID" \
             -f "$DOCKERFILE_PATH" \
-            -t "$DOCKER_IMAGE:$IMAGE_TAG" \
+            -t "$BUILD_TAG" \
             "$(cd "$ROOT_DIR" && pwd)"
         log_success "Docker image built locally"
     else
-        echo "[DRY-RUN] docker build --build-arg SIDFLOW_UID=$CONTAINER_UID --build-arg SIDFLOW_GID=$CONTAINER_GID -f $DOCKERFILE_PATH -t $DOCKER_IMAGE:$IMAGE_TAG $(cd "$ROOT_DIR" && pwd)"
+        echo "[DRY-RUN] docker build --build-arg SIDFLOW_UID=$CONTAINER_UID --build-arg SIDFLOW_GID=$CONTAINER_GID -f $DOCKERFILE_PATH -t $BUILD_TAG $(cd "$ROOT_DIR" && pwd)"
     fi
     # If we built locally, skip pulling
     SKIP_PULL=true

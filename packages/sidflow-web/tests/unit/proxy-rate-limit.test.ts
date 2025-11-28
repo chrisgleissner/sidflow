@@ -11,9 +11,9 @@ describe('Proxy rate limiting', () => {
   });
 
   test('rate limits API routes', async () => {
-    // Default rate limiter allows 100 requests per minute
+    // Default rate limiter allows 300 requests per minute
     // Make requests up to the limit
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 300; i++) {
       const request = new NextRequest('http://localhost/api/health', {
         headers: { 'x-forwarded-for': '203.0.113.1' },
       });
@@ -21,7 +21,7 @@ describe('Proxy rate limiting', () => {
       expect(response.status).toBe(200);
     }
 
-    // 101st request should be rate limited
+    // 301st request should be rate limited
     const request = new NextRequest('http://localhost/api/health', {
       headers: { 'x-forwarded-for': '203.0.113.1' },
     });
@@ -72,7 +72,7 @@ describe('Proxy rate limiting', () => {
 
   test('includes rate limit headers in 429 response', async () => {
     // Exhaust rate limit
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 300; i++) {
       await proxy(
         new NextRequest('http://localhost/api/health', {
           headers: { 'x-forwarded-for': '203.0.113.1' },
@@ -87,7 +87,7 @@ describe('Proxy rate limiting', () => {
     const response = await proxy(request);
 
     expect(response.status).toBe(429);
-    expect(response.headers.get('X-RateLimit-Limit')).toBe('100');
+    expect(response.headers.get('X-RateLimit-Limit')).toBe('300');
     expect(response.headers.get('X-RateLimit-Remaining')).toBe('0');
     expect(response.headers.get('X-RateLimit-Reset')).toBeTruthy();
     expect(response.headers.get('Retry-After')).toBeTruthy();
@@ -95,7 +95,7 @@ describe('Proxy rate limiting', () => {
 
   test('tracks different IPs independently', async () => {
     // Exhaust limit for IP1
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 300; i++) {
       await proxy(
         new NextRequest('http://localhost/api/health', {
           headers: { 'x-forwarded-for': '203.0.113.1' },
@@ -131,7 +131,7 @@ describe('Proxy rate limiting', () => {
 
   test('rate limit response includes security headers', async () => {
     // Exhaust rate limit
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 300; i++) {
       await proxy(
         new NextRequest('http://localhost/api/health', {
           headers: { 'x-forwarded-for': '203.0.113.1' },

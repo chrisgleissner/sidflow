@@ -217,6 +217,7 @@ function processLine(line: string) {
     return;
   }
 
+  // Match both old format [Thread X][PHASE][WORKING] and new format [Thread X] ACTION: file
   const threadStatusMatch = line.match(
     /\[Thread\s+(\d+)\]\[([A-Za-z]+)\]\[(WORKING|IDLE)\](?:\s+(.*))?/i
   );
@@ -225,6 +226,43 @@ function processLine(line: string) {
     const phase = threadStatusMatch[2].toLowerCase() as ThreadPhase;
     const status = threadStatusMatch[3].toLowerCase() === 'working' ? 'working' : 'idle';
     const file = threadStatusMatch[4]?.trim();
+    applyThreadStatusUpdate({
+      threadId,
+      phase,
+      status,
+      file: status === 'working' ? file : undefined,
+    });
+    return;
+  }
+
+  // Match new format: [Thread X] ACTION: file or [Thread X] IDLE
+  const newThreadMatch = line.match(
+    /\[Thread\s+(\d+)\]\s+(Analyzing|Rendering|Reading metadata|Extracting features|IDLE)(?::\s+(.*))?/i
+  );
+  if (newThreadMatch) {
+    const threadId = Number(newThreadMatch[1]);
+    const action = newThreadMatch[2].toLowerCase();
+    const file = newThreadMatch[3]?.trim();
+    
+    let phase: ThreadPhase;
+    let status: 'working' | 'idle';
+    
+    if (action === 'idle') {
+      phase = 'tagging'; // Keep last known phase
+      status = 'idle';
+    } else {
+      status = 'working';
+      if (action === 'analyzing') {
+        phase = 'analyzing';
+      } else if (action === 'rendering') {
+        phase = 'building';
+      } else if (action === 'reading metadata') {
+        phase = 'metadata';
+      } else {
+        phase = 'tagging'; // extracting features
+      }
+    }
+    
     applyThreadStatusUpdate({
       threadId,
       phase,
@@ -262,12 +300,22 @@ function processLine(line: string) {
     return;
   }
 
+  // Match new user-friendly progress labels
   const tagMatch = line.match(
-    /\[(Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+-\s+(.*))?/i
+    /\[(Reading Metadata|Extracting Features|Writing Features|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+-\s+(.*))?/i
   );
   if (tagMatch) {
-    const phase = tagMatch[1].toLowerCase() === 'metadata' ? 'metadata' : 'tagging';
-    setPhase(phase as ClassifyPhase);
+    const label = tagMatch[1].toLowerCase();
+    let phase: ClassifyPhase;
+    if (label === 'reading metadata' || label === 'metadata') {
+      phase = 'metadata';
+    } else if (label === 'extracting features' || label === 'tagging') {
+      phase = 'tagging';
+    } else {
+      // 'writing features' - also map to tagging phase
+      phase = 'tagging';
+    }
+    setPhase(phase);
     snapshot.processedFiles = Number(tagMatch[2]);
     snapshot.totalFiles = Number(tagMatch[3]);
     snapshot.percentComplete = Number(tagMatch[4]);

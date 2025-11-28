@@ -491,7 +491,8 @@ export class RenderOrchestrator {
     );
 
     if (request.songIndex !== undefined) {
-      args.push("-o", String(request.songIndex));
+      // Note: Must use -o<num> format (no space) to avoid ambiguity with -o<l|s> looping option
+      args.push(`-o${request.songIndex}`);
     }
 
     if (Number.isFinite(timeLimitSeconds) && timeLimitSeconds > 0) {

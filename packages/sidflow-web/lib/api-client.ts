@@ -41,6 +41,7 @@ export interface PreferencesPayload {
     sidplayfpCliFlags?: string | null;
     renderEngine?: RenderTechnology;
     preferredEngines?: RenderTechnology[] | null;
+    defaultFormats?: string[] | null;
   };
   sidplayfpConfig: {
     path: string;
@@ -118,6 +119,7 @@ export async function updatePreferences(payload: {
   sidplayfpCliFlags?: string | null;
   renderEngine?: RenderTechnology | null;
   preferredEngines?: RenderTechnology[] | null;
+  defaultFormats?: string[] | null;
 }): Promise<ApiResponse<PreferencesPayload>> {
   return apiRequest('/prefs', payload);
 }

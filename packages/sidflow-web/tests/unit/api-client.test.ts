@@ -232,6 +232,9 @@ describe('api-client POST helpers', () => {
     basicRomPath: null,
     chargenRomPath: null,
   };
+  const preferencesWithFormats = {
+    defaultFormats: ['wav', 'flac', 'm4a'],
+  };
 
   const postScenarios: Array<{
     name: string;

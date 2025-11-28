@@ -11,7 +11,7 @@ describe('RateLimiter', () => {
   beforeEach(() => {
     limiter = new RateLimiter({
       maxRequests: 5,
-      windowMs: 1000, // 1 second for faster tests
+      windowMs: 100, // Reduced from 1000ms for 10× faster tests
     });
   });
 
@@ -64,7 +64,7 @@ describe('RateLimiter', () => {
     expect(result1.allowed).toBe(false);
 
     // Wait for window to expire
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 110));
 
     // Should be allowed again
     const result2 = limiter.check('192.168.1.1');
@@ -78,10 +78,10 @@ describe('RateLimiter', () => {
     limiter.check('192.168.1.1');
     limiter.check('192.168.1.1');
 
-    // Wait 500ms
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Wait 50ms
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Make 2 more requests at t=500 (total 5)
+    // Make 2 more requests at t=50 (total 5)
     limiter.check('192.168.1.1');
     limiter.check('192.168.1.1');
 
@@ -89,11 +89,11 @@ describe('RateLimiter', () => {
     const result1 = limiter.check('192.168.1.1');
     expect(result1.allowed).toBe(false);
 
-    // Wait another 600ms (total 1100ms from start)
+    // Wait another 60ms (total 110ms from start)
     // First 3 requests should have expired
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 60));
 
-    // Should now have 3 requests available (5 - 2 remaining from t=500)
+    // Should now have 3 requests available (5 - 2 remaining from t=50)
     const result2 = limiter.check('192.168.1.1');
     expect(result2.allowed).toBe(true);
   });
@@ -165,7 +165,7 @@ describe('RateLimiter', () => {
     expect(stats1.totalRequests).toBe(2);
 
     // Wait for window to expire
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await new Promise((resolve) => setTimeout(resolve, 110));
 
     // Cleanup should remove expired logs
     limiter.cleanup();
@@ -273,7 +273,7 @@ describe('Rate limiter configuration', () => {
   test('accepts custom maxRequests', () => {
     const limiter = new RateLimiter({
       maxRequests: 10,
-      windowMs: 1000,
+      windowMs: 100,
     });
 
     // Should allow 10 requests
@@ -290,7 +290,7 @@ describe('Rate limiter configuration', () => {
   test('accepts custom windowMs', async () => {
     const limiter = new RateLimiter({
       maxRequests: 2,
-      windowMs: 500, // 500ms window
+      windowMs: 50, // 50ms window for faster tests
     });
 
     // Fill up limit
@@ -301,7 +301,7 @@ describe('Rate limiter configuration', () => {
     expect(limiter.check('192.168.1.1').allowed).toBe(false);
 
     // Wait for window to expire
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 60));
 
     // Should be allowed again
     expect(limiter.check('192.168.1.1').allowed).toBe(true);
@@ -310,7 +310,7 @@ describe('Rate limiter configuration', () => {
   test('accepts custom skipIps', () => {
     const limiter = new RateLimiter({
       maxRequests: 1,
-      windowMs: 1000,
+      windowMs: 100,
       skipIps: ['10.0.0.1', '10.0.0.2'],
     });
 

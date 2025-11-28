@@ -75,7 +75,8 @@ export const DEFAULT_CONFIG_FILENAME = ".sidflow.json";
 
 let cachedConfig: SidflowConfig | null = null;
 let cachedPath: string | null = null;
-let sidplayWarningEmitted = false;
+// sidplayPath deprecation warning REMOVED - this config key is still required
+// for sidplayfp-cli renderer which is the preferred default engine.
 
 export class SidflowConfigError extends Error {
   declare cause?: unknown;
@@ -153,12 +154,9 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
     config.sidPath = normalizedOverride;
   }
 
-  if (config.sidplayPath && !sidplayWarningEmitted) {
-    sidplayWarningEmitted = true;
-    process.stderr.write(
-      "[sidflow] Config key \"sidplayPath\" is deprecated. The WASM renderer is now used by default; remove this key once native fallbacks are retired.\n"
-    );
-  }
+  // NOTE: sidplayPath is NOT deprecated - it's required for sidplayfp-cli renderer
+  // which is the preferred default engine for classification and multi-format rendering.
+  // The deprecation warning was incorrect and has been removed.
 
   // Update both legacy and enhanced caches
   cachedConfig = config;

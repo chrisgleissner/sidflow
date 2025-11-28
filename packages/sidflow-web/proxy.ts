@@ -198,6 +198,11 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
 function enforceRateLimit(request: NextRequest): NextResponse | null {
   const pathname = request.nextUrl.pathname;
 
+  // Skip rate limiting if disabled via environment variable (development)
+  if (process.env.SIDFLOW_DISABLE_RATE_LIMIT === '1') {
+    return null;
+  }
+
   // Only rate limit API routes
   if (!API_ROUTE_PATTERN.test(pathname)) {
     return null;
@@ -235,16 +240,30 @@ function enforceRateLimit(request: NextRequest): NextResponse | null {
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  // Check rate limits first
-  const rateLimitResponse = enforceRateLimit(request);
-  if (rateLimitResponse) {
-    return applySecurityHeaders(request, rateLimitResponse);
+  const pathname = request.nextUrl.pathname;
+  const isAdminRoute = ADMIN_ROUTE_PATTERN.test(pathname);
+  
+  // For admin routes, check authentication first
+  let isAuthenticatedAdmin = false;
+  let authResponse: NextResponse | null = null;
+  
+  if (isAdminRoute) {
+    authResponse = await enforceAdminAuthentication(request);
+    // If authResponse is null, user is authenticated; otherwise they're not
+    isAuthenticatedAdmin = authResponse === null;
+  }
+  
+  // Apply rate limits only to non-authenticated-admin users
+  if (!isAuthenticatedAdmin) {
+    const rateLimitResponse = enforceRateLimit(request);
+    if (rateLimitResponse) {
+      return applySecurityHeaders(request, rateLimitResponse);
+    }
   }
 
-  // Then enforce authentication
-  const conditional = await enforceAdminAuthentication(request);
-  if (conditional) {
-    return applySecurityHeaders(request, conditional);
+  // If admin route and not authenticated, return auth error response
+  if (isAdminRoute && authResponse) {
+    return applySecurityHeaders(request, authResponse);
   }
 
   return applySecurityHeaders(request, NextResponse.next());

@@ -411,13 +411,19 @@ export class WorkletPlayer {
       throw new Error('Player not initialized');
     }
 
-    const readyPromise = this.waitForWorkerReady();
+    const isResuming = this.state === 'paused';
 
     // Start worker rendering (pre-roll happens before resolving ready promise)
     this.worker.postMessage({ type: 'start' } as WorkerMessage);
 
-    await readyPromise;
-    console.log('[WorkletPlayer] Worker ready resolved, continuing playback setup');
+    // Only wait for worker ready when starting fresh, not when resuming from pause
+    if (!isResuming) {
+      const readyPromise = this.waitForWorkerReady();
+      await readyPromise;
+      console.log('[WorkletPlayer] Worker ready resolved, continuing playback setup');
+    } else {
+      console.log('[WorkletPlayer] Resuming from pause, skipping worker ready wait');
+    }
 
     this.sendWorkletControl({ type: 'start' });
 

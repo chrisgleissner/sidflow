@@ -14,6 +14,8 @@ export interface WebPreferences {
   // Preferred server-side render engine for admin operations
   renderEngine?: RenderTechnology;
   preferredEngines?: RenderTechnology[] | null;
+  // Default audio formats for classification (wav always included)
+  defaultFormats?: string[] | null;
   // Favorites collection (stored as sid_path array)
   favorites?: string[];
 }
@@ -26,6 +28,7 @@ const DEFAULT_PREFERENCES: WebPreferences = {
   sidplayfpCliFlags: null,
   renderEngine: 'wasm',
   preferredEngines: null,
+  defaultFormats: null,
   favorites: [],
 };
 

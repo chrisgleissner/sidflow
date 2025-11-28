@@ -32,6 +32,8 @@ SID Flow uses three main technical components for song analysis, classification,
 - **Input**: WAV audio signal of a SID tune
 - **Output**: Numeric feature vector per song — e.g. energy, RMS, spectral centroid, rolloff, zero-crossing rate, BPM, and duration
 - **Usage**: Provides the raw measurable properties of each song; these values form the input to all later stages
+- **Default Behavior**: Essentia.js is used by default in classification with automatic fallback to heuristic feature extraction (file metadata) if Essentia.js is unavailable
+- **Implementation**: `essentiaFeatureExtractor` in `@sidflow/classify` (default as of 2025-11-27)
 
 ### 2. Rating Prediction (Heuristic or ML)
 
@@ -200,9 +202,30 @@ Each command can be run via the command line interface from the repository root.
 **Purpose:** Automate feature extraction and rating prediction for the entire collection.  
 **Operation:** Rebuilds the WAV cache using WASM renderer, captures metadata (falling back to path heuristics when needed), derives feature vectors using Essentia.js, and predicts `(e/m/c/p)` ratings using TensorFlow.js for unrated dimensions without overwriting manual values.
 
+#### Classification Pipeline Workflow
+
+Classification operates as a **unified, efficient pipeline** with four sequential phases:
+
+1. **Analyzing Collection** — Scans directory structure to discover all SID files
+2. **Reading Metadata** — Reads SID file headers to extract song count, author, title, copyright
+3. **Rendering Audio** — Converts SID files to WAV using sidplayfp WASM (skips files with valid cache unless `--force-rebuild`)
+4. **Extracting Features & Tagging** — For each song:
+   - If WAV missing/stale: renders inline (~100-500ms per file)
+   - Analyzes WAV with Essentia.js to extract audio features (~1-2s per file, slowest step)
+   - Predicts ratings using heuristic or ML model
+   - Writes `auto-tags.json` aggregated at configured depth
+
+**Why inline rendering?** The pipeline renders WAVs on-demand during feature extraction rather than in a separate bulk phase. This unified approach:
+- Avoids redundant work (only renders what's needed for extraction)
+- Uses parallelism efficiently (multiple threads can render different files)
+- Keeps the WAV cache small (can skip already-cached files even mid-run)
+
+When you run classification with `--force-rebuild`, the WAV cache is cleared first, so all 80k+ songs need rendering. However, because rendering is fast (~100-500ms) compared to feature extraction (~1-2s), you'll see "Extracting Features & Tagging" most of the time even though rendering is actively happening inline.
+
 **Flags:**
 
 - `--config <path>` — override default `.sidflow.json`
+- `--force-rebuild` — clear WAV cache and re-render all files
 
 > [!TIP]
 > By default, classification uses a deterministic heuristic predictor based on file paths and metadata. For ML-based ratings, use `--predictor-module` to load a TensorFlow.js model. The CLI supports Essentia.js for audio feature extraction (energy, RMS, spectral centroid, rolloff, zero-crossing rate, BPM) when using ML prediction. See [`../packages/sidflow-classify/README.md`](../packages/sidflow-classify/README.md) for predictor options and [`README-INTEGRATION.md`](../packages/sidflow-classify/README-INTEGRATION.md) for ML training details.
@@ -228,7 +251,31 @@ Key flags:
 
 All overrides merge with the `.sidflow.json` `render` block so you can keep defaults in config and override specific runs from the CLI.
 
-#### JSONL Classification Output
+#### Classification Output Formats
+
+The classification pipeline generates two complementary output formats:
+
+##### 1. Auto-Tags JSON (`auto-tags.json`)
+
+- **Location:** Aggregated at folder depth specified by `classificationDepth` in `.sidflow.json`
+- **Purpose:** Quick lookup of ratings for playback and browsing
+- **Content:** SID path → ratings mapping (e, m, c, source) only
+- **Example:** `workspace/hvsc/MUSICIANS/B/auto-tags.json`
+
+```json
+{
+  "Brand_Johan/Arctic_Lands.sid": {
+    "e": 3, "m": 4, "c": 2, "source": "heuristic"
+  }
+}
+```
+
+##### 2. Classified JSONL (`data/classified/*.jsonl`)
+
+- **Location:** `data/classified/` directory (one file per classification run)
+- **Purpose:** Training data for ML models and vector database building
+- **Content:** Complete feature vectors + ratings + metadata
+- **Format:** One JSON object per line for efficient diff and streaming
 
 The classification pipeline can output results in **JSONL** (JSON Lines) format, with one classification record per line. This format is ideal for:
 
@@ -976,28 +1023,51 @@ const stats = capture.getStats(); // { packets, lossRate, reordered }
 - Implemented in `packages/sidflow-classify/src/render/wav-renderer.ts`
 - Function: `encodePcmToWav(pcmSamples: Buffer): Buffer`
 
-**M4A Encoding (AAC 256kbps):**
+**M4A Encoding (AAC):**
 ```bash
 # Using native ffmpeg (preferred)
-ffmpeg -f s16le -ar 44100 -ac 1 -i input.pcm -c:a aac -b:a 256k output.m4a
+ffmpeg -f s16le -ar 44100 -ac 1 -i input.pcm -c:a aac -b:a <bitrate> output.m4a
 
 # Using ffmpeg.wasm (portable, slower)
 # Same command via WASM API
 ```
+- Default bitrate: 256kbps (configurable via `config.render.m4aBitrate`)
 
 **FLAC Encoding (lossless):**
 ```bash
 # Using native ffmpeg
-ffmpeg -f s16le -ar 44100 -ac 1 -i input.pcm -c:a flac output.flac
+ffmpeg -f s16le -ar 44100 -ac 1 -i input.pcm -c:a flac -compression_level <level> output.flac
 
 # Using ffmpeg.wasm
 # Same command via WASM API
 ```
+- Default compression level: 5 (configurable via `config.render.flacCompressionLevel`)
 
 **Encoder Selection:**
 - Native `ffmpeg` used when available (faster, optimized)
 - `ffmpeg.wasm` fallback for portable deployments
 - Both paths validated in CI with smoke tests
+- Controlled via `config.render.audioEncoder.implementation` ('native' | 'wasm')
+
+**Multi-Format Configuration:**
+
+Classification and rendering can produce multiple audio formats simultaneously via `.sidflow.json`:
+
+```json
+{
+  "render": {
+    "defaultFormats": ["wav", "flac", "m4a"],
+    "preferredEngines": ["sidplayfp-cli"],
+    "m4aBitrate": 256000,
+    "flacCompressionLevel": 5,
+    "audioEncoder": {
+      "implementation": "native"
+    }
+  }
+}
+```
+
+**Important**: Multi-format rendering currently requires `preferredEngines: ["sidplayfp-cli"]`. WASM multi-format support is planned but not yet implemented (render matrix status: 'future').
 
 ### Availability Manifests
 

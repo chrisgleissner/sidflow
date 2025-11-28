@@ -166,10 +166,11 @@ export function getClientIp(headers: Headers): string {
 
 /**
  * Default rate limiter instance for general API endpoints.
- * Allows 100 requests per minute per client.
+ * Allows 300 requests per minute per client (5 per second sustained).
+ * This is generous for legitimate use while preventing abuse.
  */
 export const defaultRateLimiter = new RateLimiter({
-  maxRequests: 100,
+  maxRequests: 300,
   windowMs: 60 * 1000, // 1 minute
 });
 

@@ -166,7 +166,12 @@ describe("runClassifyCli", () => {
           mixedCount: 0,
           predictionsGenerated: 1
         }
-      } satisfies TestGenerateAutoTagsResult)) as any
+      } satisfies TestGenerateAutoTagsResult)) as any,
+      generateJsonlOutput: (async () => ({
+        jsonlFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00.jsonl"),
+        recordCount: 2,
+        durationMs: 50
+      })) as any
     });
 
     expect(exitCode).toBe(0);
@@ -409,15 +414,20 @@ describe("runClassifyCli", () => {
               predictionsGenerated: ratings.e + ratings.m + ratings.c
             }
           } satisfies TestGenerateAutoTagsResult;
-        }) as any
+        }) as any,
+        generateJsonlOutput: (async () => ({
+          jsonlFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00.jsonl"),
+          recordCount: 2,
+          durationMs: 50
+        })) as any
       }
     );
 
     try {
       expect(exitCode).toBe(0);
       const output = captured.stdout.join("\n");
-      expect(captured.stdout.some((chunk) => chunk.includes("[Metadata]"))).toBe(true);
-      expect(captured.stdout.some((chunk) => chunk.includes("[Tagging]"))).toBe(true);
+      expect(captured.stdout.some((chunk) => chunk.includes("[Reading Metadata]"))).toBe(true);
+      expect(captured.stdout.some((chunk) => chunk.includes("[Extracting Features]"))).toBe(true);
       const state = globalThis as typeof globalThis & { __classifyRenderTarget?: string };
       expect(state.__classifyRenderTarget).toBe("/tmp/test.wav");
     } finally {

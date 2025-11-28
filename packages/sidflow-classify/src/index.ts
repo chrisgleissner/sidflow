@@ -23,8 +23,9 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
+import { essentiaFeatureExtractor } from "./essentia-features.js";
 import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { WasmRendererPool } from "./render/wasm-render-pool.js";
@@ -35,7 +36,7 @@ import {
   renderWavWithEngine,
   type RenderWavOptions
 } from "./render/wav-renderer.js";
-import { RenderOrchestrator, type RenderEngine } from "./render/render-orchestrator.js";
+import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./render/render-orchestrator.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -246,6 +247,44 @@ export async function collectSidFiles(root: string): Promise<string[]> {
   return results;
 }
 
+/**
+ * Deletes all audio files (WAV, FLAC, M4A) and their hash files from the WAV cache directory.
+ * Used for force rebuild to start with a clean slate.
+ */
+export async function cleanAudioCache(wavCachePath: string): Promise<number> {
+  if (!(await pathExists(wavCachePath))) {
+    return 0;
+  }
+
+  const audioExtensions = [".wav", ".flac", ".m4a", WAV_HASH_EXTENSION];
+  let deletedCount = 0;
+
+  async function cleanDir(current: string): Promise<void> {
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        await cleanDir(fullPath);
+        continue;
+      }
+      if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (audioExtensions.includes(ext)) {
+          try {
+            await rm(fullPath, { force: true });
+            deletedCount += 1;
+          } catch (error) {
+            classifyLogger.warn(`Failed to delete ${fullPath}: ${(error as Error).message}`);
+          }
+        }
+      }
+    }
+  }
+
+  await cleanDir(wavCachePath);
+  return deletedCount;
+}
+
 export async function needsWavRefresh(
   sidFile: string,
   wavFile: string,
@@ -286,13 +325,60 @@ export async function needsWavRefresh(
 
 export type RenderWav = (options: RenderWavOptions) => Promise<void>;
 
+/**
+ * Default WAV renderer with multi-format audio encoding support.
+ * - Respects config.render.defaultFormats for WAV/FLAC/M4A
+ * - Uses RenderOrchestrator for audio encoding (ffmpeg-based)
+ * - Falls back to WASM-only if audio encoding unavailable
+ * 
+ * Note: Multi-format with WASM engine requires sidplayfp-cli engine preference.
+ * WASM multi-format is planned for future (status: future in render matrix).
+ */
 export const defaultRenderWav: RenderWav = async (options) => {
   const config = await loadConfig(process.env.SIDFLOW_CONFIG);
   const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
+  const defaultFormats = (config.render?.defaultFormats ?? ['wav']) as RenderFormat[];
   const useCli = preferredEngines[0] === 'sidplayfp-cli';
+  
+  // Check if we need multi-format rendering
+  const needsMultiFormat = defaultFormats.length > 1 || 
+    (defaultFormats.length === 1 && defaultFormats[0] !== 'wav');
 
-  if (useCli) {
-    // Use sidplayfp-cli via RenderOrchestrator
+  if (useCli && needsMultiFormat) {
+    // Use sidplayfp-cli via RenderOrchestrator for multi-format (fully implemented)
+    const audioEncoderConfig = config.render?.audioEncoder;
+    const orchestrator = new RenderOrchestrator({
+      sidplayfpCliPath: config.sidplayPath,
+      hvscRoot: config.sidPath,
+      m4aBitrate: config.render?.m4aBitrate,
+      flacCompressionLevel: config.render?.flacCompressionLevel,
+      audioEncoderImplementation: audioEncoderConfig?.implementation,
+      ffmpegWasmOptions: audioEncoderConfig?.wasm,
+    });
+    const outputDir = path.dirname(options.wavFile);
+    await ensureDir(outputDir);
+    
+    await orchestrator.render({
+      sidPath: options.sidFile,
+      outputDir,
+      engine: 'sidplayfp-cli',
+      formats: defaultFormats,
+      songIndex: options.songIndex,
+      maxRenderSeconds: options.maxRenderSeconds,
+      targetDurationMs: options.targetDurationMs,
+    });
+    
+    // Rename WAV to expected location if needed
+    const baseName = path.basename(options.sidFile, '.sid');
+    const trackSuffix = options.songIndex !== undefined ? `-${options.songIndex}` : '';
+    const chip = config.render?.defaultChip ?? '6581';
+    const renderedFile = path.join(outputDir, `${baseName}${trackSuffix}-sidplayfp-cli-${chip}.wav`);
+    if (renderedFile !== options.wavFile) {
+      const fs = await import('node:fs/promises');
+      await fs.rename(renderedFile, options.wavFile);
+    }
+  } else if (useCli) {
+    // Use sidplayfp-cli via RenderOrchestrator for WAV-only
     const orchestrator = new RenderOrchestrator({
       sidplayfpCliPath: config.sidplayPath,
       hvscRoot: config.sidPath,
@@ -320,9 +406,13 @@ export const defaultRenderWav: RenderWav = async (options) => {
       await fs.rename(renderedFile, options.wavFile);
     }
   } else {
-    // Use WASM engine (default)
+    // Use WASM engine directly for WAV-only (fastest path, no multi-format support yet)
+    // Multi-format with WASM is marked as 'future' in render matrix
     const engine = await createEngine();
     await renderWavWithEngine(engine, options);
+    
+    // TODO: When WASM multi-format is implemented (render matrix status: mvp),
+    // add audio encoding here for defaultFormats containing flac/m4a
   }
 };
 
@@ -371,6 +461,15 @@ export async function buildWavCache(
   options: BuildWavCacheOptions = {}
 ): Promise<BuildWavCacheResult> {
   const startTime = Date.now();
+  const shouldForce = options.forceRebuild ?? plan.forceRebuild;
+  
+  // If force rebuild is requested, delete all existing audio files first
+  if (shouldForce) {
+    classifyLogger.info("Force rebuild requested - cleaning audio cache...");
+    const deletedCount = await cleanAudioCache(plan.wavCachePath);
+    classifyLogger.info(`Deleted ${deletedCount} audio files from cache`);
+  }
+  
   const sidFiles = await collectSidFiles(plan.sidPath);
   classifyLogger.debug(
     `collectSidFiles found ${sidFiles.length} SID files in ${plan.sidPath}`
@@ -378,7 +477,6 @@ export async function buildWavCache(
   const rendered: string[] = [];
   const skipped: string[] = [];
   const render = options.render ?? defaultRenderWav;
-  const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
@@ -865,16 +963,20 @@ export interface PredictRatingsOptions {
 
 export type PredictRatings = (options: PredictRatingsOptions) => Promise<TagRatings>;
 
-export const defaultFeatureExtractor: FeatureExtractor = async () => {
-  throw new Error(
-    "Feature extraction requires Essentia.js. Provide a custom featureExtractor implementation."
-  );
-};
+/**
+ * Default feature extractor uses Essentia.js with automatic fallback to heuristic features.
+ * This enables advanced audio analysis by default while maintaining robustness.
+ */
+export const defaultFeatureExtractor: FeatureExtractor = essentiaFeatureExtractor;
 
-export const defaultPredictRatings: PredictRatings = async () => {
-  throw new Error(
-    "Prediction requires a trained TensorFlow.js model. Provide a custom predictRatings implementation."
-  );
+/**
+ * Default rating predictor uses fast, deterministic heuristic algorithm.
+ * No ML training required - generates stable ratings from file metadata.
+ * Implemented as lazy evaluation to avoid initialization order issues.
+ */
+export const defaultPredictRatings: PredictRatings = async (options) => {
+  // Lazy evaluation - calls the actual implementation defined later in the file
+  return heuristicPredictRatings(options);
 };
 
 function metadataToJson(metadata: SidMetadata): Record<string, JsonValue> {
@@ -986,6 +1088,14 @@ export async function generateAutoTags(
   options: GenerateAutoTagsOptions = {}
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
+  
+  // If force rebuild is requested, delete all existing audio files first
+  if (plan.forceRebuild) {
+    classifyLogger.info("Force rebuild requested - cleaning audio cache...");
+    const deletedCount = await cleanAudioCache(plan.wavCachePath);
+    classifyLogger.info(`Deleted ${deletedCount} audio files from cache`);
+  }
+  
   const sidFiles = await collectSidFiles(plan.sidPath);
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
@@ -1087,11 +1197,27 @@ export async function generateAutoTags(
 
     if (needsAuto) {
       if (!(await pathExists(job.wavPath))) {
+        // Emit "building" phase for inline rendering
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "building",
+          status: "working",
+          file: songLabel
+        });
+        
         await render({
           sidFile: job.sidFile,
           wavFile: job.wavPath,
           songIndex: job.songCount > 1 ? job.songIndex : undefined,
           targetDurationMs: job.targetDurationMs
+        });
+        
+        // Switch back to tagging phase after rendering
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "tagging",
+          status: "working",
+          file: songLabel
         });
       }
 

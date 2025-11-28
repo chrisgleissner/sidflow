@@ -33,6 +33,9 @@ import {
 import { formatApiError } from "@/lib/format-error";
 import { FolderOpen } from "lucide-react";
 import type { RenderTechnology } from "@sidflow/common";
+import { usePreferences } from "@/context/preferences-context";
+import { useFeedbackRuntimeState } from "@/lib/feedback/use-feedback-runtime";
+import { triggerFeedbackTraining } from "@/lib/feedback/runtime";
 
 interface AdminPrefsTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
@@ -96,6 +99,8 @@ const RENDER_ENGINE_CHOICES: Array<{
 ];
 
 export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
+  const { preferences: browserPreferences, updatePreferences: updateBrowserPrefs } = usePreferences();
+  const feedbackRuntime = useFeedbackRuntimeState();
   const [colorScheme, setColorScheme] = useState("system");
   const [fontScheme, setFontScheme] = useState("mono");
   const [prefsInfo, setPrefsInfo] = useState<PreferencesPayload | null>(null);
@@ -110,6 +115,7 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
   const [kernalPath, setKernalPath] = useState("");
   const [basicPath, setBasicPath] = useState("");
   const [chargenPath, setChargenPath] = useState("");
+  const [audioFormats, setAudioFormats] = useState<string[]>(["wav"]);
   const [sidplayMode, setSidplayMode] = useState<SidplayMode>("balanced");
   const [sidplayCustomFlags, setSidplayCustomFlags] = useState("");
   const [isSavingSidplayFlags, setIsSavingSidplayFlags] = useState(false);
@@ -549,6 +555,34 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
     }
   }, [sidplayMode, sidplayCustomFlags, onStatusChange, syncSidplayState]);
 
+  const handleTrainingToggle = useCallback(
+    async (enabled: boolean) => {
+      await updateBrowserPrefs({
+        training: {
+          ...browserPreferences.training,
+          enabled,
+        },
+      });
+      onStatusChange(enabled ? 'Local training enabled' : 'Local training disabled');
+    },
+    [browserPreferences.training, onStatusChange, updateBrowserPrefs]
+  );
+
+  const handleTriggerTraining = useCallback(() => {
+    if (!browserPreferences.training.enabled) {
+      onStatusChange('Enable background training first', true);
+      return;
+    }
+    triggerFeedbackTraining('manual-prefs');
+    onStatusChange('Training run queued');
+  }, [browserPreferences.training.enabled, onStatusChange]);
+
+  const trainingStatusText = !feedbackRuntime.trainingEnabled
+    ? 'Training disabled'
+    : !feedbackRuntime.lastTraining
+      ? 'Training enabled – no runs yet'
+      : `Last run: ${new Date(feedbackRuntime.lastTraining.timestamp).toLocaleString()} · ${feedbackRuntime.lastTraining.samples} samples`;
+
   const availablePreferredEngineOptions = RENDER_ENGINE_CHOICES.filter(
     (option) => !preferredEngines.includes(option.value),
   );
@@ -886,6 +920,110 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
 
       <Card className="c64-border">
         <CardHeader>
+          <CardTitle className="petscii-text text-accent">AUDIO FORMATS</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Choose which audio formats to render during classification. WAV is always required.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 text-sm">
+          <div className="grid gap-3">
+            <p className="text-xs font-semibold text-muted-foreground">Enabled Formats</p>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={true}
+                  disabled={true}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <div className="flex flex-col">
+                  <span className="font-semibold">WAV (required)</span>
+                  <span className="text-xs text-muted-foreground">
+                    Uncompressed audio, used for feature extraction
+                  </span>
+                </div>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={audioFormats.includes("flac")}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setAudioFormats([...audioFormats, "flac"]);
+                    } else {
+                      setAudioFormats(audioFormats.filter((f) => f !== "flac"));
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <div className="flex flex-col">
+                  <span className="font-semibold">FLAC</span>
+                  <span className="text-xs text-muted-foreground">
+                    Lossless compression, high quality archival
+                  </span>
+                </div>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={audioFormats.includes("m4a")}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setAudioFormats([...audioFormats, "m4a"]);
+                    } else {
+                      setAudioFormats(audioFormats.filter((f) => f !== "m4a"));
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <div className="flex flex-col">
+                  <span className="font-semibold">M4A (AAC)</span>
+                  <span className="text-xs text-muted-foreground">
+                    Lossy compression, good quality, smaller files
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                // Build the formats array ensuring WAV is always first
+                const formats = ["wav", ...audioFormats.filter((f) => f !== "wav")];
+                const response = await updatePreferences({ defaultFormats: formats });
+                if (response.success) {
+                  setPrefsInfo(response.data);
+                  onStatusChange(`Audio formats updated: ${formats.join(", ")}`);
+                } else {
+                  onStatusChange(`Unable to save audio formats: ${formatApiError(response)}`, true);
+                }
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setAudioFormats(["wav"]);
+                onStatusChange('Audio formats reset to default (WAV only)');
+              }}
+            >
+              Reset
+            </Button>
+          </div>
+          <div className="text-xs text-muted-foreground border-t border-border/60 pt-3">
+            <p className="font-semibold mb-1">Note:</p>
+            <p>
+              Enabling FLAC/M4A increases classification time but provides additional formats for
+              playback and archival. The WAV file is always rendered first and used for feature extraction.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="c64-border">
+        <CardHeader>
           <CardTitle className="petscii-text text-accent">
             SIDPLAY CLI
           </CardTitle>
@@ -1081,6 +1219,50 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
               </div>
             </div>
           </fieldset>
+        </CardContent>
+      </Card>
+
+      <Card className="c64-border">
+        <CardHeader>
+          <CardTitle className="petscii-text text-accent">
+            LOCAL TRAINING
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Enable local model training based on your feedback.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 text-sm">
+          <div className="space-y-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={browserPreferences.training.enabled}
+                onChange={(event) => void handleTrainingToggle(event.target.checked)}
+              />
+              <span>Enable background training</span>
+            </label>
+            
+            <div className="bg-muted/40 rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Training Status</p>
+                  <p className="text-xs text-foreground">{trainingStatusText}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Base model: v{feedbackRuntime.baseModelVersion ?? 'unknown'} · 
+                    Local model: v{feedbackRuntime.localModelVersion ?? 'none'}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleTriggerTraining}
+                  disabled={!browserPreferences.training.enabled}
+                >
+                  Train Now
+                </Button>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

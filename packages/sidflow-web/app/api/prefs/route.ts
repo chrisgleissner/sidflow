@@ -176,6 +176,45 @@ export async function POST(request: NextRequest) {
       return trimmed;
     };
     const normalizedSidplayFlags = normalizeSidplayFlags(body?.sidplayfpCliFlags ?? undefined);
+    const normalizeDefaultFormats = (
+      value: unknown
+    ): string[] | null | undefined => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+      if (!Array.isArray(value)) {
+        throw new Error('defaultFormats must be an array or null');
+      }
+      const allowedFormats = ['wav', 'flac', 'm4a'];
+      const deduped: string[] = [];
+      const seen = new Set<string>();
+      value.forEach((entry, index) => {
+        if (typeof entry !== 'string') {
+          throw new Error(`defaultFormats[${index}] must be a string`);
+        }
+        const trimmed = entry.trim().toLowerCase();
+        if (!allowedFormats.includes(trimmed)) {
+          throw new Error(`Unsupported defaultFormats[${index}]: ${trimmed}`);
+        }
+        if (!seen.has(trimmed)) {
+          seen.add(trimmed);
+          deduped.push(trimmed);
+        }
+      });
+      if (deduped.length === 0) {
+        throw new Error('defaultFormats cannot be empty; use null to reset to defaults');
+      }
+      // Ensure wav is always first
+      if (deduped.includes('wav')) {
+        const filtered = deduped.filter(f => f !== 'wav');
+        return ['wav', ...filtered];
+      }
+      return ['wav', ...deduped];
+    };
+    const normalizedDefaultFormats = normalizeDefaultFormats(body?.defaultFormats ?? undefined);
 
     if (
       normalizedSidBasePath === undefined &&
@@ -184,7 +223,8 @@ export async function POST(request: NextRequest) {
       normalizedChargenRomPath === undefined &&
       normalizedSidplayFlags === undefined &&
       normalizedRenderEngine === undefined &&
-      normalizedPreferredEngines === undefined
+      normalizedPreferredEngines === undefined &&
+      normalizedDefaultFormats === undefined
     ) {
       throw new Error('No preferences provided');
     }
@@ -211,8 +251,8 @@ export async function POST(request: NextRequest) {
     if (normalizedPreferredEngines !== undefined) {
       preferenceUpdates.preferredEngines = normalizedPreferredEngines;
     }
-    if (normalizedPreferredEngines !== undefined) {
-      preferenceUpdates.preferredEngines = normalizedPreferredEngines;
+    if (normalizedDefaultFormats !== undefined) {
+      preferenceUpdates.defaultFormats = normalizedDefaultFormats;
     }
 
     const romOverrides =

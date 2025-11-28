@@ -13,16 +13,20 @@ interface ClassifyTabProps {
 
 const CLASSIFICATION_STEPS = [
   {
-    title: 'Analyze HVSC',
-    detail: 'Scans every SID file and song index to see which WAV renders are missing or stale.',
+    title: '1. Reading Metadata',
+    detail: 'Scans every SID file to read song count and metadata. Progress shows X/Y files analyzed.',
   },
   {
-    title: 'Render WAV cache',
-    detail: 'Runs sidplayfp in parallel (one core per thread) to regenerate audio that downstream tools can reuse.',
+    title: '2. Rendering Audio',
+    detail: 'Converts SID files to WAV using sidplayfp. Only renders missing/stale WAVs unless "Force Rebuild" is enabled.',
   },
   {
-    title: 'Metadata & auto-tags',
-    detail: 'Parses SID metadata, extracts audio features, and predicts ratings so tags stay in sync with your feedback.',
+    title: '3. Extracting Features',
+    detail: 'Analyzes WAV files with Essentia.js to extract audio descriptors (energy, tempo, spectral features).',
+  },
+  {
+    title: '4. Generating Ratings & Tags',
+    detail: 'Predicts e/m/c ratings using features and metadata, then writes auto-tags.json files for playlist generation.',
   },
 ];
 
@@ -71,7 +75,19 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   const processed = progress?.processedFiles ?? 0;
   const total = progress?.totalFiles ?? 0;
   const remaining = Math.max(total - processed, 0);
-  const phaseLabel = (progress?.phase ?? 'idle').toUpperCase();
+  
+  // Map raw phase names to user-friendly labels matching CLASSIFICATION_STEPS
+  const getPhaseLabel = (phase?: string): string => {
+    switch (phase) {
+      case 'analyzing': return 'Analyzing Collection';
+      case 'metadata': return 'Reading Metadata';
+      case 'building': return 'Rendering Audio';
+      case 'tagging': return 'Extracting Features & Tagging';
+      case 'idle': return 'Idle';
+      default: return phase ? phase.toUpperCase() : 'Idle';
+    }
+  };
+  const phaseLabel = getPhaseLabel(progress?.phase);
 
   useEffect(() => {
     let mounted = true;
@@ -349,7 +365,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
           {threadStatuses.length > 0 ? (
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {threadStatuses.map((thread) => {
-                const phaseLabel = thread.phase ? thread.phase.toUpperCase() : 'IDLE';
+                const threadPhaseLabel = getPhaseLabel(thread.phase);
                 const isWorking = thread.status === 'working';
                 const isStale = Boolean(thread.stale && isWorking);
                 const elapsed = formatElapsed(thread.phaseStartedAt);
@@ -357,8 +373,8 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                   ? thread.currentFile ?? (isStale ? 'Working (no recent update)' : 'Working...')
                   : 'Waiting for work';
                 const phaseText = isStale
-                  ? `${phaseLabel} (STALE)`
-                  : (isWorking && elapsed ? `${phaseLabel}${elapsed}` : phaseLabel);
+                  ? `${threadPhaseLabel} (STALE)`
+                  : (isWorking && elapsed ? `${threadPhaseLabel}${elapsed}` : threadPhaseLabel);
                 return (
                   <div
                     key={thread.id}

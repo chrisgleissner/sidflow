@@ -134,12 +134,12 @@ export async function findTracksInEra(
 
     try {
         // Query a large set of tracks with decent quality
-        // Filter for tracks with e,m,c >= 2 to focus on quality content
+        // Filter for tracks with e,m,c >= 1 to allow early/unrated tracks
         const emptyVector = new Array(4).fill(0); // E/M/C/P dimensions
         const results = await table
             .search(emptyVector)
-            .filter('e >= 2 AND m >= 2 AND c >= 2')
-            .limit(500) // Sample up to 500 tracks
+            .filter('e >= 1 AND m >= 1 AND c >= 1')
+            .limit(1000) // Sample up to 1000 tracks
             .execute();
 
         console.log('[era-explorer] Queried', results.length, 'candidate tracks from database');
