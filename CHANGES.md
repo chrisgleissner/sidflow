@@ -1,6 +1,16 @@
 # Changelog
 
 
+## 0.3.40 (2025-11-28)
+
+- feat: Enhance HVSC archive extraction with p7zip-full support and improved error logging
+- feat: Enhance Fly.io deployment process with dynamic app name, updated health check, and new deployment scripts
+- feat: Update Fly.io deployment workflow to use dynamic staging app name and fix health check URL
+- feat: Fix pause/resume synchronization issue by preserving playback position
+- feat: Implement heartbeat mechanism for inline rendering and enhance classification phase visibility
+- chore: update CHANGES.md for 0.3.39
+
+
 ## 0.3.39 (2025-11-28)
 
 - feat: Enhance classification pipeline and user experience
