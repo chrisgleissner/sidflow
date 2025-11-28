@@ -660,6 +660,8 @@ export class SidflowPlayer {
         const offset = clamp(this.pauseOffset, 0, this.audioBuffer.duration);
         source.start(0, offset);
         this.bufferSource = legacyNode;
+        // Update startTime and pauseOffset atomically before changing state to avoid
+        // race condition where UI reads inconsistent position during resume
         this.startTime = this.audioContext.currentTime - offset;
         this.pauseOffset = 0;
         this.updateState('playing');

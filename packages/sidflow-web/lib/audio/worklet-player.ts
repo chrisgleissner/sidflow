@@ -74,6 +74,7 @@ export class WorkletPlayer {
   private currentTrack: RateTrackInfo | null = null;
   private durationSeconds = 0;
   private startTime = 0;
+  private pausedPosition = 0;
 
   // Audio capture support
   private captureDestination: MediaStreamAudioDestinationNode | null = null;
@@ -160,7 +161,7 @@ export class WorkletPlayer {
 
   getPositionSeconds(): number {
     if (this.state !== 'playing') {
-      return 0;
+      return this.pausedPosition;
     }
     const elapsed = this.audioContext.currentTime - this.startTime;
     return Math.min(elapsed, this.durationSeconds);
@@ -413,6 +414,13 @@ export class WorkletPlayer {
 
     const isResuming = this.state === 'paused';
 
+    // When starting fresh (not resuming), reset paused position
+    if (!isResuming) {
+      this.pausedPosition = 0;
+    }
+    // When resuming, pausedPosition is already preserved from pause()
+    // and will be reflected in getPositionSeconds() after state change
+
     // Start worker rendering (pre-roll happens before resolving ready promise)
     this.worker.postMessage({ type: 'start' } as WorkerMessage);
 
@@ -453,7 +461,9 @@ export class WorkletPlayer {
       this.mediaRecorder.start(100);
     }
 
-    this.startTime = this.audioContext.currentTime;
+    // When resuming from pause, adjust startTime to account for paused position
+    // so that getPositionSeconds() continues from where we paused
+    this.startTime = this.audioContext.currentTime - this.pausedPosition;
     const previousState = this.state;
     this.updateState('playing');
 
@@ -470,6 +480,10 @@ export class WorkletPlayer {
     if (this.state !== 'playing') {
       return;
     }
+
+    // Save current position before pausing
+    const elapsed = this.audioContext.currentTime - this.startTime;
+    this.pausedPosition = Math.min(elapsed, this.durationSeconds);
 
     if (this.worker) {
       this.worker.postMessage({ type: 'stop' } as WorkerMessage);
@@ -776,6 +790,8 @@ export class WorkletPlayer {
     this.currentSession = null;
     this.currentTrack = null;
     this.durationSeconds = 0;
+    this.startTime = 0;
+    this.pausedPosition = 0;
 
     // Reset telemetry
     this.telemetry = {
