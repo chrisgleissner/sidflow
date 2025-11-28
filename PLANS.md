@@ -1267,12 +1267,103 @@ Fix this in all places where songs can be played: Play tab, Rate tab, and any ot
 4. Docker deployment with fixes
 5. Debug E2E test to understand why console.logs not appearing
 
-**Fly.io Deployment Fix** (2025-11-28):
+**Fly.io Deployment** (2025-11-28):
 - ✅ Updated `.github/workflows/release.yaml` to use correct staging app name from `fly.stg.toml`
-- ✅ Changed from hardcoded `sidflow-stg` to dynamic app name extraction
+- ✅ Changed from hardcoded `sidflow-stg` to dynamic app name extraction  
 - ✅ Updated deployment script to read `STG_APP_NAME` from config file
-- ✅ Fixed health check URL to use correct hostname: `sidflow-stg-polished-waterfall-1635.fly.dev`
-- Deployment should now succeed when triggered by CI
+- ✅ Created `scripts/deploy/fly-deploy-existing.sh` for deploying with existing fly.toml
+- ✅ Created `scripts/deploy/check-deployment.sh` for checking status and logs
+- ✅ Fixed fly.stg.toml port configuration (3000 instead of 8080)
+- ✅ Successfully deployed to Fly.io at https://sidflow.fly.dev
+- ✅ Health check passing: all services operational except Ultimate 64 (expected)
+- ✅ Homepage accessible and fully functional
+
+### HVSC Archive Extraction Failure on Fly.io
+
+**Status**: OPEN (2025-11-28)
+
+**Symptom**:
+When running `sidflow fetch` on the deployed Fly.io app (https://sidflow.fly.dev), the HVSC archive download completes successfully, but the extraction (unzip) step fails silently. Last logs show:
+
+```
+Syncing HVSC base archive v83
+Downloading base archive HVSC_83-all-of-them.7z
+Downloading HVSC_83-all-of-them.7z: 100% (79 MB of 79 MB)
+Download complete: HVSC_83-all-of-them.7z
+[extraction never starts or hangs]
+```
+
+**Hypotheses**:
+1. Missing 7zip binary in production Docker image
+2. Insufficient disk space or memory for extraction
+3. Permission issues in container filesystem
+4. 7zip-min npm package failing in production environment
+5. Extraction process timing out without logging
+
+**Investigation steps**:
+1. Check if 7zip is installed in ghcr.io/chrisgleissner/sidflow:latest Docker image
+2. Verify Dockerfile.production includes 7zip dependencies (apt-packages.txt should have p7zip-full)
+3. Test extraction locally in Docker container: `docker run --rm -it ghcr.io/chrisgleissner/sidflow:latest bash`
+4. Check Fly.io machine disk space and logs during extraction attempt
+5. Add detailed logging to extraction step in @sidflow/fetch
+6. Verify 7zip-min works in Node.js/Bun production environment
+
+**Remediation**:
+- Ensure apt-packages.txt includes p7zip-full (for 7zip command-line tools)
+- Add error handling and logging to archive extraction in packages/sidflow-fetch
+- Consider fallback extraction methods if 7zip-min fails
+- Test full fetch pipeline in Docker before deploying to Fly.io
+
+### CI Test Coverage Timeout/Stall Issue
+
+**Status**: OPEN (2025-11-28)
+
+**User observation**:
+The "run unit test with coverage" CI job is timing out or stalling, with a ~5 minute pause observed after the E2E classification pipeline test completes and before sidflow-play tests begin.
+
+**Symptoms**:
+- Test execution pauses after: `packages/sidflow-play/test/export.test.ts:` (file listing)
+- ~5 minute gap before: `packages/sidflow-play/test/export.test.ts:` (actual test results)
+- Suspect: High disk I/O or memory usage during coverage collection
+
+**Context from logs**:
+```
+[E2E Test] ✓ Full classification pipeline completed successfully
+[Heartbeat] Building phase update after 1946ms
+(pass) E2E Classification Pipeline Test > Pipeline can be run multiple times (idempotent) [1950.99ms]
+
+packages/sidflow-common/test/ratings.test.ts:
+packages/sidflow-common/test/wasm-build.test.ts:
+...
+packages/sidflow-play/test/export.test.ts:
+
+[~5 minute pause]
+
+packages/sidflow-play/test/export.test.ts:
+  (pass) executeCli > executes successful command and captures stdout [4.00ms]
+```
+
+**Hypotheses**:
+1. **Coverage data writing**: Bun coverage collector may be writing large amounts of data to disk between test suites
+2. **Memory pressure**: Coverage instrumentation may cause memory usage to spike, triggering GC pauses or swap
+3. **File system contention**: Temporary files from E2E tests (WAV cache, tags, etc.) competing with coverage writes
+4. **CI runner resources**: GitHub Actions runners may have limited I/O or memory for coverage collection
+
+**Investigation steps**:
+1. Check coverage data file sizes and write patterns
+2. Monitor memory usage during test runs with coverage enabled
+3. Profile test execution with `bun test --coverage` locally vs without coverage
+4. Check if specific tests are cleaning up temp files properly
+5. Consider splitting coverage collection across multiple jobs
+6. Review Bun coverage reporter configuration for optimization options
+
+**Related files**:
+- `.github/workflows/release.yaml` - CI test job configuration
+- `bun.lockb`, `package.json` - Bun version and test configuration
+- `integration-tests/e2e-suite.ts` - E2E test that runs before the pause
+- `packages/sidflow-play/test/*.test.ts` - Tests that run after the pause
+
+**Priority**: Medium - Impacts CI reliability and developer experience
 
 ## Archived Tasks
 
