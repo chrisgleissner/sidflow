@@ -49,13 +49,25 @@ async function runSevenZip(
             operation === "unpack"
                 ? `extract archive ${path.basename(source)} to ${destination}`
                 : `create archive ${path.basename(destination)} from ${source}`;
-        throw new Error(`7zip-min failed to ${context}: ${(error as Error).message}`);
+        
+        // Enhanced error context for debugging
+        const errorDetails = [
+            `7zip-min failed to ${context}`,
+            `Error: ${(error as Error).message}`,
+            `Source: ${source}`,
+            `Destination: ${destination}`,
+            `Operation: ${operation}`
+        ].join('\n  ');
+        
+        throw new Error(errorDetails);
     }
 }
 
 export async function extractSevenZipArchive(archivePath: string, destination: string): Promise<void> {
     await ensureDir(destination);
+    console.log(`Extracting ${path.basename(archivePath)} to ${destination}...`);
     await runSevenZip("unpack", archivePath, destination);
+    console.log(`Extraction complete: ${path.basename(archivePath)}`);
 }
 
 export async function createSevenZipArchive(sourcePath: string, archivePath: string): Promise<void> {

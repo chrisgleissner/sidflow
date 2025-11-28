@@ -125,6 +125,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Install runtime dependencies: CLI tools and codecs required by SIDFlow
 # Hardened: Removed Playwright browser libraries (~150MB) - only needed for CI E2E tests, not production
 # Hardened: Removed wget (redundant with curl), added tini for proper init process handling
+# Added p7zip-full for HVSC archive extraction support
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     set -eux; \
@@ -136,6 +137,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ffmpeg \
     git \
     jq \
+    p7zip-full \
     python3 \
     sidplayfp \
     tini \

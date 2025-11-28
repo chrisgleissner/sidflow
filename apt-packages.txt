@@ -9,6 +9,7 @@ nodejs
 npm
 python3
 sidplayfp
+p7zip-full
 unzip
 zip
 bash

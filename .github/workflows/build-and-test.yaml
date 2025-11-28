@@ -57,7 +57,7 @@ jobs:
         run: bun run build
 
       - name: Run unit tests with coverage
-        run: bun run test
+        run: bun run test:ci
 
       - name: Run E2E tests with coverage
         run: cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium

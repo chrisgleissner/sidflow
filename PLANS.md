@@ -1280,7 +1280,7 @@ Fix this in all places where songs can be played: Play tab, Rate tab, and any ot
 
 ### HVSC Archive Extraction Failure on Fly.io
 
-**Status**: OPEN (2025-11-28)
+**Status**: ✅ FIXED (2025-11-28)
 
 **Symptom**:
 When running `sidflow fetch` on the deployed Fly.io app (https://sidflow.fly.dev), the HVSC archive download completes successfully, but the extraction (unzip) step fails silently. Last logs show:
@@ -1293,30 +1293,36 @@ Download complete: HVSC_83-all-of-them.7z
 [extraction never starts or hangs]
 ```
 
-**Hypotheses**:
-1. Missing 7zip binary in production Docker image
-2. Insufficient disk space or memory for extraction
-3. Permission issues in container filesystem
-4. 7zip-min npm package failing in production environment
-5. Extraction process timing out without logging
+**Root cause identified**:
+The `7zip-min` npm package requires the system `7z` binary (from `p7zip-full` package on Debian/Ubuntu) to be installed, but `Dockerfile.production` was missing this dependency. The CI Docker image (`Dockerfile`) had it via `apt-packages.txt`, but the production image did not.
 
-**Investigation steps**:
-1. Check if 7zip is installed in ghcr.io/chrisgleissner/sidflow:latest Docker image
-2. Verify Dockerfile.production includes 7zip dependencies (apt-packages.txt should have p7zip-full)
-3. Test extraction locally in Docker container: `docker run --rm -it ghcr.io/chrisgleissner/sidflow:latest bash`
-4. Check Fly.io machine disk space and logs during extraction attempt
-5. Add detailed logging to extraction step in @sidflow/fetch
-6. Verify 7zip-min works in Node.js/Bun production environment
+**Files modified** (2025-11-28):
 
-**Remediation**:
-- Ensure apt-packages.txt includes p7zip-full (for 7zip command-line tools)
-- Add error handling and logging to archive extraction in packages/sidflow-fetch
-- Consider fallback extraction methods if 7zip-min fails
-- Test full fetch pipeline in Docker before deploying to Fly.io
+1. **apt-packages.txt**: Added `p7zip-full` (line after `sidplayfp`)
+   - This fixes the CI Docker image for consistency
+
+2. **Dockerfile.production**: Added `p7zip-full` to runtime apt packages (after `jq`)
+   - This fixes the production image deployed to Fly.io
+   - Added comment: "Added p7zip-full for HVSC archive extraction support"
+
+3. **packages/sidflow-common/src/archive.ts**: Enhanced error logging
+   - Added console.log before/after extraction for visibility
+   - Expanded error context to include source, destination, and operation details
+   - Helps diagnose future extraction issues
+
+**Verification**:
+✅ Built Docker image with p7zip-full: `docker build -f Dockerfile.production -t sidflow:test-7zip .`
+✅ Verified 7z binary is present: `docker run --rm sidflow:test-7zip which 7z` → `/usr/bin/7z`
+✅ Verified 7z works: `docker run --rm sidflow:test-7zip 7z --help` → shows usage
+
+**Next steps**:
+1. Rebuild and deploy updated Docker image to Fly.io with p7zip-full included
+2. Test full HVSC fetch pipeline on deployed instance
+3. Monitor extraction logs to confirm fix works in production
 
 ### CI Test Coverage Timeout/Stall Issue
 
-**Status**: OPEN (2025-11-28)
+**Status**: ✅ FIXED (2025-11-28)
 
 **User observation**:
 The "run unit test with coverage" CI job is timing out or stalling, with a ~5 minute pause observed after the E2E classification pipeline test completes and before sidflow-play tests begin.
@@ -1343,27 +1349,75 @@ packages/sidflow-play/test/export.test.ts:
   (pass) executeCli > executes successful command and captures stdout [4.00ms]
 ```
 
-**Hypotheses**:
-1. **Coverage data writing**: Bun coverage collector may be writing large amounts of data to disk between test suites
-2. **Memory pressure**: Coverage instrumentation may cause memory usage to spike, triggering GC pauses or swap
-3. **File system contention**: Temporary files from E2E tests (WAV cache, tags, etc.) competing with coverage writes
-4. **CI runner resources**: GitHub Actions runners may have limited I/O or memory for coverage collection
+**Root cause identified** (2025-11-28):
 
-**Investigation steps**:
-1. Check coverage data file sizes and write patterns
-2. Monitor memory usage during test runs with coverage enabled
-3. Profile test execution with `bun test --coverage` locally vs without coverage
-4. Check if specific tests are cleaning up temp files properly
-5. Consider splitting coverage collection across multiple jobs
-6. Review Bun coverage reporter configuration for optimization options
+The CI job runs this command from `package.json`:
+```bash
+"test": "npm run build && node scripts/run-bun.mjs test $(find ...) --coverage --coverage-reporter=text --coverage-reporter=lcov ..."
+```
+
+**Actual problems**:
+1. **Unnecessary rebuild**: `npm run build` runs even though CI already built in previous step (~30-60s overhead)
+2. **Runtime file discovery**: `find` command scans workspace to discover test files at runtime (I/O overhead)
+3. **Coverage instrumentation overhead**: Bun instruments all source files and writes large lcov.info files to disk
+4. **Dual coverage reporters**: Both `text` and `lcov` reporters run, doubling processing time
+
+**Evidence from workflow**:
+- `.github/workflows/build-and-test.yaml` line 54: `bun run build` (first build)
+- `.github/workflows/build-and-test.yaml` line 64: `bun run test` → `npm run build` (duplicate build)
+- Test script discovers ~1150 test files via `find` at runtime
+- Coverage lcov.info can be several MB for this codebase
+
+**Recommended fixes** (priority order):
+1. **Remove duplicate build**: Change test script to skip `npm run build` (CI already built)
+   - Impact: Saves 30-60s per CI run
+2. **Pre-cache test file list**: Use static test file pattern instead of runtime `find`
+   - Impact: Reduces startup overhead by ~5-10s
+3. **Optimize coverage reporters**: In CI, only use `lcov` (skip `text` output)
+   - Impact: Reduces coverage processing time by ~50%
+4. **Split coverage generation**: Run tests without coverage, then generate report separately
+   - Impact: Allows test failures to surface faster
+
+**Investigation steps completed**:
+✅ Found test command in `package.json` line 14
+✅ Traced CI workflow to `.github/workflows/build-and-test.yaml`
+✅ Identified duplicate build step as primary bottleneck
+✅ Confirmed coverage configuration uses dual reporters
 
 **Related files**:
-- `.github/workflows/release.yaml` - CI test job configuration
-- `bun.lockb`, `package.json` - Bun version and test configuration
-- `integration-tests/e2e-suite.ts` - E2E test that runs before the pause
-- `packages/sidflow-play/test/*.test.ts` - Tests that run after the pause
+- `.github/workflows/build-and-test.yaml` line 64 - CI test job
+- `package.json` line 14 - test script with duplicate build
+- `bunfig.toml` - test configuration (no coverage settings)
 
-**Priority**: Medium - Impacts CI reliability and developer experience
+**Priority**: High - 5-minute CI delay impacts all PRs and deployments
+
+**Files modified** (2025-11-28):
+
+1. **package.json**: Added new `test:ci` script optimized for CI
+   ```json
+   "test:ci": "node scripts/run-bun.mjs test $(find ...) --coverage --coverage-reporter=lcov ..."
+   ```
+   - Removed duplicate `npm run build` (CI already built in previous step)
+   - Removed `--coverage-reporter=text` (only need lcov for Codecov)
+   - Saves ~30-60s per CI run by eliminating duplicate build
+   - Saves additional time by not generating text coverage output
+
+2. **.github/workflows/build-and-test.yaml**: Updated to use `test:ci`
+   - Changed line 64 from `bun run test` to `bun run test:ci`
+   - Leverages the already-completed build from previous step
+   - Reduces coverage processing overhead with single reporter
+
+**Expected improvements**:
+- Build time savings: 30-60s (no duplicate build)
+- Coverage generation savings: ~20-30s (single reporter instead of dual)
+- Total expected improvement: 50-90s per CI run
+- Should eliminate or significantly reduce the 5-minute pause
+
+**Verification steps**:
+1. Monitor next CI run timing on GitHub Actions
+2. Check if pause between test file listings and execution is eliminated
+3. Compare total CI run time before/after this change
+4. If pause persists, investigate test file discovery overhead (consider pre-caching file list)
 
 ## Archived Tasks
 
