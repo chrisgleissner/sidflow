@@ -288,7 +288,7 @@ jobs:
       needs.docker.result == 'success'
     environment:
       name: staging-fly
-      url: https://sidflow-stg.fly.dev
+      url: https://sidflow-stg-polished-waterfall-1635.fly.dev
     
     steps:
       - name: Checkout
@@ -322,20 +322,22 @@ jobs:
           
           echo "🚀 Deploying version ${VERSION} to Fly.io staging..."
           
-          # Generate environment-specific fly.toml
-          cp fly.toml fly.stg.toml
-          sed -i 's/^app = .*/app = "sidflow-stg"/' fly.stg.toml
+          # Use existing fly.stg.toml with correct app name
+          STG_APP_NAME=$(grep '^app = ' fly.stg.toml | sed 's/app = //' | tr -d "'\"")
+          echo "Using staging app: ${STG_APP_NAME}"
+          
+          # Update image version in fly.stg.toml
           sed -i "s|image = .*|image = \"ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}\"|" fly.stg.toml
           
           # Deploy
           flyctl deploy \
             --config fly.stg.toml \
-            --app sidflow-stg \
+            --app "${STG_APP_NAME}" \
             --image "ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}" \
             --strategy rolling \
             --wait-timeout 300 || {
             echo "❌ Deployment failed"
-            echo "Check logs: flyctl logs --app sidflow-stg"
+            echo "Check logs: flyctl logs --app ${STG_APP_NAME}"
             exit 1
           }
           
@@ -343,11 +345,13 @@ jobs:
 
       - name: Verify Deployment
         run: |
-          echo "Waiting for health check at https://sidflow-stg.fly.dev/api/health..."
+          STG_APP_NAME=$(grep '^app = ' fly.stg.toml | sed 's/app = //' | tr -d "'\"")
+          STG_HOSTNAME="${STG_APP_NAME}.fly.dev"
+          echo "Waiting for health check at https://${STG_HOSTNAME}/api/health..."
           
           for i in {1..30}; do
             sleep 5
-            if curl -sf https://sidflow-stg.fly.dev/api/health > /dev/null 2>&1; then
+            if curl -sf "https://${STG_HOSTNAME}/api/health" > /dev/null 2>&1; then
               echo "✅ Staging deployment healthy"
               exit 0
             fi
@@ -355,7 +359,7 @@ jobs:
           done
           
           echo "⚠️ Health check timeout (deployment may still be in progress)"
-          echo "Check status: flyctl status --app sidflow-stg"
+          echo "Check status: flyctl status --app ${STG_APP_NAME}"
 
   deploy-fly-prd:
     name: Deploy to Production (Fly.io)

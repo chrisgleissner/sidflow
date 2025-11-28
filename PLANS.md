@@ -1254,13 +1254,25 @@ Fix this in all places where songs can be played: Play tab, Rate tab, and any ot
 - ✅ TypeScript compilation successful
 - ✅ All unit tests passing (1150+ tests, 0 failures)
 - ✅ Code changes completed for both player implementations
-- ⏳ Manual UI testing pending (requires running dev server)
-- ⏳ E2E test creation pending (future work)
+- ✅ E2E test created (`packages/sidflow-web/tests/e2e/pause-resume-position.spec.ts`)
+- ❌ E2E test reveals fix not working - position still returns 0 when paused
+- ⚠️ **BLOCKER**: Next.js dev server not picking up TypeScript changes despite cache clearing
+- ⏳ Manual UI testing pending (requires running dev server with correct code)
+- ⏳ Production build testing needed to verify if issue is dev-only
 
 **Next Steps for Complete Verification**:
-1. Manual testing in Play tab and Rate tab
-2. Docker deployment with fixes
-3. E2E test for pause/resume behavior
+1. Investigate why Next.js dev server doesn't load updated TypeScript
+2. Try production build (`bun run build && bun run start`) to test if dev-only issue
+3. Manual testing in Play tab and Rate tab once code loads correctly
+4. Docker deployment with fixes
+5. Debug E2E test to understand why console.logs not appearing
+
+**Fly.io Deployment Fix** (2025-11-28):
+- ✅ Updated `.github/workflows/release.yaml` to use correct staging app name from `fly.stg.toml`
+- ✅ Changed from hardcoded `sidflow-stg` to dynamic app name extraction
+- ✅ Updated deployment script to read `STG_APP_NAME` from config file
+- ✅ Fixed health check URL to use correct hostname: `sidflow-stg-polished-waterfall-1635.fly.dev`
+- Deployment should now succeed when triggered by CI
 
 ## Archived Tasks
 

@@ -161,6 +161,7 @@ export class WorkletPlayer {
 
   getPositionSeconds(): number {
     if (this.state !== 'playing') {
+      console.log(`[WorkletPlayer] getPositionSeconds in state=${this.state}, returning pausedPosition=${this.pausedPosition}`);
       return this.pausedPosition;
     }
     const elapsed = this.audioContext.currentTime - this.startTime;
@@ -484,6 +485,7 @@ export class WorkletPlayer {
     // Save current position before pausing
     const elapsed = this.audioContext.currentTime - this.startTime;
     this.pausedPosition = Math.min(elapsed, this.durationSeconds);
+    console.log(`[WorkletPlayer] pause() saved position: elapsed=${elapsed}, pausedPosition=${this.pausedPosition}, duration=${this.durationSeconds}`);
 
     if (this.worker) {
       this.worker.postMessage({ type: 'stop' } as WorkerMessage);
@@ -497,6 +499,7 @@ export class WorkletPlayer {
     }
 
     this.updateState('paused');
+    console.log(`[WorkletPlayer] pause() completed, state=${this.state}`);
   }
 
   stop(): void {
