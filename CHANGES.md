@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.39 (2025-11-28)
+
+- feat: Enhance classification pipeline and user experience
+- feat: add task for inline rendering and classification per song to improve workflow efficiency
+
+
 ## 0.3.37 (2025-11-27)
 
 - docs: note docker health fix coverage
