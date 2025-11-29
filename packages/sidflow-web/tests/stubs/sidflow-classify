@@ -37,8 +37,8 @@ const testFiles = [
 ];
 
 const totalFiles = testFiles.length;
-const PHASE_DELAY = 500; // 500ms per phase gives polling time to catch updates
-const FILE_DELAY = 200;  // 200ms per file within a phase
+const PHASE_DELAY = 10;  // 10ms per phase - fast but still async
+const FILE_DELAY = 5;    // 5ms per file - minimal delay for output ordering
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -79,8 +79,7 @@ async function runClassification() {
       const file = testFiles[i];
       const threadId = (i % 2) + 1;
       console.log(`[Thread ${threadId}] Rendering: ${file}`);
-      // Longer delay for rendering to simulate real work
-      await sleep(FILE_DELAY * 2);
+      await sleep(FILE_DELAY);
       const percent = (50 + ((i + 1) / totalFiles) * 25).toFixed(1);
       console.log(`[Converting] ${i + 1} rendered, 0 cached, ${totalFiles - i - 1} remaining (${percent}%)`);
     }
