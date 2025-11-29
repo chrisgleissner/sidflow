@@ -6,3 +6,6 @@ exclude = [
   "**/*.spec.ts",
   "**/tests/e2e/**"
 ]
+
+# Increase default timeout for tests that run TensorFlow or WASM
+timeout = 120000
