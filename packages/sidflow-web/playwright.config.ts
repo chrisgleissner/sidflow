@@ -125,6 +125,8 @@ export default defineConfig({
     env: {
       // Add stub CLI tools to PATH for testing
       PATH: `${stubToolsPath}${path.delimiter}${process.env.PATH ?? ''}`,
+      // CRITICAL: Set SIDFLOW_CLI_DIR to stubs so classify-runner.ts and cli-executor.ts find stubs first
+      SIDFLOW_CLI_DIR: stubToolsPath,
       NODE_ENV: serverNodeEnv,
       HOSTNAME: webServerHost,
       PORT: webServerPort,

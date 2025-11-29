@@ -58,3 +58,4 @@ data/users/
 
 # Performance test results
 performance/results/
+data/.sidflow-classify-temp.json
