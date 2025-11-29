@@ -9,7 +9,7 @@
  * 3. Building - rendering WAV files (slow phase where heartbeat matters)
  * 4. Tagging - extracting features
  * 
- * Uses setTimeout for async delays to allow progress polling to capture state.
+ * Uses setTimeout for async delays to simulate realistic processing time between phases.
  */
 
 const args = process.argv.slice(2);
