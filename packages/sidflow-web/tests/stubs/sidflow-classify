@@ -15,11 +15,10 @@
 const args = process.argv.slice(2);
 
 // Parse arguments
-let configPath = null;
 let forceRebuild = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--config' && args[i + 1]) {
-    configPath = args[i + 1];
+    // Accept and skip --config argument for compatibility, but do not use it
     i++;
   } else if (args[i] === '--force-rebuild') {
     forceRebuild = true;
