@@ -1,112 +1,22 @@
 #!/usr/bin/env node
 /**
  * Stub for sidflow-classify CLI tool
- * Used in testing to avoid long-running classification.
- * 
- * Simulates realistic phase transitions through:
- * 1. Analyzing - scanning files
- * 2. Metadata - reading SID headers
- * 3. Building - rendering WAV files (slow phase where heartbeat matters)
- * 4. Tagging - extracting features
- * 
- * Uses setTimeout for async delays to simulate realistic processing time between phases.
+ * Used in testing to avoid long-running classification
  */
 
+// Parse command line arguments
 const args = process.argv.slice(2);
+const path = args[0];
 
-// Parse arguments
-let forceRebuild = false;
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--config' && args[i + 1]) {
-    // Accept and skip --config argument for compatibility, but do not use it
-    i++;
-  } else if (args[i] === '--force-rebuild') {
-    forceRebuild = true;
-  }
+if (!path) {
+  console.error('Error: No path provided');
+  process.exit(1);
 }
 
-// Simulate thread count detection
-console.log('threads: 2');
-
-// Simulate files to process
-const testFiles = [
-  'DEMOS/0-9/10_Orbyte.sid',
-  'MUSICIANS/G/Garvalf/Test_Song.sid',
-  'MUSICIANS/H/Hubbard_Rob/Delta.sid',
-  'MUSICIANS/T/Tel_Jeroen/Cybernoid.sid',
-];
-
-const totalFiles = testFiles.length;
-const PHASE_DELAY = 10;  // 10ms per phase - fast but still async
-const FILE_DELAY = 5;    // 5ms per file - minimal delay for output ordering
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function runClassification() {
-  // Phase 1: Analyzing
-  console.log(`[Analyzing] 0/${totalFiles} files (0.0%)`);
-  await sleep(PHASE_DELAY);
-  
-  for (let i = 0; i < testFiles.length; i++) {
-    const file = testFiles[i];
-    const threadId = (i % 2) + 1;
-    console.log(`[Thread ${threadId}] Analyzing: ${file}`);
-    await sleep(FILE_DELAY);
-    const percent = (((i + 1) / totalFiles) * 25).toFixed(1);
-    console.log(`[Analyzing] ${i + 1}/${totalFiles} files (${percent}%)`);
-  }
-  await sleep(PHASE_DELAY);
-
-  // Phase 2: Reading Metadata
-  for (let i = 0; i < testFiles.length; i++) {
-    const file = testFiles[i];
-    const threadId = (i % 2) + 1;
-    console.log(`[Thread ${threadId}] Reading metadata: ${file}`);
-    await sleep(FILE_DELAY);
-    const percent = (25 + ((i + 1) / totalFiles) * 25).toFixed(1);
-    console.log(`[Reading Metadata] ${i + 1}/${totalFiles} files (${percent}%)`);
-  }
-  await sleep(PHASE_DELAY);
-
-  // Phase 3: Building (Rendering WAVs) - this is the critical phase for heartbeat testing
-  if (forceRebuild) {
-    console.log(`[Converting] 0 rendered, 0 cached, ${totalFiles} remaining (50.0%)`);
-    await sleep(PHASE_DELAY);
-    
-    for (let i = 0; i < testFiles.length; i++) {
-      const file = testFiles[i];
-      const threadId = (i % 2) + 1;
-      console.log(`[Thread ${threadId}] Rendering: ${file}`);
-      await sleep(FILE_DELAY);
-      const percent = (50 + ((i + 1) / totalFiles) * 25).toFixed(1);
-      console.log(`[Converting] ${i + 1} rendered, 0 cached, ${totalFiles - i - 1} remaining (${percent}%)`);
-    }
-    await sleep(PHASE_DELAY);
-  }
-
-  // Phase 4: Tagging (Extracting features)
-  for (let i = 0; i < testFiles.length; i++) {
-    const file = testFiles[i];
-    const threadId = (i % 2) + 1;
-    console.log(`[Thread ${threadId}] Extracting features: ${file}`);
-    await sleep(FILE_DELAY);
-    const percent = (75 + ((i + 1) / totalFiles) * 25).toFixed(1);
-    console.log(`[Extracting Features] ${i + 1}/${totalFiles} files (${percent}%)`);
-  }
-  await sleep(PHASE_DELAY);
-
-  // Mark idle when complete
-  console.log(`[Thread 1] IDLE`);
-  console.log(`[Thread 2] IDLE`);
-  
-  console.log('Classification completed successfully');
-}
-
-runClassification()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('Classification failed:', err);
-    process.exit(1);
-  });
+// Simulate classification progress
+console.log(`Starting classification for: ${path}`);
+console.log('Analyzing audio features...');
+console.log('Processing: 10 files');
+console.log('Classification completed successfully');
+console.log('Results saved to workspace/classifications/');
+process.exit(0);
