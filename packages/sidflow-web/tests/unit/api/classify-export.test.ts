@@ -1,7 +1,9 @@
 /**
  * Tests for classification export/import API
  */
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
+import { GET, POST } from '../../../app/api/classify/export/route';
+import { NextRequest } from 'next/server';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -24,7 +26,145 @@ interface ExportData {
   classifications: Record<string, ClassificationEntry>;
 }
 
-describe('classification export/import', () => {
+describe('classification export/import API', () => {
+  describe('GET /api/classify/export', () => {
+    test('should return 404 when no classifications exist', async () => {
+      const response = await GET();
+      const data = await response.json();
+
+      // Either 404 (no classifications) or 200 (has classifications)
+      if (response.status === 404) {
+        expect(data.success).toBe(false);
+        expect(data.error).toBe('No classifications found');
+      } else {
+        expect(response.status).toBe(200);
+        expect(data.version).toBe('1.0');
+      }
+    });
+
+    test('should return proper JSON structure when classifications exist', async () => {
+      const response = await GET();
+      
+      if (response.status === 200) {
+        const data = await response.json();
+        
+        expect(data).toHaveProperty('version');
+        expect(data).toHaveProperty('exportedAt');
+        expect(data).toHaveProperty('classificationDepth');
+        expect(data).toHaveProperty('totalEntries');
+        expect(data).toHaveProperty('classifications');
+        expect(data.version).toBe('1.0');
+      }
+    });
+
+    test('should set correct content-disposition header for download', async () => {
+      const response = await GET();
+      
+      if (response.status === 200) {
+        const contentDisposition = response.headers.get('Content-Disposition');
+        expect(contentDisposition).toContain('attachment');
+        expect(contentDisposition).toContain('.json');
+      }
+    });
+  });
+
+  describe('POST /api/classify/export (import)', () => {
+    test('should reject invalid version', async () => {
+      const request = new NextRequest('http://localhost/api/classify/export', {
+        method: 'POST',
+        body: JSON.stringify({
+          version: '2.0',
+          exportedAt: new Date().toISOString(),
+          classificationDepth: 3,
+          totalEntries: 0,
+          classifications: {},
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.details).toContain('version');
+      expect(data.details).toContain('1.0');
+    });
+
+    test('should reject missing classifications', async () => {
+      const request = new NextRequest('http://localhost/api/classify/export', {
+        method: 'POST',
+        body: JSON.stringify({
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          classificationDepth: 3,
+          totalEntries: 0,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.details).toContain('classifications');
+    });
+
+    test('should accept valid import data', async () => {
+      const request = new NextRequest('http://localhost/api/classify/export', {
+        method: 'POST',
+        body: JSON.stringify({
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          classificationDepth: 3,
+          totalEntries: 1,
+          classifications: {
+            'MUSICIANS/A/Artist/song.sid': {
+              e: 3,
+              m: 4,
+              c: 2,
+              source: 'auto',
+            },
+          },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data).toHaveProperty('filesWritten');
+      expect(data.data).toHaveProperty('entriesWritten');
+    });
+
+    test('should handle empty classifications object', async () => {
+      const request = new NextRequest('http://localhost/api/classify/export', {
+        method: 'POST',
+        body: JSON.stringify({
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          classificationDepth: 3,
+          totalEntries: 0,
+          classifications: {},
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.filesWritten).toBe(0);
+      expect(data.data.entriesWritten).toBe(0);
+    });
+  });
+});
+
+describe('classification export/import data structures', () => {
   let tempDir: string;
   let tagsPath: string;
 

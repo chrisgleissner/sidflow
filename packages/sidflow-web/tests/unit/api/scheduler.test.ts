@@ -1,9 +1,237 @@
 /**
  * Tests for scheduler API endpoints
  */
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { GET, POST } from '../../../app/api/scheduler/route';
+import { NextRequest } from 'next/server';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('/api/scheduler', () => {
+  let testDir: string;
+
+  beforeAll(async () => {
+    testDir = path.join(tmpdir(), `sidflow-scheduler-test-${Date.now()}`);
+    await fs.mkdir(testDir, { recursive: true });
+  });
+
+  afterAll(async () => {
+    await fs.rm(testDir, { recursive: true, force: true });
+  });
+
+  describe('GET /api/scheduler', () => {
+    test('should return scheduler configuration and status', async () => {
+      const response = await GET();
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data).toBeDefined();
+      expect(data.data.scheduler).toBeDefined();
+      expect(data.data.renderPrefs).toBeDefined();
+      expect(data.data.status).toBeDefined();
+    });
+
+    test('should return default scheduler values', async () => {
+      const response = await GET();
+      const data = await response.json();
+
+      expect(data.data.scheduler).toHaveProperty('enabled');
+      expect(data.data.scheduler).toHaveProperty('time');
+      expect(data.data.scheduler).toHaveProperty('timezone');
+      expect(data.data.scheduler.time).toBe('06:00');
+      expect(data.data.scheduler.timezone).toBe('UTC');
+    });
+
+    test('should return default renderPrefs values', async () => {
+      const response = await GET();
+      const data = await response.json();
+
+      expect(data.data.renderPrefs).toHaveProperty('preserveWav');
+      expect(data.data.renderPrefs).toHaveProperty('enableFlac');
+      expect(data.data.renderPrefs).toHaveProperty('enableM4a');
+    });
+
+    test('should return scheduler status', async () => {
+      const response = await GET();
+      const data = await response.json();
+
+      expect(data.data.status).toHaveProperty('isActive');
+      expect(data.data.status).toHaveProperty('isPipelineRunning');
+      expect(typeof data.data.status.isActive).toBe('boolean');
+    });
+  });
+
+  describe('POST /api/scheduler', () => {
+    test('should update scheduler enabled state', async () => {
+      const request = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { enabled: true },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.scheduler.enabled).toBe(true);
+
+      // Reset back to disabled
+      const resetRequest = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { enabled: false },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await POST(resetRequest);
+    });
+
+    test('should update scheduler time', async () => {
+      const request = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { time: '12:30' },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.scheduler.time).toBe('12:30');
+
+      // Reset back to default
+      const resetRequest = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { time: '06:00' },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await POST(resetRequest);
+    });
+
+    test('should update renderPrefs', async () => {
+      const request = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          renderPrefs: { preserveWav: false, enableFlac: true },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.renderPrefs.preserveWav).toBe(false);
+      expect(data.data.renderPrefs.enableFlac).toBe(true);
+
+      // Reset back to defaults
+      const resetRequest = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          renderPrefs: { preserveWav: true, enableFlac: false },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await POST(resetRequest);
+    });
+
+    test('should return 400 for empty request body', async () => {
+      const request = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error).toBeDefined();
+    });
+
+    test('should return 400 for invalid time format', async () => {
+      const request = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { time: '25:00' }, // Invalid hour
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+    });
+
+    test('should return 400 for invalid enabled type', async () => {
+      const request = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { enabled: 'yes' }, // Should be boolean
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.success).toBe(false);
+    });
+
+    test('should allow partial scheduler updates', async () => {
+      // First set both enabled and time
+      const request1 = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { enabled: true, time: '08:00' },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await POST(request1);
+
+      // Now only update time, enabled should remain true
+      const request2 = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { time: '10:00' },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request2);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.scheduler.time).toBe('10:00');
+      expect(data.data.scheduler.enabled).toBe(true); // Should remain unchanged
+
+      // Reset
+      const resetRequest = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { enabled: false, time: '06:00' },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await POST(resetRequest);
+    });
+  });
+
   describe('request validation', () => {
     test('should validate scheduler.enabled as boolean', () => {
       const validRequest = { scheduler: { enabled: true } };
@@ -49,174 +277,6 @@ describe('/api/scheduler', () => {
       expect(typeof validRequest.renderPrefs.preserveWav).toBe('boolean');
       expect(typeof validRequest.renderPrefs.enableFlac).toBe('boolean');
       expect(typeof validRequest.renderPrefs.enableM4a).toBe('boolean');
-    });
-  });
-
-  describe('response structure', () => {
-    test('should define correct response structure', () => {
-      const mockResponse = {
-        success: true,
-        data: {
-          scheduler: {
-            enabled: false,
-            time: '06:00',
-            timezone: 'UTC',
-          },
-          renderPrefs: {
-            preserveWav: true,
-            enableFlac: false,
-            enableM4a: false,
-          },
-          status: {
-            isActive: false,
-            lastRun: null,
-            nextRun: null,
-            isPipelineRunning: false,
-          },
-        },
-      };
-
-      expect(mockResponse.success).toBe(true);
-      expect(mockResponse.data.scheduler).toBeDefined();
-      expect(mockResponse.data.renderPrefs).toBeDefined();
-      expect(mockResponse.data.status).toBeDefined();
-    });
-
-    test('should have scheduler config with all required fields', () => {
-      const schedulerConfig = {
-        enabled: false,
-        time: '06:00',
-        timezone: 'UTC',
-      };
-
-      expect(schedulerConfig).toHaveProperty('enabled');
-      expect(schedulerConfig).toHaveProperty('time');
-      expect(schedulerConfig).toHaveProperty('timezone');
-    });
-
-    test('should have renderPrefs with all required fields', () => {
-      const renderPrefs = {
-        preserveWav: true,
-        enableFlac: false,
-        enableM4a: false,
-      };
-
-      expect(renderPrefs).toHaveProperty('preserveWav');
-      expect(renderPrefs).toHaveProperty('enableFlac');
-      expect(renderPrefs).toHaveProperty('enableM4a');
-    });
-  });
-
-  describe('configuration defaults', () => {
-    test('should have correct default scheduler values', () => {
-      const defaultScheduler = {
-        enabled: false,
-        time: '06:00',
-        timezone: 'UTC',
-      };
-
-      expect(defaultScheduler.enabled).toBe(false);
-      expect(defaultScheduler.time).toBe('06:00');
-      expect(defaultScheduler.timezone).toBe('UTC');
-    });
-
-    test('should have correct default renderPrefs values', () => {
-      // preserveWav defaults to true (local development)
-      // enableFlac and enableM4a default to false
-      const defaultRenderPrefs = {
-        preserveWav: true,
-        enableFlac: false,
-        enableM4a: false,
-      };
-
-      expect(defaultRenderPrefs.preserveWav).toBe(true);
-      expect(defaultRenderPrefs.enableFlac).toBe(false);
-      expect(defaultRenderPrefs.enableM4a).toBe(false);
-    });
-
-    test('should have preserveWav=false for fly.io deployments', () => {
-      // When deploying to fly.io, preserveWav should be set to false
-      // to avoid filling up limited disk space
-      const flyioRenderPrefs = {
-        preserveWav: false,
-        enableFlac: false,
-        enableM4a: false,
-      };
-
-      expect(flyioRenderPrefs.preserveWav).toBe(false);
-    });
-  });
-
-  describe('scheduler status', () => {
-    test('should track active state', () => {
-      const inactiveStatus = {
-        isActive: false,
-        lastRun: null,
-        nextRun: null,
-        isPipelineRunning: false,
-      };
-
-      expect(inactiveStatus.isActive).toBe(false);
-      expect(inactiveStatus.lastRun).toBeNull();
-      expect(inactiveStatus.nextRun).toBeNull();
-    });
-
-    test('should track pipeline running state', () => {
-      const runningStatus = {
-        isActive: true,
-        lastRun: new Date().toISOString(),
-        nextRun: new Date(Date.now() + 86400000).toISOString(),
-        isPipelineRunning: true,
-      };
-
-      expect(runningStatus.isActive).toBe(true);
-      expect(runningStatus.isPipelineRunning).toBe(true);
-      expect(runningStatus.lastRun).not.toBeNull();
-      expect(runningStatus.nextRun).not.toBeNull();
-    });
-  });
-
-  describe('update behavior', () => {
-    test('should allow partial scheduler updates', () => {
-      const currentConfig = {
-        enabled: false,
-        time: '06:00',
-        timezone: 'UTC',
-      };
-
-      const partialUpdate = {
-        enabled: true,
-      };
-
-      const merged = {
-        ...currentConfig,
-        ...partialUpdate,
-      };
-
-      expect(merged.enabled).toBe(true);
-      expect(merged.time).toBe('06:00'); // unchanged
-      expect(merged.timezone).toBe('UTC'); // unchanged
-    });
-
-    test('should allow partial renderPrefs updates', () => {
-      const currentPrefs = {
-        preserveWav: true,
-        enableFlac: false,
-        enableM4a: false,
-      };
-
-      const partialUpdate = {
-        enableFlac: true,
-      };
-
-      const merged = {
-        ...currentPrefs,
-        ...partialUpdate,
-      };
-
-      expect(merged.preserveWav).toBe(true); // unchanged
-      expect(merged.enableFlac).toBe(true);
-      expect(merged.enableM4a).toBe(false); // unchanged
     });
   });
 });
