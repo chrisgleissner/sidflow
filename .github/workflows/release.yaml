@@ -275,7 +275,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
 
   # ===== FLY.IO DEPLOYMENTS (DEFAULT) =====
-  # Requires FLY_API_TOKEN secret and pre-created apps (sidflow-stg, sidflow-prd)
+  # Requires FLY_API_TOKEN secret and pre-created apps (sidflow-stg, sidflow)
   # Setup: https://fly.io/docs/flyctl/launch/
   deploy-fly-stg:
     name: Deploy to Staging (Fly.io)
@@ -312,10 +312,10 @@ jobs:
             echo "2. Authenticate: flyctl auth login"
             echo "3. Create apps:"
             echo "   flyctl apps create sidflow-stg --region lhr"
-            echo "   flyctl apps create sidflow-prd --region lhr"
+            echo "   flyctl apps create sidflow --region lhr"
             echo "4. Create volumes (one per app, mounted at /mnt/data):"
             echo "   flyctl volumes create sidflow_data --region lhr --size 3 --app sidflow-stg"
-            echo "   flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow-prd"
+            echo "   flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow"
             echo "5. Get API token: flyctl auth token"
             echo "6. Add FLY_API_TOKEN secret to this repository"
             exit 0
@@ -415,7 +415,7 @@ jobs:
       (needs.deploy-fly-stg.result == 'success' || needs.deploy-fly-stg.result == 'skipped')
     environment:
       name: production-fly
-      url: https://sidflow-prd.fly.dev
+      url: https://sidflow.fly.dev
     
     steps:
       - name: Checkout

@@ -22,7 +22,7 @@ This guide covers deploying SIDFlow to Fly.io, which is now the default deployme
    flyctl apps create sidflow-stg --region lhr
 
    # Production
-   flyctl apps create sidflow-prd --region lhr
+   flyctl apps create sidflow --region lhr
    ```
 
 4. **Create volumes** (one-time):
@@ -33,7 +33,7 @@ This guide covers deploying SIDFlow to Fly.io, which is now the default deployme
    flyctl volumes create sidflow_data --region lhr --size 3 --app sidflow-stg
 
    # Production volume (increase size as needed)
-   flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow-prd
+   flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow
    ```
 
 5. **Set GitHub secret for admin password** (one-time):
@@ -55,7 +55,7 @@ This will:
 1. Build Docker image and push to `ghcr.io/chrisgleissner/sidflow:v0.3.29`
 2. Deploy to `sidflow-stg` (staging) automatically
 3. Wait for manual approval in GitHub
-4. Deploy to `sidflow-prd` (production) after approval
+4. Deploy to `sidflow` (production) after approval
 
 **Setup Steps:**
 
@@ -132,7 +132,7 @@ flyctl secrets set \
 flyctl secrets set \
   SOME_API_KEY=xxx \
   SOME_SECRET=yyy \
-  --app sidflow-prd
+  --app sidflow
 ```
 
 ## Operations
@@ -154,13 +154,13 @@ flyctl dashboard --app sidflow-stg
 
 ```bash
 # Scale to 2 machines
-flyctl scale count 2 --app sidflow-prd
+flyctl scale count 2 --app sidflow
 
 # Upgrade to performance CPU
-flyctl scale vm performance-1x --app sidflow-prd
+flyctl scale vm performance-1x --app sidflow
 
 # Increase memory
-flyctl scale memory 1024 --app sidflow-prd
+flyctl scale memory 1024 --app sidflow
 ```
 
 ### Accessing the App
@@ -196,13 +196,13 @@ flyctl volumes snapshots list <volume-id> --app sidflow-stg
 
 ```bash
 # List releases
-flyctl releases --app sidflow-prd
+flyctl releases --app sidflow
 
 # Rollback to previous version
-flyctl releases rollback --app sidflow-prd
+flyctl releases rollback --app sidflow
 
 # Rollback to specific version
-flyctl releases rollback <version> --app sidflow-prd
+flyctl releases rollback <version> --app sidflow
 ```
 
 ## Troubleshooting
@@ -288,13 +288,13 @@ For better performance:
 
 ```bash
 # Upgrade to dedicated CPU
-flyctl scale vm performance-1x --app sidflow-prd
+flyctl scale vm performance-1x --app sidflow
 
 # Increase memory
-flyctl scale memory 1024 --app sidflow-prd
+flyctl scale memory 1024 --app sidflow
 
 # Add more machines for redundancy
-flyctl scale count 2 --app sidflow-prd
+flyctl scale count 2 --app sidflow
 ```
 
 ## Comparison: Fly.io vs Raspberry Pi

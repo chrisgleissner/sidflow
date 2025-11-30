@@ -68,13 +68,13 @@ PREREQUISITES:
     2. Authenticate: flyctl auth login
     3. Create apps:
        flyctl apps create sidflow-stg --region lhr
-       flyctl apps create sidflow-prd --region lhr
+       flyctl apps create sidflow --region lhr
     4. Create volumes (one-time, Fly.io supports ONE volume per machine):
        flyctl volumes create sidflow_data --region lhr --size 3 --app sidflow-stg
-       flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow-prd
+       flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow
     5. Set secrets:
        flyctl secrets set SOME_SECRET=value --app sidflow-stg
-       flyctl secrets set SOME_SECRET=value --app sidflow-prd
+       flyctl secrets set SOME_SECRET=value --app sidflow
 
 ENVIRONMENT:
     FLY_API_TOKEN    Fly.io API token (for CI/CD)
@@ -114,7 +114,11 @@ validate_environment() {
 }
 
 get_app_name() {
-    echo "sidflow-${ENVIRONMENT}"
+    if [[ "${ENVIRONMENT}" == "prd" ]]; then
+        echo "sidflow"
+    else
+        echo "sidflow-${ENVIRONMENT}"
+    fi
 }
 
 check_app_exists() {

@@ -64,8 +64,8 @@ Added two new jobs for Fly.io deployment:
 
 **deploy-fly-prd** (Production - Manual Approval)
 - Triggers: After successful staging deployment, manual approval required
-- Actions: Same as staging but for sidflow-prd
-- Environment: production-fly (https://sidflow-prd.fly.dev)
+- Actions: Same as staging but for sidflow
+- Environment: production-fly (https://sidflow.fly.dev)
 - Approval: Requires GitHub environment protection rules
 
 **Preserved**: Original deploy-stg and deploy-prd jobs (Raspberry Pi via webhook) remain intact but disabled
@@ -135,7 +135,7 @@ git push origin v0.3.29
 # 1. Build Docker image
 # 2. Deploy to sidflow-stg (automatic)
 # 3. Wait for manual approval
-# 4. Deploy to sidflow-prd (after approval)
+# 4. Deploy to sidflow (after approval)
 ```
 
 ## What User Needs to Do
@@ -154,8 +154,8 @@ git push origin v0.3.29
 
 3. **Create Fly.io apps**:
    ```bash
-   flyctl apps create sidflow-stg --region lhr
-   flyctl apps create sidflow-prd --region lhr
+flyctl apps create sidflow-stg --region lhr
+flyctl apps create sidflow --region lhr
    ```
 
 4. **Create volumes**:
@@ -164,9 +164,9 @@ git push origin v0.3.29
    flyctl volumes create sidflow_data --region lhr --size 20 --app sidflow-stg
    flyctl volumes create sidflow_workspace --region lhr --size 50 --app sidflow-stg
    
-   # Production
-   flyctl volumes create sidflow_data --region lhr --size 20 --app sidflow-prd
-   flyctl volumes create sidflow_workspace --region lhr --size 50 --app sidflow-prd
+# Production
+flyctl volumes create sidflow_data --region lhr --size 20 --app sidflow
+flyctl volumes create sidflow_workspace --region lhr --size 50 --app sidflow
    ```
 
 5. **Get API token**:
