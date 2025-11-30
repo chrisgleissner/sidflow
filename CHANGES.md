@@ -1,6 +1,34 @@
 # Changelog
 
 
+## 0.3.41 (2025-11-30)
+
+- Merge pull request #69 from chrisgleissner/copilot/optimize-test-execution-time
+- Address code review: use spinner check instead of domcontentloaded for action waits
+- Stabilize flaky accessibility tests: replace networkidle with condition-based waits
+- Optimize E2E tests: increase workers to 4, reduce timeouts, replace fixed waits with conditions
+- Address code review: use precise string matching for test file validation
+- Optimize phase-transitions test: reduce from ~174s to ~2.4s
+- Initial plan
+- Merge pull request #68 from chrisgleissner/copilot/ensure-valid-thread-transitions
+- Fix heartbeat blocking: use WasmRendererPool for inline rendering in generateAutoTags
+- Add progress callbacks to WAV rendering for heartbeat support
+- Optimize Essentia.js feature extraction with downsampling and instance caching
+- Add WASM backend support for TensorFlow.js and document Essentia.js bottleneck
+- Fix flaky E2E tests: pause-resume position and accessibility
+- Fix test timeouts: skip slow TensorFlow tests in CI and update bunfig timeout
+- Revert playwright config changes, use mock-based test to avoid CI slowdowns and screenshot issues
+- Revert accidentally committed screenshot changes
+- Reduce sidflow-classify stub delays from 500ms to 10ms to speed up E2E tests
+- Update packages/sidflow-web/tests/stubs/sidflow-classify
+- Update packages/sidflow-web/tests/stubs/sidflow-classify
+- Complete: Classification phase transitions E2E test with stable thread state verification
+- Remove temp config file from git tracking and add to gitignore
+- Fix E2E tests for classification phase transitions with proper stub and test design
+- Initial plan
+- chore: update CHANGES.md for 0.3.40
+
+
 ## 0.3.40 (2025-11-28)
 
 - feat: Enhance HVSC archive extraction with p7zip-full support and improved error logging
