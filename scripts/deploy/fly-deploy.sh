@@ -10,6 +10,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 ENVIRONMENT=""
 TAG="latest"
 REGION="lhr"  # London
+DEPLOY_STRATEGY="${FLY_DEPLOY_STRATEGY:-rolling}"
 FORCE=false
 DRY_RUN=false
 
@@ -46,6 +47,7 @@ OPTIONS:
     -e, --environment <stg|prd>   Deployment environment (required)
     -t, --tag <tag>               Docker image tag (default: latest)
     -r, --region <region>         Fly.io region (default: lhr)
+    --strategy <strategy>         Deployment strategy (default: rolling, e.g. immediate)
     -f, --force                   Force deployment without confirmation
     -n, --dry-run                 Show what would be deployed without deploying
     -h, --help                    Show this help message
@@ -204,7 +206,7 @@ deploy() {
         --config "${temp_toml}" \
         --app "${app_name}" \
         --image "ghcr.io/chrisgleissner/sidflow:${TAG}" \
-        --strategy rolling \
+        --strategy "${DEPLOY_STRATEGY}" \
         --wait-timeout 300
     
     log_success "Deployment completed"
@@ -269,6 +271,10 @@ main() {
                 ;;
             -r|--region)
                 REGION="$2"
+                shift 2
+                ;;
+            --strategy)
+                DEPLOY_STRATEGY="$2"
                 shift 2
                 ;;
             -f|--force)
