@@ -3,7 +3,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getWebPreferences, updateWebPreferences, type SchedulerConfig, type RenderPreferences } from '@/lib/preferences-store';
-import { getSchedulerStatus, restartScheduler } from '@/lib/scheduler';
+import { getSchedulerStatus } from '@/lib/scheduler';
+import { ensureSchedulerInitialized, reinitializeScheduler } from '@/lib/server/scheduler-init';
 import type { ApiResponse } from '@/lib/validation';
 
 interface SchedulerResponse {
@@ -17,6 +18,9 @@ interface SchedulerResponse {
  */
 export async function GET() {
   try {
+    // Ensure scheduler is initialized
+    await ensureSchedulerInitialized();
+    
     const prefs = await getWebPreferences();
     const status = getSchedulerStatus();
     
@@ -144,7 +148,7 @@ export async function POST(request: NextRequest) {
     
     // Restart scheduler if configuration changed
     if (schedulerUpdate !== undefined) {
-      await restartScheduler();
+      await reinitializeScheduler();
     }
     
     const status = getSchedulerStatus();
