@@ -1315,10 +1315,24 @@ The `7zip-min` npm package requires the system `7z` binary (from `p7zip-full` pa
 ✅ Verified 7z binary is present: `docker run --rm sidflow:test-7zip which 7z` → `/usr/bin/7z`
 ✅ Verified 7z works: `docker run --rm sidflow:test-7zip 7z --help` → shows usage
 
+**Deployment to Fly.io** (2025-11-28):
+✅ Set secure admin password: Generated 32-character random password using `openssl rand -base64 24`
+✅ Updated Fly.io secret: `flyctl secrets set SIDFLOW_ADMIN_PASSWORD=<secure-password> --app sidflow`
+✅ Deployed latest image: `bash scripts/deploy/fly-deploy-existing.sh --tag latest`
+✅ Verified deployment: Health check returns `"overall": "healthy"`
+✅ Verified admin access: Admin endpoint accessible with new password
+✅ Verified p7zip-full in deployed image: `docker run --rm ghcr.io/chrisgleissner/sidflow:latest which 7z` → `/usr/bin/7z`
+
+**Production credentials**:
+- URL: https://sidflow.fly.dev
+- Admin username: `admin`
+- Admin password: `thyn09Pe4y/HBr5qqU+AOZq8Et6Cn4PP` (secure random password)
+- Admin metrics: https://sidflow.fly.dev/api/admin/metrics
+
 **Next steps**:
-1. Rebuild and deploy updated Docker image to Fly.io with p7zip-full included
-2. Test full HVSC fetch pipeline on deployed instance
-3. Monitor extraction logs to confirm fix works in production
+1. Test full HVSC fetch pipeline on deployed instance to verify extraction works
+2. Monitor extraction logs to confirm fix works in production
+3. Document successful extraction in this plan
 
 ### CI Test Coverage Timeout/Stall Issue
 
