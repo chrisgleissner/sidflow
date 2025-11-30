@@ -20,6 +20,9 @@ primary_region = 'lhr'
   min_machines_running = 0
   processes = ['app']
 
+# Resource allocation: Using Fly.io free tier defaults.
+# For higher traffic, upgrade to performance VMs:
+#   flyctl scale vm performance-1x --app sidflow-prd
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
