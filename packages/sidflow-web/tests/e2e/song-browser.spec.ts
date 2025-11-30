@@ -91,14 +91,17 @@ if (!isPlaywrightRunner) {
       await installSongBrowserFixtures(page);
       await page.goto('http://localhost:3000', { timeout: 30000 });
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000); // Wait for HMR/hydration instead of networkidle
+      // Wait for hydration with condition instead of fixed timeout
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
     });
 
     test('displays song browser component', async ({ page }) => {
       // Navigate to Play tab
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
+      
+      // Wait for content to load instead of fixed timeout
+      await page.waitForLoadState('domcontentloaded');
 
       // Check for song browser heading
       const browserHeading = page.getByText(/SID COLLECTION BROWSER/i);
@@ -108,7 +111,7 @@ if (!isPlaywrightRunner) {
     test('shows breadcrumb navigation', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('domcontentloaded');
 
       // Look for Collection breadcrumb
       const collectionBreadcrumb = page.getByRole('button', { name: 'Collection' });
@@ -119,8 +122,8 @@ if (!isPlaywrightRunner) {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
 
-      // Wait for the browser component to finish loading
-      await page.waitForTimeout(2000);
+      // Wait for the browser component to finish loading with condition
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
 
       // Check if either folders or files section is visible, or if there's a valid state message
       // (actual content depends on local SID collection being configured)
@@ -150,7 +153,7 @@ if (!isPlaywrightRunner) {
     test('navigates to folder when clicked', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(1000);
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
 
       // Try to click first folder if available
       const firstFolder = page.locator('button:has-text("MUSICIANS"), button:has-text("DEMOS"), button:has-text("GAMES")').first();
@@ -159,7 +162,7 @@ if (!isPlaywrightRunner) {
       if (folderCount > 0) {
         const folderName = await firstFolder.textContent();
         await firstFolder.click();
-        await page.waitForTimeout(500);
+        await page.waitForLoadState('domcontentloaded');
 
         // Breadcrumb should update
         const breadcrumb = page.getByRole('button', { name: folderName || '' });
@@ -176,14 +179,14 @@ if (!isPlaywrightRunner) {
       const playTab = page.getByRole('tab', { name: /play/i });
       console.log('[folder-buttons] clicking play tab');
       await playTab.click();
-      await page.waitForTimeout(2000);
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
 
       // Wait for song browser to load
       console.log('[folder-buttons] waiting for collection browser heading');
       await page.waitForSelector('text=/SID COLLECTION BROWSER/i', { timeout: 10000 });
 
-      // Wait for folders section to appear
-      await page.waitForTimeout(1500);
+      // Wait for folders section to appear with condition
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
 
       // Look for folder names (C64Music should be visible)
       const hasC64MusicFolder = await page.getByText('C64Music').isVisible().catch(() => false);
@@ -203,7 +206,7 @@ if (!isPlaywrightRunner) {
     test('shows file play buttons', async ({ page }) => {
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(1000);
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
 
       // Look for SID files
       const fileSection = page.getByText(/SID Files \(\d+\)/i);
@@ -222,10 +225,10 @@ if (!isPlaywrightRunner) {
       await installSongBrowserFixtures(page);
       await page.goto('http://localhost:3000', { timeout: 30000 });
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1000); // Wait for HMR/hydration instead of networkidle
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('domcontentloaded');
     });
 
     test('volume slider is visible', async ({ page }) => {
@@ -262,10 +265,10 @@ if (!isPlaywrightRunner) {
       await installSongBrowserFixtures(page);
       await page.goto('http://localhost:3000', { timeout: 30000 });
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(1000); // Wait for HMR/hydration instead of networkidle
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('domcontentloaded');
     });
 
     test('shows default mood station mode', async ({ page }) => {
@@ -302,15 +305,15 @@ if (!isPlaywrightRunner) {
       await installSongBrowserFixtures(page);
       await page.goto('http://localhost:3000', { timeout: 30000 });
       await page.waitForLoadState('domcontentloaded');
-      await page.waitForTimeout(2000); // Wait for HMR/hydration instead of networkidle
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
-      await page.waitForTimeout(1000);
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
     });
 
     test('displays playback control buttons', async ({ page }) => {
-      // Wait for player to load with longer timeout
-      await page.waitForTimeout(2000);
+      // Wait for player to load with condition
+      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
 
       // Look for any playback control buttons directly
       const hasPlayControls = await page.locator('button[title*="track"], button[aria-label*="playback"]').count();

@@ -9,12 +9,12 @@ test.describe('Advanced Search & Discovery', () => {
     test.beforeEach(async ({ page }) => {
         await page.goto('http://localhost:3000');
         await page.waitForLoadState('domcontentloaded');
-        await page.waitForTimeout(1000);
+        await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
 
         // Navigate to Play tab
         const playTab = page.getByRole('tab', { name: /play/i });
         await playTab.click();
-        await page.waitForTimeout(500);
+        await page.waitForLoadState('domcontentloaded');
     });
 
     test('should display advanced search bar with filters toggle', async ({ page }) => {
@@ -38,8 +38,8 @@ test.describe('Advanced Search & Discovery', () => {
         await searchInput.fill('delta');
         await expect(searchInput).toHaveValue('delta');
 
-        // Wait for debounce
-        await page.waitForTimeout(500);
+        // Wait for debounce with smaller timeout
+        await page.waitForTimeout(300);
 
         // Verify search input accepts text (results may or may not appear based on data)
         await expect(searchInput).toHaveValue('delta');
@@ -52,8 +52,8 @@ test.describe('Advanced Search & Discovery', () => {
         await searchInput.fill('hubbard');
         await expect(searchInput).toHaveValue('hubbard');
 
-        // Wait for debounce
-        await page.waitForTimeout(500);
+        // Wait for debounce with smaller timeout
+        await page.waitForTimeout(300);
 
         // Verify search input accepts text
         await expect(searchInput).toHaveValue('hubbard');
@@ -64,7 +64,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Type a search query
         await searchInput.fill('delta');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
 
         // Find and click the clear button
         const clearButton = page.locator('button[title="Clear search"]');
@@ -84,7 +84,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Click to expand filters
         await filtersButton.click();
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
 
         // Now filters should be visible
         await expect(yearMinInput).toBeVisible();
@@ -94,7 +94,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Click to collapse filters
         await filtersButton.click();
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
 
         // Filters should be hidden again
         await expect(yearMinInput).not.toBeVisible();
@@ -106,7 +106,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Expand filters
         await filtersButton.click();
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
 
         // Set year range
         const yearMinInput = page.getByTestId('year-min-input');
@@ -130,7 +130,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Expand filters
         await filtersButton.click();
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
 
         // Set duration range (60-180 seconds)
         const durationMinInput = page.getByTestId('duration-min-input');
@@ -153,7 +153,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Expand filters
         await filtersButton.click();
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
 
         // Set some filters
         const yearMinInput = page.getByTestId('year-min-input');
@@ -180,8 +180,8 @@ test.describe('Advanced Search & Discovery', () => {
         // Perform search - use a common term that should exist in test data
         await searchInput.fill('tune');
         
-        // Wait longer for search debounce (300ms) + API call
-        await page.waitForTimeout(1500);
+        // Wait for search debounce (300ms) + API call - reduced from 1500ms
+        await page.waitForTimeout(800);
 
         // Check if results appear - they should if test data exists
         const resultsDropdown = page.getByTestId('advanced-search-results');
@@ -221,7 +221,7 @@ test.describe('Advanced Search & Discovery', () => {
         // Search by artist
         await searchInput.fill('hubbard');
         await expect(searchInput).toHaveValue('hubbard');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
 
         // Verify search input is functional
         await expect(searchInput).toHaveValue('hubbard');
@@ -233,7 +233,7 @@ test.describe('Advanced Search & Discovery', () => {
         // Search for something that doesn't exist
         await searchInput.fill('xyznonexistent123');
         await expect(searchInput).toHaveValue('xyznonexistent123');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
 
         // Search input should still be functional
         await expect(searchInput).toHaveValue('xyznonexistent123');
@@ -245,11 +245,11 @@ test.describe('Advanced Search & Discovery', () => {
         // Perform search
         await searchInput.fill('delta');
         await expect(searchInput).toHaveValue('delta');
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
 
         // Click outside the search box
         await page.locator('body').click({ position: { x: 10, y: 10 } });
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
 
         // Search input should retain its value
         await expect(searchInput).toHaveValue('delta');
