@@ -33,6 +33,8 @@ const PROGRESS_THROTTLE_MS = 500; // Max 2 updates per second
 interface ClassifyCliOptions {
   configPath?: string;
   forceRebuild?: boolean;
+  skipAlreadyClassified?: boolean;
+  deleteWavAfterClassification?: boolean;
   featureModule?: string;
   predictorModule?: string;
   metadataModule?: string;
@@ -48,6 +50,8 @@ interface ParseResult {
 const KNOWN_FLAGS = new Set([
   "--config",
   "--force-rebuild",
+  "--skip-already-classified",
+  "--delete-wav-after-classification",
   "--feature-module",
   "--predictor-module",
   "--metadata-module",
@@ -69,6 +73,14 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
       }
       case "--force-rebuild": {
         options.forceRebuild = true;
+        break;
+      }
+      case "--skip-already-classified": {
+        options.skipAlreadyClassified = true;
+        break;
+      }
+      case "--delete-wav-after-classification": {
+        options.deleteWavAfterClassification = true;
         break;
       }
       case "--config":
@@ -122,13 +134,15 @@ function printHelp(): void {
     "Build the WAV cache and generate automated tag summaries.",
     "",
     "Options:",
-    "  --config <path>           Use an alternate .sidflow.json file",
-    "  --force-rebuild           Re-render WAVs even if cache is fresh",
-    "  --feature-module <path>   Module exporting a featureExtractor override",
-    "  --predictor-module <path> Module exporting a predictRatings override",
-    "  --metadata-module <path>  Module exporting an extractMetadata override",
-    "  --render-module <path>    Module exporting a render override for WAV cache",
-    "  --help                    Show this message and exit"
+    "  --config <path>                   Use an alternate .sidflow.json file",
+    "  --force-rebuild                   Re-render WAVs even if cache is fresh",
+    "  --skip-already-classified         Skip songs already in auto-tags.json",
+    "  --delete-wav-after-classification Delete WAVs after classification (fly.io)",
+    "  --feature-module <path>           Module exporting a featureExtractor override",
+    "  --predictor-module <path>         Module exporting a predictRatings override",
+    "  --metadata-module <path>          Module exporting an extractMetadata override",
+    "  --render-module <path>            Module exporting a render override for WAV cache",
+    "  --help                            Show this message and exit"
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
 }
@@ -411,6 +425,8 @@ export async function runClassifyCli(
       predictRatings,
       threads,
       render,
+      skipAlreadyClassified: options.skipAlreadyClassified,
+      deleteWavAfterClassification: options.deleteWavAfterClassification,
       onThreadUpdate: threadLogger,
       onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
     });

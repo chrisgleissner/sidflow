@@ -34,6 +34,10 @@ export const ClassifyRequestSchema = z.object({
     .min(1, 'Path must not be empty')
     .optional(),
   forceRebuild: z.boolean().optional(),
+  /** Skip songs that are already classified (based on auto-tags.json) */
+  skipAlreadyClassified: z.boolean().optional(),
+  /** Delete WAV files after classification (to save disk space) */
+  deleteWavAfterClassification: z.boolean().optional(),
 });
 
 export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;

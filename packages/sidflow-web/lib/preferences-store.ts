@@ -5,6 +5,24 @@ import type { RenderTechnology } from '@sidflow/common';
 
 const PREFERENCES_FILENAME = '.sidflow-preferences.json';
 
+export interface SchedulerConfig {
+  /** Whether the scheduler is enabled */
+  enabled: boolean;
+  /** Time to run in HH:MM format (e.g., "06:00") */
+  time: string;
+  /** Timezone (e.g., "UTC", "America/New_York") */
+  timezone: string;
+}
+
+export interface RenderPreferences {
+  /** Whether to preserve WAV files after classification (default: true, disable to save disk space) */
+  preserveWav: boolean;
+  /** Whether to generate FLAC files during classification */
+  enableFlac: boolean;
+  /** Whether to generate M4A/AAC files during classification */
+  enableM4a: boolean;
+}
+
 export interface WebPreferences {
   sidBasePath?: string | null;
   kernalRomPath?: string | null;
@@ -18,6 +36,14 @@ export interface WebPreferences {
   defaultFormats?: string[] | null;
   // Favorites collection (stored as sid_path array)
   favorites?: string[];
+  // Nightly scheduler configuration for fetch + classify
+  scheduler?: SchedulerConfig;
+  // Audio render preferences (preserveWav, enableFlac, enableM4a)
+  renderPrefs?: RenderPreferences;
+  // Background training toggle
+  training?: {
+    enabled?: boolean;
+  };
 }
 
 const DEFAULT_PREFERENCES: WebPreferences = {
@@ -30,6 +56,19 @@ const DEFAULT_PREFERENCES: WebPreferences = {
   preferredEngines: null,
   defaultFormats: null,
   favorites: [],
+  scheduler: {
+    enabled: false,
+    time: '06:00',
+    timezone: 'UTC',
+  },
+  renderPrefs: {
+    preserveWav: true,
+    enableFlac: false,
+    enableM4a: false,
+  },
+  training: {
+    enabled: false,
+  },
 };
 
 function resolvePreferencesPath(): string {
