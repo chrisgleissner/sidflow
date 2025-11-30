@@ -64,10 +64,14 @@ async function runScheduledPipeline(): Promise<void> {
  * Gets the base URL for internal API calls
  */
 function getBaseUrl(): string {
-  // In Next.js, we use relative URLs for API routes
-  // During server-side execution, we need the full URL
+  // Support configurable base URL for different environments
+  if (process.env.SIDFLOW_BASE_URL) {
+    return process.env.SIDFLOW_BASE_URL;
+  }
+  // Default to localhost with configurable port
   const port = process.env.PORT || 3000;
-  return `http://localhost:${port}`;
+  const host = process.env.HOST || 'localhost';
+  return `http://${host}:${port}`;
 }
 
 /**

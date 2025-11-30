@@ -1,11 +1,7 @@
 /**
  * Tests for scheduler API endpoints
  */
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
-import os from 'node:os';
+import { describe, test, expect } from 'bun:test';
 
 describe('/api/scheduler', () => {
   describe('request validation', () => {

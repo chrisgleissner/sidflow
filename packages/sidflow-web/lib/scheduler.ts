@@ -211,8 +211,6 @@ export async function isAlreadyClassified(
   classificationDepth: number,
   relativeSidPath: string
 ): Promise<boolean> {
-  const { promises: fs } = await import('node:fs');
-  const path = await import('node:path');
   const { resolveAutoTagFilePath, resolveAutoTagKey, toPosixRelative, pathExists } = await import('@sidflow/common');
   
   const autoTagsFile = resolveAutoTagFilePath(tagsPath, relativeSidPath, classificationDepth);
@@ -222,6 +220,7 @@ export async function isAlreadyClassified(
   }
   
   try {
+    const { promises: fs } = await import('node:fs');
     const content = await fs.readFile(autoTagsFile, 'utf8');
     const tags = JSON.parse(content) as Record<string, unknown>;
     
