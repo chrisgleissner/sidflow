@@ -1,0 +1,29 @@
+# Fly.io production configuration for SIDFlow
+#
+# IMPORTANT: Before deploying, create the production app on Fly.io:
+#   flyctl apps create sidflow-prd --org personal
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'sidflow-prd'
+primary_region = 'lhr'
+
+[build]
+  image = 'ghcr.io/chrisgleissner/sidflow:latest'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+# Resource allocation: Using Fly.io free tier defaults.
+# For higher traffic, upgrade to performance VMs:
+#   flyctl scale vm performance-1x --app sidflow-prd
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

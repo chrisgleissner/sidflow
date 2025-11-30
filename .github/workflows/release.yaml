@@ -396,20 +396,33 @@ jobs:
           
           echo "🚀 Deploying version ${VERSION} to Fly.io production..."
           
-          # Generate environment-specific fly.toml
-          cp fly.toml fly.prd.toml
-          sed -i 's/^app = .*/app = "sidflow-prd"/' fly.prd.toml
+          # Use existing fly.prd.toml with correct app name
+          PRD_APP_NAME=$(grep '^app = ' fly.prd.toml | sed 's/app = //' | tr -d "'\"")
+          echo "Using production app: ${PRD_APP_NAME}"
+          
+          # Check if app exists before attempting deployment
+          if ! flyctl apps list --json | grep -q "\"name\":\"${PRD_APP_NAME}\""; then
+            echo "❌ App '${PRD_APP_NAME}' does not exist on Fly.io"
+            echo ""
+            echo "To create the production app, run:"
+            echo "  flyctl apps create ${PRD_APP_NAME} --org personal"
+            echo ""
+            echo "After creating the app, re-run this workflow."
+            exit 1
+          fi
+          
+          # Update image version in fly.prd.toml
           sed -i "s|image = .*|image = \"ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}\"|" fly.prd.toml
           
           # Deploy
           flyctl deploy \
             --config fly.prd.toml \
-            --app sidflow-prd \
+            --app "${PRD_APP_NAME}" \
             --image "ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}" \
             --strategy rolling \
             --wait-timeout 300 || {
             echo "❌ Deployment failed"
-            echo "Check logs: flyctl logs --app sidflow-prd"
+            echo "Check logs: flyctl logs --app ${PRD_APP_NAME}"
             exit 1
           }
           
@@ -417,11 +430,13 @@ jobs:
 
       - name: Verify Deployment
         run: |
-          echo "Waiting for health check at https://sidflow-prd.fly.dev/api/health..."
+          PRD_APP_NAME=$(grep '^app = ' fly.prd.toml | sed 's/app = //' | tr -d "'\"")
+          PRD_HOSTNAME="${PRD_APP_NAME}.fly.dev"
+          echo "Waiting for health check at https://${PRD_HOSTNAME}/api/health..."
           
           for i in {1..30}; do
             sleep 5
-            if curl -sf https://sidflow-prd.fly.dev/api/health > /dev/null 2>&1; then
+            if curl -sf "https://${PRD_HOSTNAME}/api/health" > /dev/null 2>&1; then
               echo "✅ Production deployment healthy"
               exit 0
             fi
@@ -429,7 +444,7 @@ jobs:
           done
           
           echo "⚠️ Health check timeout (deployment may still be in progress)"
-          echo "Check status: flyctl status --app sidflow-prd"
+          echo "Check status: flyctl status --app ${PRD_APP_NAME}"
 
   # ===== RASPBERRY PI DEPLOYMENTS (OPTIONAL) =====
   # Deploy to staging environment via webhook
