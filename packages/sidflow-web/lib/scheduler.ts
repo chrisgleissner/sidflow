@@ -40,27 +40,24 @@ function parseTimeString(time: string): { hours: number; minutes: number } {
 export function calculateNextRunTime(config: SchedulerConfig, now: Date = new Date()): Date {
   const { hours, minutes } = parseTimeString(config.time);
   
-  // Create a date in the specified timezone
-  // For simplicity, we support UTC and assume other timezones are handled by the server environment
+  // Only support UTC timezone for now. If a non-UTC timezone is provided, throw an error.
+  // For proper timezone support, use a library like 'luxon' or 'date-fns-tz'.
   const nextRun = new Date(now);
   
-  if (config.timezone === 'UTC') {
-    nextRun.setUTCHours(hours, minutes, 0, 0);
-    
-    // If the time has already passed today, schedule for tomorrow
-    if (nextRun.getTime() <= now.getTime()) {
-      nextRun.setUTCDate(nextRun.getUTCDate() + 1);
-    }
-  } else {
-    // For non-UTC timezones, use local time as approximation
-    // A proper implementation would use a timezone library
-    nextRun.setHours(hours, minutes, 0, 0);
-    
-    if (nextRun.getTime() <= now.getTime()) {
-      nextRun.setDate(nextRun.getDate() + 1);
-    }
+  if (config.timezone !== 'UTC') {
+    throw new Error(
+      `[scheduler] Only 'UTC' timezone is supported. Received '${config.timezone}'. ` +
+      "Please set your scheduler timezone to 'UTC'. " +
+      "For proper timezone support, use a library like 'luxon' or 'date-fns-tz'."
+    );
   }
-  
+
+  nextRun.setUTCHours(hours, minutes, 0, 0);
+
+  // If the time has already passed today, schedule for tomorrow
+  if (nextRun.getTime() <= now.getTime()) {
+    nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+  }
   return nextRun;
 }
 
