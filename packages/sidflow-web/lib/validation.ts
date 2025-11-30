@@ -36,7 +36,7 @@ export const ClassifyRequestSchema = z.object({
   forceRebuild: z.boolean().optional(),
   /** Skip songs that are already classified (based on auto-tags.json) */
   skipAlreadyClassified: z.boolean().optional(),
-  /** Delete WAV files after classification (for fly.io deployments) */
+  /** Delete WAV files after classification (to save disk space) */
   deleteWavAfterClassification: z.boolean().optional(),
 });
 

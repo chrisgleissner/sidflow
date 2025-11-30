@@ -15,7 +15,7 @@ export interface SchedulerConfig {
 }
 
 export interface RenderPreferences {
-  /** Whether to preserve WAV files after classification (default: true, false for fly.io) */
+  /** Whether to preserve WAV files after classification (default: true, disable to save disk space) */
   preserveWav: boolean;
   /** Whether to generate FLAC files during classification */
   enableFlac: boolean;

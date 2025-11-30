@@ -101,9 +101,20 @@ export async function POST(request: NextRequest) {
         // Other timezones will use local time as approximation
       }
       
+      // Normalize time format to always use leading zeros (e.g., "6:30" -> "06:30")
+      let normalizedTime = scheduler.time ?? currentPrefs.scheduler?.time ?? '06:00';
+      if (scheduler.time) {
+        const timeMatch = scheduler.time.match(/^(\d{1,2}):(\d{2})$/);
+        if (timeMatch) {
+          const hours = timeMatch[1].padStart(2, '0');
+          const minutes = timeMatch[2];
+          normalizedTime = `${hours}:${minutes}`;
+        }
+      }
+      
       schedulerUpdate = {
         enabled: scheduler.enabled ?? currentPrefs.scheduler?.enabled ?? false,
-        time: scheduler.time ?? currentPrefs.scheduler?.time ?? '06:00',
+        time: normalizedTime,
         timezone: scheduler.timezone ?? currentPrefs.scheduler?.timezone ?? 'UTC',
       };
     }

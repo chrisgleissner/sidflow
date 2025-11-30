@@ -230,6 +230,33 @@ describe('/api/scheduler', () => {
       });
       await POST(resetRequest);
     });
+
+    test('should normalize time format to use leading zeros', async () => {
+      // Submit a time without leading zero
+      const request = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { time: '6:30' }, // Single digit hour
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.scheduler.time).toBe('06:30'); // Should be normalized
+
+      // Reset
+      const resetRequest = new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({
+          scheduler: { enabled: false, time: '06:00' },
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await POST(resetRequest);
+    });
   });
 
   describe('request validation', () => {

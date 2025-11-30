@@ -612,7 +612,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 <span className="text-xs text-foreground">Preserve WAV files after classification</span>
               </label>
               <p className="text-[11px] text-muted-foreground pl-6">
-                Disable for fly.io deployments to save disk space.
+                Disable to save disk space on resource-constrained deployments.
               </p>
             </div>
           </div>
@@ -635,7 +635,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
           </p>
           <p className="text-xs text-muted-foreground">
             Export all classification data to a JSON file, or import classifications from a previous export.
-            Useful for bootstrapping fly.io deployments from local classification runs.
+            Useful for bootstrapping new deployments from local classification runs.
           </p>
           
           <div className="flex flex-wrap gap-2">

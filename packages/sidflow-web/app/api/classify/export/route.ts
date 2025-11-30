@@ -1,7 +1,7 @@
 /**
  * Classification Export API endpoint
  * Exports all classification data (auto-tags.json files) to a single JSON file
- * for bootstrapping fly.io deployments from local classification runs
+ * for bootstrapping new deployments from local classification runs
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSidflowConfig } from '@/lib/server-env';
