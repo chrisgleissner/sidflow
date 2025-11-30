@@ -91,9 +91,11 @@ test.describe('Accessibility Audit', () => {
         test('should support arrow keys in tab navigation', async ({ page }) => {
             await page.goto('/?tab=play');
             await page.waitForLoadState('networkidle');
-
-            // Find tab list
+            
+            // Wait for tab list to be visible before interacting
             const tabList = page.locator('[role="tablist"]').first();
+            await tabList.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+            
             if (await tabList.isVisible()) {
                 const tabs = await tabList.locator('[role="tab"]').all();
                 console.log(`[A11y] Found ${tabs.length} tabs`);
@@ -124,6 +126,8 @@ test.describe('Accessibility Audit', () => {
         test('should have proper ARIA labels on interactive elements', async ({ page }) => {
             await page.goto('/?tab=play');
             await page.waitForLoadState('networkidle');
+            // Wait for buttons to be available
+            await page.waitForSelector('button', { timeout: 10000 }).catch(() => {});
 
             // Check buttons without text have aria-label
             const buttons = await page.locator('button').all();
@@ -150,6 +154,8 @@ test.describe('Accessibility Audit', () => {
         test('should use proper ARIA roles for custom components', async ({ page }) => {
             await page.goto('/?tab=play');
             await page.waitForLoadState('networkidle');
+            // Wait for tablist to be available (indicates page is fully loaded)
+            await page.waitForSelector('[role="tablist"]', { timeout: 10000 }).catch(() => {});
 
             // Check for proper roles
             const roles = ['button', 'dialog', 'tablist', 'tab', 'tabpanel', 'navigation'];
