@@ -1,15 +1,33 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { classifyPath, getSidCollectionPaths, getClassifyProgress, controlClassification, type ClassifyProgressWithStorage } from '@/lib/api-client';
+import { Input } from '@/components/ui/input';
+import { 
+  classifyPath, 
+  getSidCollectionPaths, 
+  getClassifyProgress, 
+  controlClassification, 
+  getSchedulerConfig,
+  updateSchedulerConfig,
+  exportClassifications,
+  importClassifications,
+  type ClassifyProgressWithStorage,
+  type SchedulerConfig,
+  type RenderPrefs,
+  type SchedulerStatus,
+  type ClassificationExportData,
+} from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 
 interface ClassifyTabProps {
   onStatusChange: (status: string, isError?: boolean) => void;
 }
+
+/** Supported export format version for import validation */
+const SUPPORTED_EXPORT_VERSION = '1.0';
 
 const CLASSIFICATION_STEPS = [
   {
@@ -69,6 +87,25 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   const [forceRebuild, setForceRebuild] = useState(false);
   const [progress, setProgress] = useState<ClassifyProgressWithStorage | null>(null);
   const [, setTick] = useState(0);
+  
+  // Scheduler state
+  const [schedulerConfig, setSchedulerConfig] = useState<SchedulerConfig>({
+    enabled: false,
+    time: '06:00',
+    timezone: 'UTC',
+  });
+  const [renderPrefs, setRenderPrefs] = useState<RenderPrefs>({
+    preserveWav: true,
+    enableFlac: false,
+    enableM4a: false,
+  });
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [isSavingScheduler, setIsSavingScheduler] = useState(false);
+  
+  // Export/Import state
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isRunning = progress?.isActive ?? false;
   const percent = progress?.percentComplete ?? 0;
@@ -105,6 +142,27 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
     };
   }, []);
 
+  // Load scheduler config on mount
+  useEffect(() => {
+    let mounted = true;
+    const loadScheduler = async () => {
+      try {
+        const response = await getSchedulerConfig();
+        if (mounted && response.success) {
+          setSchedulerConfig(response.data.scheduler);
+          setRenderPrefs(response.data.renderPrefs);
+          setSchedulerStatus(response.data.status);
+        }
+      } catch (error) {
+        console.error('[ClassifyTab] Failed to load scheduler config', error);
+      }
+    };
+    void loadScheduler();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const refreshProgress = useCallback(async () => {
     const response = await getClassifyProgress();
     if (response.success) {
@@ -126,6 +184,82 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
     }, 3000);
     return () => clearInterval(interval);
   }, [isRunning]);
+
+  // Scheduler handlers
+  const handleSaveScheduler = useCallback(async () => {
+    setIsSavingScheduler(true);
+    try {
+      const response = await updateSchedulerConfig({
+        scheduler: schedulerConfig,
+        renderPrefs: renderPrefs,
+      });
+      if (response.success) {
+        setSchedulerConfig(response.data.scheduler);
+        setRenderPrefs(response.data.renderPrefs);
+        setSchedulerStatus(response.data.status);
+        onStatusChange('Scheduler settings saved');
+      } else {
+        onStatusChange(`Failed to save scheduler: ${formatApiError(response)}`, true);
+      }
+    } catch (error) {
+      onStatusChange(`Failed to save scheduler: ${error instanceof Error ? error.message : String(error)}`, true);
+    } finally {
+      setIsSavingScheduler(false);
+    }
+  }, [schedulerConfig, renderPrefs, onStatusChange]);
+
+  // Export handler
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const blob = await exportClassifications();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sidflow-classifications-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      onStatusChange('Classifications exported successfully');
+    } catch (error) {
+      onStatusChange(`Export failed: ${error instanceof Error ? error.message : String(error)}`, true);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [onStatusChange]);
+
+  // Import handler
+  const handleImport = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as ClassificationExportData;
+      
+      // Validate the data
+      if (data.version !== SUPPORTED_EXPORT_VERSION) {
+        throw new Error(`Unsupported version: ${data.version}. Expected: ${SUPPORTED_EXPORT_VERSION}`);
+      }
+      
+      const response = await importClassifications(data);
+      if (response.success) {
+        onStatusChange(`Imported ${response.data.entriesWritten} classifications to ${response.data.filesWritten} files`);
+      } else {
+        onStatusChange(`Import failed: ${formatApiError(response)}`, true);
+      }
+    } catch (error) {
+      onStatusChange(`Import failed: ${error instanceof Error ? error.message : String(error)}`, true);
+    } finally {
+      setIsImporting(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [onStatusChange]);
 
   const handleClassify = useCallback(async () => {
     const target = path || defaultPath;
@@ -415,6 +549,123 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 <p className="text-xs text-muted-foreground">{step.detail}</p>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Scheduler Configuration */}
+        <div className="rounded border border-border/60 bg-muted/30 p-3 space-y-3">
+          <p className="text-xs font-semibold tracking-tight text-muted-foreground">
+            NIGHTLY SCHEDULER
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Automatically run fetch + classify at a scheduled time each day.
+          </p>
+          
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  data-testid="scheduler-enabled-checkbox"
+                  checked={schedulerConfig.enabled}
+                  onChange={(e) => setSchedulerConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border bg-input text-accent focus:ring-2 focus:ring-ring cursor-pointer"
+                />
+                <span className="text-xs text-foreground">Enable nightly scheduler</span>
+              </label>
+              
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground">Time (UTC):</label>
+                <Input
+                  type="time"
+                  data-testid="scheduler-time-input"
+                  value={schedulerConfig.time}
+                  onChange={(e) => setSchedulerConfig(prev => ({ ...prev, time: e.target.value }))}
+                  className="w-28 h-8 text-xs"
+                  disabled={!schedulerConfig.enabled}
+                />
+              </div>
+              
+              {schedulerStatus && (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>Status: {schedulerStatus.isActive ? '🟢 Active' : '⚪ Inactive'}</p>
+                  {schedulerStatus.nextRun && (
+                    <p>Next run: {new Date(schedulerStatus.nextRun).toLocaleString()}</p>
+                  )}
+                  {schedulerStatus.lastRun && (
+                    <p>Last run: {new Date(schedulerStatus.lastRun).toLocaleString()}</p>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">Render Preferences</p>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  data-testid="preserve-wav-checkbox"
+                  checked={renderPrefs.preserveWav}
+                  onChange={(e) => setRenderPrefs(prev => ({ ...prev, preserveWav: e.target.checked }))}
+                  className="h-4 w-4 rounded border-border bg-input text-accent focus:ring-2 focus:ring-ring cursor-pointer"
+                />
+                <span className="text-xs text-foreground">Preserve WAV files after classification</span>
+              </label>
+              <p className="text-[11px] text-muted-foreground pl-6">
+                Disable for fly.io deployments to save disk space.
+              </p>
+            </div>
+          </div>
+          
+          <Button
+            onClick={handleSaveScheduler}
+            disabled={isSavingScheduler}
+            variant="secondary"
+            size="sm"
+            data-testid="save-scheduler-button"
+          >
+            {isSavingScheduler ? 'Saving...' : 'Save Scheduler Settings'}
+          </Button>
+        </div>
+
+        {/* Export/Import Classifications */}
+        <div className="rounded border border-border/60 bg-muted/30 p-3 space-y-3">
+          <p className="text-xs font-semibold tracking-tight text-muted-foreground">
+            EXPORT / IMPORT CLASSIFICATIONS
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Export all classification data to a JSON file, or import classifications from a previous export.
+            Useful for bootstrapping fly.io deployments from local classification runs.
+          </p>
+          
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={handleExport}
+              disabled={isExporting || isRunning}
+              variant="secondary"
+              size="sm"
+              data-testid="export-classifications-button"
+            >
+              {isExporting ? 'Exporting...' : 'Export Classifications'}
+            </Button>
+            
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".json"
+              onChange={handleImport}
+              className="hidden"
+              data-testid="import-file-input"
+            />
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting || isRunning}
+              variant="outline"
+              size="sm"
+              data-testid="import-classifications-button"
+            >
+              {isImporting ? 'Importing...' : 'Import Classifications'}
+            </Button>
           </div>
         </div>
       </CardContent>

@@ -531,3 +531,89 @@ export async function reorderPlaylistTracks(id: string, trackOrder: string[]) {
   });
   return response.json();
 }
+
+// Scheduler API
+
+export interface SchedulerConfig {
+  enabled: boolean;
+  time: string;
+  timezone: string;
+}
+
+export interface RenderPrefs {
+  preserveWav: boolean;
+  enableFlac: boolean;
+  enableM4a: boolean;
+}
+
+export interface SchedulerStatus {
+  isActive: boolean;
+  lastRun: string | null;
+  nextRun: string | null;
+  isPipelineRunning: boolean;
+}
+
+export interface SchedulerResponse {
+  scheduler: SchedulerConfig;
+  renderPrefs: RenderPrefs;
+  status: SchedulerStatus;
+}
+
+export async function getSchedulerConfig(): Promise<ApiResponse<SchedulerResponse>> {
+  const response = await fetch(`${API_BASE}/scheduler`, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.json();
+}
+
+export async function updateSchedulerConfig(payload: {
+  scheduler?: Partial<SchedulerConfig>;
+  renderPrefs?: Partial<RenderPrefs>;
+}): Promise<ApiResponse<SchedulerResponse>> {
+  const response = await fetch(`${API_BASE}/scheduler`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+}
+
+// Classification Export/Import API
+
+export interface ClassificationEntry {
+  e: number;
+  m: number;
+  c: number;
+  p?: number;
+  source: string;
+}
+
+export interface ClassificationExportData {
+  version: '1.0';
+  exportedAt: string;
+  classificationDepth: number;
+  totalEntries: number;
+  classifications: Record<string, ClassificationEntry>;
+}
+
+export async function exportClassifications(): Promise<Blob> {
+  const response = await fetch(`${API_BASE}/classify/export`, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.details || error.error || 'Export failed');
+  }
+  return response.blob();
+}
+
+export async function importClassifications(data: ClassificationExportData): Promise<ApiResponse<{ filesWritten: number; entriesWritten: number }>> {
+  const response = await fetch(`${API_BASE}/classify/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return response.json();
+}
