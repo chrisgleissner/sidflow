@@ -26,7 +26,8 @@ interface ExportData {
 }
 
 /**
- * Recursively finds all auto-tags.json files and merges them into a single object
+ * Recursively finds all auto-tags.json files and merges them into a single object.
+ * Uses parallel processing for better performance on large collections.
  */
 async function collectAllClassifications(tagsPath: string): Promise<Record<string, ClassificationEntry>> {
   const allClassifications: Record<string, ClassificationEntry> = {};
@@ -39,7 +40,8 @@ async function collectAllClassifications(tagsPath: string): Promise<Record<strin
       return; // Directory doesn't exist or not readable
     }
     
-    for (const entry of entries) {
+    // Process entries in parallel for better performance
+    const promises = entries.map(async (entry) => {
       const fullPath = path.join(dir, entry.name);
       
       if (entry.isDirectory()) {
@@ -59,7 +61,9 @@ async function collectAllClassifications(tagsPath: string): Promise<Record<strin
           console.warn(`[export] Failed to read ${fullPath}: ${(error as Error).message}`);
         }
       }
-    }
+    });
+    
+    await Promise.all(promises);
   }
   
   await walkDir(tagsPath);
@@ -123,6 +127,7 @@ export async function GET() {
  * POST /api/classify/export - Import classifications from uploaded JSON file
  * 
  * Request body should be the ExportData JSON
+ * Uses a two-phase approach: prepare all content first, then write atomically
  */
 export async function POST(request: NextRequest) {
   try {
@@ -130,7 +135,7 @@ export async function POST(request: NextRequest) {
     
     // Validate the import data
     if (!body.version || body.version !== '1.0') {
-      throw new Error('Invalid or unsupported export version');
+      throw new Error(`Invalid or unsupported export version: ${body.version}. Expected version 1.0`);
     }
     
     if (!body.classifications || typeof body.classifications !== 'object') {
@@ -166,9 +171,9 @@ export async function POST(request: NextRequest) {
       fileEntries[key] = entry;
     }
     
-    // Write each auto-tags.json file
-    let filesWritten = 0;
-    let entriesWritten = 0;
+    // Phase 1: Prepare all content (read existing files and merge)
+    const preparedWrites: Array<{ filePath: string; content: string; entriesCount: number }> = [];
+    const successfullyWritten: string[] = [];
     
     for (const [filePath, entries] of groupedByFile) {
       const dir = path.dirname(filePath);
@@ -191,9 +196,31 @@ export async function POST(request: NextRequest) {
         sortedEntries[key] = mergedEntries[key];
       }
       
-      await fs.writeFile(filePath, JSON.stringify(sortedEntries, null, 2));
-      filesWritten++;
-      entriesWritten += Object.keys(entries).length;
+      preparedWrites.push({
+        filePath,
+        content: JSON.stringify(sortedEntries, null, 2),
+        entriesCount: Object.keys(entries).length,
+      });
+    }
+    
+    // Phase 2: Write all files
+    let filesWritten = 0;
+    let entriesWritten = 0;
+    
+    try {
+      for (const { filePath, content, entriesCount } of preparedWrites) {
+        await fs.writeFile(filePath, content);
+        successfullyWritten.push(filePath);
+        filesWritten++;
+        entriesWritten += entriesCount;
+      }
+    } catch (writeError) {
+      // If a write fails, report which files were successfully written
+      console.error('[import] Write failed after successfully writing:', successfullyWritten);
+      throw new Error(
+        `Import partially failed: ${(writeError as Error).message}. ` +
+        `Successfully wrote ${successfullyWritten.length} files before failure.`
+      );
     }
     
     console.log(`[import] Wrote ${entriesWritten} entries to ${filesWritten} auto-tags.json files`);

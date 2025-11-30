@@ -1175,6 +1175,58 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+  
+  // Cache for auto-tags.json files to avoid repeated reads for songs in the same directory
+  const autoTagsCache = new Map<string, Record<string, unknown> | null>();
+  
+  /**
+   * Check if a song is already classified using cached auto-tags data.
+   * This is more efficient than calling isAlreadyClassified repeatedly
+   * because many songs share the same auto-tags.json file.
+   */
+  const checkAlreadyClassified = async (
+    sidFile: string,
+    songIndex?: number
+  ): Promise<boolean> => {
+    const relativePath = resolveRelativeSidPath(plan.sidPath, sidFile);
+    const autoTagsFile = resolveAutoTagFilePath(
+      plan.tagsPath,
+      relativePath,
+      plan.classificationDepth
+    );
+    
+    // Check cache first
+    let tags = autoTagsCache.get(autoTagsFile);
+    if (tags === undefined) {
+      // Not in cache, load and cache it
+      if (await pathExists(autoTagsFile)) {
+        try {
+          const content = await readFile(autoTagsFile, "utf8");
+          tags = JSON.parse(content) as Record<string, unknown>;
+        } catch (error) {
+          classifyLogger.warn(`Error reading auto-tags for ${relativePath}: ${(error as Error).message}`);
+          tags = null;
+        }
+      } else {
+        tags = null;
+      }
+      autoTagsCache.set(autoTagsFile, tags);
+    }
+    
+    if (!tags) {
+      return false;
+    }
+    
+    const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
+    const key = songIndex !== undefined ? `${baseKey}:${songIndex}` : baseKey;
+    
+    if (key in tags) {
+      const entry = tags[key] as Record<string, unknown>;
+      return entry && (typeof entry.e === "number" || typeof entry.m === "number" || typeof entry.c === "number");
+    }
+    
+    return false;
+  };
 
   const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
     const existing = songlengthPromises.get(sidFile);
@@ -1227,10 +1279,9 @@ export async function generateAutoTags(
       }
       metadataProcessed += 1;
 
-      // Skip songs that are already classified if requested
+      // Skip songs that are already classified if requested (using cached check)
       if (skipAlreadyClassified && !plan.forceRebuild) {
-        const alreadyClassified = await isAlreadyClassified(
-          plan,
+        const alreadyClassified = await checkAlreadyClassified(
           sidFile,
           songCount > 1 ? songIndex : undefined
         );
@@ -1439,20 +1490,32 @@ export async function generateAutoTags(
   }
 
   // Delete WAV files if requested (for fly.io deployments with limited storage)
+  // Uses parallel deletion with concurrency limit for better performance
   let deletedWavCount = 0;
   if (deleteWavAfterClassification && renderedWavFiles.length > 0) {
     classifyLogger.info(`Cleaning up ${renderedWavFiles.length} WAV files after classification...`);
-    for (const wavFile of renderedWavFiles) {
-      try {
-        await rm(wavFile, { force: true });
-        // Also delete the hash file if it exists
-        const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
-        await rm(hashFile, { force: true });
-        deletedWavCount += 1;
-      } catch (error) {
-        classifyLogger.warn(`Failed to delete ${wavFile}: ${(error as Error).message}`);
+    
+    // Delete files in parallel with a concurrency limit
+    const DELETION_CONCURRENCY = 10;
+    let successCount = 0;
+    
+    await runConcurrent(
+      renderedWavFiles,
+      DELETION_CONCURRENCY,
+      async (wavFile) => {
+        try {
+          await rm(wavFile, { force: true });
+          // Also delete the hash file if it exists
+          const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
+          await rm(hashFile, { force: true });
+          successCount += 1;
+        } catch (error) {
+          classifyLogger.warn(`Failed to delete ${wavFile}: ${(error as Error).message}`);
+        }
       }
-    }
+    );
+    
+    deletedWavCount = successCount;
     classifyLogger.info(`Deleted ${deletedWavCount} WAV files`);
   }
 
