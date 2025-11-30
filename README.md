@@ -162,6 +162,9 @@ The admin console requires authentication for security:
 
 ⚠️ **Security Warning:** The default password `password` is for development convenience only. **Always set a strong `SIDFLOW_ADMIN_PASSWORD` in production.**
 
+- Local runs: place `SIDFLOW_ADMIN_PASSWORD=<strong-password>` in a root-level `.env`; launch scripts (`scripts/start-release-server.sh`, deploy/install scripts) will load it automatically.
+- Fly.io GitHub Actions deploys: add repository secret `SIDFLOW_ADMIN_PASSWORD` (optionally `SIDFLOW_ADMIN_PASSWORD_STG` / `SIDFLOW_ADMIN_PASSWORD_PRD`) and the workflow will push it to Fly secrets before deploying.
+
 For full authentication details, see [Web UI Documentation](./doc/web-ui.md).
 
 ### Public Player Features

@@ -7,6 +7,14 @@ STANDALONE_DIR="${ROOT_DIR}/packages/sidflow-web/.next/standalone"
 STANDALONE_SERVER_DIR="${STANDALONE_DIR}/packages/sidflow-web"
 SERVER_ENTRY="${STANDALONE_SERVER_DIR}/server.js"
 
+# Load local environment overrides (e.g., SIDFLOW_ADMIN_PASSWORD) from .env if present
+if [[ -f "${ROOT_DIR}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "${ROOT_DIR}/.env"
+  set +a
+fi
+
 if [[ ! -f "${SERVER_ENTRY}" ]]; then
   cat >&2 <<'EOF'
 FATAL: Production build not found.

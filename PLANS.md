@@ -774,6 +774,13 @@ To prevent uncontrolled growth of this file:
 - [x] 5.9 — Cleaned up unused `sidflow_data` volume (only keeping workspace volume)
 - [x] 5.10 — Deployed successfully: Machine running at https://sidflow-stg.fly.dev
 
+**Phase 6: Prepare Production Deployment (2025-11-29)**
+- [x] 6.1 — Align `fly.prd.toml` with canonical config (volume at `/mnt/data`, env, services, health checks)
+- [x] 6.2 — Sync `fly.stg.toml` structure and app naming with production template for consistency
+- [x] 6.3 — Update Fly deploy scripts for single-volume expectation and production defaults (image tag handling, volume checks)
+- [x] 6.4 — Verify deployment notes for production (secrets, volume sizing) and ensure ready-to-run configs
+- [x] 6.5 — Source `SIDFLOW_ADMIN_PASSWORD` from `.env` locally and GitHub secrets in Fly deploy workflow
+
 **Progress log**
 - 2025-11-27 — Task created. Created comprehensive Fly.io deployment infrastructure:
   - **Created**: `fly.toml` with 512MB RAM, 1 shared CPU, London region, volumes for persistent data
@@ -851,6 +858,9 @@ To prevent uncontrolled growth of this file:
   - ✅ Next.js server starts successfully
   - ⚠️ **BLOCKED**: Fly.io deployment times out after 5 minutes (build is slow on their infrastructure)
   - **Next step**: Tag image and push to GHCR, then deploy using pre-built image
+- 2025-11-29 — Starting production deployment prep: align Fly.io TOML files with canonical config, update deploy scripts, and document production-ready settings before running full deployment
+- 2025-11-29 — Synced `fly.prd.toml`/`fly.stg.toml` to canonical config (single volume at /mnt/data, health checks, env), added guarded app/volume auto-create paths to `release.yaml` for Fly deploys, and updated `fly-deploy.sh` volume guidance; production app/volume still need creation before CI deploy can succeed. Tests not run (config-only changes); run release workflow after provisioning.
+- 2025-11-29 — Wired admin password sourcing: local deploy scripts load `.env` for `SIDFLOW_ADMIN_PASSWORD`; release workflow now requires GitHub secret `SIDFLOW_ADMIN_PASSWORD` (optional stg/prd overrides) and pushes it to Fly secrets before staging/prod deploys. Tests not run (config-only changes).
 
 **Follow-ups / future work**
 - **IMMEDIATE**: Push image to GHCR and deploy to Fly.io using pre-built image (avoid slow Fly.io builds)

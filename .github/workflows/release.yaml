@@ -288,7 +288,7 @@ jobs:
       needs.docker.result == 'success'
     environment:
       name: staging-fly
-      url: https://sidflow-stg-polished-waterfall-1635.fly.dev
+      url: https://sidflow-stg.fly.dev
     
     steps:
       - name: Checkout
@@ -301,6 +301,7 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           VERSION: ${{ needs.docker.outputs.version }}
+          ADMIN_PASSWORD: ${{ secrets.SIDFLOW_ADMIN_PASSWORD_STG || secrets.SIDFLOW_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           
@@ -312,9 +313,9 @@ jobs:
             echo "3. Create apps:"
             echo "   flyctl apps create sidflow-stg --region lhr"
             echo "   flyctl apps create sidflow-prd --region lhr"
-            echo "4. Create volumes:"
-            echo "   flyctl volumes create sidflow_data --region lhr --size 20 --app sidflow-stg"
-            echo "   flyctl volumes create sidflow_workspace --region lhr --size 50 --app sidflow-stg"
+            echo "4. Create volumes (one per app, mounted at /mnt/data):"
+            echo "   flyctl volumes create sidflow_data --region lhr --size 3 --app sidflow-stg"
+            echo "   flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow-prd"
             echo "5. Get API token: flyctl auth token"
             echo "6. Add FLY_API_TOKEN secret to this repository"
             exit 0
@@ -324,7 +325,48 @@ jobs:
           
           # Use existing fly.stg.toml with correct app name
           STG_APP_NAME=$(grep '^app = ' fly.stg.toml | sed 's/app = //' | tr -d "'\"")
+          PRIMARY_REGION=$(grep '^primary_region' fly.stg.toml | awk -F'"' '{print $2}' | head -n1)
+          PRIMARY_REGION=${PRIMARY_REGION:-lhr}
+          MOUNT_NAME=$(grep -A2 "\[\[mounts\]\]" fly.stg.toml | grep 'source' | head -n1 | awk -F'= ' '{print $2}' | tr -d '"')
+          MOUNT_NAME=${MOUNT_NAME:-sidflow_data}
+          ORG_NAME=${FLY_ORG:-personal}
           echo "Using staging app: ${STG_APP_NAME}"
+          
+          # Ensure app exists (optional auto-create when FLY_CREATE_APPS=true)
+          if ! flyctl apps list --json | jq -er ".[] | select(.Name==\"${STG_APP_NAME}\")" > /dev/null; then
+            if [[ "${FLY_CREATE_APPS:-false}" == "true" ]]; then
+              echo "App ${STG_APP_NAME} not found. Creating in org '${ORG_NAME}' (region ${PRIMARY_REGION})..."
+              flyctl apps create "${STG_APP_NAME}" --region "${PRIMARY_REGION}" --org "${ORG_NAME}"
+            else
+              echo "❌ App '${STG_APP_NAME}' does not exist."
+              echo "Create it with: flyctl apps create ${STG_APP_NAME} --region ${PRIMARY_REGION} --org ${ORG_NAME}"
+              echo "Or set FLY_CREATE_APPS=true and optionally FLY_ORG=<org> to auto-create in CI."
+              exit 1
+            fi
+          fi
+
+          # Ensure volume exists (optional auto-create when FLY_CREATE_VOLUMES=true)
+          if ! flyctl volumes list --app "${STG_APP_NAME}" --json | jq -er ".[] | select(.Name==\"${MOUNT_NAME}\")" > /dev/null; then
+            VOLUME_SIZE="${FLY_VOLUME_SIZE_STG:-3}"
+            if [[ "${FLY_CREATE_VOLUMES:-false}" == "true" ]]; then
+              echo "Volume ${MOUNT_NAME} not found. Creating size ${VOLUME_SIZE}GB in ${PRIMARY_REGION}..."
+              flyctl volumes create "${MOUNT_NAME}" --region "${PRIMARY_REGION}" --size "${VOLUME_SIZE}" --app "${STG_APP_NAME}"
+            else
+              echo "❌ Volume '${MOUNT_NAME}' not found for ${STG_APP_NAME}."
+              echo "Create it with: flyctl volumes create ${MOUNT_NAME} --region ${PRIMARY_REGION} --size ${VOLUME_SIZE} --app ${STG_APP_NAME}"
+              echo "Or set FLY_CREATE_VOLUMES=true and optionally FLY_VOLUME_SIZE_STG=${VOLUME_SIZE} to auto-create in CI."
+              exit 1
+            fi
+          fi
+
+          if [[ -z "${ADMIN_PASSWORD:-}" ]]; then
+            echo "❌ SIDFLOW_ADMIN_PASSWORD GitHub secret is not set."
+            echo "Add SIDFLOW_ADMIN_PASSWORD (or SIDFLOW_ADMIN_PASSWORD_STG) to repository secrets before deploying."
+            exit 1
+          fi
+
+          echo "Updating admin password secret in Fly.io..."
+          flyctl secrets set SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" --app "${STG_APP_NAME}" >/dev/null
           
           # Update image version in fly.stg.toml
           sed -i "s|image = .*|image = \"ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}\"|" fly.stg.toml
@@ -386,6 +428,7 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           VERSION: ${{ needs.docker.outputs.version }}
+          ADMIN_PASSWORD: ${{ secrets.SIDFLOW_ADMIN_PASSWORD_PRD || secrets.SIDFLOW_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           
@@ -398,18 +441,48 @@ jobs:
           
           # Use existing fly.prd.toml with correct app name
           PRD_APP_NAME=$(grep '^app = ' fly.prd.toml | sed 's/app = //' | tr -d "'\"")
+          PRIMARY_REGION=$(grep '^primary_region' fly.prd.toml | awk -F'"' '{print $2}' | head -n1)
+          PRIMARY_REGION=${PRIMARY_REGION:-lhr}
+          MOUNT_NAME=$(grep -A2 "\[\[mounts\]\]" fly.prd.toml | grep 'source' | head -n1 | awk -F'= ' '{print $2}' | tr -d '"')
+          MOUNT_NAME=${MOUNT_NAME:-sidflow_data}
+          ORG_NAME=${FLY_ORG:-personal}
           echo "Using production app: ${PRD_APP_NAME}"
           
-          # Check if app exists before attempting deployment
-          if ! flyctl apps list --json | grep -q "\"name\":\"${PRD_APP_NAME}\""; then
-            echo "❌ App '${PRD_APP_NAME}' does not exist on Fly.io"
-            echo ""
-            echo "To create the production app, run:"
-            echo "  flyctl apps create ${PRD_APP_NAME} --org personal"
-            echo ""
-            echo "After creating the app, re-run this workflow."
+          # Ensure app exists (optional auto-create when FLY_CREATE_APPS=true)
+          if ! flyctl apps list --json | jq -er ".[] | select(.Name==\"${PRD_APP_NAME}\")" > /dev/null; then
+            if [[ "${FLY_CREATE_APPS:-false}" == "true" ]]; then
+              echo "App ${PRD_APP_NAME} not found. Creating in org '${ORG_NAME}' (region ${PRIMARY_REGION})..."
+              flyctl apps create "${PRD_APP_NAME}" --region "${PRIMARY_REGION}" --org "${ORG_NAME}"
+            else
+              echo "❌ App '${PRD_APP_NAME}' does not exist on Fly.io."
+              echo "Create it with: flyctl apps create ${PRD_APP_NAME} --region ${PRIMARY_REGION} --org ${ORG_NAME}"
+              echo "Or set FLY_CREATE_APPS=true and optionally FLY_ORG=<org> to auto-create in CI."
+              exit 1
+            fi
+          fi
+
+          # Ensure volume exists (optional auto-create when FLY_CREATE_VOLUMES=true)
+          if ! flyctl volumes list --app "${PRD_APP_NAME}" --json | jq -er ".[] | select(.Name==\"${MOUNT_NAME}\")" > /dev/null; then
+            VOLUME_SIZE="${FLY_VOLUME_SIZE_PRD:-10}"
+            if [[ "${FLY_CREATE_VOLUMES:-false}" == "true" ]]; then
+              echo "Volume ${MOUNT_NAME} not found. Creating size ${VOLUME_SIZE}GB in ${PRIMARY_REGION}..."
+              flyctl volumes create "${MOUNT_NAME}" --region "${PRIMARY_REGION}" --size "${VOLUME_SIZE}" --app "${PRD_APP_NAME}"
+            else
+              echo "❌ Volume '${MOUNT_NAME}' not found for ${PRD_APP_NAME}."
+              echo "Create it with: flyctl volumes create ${MOUNT_NAME} --region ${PRIMARY_REGION} --size ${VOLUME_SIZE} --app ${PRD_APP_NAME}"
+              echo "Or set FLY_CREATE_VOLUMES=true and optionally FLY_VOLUME_SIZE_PRD=${VOLUME_SIZE} to auto-create in CI."
+              exit 1
+            fi
+          fi
+
+          if [[ -z "${ADMIN_PASSWORD:-}" ]]; then
+            echo "❌ SIDFLOW_ADMIN_PASSWORD GitHub secret is not set."
+            echo "Add SIDFLOW_ADMIN_PASSWORD (or SIDFLOW_ADMIN_PASSWORD_PRD) to repository secrets before deploying."
             exit 1
           fi
+
+          echo "Updating admin password secret in Fly.io..."
+          flyctl secrets set SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" --app "${PRD_APP_NAME}" >/dev/null
           
           # Update image version in fly.prd.toml
           sed -i "s|image = .*|image = \"ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}\"|" fly.prd.toml

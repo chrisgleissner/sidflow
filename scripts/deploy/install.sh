@@ -35,6 +35,14 @@
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Load local overrides (including SIDFLOW_ADMIN_PASSWORD) from .env if present
+if [[ -f "${ROOT_DIR}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "${ROOT_DIR}/.env"
+  set +a
+fi
+
 # Default values
 INSTALL_DIR="/opt/sidflow"
 IMAGE_TAG="latest"

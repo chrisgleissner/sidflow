@@ -140,9 +140,8 @@ check_volumes() {
     if [[ -z "${volumes}" ]]; then
         log_warning "No volumes found for ${app_name}"
         log_info "Create volumes with:"
-        log_info "  flyctl volumes create sidflow_data --region ${REGION} --size 20 --app ${app_name}"
-        log_info "  flyctl volumes create sidflow_workspace --region ${REGION} --size 50 --app ${app_name}"
-        log_warning "Deployment will continue but may fail without volumes"
+        log_info "  flyctl volumes create sidflow_data --region ${REGION} --size 10 --app ${app_name}"
+        log_warning "Deployment will continue but may fail without the sidflow_data volume mounted at /mnt/data"
     else
         log_success "Volumes exist for ${app_name}"
     fi

@@ -36,6 +36,10 @@ This guide covers deploying SIDFlow to Fly.io, which is now the default deployme
    flyctl volumes create sidflow_data --region lhr --size 10 --app sidflow-prd
    ```
 
+5. **Set GitHub secret for admin password** (one-time):
+   - Add repository secret `SIDFLOW_ADMIN_PASSWORD` (or environment-specific `SIDFLOW_ADMIN_PASSWORD_STG` / `SIDFLOW_ADMIN_PASSWORD_PRD`).
+   - The release workflow syncs this secret into Fly via `flyctl secrets set SIDFLOW_ADMIN_PASSWORD=...` before deploying.
+
 ## Deployment Methods
 
 ### Method 1: Automatic Deployment via GitHub Actions (Recommended)

@@ -40,6 +40,7 @@ See [doc/fly-deployment.md](../../doc/fly-deployment.md) for detailed Fly.io dep
 
 See [doc/fly-deployment.md](../../doc/fly-deployment.md) for complete guide including:
 - Prerequisites and setup
+- Setting `SIDFLOW_ADMIN_PASSWORD` as a GitHub secret (auto-synced to Fly secrets during CI deploys)
 - Automatic GitHub Actions deployment
 - Manual CLI deployment
 - Monitoring and operations
