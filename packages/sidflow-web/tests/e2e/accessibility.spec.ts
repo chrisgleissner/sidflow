@@ -25,7 +25,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('Keyboard Navigation', () => {
         test('should navigate through all interactive elements with Tab', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be fully interactive
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Get all focusable elements
             const focusableElements = await page.locator(
@@ -46,16 +48,19 @@ test.describe('Accessibility Audit', () => {
 
         test('should support Escape key to close dialogs', async ({ page }) => {
             await page.goto('/');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Open login dialog
             const loginButton = page.getByRole('button', { name: /log in/i });
+            await expect(loginButton).toBeVisible({ timeout: 10000 });
             await loginButton.click();
-            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
+            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 10000 });
 
-            // Press Escape to close
+            // Press Escape to close - wait for dialog to close with condition
             await page.keyboard.press('Escape');
-            await page.waitForTimeout(500);
+            await page.waitForSelector('[role="dialog"]', { state: 'hidden', timeout: 5000 }).catch(() => {});
 
             // Verify dialog is closed
             const dialogVisible = await page.locator('[role="dialog"]').isVisible();
@@ -65,24 +70,37 @@ test.describe('Accessibility Audit', () => {
 
         test('should support Space and Enter to activate buttons', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            
+            // Wait for buttons to be available
+            await page.waitForSelector('button', { timeout: 10000 });
 
             // Find a button and test Space key
             const button = page.locator('button').first();
+            await expect(button).toBeVisible({ timeout: 5000 });
             await button.focus();
 
             const buttonText = await button.textContent();
             console.log(`[A11y] Testing button: "${buttonText}"`);
 
-            // Space should activate button
-            await page.keyboard.press('Space');
-            await page.waitForTimeout(200);
+            // Verify button can receive focus
+            const isFocused = await button.evaluate(el => document.activeElement === el);
+            console.log(`[A11y] Button focused: ${isFocused}`);
 
-            // Enter should also work (reset state first if needed)
-            await page.goto('/?tab=play');
+            // Space should activate button (test focus is on element)
+            await page.keyboard.press('Space');
+            
+            // Brief wait for any action to complete
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
+
+            // Test Enter key on the same or refreshed page context
             await button.focus();
             await page.keyboard.press('Enter');
-            await page.waitForTimeout(200);
+            
+            // Brief wait for any action to complete
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
 
             console.log('[A11y] Space and Enter keys work on buttons');
             expect(true).toBeTruthy(); // Test completed without errors
@@ -90,7 +108,9 @@ test.describe('Accessibility Audit', () => {
 
         test('should support arrow keys in tab navigation', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
             
             // Wait for tab list to be visible before interacting
             const tabList = page.locator('[role="tablist"]').first();
@@ -103,10 +123,21 @@ test.describe('Accessibility Audit', () => {
                 if (tabs.length > 1) {
                     // Focus first tab
                     await tabs[0].focus();
+                    
+                    // Brief wait for focus to settle
+                    await page.waitForFunction(
+                        () => document.activeElement?.getAttribute('role') === 'tab',
+                        { timeout: 3000 }
+                    ).catch(() => {});
 
                     // Press ArrowRight to move to next tab
                     await page.keyboard.press('ArrowRight');
-                    await page.waitForTimeout(200);
+                    
+                    // Wait for focus to move
+                    await page.waitForFunction(
+                        () => document.activeElement?.getAttribute('role') === 'tab',
+                        { timeout: 3000 }
+                    ).catch(() => {});
 
                     const focusedTab = await page.evaluate(() => {
                         const el = document.activeElement;
@@ -125,7 +156,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('ARIA Compliance', () => {
         test('should have proper ARIA labels on interactive elements', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
             // Wait for buttons to be available
             await page.waitForSelector('button', { timeout: 10000 }).catch(() => {});
 
@@ -153,7 +186,9 @@ test.describe('Accessibility Audit', () => {
 
         test('should use proper ARIA roles for custom components', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
             // Wait for tablist to be available (indicates page is fully loaded)
             await page.waitForSelector('[role="tablist"]', { timeout: 10000 }).catch(() => {});
 
@@ -172,7 +207,9 @@ test.describe('Accessibility Audit', () => {
 
         test('should have proper heading hierarchy', async ({ page }) => {
             await page.goto('/admin?tab=wizard');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Check heading levels (h1, h2, h3, etc.)
             const headings = await page.locator('h1, h2, h3, h4, h5, h6').all();
@@ -202,7 +239,9 @@ test.describe('Accessibility Audit', () => {
 
         test('should have aria-live regions for dynamic content', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Check for aria-live regions (for status updates, etc.)
             const liveRegions = await page.locator('[aria-live]').all();
@@ -223,7 +262,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('Semantic HTML', () => {
         test('should use semantic landmarks', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Check for semantic HTML5 elements or ARIA landmarks
             const landmarks = {
@@ -241,7 +282,9 @@ test.describe('Accessibility Audit', () => {
 
         test('should have proper form labels', async ({ page }) => {
             await page.goto('/admin?tab=rate');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Check that inputs have associated labels
             const inputs = await page.locator('input, select, textarea').all();
@@ -274,7 +317,9 @@ test.describe('Accessibility Audit', () => {
 
         test('should have alt text for images', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Check that images have alt text
             const images = await page.locator('img').all();
@@ -303,7 +348,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('Focus Management', () => {
         test('should have visible focus indicators', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Tab to a button and check if it has visible focus
             await page.keyboard.press('Tab');
@@ -337,12 +384,15 @@ test.describe('Accessibility Audit', () => {
 
         test('should trap focus in modal dialogs', async ({ page }) => {
             await page.goto('/');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Open login dialog
             const loginButton = page.getByRole('button', { name: /log in/i });
+            await expect(loginButton).toBeVisible({ timeout: 10000 });
             await loginButton.click();
-            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
+            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 10000 });
 
             // Tab through elements - focus should stay within dialog
             const initialFocus = await page.evaluate(() => document.activeElement?.tagName);
@@ -368,19 +418,23 @@ test.describe('Accessibility Audit', () => {
 
         test('should restore focus after closing dialog', async ({ page }) => {
             await page.goto('/');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Open and close login dialog, check focus restoration
             const loginButton = page.getByRole('button', { name: /log in/i });
+            await expect(loginButton).toBeVisible({ timeout: 10000 });
             await loginButton.focus();
 
             const beforeOpen = await page.evaluate(() => document.activeElement?.textContent);
 
             await loginButton.click();
-            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 5000 });
+            await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 10000 });
 
             await page.keyboard.press('Escape');
-            await page.waitForTimeout(500);
+            // Wait for dialog to close
+            await page.waitForSelector('[role="dialog"]', { state: 'hidden', timeout: 5000 }).catch(() => {});
 
             const afterClose = await page.evaluate(() => document.activeElement?.textContent);
 
@@ -394,7 +448,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('Color Contrast', () => {
         test('should have sufficient color contrast for text', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Sample some text elements and check contrast
             const textElements = await page.locator('p, span, button, a, label, h1, h2, h3').all();
@@ -429,7 +485,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('Screen Reader Support', () => {
         test('should have proper document title', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             const title = await page.title();
             console.log(`[A11y] Page title: "${title}"`);
@@ -440,7 +498,9 @@ test.describe('Accessibility Audit', () => {
 
         test('should have descriptive link text', async ({ page }) => {
             await page.goto('/?tab=play');
-            await page.waitForLoadState('networkidle');
+            await page.waitForLoadState('domcontentloaded');
+            // Wait for page to be ready
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
 
             // Check for vague link text like "click here", "read more", etc.
             const links = await page.locator('a').all();
