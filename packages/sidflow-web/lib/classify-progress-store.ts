@@ -79,6 +79,13 @@ function applyThreadStatusUpdate(update: {
   }
   ensureThreads(Math.max(update.threadId, snapshot.threads));
   const now = Date.now();
+  const previousThread = snapshot.perThread[index];
+  const transitionedFromRender =
+    previousThread.phase === 'building' &&
+    previousThread.status === 'working' &&
+    previousThread.currentFile &&
+    (update.phase === 'tagging' || update.status === 'idle');
+
   snapshot.perThread = snapshot.perThread.map((thread, idx) => {
     if (idx === index) {
       const isPhaseChange = update.phase && update.phase !== thread.phase;
@@ -104,6 +111,13 @@ function applyThreadStatusUpdate(update: {
     }
     return thread;
   });
+
+  // Count inline renders when a thread moves from Rendering -> Tagging (or finishes)
+  if (transitionedFromRender) {
+    snapshot.renderedFiles += 1;
+    snapshot.processedFiles = Math.max(snapshot.processedFiles, snapshot.renderedFiles);
+    snapshot.updatedAt = now;
+  }
 }
 
 export function beginClassifyProgress(threads: number, renderEngine?: string): void {
@@ -198,7 +212,7 @@ function processLine(line: string) {
   }
 
   // Log engine-related messages with structured tags
-  if (line.includes('Rendering') || line.includes('engine')) {
+  if (line.match(/\b(Rendering|Extracting features|Writing Features|Writing Results|engine)\b/i)) {
     console.log(`[classify-engine] ${line}`);
   }
 
