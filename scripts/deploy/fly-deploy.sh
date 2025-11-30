@@ -151,7 +151,7 @@ build_fly_toml() {
     local app_name="$1"
     local temp_toml="${REPO_ROOT}/fly.${ENVIRONMENT}.toml"
     
-    log_info "Generating fly.toml for ${app_name}..."
+    log_info "Generating fly.toml for ${app_name}..." >&2
     
     # Copy base fly.toml and customize for environment
     cp "${REPO_ROOT}/fly.toml" "${temp_toml}"
