@@ -92,15 +92,15 @@ test.describe('Accessibility Audit', () => {
             // Space should activate button (test focus is on element)
             await page.keyboard.press('Space');
             
-            // Brief wait for any action to complete
-            await page.waitForLoadState('domcontentloaded').catch(() => {});
+            // Wait for any navigation or action to stabilize
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 3000 }).catch(() => {});
 
-            // Test Enter key on the same or refreshed page context
+            // Test Enter key on the same page context
             await button.focus();
             await page.keyboard.press('Enter');
             
-            // Brief wait for any action to complete
-            await page.waitForLoadState('domcontentloaded').catch(() => {});
+            // Wait for any navigation or action to stabilize
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 3000 }).catch(() => {});
 
             console.log('[A11y] Space and Enter keys work on buttons');
             expect(true).toBeTruthy(); // Test completed without errors
