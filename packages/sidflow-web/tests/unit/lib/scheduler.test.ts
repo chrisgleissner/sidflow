@@ -1,7 +1,7 @@
 /**
  * Tests for the scheduler service
  */
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect } from 'bun:test';
 import {
   calculateNextRunTime,
   getMillisUntilNextRun,
