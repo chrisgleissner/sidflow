@@ -1,6 +1,35 @@
 # Changelog
 
 
+## 0.3.42 (2025-11-30)
+
+- Merge pull request #71 from chrisgleissner/copilot/configure-classification-pipeline
+- fix: improve pause-resume-position test stability by removing waitForTimeout
+- fix: improve E2E test stability with better wait conditions
+- fix: add error handling to E2E test helper function
+- perf: update browserslist and optimize unit/E2E test efficiency
+- fix: remove fly.io mentions and normalize time format with leading zeros
+- feat: pass skipAlreadyClassified and deleteWavAfterClassification through CLI
+- Update packages/sidflow-web/lib/scheduler.ts
+- Update packages/sidflow-web/app/api/scheduler/route.ts
+- test: add integration tests for scheduler and export/import API endpoints
+- perf: parallelize export collection, import writes, WAV cleanup, and cache auto-tags checks
+- feat: add scheduler and export/import UI components with E2E tests
+- Update packages/sidflow-web/tests/unit/lib/scheduler.test.ts
+- Update packages/sidflow-classify/src/index.ts
+- Update packages/sidflow-web/lib/scheduler.ts
+- fix: address code review comments for scheduler implementation
+- feat: add scheduler initialization and classify options for skip/delete
+- feat: add scheduler API and classification export/import endpoints
+- feat: add scheduler and classification skip logic for nightly pipeline
+- Initial plan
+- Merge pull request #70 from chrisgleissner/copilot/fix-deployment-failure
+- Add resource allocation comments to fly.prd.toml
+- Add fly.prd.toml and improve production deployment workflow
+- Initial plan
+- chore: update CHANGES.md for 0.3.41
+
+
 ## 0.3.41 (2025-11-30)
 
 - Merge pull request #69 from chrisgleissner/copilot/optimize-test-execution-time
