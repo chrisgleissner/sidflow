@@ -272,7 +272,7 @@ Create mood-based queues with full playback controls and history.
 - "Trending" badge for hot tracks
 - Visual feedback for likes/plays
 
-#### 🗂️ HVSC Browser
+#### 🗂️ SID Browser
 
 - Navigate folder structure with breadcrumbs
 - Browse by composer, game, or demo group
