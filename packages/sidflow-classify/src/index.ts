@@ -253,6 +253,52 @@ export async function collectSidFiles(root: string): Promise<string[]> {
 }
 
 /**
+ * Checks if a SID song is already classified by looking at auto-tags.json.
+ * This does NOT rely on WAV files existing (they may have been cleaned up).
+ * 
+ * @param plan - Classification plan containing paths and config
+ * @param sidFile - Absolute path to the SID file
+ * @param songIndex - Optional song index for multi-song SID files (1-based)
+ * @returns true if the song has existing classification ratings
+ */
+export async function isAlreadyClassified(
+  plan: ClassificationPlan,
+  sidFile: string,
+  songIndex?: number
+): Promise<boolean> {
+  const relativePath = resolveRelativeSidPath(plan.sidPath, sidFile);
+  const autoTagsFile = resolveAutoTagFilePath(
+    plan.tagsPath,
+    relativePath,
+    plan.classificationDepth
+  );
+  
+  if (!(await pathExists(autoTagsFile))) {
+    return false;
+  }
+  
+  try {
+    const content = await readFile(autoTagsFile, "utf8");
+    const tags = JSON.parse(content) as Record<string, unknown>;
+    
+    const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
+    const key = songIndex !== undefined ? `${baseKey}:${songIndex}` : baseKey;
+    
+    // Check if the key exists in the auto-tags
+    if (key in tags) {
+      const entry = tags[key] as Record<string, unknown>;
+      // Verify it has at least one rating dimension
+      return entry && (typeof entry.e === "number" || typeof entry.m === "number" || typeof entry.c === "number");
+    }
+    
+    return false;
+  } catch (error) {
+    classifyLogger.warn(`Error reading auto-tags for ${relativePath}: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
  * Deletes all audio files (WAV, FLAC, M4A) and their hash files from the WAV cache directory.
  * Used for force rebuild to start with a clean slate.
  */
@@ -1057,6 +1103,10 @@ export interface GenerateAutoTagsOptions {
   threads?: number;
   onThreadUpdate?: (update: ThreadActivityUpdate) => void;
   render?: RenderWav;
+  /** Skip songs that are already classified (based on auto-tags.json, not WAV files) */
+  skipAlreadyClassified?: boolean;
+  /** Delete WAV files after classification (for fly.io deployments with limited storage) */
+  deleteWavAfterClassification?: boolean;
 }
 
 export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
@@ -1065,6 +1115,8 @@ export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
   manualOnlyCount: number;
   mixedCount: number;
   predictionsGenerated: number;
+  /** Number of songs skipped because they were already classified */
+  skippedAlreadyClassified: number;
 }
 
 export interface GenerateAutoTagsResult {
@@ -1108,13 +1160,17 @@ export async function generateAutoTags(
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
   const render = options.render ?? defaultRenderWav;
+  const skipAlreadyClassified = options.skipAlreadyClassified ?? false;
+  const deleteWavAfterClassification = options.deleteWavAfterClassification ?? false;
 
   const autoTagged: string[] = [];
   const manualEntries: string[] = [];
   const mixedEntries: string[] = [];
   const metadataFiles: string[] = [];
   const tagFiles: string[] = [];
+  const renderedWavFiles: string[] = []; // Track WAV files for potential cleanup
   let predictionsGenerated = 0;
+  let skippedAlreadyClassifiedCount = 0;
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
@@ -1170,6 +1226,20 @@ export async function generateAutoTags(
       }
       metadataProcessed += 1;
 
+      // Skip songs that are already classified if requested
+      if (skipAlreadyClassified && !plan.forceRebuild) {
+        const alreadyClassified = await isAlreadyClassified(
+          plan,
+          sidFile,
+          songCount > 1 ? songIndex : undefined
+        );
+        if (alreadyClassified) {
+          skippedAlreadyClassifiedCount += 1;
+          classifyLogger.debug(`Skipping already classified: ${path.basename(sidFile)} [${songIndex}/${songCount}]`);
+          continue;
+        }
+      }
+
       const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
       jobs.push({
         sidFile,
@@ -1183,6 +1253,10 @@ export async function generateAutoTags(
         targetDurationMs: durations?.[Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1)]
       });
     }
+  }
+  
+  if (skipAlreadyClassified && skippedAlreadyClassifiedCount > 0) {
+    classifyLogger.info(`Skipped ${skippedAlreadyClassifiedCount} already classified songs`);
   }
 
   const taggingConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
@@ -1243,6 +1317,8 @@ export async function generateAutoTags(
           } else {
             await render(renderOptions);
           }
+          // Track the WAV file for potential cleanup after classification
+          renderedWavFiles.push(job.wavPath);
         } finally {
           clearInterval(heartbeatInterval);
         }
@@ -1361,6 +1437,24 @@ export async function generateAutoTags(
     tagFiles.push(autoFilePath);
   }
 
+  // Delete WAV files if requested (for fly.io deployments with limited storage)
+  let deletedWavCount = 0;
+  if (deleteWavAfterClassification && renderedWavFiles.length > 0) {
+    classifyLogger.info(`Cleaning up ${renderedWavFiles.length} WAV files after classification...`);
+    for (const wavFile of renderedWavFiles) {
+      try {
+        await rm(wavFile, { force: true });
+        // Also delete the hash file if it exists
+        const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
+        await rm(hashFile, { force: true });
+        deletedWavCount += 1;
+      } catch (error) {
+        classifyLogger.warn(`Failed to delete ${wavFile}: ${(error as Error).message}`);
+      }
+    }
+    classifyLogger.info(`Deleted ${deletedWavCount} WAV files`);
+  }
+
   const endTime = Date.now();
   const metrics: GenerateAutoTagsMetrics = {
     startTime,
@@ -1370,7 +1464,8 @@ export async function generateAutoTags(
     autoTaggedCount: autoTagged.length,
     manualOnlyCount: manualEntries.length,
     mixedCount: mixedEntries.length,
-    predictionsGenerated
+    predictionsGenerated,
+    skippedAlreadyClassified: skippedAlreadyClassifiedCount
   };
 
   return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, metrics };
