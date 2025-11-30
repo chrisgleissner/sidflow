@@ -261,7 +261,7 @@ describe('Classification Phase Transitions', () => {
     console.log(`[Analysis] Files in building phase: ${filesProcessed.join(', ')}`);
     
     // Should have processed our test-tone.sid file
-    expect(filesProcessed.some(f => f?.includes('test-tone')), 'Should process test-tone.sid').toBe(true);
+    expect(filesProcessed.some(f => f?.endsWith('test-tone.sid')), 'Should process test-tone.sid').toBe(true);
 
     console.log('\n=== Test Passed: Building phase updates emitted ===\n');
   }, 30000); // 30 second timeout - fast with limited render time
