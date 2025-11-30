@@ -1,17 +1,23 @@
 import { createLogger } from "@sidflow/common";
 import { Worker } from "node:worker_threads";
 import type { WorkerOptions } from "node:worker_threads";
-import type { RenderWavOptions } from "./wav-renderer.js";
+import type { RenderWavOptions, RenderProgress } from "./wav-renderer.js";
 
 interface WorkerMessage {
-  type: "result" | "error";
+  type: "result" | "error" | "progress";
   jobId: number;
   error?: { message?: string; stack?: string };
+  progress?: RenderProgress;
+}
+
+export interface RenderPoolOptions extends RenderWavOptions {
+  /** Optional callback for render progress updates (heartbeat support) */
+  onProgress?: (progress: RenderProgress) => void;
 }
 
 interface Job {
   id: number;
-  options: RenderWavOptions;
+  options: RenderPoolOptions;
   resolve: () => void;
   reject: (error: Error) => void;
 }
@@ -43,7 +49,7 @@ export class WasmRendererPool {
     poolLogger.debug(`${this.workers.length} workers created`);
   }
 
-  async render(options: RenderWavOptions): Promise<void> {
+  async render(options: RenderPoolOptions): Promise<void> {
     if (this.destroyed) {
       throw new Error("Renderer pool has been destroyed");
     }
@@ -148,6 +154,13 @@ export class WasmRendererPool {
   }
 
   private handleWorkerMessage(state: WorkerState, message: WorkerMessage): void {
+    if (message.type === "progress") {
+      // Forward progress message to job's onProgress callback (heartbeat support)
+      if (state.job && state.job.id === message.jobId && state.job.options.onProgress && message.progress) {
+        state.job.options.onProgress(message.progress);
+      }
+      return; // Don't dispatch - job still in progress
+    }
     if (message.type === "result") {
       if (state.job && state.job.id === message.jobId) {
         const job = state.job;
