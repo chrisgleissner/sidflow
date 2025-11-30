@@ -211,9 +211,7 @@ Create mood-based queues with full playback controls and history.
 
 ![play panel](./doc/web-screenshots/07-play.png)
 
-### Phase 1 Enhancement Features
-
-The public and admin interfaces have been enhanced with powerful discovery and personalization features:
+### Feature Details
 
 #### 🔍 Smart Search
 
