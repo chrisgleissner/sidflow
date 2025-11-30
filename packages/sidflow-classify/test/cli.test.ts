@@ -107,6 +107,18 @@ describe("parseClassifyArgs", () => {
     });
   });
 
+  it("parses skip-already-classified and delete-wav-after-classification flags", () => {
+    const argv = [
+      "--skip-already-classified",
+      "--delete-wav-after-classification"
+    ];
+    const result = parseClassifyArgs(argv);
+    expect(result.errors).toHaveLength(0);
+    expect(result.helpRequested).toBeFalse();
+    expect(result.options.skipAlreadyClassified).toBeTrue();
+    expect(result.options.deleteWavAfterClassification).toBeTrue();
+  });
+
   it("flags unknown options", () => {
     const result = parseClassifyArgs(["--unknown"]);
     expect(result.errors).toEqual(["Unknown option: --unknown"]);

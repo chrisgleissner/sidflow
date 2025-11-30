@@ -95,6 +95,18 @@ export async function POST(request: NextRequest) {
       cliArgs.push('--force-rebuild');
       console.log('[classify] Force rebuild enabled - will re-render all WAV files');
     }
+    
+    // Add skip-already-classified flag if requested
+    if (validatedData.skipAlreadyClassified) {
+      cliArgs.push('--skip-already-classified');
+      console.log('[classify] Skip already classified enabled - will skip songs in auto-tags.json');
+    }
+    
+    // Add delete-wav-after-classification flag if requested
+    if (validatedData.deleteWavAfterClassification) {
+      cliArgs.push('--delete-wav-after-classification');
+      console.log('[classify] Delete WAV after classification enabled - will clean up WAV files');
+    }
   
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
