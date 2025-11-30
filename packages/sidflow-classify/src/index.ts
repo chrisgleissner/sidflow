@@ -1103,7 +1103,8 @@ export interface GenerateAutoTagsOptions {
   threads?: number;
   onThreadUpdate?: (update: ThreadActivityUpdate) => void;
   render?: RenderWav;
-  /** Skip songs that are already classified (based on auto-tags.json, not WAV files) */
+  /** Skip songs that are already classified (based on auto-tags.json, not WAV files).
+   * This option is ignored if forceRebuild is true. */
   skipAlreadyClassified?: boolean;
   /** Delete WAV files after classification (for fly.io deployments with limited storage) */
   deleteWavAfterClassification?: boolean;
