@@ -18,6 +18,7 @@ import { expect, test } from '@playwright/test';
 async function gotoClassifyTab(page: import('@playwright/test').Page) {
   await page.goto('/admin', { waitUntil: 'domcontentloaded' });
   const classifyTab = page.getByRole('tab', { name: /classify/i });
+  await expect(classifyTab).toBeVisible({ timeout: 5000 });
   await classifyTab.click();
 }
 
