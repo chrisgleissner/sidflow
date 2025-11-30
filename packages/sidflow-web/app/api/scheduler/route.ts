@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
     
     // Check if any updates were provided
     if (schedulerUpdate === undefined && renderPrefsUpdate === undefined) {
-      throw new Error('No scheduler or renderPrefs updates provided');
+      throw new Error('Request body must contain at least one of: scheduler, renderPrefs');
     }
     
     // Apply updates
