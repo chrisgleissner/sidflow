@@ -13,12 +13,21 @@ import { generateAutoTags } from '../src/index.js';
  * 2. Threads never go stale (no updates for >5s) during rendering
  * 3. Heartbeat mechanism continuously updates thread status during inline rendering
  * 
- * NOTE: These tests run actual TensorFlow classification which takes 60-90+ seconds.
- * They are skipped in CI to avoid timeouts. Run locally with:
- *   bun test packages/sidflow-classify/test/phase-transitions.test.ts
+ * NOTE: These tests are skipped in CI due to performance constraints:
+ * - The primary bottleneck is Essentia.js feature extraction, which performs CPU-intensive
+ *   audio analysis (FFT, spectral analysis, beat detection) that blocks the Node.js event loop.
+ * - This blocking prevents the heartbeat setInterval from firing during processing.
+ * - Processing a single 30-second SID file takes ~85 seconds with Essentia.js.
+ * 
+ * To fix this, Essentia.js feature extraction would need to be moved to a worker thread
+ * or restructured to periodically yield to the event loop. This is a significant refactoring
+ * effort beyond the scope of TensorFlow backend optimization.
+ * 
+ * Run locally with:
+ *   CI= bun test packages/sidflow-classify/test/phase-transitions.test.ts
  */
 
-// Skip in CI - TensorFlow classification is too slow for CI timeout limits
+// Skip in CI - Essentia.js feature extraction is CPU-intensive and blocks the event loop
 const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const maybeTest = isCI ? test.skip : test;
 
