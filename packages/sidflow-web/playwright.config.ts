@@ -62,14 +62,17 @@ const serverNodeEnv = normalizedServerMode === 'production' ? 'production' : 'de
 const webServerTimeout = normalizedServerMode === 'production' ? 240 * 1000 : 180 * 1000;
 const skipNextBuildFlag = process.env.SIDFLOW_SKIP_NEXT_BUILD ?? '1';
 const serverNodeOptions = process.env.SIDFLOW_WEB_SERVER_NODE_OPTIONS;
-const defaultWorkers = process.env.CI ? 3 : 3;
+// CI optimization: 4 workers provides good balance between parallelism and resource contention
+// GitHub Actions runners have 2 cores but can handle 4 workers efficiently for I/O-bound tests
+const defaultWorkers = process.env.CI ? 4 : 3;
 const parsedWorkers = Number(process.env.SIDFLOW_E2E_WORKERS ?? defaultWorkers);
 const resolvedWorkers =
   Number.isFinite(parsedWorkers) && parsedWorkers > 0 ? parsedWorkers : defaultWorkers;
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 60 * 1000, // Increased from 30s to 60s to reduce flakiness
+  // Reduced from 60s to 45s - most tests complete much faster
+  timeout: 45 * 1000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

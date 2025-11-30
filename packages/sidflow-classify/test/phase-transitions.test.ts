@@ -13,7 +13,7 @@ import { generateAutoTags, destroyFeatureExtractionPool } from '../src/index.js'
  * 2. Threads never go stale (no updates for >5s) during rendering
  * 3. Heartbeat mechanism continuously updates thread status during inline rendering
  * 
- * PERFORMANCE OPTIMIZATION (2024-11):
+ * PERFORMANCE OPTIMIZATION (2025-11):
  * - Uses test-tone.sid (minimal SID file) with SIDFLOW_MAX_RENDER_SECONDS=0.5 for fast execution
  * - Audio is downsampled to 11025 Hz (4x fewer samples for SID's ~4kHz bandwidth)
  * - Essentia WASM instance is cached and reused
