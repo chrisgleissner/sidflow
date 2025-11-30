@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ClassificationPlan, ThreadPhase } from '../src/index.js';
-import { generateAutoTags } from '../src/index.js';
+import { generateAutoTags, destroyFeatureExtractionPool } from '../src/index.js';
 
 /**
  * Unit test to verify classification phase transitions and thread heartbeat.
@@ -13,28 +13,25 @@ import { generateAutoTags } from '../src/index.js';
  * 2. Threads never go stale (no updates for >5s) during rendering
  * 3. Heartbeat mechanism continuously updates thread status during inline rendering
  * 
- * NOTE: These tests are skipped in CI due to performance constraints:
- * - The primary bottleneck is Essentia.js feature extraction, which performs CPU-intensive
- *   audio analysis (FFT, spectral analysis, beat detection) that blocks the Node.js event loop.
- * - This blocking prevents the heartbeat setInterval from firing during processing.
- * - Processing a single 30-second SID file takes ~85 seconds with Essentia.js.
+ * PERFORMANCE OPTIMIZATION (2024-11):
+ * - Audio is downsampled to 11025 Hz (4x fewer samples for SID's ~4kHz bandwidth)
+ * - Essentia WASM instance is cached and reused
+ * - Slow RhythmExtractor2013 algorithm is skipped (uses ZCR-based heuristic instead)
+ * - Spectrum results are computed once and reused for centroid/rolloff
  * 
- * To fix this, Essentia.js feature extraction would need to be moved to a worker thread
- * or restructured to periodically yield to the event loop. This is a significant refactoring
- * effort beyond the scope of TensorFlow backend optimization.
- * 
- * Run locally with:
+ * NOTE: These tests are still slow due to WAV rendering time (~30-60s per file).
+ * Skip in CI to avoid timeouts; run locally with:
  *   CI= bun test packages/sidflow-classify/test/phase-transitions.test.ts
  */
 
-// Skip in CI - Essentia.js feature extraction is CPU-intensive and blocks the event loop
+// Skip in CI - WAV rendering + feature extraction is still slow
 const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 const maybeTest = isCI ? test.skip : test;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
 const testWorkspace = path.resolve(repoRoot, 'test-workspace');
-// Use a single tiny SID file for fast execution as per comment
+// Use a single tiny SID file for fast execution
 const testDataPath = path.resolve(repoRoot, 'test-data/C64Music/DEMOS/0-9');
 const testWavCache = path.resolve(testWorkspace, 'wav-cache');
 const testTagsPath = path.resolve(testWorkspace, 'tags');
@@ -60,8 +57,9 @@ describe('Classification Phase Transitions', () => {
     }
   });
 
-  afterEach(() => {
-    // Cleanup
+  afterEach(async () => {
+    // Cleanup feature extraction pool
+    await destroyFeatureExtractionPool();
   });
 
   maybeTest('should show all phases without stale thread updates during force rebuild', async () => {

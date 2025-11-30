@@ -23,7 +23,12 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
-import { essentiaFeatureExtractor } from "./essentia-features.js";
+import { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE } from "./essentia-features.js";
+import { 
+  FeatureExtractionPool, 
+  getFeatureExtractionPool, 
+  destroyFeatureExtractionPool 
+} from "./feature-extraction-pool.js";
 import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -1574,7 +1579,12 @@ export function __setClassifyTestOverrides(overrides?: {
 }
 
 // Re-export Essentia.js and TensorFlow.js implementations
-export { essentiaFeatureExtractor } from "./essentia-features.js";
+export { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE } from "./essentia-features.js";
+export { 
+  FeatureExtractionPool, 
+  getFeatureExtractionPool, 
+  destroyFeatureExtractionPool 
+} from "./feature-extraction-pool.js";
 export {
   tfjsPredictRatings,
   tfjsPredictRatingsWithConfidence,
