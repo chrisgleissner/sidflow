@@ -80,7 +80,8 @@ describe("essentiaFeatureExtractor", () => {
     expect(features.spectralCentroid).toBeGreaterThan(0);
     expect(features.sampleRate).toBe(44100);
     expect(features.duration).toBeCloseTo(2, 0.1);
-    expect(features.numSamples).toBe(88200);
+    // numSamples reflects downsampled count (11025 Hz from 44100 Hz = 4x reduction)
+    expect(features.numSamples).toBe(22050);
 
     await rm(root, { recursive: true, force: true });
   });

@@ -23,7 +23,12 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
-import { essentiaFeatureExtractor } from "./essentia-features.js";
+import { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE } from "./essentia-features.js";
+import { 
+  FeatureExtractionPool, 
+  getFeatureExtractionPool, 
+  destroyFeatureExtractionPool 
+} from "./feature-extraction-pool.js";
 import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -1183,7 +1188,14 @@ export async function generateAutoTags(
   const taggingConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
   let processedSongs = 0;
 
-  await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
+  // Create renderer pool for inline WAV rendering during tagging phase
+  // This ensures rendering happens in worker threads and doesn't block the main event loop
+  const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
+  const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
+  const rendererPool = shouldUsePool ? new WasmRendererPool(taggingConcurrency) : null;
+
+  try {
+    await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
     const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
     onThreadUpdate?.({
       threadId: context.threadId,
@@ -1206,6 +1218,8 @@ export async function generateAutoTags(
         });
         
         // Start heartbeat to prevent thread from appearing stale during long renders
+        // When using rendererPool, the worker runs in a separate thread so the main event loop
+        // stays responsive and setInterval callbacks fire normally for heartbeat updates.
         const heartbeatInterval = setInterval(() => {
           onThreadUpdate?.({
             threadId: context.threadId,
@@ -1215,13 +1229,20 @@ export async function generateAutoTags(
           });
         }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
         
+        const renderOptions = {
+          sidFile: job.sidFile,
+          wavFile: job.wavPath,
+          songIndex: job.songCount > 1 ? job.songIndex : undefined,
+          targetDurationMs: job.targetDurationMs
+        };
+        
         try {
-          await render({
-            sidFile: job.sidFile,
-            wavFile: job.wavPath,
-            songIndex: job.songCount > 1 ? job.songIndex : undefined,
-            targetDurationMs: job.targetDurationMs
-          });
+          // Use worker pool for non-blocking rendering if available
+          if (rendererPool) {
+            await rendererPool.render(renderOptions);
+          } else {
+            await render(renderOptions);
+          }
         } finally {
           clearInterval(heartbeatInterval);
         }
@@ -1302,6 +1323,10 @@ export async function generateAutoTags(
       status: "idle"
     });
   });
+  } finally {
+    // Clean up renderer pool
+    await rendererPool?.destroy();
+  }
 
   if (onProgress && totalFiles > 0) {
     onProgress({
@@ -1574,7 +1599,12 @@ export function __setClassifyTestOverrides(overrides?: {
 }
 
 // Re-export Essentia.js and TensorFlow.js implementations
-export { essentiaFeatureExtractor } from "./essentia-features.js";
+export { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE } from "./essentia-features.js";
+export { 
+  FeatureExtractionPool, 
+  getFeatureExtractionPool, 
+  destroyFeatureExtractionPool 
+} from "./feature-extraction-pool.js";
 export {
   tfjsPredictRatings,
   tfjsPredictRatingsWithConfidence,

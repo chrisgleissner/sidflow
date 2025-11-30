@@ -1,24 +1,33 @@
+/**
+ * Feature Extraction Worker Pool
+ * 
+ * Manages a pool of worker threads for parallel feature extraction.
+ * Each worker has its own isolated Essentia WASM instance for thread safety.
+ * 
+ * Key design points:
+ * 1. Workers are created once and reused for multiple extractions
+ * 2. Transferable arrays are used when possible to avoid data copying
+ * 3. Tasks are dispatched without blocking the main thread
+ * 4. Heartbeat callbacks can fire freely since extraction is off-main-thread
+ */
+
 import { createLogger } from "@sidflow/common";
 import { Worker } from "node:worker_threads";
 import type { WorkerOptions } from "node:worker_threads";
-import type { RenderWavOptions, RenderProgress } from "./wav-renderer.js";
+import type { FeatureVector } from "./index.js";
 
 interface WorkerMessage {
-  type: "result" | "error" | "progress";
+  type: "result" | "error";
   jobId: number;
+  features?: FeatureVector;
   error?: { message?: string; stack?: string };
-  progress?: RenderProgress;
-}
-
-export interface RenderPoolOptions extends RenderWavOptions {
-  /** Optional callback for render progress updates (heartbeat support) */
-  onProgress?: (progress: RenderProgress) => void;
 }
 
 interface Job {
   id: number;
-  options: RenderPoolOptions;
-  resolve: () => void;
+  wavFile: string;
+  sidFile: string;
+  resolve: (features: FeatureVector) => void;
   reject: (error: Error) => void;
 }
 
@@ -29,10 +38,10 @@ interface WorkerState {
   exiting: boolean;
 }
 
-const workerScriptUrl = new URL("./wasm-render-worker.js", import.meta.url);
-const poolLogger = createLogger("wasmRenderPool");
+const workerScriptUrl = new URL("./feature-extraction-worker.js", import.meta.url);
+const poolLogger = createLogger("featurePool");
 
-export class WasmRendererPool {
+export class FeatureExtractionPool {
   private readonly workers: WorkerState[] = [];
   private readonly queue: Job[] = [];
   private nextJobId = 1;
@@ -40,27 +49,29 @@ export class WasmRendererPool {
 
   constructor(size: number) {
     if (!Number.isInteger(size) || size <= 0) {
-      throw new Error(`Renderer pool size must be a positive integer (received ${size})`);
+      throw new Error(`Feature extraction pool size must be a positive integer (received ${size})`);
     }
-    poolLogger.debug(`Creating ${size} workers`);
+    poolLogger.debug(`Creating ${size} feature extraction workers`);
     for (let index = 0; index < size; index += 1) {
       this.workers.push(this.createWorkerState());
     }
-    poolLogger.debug(`${this.workers.length} workers created`);
+    poolLogger.debug(`${this.workers.length} feature extraction workers created`);
   }
 
-  async render(options: RenderPoolOptions): Promise<void> {
+  /**
+   * Extract features from a WAV file asynchronously.
+   * The extraction runs in a worker thread, preventing main thread blocking.
+   */
+  async extract(wavFile: string, sidFile: string): Promise<FeatureVector> {
     if (this.destroyed) {
-      throw new Error("Renderer pool has been destroyed");
+      throw new Error("Feature extraction pool has been destroyed");
     }
-    const jobId = this.nextJobId;
-    if (jobId <= 3) {
-      poolLogger.debug(`Queueing job ${jobId} for ${options.wavFile}`);
-    }
-    return await new Promise<void>((resolve, reject) => {
+    
+    return new Promise<FeatureVector>((resolve, reject) => {
       const job: Job = {
         id: this.nextJobId++,
-        options,
+        wavFile,
+        sidFile,
         resolve,
         reject
       };
@@ -69,24 +80,27 @@ export class WasmRendererPool {
     });
   }
 
+  /**
+   * Destroy the pool and terminate all workers.
+   */
   async destroy(): Promise<void> {
     if (this.destroyed) {
       return;
     }
     this.destroyed = true;
 
-    // Reject queued jobs immediately
+    // Reject queued jobs
     while (this.queue.length > 0) {
       const job = this.queue.shift();
       if (job) {
-        job.reject(new Error("Renderer pool destroyed"));
+        job.reject(new Error("Feature extraction pool destroyed"));
       }
     }
 
     await Promise.all(
       this.workers.map(async (state) => {
         state.exiting = true;
-        this.failJob(state, new Error("Renderer pool destroyed"));
+        this.failJob(state, new Error("Feature extraction pool destroyed"));
         try {
           await state.worker.terminate();
         } catch {
@@ -99,7 +113,6 @@ export class WasmRendererPool {
   private createWorkerState(): WorkerState {
     const worker = new Worker(
       workerScriptUrl,
-      // Node's WorkerOptions typing omits module support, so cast to preserve runtime behaviour.
       { type: "module" } as WorkerOptions & { type: "module" }
     );
     const state: WorkerState = {
@@ -114,25 +127,25 @@ export class WasmRendererPool {
     });
 
     worker.on("error", (error) => {
-      poolLogger.error("Worker error", error);
+      poolLogger.error("Feature worker error", error);
       if (state.exiting || this.destroyed) {
         return;
       }
       state.exiting = true;
-  this.failJob(state, error instanceof Error ? error : new Error(String(error)));
-  void worker.terminate().catch(() => {});
+      this.failJob(state, error instanceof Error ? error : new Error(String(error)));
+      void worker.terminate().catch(() => {});
       this.restartWorker(state);
     });
 
     worker.on("exit", (code) => {
-      poolLogger.warn(`Worker exited with code: ${code}`);
+      poolLogger.warn(`Feature worker exited with code: ${code}`);
       if (state.exiting || this.destroyed) {
         return;
       }
       state.exiting = true;
       const error = code === 0
-        ? new Error("Renderer worker exited unexpectedly")
-        : new Error(`Renderer worker exited with code ${code}`);
+        ? new Error("Feature worker exited unexpectedly")
+        : new Error(`Feature worker exited with code ${code}`);
       this.failJob(state, error);
       this.restartWorker(state);
     });
@@ -154,31 +167,20 @@ export class WasmRendererPool {
   }
 
   private handleWorkerMessage(state: WorkerState, message: WorkerMessage): void {
-    if (message.type === "progress") {
-      // Forward progress message to job's onProgress callback (heartbeat support)
-      if (state.job && state.job.id === message.jobId && state.job.options.onProgress && message.progress) {
-        state.job.options.onProgress(message.progress);
-      }
-      return; // Don't dispatch - job still in progress
-    }
     if (message.type === "result") {
       if (state.job && state.job.id === message.jobId) {
         const job = state.job;
-        if (job.id <= 3) {
-          poolLogger.debug(`Worker completed job ${job.id}`);
-        }
         state.job = null;
         state.busy = false;
-        job.resolve();
+        job.resolve(message.features ?? {});
       } else if (!state.exiting && !this.destroyed) {
-        // Received result for unexpected job; reset state
         poolLogger.warn(`Worker received result for unexpected job ${message.jobId}`);
         state.busy = false;
         state.job = null;
       }
     } else if (message.type === "error") {
       state.exiting = true;
-      const error = new Error(message.error?.message ?? "Renderer worker failed");
+      const error = new Error(message.error?.message ?? "Feature extraction failed");
       if (message.error?.stack) {
         error.stack = message.error.stack;
       }
@@ -205,7 +207,6 @@ export class WasmRendererPool {
       return;
     }
 
-    let dispatched = 0;
     for (const state of this.workers) {
       if (state.busy || state.exiting) {
         continue;
@@ -216,11 +217,37 @@ export class WasmRendererPool {
       }
       state.busy = true;
       state.job = job;
-      state.worker.postMessage({ type: "render", jobId: job.id, options: job.options });
-      dispatched++;
+      state.worker.postMessage({ 
+        type: "extract", 
+        jobId: job.id, 
+        wavFile: job.wavFile,
+        sidFile: job.sidFile
+      });
     }
-    if (dispatched > 0 && this.queue.length > 0) {
-      poolLogger.debug(`Dispatched ${dispatched} jobs, ${this.queue.length} jobs still in queue`);
-    }
+  }
+}
+
+// Singleton pool instance
+let globalPool: FeatureExtractionPool | null = null;
+
+/**
+ * Get or create the global feature extraction pool.
+ * Uses the number of CPU cores as the default pool size.
+ */
+export function getFeatureExtractionPool(size?: number): FeatureExtractionPool {
+  if (!globalPool) {
+    const poolSize = size ?? Math.max(1, require("os").cpus().length);
+    globalPool = new FeatureExtractionPool(poolSize);
+  }
+  return globalPool;
+}
+
+/**
+ * Destroy the global pool (for cleanup in tests).
+ */
+export async function destroyFeatureExtractionPool(): Promise<void> {
+  if (globalPool) {
+    await globalPool.destroy();
+    globalPool = null;
   }
 }

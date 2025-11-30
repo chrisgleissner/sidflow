@@ -13,9 +13,71 @@ import { ensureDir } from "@sidflow/common";
 
 type TfModule = typeof import("@tensorflow/tfjs");
 
+/**
+ * Detect if we're running in a browser environment.
+ */
+function isBrowserEnvironment(): boolean {
+  return typeof window !== "undefined" && typeof document !== "undefined";
+}
+
+/**
+ * Load TensorFlow.js with the appropriate backend.
+ * 
+ * Backend selection priority:
+ * - In browser: tfjs-backend-wasm (SIMD) - Fast WASM backend for inference
+ * - In Node.js: tfjs-node - Native TensorFlow backend
+ * - Fallback: tfjs (pure JS) - Slowest but works everywhere
+ * 
+ * The WASM backend provides 10-40x faster inference than pure JS in browsers.
+ * In Node.js, tfjs-node provides native performance.
+ */
 async function loadTensorFlow(): Promise<TfModule> {
+  // For training mode, always prefer tfjs-node
+  const isTrainingMode = process.env.SIDFLOW_TFJS_TRAINING === "1";
+  
+  if (isTrainingMode) {
+    try {
+      return (await import("@tensorflow/tfjs-node")) as TfModule;
+    } catch (error) {
+      console.warn("tfjs-node not available for training, falling back:", (error as Error).message);
+    }
+  }
+  
+  // In browser environment, try WASM backend for fast inference
+  if (isBrowserEnvironment()) {
+    try {
+      const tfjs = await import("@tensorflow/tfjs");
+      const wasmModule = await import("@tensorflow/tfjs-backend-wasm");
+      
+      // Set up WASM backend with SIMD support for maximum speed
+      const wasmVersion = (tfjs as unknown as { version: Record<string, string> }).version?.["tfjs-backend-wasm"] ?? "4.22.0";
+      wasmModule.setWasmPaths(
+        `https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@${wasmVersion}/dist/`
+      );
+      
+      // Use type assertion since these are re-exported from tfjs-core
+      const tfjsAny = tfjs as unknown as {
+        setBackend: (name: string) => Promise<boolean>;
+        ready: () => Promise<void>;
+        getBackend: () => string;
+      };
+      
+      await tfjsAny.setBackend("wasm");
+      await tfjsAny.ready();
+      
+      // Verify WASM backend is active
+      const backend = tfjsAny.getBackend();
+      if (backend === "wasm") {
+        console.log("[tfjs] Using WASM backend for fast inference (SIMD enabled)");
+        return tfjs as TfModule;
+      }
+    } catch (wasmError) {
+      console.warn("[tfjs] WASM backend not available:", (wasmError as Error).message);
+    }
+  }
+  
+  // In Node.js, prefer tfjs-node for native performance
   try {
-    // Prefer the native TensorFlow backend when available.
     return (await import("@tensorflow/tfjs-node")) as TfModule;
   } catch (error) {
     if (process.env.SIDFLOW_TFJS_STRICT === "1") {

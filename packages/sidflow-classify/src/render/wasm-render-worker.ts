@@ -1,6 +1,6 @@
 import { parentPort } from "node:worker_threads";
 import { createEngine } from "./engine-factory.js";
-import { renderWavWithEngine, type RenderWavOptions } from "./wav-renderer.js";
+import { renderWavWithEngine, type RenderWavOptions, type RenderProgress } from "./wav-renderer.js";
 
 if (!parentPort) {
   throw new Error("WASM renderer worker must be started as a worker thread");
@@ -11,9 +11,10 @@ type WorkerMessage =
   | { type: "terminate" };
 
 interface WorkerResponse {
-  type: "result" | "error";
+  type: "result" | "error" | "progress";
   jobId: number;
   error?: { message: string; stack?: string };
+  progress?: RenderProgress;
 }
 
 // DO NOT cache engine - create fresh instance for each render to ensure complete WASM isolation
@@ -24,7 +25,18 @@ async function getEngine() {
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {
   try {
     const engine = await getEngine();
-    await renderWavWithEngine(engine, options);
+    
+    // Add progress callback to send heartbeat messages back to main thread
+    const optionsWithProgress: RenderWavOptions = {
+      ...options,
+      progressIntervalMs: options.progressIntervalMs ?? 1000,
+      onProgress: (progress: RenderProgress) => {
+        const response: WorkerResponse = { type: "progress", jobId, progress };
+        parentPort!.postMessage(response);
+      }
+    };
+    
+    await renderWavWithEngine(engine, optionsWithProgress);
     const response: WorkerResponse = { type: "result", jobId };
     parentPort!.postMessage(response);
   } catch (error) {

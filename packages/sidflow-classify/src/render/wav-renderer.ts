@@ -11,6 +11,17 @@ export interface RenderWavOptions {
   songIndex?: number;
   maxRenderSeconds?: number;
   targetDurationMs?: number;
+  /** Optional progress callback - called periodically during rendering to support heartbeat */
+  onProgress?: (progress: RenderProgress) => void;
+  /** Interval in ms between progress callbacks (default: 1000ms) */
+  progressIntervalMs?: number;
+}
+
+export interface RenderProgress {
+  collectedSamples: number;
+  targetSamples: number;
+  percentComplete: number;
+  elapsedMs: number;
 }
 
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
@@ -152,6 +163,11 @@ export async function renderWavWithEngine(
   const estimatedSamplesPerChunk = (RENDER_CYCLES_PER_CHUNK / 985_000) * sampleRate * channels;
   const maxIterations = Math.max(64, Math.ceil(maxSamples / estimatedSamplesPerChunk) * 2);
 
+  // Progress callback support for heartbeat mechanism
+  const progressIntervalMs = options.progressIntervalMs ?? 1000;
+  const startTime = Date.now();
+  let lastProgressTime = startTime;
+
   while (collectedSamples < maxSamples && iterations < maxIterations) {
     iterations += 1;
     const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
@@ -179,6 +195,18 @@ export async function renderWavWithEngine(
     const slice = allowed === chunk.length ? chunk : chunk.subarray(0, allowed);
     chunks.push(slice);
     collectedSamples += slice.length;
+
+    // Call progress callback at specified intervals to support heartbeat
+    const now = Date.now();
+    if (options.onProgress && (now - lastProgressTime >= progressIntervalMs)) {
+      lastProgressTime = now;
+      options.onProgress({
+        collectedSamples,
+        targetSamples: maxSamples,
+        percentComplete: Math.min(100, (collectedSamples / maxSamples) * 100),
+        elapsedMs: now - startTime
+      });
+    }
   }
 
   if (collectedSamples === 0) {
