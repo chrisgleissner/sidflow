@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
  * - Scheduler configuration UI is present and functional
  * - Export/import buttons are present and accessible
  * - Form controls interact correctly
+ * - Progress counters display correctly
  * 
  * Optimized for fast execution:
  * - Uses domcontentloaded instead of networkidle
@@ -100,5 +101,31 @@ test.describe('Classify Tab Integration', () => {
     await expect(page.getByTestId('force-rebuild-checkbox')).toBeVisible({ timeout: 5000 });
     await expect(page.getByTestId('export-classifications-button')).toBeVisible({ timeout: 5000 });
     await expect(page.getByTestId('import-classifications-button')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('should display progress counters (Rendered, Cached, Extracted, Remaining)', async ({ page }) => {
+    await gotoClassifyTab(page);
+
+    // Verify all counter elements are visible
+    await expect(page.getByTestId('classify-rendered-count')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('classify-cached-count')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('classify-extracted-count')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('classify-remaining-count')).toBeVisible({ timeout: 5000 });
+
+    // Verify phase label and percent are visible
+    await expect(page.getByTestId('classify-phase-label')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('classify-percent')).toBeVisible({ timeout: 5000 });
+
+    // Verify counters show numeric values (0 initially)
+    const renderedCount = await page.getByTestId('classify-rendered-count').textContent();
+    const cachedCount = await page.getByTestId('classify-cached-count').textContent();
+    const extractedCount = await page.getByTestId('classify-extracted-count').textContent();
+    const remainingCount = await page.getByTestId('classify-remaining-count').textContent();
+
+    // All counters should be numeric
+    expect(Number(renderedCount)).toBeGreaterThanOrEqual(0);
+    expect(Number(cachedCount)).toBeGreaterThanOrEqual(0);
+    expect(Number(extractedCount)).toBeGreaterThanOrEqual(0);
+    expect(Number(remainingCount)).toBeGreaterThanOrEqual(0);
   });
 });
