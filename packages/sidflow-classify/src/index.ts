@@ -1344,8 +1344,6 @@ export async function generateAutoTags(
     const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
     const needsAuto = !job.manualRecord || hasMissingDimensions(manualRatings ?? {});
     let autoRatings: TagRatings | null = null;
-    let wasRendered = false;
-    let wasCached = false;
 
     if (needsAuto) {
       if (!(await pathExists(job.wavPath))) {
@@ -1385,7 +1383,6 @@ export async function generateAutoTags(
           }
           // Track the WAV file for potential cleanup after classification
           renderedWavFiles.push(job.wavPath);
-          wasRendered = true;
           renderedFilesCount += 1;
         } finally {
           clearInterval(heartbeatInterval);
@@ -1399,7 +1396,6 @@ export async function generateAutoTags(
           file: songLabel
         });
       } else {
-        wasCached = true;
         cachedFilesCount += 1;
       }
 
