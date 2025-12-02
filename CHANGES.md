@@ -1,6 +1,25 @@
 # Changelog
 
 
+## 0.3.43 (2025-12-02)
+
+- Merge pull request #73 from chrisgleissner/copilot/update-status-counters
+- Remove legacy terminology from skippedFiles documentation
+- Remove unused variables from generateAutoTags function
+- Add data-testid attributes and unit tests for classify progress
+- Update classify counters to track rendered, cached, and extracted files
+- Initial plan
+- feat: Add Fly.io production configuration file for SIDFlow deployment
+- feat: Remove outdated Fly.io production configuration file
+- feat: Update Fly.io deployment configurations to use 'sidflow' app for production
+- feat: Add Fly.io production configuration file for SIDFlow deployment
+- feat: Update Fly.io deployment configurations and scripts for improved admin password handling and volume management
+- feat: Document Fly.io deployment process and production credentials in PLANS.md
+- Rename HVSC Browser to SID Browser in README
+- Revise README for feature details and clarity
+- chore: update CHANGES.md for 0.3.42
+
+
 ## 0.3.42 (2025-11-30)
 
 - Merge pull request #71 from chrisgleissner/copilot/configure-classification-pipeline
