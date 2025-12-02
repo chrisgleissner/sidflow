@@ -26,7 +26,7 @@ export interface ClassifyProgressSnapshot {
   renderedFiles: number;
   /** Number of files that used cached WAV files */
   cachedFiles: number;
-  /** Number of files that had features extracted (legacy: skippedFiles) */
+  /** Number of files skipped due to existing cached WAV files (used by "[Converting]" phase) */
   skippedFiles: number;
   /** Number of files with audio features extracted */
   extractedFiles: number;
