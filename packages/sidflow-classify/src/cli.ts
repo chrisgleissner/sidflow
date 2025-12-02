@@ -276,8 +276,10 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
           phaseLabel = progress.phase;
       }
 
+      // Include detailed counters for parsing
+      const counters = `rendered=${progress.renderedFiles} cached=${progress.cachedFiles} extracted=${progress.extractedFiles}`;
       stdout.write(
-        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%)${file} - ${elapsed}`
+        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}]${file} - ${elapsed}`
       );
     },
 

@@ -22,8 +22,14 @@ export interface ClassifyProgressSnapshot {
   phase: ClassifyPhase;
   totalFiles: number;
   processedFiles: number;
+  /** Number of files that required WAV rendering (not cached) */
   renderedFiles: number;
+  /** Number of files that used cached WAV files */
+  cachedFiles: number;
+  /** Number of files that had features extracted (legacy: skippedFiles) */
   skippedFiles: number;
+  /** Number of files with audio features extracted */
+  extractedFiles: number;
   percentComplete: number;
   threads: number;
   perThread: ClassifyThreadStatus[];

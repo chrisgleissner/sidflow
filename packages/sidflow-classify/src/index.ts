@@ -1088,6 +1088,12 @@ export interface AutoTagProgress {
   phase: "metadata" | "tagging" | "jsonl";
   totalFiles: number;
   processedFiles: number;
+  /** Number of files that required WAV rendering (not cached) */
+  renderedFiles: number;
+  /** Number of files that used cached WAV files */
+  cachedFiles: number;
+  /** Number of files with features extracted */
+  extractedFiles: number;
   percentComplete: number;
   elapsedMs: number;
   currentFile?: string;
@@ -1172,6 +1178,9 @@ export async function generateAutoTags(
   const renderedWavFiles: string[] = []; // Track WAV files for potential cleanup
   let predictionsGenerated = 0;
   let skippedAlreadyClassifiedCount = 0;
+  let renderedFilesCount = 0; // Files that required WAV rendering
+  let cachedFilesCount = 0; // Files that used cached WAV files
+  let extractedFilesCount = 0; // Files with features extracted
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
@@ -1272,6 +1281,9 @@ export async function generateAutoTags(
           phase: "metadata",
           totalFiles,
           processedFiles: metadataProcessed,
+          renderedFiles: renderedFilesCount,
+          cachedFiles: cachedFilesCount,
+          extractedFiles: extractedFilesCount,
           percentComplete: totalFiles === 0 ? 100 : (metadataProcessed / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
           currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
@@ -1332,6 +1344,8 @@ export async function generateAutoTags(
     const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
     const needsAuto = !job.manualRecord || hasMissingDimensions(manualRatings ?? {});
     let autoRatings: TagRatings | null = null;
+    let wasRendered = false;
+    let wasCached = false;
 
     if (needsAuto) {
       if (!(await pathExists(job.wavPath))) {
@@ -1371,6 +1385,8 @@ export async function generateAutoTags(
           }
           // Track the WAV file for potential cleanup after classification
           renderedWavFiles.push(job.wavPath);
+          wasRendered = true;
+          renderedFilesCount += 1;
         } finally {
           clearInterval(heartbeatInterval);
         }
@@ -1382,6 +1398,9 @@ export async function generateAutoTags(
           status: "working",
           file: songLabel
         });
+      } else {
+        wasCached = true;
+        cachedFilesCount += 1;
       }
 
       if (onProgress) {
@@ -1389,6 +1408,9 @@ export async function generateAutoTags(
           phase: "tagging",
           totalFiles,
           processedFiles: processedSongs,
+          renderedFiles: renderedFilesCount,
+          cachedFiles: cachedFilesCount,
+          extractedFiles: extractedFilesCount,
           percentComplete: totalFiles === 0 ? 0 : (processedSongs / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
           currentFile: songLabel
@@ -1396,6 +1418,7 @@ export async function generateAutoTags(
       }
 
       const features = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+      extractedFilesCount += 1;
       autoRatings = await predictRatings({
         features,
         sidFile: job.sidFile,
@@ -1440,6 +1463,9 @@ export async function generateAutoTags(
         phase: "tagging",
         totalFiles,
         processedFiles: processedSongs,
+        renderedFiles: renderedFilesCount,
+        cachedFiles: cachedFilesCount,
+        extractedFiles: extractedFilesCount,
         percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
         elapsedMs: Date.now() - startTime,
         currentFile: songLabel
@@ -1461,6 +1487,9 @@ export async function generateAutoTags(
       phase: "tagging",
       totalFiles,
       processedFiles: processedSongs,
+      renderedFiles: renderedFilesCount,
+      cachedFiles: cachedFilesCount,
+      extractedFiles: extractedFilesCount,
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime
     });
@@ -1617,6 +1646,9 @@ export async function generateJsonlOutput(
           phase: "jsonl",
           totalFiles,
           processedFiles: processedSongs,
+          renderedFiles: 0,
+          cachedFiles: 0,
+          extractedFiles: processedSongs,
           percentComplete: (processedSongs / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
           currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`

@@ -459,18 +459,22 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
               <span>{percent.toFixed(1)}%</span>
             </div>
             <Progress value={percent} className="h-2 bg-background/60" />
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="grid grid-cols-4 gap-2 text-center text-xs">
               <div>
-                <p className="text-muted-foreground">Processed</p>
-                <p className="font-semibold text-foreground">{processed}</p>
+                <p className="text-muted-foreground">Rendered</p>
+                <p className="font-semibold text-foreground">{progress?.renderedFiles ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Cached</p>
+                <p className="font-semibold text-foreground">{progress?.cachedFiles ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Extracted</p>
+                <p className="font-semibold text-foreground">{progress?.extractedFiles ?? 0}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Remaining</p>
                 <p className="font-semibold text-foreground">{remaining}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Rendered</p>
-                <p className="font-semibold text-foreground">{progress?.renderedFiles ?? 0}</p>
               </div>
             </div>
             <div className="grid gap-2 md:grid-cols-2">
