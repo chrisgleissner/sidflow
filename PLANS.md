@@ -113,11 +113,44 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ---
 
-### Task: Documentation Consolidation (2025-12-06)
+### Task: Documentation Phase 2 — Ruthless Cleanup (2025-12-06)
 
 **User request (summary)**
-- 98 markdown files totaling 25,853 lines with redundancy and contradictions
-- Goal: <15,000 lines, <40 files, concise and accurate
+- Remove all docs that serve no purpose, are long-winded, or describe trivialities
+- Keep ONLY what the project needs, nothing more
+
+**Status:** ✅ COMPLETE — 16 files, 2,140 lines (86% reduction from Phase 1)
+
+**Completed actions:**
+1. Deleted 8 audit/governance docs (security, accessibility, release-readiness, production-rollout, artifact-governance, web-ui, performance-metrics, sid-metadata)
+2. Deleted 7 implementation detail docs (AUDIO_CAPTURE, AUDIO_PIPELINE, TELEMETRY, README-INTEGRATION, e2e-resilience-guide, coverage, performance-testing)
+3. Deleted 3 archive files and empty directories
+4. Replaced technical-reference.md (1595→86 lines)
+5. Replaced developer.md (1049→63 lines)
+6. Replaced deployment.md (545→40 lines)
+7. Replaced 7 package READMEs (1869→89 lines total)
+
+**Final state:**
+| File | Lines |
+|------|-------|
+| CHANGES.md | 901 |
+| README.md | 366 |
+| AGENTS.md | 200 |
+| PLANS.md | ~150 |
+| .github/copilot-instructions.md | 138 |
+| doc/technical-reference.md | 86 |
+| packages/libsidplayfp-wasm/README.md | 70 |
+| doc/developer.md | 63 |
+| doc/deployment.md | 40 |
+| 7× package READMEs | ~90 |
+| **TOTAL** | **~2,100** |
+
+**Progress log**
+- 2025-12-06 — Executed ruthless cleanup. 39 files → 16 files, 15,570 → 2,140 lines. Build verified.
+
+---
+
+### Task: Documentation Consolidation Phase 1 (2025-12-06)
 
 **Status:** ✅ COMPLETE — 39 files, 15,570 lines (60% file reduction, 40% line reduction)
 
