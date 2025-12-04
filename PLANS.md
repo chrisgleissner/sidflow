@@ -19,6 +19,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [How to use this file](#how-to-use-this-file)
   - [Maintenance rules](#maintenance-rules)
   - [Active tasks](#active-tasks)
+    - [Task: Codebase Deduplication & Cleanup (2025-12-04)](#task-codebase-deduplication--cleanup-2025-12-04)
     - [Task: Feature Extraction (2025-11-29)](#task-feature-extraction-2025-11-29)
     - [Task: Achieve >90% Test Coverage (2025-11-24)](#task-achieve-90-test-coverage-2025-11-24)
     - [Task: Documentation Consolidation (2025-12-06)](#task-documentation-consolidation-2025-12-06)
@@ -62,6 +63,185 @@ For each substantial user request or multi‑step feature, create a new Task sec
 ---
 
 ## Active tasks
+
+### Task: Codebase Deduplication & Cleanup (2025-12-04)
+
+**User request (summary)**
+- Review entire codebase for duplication and cleanup opportunities
+- Create iterative plan that preserves all existing functionality
+- Run all tests after each major refactor step
+
+**Scope:** Code-only cleanup. No feature changes, no behavior changes, no new functionality.
+
+---
+
+#### Phase 1: Remove Stale/Redundant Build Artifacts
+
+**Goal:** Remove compiled JS/d.ts files accidentally committed to `src/` directories.
+
+**Files to clean:**
+- [ ] `packages/sidflow-common/src/*.js` and `*.js.map` files (config.js, json.js, logger.js, index.js)
+- [ ] `packages/sidflow-common/src/*.d.ts` and `*.d.ts.map` files (config.d.ts, json.d.ts, logger.d.ts, index.d.ts)
+- [ ] `packages/sidflow-fetch/src/*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map` (index.js etc.)
+
+**Validation:** `bun run build && bun run test` (3× runs) must pass.
+
+---
+
+#### Phase 2: Remove Empty/Unused Packages
+
+**Goal:** Remove packages that have no code.
+
+- [ ] Delete `packages/sidflow-tag/` (empty directory, tag functionality is in sidflow-rate)
+- [ ] Verify no imports reference `@sidflow/tag`
+
+**Validation:** `bun run build && bun run test` (3× runs) must pass.
+
+---
+
+#### Phase 3: Deduplicate `songlengths.ts`
+
+**Problem:** Two implementations exist:
+- `packages/sidflow-common/src/songlengths.ts` (309 lines, full-featured with parent directory search, MD5 caching, duration parsing)
+- `packages/sidflow-web/lib/songlengths.ts` (121 lines, simpler implementation)
+
+**Action:**
+- [ ] Verify web package can use common package version (check all call sites in web)
+- [ ] Update web imports to use `@sidflow/common` exports
+- [ ] Delete `packages/sidflow-web/lib/songlengths.ts`
+- [ ] Update any tests that specifically test the web version
+
+**Validation:** `bun run build && bun run test` (3× runs) must pass. Manual test: song duration lookups work in web UI.
+
+---
+
+#### Phase 4: Consolidate CLI Argument Parsing
+
+**Problem:** Each CLI package has nearly identical manual arg parsing code with the same pattern:
+- `packages/sidflow-classify/src/cli.ts`
+- `packages/sidflow-fetch/src/cli.ts`
+- `packages/sidflow-play/src/cli.ts`
+- `packages/sidflow-rate/src/cli.ts`
+- `packages/sidflow-train/src/cli.ts`
+- `packages/sidflow-classify/src/render/cli.ts`
+
+All follow the same structure: `parseXxxArgs(argv)` → `{ options, errors, helpRequested }` → manual switch/case loop.
+
+**Action:**
+- [ ] Step 4.1: Create `packages/sidflow-common/src/cli-parser.ts` with shared types:
+  - `ArgDef` interface for defining arguments (name, alias, type, required, description)
+  - `parseArgs(argv, defs)` generic parser function
+  - `formatHelp(defs, usage)` for generating help text
+- [ ] Step 4.2: Add tests for the new CLI parser utility
+- [ ] Step 4.3: Migrate `sidflow-fetch` CLI to use shared parser (simplest CLI)
+- [ ] Step 4.4: Migrate `sidflow-rate` CLI
+- [ ] Step 4.5: Migrate `sidflow-train` CLI
+- [ ] Step 4.6: Migrate `sidflow-play` CLI
+- [ ] Step 4.7: Migrate `sidflow-classify` CLI
+- [ ] Step 4.8: Migrate `sidflow-classify/render` CLI
+
+**Validation:** Run tests after each migration step. Final: `bun run test` (3× runs) must pass.
+
+---
+
+#### Phase 5: Consolidate Retry Logic
+
+**Problem:** Multiple retry implementations:
+- `packages/sidflow-common/src/retry.ts` — Generic retry with delay
+- `packages/sidflow-classify/src/types/state-machine.ts` — Phase-specific retry with exponential backoff, error classification
+- `packages/sidflow-performance/src/runner.ts` — Custom command retry
+
+**Action:**
+- [ ] Step 5.1: Enhance `@sidflow/common` retry with optional features:
+  - Exponential backoff option
+  - Error classification callback
+  - Max retries per "phase" configuration
+- [ ] Step 5.2: Update classify state-machine to use enhanced common retry
+- [ ] Step 5.3: Update performance runner to use common retry where applicable
+
+**Validation:** `bun run build && bun run test` (3× runs) must pass.
+
+---
+
+#### Phase 6: Consolidate Type Definitions
+
+**Problem:** Similar type definitions scattered across packages:
+- `SidMetadata` defined in multiple places (sidflow-common, sidflow-classify, sidflow-web)
+- Progress types in `sidflow-web/lib/types/` could potentially be shared
+- API response types used only in web but could be in common for reuse
+
+**Action:**
+- [ ] Step 6.1: Audit all SidMetadata/SidFileMetadata definitions
+- [ ] Step 6.2: Ensure single source of truth in `@sidflow/common` 
+- [ ] Step 6.3: Re-export from common, update imports across packages
+- [ ] Step 6.4: Consider if ClassifyProgress/FetchProgress types should move to common
+
+**Validation:** `bun run build && bun run test` (3× runs) must pass. TypeScript strict mode catches breaking changes.
+
+---
+
+#### Phase 7: API Route Refactoring (sidflow-web)
+
+**Problem:** Many API routes share common patterns:
+- Error response formatting (try/catch → `{ success: false, error, details }`)
+- Parameter validation with Zod
+- Config loading
+- Similar logging patterns
+
+**Action:**
+- [ ] Step 7.1: Create `lib/server/api-utils.ts` with:
+  - `createApiHandler(handler)` wrapper that handles errors, logging
+  - `apiResponse.success(data)` and `apiResponse.error(message, details)` helpers
+  - Reusable validation patterns
+- [ ] Step 7.2: Migrate 2-3 simple routes as proof of concept (e.g., `/api/health`, `/api/config/hvsc`)
+- [ ] Step 7.3: Migrate remaining routes incrementally (batch by similarity)
+
+**Validation:** E2E tests + `bun run test` must pass after each batch.
+
+---
+
+#### Phase 8: Test Utility Consolidation
+
+**Problem:** Test files across packages could share common utilities:
+- Mock/spy patterns
+- Temp directory setup/teardown
+- Config loading for tests
+- Common assertions
+
+**Action:**
+- [ ] Step 8.1: Create `packages/sidflow-common/test/test-utils.ts` with shared helpers
+- [ ] Step 8.2: Refactor tests in sidflow-common to use shared utils
+- [ ] Step 8.3: Gradually migrate other package tests
+
+**Validation:** `bun run test` (3× runs) must pass.
+
+---
+
+#### Phase 9: Final Validation & Documentation
+
+- [ ] Step 9.1: Full test suite 3× consecutive passes
+- [ ] Step 9.2: Build verification (`bun run build`)
+- [ ] Step 9.3: E2E smoke test (`bun run test:e2e`)
+- [ ] Step 9.4: Manual verification: classify, play, rate flows work
+- [ ] Step 9.5: Update doc/developer.md if any import paths changed
+
+---
+
+**Progress log**
+- 2025-12-04 — Created cleanup plan based on comprehensive codebase review.
+
+**Assumptions & Decisions**
+- Prioritize low-risk changes first (remove stale files before refactoring)
+- Each phase is independent and can be paused
+- Functional behavior must remain identical
+- Tests are the contract for correctness
+
+**Follow-ups (out of scope)**
+- Performance optimizations
+- New feature additions
+- Major architectural changes
+
+---
 
 ### Task: Feature Extraction (2025-11-29)
 
