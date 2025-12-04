@@ -10,6 +10,45 @@ export interface JourneyLoadOptions {
   pacingSeconds?: number;
 }
 
+/**
+ * Allows JSON journey files to include `//` line comments while keeping parsing deterministic.
+ * This avoids CI failures when specs include inline documentation comments.
+ */
+function parseJsonWithLineComments(raw: string): JourneySpec {
+  const sanitized = raw
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trimStart();
+      if (trimmed.startsWith("//")) {
+        return "";
+      }
+
+      let inString = false;
+      let escaped = false;
+      for (let i = 0; i < line.length - 1; i += 1) {
+        const char = line[i];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = !inString;
+        }
+        if (!inString && char === "/" && line[i + 1] === "/") {
+          return line.slice(0, i);
+        }
+      }
+      return line;
+    })
+    .join("\n");
+
+  return JSON.parse(sanitized) as JourneySpec;
+}
+
 export async function loadJourneyFile(
   filePath: string,
   options: JourneyLoadOptions = {}
@@ -20,7 +59,7 @@ export async function loadJourneyFile(
   }
 
   const raw = await fs.readFile(filePath, "utf8");
-  const parsed: JourneySpec = ext === ".json" ? JSON.parse(raw) : (parseYaml(raw) as JourneySpec);
+  const parsed: JourneySpec = ext === ".json" ? parseJsonWithLineComments(raw) : (parseYaml(raw) as JourneySpec);
 
   validateJourney(parsed, filePath);
 
