@@ -56,10 +56,9 @@ data/playlists/
 # User data (contains password hashes, should not be committed)
 data/users/
 
-# Performance test results
+# Performance test results (generated, not the journey definitions)
 performance/results/
 performance/summary/
-performance/journeys/
 data/.sidflow-classify-temp.json
 
 # Coverage reports (generated during test runs)
