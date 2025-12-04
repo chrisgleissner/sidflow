@@ -19,8 +19,8 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [How to use this file](#how-to-use-this-file)
   - [Maintenance rules](#maintenance-rules)
   - [Active tasks](#active-tasks)
+    - [Task: Classification Pipeline Fixes (2025-12-04)](#task-classification-pipeline-fixes-2025-12-04)
     - [Task: Codebase Deduplication & Cleanup (2025-12-04)](#task-codebase-deduplication--cleanup-2025-12-04)
-    - [Task: Feature Extraction (2025-11-29)](#task-feature-extraction-2025-11-29)
     - [Task: Achieve >90% Test Coverage (2025-11-24)](#task-achieve-90-test-coverage-2025-11-24)
     - [Task: Documentation Consolidation (2025-12-06)](#task-documentation-consolidation-2025-12-06)
   - [Archived Tasks](#archived-tasks)
@@ -63,6 +63,53 @@ For each substantial user request or multi‑step feature, create a new Task sec
 ---
 
 ## Active tasks
+
+### Task: Classification Pipeline Fixes (2025-12-04)
+
+**Status:** Phase 1 ✅ COMPLETE | Phase 2: Future
+
+**User request (summary)**
+- Fix bugs preventing Essentia.js from being used by default in classification
+- Ensure pipeline follows correct order: render → extract features → classify per SID file
+
+**Analysis Results**
+
+Pipeline flow IS correct - each job in `generateAutoTags` processes sequentially:
+1. Check if WAV exists → render if not
+2. Extract features with Essentia.js
+3. Predict ratings
+
+**Bugs fixed:**
+1. **CLI Default Override Bug:** `cli.ts` now passes `undefined` for `featureExtractor`/`predictRatings` when not specified, allowing `generateAutoTags` to use its defaults
+2. **generateJsonlOutput Wrong Default:** Now uses `defaultFeatureExtractor` (essentiaFeatureExtractor) instead of `heuristicFeatureExtractor`
+
+**Plan (checklist)**
+
+Phase 1: Fix Essentia.js Defaults ✅ COMPLETE
+- [x] Step 1.1 — Analyze pipeline flow and identify issues
+- [x] Step 1.2 — Fix CLI to not override default feature extractor
+- [x] Step 1.3 — Fix generateJsonlOutput to use correct default
+- [x] Step 1.4 — Add test to verify CLI passes undefined for featureExtractor
+- [x] Step 1.5 — Run tests 3x consecutively (1549 pass, 1 skip, 0 fail × 3)
+
+Phase 2: Web UI Visibility (future)
+- [ ] Step 2.1 — Per-thread live status with phase + SID filename
+- [ ] Step 2.2 — Counters and stalled indicators in UI
+- [ ] Step 2.3 — Structured logging for phase transitions
+
+**Progress log**
+- 2025-12-04 — Phase 1 complete. All tests pass 3x consecutively.
+
+**Files changed:**
+- `packages/sidflow-classify/src/cli.ts` — Removed hardcoded defaults for featureExtractor/predictRatings
+- `packages/sidflow-classify/src/index.ts` — Fixed generateJsonlOutput to use defaultFeatureExtractor
+- `packages/sidflow-classify/test/cli.test.ts` — Added test verifying undefined is passed when no module specified
+
+**Follow-ups**
+- Add logging to show which feature extractor is being used
+- Document pipeline phases more clearly in technical reference
+
+---
 
 ### Task: Codebase Deduplication & Cleanup (2025-12-04)
 
@@ -240,34 +287,6 @@ All follow the same structure: `parseXxxArgs(argv)` → `{ options, errors, help
 - Performance optimizations
 - New feature additions
 - Major architectural changes
-
----
-
-### Task: Feature Extraction (2025-11-29)
-
-**User request (summary)**
-- Classification pipeline must show Essentia feature extraction in web UI
-- Per-thread live status with phase + SID filename, counters, stalled indicators
-- Structured logging for phase transitions
-
-**Plan (checklist)**
-- [x] Step 1 — Reproduce missing JSONL/progress via admin flow ✓ Confirmed Essentia runs but visibility missing
-- [ ] Step 2 — Document state machine contract (worker lifecycle, heartbeats, message schema)
-- [ ] Step 3 — State-machine enforcement: per-thread ordering render→metadata→tagging→finalize
-- [ ] Step 4 — Event routing & heartbeats with stall thresholds
-- [ ] Step 5 — UI progress: per-thread phase/SID, counters, stalled indicators
-- [ ] Step 6 — Error handling & retries per phase
-- [ ] Step 7 — Documentation & diagrams
-- [ ] Step 8 — Test matrix design
-- [ ] Step 9 — Implement tests (~90% coverage)
-- [ ] Step 10 — Validation (build, test 3×, E2E)
-
-**Progress log**
-- 2025-12-06 — Step 1 complete. CLI writes JSONL correctly; issue is web visibility.
-
-**Follow-ups**
-- Consider splitting render vs feature extraction into discrete phases for UX
-- Telemetry/metrics endpoint after stabilization
 
 ---
 

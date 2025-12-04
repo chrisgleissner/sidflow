@@ -11,8 +11,6 @@ import {
   defaultExtractMetadata,
   generateAutoTags,
   generateJsonlOutput,
-  heuristicFeatureExtractor,
-  heuristicPredictRatings,
   planClassification,
   type AutoTagProgress,
   type BuildWavCacheResult,
@@ -405,12 +403,16 @@ export async function runClassifyCli(
       render = await runtime.loadRenderModule(options.renderModule);
     }
 
-    let featureExtractor: FeatureExtractor = heuristicFeatureExtractor;
+    // Only override feature extractor if user specifies --feature-module
+    // Otherwise let generateAutoTags use its default (essentiaFeatureExtractor)
+    let featureExtractor: FeatureExtractor | undefined;
     if (options.featureModule) {
       featureExtractor = await runtime.loadFeatureModule(options.featureModule);
     }
 
-    let predictRatings: PredictRatings = heuristicPredictRatings;
+    // Only override predictor if user specifies --predictor-module
+    // Otherwise let generateAutoTags use its default (heuristicPredictRatings)
+    let predictRatings: PredictRatings | undefined;
     if (options.predictorModule) {
       predictRatings = await runtime.loadPredictorModule(options.predictorModule);
     }

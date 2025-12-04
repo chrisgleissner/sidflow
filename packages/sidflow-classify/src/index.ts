@@ -1657,8 +1657,10 @@ export async function generateJsonlOutput(
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.sidPath);
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
-  const featureExtractor = options.featureExtractor ?? heuristicFeatureExtractor;
-  const predictRatings = options.predictRatings ?? heuristicPredictRatings;
+  // Use defaultFeatureExtractor (essentiaFeatureExtractor) for Essentia.js audio analysis
+  const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
+  // Use defaultPredictRatings (heuristicPredictRatings) for rating prediction
+  const predictRatings = options.predictRatings ?? defaultPredictRatings;
   const onProgress = options.onProgress;
 
   // Use classifiedPath from config or default to tags path

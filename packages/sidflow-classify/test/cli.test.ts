@@ -449,6 +449,85 @@ describe("runClassifyCli", () => {
     }
   });
 
+  it("uses undefined for featureExtractor when --feature-module not specified", async () => {
+    // This test verifies that when no --feature-module is specified,
+    // the CLI passes undefined for featureExtractor, allowing generateAutoTags
+    // to use its default (essentiaFeatureExtractor)
+    let capturedFeatureExtractor: unknown = "NOT_CAPTURED";
+    let capturedPredictRatings: unknown = "NOT_CAPTURED";
+
+    const captured: { stdout: string[]; stderr: string[] } = { stdout: [], stderr: [] };
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        captured.stdout.push(chunk.toString());
+        callback();
+      }
+    });
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        captured.stderr.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const plan = createPlan();
+
+    const exitCode = await runClassifyCli([], {
+      stdout,
+      stderr,
+      planClassification: (async (_options: unknown) => plan) as any,
+      buildWavCache: (async () => ({
+        rendered: [],
+        skipped: [],
+        metrics: {
+          startTime: 0,
+          endTime: 10,
+          durationMs: 10,
+          totalFiles: 0,
+          rendered: 0,
+          skipped: 0,
+          cacheHitRate: 0
+        }
+      })) as any,
+      generateAutoTags: (async (_plan: unknown, options: unknown) => {
+        // Capture what the CLI passed for featureExtractor and predictRatings
+        const params = options as { featureExtractor?: unknown; predictRatings?: unknown };
+        capturedFeatureExtractor = params.featureExtractor;
+        capturedPredictRatings = params.predictRatings;
+        return {
+          autoTagged: [],
+          manualEntries: [],
+          mixedEntries: [],
+          metadataFiles: [],
+          tagFiles: [],
+          metrics: {
+            startTime: 0,
+            endTime: 10,
+            durationMs: 10,
+            totalFiles: 0,
+            autoTaggedCount: 0,
+            manualOnlyCount: 0,
+            mixedCount: 0,
+            predictionsGenerated: 0
+          }
+        } satisfies TestGenerateAutoTagsResult;
+      }) as any,
+      generateJsonlOutput: (async () => ({
+        jsonlFile: "/tmp/test.jsonl",
+        recordCount: 0,
+        durationMs: 10
+      })) as any
+    });
+
+    expect(exitCode).toBe(0);
+    // When no --feature-module is specified, CLI should pass undefined
+    // so that generateAutoTags uses its default (essentiaFeatureExtractor)
+    expect(capturedFeatureExtractor).toBeUndefined();
+    // When no --predictor-module is specified, CLI should pass undefined
+    // so that generateAutoTags uses its default (defaultPredictRatings)
+    expect(capturedPredictRatings).toBeUndefined();
+  });
+
   it("fails when override module does not export a function", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "sidflow-classify-cli-invalid-"));
     const invalidModulePath = path.join(tempDir, "invalid.mjs");
