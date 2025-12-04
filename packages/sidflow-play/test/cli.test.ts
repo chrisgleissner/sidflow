@@ -37,13 +37,13 @@ describe("CLI argument parsing", () => {
 
   test("parses exploration option", () => {
     const result = parsePlayArgs(["--exploration", "0.5"]);
-    expect(result.options.explorationFactor).toBe(0.5);
+    expect(result.options.exploration).toBe(0.5);
     expect(result.errors).toHaveLength(0);
   });
 
   test("parses diversity option", () => {
     const result = parsePlayArgs(["--diversity", "0.3"]);
-    expect(result.options.diversityThreshold).toBe(0.3);
+    expect(result.options.diversity).toBe(0.3);
     expect(result.errors).toHaveLength(0);
   });
 
@@ -66,7 +66,7 @@ describe("CLI argument parsing", () => {
   test("returns error for invalid min-duration", () => {
     const result = parsePlayArgs(["--min-duration", "0"]);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0]).toContain("must be at least 1 second");
+    expect(result.errors[0]).toContain("must be at least 1");
   });
 
   test("parses export-only flag", () => {
@@ -90,7 +90,7 @@ describe("CLI argument parsing", () => {
     ]);
     expect(result.options.mood).toBe("energetic");
     expect(result.options.limit).toBe(50);
-    expect(result.options.explorationFactor).toBe(0.4);
+    expect(result.options.exploration).toBe(0.4);
     expect(result.options.export).toBe("out.json");
     expect(result.errors).toHaveLength(0);
   });
@@ -103,19 +103,20 @@ describe("CLI argument parsing", () => {
   test("returns error for invalid limit", () => {
     const result = parsePlayArgs(["--limit", "invalid"]);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0]).toContain("must be a positive number");
+    expect(result.errors[0]).toContain("must be an integer");
   });
 
   test("returns error for invalid exploration", () => {
     const result = parsePlayArgs(["--exploration", "2.0"]);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0]).toContain("must be between 0 and 1");
+    expect(result.errors[0]).toContain("must be at most 1");
   });
 
-  test("returns error for invalid export format", () => {
+  // Note: export-format validation is now done at runtime, not in parseArgs
+  test("accepts export format during parsing", () => {
     const result = parsePlayArgs(["--export-format", "invalid"]);
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0]).toContain("must be json, m3u, or m3u8");
+    // The parser accepts it; validation happens later in runPlayCli
+    expect(result.options.exportFormat).toBe("invalid");
   });
 
   test("returns error for unknown option", () => {
@@ -537,5 +538,29 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(1);
     expect(errors.join("\n")).toContain("--limit must be a positive number");
+  });
+
+  it("reports invalid export format at runtime", async () => {
+    const errors: string[] = [];
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        errors.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runPlayCli(["--export-format", "invalid"], {
+      stderr,
+      loadConfig: async () => ({
+        sidPath: "/music",
+        wavCachePath: "/wav",
+        tagsPath: "/tags",
+        threads: 2,
+        classificationDepth: 1
+      })
+    });
+
+    expect(exitCode).toBe(1);
+    expect(errors.join("\n")).toContain("must be json, m3u, or m3u8");
   });
 });

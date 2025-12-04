@@ -3,7 +3,17 @@
 import process from "node:process";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadConfig, MOOD_PRESETS, type MoodPresetName, type SidflowConfig, createPlaybackLock } from "@sidflow/common";
+import {
+  loadConfig,
+  MOOD_PRESETS,
+  createPlaybackLock,
+  parseArgs,
+  formatHelp,
+  handleParseResult,
+  type MoodPresetName,
+  type SidflowConfig,
+  type ArgDef
+} from "@sidflow/common";
 import type { Stats } from "node:fs";
 import {
   createPlaylistBuilder,
@@ -19,220 +29,120 @@ import {
 } from "./index.js";
 
 interface CliOptions {
-  configPath?: string;
+  config?: string;
   mood?: string;
   filters?: string;
   export?: string;
   exportFormat?: string;
   limit?: number;
-  explorationFactor?: number;
-  diversityThreshold?: number;
+  exploration?: number;
+  diversity?: number;
   playOnly?: boolean;
   exportOnly?: boolean;
   minDuration?: number;
 }
 
-interface ParseResult {
-  options: CliOptions;
-  errors: string[];
-  helpRequested: boolean;
-}
+const ARG_DEFS: ArgDef[] = [
+  {
+    name: "--config",
+    type: "string",
+    description: "Load an alternate .sidflow.json"
+  },
+  {
+    name: "--mood",
+    type: "string",
+    description: "Mood preset (quiet, ambient, energetic, dark, bright, complex)"
+  },
+  {
+    name: "--filters",
+    type: "string",
+    description: "Filter expression (e.g., 'e>=4,m>=3,bpm=120-140')"
+  },
+  {
+    name: "--limit",
+    type: "integer",
+    description: "Number of songs in playlist",
+    defaultValue: 20,
+    constraints: { positive: true }
+  },
+  {
+    name: "--exploration",
+    type: "float",
+    description: "Exploration factor",
+    defaultValue: 0.2,
+    constraints: { min: 0, max: 1 }
+  },
+  {
+    name: "--diversity",
+    type: "float",
+    description: "Diversity threshold",
+    defaultValue: 0.2,
+    constraints: { min: 0, max: 1 }
+  },
+  {
+    name: "--min-duration",
+    type: "integer",
+    description: "Minimum song duration in seconds",
+    defaultValue: 15,
+    constraints: { min: 1 }
+  },
+  {
+    name: "--export",
+    type: "string",
+    description: "Export playlist to file"
+  },
+  {
+    name: "--export-format",
+    type: "string",
+    description: "Export format: json, m3u, m3u8",
+    defaultValue: "json"
+  },
+  {
+    name: "--export-only",
+    type: "boolean",
+    description: "Export playlist without playing"
+  },
+  {
+    name: "--play-only",
+    type: "boolean",
+    description: "Play without interactive controls"
+  }
+];
 
-function printHelp(stream: NodeJS.WritableStream = process.stdout): void {
-  const lines = [
-    "Usage: sidflow play [options]",
-    "",
-    "Personal radio for SID music with mood-based playlist generation.",
-    "Playback uses the WASM SidPlaybackHarness; ensure either ffplay or aplay is available locally.",
-    "",
-    "Options:",
-    "  --config <path>              Load an alternate .sidflow.json",
-    "  --mood <preset>              Mood preset (quiet, ambient, energetic, dark, bright, complex)",
-    "  --filters <expr>             Filter expression (e.g., 'e>=4,m>=3,bpm=120-140')",
-    "  --limit <n>                  Number of songs in playlist (default: 20)",
-    "  --exploration <0-1>          Exploration factor (default: 0.2)",
-    "  --diversity <0-1>            Diversity threshold (default: 0.2)",
-    "  --min-duration <seconds>     Minimum song duration in seconds (default: 15)",
-    "  --export <path>              Export playlist to file",
-    "  --export-format <fmt>        Export format: json, m3u, m3u8 (default: json)",
-    "  --export-only                Export playlist without playing",
-    "  --play-only                  Play without interactive controls",
-    "  --help                       Show this message and exit",
-    "",
-    "Filter Syntax:",
-    "  e>=4                         Energy >= 4",
-    "  m<=2                         Mood <= 2",
-    "  c=5                          Complexity = 5",
-    "  bpm=120-140                  BPM between 120 and 140",
-    "  e>=4,m>=3,c<=2               Multiple filters (comma-separated)",
-    "",
-    "Mood Presets:",
-    "  quiet      - Low energy, calm mood, simple complexity",
-    "  ambient    - Moderate energy, neutral mood",
-    "  energetic  - High energy, upbeat mood",
-    "  dark       - Moderate energy, somber mood",
-    "  bright     - High energy, upbeat mood",
-    "  complex    - High complexity focus",
-    "",
-    "Examples:",
-    "  sidflow play --mood energetic --limit 30",
-    "  sidflow play --filters 'e>=4,m>=4' --export playlist.json",
-    "  sidflow play --mood dark --export-format m3u --export playlist.m3u",
-    "  sidflow play --mood quiet --min-duration 30",
-    ""
-  ];
-  stream.write(`${lines.join("\n")}\n`);
-}
+const HELP_TEXT = formatHelp(
+  "sidflow play [options]",
+  `Personal radio for SID music with mood-based playlist generation.
+Playback uses the WASM SidPlaybackHarness; ensure either ffplay or aplay is available locally.
+
+Filter Syntax:
+  e>=4                         Energy >= 4
+  m<=2                         Mood <= 2
+  c=5                          Complexity = 5
+  bpm=120-140                  BPM between 120 and 140
+  e>=4,m>=3,c<=2               Multiple filters (comma-separated)
+
+Mood Presets:
+  quiet      - Low energy, calm mood, simple complexity
+  ambient    - Moderate energy, neutral mood
+  energetic  - High energy, upbeat mood
+  dark       - Moderate energy, somber mood
+  bright     - High energy, upbeat mood
+  complex    - High complexity focus`,
+  ARG_DEFS,
+  [
+    "sidflow play --mood energetic --limit 30",
+    "sidflow play --filters 'e>=4,m>=4' --export playlist.json",
+    "sidflow play --mood dark --export-format m3u --export playlist.m3u",
+    "sidflow play --mood quiet --min-duration 30"
+  ]
+);
 
 function isMoodPreset(value: string): value is MoodPresetName {
   return Object.hasOwn(MOOD_PRESETS, value);
 }
 
-export function parsePlayArgs(argv: string[]): ParseResult {
-  const options: CliOptions = {};
-  const errors: string[] = [];
-  let helpRequested = false;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    switch (token) {
-      case "--help":
-        helpRequested = true;
-        break;
-      case "--config": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--config requires a value");
-        } else {
-          options.configPath = next;
-          index += 1;
-        }
-        break;
-      }
-      case "--mood": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--mood requires a value");
-        } else {
-          options.mood = next;
-          index += 1;
-        }
-        break;
-      }
-      case "--filters": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--filters requires a value");
-        } else {
-          options.filters = next;
-          index += 1;
-        }
-        break;
-      }
-      case "--limit": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--limit requires a value");
-        } else {
-          const num = Number(next);
-          if (Number.isNaN(num) || num <= 0) {
-            errors.push("--limit must be a positive number");
-          } else {
-            options.limit = num;
-            index += 1;
-          }
-        }
-        break;
-      }
-      case "--exploration": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--exploration requires a value");
-        } else {
-          const num = Number(next);
-          if (Number.isNaN(num) || num < 0 || num > 1) {
-            errors.push("--exploration must be between 0 and 1");
-          } else {
-            options.explorationFactor = num;
-            index += 1;
-          }
-        }
-        break;
-      }
-      case "--diversity": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--diversity requires a value");
-        } else {
-          const num = Number(next);
-          if (Number.isNaN(num) || num < 0 || num > 1) {
-            errors.push("--diversity must be between 0 and 1");
-          } else {
-            options.diversityThreshold = num;
-            index += 1;
-          }
-        }
-        break;
-      }
-      case "--min-duration": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--min-duration requires a value");
-        } else {
-          const num = Number(next);
-          if (Number.isNaN(num) || num < 1) {
-            errors.push("--min-duration must be at least 1 second");
-          } else {
-            options.minDuration = num;
-            index += 1;
-          }
-        }
-        break;
-      }
-      case "--export": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--export requires a value");
-        } else {
-          options.export = next;
-          index += 1;
-        }
-        break;
-      }
-      case "--export-format": {
-        const next = argv[index + 1];
-        if (!next) {
-          errors.push("--export-format requires a value");
-        } else {
-          if (!["json", "m3u", "m3u8"].includes(next)) {
-            errors.push("--export-format must be json, m3u, or m3u8");
-          } else {
-            options.exportFormat = next;
-            index += 1;
-          }
-        }
-        break;
-      }
-      case "--export-only":
-        options.exportOnly = true;
-        break;
-      case "--play-only":
-        options.playOnly = true;
-        break;
-      default:
-        if (token.startsWith("--")) {
-          errors.push(`Unknown option: ${token}`);
-        } else {
-          errors.push(`Unexpected argument: ${token}`);
-        }
-    }
-
-    if (helpRequested) {
-      break;
-    }
-  }
-
-  return { options, errors, helpRequested };
+export function parsePlayArgs(argv: string[]) {
+  return parseArgs<CliOptions>(argv, ARG_DEFS);
 }
 
 interface PlaylistBuilderLike {
@@ -305,24 +215,25 @@ function mergeRuntime(overrides?: Partial<PlayCliRuntime>): PlayCliRuntime {
 }
 
 export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRuntime>): Promise<number> {
-  const { options, errors, helpRequested } = parsePlayArgs(argv);
+  const result = parsePlayArgs(argv);
   const runtime = mergeRuntime(overrides);
 
-  if (helpRequested) {
-    printHelp(runtime.stdout);
-    return errors.length > 0 ? 1 : 0;
+  const exitCode = handleParseResult(result, HELP_TEXT, runtime.stdout, runtime.stderr);
+  if (exitCode !== undefined) {
+    return exitCode;
   }
 
-  if (errors.length > 0) {
-    for (const error of errors) {
-      runtime.stderr.write(`Error: ${error}\n`);
-    }
+  const { options } = result;
+
+  // Additional validation for export-format
+  if (options.exportFormat && !["json", "m3u", "m3u8"].includes(options.exportFormat)) {
+    runtime.stderr.write(`Error: --export-format must be json, m3u, or m3u8\n`);
     return 1;
   }
 
   let config: SidflowConfig;
   try {
-    config = await runtime.loadConfig(options.configPath);
+    config = await runtime.loadConfig(options.config);
   } catch (error) {
     runtime.stderr.write(`Error: ${(error as Error).message}\n`);
     return 1;
@@ -352,8 +263,8 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
   const playlistConfig: PlaylistConfig = {
     seed,
     limit: options.limit,
-    explorationFactor: options.explorationFactor,
-    diversityThreshold: options.diversityThreshold
+    explorationFactor: options.exploration,
+    diversityThreshold: options.diversity
   };
 
   if (options.filters) {

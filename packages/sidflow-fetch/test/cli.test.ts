@@ -33,9 +33,9 @@ describe("sidflow-fetch CLI", () => {
     expect(result.helpRequested).toBeFalse();
     expect(result.errors).toHaveLength(0);
     expect(result.options).toEqual({
-      configPath: "./config.json",
-      remoteBaseUrl: "https://mirror.example/HVSC/",
-      hvscVersionPath: "./hvsc-version.json"
+      config: "./config.json",
+      remote: "https://mirror.example/HVSC/",
+      versionFile: "./hvsc-version.json"
     });
   });
 
