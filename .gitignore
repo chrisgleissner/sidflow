@@ -58,7 +58,12 @@ data/users/
 
 # Performance test results
 performance/results/
+performance/summary/
+performance/journeys/
 data/.sidflow-classify-temp.json
+
+# Coverage reports (generated during test runs)
+coverage-merged/
 
 # Local installation directory (user-specific deployment configs)
 local-install/
