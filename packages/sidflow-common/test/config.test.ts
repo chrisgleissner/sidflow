@@ -63,7 +63,7 @@ describe("config", () => {
     expect(config.render?.outputPath).toBe(path.normalize(payload.render!.outputPath!));
     expect(config.render?.defaultFormats).toEqual(["wav", "m4a"]);
     expect(config.render?.preferredEngines).toEqual(["wasm", "sidplayfp-cli"]);
-    expect(config.render?.defaultChip).toBe("8580r5");
+    expect(config.render?.defaultChip).toBe("8580"); // normalized from "8580r5"
     expect(config.render?.ultimate64).toEqual(payload.render!.ultimate64);
 
     // Should return cached config

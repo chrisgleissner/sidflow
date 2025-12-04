@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ApiResponse } from '@/lib/validation';
 import { findSimilarTracks } from '@/lib/server/similarity-search';
-import { pathExists } from '@sidflow/common';
+import { pathExists, lookupSongLength } from '@sidflow/common';
 import { resolvePlaybackEnvironment, createRateTrackInfo } from '@/lib/rate-playback';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
-import { lookupSongLength } from '@/lib/songlengths';
 import { stat } from 'node:fs/promises';
 
 interface StationRequest {

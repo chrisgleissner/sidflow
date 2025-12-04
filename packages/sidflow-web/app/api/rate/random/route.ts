@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import path from 'node:path';
 import { readdir } from 'node:fs/promises';
-import { pathExists } from '@sidflow/common';
+import { pathExists, lookupSongLength } from '@sidflow/common';
 import { findUntaggedSids, createTagFilePath } from '@sidflow/rate';
 import type { ApiResponse } from '@/lib/validation';
 import { resolvePlaybackEnvironment } from '@/lib/rate-playback';
-import { lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createRateTrackInfo } from '@/lib/rate-playback';
 import { createPlaybackSession } from '@/lib/playback-session';

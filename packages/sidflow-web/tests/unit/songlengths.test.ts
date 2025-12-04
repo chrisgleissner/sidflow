@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test, beforeEach } from 'bun:test';
-import { loadSonglengthsData, lookupSongLength, clearSonglengthCaches } from '@/lib/songlengths';
+import { loadSonglengthsData, lookupSongLength, clearSonglengthCaches } from '@sidflow/common';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';

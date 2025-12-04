@@ -1,5 +1,4 @@
-import { pathExists } from '@sidflow/common';
-import { lookupSongLength } from '@/lib/songlengths';
+import { pathExists, lookupSongLength } from '@sidflow/common';
 import { createRateTrackInfo, resolvePlaybackEnvironment } from '@/lib/rate-playback';
 import { findSimilarTracks } from '@/lib/server/similarity-search';
 import type { RateTrackInfo } from '@/lib/types/rate-track';

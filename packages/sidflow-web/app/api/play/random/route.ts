@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'node:path';
 import type { Dirent } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
-import { pathExists } from '@sidflow/common';
+import { pathExists, loadSonglengthsData, lookupSongLength } from '@sidflow/common';
 import type { ApiResponse } from '@/lib/validation';
 import {
   resolvePlaybackEnvironment,
   createRateTrackInfo,
 } from '@/lib/rate-playback';
-import { loadSonglengthsData, lookupSongLength } from '@/lib/songlengths';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { createPlaybackSession } from '@/lib/playback-session';
 import { ensureHlsForTrack } from '@/lib/server/hls-service';
