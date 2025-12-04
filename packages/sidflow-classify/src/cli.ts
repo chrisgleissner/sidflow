@@ -433,7 +433,7 @@ export async function runClassifyCli(
 
     progressLogger.clearLine();
     runtime.stdout.write("\n");
-    
+
     // Step 2: Generate JSONL output with features + ratings + metadata
     runtime.stdout.write("Extracting features to JSONL...\n");
     const jsonlResult = await runtime.generateJsonlOutput(resolvedPlan, {

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 
 process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ??= '1';
 process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';
+process.env.SIDFLOW_ADMIN_SECRET ??= 'sidflow-test-pass-123';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';
@@ -150,6 +151,8 @@ export default defineConfig({
       // Pass admin credentials to server so middleware can validate them
       SIDFLOW_ADMIN_USER: process.env.SIDFLOW_ADMIN_USER ?? 'ops',
       SIDFLOW_ADMIN_PASSWORD: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123',
+      SIDFLOW_ADMIN_SECRET: process.env.SIDFLOW_ADMIN_SECRET ?? 'sidflow-test-pass-123',
+      SIDFLOW_DISABLE_ADMIN_AUTH: '1',
     },
   },
 });

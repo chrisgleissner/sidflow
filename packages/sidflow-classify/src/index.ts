@@ -1,5 +1,6 @@
 import {
   DEFAULT_RATINGS,
+  appendCanonicalJsonLines,
   clampRating,
   createLogger,
   ensureDir,
@@ -42,19 +43,39 @@ import {
   type RenderWavOptions
 } from "./render/wav-renderer.js";
 import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./render/render-orchestrator.js";
+import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
 const classifyLogger = createLogger("classify");
 
+/** Heartbeat interval for long-running operations (ms) */
+const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
+
 export type ThreadPhase = "analyzing" | "building" | "metadata" | "tagging";
 
+/**
+ * Thread activity update with structured logging support.
+ * Backward compatible with existing consumers while supporting enhanced fields.
+ */
 export interface ThreadActivityUpdate {
+  /** Thread identifier (1-based) */
   threadId: number;
+  /** Current processing phase */
   phase: ThreadPhase;
+  /** Thread status */
   status: "idle" | "working";
+  /** Current file being processed (relative path) */
   file?: string;
+  /** When this update was emitted (epoch ms) - optional for backward compatibility */
+  timestamp?: number;
+  /** Is this a heartbeat update (vs state transition) */
+  isHeartbeat?: boolean;
+  /** Song index for multi-song SIDs */
+  songIndex?: number;
+  /** Phase duration so far (ms) */
+  phaseDurationMs?: number;
 }
 
 interface ConcurrentContext {
@@ -661,22 +682,29 @@ export async function buildWavCache(
           );
         }
         const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
+        const phaseStartedAt = Date.now();
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "building",
           status: "working",
-          file: songLabel
+          file: songLabel,
+          timestamp: phaseStartedAt,
+          songIndex: songCount > 1 ? songIndex : undefined,
         });
 
         // Start heartbeat to prevent thread from appearing stale during long renders
         const heartbeatInterval = setInterval(() => {
+          const now = Date.now();
           onThreadUpdate?.({
             threadId: context.threadId,
             phase: "building",
             status: "working",
-            file: songLabel
+            file: songLabel,
+            timestamp: now,
+            isHeartbeat: true,
+            phaseDurationMs: now - phaseStartedAt,
           });
-        }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
+        }, HEARTBEAT_INTERVAL_MS);
 
         let targetDurationMs: number | undefined;
         try {
@@ -703,32 +731,42 @@ export async function buildWavCache(
           targetDurationMs
         };
         let renderSucceeded = false;
-        let lastError: Error | null = null;
 
         try {
-          // Retry up to 3 times for rendering failures
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
+          // Use configured retry logic with exponential backoff
+          await withRetry(
+            'building',
+            async () => {
               if (rendererPool) {
                 await rendererPool.render(renderOptions);
               } else {
                 await render(renderOptions);
               }
-              renderSucceeded = true;
-              break;
-            } catch (error) {
-              lastError = error instanceof Error ? error : new Error(String(error));
-              if (attempt < 3) {
+            },
+            {
+              onRetry: (attempt, maxAttempts, error, delayMs) => {
                 classifyLogger.warn(
-                  `[RETRY] Attempt ${attempt}/3 failed for ${songLabel}: ${lastError.message}. Retrying...`
+                  `[RETRY] Attempt ${attempt}/${maxAttempts} failed for ${songLabel}: ${error.message}. Retrying in ${delayMs}ms...`
+                );
+              },
+              onFatalError: (classifyError) => {
+                classifyLogger.error(
+                  `[FATAL] Unrecoverable error for ${songLabel}: ${classifyError.message}`
                 );
               }
             }
-          }
+          );
+          renderSucceeded = true;
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          classifyLogger.warn(
+            `Failed to render ${songLabel} after ${RETRY_CONFIG.building.maxRetries + 1} attempts: ${errorMessage}`
+          );
+          // Don't add to rendered list, effectively skipping this file
         } finally {
           clearInterval(heartbeatInterval);
         }
-
+        
         if (renderSucceeded) {
           rendered.push(wavFile);
           if (rendered.length <= 3) {
@@ -750,12 +788,6 @@ export async function buildWavCache(
               currentFile: songLabel
             });
           }
-        } else {
-          // All retries failed
-          classifyLogger.warn(
-            `Failed to render ${songLabel} after 3 attempts: ${lastError?.message}`
-          );
-          // Don't add to rendered list, effectively skipping this file
         }
 
         onThreadUpdate?.({
@@ -1323,11 +1355,14 @@ export async function generateAutoTags(
   try {
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
     const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
+    const taggingStartedAt = Date.now();
     onThreadUpdate?.({
       threadId: context.threadId,
       phase: "tagging",
       status: "working",
-      file: songLabel
+      file: songLabel,
+      timestamp: taggingStartedAt,
+      songIndex: job.songCount > 1 ? job.songIndex : undefined,
     });
     const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
     const needsAuto = !job.manualRecord || hasMissingDimensions(manualRatings ?? {});
@@ -1336,24 +1371,31 @@ export async function generateAutoTags(
     if (needsAuto) {
       if (!(await pathExists(job.wavPath))) {
         // Emit "building" phase for inline rendering
+        const buildStartedAt = Date.now();
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "building",
           status: "working",
-          file: songLabel
+          file: songLabel,
+          timestamp: buildStartedAt,
+          songIndex: job.songCount > 1 ? job.songIndex : undefined,
         });
         
         // Start heartbeat to prevent thread from appearing stale during long renders
         // When using rendererPool, the worker runs in a separate thread so the main event loop
         // stays responsive and setInterval callbacks fire normally for heartbeat updates.
         const heartbeatInterval = setInterval(() => {
+          const now = Date.now();
           onThreadUpdate?.({
             threadId: context.threadId,
             phase: "building",
             status: "working",
-            file: songLabel
+            file: songLabel,
+            timestamp: now,
+            isHeartbeat: true,
+            phaseDurationMs: now - buildStartedAt,
           });
-        }, 3000); // Send heartbeat every 3 seconds (before 5s stale threshold)
+        }, HEARTBEAT_INTERVAL_MS);
         
         const renderOptions = {
           sidFile: job.sidFile,
@@ -1371,16 +1413,19 @@ export async function generateAutoTags(
           }
           // Track the WAV file for potential cleanup after classification
           renderedWavFiles.push(job.wavPath);
+          classifyLogger.debug(`[Thread ${context.threadId}] Rendered WAV for ${songLabel} in ${Date.now() - buildStartedAt}ms`);
         } finally {
           clearInterval(heartbeatInterval);
         }
         
         // Switch back to tagging phase after rendering
+        const resumeTaggingAt = Date.now();
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "tagging",
           status: "working",
-          file: songLabel
+          file: songLabel,
+          timestamp: resumeTaggingAt,
         });
       }
 
@@ -1395,7 +1440,18 @@ export async function generateAutoTags(
         });
       }
 
+      // Essentia feature extraction with structured logging
+      const extractionStartedAt = Date.now();
       const features = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+      const extractionDurationMs = Date.now() - extractionStartedAt;
+      
+      // Log feature extraction result
+      const featureCount = Object.keys(features).length;
+      const usedEssentia = features.spectralCentroid !== undefined || features.rms !== undefined;
+      classifyLogger.debug(
+        `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
+      );
+      
       autoRatings = await predictRatings({
         features,
         sidFile: job.sidFile,
@@ -1588,7 +1644,8 @@ export async function generateJsonlOutput(
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
   const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
 
-  const records: ClassificationRecord[] = [];
+  // Track record count without accumulating all records in memory
+  let recordCount = 0;
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
@@ -1683,28 +1740,29 @@ export async function generateJsonlOutput(
         record.features = features;
       }
 
-      records.push(record);
+      // Write record immediately to JSONL file (append mode)
+      await appendCanonicalJsonLines(
+        jsonlFile,
+        [record as unknown as JsonValue],
+        {
+          details: {
+            recordCount: 1,
+            phase: "classification",
+            songIndex: songIndex,
+            totalSongs: songCount
+          }
+        }
+      );
 
+      recordCount++;
       processedSongs++;
     }
   }
 
-  // Write all records to file using canonical writer for determinism + audit logging
-  await writeCanonicalJsonLines(
-    jsonlFile,
-    records as unknown as JsonValue[],
-    {
-      details: {
-        recordCount: records.length,
-        phase: "classification"
-      }
-    }
-  );
-
   const endTime = Date.now();
   return {
     jsonlFile,
-    recordCount: records.length,
+    recordCount,
     durationMs: endTime - startTime
   };
 }
@@ -1787,3 +1845,29 @@ export {
   type TrainingSummary,
   type TrainOptions
 } from "./tfjs-predictor.js";
+
+// Re-export state machine types and utilities
+export {
+  HEARTBEAT_CONFIG,
+  RETRY_CONFIG,
+  createThreadCounters,
+  createGlobalCounters,
+  isRecoverableError,
+  createClassifyError,
+  calculateBackoffDelay,
+  getMaxRetries,
+  withRetry,
+  type ClassifyPhase,
+  type WorkerPhase,
+  type ThreadStatus,
+  type ErrorType,
+  type ClassifyError,
+  type StructuredThreadUpdate,
+  type ThreadCounters,
+  type ClassifyProgressSnapshot,
+  type ThreadStatusSnapshot,
+  type GlobalCounters,
+  type PhaseTransitionLog,
+  type PhaseCompletionLog,
+  type WorkerMessage,
+} from "./types/state-machine.js";

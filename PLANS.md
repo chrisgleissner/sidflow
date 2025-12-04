@@ -24,6 +24,7 @@ Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
   - [Structure rules](#structure-rules)
   - [Plan-then-act contract](#plan-then-act-contract)
 - [Active tasks](#active-tasks)
+  - [Task: Restore Feature Extraction Output in Web Classification (2025-11-29)](#task-restore-feature-extraction-output-in-web-classification-2025-11-29)
   - [Task: Fix Audio Format Preferences and Classification UI (2025-11-28)](#task-fix-audio-format-preferences-and-classification-ui-2025-11-28)
   - [Task: Inline Render + Classify Per Song (2025-11-27)](#task-inline-render--classify-per-song-2025-11-27)
   - [Task: Prevent Runaway sidplayfp Renders Ignoring Songlengths (2025-11-27)](#task-prevent-runaway-sidplayfp-renders-ignoring-songlengths-2025-11-27)
@@ -122,6 +123,67 @@ To prevent uncontrolled growth of this file:
 - All assumptions must be recorded in the "Assumptions and open questions" section.
 
 ## Active tasks
+
+### Task: Restore Feature Extraction Output in Web Classification (2025-11-29)
+
+**User request (summary)**
+- Admin UI classification runs only show rendering/audio progress; Essentia feature extraction output never appears and JSONL artifacts go missing on web-triggered runs
+- Classification worker pool must process each SID strictly as render_wav → extract_sid_metadata → run_essentia_tagging → finalize per thread, fully utilizing configured thread limits with no silent skips; Essentia.js must always run
+- Web UI must show precise per-thread live status (phase + SID filename), counters (renders, metadata extracted, Essentia tags), and stalled/long-running indicators with reliable event routing
+- Introduce structured logging for every phase transition/progress/error/completion and provide E2E evidence/coverage for pipeline sequencing, Essentia invocation, worker utilization, UI progress, and recovery paths
+
+**Context and constraints**
+- Web UI kicks off `/api/classify` which shells out to `@sidflow/classify`; must honor `.sidflow.json` paths and thread limits
+- Essentia feature extraction currently writes under `data/classified`; CLI supports it when invoked directly but web flow loses visibility
+- Follow/extend CLI progress contract so `classify-progress-store` can parse structured events; maintain or document compatibility
+- Add heartbeats and stall detection per thread; enforce deterministic JSON/structured logs for tests
+- Mandatory validation: `bun run build`, `tsc -b`, `bun run test` (3×), and `bun run test:e2e` after changes
+
+**Plan (checklist)**
+- [x] Step 1 — Baseline: reproduce missing JSONL/progress via admin/web flow; inspect API + CLI integration to confirm Essentia execution and event gaps
+- [ ] Step 2 — Architecture contract: document corrected state machine, worker lifecycle/heartbeat, retry/error rules, message schema (worker ↔ orchestrator ↔ UI), logging fields, and acceptance criteria
+- [ ] Step 3 — State-machine enforcement: ensure per-thread ordering render_wav → extract_sid_metadata → run_essentia_tagging → finalize, blocking next SID until finalize; guarantee Essentia invocation even on cache hits; emit structured logs per transition
+- [ ] Step 4 — Event routing & heartbeats: normalize progress events (phase, sid, threadId, timestamps, counters, durations, error fields); add heartbeats and stall thresholds; ensure aggregator forwards without drops
+- [ ] Step 5 — UI progress & metrics: surface per-thread phase + SID filename, counters (renders/metadata/Essentia), and stalled indicators; ensure Essentia tagging visibility; align labels with state machine
+- [ ] Step 6 — Error handling & retries: implement per-phase retry/backoff, fatal vs recoverable errors, and thread replacement without losing queue position; ensure finalize always runs or records failure deterministically
+- [ ] Step 7 — Documentation & diagrams: update state-machine and worker-thread diagrams plus message schemas/heartbeat/logging docs; include implementation instructions for any new functionality
+- [ ] Step 8 — Test matrix design: define E2E + integration coverage (sequencing, UI for N threads, worker utilization, Essentia on real WAV, heartbeat stability, recovery for render/metadata/Essentia failures) with fixtures/tooling
+- [ ] Step 9 — Implement tests: add integration tests for worker event routing, libsidplayfp-wasm rendering, Essentia.js invocation/parsing, and UI propagation; add E2E specs to hit matrix with ~90% coverage target
+- [ ] Step 10 — Validation: run required build + tests (unit 3×, targeted E2E), confirm 100% pass, and capture logs showing full thread utilization and Essentia execution
+
+**Architecture contract (to author in Step 2 and implement in Steps 3-6)**
+- State machine (per thread): `render_wav` → `extract_sid_metadata` → `run_essentia_tagging` → `finalize`. Next SID may not start on a thread until `finalize` (success/fatal) completes; cache hits still emit all phases with explicit “cache-hit” flags for auditability.
+- Thread lifecycle: `starting` → `working` (phased) with heartbeats every 2s and phase-duration timers; `stalled` when heartbeat > stall threshold; `recovered` after progress resumes; `terminated` on fatal error with auto-respawn if queue not empty.
+- Event/message schema (worker → orchestrator → UI/SSE): `{type:"progress"|"heartbeat"|"error"|"complete", threadId, sidPath, phase, phaseStatus:"start"|"progress"|"end"|"retry", ts, durationMs?, retryCount?, cacheHit?, counters:{rendered, metadata, essentia}, error?:{code,msg,stack?}}`. Heartbeats omit `sidPath` and include `lastPhase` + `lastUpdateTs`.
+- Logging format (structured, deterministic): `{"component":"classify-worker","thread":n,"sid":path,"phase":"render_wav","status":"start|end|retry|fail","duration_ms":n,"cache_hit":bool,"message":str}`; aggregator emits `classify-aggregate` logs for phase counts, stalls, and completions.
+- Error handling & retries: per phase retry up to 2 with exponential backoff (250ms → 1s) for transient IO/WASM errors; Essentia required (no skip) — fallback to heuristic only when Essentia unavailable AND flagged via config; metadata/render failures mark SID failed and advance thread after logging + UI update; queue continues.
+- Heartbeat & stall detection: heartbeat interval 2s; stall threshold 10s per thread and 30s global with auto-escalation log + UI indicator; stalled threads trigger one restart if no progress after 2 heartbeats.
+- Acceptance criteria: strict phase ordering per SID/thread; 100% of SIDs pass through Essentia unless explicitly unavailable; UI shows per-thread phase + filename with live counters; no silent skips; logs cover transitions/errors; worker count equals configured threads with no idle gaps until queue empty; retries logged and surfaced.
+
+**Test matrix / coverage targets (Step 8-9)**
+- Sequencing: verify per-thread ordering and forbid parallel SIDs on same thread; assert phase transition logs and events in order.
+- Essentia invocation: ensure Essentia runs on real WAV input (not heuristic) and writes features into JSONL; cover cache-hit path still emitting phases.
+- Worker utilization: N-thread run exercises full pool; no thread remains idle while queue non-empty; heartbeats present for all threads.
+- UI progress: SSE/WebSocket shows per-thread phase + SID filename; counters update for rendered/metadata/essentia; stalled indicator appears after threshold and clears on recovery.
+- Failure recovery: render failure, metadata parse failure, Essentia timeout → retries then mark failed, thread resumes next SID; UI and logs record errors.
+- Heartbeat stability: no false stalls under normal load; stalls detected after paused worker simulation.
+- Coverage goal: ≥90% coverage for new E2E specs touching UI progress and worker orchestration code paths; integration tests for event routing, libsidplayfp-wasm render stub, and Essentia parsing.
+
+- 2025-11-29 00:15 — Task registered; preparing reproduction plan per user request
+- 2025-12-03 17:19 — Reproduced via API-mimic script (temp/run-classify-from-api.ts) hitting `sidflow-classify`; CLI exits 0 but no JSONL written under data/classified, confirming web-triggered flow skips feature export
+- 2025-12-03 17:31 — Inspected CLI stdout for targeted subdir run; `sidflow-classify` never prints “Extracting features to JSONL…” and no new JSONL file appears, indicating Stage 2 never runs when SID base override narrows to a subdirectory
+- 2025-12-03 17:39 — Instrumented CLI and re-ran API mimic; Stage 2 now executes and writes `classification_2025-12-03_17-36-47-896.jsonl`, so failure is limited to progress reporting/visibility rather than CLI skipping JSONL
+- 2025-12-06 — Merged broader classification worker-pipeline scope: require ordered phases per thread, structured logging, heartbeats, UI per-thread visibility, and expanded integration/E2E coverage with acceptance criteria
+
+**Assumptions and open questions**
+- Assumption: Essentia WASM bundle is available in current environment; failures stem from orchestration/visibility
+- Assumption: Classification queue uses default `.sidflow.json`; web runs should reuse same config paths
+- Open question: Do we need additional caching guardrails when rendering and extracting simultaneously?
+- Open question: Do we need backpressure controls if increased heartbeat/reporting frequency hits very large SID sets?
+
+**Follow-ups / future work**
+- Evaluate splitting render vs feature extraction into discrete phases for clearer UX after immediate fix
+- Consider adding telemetry/metrics endpoint once structured logging and heartbeats stabilize
 
 ### Task: Fix Audio Format Preferences and Classification UI (2025-11-28)
 

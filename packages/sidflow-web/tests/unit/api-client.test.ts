@@ -153,6 +153,7 @@ const classifyProgressSnapshot: ClassifyProgressSnapshot = {
   totalFiles: 1,
   processedFiles: 1,
   renderedFiles: 1,
+  taggedFiles: 1,
   skippedFiles: 0,
   percentComplete: 100,
   threads: 1,

@@ -222,6 +222,45 @@ Classification operates as a **unified, efficient pipeline** with four sequentia
 
 When you run classification with `--force-rebuild`, the WAV cache is cleared first, so all 80k+ songs need rendering. However, because rendering is fast (~100-500ms) compared to feature extraction (~1-2s), you'll see "Extracting Features & Tagging" most of the time even though rendering is actively happening inline.
 
+#### Thread State Machine
+
+Each classification thread follows a strict state machine to ensure ordered processing and reliable progress tracking:
+
+```
+ANALYZING → BUILDING → METADATA → TAGGING → (complete)
+```
+
+**Thread Phases:**
+- **ANALYZING** — Scanning directories for SID files
+- **BUILDING** — Rendering WAV from SID (inline during tagging phase)
+- **METADATA** — Reading SID file headers via sidplayfp
+- **TAGGING** — Extracting Essentia.js features and generating ratings
+
+**Phase Transitions:**
+- Each thread processes one file at a time through all phases
+- Threads emit heartbeat signals every 3 seconds during long operations
+- A thread is marked "stale" if no heartbeat received for 5 seconds
+- Global stall detection triggers if all threads stale for 30+ seconds
+
+#### Error Handling & Retry Logic
+
+Classification implements configurable retry logic with exponential backoff for transient failures:
+
+| Phase | Max Retries | Base Delay | Backoff | Notes |
+|-------|-------------|------------|---------|-------|
+| BUILDING | 3 | 100ms | 2× | Most likely to hit I/O errors |
+| METADATA | 1 | 50ms | 1× (linear) | Falls back to path-based metadata |
+| TAGGING | 1 | 50ms | 1× (linear) | Falls back to heuristic features |
+
+**Error Classification:**
+- **Recoverable errors** (retry with backoff): ENOENT, timeout, resource busy
+- **Fatal errors** (skip file, log warning): invalid format, corrupt data, malformed headers
+
+**Engine Health Monitoring:**
+- Tracks "no audio" events per thread (when WASM produces silence)
+- After 3 consecutive no-audio failures, logs escalation warning
+- UI displays warning indicator (⚠️) on affected threads
+
 **Flags:**
 
 - `--config <path>` — override default `.sidflow.json`
