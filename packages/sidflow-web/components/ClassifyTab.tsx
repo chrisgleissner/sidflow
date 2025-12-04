@@ -458,28 +458,22 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
 
           <div className="space-y-2 rounded border border-border/60 bg-muted/30 p-3">
             <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
-              <span>{phaseLabel}</span>
-              <span>{percent.toFixed(1)}%</span>
+              <span data-testid="classify-phase-label">{phaseLabel}</span>
+              <span data-testid="classify-percent">{percent.toFixed(1)}%</span>
             </div>
             <Progress value={percent} className="h-2 bg-background/60" />
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="grid grid-cols-4 gap-2 text-center text-xs">
               <div>
                 <p className="text-muted-foreground">Rendered</p>
-                <p
-                  className="font-semibold text-foreground"
-                  data-testid="classify-rendered-count"
-                >
-                  {rendered} / {total}
-                </p>
+                <p className="font-semibold text-foreground" data-testid="classify-rendered-count">{progress?.renderedFiles ?? 0}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Features</p>
-                <p
-                  className="font-semibold text-foreground"
-                  data-testid="classify-essentia-count"
-                >
-                  {counters?.essentiaTagged ?? 0} / {total}
-                </p>
+                <p className="text-muted-foreground">Cached</p>
+                <p className="font-semibold text-foreground" data-testid="classify-cached-count">{progress?.cachedFiles ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Extracted</p>
+                <p className="font-semibold text-foreground" data-testid="classify-extracted-count">{progress?.extractedFiles ?? 0}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Tagged</p>
@@ -565,11 +559,18 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                   >
                     <div className="flex items-center justify-between text-[11px] uppercase tracking-wide">
                       <span className="text-foreground">Thread {thread.id}</span>
-                      <span className={isStale ? 'text-yellow-500' : isWorking ? 'text-accent' : 'text-muted-foreground'}>{phaseText}</span>
+                      <span 
+                        className={isStale ? 'text-yellow-500' : isWorking ? 'text-accent' : 'text-muted-foreground'}
+                        data-testid={`thread-${thread.id}-phase`}
+                        data-phase={thread.phase ?? 'idle'}
+                      >
+                        {phaseText}
+                      </span>
                     </div>
                     <p
                       className={`mt-1 font-mono truncate ${isWorking ? 'text-foreground' : 'text-muted-foreground'}`}
                       title={headline}
+                      data-testid={`thread-${thread.id}-file`}
                     >
                       {headline}
                     </p>

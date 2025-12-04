@@ -59,3 +59,6 @@ data/users/
 # Performance test results
 performance/results/
 data/.sidflow-classify-temp.json
+
+# Local installation directory (user-specific deployment configs)
+local-install/

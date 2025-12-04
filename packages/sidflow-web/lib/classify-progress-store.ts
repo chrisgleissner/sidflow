@@ -44,7 +44,9 @@ function createInitialSnapshot(): ProgressState {
     processedFiles: 0,
     renderedFiles: 0,
     taggedFiles: 0,
+    cachedFiles: 0,
     skippedFiles: 0,
+    extractedFiles: 0,
     percentComplete: 0,
     threads: 1,
     perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false, phaseStartedAt: undefined, noAudioStreak: 0 }],
@@ -333,9 +335,10 @@ function processLine(line: string) {
     return;
   }
 
-  // Match new user-friendly progress labels
+  // Match new user-friendly progress labels with detailed counters
+  // Format: [Phase] X/Y files, Z remaining (P%) [rendered=R cached=C extracted=E] - file - elapsed
   const tagMatch = line.match(
-    /\[(Reading Metadata|Extracting Features|Writing Features|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+-\s+(.*))?/i
+    /\[(Reading Metadata|Extracting Features|Writing Features|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\])?(?:\s+-\s+(.*))?/i
   );
   if (tagMatch) {
     const label = tagMatch[1].toLowerCase();
@@ -356,6 +359,18 @@ function processLine(line: string) {
       snapshot.counters.essentiaTagged = snapshot.processedFiles;
     }
     snapshot.percentComplete = Number(tagMatch[4]);
+    
+    // Parse detailed counters if present
+    if (tagMatch[5] !== undefined) {
+      snapshot.renderedFiles = Number(tagMatch[5]);
+    }
+    if (tagMatch[6] !== undefined) {
+      snapshot.cachedFiles = Number(tagMatch[6]);
+    }
+    if (tagMatch[7] !== undefined) {
+      snapshot.extractedFiles = Number(tagMatch[7]);
+    }
+    
     snapshot.updatedAt = Date.now();
     return;
   }
@@ -407,7 +422,9 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     processedFiles: snapshot.processedFiles,
     renderedFiles: snapshot.renderedFiles,
     taggedFiles: snapshot.taggedFiles,
+    cachedFiles: snapshot.cachedFiles,
     skippedFiles: snapshot.skippedFiles,
+    extractedFiles: snapshot.extractedFiles,
     percentComplete: snapshot.percentComplete,
     threads: snapshot.threads,
     perThread: snapshot.perThread.map((thread) => ({ ...thread })),
