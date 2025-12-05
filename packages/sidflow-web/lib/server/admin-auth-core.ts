@@ -1,3 +1,4 @@
+/* istanbul ignore file -- @preserve Edge runtime does not support new Function() */
 export const ADMIN_SESSION_COOKIE = 'sidflow_admin_session';
 
 const DEFAULT_SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour

@@ -1,3 +1,4 @@
+/* istanbul ignore file -- @preserve Edge runtime does not support new Function() */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import {

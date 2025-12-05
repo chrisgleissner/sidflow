@@ -3,9 +3,10 @@
   "plugins": [
     ["babel-plugin-istanbul", {
       "exclude": [
-        "middleware.ts",
-        "proxy.ts",
+        "**/middleware.ts",
+        "**/proxy.ts",
         "**/edge/**",
+        "**/lib/server/**",
         "**/*.test.ts",
         "**/*.spec.ts"
       ]
