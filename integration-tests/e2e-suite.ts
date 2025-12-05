@@ -18,7 +18,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 import {
-  buildWavCache,
+  buildAudioCache,
   essentiaFeatureExtractor,
   generateAutoTags,
   planClassification,
@@ -107,7 +107,7 @@ async function listSidFiles(dir: string): Promise<string[]> {
 describe("End-to-End SIDFlow Pipeline", () => {
   let tempRoot: string;
   let sidPath: string;
-  let wavCachePath: string;
+  let audioCachePath: string;
   let tagsPath: string;
   let classifiedPath: string;
   let dataPath: string;
@@ -125,7 +125,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     // Create temporary directories
     tempRoot = await mkdtemp(TEMP_PREFIX);
     sidPath = path.join(tempRoot, "hvsc");
-    wavCachePath = path.join(tempRoot, "wav-cache");
+    audioCachePath = path.join(tempRoot, "audio-cache");
     tagsPath = path.join(tempRoot, "tags");
     classifiedPath = path.join(tempRoot, "classified");
     dataPath = path.join(tempRoot, "data");
@@ -159,7 +159,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     // Create config
     const config = {
       sidPath,
-      wavCachePath,
+      audioCachePath,
       tagsPath,
       classifiedPath,
       threads: 0,
@@ -201,7 +201,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
       };
     }
 
-    const result = await buildWavCache(plan, {
+    const result = await buildAudioCache(plan, {
       render: renderHook,
       forceRebuild: false
     });
@@ -213,11 +213,11 @@ describe("End-to-End SIDFlow Pipeline", () => {
   });
 
   it("extracts features from WAV files", async () => {
-    const wavFiles = await readdir(wavCachePath, { recursive: true });
+    const wavFiles = await readdir(audioCachePath, { recursive: true });
     const wavFile = wavFiles.find(f => f.endsWith(".wav"));
     expect(wavFile).toBeDefined();
 
-    const fullWavPath = path.join(wavCachePath, wavFile!);
+    const fullWavPath = path.join(audioCachePath, wavFile!);
     const relativeWavPath = wavFile!;
     const sidRelativeWithIndex = relativeWavPath.replace(/\.wav$/i, ".sid");
     let sidFile = path.join(sidPath, sidRelativeWithIndex);
@@ -247,8 +247,8 @@ describe("End-to-End SIDFlow Pipeline", () => {
   it("validates WAV files have reasonable durations", async () => {
     // This test verifies that WAV files are not truncated (e.g., not all 15 seconds)
     // We expect durations to vary based on actual song lengths from Songlengths.md5
-    const wavFiles = await readdir(wavCachePath, { recursive: true });
-    const wavPaths = wavFiles.filter(f => f.endsWith(".wav")).map(f => path.join(wavCachePath, f));
+    const wavFiles = await readdir(audioCachePath, { recursive: true });
+    const wavPaths = wavFiles.filter(f => f.endsWith(".wav")).map(f => path.join(audioCachePath, f));
     
     expect(wavPaths.length).toBeGreaterThan(0);
     
@@ -412,7 +412,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(sidFileCount).toBeGreaterThanOrEqual(3);
 
     // Verify WAV cache was built
-    expect(existsSync(wavCachePath)).toBe(true);
+    expect(existsSync(audioCachePath)).toBe(true);
 
     // Verify tags were generated
     expect(existsSync(tagsPath)).toBe(true);

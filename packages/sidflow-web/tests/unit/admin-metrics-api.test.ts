@@ -35,14 +35,14 @@ describe("Admin Metrics API", () => {
     const response = await GET();
     const data = await response.json();
 
-    expect(data.cache).toHaveProperty("wavCacheCount");
-    expect(data.cache).toHaveProperty("wavCacheSizeBytes");
+    expect(data.cache).toHaveProperty("audioCacheCount");
+    expect(data.cache).toHaveProperty("audioCacheSizeBytes");
     expect(data.cache).toHaveProperty("classifiedCount");
     expect(data.cache).toHaveProperty("oldestCacheFileAge");
     expect(data.cache).toHaveProperty("newestCacheFileAge");
 
-    expect(typeof data.cache.wavCacheCount).toBe("number");
-    expect(typeof data.cache.wavCacheSizeBytes).toBe("number");
+    expect(typeof data.cache.audioCacheCount).toBe("number");
+    expect(typeof data.cache.audioCacheSizeBytes).toBe("number");
     expect(typeof data.cache.classifiedCount).toBe("number");
   });
 
@@ -80,7 +80,7 @@ describe("Admin Metrics API", () => {
     // Should not throw, should return zeros for missing data
     expect(response.status).toBe(200);
     expect(typeof data.jobs.pending).toBe("number");
-    expect(typeof data.cache.wavCacheCount).toBe("number");
+    expect(typeof data.cache.audioCacheCount).toBe("number");
     expect(typeof data.sync.hvscSidCount).toBe("number");
   });
 });

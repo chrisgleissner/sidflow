@@ -138,7 +138,7 @@ async function runConcurrent<T>(
 /**
  * Shared utility to collect SID file metadata and count total songs.
  * This function parses all SID files once and caches the metadata to avoid redundant I/O.
- * Used by buildWavCache, generateAutoTags, and generateJsonlOutput.
+ * Used by buildAudioCache, generateAutoTags, and generateJsonlOutput.
  */
 type EngineFactory = () => Promise<SidAudioEngine>;
 
@@ -184,7 +184,7 @@ export interface ClassifyOptions {
 
 export interface ClassificationPlan {
   config: SidflowConfig;
-  wavCachePath: string;
+  audioCachePath: string;
   tagsPath: string;
   forceRebuild: boolean;
   classificationDepth: number;
@@ -198,7 +198,7 @@ export async function planClassification(
   void stringifyDeterministic({});
   return {
     config,
-    wavCachePath: config.wavCachePath,
+    audioCachePath: config.audioCachePath,
     tagsPath: config.tagsPath,
     forceRebuild: options.forceRebuild ?? false,
     classificationDepth: config.classificationDepth,
@@ -228,7 +228,7 @@ export function resolveWavPath(
     const wavName = songIndex !== undefined
       ? `${baseName}-${songIndex}.wav`
       : `${baseName}.wav`;
-    return path.join(plan.wavCachePath, "virtual", wavName);
+    return path.join(plan.audioCachePath, "virtual", wavName);
   }
 
   const relative = path.relative(plan.sidPath, sidFile);
@@ -241,7 +241,7 @@ export function resolveWavPath(
   const wavName = songIndex !== undefined
     ? `${baseName}-${songIndex}.wav`
     : `${baseName}.wav`;
-  return path.join(plan.wavCachePath, directory, wavName);
+  return path.join(plan.audioCachePath, directory, wavName);
 }
 
 export async function collectSidFiles(root: string): Promise<string[]> {
@@ -323,8 +323,8 @@ export async function isAlreadyClassified(
  * Deletes all audio files (WAV, FLAC, M4A) and their hash files from the WAV cache directory.
  * Used for force rebuild to start with a clean slate.
  */
-export async function cleanAudioCache(wavCachePath: string): Promise<number> {
-  if (!(await pathExists(wavCachePath))) {
+export async function cleanAudioCache(audioCachePath: string): Promise<number> {
+  if (!(await pathExists(audioCachePath))) {
     return 0;
   }
 
@@ -353,7 +353,7 @@ export async function cleanAudioCache(wavCachePath: string): Promise<number> {
     }
   }
 
-  await cleanDir(wavCachePath);
+  await cleanDir(audioCachePath);
   return deletedCount;
 }
 
@@ -488,7 +488,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
   }
 };
 
-export interface WavCacheProgress {
+export interface AudioCacheProgress {
   phase: "analyzing" | "building";
   totalFiles: number;
   processedFiles: number;
@@ -499,9 +499,9 @@ export interface WavCacheProgress {
   currentFile?: string;
 }
 
-export type ProgressCallback = (progress: WavCacheProgress) => void;
+export type ProgressCallback = (progress: AudioCacheProgress) => void;
 
-export interface BuildWavCacheOptions {
+export interface BuildAudioCacheOptions {
   render?: RenderWav;
   forceRebuild?: boolean;
   onProgress?: ProgressCallback;
@@ -515,30 +515,30 @@ export interface PerformanceMetrics {
   durationMs: number;
 }
 
-export interface BuildWavCacheMetrics extends PerformanceMetrics {
+export interface BuildAudioCacheMetrics extends PerformanceMetrics {
   totalFiles: number;
   rendered: number;
   skipped: number;
   cacheHitRate: number;
 }
 
-export interface BuildWavCacheResult {
+export interface BuildAudioCacheResult {
   rendered: string[];
   skipped: string[];
-  metrics: BuildWavCacheMetrics;
+  metrics: BuildAudioCacheMetrics;
 }
 
-export async function buildWavCache(
+export async function buildAudioCache(
   plan: ClassificationPlan,
-  options: BuildWavCacheOptions = {}
-): Promise<BuildWavCacheResult> {
+  options: BuildAudioCacheOptions = {}
+): Promise<BuildAudioCacheResult> {
   const startTime = Date.now();
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   
   // If force rebuild is requested, delete all existing audio files first
   if (shouldForce) {
     classifyLogger.info("Force rebuild requested - cleaning audio cache...");
-    const deletedCount = await cleanAudioCache(plan.wavCachePath);
+    const deletedCount = await cleanAudioCache(plan.audioCachePath);
     classifyLogger.info(`Deleted ${deletedCount} audio files from cache`);
   }
   
@@ -804,7 +804,7 @@ export async function buildWavCache(
   const endTime = Date.now();
   const cacheHitRate = totalFiles > 0 ? skipped.length / totalFiles : 0;
 
-  const metrics: BuildWavCacheMetrics = {
+  const metrics: BuildAudioCacheMetrics = {
     startTime,
     endTime,
     durationMs: endTime - startTime,
@@ -1188,7 +1188,7 @@ export async function generateAutoTags(
   // If force rebuild is requested, delete all existing audio files first
   if (plan.forceRebuild) {
     classifyLogger.info("Force rebuild requested - cleaning audio cache...");
-    const deletedCount = await cleanAudioCache(plan.wavCachePath);
+    const deletedCount = await cleanAudioCache(plan.audioCachePath);
     classifyLogger.info(`Deleted ${deletedCount} audio files from cache`);
   }
   

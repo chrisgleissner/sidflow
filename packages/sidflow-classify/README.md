@@ -10,5 +10,5 @@ bun ./scripts/sidflow-classify [--threads N] [--force]
 
 ## Output
 
-- WAV files → `wavCachePath/`
+- WAV files → `audioCachePath/`
 - Features → `data/classified/*.jsonl`

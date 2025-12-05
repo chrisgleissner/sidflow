@@ -1,8 +1,8 @@
 {
     "sidPath": "./test-workspace/hvsc",
-    "wavCachePath": "./test-workspace/wav-cache",
+    "audioCachePath": "./test-workspace/audio-cache",
     "tagsPath": "./test-workspace/tags",
-    "classifiedPath": "./data/classified",
+    "classifiedPath": "./test-workspace/classified",
     "threads": 0,
     "classificationDepth": 3
 }

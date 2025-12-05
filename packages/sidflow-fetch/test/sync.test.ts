@@ -23,7 +23,7 @@ async function createHarness(): Promise<Harness> {
 
   const config = {
     sidPath,
-    wavCachePath: path.join(dataDir, "wav"),
+    audioCachePath: path.join(dataDir, "wav"),
     tagsPath: path.join(dataDir, "tags"),
     sidplayPath: "sidplayfp",
     threads: 0,

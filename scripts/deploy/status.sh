@@ -187,7 +187,7 @@ echo
 
 echo "Data Directories"
 echo "────────────────"
-for dir in hvsc wav-cache tags sidflow; do
+for dir in hvsc audio-cache tags sidflow; do
     path="$DATA_DIR/$dir"
     if [[ -d "$path" ]]; then
         size=$(du -sh "$path" 2>/dev/null | cut -f1 || echo "unknown")

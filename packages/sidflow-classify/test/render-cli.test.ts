@@ -61,7 +61,7 @@ describe("render CLI argument parsing", () => {
 describe("render CLI helpers", () => {
   const baseConfig: SidflowConfig = {
     sidPath: "/hvsc",
-    wavCachePath: "/cache",
+    audioCachePath: "/cache",
     tagsPath: "/tags",
     threads: 1,
     classificationDepth: 1,
@@ -99,7 +99,7 @@ describe("render CLI helpers", () => {
 describe("resolveAudioEncoderOptions", () => {
   const baseConfig: SidflowConfig = {
     sidPath: "/hvsc",
-    wavCachePath: "/cache",
+    audioCachePath: "/cache",
     tagsPath: "/tags",
     threads: 1,
     classificationDepth: 1,

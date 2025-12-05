@@ -11,7 +11,7 @@ import type { RenderWav } from "../src/index.js";
 
 interface TestSidflowConfig {
   sidPath: string;
-  wavCachePath: string;
+  audioCachePath: string;
   tagsPath: string;
   threads: number;
   classificationDepth: number;
@@ -22,11 +22,11 @@ interface TestClassificationPlan {
   forceRebuild: boolean;
   classificationDepth: number;
   sidPath: string;
-  wavCachePath: string;
+  audioCachePath: string;
   tagsPath: string;
 }
 
-interface TestBuildWavCacheMetrics {
+interface TestBuildAudioCacheMetrics {
   startTime: number;
   endTime: number;
   durationMs: number;
@@ -36,10 +36,10 @@ interface TestBuildWavCacheMetrics {
   cacheHitRate: number;
 }
 
-interface TestBuildWavCacheResult {
+interface TestBuildAudioCacheResult {
   rendered: string[];
   skipped: string[];
-  metrics: TestBuildWavCacheMetrics;
+  metrics: TestBuildAudioCacheMetrics;
 }
 
 interface TestGenerateAutoTagsMetrics {
@@ -66,7 +66,7 @@ function createPlan(): TestClassificationPlan {
   return {
     config: {
       sidPath: "/workspace/hvsc",
-      wavCachePath: "/workspace/wav",
+      audioCachePath: "/workspace/wav",
       tagsPath: "/workspace/tags",
       threads: 0,
       classificationDepth: 2
@@ -74,7 +74,7 @@ function createPlan(): TestClassificationPlan {
     forceRebuild: false,
     classificationDepth: 2,
     sidPath: "/workspace/hvsc",
-    wavCachePath: "/workspace/wav",
+    audioCachePath: "/workspace/wav",
     tagsPath: "/workspace/tags"
   } satisfies TestClassificationPlan;
 }
@@ -149,7 +149,7 @@ describe("runClassifyCli", () => {
       stdout,
       stderr,
       planClassification: (async (_options: unknown) => plan) as any,
-      buildWavCache: (async () => ({
+      buildAudioCache: (async () => ({
         rendered: ["a"],
         skipped: ["b"],
         metrics: {
@@ -161,7 +161,7 @@ describe("runClassifyCli", () => {
           skipped: 1,
           cacheHitRate: 0.5
         }
-      } satisfies TestBuildWavCacheResult)) as any,
+      } satisfies TestBuildAudioCacheResult)) as any,
       generateAutoTags: (async () => ({
         autoTagged: ["auto"],
         manualEntries: ["manual"],
@@ -313,7 +313,7 @@ describe("runClassifyCli", () => {
         stdout,
         stderr,
         planClassification: (async (_options: unknown) => plan) as any,
-        buildWavCache: (async (_plan: unknown, options: unknown) => {
+        buildAudioCache: (async (_plan: unknown, options: unknown) => {
           const params = options as {
             onProgress?: (progress: TestProgressEvent) => void;
             render?: (input: { sidFile: string; wavFile: string; songIndex: number }) => Promise<void>;
@@ -359,7 +359,7 @@ describe("runClassifyCli", () => {
               skipped: 1,
               cacheHitRate: 0.5
             }
-          } satisfies TestBuildWavCacheResult;
+          } satisfies TestBuildAudioCacheResult;
         }) as any,
         generateAutoTags: (async (_plan: unknown, options: unknown) => {
           const params = options as {
@@ -476,7 +476,7 @@ describe("runClassifyCli", () => {
       stdout,
       stderr,
       planClassification: (async (_options: unknown) => plan) as any,
-      buildWavCache: (async () => ({
+      buildAudioCache: (async () => ({
         rendered: [],
         skipped: [],
         metrics: {

@@ -10,7 +10,7 @@ export interface SidCollectionContext {
   collectionRoot: string;
   defaultCollectionRoot: string;
   tagsPath: string;
-  wavCachePath: string;
+  audioCachePath: string;
   preferenceSource: 'default' | 'custom';
   kernalRomPath?: string | null;
   basicRomPath?: string | null;
@@ -57,7 +57,7 @@ export async function resolveSidCollectionContext(): Promise<SidCollectionContex
     collectionRoot,
     defaultCollectionRoot,
     tagsPath: resolvePath(config.tagsPath, repoRoot),
-    wavCachePath: resolvePath(config.wavCachePath, repoRoot),
+    audioCachePath: resolvePath(config.audioCachePath, repoRoot),
     preferenceSource:
       preferencePath && preferencePath.trim().length > 0 ? 'custom' : 'default',
     kernalRomPath,

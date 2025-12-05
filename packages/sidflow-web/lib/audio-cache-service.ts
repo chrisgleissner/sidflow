@@ -40,7 +40,7 @@ async function getPlan(): Promise<ClassificationPlan> {
       return {
         ...plan,
         sidPath: resolveFromRepoRoot(plan.sidPath),
-        wavCachePath: resolveFromRepoRoot(plan.wavCachePath),
+        audioCachePath: resolveFromRepoRoot(plan.audioCachePath),
         tagsPath: resolveFromRepoRoot(plan.tagsPath),
       } satisfies ClassificationPlan;
     })().catch((error: unknown) => {
@@ -76,7 +76,7 @@ async function executePrefetch(track: RateTrackInfo): Promise<void> {
         maxRenderSeconds: track.durationSeconds > 0 ? Math.ceil(track.durationSeconds + 15) : undefined,
       });
     } catch (error) {
-      console.error('[wav-cache] Failed to pre-render WAV', {
+      console.error('[audio-cache] Failed to pre-render WAV', {
         sidPath: track.sidPath,
         selectedSong: track.selectedSong,
         error: error instanceof Error ? error.message : String(error),

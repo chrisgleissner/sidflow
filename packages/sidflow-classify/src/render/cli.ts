@@ -298,7 +298,7 @@ function printHelp(): void {
   process.stdout.write(`  --prefer <list>           Preferred engine order (comma separated)\n`);
   process.stdout.write(`  --formats <list>          Output formats (wav,m4a,flac)\n`);
   process.stdout.write(`  --chip <6581|8580r5>      SID chip profile\n`);
-  process.stdout.write(`  --output <dir>            Output directory (defaults to render.outputPath or wavCache/rendered)\n`);
+  process.stdout.write(`  --output <dir>            Output directory (defaults to render.outputPath or audioCache/rendered)\n`);
   process.stdout.write(`  --sid <path[#song]>       Render a specific SID (relative to HVSC)\n`);
   process.stdout.write(`  --sid-file <file>         File with SID paths (newline or JSONL)\n`);
   process.stdout.write(`  --target-duration <sec>   Target capture duration in seconds (default ${DEFAULT_TARGET_DURATION_SECONDS})\n`);
@@ -336,7 +336,7 @@ export async function runRenderCli(argv: string[]): Promise<number> {
 
   const sidPath = config.sidPath;
   const outputDir = path.resolve(
-    options.outputPath ?? config.render?.outputPath ?? path.join(config.wavCachePath, "rendered")
+    options.outputPath ?? config.render?.outputPath ?? path.join(config.audioCachePath, "rendered")
   );
   await ensureDir(outputDir);
 

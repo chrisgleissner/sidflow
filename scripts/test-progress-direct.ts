@@ -9,14 +9,14 @@ import os from "node:os";
 import path from "node:path";
 
 async function main() {
-  const { planClassification, buildWavCache, generateAutoTags } = await import("../packages/sidflow-classify/src/index.js");
+  const { planClassification, buildAudioCache, generateAutoTags } = await import("../packages/sidflow-classify/src/index.js");
 
   // Create a temporary workspace
   const testRoot = path.join(tmpdir(), "sidflow-progress-test");
   await rm(testRoot, { recursive: true, force: true }).catch(() => { });
 
   const sidPath = path.join(testRoot, "hvsc");
-  const wavCachePath = path.join(testRoot, "wav");
+  const audioCachePath = path.join(testRoot, "wav");
   const tagsPath = path.join(testRoot, "tags");
 
   await mkdir(sidPath, { recursive: true });
@@ -33,7 +33,7 @@ async function main() {
     configPath,
     JSON.stringify({
       sidPath,
-      wavCachePath,
+      audioCachePath,
       tagsPath,
       threads: os.cpus().length,
       classificationDepth: 3
@@ -52,7 +52,7 @@ async function main() {
   await writeFile(`${wavFile}.sha256`, "mock-hash");
   };
 
-  const result = await buildWavCache(plan, {
+  const result = await buildAudioCache(plan, {
     render: mockRender,
     onProgress: (progress) => {
       const percent = progress.percentComplete.toFixed(1).padStart(5);
@@ -77,7 +77,7 @@ async function main() {
   // Run again to test cache hits
   console.log(`\n\nRunning again to test cache hits...\n`);
 
-  const result2 = await buildWavCache(plan, {
+  const result2 = await buildAudioCache(plan, {
     render: mockRender,
     onProgress: (progress) => {
       const percent = progress.percentComplete.toFixed(1).padStart(5);

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import {
-  buildWavCache,
+  buildAudioCache,
   resolveWavPath,
   type ClassificationPlan,
   type ThreadActivityUpdate
@@ -24,13 +24,13 @@ describe("defaultRenderWav with worker pool", () => {
     process.env.SIDFLOW_MAX_RENDER_SECONDS = "0.5";
     try {
       const sidPath = path.join(root, "hvsc");
-      const wavCachePath = path.join(root, "wav");
+      const audioCachePath = path.join(root, "wav");
       const tagsPath = path.join(root, "tags");
       const classifiedPath = path.join(root, "classified");
 
       await Promise.all([
         mkdir(sidPath, { recursive: true }),
-        mkdir(wavCachePath, { recursive: true }),
+        mkdir(audioCachePath, { recursive: true }),
         mkdir(tagsPath, { recursive: true }),
         mkdir(classifiedPath, { recursive: true })
       ]);
@@ -44,7 +44,7 @@ describe("defaultRenderWav with worker pool", () => {
 
       const config: ClassificationPlan["config"] = {
         sidPath,
-        wavCachePath,
+        audioCachePath,
         tagsPath,
         threads: 2,
         classificationDepth: 1,
@@ -53,7 +53,7 @@ describe("defaultRenderWav with worker pool", () => {
 
       const plan: ClassificationPlan = {
         config,
-        wavCachePath,
+        audioCachePath,
         tagsPath,
         sidPath,
         forceRebuild: false,
@@ -61,7 +61,7 @@ describe("defaultRenderWav with worker pool", () => {
       };
 
       const threadUpdates: ThreadActivityUpdate[] = [];
-      const result = await buildWavCache(plan, {
+      const result = await buildAudioCache(plan, {
         forceRebuild: true,
         threads: 2,
         onThreadUpdate: (update) => {

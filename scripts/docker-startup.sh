@@ -123,7 +123,7 @@ check_path "/sidflow/app/packages/sidflow-web/.next" "Next.js build" || { echo "
 check_path "/sidflow/app/.sidflow.json" "Config file" || ((FAILED++))
 
 # Create workspace subdirectories
-for dir in "/sidflow/workspace/hvsc" "/sidflow/workspace/wav-cache" "/sidflow/workspace/tags"; do
+for dir in "/sidflow/workspace/hvsc" "/sidflow/workspace/audio-cache" "/sidflow/workspace/tags"; do
   if [ ! -d "$dir" ]; then
     if mkdir -p "$dir" 2>/dev/null; then
       echo "✓ Created workspace directory: $dir"

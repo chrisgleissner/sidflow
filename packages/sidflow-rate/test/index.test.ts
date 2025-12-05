@@ -22,7 +22,7 @@ describe("planTagSession", () => {
     const configPath = path.join(dir, ".sidflow.json");
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       threads: 4,
       classificationDepth: 2

@@ -36,7 +36,7 @@ const testWorkspace = path.resolve(repoRoot, 'test-workspace-phase');
 // Use test-tone.sid for fast execution
 const testSidSource = path.resolve(__dirname, '../../libsidplayfp-wasm/examples/assets/test-tone.sid');
 const testDataPath = path.resolve(testWorkspace, 'hvsc');
-const testWavCache = path.resolve(testWorkspace, 'wav-cache');
+const testAudioCache = path.resolve(testWorkspace, 'audio-cache');
 const testTagsPath = path.resolve(testWorkspace, 'tags');
 
 interface ThreadHistory {
@@ -68,7 +68,7 @@ describe('Classification Phase Transitions', () => {
     
     // Create test directory structure with test-tone.sid
     mkdirSync(testDataPath, { recursive: true });
-    mkdirSync(testWavCache, { recursive: true });
+    mkdirSync(testAudioCache, { recursive: true });
     mkdirSync(testTagsPath, { recursive: true });
     copyFileSync(testSidSource, path.join(testDataPath, 'test-tone.sid'));
   });
@@ -155,13 +155,13 @@ describe('Classification Phase Transitions', () => {
     const plan: ClassificationPlan = {
       config: {
         sidPath: testDataPath,
-        wavCachePath: testWavCache,
+        audioCachePath: testAudioCache,
         tagsPath: testTagsPath,
         threads: 1,
         classificationDepth: 3
       } as any,
       sidPath: testDataPath,
-      wavCachePath: testWavCache,
+      audioCachePath: testAudioCache,
       tagsPath: testTagsPath,
       forceRebuild: true,
       classificationDepth: 3
@@ -233,13 +233,13 @@ describe('Classification Phase Transitions', () => {
     const plan: ClassificationPlan = {
       config: {
         sidPath: testDataPath,
-        wavCachePath: testWavCache,
+        audioCachePath: testAudioCache,
         tagsPath: testTagsPath,
         threads: 1,
         classificationDepth: 3
       } as any,
       sidPath: testDataPath,
-      wavCachePath: testWavCache,
+      audioCachePath: testAudioCache,
       tagsPath: testTagsPath,
       forceRebuild: true,
       classificationDepth: 3

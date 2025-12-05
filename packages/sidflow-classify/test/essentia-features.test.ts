@@ -62,6 +62,7 @@ describe("essentiaFeatureExtractor", () => {
       wavFile,
       sidFile
     });
+    console.log("Extracted features:", JSON.stringify(features, null, 2));
 
     // Verify that key features are present
     expect(features).toBeDefined();

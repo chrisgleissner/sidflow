@@ -33,7 +33,7 @@ async function getPlan() {
             .then((plan) => ({
                 ...plan,
                 sidPath: absolutize(plan.sidPath),
-                wavCachePath: absolutize(plan.wavCachePath),
+                audioCachePath: absolutize(plan.audioCachePath),
                 tagsPath: absolutize(plan.tagsPath),
             }))
             .catch((error) => {

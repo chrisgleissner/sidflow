@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  buildWavCache,
+  buildAudioCache,
   generateAutoTags,
   resolveWavPath,
   type ClassificationPlan,
@@ -16,26 +16,26 @@ import { ensureDir, resolveManualTagPath, stringifyDeterministic } from "@sidflo
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-metrics-");
 
-function createPlan(sidPath: string, wavCachePath: string, tagsPath: string): ClassificationPlan {
+function createPlan(sidPath: string, audioCachePath: string, tagsPath: string): ClassificationPlan {
   return {
     config: {} as ClassificationPlan["config"],
     forceRebuild: false,
     classificationDepth: 3,
     sidPath,
-    wavCachePath,
+    audioCachePath,
     tagsPath
   } as unknown as ClassificationPlan;
 }
 
 describe("performance metrics", () => {
-  it("tracks buildWavCache metrics accurately", async () => {
+  it("tracks buildAudioCache metrics accurately", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
-    const wavCachePath = path.join(root, "wav");
+    const audioCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await mkdir(sidPath, { recursive: true });
 
-    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, audioCachePath, tagsPath);
 
     // Create 5 SID files
     await Promise.all(
@@ -46,7 +46,7 @@ describe("performance metrics", () => {
     );
 
     const startTime = Date.now();
-    const result = await buildWavCache(plan, {
+    const result = await buildAudioCache(plan, {
       render: async ({ wavFile }: { wavFile: string }) => {
         await mkdir(path.dirname(wavFile), { recursive: true });
         await writeFile(wavFile, "wav");
@@ -66,7 +66,7 @@ describe("performance metrics", () => {
     expect(result.metrics.durationMs).toBe(result.metrics.endTime - result.metrics.startTime);
 
     // Run again to test cache hit rate
-    const secondResult = await buildWavCache(plan, {
+    const secondResult = await buildAudioCache(plan, {
       render: async ({ wavFile }: { wavFile: string }) => {
         await mkdir(path.dirname(wavFile), { recursive: true });
         await writeFile(wavFile, "wav");
@@ -84,11 +84,11 @@ describe("performance metrics", () => {
   it("tracks generateAutoTags metrics with mixed sources", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
-    const wavCachePath = path.join(root, "wav");
+    const audioCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await mkdir(path.join(sidPath, "Music"), { recursive: true });
 
-    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, audioCachePath, tagsPath);
 
     // Create 3 SID files: 1 manual, 1 auto, 1 mixed
     const manualSid = path.join(sidPath, "Music", "manual.sid");
@@ -160,11 +160,11 @@ describe("performance metrics", () => {
   it("tracks zero predictions when all files have complete manual tags", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
-    const wavCachePath = path.join(root, "wav");
+    const audioCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await mkdir(path.join(sidPath, "Music"), { recursive: true });
 
-    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, audioCachePath, tagsPath);
 
     const sidFile = path.join(sidPath, "Music", "complete.sid");
     await writeFile(sidFile, "content");
@@ -211,13 +211,13 @@ describe("performance metrics", () => {
   it("records timing even for empty file sets", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
-    const wavCachePath = path.join(root, "wav");
+    const audioCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await mkdir(sidPath, { recursive: true });
 
-    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, audioCachePath, tagsPath);
 
-    const wavResult = await buildWavCache(plan, {
+    const wavResult = await buildAudioCache(plan, {
       render: async ({ wavFile }: { wavFile: string }) => {
         await mkdir(path.dirname(wavFile), { recursive: true });
         await writeFile(wavFile, "wav");

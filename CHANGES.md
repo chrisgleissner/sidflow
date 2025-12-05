@@ -46,5 +46,5 @@ This changelog highlights only the meaningful releases and milestones. Routine â
 
 ## 0.1.x (2025-09)
 - First internal prototypes: HVSC fetcher, WASM-based SID rendering, heuristic ratings.
-- Seeded workspace layout (`hvsc`, `wav-cache`, `tags`) and minimal CLI wrappers.
+- Seeded workspace layout (`hvsc`, `audio-cache`, `tags`) and minimal CLI wrappers.
 - Laid groundwork for future feature extraction and training flows.

@@ -160,7 +160,7 @@ describe("runPlayCli", () => {
 
     const config = {
       sidPath: "/music",
-      wavCachePath: "/wav",
+      audioCachePath: "/wav",
       tagsPath: "/tags",
       threads: 4,
       classificationDepth: 2
@@ -309,7 +309,7 @@ describe("runPlayCli", () => {
       stdout,
       loadConfig: async () => ({
         sidPath: "/music",
-        wavCachePath: "/wav",
+        audioCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
         classificationDepth: 1
@@ -365,7 +365,7 @@ describe("runPlayCli", () => {
       stderr,
       loadConfig: async () => ({
         sidPath: "/music",
-        wavCachePath: "/wav",
+        audioCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
         classificationDepth: 1
@@ -413,7 +413,7 @@ describe("runPlayCli", () => {
       stderr,
       loadConfig: async () => ({
         sidPath: "/music",
-        wavCachePath: "/wav",
+        audioCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
         classificationDepth: 1
@@ -468,7 +468,7 @@ describe("runPlayCli", () => {
       stderr,
       loadConfig: async () => ({
         sidPath: "/music",
-        wavCachePath: "/wav",
+        audioCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
         classificationDepth: 1
@@ -553,7 +553,7 @@ describe("runPlayCli", () => {
       stderr,
       loadConfig: async () => ({
         sidPath: "/music",
-        wavCachePath: "/wav",
+        audioCachePath: "/wav",
         tagsPath: "/tags",
         threads: 2,
         classificationDepth: 1

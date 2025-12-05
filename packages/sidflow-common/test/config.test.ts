@@ -30,7 +30,7 @@ describe("config", () => {
   it("loads and caches config", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       sidplayPath: "sidplayfp",
       threads: 0,
@@ -54,7 +54,7 @@ describe("config", () => {
 
     const config = await loadConfig(configPath);
     expect(config.sidPath).toBe(path.normalize(payload.sidPath));
-    expect(config.wavCachePath).toBe(path.normalize(payload.wavCachePath));
+    expect(config.audioCachePath).toBe(path.normalize(payload.audioCachePath));
     expect(config.tagsPath).toBe(path.normalize(payload.tagsPath));
     expect(config.sidplayPath).toBe(path.normalize(payload.sidplayPath));
     expect(config.threads).toBe(payload.threads);
@@ -74,7 +74,7 @@ describe("config", () => {
   it("treats sidplayPath and render as optional", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       threads: 1,
       classificationDepth: 4
@@ -115,7 +115,7 @@ describe("config", () => {
   it("throws SidflowConfigError for missing required string fields", async () => {
     const payload = {
       sidPath: "",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       sidplayPath: "sidplayfp",
       threads: 0,
@@ -128,7 +128,7 @@ describe("config", () => {
   it("throws SidflowConfigError for invalid threads value", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       sidplayPath: "sidplayfp",
       threads: -1,
@@ -141,7 +141,7 @@ describe("config", () => {
   it("throws SidflowConfigError for non-integer threads", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       sidplayPath: "sidplayfp",
       threads: 1.5,
@@ -154,7 +154,7 @@ describe("config", () => {
   it("throws SidflowConfigError for invalid classificationDepth value", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       sidplayPath: "sidplayfp",
       threads: 0,
@@ -167,7 +167,7 @@ describe("config", () => {
   it("validates render settings - empty defaultFormats", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       threads: 1,
       classificationDepth: 4,
@@ -183,7 +183,7 @@ describe("config", () => {
   it("validates render settings - invalid preferredEngines", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       threads: 1,
       classificationDepth: 4,
@@ -199,7 +199,7 @@ describe("config", () => {
   it("validates render settings - missing ultimate64 host", async () => {
     const payload = {
       sidPath: "./hvsc",
-      wavCachePath: "./wav",
+      audioCachePath: "./wav",
       tagsPath: "./tags",
       threads: 1,
       classificationDepth: 4,

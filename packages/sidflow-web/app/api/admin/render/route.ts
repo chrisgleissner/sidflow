@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     const outputDir = path.resolve(
       typeof body.outputDir === "string"
         ? body.outputDir
-        : config.render?.outputPath ?? path.join(config.wavCachePath, "rendered")
+        : config.render?.outputPath ?? path.join(config.audioCachePath, "rendered")
     );
 
     const chip = body.chip === "8580r5" ? "8580r5" : "6581";

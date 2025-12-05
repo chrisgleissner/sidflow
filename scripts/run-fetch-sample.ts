@@ -33,10 +33,10 @@ async function createHvscFixture(name: string, payload: Record<string, string>):
 async function main(): Promise<void> {
   const working = await mkdtemp(`${TEMP_PREFIX}run-`);
   const hvscDir = path.join(working, "hvsc");
-  const wavCache = path.join(working, "wav");
+  const audioCache = path.join(working, "wav");
   const tagsPath = path.join(working, "tags");
   const versionPath = path.join(working, "hvsc-version.json");
-  await Promise.all([mkdir(hvscDir, { recursive: true }), mkdir(wavCache, { recursive: true }), mkdir(tagsPath, { recursive: true })]);
+  await Promise.all([mkdir(hvscDir, { recursive: true }), mkdir(audioCache, { recursive: true }), mkdir(tagsPath, { recursive: true })]);
 
   const baseArchive = await createHvscFixture("HVSC_01-all-of-them", {
     "C64Music/MUSICIANS/A/Alpha/first.sid": "dummy-sid-1"
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
     const configPath = path.join(working, "sample.sidflow.json");
     const config: SidflowConfig = {
       sidPath: hvscDir,
-      wavCachePath: wavCache,
+      audioCachePath: audioCache,
       tagsPath,
       threads: 0,
       classificationDepth: 1

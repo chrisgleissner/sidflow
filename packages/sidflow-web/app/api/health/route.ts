@@ -258,13 +258,13 @@ async function checkWorkspacePaths(): Promise<HealthStatus> {
     const configPath = resolveConfigPath();
     const configDir = path.dirname(configPath);
     const config = await loadConfig(configPath);
-    console.log("[Health Check] Using config", { configPath, configDir, sidPath: config.sidPath, wavCachePath: config.wavCachePath, tagsPath: config.tagsPath });
+    console.log("[Health Check] Using config", { configPath, configDir, sidPath: config.sidPath, audioCachePath: config.audioCachePath, tagsPath: config.tagsPath });
     
     // All workspace paths are optional during initial startup (fresh Docker image, CI smoke tests)
     // They'll be created on-demand or populated via volume mounts in production
     const optionalPaths = [
       { name: "HVSC", path: config.sidPath, mode: constants.R_OK },
-      { name: "WAV cache", path: config.wavCachePath, mode: constants.R_OK | constants.W_OK },
+      { name: "WAV cache", path: config.audioCachePath, mode: constants.R_OK | constants.W_OK },
       { name: "Tags", path: config.tagsPath, mode: constants.R_OK | constants.W_OK },
       { name: "Classified data", path: path.resolve(configDir, "data/classified"), mode: constants.R_OK | constants.W_OK },
       { name: "Renders data", path: path.resolve(configDir, "data/renders"), mode: constants.R_OK | constants.W_OK },
@@ -296,7 +296,7 @@ async function checkWorkspacePaths(): Promise<HealthStatus> {
     // Return healthy since core functionality works - data dirs will be created on-demand or mounted
     const details: Record<string, any> = {
       hvsc: config.sidPath,
-      wavCache: config.wavCachePath,
+      audioCache: config.audioCachePath,
       tags: config.tagsPath,
     };
 

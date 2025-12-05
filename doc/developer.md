@@ -46,7 +46,7 @@ tsc -b                 # Type check
 
 Copy `.sidflow.example.json` to `.sidflow.json` and set paths:
 - `sidPath`: HVSC collection location
-- `wavCachePath`: Rendered WAV cache
+- `audioCachePath`: Rendered WAV cache
 - `tagsPath`: User ratings
 
 ## Testing

@@ -21,15 +21,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const testWorkspace = path.resolve(repoRoot, 'test-workspace');
 const testDataPath = path.resolve(repoRoot, 'test-data');
-const testWavCache = path.resolve(testWorkspace, 'wav-cache');
+const testAudioCache = path.resolve(testWorkspace, 'audio-cache');
 const testTagsPath = path.resolve(testWorkspace, 'tags');
 
 console.log('\n=== Classification Phase Transition Verification ===\n');
 
 // Clear WAV cache to force rebuild
 try {
-  rmSync(testWavCache, { recursive: true, force: true });
-  console.log(`[Setup] Cleared WAV cache: ${testWavCache}\n`);
+  rmSync(testAudioCache, { recursive: true, force: true });
+  console.log(`[Setup] Cleared WAV cache: ${testAudioCache}\n`);
 } catch {
   console.log(`[Setup] WAV cache already clean\n`);
 }
@@ -93,13 +93,13 @@ const handleThreadUpdate = (update: any) => {
 const plan: ClassificationPlan = {
   config: {
     sidPath: testDataPath,
-    wavCachePath: testWavCache,
+    audioCachePath: testAudioCache,
     tagsPath: testTagsPath,
     threads: 1,
     classificationDepth: 3
   } as any,
   sidPath: testDataPath,
-  wavCachePath: testWavCache,
+  audioCachePath: testAudioCache,
   tagsPath: testTagsPath,
   forceRebuild: true,
   classificationDepth: 3

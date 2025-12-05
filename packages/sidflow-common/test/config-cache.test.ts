@@ -15,7 +15,7 @@ const TEST_DIR = path.join(import.meta.dir, "..", "..", "..", "tmp", "test-confi
 
 const sampleConfig: SidflowConfig = {
     sidPath: "/test/sids",
-    wavCachePath: "/test/wav-cache",
+    audioCachePath: "/test/audio-cache",
     tagsPath: "/test/tags",
     threads: 4,
     classificationDepth: 3,

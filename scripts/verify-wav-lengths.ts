@@ -84,7 +84,7 @@ function getMd5FromWavPath(wavPath: string, hvscRoot: string): string | null {
 
   // Try to find corresponding SID file
   // WAV cache structure mirrors HVSC structure
-  const relativePath = relative(join(hvscRoot, '..', 'wav-cache'), wavDir);
+  const relativePath = relative(join(hvscRoot, '..', 'audio-cache'), wavDir);
   const sidDir = join(hvscRoot, 'C64Music', relativePath);
 
   // Look for SID files matching the wav name pattern
@@ -138,7 +138,7 @@ function findWavFiles(dir: string): string[] {
 
 async function main() {
   const hvscRoot = process.argv[2] || '/sidflow/workspace/hvsc';
-  const wavCacheRoot = process.argv[3] || '/sidflow/workspace/wav-cache';
+  const audioCacheRoot = process.argv[3] || '/sidflow/workspace/audio-cache';
   const minTimestamp = process.argv[4]; // Optional: ISO timestamp filter
   const songlengthsPath = join(hvscRoot, 'C64Music', 'DOCUMENTS', 'Songlengths.md5');
 
@@ -152,7 +152,7 @@ async function main() {
   console.log(`Loaded ${songlengths.size} entries from Songlengths.md5`);
 
   console.log('\nFinding WAV files...');
-  let wavFiles = findWavFiles(wavCacheRoot);
+  let wavFiles = findWavFiles(audioCacheRoot);
   
   // Filter by timestamp if provided
   if (minTimestamp) {

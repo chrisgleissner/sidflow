@@ -59,7 +59,7 @@ async function detectStreamingCache(kind: 'wav' | 'm4a'): Promise<AdapterRecord>
     return { available: false, reasons: [reason] };
   }
 
-  const cacheRoot = config.wavCachePath;
+  const cacheRoot = config.audioCachePath;
   const exists = await pathExists(cacheRoot);
   if (!exists) {
     return {

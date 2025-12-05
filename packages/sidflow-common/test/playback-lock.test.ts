@@ -234,7 +234,7 @@ describe("PlaybackLock", () => {
       const { createPlaybackLock } = await import("../src/playback-lock.js");
       const config = {
         sidPath: path.join(tempDir, "C64Music"),
-        wavCachePath: path.join(tempDir, "wav-cache"),
+        audioCachePath: path.join(tempDir, "audio-cache"),
         tagsPath: path.join(tempDir, "tags"),
       };
       const lock = await createPlaybackLock(config);

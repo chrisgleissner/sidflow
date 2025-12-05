@@ -1,7 +1,7 @@
 {
   "sidPath": "./workspace/hvsc",
   "sidplayPath": "/usr/bin/sidplayfp",
-  "wavCachePath": "./workspace/wav-cache",
+  "audioCachePath": "./workspace/audio-cache",
   "tagsPath": "./workspace/tags",
   "classifiedPath": "./data/classified",
   "threads": 0,

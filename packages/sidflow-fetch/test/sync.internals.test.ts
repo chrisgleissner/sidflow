@@ -47,7 +47,7 @@ describe("sync internals", () => {
     const dir = await createTempDir();
     const config = {
       sidPath: path.join(dir, "hvsc"),
-      wavCachePath: path.join(dir, "wav"),
+      audioCachePath: path.join(dir, "wav"),
       tagsPath: path.join(dir, "tags"),
       sidplayPath: "/usr/bin/sidplayfp",
       threads: 0,

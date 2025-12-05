@@ -18,8 +18,8 @@ interface JobMetrics {
 }
 
 interface CacheMetrics {
-  wavCacheCount: number;
-  wavCacheSizeBytes: number;
+  audioCacheCount: number;
+  audioCacheSizeBytes: number;
   classifiedCount: number;
   oldestCacheFileAge: number;
   newestCacheFileAge: number;
@@ -48,7 +48,7 @@ export async function GET() {
 
     // Collect cache metrics
     const cacheMetrics = await collectCacheMetrics(
-      config.wavCachePath,
+      config.audioCachePath,
       config.classifiedPath ?? path.join(config.tagsPath, "classified")
     );
 
@@ -139,17 +139,17 @@ async function collectJobMetrics(sidPath: string): Promise<JobMetrics> {
 }
 
 async function collectCacheMetrics(
-  wavCachePath: string,
+  audioCachePath: string,
   classifiedPath: string
 ): Promise<CacheMetrics> {
-  let wavCacheCount = 0;
-  let wavCacheSizeBytes = 0;
+  let audioCacheCount = 0;
+  let audioCacheSizeBytes = 0;
   let oldestAge = Number.MAX_SAFE_INTEGER;
   let newestAge = 0;
   const now = Date.now();
 
   try {
-    const files = await readdir(wavCachePath, { recursive: true });
+    const files = await readdir(audioCachePath, { recursive: true });
 
     for (const file of files) {
       if (typeof file !== "string" || !file.endsWith(".wav")) {
@@ -157,11 +157,11 @@ async function collectCacheMetrics(
       }
 
       try {
-        const filePath = path.join(wavCachePath, file);
+        const filePath = path.join(audioCachePath, file);
         const stats = await stat(filePath);
 
-        wavCacheCount++;
-        wavCacheSizeBytes += stats.size;
+        audioCacheCount++;
+        audioCacheSizeBytes += stats.size;
 
         const ageMs = now - stats.mtimeMs;
         oldestAge = Math.min(oldestAge, ageMs);
@@ -195,8 +195,8 @@ async function collectCacheMetrics(
   }
 
   return {
-    wavCacheCount,
-    wavCacheSizeBytes,
+    audioCacheCount,
+    audioCacheSizeBytes,
     classifiedCount,
     oldestCacheFileAge: oldestAge === Number.MAX_SAFE_INTEGER ? 0 : oldestAge,
     newestCacheFileAge: newestAge,

@@ -56,7 +56,7 @@ describe('server-env config resolution', () => {
         const tempConfigPath = path.join(tempDir, 'config.json');
         const configPayload: SidflowConfig = {
             sidPath: tempDir,
-            wavCachePath: tempDir,
+            audioCachePath: tempDir,
             tagsPath: tempDir,
             threads: 1,
             classificationDepth: 1,
@@ -66,7 +66,7 @@ describe('server-env config resolution', () => {
 
         const config = await getSidflowConfig(tempConfigPath);
         expect(config.sidPath).toBe(tempDir);
-        expect(config.wavCachePath).toBe(tempDir);
+        expect(config.audioCachePath).toBe(tempDir);
 
         await rm(tempDir, { recursive: true, force: true });
     });

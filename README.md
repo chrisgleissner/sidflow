@@ -113,14 +113,14 @@ Standard production scenario:
 ```bash
 docker run -p 3000:3000 \
   -e SIDFLOW_ADMIN_USER=admin \
-  -e SIDFLOW_ADMIN_PASSWORD='strong-password' \
+  -e SIDFLOW_ADMIN_PASSWORD='password' \
   -v /path/to/hvsc:/sidflow/workspace/hvsc \
-  -v /path/to/wav-cache:/sidflow/workspace/wav-cache \
+  -v /path/to/audio-cache:/sidflow/workspace/audio-cache \
   -v /path/to/tags:/sidflow/workspace/tags \
   -v /path/to/data:/sidflow/data \
   ghcr.io/chrisgleissner/sidflow:latest
 ```
-Web UI: <http://localhost:3000> (admin at `/admin`).
+Web UI: <http://localhost:3000> (admin at `/admin` with user/password of `admin/password`).
 
 ## Run Locally
 
@@ -354,7 +354,7 @@ The `.sidflow.json` file defines where SIDFlow should read your SID collection a
 ```json
 {
   "sidPath": "./workspace/hvsc",
-  "wavCachePath": "./workspace/wav-cache",
+  "audioCachePath": "./workspace/audio-cache",
   "tagsPath": "./workspace/tags",
   "threads": 0,
   "classificationDepth": 3

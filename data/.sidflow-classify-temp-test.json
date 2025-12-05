@@ -1,6 +1,6 @@
 {
   "sidPath": "workspace/hvsc",
-  "wavCachePath": "workspace/wav-cache",
+  "audioCachePath": "workspace/audio-cache",
   "tagsPath": "workspace/tags",
   "classifiedPath": "data/classified",
   "sidplayPath": "/usr/bin/sidplayfp",

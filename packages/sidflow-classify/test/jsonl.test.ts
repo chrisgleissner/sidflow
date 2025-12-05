@@ -20,13 +20,13 @@ describe("generateJsonlOutput", () => {
     const plan: ClassificationPlan = {
       config: {
         sidPath: testDir,
-        wavCachePath: path.join(testDir, "wav-cache"),
+        audioCachePath: path.join(testDir, "audio-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
         threads: 0,
         classificationDepth: 3
       },
-      wavCachePath: path.join(testDir, "wav-cache"),
+      audioCachePath: path.join(testDir, "audio-cache"),
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
@@ -75,20 +75,20 @@ describe("generateJsonlOutput", () => {
     await writeFile(path.join(sidDir, "test.sid"), Buffer.from("test content"));
 
     // Create a mock WAV file
-    const wavCacheDir = path.join(testDir, "wav-cache", "test-artist");
-    await mkdir(wavCacheDir, { recursive: true });
-    await writeFile(path.join(wavCacheDir, "test.wav"), Buffer.from("mock wav data"));
+    const audioCacheDir = path.join(testDir, "audio-cache", "test-artist");
+    await mkdir(audioCacheDir, { recursive: true });
+    await writeFile(path.join(audioCacheDir, "test.wav"), Buffer.from("mock wav data"));
 
     const plan: ClassificationPlan = {
       config: {
         sidPath: testDir,
-        wavCachePath: path.join(testDir, "wav-cache"),
+        audioCachePath: path.join(testDir, "audio-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
         threads: 0,
         classificationDepth: 3
       },
-      wavCachePath: path.join(testDir, "wav-cache"),
+      audioCachePath: path.join(testDir, "audio-cache"),
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,
@@ -139,13 +139,13 @@ describe("generateJsonlOutput", () => {
     const plan: ClassificationPlan = {
       config: {
         sidPath: testDir,
-        wavCachePath: path.join(testDir, "wav-cache"),
+        audioCachePath: path.join(testDir, "audio-cache"),
         tagsPath: path.join(testDir, "tags"),
         classifiedPath: path.join(testDir, "classified"),
         threads: 0,
         classificationDepth: 3
       },
-      wavCachePath: path.join(testDir, "wav-cache"),
+      audioCachePath: path.join(testDir, "audio-cache"),
       tagsPath: path.join(testDir, "tags"),
       forceRebuild: false,
       classificationDepth: 3,

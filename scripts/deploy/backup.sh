@@ -9,7 +9,7 @@
 #   -d, --dir DIR           Base installation directory (default: /opt/sidflow)
 #   -o, --output DIR        Backup output directory (default: /opt/sidflow/backups)
 #   -e, --env ENV           Environment: stg or prd (default: prd)
-#   --full                  Include all data (including wav-cache and hvsc)
+#   --full                  Include all data (including audio-cache and hvsc)
 #   --retention DAYS        Delete backups older than DAYS (default: 30)
 #   --quiet                 Suppress non-essential output
 #   --dry-run               Show what would be done without executing
@@ -23,7 +23,7 @@
 #   Full backup (--full):
 #     - All of the above, plus:
 #     - hvsc/              SID collection (can re-download)
-#     - wav-cache/         Rendered audio (can regenerate)
+#     - audio-cache/         Rendered audio (can regenerate)
 #
 # Cron Example (daily at 2 AM):
 #   0 2 * * * /opt/sidflow/scripts/backup.sh --quiet
@@ -175,8 +175,8 @@ if [[ "$FULL_BACKUP" == "true" ]]; then
     fi
     
     log_info "Backing up WAV cache..."
-    if [[ -d "$DATA_DIR/wav-cache" ]]; then
-        run_cmd tar -czf "$TEMP_DIR/wav-cache.tar.gz" -C "$DATA_DIR" wav-cache
+    if [[ -d "$DATA_DIR/audio-cache" ]]; then
+        run_cmd tar -czf "$TEMP_DIR/audio-cache.tar.gz" -C "$DATA_DIR" audio-cache
         log_success "WAV cache backed up"
     else
         log_warn "WAV cache directory not found, skipping"

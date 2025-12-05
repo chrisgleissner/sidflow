@@ -21,13 +21,13 @@ import {
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-auto-tags-");
 
-function createPlan(sidPath: string, wavCachePath: string, tagsPath: string): ClassificationPlan {
+function createPlan(sidPath: string, audioCachePath: string, tagsPath: string): ClassificationPlan {
   return {
     config: {} as ClassificationPlan["config"],
     forceRebuild: false,
     classificationDepth: 3,
     sidPath,
-    wavCachePath,
+    audioCachePath,
     tagsPath
   } as unknown as ClassificationPlan;
 }
@@ -36,16 +36,16 @@ describe("generateAutoTags", () => {
   it("merges manual and auto tags respecting precedence", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
-    const wavCachePath = path.join(root, "wav");
+    const audioCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await Promise.all([
       mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "A"), { recursive: true }),
       mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "B"), { recursive: true }),
-      mkdir(wavCachePath, { recursive: true }),
+      mkdir(audioCachePath, { recursive: true }),
       mkdir(tagsPath, { recursive: true })
     ]);
 
-    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, audioCachePath, tagsPath);
     const manualSid = path.join(sidPath, "C64Music", "MUSICIANS", "A", "Manual.sid");
     const autoSid = path.join(sidPath, "C64Music", "MUSICIANS", "B", "Auto.sid");
     await Promise.all([writeFile(manualSid, "manual"), writeFile(autoSid, "auto")]);
@@ -123,15 +123,15 @@ describe("generateAutoTags", () => {
   it("fills missing manual fields using predictions", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
-    const wavCachePath = path.join(root, "wav");
+    const audioCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
     await Promise.all([
       mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "C"), { recursive: true }),
-      mkdir(wavCachePath, { recursive: true }),
+      mkdir(audioCachePath, { recursive: true }),
       mkdir(tagsPath, { recursive: true })
     ]);
 
-    const plan = createPlan(sidPath, wavCachePath, tagsPath);
+    const plan = createPlan(sidPath, audioCachePath, tagsPath);
     const sidFile = path.join(sidPath, "C64Music", "MUSICIANS", "C", "Mixed.sid");
     await writeFile(sidFile, "mixed");
 

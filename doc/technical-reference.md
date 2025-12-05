@@ -189,14 +189,30 @@ const table = await db.openTable('songs');
 const similar = await table.search(embedding).limit(10).execute();
 ```
 
+## File Locations
+
+| Name | Path | Created By | Description |
+|------|------|------------|-------------|
+| SID Collection | `workspace/hvsc/` | `sidflow-fetch` | HVSC archive extracted; contains all `.sid` files organized by artist/category |
+| WAV Cache | `workspace/audio-cache/*.wav` | `sidflow-classify` | Full-length WAV renders using HVSC Songlengths.md5 durations; cached for feature extraction |
+| M4A Cache | `workspace/audio-cache/*.m4a` | `sidflow-classify` | AAC-encoded versions for efficient web streaming playback |
+| Metadata | `workspace/tags/**/*.meta.json` | `sidflow-classify` | Per-SID metadata: author, title, release, SID model, load/play addresses |
+| HLS Segments | `workspace/hls/**/` | Web API | On-demand HLS streaming segments (`.ts` + `.m3u8`) for browser playback |
+| Classifications | `data/classified/*.jsonl` | `sidflow-classify` | Audio features per SID: energy, RMS, spectral centroid, BPM, plus auto-generated tags |
+| Feedback | `data/feedback/YYYY/MM/*.jsonl` | `sidflow-rate`, Web UI | User ratings (1-5), skips, replays, and custom tags; date-partitioned |
+| ML Model | `data/model/` | `sidflow-train` | TensorFlow.js model artifacts and feature normalization stats |
+| Vector DB | `data/sidflow.lance/` | `sidflow-train` | LanceDB embeddings for similarity search and recommendations |
+| Availability | `data/availability/` | `sidflow-fetch` | HVSC version info and file availability manifest |
+
 ## Configuration
 
 ### .sidflow.json
 
 ```json
 {
-  "sidPath": "./data/hvsc/C64Music",
-  "wavCachePath": "./data/wav-cache",
+  "sidPath": "./workspace/hvsc/C64Music",
+  "audioCachePath": "./workspace/audio-cache",
+  "tagsPath": "./workspace/tags",
   "classifiedPath": "./data/classified",
   "feedbackPath": "./data/feedback",
   "modelPath": "./data/model",

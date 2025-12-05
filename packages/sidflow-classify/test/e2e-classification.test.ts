@@ -20,14 +20,14 @@ import type { SidflowConfig } from "@sidflow/common";
 
 describe("E2E Classification Pipeline Test", () => {
   let tempDir: string;
-  let wavCachePath: string;
+  let audioCachePath: string;
   let classifiedPath: string;
   let testSidPath: string;
 
   beforeAll(async () => {
     // Create temporary workspace
     tempDir = await mkdtemp(join(tmpdir(), "sidflow-e2e-test-"));
-    wavCachePath = join(tempDir, "wav-cache");
+    audioCachePath = join(tempDir, "audio-cache");
     classifiedPath = join(tempDir, "classified");
 
     // Use existing test SID file (Garvalf - Lully) - simpler file with fewer subtunes
@@ -82,13 +82,13 @@ describe("E2E Classification Pipeline Test", () => {
     const plan: ClassificationPlan = {
       config: {
         sidPath: testSidPath,
-        wavCachePath,
+        audioCachePath,
         tagsPath,
         sidplayPath: undefined,
         threads: 1,
         classificationDepth: 3,
       } as SidflowConfig,
-      wavCachePath,
+      audioCachePath,
       tagsPath,
       forceRebuild: true,
       classificationDepth: 3,
@@ -113,7 +113,7 @@ describe("E2E Classification Pipeline Test", () => {
     expect(result.metrics.autoTaggedCount).toBeGreaterThan(0);
 
     // Verify WAV directory was created (at least one subtune)
-    const wavDir = join(wavCachePath, "MUSICIANS/G/Garvalf");
+    const wavDir = join(audioCachePath, "MUSICIANS/G/Garvalf");
     await access(wavDir); // Will throw if directory doesn't exist
     console.log(`[E2E Test] ✓ WAV directory created: ${wavDir}`);
 
@@ -168,13 +168,13 @@ describe("E2E Classification Pipeline Test", () => {
     const plan: ClassificationPlan = {
       config: {
         sidPath: testSidPath,
-        wavCachePath,
+        audioCachePath,
         tagsPath,
         sidplayPath: undefined,
         threads: 1,
         classificationDepth: 3,
       } as SidflowConfig,
-      wavCachePath,
+      audioCachePath,
       tagsPath,
       forceRebuild: false, // Should use cached WAV
       classificationDepth: 3,

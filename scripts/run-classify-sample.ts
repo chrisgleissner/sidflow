@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  buildWavCache,
+  buildAudioCache,
   fallbackMetadataFromPath,
   generateAutoTags,
   heuristicFeatureExtractor,
@@ -18,13 +18,13 @@ const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-sample-");
 
 async function createConfig(root: string): Promise<string> {
   const sidPath = path.join(root, "hvsc");
-  const wavCachePath = path.join(root, "wav-cache");
+  const audioCachePath = path.join(root, "audio-cache");
   const tagsPath = path.join(root, "tags");
 
   await Promise.all([
     mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "A"), { recursive: true }),
     mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "B"), { recursive: true }),
-    mkdir(wavCachePath, { recursive: true }),
+    mkdir(audioCachePath, { recursive: true }),
     mkdir(tagsPath, { recursive: true })
   ]);
 
@@ -48,7 +48,7 @@ async function createConfig(root: string): Promise<string> {
   const configPath = path.join(root, "sample.sidflow.json");
   const config = {
     sidPath,
-    wavCachePath,
+    audioCachePath,
     tagsPath,
     threads: 0,
     classificationDepth: 2
@@ -59,7 +59,7 @@ async function createConfig(root: string): Promise<string> {
 }
 
 async function renderPlaceholderWavs(plan: ClassificationPlan): Promise<void> {
-  const { rendered } = await buildWavCache(plan, {
+  const { rendered } = await buildAudioCache(plan, {
     render: async ({ wavFile }) => {
       await ensureDir(path.dirname(wavFile));
       await writeFile(wavFile, "sample-wav");

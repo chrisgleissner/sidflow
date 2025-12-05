@@ -60,7 +60,7 @@ export interface AlertConfig {
 export interface SidflowConfig {
   /** Canonical SID collection root */
   sidPath: string;
-  wavCachePath: string;
+  audioCachePath: string;
   tagsPath: string;
   classifiedPath?: string;
   sidplayPath?: string;
@@ -227,7 +227,7 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
 
   return {
     sidPath,
-    wavCachePath: requiredString("wavCachePath"),
+    audioCachePath: requiredString("audioCachePath"),
     tagsPath: requiredString("tagsPath"),
     classifiedPath: optionalString("classifiedPath"),
     sidplayPath: optionalString("sidplayPath"),

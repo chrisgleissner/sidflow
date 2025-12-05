@@ -14,11 +14,11 @@ async function main() {
   await rm(testRoot, { recursive: true, force: true }).catch(() => { });
 
   const sidPath = path.join(testRoot, "hvsc");
-  const wavCachePath = path.join(testRoot, "wav");
+  const audioCachePath = path.join(testRoot, "wav");
   const tagsPath = path.join(testRoot, "tags");
 
   await mkdir(sidPath, { recursive: true });
-  await mkdir(wavCachePath, { recursive: true });
+  await mkdir(audioCachePath, { recursive: true });
   await mkdir(tagsPath, { recursive: true });
 
   // Create some test SID files
@@ -33,7 +33,7 @@ async function main() {
     configPath,
     JSON.stringify({
       sidPath,
-      wavCachePath,
+      audioCachePath,
       tagsPath,
       threads: 2,
       classificationDepth: 3
@@ -43,7 +43,7 @@ async function main() {
   console.log("Running classification with progress...\n");
 
   // Mock implementations
-  const { planClassification, buildWavCache, generateAutoTags } = await import("../packages/sidflow-classify/src/index.js");
+  const { planClassification, buildAudioCache, generateAutoTags } = await import("../packages/sidflow-classify/src/index.js");
 
   const mockRender = async ({ wavFile }: any) => {
     await mkdir(path.dirname(wavFile), { recursive: true });
@@ -63,7 +63,7 @@ async function main() {
     stdout: process.stdout,
     stderr: process.stderr,
     planClassification,
-    buildWavCache,
+    buildAudioCache,
     generateAutoTags,
     loadRenderModule: async () => mockRender,
     loadMetadataModule: async () => mockExtractMetadata,

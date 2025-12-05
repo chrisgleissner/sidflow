@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
-  buildWavCache,
+  buildAudioCache,
   essentiaFeatureExtractor,
   generateAutoTags,
   planClassification,
@@ -52,12 +52,12 @@ describe("End-to-End SIDFlow Pipeline", () => {
   it("extracts features from WAV files", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
-    const wavCachePath = path.join(root, "wav");
+    const audioCachePath = path.join(root, "wav");
     const tagsPath = path.join(root, "tags");
 
     console.log(`[TEST] Created temp directory: ${root}`);
     console.log(`[TEST] sidPath: ${sidPath}`);
-    console.log(`[TEST] wavCachePath: ${wavCachePath}`);
+    console.log(`[TEST] audioCachePath: ${audioCachePath}`);
     console.log(`[TEST] tagsPath: ${tagsPath}`);
 
     // Create directory structure
@@ -75,7 +75,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     const plan: ClassificationPlan = {
       config: {
         sidPath,
-        wavCachePath,
+        audioCachePath,
         tagsPath,
         threads: 0,
         classificationDepth: 3
@@ -83,7 +83,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
       forceRebuild: false,
       classificationDepth: 3,
       sidPath,
-      wavCachePath,
+      audioCachePath,
       tagsPath
     };
 
@@ -97,26 +97,26 @@ describe("End-to-End SIDFlow Pipeline", () => {
     };
 
     // Step 1: Build WAV cache
-    console.log(`[TEST] Starting buildWavCache...`);
+    console.log(`[TEST] Starting buildAudioCache...`);
     console.log(`[TEST] Plan configuration:`, JSON.stringify({
       sidPath: plan.sidPath,
-      wavCachePath: plan.wavCachePath,
+      audioCachePath: plan.audioCachePath,
       tagsPath: plan.tagsPath
     }, null, 2));
 
     let wavResult;
     try {
-      wavResult = await buildWavCache(plan, {
+      wavResult = await buildAudioCache(plan, {
         render: mockRender,
         forceRebuild: false
       });
     } catch (error) {
-      console.error(`[TEST] buildWavCache failed with error:`, error);
+      console.error(`[TEST] buildAudioCache failed with error:`, error);
       console.error(`[TEST] Error stack:`, (error as Error).stack);
       throw error;
     }
 
-    console.log(`[TEST] buildWavCache completed successfully`);
+    console.log(`[TEST] buildAudioCache completed successfully`);
     console.log(`[TEST]   rendered.length: ${wavResult.rendered.length}`);
     console.log(`[TEST]   rendered: ${JSON.stringify(wavResult.rendered)}`);
     console.log(`[TEST]   skipped.length: ${wavResult.skipped.length}`);
@@ -125,7 +125,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(wavResult.skipped).toHaveLength(0);
 
     // Step 2: Extract features using Essentia.js
-    const wavFile1 = path.join(wavCachePath, "MUSICIANS", "Test", "song1.wav");
+    const wavFile1 = path.join(audioCachePath, "MUSICIANS", "Test", "song1.wav");
     console.log(`[TEST] Checking for WAV file: ${wavFile1}`);
 
     // Check if file exists

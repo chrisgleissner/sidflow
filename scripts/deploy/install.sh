@@ -239,8 +239,8 @@ echo
 
 # Create directory structure
 log_info "Creating directory structure..."
-# Create workspace subdirectories (hvsc, wav-cache, tags) and data subdirectories
-as_root mkdir -p "$INSTALL_DIR"/{workspace/{hvsc,wav-cache,tags},data/{classified,renders,availability},config,scripts,backups}
+# Create workspace subdirectories (hvsc, audio-cache, tags) and data subdirectories
+as_root mkdir -p "$INSTALL_DIR"/{workspace/{hvsc,audio-cache,tags},data/{classified,renders,availability},config,scripts,backups}
 
 # Set ownership for container (UID matches container user)
 log_info "Setting directory ownership (UID ${CONTAINER_UID}:${CONTAINER_GID})..."
@@ -266,7 +266,7 @@ SIDFLOW_ADMIN_PASSWORD=$ADMIN_PASSWORD
 
 # Paths (relative to docker-compose.production.yml location)
 SIDFLOW_SID_PATH=$INSTALL_DIR/workspace/hvsc
-SIDFLOW_WAV_CACHE=$INSTALL_DIR/workspace/wav-cache
+SIDFLOW_AUDIO_CACHE=$INSTALL_DIR/workspace/audio-cache
 SIDFLOW_TAGS_PATH=$INSTALL_DIR/workspace/tags
 SIDFLOW_DATA_PATH=$INSTALL_DIR/data
 

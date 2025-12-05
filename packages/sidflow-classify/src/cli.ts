@@ -7,13 +7,13 @@ import { pathToFileURL } from "node:url";
 
 import { resetConfigCache } from "@sidflow/common";
 import {
-  buildWavCache,
+  buildAudioCache,
   defaultExtractMetadata,
   generateAutoTags,
   generateJsonlOutput,
   planClassification,
   type AutoTagProgress,
-  type BuildWavCacheResult,
+  type BuildAudioCacheResult,
   type ClassificationPlan,
   type ExtractMetadata,
   type FeatureExtractor,
@@ -22,7 +22,7 @@ import {
   type PredictRatings,
   type RenderWav,
   type ThreadActivityUpdate,
-  type WavCacheProgress
+  type AudioCacheProgress
 } from "./index.js";
 
 // Progress update throttle configuration
@@ -147,7 +147,7 @@ function printHelp(): void {
 
 interface ClassifyCliRuntime {
   planClassification: typeof planClassification;
-  buildWavCache: typeof buildWavCache;
+  buildAudioCache: typeof buildAudioCache;
   generateAutoTags: typeof generateAutoTags;
   generateJsonlOutput: typeof generateJsonlOutput;
   loadFeatureModule: (specifier: string) => Promise<FeatureExtractor>;
@@ -160,7 +160,7 @@ interface ClassifyCliRuntime {
 
 const defaultRuntime: ClassifyCliRuntime = {
   planClassification,
-  buildWavCache,
+  buildAudioCache,
   generateAutoTags,
   generateJsonlOutput,
   loadFeatureModule: (specifier) =>
@@ -223,7 +223,7 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
   };
 
   return {
-    logWavProgress(progress: WavCacheProgress): void {
+    logWavProgress(progress: AudioCacheProgress): void {
       const now = Date.now();
       if (now - lastLogTime < PROGRESS_THROTTLE_MS && progress.processedFiles < progress.totalFiles) {
         return;
@@ -312,7 +312,7 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
   };
 }
 
-function summariseWavResult(result: BuildWavCacheResult): string[] {
+function summariseWavResult(result: BuildAudioCacheResult): string[] {
   const { metrics } = result;
   const cacheHitPercent = (metrics.cacheHitRate * 100).toFixed(1);
   return [
@@ -392,7 +392,7 @@ export async function runClassifyCli(
     const threads = plan.config.threads || os.cpus().length;
     runtime.stdout.write(`Starting classification (threads: ${threads})\n`);
     runtime.stdout.write(`SID path: ${resolvedPlan.sidPath}\n`);
-    runtime.stdout.write(`WAV cache path: ${resolvedPlan.wavCachePath}\n\n`);
+    runtime.stdout.write(`WAV cache path: ${resolvedPlan.audioCachePath}\n\n`);
 
     // Create progress logger
     const progressLogger = createProgressLogger(runtime.stdout);

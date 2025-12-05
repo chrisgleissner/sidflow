@@ -15,18 +15,18 @@ describe('isAlreadyClassified', () => {
   let tempDir: string;
   let sidPath: string;
   let tagsPath: string;
-  let wavCachePath: string;
+  let audioCachePath: string;
   let plan: ClassificationPlan;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), 'sidflow-classify-test-'));
     sidPath = path.join(tempDir, 'sids');
     tagsPath = path.join(tempDir, 'tags');
-    wavCachePath = path.join(tempDir, 'wav-cache');
+    audioCachePath = path.join(tempDir, 'audio-cache');
     
     await fs.mkdir(sidPath, { recursive: true });
     await fs.mkdir(tagsPath, { recursive: true });
-    await fs.mkdir(wavCachePath, { recursive: true });
+    await fs.mkdir(audioCachePath, { recursive: true });
     
     // Create test SID file structure
     const artistDir = path.join(sidPath, 'MUSICIANS', 'T', 'Test_Artist');
@@ -38,13 +38,13 @@ describe('isAlreadyClassified', () => {
     plan = {
       config: {
         sidPath,
-        wavCachePath,
+        audioCachePath,
         tagsPath,
         threads: 1,
         classificationDepth: 3,
       },
       sidPath,
-      wavCachePath,
+      audioCachePath,
       tagsPath,
       forceRebuild: false,
       classificationDepth: 3,

@@ -90,7 +90,7 @@ describe("Essentia.js integration in classification", () => {
     try {
       // Setup test SID collection
       const sidPath = path.join(testRoot, "MUSICIANS", "Test");
-      const wavCachePath = path.join(testRoot, "wav-cache");
+      const audioCachePath = path.join(testRoot, "audio-cache");
       const tagsPath = path.join(testRoot, "tags");
       
       // Create minimal SID file
@@ -106,13 +106,13 @@ describe("Essentia.js integration in classification", () => {
       const plan: ClassificationPlan = {
         config: {
           sidPath,
-          wavCachePath,
+          audioCachePath,
           tagsPath,
           sidplayPath: undefined,
           threads: 1,
           classificationDepth: 3,
         },
-        wavCachePath,
+        audioCachePath,
         tagsPath,
         forceRebuild: true,
         classificationDepth: 3,
