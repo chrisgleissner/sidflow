@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.image != '' && inputs.image || format('ghcr.io/{0}/sidflow-ci:latest', github.repository_owner) }}
+    env:
+      BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA: "true"
     defaults:
       run:
         shell: bash

@@ -38,6 +38,7 @@ jobs:
     env:
       PACKAGE_SOURCE: ${{ inputs.package_source }}
       PACKAGE_VERSION: ${{ inputs.package_version }}
+      BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
