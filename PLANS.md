@@ -268,6 +268,70 @@ Phase 2: Web UI Visibility (future)
 
 ---
 
+### Task: CI Build Speed & Test Stability (2025-12-05)
+
+**Status:** 🔄 IN PROGRESS
+
+**User request (summary)**
+1. Reduce CI build time from ~9 minutes to <5 minutes without reducing coverage
+2. Eliminate ALL flaky tests — zero tolerance for flakiness
+3. No tests may be skipped/ignored
+
+**Current baseline (Run #962):**
+- Total CI time: 9m 27s
+- E2E tests: 90 total, 88 passed, 2 flaky
+- Flaky tests identified:
+  - `accessibility.spec.ts` › should have proper form labels
+  - `pause-resume-position.spec.ts` › progress bar maintains position when paused
+
+**Analysis — Where time is spent:**
+
+| Step | Duration | Notes |
+|------|----------|-------|
+| Checkout + deps | ~1m | Cache hit helps |
+| Playwright install | ~45s | Browser download |
+| Build project | ~1m 30s | TypeScript + Next.js |
+| Unit tests | ~50s | ~1549 tests |
+| E2E tests | ~5m | 90 tests, 4 workers |
+| Coverage merge | ~30s | Post-processing |
+
+**Root causes of slow E2E:**
+1. Web server startup: ~30-40s (production build + Next.js cold start)
+2. Audio tests: require actual playback time (~3s per audio test)
+3. Screenshot tests: UI rendering + comparison
+4. Serial test suites: favorites, telemetry, playback tests run sequentially
+
+**Root causes of flaky tests:**
+1. `accessibility.spec.ts` — form labels test: Uses `waitForTimeout` (bad), relies on page load timing
+2. `pause-resume-position.spec.ts` — Audio timing: Race conditions between pause/resume state changes
+
+**Plan (checklist)**
+
+Phase 1: Fix Flaky Tests (zero tolerance) 🔄
+- [ ] Step 1.1 — Fix accessibility test: Replace waitForTimeout with proper waitFor conditions
+- [ ] Step 1.2 — Fix pause-resume test: Add deterministic state machine waits
+- [ ] Step 1.3 — Run tests 3x consecutively to verify stability
+
+Phase 2: Speed Optimizations
+- [ ] Step 2.1 — Parallelize more: Move serial tests to parallel where safe
+- [ ] Step 2.2 — Reduce audio test times: Use shorter test audio files or mocks
+- [ ] Step 2.3 — Optimize web server startup: Pre-build in previous step, use dev mode
+- [ ] Step 2.4 — Reduce Playwright workers contention: Tune worker count
+- [ ] Step 2.5 — Skip redundant screenshot tests in CI (keep locally)
+
+Phase 3: Validation
+- [ ] Step 3.1 — Run full CI 3x to verify <5 minutes
+- [ ] Step 3.2 — Confirm 100% test pass rate across all runs
+- [ ] Step 3.3 — Verify coverage unchanged
+
+**Progress log**
+- 2025-12-05 — Created plan. Analyzing flaky tests.
+
+**Follow-ups**
+- Consider splitting E2E into fast/slow suites for PR vs main branch
+
+---
+
 ### Task: Documentation Phase 2 — Ruthless Cleanup (2025-12-06)
 
 **User request (summary)**

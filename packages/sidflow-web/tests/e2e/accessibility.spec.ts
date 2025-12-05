@@ -1,9 +1,4 @@
 /**
-
-if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
-  console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
-  process.exit(0);
-}
  * Accessibility audit test suite for SIDFlow web UI
  * 
  * Tests keyboard navigation, screen reader compatibility, ARIA compliance,
@@ -12,27 +7,47 @@ if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
  * Run with: bun run test:a11y or npm run test:e2e -- accessibility.spec.ts
  */
 
+if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+  console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
+  process.exit(0);
+}
+
 import { test, expect, type Page } from './test-hooks';
 
 /**
- * Reliable page navigation with retry for flaky network conditions
+ * Reliable page navigation with proper wait conditions (not waitForTimeout)
+ * Uses load event and then waits for key page elements.
  */
 async function gotoWithRetry(page: Page, url: string, maxRetries = 3): Promise<void> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            // Wait for page to stabilize
+            // Use 'load' instead of 'networkidle' for faster navigation
+            // Then wait for key page elements to be visible
+            await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+            // Wait for the page to have meaningful content loaded
+            // First wait for either tabpanel or main content
+            await Promise.race([
+                page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 20000 }),
+                page.waitForSelector('main', { state: 'visible', timeout: 20000 }),
+                page.waitForSelector('h1, h2, h3', { state: 'visible', timeout: 20000 }),
+            ]).catch(() => {});
+            // Wait for spinners to be gone
             await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
             return;
         } catch (error) {
             if (attempt === maxRetries) throw error;
             console.log(`[A11y] Navigation retry ${attempt}/${maxRetries} for ${url}`);
-            await page.waitForTimeout(500);
+            // Wait for DOM to be ready before retry
+            await page.waitForLoadState('domcontentloaded').catch(() => {});
         }
     }
 }
 
 test.describe('Accessibility Audit', () => {
+    // Increase timeout for accessibility tests which involve navigation and DOM inspection
+    // CI can be slower due to resource contention
+    test.setTimeout(90000);
+    
     test.beforeEach(async ({ page }) => {
         // Inject axe-core for automated accessibility testing
         await page.addInitScript(() => {
@@ -63,10 +78,12 @@ test.describe('Accessibility Audit', () => {
 
         test('should support Escape key to close dialogs', async ({ page }) => {
             await gotoWithRetry(page, '/');
+            // Explicitly wait for the login button to be ready
+            await page.waitForSelector('button', { state: 'visible', timeout: 20000 }).catch(() => {});
 
             // Open login dialog
             const loginButton = page.getByRole('button', { name: /log in/i });
-            await expect(loginButton).toBeVisible({ timeout: 10000 });
+            await expect(loginButton).toBeVisible({ timeout: 15000 });
             await loginButton.click();
             await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 10000 });
 
@@ -162,8 +179,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('ARIA Compliance', () => {
         test('should have proper ARIA labels on interactive elements', async ({ page }) => {
             await gotoWithRetry(page, '/?tab=play');
-            // Wait for buttons to be available
-            await page.waitForSelector('button', { timeout: 10000 }).catch(() => {});
+            // Wait for tabpanel (indicates tab content is loaded) then buttons
+            await page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 15000 }).catch(() => {});
+            await page.waitForSelector('button', { state: 'visible', timeout: 10000 }).catch(() => {});
 
             // Check buttons without text have aria-label
             const buttons = await page.locator('button').all();
@@ -189,8 +207,10 @@ test.describe('Accessibility Audit', () => {
 
         test('should use proper ARIA roles for custom components', async ({ page }) => {
             await gotoWithRetry(page, '/?tab=play');
-            // Wait for tablist to be available (indicates page is fully loaded)
-            await page.waitForSelector('[role="tablist"]', { timeout: 10000 }).catch(() => {});
+            // Wait for tablist to be visible (indicates page is fully loaded)
+            await page.waitForSelector('[role="tablist"]', { state: 'visible', timeout: 15000 }).catch(() => {});
+            // Ensure tab content is also visible
+            await page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 10000 }).catch(() => {});
 
             // Check for proper roles
             const roles = ['button', 'dialog', 'tablist', 'tab', 'tabpanel', 'navigation'];
@@ -207,6 +227,10 @@ test.describe('Accessibility Audit', () => {
 
         test('should have proper heading hierarchy', async ({ page }) => {
             await gotoWithRetry(page, '/admin?tab=wizard');
+            // Wait for the admin panel content to be fully loaded
+            await page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 15000 }).catch(() => {});
+            // Wait for heading content to appear
+            await page.waitForSelector('h1, h2, h3', { state: 'visible', timeout: 10000 }).catch(() => {});
 
             // Check heading levels (h1, h2, h3, etc.)
             const headings = await page.locator('h1, h2, h3, h4, h5, h6').all();
@@ -236,6 +260,8 @@ test.describe('Accessibility Audit', () => {
 
         test('should have aria-live regions for dynamic content', async ({ page }) => {
             await gotoWithRetry(page, '/?tab=play');
+            // Wait for tab content to be fully loaded
+            await page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 15000 }).catch(() => {});
 
             // Check for aria-live regions (for status updates, etc.)
             const liveRegions = await page.locator('[aria-live]').all();
@@ -273,6 +299,11 @@ test.describe('Accessibility Audit', () => {
 
         test('should have proper form labels', async ({ page }) => {
             await gotoWithRetry(page, '/admin?tab=rate');
+            
+            // Wait for the admin panel content to be fully loaded
+            await page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 15000 }).catch(() => {});
+            // Also wait for any rate tab specific elements to appear
+            await page.waitForSelector('input, select, textarea', { state: 'attached', timeout: 10000 }).catch(() => {});
 
             // Check that inputs have associated labels
             const inputs = await page.locator('input, select, textarea').all();
@@ -333,6 +364,9 @@ test.describe('Accessibility Audit', () => {
     test.describe('Focus Management', () => {
         test('should have visible focus indicators', async ({ page }) => {
             await gotoWithRetry(page, '/?tab=play');
+            // Wait for interactive content to be ready
+            await page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 15000 }).catch(() => {});
+            await page.waitForSelector('button', { state: 'visible', timeout: 10000 }).catch(() => {});
 
             // Tab to a button and check if it has visible focus
             await page.keyboard.press('Tab');
@@ -366,10 +400,12 @@ test.describe('Accessibility Audit', () => {
 
         test('should trap focus in modal dialogs', async ({ page }) => {
             await gotoWithRetry(page, '/');
+            // Explicitly wait for the login button to be ready before interacting
+            await page.waitForSelector('button', { state: 'visible', timeout: 20000 }).catch(() => {});
 
             // Open login dialog
             const loginButton = page.getByRole('button', { name: /log in/i });
-            await expect(loginButton).toBeVisible({ timeout: 10000 });
+            await expect(loginButton).toBeVisible({ timeout: 15000 });
             await loginButton.click();
             await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 10000 });
 
@@ -397,10 +433,12 @@ test.describe('Accessibility Audit', () => {
 
         test('should restore focus after closing dialog', async ({ page }) => {
             await gotoWithRetry(page, '/');
+            // Explicitly wait for the login button to be ready
+            await page.waitForSelector('button', { state: 'visible', timeout: 20000 }).catch(() => {});
 
             // Open and close login dialog, check focus restoration
             const loginButton = page.getByRole('button', { name: /log in/i });
-            await expect(loginButton).toBeVisible({ timeout: 10000 });
+            await expect(loginButton).toBeVisible({ timeout: 15000 });
             await loginButton.focus();
 
             const beforeOpen = await page.evaluate(() => document.activeElement?.textContent);
