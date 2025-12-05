@@ -122,6 +122,24 @@ docker run -p 3000:3000 \
 ```
 Web UI: <http://localhost:3000> (admin at `/admin`).
 
+## Run Locally
+
+Development mode with hot reload:
+
+```bash
+cd packages/sidflow-web
+bun run dev
+```
+
+Production mode (after `bun run build`):
+
+```bash
+cd packages/sidflow-web
+bun run start
+```
+
+Web UI: <http://localhost:3000> (admin at `/admin` with default user/password of `admin/password`).
+
 ## Performance Tests
 
 Run the unified performance suite (Playwright + k6) with the shared runner:
