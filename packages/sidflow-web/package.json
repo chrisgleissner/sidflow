@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ../../scripts/run-bun.mjs run build:worklet && next dev",
-    "build": "node ../../scripts/run-bun.mjs run build:worklet && next build",
+    "build": "BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true node ../../scripts/run-bun.mjs run build:worklet && BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next build",
     "build:worklet": "node ../../scripts/run-bun.mjs run scripts/build-worklet.ts",
     "start": "next start",
     "lint": "eslint",

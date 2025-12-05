@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
  * E2E tests for the classification scheduler and export/import features.
@@ -15,8 +15,33 @@ import { expect, test } from '@playwright/test';
  * - Consolidated tests where possible
  */
 
+// Admin authentication setup
+const ADMIN_USER = process.env.SIDFLOW_ADMIN_USER ?? 'ops';
+const ADMIN_PASSWORD = process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123';
+const ADMIN_AUTH_HEADER = `Basic ${Buffer.from(`${ADMIN_USER}:${ADMIN_PASSWORD}`).toString('base64')}`;
+const adminRouteConfigured = new WeakSet<Page>();
+
+async function ensureAdminSession(page: Page): Promise<void> {
+  if (adminRouteConfigured.has(page)) {
+    return;
+  }
+
+  await page.context().setExtraHTTPHeaders({
+    Authorization: ADMIN_AUTH_HEADER,
+    authorization: ADMIN_AUTH_HEADER,
+  });
+
+  await page.context().setHTTPCredentials({
+    username: ADMIN_USER,
+    password: ADMIN_PASSWORD,
+  });
+
+  adminRouteConfigured.add(page);
+}
+
 // Helper to navigate to admin classify tab efficiently
-async function gotoClassifyTab(page: import('@playwright/test').Page) {
+async function gotoClassifyTab(page: Page) {
+  await ensureAdminSession(page);
   await page.goto('/admin?tab=classify', { waitUntil: 'domcontentloaded' });
   // Wait for page to be ready - wait for any loading spinners to disappear
   await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});

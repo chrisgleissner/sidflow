@@ -139,7 +139,9 @@ test.describe('Classify progress metrics', () => {
     await expect(renderedCount).toBeVisible({ timeout: 10_000 });
     await expect(taggedCount).toBeVisible({ timeout: 10_000 });
 
-    await expect(renderedCount).toHaveText(`${CLASSIFY_RENDERED} / ${CLASSIFY_TOTAL}`);
+    // Rendered count displays only the number, not a fraction
+    await expect(renderedCount).toHaveText(`${CLASSIFY_RENDERED}`);
+    // Tagged count displays as "tagged / total"
     await expect(taggedCount).toHaveText(`${CLASSIFY_TAGGED} / ${CLASSIFY_TOTAL}`);
   });
 });

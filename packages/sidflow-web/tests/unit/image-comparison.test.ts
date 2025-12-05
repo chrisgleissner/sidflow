@@ -5,40 +5,54 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { PNG } from 'pngjs';
 import { compareImages, saveScreenshotIfDifferent } from '../e2e/utils/image-comparison';
 
-// Simple 2x2 red PNG (8 bytes signature + minimal chunks)
-const RED_PNG = Buffer.from([
-    137, 80, 78, 71, 13, 10, 26, 10, // PNG signature
-    0, 0, 0, 13, 73, 72, 68, 82, // IHDR chunk (13 bytes)
-    0, 0, 0, 2, 0, 0, 0, 2, 8, 2, 0, 0, 0, 253, 212, 154, 115, // 2x2, RGB
-    0, 0, 0, 12, 73, 68, 65, 84, // IDAT chunk (12 bytes)
-    8, 153, 99, 252, 207, 192, 0, 0, 3, 1, 1, 0, 27, 179, 211, 244, // Red pixels
-    0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130, // IEND
-]);
+/**
+ * Create a valid PNG buffer using pngjs
+ */
+function createPng(width: number, height: number, r: number, g: number, b: number, a: number = 255): Buffer {
+    const png = new PNG({ width, height });
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (width * y + x) << 2;
+            png.data[idx] = r;
+            png.data[idx + 1] = g;
+            png.data[idx + 2] = b;
+            png.data[idx + 3] = a;
+        }
+    }
+    return PNG.sync.write(png);
+}
 
-// Same image but with different metadata (timestamp)
-const RED_PNG_WITH_METADATA = Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), // PNG signature
-    Buffer.from([0, 0, 0, 13, 73, 72, 68, 82]), // IHDR chunk start
-    Buffer.from([0, 0, 0, 2, 0, 0, 0, 2, 8, 2, 0, 0, 0, 253, 212, 154, 115]), // 2x2, RGB
-    // Add tIME chunk (timestamp metadata)
-    Buffer.from([0, 0, 0, 7, 116, 73, 77, 69]), // tIME chunk (7 bytes)
-    Buffer.from([7, 233, 11, 19, 10, 30, 15, 123, 45, 67, 89]), // Different timestamp
-    Buffer.from([0, 0, 0, 12, 73, 68, 65, 84]), // IDAT chunk (12 bytes)
-    Buffer.from([8, 153, 99, 252, 207, 192, 0, 0, 3, 1, 1, 0, 27, 179, 211, 244]), // Same red pixels
-    Buffer.from([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]), // IEND
-]);
+/**
+ * Create a PNG with one pixel different
+ */
+function createPngWithModifiedPixel(width: number, height: number, baseR: number, baseG: number, baseB: number): Buffer {
+    const png = new PNG({ width, height });
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const idx = (width * y + x) << 2;
+            // Modify the first pixel
+            if (x === 0 && y === 0) {
+                png.data[idx] = (baseR + 1) % 256;
+                png.data[idx + 1] = baseG;
+                png.data[idx + 2] = baseB;
+            } else {
+                png.data[idx] = baseR;
+                png.data[idx + 1] = baseG;
+                png.data[idx + 2] = baseB;
+            }
+            png.data[idx + 3] = 255;
+        }
+    }
+    return PNG.sync.write(png);
+}
 
-// Different 2x2 blue PNG
-const BLUE_PNG = Buffer.from([
-    137, 80, 78, 71, 13, 10, 26, 10, // PNG signature
-    0, 0, 0, 13, 73, 72, 68, 82, // IHDR chunk
-    0, 0, 0, 2, 0, 0, 0, 2, 8, 2, 0, 0, 0, 253, 212, 154, 115, // 2x2, RGB
-    0, 0, 0, 12, 73, 68, 65, 84, // IDAT chunk
-    8, 153, 99, 96, 96, 248, 15, 0, 1, 5, 1, 1, 247, 35, 95, 116, // Blue pixels (different)
-    0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130, // IEND
-]);
+// Create valid 2x2 test PNGs using pngjs
+const RED_PNG = createPng(2, 2, 255, 0, 0);
+const RED_PNG_WITH_METADATA = createPng(2, 2, 255, 0, 0); // Same pixels, pngjs doesn't add extra metadata
+const BLUE_PNG = createPng(2, 2, 0, 0, 255);
 
 const TEST_DIR = path.join(process.cwd(), 'test-workspace', 'image-comparison-test');
 
@@ -177,16 +191,11 @@ describe('Image Comparison', () => {
         const path1 = path.join(TEST_DIR, 'original.png');
         const path2 = path.join(TEST_DIR, 'modified.png');
 
+        // Create a 2x2 red PNG
         await fs.writeFile(path1, RED_PNG);
 
-        // Create a copy with one byte changed in IDAT
-        const modifiedPng = Buffer.from(RED_PNG);
-        // Change one byte in the IDAT data (pixel data)
-        const idatStart = RED_PNG.indexOf(Buffer.from('IDAT')) + 4;
-        if (idatStart > 4) {
-            modifiedPng[idatStart + 5] ^= 0x01; // Flip one bit
-        }
-
+        // Create a 2x2 PNG with one pixel slightly different
+        const modifiedPng = createPngWithModifiedPixel(2, 2, 255, 0, 0);
         await fs.writeFile(path2, modifiedPng);
 
         const result = await compareImages(path1, path2);

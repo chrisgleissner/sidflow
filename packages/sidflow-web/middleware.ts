@@ -127,7 +127,6 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
 
   const disableAdminAuth = process.env.SIDFLOW_DISABLE_ADMIN_AUTH === '1';
   if (disableAdminAuth) {
-    console.log('[admin-auth] Bypassing admin auth for request', pathname);
     return null;
   }
 

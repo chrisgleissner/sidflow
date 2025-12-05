@@ -14,6 +14,24 @@ if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
 
 import { test, expect, type Page } from './test-hooks';
 
+/**
+ * Reliable page navigation with retry for flaky network conditions
+ */
+async function gotoWithRetry(page: Page, url: string, maxRetries = 3): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            // Wait for page to stabilize
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            return;
+        } catch (error) {
+            if (attempt === maxRetries) throw error;
+            console.log(`[A11y] Navigation retry ${attempt}/${maxRetries} for ${url}`);
+            await page.waitForTimeout(500);
+        }
+    }
+}
+
 test.describe('Accessibility Audit', () => {
     test.beforeEach(async ({ page }) => {
         // Inject axe-core for automated accessibility testing
@@ -24,10 +42,7 @@ test.describe('Accessibility Audit', () => {
 
     test.describe('Keyboard Navigation', () => {
         test('should navigate through all interactive elements with Tab', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be fully interactive
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             // Get all focusable elements
             const focusableElements = await page.locator(
@@ -47,10 +62,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should support Escape key to close dialogs', async ({ page }) => {
-            await page.goto('/');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/');
 
             // Open login dialog
             const loginButton = page.getByRole('button', { name: /log in/i });
@@ -69,10 +81,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should support Space and Enter to activate buttons', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
             
             // Wait for buttons to be available
             await page.waitForSelector('button', { timeout: 10000 });
@@ -107,10 +116,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should support arrow keys in tab navigation', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
             
             // Wait for tab list to be visible before interacting
             const tabList = page.locator('[role="tablist"]').first();
@@ -155,10 +161,7 @@ test.describe('Accessibility Audit', () => {
 
     test.describe('ARIA Compliance', () => {
         test('should have proper ARIA labels on interactive elements', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
             // Wait for buttons to be available
             await page.waitForSelector('button', { timeout: 10000 }).catch(() => {});
 
@@ -185,10 +188,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should use proper ARIA roles for custom components', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
             // Wait for tablist to be available (indicates page is fully loaded)
             await page.waitForSelector('[role="tablist"]', { timeout: 10000 }).catch(() => {});
 
@@ -206,10 +206,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should have proper heading hierarchy', async ({ page }) => {
-            await page.goto('/admin?tab=wizard');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/admin?tab=wizard');
 
             // Check heading levels (h1, h2, h3, etc.)
             const headings = await page.locator('h1, h2, h3, h4, h5, h6').all();
@@ -238,10 +235,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should have aria-live regions for dynamic content', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             // Check for aria-live regions (for status updates, etc.)
             const liveRegions = await page.locator('[aria-live]').all();
@@ -261,10 +255,7 @@ test.describe('Accessibility Audit', () => {
 
     test.describe('Semantic HTML', () => {
         test('should use semantic landmarks', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             // Check for semantic HTML5 elements or ARIA landmarks
             const landmarks = {
@@ -281,10 +272,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should have proper form labels', async ({ page }) => {
-            await page.goto('/admin?tab=rate');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/admin?tab=rate');
 
             // Check that inputs have associated labels
             const inputs = await page.locator('input, select, textarea').all();
@@ -316,10 +304,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should have alt text for images', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             // Check that images have alt text
             const images = await page.locator('img').all();
@@ -347,10 +332,7 @@ test.describe('Accessibility Audit', () => {
 
     test.describe('Focus Management', () => {
         test('should have visible focus indicators', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             // Tab to a button and check if it has visible focus
             await page.keyboard.press('Tab');
@@ -383,10 +365,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should trap focus in modal dialogs', async ({ page }) => {
-            await page.goto('/');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/');
 
             // Open login dialog
             const loginButton = page.getByRole('button', { name: /log in/i });
@@ -417,10 +396,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should restore focus after closing dialog', async ({ page }) => {
-            await page.goto('/');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/');
 
             // Open and close login dialog, check focus restoration
             const loginButton = page.getByRole('button', { name: /log in/i });
@@ -447,10 +423,7 @@ test.describe('Accessibility Audit', () => {
 
     test.describe('Color Contrast', () => {
         test('should have sufficient color contrast for text', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             // Sample some text elements and check contrast
             const textElements = await page.locator('p, span, button, a, label, h1, h2, h3').all();
@@ -484,10 +457,7 @@ test.describe('Accessibility Audit', () => {
 
     test.describe('Screen Reader Support', () => {
         test('should have proper document title', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             const title = await page.title();
             console.log(`[A11y] Page title: "${title}"`);
@@ -497,10 +467,7 @@ test.describe('Accessibility Audit', () => {
         });
 
         test('should have descriptive link text', async ({ page }) => {
-            await page.goto('/?tab=play');
-            await page.waitForLoadState('domcontentloaded');
-            // Wait for page to be ready
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
+            await gotoWithRetry(page, '/?tab=play');
 
             // Check for vague link text like "click here", "read more", etc.
             const links = await page.locator('a').all();
