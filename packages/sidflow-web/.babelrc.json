@@ -6,7 +6,15 @@
     "env": {
         "coverage": {
             "plugins": [
-                "babel-plugin-istanbul"
+                ["babel-plugin-istanbul", {
+                    "exclude": [
+                        "middleware.ts",
+                        "proxy.ts",
+                        "**/edge/**",
+                        "**/*.test.ts",
+                        "**/*.spec.ts"
+                    ]
+                }]
             ]
         }
     }
