@@ -129,7 +129,7 @@ function applyThreadStatusUpdate(update: {
     return thread;
   });
 
-  // Count inline renders when a thread moves from Rendering -> Tagging (or finishes)
+  // Count inline renders when a thread moves from building -> tagging (or finishes)
   if (transitionedFromRender) {
     snapshot.renderedFiles += 1;
     snapshot.processedFiles = Math.max(snapshot.processedFiles, snapshot.renderedFiles);
