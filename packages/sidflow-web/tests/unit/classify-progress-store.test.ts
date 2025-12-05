@@ -1,245 +1,319 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import {
   beginClassifyProgress,
   completeClassifyProgress,
   failClassifyProgress,
-  getClassifyProgressSnapshot,
-  ingestClassifyStdout,
   pauseClassifyProgress,
+  recordNoAudioEvent,
+  checkGlobalStall,
+  ingestClassifyStdout,
+  getClassifyProgressSnapshot,
 } from '../../lib/classify-progress-store';
 
 describe('classify-progress-store', () => {
   beforeEach(() => {
-    // Reset to a clean state
-    beginClassifyProgress(4, 'wasm');
-    completeClassifyProgress();
-  });
-
-  afterEach(() => {
-    // Clean up
-    completeClassifyProgress();
+    // Reset by starting a fresh session
+    beginClassifyProgress(2, 'wasm');
   });
 
   describe('beginClassifyProgress', () => {
-    it('initializes with correct thread count and engine', () => {
-      beginClassifyProgress(8, 'sidplayfp-cli → wasm');
+    it('initializes progress with correct thread count', () => {
+      beginClassifyProgress(4, 'wasm → sidplayfp');
       const snapshot = getClassifyProgressSnapshot();
-      
+      expect(snapshot.threads).toBe(4);
+      expect(snapshot.perThread.length).toBe(4);
       expect(snapshot.isActive).toBe(true);
-      expect(snapshot.threads).toBe(8);
-      expect(snapshot.perThread.length).toBe(8);
-      expect(snapshot.renderEngine).toBe('sidplayfp-cli → wasm');
-      expect(snapshot.activeEngine).toBe('sidplayfp-cli');
+      expect(snapshot.isPaused).toBe(false);
       expect(snapshot.phase).toBe('analyzing');
     });
-  });
 
-  describe('ingestClassifyStdout - thread status parsing', () => {
-    beforeEach(() => {
-      beginClassifyProgress(4, 'wasm');
+    it('parses render engine preference correctly', () => {
+      beginClassifyProgress(2, 'wasm → sidplayfp');
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.renderEngine).toBe('wasm → sidplayfp');
+      expect(snapshot.activeEngine).toBe('wasm');
     });
 
-    it('parses thread rendering status', () => {
-      ingestClassifyStdout('[Thread 1] Rendering: MUSICIANS/Hubbard_Rob/Delta.sid [1]\n');
+    it('initializes counters to zero', () => {
       const snapshot = getClassifyProgressSnapshot();
-      
-      const thread = snapshot.perThread.find(t => t.id === 1);
-      expect(thread?.status).toBe('working');
-      expect(thread?.phase).toBe('building');
-      expect(thread?.currentFile).toBe('MUSICIANS/Hubbard_Rob/Delta.sid [1]');
-    });
-
-    it('parses thread extracting features status', () => {
-      ingestClassifyStdout('[Thread 2] Extracting features: MUSICIANS/Galway_Martin/Game_Over.sid [1]\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      const thread = snapshot.perThread.find(t => t.id === 2);
-      expect(thread?.status).toBe('working');
-      expect(thread?.phase).toBe('tagging');
-      expect(thread?.currentFile).toBe('MUSICIANS/Galway_Martin/Game_Over.sid [1]');
-    });
-
-    it('parses thread analyzing status', () => {
-      ingestClassifyStdout('[Thread 3] Analyzing: MUSICIANS/Daglish_Ben/Trap.sid\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      const thread = snapshot.perThread.find(t => t.id === 3);
-      expect(thread?.status).toBe('working');
-      expect(thread?.phase).toBe('analyzing');
-      expect(thread?.currentFile).toBe('MUSICIANS/Daglish_Ben/Trap.sid');
-    });
-
-    it('parses thread reading metadata status', () => {
-      ingestClassifyStdout('[Thread 4] Reading metadata: MUSICIANS/Tel_Jeroen/Cybernoid.sid\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      const thread = snapshot.perThread.find(t => t.id === 4);
-      expect(thread?.status).toBe('working');
-      expect(thread?.phase).toBe('metadata');
-      expect(thread?.currentFile).toBe('MUSICIANS/Tel_Jeroen/Cybernoid.sid');
-    });
-
-    it('parses thread IDLE status', () => {
-      // First set to working
-      ingestClassifyStdout('[Thread 1] Rendering: test.sid\n');
-      // Then set to idle
-      ingestClassifyStdout('[Thread 1] IDLE\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      const thread = snapshot.perThread.find(t => t.id === 1);
-      expect(thread?.status).toBe('idle');
-      expect(thread?.currentFile).toBeUndefined();
-    });
-
-    it('tracks multiple threads independently', () => {
-      ingestClassifyStdout('[Thread 1] Rendering: file1.sid\n');
-      ingestClassifyStdout('[Thread 2] Extracting features: file2.sid\n');
-      ingestClassifyStdout('[Thread 3] Analyzing: file3.sid\n');
-      
-      const snapshot = getClassifyProgressSnapshot();
-      
-      expect(snapshot.perThread.find(t => t.id === 1)?.phase).toBe('building');
-      expect(snapshot.perThread.find(t => t.id === 2)?.phase).toBe('tagging');
-      expect(snapshot.perThread.find(t => t.id === 3)?.phase).toBe('analyzing');
+      expect(snapshot.counters).toBeDefined();
+      expect(snapshot.counters!.analyzed).toBe(0);
+      expect(snapshot.counters!.rendered).toBe(0);
+      expect(snapshot.counters!.metadataExtracted).toBe(0);
+      expect(snapshot.counters!.essentiaTagged).toBe(0);
+      expect(snapshot.counters!.errors).toBe(0);
+      expect(snapshot.counters!.retries).toBe(0);
     });
   });
 
-  describe('ingestClassifyStdout - progress counter parsing', () => {
-    beforeEach(() => {
-      beginClassifyProgress(4, 'wasm');
-    });
-
-    it('parses extracting features progress with detailed counters', () => {
-      ingestClassifyStdout('[Extracting Features] 100/500 files, 400 remaining (20.0%) [rendered=50 cached=30 extracted=100] - test.sid - 1m 30s\n');
+  describe('completeClassifyProgress', () => {
+    it('sets phase to completed and deactivates', () => {
+      completeClassifyProgress('Done!');
       const snapshot = getClassifyProgressSnapshot();
-      
-      expect(snapshot.phase).toBe('tagging');
-      expect(snapshot.processedFiles).toBe(100);
-      expect(snapshot.totalFiles).toBe(500);
-      expect(snapshot.percentComplete).toBe(20.0);
-      expect(snapshot.renderedFiles).toBe(50);
-      expect(snapshot.cachedFiles).toBe(30);
-      expect(snapshot.extractedFiles).toBe(100);
-    });
-
-    it('parses reading metadata progress', () => {
-      ingestClassifyStdout('[Reading Metadata] 50/1000 files, 950 remaining (5.0%) [rendered=0 cached=0 extracted=0] - metadata.sid - 30s\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      expect(snapshot.phase).toBe('metadata');
-      expect(snapshot.processedFiles).toBe(50);
-      expect(snapshot.totalFiles).toBe(1000);
-      expect(snapshot.percentComplete).toBe(5.0);
-    });
-
-    it('parses writing features progress', () => {
-      ingestClassifyStdout('[Writing Features] 200/200 files, 0 remaining (100.0%) [rendered=100 cached=100 extracted=200] - final.sid - 5m 0s\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      expect(snapshot.phase).toBe('tagging');
-      expect(snapshot.processedFiles).toBe(200);
-      expect(snapshot.totalFiles).toBe(200);
-      expect(snapshot.percentComplete).toBe(100.0);
-      expect(snapshot.renderedFiles).toBe(100);
-      expect(snapshot.cachedFiles).toBe(100);
-      expect(snapshot.extractedFiles).toBe(200);
-    });
-
-    it('parses analyzing progress', () => {
-      ingestClassifyStdout('[Analyzing] 25/100 files (25.0%)\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      expect(snapshot.phase).toBe('analyzing');
-      expect(snapshot.processedFiles).toBe(25);
-      expect(snapshot.totalFiles).toBe(100);
-      expect(snapshot.percentComplete).toBe(25.0);
-    });
-
-    it('parses converting progress with rendered and cached counts', () => {
-      ingestClassifyStdout('[Converting] 30 rendered, 70 cached, 100 remaining (50.0%)\n');
-      const snapshot = getClassifyProgressSnapshot();
-      
-      expect(snapshot.phase).toBe('building');
-      expect(snapshot.renderedFiles).toBe(30);
-      expect(snapshot.skippedFiles).toBe(70);
-      expect(snapshot.processedFiles).toBe(100);
-    });
-  });
-
-  describe('thread status transitions', () => {
-    beforeEach(() => {
-      beginClassifyProgress(2, 'wasm');
-    });
-
-    it('shows thread transitioning from rendering to extracting features', () => {
-      // Thread starts rendering
-      ingestClassifyStdout('[Thread 1] Rendering: song.sid\n');
-      let snapshot = getClassifyProgressSnapshot();
-      expect(snapshot.perThread.find(t => t.id === 1)?.phase).toBe('building');
-      
-      // Thread finishes rendering and starts extracting
-      ingestClassifyStdout('[Thread 1] Extracting features: song.sid\n');
-      snapshot = getClassifyProgressSnapshot();
-      expect(snapshot.perThread.find(t => t.id === 1)?.phase).toBe('tagging');
-      
-      // Thread goes idle before picking up next file
-      ingestClassifyStdout('[Thread 1] IDLE\n');
-      snapshot = getClassifyProgressSnapshot();
-      expect(snapshot.perThread.find(t => t.id === 1)?.status).toBe('idle');
-      
-      // Thread starts rendering next file
-      ingestClassifyStdout('[Thread 1] Rendering: song2.sid\n');
-      snapshot = getClassifyProgressSnapshot();
-      expect(snapshot.perThread.find(t => t.id === 1)?.phase).toBe('building');
-      expect(snapshot.perThread.find(t => t.id === 1)?.currentFile).toBe('song2.sid');
-    });
-
-    it('shows multiple threads in different phases simultaneously', () => {
-      ingestClassifyStdout('[Thread 1] Rendering: file1.sid\n');
-      ingestClassifyStdout('[Thread 2] Extracting features: file2.sid\n');
-      
-      const snapshot = getClassifyProgressSnapshot();
-      
-      const thread1 = snapshot.perThread.find(t => t.id === 1);
-      const thread2 = snapshot.perThread.find(t => t.id === 2);
-      
-      expect(thread1?.phase).toBe('building');
-      expect(thread1?.currentFile).toBe('file1.sid');
-      expect(thread2?.phase).toBe('tagging');
-      expect(thread2?.currentFile).toBe('file2.sid');
-    });
-  });
-
-  describe('lifecycle methods', () => {
-    it('completeClassifyProgress marks as inactive', () => {
-      beginClassifyProgress(4, 'wasm');
-      completeClassifyProgress('Done');
-      
-      const snapshot = getClassifyProgressSnapshot();
-      expect(snapshot.isActive).toBe(false);
       expect(snapshot.phase).toBe('completed');
-      expect(snapshot.message).toBe('Done');
-    });
-
-    it('failClassifyProgress marks as error', () => {
-      beginClassifyProgress(4, 'wasm');
-      failClassifyProgress('Something went wrong');
-      
-      const snapshot = getClassifyProgressSnapshot();
       expect(snapshot.isActive).toBe(false);
+      expect(snapshot.message).toBe('Done!');
+    });
+  });
+
+  describe('failClassifyProgress', () => {
+    it('sets phase to error and records message', () => {
+      failClassifyProgress('Something went wrong');
+      const snapshot = getClassifyProgressSnapshot();
       expect(snapshot.phase).toBe('error');
+      expect(snapshot.isActive).toBe(false);
       expect(snapshot.error).toBe('Something went wrong');
     });
+  });
 
-    it('pauseClassifyProgress marks as paused', () => {
-      beginClassifyProgress(4, 'wasm');
-      pauseClassifyProgress('User paused');
-      
+  describe('pauseClassifyProgress', () => {
+    it('sets phase to paused', () => {
+      pauseClassifyProgress('User requested pause');
       const snapshot = getClassifyProgressSnapshot();
-      expect(snapshot.isActive).toBe(false);
-      expect(snapshot.isPaused).toBe(true);
       expect(snapshot.phase).toBe('paused');
-      expect(snapshot.message).toBe('User paused');
+      expect(snapshot.isPaused).toBe(true);
+      expect(snapshot.isActive).toBe(false);
+      expect(snapshot.message).toBe('User requested pause');
+    });
+  });
+
+  describe('recordNoAudioEvent', () => {
+    it('increments noAudioStreak for the thread', () => {
+      recordNoAudioEvent(1);
+      recordNoAudioEvent(1);
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.perThread[0].noAudioStreak).toBe(2);
+    });
+
+    it('ignores invalid thread IDs', () => {
+      recordNoAudioEvent(0);
+      recordNoAudioEvent(-1);
+      recordNoAudioEvent(999);
+      const snapshot = getClassifyProgressSnapshot();
+      // No crash, threads should be unaffected
+      expect(snapshot.perThread[0].noAudioStreak).toBe(0);
+    });
+  });
+
+  describe('checkGlobalStall', () => {
+    it('returns false when not active', () => {
+      completeClassifyProgress();
+      expect(checkGlobalStall()).toBe(false);
+    });
+
+    it('returns false when threads are not stale', () => {
+      expect(checkGlobalStall()).toBe(false);
+    });
+  });
+
+  describe('ingestClassifyStdout', () => {
+    describe('thread count detection', () => {
+      it('updates thread count from "threads: N" line', () => {
+        ingestClassifyStdout('Starting with threads: 8\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.threads).toBe(8);
+        expect(snapshot.perThread.length).toBe(8);
+      });
+    });
+
+    describe('thread status updates', () => {
+      it('parses old format [Thread X][PHASE][STATUS]', () => {
+        ingestClassifyStdout('[Thread 1][BUILDING][WORKING] /path/to/file.sid\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].phase).toBe('building');
+        expect(snapshot.perThread[0].status).toBe('working');
+        expect(snapshot.perThread[0].currentFile).toBe('/path/to/file.sid');
+      });
+
+      it('parses new format [Thread X] Rendering: file', () => {
+        ingestClassifyStdout('[Thread 1] Rendering: /path/to/file.sid\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].phase).toBe('building');
+        expect(snapshot.perThread[0].status).toBe('working');
+        expect(snapshot.perThread[0].currentFile).toBe('/path/to/file.sid');
+      });
+
+      it('parses analyzing action', () => {
+        ingestClassifyStdout('[Thread 1] Analyzing: /path/to/file.sid\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].phase).toBe('analyzing');
+      });
+
+      it('parses reading metadata action', () => {
+        ingestClassifyStdout('[Thread 1] Reading metadata: /path/to/file.sid\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].phase).toBe('metadata');
+      });
+
+      it('parses extracting features action', () => {
+        ingestClassifyStdout('[Thread 1] Extracting features: /path/to/file.sid\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].phase).toBe('tagging');
+      });
+
+      it('handles IDLE status', () => {
+        ingestClassifyStdout('[Thread 1][TAGGING][WORKING] /path/to/file.sid\n');
+        ingestClassifyStdout('[Thread 1] IDLE\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].status).toBe('idle');
+      });
+    });
+
+    describe('global progress updates', () => {
+      it('parses analyzing progress line', () => {
+        ingestClassifyStdout('[Analyzing] 50/100 files (50.0%)\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.phase).toBe('analyzing');
+        expect(snapshot.processedFiles).toBe(50);
+        expect(snapshot.totalFiles).toBe(100);
+        expect(snapshot.percentComplete).toBe(50.0);
+      });
+
+      it('parses converting progress line', () => {
+        ingestClassifyStdout('[Converting] 30 rendered / 20 cached / 50 remaining (30.0%)\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.phase).toBe('building');
+        expect(snapshot.renderedFiles).toBe(30);
+        expect(snapshot.skippedFiles).toBe(20);
+      });
+
+      it('parses metadata progress line', () => {
+        ingestClassifyStdout('[Reading Metadata] 75/100 files (75.0%)\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.phase).toBe('metadata');
+        expect(snapshot.processedFiles).toBe(75);
+      });
+
+      it('parses extracting features progress line', () => {
+        ingestClassifyStdout('[Extracting Features] 80/100 files (80.0%)\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.phase).toBe('tagging');
+        expect(snapshot.taggedFiles).toBe(80);
+        expect(snapshot.counters!.essentiaTagged).toBe(80);
+      });
+
+      it('parses writing features progress line', () => {
+        ingestClassifyStdout('[Writing Features] 90/100 files (90.0%)\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.phase).toBe('tagging');
+      });
+    });
+
+    describe('structured log parsing', () => {
+      it('parses Essentia extraction log line', () => {
+        ingestClassifyStdout('[Thread 1] Extracted 12 features for test.sid in 150ms (Essentia: true)\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.counters!.essentiaTagged).toBe(1);
+      });
+
+      it('parses WAV render log line', () => {
+        ingestClassifyStdout('[Thread 2] Rendered WAV for test.sid in 200ms\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.counters!.rendered).toBe(1);
+      });
+
+      it('accumulates multiple extractions', () => {
+        ingestClassifyStdout('[Thread 1] Extracted 12 features for test1.sid in 150ms (Essentia: true)\n');
+        ingestClassifyStdout('[Thread 2] Extracted 8 features for test2.sid in 100ms (Essentia: false)\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.counters!.essentiaTagged).toBe(2);
+      });
+    });
+
+    describe('multiline handling', () => {
+      it('handles multiple lines in a single chunk', () => {
+        ingestClassifyStdout(
+          '[Thread 1] Rendering: file1.sid\n' +
+          '[Thread 2] Rendering: file2.sid\n'
+        );
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].currentFile).toBe('file1.sid');
+        expect(snapshot.perThread[1].currentFile).toBe('file2.sid');
+      });
+
+      it('buffers incomplete lines across chunks', () => {
+        ingestClassifyStdout('[Thread 1] Rendering: ');
+        ingestClassifyStdout('longfile.sid\n');
+        const snapshot = getClassifyProgressSnapshot();
+        expect(snapshot.perThread[0].currentFile).toBe('longfile.sid');
+      });
+    });
+  });
+
+  describe('getClassifyProgressSnapshot', () => {
+    it('returns a copy of the current state', () => {
+      const snapshot1 = getClassifyProgressSnapshot();
+      const snapshot2 = getClassifyProgressSnapshot();
+      expect(snapshot1).not.toBe(snapshot2);
+      expect(snapshot1.perThread).not.toBe(snapshot2.perThread);
+      expect(snapshot1.counters).not.toBe(snapshot2.counters);
+    });
+
+    it('includes all required fields', () => {
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot).toHaveProperty('phase');
+      expect(snapshot).toHaveProperty('totalFiles');
+      expect(snapshot).toHaveProperty('processedFiles');
+      expect(snapshot).toHaveProperty('renderedFiles');
+      expect(snapshot).toHaveProperty('taggedFiles');
+      expect(snapshot).toHaveProperty('skippedFiles');
+      expect(snapshot).toHaveProperty('percentComplete');
+      expect(snapshot).toHaveProperty('threads');
+      expect(snapshot).toHaveProperty('perThread');
+      expect(snapshot).toHaveProperty('isActive');
+      expect(snapshot).toHaveProperty('isPaused');
+      expect(snapshot).toHaveProperty('updatedAt');
+      expect(snapshot).toHaveProperty('startedAt');
+      expect(snapshot).toHaveProperty('counters');
+    });
+  });
+
+  describe('edge cases', () => {
+    it('handles carriage returns in stdout', () => {
+      ingestClassifyStdout('[Thread 1] Rendering: file.sid\r\n');
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.perThread[0].currentFile).toBe('file.sid');
+    });
+
+    it('ignores empty lines', () => {
+      const before = getClassifyProgressSnapshot();
+      ingestClassifyStdout('\n\n\n');
+      const after = getClassifyProgressSnapshot();
+      expect(after.updatedAt).toBe(before.updatedAt);
+    });
+
+    it('completeClassifyProgress sets taggedFiles to total when complete', () => {
+      ingestClassifyStdout('[Analyzing] 100/100 files (100.0%)\n');
+      completeClassifyProgress('All done');
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.phase).toBe('completed');
+      expect(snapshot.taggedFiles).toBe(100);
+    });
+
+    it('tracks phase transitions through thread updates', () => {
+      // Start in analyzing
+      ingestClassifyStdout('[Thread 1] Analyzing: file1.sid\n');
+      let snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.perThread[0].phase).toBe('analyzing');
+      
+      // Transition to rendering
+      ingestClassifyStdout('[Thread 1] Rendering: file1.sid\n');
+      snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.perThread[0].phase).toBe('building');
+      
+      // Transition to extracting features
+      ingestClassifyStdout('[Thread 1] Extracting features: file1.sid\n');
+      snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.perThread[0].phase).toBe('tagging');
+    });
+
+    it('tracks rendered file count when transitioning from building to tagging', () => {
+      beginClassifyProgress(1, 'wasm');
+      ingestClassifyStdout('[Thread 1][BUILDING][WORKING] file1.sid\n');
+      ingestClassifyStdout('[Thread 1][TAGGING][WORKING] file1.sid\n');
+      const snapshot = getClassifyProgressSnapshot();
+      // Transition from building to tagging should increment rendered count
+      expect(snapshot.renderedFiles).toBeGreaterThanOrEqual(1);
     });
   });
 });

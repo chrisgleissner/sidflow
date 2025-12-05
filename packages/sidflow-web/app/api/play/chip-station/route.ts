@@ -3,9 +3,8 @@ import type { ApiResponse } from '@/lib/validation';
 import { findTracksWithChipModel } from '@/lib/server/chip-model-stations';
 import { resolvePlaybackEnvironment, createRateTrackInfo } from '@/lib/rate-playback';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
-import { pathExists } from '@sidflow/common';
+import { pathExists, lookupSongLength } from '@sidflow/common';
 import { stat } from 'node:fs/promises';
-import { lookupSongLength } from '@/lib/songlengths';
 
 interface ChipStationRequest {
     chipModel: '6581' | '8580' | '8580r5';

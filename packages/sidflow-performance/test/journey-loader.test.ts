@@ -37,6 +37,25 @@ describe("journey-loader", () => {
       expect(loaded.steps.length).toBe(1);
     });
 
+    it("loads JSON journey file with // comments", async () => {
+      const raw = `{
+// top comment describing the journey
+"id": "comment-json",
+"description": "http://example.com/resource",
+"steps": [
+  { "action": "navigate", "target": "/" }, // go home
+  { "action": "waitForText", "text": "Ready" }
+]
+}`;
+      const filePath = path.join(tmpDir, "commented.json");
+      await fs.writeFile(filePath, raw);
+
+      const loaded = await loadJourneyFile(filePath);
+      expect(loaded.id).toBe("comment-json");
+      expect(loaded.description).toBe("http://example.com/resource");
+      expect(loaded.steps.length).toBe(2);
+    });
+
     it("loads YAML journey file with .yaml extension", async () => {
       const yamlContent = `id: test-yaml
 description: Test YAML journey

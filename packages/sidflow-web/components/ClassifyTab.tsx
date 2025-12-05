@@ -112,6 +112,9 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
   const processed = progress?.processedFiles ?? 0;
   const total = progress?.totalFiles ?? 0;
   const remaining = Math.max(total - processed, 0);
+  const rendered = progress?.renderedFiles ?? 0;
+  const tagged = progress?.taggedFiles ?? 0;
+  const counters = progress?.counters;
   
   // Map raw phase names to user-friendly labels matching CLASSIFICATION_STEPS
   const getPhaseLabel = (phase?: string): string => {
@@ -119,7 +122,7 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
       case 'analyzing': return 'Analyzing Collection';
       case 'metadata': return 'Reading Metadata';
       case 'building': return 'Rendering Audio';
-      case 'tagging': return 'Extracting Features & Tagging';
+      case 'tagging': return 'Extracting Features';
       case 'idle': return 'Idle';
       default: return phase ? phase.toUpperCase() : 'Idle';
     }
@@ -473,8 +476,33 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 <p className="font-semibold text-foreground" data-testid="classify-extracted-count">{progress?.extractedFiles ?? 0}</p>
               </div>
               <div>
+                <p className="text-muted-foreground">Tagged</p>
+                <p
+                  className="font-semibold text-foreground"
+                  data-testid="classify-tagged-count"
+                >
+                  {tagged} / {total}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div>
                 <p className="text-muted-foreground">Remaining</p>
-                <p className="font-semibold text-foreground" data-testid="classify-remaining-count">{remaining}</p>
+                <p className="font-semibold text-foreground" data-testid="classify-remaining-count">
+                  {remaining}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Errors</p>
+                <p className="font-semibold text-destructive" data-testid="classify-error-count">
+                  {counters?.errors ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Retries</p>
+                <p className="font-semibold text-muted-foreground" data-testid="classify-retry-count">
+                  {counters?.retries ?? 0}
+                </p>
               </div>
             </div>
             <div className="grid gap-2 md:grid-cols-2">
@@ -508,23 +536,31 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                 const threadPhaseLabel = getPhaseLabel(thread.phase);
                 const isWorking = thread.status === 'working';
                 const isStale = Boolean(thread.stale && isWorking);
+                const hasEngineIssue = (thread.noAudioStreak ?? 0) >= 3;
                 const elapsed = formatElapsed(thread.phaseStartedAt);
                 const headline = isWorking
                   ? thread.currentFile ?? (isStale ? 'Working (no recent update)' : 'Working...')
                   : 'Waiting for work';
                 const phaseText = isStale
                   ? `${threadPhaseLabel} (STALE)`
-                  : (isWorking && elapsed ? `${threadPhaseLabel}${elapsed}` : threadPhaseLabel);
+                  : hasEngineIssue
+                    ? `${threadPhaseLabel} (⚠️)`
+                    : (isWorking && elapsed ? `${threadPhaseLabel}${elapsed}` : threadPhaseLabel);
+                const borderClass = isStale 
+                  ? 'border-yellow-500/50' 
+                  : hasEngineIssue 
+                    ? 'border-red-500/50' 
+                    : 'border-border/60';
                 return (
                   <div
                     key={thread.id}
-                    className="rounded border border-border/60 bg-card/80 px-3 py-2 text-xs"
-                    data-testid={`thread-${thread.id}`}
+                    data-testid={`thread-status-${thread.id}`}
+                    className={`rounded border ${borderClass} bg-card/80 px-3 py-2 text-xs`}
                   >
                     <div className="flex items-center justify-between text-[11px] uppercase tracking-wide">
                       <span className="text-foreground">Thread {thread.id}</span>
                       <span 
-                        className={isWorking ? 'text-accent' : 'text-muted-foreground'}
+                        className={isStale ? 'text-yellow-500' : isWorking ? 'text-accent' : 'text-muted-foreground'}
                         data-testid={`thread-${thread.id}-phase`}
                         data-phase={thread.phase ?? 'idle'}
                       >
@@ -532,13 +568,17 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
                       </span>
                     </div>
                     <p
-                      className={`mt-1 font-mono ${isWorking ? 'text-foreground' : 'text-muted-foreground'
-                        }`}
+                      className={`mt-1 font-mono truncate ${isWorking ? 'text-foreground' : 'text-muted-foreground'}`}
                       title={headline}
                       data-testid={`thread-${thread.id}-file`}
                     >
                       {headline}
                     </p>
+                    {hasEngineIssue && (
+                      <p className="mt-1 text-[10px] text-destructive">
+                        {thread.noAudioStreak} consecutive audio failures
+                      </p>
+                    )}
                   </div>
                 );
               })}

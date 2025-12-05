@@ -284,6 +284,7 @@ if (isPlaywrightRunner) {
       totalFiles: 128,
       processedFiles: 128,
       renderedFiles: 128,
+      taggedFiles: 128,
       skippedFiles: 0,
       percentComplete: 100,
       threads: 4,

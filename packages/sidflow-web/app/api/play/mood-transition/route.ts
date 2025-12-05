@@ -3,9 +3,8 @@ import type { ApiResponse } from '@/lib/validation';
 import { findMoodTransitionTracks } from '@/lib/server/mood-transition';
 import { resolvePlaybackEnvironment, createRateTrackInfo } from '@/lib/rate-playback';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
-import { pathExists } from '@sidflow/common';
+import { pathExists, lookupSongLength } from '@sidflow/common';
 import { stat } from 'node:fs/promises';
-import { lookupSongLength } from '@/lib/songlengths';
 
 interface MoodTransitionRequest {
     start_mood: { e: number; m: number; c: number };

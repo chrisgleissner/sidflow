@@ -46,6 +46,24 @@ If you are an LLM agent working in this repo:
    - If you see failures: STOP EVERYTHING and fix them
    - Never rationalize away test failures
 
+6. **COMPLETION ATTESTATION REQUIRED**:
+   - Before declaring ANY task complete, you MUST paste the literal output of 3 consecutive test runs
+   - The pasted output must show `0 fail` on all 3 runs
+   - If you cannot paste this output, YOU ARE NOT DONE
+   - Do not summarize or paraphrase - paste the actual terminal output
+
+### 🚨 COMMON RATIONALIZATION TRAPS — DO NOT FALL FOR THESE 🚨
+
+The most common failure mode is **rationalizing away test failures**. Here are the exact thoughts that lead to violations:
+
+- ❌ "This failure is pre-existing, not caused by my changes" → **WRONG. Fix it anyway.**
+- ❌ "This is a flaky test, it passes sometimes" → **WRONG. Flaky tests must be fixed or you are not done.**
+- ❌ "This test is unrelated to the feature I'm implementing" → **WRONG. All tests must pass.**
+- ❌ "I'll just note this failure and move on" → **WRONG. You must fix it before declaring completion.**
+- ❌ "The test is probably broken, not my code" → **WRONG. Investigate and fix whichever is broken.**
+
+If you catch yourself thinking any of these thoughts: STOP. You are about to violate the rules. Go fix the test.
+
 **YOU HAVE JUST LEARNED THIS LESSON THE HARD WAY. NEVER FORGET IT.**
 
 ## Required reading and orientation

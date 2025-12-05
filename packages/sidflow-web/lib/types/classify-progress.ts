@@ -16,6 +16,26 @@ export interface ClassifyThreadStatus {
   updatedAt: number;
   stale?: boolean;
   phaseStartedAt?: number;
+  /** Number of consecutive no-audio failures for engine health monitoring */
+  noAudioStreak?: number;
+}
+
+/** Global counters for classification progress */
+export interface ClassifyCounters {
+  /** Total files analyzed */
+  analyzed: number;
+  /** Total WAVs rendered */
+  rendered: number;
+  /** Total metadata extractions */
+  metadataExtracted: number;
+  /** Total Essentia feature extractions */
+  essentiaTagged: number;
+  /** Total files skipped */
+  skipped: number;
+  /** Total errors encountered */
+  errors: number;
+  /** Total retries performed */
+  retries: number;
 }
 
 export interface ClassifyProgressSnapshot {
@@ -24,6 +44,8 @@ export interface ClassifyProgressSnapshot {
   processedFiles: number;
   /** Number of files that required WAV rendering (not cached) */
   renderedFiles: number;
+  /** Number of files with tags generated */
+  taggedFiles: number;
   /** Number of files that used cached WAV files */
   cachedFiles: number;
   /** Number of files skipped due to existing cached WAV files (used by "[Converting]" phase) */
@@ -41,6 +63,8 @@ export interface ClassifyProgressSnapshot {
   isPaused: boolean;
   updatedAt: number;
   startedAt: number;
+  /** Global counters for detailed progress tracking */
+  counters?: ClassifyCounters;
 }
 
 export interface ClassifyStorageStats {

@@ -2,6 +2,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
+// Suppress baseline-browser-mapping warning about outdated data
+process.env.BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA = "true";
+
 const webRoot = fileURLToPath(new URL("./", import.meta.url));
 const ffmpegStubRelativePath = path.relative(webRoot, path.resolve(webRoot, "ffmpeg-core-stub.js"));
 const ffmpegStubModuleSpecifier = ffmpegStubRelativePath.startsWith(".")

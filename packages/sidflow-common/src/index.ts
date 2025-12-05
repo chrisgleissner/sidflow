@@ -31,3 +31,4 @@ export * from "./canonical-writer.js";
 export * from "./availability-manifest.js";
 export * from "./audio-types.js";
 export * from "./chip-model.js";
+export * from "./cli-parser.js";

@@ -161,7 +161,6 @@ export class WorkletPlayer {
 
   getPositionSeconds(): number {
     if (this.state !== 'playing') {
-      console.log(`[WorkletPlayer] getPositionSeconds in state=${this.state}, returning pausedPosition=${this.pausedPosition}`);
       return this.pausedPosition;
     }
     const elapsed = this.audioContext.currentTime - this.startTime;

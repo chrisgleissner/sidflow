@@ -1,3 +1,4 @@
+/* istanbul ignore file -- @preserve Edge runtime does not support new Function() */
 /**
  * Rate limiting implementation using sliding window algorithm.
  * Tracks requests per client IP and enforces configurable thresholds.

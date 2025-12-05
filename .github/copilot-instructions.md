@@ -109,6 +109,22 @@ Before completing any substantial work, verify:
 - For config and JSON validations, run `bun run validate:config` and `bun run build:db`
 - Ensure new commands have tests mirroring existing CLI suites (`packages/*/test/cli.test.ts`)
 
+### Completion Attestation Required
+- Before declaring ANY task complete, you MUST paste the literal output of 3 consecutive test runs
+- The pasted output must show `0 fail` on all 3 runs
+- If you cannot paste this output, YOU ARE NOT DONE
+- Do not summarize or paraphrase - paste the actual terminal output
+
+### Common Rationalization Traps — DO NOT FALL FOR THESE
+The most common failure mode is rationalizing away test failures:
+- ❌ "This failure is pre-existing, not caused by my changes" → **WRONG. Fix it anyway.**
+- ❌ "This is a flaky test, it passes sometimes" → **WRONG. Flaky tests must be fixed or you are not done.**
+- ❌ "This test is unrelated to the feature I'm implementing" → **WRONG. All tests must pass.**
+- ❌ "I'll just note this failure and move on" → **WRONG. You must fix it before declaring completion.**
+- ❌ "The test is probably broken, not my code" → **WRONG. Investigate and fix whichever is broken.**
+
+If you catch yourself thinking any of these thoughts: STOP. You are about to violate the rules. Go fix the test.
+
 ### Running E2E Tests in Remote Agent Sessions
 - **Use Docker for E2E tests**: CI runs e2e tests inside `ghcr.io/chrisgleissner/sidflow-ci:latest` which has Playwright browsers pre-installed.
 - **Run e2e tests in Docker**: `docker run --rm -v $(pwd):/workspace -w /workspace ghcr.io/chrisgleissner/sidflow-ci:latest bash -c "cd packages/sidflow-web && npx playwright test"`

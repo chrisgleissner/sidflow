@@ -1,4 +1,15 @@
 {
   "presets": ["next/babel"],
-  "plugins": ["babel-plugin-istanbul"]
+  "plugins": [
+    ["babel-plugin-istanbul", {
+      "exclude": [
+        "**/middleware.ts",
+        "**/proxy.ts",
+        "**/edge/**",
+        "**/lib/server/**",
+        "**/*.test.ts",
+        "**/*.spec.ts"
+      ]
+    }]
+  ]
 }

@@ -11,6 +11,9 @@ ENVIRONMENT=""
 TAG="latest"
 REGION="lhr"  # London
 DEPLOY_STRATEGY="${FLY_DEPLOY_STRATEGY:-rolling}"
+VOLUME_COUNT="${FLY_VOLUME_COUNT:-1}"
+VOLUME_SIZE="${FLY_VOLUME_SIZE:-}"
+AUTO_CREATE_VOLUMES="${FLY_CREATE_VOLUMES:-false}"
 FORCE=false
 DRY_RUN=false
 
@@ -48,6 +51,9 @@ OPTIONS:
     -t, --tag <tag>               Docker image tag (default: latest)
     -r, --region <region>         Fly.io region (default: lhr)
     --strategy <strategy>         Deployment strategy (default: rolling, e.g. immediate)
+    --volume-count <n>            Desired sidflow_data volume count (default: 1, set 2 for rolling updates)
+    --volume-size <gb>            Volume size in GB (default: 3 for stg, 10 for prd)
+    --create-volumes              Auto-create missing volumes (respects count/size)
     -f, --force                   Force deployment without confirmation
     -n, --dry-run                 Show what would be deployed without deploying
     -h, --help                    Show this help message
@@ -140,16 +146,36 @@ check_volumes() {
     
     log_info "Checking volumes for ${app_name}..."
     
-    local volumes
+    local volumes volume_count desired_count size_to_use missing
     volumes=$(flyctl volumes list --app "${app_name}" 2>/dev/null || echo "")
-    
+    volume_count=$(printf "%s\n" "${volumes}" | grep -c "sidflow_data" || true)
+    desired_count="${VOLUME_COUNT:-1}"
+
     if [[ -z "${volumes}" ]]; then
-        log_warning "No volumes found for ${app_name}"
-        log_info "Create volumes with:"
-        log_info "  flyctl volumes create sidflow_data --region ${REGION} --size 10 --app ${app_name}"
-        log_warning "Deployment will continue but may fail without the sidflow_data volume mounted at /mnt/data"
+        volume_count=0
+    fi
+
+    if (( volume_count >= desired_count )); then
+        log_success "Volumes present: ${volume_count}/${desired_count}"
+        return
+    fi
+
+    missing=$(( desired_count - volume_count ))
+    size_to_use="${VOLUME_SIZE}"
+    if [[ -z "${size_to_use}" ]]; then
+        size_to_use=$([[ "${ENVIRONMENT}" == "prd" ]] && echo "10" || echo "3")
+    fi
+
+    if [[ "${AUTO_CREATE_VOLUMES}" == "true" ]]; then
+        log_warning "Missing ${missing} sidflow_data volume(s); creating to reach ${desired_count} total (size ${size_to_use}GB, region ${REGION})"
+        for _ in $(seq 1 "${missing}"); do
+            flyctl volumes create sidflow_data --region "${REGION}" --size "${size_to_use}" --app "${app_name}" --yes
+        done
+        log_success "Created missing volumes"
     else
-        log_success "Volumes exist for ${app_name}"
+        log_warning "Only ${volume_count}/${desired_count} sidflow_data volume(s) present."
+        log_info "Set --create-volumes (or FLY_CREATE_VOLUMES=true) and optionally --volume-count/--volume-size to auto-create missing volumes."
+        log_info "Deployment may fail without sufficient volumes for rolling updates."
     fi
 }
 
@@ -276,6 +302,18 @@ main() {
             --strategy)
                 DEPLOY_STRATEGY="$2"
                 shift 2
+                ;;
+            --volume-count)
+                VOLUME_COUNT="$2"
+                shift 2
+                ;;
+            --volume-size)
+                VOLUME_SIZE="$2"
+                shift 2
+                ;;
+            --create-volumes)
+                AUTO_CREATE_VOLUMES="true"
+                shift
                 ;;
             -f|--force)
                 FORCE=true

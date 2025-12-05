@@ -55,7 +55,7 @@ describe("Train CLI", () => {
       const exitCode = await runTrainCli(["--epochs", "invalid"]);
 
       expect(exitCode).toBe(1);
-      expect(errorOutput).toContain("--epochs must be a positive integer");
+      expect(errorOutput).toContain("--epochs must be an integer");
     } finally {
       process.stderr.write = originalWrite;
     }

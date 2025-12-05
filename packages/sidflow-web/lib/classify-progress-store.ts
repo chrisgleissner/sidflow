@@ -1,4 +1,4 @@
-import type { ClassifyPhase, ClassifyProgressSnapshot } from '@/lib/types/classify-progress';
+import type { ClassifyPhase, ClassifyProgressSnapshot, ClassifyCounters } from '@/lib/types/classify-progress';
 
 type ThreadPhase = 'analyzing' | 'building' | 'metadata' | 'tagging';
 
@@ -13,8 +13,9 @@ interface ThreadStatusInternal {
   noAudioStreak?: number;
 }
 
-interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread'> {
+interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread' | 'counters'> {
   perThread: ThreadStatusInternal[];
+  counters: ClassifyCounters;
 }
 
 const STALE_THREAD_MS = 5000;
@@ -24,24 +25,38 @@ const GLOBAL_STALL_TIMEOUT_MS = 30000;
 let snapshot: ProgressState = createInitialSnapshot();
 let stdoutBuffer = '';
 
+function createInitialCounters(): ClassifyCounters {
+  return {
+    analyzed: 0,
+    rendered: 0,
+    metadataExtracted: 0,
+    essentiaTagged: 0,
+    skipped: 0,
+    errors: 0,
+    retries: 0,
+  };
+}
+
 function createInitialSnapshot(): ProgressState {
   return {
     phase: 'idle',
     totalFiles: 0,
     processedFiles: 0,
     renderedFiles: 0,
+    taggedFiles: 0,
     cachedFiles: 0,
     skippedFiles: 0,
     extractedFiles: 0,
     percentComplete: 0,
     threads: 1,
-  perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false, phaseStartedAt: undefined, noAudioStreak: 0 }],
+    perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false, phaseStartedAt: undefined, noAudioStreak: 0 }],
     isActive: false,
     isPaused: false,
     updatedAt: Date.now(),
     startedAt: Date.now(),
     message: undefined,
     error: undefined,
+    counters: createInitialCounters(),
   };
 }
 
@@ -81,6 +96,13 @@ function applyThreadStatusUpdate(update: {
   }
   ensureThreads(Math.max(update.threadId, snapshot.threads));
   const now = Date.now();
+  const previousThread = snapshot.perThread[index];
+  const transitionedFromRender =
+    previousThread.phase === 'building' &&
+    previousThread.status === 'working' &&
+    previousThread.currentFile &&
+    (update.phase === 'tagging' || update.status === 'idle');
+
   snapshot.perThread = snapshot.perThread.map((thread, idx) => {
     if (idx === index) {
       const isPhaseChange = update.phase && update.phase !== thread.phase;
@@ -106,6 +128,13 @@ function applyThreadStatusUpdate(update: {
     }
     return thread;
   });
+
+  // Count inline renders when a thread moves from building -> tagging (or finishes)
+  if (transitionedFromRender) {
+    snapshot.renderedFiles += 1;
+    snapshot.processedFiles = Math.max(snapshot.processedFiles, snapshot.renderedFiles);
+    snapshot.updatedAt = now;
+  }
 }
 
 export function beginClassifyProgress(threads: number, renderEngine?: string): void {
@@ -124,6 +153,9 @@ export function completeClassifyProgress(message?: string) {
   setPhase('completed');
   snapshot.isActive = false;
   snapshot.isPaused = false;
+  if (snapshot.totalFiles > 0) {
+    snapshot.taggedFiles = Math.max(snapshot.taggedFiles, snapshot.totalFiles - snapshot.skippedFiles);
+  }
   if (message) {
     snapshot.message = message;
   }
@@ -200,7 +232,7 @@ function processLine(line: string) {
   }
 
   // Log engine-related messages with structured tags
-  if (line.includes('Rendering') || line.includes('engine')) {
+  if (line.match(/\b(Rendering|Extracting features|Writing Features|Writing Results|engine)\b/i)) {
     console.log(`[classify-engine] ${line}`);
   }
 
@@ -297,6 +329,7 @@ function processLine(line: string) {
     snapshot.renderedFiles = rendered;
     snapshot.skippedFiles = skipped;
     snapshot.processedFiles = rendered + skipped;
+    snapshot.taggedFiles = Math.min(snapshot.taggedFiles, snapshot.processedFiles);
     snapshot.percentComplete = Number(convertingMatch[4]);
     snapshot.updatedAt = Date.now();
     return;
@@ -321,6 +354,10 @@ function processLine(line: string) {
     setPhase(phase);
     snapshot.processedFiles = Number(tagMatch[2]);
     snapshot.totalFiles = Number(tagMatch[3]);
+    if (phase === 'tagging') {
+      snapshot.taggedFiles = snapshot.processedFiles;
+      snapshot.counters.essentiaTagged = snapshot.processedFiles;
+    }
     snapshot.percentComplete = Number(tagMatch[4]);
     
     // Parse detailed counters if present
@@ -335,6 +372,46 @@ function processLine(line: string) {
     }
     
     snapshot.updatedAt = Date.now();
+    return;
+  }
+
+  // Match Essentia feature extraction log format:
+  // [Thread X] Extracted N features for file.sid in Xms (Essentia: true/false)
+  const essentiaMatch = line.match(
+    /\[Thread\s+(\d+)\]\s+Extracted\s+(\d+)\s+features\s+for\s+(.+?)\s+in\s+(\d+)ms\s+\(Essentia:\s*(true|false)\)/i
+  );
+  if (essentiaMatch) {
+    const threadId = Number(essentiaMatch[1]);
+    const featureCount = Number(essentiaMatch[2]);
+    const file = essentiaMatch[3].trim();
+    const durationMs = Number(essentiaMatch[4]);
+    const usedEssentia = essentiaMatch[5].toLowerCase() === 'true';
+    
+    // Update counters
+    snapshot.counters.essentiaTagged += 1;
+    snapshot.updatedAt = Date.now();
+    
+    // Log for visibility
+    console.log(`[classify-essentia] Thread ${threadId}: ${featureCount} features from ${file} in ${durationMs}ms (Essentia: ${usedEssentia})`);
+    return;
+  }
+
+  // Match WAV render completion log:
+  // [Thread X] Rendered WAV for file.sid in Xms
+  const renderMatch = line.match(
+    /\[Thread\s+(\d+)\]\s+Rendered\s+WAV\s+for\s+(.+?)\s+in\s+(\d+)ms/i
+  );
+  if (renderMatch) {
+    const threadId = Number(renderMatch[1]);
+    const file = renderMatch[2].trim();
+    const durationMs = Number(renderMatch[3]);
+    
+    // Update counters
+    snapshot.counters.rendered += 1;
+    snapshot.updatedAt = Date.now();
+    
+    console.log(`[classify-render] Thread ${threadId}: rendered ${file} in ${durationMs}ms`);
+    return;
   }
 }
 
@@ -344,6 +421,7 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     totalFiles: snapshot.totalFiles,
     processedFiles: snapshot.processedFiles,
     renderedFiles: snapshot.renderedFiles,
+    taggedFiles: snapshot.taggedFiles,
     cachedFiles: snapshot.cachedFiles,
     skippedFiles: snapshot.skippedFiles,
     extractedFiles: snapshot.extractedFiles,
@@ -358,5 +436,6 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     isPaused: snapshot.isPaused,
     updatedAt: snapshot.updatedAt,
     startedAt: snapshot.startedAt,
+    counters: { ...snapshot.counters },
   };
 }
