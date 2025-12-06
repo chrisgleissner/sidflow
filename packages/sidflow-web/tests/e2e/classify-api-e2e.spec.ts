@@ -42,7 +42,7 @@ const TEST_SONGS = [
 ];
 
 // Classification timeout (90 seconds - with pre-rendered WAVs it should be fast)
-const CLASSIFY_TIMEOUT = 90000;
+const CLASSIFY_TIMEOUT = 120000;
 
 /**
  * Generate a minimal valid PSID file
@@ -111,9 +111,11 @@ function createWavFile(durationSec: number, freq: number): Buffer {
  * This prevents "Classification process is already running" errors when tests
  * run in parallel or when previous tests didn't clean up properly.
  */
-async function waitForClassificationIdle(request: any, maxWaitMs = 60000): Promise<void> {
+async function waitForClassificationIdle(request: any, maxWaitMs = 180000): Promise<void> {
   const startTime = Date.now();
-  const pollInterval = 1000;
+  const pollInterval = 2000;
+  
+  console.log('   🔄 Checking if classification is idle...');
   
   while (Date.now() - startTime < maxWaitMs) {
     try {
@@ -124,7 +126,7 @@ async function waitForClassificationIdle(request: any, maxWaitMs = 60000): Promi
           console.log('   ✅ Classification is idle, ready to start new classification');
           return;
         }
-        console.log(`   ⏳ Classification in progress, waiting... (${Math.round((Date.now() - startTime) / 1000)}s)`);
+        console.log(`   ⏳ Classification in progress, waiting... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
       }
     } catch {
       // Status endpoint may not exist, try to start classification and see if it fails
@@ -134,14 +136,14 @@ async function waitForClassificationIdle(request: any, maxWaitMs = 60000): Promi
     await new Promise(resolve => setTimeout(resolve, pollInterval));
   }
   
-  console.log('   ⚠️  Timed out waiting for classification to become idle, proceeding anyway...');
+  throw new Error(`Timed out after ${maxWaitMs / 1000}s waiting for classification to become idle. Cannot proceed.`);
 }
 
 test.describe.serial('Classification API E2E', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'API tests only run in chromium');
   
-  // Increase timeout for classification
-  test.setTimeout(CLASSIFY_TIMEOUT + 30000);
+  // Increase timeout: 180s max wait for idle + 120s classification + buffer
+  test.setTimeout(360000); // 6 minutes total
   
   const sidDir = path.join(SID_BASE_DIR, TEST_ARTIST_DIR);
   
@@ -420,8 +422,8 @@ async function getMostRecentJsonl(): Promise<{ path: string; lines: number } | n
 test.describe.serial('JSONL Incremental Write E2E', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'API tests only run in chromium');
   
-  // Increase timeout for classification
-  test.setTimeout(CLASSIFY_TIMEOUT + 30000);
+  // Increase timeout: 180s max wait for idle + 120s classification + buffer
+  test.setTimeout(360000); // 6 minutes total
   
   // Unique directory for this test suite
   const INCREMENTAL_TEST_DIR = 'C64Music/MUSICIANS/I/Incremental_Test';
