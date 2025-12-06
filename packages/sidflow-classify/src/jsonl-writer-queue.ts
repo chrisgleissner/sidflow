@@ -28,6 +28,8 @@ interface WriterQueue {
   processing: boolean;
   recordCount: number;
   errorCount: number;
+  /** Resolvers waiting for queue to drain */
+  flushWaiters: Array<() => void>;
 }
 
 // Map of file paths to their write queues
@@ -45,6 +47,7 @@ function getWriterQueue(filePath: string): WriterQueue {
       processing: false,
       recordCount: 0,
       errorCount: 0,
+      flushWaiters: [],
     };
     writerQueues.set(filePath, queue);
   }
@@ -79,6 +82,12 @@ async function processQueue(writerQueue: WriterQueue): Promise<void> {
   }
 
   writerQueue.processing = false;
+
+  // Notify all flush waiters that the queue is now empty
+  const waiters = writerQueue.flushWaiters.splice(0);
+  for (const resolve of waiters) {
+    resolve();
+  }
 }
 
 /**
@@ -141,23 +150,22 @@ export function getAllWriterQueueStats(): Map<string, { recordCount: number; err
 
 /**
  * Flush all pending writes for a file and wait for completion.
+ * Uses event-based waiting rather than polling for efficiency.
  */
 export async function flushWriterQueue(filePath: string): Promise<void> {
   const queue = writerQueues.get(filePath);
-  if (!queue || queue.queue.length === 0) {
+  if (!queue) {
     return;
   }
 
-  // Wait for all pending jobs to complete
+  // If queue is empty and not processing, nothing to wait for
+  if (queue.queue.length === 0 && !queue.processing) {
+    return;
+  }
+
+  // Register a waiter that will be resolved when queue processing completes
   return new Promise((resolve) => {
-    const checkComplete = (): void => {
-      if (queue.queue.length === 0 && !queue.processing) {
-        resolve();
-      } else {
-        setTimeout(checkComplete, 10);
-      }
-    };
-    checkComplete();
+    queue.flushWaiters.push(resolve);
   });
 }
 

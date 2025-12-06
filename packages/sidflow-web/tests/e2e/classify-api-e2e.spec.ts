@@ -411,30 +411,7 @@ async function getJsonlFiles(): Promise<string[]> {
   }
 }
 
-/**
- * Returns the most recently modified JSONL file in the classified directory
- */
-async function getMostRecentJsonl(): Promise<{ path: string; lines: number } | null> {
-  const files = await getJsonlFiles();
-  if (files.length === 0) return null;
-  
-  let mostRecent = { path: '', mtime: 0 };
-  for (const file of files) {
-    const filePath = path.join(CLASSIFIED_DIR, file);
-    const stat = await fs.stat(filePath);
-    if (stat.mtimeMs > mostRecent.mtime) {
-      mostRecent = { path: filePath, mtime: stat.mtimeMs };
-    }
-  }
-  
-  if (!mostRecent.path) return null;
-  
-  const content = await fs.readFile(mostRecent.path, 'utf-8');
-  const lines = content.trim().split('\n').filter(l => l.trim()).length;
-  return { path: mostRecent.path, lines };
-}
-
-test.describe.serial('JSONL Incremental Write E2E', () => {
+test.describe.serial('JSONL Format Validation E2E', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'API tests only run in chromium');
   
   // Increase timeout: 180s max wait for idle + 120s classification + buffer
@@ -444,7 +421,7 @@ test.describe.serial('JSONL Incremental Write E2E', () => {
   const INCREMENTAL_TEST_DIR = 'C64Music/MUSICIANS/I/Incremental_Test';
   const sidDir = path.join(SID_BASE_DIR, INCREMENTAL_TEST_DIR);
   
-  // Create more test songs to increase classification time and verify incremental writes
+  // Create test songs to verify JSONL output format and record completeness
   const INCREMENTAL_TEST_SONGS = [
     { name: 'Incr_Song_01', freq: 220, duration: 1 },
     { name: 'Incr_Song_02', freq: 330, duration: 1 },
@@ -485,9 +462,9 @@ test.describe.serial('JSONL Incremental Write E2E', () => {
     }
   });
 
-  test('verifies JSONL is written incrementally during classification', async ({ request }) => {
+  test('verifies JSONL output format and record validity', async ({ request }) => {
     console.log('\n' + '='.repeat(80));
-    console.log('🔄 JSONL INCREMENTAL WRITE E2E TEST');
+    console.log('🔄 JSONL FORMAT VALIDATION E2E TEST');
     console.log('='.repeat(80));
 
     // Step 1: Record initial state
@@ -497,8 +474,7 @@ test.describe.serial('JSONL Incremental Write E2E', () => {
     // Step 2: Wait for any existing classification to complete first
     await waitForClassificationIdle(request, 60000);
 
-    // Step 3: Start classification (non-blocking observation isn't directly possible via REST)
-    // Instead, we verify the result shows incremental writes happened correctly
+    // Step 3: Start classification via REST API
     console.log('\n🔧 Starting classification via REST API...');
     console.log(`   Path: ${INCREMENTAL_TEST_DIR}`);
     console.log(`   Songs: ${INCREMENTAL_TEST_SONGS.length}`);
@@ -601,11 +577,11 @@ test.describe.serial('JSONL Incremental Write E2E', () => {
 
     // Step 6: Verify the JSONL file was written progressively (not all at once at the end)
     // Since we can't observe real-time writes via REST API, we verify the file structure
-    // shows individual records (one per line) consistent with incremental append behavior
-    console.log('\n📝 Verifying incremental write structure:');
+    // shows individual records (one per line) consistent with JSONL format
+    console.log('\n📝 Verifying JSONL format:');
     console.log(`   ✅ Each record is on its own line (JSONL format)`);
     console.log(`   ✅ Records are complete and valid (not truncated)`);
-    console.log(`   ✅ Features extracted for each record individually`);
+    console.log(`   ✅ Features extracted for each record`);
     console.log(`   ✅ No batch markers or grouping detected`);
 
     // Verify file doesn't start with array bracket (would indicate batch write)
@@ -615,14 +591,14 @@ test.describe.serial('JSONL Incremental Write E2E', () => {
 
     // Summary
     console.log('\n' + '='.repeat(80));
-    console.log('📋 INCREMENTAL WRITE VERIFICATION SUMMARY');
+    console.log('📋 JSONL FORMAT VALIDATION SUMMARY');
     console.log('='.repeat(80));
     console.log(`\n✅ JSONL file: ${newJsonlFiles[0]}`);
     console.log(`✅ Records written: ${validRecords}`);
     console.log(`✅ All songs found: ${foundSongs.size}/${INCREMENTAL_TEST_SONGS.length}`);
     console.log(`✅ All records have features (Essentia.js extraction worked)`);
-    console.log(`✅ File format confirms incremental append (not batch write)`);
-    console.log('\n🎉 INCREMENTAL JSONL WRITE TEST PASSED');
+    console.log(`✅ File format is valid JSONL (one JSON object per line)`);
+    console.log('\n🎉 JSONL FORMAT VALIDATION TEST PASSED');
     console.log('='.repeat(80) + '\n');
   });
 });

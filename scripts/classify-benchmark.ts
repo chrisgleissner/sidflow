@@ -43,7 +43,7 @@ const BENCHMARK_SIDS = [
 async function runBenchmark(): Promise<void> {
   const startTime = performance.now();
   console.log("🎵 SIDFlow Classification Benchmark\n");
-  console.log("=" .repeat(60));
+  console.log("=".repeat(60));
   
   // Find available benchmark SIDs
   const availableSids: string[] = [];

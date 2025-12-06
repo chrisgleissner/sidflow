@@ -269,7 +269,7 @@ describe("Fast Classification Pipeline E2E", () => {
       sidPath,
     };
 
-    const result = await generateAutoTags(plan, { threads: 1 });
+    await generateAutoTags(plan, { threads: 1 });
 
     // Read both JSONL files
     const { readdir } = await import("node:fs/promises");

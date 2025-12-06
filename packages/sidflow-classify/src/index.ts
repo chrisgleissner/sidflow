@@ -1649,6 +1649,11 @@ export async function generateAutoTags(
     classifyLogger.info(`Deleted ${deletedWavCount} WAV files`);
   }
 
+  // Flush all pending writes before returning
+  if (jsonlFile) {
+    await flushWriterQueue(jsonlFile);
+  }
+
   const endTime = Date.now();
   const metrics: GenerateAutoTagsMetrics = {
     startTime,
@@ -1819,17 +1824,16 @@ export async function generateJsonlOutput(
         record.features = features;
       }
 
-      // Write record immediately to JSONL file (append mode)
-      await appendCanonicalJsonLines(
+      // Write record immediately to JSONL file via queue (serialized append)
+      logJsonlPathOnce(jsonlFile);
+      await queueJsonlWrite(
         jsonlFile,
         [record as unknown as JsonValue],
         {
-          details: {
-            recordCount: 1,
-            phase: "classification",
-            songIndex: songIndex,
-            totalSongs: songCount
-          }
+          recordCount: 1,
+          phase: "classification",
+          songIndex: songIndex,
+          totalSongs: songCount
         }
       );
 
