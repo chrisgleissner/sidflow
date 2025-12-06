@@ -106,6 +106,37 @@ function createWavFile(durationSec: number, freq: number): Buffer {
   return buffer;
 }
 
+/**
+ * Wait for any existing classification to complete before starting a new one.
+ * This prevents "Classification process is already running" errors when tests
+ * run in parallel or when previous tests didn't clean up properly.
+ */
+async function waitForClassificationIdle(request: any, maxWaitMs = 60000): Promise<void> {
+  const startTime = Date.now();
+  const pollInterval = 1000;
+  
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const response = await request.get('/api/classify/status');
+      if (response.ok()) {
+        const status = await response.json();
+        if (!status.running && !status.isRunning) {
+          console.log('   ✅ Classification is idle, ready to start new classification');
+          return;
+        }
+        console.log(`   ⏳ Classification in progress, waiting... (${Math.round((Date.now() - startTime) / 1000)}s)`);
+      }
+    } catch {
+      // Status endpoint may not exist, try to start classification and see if it fails
+      console.log('   ⚠️  Status endpoint unavailable, proceeding...');
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+  
+  console.log('   ⚠️  Timed out waiting for classification to become idle, proceeding anyway...');
+}
+
 test.describe.serial('Classification API E2E', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'API tests only run in chromium');
   
@@ -156,6 +187,11 @@ test.describe.serial('Classification API E2E', () => {
     console.log('\n' + '='.repeat(80));
     console.log('🚀 CLASSIFICATION API E2E TEST');
     console.log('='.repeat(80));
+
+    // Step 0: Wait for any existing classification to complete
+    console.log('\n⏳ Step 0: Ensuring classification is idle');
+    console.log('-'.repeat(40));
+    await waitForClassificationIdle(request);
 
     // Step 1: Get initial state
     console.log('\n📋 Step 1: Initial State');
@@ -441,7 +477,10 @@ test.describe.serial('JSONL Incremental Write E2E', () => {
     const jsonlFilesBefore = await getJsonlFiles();
     console.log(`\n📋 Initial JSONL files: ${jsonlFilesBefore.length}`);
 
-    // Step 2: Start classification (non-blocking observation isn't directly possible via REST)
+    // Step 2: Wait for any existing classification to complete first
+    await waitForClassificationIdle(request, 60000);
+
+    // Step 3: Start classification (non-blocking observation isn't directly possible via REST)
     // Instead, we verify the result shows incremental writes happened correctly
     console.log('\n🔧 Starting classification via REST API...');
     console.log(`   Path: ${INCREMENTAL_TEST_DIR}`);
