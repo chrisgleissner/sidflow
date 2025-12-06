@@ -431,7 +431,8 @@ export async function saveModel(model: LayersModel, modelPath?: string): Promise
  */
 function normalizeFeatures(features: FeatureVector): number[] {
   return EXPECTED_FEATURES.map((featureName) => {
-    const value = features[featureName] ?? 0;
+    const rawValue = features[featureName];
+    const value = typeof rawValue === "number" ? rawValue : 0;
     const mean = FEATURE_MEANS[featureName] ?? 0;
     const std = FEATURE_STDS[featureName] ?? 1;
     return std !== 0 ? (value - mean) / std : 0;
@@ -478,7 +479,8 @@ export function computeFeatureStats(
     let sum = 0;
     let count = 0;
     for (const sample of samples) {
-      const value = sample.features[featureName];
+      const rawValue = sample.features[featureName];
+      const value = typeof rawValue === "number" ? rawValue : undefined;
       if (value !== undefined && !Number.isNaN(value)) {
         sum += value;
         count += 1;
@@ -493,7 +495,8 @@ export function computeFeatureStats(
     let count = 0;
     const mean = means[featureName];
     for (const sample of samples) {
-      const value = sample.features[featureName];
+      const rawValue = sample.features[featureName];
+      const value = typeof rawValue === "number" ? rawValue : undefined;
       if (value !== undefined && !Number.isNaN(value)) {
         sumSquaredDiff += (value - mean) ** 2;
         count += 1;

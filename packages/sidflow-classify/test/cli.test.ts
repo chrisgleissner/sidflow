@@ -59,6 +59,8 @@ interface TestGenerateAutoTagsResult {
   mixedEntries: string[];
   metadataFiles: string[];
   tagFiles: string[];
+  jsonlFile: string;
+  jsonlRecordCount: number;
   metrics: TestGenerateAutoTagsMetrics;
 }
 
@@ -168,6 +170,8 @@ describe("runClassifyCli", () => {
         mixedEntries: [],
         metadataFiles: ["meta.json"],
         tagFiles: [path.join(plan.tagsPath, "auto-tags.json")],
+        jsonlFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00-000.jsonl"),
+        jsonlRecordCount: 2,
         metrics: {
           startTime: 100,
           endTime: 200,
@@ -178,12 +182,7 @@ describe("runClassifyCli", () => {
           mixedCount: 0,
           predictionsGenerated: 1
         }
-      } satisfies TestGenerateAutoTagsResult)) as any,
-      generateJsonlOutput: (async () => ({
-        jsonlFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00.jsonl"),
-        recordCount: 2,
-        durationMs: 50
-      })) as any
+      } satisfies TestGenerateAutoTagsResult)) as any
     });
 
     expect(exitCode).toBe(0);
@@ -415,6 +414,8 @@ describe("runClassifyCli", () => {
             mixedEntries: [],
             metadataFiles: ["meta.json"],
             tagFiles: ["tags.json"],
+            jsonlFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00-000.jsonl"),
+            jsonlRecordCount: 1,
             metrics: {
               startTime: 0,
               endTime: 65000,
@@ -426,12 +427,7 @@ describe("runClassifyCli", () => {
               predictionsGenerated: ratings.e + ratings.m + ratings.c
             }
           } satisfies TestGenerateAutoTagsResult;
-        }) as any,
-        generateJsonlOutput: (async () => ({
-          jsonlFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00.jsonl"),
-          recordCount: 2,
-          durationMs: 50
-        })) as any
+        }) as any
       }
     );
 
@@ -500,6 +496,8 @@ describe("runClassifyCli", () => {
           mixedEntries: [],
           metadataFiles: [],
           tagFiles: [],
+          jsonlFile: "/tmp/test.jsonl",
+          jsonlRecordCount: 0,
           metrics: {
             startTime: 0,
             endTime: 10,
@@ -511,12 +509,7 @@ describe("runClassifyCli", () => {
             predictionsGenerated: 0
           }
         } satisfies TestGenerateAutoTagsResult;
-      }) as any,
-      generateJsonlOutput: (async () => ({
-        jsonlFile: "/tmp/test.jsonl",
-        recordCount: 0,
-        durationMs: 10
-      })) as any
+      }) as any
     });
 
     expect(exitCode).toBe(0);

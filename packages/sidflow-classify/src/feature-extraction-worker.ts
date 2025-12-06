@@ -44,7 +44,7 @@ interface WavHeader {
 }
 
 interface FeatureVector {
-  [key: string]: number | undefined;
+  [key: string]: number | string | undefined;
 }
 
 interface WorkerMessage {

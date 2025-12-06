@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import type { FeatureExtractor, FeatureVector } from "./index.js";
+import { FEATURE_SCHEMA_VERSION } from "@sidflow/common";
 
 /**
  * Configuration for audio preprocessing.
@@ -27,6 +28,36 @@ let useWorkerPool = false;
  */
 export function setUseWorkerPool(enable: boolean): void {
   useWorkerPool = enable;
+}
+
+/**
+ * Check if Essentia.js is available in the current environment.
+ * Call early in the pipeline to fail fast if Essentia is required but unavailable.
+ * 
+ * @param requireEssentia - If true, throw an error if Essentia is unavailable
+ * @returns true if Essentia is available, false otherwise
+ * @throws Error if requireEssentia is true and Essentia is unavailable
+ */
+export async function checkEssentiaAvailability(requireEssentia = false): Promise<boolean> {
+  const { available } = await getEssentia();
+  
+  if (!available && requireEssentia) {
+    throw new Error(
+      "Essentia.js is required but not available. " +
+      "Install essentia.js: npm install essentia.js@0.1.3 " +
+      "or run with --allow-degraded to use heuristic features."
+    );
+  }
+  
+  return available;
+}
+
+/**
+ * Get Essentia availability status synchronously after initialization.
+ * Only valid after at least one feature extraction call or explicit check.
+ */
+export function isEssentiaAvailable(): boolean {
+  return essentiaAvailable;
 }
 
 async function getEssentia() {
@@ -79,6 +110,87 @@ interface WavHeader {
   blockAlign: number;
   bitsPerSample: number;
   dataLength: number;
+}
+
+/**
+ * Validation result for WAV header.
+ */
+export interface WavHeaderValidation {
+  valid: boolean;
+  header?: WavHeader;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * Validate WAV header for feature extraction compatibility.
+ * 
+ * Requirements:
+ * - PCM format (format = 1)
+ * - 1-2 channels (mono/stereo)
+ * - 8000-192000 Hz sample rate
+ * - 8, 16, 24, or 32 bits per sample
+ * - Non-zero data length
+ */
+export function validateWavHeader(buffer: Buffer): WavHeaderValidation {
+  const result: WavHeaderValidation = {
+    valid: true,
+    errors: [],
+    warnings: [],
+  };
+
+  try {
+    const header = parseWavHeader(buffer);
+    result.header = header;
+
+    // Validate PCM format
+    if (header.format !== 1) {
+      result.errors.push(`Unsupported audio format: ${header.format} (expected PCM = 1)`);
+      result.valid = false;
+    }
+
+    // Validate channels
+    if (header.numChannels < 1 || header.numChannels > 2) {
+      result.errors.push(`Unsupported channel count: ${header.numChannels} (expected 1 or 2)`);
+      result.valid = false;
+    }
+
+    // Validate sample rate
+    if (header.sampleRate < 8000 || header.sampleRate > 192000) {
+      result.warnings.push(`Unusual sample rate: ${header.sampleRate} Hz`);
+    }
+
+    // Validate bits per sample
+    if (![8, 16, 24, 32].includes(header.bitsPerSample)) {
+      result.errors.push(`Unsupported bits per sample: ${header.bitsPerSample}`);
+      result.valid = false;
+    }
+
+    // Validate data length
+    if (header.dataLength === 0) {
+      result.errors.push("Empty audio data");
+      result.valid = false;
+    }
+
+    // Calculate expected duration
+    const bytesPerSample = header.bitsPerSample / 8;
+    const totalSamples = header.dataLength / (bytesPerSample * header.numChannels);
+    const durationSeconds = totalSamples / header.sampleRate;
+
+    if (durationSeconds < 0.1) {
+      result.warnings.push(`Very short audio: ${durationSeconds.toFixed(3)} seconds`);
+    }
+
+    if (durationSeconds > 3600) {
+      result.warnings.push(`Very long audio: ${durationSeconds.toFixed(0)} seconds`);
+    }
+
+  } catch (error) {
+    result.valid = false;
+    result.errors.push((error as Error).message);
+  }
+
+  return result;
 }
 
 function parseWavHeader(buffer: Buffer): WavHeader {
@@ -269,8 +381,12 @@ async function extractEssentiaFeaturesOptimized(wavFile: string, essentia: any):
 
   // Add metadata - use original sample rate for display but actual samples processed
   features.sampleRate = originalSampleRate;
+  features.analysisSampleRate = FEATURE_EXTRACTION_SAMPLE_RATE;
   features.duration = audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE;
+  features.analysisWindowSec = audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE;
   features.numSamples = audioData.length;
+  features.featureSetVersion = FEATURE_SCHEMA_VERSION;
+  features.featureVariant = "essentia";
 
   return features;
 }
@@ -325,8 +441,12 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
       spectralCentroid: 2000, // Placeholder
       spectralRolloff: 4000, // Placeholder
       sampleRate: originalSampleRate,
+      analysisSampleRate: FEATURE_EXTRACTION_SAMPLE_RATE,
       duration: audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE,
+      analysisWindowSec: audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE,
       numSamples: audioData.length,
+      featureSetVersion: FEATURE_SCHEMA_VERSION,
+      featureVariant: "heuristic",
       wavBytes: wavStats.size,
       sidBytes: sidStats.size,
       nameSeed: computeSeed(path.basename(sidFile))

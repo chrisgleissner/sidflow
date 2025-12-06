@@ -619,6 +619,17 @@ describe("generateAutoTags", () => {
 
       const metadataContent = JSON.parse(await readFile(result.metadataFiles[0], "utf8")) as Record<string, unknown>;
       expect(metadataContent.title).toBeDefined();
+      
+      // Verify JSONL is written incrementally (one record per line)
+      expect(result.jsonlFile).toBeDefined();
+      expect(result.jsonlRecordCount).toBe(4); // 3 songs (2 from Multi.sid) + Manual.sid + Partial.sid
+      const jsonlContent = await readFile(result.jsonlFile, "utf8");
+      const jsonlLines = jsonlContent.trim().split("\n");
+      expect(jsonlLines.length).toBe(4);
+      // Verify first line is valid JSON
+      const firstRecord = JSON.parse(jsonlLines[0]) as { sid_path: string; ratings: { e: number } };
+      expect(firstRecord.sid_path).toBeDefined();
+      expect(firstRecord.ratings).toBeDefined();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
