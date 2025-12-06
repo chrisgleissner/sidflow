@@ -119,18 +119,25 @@ async function waitForClassificationIdle(request: any, maxWaitMs = 180000): Prom
   
   while (Date.now() - startTime < maxWaitMs) {
     try {
-      const response = await request.get('/api/classify/status');
+      // Use the correct endpoint: /api/classify/progress
+      const response = await request.get('/api/classify/progress');
       if (response.ok()) {
-        const status = await response.json();
-        if (!status.running && !status.isRunning) {
+        const result = await response.json();
+        const status = result.data || result;
+        // Check isActive field which indicates if classification is running
+        if (!status.isActive) {
           console.log('   ✅ Classification is idle, ready to start new classification');
           return;
         }
-        console.log(`   ⏳ Classification in progress, waiting... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
+        console.log(`   ⏳ Classification in progress (phase: ${status.phase}), waiting... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
+      } else {
+        // Non-OK response, classification system may not be running
+        console.log('   ✅ Progress endpoint returned non-OK, assuming idle');
+        return;
       }
     } catch {
-      // Status endpoint may not exist, try to start classification and see if it fails
-      console.log('   ⚠️  Status endpoint unavailable, proceeding...');
+      // Status endpoint may not exist or server not ready, proceed with test
+      console.log('   ⚠️  Progress endpoint unavailable, proceeding...');
       return;
     }
     await new Promise(resolve => setTimeout(resolve, pollInterval));
