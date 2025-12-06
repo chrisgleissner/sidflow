@@ -48,26 +48,6 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Active tasks
 
-### Task: Achieve >90% Test Coverage (2025-11-24)
-
-**User request (summary)**
-- Raise coverage from ~60% to ≥90%
-- Focus on high-impact modules (browser code, CLI utilities)
-
-**Plan (checklist)**
-- [x] Phase 1 — Baseline ✓ 60% coverage, 1437 tests passing
-- [x] Phase 2.1-2.4 — E2E coverage integration ✓ Merge script, CI workflow updated
-- [ ] Phase 2.5 — Add targeted tests to reach 90% (+30pp needed)
-- [ ] Phase 2.6 — Update copilot-instructions.md with new baseline
-- [ ] Phase 3 — Validation and documentation
-
-**Progress log**
-- 2025-11-24 — E2E coverage pipeline working. Merged coverage: 59.53%. All tests pass.
-
-**Follow-ups**
-- CLI mocking utilities for systematic CLI test coverage
-- Web API mocks for browser-only modules
-
 ---
 
 ## Archived Tasks

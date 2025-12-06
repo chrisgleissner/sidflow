@@ -1,6 +1,5 @@
 import {
   DEFAULT_RATINGS,
-  appendCanonicalJsonLines,
   clampRating,
   createLogger,
   ensureDir,
@@ -24,6 +23,7 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
+import { queueJsonlWrite, flushWriterQueue, clearWriterQueues, logJsonlPathOnce } from "./jsonl-writer-queue.js";
 import { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE } from "./essentia-features.js";
 import { 
   FeatureExtractionPool, 
@@ -1544,16 +1544,15 @@ export async function generateAutoTags(
     // Determine render engine used
     const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
     classificationRecord.render_engine = preferredEngines[0];
-    await appendCanonicalJsonLines(
+    logJsonlPathOnce(jsonlFile);
+    await queueJsonlWrite(
       jsonlFile,
       [classificationRecord as unknown as JsonValue],
       {
-        details: {
-          recordCount: 1,
-          phase: "classification",
-          songIndex: job.songIndex,
-          totalSongs: job.songCount
-        }
+        recordCount: 1,
+        phase: "classification",
+        songIndex: job.songIndex,
+        totalSongs: job.songCount
       }
     );
     jsonlRecordCount += 1;
