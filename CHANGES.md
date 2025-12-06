@@ -1,5 +1,47 @@
 # Changelog
 
+
+## 0.3.44 (2025-12-06)
+
+- Merge pull request #75 from chrisgleissner/feat/classification-pipeline-hardening
+- fix: address PR review comments
+- refactor: remove unused import and add jsonl writer queue functions
+- docs: clean up PLANS.md - archive completed tasks
+- fix(e2e): speed up CI by skipping slow classification tests
+- fix(e2e): use correct progress endpoint to check classification status
+- fix(e2e): increase classification test timeouts
+- fix(e2e): wait for classification idle before starting test
+- feat(classify): pipeline hardening and productionization
+- feat(tests): add end-to-end tests for synthetic SID classification and REST API integration
+- Refactor code structure for improved readability and maintainability
+- Merge pull request #72 from chrisgleissner/fix/classify
+- fix: correct comment terminology in classify-progress-store
+- fix: enhance accessibility tests with improved wait conditions and retry logic
+- chore: reduce verbose getPositionSeconds logging
+- fix: add istanbul ignore file comments to Edge runtime files
+- chore: suppress baseline-browser-mapping warnings in CI workflows
+- fix: exclude middleware from Istanbul coverage to avoid Edge runtime eval error
+- feat: enhance image comparison utility and improve accessibility tests
+- feat: consolidate CLI argument parsing across multiple packages
+- fix: enhance classification pipeline error handling and logging
+- fix: update classification pipeline to use default feature extractor and predictor
+- feat: add Codebase Deduplication & Cleanup task to PLANS.md
+- feat: add performance journey for 'play-start-stream' with navigation and playback steps
+- Remove obsolete performance test results and summary files for the 'play-start-stream' journey across multiple timestamps, including both k6 and playwright metrics. This cleanup helps maintain a tidy project structure and ensures only relevant data is retained.
+- Merge main into fix/classify: resolve conflicts, add cachedFiles tracking
+- Remove deprecated SIDFlow scripts: logs.sh, restore.sh, start.sh, status.sh, stop.sh, update.sh, and webhook-server.sh
+- Refactor SIDFlow web documentation and remove obsolete files
+- feat: implement unified performance testing framework with Playwright and k6
+- feat: add support for JSON journey files with line comments
+- Add comprehensive tests for state machine, middleware, and classify progress metrics
+- Merge pull request #74 from chrisgleissner/copilot/fix-unit-and-e2e-tests
+- Fix test permissions after Docker e2e runs
+- Restore original screenshots modified by e2e tests
+- Verify unit and e2e tests passing
+- Initial plan
+- chore: update CHANGES.md for 0.3.43
+- Add scripts for SIDFlow management: logs, restore, start, status, stop, update, and webhook server
+
 This changelog highlights only the meaningful releases and milestones. Routine “update CHANGES.md” noise is removed.
 
 ## 0.3.43 (2025-12-02)
