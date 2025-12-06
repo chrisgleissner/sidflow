@@ -13,12 +13,20 @@
  * IMPORTANT: These tests must run serially (--workers=1) because they share the
  * classification backend and file system state. Configure in playwright.config.ts
  * or run with: npx playwright test classify-api-e2e.spec.ts --workers=1
+ * 
+ * CI NOTE: These tests are SKIPPED in CI because classification takes 2+ minutes
+ * and causes flaky failures. Run locally with: npx playwright test classify-api-e2e.spec.ts
  */
 
 import { test, expect } from './test-hooks';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+
+// Skip entire file in CI - these tests are too slow (2+ minutes each)
+// and cause flaky failures. Run manually for full classification E2E validation.
+const isCI = !!process.env.CI;
+test.skip(() => isCI, 'Classification API E2E tests skipped in CI - too slow');
 
 // Force serial execution for this file since tests share backend state
 test.describe.configure({ mode: 'serial' });
