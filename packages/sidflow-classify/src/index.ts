@@ -1,6 +1,5 @@
 import {
   DEFAULT_RATINGS,
-  appendCanonicalJsonLines,
   clampRating,
   createLogger,
   ensureDir,
@@ -24,6 +23,7 @@ import {
   type SidflowConfig,
   type TagRatings
 } from "@sidflow/common";
+import { queueJsonlWrite, flushWriterQueue, clearWriterQueues, logJsonlPathOnce } from "./jsonl-writer-queue.js";
 import { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE } from "./essentia-features.js";
 import { 
   FeatureExtractionPool, 
@@ -1026,8 +1026,12 @@ function combineRatings(
   return { ratings, source: "manual" };
 }
 
+/**
+ * Audio feature vector with numeric features and string metadata.
+ * Compatible with AudioFeatures in @sidflow/common.
+ */
 export interface FeatureVector {
-  [feature: string]: number;
+  [feature: string]: number | string | undefined;
 }
 
 export interface ExtractFeaturesOptions {
@@ -1164,6 +1168,10 @@ export interface GenerateAutoTagsResult {
   mixedEntries: string[];
   metadataFiles: string[];
   tagFiles: string[];
+  /** Path to JSONL file with classification records (written incrementally) */
+  jsonlFile: string;
+  /** Number of records written to JSONL file */
+  jsonlRecordCount: number;
   metrics: GenerateAutoTagsMetrics;
 }
 
@@ -1216,6 +1224,13 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+  
+  // Set up JSONL file for incremental writes during classification
+  const classifiedPath = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
+  await ensureDir(classifiedPath);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
+  const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
+  let jsonlRecordCount = 0;
   
   // Cache for auto-tags.json files to avoid repeated reads for songs in the same directory
   const autoTagsCache = new Map<string, Record<string, unknown> | null>();
@@ -1379,6 +1394,7 @@ export async function generateAutoTags(
     const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
     const needsAuto = !job.manualRecord || hasMissingDimensions(manualRatings ?? {});
     let autoRatings: TagRatings | null = null;
+    let extractedFeatures: FeatureVector | undefined;
 
     if (needsAuto) {
       if (!(await pathExists(job.wavPath))) {
@@ -1460,19 +1476,19 @@ export async function generateAutoTags(
 
       // Essentia feature extraction with structured logging
       const extractionStartedAt = Date.now();
-      const features = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+      extractedFeatures = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
       extractedFilesCount += 1;
       const extractionDurationMs = Date.now() - extractionStartedAt;
       
       // Log feature extraction result
-      const featureCount = Object.keys(features).length;
-      const usedEssentia = features.spectralCentroid !== undefined || features.rms !== undefined;
+      const featureCount = Object.keys(extractedFeatures).length;
+      const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
       classifyLogger.debug(
         `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
       );
       
       autoRatings = await predictRatings({
-        features,
+        features: extractedFeatures,
         sidFile: job.sidFile,
         relativePath: job.posixRelative,
         metadata: job.metadata
@@ -1507,6 +1523,39 @@ export async function generateAutoTags(
     } else {
       grouped.set(autoFilePath, new Map([[key, entry]]));
     }
+
+    // Write JSONL record immediately after feature extraction (flush per file)
+    const classificationRecord: ClassificationRecord = {
+      sid_path: job.posixRelative,
+      ratings,
+      source,
+      classified_at: new Date().toISOString(),
+    };
+    if (job.songCount > 1) {
+      classificationRecord.song_index = job.songIndex;
+    }
+    if (extractedFeatures) {
+      classificationRecord.features = extractedFeatures as AudioFeatures;
+      // Mark degraded if using heuristic features
+      if (extractedFeatures.featureVariant === "heuristic") {
+        classificationRecord.degraded = true;
+      }
+    }
+    // Determine render engine used
+    const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
+    classificationRecord.render_engine = preferredEngines[0];
+    logJsonlPathOnce(jsonlFile);
+    await queueJsonlWrite(
+      jsonlFile,
+      [classificationRecord as unknown as JsonValue],
+      {
+        recordCount: 1,
+        phase: "classification",
+        songIndex: job.songIndex,
+        totalSongs: job.songCount
+      }
+    );
+    jsonlRecordCount += 1;
 
     processedSongs += 1;
 
@@ -1600,6 +1649,11 @@ export async function generateAutoTags(
     classifyLogger.info(`Deleted ${deletedWavCount} WAV files`);
   }
 
+  // Flush all pending writes before returning
+  if (jsonlFile) {
+    await flushWriterQueue(jsonlFile);
+  }
+
   const endTime = Date.now();
   const metrics: GenerateAutoTagsMetrics = {
     startTime,
@@ -1613,7 +1667,7 @@ export async function generateAutoTags(
     skippedAlreadyClassified: skippedAlreadyClassifiedCount
   };
 
-  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, metrics };
+  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, jsonlFile, jsonlRecordCount, metrics };
 }
 
 /**
@@ -1770,17 +1824,16 @@ export async function generateJsonlOutput(
         record.features = features;
       }
 
-      // Write record immediately to JSONL file (append mode)
-      await appendCanonicalJsonLines(
+      // Write record immediately to JSONL file via queue (serialized append)
+      logJsonlPathOnce(jsonlFile);
+      await queueJsonlWrite(
         jsonlFile,
         [record as unknown as JsonValue],
         {
-          details: {
-            recordCount: 1,
-            phase: "classification",
-            songIndex: songIndex,
-            totalSongs: songCount
-          }
+          recordCount: 1,
+          phase: "classification",
+          songIndex: songIndex,
+          totalSongs: songCount
         }
       );
 
@@ -1826,9 +1879,12 @@ export const heuristicPredictRatings: PredictRatings = async ({
   metadata
 }) => {
   const baseSeed = computeSeed(relativePath + (metadata.title ?? ""));
-  const tempoSeed = baseSeed + (features.wavBytes ?? 0);
+  const wavBytes = typeof features.wavBytes === "number" ? features.wavBytes : 0;
+  const sidBytes = typeof features.sidBytes === "number" ? features.sidBytes : 0;
+  const nameSeed = typeof features.nameSeed === "number" ? features.nameSeed : 0;
+  const tempoSeed = baseSeed + wavBytes;
   const moodSeed = baseSeed + (metadata.author ? computeSeed(metadata.author) : 0);
-  const complexitySeed = baseSeed + (features.sidBytes ?? 0) + (features.nameSeed ?? 0);
+  const complexitySeed = baseSeed + sidBytes + nameSeed;
 
   return {
     e: clampRating(toRating(tempoSeed)),
@@ -1846,7 +1902,7 @@ export function __setClassifyTestOverrides(overrides?: {
 }
 
 // Re-export Essentia.js and TensorFlow.js implementations
-export { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE } from "./essentia-features.js";
+export { essentiaFeatureExtractor, setUseWorkerPool, FEATURE_EXTRACTION_SAMPLE_RATE, validateWavHeader, checkEssentiaAvailability, isEssentiaAvailable, type WavHeaderValidation } from "./essentia-features.js";
 export { 
   FeatureExtractionPool, 
   getFeatureExtractionPool, 
@@ -1876,6 +1932,17 @@ export {
   type TrainOptions
 } from "./tfjs-predictor.js";
 
+// Re-export JSONL writer queue utilities
+export {
+  queueJsonlWrite,
+  getWriterQueueStats,
+  getAllWriterQueueStats,
+  flushWriterQueue,
+  clearWriterQueues,
+  logJsonlPathOnce,
+  clearLoggedPaths,
+} from "./jsonl-writer-queue.js";
+
 // Re-export state machine types and utilities
 export {
   HEARTBEAT_CONFIG,
@@ -1901,3 +1968,18 @@ export {
   type PhaseCompletionLog,
   type WorkerMessage,
 } from "./types/state-machine.js";
+
+// Re-export classification metrics utilities
+export {
+  incrementCounter,
+  recordTimer,
+  setGauge,
+  getMetrics,
+  resetMetrics,
+  formatPrometheusMetrics,
+  METRIC_NAMES,
+  type Counter,
+  type Timer,
+  type Gauge,
+  type ClassificationMetrics,
+} from "./classify-metrics.js";

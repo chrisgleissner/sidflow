@@ -40,8 +40,11 @@ data/audit/admin-actions.jsonl
 
 # Manifests and canonical data ARE committed
 !data/sidflow.lance.manifest.json
-!data/classified/*.jsonl
+!data/classified/sample.jsonl
 !data/feedback/**/*.jsonl
+
+# Classification output files (generated during tests/runs)
+data/classified/classification_*.jsonl
 
 # Training logs and model artifacts change on each build/test run
 # Tests should use test-specific directories instead
