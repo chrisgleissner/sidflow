@@ -10,7 +10,6 @@ import {
   buildAudioCache,
   defaultExtractMetadata,
   generateAutoTags,
-  generateJsonlOutput,
   planClassification,
   type AutoTagProgress,
   type BuildAudioCacheResult,
@@ -18,7 +17,6 @@ import {
   type ExtractMetadata,
   type FeatureExtractor,
   type GenerateAutoTagsResult,
-  type GenerateJsonlResult,
   type PredictRatings,
   type RenderWav,
   type ThreadActivityUpdate,
@@ -149,7 +147,6 @@ interface ClassifyCliRuntime {
   planClassification: typeof planClassification;
   buildAudioCache: typeof buildAudioCache;
   generateAutoTags: typeof generateAutoTags;
-  generateJsonlOutput: typeof generateJsonlOutput;
   loadFeatureModule: (specifier: string) => Promise<FeatureExtractor>;
   loadPredictorModule: (specifier: string) => Promise<PredictRatings>;
   loadMetadataModule: (specifier: string) => Promise<ExtractMetadata>;
@@ -162,7 +159,6 @@ const defaultRuntime: ClassifyCliRuntime = {
   planClassification,
   buildAudioCache,
   generateAutoTags,
-  generateJsonlOutput,
   loadFeatureModule: (specifier) =>
     loadModule<FeatureExtractor>(specifier, ["default", "featureExtractor", "extractFeatures"]),
   loadPredictorModule: (specifier) =>
@@ -336,16 +332,9 @@ function summariseAutoTags(result: GenerateAutoTagsResult): string[] {
     `  Predictions generated: ${metrics.predictionsGenerated}`,
     `  Metadata files: ${result.metadataFiles.length}`,
     `  Tag files: ${result.tagFiles.length}`,
+    `  JSONL records: ${result.jsonlRecordCount}`,
+    `  JSONL file: ${result.jsonlFile}`,
     `  Duration: ${formatDuration(metrics.durationMs)}`
-  ];
-}
-
-function summariseJsonlOutput(result: GenerateJsonlResult): string[] {
-  return [
-    "Feature extraction:",
-    `  Records written: ${result.recordCount}`,
-    `  Output file: ${result.jsonlFile}`,
-    `  Duration: ${formatDuration(result.durationMs)}`
   ];
 }
 
@@ -438,23 +427,12 @@ export async function runClassifyCli(
     progressLogger.clearLine();
     runtime.stdout.write("\n");
 
-    // Step 2: Generate JSONL output with features + ratings + metadata
-    runtime.stdout.write("Extracting features to JSONL...\n");
-    const jsonlResult = await runtime.generateJsonlOutput(resolvedPlan, {
-      extractMetadata,
-      featureExtractor,
-      predictRatings,
-      onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
-    });
-
-    progressLogger.clearLine();
-    runtime.stdout.write("\n");
+    // JSONL is now written incrementally during generateAutoTags
+    // No separate Step 2 needed - features are flushed after each file
 
     const summary = [
       "Classification complete.",
-      ...summariseAutoTags(autoTagsResult),
-      "",
-      ...summariseJsonlOutput(jsonlResult)
+      ...summariseAutoTags(autoTagsResult)
     ];
     runtime.stdout.write(`${summary.join("\n")}\n`);
     return 0;
