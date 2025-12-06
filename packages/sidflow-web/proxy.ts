@@ -246,7 +246,7 @@ function enforceRateLimit(request: NextRequest): NextResponse | null {
   return null;
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
   const isAdminRoute = ADMIN_ROUTE_PATTERN.test(pathname);
   
