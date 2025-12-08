@@ -61,9 +61,9 @@ export const HEARTBEAT_CONFIG = {
   /** How often to emit heartbeat during long operations (ms) */
   INTERVAL_MS: 3000,
   /** After this many ms without update, thread is considered stale (ms) */
-  STALE_THRESHOLD_MS: 5000,
+  STALE_THRESHOLD_MS: 30000,  // 30 seconds - long enough for feature extraction (can block 10-30s)
   /** After this many ms of global inactivity, classification is stalled (ms) */
-  GLOBAL_STALL_TIMEOUT_MS: 30000,
+  GLOBAL_STALL_TIMEOUT_MS: 60000,  // 60 seconds for global stall
   /** Number of consecutive no-audio failures before engine escalation */
   NO_AUDIO_STREAK_THRESHOLD: 3,
 } as const;

@@ -1475,8 +1475,26 @@ export async function generateAutoTags(
       }
 
       // Essentia feature extraction with structured logging
+      // Start heartbeat to prevent thread from appearing stale during long feature extractions
       const extractionStartedAt = Date.now();
-      extractedFeatures = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+      const extractionHeartbeatInterval = setInterval(() => {
+        const now = Date.now();
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "tagging",
+          status: "working",
+          file: songLabel,
+          timestamp: now,
+          isHeartbeat: true,
+          phaseDurationMs: now - extractionStartedAt,
+        });
+      }, HEARTBEAT_INTERVAL_MS);
+
+      try {
+        extractedFeatures = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+      } finally {
+        clearInterval(extractionHeartbeatInterval);
+      }
       extractedFilesCount += 1;
       const extractionDurationMs = Date.now() - extractionStartedAt;
       
