@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.46 (2025-12-12)
+
+- ci: auto-create fly apps
+- chore: update CHANGES.md for 0.3.45
+
+
 ## 0.3.45 (2025-12-12)
 
 - Merge pull request #76 from chrisgleissner/feat/classification-pipeline-hardening
