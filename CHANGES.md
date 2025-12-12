@@ -1,6 +1,12 @@
 # Changelog
 
 
+## 0.3.47 (2025-12-12)
+
+- ci: fix fly app creation
+- chore: update CHANGES.md for 0.3.46
+
+
 ## 0.3.46 (2025-12-12)
 
 - ci: auto-create fly apps
