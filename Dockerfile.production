@@ -199,6 +199,12 @@ RUN set -eux; \
     # Create symlink so CLI scripts can find config from WORKDIR=/sidflow \
     ln -sf /sidflow/app/.sidflow.json /sidflow/.sidflow.json; \
     echo "[security] Config symlink created"; \
+    # Backward-compatible symlinks for legacy entrypoints and paths \
+    ln -sfn /sidflow/app/scripts /sidflow/scripts; \
+    if [ ! -e /app ]; then \
+        ln -s /sidflow/app /app; \
+    fi; \
+    echo "[security] Legacy path symlinks ready"; \
     find /usr/bin /usr/sbin /bin /sbin -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod -s {} + 2>/dev/null || true; \
     echo "[security] SUID/SGID stripping complete"; \
     # Tighten permissions on app scripts and web packages \
@@ -218,7 +224,7 @@ ENV NODE_ENV=production \
     SIDFLOW_CONFIG=/sidflow/app/.sidflow.json \
     SIDFLOW_CLI_DIR=/sidflow/app/scripts \
     SIDFLOW_TMPDIR=/opt/sidflow/tmp \
-    PATH="/sidflow/app/scripts:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
+    PATH="/sidflow/app/scripts:/sidflow/scripts:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}" \
     UMASK=0027
 
 # Expose application port

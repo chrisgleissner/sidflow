@@ -161,13 +161,6 @@ export function SidflowApp({ persona }: SidflowAppProps) {
     }
   }, [allowedTabs, activeTab, defaultTab]);
 
-  useEffect(() => {
-    document.body.dataset.persona = persona;
-    return () => {
-      delete document.body.dataset.persona;
-    };
-  }, [persona]);
-
   const { showToast } = useToastContext();
 
   const handleStatusChange = useCallback(

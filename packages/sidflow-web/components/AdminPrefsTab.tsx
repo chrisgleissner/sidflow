@@ -138,16 +138,16 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
   }, []);
 
   const applyTheme = (color: string, font: string) => {
-    const html = document.documentElement;
+    const body = document.body;
 
     if (color === "system") {
-      html.removeAttribute("data-theme");
+      body.removeAttribute("data-theme");
     } else {
-      html.setAttribute("data-theme", color);
+      body.setAttribute("data-theme", color);
     }
 
-    html.classList.remove("font-c64", "font-mono", "font-sans");
-    html.classList.add(`font-${font}`);
+    body.classList.remove("font-c64", "font-mono", "font-sans");
+    body.classList.add(`font-${font}`);
   };
 
   const handleColorChange = (value: string) => {

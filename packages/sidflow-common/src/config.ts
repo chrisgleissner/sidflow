@@ -66,6 +66,10 @@ export interface SidflowConfig {
   sidplayPath?: string;
   threads: number;
   classificationDepth: number;
+  /** Max render duration for streaming/export in seconds (default: 10) */
+  maxRenderSec?: number;
+  /** Max render duration for classification in seconds (default: 10) */
+  maxClassifySec?: number;
   render?: RenderSettings;
   availability?: AvailabilityConfig;
   alerts?: AlertConfig;
@@ -223,6 +227,24 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     return path.normalize(raw);
   };
 
+  const optionalNumber = (key: keyof SidflowConfig, predicate: (n: number) => boolean): number | undefined => {
+    const raw = record[key as string];
+    if (raw === undefined) {
+      return undefined;
+    }
+    if (typeof raw !== "number" || Number.isNaN(raw)) {
+      throw new SidflowConfigError(
+        `Config key "${String(key)}" must be a number`
+      );
+    }
+    if (!predicate(raw)) {
+      throw new SidflowConfigError(
+        `Config key "${String(key)}" failed validation`
+      );
+    }
+    return raw;
+  };
+
   const sidPath = requiredString("sidPath");
 
   return {
@@ -233,6 +255,8 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     sidplayPath: optionalString("sidplayPath"),
     threads: requiredNumber("threads", (n) => Number.isInteger(n) && n >= 0),
     classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0),
+    maxRenderSec: optionalNumber("maxRenderSec", (n) => n > 0),
+    maxClassifySec: optionalNumber("maxClassifySec", (n) => n > 0),
     render: parseRenderSettings(record.render, configPath),
     availability: parseAvailabilityConfig(record.availability, configPath),
     alerts: parseAlertConfig(record.alerts, configPath),

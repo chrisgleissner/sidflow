@@ -53,6 +53,16 @@ const classifyLogger = createLogger("classify");
 /** Heartbeat interval for long-running operations (ms) */
 const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
 
+/**
+ * Maximum render duration for classification (ms).
+ * For classification, we only need a short snippet to extract audio features.
+ * Most SID music follows a repetitive pattern, so 10 seconds is sufficient.
+ * This can be configured via maxClassifySec in .sidflow.json (default: 10).
+ */
+function getMaxClassificationRenderMs(config: SidflowConfig): number {
+  return (config.maxClassifySec ?? 10) * 1000;
+}
+
 function withFeatureExtractionPool(
   plan: ClassificationPlan,
   featureExtractor: FeatureExtractor
@@ -729,22 +739,31 @@ export async function buildAudioCache(
           });
         }, HEARTBEAT_INTERVAL_MS);
 
+        const maxClassifyMs = getMaxClassificationRenderMs(plan.config);
         let targetDurationMs: number | undefined;
         try {
           const durations = await getSongDurations(sidFile);
           if (durations && durations.length > 0) {
             const index = Math.min(Math.max(songIndex - 1, 0), durations.length - 1);
-            targetDurationMs = durations[index];
+            const hvscDuration = durations[index];
+            // Cap at maxClassifyMs for classification efficiency
+            targetDurationMs = hvscDuration !== undefined 
+              ? Math.min(hvscDuration, maxClassifyMs)
+              : maxClassifyMs;
             if (targetDurationMs !== undefined && songlengthDebugCount < 5) {
               classifyLogger.debug(
-                `Resolved HVSC duration ${targetDurationMs}ms for ${songLabel}`
+                `Resolved HVSC duration ${hvscDuration}ms, capped to ${targetDurationMs}ms for ${songLabel}`
               );
               songlengthDebugCount += 1;
             }
+          } else {
+            // No HVSC duration available, use max classification duration
+            targetDurationMs = maxClassifyMs;
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           classifyLogger.warn(`Unable to resolve song length for ${songLabel}: ${message}`);
+          targetDurationMs = maxClassifyMs;
         }
 
         const renderOptions = {

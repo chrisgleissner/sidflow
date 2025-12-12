@@ -74,13 +74,16 @@ For each substantial user request or multi‑step feature, create a new Task sec
 **Plan (checklist)**  
 - [x] Review current Fly.io workflow logic (app/volume creation, org defaults, secrets) and the failure path.
 - [x] Update GitHub Actions workflow to auto-create apps/volumes (with safe defaults) for staging and production.
-- [ ] Validate config changes locally (lint/sanity), document defaults, and summarize next steps. *(blocked: no Fly credentials available locally to run deployments)*
+- [x] Fix Docker image startup to keep legacy `/sidflow/scripts` and `/app` paths alive for Fly.
+- [ ] Build and publish a new image via GitHub release, then deploy to staging and production. *(blocked: staging app access)*
 
 **Progress log**  
 - 2025-12-12 — Investigating release workflow; staging deploy fails when sidflow-stg is absent because FLY_CREATE_APPS is not set.
 - 2025-12-12 — Set workflow defaults to auto-create apps/volumes (FLY_CREATE_APPS/FLY_CREATE_VOLUMES=true, FLY_ORG default).
 - 2025-12-12 — Not running code/tests locally (workflow-only change).
 - 2025-12-12 — Validation blocked locally: Fly deployments require FLY_API_TOKEN/FLY_ORG in shell to run flyctl; tokens only available in GitHub Actions secrets.
+- 2025-12-12 — Local flyctl auth works with provided token but lacks app-create scope (creation of sidflow-stg fails: "Not authorized to deploy this app"); staging app still needs creation with a full-scope token or manual pre-create.
+- 2025-12-12 — Added compatibility symlinks in Dockerfile.production for `/sidflow/scripts` and `/app`; built image locally (sidflow:testfix) to verify startup script exists; `flyctl deploy --app sidflow-stg` blocked with "unauthorized".
 
 **Follow-ups**  
 - None yet.

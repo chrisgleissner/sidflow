@@ -6,6 +6,7 @@ import type {
   RenderEngine,
   RenderFormat,
   FfmpegWasmOptions,
+  SidflowConfig,
 } from "@sidflow/common";
 import {
   loadConfig,
@@ -15,7 +16,7 @@ import {
 
 const ENGINE_OPTIONS: RenderEngine[] = ["sidplayfp-cli", "ultimate64", "wasm"];
 const FORMAT_OPTIONS: RenderFormat[] = ["wav", "m4a", "flac"];
-const DEFAULT_TARGET_DURATION_MS = 120_000;
+const DEFAULT_TARGET_DURATION_MS = 10_000; // Default 10s, can be overridden by config.maxRenderSec
 const DEFAULT_MAX_LOSS = 0.01;
 
 export async function POST(request: NextRequest) {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const targetDurationMs = normalizeDuration(body.targetDurationMs);
+    const targetDurationMs = normalizeDuration(body.targetDurationMs, config);
     const maxLossRate = normalizeMaxLoss(body.maxLossRate);
     const outputDir = path.resolve(
       typeof body.outputDir === "string"
@@ -212,7 +213,7 @@ function resolveEngineOrder(
   return ordered;
 }
 
-function normalizeDuration(value: unknown): number {
+function normalizeDuration(value: unknown, config: SidflowConfig): number {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return Math.round(value);
   }
@@ -222,7 +223,8 @@ function normalizeDuration(value: unknown): number {
       return Math.round(parsed * 1000);
     }
   }
-  return DEFAULT_TARGET_DURATION_MS;
+  // Use config.maxRenderSec if available, otherwise fall back to DEFAULT_TARGET_DURATION_MS
+  return (config.maxRenderSec ?? DEFAULT_TARGET_DURATION_MS / 1000) * 1000;
 }
 
 function normalizeMaxLoss(value: unknown): number {

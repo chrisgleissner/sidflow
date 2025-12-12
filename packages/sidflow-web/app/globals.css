@@ -164,7 +164,8 @@ body[data-theme="classic"],
   --color-card-foreground: var(--card-foreground);
 }
 
-body[data-persona="admin"] {
+/* Admin persona defaults (only when no theme is explicitly set) */
+body:not([data-theme]):has([data-persona="admin"]) {
   --background: var(--admin-background);
   --foreground: var(--admin-foreground);
   --primary: var(--admin-primary);
@@ -184,7 +185,8 @@ body[data-persona="admin"] {
   --card-foreground: var(--admin-card-foreground);
 }
 
-body[data-persona="public"] {
+/* Public persona defaults (only when no theme is explicitly set) */
+body:not([data-theme]):has([data-persona="public"]) {
   --background: var(--public-background);
   --foreground: var(--public-foreground);
   --primary: var(--public-primary);
@@ -205,8 +207,9 @@ body[data-persona="public"] {
 }
 
 /*
-  User-selected theme overrides (duplicated after persona blocks)
-  Ensure these come AFTER persona variables so the theme wins in public UI.
+  User-selected theme overrides
+  These override both persona defaults and system preferences.
+  Higher specificity ensures themes always win.
 */
 body[data-theme="c64-light"] {
   --background: #6C5EB5;
