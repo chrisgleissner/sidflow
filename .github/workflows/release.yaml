@@ -275,7 +275,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
 
   # ===== FLY.IO DEPLOYMENTS (DEFAULT) =====
-  # Requires FLY_API_TOKEN secret and pre-created apps (sidflow-stg, sidflow)
+  # Requires FLY_API_TOKEN secret; apps/volumes will be auto-created when missing
   # Setup: https://fly.io/docs/flyctl/launch/
   deploy-fly-stg:
     name: Deploy to Staging (Fly.io)
@@ -289,6 +289,12 @@ jobs:
     environment:
       name: staging-fly
       url: https://sidflow-stg.fly.dev
+    env:
+      # Auto-create apps/volumes when missing so CI can bootstrap environments
+      FLY_CREATE_APPS: "true"
+      FLY_CREATE_VOLUMES: "true"
+      # Default org unless overridden by secret
+      FLY_ORG: ${{ secrets.FLY_ORG || 'personal' }}
     
     steps:
       - name: Checkout
@@ -350,7 +356,7 @@ jobs:
             VOLUME_SIZE="${FLY_VOLUME_SIZE_STG:-3}"
             if [[ "${FLY_CREATE_VOLUMES:-false}" == "true" ]]; then
               echo "Volume ${MOUNT_NAME} not found. Creating size ${VOLUME_SIZE}GB in ${PRIMARY_REGION}..."
-              flyctl volumes create "${MOUNT_NAME}" --region "${PRIMARY_REGION}" --size "${VOLUME_SIZE}" --app "${STG_APP_NAME}"
+              flyctl volumes create "${MOUNT_NAME}" --region "${PRIMARY_REGION}" --size "${VOLUME_SIZE}" --app "${STG_APP_NAME}" --yes
             else
               echo "❌ Volume '${MOUNT_NAME}' not found for ${STG_APP_NAME}."
               echo "Create it with: flyctl volumes create ${MOUNT_NAME} --region ${PRIMARY_REGION} --size ${VOLUME_SIZE} --app ${STG_APP_NAME}"
@@ -416,6 +422,10 @@ jobs:
     environment:
       name: production-fly
       url: https://sidflow.fly.dev
+    env:
+      FLY_CREATE_APPS: "true"
+      FLY_CREATE_VOLUMES: "true"
+      FLY_ORG: ${{ secrets.FLY_ORG || 'personal' }}
     
     steps:
       - name: Checkout
@@ -466,7 +476,7 @@ jobs:
             VOLUME_SIZE="${FLY_VOLUME_SIZE_PRD:-10}"
             if [[ "${FLY_CREATE_VOLUMES:-false}" == "true" ]]; then
               echo "Volume ${MOUNT_NAME} not found. Creating size ${VOLUME_SIZE}GB in ${PRIMARY_REGION}..."
-              flyctl volumes create "${MOUNT_NAME}" --region "${PRIMARY_REGION}" --size "${VOLUME_SIZE}" --app "${PRD_APP_NAME}"
+              flyctl volumes create "${MOUNT_NAME}" --region "${PRIMARY_REGION}" --size "${VOLUME_SIZE}" --app "${PRD_APP_NAME}" --yes
             else
               echo "❌ Volume '${MOUNT_NAME}' not found for ${PRD_APP_NAME}."
               echo "Create it with: flyctl volumes create ${MOUNT_NAME} --region ${PRIMARY_REGION} --size ${VOLUME_SIZE} --app ${PRD_APP_NAME}"

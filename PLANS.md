@@ -66,6 +66,25 @@ For each substantial user request or multi‑step feature, create a new Task sec
 **Follow-ups**  
 - None yet.
 
+### Task: Fix Fly.io CI deploy (2025-12-12)
+
+**User request (summary)**  
+- Make staging/production Fly.io deployments succeed in CI; staging currently fails because the app is missing.
+
+**Plan (checklist)**  
+- [x] Review current Fly.io workflow logic (app/volume creation, org defaults, secrets) and the failure path.
+- [x] Update GitHub Actions workflow to auto-create apps/volumes (with safe defaults) for staging and production.
+- [ ] Validate config changes locally (lint/sanity), document defaults, and summarize next steps. *(blocked: no Fly credentials available locally to run deployments)*
+
+**Progress log**  
+- 2025-12-12 — Investigating release workflow; staging deploy fails when sidflow-stg is absent because FLY_CREATE_APPS is not set.
+- 2025-12-12 — Set workflow defaults to auto-create apps/volumes (FLY_CREATE_APPS/FLY_CREATE_VOLUMES=true, FLY_ORG default).
+- 2025-12-12 — Not running code/tests locally (workflow-only change).
+- 2025-12-12 — Validation blocked locally: Fly deployments require FLY_API_TOKEN/FLY_ORG in shell to run flyctl; tokens only available in GitHub Actions secrets.
+
+**Follow-ups**  
+- None yet.
+
 ---
 
 ## Archived Tasks
