@@ -15,6 +15,7 @@ import { createLogger } from "@sidflow/common";
 import { Worker } from "node:worker_threads";
 import type { WorkerOptions } from "node:worker_threads";
 import type { FeatureVector } from "./index.js";
+import os from "node:os";
 
 interface WorkerMessage {
   type: "result" | "error";
@@ -236,7 +237,8 @@ let globalPool: FeatureExtractionPool | null = null;
  */
 export function getFeatureExtractionPool(size?: number): FeatureExtractionPool {
   if (!globalPool) {
-    const poolSize = size ?? Math.max(1, require("os").cpus().length);
+    const normalizedSize = size === 0 ? undefined : size;
+    const poolSize = normalizedSize ?? Math.max(1, os.cpus().length || 1);
     globalPool = new FeatureExtractionPool(poolSize);
   }
   return globalPool;

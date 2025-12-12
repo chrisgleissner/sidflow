@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { middleware as proxy } from '@/middleware';
+import { proxy } from '@/proxy';
 import { NextRequest } from 'next/server';
 
 describe('Security headers', () => {

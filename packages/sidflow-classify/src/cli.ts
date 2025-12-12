@@ -31,6 +31,8 @@ interface ClassifyCliOptions {
   forceRebuild?: boolean;
   skipAlreadyClassified?: boolean;
   deleteWavAfterClassification?: boolean;
+  limit?: number;
+  sidPathPrefix?: string;
   featureModule?: string;
   predictorModule?: string;
   metadataModule?: string;
@@ -48,6 +50,8 @@ const KNOWN_FLAGS = new Set([
   "--force-rebuild",
   "--skip-already-classified",
   "--delete-wav-after-classification",
+  "--limit",
+  "--sid-path-prefix",
   "--feature-module",
   "--predictor-module",
   "--metadata-module",
@@ -80,6 +84,8 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
         break;
       }
       case "--config":
+      case "--limit":
+      case "--sid-path-prefix":
       case "--feature-module":
       case "--predictor-module":
       case "--metadata-module":
@@ -90,6 +96,15 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
         } else {
           if (token === "--config") {
             options.configPath = next;
+          } else if (token === "--limit") {
+            const parsed = Number.parseInt(next, 10);
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+              errors.push(`--limit must be a positive integer (received ${next})`);
+            } else {
+              options.limit = parsed;
+            }
+          } else if (token === "--sid-path-prefix") {
+            options.sidPathPrefix = next;
           } else if (token === "--feature-module") {
             options.featureModule = next;
           } else if (token === "--predictor-module") {
@@ -134,6 +149,8 @@ function printHelp(): void {
     "  --force-rebuild                   Re-render WAVs even if cache is fresh",
     "  --skip-already-classified         Skip songs already in auto-tags.json",
     "  --delete-wav-after-classification Delete WAVs after classification (fly.io)",
+    "  --limit <n>                       Only classify the first N songs (after filtering)",
+    "  --sid-path-prefix <prefix>        Only classify SIDs under this relative path (e.g. C64Music/DEMOS)",
     "  --feature-module <path>           Module exporting a featureExtractor override",
     "  --predictor-module <path>         Module exporting a predictRatings override",
     "  --metadata-module <path>          Module exporting an extractMetadata override",
@@ -378,7 +395,9 @@ export async function runClassifyCli(
     };
 
     // Determine thread count
-    const threads = plan.config.threads || os.cpus().length;
+    const threads = (typeof plan.config.threads === "number" && plan.config.threads > 0)
+      ? plan.config.threads
+      : os.cpus().length;
     runtime.stdout.write(`Starting classification (threads: ${threads})\n`);
     runtime.stdout.write(`SID path: ${resolvedPlan.sidPath}\n`);
     runtime.stdout.write(`WAV cache path: ${resolvedPlan.audioCachePath}\n\n`);
@@ -420,6 +439,8 @@ export async function runClassifyCli(
       render,
       skipAlreadyClassified: options.skipAlreadyClassified,
       deleteWavAfterClassification: options.deleteWavAfterClassification,
+      limit: options.limit,
+      sidPathPrefix: options.sidPathPrefix,
       onThreadUpdate: threadLogger,
       onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
     });

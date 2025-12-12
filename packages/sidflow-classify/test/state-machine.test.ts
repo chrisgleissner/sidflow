@@ -18,8 +18,8 @@ import {
 describe('State Machine Configuration', () => {
   test('HEARTBEAT_CONFIG has correct values', () => {
     expect(HEARTBEAT_CONFIG.INTERVAL_MS).toBe(3000);
-    expect(HEARTBEAT_CONFIG.STALE_THRESHOLD_MS).toBe(5000);
-    expect(HEARTBEAT_CONFIG.GLOBAL_STALL_TIMEOUT_MS).toBe(30000);
+    expect(HEARTBEAT_CONFIG.STALE_THRESHOLD_MS).toBe(30000);  // 30s to accommodate long feature extractions
+    expect(HEARTBEAT_CONFIG.GLOBAL_STALL_TIMEOUT_MS).toBe(60000);  // 60s for global stall
     expect(HEARTBEAT_CONFIG.NO_AUDIO_STREAK_THRESHOLD).toBe(3);
   });
 
@@ -170,8 +170,8 @@ describe('Type Safety', () => {
     const streak: number = HEARTBEAT_CONFIG.NO_AUDIO_STREAK_THRESHOLD;
     
     expect(interval).toBe(3000);
-    expect(threshold).toBe(5000);
-    expect(stall).toBe(30000);
+    expect(threshold).toBe(30000);  // 30s to accommodate long feature extractions
+    expect(stall).toBe(60000);  // 60s for global stall
     expect(streak).toBe(3);
   });
 

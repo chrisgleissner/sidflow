@@ -18,7 +18,7 @@ interface ProgressState extends Omit<ClassifyProgressSnapshot, 'perThread' | 'co
   counters: ClassifyCounters;
 }
 
-const STALE_THREAD_MS = 5000;
+const STALE_THREAD_MS = 30000;  // 30 seconds - long enough for feature extraction (can take 10-30s)
 const NO_AUDIO_STREAK_THRESHOLD = 3;
 const GLOBAL_STALL_TIMEOUT_MS = 30000;
 

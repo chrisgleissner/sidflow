@@ -48,6 +48,24 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Active tasks
 
+### Task: Fix classify-heartbeat e2e test (2025-12-12)
+
+**User request (summary)**  
+- Unskip the classify-heartbeat test and make it pass reliably.
+
+**Plan (checklist)**  
+- [x] Inspect the current classify-heartbeat test setup and failure mode.
+- [x] Implement code/test fixes to prevent stale thread detection during classification.
+- [ ] Run targeted validations (at least the affected e2e/spec) and broader checks as feasible.
+- [ ] Record results and mark task complete once tests pass.
+
+**Progress log**  
+- 2025-12-12 — Started task, reviewing existing heartbeat test and classification progress handling.
+- 2025-12-12 — Converted heartbeat spec to Playwright (chromium-only, serial), added idle wait + stale tracking via API.
+
+**Follow-ups**  
+- None yet.
+
 ---
 
 ## Archived Tasks

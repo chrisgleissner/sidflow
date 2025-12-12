@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { NextRequest } from 'next/server';
-import { middleware as proxy } from '@/middleware';
+import { proxy } from '@/proxy';
 
 function createRequest(pathname: string, headers?: Record<string, string>): NextRequest {
     const url = new URL(`http://localhost${pathname}`);
