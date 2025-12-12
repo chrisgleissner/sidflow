@@ -40,11 +40,9 @@ interface ProgressSnapshot {
 }
 
 const ACTIVE_PHASES = new Set(['analyzing', 'building', 'metadata', 'tagging']);
-const POLL_INTERVAL_MS = 750;
-const MAX_POLL_MS = 45_000;
-const MAX_INACTIVE_POLLS = 5;
-
-test.setTimeout(90_000);
+const POLL_INTERVAL_MS = 500;
+const MAX_POLL_MS = 15_000;
+const MAX_INACTIVE_POLLS = 3;
 
 async function waitForClassificationIdle(request: APIRequestContext, timeoutMs = 30_000): Promise<void> {
   const start = Date.now();
