@@ -1,6 +1,17 @@
 # Changelog
 
 
+## 0.3.45 (2025-12-12)
+
+- Merge pull request #76 from chrisgleissner/feat/classification-pipeline-hardening
+- fix: adjust polling parameters for classification heartbeat test to improve performance
+- feat: enhance classification CLI with limit and sidPathPrefix options; improve heartbeat test for thread freshness
+- chore: remove committed training JSONL artifact
+- feat: enhance heartbeat mechanism to prevent stale threads during long feature extraction
+- fix: rename middleware.ts to proxy.ts for Next.js 16 compatibility
+- chore: update CHANGES.md for 0.3.44
+
+
 ## 0.3.44 (2025-12-06)
 
 - Merge pull request #75 from chrisgleissner/feat/classification-pipeline-hardening
