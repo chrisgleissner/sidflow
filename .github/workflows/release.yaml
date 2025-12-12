@@ -341,12 +341,12 @@ jobs:
           # Ensure app exists (optional auto-create when FLY_CREATE_APPS=true)
           if ! flyctl apps list --json | jq -er ".[] | select(.Name==\"${STG_APP_NAME}\")" > /dev/null; then
             if [[ "${FLY_CREATE_APPS:-false}" == "true" ]]; then
-              echo "App ${STG_APP_NAME} not found. Creating in org '${ORG_NAME}' (region ${PRIMARY_REGION})..."
-              flyctl apps create "${STG_APP_NAME}" --region "${PRIMARY_REGION}" --org "${ORG_NAME}"
-            else
+              echo "App ${STG_APP_NAME} not found. Creating in org '${ORG_NAME}'..."
+              flyctl apps create "${STG_APP_NAME}" --org "${ORG_NAME}"
+              else
               echo "❌ App '${STG_APP_NAME}' does not exist."
-              echo "Create it with: flyctl apps create ${STG_APP_NAME} --region ${PRIMARY_REGION} --org ${ORG_NAME}"
-              echo "Or set FLY_CREATE_APPS=true and optionally FLY_ORG=<org> to auto-create in CI."
+              echo "Create it with: flyctl apps create ${STG_APP_NAME} --org ${ORG_NAME}"
+              echo "Or set FLY_CREATE_APPS=true and optionally FLY_ORG=<org> to auto-create in CI (region comes from fly.stg.toml)."
               exit 1
             fi
           fi
@@ -461,12 +461,12 @@ jobs:
           # Ensure app exists (optional auto-create when FLY_CREATE_APPS=true)
           if ! flyctl apps list --json | jq -er ".[] | select(.Name==\"${PRD_APP_NAME}\")" > /dev/null; then
             if [[ "${FLY_CREATE_APPS:-false}" == "true" ]]; then
-              echo "App ${PRD_APP_NAME} not found. Creating in org '${ORG_NAME}' (region ${PRIMARY_REGION})..."
-              flyctl apps create "${PRD_APP_NAME}" --region "${PRIMARY_REGION}" --org "${ORG_NAME}"
-            else
+              echo "App ${PRD_APP_NAME} not found. Creating in org '${ORG_NAME}'..."
+              flyctl apps create "${PRD_APP_NAME}" --org "${ORG_NAME}"
+              else
               echo "❌ App '${PRD_APP_NAME}' does not exist on Fly.io."
-              echo "Create it with: flyctl apps create ${PRD_APP_NAME} --region ${PRIMARY_REGION} --org ${ORG_NAME}"
-              echo "Or set FLY_CREATE_APPS=true and optionally FLY_ORG=<org> to auto-create in CI."
+              echo "Create it with: flyctl apps create ${PRD_APP_NAME} --org ${ORG_NAME}"
+              echo "Or set FLY_CREATE_APPS=true and optionally FLY_ORG=<org> to auto-create in CI (region comes from fly.prd.toml)."
               exit 1
             fi
           fi
