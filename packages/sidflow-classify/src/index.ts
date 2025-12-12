@@ -53,6 +53,29 @@ const classifyLogger = createLogger("classify");
 /** Heartbeat interval for long-running operations (ms) */
 const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
 
+function withFeatureExtractionPool(
+  plan: ClassificationPlan,
+  featureExtractor: FeatureExtractor
+): FeatureExtractor {
+  const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ["wasm"];
+  const hasWasm = preferredEngines.includes("wasm");
+  const wantWorkers = plan.config.threads !== 1;
+
+  if (!hasWasm || !wantWorkers) {
+    return featureExtractor;
+  }
+
+  // Keep the main thread responsive: run CPU-bound extraction in worker threads.
+  const pool = getFeatureExtractionPool(plan.config.threads);
+  return async ({ wavFile, sidFile }) => {
+    try {
+      return await pool.extract(wavFile, sidFile);
+    } catch {
+      return featureExtractor({ wavFile, sidFile });
+    }
+  };
+}
+
 export type ThreadPhase = "analyzing" | "building" | "metadata" | "tagging";
 
 /**
@@ -1145,6 +1168,11 @@ export interface GenerateAutoTagsOptions {
   threads?: number;
   onThreadUpdate?: (update: ThreadActivityUpdate) => void;
   render?: RenderWav;
+  /** Only classify SIDs under this relative path prefix (POSIX or platform separators).
+   * Example: "C64Music/DEMOS" */
+  sidPathPrefix?: string;
+  /** Only process the first N songs (after filtering). */
+  limit?: number;
   /** Skip songs that are already classified (based on auto-tags.json, not WAV files).
    * This option is ignored if forceRebuild is true. */
   skipAlreadyClassified?: boolean;
@@ -1200,9 +1228,17 @@ export async function generateAutoTags(
     classifyLogger.info(`Deleted ${deletedCount} audio files from cache`);
   }
   
-  const sidFiles = await collectSidFiles(plan.sidPath);
+  let sidFiles = await collectSidFiles(plan.sidPath);
+  if (options.sidPathPrefix) {
+    const normalizedPrefix = toPosixRelative(options.sidPathPrefix).replace(/\/$/, "");
+    sidFiles = sidFiles.filter((sidFile) => {
+      const relative = toPosixRelative(resolveRelativeSidPath(plan.sidPath, sidFile));
+      return relative === normalizedPrefix || relative.startsWith(`${normalizedPrefix}/`);
+    });
+  }
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
-  const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
+  const featureExtractorBase = options.featureExtractor ?? defaultFeatureExtractor;
+  const featureExtractor = withFeatureExtractionPool(plan, featureExtractorBase);
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
@@ -1301,9 +1337,14 @@ export async function generateAutoTags(
 
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
-  const totalFiles = totalSongs;
+  const configuredLimit = options.limit;
+  const totalFiles = typeof configuredLimit === "number"
+    ? Math.min(totalSongs, Math.max(0, Math.floor(configuredLimit)))
+    : totalSongs;
   const jobs: AutoTagJob[] = [];
   let metadataProcessed = 0;
+
+  let songsQueued = 0;
 
   for (const sidFile of sidFiles) {
     const relativePath = resolveRelativeSidPath(plan.sidPath, sidFile);
@@ -1323,6 +1364,9 @@ export async function generateAutoTags(
     const durations = await getSongDurations(sidFile);
 
     for (let songIndex = 1; songIndex <= songCount; songIndex++) {
+      if (typeof configuredLimit === "number" && songsQueued >= configuredLimit) {
+        break;
+      }
       if (onProgress && metadataProcessed % AUTOTAG_PROGRESS_INTERVAL === 0) {
         onProgress({
           phase: "metadata",
@@ -1363,6 +1407,11 @@ export async function generateAutoTags(
         wavPath,
         targetDurationMs: durations?.[Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1)]
       });
+      songsQueued += 1;
+    }
+
+    if (typeof configuredLimit === "number" && songsQueued >= configuredLimit) {
+      break;
     }
   }
   

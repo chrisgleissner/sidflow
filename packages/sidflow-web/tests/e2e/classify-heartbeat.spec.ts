@@ -1,29 +1,14 @@
 /**
  * E2E Test: Classification Heartbeat - No Stale Threads
  *
- * This test validates that the classification heartbeat mechanism prevents
- * threads from appearing stale during long-running operations like feature extraction.
+ * Validates that the heartbeat emitted by the classification process prevents
+ * threads from appearing stale during long-running work (rendering + tagging).
  *
- * The test:
- * 1. Starts a classification via POST /api/classify
- * 2. Polls /api/classify/progress at regular intervals
- * 3. Checks that no threads are marked as "stale" during the tagging phase
- * 4. Ensures heartbeats keep threads fresh during feature extraction
- *
- * This is the regression test for the bug where threads showed "(STALE)" status
- * during the "Extracting features" phase.
+ * Regression coverage for the "(STALE)" indicator shown during "Extracting features".
  */
 
-import { test, expect } from '@playwright/test';
-
-// Skip in CI - classification can take too long and cause flaky failures
-const isCI = !!process.env.CI;
-
-// Force serial execution since tests share classification backend state
-test.describe.configure({ mode: 'serial' });
-
-// Moderate timeout for classification operations
-test.setTimeout(120000); // 2 minutes
+import { test, expect } from './test-hooks';
+import type { APIRequestContext } from '@playwright/test';
 
 interface ThreadStatus {
   id: number;
@@ -37,7 +22,6 @@ interface ThreadStatus {
 interface ProgressResponse {
   success?: boolean;
   data?: ProgressSnapshot;
-  // Also handle flat response structure
   phase?: string;
   isActive?: boolean;
   perThread?: ThreadStatus[];
@@ -55,125 +39,151 @@ interface ProgressSnapshot {
   percentComplete?: number;
 }
 
-test.describe('Classification Heartbeat - No Stale Threads', () => {
-  test.skip(isCI, 'Classification heartbeat tests skipped in CI - too slow');
+const ACTIVE_PHASES = new Set(['analyzing', 'building', 'metadata', 'tagging']);
+const POLL_INTERVAL_MS = 750;
+const MAX_POLL_MS = 45_000;
+const MAX_INACTIVE_POLLS = 5;
 
-  test('threads should never become stale during feature extraction', async ({ request }) => {
-    // Track stale thread occurrences
-    const staleSnapshots: Array<{
-      timestamp: number;
-      phase: string;
-      staleThreads: ThreadStatus[];
-    }> = [];
+test.setTimeout(90_000);
 
-    let seenTaggingPhase = false;
-    let taggingPhaseSnapshots = 0;
-    let seenActiveThread = false;
-
-    // Step 1: Start classification
-    const startResponse = await request.post('/api/classify', {
-      headers: { 'Content-Type': 'application/json' },
-      data: {},
-      timeout: 10000,
-    });
-
-    // Accept 200 (new start) or 500 with "already running" (test can continue)
-    const startData = await startResponse.json();
-    const alreadyRunning = startData.error?.includes('already running') || startData.details?.includes('already running');
-    expect(startResponse.ok() || alreadyRunning, `Failed to start classification: ${JSON.stringify(startData)}`).toBe(true);
-
-    // Step 2: Poll progress and check for stale threads
-    const startTime = Date.now();
-    const maxPollingTime = 90000; // 90 seconds max polling
-    const pollInterval = 400; // Poll every 400ms to catch stale quickly
-
-    let lastPhase = '';
-    let classificationComplete = false;
-
-    while (Date.now() - startTime < maxPollingTime && !classificationComplete) {
-      const progressResponse = await request.get('/api/classify/progress');
-
-      if (!progressResponse.ok()) {
-        await new Promise((r) => setTimeout(r, pollInterval));
-        continue;
+async function waitForClassificationIdle(request: APIRequestContext, timeoutMs = 30_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await request.get('/api/classify/progress');
+      if (response.ok()) {
+        const body = (await response.json()) as ProgressResponse;
+        const progress = body.data ?? body;
+        if (!progress.isActive || progress.phase === 'idle' || progress.phase === 'completed') {
+          return;
+        }
+      } else {
+        return;
       }
-
-      const rawProgress: ProgressResponse = await progressResponse.json();
-
-      // Handle both wrapped {success, data} and flat response structure
-      const progress: ProgressSnapshot = rawProgress.data ?? {
-        phase: rawProgress.phase ?? 'unknown',
-        isActive: rawProgress.isActive ?? false,
-        perThread: rawProgress.perThread ?? [],
-        processedFiles: rawProgress.processedFiles,
-        totalFiles: rawProgress.totalFiles,
-        percentComplete: rawProgress.percentComplete,
-      };
-
-      // Track phase changes
-      if (progress.phase !== lastPhase) {
-        lastPhase = progress.phase;
-      }
-
-      // Track if we've seen any working threads
-      const workingThreads = progress.perThread?.filter((t) => t.status === 'working') ?? [];
-      if (workingThreads.length > 0) {
-        seenActiveThread = true;
-      }
-
-      // Check for stale threads
-      const staleThreads = progress.perThread?.filter((t) => t.stale) ?? [];
-
-      if (staleThreads.length > 0) {
-        // Record stale occurrence
-        staleSnapshots.push({
-          timestamp: Date.now() - startTime,
-          phase: progress.phase,
-          staleThreads: staleThreads.map((t) => ({ ...t })),
-        });
-      }
-
-      // Track tagging phase specifically
-      if (progress.phase === 'tagging') {
-        seenTaggingPhase = true;
-        taggingPhaseSnapshots++;
-      }
-
-      // Also track building phase for stale detection
-      if (progress.phase === 'building') {
-        // Building phase should also not have stale threads
-      }
-
-      // Check for completion
-      if (progress.phase === 'completed' || progress.phase === 'error') {
-        classificationComplete = true;
-      }
-
-      // Also stop if we're back to idle with no activity
-      if (progress.phase === 'idle' && seenActiveThread) {
-        classificationComplete = true;
-      }
-
-      await new Promise((r) => setTimeout(r, pollInterval));
+    } catch {
+      return;
     }
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  throw new Error('Timed out waiting for classification to become idle');
+}
 
-    // Step 3: Assert no stale threads during tagging phase
-    // Filter stale snapshots to only those during tagging phase (feature extraction)
-    const taggingStaleSnapshots = staleSnapshots.filter((s) => s.phase === 'tagging');
+async function pauseClassification(request: APIRequestContext): Promise<void> {
+  try {
+    await request.post('/api/classify/control', { data: { action: 'pause' } });
+  } catch {
+    // Best-effort cleanup; ignore errors
+  }
+}
 
-    // Main assertion: No stale threads during tagging/feature extraction phase
-    expect(taggingStaleSnapshots.length, 'No threads should become stale during tagging (feature extraction) phase').toBe(0);
+test.describe.configure({ mode: 'serial' });
+test.skip(({ browserName }) => browserName !== 'chromium', 'Runs once per suite to avoid duplicate classification runs');
 
-    // If we saw tagging phase, we should have monitored it adequately
-    if (seenTaggingPhase) {
-      expect(taggingPhaseSnapshots, 'Should have at least 2 progress snapshots during tagging phase').toBeGreaterThanOrEqual(2);
-    }
+test('Classification Heartbeat - threads should not become stale during feature extraction', async ({ request }) => {
+  const startedAt = Date.now();
+  console.log('[heartbeat] ensuring classification is idle before starting');
+  await waitForClassificationIdle(request);
 
-    // We should have seen at least some working threads if classification ran
-    // (Skip this check if classification finished too quickly or there were no files)
-    // expect(seenActiveThread, 'Should have seen at least one working thread during classification').toBe(true);
-
-    // Log summary for debugging
-    console.log(`Heartbeat test: ${seenTaggingPhase ? 'saw' : 'did not see'} tagging phase, ${staleSnapshots.length} stale incidents`);
+  const startResponse = await request.post('/api/classify', {
+    data: {},
+    headers: { 'Content-Type': 'application/json' },
   });
+
+  const startData = ((await startResponse.json().catch(() => ({}))) || {}) as { error?: string; details?: string };
+  const alreadyRunning =
+    startData.error?.includes('already running') || startData.details?.includes('already running');
+  expect(
+    startResponse.ok() || alreadyRunning,
+    `Failed to start classification: ${JSON.stringify(startData)}`
+  ).toBe(true);
+  console.log('[heartbeat] classification start request accepted');
+
+  const staleSnapshots: Array<{
+    timestamp: number;
+    phase: string;
+    staleThreads: ThreadStatus[];
+  }> = [];
+
+  let activePolls = 0;
+  let pollCount = 0;
+  let classificationComplete = false;
+  let lastProgress: ProgressSnapshot | null = null;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < MAX_POLL_MS && (!classificationComplete || activePolls === 0)) {
+    const progressResponse = await request.get('/api/classify/progress');
+    if (!progressResponse.ok()) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      continue;
+    }
+
+    const rawProgress = (await progressResponse.json()) as ProgressResponse;
+    const progress: ProgressSnapshot = rawProgress.data ?? {
+      phase: rawProgress.phase ?? 'unknown',
+      isActive: rawProgress.isActive ?? false,
+      perThread: rawProgress.perThread ?? [],
+      processedFiles: rawProgress.processedFiles,
+      totalFiles: rawProgress.totalFiles,
+      percentComplete: rawProgress.percentComplete,
+    };
+
+    lastProgress = progress;
+    pollCount += 1;
+
+    const phase = progress.phase ?? 'unknown';
+    const perThread = progress.perThread ?? [];
+    const workingThreads = perThread.filter((t) => t.status === 'working');
+    const staleThreads = perThread.filter((t) => t.stale);
+
+    if (pollCount === 1 || pollCount % 5 === 0) {
+      console.log(
+        `[heartbeat] poll=${pollCount} phase=${phase} active=${progress.isActive} stale=${staleThreads.length} ` +
+          `working=${workingThreads.length}`
+      );
+    }
+
+    if (progress.isActive || workingThreads.length > 0) {
+      activePolls += 1;
+    }
+
+    if (staleThreads.length > 0) {
+      staleSnapshots.push({
+        timestamp: Date.now() - startTime,
+        phase,
+        staleThreads: staleThreads.map((t) => ({ ...t })),
+      });
+    }
+
+    if (phase === 'completed' || phase === 'error' || progress.isActive === false) {
+      classificationComplete = true;
+      if (activePolls > 0) {
+        break;
+      }
+    }
+
+    if (!progress.isActive && activePolls === 0 && pollCount >= MAX_INACTIVE_POLLS) {
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+
+  if (!classificationComplete && (lastProgress?.isActive ?? false)) {
+    await pauseClassification(request);
+    await waitForClassificationIdle(request, 5_000).catch(() => {});
+  }
+
+  console.log(
+    `[heartbeat] finished after ${(Date.now() - startedAt) / 1000}s ` +
+      `(polls=${pollCount}, activePolls=${activePolls}, staleIncidents=${staleSnapshots.length}, ` +
+      `lastPhase=${lastProgress?.phase ?? 'unknown'})`
+  );
+
+  const activePhaseStales = staleSnapshots.filter((s) => ACTIVE_PHASES.has(s.phase));
+  expect(
+    activePhaseStales.length,
+    `No threads should become stale during classification (incidents: ${JSON.stringify(activePhaseStales, null, 2)})`
+  ).toBe(0);
+
+  expect(activePolls).toBeGreaterThan(0);
 });

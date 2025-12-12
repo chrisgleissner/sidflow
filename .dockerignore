@@ -30,6 +30,7 @@ test-data
 performance/results
 performance/tmp
 workspace
+local-install
 
 # Documentation
 doc

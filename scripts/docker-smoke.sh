@@ -11,13 +11,13 @@ ADMIN_PASSWORD="${SIDFLOW_ADMIN_PASSWORD:-docker-smoke-secret}"
 HEALTH_URL="http://127.0.0.1:${HOST_PORT}/api/health"
 
 echo "[docker-smoke] Building image '${IMAGE_TAG}'"
-docker build -f "${ROOT_DIR}/Dockerfile.production" -t "${IMAGE_TAG}" "${ROOT_DIR}"
+"${ROOT_DIR}/scripts/run-with-timeout.sh" 1800 -- docker build -f "${ROOT_DIR}/Dockerfile.production" -t "${IMAGE_TAG}" "${ROOT_DIR}"
 
 echo "[docker-smoke] Cleaning any previous container '${CONTAINER_NAME}'"
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 
 echo "[docker-smoke] Starting container '${CONTAINER_NAME}' on host port ${HOST_PORT}"
-CONTAINER_ID="$(docker run -d \
+CONTAINER_ID="$("${ROOT_DIR}/scripts/run-with-timeout.sh" 120 -- docker run -d \
   --name "${CONTAINER_NAME}" \
   -p "${HOST_PORT}:3000" \
   -e SIDFLOW_ADMIN_USER="${ADMIN_USER}" \
