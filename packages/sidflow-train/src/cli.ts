@@ -9,6 +9,14 @@ import {
 } from "@sidflow/common";
 import { trainModel, type TrainModelOptions } from "./index.js";
 
+let trainModelOverride: typeof trainModel | undefined;
+
+export function __setTrainCliTestOverrides(overrides?: {
+  trainModel?: typeof trainModel;
+}): void {
+  trainModelOverride = overrides?.trainModel;
+}
+
 interface CliOptions {
   config?: string;
   epochs?: number;
@@ -91,7 +99,8 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       evaluate: options.evaluate
     };
 
-    const trainResult = await trainModel(trainOptions);
+    const train = trainModelOverride ?? trainModel;
+    const trainResult = await train(trainOptions);
 
     // Print summary
     process.stdout.write("\n=== Training Summary ===\n");

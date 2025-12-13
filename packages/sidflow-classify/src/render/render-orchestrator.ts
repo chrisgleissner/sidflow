@@ -28,6 +28,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { renderWavWithEngine, resolveTimeLimitSeconds } from "./wav-renderer.js";
 import { createEngine } from "./engine-factory.js";
+import { truncateWavFileToDurationMs } from "./wav-truncate.js";
+import { sliceWavFileToRepresentativeStart, trimLeadingSilenceWavFile } from "./wav-postprocess.js";
 
 const logger = createLogger("render-orchestrator");
 export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
@@ -43,6 +45,8 @@ export interface RenderRequest {
   readonly chip?: "6581" | "8580r5";
   readonly songIndex?: number;
   readonly maxRenderSeconds?: number;
+  readonly maxClassifySeconds?: number;
+  readonly introSkipSeconds?: number;
   readonly targetDurationMs?: number;
   readonly maxLossRate?: number;
 }
@@ -239,6 +243,39 @@ export class RenderOrchestrator {
     try {
       captureStats = await this.renderWav(request, wavPath, chip);
       logger.debug(`WAV rendered: ${wavPath}`);
+
+      // sidplayfp-cli's -t option can overshoot by seconds for some tracks.
+      // Enforce a hard upper bound on the produced WAV before any further processing.
+      const timeLimitSeconds = resolveTimeLimitSeconds(
+        request.targetDurationMs,
+        request.maxRenderSeconds
+      );
+      if (Number.isFinite(timeLimitSeconds) && timeLimitSeconds > 0) {
+        const maxDurationMs = Math.max(1, Math.floor(timeLimitSeconds * 1000));
+        await truncateWavFileToDurationMs(wavPath, maxDurationMs);
+      }
+
+      // Some engines can produce an initial silent segment. Trim a small prefix so
+      // cached WAVs and derived encodes start cleanly.
+      await trimLeadingSilenceWavFile(wavPath, { maxTrimSeconds: 2, threshold: 1e-4 });
+
+      // If we're capping render length, shift the audio start to a representative window
+      // (intro-skipping) so the cached artifact doesn't always begin at t=0.
+      if (
+        typeof request.maxRenderSeconds === "number" &&
+        Number.isFinite(request.maxRenderSeconds) &&
+        request.maxRenderSeconds > 0 &&
+        typeof request.maxClassifySeconds === "number" &&
+        Number.isFinite(request.maxClassifySeconds) &&
+        request.maxClassifySeconds > 0
+      ) {
+        await sliceWavFileToRepresentativeStart(wavPath, {
+          maxWindowSeconds: request.maxClassifySeconds,
+          introSkipSec: request.introSkipSeconds,
+        });
+        // Ensure any slice boundary doesn't reintroduce a small silent prefix.
+        await trimLeadingSilenceWavFile(wavPath, { maxTrimSeconds: 2, threshold: 1e-4 });
+      }
 
       if (request.formats.includes("wav")) {
         const stats = await fs.stat(wavPath);
@@ -496,7 +533,11 @@ export class RenderOrchestrator {
     }
 
     if (Number.isFinite(timeLimitSeconds) && timeLimitSeconds > 0) {
-      args.push(`-t${Math.ceil(timeLimitSeconds)}`);
+      // sidplayfp-cli only accepts whole seconds. Round up to ensure we render enough
+      // audio even for fractional targets; we hard-truncate the resulting WAV to the
+      // exact cap immediately after rendering.
+      const wholeSeconds = Math.max(1, Math.ceil(timeLimitSeconds));
+      args.push(`-t${wholeSeconds}`);
     }
 
     args.push(request.sidPath);

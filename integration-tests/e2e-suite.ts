@@ -27,6 +27,7 @@ import {
   defaultExtractMetadata,
   defaultRenderWav
 } from "../packages/sidflow-classify/src/index.js";
+import { probeWavDurationMs } from "../packages/sidflow-classify/src/render/wav-truncate.js";
 import { ensureDir } from "../packages/sidflow-common/src/fs.js";
 import { stringifyDeterministic } from "../packages/sidflow-common/src/json.js";
 import { createPlaybackController, PlaybackState } from "../packages/sidflow-play/src/index.js";
@@ -309,6 +310,30 @@ describe("End-to-End SIDFlow Pipeline", () => {
       // ffprobe not available, skip duration validation
       console.warn("ffprobe not available, skipping WAV duration validation");
     }
+  });
+
+  it("respects targetDurationMs by truncating rendered WAV output", async () => {
+    // This is a focused regression test for render/extract time caps.
+    // sidplayfp's -t option can overshoot; SIDFlow must enforce a hard upper bound.
+
+    const sidFile = path.join(sidPath, TEST_SID_PATH);
+    const outDir = path.join(tempRoot, "capped-render");
+    await ensureDir(outDir);
+    const wavFile = path.join(outDir, "capped.wav");
+
+    // Render with a strict 10s cap
+    await defaultRenderWav({
+      sidFile,
+      wavFile,
+      targetDurationMs: 10_000,
+      maxRenderSeconds: 10,
+      songIndex: 1,
+    } as any);
+
+    const durationMs = await probeWavDurationMs(wavFile);
+    expect(durationMs).toBeGreaterThan(0);
+    // Allow tiny header rounding, but never exceed the configured cap meaningfully
+    expect(durationMs).toBeLessThanOrEqual(10_000 + 25);
   });
 
   it("classifies SID files with auto-tags", async () => {

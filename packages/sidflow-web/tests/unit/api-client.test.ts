@@ -116,6 +116,10 @@ const preferencesPayload: PreferencesPayload = {
   defaultCollectionPath: '/collections/default',
   activeCollectionPath: '/collections/active',
   preferenceSource: 'default',
+  config: {
+    maxRenderSec: 10,
+    maxClassifySec: 10,
+  },
   preferences: {},
   sidplayfpConfig: {
     path: '/cfg/sidplayfp.ini',

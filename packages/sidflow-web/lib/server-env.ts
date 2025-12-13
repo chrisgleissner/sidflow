@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfig, type SidflowConfig } from '@sidflow/common';
+import { loadConfig, resetConfigCache, type SidflowConfig } from '@sidflow/common';
 
 let cachedRoot: string | null = null;
 let cachedConfigPath: string | null = null;
@@ -72,6 +72,12 @@ export async function getSidflowConfig(configPath?: string): Promise<SidflowConf
   cachedConfig = config;
   cachedConfigPath = resolvedPath;
   return config;
+}
+
+export function resetSidflowConfigCache(): void {
+  cachedConfig = null;
+  cachedConfigPath = null;
+  resetConfigCache();
 }
 
 export function resetServerEnvCacheForTests(): void {

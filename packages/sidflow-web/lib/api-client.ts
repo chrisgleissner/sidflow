@@ -33,6 +33,11 @@ export interface PreferencesPayload {
   defaultCollectionPath: string;
   activeCollectionPath: string;
   preferenceSource: 'default' | 'custom';
+  config: {
+    maxRenderSec?: number;
+    maxClassifySec?: number;
+    introSkipSec?: number;
+  };
   preferences: {
     sidBasePath?: string | null;
     kernalRomPath?: string | null;
@@ -120,6 +125,9 @@ export async function updatePreferences(payload: {
   renderEngine?: RenderTechnology | null;
   preferredEngines?: RenderTechnology[] | null;
   defaultFormats?: string[] | null;
+  maxRenderSec?: number | null;
+  maxClassifySec?: number | null;
+  introSkipSec?: number | null;
 }): Promise<ApiResponse<PreferencesPayload>> {
   return apiRequest('/prefs', payload);
 }

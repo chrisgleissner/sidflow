@@ -1,26 +1,15 @@
 {
-  "sidPath": "./workspace/hvsc",
-  "sidplayPath": "/usr/bin/sidplayfp",
   "audioCachePath": "./workspace/audio-cache",
-  "tagsPath": "./workspace/tags",
-  "classifiedPath": "./data/classified",
-  "threads": 0,
+  "availability": {
+    "assetRoot": "./data/renders",
+    "manifestPath": "./data/availability/streams.json"
+  },
   "classificationDepth": 3,
+  "classifiedPath": "./data/classified",
+  "introSkipSec": 10,
+  "maxClassifySec": 10,
+  "maxRenderSec": 20,
   "render": {
-    "outputPath": "./data/renders",
-    "defaultFormats": [
-      "wav",
-      "m4a",
-      "flac"
-    ],
-    "preferredEngines": [
-      "wasm",
-      "sidplayfp-cli",
-      "ultimate64"
-    ],
-    "defaultChip": "6581",
-    "m4aBitrate": 256,
-    "flacCompressionLevel": 5,
     "audioEncoder": {
       "implementation": "auto",
       "wasm": {
@@ -29,13 +18,28 @@
         "workerPath": "./node_modules/@ffmpeg/core/dist/ffmpeg-core.worker.js"
       }
     },
+    "defaultChip": "6581",
+    "defaultFormats": [
+      "wav",
+      "m4a",
+      "flac"
+    ],
+    "flacCompressionLevel": 5,
+    "m4aBitrate": 256,
+    "outputPath": "./data/renders",
+    "preferredEngines": [
+      "wasm",
+      "sidplayfp-cli",
+      "ultimate64"
+    ],
     "ultimate64": {
-      "host": "c64u",
-      "audioPort": 11001
+      "audioPort": 11001,
+      "host": "c64u"
     }
   },
-  "availability": {
-    "manifestPath": "./data/availability/streams.json",
-    "assetRoot": "./data/renders"
-  }
+  "sidPath": "./workspace/hvsc",
+  "sidplayPath": "/usr/bin/sidplayfp",
+  "tagsPath": "./workspace/tags",
+  "threads": 0
 }
+

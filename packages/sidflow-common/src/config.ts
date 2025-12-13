@@ -70,6 +70,8 @@ export interface SidflowConfig {
   maxRenderSec?: number;
   /** Max render duration for classification in seconds (default: 10) */
   maxClassifySec?: number;
+  /** Seconds to skip from the start when selecting a representative classification window (default: 10) */
+  introSkipSec?: number;
   render?: RenderSettings;
   availability?: AvailabilityConfig;
   alerts?: AlertConfig;
@@ -257,6 +259,7 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     classificationDepth: requiredNumber("classificationDepth", (n) => Number.isInteger(n) && n > 0),
     maxRenderSec: optionalNumber("maxRenderSec", (n) => n > 0),
     maxClassifySec: optionalNumber("maxClassifySec", (n) => n > 0),
+    introSkipSec: optionalNumber("introSkipSec", (n) => n > 0),
     render: parseRenderSettings(record.render, configPath),
     availability: parseAvailabilityConfig(record.availability, configPath),
     alerts: parseAlertConfig(record.alerts, configPath),

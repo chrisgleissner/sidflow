@@ -48,6 +48,105 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Active tasks
 
+### Task: Configurable intro skip + updated render/classify constraints (2025-12-13)
+
+**User request (summary)**
+- Fix the prefs copy/validation for timeouts: min `maxRenderSec` should be sensible (≥ 20s and ≥ `maxClassifySec + introSkipSec`).
+- Make the intro skip seconds configurable (default 10s) and apply it during representative-window selection; only reduce the skip when the song is too short.
+
+**Plan (checklist)**
+- [ ] Add `introSkipSec` to SIDFlow config schema and prefs API/UI.
+- [ ] Update representative-window selection to skip `introSkipSec` (clamped when audio too short).
+- [ ] Update min-render constraint logic and prefs UI copy (≥ 20s and ≥ `maxClassifySec + introSkipSec`).
+- [ ] Update/extend unit tests for API validation + representative-window behavior.
+- [ ] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
+
+**Progress log**
+- 2025-12-13 — Started task.
+
+### Task: Respect format prefs; trim WAV intro/silence; enforce render>=classify (2025-12-13)
+
+**User request (summary)**
+- Stop generating FLAC/M4A when deselected in prefs.
+- Remove ~1s silence at start of rendered WAVs.
+- When generating capped render artifacts (per `maxRenderSec`), skip intros in the rendered audio itself (postprocess to a representative snippet).
+- Enforce `maxRenderSec >= maxClassifySec` in UI + API.
+- Add unit tests; ensure full unit tests pass 3× consecutively (paste outputs).
+
+**Plan (checklist)**
+- [x] Wire web classify temp config to include prefs `defaultFormats`.
+- [x] Enforce `maxRenderSec >= maxClassifySec` in `/api/prefs`, UI, and config validation.
+- [x] Postprocess rendered WAVs: trim leading silence; select/slice representative snippet when `maxRenderSec` is active.
+- [x] Add fast unit tests for: prefs constraint rejection; temp config formats; WAV postprocessing.
+- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
+
+**Progress log**
+- 2025-12-13 — Started task; locating render format selection, prefs persistence, and WAV postprocessing hooks.
+- 2025-12-13 — Implemented: classify temp config respects `defaultFormats`; WAV leading-silence trim; representative-window slicing for capped renders; prefs/UI validation for render/classify constraints; added unit tests.
+- 2025-12-13 — Validation: `bun run test` 3× consecutive (all show `0 fail`):
+
+  Run #1:
+  1656 pass
+  2 skip
+  0 fail
+  Ran 1658 tests across 163 files. [50.61s]
+
+  Run #2:
+  1656 pass
+  2 skip
+  0 fail
+  Ran 1658 tests across 163 files. [50.33s]
+
+  Run #3:
+  1656 pass
+  2 skip
+  0 fail
+  Ran 1658 tests across 163 files. [50.72s]
+
+**Follow-ups**
+- None yet.
+
+### Task: Preserve cached WAVs; cap feature extraction window (2025-12-13)
+
+**User request (summary)**
+- If an oversized WAV is already present in the cache, never reduce its size (no truncation/rewrites on cache hits).
+- Cap **feature extraction** by analyzing only a representative fragment according to `maxClassifySec` (max extract duration), not necessarily the first seconds (skip intro when possible).
+- Only when cache artifacts do not exist should rendering be limited (respect `maxRenderSec` when creating new artifacts).
+- Add relevant unit tests; ensure build + unit tests pass 3× consecutively (capture output).
+
+**Plan (checklist)**
+- [x] Remove cache-hit WAV truncation (preserve existing cached audio artifacts).
+- [x] Add representative-window selection logic (intro-skipping) used by Essentia extraction (main thread + worker).
+- [x] Ensure render-time limiting applies only when creating new artifacts (use `maxRenderSec`).
+- [x] Update/replace tests to cover: no cache-hit truncation; window-limited extraction; render caps remain enforced for new renders.
+- [x] Validation: `bun run build`; `bun run test` 3× consecutively (paste outputs).
+
+**Progress log**
+- 2025-12-13 — Started implementation; locating cache-hit truncation and full-WAV extraction code paths.
+- 2025-12-13 — Implemented representative-window extraction (intro skip + energy pick) and removed cache-hit truncation.
+- 2025-12-13 — Validation: `bun run build` x3 (passes; upstream check prints “Upstream changed; WASM rebuild required.” but exits 0).
+- 2025-12-13 — Validation: `bun run test` x3 consecutive: 1650 pass, 2 skip, 0 fail.
+
+**Follow-ups**
+- None yet.
+
+### Task: Wire maxRenderSec/maxClassifySec into prefs UI/API (2025-12-13)
+
+**User request (summary)**
+- Make `maxRenderSec` and `maxClassifySec` controllable via the prefs tab UI and the prefs REST API.
+- Add exceptionally fast tests covering edge conditions; ensure full build + tests pass 3× consecutively.
+
+**Plan (checklist)**
+- [x] Add prefs REST API support for reading/updating these config keys.
+- [x] Add prefs UI controls that round-trip through the API.
+- [x] Add fast unit tests for prefs route validation + persistence.
+- [x] Add fast unit tests for classification duration capping across edge values.
+- [x] Run `bun run build` and `bun run test` 3× consecutively (capture output).
+
+**Progress log**
+- 2025-12-13 — Wired config limits through /api/prefs and Admin prefs UI; added fast unit tests for API route + classification edge cases.
+- 2025-12-13 — Validation: `bun run build && bun run test` x3: 1643 pass, 2 skip, 0 fail (all 3 runs).
+
 ### Task: Fix classify-heartbeat e2e test (2025-12-12)
 
 **User request (summary)**  

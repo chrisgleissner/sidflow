@@ -123,6 +123,9 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
   const [isSavingRom, setIsSavingRom] = useState(false);
   const [isLoadingFolders, setIsLoadingFolders] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [maxRenderSec, setMaxRenderSec] = useState<number>(10);
+  const [maxClassifySec, setMaxClassifySec] = useState<number>(10);
+  const [introSkipSec, setIntroSkipSec] = useState<number>(10);
   const kernalFileInputRef = useRef<HTMLInputElement | null>(null);
   const basicFileInputRef = useRef<HTMLInputElement | null>(null);
   const chargenFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -206,6 +209,9 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
           response.data.sidplayfpConfig.chargenRomPath ??
           "",
       );
+      setMaxRenderSec(response.data.config.maxRenderSec ?? 10);
+      setMaxClassifySec(response.data.config.maxClassifySec ?? 10);
+      setIntroSkipSec(response.data.config.introSkipSec ?? 10);
       syncSidplayState(response.data.preferences.sidplayfpCliFlags ?? null);
     } else {
       onStatusChange(
@@ -587,6 +593,28 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
     (option) => !preferredEngines.includes(option.value),
   );
 
+  const parsePositiveSeconds = (raw: string, fallback: number): number => {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      return fallback;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return fallback;
+    }
+    return parsed;
+  };
+
+  const computeMinRenderSecForRepresentativeWindow = (
+    nextMaxClassifySec: number,
+    nextIntroSkipSec: number,
+  ): number => {
+    const resolvedIntroSkipSec = Number.isFinite(nextIntroSkipSec) && nextIntroSkipSec > 0
+      ? nextIntroSkipSec
+      : 10;
+    return Math.max(20, resolvedIntroSkipSec + nextMaxClassifySec);
+  };
+
   return (
     <div className="space-y-6">
       <header className="space-y-1">
@@ -787,6 +815,137 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
               Reset
             </Button>
           </div>
+
+          <div className="grid gap-3 border-t border-border/60 pt-4">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-muted-foreground">Timeouts</p>
+              <p className="text-[11px] text-muted-foreground">
+                Classification skips the first {introSkipSec}s by default (unless the song is too short), then extracts a {maxClassifySec}s analysis window.
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Minimum max render seconds is{' '}
+                {computeMinRenderSecForRepresentativeWindow(maxClassifySec, introSkipSec).toFixed(2)} (must be ≥ 20s and ≥ introSkipSec + maxClassifySec).
+              </p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold text-muted-foreground">Max render seconds</p>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={maxRenderSec}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setMaxRenderSec(
+                      parsePositiveSeconds(event.target.value, maxRenderSec),
+                    )
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold text-muted-foreground">Max classify seconds</p>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={maxClassifySec}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setMaxClassifySec(
+                      parsePositiveSeconds(event.target.value, maxClassifySec),
+                    )
+                  }
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold text-muted-foreground">Intro skip seconds</p>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={introSkipSec}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setIntroSkipSec(
+                      parsePositiveSeconds(event.target.value, introSkipSec),
+                    )
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  if (!Number.isFinite(maxRenderSec) || maxRenderSec <= 0) {
+                    onStatusChange('Max render seconds must be > 0', true);
+                    return;
+                  }
+                  if (!Number.isFinite(maxClassifySec) || maxClassifySec <= 0) {
+                    onStatusChange('Max classify seconds must be > 0', true);
+                    return;
+                  }
+                  if (!Number.isFinite(introSkipSec) || introSkipSec <= 0) {
+                    onStatusChange('Intro skip seconds must be > 0', true);
+                    return;
+                  }
+                  const minRender = computeMinRenderSecForRepresentativeWindow(maxClassifySec, introSkipSec);
+                  if (maxRenderSec < minRender) {
+                    onStatusChange(
+                      `Max render seconds must be ≥ ${minRender.toFixed(2)} (must be ≥ 20s and ≥ introSkipSec + maxClassifySec)`,
+                      true,
+                    );
+                    return;
+                  }
+                  const response = await updatePreferences({
+                    maxRenderSec,
+                    maxClassifySec,
+                    introSkipSec,
+                  });
+                  if (response.success) {
+                    setPrefsInfo(response.data);
+                    setMaxRenderSec(response.data.config.maxRenderSec ?? 10);
+                    setMaxClassifySec(response.data.config.maxClassifySec ?? 10);
+                    setIntroSkipSec(response.data.config.introSkipSec ?? 10);
+                    onStatusChange('Timeouts updated');
+                  } else {
+                    onStatusChange(
+                      `Unable to save timeouts: ${formatApiError(response)}`,
+                      true,
+                    );
+                  }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  const response = await updatePreferences({
+                    maxRenderSec: null,
+                    maxClassifySec: null,
+                    introSkipSec: null,
+                  });
+                  if (response.success) {
+                    setPrefsInfo(response.data);
+                    setMaxRenderSec(response.data.config.maxRenderSec ?? 10);
+                    setMaxClassifySec(response.data.config.maxClassifySec ?? 10);
+                    setIntroSkipSec(response.data.config.introSkipSec ?? 10);
+                    onStatusChange('Timeouts reset to defaults');
+                  } else {
+                    onStatusChange(
+                      `Unable to reset timeouts: ${formatApiError(response)}`,
+                      true,
+                    );
+                  }
+                }}
+              >
+                Reset
+              </Button>
+            </div>
+          </div>
+
           <div className="grid gap-3 border-t border-border/60 pt-4">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-muted-foreground">

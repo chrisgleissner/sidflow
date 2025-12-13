@@ -18,6 +18,8 @@
 
 import { parentPort } from "node:worker_threads";
 import { readFile } from "node:fs/promises";
+import { FEATURE_SCHEMA_VERSION, loadConfig } from "@sidflow/common";
+import { resolveRepresentativeAnalysisWindow } from "./audio-window.js";
 
 // Target sample rate for SID music analysis
 // SID output is ~4kHz effective bandwidth, so 11025 Hz captures all relevant content
@@ -40,6 +42,7 @@ interface WavHeader {
   byteRate: number;
   blockAlign: number;
   bitsPerSample: number;
+  dataStart: number;
   dataLength: number;
 }
 
@@ -122,6 +125,7 @@ function parseWavHeader(buffer: Buffer): WavHeader {
             byteRate,
             blockAlign,
             bitsPerSample,
+            dataStart: dataOffset + 8,
             dataLength: dataChunkSize
           };
         }
@@ -140,50 +144,54 @@ function parseWavHeader(buffer: Buffer): WavHeader {
  * - Downsamples to TARGET_SAMPLE_RATE for faster processing
  * - Uses efficient TypedArray operations
  */
-function extractAndDownsampleAudio(buffer: Buffer, header: WavHeader): Float32Array {
-  // Find data chunk
-  let offset = 12;
-  while (offset < buffer.length - 8) {
-    const chunkId = buffer.toString("ascii", offset, offset + 4);
-    const chunkSize = buffer.readUInt32LE(offset + 4);
-
-    if (chunkId === "data") {
-      const dataStart = offset + 8;
-      const bytesPerSample = header.bitsPerSample / 8;
-      const totalSamples = Math.floor(header.dataLength / (bytesPerSample * header.numChannels));
-      
-      // Calculate downsampling ratio
-      const ratio = header.sampleRate / TARGET_SAMPLE_RATE;
-      const outputLength = Math.floor(totalSamples / ratio);
-      const audioData = new Float32Array(outputLength);
-
-      // Extract samples with downsampling and mono conversion
-      for (let i = 0; i < outputLength; i++) {
-        const srcIndex = Math.floor(i * ratio);
-        let sum = 0;
-        
-        for (let ch = 0; ch < header.numChannels; ch++) {
-          const sampleOffset = dataStart + (srcIndex * header.numChannels + ch) * bytesPerSample;
-          let sample = 0;
-
-          if (header.bitsPerSample === 16) {
-            sample = buffer.readInt16LE(sampleOffset) / 32768.0;
-          } else if (header.bitsPerSample === 32) {
-            sample = buffer.readInt32LE(sampleOffset) / 2147483648.0;
-          } else if (header.bitsPerSample === 8) {
-            sample = (buffer.readUInt8(sampleOffset) - 128) / 128.0;
-          }
-          sum += sample;
-        }
-        // Mix to mono
-        audioData[i] = sum / header.numChannels;
-      }
-
-      return audioData;
-    }
-    offset += 8 + chunkSize;
+async function extractAndDownsampleAudio(
+  buffer: Buffer,
+  header: WavHeader
+): Promise<{ audioData: Float32Array; analysisStartSec: number; analysisWindowSec: number }> {
+  const bytesPerSample = header.bitsPerSample / 8;
+  const dataEnd = header.dataStart + header.dataLength;
+  if (header.dataStart <= 0 || header.dataStart >= buffer.length) {
+    throw new Error("Invalid WAV file: invalid data chunk offset");
   }
-  throw new Error("Invalid WAV file: data chunk not found");
+  if (header.dataLength <= 0 || dataEnd > buffer.length) {
+    throw new Error("Invalid WAV file: invalid data chunk length");
+  }
+
+  const config = await loadConfig(process.env.SIDFLOW_CONFIG);
+  const maxExtractSec = config.maxClassifySec ?? 10;
+  const introSkipSec = config.introSkipSec ?? 10;
+
+  const window = resolveRepresentativeAnalysisWindow(buffer, header, maxExtractSec, introSkipSec);
+
+  const ratio = header.sampleRate / TARGET_SAMPLE_RATE;
+  const outputLength = Math.max(1, Math.floor(window.sampleCount / ratio));
+  const audioData = new Float32Array(outputLength);
+
+  for (let i = 0; i < outputLength; i++) {
+    const srcIndex = window.startSample + Math.floor(i * ratio);
+    let sum = 0;
+
+    for (let ch = 0; ch < header.numChannels; ch++) {
+      const sampleOffset = header.dataStart + (srcIndex * header.numChannels + ch) * bytesPerSample;
+      let sample = 0;
+
+      if (header.bitsPerSample === 16) {
+        sample = buffer.readInt16LE(sampleOffset) / 32768.0;
+      } else if (header.bitsPerSample === 32) {
+        sample = buffer.readInt32LE(sampleOffset) / 2147483648.0;
+      } else if (header.bitsPerSample === 8) {
+        sample = (buffer.readUInt8(sampleOffset) - 128) / 128.0;
+      }
+      sum += sample;
+    }
+    audioData[i] = sum / header.numChannels;
+  }
+
+  return {
+    audioData,
+    analysisStartSec: window.startSec,
+    analysisWindowSec: audioData.length / TARGET_SAMPLE_RATE,
+  };
 }
 
 /**
@@ -200,7 +208,7 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
   try {
     const wavBuffer = await readFile(wavFile);
     const header = parseWavHeader(wavBuffer);
-    const audioData = extractAndDownsampleAudio(wavBuffer, header);
+    const { audioData, analysisStartSec, analysisWindowSec } = await extractAndDownsampleAudio(wavBuffer, header);
 
     // Convert to Essentia vector format
     const audioVector = essentiaInstance.arrayToVector(audioData);
@@ -246,8 +254,13 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
 
     // Add metadata
     features.sampleRate = header.sampleRate;
-    features.duration = audioData.length / TARGET_SAMPLE_RATE;
+    features.analysisSampleRate = TARGET_SAMPLE_RATE;
+    features.duration = analysisWindowSec;
+    features.analysisWindowSec = analysisWindowSec;
+    features.analysisStartSec = analysisStartSec;
     features.numSamples = audioData.length;
+    features.featureSetVersion = FEATURE_SCHEMA_VERSION;
+    features.featureVariant = "essentia";
 
     return features;
   } catch (error) {
@@ -261,7 +274,10 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
 async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<FeatureVector> {
   const wavBuffer = await readFile(wavFile);
   const header = parseWavHeader(wavBuffer);
-  const audioData = extractAndDownsampleAudio(wavBuffer, header);
+  const { audioData, analysisStartSec, analysisWindowSec } = await extractAndDownsampleAudio(
+    wavBuffer,
+    header
+  );
 
   let sumSquares = 0;
   let zeroCrossings = 0;
@@ -290,8 +306,13 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
     spectralCentroid: 2000,
     spectralRolloff: 4000,
     sampleRate: header.sampleRate,
-    duration: audioData.length / TARGET_SAMPLE_RATE,
-    numSamples: audioData.length
+    analysisSampleRate: TARGET_SAMPLE_RATE,
+    duration: analysisWindowSec,
+    analysisWindowSec: analysisWindowSec,
+    analysisStartSec,
+    numSamples: audioData.length,
+    featureSetVersion: FEATURE_SCHEMA_VERSION,
+    featureVariant: "heuristic",
   };
 }
 

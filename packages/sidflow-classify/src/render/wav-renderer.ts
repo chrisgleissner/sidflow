@@ -28,7 +28,6 @@ export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
 export const WAV_HASH_EXTENSION = ".sha256";
-const TARGET_DURATION_PADDING_SECONDS = 2;
 
 const renderLogger = createLogger("renderWav");
 
@@ -58,8 +57,8 @@ export function resolveTimeLimitSeconds(
     targetDurationMs > 0
   ) {
     const targetSeconds = targetDurationMs / 1000;
-    const padded = Math.max(1, targetSeconds + TARGET_DURATION_PADDING_SECONDS);
-    return Math.min(padded, fallbackSeconds);
+    const clamped = Math.max(0.001, targetSeconds);
+    return Math.min(clamped, fallbackSeconds);
   }
 
   return fallbackSeconds;
@@ -139,7 +138,7 @@ export async function renderWavWithEngine(
       );
     } else {
       renderLogger.debug(
-        `Songlength target ${targetSeconds.toFixed(3)}s with padding for ${path.basename(
+        `Songlength target ${targetSeconds.toFixed(3)}s for ${path.basename(
           wavFile
         )}`
       );

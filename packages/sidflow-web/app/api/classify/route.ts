@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
       render: {
         ...config.render,
         preferredEngines: effectiveEngineOrder,
+        // Honor web preferences for default formats (wav is always included by the prefs API).
+        ...(prefs.defaultFormats ? { defaultFormats: prefs.defaultFormats } : {}),
       },
     };
     await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');

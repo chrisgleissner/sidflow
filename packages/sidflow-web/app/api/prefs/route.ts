@@ -3,16 +3,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getWebPreferences, updateWebPreferences, type WebPreferences } from '@/lib/preferences-store';
 import type { RenderTechnology } from '@sidflow/common';
 import { resolveSidCollectionContext } from '@/lib/sid-collection';
-import { getRepoRoot } from '@/lib/server-env';
+import { getRepoRoot, getSidflowConfig, resolveConfigPath, resetSidflowConfigCache } from '@/lib/server-env';
 import type { ApiResponse } from '@/lib/validation';
 import { promises as fs } from 'node:fs';
 import { readSidplayfpConfig, updateSidplayfpConfig } from '@/lib/sidplayfp-config';
+import { stringifyDeterministic, loadConfig, type SidflowConfig } from '@sidflow/common';
 
 interface PreferencesResponse {
   hvscRoot: string;
   defaultCollectionPath: string;
   activeCollectionPath: string;
   preferenceSource: 'default' | 'custom';
+  config: {
+    maxRenderSec?: number;
+    maxClassifySec?: number;
+    introSkipSec?: number;
+  };
   preferences: Awaited<ReturnType<typeof getWebPreferences>>;
   sidplayfpConfig: Awaited<ReturnType<typeof readSidplayfpConfig>>;
 }
@@ -20,13 +26,19 @@ interface PreferencesResponse {
 function buildResponsePayload(
   context: Awaited<ReturnType<typeof resolveSidCollectionContext>>,
   preferences: Awaited<ReturnType<typeof getWebPreferences>>,
-  configSnapshot: Awaited<ReturnType<typeof readSidplayfpConfig>>
+  configSnapshot: Awaited<ReturnType<typeof readSidplayfpConfig>>,
+  sidflowConfig: SidflowConfig
 ): PreferencesResponse {
   return {
     hvscRoot: context.hvscRoot,
     defaultCollectionPath: context.defaultCollectionRoot,
     activeCollectionPath: context.collectionRoot,
     preferenceSource: context.preferenceSource,
+    config: {
+      maxRenderSec: sidflowConfig.maxRenderSec,
+      maxClassifySec: sidflowConfig.maxClassifySec,
+      introSkipSec: sidflowConfig.introSkipSec,
+    },
     preferences,
     sidplayfpConfig: configSnapshot,
   };
@@ -36,11 +48,90 @@ export async function GET() {
   const context = await resolveSidCollectionContext();
   const preferences = await getWebPreferences();
   const configSnapshot = await readSidplayfpConfig();
+  const sidflowConfig = await getSidflowConfig();
   const response: ApiResponse<PreferencesResponse> = {
     success: true,
-    data: buildResponsePayload(context, preferences, configSnapshot),
+    data: buildResponsePayload(context, preferences, configSnapshot, sidflowConfig),
   };
   return NextResponse.json(response, { status: 200 });
+}
+
+async function updateSidflowConfigLimits(update: {
+  maxRenderSec?: number | null;
+  maxClassifySec?: number | null;
+  introSkipSec?: number | null;
+}): Promise<SidflowConfig> {
+  const computeMinRenderSecForRepresentativeWindow = (
+    maxClassifySec: number,
+    introSkipSec: number,
+  ): number => {
+    const resolvedIntroSkipSec = Number.isFinite(introSkipSec) && introSkipSec > 0 ? introSkipSec : 10;
+    return Math.max(20, resolvedIntroSkipSec + maxClassifySec);
+  };
+
+  const configPath = resolveConfigPath();
+  const rawContents = await fs.readFile(configPath, 'utf8');
+  const parsed = JSON.parse(rawContents) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('SIDFlow config must be a JSON object');
+  }
+
+  const record = parsed as Record<string, unknown>;
+  if (update.maxRenderSec !== undefined) {
+    if (update.maxRenderSec === null) {
+      delete record.maxRenderSec;
+    } else {
+      record.maxRenderSec = update.maxRenderSec;
+    }
+  }
+  if (update.maxClassifySec !== undefined) {
+    if (update.maxClassifySec === null) {
+      delete record.maxClassifySec;
+    } else {
+      record.maxClassifySec = update.maxClassifySec;
+    }
+  }
+  if (update.introSkipSec !== undefined) {
+    if (update.introSkipSec === null) {
+      delete record.introSkipSec;
+    } else {
+      record.introSkipSec = update.introSkipSec;
+    }
+  }
+
+  const resolvedMaxRenderSec =
+    typeof record.maxRenderSec === 'number' && Number.isFinite(record.maxRenderSec)
+      ? record.maxRenderSec
+      : undefined;
+  const resolvedMaxClassifySec =
+    typeof record.maxClassifySec === 'number' && Number.isFinite(record.maxClassifySec)
+      ? record.maxClassifySec
+      : undefined;
+  const resolvedIntroSkipSec =
+    typeof record.introSkipSec === 'number' && Number.isFinite(record.introSkipSec)
+      ? record.introSkipSec
+      : 10;
+
+  if (resolvedMaxRenderSec !== undefined && resolvedMaxRenderSec < 20) {
+    throw new Error('maxRenderSec must be >= 20');
+  }
+  if (
+    resolvedMaxRenderSec !== undefined &&
+    resolvedMaxClassifySec !== undefined &&
+    resolvedMaxRenderSec < computeMinRenderSecForRepresentativeWindow(resolvedMaxClassifySec, resolvedIntroSkipSec)
+  ) {
+    const minRender = computeMinRenderSecForRepresentativeWindow(resolvedMaxClassifySec, resolvedIntroSkipSec);
+    throw new Error(
+      `maxRenderSec must be >= ${minRender.toFixed(2)} when maxClassifySec is ${resolvedMaxClassifySec} and introSkipSec is ${resolvedIntroSkipSec} (needs enough leading audio for intro skip + analysis window)`
+    );
+  }
+
+  const payload = `${stringifyDeterministic(record as any, 2)}\n`;
+  await fs.writeFile(configPath, payload, 'utf8');
+
+  // Ensure subsequent reads in this process observe the updated config.
+  resetSidflowConfigCache();
+  return loadConfig(configPath);
 }
 
 export async function POST(request: NextRequest) {
@@ -102,10 +193,10 @@ export async function POST(request: NextRequest) {
       return targetPath;
     };
 
-    const normalizedSidBasePath = await normalizeDirectory(body?.sidBasePath ?? undefined, 'sidBasePath');
-    const normalizedKernalRomPath = await normalizeFile(body?.kernalRomPath ?? undefined, 'kernalRomPath');
-    const normalizedBasicRomPath = await normalizeFile(body?.basicRomPath ?? undefined, 'basicRomPath');
-    const normalizedChargenRomPath = await normalizeFile(body?.chargenRomPath ?? undefined, 'chargenRomPath');
+    const normalizedSidBasePath = await normalizeDirectory(body?.sidBasePath, 'sidBasePath');
+    const normalizedKernalRomPath = await normalizeFile(body?.kernalRomPath, 'kernalRomPath');
+    const normalizedBasicRomPath = await normalizeFile(body?.basicRomPath, 'basicRomPath');
+    const normalizedChargenRomPath = await normalizeFile(body?.chargenRomPath, 'chargenRomPath');
     const allowedEngines: RenderTechnology[] = ['wasm', 'sidplayfp-cli', 'ultimate64'];
     const normalizeRenderEngine = (value: unknown): RenderTechnology | undefined => {
       if (value === undefined) {
@@ -124,7 +215,7 @@ export async function POST(request: NextRequest) {
       }
       return trimmed as RenderTechnology;
     };
-    const normalizedRenderEngine = normalizeRenderEngine(body?.renderEngine ?? undefined);
+    const normalizedRenderEngine = normalizeRenderEngine(body?.renderEngine);
     const normalizePreferredEngines = (
       value: unknown
     ): RenderTechnology[] | null | undefined => {
@@ -158,7 +249,7 @@ export async function POST(request: NextRequest) {
       }
       return deduped;
     };
-    const normalizedPreferredEngines = normalizePreferredEngines(body?.preferredEngines ?? undefined);
+    const normalizedPreferredEngines = normalizePreferredEngines(body?.preferredEngines);
     const normalizeSidplayFlags = (value: unknown): string | null | undefined => {
       if (value === undefined) {
         return undefined;
@@ -175,7 +266,30 @@ export async function POST(request: NextRequest) {
       }
       return trimmed;
     };
-    const normalizedSidplayFlags = normalizeSidplayFlags(body?.sidplayfpCliFlags ?? undefined);
+    const normalizedSidplayFlags = normalizeSidplayFlags(body?.sidplayfpCliFlags);
+
+    const normalizeOptionalSeconds = (
+      value: unknown,
+      label: string
+    ): number | null | undefined => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`${label} must be a finite number or null`);
+      }
+      if (value <= 0) {
+        throw new Error(`${label} must be greater than 0`);
+      }
+      return value;
+    };
+
+    const normalizedMaxRenderSec = normalizeOptionalSeconds(body?.maxRenderSec, 'maxRenderSec');
+    const normalizedMaxClassifySec = normalizeOptionalSeconds(body?.maxClassifySec, 'maxClassifySec');
+    const normalizedIntroSkipSec = normalizeOptionalSeconds(body?.introSkipSec, 'introSkipSec');
     const normalizeDefaultFormats = (
       value: unknown
     ): string[] | null | undefined => {
@@ -214,7 +328,7 @@ export async function POST(request: NextRequest) {
       }
       return ['wav', ...deduped];
     };
-    const normalizedDefaultFormats = normalizeDefaultFormats(body?.defaultFormats ?? undefined);
+    const normalizedDefaultFormats = normalizeDefaultFormats(body?.defaultFormats);
 
     if (
       normalizedSidBasePath === undefined &&
@@ -224,7 +338,10 @@ export async function POST(request: NextRequest) {
       normalizedSidplayFlags === undefined &&
       normalizedRenderEngine === undefined &&
       normalizedPreferredEngines === undefined &&
-      normalizedDefaultFormats === undefined
+      normalizedDefaultFormats === undefined &&
+      normalizedMaxRenderSec === undefined &&
+      normalizedMaxClassifySec === undefined &&
+      normalizedIntroSkipSec === undefined
     ) {
       throw new Error('No preferences provided');
     }
@@ -274,10 +391,19 @@ export async function POST(request: NextRequest) {
       ? await updateSidplayfpConfig(romOverrides)
       : await readSidplayfpConfig();
 
+    const sidflowConfig =
+      normalizedMaxRenderSec !== undefined || normalizedMaxClassifySec !== undefined || normalizedIntroSkipSec !== undefined
+        ? await updateSidflowConfigLimits({
+            maxRenderSec: normalizedMaxRenderSec,
+            maxClassifySec: normalizedMaxClassifySec,
+            introSkipSec: normalizedIntroSkipSec,
+          })
+        : await getSidflowConfig();
+
     const context = await resolveSidCollectionContext();
     const response: ApiResponse<PreferencesResponse> = {
       success: true,
-      data: buildResponsePayload(context, updatedPrefs, configSnapshot),
+      data: buildResponsePayload(context, updatedPrefs, configSnapshot, sidflowConfig),
     };
     return NextResponse.json(response, { status: 200 });
   } catch (error) {

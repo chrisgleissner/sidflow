@@ -1,7 +1,33 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { runTrainCli } from "../src/cli.js";
+import { __setTrainCliTestOverrides } from "../src/cli.js";
 
 describe("Train CLI", () => {
+  const captured: {
+    lastOptions?: unknown;
+  } = {};
+
+  beforeEach(() => {
+    captured.lastOptions = undefined;
+    __setTrainCliTestOverrides({
+      trainModel: async (options) => {
+        captured.lastOptions = options;
+        return {
+          trainSamples: 1,
+          testSamples: 1,
+          trainLoss: 0,
+          trainMAE: 0,
+          testMAE: 0,
+          testR2: 0
+        };
+      }
+    });
+  });
+
+  afterEach(() => {
+    __setTrainCliTestOverrides();
+  });
+
   it("shows help message with --help flag", async () => {
     // Capture stdout
     let output = "";
@@ -90,11 +116,14 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-  const exitCode = await runTrainCli(["--epochs", "10"]);
+      const exitCode = await runTrainCli(["--epochs", "10"]);
 
-  // Training should complete successfully when options parse correctly
-  expect(exitCode).toBe(0);
+      expect(exitCode).toBe(0);
       expect(errorOutput).not.toContain("--epochs must be a positive integer");
+
+      // Verify parsing actually flowed into the trainer options.
+      const asAny = captured.lastOptions as any;
+      expect(asAny?.trainOptions?.epochs).toBe(10);
     } finally {
       process.stderr.write = originalWrite;
     }
@@ -109,10 +138,13 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-  const exitCode = await runTrainCli(["--batch-size", "16"]);
+      const exitCode = await runTrainCli(["--batch-size", "16"]);
 
-  expect(exitCode).toBe(0);
-  expect(errorOutput).not.toContain("--batch-size must be a positive integer");
+      expect(exitCode).toBe(0);
+      expect(errorOutput).not.toContain("--batch-size must be a positive integer");
+
+      const asAny = captured.lastOptions as any;
+      expect(asAny?.trainOptions?.batchSize).toBe(16);
     } finally {
       process.stderr.write = originalWrite;
     }
@@ -127,10 +159,13 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-  const exitCode = await runTrainCli(["--learning-rate", "0.01"]);
+      const exitCode = await runTrainCli(["--learning-rate", "0.01"]);
 
-  expect(exitCode).toBe(0);
-  expect(errorOutput).not.toContain("--learning-rate must be a positive number");
+      expect(exitCode).toBe(0);
+      expect(errorOutput).not.toContain("--learning-rate must be a positive number");
+
+      const asAny = captured.lastOptions as any;
+      expect(asAny?.trainOptions?.learningRate).toBeCloseTo(0.01, 6);
     } finally {
       process.stderr.write = originalWrite;
     }
@@ -145,11 +180,14 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-  const exitCode = await runTrainCli(["--no-evaluate"]);
+      const exitCode = await runTrainCli(["--no-evaluate"]);
 
-  expect(exitCode).toBe(0);
-  // Ensure option parsing still reports helpful errors when necessary
-  expect(errorOutput).not.toContain("Unknown option");
+      expect(exitCode).toBe(0);
+      // Ensure option parsing still reports helpful errors when necessary
+      expect(errorOutput).not.toContain("Unknown option");
+
+      const asAny = captured.lastOptions as any;
+      expect(asAny?.evaluate).toBe(false);
     } finally {
       process.stderr.write = originalWrite;
     }
@@ -164,10 +202,10 @@ describe("Train CLI", () => {
     }) as typeof process.stderr.write;
 
     try {
-  const exitCode = await runTrainCli(["--force"]);
+      const exitCode = await runTrainCli(["--force"]);
 
-  expect(exitCode).toBe(0);
-  expect(errorOutput).not.toContain("Unknown option");
+      expect(exitCode).toBe(0);
+      expect(errorOutput).not.toContain("Unknown option");
     } finally {
       process.stderr.write = originalWrite;
     }

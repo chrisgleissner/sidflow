@@ -1,3 +1,4 @@
+import { truncateWavFileToDurationMs } from "./render/wav-truncate.js";
 import {
   DEFAULT_RATINGS,
   clampRating,
@@ -43,6 +44,8 @@ import {
   type RenderWavOptions
 } from "./render/wav-renderer.js";
 import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./render/render-orchestrator.js";
+import { sliceWavFileToRepresentativeStart, trimLeadingSilenceWavFile } from "./render/wav-postprocess.js";
+import { computeMinRenderSecForRepresentativeWindow } from "./audio-window.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 
 // Progress reporting configuration
@@ -54,13 +57,56 @@ const classifyLogger = createLogger("classify");
 const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
 
 /**
- * Maximum render duration for classification (ms).
- * For classification, we only need a short snippet to extract audio features.
- * Most SID music follows a repetitive pattern, so 10 seconds is sufficient.
- * This can be configured via maxClassifySec in .sidflow.json (default: 10).
+ * Maximum render duration when creating WAV artifacts (ms).
+ * This is used only when the cache artifact does not exist (or when force rebuild is enabled).
+ * Configure via maxRenderSec in .sidflow.json (default: 10).
  */
+function resolveEffectiveMaxRenderSec(config: SidflowConfig): number {
+  const rawMaxRenderSec =
+    typeof config.maxRenderSec === "number" && Number.isFinite(config.maxRenderSec) && config.maxRenderSec > 0
+      ? config.maxRenderSec
+      : undefined;
+
+  let configuredMaxRenderSec = rawMaxRenderSec ?? 10;
+
+  if (rawMaxRenderSec !== undefined && rawMaxRenderSec < 20) {
+    classifyLogger.warn(
+      `maxRenderSec (${rawMaxRenderSec}) is below the recommended minimum (20); using 20s.`
+    );
+    configuredMaxRenderSec = 20;
+  }
+
+  const maxClassifySec =
+    typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
+      ? config.maxClassifySec
+      : undefined;
+
+  const introSkipSec =
+    typeof config.introSkipSec === "number" && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
+      ? config.introSkipSec
+      : 10;
+
+  if (maxClassifySec === undefined) {
+    return configuredMaxRenderSec;
+  }
+
+  const minRenderSec = computeMinRenderSecForRepresentativeWindow(maxClassifySec, introSkipSec);
+  if (Number.isFinite(minRenderSec) && minRenderSec > 0 && configuredMaxRenderSec < minRenderSec) {
+    // This can happen if the user edits .sidflow.json directly (bypassing the web prefs validator).
+    // Prefer correctness over a silent failure: render a bit longer so analysis can skip intros.
+    classifyLogger.warn(
+      `maxRenderSec (${configuredMaxRenderSec}) is too small for maxClassifySec (${maxClassifySec}) with introSkipSec (${introSkipSec}); using ${minRenderSec.toFixed(
+        2
+      )}s to allow representative-window extraction after skipping the intro.`
+    );
+    return minRenderSec;
+  }
+
+  return configuredMaxRenderSec;
+}
+
 function getMaxClassificationRenderMs(config: SidflowConfig): number {
-  return (config.maxClassifySec ?? 10) * 1000;
+  return resolveEffectiveMaxRenderSec(config) * 1000;
 }
 
 function withFeatureExtractionPool(
@@ -444,6 +490,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
   const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const defaultFormats = (config.render?.defaultFormats ?? ['wav']) as RenderFormat[];
   const useCli = preferredEngines[0] === 'sidplayfp-cli';
+  const maxClassifySeconds = config.maxClassifySec;
   
   // Check if we need multi-format rendering
   const needsMultiFormat = defaultFormats.length > 1 || 
@@ -470,6 +517,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
       formats: defaultFormats,
       songIndex: options.songIndex,
       maxRenderSeconds: options.maxRenderSeconds,
+      maxClassifySeconds,
       targetDurationMs: options.targetDurationMs,
     });
     
@@ -498,6 +546,8 @@ export const defaultRenderWav: RenderWav = async (options) => {
       formats: ['wav'],
       songIndex: options.songIndex,
       maxRenderSeconds: options.maxRenderSeconds,
+      maxClassifySeconds,
+      introSkipSeconds: config.introSkipSec ?? 10,
       targetDurationMs: options.targetDurationMs,
     });
     
@@ -515,6 +565,24 @@ export const defaultRenderWav: RenderWav = async (options) => {
     // Multi-format with WASM is marked as 'future' in render matrix
     const engine = await createEngine();
     await renderWavWithEngine(engine, options);
+
+    // WASM can emit a short leading silent segment; trim a small prefix.
+    await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+
+    if (
+      typeof options.maxRenderSeconds === "number" &&
+      Number.isFinite(options.maxRenderSeconds) &&
+      options.maxRenderSeconds > 0 &&
+      typeof maxClassifySeconds === "number" &&
+      Number.isFinite(maxClassifySeconds) &&
+      maxClassifySeconds > 0
+    ) {
+      await sliceWavFileToRepresentativeStart(options.wavFile, {
+        maxWindowSeconds: maxClassifySeconds,
+        introSkipSec: config.introSkipSec ?? 10,
+      });
+      await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+    }
     
     // TODO: When WASM multi-format is implemented (render matrix status: mvp),
     // add audio encoding here for defaultFormats containing flac/m4a
@@ -739,17 +807,18 @@ export async function buildAudioCache(
           });
         }, HEARTBEAT_INTERVAL_MS);
 
-        const maxClassifyMs = getMaxClassificationRenderMs(plan.config);
+        const maxRenderMs = getMaxClassificationRenderMs(plan.config);
+        const effectiveMaxRenderSeconds = maxRenderMs / 1000;
         let targetDurationMs: number | undefined;
         try {
           const durations = await getSongDurations(sidFile);
           if (durations && durations.length > 0) {
             const index = Math.min(Math.max(songIndex - 1, 0), durations.length - 1);
             const hvscDuration = durations[index];
-            // Cap at maxClassifyMs for classification efficiency
+            // Cap at maxRenderMs for cache creation efficiency
             targetDurationMs = hvscDuration !== undefined 
-              ? Math.min(hvscDuration, maxClassifyMs)
-              : maxClassifyMs;
+              ? Math.min(hvscDuration, maxRenderMs)
+              : maxRenderMs;
             if (targetDurationMs !== undefined && songlengthDebugCount < 5) {
               classifyLogger.debug(
                 `Resolved HVSC duration ${hvscDuration}ms, capped to ${targetDurationMs}ms for ${songLabel}`
@@ -757,19 +826,20 @@ export async function buildAudioCache(
               songlengthDebugCount += 1;
             }
           } else {
-            // No HVSC duration available, use max classification duration
-            targetDurationMs = maxClassifyMs;
+            // No HVSC duration available, use max render duration
+            targetDurationMs = maxRenderMs;
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           classifyLogger.warn(`Unable to resolve song length for ${songLabel}: ${message}`);
-          targetDurationMs = maxClassifyMs;
+          targetDurationMs = maxRenderMs;
         }
 
         const renderOptions = {
           sidFile,
           wavFile,
           songIndex: songCount > 1 ? songIndex : undefined,
+          maxRenderSeconds: effectiveMaxRenderSeconds,
           targetDurationMs
         };
         let renderSucceeded = false;
@@ -807,6 +877,15 @@ export async function buildAudioCache(
           // Don't add to rendered list, effectively skipping this file
         } finally {
           clearInterval(heartbeatInterval);
+        }
+
+        if (renderSucceeded && typeof targetDurationMs === "number" && Number.isFinite(targetDurationMs) && targetDurationMs > 0) {
+          try {
+            await truncateWavFileToDurationMs(wavFile, targetDurationMs);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            classifyLogger.debug(`Unable to truncate rendered WAV for ${songLabel}: ${message}`);
+          }
         }
         
         if (renderSucceeded) {
@@ -1363,6 +1442,9 @@ export async function generateAutoTags(
   const jobs: AutoTagJob[] = [];
   let metadataProcessed = 0;
 
+  const maxRenderMs = getMaxClassificationRenderMs(plan.config);
+  const effectiveMaxRenderSeconds = maxRenderMs / 1000;
+
   let songsQueued = 0;
 
   for (const sidFile of sidFiles) {
@@ -1415,6 +1497,12 @@ export async function generateAutoTags(
       }
 
       const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
+      const index = Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1);
+      const hvscDuration = durations?.[index];
+      const cappedDuration =
+        typeof hvscDuration === "number" && Number.isFinite(hvscDuration) && hvscDuration > 0
+          ? Math.min(hvscDuration, maxRenderMs)
+          : maxRenderMs;
       jobs.push({
         sidFile,
         relativePath,
@@ -1424,7 +1512,7 @@ export async function generateAutoTags(
         metadata,
         manualRecord,
         wavPath,
-        targetDurationMs: durations?.[Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1)]
+        targetDurationMs: cappedDuration,
       });
       songsQueued += 1;
     }
@@ -1497,6 +1585,7 @@ export async function generateAutoTags(
           sidFile: job.sidFile,
           wavFile: job.wavPath,
           songIndex: job.songCount > 1 ? job.songIndex : undefined,
+          maxRenderSeconds: effectiveMaxRenderSeconds,
           targetDurationMs: job.targetDurationMs
         };
         
