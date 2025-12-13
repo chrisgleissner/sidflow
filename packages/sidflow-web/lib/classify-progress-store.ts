@@ -439,3 +439,21 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     counters: { ...snapshot.counters },
   };
 }
+
+/**
+ * Self-heal progress state if the underlying runner is no longer active.
+ *
+ * In Playwright E2E runs we occasionally see the API request handler get interrupted
+ * (e.g. worker retries) while the in-memory progress snapshot still reports `isActive=true`.
+ * If the classify runner is no longer present, treat the run as idle to keep the UI/tests from
+ * hanging on "wait for idle" polling.
+ */
+export function reconcileClassifyProgressWithRunner(runnerPid: number | null): void {
+  if (snapshot.isActive && !snapshot.isPaused && runnerPid == null) {
+    snapshot.isActive = false;
+    snapshot.isPaused = false;
+    snapshot.phase = 'idle';
+    snapshot.updatedAt = Date.now();
+    snapshot.message ??= 'Recovered stale classify progress state (runner not active)';
+  }
+}

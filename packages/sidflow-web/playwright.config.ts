@@ -27,16 +27,37 @@ const webServerPort = process.env.SIDFLOW_E2E_PORT ?? parsedBaseUrl?.port ?? '30
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
-const chromeExecutable = process.env.PLAYWRIGHT_CHROME_PATH;
+const defaultSystemChromePath = '/usr/bin/google-chrome';
+const chromeExecutable =
+  process.env.PLAYWRIGHT_CHROME_PATH ??
+  (existsSync(defaultSystemChromePath) ? defaultSystemChromePath : undefined);
 const hasSystemChrome = Boolean(chromeExecutable && existsSync(chromeExecutable));
 
-const videoMode: 'on' | 'off' | 'retain-on-failure' = process.env.CI ? 'retain-on-failure' : 'on';
+if (process.env.SIDFLOW_DEBUG_PW_CONFIG === '1') {
+  // eslint-disable-next-line no-console
+  console.log('[playwright-config]', { chromeExecutable, hasSystemChrome });
+}
+
+// Video recording requires Playwright-managed ffmpeg downloads. Prefer "off" by default to keep
+// CI and local agent runs fast and dependency-free (system Chrome is used when available).
+const wantVideo = process.env.SIDFLOW_E2E_VIDEO === '1';
+const videoMode: 'on' | 'off' | 'retain-on-failure' = wantVideo
+  ? process.env.CI
+    ? 'retain-on-failure'
+    : 'on'
+  : 'off';
 
 const baseUse = {
   baseURL: defaultBaseUrl,
   trace: 'on-first-retry' as const,
   headless: true,
   video: videoMode,
+  launchOptions: {
+    args: [
+      '--autoplay-policy=no-user-gesture-required',
+      '--enable-features=SharedArrayBuffer',
+    ],
+  },
   httpCredentials: {
     username: process.env.SIDFLOW_ADMIN_USER ?? 'ops',
     password: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123',
@@ -54,7 +75,16 @@ function sanitizeDevice(device: typeof desktopChrome): typeof desktopChrome {
 const projectDevice = hasSystemChrome ? sanitizeDevice(desktopChrome) : desktopChrome;
 
 const projectUse = hasSystemChrome
-  ? { ...projectDevice, executablePath: chromeExecutable }
+  ? {
+      ...projectDevice,
+      launchOptions: {
+        ...(() => {
+          const value = (projectDevice as unknown as { launchOptions?: unknown }).launchOptions;
+          return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+        })(),
+        executablePath: chromeExecutable,
+      },
+    }
   : projectDevice;
 
 const requestedServerMode = process.env.SIDFLOW_E2E_SERVER_MODE ?? 'production';
@@ -128,7 +158,12 @@ export default defineConfig({
     timeout: webServerTimeout,
     env: {
       // Add stub CLI tools to PATH for testing
-      PATH: `${stubToolsPath}${path.delimiter}${process.env.PATH ?? ''}`,
+      PATH: (() => {
+        const home = process.env.HOME;
+        const bunBin = home ? path.join(home, '.bun', 'bin') : null;
+        const bunSegment = bunBin && existsSync(bunBin) ? `${bunBin}${path.delimiter}` : '';
+        return `${stubToolsPath}${path.delimiter}${bunSegment}${process.env.PATH ?? ''}`;
+      })(),
       NODE_ENV: serverNodeEnv,
       HOSTNAME: webServerHost,
       PORT: webServerPort,

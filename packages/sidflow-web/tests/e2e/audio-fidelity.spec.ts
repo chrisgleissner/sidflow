@@ -28,15 +28,7 @@ if (!isPlaywrightRunner) {
   // Longer timeout for audio operations
   test.setTimeout(90000);
 
-  // Configure browser launch options at top level
-  test.use({
-    launchOptions: {
-      args: [
-        '--autoplay-policy=no-user-gesture-required',
-        '--enable-features=SharedArrayBuffer',
-      ],
-    },
-  });
+  // Browser launch options are configured globally in playwright.config.ts.
 
   test.describe.configure({ mode: 'serial' });
 }

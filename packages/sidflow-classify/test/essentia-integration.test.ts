@@ -11,8 +11,10 @@ import {
   planClassification,
   generateAutoTags,
   type ClassificationPlan,
+  resolveWavPath,
 } from "../src/index.js";
-import { parseSidFile, stringifyDeterministic } from "@sidflow/common";
+import { parseSidFile, type SidflowConfig, resolveRelativeSidPath } from "@sidflow/common";
+import { computeFileHash, WAV_HASH_EXTENSION } from "../src/render/wav-renderer.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-essentia-integration-");
 
@@ -73,6 +75,36 @@ function createMinimalSidFile(): Buffer {
   return buffer;
 }
 
+function createWavFile(durationSec: number, freq: number): Buffer {
+  const sampleRate = 44100;
+  const numSamples = Math.floor(durationSec * sampleRate);
+  const dataSize = numSamples * 2;
+  const fileSize = 44 + dataSize;
+  const buffer = Buffer.alloc(fileSize);
+
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(fileSize - 8, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataSize, 40);
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const value = Math.sin(2 * Math.PI * freq * t);
+    buffer.writeInt16LE(Math.floor(value * 32767), 44 + i * 2);
+  }
+
+  return buffer;
+}
+
 describe("Essentia.js integration in classification", () => {
   it("uses Essentia.js feature extractor as default", async () => {
     // This test verifies that the default feature extractor is Essentia.js
@@ -82,19 +114,18 @@ describe("Essentia.js integration in classification", () => {
     expect(defaultFeatureExtractor).toBe(essentiaFeatureExtractor);
   });
 
-  it.skip("uses Essentia.js by default and extracts audio features [FULL E2E - MANUAL ONLY]", async () => {
-    // Full end-to-end test including WAV rendering - skipped in CI due to timeout
-    // Run manually when testing classification pipeline changes
+  it("uses Essentia.js by default and extracts audio features", async () => {
     const testRoot = await mkdtemp(TEMP_PREFIX);
     
     try {
       // Setup test SID collection
-      const sidPath = path.join(testRoot, "MUSICIANS", "Test");
+      const sidPath = path.join(testRoot, "hvsc");
       const audioCachePath = path.join(testRoot, "audio-cache");
       const tagsPath = path.join(testRoot, "tags");
+      const classifiedPath = path.join(testRoot, "classified");
       
       // Create minimal SID file
-      const sidFile = path.join(sidPath, "test_track.sid");
+      const sidFile = path.join(sidPath, "C64Music", "MUSICIANS", "T", "Test", "test_track.sid");
       await require("node:fs/promises").mkdir(path.dirname(sidFile), { recursive: true });
       await require("node:fs/promises").writeFile(sidFile, createMinimalSidFile());
       
@@ -102,74 +133,80 @@ describe("Essentia.js integration in classification", () => {
       const metadata = await parseSidFile(sidFile);
       expect(metadata.title).toBe("Test Track");
       
-      // Create classification plan
-      const plan: ClassificationPlan = {
-        config: {
-          sidPath,
-          audioCachePath,
-          tagsPath,
-          sidplayPath: undefined,
-          threads: 1,
-          classificationDepth: 3,
-        },
+      const config: SidflowConfig = {
+        sidPath,
         audioCachePath,
         tagsPath,
-        forceRebuild: true,
+        classifiedPath,
+        threads: 1,
         classificationDepth: 3,
-        sidPath,
       };
+      const configPath = path.join(testRoot, ".sidflow.test.json");
+      await require("node:fs/promises").writeFile(configPath, JSON.stringify(config, null, 2), "utf8");
+      const plan: ClassificationPlan = await planClassification({ configPath });
+
+      // Pre-render a small WAV so classification doesn't invoke the renderer.
+      const wavPath = resolveWavPath(plan, sidFile);
+      await require("node:fs/promises").mkdir(path.dirname(wavPath), { recursive: true });
+      await require("node:fs/promises").writeFile(wavPath, createWavFile(1, 440));
+      // If the SID mtime changes (or clocks are coarse), needsWavRefresh may rebuild unless a hash exists.
+      const hashPath = `${wavPath}${WAV_HASH_EXTENSION}`;
+      await require("node:fs/promises").writeFile(hashPath, await computeFileHash(sidFile), "utf8");
       
-      // Run classification
+      // Run classification (ensure defaultRenderWav reads the same config if invoked).
+      const previousConfigEnv = process.env.SIDFLOW_CONFIG;
+      process.env.SIDFLOW_CONFIG = configPath;
       const result = await generateAutoTags(plan, {
         threads: 1,
+        limit: 1,
+      }).finally(() => {
+        process.env.SIDFLOW_CONFIG = previousConfigEnv;
       });
       
       // Verify auto-tags were generated
       expect(result.autoTagged.length).toBeGreaterThan(0);
       expect(result.metrics.autoTaggedCount).toBeGreaterThan(0);
       
-      // Read the generated auto-tags file
-      const autoTagsKey = "MUSICIANS/Test/test_track.sid";
-      const autoTagsPath = path.join(tagsPath, "auto-tags.json");
+      // Read the generated auto-tags file (path is returned by generateAutoTags)
+      expect(result.tagFiles.length).toBeGreaterThan(0);
+      const autoTagsPath = result.tagFiles[0]!;
       
       const autoTagsContent = await readFile(autoTagsPath, "utf-8");
       const autoTags = JSON.parse(autoTagsContent);
       
-      expect(autoTags[autoTagsKey]).toBeDefined();
-      const entry = autoTags[autoTagsKey];
+      const relativeSidPath = resolveRelativeSidPath(plan.sidPath, sidFile);
+      const matchingKey = Object.keys(autoTags).find((key) => key.includes(path.basename(relativeSidPath)));
+      expect(matchingKey).toBeDefined();
+      const entry = autoTags[matchingKey!];
       
       // Verify ratings were generated
-      expect(entry.ratings).toBeDefined();
-      expect(entry.ratings.e).toBeGreaterThanOrEqual(1);
-      expect(entry.ratings.e).toBeLessThanOrEqual(5);
-      expect(entry.ratings.m).toBeGreaterThanOrEqual(1);
-      expect(entry.ratings.m).toBeLessThanOrEqual(5);
-      expect(entry.ratings.c).toBeGreaterThanOrEqual(1);
-      expect(entry.ratings.c).toBeLessThanOrEqual(5);
+      expect(entry.e).toBeGreaterThanOrEqual(1);
+      expect(entry.e).toBeLessThanOrEqual(5);
+      expect(entry.m).toBeGreaterThanOrEqual(1);
+      expect(entry.m).toBeLessThanOrEqual(5);
+      expect(entry.c).toBeGreaterThanOrEqual(1);
+      expect(entry.c).toBeLessThanOrEqual(5);
       
-      // Verify features were extracted
-      // Essentia.js should produce rich features like energy, rms, spectralCentroid, etc.
-      // If Essentia.js is unavailable, fallback to heuristic features (simpler)
-      expect(entry.features).toBeDefined();
-      
-      // Check for Essentia.js-specific features
-      // If these exist, Essentia.js was used successfully
-      if (entry.features.energy !== undefined && entry.features.rms !== undefined) {
-        console.log("[TEST] Essentia.js features detected:");
-        console.log(`  energy: ${entry.features.energy}`);
-        console.log(`  rms: ${entry.features.rms}`);
-        console.log(`  spectralCentroid: ${entry.features.spectralCentroid}`);
-        console.log(`  bpm: ${entry.features.bpm}`);
-        expect(entry.features.energy).toBeGreaterThanOrEqual(0);
-        expect(entry.features.rms).toBeGreaterThanOrEqual(0);
-      } else {
-        // Fallback heuristic features
-        console.log("[TEST] Heuristic fallback features used (Essentia.js unavailable)");
-        expect(entry.features.wavBytes).toBeGreaterThan(0);
-        expect(entry.features.sidBytes).toBeGreaterThan(0);
-      }
+      // Verify features were extracted via JSONL record (auto-tags.json stores only ratings + source).
+      const jsonlContent = await readFile(result.jsonlFile, "utf8");
+      const jsonlLines = jsonlContent.trim().split("\n").filter((line) => line.trim());
+      expect(jsonlLines.length).toBeGreaterThan(0);
+      const record = jsonlLines
+        .map((line) => {
+          try {
+            return JSON.parse(line) as any;
+          } catch {
+            return null;
+          }
+        })
+        .find((line) => line && String(line.sid_path).includes(path.basename(relativeSidPath)));
+      expect(record).toBeDefined();
+      expect(record!.features).toBeDefined();
+      expect(record!.features.energy).toBeGreaterThanOrEqual(0);
+      expect(record!.features.rms).toBeGreaterThanOrEqual(0);
+      expect(record!.features.spectralCentroid).toBeGreaterThan(0);
     } finally {
       await rm(testRoot, { recursive: true, force: true });
     }
-  }, 30000); // 30s timeout for WAV rendering + feature extraction
+  }, 30000);
 });

@@ -48,6 +48,23 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Active tasks
 
+### Task: Enable all skipped tests + fix classify-heartbeat idle timeout (2025-12-13)
+
+**User request (summary)**  
+- Enable and fix all currently disabled tests (unit + e2e).
+- Fix failing e2e `classify-heartbeat` timeout: "Timed out waiting for classification to become idle".
+- Prove stability with 3 consecutive fully green runs.
+
+**Plan (checklist)**  
+- [ ] Inventory all skipped/disabled tests (unit + e2e) and identify why they’re skipped.
+- [ ] Fix `classify-heartbeat` by making “classification idle” deterministic (cleanup + self-healing progress state).
+- [ ] Re-enable skipped e2e specs by making them self-contained + fast (synthetic inputs, no dependency on existing `data/`).
+- [ ] Re-enable skipped unit tests (remove manual-only skips; make runtime bounds stable).
+- [ ] Validation: `bun run build && bun run test && bun run test:e2e` 3× consecutive (paste outputs).
+
+**Progress log**  
+- 2025-12-13 — Started: identified 5 skipped tests (3 e2e, 2 unit) and confirmed heartbeat fails while waiting for `/api/classify/progress` to report idle.
+
 ### Task: Configurable intro skip + updated render/classify constraints (2025-12-13)
 
 **User request (summary)**

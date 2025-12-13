@@ -26,6 +26,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validatedData = ClassifyRequestSchema.parse(body);
+    const runInBackground = validatedData.async === true;
+    if (runInBackground) {
+      console.log('[classify] Starting classification in background (202 Accepted)');
+    }
 
     const config = await getSidflowConfig();
     const root = getRepoRoot();
@@ -33,12 +37,14 @@ export async function POST(request: NextRequest) {
     const prefs = await getWebPreferences();
     
     const requestedPath = validatedData.path?.trim();
-    const classificationPath = requestedPath
+    const resolvedRequestedPath = requestedPath
       ? path.isAbsolute(requestedPath)
         ? path.normalize(requestedPath)
         : path.resolve(collection.hvscRoot, requestedPath)
-      : collection.collectionRoot;
-    await fs.stat(classificationPath);
+      : null;
+    if (resolvedRequestedPath) {
+      await fs.stat(resolvedRequestedPath);
+    }
     const threads = config.threads && config.threads > 0 ? config.threads : os.cpus().length;
     
     // Resolve engine preferences
@@ -89,8 +95,18 @@ export async function POST(request: NextRequest) {
     };
     await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
 
-  const command = 'sidflow-classify';
-  const cliArgs: string[] = ['--config', tempConfigPath];
+    const command = 'sidflow-classify';
+    const cliArgs: string[] = ['--config', tempConfigPath];
+
+    // If a directory was requested, restrict scanning via sid-path-prefix instead of overriding sidPath.
+    // This keeps WAV cache paths stable (relative to the configured HVSC root).
+    if (resolvedRequestedPath) {
+      const relativePrefix = path.relative(collection.collectionRoot, resolvedRequestedPath);
+      if (!relativePrefix.startsWith('..') && !path.isAbsolute(relativePrefix)) {
+        const normalizedPrefix = relativePrefix.replace(/\\+/g, '/');
+        cliArgs.push('--sid-path-prefix', normalizedPrefix);
+      }
+    }
   
     // Add force-rebuild flag if requested
     if (validatedData.forceRebuild) {
@@ -112,9 +128,8 @@ export async function POST(request: NextRequest) {
   
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
-      SIDFLOW_SID_BASE_PATH: classificationPath,
     };
-    const { result, reason } = await runClassificationProcess({
+    const runPromise = runClassificationProcess({
       command,
       args: cliArgs,
       cwd: root,
@@ -122,6 +137,36 @@ export async function POST(request: NextRequest) {
       onStdout: ingestClassifyStdout,
       onStderr: (chunk) => console.error('[classify stderr]', chunk),
     });
+
+    if (runInBackground) {
+      void runPromise
+        .then(({ result, reason }) => {
+          if (reason === 'paused') {
+            pauseClassifyProgress('Classification paused by user');
+            return;
+          }
+          if (result.success) {
+            completeClassifyProgress('Classification completed successfully');
+          } else {
+            const { details } = describeCliFailure(command, result);
+            failClassifyProgress(details);
+          }
+        })
+        .catch((error) => {
+          failClassifyProgress(error instanceof Error ? error.message : String(error));
+        });
+
+      const response: ApiResponse<{ started: true; progress: ReturnType<typeof getClassifyProgressSnapshot> }> = {
+        success: true,
+        data: {
+          started: true,
+          progress: getClassifyProgressSnapshot(),
+        },
+      };
+      return NextResponse.json(response, { status: 202 });
+    }
+
+    const { result, reason } = await runPromise;
 
     if (reason === 'paused') {
       pauseClassifyProgress('Classification paused by user');

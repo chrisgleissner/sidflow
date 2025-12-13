@@ -7,24 +7,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
 const testWorkspace = resolve(repoRoot, 'test-workspace');
 const testData = resolve(repoRoot, 'test-data');
-const prefsFile = resolve(repoRoot, '.sidflow-preferences.json');
+// Web preferences are stored under repoRoot/data/.sidflow-preferences.json (see lib/preferences-store.ts).
+// Keep E2E runs deterministic by resetting scheduler + sidBasePath there.
+const prefsFile = resolve(repoRoot, 'data', '.sidflow-preferences.json');
 
 console.log('Setting up test workspace...');
 console.log(`  Source: ${testData}`);
 console.log(`  Target: ${testWorkspace}`);
 
 // Reset preferences to avoid conflicts with production sidBasePath
-if (existsSync(prefsFile)) {
-    console.log('  Resetting preferences for test run...');
-    try {
-        const prefs = JSON.parse(readFileSync(prefsFile, 'utf8'));
-        // Clear sidBasePath so tests use config's sidPath instead
-        delete prefs.sidBasePath;
-        writeFileSync(prefsFile, JSON.stringify(prefs, null, 2));
-        console.log('  ✓ Preferences reset (sidBasePath cleared)');
-    } catch (err) {
-        console.warn(`  ⚠ Could not reset preferences: ${err.message}`);
-    }
+console.log('  Resetting preferences for test run...');
+try {
+  const existing = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : {};
+  // Clear sidBasePath so tests use config's sidPath instead
+  delete existing.sidBasePath;
+  // Disable any background schedulers / training to avoid unexpected pipeline runs during E2E.
+  existing.scheduler = { enabled: false, time: '06:00', timezone: 'UTC' };
+  existing.training = { enabled: false };
+  // Keep renderPrefs deterministic (avoid side effects like deleting WAVs between tests).
+  existing.renderPrefs = { preserveWav: true, enableFlac: false, enableM4a: false };
+  mkdirSync(dirname(prefsFile), { recursive: true });
+  writeFileSync(prefsFile, JSON.stringify(existing, null, 2));
+  console.log('  ✓ Preferences reset (scheduler disabled, sidBasePath cleared)');
+} catch (err) {
+  console.warn(`  ⚠ Could not reset preferences: ${err.message}`);
 }
 
 // Clean existing test-workspace

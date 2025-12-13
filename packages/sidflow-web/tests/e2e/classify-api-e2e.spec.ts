@@ -22,11 +22,7 @@ import { test, expect } from './test-hooks';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-
-// Skip entire file in CI - these tests are too slow (2+ minutes each)
-// and cause flaky failures. Run manually for full classification E2E validation.
-const isCI = !!process.env.CI;
-test.skip(() => isCI, 'Classification API E2E tests skipped in CI - too slow');
+import { withClassificationLock } from './utils/classification-lock';
 
 // Force serial execution for this file since tests share backend state
 test.describe.configure({ mode: 'serial' });
@@ -35,6 +31,7 @@ const REPO_ROOT = path.resolve(process.cwd(), '..', '..');
 
 // Synthetic test directory - created fresh for this test
 const TEST_ARTIST_DIR = 'C64Music/MUSICIANS/T/Test_E2E_API';
+const TEST_ARTIST_DIR_REL = TEST_ARTIST_DIR.replace(/^C64Music[\\/]/, '');
 
 // Expected output paths (relative to repo root) - use test-workspace to avoid polluting production data
 const CLASSIFIED_DIR = path.join(REPO_ROOT, 'test-workspace', 'classified');
@@ -49,8 +46,8 @@ const TEST_SONGS = [
   { name: 'API_Test_High', freq: 880, duration: 1 },
 ];
 
-// Classification timeout (90 seconds - with pre-rendered WAVs it should be fast)
-const CLASSIFY_TIMEOUT = 120000;
+// Classification timeout - keep generous to avoid CI variability.
+const CLASSIFY_TIMEOUT = 90_000;
 
 /**
  * Generate a minimal valid PSID file
@@ -157,8 +154,8 @@ async function waitForClassificationIdle(request: any, maxWaitMs = 180000): Prom
 test.describe.serial('Classification API E2E', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'API tests only run in chromium');
   
-  // Increase timeout: 180s max wait for idle + 120s classification + buffer
-  test.setTimeout(360000); // 6 minutes total
+  // Keep this fast in CI; classification should complete quickly for the synthetic fixtures.
+  test.setTimeout(120_000);
   
   const sidDir = path.join(SID_BASE_DIR, TEST_ARTIST_DIR);
   
@@ -173,9 +170,9 @@ test.describe.serial('Classification API E2E', () => {
       const sidPath = path.join(sidDir, `${song.name}.sid`);
       await fs.writeFile(sidPath, createSidFile(song.name, 'E2E API Test'));
       
-      // Pre-render WAV to audio cache (matching the expected cache path structure)
-      // The cache uses: audioCachePath/relative-sid-path.wav
-      const relativeSidPath = path.join(TEST_ARTIST_DIR, `${song.name}.sid`);
+      // Pre-render WAV to audio cache. The configured sid base path for classification is
+      // <hvsc>/C64Music (see buildCliEnvOverrides), so cache paths are relative to C64Music/.
+      const relativeSidPath = path.join(TEST_ARTIST_DIR_REL, `${song.name}.sid`);
       const wavCachePath = path.join(AUDIO_CACHE_DIR, relativeSidPath.replace('.sid', '.wav'));
       await fs.mkdir(path.dirname(wavCachePath), { recursive: true });
       await fs.writeFile(wavCachePath, createWavFile(song.duration, song.freq));
@@ -191,7 +188,7 @@ test.describe.serial('Classification API E2E', () => {
       await fs.rm(sidDir, { recursive: true, force: true });
       
       // Clean up WAV cache files
-      const wavCacheDir = path.join(AUDIO_CACHE_DIR, TEST_ARTIST_DIR);
+      const wavCacheDir = path.join(AUDIO_CACHE_DIR, TEST_ARTIST_DIR_REL);
       await fs.rm(wavCacheDir, { recursive: true, force: true });
       
       console.log('   ✅ Cleanup complete');
@@ -201,14 +198,15 @@ test.describe.serial('Classification API E2E', () => {
   });
 
   test('triggers classification via REST API and verifies all output files', async ({ request }) => {
-    console.log('\n' + '='.repeat(80));
-    console.log('🚀 CLASSIFICATION API E2E TEST');
-    console.log('='.repeat(80));
+    await withClassificationLock(async () => {
+      console.log('\n' + '='.repeat(80));
+      console.log('🚀 CLASSIFICATION API E2E TEST');
+      console.log('='.repeat(80));
 
-    // Step 0: Wait for any existing classification to complete
-    console.log('\n⏳ Step 0: Ensuring classification is idle');
-    console.log('-'.repeat(40));
-    await waitForClassificationIdle(request);
+      // Step 0: Wait for any existing classification to complete
+      console.log('\n⏳ Step 0: Ensuring classification is idle');
+      console.log('-'.repeat(40));
+      await waitForClassificationIdle(request, 30_000);
 
     // Step 1: Get initial state
     console.log('\n📋 Step 1: Initial State');
@@ -228,16 +226,18 @@ test.describe.serial('Classification API E2E', () => {
 
     const startTime = Date.now();
 
-    const response = await request.post('/api/classify', {
-      data: {
-        path: TEST_ARTIST_DIR,
-        // Don't force rebuild - use the pre-rendered WAVs
-        forceRebuild: false,
-        deleteWavAfterClassification: false,
-        skipAlreadyClassified: false,
-      },
-      timeout: CLASSIFY_TIMEOUT,
-    });
+      const response = await request.post('/api/classify', {
+        data: {
+          path: TEST_ARTIST_DIR,
+          // Run in background so the HTTP request is not blocked by feature extraction.
+          async: true,
+          // Don't force rebuild - use the pre-rendered WAVs
+          forceRebuild: false,
+          deleteWavAfterClassification: false,
+          skipAlreadyClassified: false,
+        },
+        timeout: CLASSIFY_TIMEOUT,
+      });
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`\n   Response received in ${elapsed}s`);
@@ -257,7 +257,11 @@ test.describe.serial('Classification API E2E', () => {
     expect(response.ok()).toBe(true);
     expect(responseBody.success).toBe(true);
 
-    console.log(`\n✅ Classification completed successfully in ${elapsed}s`);
+    // Wait for background classification to finish before validating outputs.
+    console.log(`\n⏳ Waiting for classification to complete...`);
+    await waitForClassificationIdle(request, 180_000);
+
+    console.log(`\n✅ Classification accepted (async) and completed in background`);
 
     // Step 3: Identify the new JSONL file
     console.log('\n📁 Step 3: Identifying Output Files');
@@ -284,7 +288,7 @@ test.describe.serial('Classification API E2E', () => {
     console.log('-'.repeat(40));
     
     for (const song of TEST_SONGS) {
-      const wavPath = path.join(AUDIO_CACHE_DIR, TEST_ARTIST_DIR, `${song.name}.wav`);
+      const wavPath = path.join(AUDIO_CACHE_DIR, TEST_ARTIST_DIR_REL, `${song.name}.wav`);
       const exists = existsSync(wavPath);
       const size = exists ? (await fs.stat(wavPath)).size : 0;
       console.log(`   ${exists ? '✅' : '❌'} ${song.name}.wav (${(size / 1024).toFixed(1)} KB)`);
@@ -295,7 +299,9 @@ test.describe.serial('Classification API E2E', () => {
     console.log('\n🏷️  Step 5: Checking Tags');
     console.log('-'.repeat(40));
     
-    const autoTagsPath = path.join(TAGS_DIR, 'auto-tags.json');
+    // auto-tags.json is written under tagsPath/<depth-folders>/auto-tags.json (depth=3 in .sidflow.test.json),
+    // and the sid base path is <hvsc>/C64Music => tags are keyed under MUSICIANS/<letter>/<folder>/...
+    const autoTagsPath = path.join(TAGS_DIR, 'MUSICIANS', 'T', 'Test_E2E_API', 'auto-tags.json');
     const autoTagsExists = existsSync(autoTagsPath);
     console.log(`   auto-tags.json: ${autoTagsExists ? '✅ exists' : '❌ missing'}`);
     
@@ -396,9 +402,10 @@ test.describe.serial('Classification API E2E', () => {
     console.log(`\n✅ Auto-Tags:`);
     console.log(`   ${autoTagsPath}`);
     
-    console.log('\n' + '='.repeat(80));
-    console.log('🎉 ALL TESTS PASSED - Classification API E2E Complete');
-    console.log('='.repeat(80) + '\n');
+      console.log('\n' + '='.repeat(80));
+      console.log('🎉 ALL TESTS PASSED - Classification API E2E Complete');
+      console.log('='.repeat(80) + '\n');
+    });
   });
 });
 
@@ -414,11 +421,11 @@ async function getJsonlFiles(): Promise<string[]> {
 test.describe.serial('JSONL Format Validation E2E', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'API tests only run in chromium');
   
-  // Increase timeout: 180s max wait for idle + 120s classification + buffer
-  test.setTimeout(360000); // 6 minutes total
+  test.setTimeout(120_000);
   
   // Unique directory for this test suite
   const INCREMENTAL_TEST_DIR = 'C64Music/MUSICIANS/I/Incremental_Test';
+  const INCREMENTAL_TEST_DIR_REL = INCREMENTAL_TEST_DIR.replace(/^C64Music[\\/]/, '');
   const sidDir = path.join(SID_BASE_DIR, INCREMENTAL_TEST_DIR);
   
   // Create test songs to verify JSONL output format and record completeness
@@ -442,7 +449,7 @@ test.describe.serial('JSONL Format Validation E2E', () => {
       await fs.writeFile(sidPath, createSidFile(song.name, 'Incremental Test'));
       
       // Pre-render WAV to audio cache
-      const relativeSidPath = path.join(INCREMENTAL_TEST_DIR, `${song.name}.sid`);
+      const relativeSidPath = path.join(INCREMENTAL_TEST_DIR_REL, `${song.name}.sid`);
       const wavCachePath = path.join(AUDIO_CACHE_DIR, relativeSidPath.replace('.sid', '.wav'));
       await fs.mkdir(path.dirname(wavCachePath), { recursive: true });
       await fs.writeFile(wavCachePath, createWavFile(song.duration, song.freq));
@@ -454,7 +461,7 @@ test.describe.serial('JSONL Format Validation E2E', () => {
     console.log('\n🧹 Cleaning up incremental test files...');
     try {
       await fs.rm(sidDir, { recursive: true, force: true });
-      const wavCacheDir = path.join(AUDIO_CACHE_DIR, INCREMENTAL_TEST_DIR);
+      const wavCacheDir = path.join(AUDIO_CACHE_DIR, INCREMENTAL_TEST_DIR_REL);
       await fs.rm(wavCacheDir, { recursive: true, force: true });
       console.log('   ✅ Cleanup complete');
     } catch (e) {
@@ -463,16 +470,17 @@ test.describe.serial('JSONL Format Validation E2E', () => {
   });
 
   test('verifies JSONL output format and record validity', async ({ request }) => {
-    console.log('\n' + '='.repeat(80));
-    console.log('🔄 JSONL FORMAT VALIDATION E2E TEST');
-    console.log('='.repeat(80));
+    await withClassificationLock(async () => {
+      console.log('\n' + '='.repeat(80));
+      console.log('🔄 JSONL FORMAT VALIDATION E2E TEST');
+      console.log('='.repeat(80));
 
     // Step 1: Record initial state
     const jsonlFilesBefore = await getJsonlFiles();
     console.log(`\n📋 Initial JSONL files: ${jsonlFilesBefore.length}`);
 
     // Step 2: Wait for any existing classification to complete first
-    await waitForClassificationIdle(request, 60000);
+      await waitForClassificationIdle(request, 30_000);
 
     // Step 3: Start classification via REST API
     console.log('\n🔧 Starting classification via REST API...');
@@ -481,15 +489,15 @@ test.describe.serial('JSONL Format Validation E2E', () => {
 
     const startTime = Date.now();
     
-    const response = await request.post('/api/classify', {
-      data: {
-        path: INCREMENTAL_TEST_DIR,
-        forceRebuild: false,
-        deleteWavAfterClassification: false,
-        skipAlreadyClassified: false,
-      },
-      timeout: CLASSIFY_TIMEOUT,
-    });
+      const response = await request.post('/api/classify', {
+        data: {
+          path: INCREMENTAL_TEST_DIR,
+          forceRebuild: false,
+          deleteWavAfterClassification: false,
+          skipAlreadyClassified: false,
+        },
+        timeout: CLASSIFY_TIMEOUT,
+      });
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
@@ -598,7 +606,8 @@ test.describe.serial('JSONL Format Validation E2E', () => {
     console.log(`✅ All songs found: ${foundSongs.size}/${INCREMENTAL_TEST_SONGS.length}`);
     console.log(`✅ All records have features (Essentia.js extraction worked)`);
     console.log(`✅ File format is valid JSONL (one JSON object per line)`);
-    console.log('\n🎉 JSONL FORMAT VALIDATION TEST PASSED');
-    console.log('='.repeat(80) + '\n');
+      console.log('\n🎉 JSONL FORMAT VALIDATION TEST PASSED');
+      console.log('='.repeat(80) + '\n');
+    });
   });
 });

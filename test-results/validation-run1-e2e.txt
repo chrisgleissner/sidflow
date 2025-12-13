@@ -1,0 +1,939 @@
+$ bun run build && node scripts/run-bun.mjs test ./integration-tests/e2e-suite.ts && cd packages/sidflow-web && bun run test:e2e
+$ node scripts/run-bun.mjs install --frozen-lockfile && node scripts/run-bun.mjs run wasm:check-upstream && tsc -b
+bun install v1.3.4 (5eb2145b)
+
+Checked 896 installs across 967 packages (no changes) [22.00ms]
+$ node scripts/run-bun.mjs run scripts/check-libsidplayfp-upstream.ts
+[wasm] Upstream repository: https://github.com/libsidplayfp/libsidplayfp
+[wasm] Latest upstream commit: 99cd7607881a3a553cc1600291d7fd222ed57b23
+[wasm] No recorded successful builds yet.
+[wasm] Upstream changed; WASM rebuild required.
+[wasm] Remember to run the WASM build pipeline and commit new artifacts.
+bun test v1.3.4 (5eb2145b)
+
+integration-tests/e2e-suite.ts:
+2025-12-13 23:53:32.898856: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-12-13 23:53:32.923216: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+Running E2E test with mock sidplayfp
+(pass) End-to-End SIDFlow Pipeline > verifies test SID files exist [0.06ms]
+(pass) End-to-End SIDFlow Pipeline > builds WAV cache from SID files [50.98ms]
+(pass) End-to-End SIDFlow Pipeline > extracts features from WAV files [70.04ms]
+(pass) End-to-End SIDFlow Pipeline > validates WAV files have reasonable durations [207.45ms]
+(pass) End-to-End SIDFlow Pipeline > respects targetDurationMs by truncating rendered WAV output [1335.15ms]
+Failed to load model from data/model/model/model.json: warn: Weight file /workspace/data/model/model/weights.bin does not exist: loading failed
+      at <anonymous> (/workspace/node_modules/@tensorflow/tfjs-node/dist/io/file_system.js:69:27)
+
+[jsonl-writer] Writing classification records to: /tmp/sidflow-e2e-HTPXXo/classified/classification_2025-12-13_23-53-34-609.jsonl
+(pass) End-to-End SIDFlow Pipeline > classifies SID files with auto-tags [528.09ms]
+(pass) End-to-End SIDFlow Pipeline > exports classification to JSONL format [0.11ms]
+(pass) End-to-End SIDFlow Pipeline > creates playback controller with classified songs [0.22ms]
+(pass) End-to-End SIDFlow Pipeline > loads queue with mock recommendations [0.08ms]
+(pass) End-to-End SIDFlow Pipeline > verifies full pipeline metrics [0.11ms]
+
+ 10 pass
+ 0 fail
+ 43 expect() calls
+Ran 10 tests across 1 file. [2.56s]
+$ node ./scripts/ensure-playwright-browser.mjs
+$ playwright test
+[WebServer] $ node ../../scripts/run-bun.mjs run scripts/build-worklet.ts
+[WebServer] [test-server] SIDFLOW_SKIP_NEXT_BUILD=1 — reusing existing Next.js build.
+[WebServer] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[WebServer]  ⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+
+Running 130 tests using 3 workers
+
+[E2E Coverage Reporter] Coverage collection enabled for all tests
+(node:46147) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46146) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46153) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46153) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46147) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:46146) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[A11y] Found 36 focusable elements
+[A11y] Tab 1: focused BUTTON
+[A11y] Tab 2: focused BUTTON
+[A11y] Tab 3: focused BUTTON
+[A11y] Tab 4: focused DIV
+[A11y] Tab 5: focused INPUT
+[A11y] Tab 6: focused BUTTON
+[A11y] Tab 7: focused BUTTON
+[A11y] Tab 8: focused BUTTON
+[A11y] Tab 9: focused BUTTON
+[A11y] Tab 10: focused BUTTON
+[A11y] Testing button: "⚙️PREFS"
+[A11y] Button focused: true
+  ✓    2 [chromium] › tests/e2e/accessibility.spec.ts:59:9 › Accessibility Audit › Keyboard Navigation › should navigate through all interactive elements with Tab (1.0s)
+[A11y] Space and Enter keys work on buttons
+  ✓    3 [chromium] › tests/e2e/accessibility.spec.ts:100:9 › Accessibility Audit › Keyboard Navigation › should support Space and Enter to activate buttons (974ms)
+[A11y] Escape key successfully closes dialog
+  ✓    1 [chromium] › tests/e2e/accessibility.spec.ts:79:9 › Accessibility Audit › Keyboard Navigation › should support Escape key to close dialogs (6.1s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[A11y] Found 6 tabs
+[A11y] Arrow key navigation focused: ▶️PLAY
+  ✓    4 [chromium] › tests/e2e/accessibility.spec.ts:135:9 › Accessibility Audit › Keyboard Navigation › should support arrow keys in tab navigation (25.9s)
+[A11y] Found 0 elements with role="button"
+[A11y] Found 0 elements with role="dialog"
+[A11y] Found 1 elements with role="tablist"
+[A11y] Found 6 elements with role="tab"
+[A11y] Found 6 elements with role="tabpanel"
+[A11y] Found 0 elements with role="navigation"
+  ✓    6 [chromium] › tests/e2e/accessibility.spec.ts:208:9 › Accessibility Audit › ARIA Compliance › should use proper ARIA roles for custom components (30.7s)
+[A11y] Checked 27 buttons, 0 missing labels
+  ✓    5 [chromium] › tests/e2e/accessibility.spec.ts:180:9 › Accessibility Audit › ARIA Compliance › should have proper ARIA labels on interactive elements (40.9s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[A11y] H1: SIDFlow
+[A11y] H3: SETUP WIZARD
+[A11y] H3: STEP 1: FETCH
+[A11y] H3: ALL STEPS
+[A11y] WARNING: Heading level skipped from h1 to h3
+[A11y] Heading hierarchy has issues
+  ✓    7 [chromium] › tests/e2e/accessibility.spec.ts:228:9 › Accessibility Audit › ARIA Compliance › should have proper heading hierarchy (25.1s)
+[A11y] Landmarks found: { main: [33m1[39m, nav: [33m0[39m, header: [33m1[39m, footer: [33m0[39m }
+  ✓    9 [chromium] › tests/e2e/accessibility.spec.ts:283:9 › Accessibility Audit › Semantic HTML › should use semantic landmarks (10.3s)
+[A11y] Found 1 aria-live regions
+[A11y] aria-live="assertive": 
+  ✓    8 [chromium] › tests/e2e/accessibility.spec.ts:261:9 › Accessibility Audit › ARIA Compliance › should have aria-live regions for dynamic content (30.4s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[A11y] Checked 1 images, 0 missing alt text
+  ✓   11 [chromium] › tests/e2e/accessibility.spec.ts:337:9 › Accessibility Audit › Semantic HTML › should have alt text for images (20.8s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[A11y] Initial focus: INPUT
+[A11y] Focus trapped in dialog: true
+  ✓   13 [chromium] › tests/e2e/accessibility.spec.ts:401:9 › Accessibility Audit › Focus Management › should trap focus in modal dialogs (6.0s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[A11y] Focus before dialog: "Login", after: "SIDFlowCOMMODORE 64 MUSIC PLAYERPREFSPLAYFAVORITESTOP CHARTSACTIVITYPROFILESLoginSign Up⚙️PREFS▶️PLAY❤️FAVORITES📊TOP CHARTS📡ACTIVITY👤PROFILESSurprise MeAdvanced FiltersSave QueuePlaylistsPLAY SID MUSICBuild a playlist for the selected mood and enjoy hands-free playback.EnergeticPLAY NEXT TRACKMOOD TRANSITIONERA EXPLORERHIDDEN GEMSCHIP MODEL0:003:00Played TracksMost recent first • click to replayNo songs played yet.Upcoming TracksFixed queue for this mood#1 • Superman Pt02 ThemeBrian M. SzepatowskiQueuedRecently PlayedLast 20 tracks from all sessionsNo recent playback historySID COLLECTION BROWSERNavigate folders and play SID files from your local collectionCollectionFolders (1)C64MusicREADY TO PLAY.requestAnimationFrame(function(){$RT=performance.now()});$RB=[];$RV=function(a){$RT=performance.now();for(var b=0;b<a.length;b+=2){var c=a[b],e=a[b+1];null!==e.parentNode&&e.parentNode.removeChild(e);var f=c.parentNode;if(f){var g=c.previousSibling,h=0;do{if(c&&8===c.nodeType){var d=c.data;if("/$"===d||"/&"===d)if(0===h)break;else h--;else"$"!==d&&"$?"!==d&&"$~"!==d&&"$!"!==d&&"&"!==d||h++}d=c.nextSibling;f.removeChild(c);c=d}while(c);for(;e.firstChild;)f.insertBefore(e.firstChild,c);g.data="$";g._reactRetry&&requestAnimationFrame(g._reactRetry)}}a.length=0};
+$RC=function(a,b){if(b=document.getElementById(b))(a=document.getElementById(a))?(a.previousSibling.data="$~",$RB.push(a,b),2===$RB.length&&("number"!==typeof $RT?requestAnimationFrame($RV.bind(null,$RB)):(a=performance.now(),setTimeout($RV.bind(null,$RB),2300>a&&2E3<a?2300-a:$RT+300-a)))):b.parentNode.removeChild(b)};$RC("B:0","S:0")(self.__next_f=self.__next_f||[]).push([0])self.__next_f.push([1,"1:\"$Sreact.fragment\"\n2:I[93368,[\"/_next/static/chunks/daefb0907b743f22.js\",\"/_next/static/chunks/e74eda5a95a72dd6.js\"],\"PreferencesProvider\"]\n3:I[1902,[\"/_next/static/chunks/daefb0907b743f22.js\",\"/_next/static/chunks/e74eda5a95a72dd6.js\"],\"ToastProvider\"]\n4:I[36622,[\"/_next/static/chunks/daefb0907b743f22.js\",\"/_next/static/chunks/e74eda5a95a72dd6.js\"],\"CrossOriginIsolatedCheck\"]\n5:I[34093,[\"/_next/static/chunks/daefb0907b743f22.js\",\"/_next/static/chunks/e74eda5a95a72dd6.js\"],\"ServiceWorkerBridge\"]\n6:I[39756,[\"/_next/static/chunks/ff1a16fafef87110.js\",\"/_next/static/chunks/848fe5fcbab03adc.js\"],\"default\"]\n7:I[28910,[\"/_next/static/chunks/ff1a16fafef87110.js\",\"/_next/static/chunks/848fe5fcbab03adc.js\"],\"default\"]\n8:I[96653,[\"/_next/static/chunks/daefb0907b743f22.js\",\"/_next/static/chunks/e74eda5a95a72dd6.js\"],\"ToastViewport\"]\n9:\"$Sreact.suspense\"\na:I[74105,[\"/_next/static/chunks/daefb0907b743f22.js\",\"/_next/static/chunks/e74eda5a95a72dd6.js\",\"/_next/static/chunks/b4300763ce787e6f.js\",\"/_next/static/chunks/2cf9eebe9621af99.js\",\"/_next/static/chunks/ac8b4b9de631adaf.js\"],\"SidflowApp\"]\nb:I[97367,[\"/_next/static/chunks/ff1a16fafef87110.js\",\"/_next/static/chunks/848fe5fcbab03adc.js\"],\"OutletBoundary\"]\nd:I[97367,[\"/_next/static/chunks/ff1a16fafef87110.js\",\"/_next/static/chunks/848fe5fcbab03adc.js\"],\"ViewportBoundary\"]\nf:I[97367,[\"/_next/static/chunks/ff1a16fafef87110.js\",\"/_next/static/chunks/848fe5fcbab03adc.js\"],\"MetadataBoundary\"]\n11:I[68027,[],\"default\"]\n12:I[27201,[\"/_next/static/chunks/ff1a16fafef87110.js\",\"/_next/static/chunks/848fe5fcbab03adc.js\"],\"IconMark\"]\n:HL[\"/_next/static/chunks/9c30a589706bd23f.css\",\"style\"]\n"])self.__next_f.push([1,"0:{\"P\":null,\"b\":\"Qqd7kriTVJYsmS27s2gGv\",\"c\":[\"\",\"\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"__PAGE__\",{}]},\"$undefined\",\"$undefined\",true],[[\"$\",\"$1\",\"c\",{\"children\":[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/chunks/9c30a589706bd23f.css\",\"precedence\":\"next\",\"crossOrigin\":\"$undefined\",\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/daefb0907b743f22.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/e74eda5a95a72dd6.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"html\",null,{\"lang\":\"en\",\"suppressHydrationWarning\":true,\"children\":[\"$\",\"body\",null,{\"className\":\"antialiased font-c64\",\"children\":[\"$\",\"$L2\",null,{\"children\":[\"$\",\"$L3\",null,{\"children\":[[\"$\",\"$L4\",null,{}],[\"$\",\"$L5\",null,{}],[\"$\",\"$L6\",null,{\"parallelRouterKey\":\"children\",\"error\":\"$undefined\",\"errorStyles\":\"$undefined\",\"errorScripts\":\"$undefined\",\"template\":[\"$\",\"$L7\",null,{}],\"templateStyles\":\"$undefined\",\"templateScripts\":\"$undefined\",\"notFound\":[[[\"$\",\"title\",null,{\"children\":\"404: This page could not be found.\"}],[\"$\",\"div\",null,{\"style\":{\"fontFamily\":\"system-ui,\\\"Segoe UI\\\",Roboto,Helvetica,Arial,sans-serif,\\\"Apple Color Emoji\\\",\\\"Segoe UI Emoji\\\"\",\"height\":\"100vh\",\"textAlign\":\"center\",\"display\":\"flex\",\"flexDirection\":\"column\",\"alignItems\":\"center\",\"justifyContent\":\"center\"},\"children\":[\"$\",\"div\",null,{\"children\":[[\"$\",\"style\",null,{\"dangerouslySetInnerHTML\":{\"__html\":\"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}\"}}],[\"$\",\"h1\",null,{\"className\":\"next-error-h1\",\"style\":{\"display\":\"inline-block\",\"margin\":\"0 20px 0 0\",\"padding\":\"0 23px 0 0\",\"fontSize\":24,\"fontWeight\":500,\"verticalAlign\":\"top\",\"lineHeight\":\"49px\"},\"children\":404}],[\"$\",\"div\",null,{\"style\":{\"display\":\"inline-block\"},\"children\":[\"$\",\"h2\",null,{\"style\":{\"fontSize\":14,\"fontWeight\":400,\"lineHeight\":\"49px\",\"margin\":0},\"children\":\"This page could not be found.\"}]}]]}]}]],[]],\"forbidden\":\"$undefined\",\"unauthorized\":\"$undefined\"}],[\"$\",\"$L8\",null,{}]]}]}]}]}]]}],{\"children\":[[\"$\",\"$1\",\"c\",{\"children\":[[\"$\",\"$9\",null,{\"fallback\":[\"$\",\"div\",null,{\"className\":\"min-h-screen flex items-center justify-center\",\"children\":\"Loading...\"}],\"children\":[\"$\",\"$La\",null,{\"persona\":\"public\"}]}],[[\"$\",\"script\",\"script-0\",{\"src\":\"/_next/static/chunks/b4300763ce787e6f.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-1\",{\"src\":\"/_next/static/chunks/2cf9eebe9621af99.js\",\"async\":true,\"nonce\":\"$undefined\"}],[\"$\",\"script\",\"script-2\",{\"src\":\"/_next/static/chunks/ac8b4b9de631adaf.js\",\"async\":true,\"nonce\":\"$undefined\"}]],[\"$\",\"$Lb\",null,{\"children\":[\"$\",\"$9\",null,{\"name\":\"Next.MetadataOutlet\",\"children\":\"$@c\"}]}]]}],{},null,false,false]},null,false,false],[\"$\",\"$1\",\"h\",{\"children\":[null,[\"$\",\"$Ld\",null,{\"children\":\"$@e\"}],[\"$\",\"div\",null,{\"hidden\":true,\"children\":[\"$\",\"$Lf\",null,{\"children\":[\"$\",\"$9\",null,{\"name\":\"Next.Metadata\",\"children\":\"$@10\"}]}]}],null]}],false]],\"m\":\"$undefined\",\"G\":[\"$11\",[]],\"s\":false,\"S\":false}\n"])self.__next_f.push([1,"e:[[\"$\",\"meta\",\"0\",{\"charSet\":\"utf-8\"}],[\"$\",\"meta\",\"1\",{\"name\":\"viewport\",\"content\":\"width=device-width, initial-scale=1\"}]]\n10:[[\"$\",\"title\",\"0\",{\"children\":\"SIDFlow Control Panel\"}],[\"$\",\"meta\",\"1\",{\"name\":\"description\",\"content\":\"Local web interface for SIDFlow - play, rate, and classify SID music\"}],[\"$\",\"link\",\"2\",{\"rel\":\"icon\",\"href\":\"/favicon.ico?favicon.0b3bf435.ico\",\"sizes\":\"256x256\",\"type\":\"image/x-icon\"}],[\"$\",\"$L12\",\"3\",{}]]\nc:null\n"])"
+  ✓   14 [chromium] › tests/e2e/accessibility.spec.ts:434:9 › Accessibility Audit › Focus Management › should restore focus after closing dialog (5.8s)
+[A11y] Checked 1 inputs, 0 unlabeled
+  ✓   10 [chromium] › tests/e2e/accessibility.spec.ts:300:9 › Accessibility Audit › Semantic HTML › should have proper form labels (36.0s)
+[A11y] Focus indicator styles: {
+  outline: [32m'rgb(255, 255, 255) none 0px'[39m,
+  outlineWidth: [32m'0px'[39m,
+  outlineStyle: [32m'none'[39m,
+  boxShadow: [32m'rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(80, 199, 232) 0px 0px 0px 1px, rgba(0, 0, 0, 0.1) 0px 1px 3px 0px, rgba(0, 0, 0, 0.1) 0px 1px 2px -1px'[39m,
+  border: [32m'0px solid rgb(255, 255, 255)'[39m
+}
+  ✓   12 [chromium] › tests/e2e/accessibility.spec.ts:365:9 › Accessibility Audit › Focus Management › should have visible focus indicators (20.9s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[A11y] Page title: "SIDFlow Control Panel"
+  ✓   16 [chromium] › tests/e2e/accessibility.spec.ts:497:9 › Accessibility Audit › Screen Reader Support › should have proper document title (16.4s)
+[A11y] Checked 0 links, 0 with vague text
+  ✓   17 [chromium] › tests/e2e/accessibility.spec.ts:507:9 › Accessibility Audit › Screen Reader Support › should have descriptive link text (16.5s)
+[A11y] Checked 20 text elements, 0 potential contrast issues
+  ✓   15 [chromium] › tests/e2e/accessibility.spec.ts:463:9 › Accessibility Audit › Color Contrast › should have sufficient color contrast for text (20.0s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   18 [chromium] › tests/e2e/advanced-search.spec.ts:20:5 › Advanced Search & Discovery › should display advanced search bar with filters toggle (1.1s)
+  ✓   19 [chromium] › tests/e2e/advanced-search.spec.ts:34:5 › Advanced Search & Discovery › should search by title and display results (1.2s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   20 [chromium] › tests/e2e/advanced-search.spec.ts:48:5 › Advanced Search & Discovery › should search by artist and display results (1.2s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   21 [chromium] › tests/e2e/advanced-search.spec.ts:62:5 › Advanced Search & Discovery › should clear search with X button (1.2s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   23 [chromium] › tests/e2e/advanced-search.spec.ts:103:5 › Advanced Search & Discovery › should apply year range filter (1.1s)
+  ✓   22 [chromium] › tests/e2e/advanced-search.spec.ts:78:5 › Advanced Search & Discovery › should toggle advanced filters panel (1.4s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   24 [chromium] › tests/e2e/advanced-search.spec.ts:127:5 › Advanced Search & Discovery › should apply duration range filter (1.0s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   25 [chromium] › tests/e2e/advanced-search.spec.ts:151:5 › Advanced Search & Discovery › should clear all filters (1.1s)
+  ✓   27 [chromium] › tests/e2e/advanced-search.spec.ts:207:5 › Advanced Search & Discovery › should trigger Surprise Me and play random track (727ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   26 [chromium] › tests/e2e/advanced-search.spec.ts:177:5 › Advanced Search & Discovery › should accept search input for playing songs (1.7s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   28 [chromium] › tests/e2e/advanced-search.spec.ts:218:5 › Advanced Search & Discovery › should handle search for artist names (934ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   29 [chromium] › tests/e2e/advanced-search.spec.ts:230:5 › Advanced Search & Discovery › should handle no results gracefully (1.0s)
+
+📦 Setting up synthetic test files...
+   ✅ Created API_Test_Low.sid + pre-rendered WAV
+   ✅ Created API_Test_Mid.sid + pre-rendered WAV
+   ✅ Created API_Test_High.sid + pre-rendered WAV
+
+================================================================================
+🚀 CLASSIFICATION API E2E TEST
+================================================================================
+
+⏳ Step 0: Ensuring classification is idle
+----------------------------------------
+   🔄 Checking if classification is idle...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+   ✅ Classification is idle, ready to start new classification
+
+📋 Step 1: Initial State
+----------------------------------------
+   JSONL files before: 0
+
+🔧 Step 2: Triggering Classification via REST API
+----------------------------------------
+   POST /api/classify
+   Path: C64Music/MUSICIANS/T/Test_E2E_API
+   Options: skipAlreadyClassified=false
+   Note: Using pre-rendered WAVs (no forceRebuild needed)
+
+   Response received in 0.03s
+   Status: 202
+
+⏳ Waiting for classification to complete...
+   🔄 Checking if classification is idle...
+   ⏳ Classification in progress (phase: analyzing), waiting... (0s elapsed)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   31 [chromium] › tests/e2e/audio-fidelity.spec.ts:391:5 › Audio Fidelity - AudioWorklet + SAB Pipeline › Rate and play tabs initialize shared pipeline (934ms)
+  ✓   30 [chromium] › tests/e2e/advanced-search.spec.ts:242:5 › Advanced Search & Discovery › should maintain search input when clicking outside (1.3s)
+   ⚠️  Progress endpoint unavailable, proceeding...
+
+✅ Classification accepted (async) and completed in background
+
+📁 Step 3: Identifying Output Files
+----------------------------------------
+   JSONL files after: 1
+   New JSONL files: 1
+   ✅ New JSONL: classification_2025-12-13_23-55-28-242.jsonl
+
+🔊 Step 4: Checking Audio Cache
+----------------------------------------
+   ✅ API_Test_Low.wav (86.2 KB)
+   ✅ API_Test_Mid.wav (86.2 KB)
+   ✅ API_Test_High.wav (86.2 KB)
+
+🏷️  Step 5: Checking Tags
+----------------------------------------
+   auto-tags.json: ❌ missing
+
+📊 Step 6: Validating JSONL Content
+----------------------------------------
+   Total entries in JSONL: 3
+
+   Found entry for API_Test_Low:
+   sid_path: API_Test_Low.sid
+
+   Essentia.js Features:
+     energy:           0.000016
+     rms:              0.003991
+     spectralCentroid: 2000.00 Hz
+     spectralRolloff:  4000.00 Hz
+     zeroCrossingRate: 0.000136
+     bpm:              60.0
+     duration:         10.00s
+     sampleRate:       44100 Hz
+     numSamples:       110250
+     wavBytes:         N/A
+     sidBytes:         N/A
+[WebServer] [classify stderr] 2025-12-13 23:55:28.167482: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+[WebServer] 2025-12-13 23:55:28.225567: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA
+[WebServer] To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [featurePool] Feature worker exited with code: 0
+[WebServer] [featurePool] Feature worker exited with code: 0
+[WebServer] 
+
+   Found entry for API_Test_Mid:
+   sid_path: API_Test_Mid.sid
+
+   Essentia.js Features:
+     energy:           0.000014
+     rms:              0.003704
+     spectralCentroid: 2000.00 Hz
+     spectralRolloff:  4000.00 Hz
+     zeroCrossingRate: 0.000118
+     bpm:              60.0
+     duration:         10.00s
+     sampleRate:       44100 Hz
+     numSamples:       110250
+     wavBytes:         N/A
+     sidBytes:         N/A
+
+   Found entry for API_Test_High:
+   sid_path: API_Test_High.sid
+
+   Essentia.js Features:
+     energy:           0.000016
+     rms:              0.003991
+     spectralCentroid: 2000.00 Hz
+     spectralRolloff:  4000.00 Hz
+     zeroCrossingRate: 0.000136
+     bpm:              60.0
+     duration:         10.00s
+     sampleRate:       44100 Hz
+     numSamples:       110250
+     wavBytes:         N/A
+     sidBytes:         N/A
+
+   ✅ Found all 3/3 test songs in JSONL
+
+================================================================================
+📋 SUMMARY: All Output Files Created
+================================================================================
+
+✅ JSONL Classification Output:
+   /workspace/test-workspace/classified/classification_2025-12-13_23-55-28-242.jsonl
+
+✅ WAV Audio Cache (3 files):
+   /workspace/test-workspace/audio-cache/C64Music/MUSICIANS/T/Test_E2E_API/API_Test_Low.wav
+   /workspace/test-workspace/audio-cache/C64Music/MUSICIANS/T/Test_E2E_API/API_Test_Mid.wav
+   /workspace/test-workspace/audio-cache/C64Music/MUSICIANS/T/Test_E2E_API/API_Test_High.wav
+
+✅ Auto-Tags:
+   /workspace/test-workspace/tags/MUSICIANS/T/Test_E2E_API/auto-tags.json
+
+================================================================================
+🎉 ALL TESTS PASSED - Classification API E2E Complete
+================================================================================
+
+
+🧹 Cleaning up test files...
+   ✅ Cleanup complete
+  ✓   32 [chromium] › tests/e2e/classify-api-e2e.spec.ts:200:3 › Classification API E2E › triggers classification via REST API and verifies all output files (21.2s)
+
+📦 Setting up incremental test files...
+   ✅ Created 5 test SIDs with pre-rendered WAVs
+
+================================================================================
+🔄 JSONL FORMAT VALIDATION E2E TEST
+================================================================================
+
+📋 Initial JSONL files: 1
+   🔄 Checking if classification is idle...
+   ✅ Classification is idle, ready to start new classification
+
+🔧 Starting classification via REST API...
+   Path: C64Music/MUSICIANS/I/Incremental_Test
+   Songs: 5
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [classify stderr] 2025-12-13 23:55:49.116014: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+[WebServer] 
+[WebServer] [classify stderr] 2025-12-13 23:55:49.142033: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA
+[WebServer] To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[WebServer] 
+[Fidelity][rate] passed=true duration=0.660 freq=259.41 dropouts=0
+  ✓   33 [chromium] › tests/e2e/audio-fidelity.spec.ts:428:5 › Audio Fidelity - C4 Test SID › Rate tab: C4 test SID fidelity (22.8s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Fidelity][play] passed=true duration=0.660 freq=259.41 dropouts=0
+  ✓   36 [chromium] › tests/e2e/audio-fidelity.spec.ts:444:5 › Audio Fidelity - C4 Test SID › Play tab: C4 test SID fidelity (2.4s)
+[WebServer] [classify stderr] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] 
+
+✅ Classification completed in 7.41s
+
+📁 New JSONL file: classification_2025-12-13_23-55-49-173.jsonl
+
+📊 JSONL Content Analysis:
+   Total lines: 5
+   Expected: 5
+
+🔍 Validating each JSONL record:
+   ✅ Line 1: Incr_Song_04.sid - features: 15
+   ✅ Line 2: Incr_Song_03.sid - features: 15
+   ✅ Line 3: Incr_Song_01.sid - features: 15
+   ✅ Line 4: Incr_Song_02.sid - features: 15
+   ✅ Line 5: Incr_Song_05.sid - features: 15
+
+📝 Verifying JSONL format:
+   ✅ Each record is on its own line (JSONL format)
+   ✅ Records are complete and valid (not truncated)
+   ✅ Features extracted for each record
+   ✅ No batch markers or grouping detected
+   ✅ File starts with '{' (not '[') - confirms JSONL, not JSON array
+
+================================================================================
+📋 JSONL FORMAT VALIDATION SUMMARY
+================================================================================
+
+✅ JSONL file: classification_2025-12-13_23-55-49-173.jsonl
+✅ Records written: 5
+✅ All songs found: 5/5
+✅ All records have features (Essentia.js extraction worked)
+✅ File format is valid JSONL (one JSON object per line)
+
+🎉 JSONL FORMAT VALIDATION TEST PASSED
+================================================================================
+
+
+🧹 Cleaning up incremental test files...
+   ✅ Cleanup complete
+  ✓   35 [chromium] › tests/e2e/classify-api-e2e.spec.ts:472:3 › JSONL Format Validation E2E › verifies JSONL output format and record validity (7.5s)
+
+=== Validating Classification Output Format ===
+
+[Output] Stdout length: 1748 chars
+
+=== Verifying Phase Presence in Output ===
+
+[✓] Phase 'analyzing' found (patterns: [Analyzing], [Thread)
+[✓] Phase 'metadata' found (patterns: [Reading Metadata], Reading metadata:)
+[✓] Phase 'building' found (patterns: [Converting], Rendering:)
+[✓] Phase 'tagging' found (patterns: [Extracting Features], Extracting features:)
+
+=== Verifying Multi-threaded Operation ===
+
+[Threads] Thread 1 messages: 9, Thread 2 messages: 9
+
+=== Verifying No Stale Markers ===
+
+[✓] No stale markers found in output
+
+=== Verifying Clean Completion ===
+
+[✓] Both threads completed cleanly (IDLE status)
+
+=== Verifying Rendering Phase Thread Activity ===
+
+[Rendering] Found 9 rendering-related lines
+[Rendering] Thread rendering messages: 4
+[Rendering] Thread 1 renders: 2, Thread 2 renders: 2
+[Rendering] Progress updates: 5
+
+=== All Tests Passed: Phases verified, threads active, no stale status ===
+
+  ✓   38 [chromium] › tests/e2e/classify-phase-transitions.spec.ts:55:3 › Classification Phase Transitions › should contain all phases and thread updates without stale status (5ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [classify stderr] 2025-12-13 23:55:56.665938: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+[WebServer] 
+[WebServer] [classify stderr] 2025-12-13 23:55:56.696433: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA
+[WebServer] To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[WebServer] 
+  ✓   39 [chromium] › tests/e2e/classify-progress-metrics.spec.ts:129:3 › Classify progress metrics › displays rendered and tagged counts (605ms)
+[PauseResumeTest] Navigating to Play tab...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[PauseResumeTest] Starting playback...
+[Browser] [WorkletPlayer] ✓ AudioWorklet initialized
+[Browser] [WorkletPlayer] ✓ Web Worker initialized
+[Browser] [WorkletPlayer] Worker loaded SID payload
+[Browser] [WorkletPlayer] Worker load resolved
+[Browser] [WorkletPlayer] play() invoked {state: ready}
+[Browser] [WorkletPlayer] Worker pre-roll complete, ready to play
+[Browser] [WorkletPlayer] Worker ready resolved, continuing playback setup
+[PauseResumeTest] Player ready
+[PauseResumeTest] Waiting for playback to start...
+[PauseResumeTest] Playback started: position=0.209s, state=playing
+[PauseResumeTest] Position before pause: 0.209s
+[PauseResumeTest] Clicking pause button...
+[Browser] [WorkletPlayer] pause() saved position: elapsed=0.2583219954648526, pausedPosition=0.2583219954648526, duration=1
+[Browser] [WorkletPlayer] pause() completed, state=paused
+[PauseResumeTest] Paused: state=paused
+[PauseResumeTest] Position while paused: 0.258s
+[PauseResumeTest] ✓ Position preserved during pause (0.258s)
+[PauseResumeTest] Clicking resume button...
+[Browser] [WorkletPlayer] play() invoked {state: paused}
+[Browser] [WorkletPlayer] Resuming from pause, skipping worker ready wait
+[PauseResumeTest] Resumed: state=playing
+[PauseResumeTest] Position after resume: 0.290s
+[PauseResumeTest] ✓ Position continued correctly after resume (0.290s)
+[PauseResumeTest] Final position: 0.299s
+[PauseResumeTest] ✓ Test passed: pause/resume position preservation works correctly
+  ✓   40 [chromium] › tests/e2e/pause-resume-position.spec.ts:152:5 › Pause/Resume Position Preservation › progress bar maintains position when paused and continues correctly on resume (1.8s)
+[PauseResumeTest] Navigating to Play tab...
+[WebServer] [classify stderr] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [featurePool] Feature worker exited with code: 0
+[WebServer] 
+  ✓   34 [chromium] › tests/e2e/classify-essentia-e2e.spec.ts:123:3 › Classification Output with Essentia.js Features › runs classification and verifies JSONL contains rich audio features (30.7s)
+  ✓   42 [chromium] › tests/e2e/classify-essentia-e2e.spec.ts:172:3 › Classification Output with Essentia.js Features › writes auto-tags.json with ratings for the classified SID (10ms)
+[Performance] Testing HVSC fetch UI (test collection mode)...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[heartbeat] ensuring classification is idle before starting
+[PauseResumeTest] Starting playback...
+[heartbeat] starting background classification run
+[heartbeat] classify start response status [33m202[39m
+[heartbeat] classification start request accepted
+[heartbeat] poll=1 phase=analyzing active=true stale=0 working=0
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [classify stderr] 2025-12-13 23:55:59.606743: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+[WebServer] 
+[WebServer] [classify stderr] 2025-12-13 23:55:59.632481: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA
+[WebServer] To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+[WebServer] 
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-hvsc-fetch-ui-1765670160023.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-hvsc-fetch-ui-1765670160072.json
+  ✓   43 [chromium] › tests/e2e/performance.spec.ts:325:5 › Performance Tests (Test Collection) › 1. HVSC Fetch - Download via admin UI (1.1s)
+[PauseResumeTest] Player ready
+[PauseResumeTest] Waiting for playback to start...
+[PauseResumeTest] Playback started: position=0.171s, state=playing
+[PauseResumeTest] Cycle 1/2
+[PauseResumeTest] Clicking pause button...
+[PauseResumeTest] Paused: state=paused
+[PauseResumeTest] Cycle 1 paused at: 0.261s
+[PauseResumeTest] Clicking resume button...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[PauseResumeTest] Resumed: state=playing
+[PauseResumeTest] Cycle 1 resumed at: 0.290s
+[PauseResumeTest] Cycle 2/2
+[PauseResumeTest] Clicking pause button...
+[PauseResumeTest] Paused: state=paused
+[PauseResumeTest] Cycle 2 paused at: 0.342s
+[PauseResumeTest] Clicking resume button...
+[PauseResumeTest] Resumed: state=playing
+[PauseResumeTest] Cycle 2 resumed at: 0.412s
+[PauseResumeTest] ✓ Multiple pause/resume cycles completed successfully
+  ✓   41 [chromium] › tests/e2e/pause-resume-position.spec.ts:259:5 › Pause/Resume Position Preservation › progress bar maintains position across multiple pause/resume cycles (2.1s)
+[Performance] search: 310ms (status: 200)
+[Performance] favorites: 3ms (status: 200)
+[Performance] playlists: 5ms (status: 200)
+[Performance] charts-daily: 5ms (status: 400)
+[Performance] activity: 5ms (status: 200)
+[Performance] Saved metrics to /workspace/tmp/performance/perf-api-endpoints-1765670161263.json
+  ✓   45 [chromium] › tests/e2e/performance.spec.ts:507:5 › Performance Tests (Test Collection) › measure API endpoint performance (434ms)
+[heartbeat] poll=5 phase=metadata active=true stale=0 working=4
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-initial-load-1765670161420.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-initial-load-1765670161442.json
+[Performance] Page load time: 1222ms
+[Performance] DOM content loaded: 55ms
+[Performance] First contentful paint: 183.27500000596046ms
+[Performance] Largest contentful paint: 183.27500000596046ms
+  ✓   44 [chromium] › tests/e2e/performance.spec.ts:357:9 › Performance Tests (Test Collection) › measure initial page load performance (1.4s)
+[Performance] Testing folder browser (test collection mode)...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [classify stderr] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] [wasmRenderPool] Worker exited with code: 0
+[WebServer] 
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [renderWav] Hash write failed for HB_Test_05.wav Error: ENOENT: no such file or directory, open '/workspace/test-workspace/hvsc/C64Music/MUSICIANS/T/Test_E2E_Heartbeat/HB_Test_05.sid'
+[WebServer]     at async d (.next/server/chunks/[root-of-the-server]__7c14e505._.js:1:13745)
+[WebServer]     at async c (.next/server/chunks/[root-of-the-server]__7c14e505._.js:1:16157)
+[WebServer]     at async w (.next/server/chunks/[root-of-the-server]__dbf44b9f._.js:1:3013)
+[WebServer]     at async x (.next/server/chunks/[root-of-the-server]__dbf44b9f._.js:1:4658)
+[WebServer]     at async $ (.next/server/chunks/[root-of-the-server]__dbf44b9f._.js:1:6234)
+[WebServer]     at async (.next/server/chunks/[root-of-the-server]__dbf44b9f._.js:1:6972)
+[WebServer]     at async _ (.next/server/chunks/[root-of-the-server]__1554a2bd._.js:1:878) {
+[WebServer]   errno: -2,
+[WebServer]   code: 'ENOENT',
+[WebServer]   syscall: 'open',
+[WebServer]   path: '/workspace/test-workspace/hvsc/C64Music/MUSICIANS/T/Test_E2E_Heartbeat/HB_Test_05.sid'
+[WebServer] }
+  ✘   37 [chromium] › tests/e2e/classify-heartbeat.spec.ts:147:1 › Classification Heartbeat - threads should not become stale during feature extraction (28.8s)
+(node:49264) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:49264) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[Performance] Testing classification workflow...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-folder-browser-1765670183500.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-folder-browser-1765670183509.json
+[Performance] Initial load: 25ms
+[Performance] Folder list load: 20ms
+[Performance] Folders visible: 0
+[Performance] Folder expand: 0ms
+[Performance] Scroll (5 steps): 520ms, avg 104.00ms/step
+  ✓   47 [chromium] › tests/e2e/performance.spec.ts:381:5 › Performance Tests (Test Collection) › 2. Folder Browser - Navigate and scroll through full HVSC (22.0s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-search-ui-1765670184621.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-search-ui-1765670184631.json
+[Performance] Search UI available: false
+[Performance] Search time: 0ms
+[Performance] Generated report: /workspace/tmp/performance/performance-report-1765670184655.md
+  ✓   49 [chromium] › tests/e2e/performance.spec.ts:468:5 › Performance Tests (Test Collection) › measure search performance with full HVSC (1.1s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Performance] Initial heap: 11.75MB
+[Performance] After Navigate to Favorites: 12.19MB
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-classification-workflow-1765670187144.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-classification-workflow-1765670187155.json
+[Performance] Navigation to classify tab: 1002ms
+[Performance] Trigger classification: 2095ms
+  ✓   48 [chromium] › tests/e2e/performance.spec.ts:773:5 › Performance Tests (Test Collection) › 6. Classification Workflow - Trigger analysis via admin UI (4.3s)
+[Performance] Testing training workflow...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Performance] After Navigate to Charts: 12.43MB
+  ✓   50 [chromium] › tests/e2e/play-tab.spec.ts:105:5 › PlayTab Personalized Features › creates personalized station from the current song (3.5s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Performance] After Navigate back to Play: 12.68MB
+  ✓   52 [chromium] › tests/e2e/play-tab.spec.ts:120:5 › PlayTab Personalized Features › displays personal and community ratings for the song in play (1.4s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+Pause button count (random SID test): [33m1[39m
+[RateTab] Pause readiness for random SID test: {
+  state: [32m'ready'[39m,
+  ariaPressed: [32m'false'[39m,
+  telemetry: { framesProduced: [33m0[39m, framesConsumed: [33m0[39m }
+}
+Pause button HTML (random SID test): <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg]:size-4 [&amp;_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 w-9" aria-label="Pause playback / Resume playback" aria-pressed="true" title="Pause playback"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause h-4 w-4" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"></rect><rect x="5" y="3" width="5" height="18" rx="1"></rect></svg></button>
+Browser console messages: [
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: load-start, ready: false, hasTrack: false, isAudioLoading: true, playerState: idle}'[39m,
+  [32m'[debug] [RateTab] loadTrackIntoPlayer: starting load {track: /virtual/test-tone-c4.sid, sessionId: rate-stub-1765670190044-1}'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: player-statechange:loading, ready: false, hasTrack: false, isAudioLoading: true, playerState: loading}'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: is-audio-loading-change, ready: false, hasTrack: false, isAudioLoading: true, playerState: loading}'[39m,
+  [32m'[log] [WorkletPlayer] ✓ AudioWorklet initialized'[39m,
+  [32m'[log] [SidProducer] Buffer strategy configured {capacityFrames: 32768, preRollFrames: 2560, renderChunkFrames: 2048, renderCyclesPerChunk: 98304, blockSize: 128}'[39m,
+  [32m'[log] [SidProducer] ✓ Initialized {sampleRate: 44100, channels: 2, blockSize: 128}'[39m,
+  [32m'[log] [WorkletPlayer] ✓ Web Worker initialized'[39m,
+  [32m'[log] [SidProducer] ✓ Loaded SID buffer into engine'[39m,
+  [32m'[log] [SidProducer] ✓ Selected song {selectedSong: 1}'[39m,
+  [32m'[log] [WorkletPlayer] Worker loaded SID payload'[39m,
+  [32m'[log] [WorkletPlayer] Worker load resolved'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: player-statechange:ready, ready: false, hasTrack: false, isAudioLoading: true, playerState: ready}'[39m,
+  [32m'[debug] [RateTab] loadTrackIntoPlayer: load resolved {track: /virtual/test-tone-c4.sid, playerState: ready}'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: track-loaded, ready: true, hasTrack: true, isAudioLoading: true, playerState: ready}'[39m,
+  [32m'[log] [WorkletPlayer] play() invoked {state: ready}'[39m,
+  [32m'[log] [SidProducer] Pre-roll start {targetFrames: 2560}'[39m,
+  [32m'[warning] [SidProducer] Occupancy reached zero before producing new audio {framesProduced: 0}'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: current-track-change, ready: true, hasTrack: true, isAudioLoading: true, playerState: ready}'[39m,
+  [32m'[debug] [RateTab] Pause ready state updated {isPauseReady: true}'[39m,
+  [32m'[log] [SidProducer] Pre-roll complete {occupancy: 2560, shouldStop: false}'[39m,
+  [32m'[log] [WorkletPlayer] Worker pre-roll complete, ready to play'[39m,
+  [32m'[log] [WorkletPlayer] Worker ready resolved, continuing playback setup'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: player-statechange:playing, ready: true, hasTrack: true, isAudioLoading: true, playerState: playing}'[39m,
+  [32m'[debug] [RateTab] loadTrackIntoPlayer: play resolved {track: /virtual/test-tone-c4.sid, playerState: playing}'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: playback-start, ready: true, hasTrack: true, isAudioLoading: false, playerState: playing}'[39m,
+  [32m'[debug] [RateTab] loadTrackIntoPlayer: load finished {trackAttempted: /virtual/test-tone-c4.sid, playbackStarted: true, playerState: playing, isAudioLoading: false}'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: is-audio-loading-change, ready: true, hasTrack: true, isAudioLoading: false, playerState: playing}'[39m,
+  [32m'[log] [WorkletPlayer] pause() saved position: elapsed=0.4005442176870748, pausedPosition=0.4005442176870748, duration=1'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: player-statechange:paused, ready: true, hasTrack: true, isAudioLoading: false, playerState: paused}'[39m,
+  [32m'[log] [WorkletPlayer] pause() completed, state=paused'[39m,
+  [32m'[log] [WorkletPlayer] play() invoked {state: paused}'[39m,
+  [32m'[log] [WorkletPlayer] Resuming from pause, skipping worker ready wait'[39m,
+  [32m'[debug] [RateTab] Pause readiness recalculated {origin: player-statechange:playing, ready: true, hasTrack: true, isAudioLoading: false, playerState: playing}'[39m
+]
+  ✓   53 [chromium] › tests/e2e/playback.spec.ts:226:9 › RateTab Browser Playback › loads and plays a random SID (1.6s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   54 [chromium] › tests/e2e/playback.spec.ts:327:9 › RateTab Browser Playback › displays rating controls and allows submission (1.2s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[RateTab] Pause readiness for play tab playlist test: {
+  state: [32m'ready'[39m,
+  ariaPressed: [32m'false'[39m,
+  telemetry: { framesProduced: [33m0[39m, framesConsumed: [33m0[39m }
+}
+  ✓   55 [chromium] › tests/e2e/playback.spec.ts:399:9 › PlayTab Browser Playback › loads playlist and plays tracks (1.3s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   56 [chromium] › tests/e2e/playback.spec.ts:447:9 › PlayTab Browser Playback › handles mood preset changes (636ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Performance] After Open search: 11.15MB
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-training-workflow-1765670195603.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-training-workflow-1765670195618.json
+[Performance] Navigation to rate tab: 1002ms
+[Performance] Rating submission: 537ms
+[Performance] Generated report: /workspace/tmp/performance/performance-report-1765670195643.md
+  ✓   51 [chromium] › tests/e2e/performance.spec.ts:817:5 › Performance Tests (Test Collection) › 7. Training Workflow - Submit ratings and trigger retrain (8.4s)
+[RateTab] Pause readiness for play tab metadata test: {
+  state: [32m'ready'[39m,
+  ariaPressed: [32m'false'[39m,
+  telemetry: { framesProduced: [33m0[39m, framesConsumed: [33m0[39m }
+}
+  ✓   57 [chromium] › tests/e2e/playback.spec.ts:462:9 › PlayTab Browser Playback › displays track information during playback (1.3s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   59 [chromium] › tests/e2e/playback.spec.ts:594:9 › WASM Asset Loading › loads WASM module from /wasm/ path (517ms)
+[Performance] After Perform search: 11.40MB
+[Performance] Saved metrics to /workspace/tmp/performance/perf-memory-usage-1765670196483.json
+[Performance] Total heap growth: -0.35MB
+  ✓   46 [chromium] › tests/e2e/performance.spec.ts:550:5 › Performance Tests (Test Collection) › measure memory usage during extended session (35.2s)
+[Performance] Testing recommendation engine...
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   60 [chromium] › tests/e2e/playback.spec.ts:635:9 › Error Handling › handles playback errors gracefully (577ms)
+  ✓   58 [chromium] › tests/e2e/playback.spec.ts:499:9 › PlayTab Browser Playback › queues playback while offline and resumes once online (1.6s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   62 [chromium] › tests/e2e/playlists.spec.ts:194:5 › Playlists Feature › should show playlists button and empty state (870ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   64 [chromium] › tests/e2e/playlists.spec.ts:242:5 › Playlists Feature › should delete playlist (1.2s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   63 [chromium] › tests/e2e/playlists.spec.ts:205:5 › Playlists Feature › should create playlist and show in list (1.9s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   65 [chromium] › tests/e2e/playlists.spec.ts:278:5 › Playlists Feature › should show export and share buttons (822ms)
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-recommendation-engine-1765670199910.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-recommendation-engine-1765670199924.json
+[Performance] Station generation: 2083ms
+[Performance] Track loaded: false
+  ✓   61 [chromium] › tests/e2e/performance.spec.ts:636:5 › Performance Tests (Test Collection) › 4. Recommendation Engine - Generate personalized station (3.4s)
+[Performance] Testing playlist operations...
+  ✓   66 [chromium] › tests/e2e/playlists.spec.ts:312:5 › Playlists Feature › should handle M3U export (845ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   69 [chromium] › tests/e2e/scheduler-export-import.spec.ts:54:3 › Classification Scheduler › should display all scheduler UI elements (465ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   70 [chromium] › tests/e2e/scheduler-export-import.spec.ts:66:3 › Classification Scheduler › should toggle scheduler enabled state (444ms)
+  ✓   67 [chromium] › tests/e2e/playlists.spec.ts:351:5 › Playlists Feature › should copy share URL to clipboard (1.3s)
+[Performance] Saved CPU profile to /workspace/tmp/performance/profile-playlist-operations-1765670201358.cpuprofile
+[Performance] Open in Chrome DevTools or convert to flamegraph with speedscope
+[Performance] Saved metrics to /workspace/tmp/performance/perf-playlist-operations-1765670201371.json
+[Performance] Playlist dialog open: 125ms
+[Performance] Playlist create: 0ms
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Performance] Generated report: /workspace/tmp/performance/performance-report-1765670201427.md
+  ✓   68 [chromium] › tests/e2e/performance.spec.ts:701:5 › Performance Tests (Test Collection) › 5. Playlist Operations - Create and manage playlist (1.4s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   71 [chromium] › tests/e2e/scheduler-export-import.spec.ts:82:3 › Classification Scheduler › should enable time input when scheduler is enabled (555ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   72 [chromium] › tests/e2e/scheduler-export-import.spec.ts:103:3 › Classification Export/Import › should display all export/import UI elements (595ms)
+[Navigation] Navigating to /admin?tab=wizard
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   73 [chromium] › tests/e2e/scheduler-export-import.spec.ts:126:3 › Classify Tab Integration › should show all classification sections and buttons (585ms)
+[Navigation] Successfully loaded /admin?tab=wizard
+[Navigation] Navigating to /admin?tab=rate
+[Navigation] Successfully loaded /admin?tab=rate
+  ✓   74 [chromium] › tests/e2e/scheduler-export-import.spec.ts:137:3 › Classify Tab Integration › should display progress counters (Rendered, Cached, Extracted, Remaining) (601ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Navigation] Navigating to /?tab=play
+[Navigation] Successfully loaded /?tab=play
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[image-comparison] Screenshot unchanged, skipping save: /workspace/doc/web-screenshots/01-wizard.png
+[WIZARD] Screenshot unchanged: 01-wizard.png
+[WIZARD tab screenshot] Page closed unexpectedly
+  ✓   75 [chromium] › tests/e2e/screenshots.spec.ts:562:7 › Tab Screenshots › WIZARD tab screenshot (1.3s)
+[Navigation] Navigating to /?tab=prefs
+[Navigation] Successfully loaded /?tab=prefs
+[image-comparison] Screenshot unchanged, skipping save: /workspace/doc/web-screenshots/04-rate.png
+[RATE] Screenshot unchanged: 04-rate.png
+[RATE tab screenshot] Page closed unexpectedly
+  ✓   76 [chromium] › tests/e2e/screenshots.spec.ts:562:7 › Tab Screenshots › RATE tab screenshot (1.4s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[Navigation] Navigating to /admin?tab=classify
+[Navigation] Successfully loaded /admin?tab=classify
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[image-comparison] Dimension change detected: Image dimensions differ: 1280x1576 vs 1280x1550
+[PLAY] Screenshot updated: 07-play.png
+[PLAY tab screenshot] Page closed unexpectedly
+  ✓   77 [chromium] › tests/e2e/screenshots.spec.ts:562:7 › Tab Screenshots › PLAY tab screenshot (1.9s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[image-comparison] Screenshot negligible change (244/2394880 = 0.0102%), skipping save: /workspace/doc/web-screenshots/02-prefs.png
+[PREFS] Screenshot unchanged: 02-prefs.png
+[PREFS tab screenshot] Page closed unexpectedly
+  ✓   78 [chromium] › tests/e2e/screenshots.spec.ts:562:7 › Tab Screenshots › PREFS tab screenshot (1.4s)
+[Navigation] Navigating to /admin?tab=fetch
+[Navigation] Successfully loaded /admin?tab=fetch
+[image-comparison] Screenshot unchanged, skipping save: /workspace/doc/web-screenshots/05-classify.png
+[CLASSIFY] Screenshot unchanged: 05-classify.png
+[CLASSIFY tab screenshot] Page closed unexpectedly
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   79 [chromium] › tests/e2e/screenshots.spec.ts:562:7 › Tab Screenshots › CLASSIFY tab screenshot (1.4s)
+[Navigation] Navigating to /admin?tab=train
+[Navigation] Successfully loaded /admin?tab=train
+  ✓   80 [chromium] › tests/e2e/social-features.spec.ts:13:5 › Social Features › should display login and signup buttons when not authenticated (987ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[image-comparison] Screenshot unchanged, skipping save: /workspace/doc/web-screenshots/03-fetch.png
+[FETCH] Screenshot unchanged: 03-fetch.png
+[FETCH tab screenshot] Page closed unexpectedly
+  ✓   81 [chromium] › tests/e2e/screenshots.spec.ts:562:7 › Tab Screenshots › FETCH tab screenshot (1.1s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[image-comparison] Screenshot unchanged, skipping save: /workspace/doc/web-screenshots/06-train.png
+[TRAIN] Screenshot unchanged: 06-train.png
+[TRAIN tab screenshot] Page closed unexpectedly
+  ✓   82 [chromium] › tests/e2e/screenshots.spec.ts:562:7 › Tab Screenshots › TRAIN tab screenshot (1.1s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   85 [chromium] › tests/e2e/social-features.spec.ts:65:5 › Social Features › should navigate to Activity tab (1.0s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   86 [chromium] › tests/e2e/social-features.spec.ts:78:5 › Social Features › should display activity refresh button (1.2s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   87 [chromium] › tests/e2e/social-features.spec.ts:91:5 › Social Features › should navigate to Profiles tab (1.3s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   88 [chromium] › tests/e2e/social-features.spec.ts:103:5 › Social Features › should allow profile search (1.2s)
+  ✓   83 [chromium] › tests/e2e/social-features.spec.ts:26:5 › Social Features › should open registration dialog and validate form (5.7s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] Error reading feedback directory: Error: ENOENT: no such file or directory, scandir '/workspace/data/feedback'
+[WebServer]     at ignore-listed frames {
+[WebServer]   errno: -2,
+[WebServer]   code: 'ENOENT',
+[WebServer]   syscall: 'scandir',
+[WebServer]   path: '/workspace/data/feedback'
+[WebServer] }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   84 [chromium] › tests/e2e/social-features.spec.ts:46:5 › Social Features › should open login dialog (5.7s)
+[browser console] log [CrossOriginIsolatedCheck] ✓ crossOriginIsolated is true
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[browser console] debug [ServiceWorkerBridge] Service worker registered {scope: http://127.0.0.1:3000/}
+  ✓   90 [chromium] › tests/e2e/social-features.spec.ts:135:5 › Social Features › should display all social tabs for public users (953ms)
+(node:51217) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   89 [chromium] › tests/e2e/social-features.spec.ts:123:5 › Social Features › should navigate to Charts tab (1.4s)
+(node:51226) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51217) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:51226) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[browser console] log [WorkletPlayer] ✓ AudioWorklet initialized
+[browser console] log [SidProducer] Buffer strategy configured {capacityFrames: 32768, preRollFrames: 2560, renderChunkFrames: 2048, renderCyclesPerChunk: 98304, blockSize: 128}
+[browser console] log [SidProducer] ✓ Initialized {sampleRate: 44100, channels: 2, blockSize: 128}
+[browser console] log [WorkletPlayer] ✓ Web Worker initialized
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[browser console] log [SidProducer] ✓ Loaded SID buffer into engine
+[browser console] log [WorkletPlayer] Worker loaded SID payload
+[browser console] log [WorkletPlayer] Worker load resolved
+[browser console] log [WorkletPlayer] play() invoked {state: ready}
+[browser console] log [SidProducer] Pre-roll start {targetFrames: 2560}
+[browser console] warning [SidProducer] Occupancy reached zero before producing new audio {framesProduced: 0}
+[browser console] log [SidProducer] Pre-roll complete {occupancy: 2560, shouldStop: false}
+[browser console] log [WorkletPlayer] Worker pre-roll complete, ready to play
+[browser console] log [WorkletPlayer] Worker ready resolved, continuing playback setup
+  ✓   92 [chromium-favorites] › tests/e2e/favorites.spec.ts:158:3 › Favorites Feature › should display favorites tab for public users (986ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   93 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:23:9 › Phase 1 Features › Search Interaction (3.9) › should allow searching via the search bar (1.0s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   95 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:43:9 › Phase 1 Features › Search Interaction (3.9) › should show no results for non-matching query (862ms)
+Telemetry snapshot (no underruns test): {
+  underruns: [33m0[39m,
+  framesConsumed: [33m65536[39m,
+  framesProduced: [33m99328[39m,
+  backpressureStalls: [33m0[39m,
+  minOccupancy: [33m2176[39m,
+  maxOccupancy: [33m32640[39m,
+  zeroByteFrames: [33m0[39m,
+  missedQuanta: [33m0[39m,
+  avgDriftMs: [33m4.909826478759552e-14[39m,
+  maxDriftMs: [33m1.6263032587282567e-13[39m,
+  contextSuspendCount: [33m0[39m,
+  contextResumeCount: [33m1[39m,
+  renderMaxDurationMs: [33m8.090000003576279[39m,
+  renderAvgDurationMs: [33m0.7706902352246371[39m,
+  ringBufferCapacityFrames: [33m32768[39m
+}
+  ✓   91 [chromium] › tests/e2e/telemetry-validation.spec.ts:145:3 › Telemetry Validation › verifies no underruns during normal playback (3.5s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   96 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:61:9 › Phase 1 Features › Search Interaction (3.9) › should clear search results when input is cleared (817ms)
+  ✓   94 [chromium-favorites] › tests/e2e/favorites.spec.ts:168:3 › Favorites Feature › should reflect favorites when entries are added or removed (2.1s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓   99 [chromium-favorites] › tests/e2e/favorites.spec.ts:185:3 › Favorites Feature › should show play all and shuffle buttons when favorites exist (1.3s)
+  ✓   98 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:88:9 › Phase 1 Features › Keyboard Shortcuts (4.7) › should focus search bar with S key (1.5s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  100 [chromium-favorites] › tests/e2e/favorites.spec.ts:202:3 › Favorites Feature › should show clear all button only when favorites exist (1.4s)
+  ✓   97 [chromium] › tests/e2e/telemetry-validation.spec.ts:175:3 › Telemetry Validation › verifies zero-byte frames are minimal (3.5s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  101 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:104:9 › Phase 1 Features › Keyboard Shortcuts (4.7) › should open shortcuts help with ? key (1.7s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  104 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:120:9 › Phase 1 Features › Keyboard Shortcuts (4.7) › should not trigger shortcuts when typing in search (395ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  102 [chromium-favorites] › tests/e2e/favorites.spec.ts:212:3 › Favorites Feature › should display favorite tracks with metadata (1.3s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  106 [chromium-favorites] › tests/e2e/favorites.spec.ts:229:3 › Favorites Feature › should maintain favorites state across tab switches (1.3s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  105 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:137:9 › Phase 1 Features › Top Charts Display (5.9) › should display top charts tab (2.0s)
+  ✓  107 [chromium-favorites] › tests/e2e/favorites.spec.ts:246:3 › Favorites Feature › should handle favorite button loading states (713ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  103 [chromium] › tests/e2e/telemetry-validation.spec.ts:194:3 › Telemetry Validation › verifies timing drift stays within bounds (3.5s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  109 [chromium-favorites] › tests/e2e/favorites.spec.ts:261:3 › Favorites Feature › should show appropriate empty state messaging (1.3s)
+(node:52229) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:52229) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] Error reading feedback directory: Error: ENOENT: no such file or directory, scandir '/workspace/data/feedback'
+[WebServer]     at ignore-listed frames {
+[WebServer]   errno: -2,
+[WebServer]   code: 'ENOENT',
+[WebServer]   syscall: 'scandir',
+[WebServer]   path: '/workspace/data/feedback'
+[WebServer] }
+  ✓  108 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:154:9 › Phase 1 Features › Top Charts Display (5.9) › should switch between time ranges (2.3s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  111 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:98:5 › Song Browser › displays song browser component (823ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  113 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:111:5 › Song Browser › shows breadcrumb navigation (494ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  110 [chromium] › tests/e2e/telemetry-validation.spec.ts:212:3 › Telemetry Validation › verifies buffer occupancy is healthy (3.6s)
+  ✓  114 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:121:5 › Song Browser › displays folders and files when available (504ms)
+  ✓  112 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:179:9 › Phase 1 Features › Top Charts Display (5.9) › should show empty state when no data (2.2s)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  116 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:153:5 › Song Browser › navigates to folder when clicked (841ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  117 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:195:9 › Phase 1 Features › Theme Switching (6.8) › should switch between themes (1.0s)
+[folder-buttons] clicking play tab
+[folder-buttons] waiting for collection browser heading
+[folder-buttons] C64Music folder visible: [33mtrue[39m
+[folder-buttons] action buttons found: [33m8[39m
+  ✓  118 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:176:5 › Song Browser › shows folder action buttons (486ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  115 [chromium] › tests/e2e/telemetry-validation.spec.ts:234:3 › Telemetry Validation › verifies telemetry sink works in test mode (1.9s)
+  ✓  120 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:206:5 › Song Browser › shows file play buttons (597ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  119 [chromium-phase1] › tests/e2e/phase1-features.spec.ts:229:9 › Phase 1 Features › Theme Switching (6.8) › should persist theme across page reloads (1.1s)
+  ✓  121 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:234:5 › Volume Control › volume slider is visible (463ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  122 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:239:5 › Volume Control › volume slider has correct range (452ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  123 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:248:5 › Volume Control › volume icon changes based on volume level (431ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  124 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:254:5 › Volume Control › volume slider starts at 100% (421ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  125 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:274:5 › Playback Mode Display › shows default mood station mode (428ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  126 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:284:5 › Playback Mode Display › displays upcoming tracks section (440ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  127 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:295:5 › Playback Mode Display › shows played tracks section (409ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  128 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:314:5 › Play Controls › displays playback control buttons (407ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  129 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:323:5 › Play Controls › shows progress slider (430ms)
+[WebServer] [Model API] Falling back to stub manifest { resolvedPath: '/workspace/data/model' }
+  ✓  130 [chromium-song-browser] › tests/e2e/song-browser.spec.ts:329:5 › Play Controls › displays time indicators (398ms)
+[E2E Coverage] Processing coverage files...
+
+
+  1) [chromium] › tests/e2e/classify-heartbeat.spec.ts:147:1 › Classification Heartbeat - threads should not become stale during feature extraction 
+
+    Error: apiRequestContext.get: read ECONNRESET
+    Call log:
+    [2m  - → GET http://127.0.0.1:3000/api/classify/progress[22m
+    [2m    - user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.7499.4 Safari/537.36[22m
+    [2m    - accept: */*[22m
+    [2m    - accept-encoding: gzip,deflate,br[22m
+
+
+      210 |
+      211 |       while (Date.now() - startTime < MAX_POLL_MS && (!classificationComplete || activePolls === 0)) {
+    > 212 |         const progressResponse = await request.get('/api/classify/progress');
+          |                                                ^
+      213 |         if (!progressResponse.ok()) {
+      214 |           await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      215 |           continue;
+        at /workspace/packages/sidflow-web/tests/e2e/classify-heartbeat.spec.ts:212:48
+        at withClassificationLock (/workspace/packages/sidflow-web/tests/e2e/utils/classification-lock.ts:62:12)
+        at /workspace/packages/sidflow-web/tests/e2e/classify-heartbeat.spec.ts:148:3
+
+  1 failed
+    [chromium] › tests/e2e/classify-heartbeat.spec.ts:147:1 › Classification Heartbeat - threads should not become stale during feature extraction 
+  129 passed (3.6m)
+[E2E Coverage Reporter] Saving collected coverage...
+[coverage] No coverage data to save
+[E2E Coverage Reporter] Coverage saved
+error: script "test:e2e" exited with code 1
+error: script "test:e2e" exited with code 1
