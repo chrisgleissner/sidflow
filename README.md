@@ -320,8 +320,6 @@ Create mood-based queues with full playback controls and history.
 - "Clear History" to reset
 - Circular buffer prevents unbounded growth
 
-For a complete user guide covering all features, see [User Guide](./doc/user-guide.md).
-
 ### Additional Features
 
 - Play and control SID playback by mood
