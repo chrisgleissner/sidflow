@@ -40,9 +40,6 @@ No more random browsing – just tell it what kind of music you want, and it wil
 
 - Simple web UI
 - Command-line tools for scripting
-
-🔄 **Reproducible**
-
 - All data stored in human-readable formats (JSON/JSONL)
 - Version control friendly
 
@@ -364,10 +361,7 @@ The `.sidflow.json` file defines where SIDFlow should read your SID collection a
 ## Developer Documentation
 
 - **[Technical Reference](doc/technical-reference.md)** – architecture, CLI tools, APIs  
-- **[Developer Guide](doc/developer.md)** – setup, testing, contributions  
-- **[Performance Metrics](doc/performance-metrics.md)** – benchmarks  
-- **[Artifact Governance](doc/artifact-governance.md)** – data management  
-- **[Release Readiness](doc/release-readiness.md)** – npm publication strategy and assessment
+- **[Developer Guide](doc/developer.md)** – setup, testing, contributions
 
 ---
 
