@@ -286,12 +286,13 @@ if (!isPlaywrightRunner) {
     });
 
     test('displays upcoming tracks section', async ({ page }) => {
-      const upcomingSection = page.getByText(/Upcoming Tracks/i);
+      const playPanel = page.getByRole('tabpanel', { name: /play/i });
+      const upcomingSection = playPanel.getByText(/Upcoming Tracks/i).first();
       await expect(upcomingSection).toBeVisible();
 
       // Should show either tracks or a placeholder
-      const hasPlaceholder = await page.getByText(/Playlist generated/i).count() > 0;
-      const hasTracks = await page.locator('text=/#\\d+ •/i').count() > 0;
+      const hasPlaceholder = (await playPanel.getByText(/Playlist generated/i).count()) > 0;
+      const hasTracks = (await playPanel.locator('text=/#\\d+ •/i').count()) > 0;
 
       expect(hasPlaceholder || hasTracks).toBeTruthy();
     });

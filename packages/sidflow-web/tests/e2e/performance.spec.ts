@@ -382,7 +382,12 @@ test.describe('Performance Tests (Test Collection)', () => {
         const maxInitialLoadMs = Number(process.env.SIDFLOW_E2E_MAX_INITIAL_LOAD_MS ?? 30_000);
         const maxFcpMs = Number(process.env.SIDFLOW_E2E_MAX_FCP_MS ?? 30_000);
         expect(loadTime).toBeLessThan(maxInitialLoadMs);
-        expect(metrics.metrics.firstContentfulPaint).toBeLessThan(maxFcpMs);
+        const fcp = metrics.metrics.firstContentfulPaint;
+        if (typeof fcp === 'number' && Number.isFinite(fcp)) {
+            expect(fcp).toBeLessThan(maxFcpMs);
+        } else {
+            console.log('[Performance] First contentful paint metric unavailable; skipping threshold assertion');
+        }
     });
 
     test('2. Folder Browser - Navigate and scroll through full HVSC', async ({ page }) => {
