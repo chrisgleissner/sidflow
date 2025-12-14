@@ -5,7 +5,7 @@ WAV rendering and Essentia.js feature extraction for SID files.
 ## Usage
 
 ```bash
-bun ./scripts/sidflow-classify [--threads N] [--force]
+bun ./scripts/sidflow-classify [--config <path>] [--force-rebuild] [--limit <n>] [--sid-path-prefix <prefix>]
 ```
 
 ## Output

@@ -8,7 +8,7 @@ import {
 /**
  * Telemetry ingestion endpoint with anonymization.
  * Anonymizes PII (session IDs, file paths, user agents) before processing.
- * Currently logs anonymized events in development and discards in production.
+ * Currently logs anonymized events in development and discards them in production.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -34,13 +34,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // In production, anonymized events could be:
-      // - Sent to analytics service (e.g., Plausible, PostHog)
-      // - Written to log aggregation (e.g., Datadog, CloudWatch)
-      // - Stored in time-series database (e.g., InfluxDB, TimescaleDB)
-      // For now, we just acknowledge receipt
-
-      // Example: await sendToAnalytics(anonymizedEvent);
+      // In production, events are intentionally ignored (fire-and-forget).
     } catch (parseError) {
       // Ignore parse errors - telemetry must be fire-and-forget
       if (process.env.NODE_ENV === 'development') {

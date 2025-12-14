@@ -93,7 +93,9 @@ export function TopChartsTab({ onPlayTrack, onStatusChange }: TopChartsTabProps)
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <p>No play data available for this time range.</p>
-            <p className="text-sm mt-2">Start playing tracks to build your charts!</p>
+            <p className="text-sm mt-2">
+              Charts are derived from server-side feedback logs under <code>data/feedback</code> (if present).
+            </p>
           </CardContent>
         </Card>
       ) : (

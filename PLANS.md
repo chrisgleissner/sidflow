@@ -34,7 +34,7 @@ For each substantial user request or multi‑step feature, create a new Task sec
 **Guidelines:**
 - Prefer small, concrete steps over vague ones.
 - Update the checklist as you go.
-- When complete, move to `doc/plans/archive/YYYY-MM-DD-<task-name>.md`.
+- When complete, either keep a short entry under “Archived Tasks” below or move it to a dedicated archive file if the repo has an archive folder.
 - Keep progress logs to last 2-3 days; summarize older entries.
 
 ## Maintenance rules
@@ -47,6 +47,21 @@ For each substantial user request or multi‑step feature, create a new Task sec
 ---
 
 ## Active tasks
+
+### Task: Documentation accuracy + link integrity sweep (2025-12-14)
+
+**User request (summary)**  
+- Review all documentation (markdown, source comments, UI descriptions) for accuracy, concision, and link integrity.
+
+**Plan (checklist)**  
+- [x] Inventory all markdown docs and referenced internal links; remove or fix any broken references.  
+- [x] Audit web/API docs (README, `doc/technical-reference.md`, `packages/*/README.md`, OpenAPI) against implemented routes and config.  
+- [x] Audit source-code doc comments and UI copy for accuracy (avoid “community”/hyperbole unless it’s true for the current implementation).  
+- [x] Run `bun run build` and `bun run test` 3× consecutive; fix any failures introduced by doc/comment changes.  
+
+**Progress log**  
+- 2025-12-14 — Started: inventoried all markdown files (17 total) and found broken links in `README.md`/`PLANS.md`/agent guidance; beginning fixes and UI copy alignment.
+- 2025-12-14 — Completed: fixed broken doc references, updated README/technical reference/OpenAPI, aligned key UI copy + source comments, and updated CLI help text + tests. Validation: `npm run build` OK; `npm run test` 3× consecutive OK.
 
 ### Task: Enable all skipped tests + fix classify-heartbeat idle timeout (2025-12-13)
 
@@ -208,21 +223,13 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Archived Tasks
 
-Completed tasks are in [`doc/plans/archive/`](doc/plans/archive/). Archives consolidated into:
-
-- [completed-work-summary.md](doc/plans/archive/completed-work-summary.md) — All November 2025 completed tasks
-- [strategic-feature-analysis.md](doc/plans/archive/strategic-feature-analysis.md) — Strategic roadmap and competitive analysis
-
 **Recently archived (December 2025):**
 - **Classification Pipeline Hardening & Productionization (2025-12-06)** — ✅ COMPLETE
   - 8 phases delivered: contracts/fixtures, WAV validation, Essentia detection, metadata enhancement, JSONL writer queue, metrics/observability, test strategy, CI integration
   - 44 new tests added (17 metrics + 12 writer queue + 15 WAV validation + 4 fast E2E)
-  - Fast E2E: 0.17s (target ≤10s); All 1633 tests pass 3× consecutively
-  - PR #75 merged with CI green: 91 passed, 3 skipped, 0 failed in 9m4s
 - **CI Build Speed & Test Stability (2025-12-06)** — ✅ COMPLETE
   - Fixed scheduler-export-import test (wait for classification idle)
   - Skipped slow classify-api-e2e tests in CI (can run locally)
-  - CI runtime reduced from 10.7m+ to 9m4s; 91 passed, 3 skipped, 0 failed
 - Classification Pipeline Fixes (2025-12-04) — Fixed Essentia.js defaults
 - Codebase Deduplication & Cleanup (2025-12-04) — CLI parser consolidation
 - Documentation Consolidation Phase 1 & 2 (2025-12-06) — 98→16 files, 25k→2k lines

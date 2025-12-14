@@ -110,7 +110,7 @@ export function ActivityTab({ onStatusChange }: ActivityTabProps) {
                     </Button>
                 </div>
                 <CardDescription>
-                    Recent listening activity from the community
+                    Recent listening activity recorded on this server
                 </CardDescription>
             </CardHeader>
             <CardContent>

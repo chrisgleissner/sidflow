@@ -1,6 +1,7 @@
 /**
- * Rating aggregator for calculating community and personal ratings.
- * Aggregates ratings from feedback JSONL files and explicit rating tags.
+ * Rating aggregator for calculating aggregate ratings and trending status.
+ *
+ * This code reads server-side feedback logs under `data/feedback/` and aggregates them by SID path.
  * 
  * Implements in-memory caching with TTL to avoid re-reading feedback files on each request.
  */
@@ -29,7 +30,8 @@ let feedbackCache: CacheEntry | null = null;
 export interface AggregateRating {
   sid_path: string;
   
-  // Community ratings (aggregate from all users)
+  // Aggregate ratings across the available feedback logs.
+  // Note: the property name is `community` for historical reasons.
   community: {
     averageRating: number; // 1-5 scale
     totalRatings: number;

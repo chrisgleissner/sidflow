@@ -5,9 +5,6 @@
 
 - Merge pull request #77 from chrisgleissner/cursor/test-suite-stability-and-fixes-44be
 - Refactor: Scope E2E tests to the play tab and improve FCP check
-- Checkpoint before follow-up message
-- Checkpoint before follow-up message
-- Checkpoint before follow-up message
 - feat: Implement WAV file truncation and duration management
 - feat: enhance Dockerfile for legacy path support and update classification duration handling
 - chore: update CHANGES.md for 0.3.47
@@ -77,7 +74,7 @@
 - chore: update CHANGES.md for 0.3.43
 - Add scripts for SIDFlow management: logs, restore, start, status, stop, update, and webhook server
 
-This changelog highlights only the meaningful releases and milestones. Routine “update CHANGES.md” noise is removed.
+This changelog is a lightweight summary of releases; it may include some mechanical “update CHANGES.md” entries from automation.
 
 ## 0.3.43 (2025-12-02)
 - Refined classify progress counters and data-testid coverage for thread metrics.

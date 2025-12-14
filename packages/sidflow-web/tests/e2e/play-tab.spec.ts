@@ -117,7 +117,7 @@ if (!isPlaywrightRunner) {
       }
     });
 
-    test('displays personal and community ratings for the song in play', async ({ page }) => {
+    test('displays personal and aggregate ratings for the song in play', async ({ page }) => {
       test.setTimeout(90000); // Increase timeout for CI environment
       await bootstrapPlayTab(page);
 

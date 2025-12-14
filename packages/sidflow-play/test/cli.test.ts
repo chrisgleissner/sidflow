@@ -522,7 +522,7 @@ describe("runPlayCli", () => {
     const exitCode = await runPlayCli(["--help"], { stdout });
 
     expect(exitCode).toBe(0);
-    expect(captured.join("")).toContain("Usage: sidflow play");
+    expect(captured.join("")).toContain("Usage: sidflow-play");
   });
 
   it("reports argument parsing errors", async () => {

@@ -74,10 +74,7 @@ Before making non‑trivial changes, you must read or skim, in this order:
 2. `README.md` — high‑level overview, user goals, and entry points.
 3. `doc/developer.md` — local setup, workspace commands, and coding standards.
 4. `doc/technical-reference.md` — architecture, CLIs, data flow, and key components.
-5. Relevant rollout or design plans under `doc/plans/**` (for example:
-   - `doc/plans/web/rollout-plan.md` for web UI and API work.
-   - `doc/plans/scale/plan.md` for scale‑out and production readiness.
-   - `doc/plans/wasm/refactor-plan.md` for WASM / playback internals.)
+5. Any additional rollout/design plans if the repo contains a `doc/plans/**` folder.
 
 Re‑open `PLANS.md` whenever you start a new user request or resume work after a pause.
 
@@ -125,7 +122,7 @@ Follow the existing conventions rather than inventing new ones:
   - Follow the existing CLI pattern: parse args in `cli.ts`, plan/validate inputs, then call pure helpers that accept explicit dependencies.
   - Treat scripts under `scripts/` as the contract for end‑to‑end flows; keep their UX and flags stable.
 - Web/API:
-  - For web UI and API work, align with the contracts and expectations in `doc/web-ui.md`, `doc/technical-reference.md`, and `doc/plans/web/rollout-plan.md`.
+ - For web UI and API work, align with the contracts and expectations in `doc/technical-reference.md`, `packages/sidflow-web/openapi.yaml`, and `packages/sidflow-web/README.md`.
   - Preserve health/metrics endpoints (`/api/health`, `/api/admin/metrics`) and their responsibilities.
 
 Do not introduce new top‑level frameworks or major dependencies without a strong justification that is consistent with the existing design documents and rollout plans.
@@ -168,7 +165,7 @@ All operational tasks must be performed through dedicated maintenance scripts in
   - Unit tests: `bun run test` (coverage is enforced).
   - End‑to‑end: `bun run test:e2e` when pipeline changes are involved.
   - Config and data validations: `bun run validate:config`, `bun run build:db`, and other scripts as documented.
-- **Before changing or adding e2e tests**, read `doc/testing/e2e-test-resilience-guide.md` for best practices on writing resilient, non‑flaky tests that work reliably in CI environments.
+- **Before changing or adding e2e tests**, follow the existing patterns in `packages/sidflow-web/tests/e2e/` (avoid fixed sleeps where possible; prefer explicit, deterministic waits).
 - **If you cannot run tests** due to environment limits: STOP and document this in `PLANS.md` as a blocker. Do NOT proceed with untested changes.
 - **Missing dependencies**: If tests require unavailable tools (ffmpeg, sidplayfp), skip them explicitly with clear comments, NOT let them fail
 - Prefer additive, idempotent changes. Avoid destructive operations (e.g., deleting data or large refactors) unless explicitly requested or clearly necessary; when you must perform them, describe rollback steps in the plan.
@@ -192,7 +189,7 @@ These notes help different tools discover and obey the same instructions:
 
 When you are unsure how to proceed, prefer this sequence:
 
-1. Read or re‑read relevant docs (`README.md`, `doc/developer.md`, `doc/technical-reference.md`, and the appropriate `doc/plans/**` file).
+1. Read or re‑read relevant docs (`README.md`, `doc/developer.md`, `doc/technical-reference.md`, and any additional design docs present in the repo).
 2. Update `PLANS.md` with your intended approach and any assumptions.
 3. Implement the smallest coherent slice that moves the task forward.
 4. Run targeted validation (build/tests/scripts) and record results in `PLANS.md`.

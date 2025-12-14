@@ -35,7 +35,7 @@ const ARG_DEFS: ArgDef[] = [
 ];
 
 const HELP_TEXT = formatHelp(
-  "sidflow fetch [options]",
+  "sidflow-fetch [options]",
   "Synchronise the High Voltage SID Collection with the latest base archive\nand any newer delta archives.",
   ARG_DEFS
 );

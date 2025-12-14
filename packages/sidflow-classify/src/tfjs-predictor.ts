@@ -24,12 +24,9 @@ function isBrowserEnvironment(): boolean {
  * Load TensorFlow.js with the appropriate backend.
  * 
  * Backend selection priority:
- * - In browser: tfjs-backend-wasm (SIMD) - Fast WASM backend for inference
- * - In Node.js: tfjs-node - Native TensorFlow backend
- * - Fallback: tfjs (pure JS) - Slowest but works everywhere
- * 
- * The WASM backend provides 10-40x faster inference than pure JS in browsers.
- * In Node.js, tfjs-node provides native performance.
+ * - In browser: try tfjs-backend-wasm
+ * - In Node.js: try tfjs-node
+ * - Fallback: tfjs (pure JS backend)
  */
 async function loadTensorFlow(): Promise<TfModule> {
   // For training mode, always prefer tfjs-node
@@ -95,14 +92,9 @@ type LayersModel = TfJs.LayersModel;
 type Tensor = TfJs.Tensor;
 
 /**
- * Production-ready TensorFlow.js regressor for predicting (e,m,c) ratings.
- * 
- * Supports full model lifecycle: creation, loading, training, evaluation, and persistence.
- * 
- * The model takes extracted features as input and predicts three ratings:
- * - e (energy/intensity): 1-5 scale
- * - m (mood): 1-5 scale
- * - c (complexity): 1-5 scale
+ * TensorFlow.js-based regressor for predicting (e, m, c) ratings (1–5 scale).
+ *
+ * Includes helpers for creating/loading/saving models and for training/evaluation.
  */
 
 // Model version and feature set version for tracking compatibility

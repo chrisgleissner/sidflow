@@ -1,307 +1,91 @@
 # SIDFlow Technical Reference
 
-## Architecture Overview
+## Architecture overview
 
-SIDFlow is a C64 SID music discovery platform built as a CLI-first pipeline with an optional web interface.
+SIDFlow is a CLI-first pipeline with an optional web UI:
 
 ```mermaid
 graph LR
-    A[Fetch HVSC] --> B[Classify Audio]
-    B --> C[Train Model]
-    C --> D[Play/Recommend]
-    D -->|Feedback| C
+    A[Fetch (HVSC)] --> B[Render + Classify]
+    B --> C[Train (optional)]
+    C --> D[Play / Recommend]
 ```
 
-### Core Technology Stack
+## Key packages
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Audio Features | Essentia.js WASM | Extract MFCC, spectral, rhythm features |
-| Classification | TensorFlow.js | Neural network for mood/style prediction |
-| Vector DB | LanceDB | Similarity search, nearest-neighbor recommendations |
-| Playback | libsidplayfp WASM | Browser-based SID emulation |
-| Web UI | Next.js 15 + React 19 | Progressive enhancement, RSC |
-| Runtime | Bun 1.3.1 | CLI execution, testing, builds |
+- **`@sidflow/fetch`**: downloads/syncs HVSC into `sidPath`.
+- **`@sidflow/classify`**: renders SIDs to audio, extracts features, and writes JSONL classification output.
+- **`@sidflow/train`**: trains/updates TensorFlow.js model artifacts (optional).
+- **`@sidflow/play`**: playlist generation and similarity helpers (LanceDB-backed where configured).
+- **`@sidflow/web`**: Next.js 16 / React 19 web UI and API routes.
 
-## CLI Tools
+## CLI entry points
 
-### sidflow-fetch
-
-Downloads and manages SID collections (currently HVSC).
+This repo ships wrapper scripts under `scripts/`:
 
 ```bash
-sidflow-fetch [--config <path>] [--force] [--version <ver>]
+bun ./scripts/sidflow-fetch    --help
+bun ./scripts/sidflow-classify --help
+bun ./scripts/sidflow-train    --help
+bun ./scripts/sidflow-rate     --help
+bun ./scripts/sidflow-play     --help
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--config` | Config file path (default: `.sidflow.json`) |
-| `--force` | Re-download even if exists |
-| `--version` | HVSC version (default: latest) |
+Each CLI loads `.sidflow.json` by default (override via `--config` where supported or `SIDFLOW_CONFIG`).
 
-**Output:** Extracts to `sidPath` from config, creates `data/availability/hvsc-availability.jsonl`.
+## Classification (what it actually computes)
 
-### sidflow-classify
+`@sidflow/classify` extracts a small, fast feature set from WAV audio:
 
-Renders SIDs to WAV, extracts audio features, generates auto-tags.
+- **Energy** (`energy`)
+- **RMS** (`rms`)
+- **Spectral centroid** (`spectralCentroid`)
+- **Spectral rolloff** (`spectralRolloff`)
+- **Zero-crossing rate** (`zeroCrossingRate`)
+- **Tempo estimate** (`bpm`) and a coarse `confidence`
 
-```bash
-sidflow-classify [--config <path>] [--concurrency <n>] [--max-files <n>]
-```
+When Essentia.js is unavailable or fails, SIDFlow falls back to a lightweight heuristic extractor (still producing a compatible feature shape).
 
-| Flag | Description |
-|------|-------------|
-| `--concurrency` | Parallel workers (default: CPU count) |
-| `--max-files` | Limit files to process |
-| `--skip-render` | Use existing WAVs only |
-| `--skip-extract` | Use existing features only |
+Default rating prediction is heuristic. Model-based prediction is available when a TFJS model is configured/available.
 
-**Pipeline Phases:**
-1. **Render** - SID → WAV via sidplayfp (30s clips)
-2. **Extract** - WAV → features via Essentia.js
-3. **Tag** - Features → mood/style labels via heuristics + ML
+## Web UI and API
 
-**Output:** `data/classified/*.jsonl` with features, tags, and metadata.
+The web app runs at:
 
-### sidflow-train
+- **Public UI**: `/`
+- **Admin UI** (auth required): `/admin`
+- **API**: `/api/*`
 
-Trains recommendation model from classification + feedback data.
+The OpenAPI file documents a subset of endpoints:
 
-```bash
-sidflow-train [--config <path>] [--epochs <n>]
-```
+- `packages/sidflow-web/openapi.yaml`
 
-**Input:** `data/classified/*.jsonl` + `data/feedback/**/*.jsonl`
-**Output:** `data/model/` artifacts + LanceDB vectors
+For the complete list, inspect `packages/sidflow-web/app/api/**/route.ts`.
 
-### sidflow-play
+Selected endpoints implemented in `packages/sidflow-web/app/api/**/route.ts`:
 
-Interactive CLI player with recommendations.
+- **Health / metrics**: `GET /api/health`, `GET /api/admin/metrics`
+- **Playback sessions**: `POST /api/play`, `POST /api/play/random`, `POST /api/play/manual`
+- **Stations**: `POST /api/play/station-from-song`, plus additional station builders under `/api/play/*`
+- **Ratings**: `POST /api/rate` (writes manual tag files), `GET /api/rate/aggregate`
+- **Favorites**: `GET/POST/DELETE /api/favorites` (stored in `data/.sidflow-preferences.json`)
+- **Classification**: `POST /api/classify`, progress/control under `/api/classify/*`
+- **Fetch**: `POST /api/fetch`, progress under `/api/fetch/progress`
 
-```bash
-sidflow-play [--config <path>] [<sid-path>]
-```
+## Data layout (common defaults)
 
-**Controls:** `space` pause, `n` next, `r` random, `1-5` rate, `q` quit
-
-### sidflow-rate
-
-Record feedback for a SID file.
-
-```bash
-sidflow-rate <sid-path> --rating <1-5> [--tags <tag1,tag2>]
-```
-
-## Classification Pipeline
-
-### Thread State Machine
-
-```
-IDLE → STARTING → READY ⇄ PROCESSING → (READY | ERROR | TERMINATED)
-```
-
-- Workers managed by `ClassificationWorkerPool`
-- Graceful shutdown on SIGINT/SIGTERM
-- Progress callbacks with throttling for TTY
-
-### Feature Extraction
-
-The `heuristicFeatureExtractor` computes:
-- **MFCC** (13 coefficients) - Timbral texture
-- **Spectral** - Centroid, rolloff, flux
-- **Rhythm** - BPM, onset strength
-- **Energy** - RMS, dynamic range
-
-Features normalized to `[-1, 1]` before storage.
-
-### Auto-Tagging
-
-Tags derived from feature thresholds + ML predictions:
-- **Mood:** energetic, melancholic, upbeat, dark, calm
-- **Style:** chiptune, orchestral, bass-heavy, melodic
-- **Tempo:** slow (<90 BPM), medium, fast (>140 BPM)
-
-## Web Interface
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/songs` | GET | List songs with pagination, filters |
-| `/api/songs/[id]` | GET | Song details + features |
-| `/api/songs/[id]/stream` | GET | HLS stream or direct WAV |
-| `/api/songs/[id]/similar` | GET | Similar songs via LanceDB |
-| `/api/feedback` | POST | Submit rating/tag feedback |
-| `/api/health` | GET | Health check for load balancers |
-| `/api/admin/metrics` | GET | Prometheus metrics |
-
-### Query Parameters (songs list)
-
-```
-?q=<search>&mood=<mood>&style=<style>&sort=<field>&order=asc|desc&page=<n>&limit=<n>
-```
-
-### Client-Side Playback
-
-Four playback adapters with automatic fallback:
-
-1. **WASM** (default) - libsidplayfp in browser via AudioWorklet
-2. **HLS** - Server-rendered adaptive streaming
-3. **CLI** - Node.js sidplayfp for headless
-4. **Ultimate64** - Network streaming to real hardware
-
-```typescript
-// Adapter selection
-const player = createPlayer({
-  adapter: 'auto', // auto | wasm | hls | cli | ultimate64
-  sampleRate: 48000,
-  bufferSize: 4096
-});
-```
-
-## LanceDB Vector Database
-
-### Schema
-
-```typescript
-interface SongVector {
-  id: string;           // Unique song identifier
-  path: string;         // Relative SID path
-  embedding: number[];  // 128-dim feature vector
-  tags: string[];       // Auto + user tags
-  rating: number;       // Aggregated rating
-}
-```
-
-### Building
-
-```bash
-bun run build:db  # Builds data/sidflow.lance/ from classified data
-```
-
-### Querying
-
-```typescript
-import { connect } from 'vectordb';
-
-const db = await connect('data/sidflow.lance');
-const table = await db.openTable('songs');
-const similar = await table.search(embedding).limit(10).execute();
-```
-
-## File Locations
-
-| Name | Path | Created By | Description |
-|------|------|------------|-------------|
-| SID Collection | `workspace/hvsc/` | `sidflow-fetch` | HVSC archive extracted; contains all `.sid` files organized by artist/category |
-| WAV Cache | `workspace/audio-cache/*.wav` | `sidflow-classify` | Full-length WAV renders using HVSC Songlengths.md5 durations; cached for feature extraction |
-| M4A Cache | `workspace/audio-cache/*.m4a` | `sidflow-classify` | AAC-encoded versions for efficient web streaming playback |
-| Metadata | `workspace/tags/**/*.meta.json` | `sidflow-classify` | Per-SID metadata: author, title, release, SID model, load/play addresses |
-| HLS Segments | `workspace/hls/**/` | Web API | On-demand HLS streaming segments (`.ts` + `.m3u8`) for browser playback |
-| Classifications | `data/classified/*.jsonl` | `sidflow-classify` | Audio features per SID: energy, RMS, spectral centroid, BPM, plus auto-generated tags |
-| Feedback | `data/feedback/YYYY/MM/*.jsonl` | `sidflow-rate`, Web UI | User ratings (1-5), skips, replays, and custom tags; date-partitioned |
-| ML Model | `data/model/` | `sidflow-train` | TensorFlow.js model artifacts and feature normalization stats |
-| Vector DB | `data/sidflow.lance/` | `sidflow-train` | LanceDB embeddings for similarity search and recommendations |
-| Availability | `data/availability/` | `sidflow-fetch` | HVSC version info and file availability manifest |
+- **SID collection**: `sidPath` (e.g. `./workspace/hvsc`)
+- **Audio cache**: `audioCachePath` (e.g. `./workspace/audio-cache`)
+- **Manual tags/ratings**: `tagsPath` (e.g. `./workspace/tags`)
+- **Web preferences**: `data/.sidflow-preferences.json`
+- **HLS assets** (fallback playback): `workspace/hls/`
 
 ## Configuration
 
-### .sidflow.json
-
-```json
-{
-  "sidPath": "./workspace/hvsc/C64Music",
-  "audioCachePath": "./workspace/audio-cache",
-  "tagsPath": "./workspace/tags",
-  "classifiedPath": "./data/classified",
-  "feedbackPath": "./data/feedback",
-  "modelPath": "./data/model",
-  "lancePath": "./data/sidflow.lance",
-  "concurrency": 8,
-  "logLevel": "info"
-}
-```
-
-All paths relative to config file location. Override with `--config` flag.
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `SIDFLOW_CONFIG` | Config file path |
-| `SIDFLOW_LOG_LEVEL` | debug, info, warn, error |
-| `PORT` | Web server port (default: 3000) |
-| `NODE_ENV` | development, production |
+The repo’s default config file is `.sidflow.json` at the repository root. See that file for the current schema and defaults.
 
 ## Troubleshooting
 
-### Common Issues
-
-**"Cannot find SID files"**
-- Check `sidPath` in `.sidflow.json` points to HVSC root
-- Run `sidflow-fetch` to download collection
-
-**"Render failed: sidplayfp error"**
-- Ensure sidplayfp is installed: `apt install sidplayfp`
-- Check SID file isn't corrupted
-
-**"LanceDB query timeout"**
-- Rebuild database: `bun run build:db`
-- Check disk space for vector storage
-
-**"WASM playback silent"**
-- Browser requires user gesture for audio
-- Check AudioContext state: `player.context.state`
-
-### Debug Logging
-
-```bash
-SIDFLOW_LOG_LEVEL=debug sidflow-classify --max-files 10
-```
-
-## Observability
-
-### Prometheus Metrics
-
-Available at `/api/admin/metrics`:
-
-- `sidflow_songs_total` - Total songs in database
-- `sidflow_playback_duration_seconds` - Playback histogram
-- `sidflow_feedback_total` - Feedback submissions by type
-- `sidflow_classification_duration_seconds` - Processing time
-
-### Health Checks
-
-```bash
-curl http://localhost:3000/api/health
-# {"status":"ok","version":"1.0.0","uptime":3600}
-```
-
-## Data Flow
-
-### Feedback Loop
-
-```
-User Rating → data/feedback/YYYY/MM/events.jsonl
-           → Training merge with classification
-           → Updated model weights
-           → Better recommendations
-```
-
-Feedback weights:
-- Explicit rating: 1.0
-- Skip (<10s): -0.3
-- Full listen: +0.2
-- Replay: +0.5
-
-### JSONL Formats
-
-**Classified song:**
-```json
-{"path":"MUSICIANS/H/Hubbard_Rob/Commando.sid","subsong":0,"features":[...],"tags":["energetic","chiptune"],"duration":180}
-```
-
-**Feedback event:**
-```json
-{"timestamp":"2024-01-15T10:30:00Z","path":"...","type":"rating","value":4,"tags":["favorite"]}
-```
+- **Admin login fails**: confirm `SIDFLOW_ADMIN_USER` / `SIDFLOW_ADMIN_PASSWORD` match the values used by your deployment.
+- **No audio in browser**: browsers require a user gesture before audio playback; click “Play” once to unlock audio.
+- **HLS fallback missing**: HLS assets are generated on-demand into `workspace/hls/`; ensure the server can write to that directory.
