@@ -82,9 +82,11 @@ jobs:
           # which are blocked by strict CSP. Without this, React mounting fails and tests time out.
           # Production deployments SHOULD NOT set SIDFLOW_RELAXED_CSP=1; the default strict CSP is recommended for security.
           # Next.js standalone always runs with NODE_ENV=production internally, so this variable is only for test environments.
-          # Ensure server-side WASM renderer can locate the binary in standalone mode
+          # Ensure server-side WASM renderer can locate the binary in standalone mode.
+          # Bind explicitly to loopback to keep health-check curls stable.
           SIDFLOW_LIBSIDPLAYFP_WASM_PATH="$PWD/public/wasm/libsidplayfp.wasm" \
           SIDFLOW_RELAXED_CSP=1 SIDFLOW_CONFIG="$PWD/../../.sidflow.json" \
+          HOSTNAME="127.0.0.1" PORT="3000" \
           node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
           
@@ -92,7 +94,7 @@ jobs:
           # Accept any response (200 or 503) since server may be degraded without full dependencies
           echo "Waiting for server to be ready..."
           for i in {1..60}; do
-            if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
+            if curl -s http://127.0.0.1:3000/api/health > /dev/null 2>&1; then
               echo "Server is ready after ${i} seconds"
               break
             fi

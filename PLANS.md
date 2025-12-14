@@ -66,6 +66,7 @@ For each substantial user request or multi‑step feature, create a new Task sec
 - 2025-12-14 — Started: audited `performance.yml`, unified runner, journeys, and current k6/Playwright generators; identified that k6 playback step does not parse `/api/play` response correctly (likely not exercising streaming under load).  
 - 2025-12-14 — Implemented: runner profiles (smoke/reduced/standard/scale), k6 per-VU iteration modeling, correct `/api/play` parsing + playback request, k6 SLO checks (error rate + p95/p99), and CI hardening (reduced k6-only, minimal SID fixture prep, standalone WASM path override). Docs updated (README + developer guide). Validation: `bun run test` passed 5× consecutively (see /workspace/tmp/test-loop-*.log).  
 - 2025-12-14 — Added: on-commit perf smoke in `.github/workflows/build-and-test.yaml` (k6-only, reduced, 1 VU, 1 journey, deterministic fixture). Local simulation passes end-to-end (standalone server + `bun run perf:run ...`).  
+- 2025-12-14 — Fixed CI flake: Next standalone server bound to container hostname, making `localhost:3000` unreachable; now binds to `127.0.0.1` and uses `http://127.0.0.1:3000` in both on-commit perf smoke + nightly perf workflow.  
 
 ### Task: Documentation accuracy + link integrity sweep (2025-12-14)
 

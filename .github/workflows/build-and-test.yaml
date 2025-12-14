@@ -98,14 +98,17 @@ jobs:
         run: |
           cd packages/sidflow-web
           # Keep logs for debugging; stop in a later step.
+          # IMPORTANT: Bind explicitly to loopback inside the CI container; otherwise Next may bind to the
+          # container hostname only (making http://localhost:3000 unreachable and flapping the health wait).
           SIDFLOW_LIBSIDPLAYFP_WASM_PATH="$PWD/public/wasm/libsidplayfp.wasm" \
           SIDFLOW_CONFIG="$PWD/../../.sidflow.json" \
+          HOSTNAME="127.0.0.1" PORT="3000" \
           node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-ci-server.log 2>&1 &
           echo $! > /tmp/perf-ci-server.pid
 
           echo "Waiting for server to be ready..."
           for i in {1..60}; do
-            if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
+            if curl -s http://127.0.0.1:3000/api/health > /dev/null 2>&1; then
               echo "Server is ready after ${i} seconds"
               break
             fi
@@ -131,7 +134,7 @@ jobs:
             --k6-users 1 \
             --k6-journeys-per-vu 1 \
             --pacing 0.2 \
-            --base-url http://localhost:3000 \
+            --base-url http://127.0.0.1:3000 \
             --results performance/results \
             --tmp performance/tmp \
             --execute
