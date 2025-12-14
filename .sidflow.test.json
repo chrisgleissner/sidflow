@@ -3,6 +3,6 @@
     "audioCachePath": "./test-workspace/audio-cache",
     "tagsPath": "./test-workspace/tags",
     "classifiedPath": "./test-workspace/classified",
-    "threads": 0,
+    "threads": 4,
     "classificationDepth": 3
 }

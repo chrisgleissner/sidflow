@@ -9,6 +9,8 @@ import { resetConfigCache } from "@sidflow/common";
 import {
   buildAudioCache,
   defaultExtractMetadata,
+  destroyFeatureExtractionPool,
+  disposeModel,
   generateAutoTags,
   planClassification,
   type AutoTagProgress,
@@ -460,6 +462,20 @@ export async function runClassifyCli(
   } catch (error) {
     runtime.stderr.write(`Classification failed: ${(error as Error).message}\n`);
     return 1;
+  } finally {
+    // Ensure worker threads and native resources are released so the CLI can exit cleanly.
+    // Without this, feature-extraction workers can keep the event loop alive indefinitely,
+    // which breaks async E2E flows waiting for the process to become idle.
+    try {
+      await destroyFeatureExtractionPool();
+    } catch {
+      // ignore cleanup errors
+    }
+    try {
+      disposeModel();
+    } catch {
+      // ignore cleanup errors
+    }
   }
 }
 

@@ -82,7 +82,8 @@ test.describe('Accessibility Audit', () => {
             await page.waitForSelector('button', { state: 'visible', timeout: 20000 }).catch(() => {});
 
             // Open login dialog
-            const loginButton = page.getByRole('button', { name: /log in/i });
+            // The UI label is "Login" (no space) in this app; accept both variants.
+            const loginButton = page.getByRole('button', { name: /log\s*in|login/i });
             await expect(loginButton).toBeVisible({ timeout: 15000 });
             await loginButton.click();
             await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 10000 });

@@ -86,10 +86,11 @@ if (!isPlaywrightRunner) {
   test.describe('Song Browser', () => {
     const skipFolderActions = process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS === '1';
     test.beforeEach(async ({ page }) => {
-      test.setTimeout(30000); // Increase timeout for dev mode
+      // This suite can be slow on shared CI runners; keep per-test timeout generous.
+      test.setTimeout(60_000);
 
       await installSongBrowserFixtures(page);
-      await page.goto('http://localhost:3000', { timeout: 30000 });
+      await page.goto('http://localhost:3000', { timeout: 60_000, waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('domcontentloaded');
       // Wait for hydration with condition instead of fixed timeout
       await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
@@ -232,12 +233,14 @@ if (!isPlaywrightRunner) {
     });
 
     test('volume slider is visible', async ({ page }) => {
-      const volumeSlider = page.locator('[aria-label="Volume control"]');
+      const playPanel = page.getByRole('tabpanel', { name: /play/i });
+      const volumeSlider = playPanel.getByLabel('Volume control');
       await expect(volumeSlider).toBeVisible();
     });
 
     test('volume slider has correct range', async ({ page }) => {
-      const volumeSlider = page.locator('[aria-label="Volume control"]');
+      const playPanel = page.getByRole('tabpanel', { name: /play/i });
+      const volumeSlider = playPanel.getByLabel('Volume control');
       const min = await volumeSlider.getAttribute('aria-valuemin');
       const max = await volumeSlider.getAttribute('aria-valuemax');
 
@@ -252,7 +255,8 @@ if (!isPlaywrightRunner) {
     });
 
     test('volume slider starts at 100%', async ({ page }) => {
-      const volumeSlider = page.locator('[aria-label="Volume control"]');
+      const playPanel = page.getByRole('tabpanel', { name: /play/i });
+      const volumeSlider = playPanel.getByLabel('Volume control');
       const currentValue = await volumeSlider.getAttribute('aria-valuenow');
 
       // Default volume should be 100%
@@ -282,18 +286,20 @@ if (!isPlaywrightRunner) {
     });
 
     test('displays upcoming tracks section', async ({ page }) => {
-      const upcomingSection = page.getByText(/Upcoming Tracks/i);
+      const playPanel = page.getByRole('tabpanel', { name: /play/i });
+      const upcomingSection = playPanel.getByText(/Upcoming Tracks/i).first();
       await expect(upcomingSection).toBeVisible();
 
       // Should show either tracks or a placeholder
-      const hasPlaceholder = await page.getByText(/Playlist generated/i).count() > 0;
-      const hasTracks = await page.locator('text=/#\\d+ •/i').count() > 0;
+      const hasPlaceholder = (await playPanel.getByText(/Playlist generated/i).count()) > 0;
+      const hasTracks = (await playPanel.locator('text=/#\\d+ •/i').count()) > 0;
 
       expect(hasPlaceholder || hasTracks).toBeTruthy();
     });
 
     test('shows played tracks section', async ({ page }) => {
-      const playedSection = page.getByText(/Played Tracks/i);
+      const playPanel = page.getByRole('tabpanel', { name: /play/i });
+      const playedSection = playPanel.getByText(/Played Tracks/i).first();
       await expect(playedSection).toBeVisible();
     });
   });

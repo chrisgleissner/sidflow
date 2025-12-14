@@ -22,7 +22,8 @@ test.describe('Phase 1 Features', () => {
     test.describe('Search Interaction (3.9)', () => {
         test('should allow searching via the search bar', async ({ page }) => {
             // Find search bar
-            const searchBar = page.getByTestId('search-input');
+            const playTab = page.getByRole('tabpanel', { name: 'PLAY' });
+            const searchBar = playTab.getByTestId('search-input');
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Type search query
@@ -40,7 +41,8 @@ test.describe('Phase 1 Features', () => {
         });
 
         test('should show no results for non-matching query', async ({ page }) => {
-            const searchBar = page.getByTestId('search-input');
+            const playTab = page.getByRole('tabpanel', { name: 'PLAY' });
+            const searchBar = playTab.getByTestId('search-input');
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Search for something that doesn't exist
@@ -57,7 +59,8 @@ test.describe('Phase 1 Features', () => {
         });
 
         test('should clear search results when input is cleared', async ({ page }) => {
-            const searchBar = page.getByTestId('search-input');
+            const playTab = page.getByRole('tabpanel', { name: 'PLAY' });
+            const searchBar = playTab.getByTestId('search-input');
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Search
@@ -83,7 +86,8 @@ test.describe('Phase 1 Features', () => {
 
     test.describe('Keyboard Shortcuts (4.7)', () => {
         test('should focus search bar with S key', async ({ page }) => {
-            const searchBar = page.getByTestId('search-input');
+            const playTab = page.getByRole('tabpanel', { name: 'PLAY' });
+            const searchBar = playTab.getByTestId('search-input');
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Wait for page to be fully interactive
@@ -114,7 +118,8 @@ test.describe('Phase 1 Features', () => {
         });
 
         test('should not trigger shortcuts when typing in search', async ({ page }) => {
-            const searchBar = page.getByTestId('search-input');
+            const playTab = page.getByRole('tabpanel', { name: 'PLAY' });
+            const searchBar = playTab.getByTestId('search-input');
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
             // Focus search bar

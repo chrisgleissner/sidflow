@@ -38,6 +38,8 @@ export const ClassifyRequestSchema = z.object({
   skipAlreadyClassified: z.boolean().optional(),
   /** Delete WAV files after classification (to save disk space) */
   deleteWavAfterClassification: z.boolean().optional(),
+  /** Start classification in the background and return immediately (202 Accepted). */
+  async: z.boolean().optional(),
 });
 
 export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;

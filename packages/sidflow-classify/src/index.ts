@@ -764,10 +764,12 @@ export async function buildAudioCache(
   const buildConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
   classifyLogger.debug(`Starting building phase with ${buildConcurrency} threads`);
   
-  // Only use WasmRendererPool if using default render AND first preferred engine is WASM
+  // Only use WasmRendererPool if using default render AND first preferred engine is WASM,
+  // and only when there is actual render work to do (workers are expensive and can fail fast
+  // in non-rendering runs).
   const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
-  const rendererPool = shouldUsePool ? new WasmRendererPool(buildConcurrency) : null;
+  const rendererPool = shouldUsePool && songsToRender.length > 0 ? new WasmRendererPool(buildConcurrency) : null;
 
   try {
     classifyLogger.debug(
@@ -919,7 +921,9 @@ export async function buildAudioCache(
       }
     );
   } finally {
-    await rendererPool?.destroy();
+    if (rendererPool) {
+      await rendererPool.destroy();
+    }
   }
 
   const endTime = Date.now();
@@ -1529,11 +1533,11 @@ export async function generateAutoTags(
   const taggingConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
   let processedSongs = 0;
 
-  // Create renderer pool for inline WAV rendering during tagging phase
-  // This ensures rendering happens in worker threads and doesn't block the main event loop
+  // Renderer pool for inline WAV rendering during tagging phase.
+  // Lazily instantiated only if a missing WAV forces rendering.
   const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
-  const rendererPool = shouldUsePool ? new WasmRendererPool(taggingConcurrency) : null;
+  let rendererPool: WasmRendererPool | null = null;
 
   try {
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
@@ -1590,6 +1594,11 @@ export async function generateAutoTags(
         };
         
         try {
+          // Lazily create worker pool only when a render is actually required.
+          if (shouldUsePool && rendererPool === null) {
+            rendererPool = new WasmRendererPool(taggingConcurrency);
+          }
+
           // Use worker pool for non-blocking rendering if available
           if (rendererPool) {
             await rendererPool.render(renderOptions);
@@ -1755,7 +1764,10 @@ export async function generateAutoTags(
   });
   } finally {
     // Clean up renderer pool
-    await rendererPool?.destroy();
+    const pool = rendererPool as WasmRendererPool | null;
+    if (pool) {
+      await pool.destroy();
+    }
   }
 
   if (onProgress && totalFiles > 0) {

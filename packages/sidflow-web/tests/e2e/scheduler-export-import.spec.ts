@@ -45,26 +45,29 @@ async function gotoClassifyTab(page: Page) {
   await page.goto('/admin?tab=classify', { waitUntil: 'domcontentloaded' });
   // Wait for page to be ready - wait for any loading spinners to disappear
   await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
-  // Wait for the classify tab content to be visible
-  await page.waitForSelector('[data-testid="scheduler-enabled-checkbox"]', { timeout: 10000 });
+  // Wait for the classify tab content to be visible (scope to tabpanel to avoid strict-mode collisions)
+  const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
+  await classifyPanel.getByTestId('scheduler-enabled-checkbox').waitFor({ state: 'visible', timeout: 10000 });
 }
 
 test.describe('Classification Scheduler', () => {
   test('should display all scheduler UI elements', async ({ page }) => {
     await gotoClassifyTab(page);
+    const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
     // Verify all scheduler elements in one test for efficiency
     // The gotoClassifyTab helper already waits for the checkbox, so these should be fast
-    await expect(page.getByTestId('scheduler-enabled-checkbox')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('scheduler-time-input')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('save-scheduler-button')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('preserve-wav-checkbox')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('scheduler-enabled-checkbox')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('scheduler-time-input')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('save-scheduler-button')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('preserve-wav-checkbox')).toBeVisible({ timeout: 5000 });
   });
 
   test('should toggle scheduler enabled state', async ({ page }) => {
     await gotoClassifyTab(page);
+    const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
-    const enabledCheckbox = page.getByTestId('scheduler-enabled-checkbox');
+    const enabledCheckbox = classifyPanel.getByTestId('scheduler-enabled-checkbox');
     await expect(enabledCheckbox).toBeVisible({ timeout: 5000 });
     
     const initialState = await enabledCheckbox.isChecked();
@@ -78,9 +81,10 @@ test.describe('Classification Scheduler', () => {
 
   test('should enable time input when scheduler is enabled', async ({ page }) => {
     await gotoClassifyTab(page);
+    const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
-    const enabledCheckbox = page.getByTestId('scheduler-enabled-checkbox');
-    const timeInput = page.getByTestId('scheduler-time-input');
+    const enabledCheckbox = classifyPanel.getByTestId('scheduler-enabled-checkbox');
+    const timeInput = classifyPanel.getByTestId('scheduler-time-input');
     
     await expect(enabledCheckbox).toBeVisible({ timeout: 5000 });
 
@@ -98,33 +102,21 @@ test.describe('Classification Scheduler', () => {
 test.describe('Classification Export/Import', () => {
   test('should display all export/import UI elements', async ({ page }) => {
     await gotoClassifyTab(page);
-
-    // Wait for any running classification to complete before checking button states
-    // The export button is disabled when isRunning is true
-    await page.waitForFunction(
-      () => {
-        const btn = document.querySelector('[data-testid="export-classifications-button"]');
-        return btn && !btn.hasAttribute('disabled');
-      },
-      { timeout: 60000 }
-    ).catch(() => {
-      // If timeout, classification may still be running - log for debugging
-      console.log('Warning: Export button still disabled after 60s wait');
-    });
+    const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
     // Verify all export/import elements in one test for efficiency
-    const exportButton = page.getByTestId('export-classifications-button');
+    const exportButton = classifyPanel.getByTestId('export-classifications-button');
     await expect(exportButton).toBeVisible({ timeout: 5000 });
     // Note: Button may be disabled if classification is running - just check visibility
     await expect(exportButton).toHaveText(/Export/);
     
-    const importButton = page.getByTestId('import-classifications-button');
+    const importButton = classifyPanel.getByTestId('import-classifications-button');
     await expect(importButton).toBeVisible({ timeout: 5000 });
     // Import button can be used even when export is disabled
     await expect(importButton).toHaveText(/Import/);
     
     // Verify file input
-    const fileInput = page.getByTestId('import-file-input');
+    const fileInput = classifyPanel.getByTestId('import-file-input');
     await expect(fileInput).toBeAttached();
     await expect(fileInput).toHaveAttribute('accept', '.json');
   });
@@ -133,32 +125,39 @@ test.describe('Classification Export/Import', () => {
 test.describe('Classify Tab Integration', () => {
   test('should show all classification sections and buttons', async ({ page }) => {
     await gotoClassifyTab(page);
+    const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
     // Verify buttons exist (the scheduler checkbox was already checked in gotoClassifyTab)
-    await expect(page.getByTestId('start-classify-button')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('force-rebuild-checkbox')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('export-classifications-button')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('import-classifications-button')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('start-classify-button')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('force-rebuild-checkbox')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('export-classifications-button')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('import-classifications-button')).toBeVisible({ timeout: 5000 });
   });
 
   test('should display progress counters (Rendered, Cached, Extracted, Remaining)', async ({ page }) => {
     await gotoClassifyTab(page);
+    const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
     // Verify all counter elements are visible
-    await expect(page.getByTestId('classify-rendered-count')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('classify-cached-count')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('classify-extracted-count')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('classify-remaining-count')).toBeVisible({ timeout: 5000 });
+    const renderedLocator = classifyPanel.getByTestId('classify-rendered-count');
+    const cachedLocator = classifyPanel.getByTestId('classify-cached-count');
+    const extractedLocator = classifyPanel.getByTestId('classify-extracted-count');
+    const remainingLocator = classifyPanel.getByTestId('classify-remaining-count');
+
+    await expect(renderedLocator).toBeVisible({ timeout: 5000 });
+    await expect(cachedLocator).toBeVisible({ timeout: 5000 });
+    await expect(extractedLocator).toBeVisible({ timeout: 5000 });
+    await expect(remainingLocator).toBeVisible({ timeout: 5000 });
 
     // Verify phase label and percent are visible
-    await expect(page.getByTestId('classify-phase-label')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByTestId('classify-percent')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('classify-phase-label')).toBeVisible({ timeout: 5000 });
+    await expect(classifyPanel.getByTestId('classify-percent')).toBeVisible({ timeout: 5000 });
 
     // Verify counters show numeric values (0 initially)
-    const renderedCount = await page.getByTestId('classify-rendered-count').textContent();
-    const cachedCount = await page.getByTestId('classify-cached-count').textContent();
-    const extractedCount = await page.getByTestId('classify-extracted-count').textContent();
-    const remainingCount = await page.getByTestId('classify-remaining-count').textContent();
+    const renderedCount = await renderedLocator.textContent();
+    const cachedCount = await cachedLocator.textContent();
+    const extractedCount = await extractedLocator.textContent();
+    const remainingCount = await remainingLocator.textContent();
 
     // All counters should be numeric
     expect(Number(renderedCount)).toBeGreaterThanOrEqual(0);

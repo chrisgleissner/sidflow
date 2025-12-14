@@ -19,20 +19,22 @@ test.describe('Advanced Search & Discovery', () => {
 
     test('should display advanced search bar with filters toggle', async ({ page }) => {
         // Check that the advanced search input exists
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
         await expect(searchInput).toBeVisible();
 
         // Check that the filters toggle button exists
-        const filtersButton = page.getByTestId('toggle-filters-button');
+        const filtersButton = playPanel.getByTestId('toggle-filters-button');
         await expect(filtersButton).toBeVisible();
 
         // Check that the Surprise Me button exists
-        const surpriseButton = page.getByTestId('surprise-me-button');
+        const surpriseButton = playPanel.getByTestId('surprise-me-button');
         await expect(surpriseButton).toBeVisible();
     });
 
     test('should search by title and display results', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
 
         // Type a search query
         await searchInput.fill('delta');
@@ -46,7 +48,8 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should search by artist and display results', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
 
         // Type an artist name
         await searchInput.fill('hubbard');
@@ -60,14 +63,15 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should clear search with X button', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
 
         // Type a search query
         await searchInput.fill('delta');
         await page.waitForTimeout(300);
 
         // Find and click the clear button
-        const clearButton = page.locator('button[title="Clear search"]');
+        const clearButton = playPanel.locator('button[title="Clear search"]');
         await expect(clearButton).toBeVisible();
         await clearButton.click();
 
@@ -76,10 +80,11 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should toggle advanced filters panel', async ({ page }) => {
-        const filtersButton = page.getByTestId('toggle-filters-button');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const filtersButton = playPanel.getByTestId('toggle-filters-button');
 
         // Initially filters should not be visible
-        const yearMinInput = page.getByTestId('year-min-input');
+        const yearMinInput = playPanel.getByTestId('year-min-input');
         await expect(yearMinInput).not.toBeVisible();
 
         // Click to expand filters
@@ -88,9 +93,9 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Now filters should be visible
         await expect(yearMinInput).toBeVisible();
-        await expect(page.getByTestId('year-max-input')).toBeVisible();
-        await expect(page.getByTestId('duration-min-input')).toBeVisible();
-        await expect(page.getByTestId('duration-max-input')).toBeVisible();
+        await expect(playPanel.getByTestId('year-max-input')).toBeVisible();
+        await expect(playPanel.getByTestId('duration-min-input')).toBeVisible();
+        await expect(playPanel.getByTestId('duration-max-input')).toBeVisible();
 
         // Click to collapse filters
         await filtersButton.click();
@@ -101,23 +106,24 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should apply year range filter', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
-        const filtersButton = page.getByTestId('toggle-filters-button');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
+        const filtersButton = playPanel.getByTestId('toggle-filters-button');
 
         // Expand filters
         await filtersButton.click();
         await page.waitForTimeout(200);
 
         // Set year range
-        const yearMinInput = page.getByTestId('year-min-input');
-        const yearMaxInput = page.getByTestId('year-max-input');
+        const yearMinInput = playPanel.getByTestId('year-min-input');
+        const yearMaxInput = playPanel.getByTestId('year-max-input');
         await yearMinInput.fill('1985');
         await yearMaxInput.fill('1987');
         await expect(yearMinInput).toHaveValue('1985');
         await expect(yearMaxInput).toHaveValue('1987');
 
         // Apply filters
-        const applyButton = page.getByTestId('apply-filters-button');
+        const applyButton = playPanel.getByTestId('apply-filters-button');
         await applyButton.click();
 
         // Verify filters were applied (UI remains functional)
@@ -125,23 +131,24 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should apply duration range filter', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
-        const filtersButton = page.getByTestId('toggle-filters-button');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
+        const filtersButton = playPanel.getByTestId('toggle-filters-button');
 
         // Expand filters
         await filtersButton.click();
         await page.waitForTimeout(200);
 
         // Set duration range (60-180 seconds)
-        const durationMinInput = page.getByTestId('duration-min-input');
-        const durationMaxInput = page.getByTestId('duration-max-input');
+        const durationMinInput = playPanel.getByTestId('duration-min-input');
+        const durationMaxInput = playPanel.getByTestId('duration-max-input');
         await durationMinInput.fill('60');
         await durationMaxInput.fill('180');
         await expect(durationMinInput).toHaveValue('60');
         await expect(durationMaxInput).toHaveValue('180');
 
         // Apply filters
-        const applyButton = page.getByTestId('apply-filters-button');
+        const applyButton = playPanel.getByTestId('apply-filters-button');
         await applyButton.click();
 
         // Verify filters were applied (UI remains functional)
@@ -149,24 +156,25 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should clear all filters', async ({ page }) => {
-        const filtersButton = page.getByTestId('toggle-filters-button');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const filtersButton = playPanel.getByTestId('toggle-filters-button');
 
         // Expand filters
         await filtersButton.click();
         await page.waitForTimeout(200);
 
         // Set some filters
-        const yearMinInput = page.getByTestId('year-min-input');
-        const durationMinInput = page.getByTestId('duration-min-input');
+        const yearMinInput = playPanel.getByTestId('year-min-input');
+        const durationMinInput = playPanel.getByTestId('duration-min-input');
         await yearMinInput.fill('1985');
         await durationMinInput.fill('60');
 
         // Apply filters
-        const applyButton = page.getByTestId('apply-filters-button');
+        const applyButton = playPanel.getByTestId('apply-filters-button');
         await applyButton.click();
 
         // Clear filters
-        const clearButton = page.getByTestId('clear-filters-button');
+        const clearButton = playPanel.getByTestId('clear-filters-button');
         await clearButton.click();
 
         // Verify filters are cleared
@@ -175,7 +183,8 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should accept search input for playing songs', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
 
         // Perform search - use a common term that should exist in test data
         await searchInput.fill('tune');
@@ -184,7 +193,7 @@ test.describe('Advanced Search & Discovery', () => {
         await page.waitForTimeout(800);
 
         // Check if results appear - they should if test data exists
-        const resultsDropdown = page.getByTestId('advanced-search-results');
+        const resultsDropdown = playPanel.getByTestId('advanced-search-results');
         
         // Try to find results, but don't fail if none exist
         const resultsVisible = await resultsDropdown.isVisible().catch(() => false);
@@ -196,7 +205,7 @@ test.describe('Advanced Search & Discovery', () => {
             await playButton.click();
 
             // Verify that the pause button appears (indicating playback started)
-            const pauseButton = page.getByRole('button', { name: /pause/i });
+            const pauseButton = playPanel.getByRole('button', { name: /pause/i });
             await expect(pauseButton).toBeVisible({ timeout: 10000 });
         } else {
             // No results found - verify search input still works
@@ -205,18 +214,20 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should trigger Surprise Me and play random track', async ({ page }) => {
-        const surpriseButton = page.getByTestId('surprise-me-button');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const surpriseButton = playPanel.getByTestId('surprise-me-button');
 
         // Click Surprise Me
         await surpriseButton.click();
 
         // Wait for playback to start (pause button appears when playing)
-        const pauseButton = page.getByRole('button', { name: /pause/i });
+        const pauseButton = playPanel.getByRole('button', { name: /pause/i });
         await expect(pauseButton).toBeVisible({ timeout: 15000 });
     });
 
     test('should handle search for artist names', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
 
         // Search by artist
         await searchInput.fill('hubbard');
@@ -228,7 +239,8 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should handle no results gracefully', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
 
         // Search for something that doesn't exist
         await searchInput.fill('xyznonexistent123');
@@ -240,7 +252,8 @@ test.describe('Advanced Search & Discovery', () => {
     });
 
     test('should maintain search input when clicking outside', async ({ page }) => {
-        const searchInput = page.getByTestId('search-input');
+        const playPanel = page.getByRole('tabpanel', { name: /play/i });
+        const searchInput = playPanel.getByTestId('search-input');
 
         // Perform search
         await searchInput.fill('delta');

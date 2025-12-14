@@ -26,7 +26,8 @@ if (!isPlaywrightRunner) {
 }
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'doc/web-screenshots');
+// Never write into repo docs from tests. Store generated screenshots under the repo's ignored tmp dir.
+const screenshotDir = path.resolve(moduleDir, '../../..', '..', 'tmp', 'e2e-screenshots');
 
 interface TabScenario {
   label: string;
