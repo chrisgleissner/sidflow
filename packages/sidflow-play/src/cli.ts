@@ -110,7 +110,7 @@ const ARG_DEFS: ArgDef[] = [
 ];
 
 const HELP_TEXT = formatHelp(
-  "sidflow play [options]",
+  "sidflow-play [options]",
   `Personal radio for SID music with mood-based playlist generation.
 Playback uses the WASM SidPlaybackHarness; ensure either ffplay or aplay is available locally.
 
@@ -130,10 +130,10 @@ Mood Presets:
   complex    - High complexity focus`,
   ARG_DEFS,
   [
-    "sidflow play --mood energetic --limit 30",
-    "sidflow play --filters 'e>=4,m>=4' --export playlist.json",
-    "sidflow play --mood dark --export-format m3u --export playlist.m3u",
-    "sidflow play --mood quiet --min-duration 30"
+    "sidflow-play --mood energetic --limit 30",
+    "sidflow-play --filters 'e>=4,m>=4' --export playlist.json",
+    "sidflow-play --mood dark --export-format m3u --export playlist.m3u",
+    "sidflow-play --mood quiet --min-duration 30"
   ]
 );
 

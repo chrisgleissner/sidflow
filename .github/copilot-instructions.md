@@ -34,7 +34,7 @@
 ## Data & Persistence
 - `.sidflow.json` defines `sidPath` (the path to the local SID collection, regardless of source), `audioCachePath`, `tagsPath`, optional `classifiedPath`; default to config values but accept explicit paths when provided by callers.
 - Classification writes metadata and tags using `resolve*` helpers and stores WAV hashes in sidecar `.hash` files—preserve this caching scheme.
-- Feedback lives in date-partitioned `data/feedback/<year>/<month>/events.jsonl`; training and LanceDB builders must tolerate missing folders and skip corrupt lines with warnings, not hard failures.
+- Feedback logs (via `@sidflow/common`) are date-partitioned under `data/feedback/<year>/<month>/<day>/events.jsonl`; consumers must tolerate missing folders and skip corrupt lines with warnings, not hard failures.
 - Store derived artifacts (manifest, LanceDB) with deterministic checksums using `generateManifest` in `common/lancedb-builder.ts`.
 
 ## Tooling & Dependencies
@@ -44,92 +44,22 @@
 
 ## Testing & Quality Gates
 
-### Test Coverage Requirements
-- **Target Coverage**: ≥90%
-- **Current Baseline**: 65.89% (11,929/18,105 lines) as of 2025-11-20
-- Coverage is measured across source files in `packages/*/src/` (excluding `dist/` build artifacts)
-- Use Bun's test runner (`bun run test`) with `--coverage` flag
-- Add focused unit tests under `packages/*/test` for all new features
-- Files marked with `/* c8 ignore file */` are intentionally excluded (integration/system code)
+### Coverage
+- `bun run test` runs with coverage enabled (see the root `package.json` script for flags/excludes).
+- Avoid hard-coding “current coverage %” or other time-sensitive baselines in docs; if you need to discuss coverage, describe the mechanism and where CI reports it (Codecov / CI output).
 
-**Note**: Codecov integration was added in PR #46 (2025-11-20). The current 65.89% represents the first automated measurement. Previous "90%" references were documentation goals, not actual measurements.
+### Required commands (local and CI-aligned)
+- **Build / typecheck**: `bun run build` (runs workspace install, upstream WASM check, then `tsc -b`)
+- **Unit tests (+ coverage)**: `bun run test` (runs build first)
+- **E2E**: `bun run test:e2e` (runs build first, then Playwright from `packages/sidflow-web`)
+- **Config validation**: `bun run validate:config`
 
-### Coverage Improvement Plan (65.89% → 90%)
-Priority areas by package (excluding dist/ artifacts):
-1. **sidflow-web** browser code: Needs unit tests with Web API mocks or E2E coverage
-   - player/sidflow-player.ts (568 lines, 24.8%)
-   - audio/worklet-player.ts (523 lines, 23.3%)
-   - feedback/storage.ts (402 lines, 16.6%)
-2. **sidflow-common** infrastructure: High ROI for unit tests
-   - audio-encoding.ts (382 lines, 27.8%)
-   - playback-harness.ts (296 lines, 10.0%)
-   - job-runner.ts (206 lines, 34.4%)
-3. **sidflow-classify** rendering: Needs CLI mocking infrastructure
-   - render/cli.ts (416 lines, 36.4%)
-   - render/render-orchestrator.ts (317 lines, 53.9%)
-4. **libsidplayfp-wasm** (35.90%): WASM boundary - integration tests only
+### Playwright setup
+- If browsers are missing, run `bun run setup:tests` (installs deps + ensures Playwright browser availability).
 
-### Unit Test Stability
-- **CRITICAL**: All unit tests must pass 3x consecutively before code is considered complete
-- Current stability: 1148/1150 tests passing consistently (99.8% pass rate)
-- Verify with: `bun run test && bun run test && bun run test`
-- Unit tests run in ~46s and must remain stable across runs
-
-### E2E Test Requirements
-- Run end-to-end validation with `bun run test:e2e` to cover full fetch→classify→play pipeline
-- **Performance Requirements**:
-  - No single E2E test may exceed 20 seconds
-  - Total E2E suite runtime must be under 4 minutes (current: 3.9min)
-  - Tests run with 3 Playwright workers in parallel
-- **Stability Requirements**:
-  - E2E tests must pass 3x consecutively
-  - Current status: 79/89 tests passing, 10 flaky tests being fixed
-  - Known flaky patterns: Missing data-testid attributes, waitForTimeout usage
-- **Best Practices**:
-  - Never use `waitForTimeout` - always use proper `waitFor` conditions with specific selectors
-  - Always add `data-testid` attributes to interactive elements
-  - Use `aria-label` for buttons with icon-only content
-  - Read `doc/testing/e2e-test-resilience-guide.md` before writing E2E tests
-
-### Quality Gate Checklist
-Before completing any substantial work, verify:
-1. ✅ Build passes: `bun run build`
-2. ✅ Lint/typecheck passes: `tsc -b`
-3. ✅ Unit tests pass 3x: `bun run test` (run 3 times)
-4. ✅ E2E tests pass: `bun run test:e2e`
-5. ✅ Coverage reported: Check final coverage % in test output
-6. ✅ Performance verified: E2E runtime < 4min
-
-### Test Execution in CI
-- **CRITICAL**: All tests must pass before completing any work. It is never acceptable to leave failing tests, even if they appear to be pre-existing
-- **ABSOLUTE REQUIREMENT**: 100% of tests must pass 3 times consecutively before any work is considered complete. "Mostly working" or "89% passing" is NEVER acceptable.
-- **NO EXCEPTIONS**: Every single test must pass. If a test cannot pass due to missing dependencies, it must be explicitly skipped with a clear comment explaining why.
-- Investigate and fix all test failures, or skip tests that require unavailable external dependencies (e.g., ffmpeg)
-- The build must be left in better condition than it was found
-- For config and JSON validations, run `bun run validate:config` and `bun run build:db`
-- Ensure new commands have tests mirroring existing CLI suites (`packages/*/test/cli.test.ts`)
-
-### Completion Attestation Required
-- Before declaring ANY task complete, you MUST paste the literal output of 3 consecutive test runs
-- The pasted output must show `0 fail` on all 3 runs
-- If you cannot paste this output, YOU ARE NOT DONE
-- Do not summarize or paraphrase - paste the actual terminal output
-
-### Common Rationalization Traps — DO NOT FALL FOR THESE
-The most common failure mode is rationalizing away test failures:
-- ❌ "This failure is pre-existing, not caused by my changes" → **WRONG. Fix it anyway.**
-- ❌ "This is a flaky test, it passes sometimes" → **WRONG. Flaky tests must be fixed or you are not done.**
-- ❌ "This test is unrelated to the feature I'm implementing" → **WRONG. All tests must pass.**
-- ❌ "I'll just note this failure and move on" → **WRONG. You must fix it before declaring completion.**
-- ❌ "The test is probably broken, not my code" → **WRONG. Investigate and fix whichever is broken.**
-
-If you catch yourself thinking any of these thoughts: STOP. You are about to violate the rules. Go fix the test.
-
-### Running E2E Tests in Remote Agent Sessions
-- **Use Docker for E2E tests**: CI runs e2e tests inside `ghcr.io/chrisgleissner/sidflow-ci:latest` which has Playwright browsers pre-installed.
-- **Run e2e tests in Docker**: `docker run --rm -v $(pwd):/workspace -w /workspace ghcr.io/chrisgleissner/sidflow-ci:latest bash -c "cd packages/sidflow-web && npx playwright test"`
-- **Config resolution**: E2E tests use `SIDFLOW_CONFIG` env var (set in `playwright.config.ts`) to locate `.sidflow.test.json` at repo root. The `loadConfig()` function in `@sidflow/common` respects this env var.
-- **Local testing**: If running locally without Docker, install Playwright browsers first: `cd packages/sidflow-web && npx playwright install chromium`.
+### Stability expectations
+- Keep tests deterministic: avoid `waitForTimeout` in Playwright; prefer specific waits/selectors and explicit `data-testid` attributes where needed.
+- Follow the stricter “3× consecutive green runs” rules in `AGENTS.md` for any work that changes behavior or tests.
 
 ## Coding Practices
 - Stick to strict TypeScript (`tsconfig.base.json`); avoid `any`, keep types explicit, and expose pure helpers for unit testing.

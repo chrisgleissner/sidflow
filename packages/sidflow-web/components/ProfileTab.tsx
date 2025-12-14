@@ -84,7 +84,7 @@ export function ProfileTab({ onStatusChange }: ProfileTabProps) {
                     <CardTitle>USER PROFILES</CardTitle>
                 </div>
                 <CardDescription>
-                    View public listening stats and activity
+                    View user stats recorded on this server
                 </CardDescription>
             </CardHeader>
             <CardContent>

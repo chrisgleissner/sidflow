@@ -2,22 +2,18 @@ openapi: 3.0.3
 info:
   title: SIDFlow Web API
   description: |
-    Local web interface for orchestrating SID playback, rating, and classification.
-    
-    This API provides endpoints that delegate to existing CLI tools where applicable:
-    - `sidflow-play` - Create client-side playback sessions with mood-based presets
-    - `sidflow-rate` - Submit manual ratings for tracks
-    - `sidflow-classify` - Classify SID files using ML models
-    - `sidflow-fetch` - Synchronize HVSC collection
-    - `sidflow-train` - Train ML models on feedback data
-  version: 0.1.0
+    Local web interface for SIDFlow.
+
+    The API primarily orchestrates server-side helpers and shared package logic (it does not shell out to the interactive CLIs).
+    See `packages/sidflow-web/app/api/**/route.ts` for the concrete implementation.
+  version: 0.3.10
   license:
     name: GPL-2.0-only
     url: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
 
 servers:
-  - url: https://sidflow.local
-    description: Default SIDFlow web deployment (override per environment)
+  - url: http://localhost:3000
+    description: Default local development server (override per environment)
 
 security: []
 
@@ -39,7 +35,10 @@ paths:
       tags:
         - playback
       summary: Create playback session
-      description: Creates a session descriptor for client-side SID playback with optional mood preset
+      description: |
+        Creates a playback session for the provided SID path.
+
+        Note: `preset` is accepted for compatibility but is not used by this endpoint. For preset-based selection, use `/api/play/random`.
       operationId: playSid
       requestBody:
         required: true
@@ -74,7 +73,7 @@ paths:
       tags:
         - rating
       summary: Rate a SID track
-      description: Submit manual ratings for energy, mood, complexity, and preference via sidflow-rate CLI
+      description: Submit manual ratings for energy, mood, complexity, and preference (writes tag files under `tagsPath`)
       operationId: rateSid
       requestBody:
         required: true
@@ -115,7 +114,7 @@ paths:
       tags:
         - classification
       summary: Classify SID files
-      description: Trigger classification on a directory of SID files via sidflow-classify CLI
+      description: Trigger classification on a directory of SID files (render + feature extraction + JSONL output)
       operationId: classifySids
       requestBody:
         required: true
@@ -142,7 +141,7 @@ paths:
       tags:
         - sync
       summary: Synchronize HVSC collection
-      description: Download and sync the High Voltage SID Collection via sidflow-fetch CLI
+      description: Download and sync the High Voltage SID Collection (HVSC)
       operationId: fetchHvsc
       requestBody:
         required: false
@@ -177,7 +176,7 @@ paths:
       tags:
         - training
       summary: Train ML model
-      description: Train the machine learning model on feedback data via sidflow-train CLI
+      description: Train/update the TensorFlow.js model artifacts
       operationId: trainModel
       requestBody:
         required: false
@@ -218,7 +217,7 @@ components:
       properties:
         sid_path:
           type: string
-          description: Absolute path to the SID file
+          description: Absolute path to the SID file, or a path relative to the configured SID collection root
           minLength: 1
           example: /home/user/hvsc/MUSICIANS/H/Hubbard_Rob/Commando.sid
         preset:
@@ -412,7 +411,7 @@ components:
       properties:
         sid_path:
           type: string
-          description: Absolute path to the SID file
+          description: Absolute path to the SID file, or a path relative to the configured SID collection root
           minLength: 1
           example: /home/user/hvsc/MUSICIANS/H/Hubbard_Rob/Commando.sid
         ratings:

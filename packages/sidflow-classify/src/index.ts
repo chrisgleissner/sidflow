@@ -561,7 +561,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
       await fs.rename(renderedFile, options.wavFile);
     }
   } else {
-    // Use WASM engine directly for WAV-only (fastest path, no multi-format support yet)
+    // Use the WASM engine directly for WAV-only (no multi-format support yet)
     // Multi-format with WASM is marked as 'future' in render matrix
     const engine = await createEngine();
     await renderWavWithEngine(engine, options);

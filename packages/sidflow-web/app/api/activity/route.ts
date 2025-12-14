@@ -1,7 +1,13 @@
 /**
  * Activity stream endpoint
  * GET /api/activity
- * Returns recent listening activity from all users
+ *
+ * Returns recent listening activity recorded on this server.
+ *
+ * Note: This endpoint reads a legacy activity-event schema from:
+ *   data/feedback/YYYY/MM/events.jsonl
+ * where each line is expected to contain fields like:
+ *   { userId, sidPath, action, timestamp }
  */
 
 import { NextResponse } from 'next/server';

@@ -104,7 +104,7 @@ describe("sidflow-fetch CLI", () => {
     }));
 
     expect(exitCode).toBe(0);
-    expect(capturedStdout).toContain("Usage: sidflow fetch");
+    expect(capturedStdout).toContain("Usage: sidflow-fetch");
   });
 
   it("validates option arity", async () => {

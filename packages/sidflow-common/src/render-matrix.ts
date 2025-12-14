@@ -1,6 +1,6 @@
 /**
  * Render matrix validation
- * Based on doc/plans/scale/plan.md Render Matrix
+ * Defines supported render-mode combinations and validation helpers.
  */
 
 export type RenderLocation = 'server' | 'client';
@@ -26,7 +26,6 @@ export interface RenderMatrixEntry {
 
 /**
  * Render matrix defining supported combinations
- * Based on doc/plans/scale/plan.md
  */
 export const RENDER_MATRIX: readonly RenderMatrixEntry[] = [
   // Server prepared renders

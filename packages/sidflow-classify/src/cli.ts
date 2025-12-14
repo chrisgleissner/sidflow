@@ -142,7 +142,7 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
 
 function printHelp(): void {
   const lines = [
-    "Usage: sidflow classify [options]",
+    "Usage: sidflow-classify [options]",
     "",
     "Build the WAV cache and generate automated tag summaries.",
     "",

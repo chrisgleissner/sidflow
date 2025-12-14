@@ -1,9 +1,9 @@
 <!-- markdownlint-disable-next-line MD041 -->
 ![Logo](./doc/img/logo.png)
 
-# SID Flow
+# SIDFlow
 
-Listen to C64 music based on your mood – automatically classified (under development) and ready to play.
+Listen to C64 SID music with mood-based playback and a local web UI.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yaml?branch=main&logo=github&label=CI)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
@@ -14,34 +14,16 @@ Listen to C64 music based on your mood – automatically classified (under devel
 
 ## Overview
 
-**SID Flow** helps you rediscover your C64 music collection by automatically organizing songs by *energy*, *mood*, and *complexity*.  Whether you have thousands of SID files from the [High Voltage SID Collection](https://www.hvsc.c64.org/) or your own archive, SID Flow creates mood-based playlists and radio stations tailored to your taste.  
-
-No more random browsing – just tell it what kind of music you want, and it will build a queue for you.
+**SIDFlow** is a CLI-first pipeline (fetch → classify → train → play) with an optional web interface.
+It works with the [High Voltage SID Collection](https://www.hvsc.c64.org/) (HVSC) or any local folder tree of `.sid` files.
 
 ---
 
 ## Features
 
-✨ **Smart Classification**
-
-- Automatically rates songs for energy, mood, and complexity
-- Uses audio feature extraction (tempo, spectral centroid, RMS energy)
-- Default: deterministic heuristic based on file paths and metadata
-- Optional: ML-based rating with TensorFlow.js (`--predictor-module`)
-
-🎵 **Personalized Recommendations**
-
-- Learns from your likes, dislikes, and listening patterns
-- Stations improve over time based on your feedback
-- LanceDB vector similarity search finds tracks you'll love
-- Adjustable personalization and discovery balance
-
-🎮 **Easy to Use**
-
-- Simple web UI
-- Command-line tools for scripting
-- All data stored in human-readable formats (JSON/JSONL)
-- Version control friendly
+- **Web player + admin console**: playback, search/browse, favorites, playlists, and pipeline controls.
+- **Audio classification**: renders SIDs to WAV, extracts audio features (Essentia.js when available; heuristic fallback otherwise), and writes JSONL output.
+- **Ratings + recommendations**: supports simple mood presets and similarity-based stations (LanceDB); can incorporate manual ratings and feedback where available.
 
 ---
 
@@ -49,7 +31,7 @@ No more random browsing – just tell it what kind of music you want, and it wil
 
 ### Install Bun
 
-First install Bun, the all-in-one toolkit for developing modern Typescript applications, as per https://bun.com/docs/installation:
+First install Bun (see [bun.com/docs/installation](https://bun.com/docs/installation)):
 
 macOS and Linux:
 
@@ -77,10 +59,7 @@ bun run build
 
 ## Deployment
 
-SIDFlow supports two deployment platforms:
-
-- **[Fly.io](doc/fly-deployment.md)** (Recommended) - Cloud platform with automatic scaling, global edge network, and instant deployment
-- **[Docker / Raspberry Pi](doc/deployment.md)** - Self-hosted deployment on local hardware or cloud VMs
+See [Deployment Guide](doc/deployment.md) for Docker and Fly.io deployment options.
 
 **Docker images:**  
 - `ghcr.io/chrisgleissner/sidflow:<version>` (e.g., `v0.3.10`)  
@@ -96,10 +75,10 @@ curl -L https://fly.io/install.sh | sh
 ./scripts/deploy/fly-deploy.sh -e stg
 
 # Deploy to production
-./scripts/deploy/fly-deploy.sh -e prd -t v0.3.29
+./scripts/deploy/fly-deploy.sh -e prd -t <tag>
 ```
 
-See **[Fly.io Deployment Guide](doc/fly-deployment.md)** for complete instructions.
+See [Deployment Guide](doc/deployment.md) for details.
 
 ## Run with Docker
 
@@ -110,7 +89,7 @@ Standard production scenario:
 ```bash
 docker run -p 3000:3000 \
   -e SIDFLOW_ADMIN_USER=admin \
-  -e SIDFLOW_ADMIN_PASSWORD='password' \
+  -e SIDFLOW_ADMIN_PASSWORD='your-password' \
   -v /path/to/hvsc:/sidflow/workspace/hvsc \
   -v /path/to/audio-cache:/sidflow/workspace/audio-cache \
   -v /path/to/tags:/sidflow/workspace/tags \
@@ -143,11 +122,11 @@ Run the unified performance suite (Playwright + k6) with the shared runner:
 
 ```bash
 # Build and start the web app first (see Deployment above)
-npm run perf:run -- --env local --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
+bun run perf:run -- --env local --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
 ```
 
 - Local mode downsizes to a quick smoke (1 user, minimal iterations, relaxed thresholds).
-- CI/nightly mode runs full variants; see [`doc/performance/performance-test.md`](doc/performance/performance-test.md) for details and flags.
+- CI/nightly mode runs full variants; see `scripts/performance-runner.ts` and `performance/journeys/` for options and journeys.
 - Remote/staging runs stay disabled unless you pass `--env remote --enable-remote --base-url <url>` intentionally.
 - k6 HTML dashboards come from `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report.html`.
 - CI Docker image already prebakes k6 v0.52.0 and Playwright Chromium to avoid slow downloads.
@@ -175,12 +154,9 @@ The admin console requires authentication for security:
 - **Default Username:** `admin` (configurable via `SIDFLOW_ADMIN_USER`)
 - **Default Password:** `password` (configurable via `SIDFLOW_ADMIN_PASSWORD`)
 
-⚠️ **Security Warning:** The default password `password` is for development convenience only. **Always set a strong `SIDFLOW_ADMIN_PASSWORD` in production.**
+The default password `password` is intended for development only. Set `SIDFLOW_ADMIN_PASSWORD` in production deployments.
 
-- Local runs: place `SIDFLOW_ADMIN_PASSWORD=<strong-password>` in a root-level `.env`; launch scripts (`scripts/start-release-server.sh`, deploy/install scripts) will load it automatically.
-- Fly.io GitHub Actions deploys: add repository secret `SIDFLOW_ADMIN_PASSWORD` (optionally `SIDFLOW_ADMIN_PASSWORD_STG` / `SIDFLOW_ADMIN_PASSWORD_PRD`) and the workflow will push it to Fly secrets before deploying.
-
-For full authentication details, see [Web UI Documentation](./doc/web-ui.md).
+For web UI route details, see [packages/sidflow-web/README.md](packages/sidflow-web/README.md).
 
 ### Public Player Features
 
@@ -213,7 +189,7 @@ Download and synchronize the High Voltage SID Collection.
 
 #### Rate
 
-Manually rate songs on energy, complexity, mood, and preference. Ratings are collected as feedback data that can be used to train personalized models.
+Manually rate songs on energy, complexity, mood, and preference. Ratings are stored as tag files under `tagsPath` and can be used by training/classification workflows.
 
 ![rate panel](./doc/web-screenshots/04-rate-playback.png)
 
@@ -229,93 +205,12 @@ Create mood-based queues with full playback controls and history.
 
 ![play panel](./doc/web-screenshots/07-play.png)
 
-### Feature Details
+### Player notes
 
-#### 🔍 Smart Search
-
-- Real-time search with instant results
-- Search by song title or artist name
-- Results dropdown with play-on-click
-- Keyboard shortcut: **S** to focus search
-- 300ms debounce for smooth typing
-
-#### ❤️ Favorites Collection
-
-- Heart icon to favorite tracks instantly
-- Dedicated Favorites tab for quick access
-- "Play All Favorites" and "Shuffle Favorites" buttons
-- Syncs across browser sessions
-- Build your curated collection
-
-#### 📊 Top Charts
-
-- See most-played tracks by the community
-- Filter by time range: This Week, This Month, All Time
-- Discover popular artists and rising trends
-- Track metadata with play counts
-- Quick play from any chart entry
-
-#### ⌨️ Enhanced Keyboard Shortcuts
-
-- **SPACE** - Play/Pause
-- **Arrow Keys** - Next/Previous, Volume Up/Down
-- **M** - Mute toggle
-- **S** - Focus search bar
-- **F** - Focus favorites
-- **?** - Show shortcuts help
-- Smart context: Auto-disabled in input fields
-
-#### 🎨 Theme System
-
-- Three themes: C64 Light, C64 Dark, Classic
-- Instant theme switching from Prefs tab
-- Theme persistence across sessions
-- Dark mode for extended listening
-
-#### 📻 ML-Powered Station from Song
-
-- "Start Station" button creates radio based on a seed song
-- Uses LanceDB vector similarity search to find similar tracks
-- Adjustable parameters:
-  - **Personalization** (0-100%): Weight user feedback (likes/dislikes)
-  - **Discovery** (0-100%): Balance similarity vs variety
-- Generates a 20-track queue
-- Station name displays seed song
-
-#### ⭐ Enhanced Rating Display
-
-- Personal rating badge: "You rated: ★★★★☆"
-- Community rating with count: "★★★★☆ 4.2/5 (1.2K)"
-- Hover tooltip shows E/M/C dimensions
-- "Trending" badge for hot tracks
-- Visual feedback for likes/plays
-
-#### 🗂️ SID Browser
-
-- Navigate folder structure with breadcrumbs
-- Browse by composer, game, or demo group
-- Play individual songs or entire folders
-- Folder actions:
-  - Play All in Folder (non-recursive)
-  - Play Folder Tree (recursive)
-  - Shuffle Folder Tree
-- File metadata display (title, author, subsongs)
-
-#### 🔊 Volume Control
-
-- Volume slider with speaker icon
-- Range: 0-100% with 1% precision
-- Keyboard: Arrow Up/Down (+/-10%), M to mute
-- Visual feedback for volume level
-- Mute preserves volume setting
-
-#### 🕐 Recently Played History
-
-- Automatic tracking of last 100 tracks
-- Display last 20 in Play tab sidebar
-- "Play Again" button per entry
-- "Clear History" to reset
-- Circular buffer prevents unbounded growth
+- **Search**: available in the Play tab; press `S` to focus the search input.
+- **Keyboard shortcuts (Play tab)**: Space (play/pause), ←/→ (prev/next), ↑/↓ (volume), `M` (mute), `?` (help). Shortcuts are disabled while typing in inputs.
+- **Favorites**: stored server-side (in `data/.sidflow-preferences.json`) and shared across browsers pointing at the same server. “Play All” / “Shuffle” currently start playback from the first selected entry (queueing the rest is not implemented yet).
+- **Recently played**: stored in the browser (localStorage), up to 100 entries, with a “Clear History” action.
 
 ### Additional Features
 
@@ -335,10 +230,10 @@ If you prefer automation or terminal workflows, use the CLI tools documented in 
 ### Available CLIs
 
 - **[sidflow-fetch](packages/sidflow-fetch/README.md)** - Sync HVSC collection from official mirrors
-- **[sidflow-classify](packages/sidflow-classify/README.md)** - Classify songs automatically
-- **[sidflow-train](packages/sidflow-train/README.md)** - Train the ML model on feedback
-- **[sidflow-rate](packages/sidflow-rate/README.md)** - Manually rate songs interactively
-- **[sidflow-play](packages/sidflow-play/README.md)** - Play mood-based playlists
+- **[sidflow-classify](packages/sidflow-classify/README.md)** - Render + extract features; write classification JSONL
+- **[sidflow-train](packages/sidflow-train/README.md)** - Train/update the TensorFlow.js model artifacts
+- **[sidflow-rate](packages/sidflow-rate/README.md)** - Write manual rating/tag files
+- **[sidflow-play](packages/sidflow-play/README.md)** - Generate playlists / exports using similarity search
 
 ---
 
@@ -367,10 +262,10 @@ The `.sidflow.json` file defines where SIDFlow should read your SID collection a
 
 ## Acknowledgements
 
-SID Flow is [GPLv2](LICENSE)-licensed and builds upon outstanding open-source software and datasets:
+SIDFlow is [GPLv2](LICENSE)-licensed and builds upon open-source software and datasets:
 
 | Component | License | Source | Credit |
 |------------|----------|---------|-----|
-| **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) | Fastest Typescript runtime |
-| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | Most accurate software SID emulator (compiled to WASM for cross-platform playback) |
+| **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) | JS runtime and tooling |
+| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | Software SID emulator (compiled to WASM for browser playback) |
 | **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) | Largest SID collection |

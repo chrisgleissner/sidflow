@@ -41,7 +41,7 @@ describe("Train CLI", () => {
       const exitCode = await runTrainCli(["--help"]);
 
       expect(exitCode).toBe(0);
-      expect(output).toContain("Usage: sidflow train");
+      expect(output).toContain("Usage: sidflow-train");
       expect(output).toContain("--epochs");
       expect(output).toContain("--batch-size");
       expect(output).toContain("--evaluate");

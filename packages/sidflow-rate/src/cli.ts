@@ -41,7 +41,7 @@ const ARG_DEFS: ArgDef[] = [
 ];
 
 const HELP_TEXT = formatHelp(
-  "sidflow rate [options]",
+  "sidflow-rate [options]",
   "Interactively rate SID tunes with energy, mood, complexity, and preference ratings.\nPlayback uses the shared WASM harness; ensure ffplay or aplay is available for audio output.",
   ARG_DEFS
 );

@@ -6,7 +6,7 @@ import { getAggregateRating } from '@/lib/server/rating-aggregator';
  * GET /api/rate/aggregate?sid_path=<path>
  * 
  * Returns aggregate rating information for a specific track,
- * including community ratings, trending status, and personal rating (if available).
+ * including aggregate ratings and trending status.
  */
 export async function GET(request: NextRequest) {
   try {

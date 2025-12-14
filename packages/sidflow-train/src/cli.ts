@@ -68,14 +68,14 @@ const ARG_DEFS: ArgDef[] = [
 ];
 
 const HELP_TEXT = formatHelp(
-  "sidflow train [options]",
+  "sidflow-train [options]",
   "Train the ML model on explicit and implicit feedback data.",
   ARG_DEFS,
   [
-    "sidflow train                      # Train with default settings",
-    "sidflow train --epochs 10          # Train for 10 epochs",
-    "sidflow train --force              # Force complete retraining",
-    "sidflow train --no-evaluate        # Skip test set evaluation"
+    "sidflow-train                      # Train with default settings",
+    "sidflow-train --epochs 10          # Train for 10 epochs",
+    "sidflow-train --force              # Force complete retraining",
+    "sidflow-train --no-evaluate        # Skip test set evaluation"
   ]
 );
 

@@ -23,11 +23,11 @@ test-data/
 ## Source
 
 These SID files are from **HVSC Update #83**, downloaded from:
-https://hvsc.brona.dk/HVSC/HVSC_Update_83.7z
+[hvsc.brona.dk/HVSC/HVSC_Update_83.7z](https://hvsc.brona.dk/HVSC/HVSC_Update_83.7z)
 
 ## Current Test Files
 
-All three SID files are confirmed to **NOT require C64 Kernal or Basic ROM**, making them suitable for testing without additional ROM files:
+These SID files were selected to avoid requiring external C64 ROM files in SIDFlow’s default test playback configuration:
 
 1. **Lully_Marche_Ceremonie_Turcs_Wip.sid**
    - Artist: Eric F. (Garvalf)
@@ -61,4 +61,4 @@ These SID files are used for:
 ## License
 
 These SID files are part of the High Voltage SID Collection (HVSC) and are subject to the HVSC license terms.
-See: https://www.hvsc.c64.org/
+See: [hvsc.c64.org](https://www.hvsc.c64.org/)

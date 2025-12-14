@@ -1,7 +1,7 @@
 /**
  * Ultimate 64 UDP audio capture utilities
  * Implements packet reordering, loss detection, and PCM assembly
- * Based on doc/plans/scale/c64-stream-spec.md
+ * (The original design notes are not tracked in this repo.)
  */
 
 import { createLogger } from "./logger.js";

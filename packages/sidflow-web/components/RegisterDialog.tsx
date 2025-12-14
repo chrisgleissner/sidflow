@@ -66,7 +66,7 @@ export function RegisterDialog({ open, onOpenChange, onSwitchToLogin }: Register
                 <DialogHeader>
                     <DialogTitle>Create SIDFlow Account</DialogTitle>
                     <DialogDescription>
-                        Join the community to save favorites, create playlists, and more
+                        Create an account on this server
                     </DialogDescription>
                 </DialogHeader>
 

@@ -2401,7 +2401,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
             <div>
               <CardTitle className="text-sm petscii-text text-accent">Recently Played</CardTitle>
               <CardDescription className="text-muted-foreground">
-                Last 20 tracks from all sessions
+                Last 20 tracks in this browser
               </CardDescription>
             </div>
             {hasHydrated && recentHistory.length > 0 && (

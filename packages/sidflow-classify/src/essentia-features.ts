@@ -380,9 +380,8 @@ async function extractEssentiaFeaturesOptimized(wavFile: string, essentia: any):
     const zcr = essentia.ZeroCrossingRate(audioVector);
     features.zeroCrossingRate = zcr;
 
-    // Skip RhythmExtractor2013 - it's too slow (40+ seconds)
-    // Use heuristic BPM estimation based on spectral centroid and ZCR instead
-    // This provides adequate tempo estimation for SID music classification
+    // RhythmExtractor2013 is intentionally not used here (too expensive for batch runs).
+    // Use a lightweight BPM estimate derived from zero-crossing rate instead.
     const estimatedBpm = Math.min(200, Math.max(60, zcr * 5000));
     features.bpm = estimatedBpm;
     features.confidence = 0.5; // Medium confidence for heuristic

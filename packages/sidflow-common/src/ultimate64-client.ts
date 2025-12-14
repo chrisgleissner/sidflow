@@ -1,6 +1,6 @@
 /**
  * Ultimate 64 REST API client
- * Based on doc/plans/scale/c64-rest-api.md
+ * (The original design notes are not tracked in this repo.)
  */
 
 import { createLogger } from "./logger.js";

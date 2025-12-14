@@ -7,6 +7,8 @@ docker run -p 3000:3000 \
   -e SIDFLOW_ADMIN_USER=admin \
   -e SIDFLOW_ADMIN_PASSWORD='your-password' \
   -v /path/to/hvsc:/sidflow/workspace/hvsc \
+  -v /path/to/audio-cache:/sidflow/workspace/audio-cache \
+  -v /path/to/tags:/sidflow/workspace/tags \
   -v /path/to/data:/sidflow/data \
   ghcr.io/chrisgleissner/sidflow:latest
 ```

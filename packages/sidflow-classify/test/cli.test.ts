@@ -229,7 +229,7 @@ describe("runClassifyCli", () => {
       process.stdout.write = originalWrite;
     }
 
-    expect(captured.join("")).toContain("Usage: sidflow classify");
+    expect(captured.join("")).toContain("Usage: sidflow-classify");
   });
 
   it("reports argument parsing errors", async () => {
