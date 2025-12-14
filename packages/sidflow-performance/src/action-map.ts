@@ -41,7 +41,13 @@ export function stepToK6Request(
       ].join("\n  ");
     }
     case "startPlayback":
-      return `logRequest("GET", streamUrl, http.get(streamUrl, { headers: { ...params.headers, Range: "bytes=0-1023" }, responseType: "none" })); // playback start (partial)`;
+      return [
+        `if (streamUrl) {`,
+        `  logRequest("GET", streamUrl, http.get(streamUrl, { headers: { "Content-Type": "application/json", "Range": "bytes=0-1023" }, responseType: "none" })); // playback start (partial)`,
+        `} else {`,
+        `  logRequest("GET", baseUrl + "/api/health", http.get(baseUrl + "/api/health", params)); // fallback`,
+        `}`
+      ].join("\n  ");
     case "favoriteToggle":
       // TypeScript narrows step to FavoriteToggleStep within this case
       return `logRequest("${step.toggle === "remove" ? "DELETE" : "POST"}", baseUrl + "${mapping.favoritesEndpoint}", http.${step.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${spec.data?.trackRefs?.[step.trackRef]?.sidPath ?? step.trackRef}" }), params));`;

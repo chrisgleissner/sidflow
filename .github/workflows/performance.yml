@@ -57,6 +57,9 @@ jobs:
 
       - name: Build web app
         run: cd packages/sidflow-web && npm run build
+
+      - name: Prepare minimal perf fixtures (no HVSC download)
+        run: bash scripts/perf/prepare-perf-fixtures.sh
       
       - name: Copy static assets for standalone server
         run: |
@@ -79,7 +82,10 @@ jobs:
           # which are blocked by strict CSP. Without this, React mounting fails and tests time out.
           # Production deployments SHOULD NOT set SIDFLOW_RELAXED_CSP=1; the default strict CSP is recommended for security.
           # Next.js standalone always runs with NODE_ENV=production internally, so this variable is only for test environments.
-          SIDFLOW_RELAXED_CSP=1 SIDFLOW_CONFIG="$PWD/../../.sidflow.json" node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
+          # Ensure server-side WASM renderer can locate the binary in standalone mode
+          SIDFLOW_LIBSIDPLAYFP_WASM_PATH="$PWD/public/wasm/libsidplayfp.wasm" \
+          SIDFLOW_RELAXED_CSP=1 SIDFLOW_CONFIG="$PWD/../../.sidflow.json" \
+          node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
           
           # Wait for server to be ready with proper health check
@@ -110,7 +116,10 @@ jobs:
           # Docker adds ~10s startup overhead and requires managing container lifecycle/volumes/networking.
           # Direct server approach is simpler, faster, and equally effective for performance measurement.
           # Docker-based integration testing is already covered by release workflow smoke tests.
-          npm run perf:run -- --env ci --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
+          # Public GitHub runners are noisy and resource-constrained. Keep the CI profile intentionally small.
+          # Remote/scale runs (hundreds of users) are supported via `--env remote --profile scale --enable-remote`,
+          # but are intentionally not exercised here until Fly.io + Raspberry Pi targets exist and are stable.
+          npm run perf:run -- --env ci --profile reduced --executor k6 --pacing 1 --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
           EXIT_CODE=$?
           
           # Always show server log excerpt after test run

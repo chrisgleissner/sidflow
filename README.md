@@ -118,18 +118,20 @@ Web UI: <http://localhost:3000> (admin at `/admin` with default user/password of
 
 ## Performance Tests
 
-Run the unified performance suite (Playwright + k6) with the shared runner:
+Run the unified performance suite (journey-driven; k6 and optional Playwright) with the shared runner:
 
 ```bash
-# Build and start the web app first (see Deployment above)
+# Point at an already-running server
 bun run perf:run -- --env local --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
 ```
 
-- Local mode downsizes to a quick smoke (1 user, minimal iterations, relaxed thresholds).
-- CI/nightly mode runs full variants; see `scripts/performance-runner.ts` and `performance/journeys/` for options and journeys.
-- Remote/staging runs stay disabled unless you pass `--env remote --enable-remote --base-url <url>` intentionally.
-- k6 HTML dashboards come from `K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report.html`.
-- CI Docker image already prebakes k6 v0.52.0 and Playwright Chromium to avoid slow downloads.
+- **Profiles**: `--profile smoke|reduced|standard|scale` (defaults: local→smoke, CI→reduced, remote→reduced).
+- **GitHub runner (CI)**: runs **reduced** load and **k6-only** for stability (see `.github/workflows/performance.yml`).
+- **CI data**: uses a tiny, deterministic SID fixture (no HVSC download) via `scripts/perf/prepare-perf-fixtures.sh`.
+- **Fly.io / Raspberry Pi (remote targets)**: supported via `--env remote --enable-remote --base-url <url>` (typically with `--executor k6`).
+- **Hundreds of users**: opt-in only via `--profile scale` (remote-only guard to avoid accidental load).
+- **Journeys** live in `performance/journeys/` (e.g. `play-start-stream.json`).
+- **Outputs**: `performance/results/<timestamp>/` (report + summaries) and `performance/tmp/<timestamp>/` (generated scripts).
 
 ---
 

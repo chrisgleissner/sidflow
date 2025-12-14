@@ -128,12 +128,39 @@ describe("runner", () => {
           const summaryPath = path.join(script.resultDir, "summary.json");
           await fs.writeFile(
             summaryPath,
-            JSON.stringify({ metrics: { http_req_failed: { rate: 0.2 } } })
+            JSON.stringify({ metrics: { http_req_failed: { rate: 0.2 }, http_req_duration: { "p(95)": 50, "p(99)": 100 } } })
           );
         },
         maxErrorRate: 0.1
       })
     ).rejects.toThrow("error rate");
+  });
+
+  it("enforces k6 latency SLO thresholds when configured", async () => {
+    await expect(
+      runUnifiedPerformance({
+        journeyDir: tmpJourneys,
+        resultsRoot: tmpResults,
+        tmpRoot: tmpScripts,
+        executors: ["k6"],
+        execute: true,
+        // Use CI env to enable latency enforcement by default
+        environment: { kind: "ci", baseUrl: "http://localhost:3000" },
+        commandRunner: async (script) => {
+          const summaryPath = path.join(script.resultDir, "summary.json");
+          await fs.writeFile(
+            summaryPath,
+            JSON.stringify({
+              metrics: {
+                http_req_failed: { rate: 0 },
+                http_req_duration: { "p(95)": 9999, "p(99)": 15000 }
+              }
+            })
+          );
+        },
+        maxP95Ms: 1000
+      })
+    ).rejects.toThrow("p95");
   });
 
   it("retries playwright executions when configured", async () => {
