@@ -138,6 +138,7 @@ describe("k6-executor", () => {
       });
 
       expect(content).toContain('thresholds: { http_req_failed: ["rate<0.05"] }');
+      expect(content).toContain('summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"]');
     });
 
     it("disables thresholds when strictThresholds is false", () => {

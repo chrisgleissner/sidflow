@@ -64,6 +64,99 @@ jobs:
       - name: Run E2E tests with coverage
         run: cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium
 
+      # Small on-commit performance check (k6-only, reduced load).
+      # This is intentionally tiny and deterministic so it can run on public GitHub runners.
+      - name: Install k6 (for perf smoke)
+        if: success()
+        run: |
+          if command -v k6 >/dev/null 2>&1; then
+            k6 version
+            exit 0
+          fi
+          K6_VERSION=0.52.0
+          curl -fsSL "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz" -o /tmp/k6.tar.gz
+          tar -xzf /tmp/k6.tar.gz -C /tmp
+          install -m 0755 /tmp/k6-v${K6_VERSION}-linux-amd64/k6 /usr/local/bin/k6
+          rm -rf /tmp/k6.tar.gz /tmp/k6-v${K6_VERSION}-linux-amd64
+          k6 version
+
+      - name: Prepare minimal perf fixtures (no HVSC download)
+        if: success()
+        run: bash scripts/perf/prepare-perf-fixtures.sh
+
+      - name: Build web app (standalone) for perf smoke
+        if: success()
+        run: |
+          cd packages/sidflow-web
+          npm run build
+          # Next.js standalone build requires manual copy of static assets
+          cp -r .next/static .next/standalone/packages/sidflow-web/.next/static
+          cp -r public .next/standalone/packages/sidflow-web/public
+
+      - name: Start web server (perf smoke)
+        if: success()
+        run: |
+          cd packages/sidflow-web
+          # Keep logs for debugging; stop in a later step.
+          SIDFLOW_LIBSIDPLAYFP_WASM_PATH="$PWD/public/wasm/libsidplayfp.wasm" \
+          SIDFLOW_CONFIG="$PWD/../../.sidflow.json" \
+          node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-ci-server.log 2>&1 &
+          echo $! > /tmp/perf-ci-server.pid
+
+          echo "Waiting for server to be ready..."
+          for i in {1..60}; do
+            if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "Server is ready after ${i} seconds"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "ERROR: Server failed to start within 60 seconds"
+              echo "=== Last 200 lines of server log ==="
+              tail -n 200 /tmp/perf-ci-server.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Run perf smoke (k6, reduced)
+        if: success()
+        run: |
+          # NOTE: CI uses reduced load only. Remote/scale runs are supported via:
+          #   bun run perf:run -- --env remote --enable-remote --profile scale --executor k6 --base-url <url> --execute
+          bun run perf:run -- \
+            --env ci \
+            --profile reduced \
+            --executor k6 \
+            --journey play-start-stream \
+            --k6-users 1 \
+            --k6-journeys-per-vu 1 \
+            --pacing 0.2 \
+            --base-url http://localhost:3000 \
+            --results performance/results \
+            --tmp performance/tmp \
+            --execute
+
+      - name: Stop web server (perf smoke)
+        if: always()
+        run: |
+          if [ -f /tmp/perf-ci-server.pid ]; then
+            kill "$(cat /tmp/perf-ci-server.pid)" || true
+          fi
+          echo "=== Server log (last 200 lines) ==="
+          tail -n 200 /tmp/perf-ci-server.log || true
+
+      - name: Upload perf smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-smoke-artifacts
+          path: |
+            /tmp/perf-ci-server.log
+            performance/results/
+            performance/tmp/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Merge unit + E2E coverage
         if: always()
         run: bun run scripts/merge-coverage.ts

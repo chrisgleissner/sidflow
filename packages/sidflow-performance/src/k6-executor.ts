@@ -47,6 +47,8 @@ export function generateK6ScriptContent(spec: JourneySpec, options: K6Options): 
     `}`,
     ``,
     `export const options = {`,
+    `  // Ensure exported summaries include p(99) for regression detection.`,
+    `  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],`,
     `  scenarios: {`,
     `    default: {`,
     `      executor: "per-vu-iterations",`,
