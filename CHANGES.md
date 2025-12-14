@@ -1,6 +1,18 @@
 # Changelog
 
 
+## 0.3.48 (2025-12-14)
+
+- Merge pull request #77 from chrisgleissner/cursor/test-suite-stability-and-fixes-44be
+- Refactor: Scope E2E tests to the play tab and improve FCP check
+- Checkpoint before follow-up message
+- Checkpoint before follow-up message
+- Checkpoint before follow-up message
+- feat: Implement WAV file truncation and duration management
+- feat: enhance Dockerfile for legacy path support and update classification duration handling
+- chore: update CHANGES.md for 0.3.47
+
+
 ## 0.3.47 (2025-12-12)
 
 - ci: fix fly app creation
