@@ -7,14 +7,18 @@ export interface K6Options {
   baseUrl: string;
   users: number;
   pacingSeconds?: number;
-  iterations?: number;
+  /**
+   * Number of full journey runs per VU.
+   * This is intentionally "per-VU" so that scaling up VUs scales total work.
+   */
+  journeysPerVu?: number;
   strictThresholds?: boolean;
 }
 
 export function generateK6ScriptContent(spec: JourneySpec, options: K6Options): string {
   const pacingSeconds = spec.pacingSeconds ?? options.pacingSeconds ?? DEFAULT_PACING_SECONDS;
   const pacing = `${pacingSeconds}`;
-  const iterations = options.iterations ?? spec.steps.length;
+  const journeysPerVu = options.journeysPerVu ?? 1;
   const thresholds = options.strictThresholds === false ? "{}" : '{ http_req_failed: ["rate<0.05"] }';
 
   const bodyLines = spec.steps
@@ -43,8 +47,16 @@ export function generateK6ScriptContent(spec: JourneySpec, options: K6Options): 
     `}`,
     ``,
     `export const options = {`,
-    `  vus: ${options.users},`,
-    `  iterations: ${iterations},`,
+    `  // Ensure exported summaries include p(99) for regression detection.`,
+    `  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],`,
+    `  scenarios: {`,
+    `    default: {`,
+    `      executor: "per-vu-iterations",`,
+    `      vus: ${options.users},`,
+    `      iterations: ${journeysPerVu},`,
+    `      maxDuration: "${Math.max(1, journeysPerVu) * Math.max(1, spec.steps.length) * (pacingSeconds + 1)}s",`,
+    `    },`,
+    `  },`,
     `  thresholds: ${thresholds},`,
     `};`,
     ``,
@@ -56,7 +68,7 @@ export function generateK6ScriptContent(spec: JourneySpec, options: K6Options): 
     ``,
     `export default function () {`,
     `  const params = { headers: { "Content-Type": "application/json" } };`,
-    `  let streamUrl = baseUrl;`,
+    `  let streamUrl = null;`,
     bodyLines || "  // No steps provided",
     `}`
   ].join("\n");

@@ -75,6 +75,8 @@ export interface JourneySpec {
 
 export type EnvironmentKind = "local" | "ci" | "remote";
 
+export type RunnerProfile = "smoke" | "reduced" | "standard" | "scale";
+
 export interface RunnerEnvironment {
   kind: EnvironmentKind;
   baseUrl?: string;
@@ -82,6 +84,14 @@ export interface RunnerEnvironment {
   dataset?: string;
   enableRemote?: boolean;
   pacingSeconds?: number;
+  /**
+   * Performance profile used to choose default user variants and run intensity.
+   * - smoke: minimal, quick sanity check
+   * - reduced: CI-friendly (public runner) defaults
+   * - standard: stronger signal for local/staging
+   * - scale: explicitly exercises "hundreds of users" (remote-only, opt-in)
+   */
+  profile?: RunnerProfile;
 }
 
 export type ExecutorKind = "playwright" | "k6";

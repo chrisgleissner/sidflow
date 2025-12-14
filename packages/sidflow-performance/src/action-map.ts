@@ -3,14 +3,12 @@ import { type JourneyStep, type JourneySpec } from "./types.js";
 export interface K6ActionMapping {
   searchEndpoint: string;
   playEndpoint: string;
-  healthEndpoint: string;
   favoritesEndpoint: string;
 }
 
 export const defaultK6Mapping: K6ActionMapping = {
   searchEndpoint: "/api/search",
   playEndpoint: "/api/play",
-  healthEndpoint: "/api/health",
   favoritesEndpoint: "/api/favorites"
 };
 
@@ -22,7 +20,7 @@ export function stepToK6Request(
   switch (step.action) {
     case "navigate":
       // TypeScript narrows step to NavigateStep within this case
-      return `logRequest("GET", baseUrl + "${mapping.healthEndpoint}", http.get(baseUrl + "${mapping.healthEndpoint}", params)); // mirror page load for ${step.target}`;
+      return `logRequest("GET", baseUrl + "${step.target}", http.get(baseUrl + "${step.target}", params));`;
     case "click":
     case "waitForText":
       return "// UI-only step; no protocol call";
@@ -36,14 +34,23 @@ export function stepToK6Request(
       return [
         `const playRes = logRequest("POST", baseUrl + "${mapping.playEndpoint}", http.post(baseUrl + "${mapping.playEndpoint}", JSON.stringify({ sid_path: "${path}" }), params));`,
         `const playJson = playRes.json();`,
-        `streamUrl = playJson && playJson.streamUrl ? playJson.streamUrl : streamUrl;`
+        `const session = playJson && playJson.data && playJson.data.session ? playJson.data.session : null;`,
+        `const sidUrl = session && session.sidUrl ? (baseUrl + session.sidUrl) : null;`,
+        `const wavUrl = session && session.streamUrls && session.streamUrls.wav && session.streamUrls.wav.url ? (baseUrl + session.streamUrls.wav.url) : null;`,
+        `streamUrl = wavUrl || sidUrl || streamUrl;`
       ].join("\n  ");
     }
     case "startPlayback":
-      return `logRequest("GET", streamUrl || baseUrl + "${mapping.healthEndpoint}", http.get(streamUrl || baseUrl + "${mapping.healthEndpoint}", params)); // playback start`;
+      return [
+        `if (streamUrl) {`,
+        `  logRequest("GET", streamUrl, http.get(streamUrl, { headers: { "Content-Type": "application/json", "Range": "bytes=0-1023" }, responseType: "none" })); // playback start (partial)`,
+        `} else {`,
+        `  logRequest("GET", baseUrl + "/api/health", http.get(baseUrl + "/api/health", params)); // fallback`,
+        `}`
+      ].join("\n  ");
     case "favoriteToggle":
       // TypeScript narrows step to FavoriteToggleStep within this case
-      return `logRequest("${step.toggle === "remove" ? "DELETE" : "POST"}", baseUrl + "${mapping.favoritesEndpoint}", http.${step.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${step.trackRef}" }), params));`;
+      return `logRequest("${step.toggle === "remove" ? "DELETE" : "POST"}", baseUrl + "${mapping.favoritesEndpoint}", http.${step.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${spec.data?.trackRefs?.[step.trackRef]?.sidPath ?? step.trackRef}" }), params));`;
     default:
       return "// Unsupported action";
   }

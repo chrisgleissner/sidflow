@@ -24,12 +24,11 @@ describe("action-map", () => {
   };
 
   describe("stepToK6Request", () => {
-    it("converts navigate step to health check request", () => {
+    it("converts navigate step to page GET request", () => {
       const step: NavigateStep = { action: "navigate", target: "/" };
       const result = stepToK6Request(step, mockSpec);
       expect(result).toContain("http.get");
-      expect(result).toContain("/api/health");
-      expect(result).toContain("mirror page load");
+      expect(result).toContain('baseUrl + "/"');
     });
 
     it("converts navigate step with custom mapping", () => {
@@ -37,11 +36,9 @@ describe("action-map", () => {
       const customMapping: K6ActionMapping = {
         searchEndpoint: "/search",
         playEndpoint: "/play",
-        healthEndpoint: "/status",
         favoritesEndpoint: "/fav"
       };
       const result = stepToK6Request(step, mockSpec, customMapping);
-      expect(result).toContain("/status");
       expect(result).toContain("/browse");
     });
 
@@ -98,7 +95,8 @@ describe("action-map", () => {
       const step: StartPlaybackStep = { action: "startPlayback" };
       const result = stepToK6Request(step, mockSpec);
       expect(result).toContain("http.get");
-      expect(result).toContain("streamUrl ||");
+      expect(result).toContain("if (streamUrl)");
+      expect(result).toContain("/api/health");
       expect(result).toContain("playback start");
     });
 
@@ -111,7 +109,7 @@ describe("action-map", () => {
       const result = stepToK6Request(step, mockSpec);
       expect(result).toContain("http.post");
       expect(result).toContain("/api/favorites");
-      expect(result).toContain("track1");
+      expect(result).toContain("/MUSICIANS/H/Hubbard_Rob/Commando.sid");
     });
 
     it("converts favoriteToggle step with remove action", () => {
@@ -123,7 +121,7 @@ describe("action-map", () => {
       const result = stepToK6Request(step, mockSpec);
       expect(result).toContain("http.del");
       expect(result).toContain("/api/favorites");
-      expect(result).toContain("track2");
+      expect(result).toContain("/MUSICIANS/G/Galway_Martin/Comic_Bakery.sid");
     });
 
     it("returns unsupported comment for unknown action", () => {
@@ -137,7 +135,6 @@ describe("action-map", () => {
     it("provides expected default endpoints", () => {
       expect(defaultK6Mapping.searchEndpoint).toBe("/api/search");
       expect(defaultK6Mapping.playEndpoint).toBe("/api/play");
-      expect(defaultK6Mapping.healthEndpoint).toBe("/api/health");
       expect(defaultK6Mapping.favoritesEndpoint).toBe("/api/favorites");
     });
   });

@@ -91,7 +91,7 @@ describe("k6-executor", () => {
       expect(content).toContain(`sleep(${DEFAULT_PACING_SECONDS})`);
     });
 
-    it("sets iterations based on options when provided", () => {
+    it("sets per-VU journey iterations when provided", () => {
       const spec: JourneySpec = {
         id: "custom-iterations",
         steps: [
@@ -102,13 +102,14 @@ describe("k6-executor", () => {
       const content = generateK6ScriptContent(spec, {
         baseUrl: "http://localhost:3000",
         users: 1,
-        iterations: 50
+        journeysPerVu: 5
       });
 
-      expect(content).toContain("iterations: 50");
+      expect(content).toContain('executor: "per-vu-iterations"');
+      expect(content).toContain("iterations: 5");
     });
 
-    it("defaults iterations to step count when not provided", () => {
+    it("defaults journeysPerVu to 1 when not provided", () => {
       const spec: JourneySpec = {
         id: "default-iterations",
         steps: [
@@ -122,7 +123,8 @@ describe("k6-executor", () => {
         users: 1
       });
 
-      expect(content).toContain("iterations: 3");
+      expect(content).toContain('executor: "per-vu-iterations"');
+      expect(content).toContain("iterations: 1");
     });
 
     it("includes strict thresholds by default", () => {
@@ -136,6 +138,7 @@ describe("k6-executor", () => {
       });
 
       expect(content).toContain('thresholds: { http_req_failed: ["rate<0.05"] }');
+      expect(content).toContain('summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"]');
     });
 
     it("disables thresholds when strictThresholds is false", () => {
