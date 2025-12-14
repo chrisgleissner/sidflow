@@ -7,7 +7,7 @@
     "dev": "BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true node ../../scripts/run-bun.mjs run build:worklet && BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next dev",
     "build": "BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true node ../../scripts/run-bun.mjs run build:worklet && BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next build",
     "build:worklet": "node ../../scripts/run-bun.mjs run scripts/build-worklet.ts",
-    "start": "BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next start",
+    "start": "BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true node .next/standalone/server.js",
     "lint": "eslint",
     "test": "node ../../scripts/run-bun.mjs test tests/unit/",
     "pretest:e2e": "node ./scripts/ensure-playwright-browser.mjs",

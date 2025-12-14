@@ -7,6 +7,7 @@
       "dependencies": {
         "@radix-ui/react-dialog": "^1.1.15",
         "browserslist": "^4.28.0",
+        "flatbuffers": "23.5.26",
         "uuid": "^13.0.0",
         "vectordb": "^0.21.2",
       },

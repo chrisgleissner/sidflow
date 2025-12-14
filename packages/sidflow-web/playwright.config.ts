@@ -116,7 +116,8 @@ export default defineConfig({
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'playwright-report/report.json' }],
-    ['./tests/e2e/coverage-reporter.ts'],
+    // E2E coverage is opt-in (see `npm run coverage:e2e`). Avoid noisy "no coverage" logs on normal runs.
+    ...(process.env.E2E_COVERAGE === 'true' ? ([['./tests/e2e/coverage-reporter.ts']] as const) : []),
   ],
   use: baseUse,
 
