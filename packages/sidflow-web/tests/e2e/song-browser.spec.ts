@@ -297,7 +297,8 @@ if (!isPlaywrightRunner) {
     });
 
     test('shows played tracks section', async ({ page }) => {
-      const playedSection = page.getByText(/Played Tracks/i);
+      const playPanel = page.getByRole('tabpanel', { name: /play/i });
+      const playedSection = playPanel.getByText(/Played Tracks/i).first();
       await expect(playedSection).toBeVisible();
     });
   });

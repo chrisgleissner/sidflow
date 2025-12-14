@@ -20,6 +20,7 @@ _codeql_detected_source_root
 
 # Test artifacts
 packages/libsidplayfp-wasm/test-output.wav
+test-results/validation-run*.txt
 
 # Preferences
 .sidflow-preferences.json
