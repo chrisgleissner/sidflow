@@ -159,14 +159,16 @@ test('Classification Heartbeat - threads should not become stale during feature 
       for (let i = 0; i < 8; i += 1) {
         const name = `HB_Test_${String(i + 1).padStart(2, '0')}`;
         const sidPath = path.join(sidDir, `${name}.sid`);
-        await fs.writeFile(sidPath, createSidFile(name, 'Heartbeat E2E'));
+        const sidBuffer = createSidFile(name, 'Heartbeat E2E');
+        await fs.writeFile(sidPath, sidBuffer);
 
         const wavPath = path.join(AUDIO_CACHE_DIR, TEST_DIR_REL, `${name}.wav`);
         await fs.mkdir(path.dirname(wavPath), { recursive: true });
         const wavBuffer = createWavFile(1, 220 + i * 30);
         await fs.writeFile(wavPath, wavBuffer);
         // Avoid expensive/async hash generation during classification by pre-writing the expected .sha256.
-        const sha256 = crypto.createHash('sha256').update(wavBuffer).digest('hex');
+        // Note: sidflow-classify hashes the *SID file* to decide whether a cached WAV is still valid.
+        const sha256 = crypto.createHash('sha256').update(sidBuffer).digest('hex');
         await fs.writeFile(`${wavPath}.sha256`, sha256, 'utf8');
       }
 
@@ -209,7 +211,16 @@ test('Classification Heartbeat - threads should not become stale during feature 
       const startTime = Date.now();
 
       while (Date.now() - startTime < MAX_POLL_MS && (!classificationComplete || activePolls === 0)) {
-        const progressResponse = await request.get('/api/classify/progress');
+        let progressResponse: any;
+        try {
+          progressResponse = await request.get('/api/classify/progress');
+        } catch (error) {
+          // Under heavy load (full suite parallelism), the web server can briefly reset connections.
+          // Treat this as transient and keep polling.
+          console.log('[heartbeat] progress poll failed (transient)', (error as Error)?.message ?? String(error));
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+          continue;
+        }
         if (!progressResponse.ok()) {
           await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
           continue;
