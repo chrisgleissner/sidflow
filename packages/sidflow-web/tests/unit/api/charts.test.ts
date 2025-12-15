@@ -216,4 +216,26 @@ describe('/api/charts response format', () => {
         expect(json.success).toBe(true);
         expect(Array.isArray(json.data.charts)).toBe(true);
     });
+
+    it('should not log console.error when feedback directory is missing (fresh install)', async () => {
+        const originalError = console.error;
+        let errorCalls = 0;
+        console.error = (...args: unknown[]) => {
+            errorCalls += 1;
+            originalError(...args);
+        };
+        try {
+            // Use a unique cache key so this test doesn't get a cached response.
+            const req = createMockRequest('http://localhost:3000/api/charts?range=week&limit=37');
+            const { GET } = await import('@/app/api/charts/route');
+            const response = await GET(req);
+            const json = await response.json();
+
+            expect(response.status).toBe(200);
+            expect(json.success).toBe(true);
+            expect(errorCalls).toBe(0);
+        } finally {
+            console.error = originalError;
+        }
+    });
 });

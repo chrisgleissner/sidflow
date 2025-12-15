@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
 import os from "node:os";
 import path from "node:path";
 
@@ -15,6 +16,40 @@ import { stringifyDeterministic } from "../packages/sidflow-common/src/json.js";
 import { ensureDir } from "../packages/sidflow-common/src/fs.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-sample-");
+
+function createSilentWav(options?: {
+  sampleRate?: number;
+  channels?: number;
+  seconds?: number;
+}): Uint8Array {
+  const sampleRate = options?.sampleRate ?? 44_100;
+  const channels = options?.channels ?? 1;
+  const seconds = options?.seconds ?? 1;
+  const numSamples = Math.max(1, Math.floor(sampleRate * seconds));
+  const bytesPerSample = 2; // PCM16
+  const blockAlign = channels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = numSamples * blockAlign;
+
+  const header = Buffer.alloc(44);
+  let offset = 0;
+  header.write("RIFF", offset); offset += 4;
+  header.writeUInt32LE(36 + dataSize, offset); offset += 4;
+  header.write("WAVE", offset); offset += 4;
+  header.write("fmt ", offset); offset += 4;
+  header.writeUInt32LE(16, offset); offset += 4; // PCM header size
+  header.writeUInt16LE(1, offset); offset += 2; // PCM
+  header.writeUInt16LE(channels, offset); offset += 2;
+  header.writeUInt32LE(sampleRate, offset); offset += 4;
+  header.writeUInt32LE(byteRate, offset); offset += 4;
+  header.writeUInt16LE(blockAlign, offset); offset += 2;
+  header.writeUInt16LE(bytesPerSample * 8, offset); offset += 2;
+  header.write("data", offset); offset += 4;
+  header.writeUInt32LE(dataSize, offset); offset += 4;
+
+  const pcm = Buffer.alloc(dataSize); // silence
+  return Buffer.concat([header, pcm]);
+}
 
 async function createConfig(root: string): Promise<string> {
   const sidPath = path.join(root, "hvsc");
@@ -59,10 +94,11 @@ async function createConfig(root: string): Promise<string> {
 }
 
 async function renderPlaceholderWavs(plan: ClassificationPlan): Promise<void> {
+  const silentWav = createSilentWav({ seconds: 1, channels: 1, sampleRate: 44_100 });
   const { rendered } = await buildAudioCache(plan, {
     render: async ({ wavFile }) => {
       await ensureDir(path.dirname(wavFile));
-      await writeFile(wavFile, "sample-wav");
+      await writeFile(wavFile, silentWav);
     }
   });
   console.log(`Rendered ${rendered.length} placeholder WAV files.`);
@@ -72,7 +108,9 @@ async function main(): Promise<void> {
   const root = await mkdtemp(TEMP_PREFIX);
   try {
     const configPath = await createConfig(root);
-    const plan = await planClassification({ configPath, forceRebuild: true });
+    // Keep the sample fast and dependency-free: we render valid placeholder WAVs and then run
+    // heuristic extraction on them (no SID rendering engine required).
+    const plan = await planClassification({ configPath, forceRebuild: false });
 
     await renderPlaceholderWavs(plan);
 
@@ -93,7 +131,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    // Some native dependencies (e.g. tfjs-node) can keep the event loop alive even after work completes.
+    // This script is used in CI smoke pipelines, so we exit explicitly once finished.
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

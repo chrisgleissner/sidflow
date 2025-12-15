@@ -62,20 +62,31 @@ async function aggregatePlayCounts(timeRange: 'week' | 'month' | 'all'): Promise
   }
 
   try {
-    // Read all feedback files - use withFileTypes for faster directory checks
-    const years = await fs.readdir(feedbackDir, { withFileTypes: true });
+    // Read all feedback files - use withFileTypes for faster directory checks.
+    // Missing feedback dir is a normal "no data yet" state in fresh installs.
+    type DirentLike = { name: string; isDirectory(): boolean };
+    let years: DirentLike[];
+    try {
+      years = (await fs.readdir(feedbackDir, { withFileTypes: true })) as unknown as DirentLike[];
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | null)?.code;
+      if (code === 'ENOENT') {
+        return playCounts;
+      }
+      throw err;
+    }
 
     for (const year of years) {
       if (!year.isDirectory()) continue;
 
       const yearPath = path.join(feedbackDir, year.name);
-      const months = await fs.readdir(yearPath, { withFileTypes: true });
+      const months = (await fs.readdir(yearPath, { withFileTypes: true })) as unknown as DirentLike[];
 
       for (const month of months) {
         if (!month.isDirectory()) continue;
 
         const monthPath = path.join(yearPath, month.name);
-        const days = await fs.readdir(monthPath, { withFileTypes: true });
+        const days = (await fs.readdir(monthPath, { withFileTypes: true })) as unknown as DirentLike[];
 
         for (const day of days) {
           if (!day.isDirectory()) continue;
@@ -115,7 +126,10 @@ async function aggregatePlayCounts(timeRange: 'week' | 'month' | 'all'): Promise
       }
     }
   } catch (err) {
-    console.error('Error reading feedback directory:', err);
+    // Avoid noisy stack traces for non-critical chart aggregation failures.
+    // Keep the API usable even if feedback storage is partially unavailable.
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('Charts aggregation skipped due to feedback read error:', message);
   }
 
   return playCounts;
