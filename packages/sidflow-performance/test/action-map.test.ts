@@ -71,7 +71,7 @@ describe("action-map", () => {
     it("converts selectTrack step with trackRef lookup", () => {
       const step: SelectTrackStep = { action: "selectTrack", trackRef: "track1" };
       const result = stepToK6Request(step, mockSpec);
-      expect(result).toContain("http.post");
+      expect(result).toContain("postJsonWithRetries");
       expect(result).toContain("/api/play");
       expect(result).toContain("/MUSICIANS/H/Hubbard_Rob/Commando.sid");
       expect(result).toContain("streamUrl");
@@ -80,7 +80,7 @@ describe("action-map", () => {
     it("converts selectTrack step without trackRef lookup", () => {
       const step: SelectTrackStep = { action: "selectTrack", trackRef: "unknownTrack" };
       const result = stepToK6Request(step, mockSpec);
-      expect(result).toContain("http.post");
+      expect(result).toContain("postJsonWithRetries");
       expect(result).toContain("unknownTrack");
     });
 

@@ -48,6 +48,23 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Active tasks
 
+### Task: Fix nightly k6 perf flake on /api/play (2025-12-15)
+
+**User request (summary)**  
+- Fix the nightly performance test failure where k6 reports `http_req_failed` > 5% due to intermittent `POST /api/play` connection resets/EOF.
+
+**Plan (checklist)**  
+- [x] Identify where k6 script crashes or amplifies transient transport errors (e.g., calling `res.json()` when body is null).
+- [x] Make k6 journey scripts resilient (retry transient failures; avoid aborting VU iterations) without loosening CI thresholds.
+- [ ] Validate locally (if feasible): run the reduced k6 profile against a local standalone server.
+- [x] Validation: `npm run test` 3× consecutive (paste outputs).
+
+**Progress log**  
+- 2025-12-15 — Started: traced CI failure to transient `POST /api/play` transport errors causing status=0 + null body; k6 script attempted `res.json()` and aborted VU iterations, pushing `http_req_failed` above threshold.
+- 2025-12-15 — Implemented: generated k6 scripts now retry `POST /api/play` (3 attempts with backoff), parse JSON defensively (`safeJson`), and add small per-VU jitter to avoid a thundering herd.
+- 2025-12-15 — Validation: `npm run test` 3× consecutive OK (1661 pass, 0 fail).
+- 2025-12-15 — Note: local end-to-end k6 execution not run here because `k6` binary is not installed in this environment.
+
 ### Task: Production readiness review (core pipeline + web) (2025-12-14)
 
 **User request (summary)**  

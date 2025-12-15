@@ -32,8 +32,8 @@ export function stepToK6Request(
       const selected = spec.data?.trackRefs?.[step.trackRef];
       const path = selected?.sidPath ?? step.trackRef;
       return [
-        `const playRes = logRequest("POST", baseUrl + "${mapping.playEndpoint}", http.post(baseUrl + "${mapping.playEndpoint}", JSON.stringify({ sid_path: "${path}" }), params));`,
-        `const playJson = playRes.json();`,
+        `const playRes = postJsonWithRetries(baseUrl + "${mapping.playEndpoint}", { sid_path: "${path}" }, params, 3);`,
+        `const playJson = safeJson(playRes);`,
         `const session = playJson && playJson.data && playJson.data.session ? playJson.data.session : null;`,
         `const sidUrl = session && session.sidUrl ? (baseUrl + session.sidUrl) : null;`,
         `const wavUrl = session && session.streamUrls && session.streamUrls.wav && session.streamUrls.wav.url ? (baseUrl + session.streamUrls.wav.url) : null;`,
