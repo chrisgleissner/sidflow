@@ -11,7 +11,7 @@ import type { TagRatings } from "./ratings.js";
  * Feature set version for tracking breaking changes to feature schema.
  * Increment when adding/removing features or changing computation methods.
  */
-export const FEATURE_SCHEMA_VERSION = "1.1.0";
+export const FEATURE_SCHEMA_VERSION = "1.2.0";
 
 /**
  * Extended audio features extracted from WAV files during classification.
@@ -21,7 +21,7 @@ export const FEATURE_SCHEMA_VERSION = "1.1.0";
  * - Each song produces exactly one JSONL line with ratings and Essentia-derived features
  * - Features carry analysis metadata (sample rate, window, version)
  * - Essentia is required by default; degraded paths only run with explicit flag
- * - Duration/numSamples reflect the analyzed window
+ * - duration/numSamples reflect the full source WAV (after downsampling); analysisWindowSec describes the analyzed window
  */
 export interface AudioFeatures {
   /** Signal energy (float) */
@@ -38,15 +38,15 @@ export interface AudioFeatures {
   bpm?: number;
   /** Confidence score for tempo estimation (0-1) */
   confidence?: number;
-  /** Audio duration in seconds of analyzed window (float) */
+  /** Audio duration in seconds of full source WAV (float) */
   duration?: number;
-  /** Number of samples analyzed after downsampling */
+  /** Full number of samples after downsampling */
   numSamples?: number;
   /** Original sample rate of source WAV (Hz) */
   sampleRate?: number;
   /** Sample rate used for feature extraction (Hz) */
   analysisSampleRate?: number;
-  /** Analysis window length in seconds */
+  /** Analysis window length in seconds used for feature computation */
   analysisWindowSec?: number;
   /** Feature set version identifier */
   featureSetVersion?: string;

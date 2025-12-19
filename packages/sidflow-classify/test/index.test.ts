@@ -377,8 +377,8 @@ describe("classification helpers", () => {
       }
     });
 
-    // Classification caps render duration at 10 seconds for efficiency
-    expect(observedDuration).toBe(10_000);
+    // Use the resolved HVSC duration when it is below the effective max render duration.
+    expect(observedDuration).toBe(30_500);
 
     await rm(root, { recursive: true, force: true });
   });

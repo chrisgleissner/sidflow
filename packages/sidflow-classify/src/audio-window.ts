@@ -25,65 +25,12 @@ export function computeMinRenderSecForRepresentativeWindow(
   }
 
   const resolvedIntroSkipSec =
-    Number.isFinite(introSkipSec) && introSkipSec > 0 ? introSkipSec : 10;
+    Number.isFinite(introSkipSec) && introSkipSec > 0 ? introSkipSec : 30;
 
   // To skip intros by `introSkipSec` while still having a full classify window available,
   // a capped render must cover at least: introSkipSec + maxClassifySec.
   // Also enforce a floor of 20s to avoid overly short renders.
   return Math.max(20, resolvedIntroSkipSec + maxClassifySec);
-}
-
-function normalizeSample(buffer: Buffer, offset: number, bitsPerSample: number): number {
-  if (bitsPerSample === 16) {
-    return buffer.readInt16LE(offset) / 32768.0;
-  }
-  if (bitsPerSample === 32) {
-    return buffer.readInt32LE(offset) / 2147483648.0;
-  }
-  if (bitsPerSample === 8) {
-    return (buffer.readUInt8(offset) - 128) / 128.0;
-  }
-  // Keep behavior aligned with existing extraction (8/16/32 supported).
-  return 0;
-}
-
-function computeEnergyScore(
-  buffer: Buffer,
-  header: WavPcmInfo,
-  startSample: number,
-  sampleCount: number
-): number {
-  const bytesPerSample = header.bitsPerSample / 8;
-  if (!Number.isFinite(bytesPerSample) || bytesPerSample <= 0) {
-    return 0;
-  }
-
-  const maxProbeSamples = Math.min(sampleCount, Math.max(1, Math.floor(header.sampleRate * 2)));
-  const maxProbePoints = 5_000;
-  const stride = Math.max(1, Math.floor(maxProbeSamples / maxProbePoints));
-
-  let sumSquares = 0;
-  let count = 0;
-
-  for (let i = 0; i < maxProbeSamples; i += stride) {
-    const absoluteSample = startSample + i;
-    let sum = 0;
-
-    for (let ch = 0; ch < header.numChannels; ch++) {
-      const sampleOffset =
-        header.dataStart + (absoluteSample * header.numChannels + ch) * bytesPerSample;
-      if (sampleOffset + bytesPerSample > header.dataStart + header.dataLength) {
-        continue;
-      }
-      sum += normalizeSample(buffer, sampleOffset, header.bitsPerSample);
-    }
-
-    const mono = sum / Math.max(1, header.numChannels);
-    sumSquares += mono * mono;
-    count += 1;
-  }
-
-  return count > 0 ? sumSquares / count : 0;
 }
 
 export function resolveRepresentativeAnalysisWindow(
@@ -129,32 +76,18 @@ export function resolveRepresentativeAnalysisWindow(
   const maxStartSample = Math.max(0, totalSamples - sampleCount);
 
   // Try to avoid intros: skip a configurable number of seconds from the start.
-  // Only deviate (reduce the skip) when the song is not long enough.
+  // If the audio is long enough, we deterministically select the window
+  // [introSkipSec, introSkipSec + maxDurationSec] (e.g. 30s-45s).
+  // Only deviate (do not skip) when the audio is not long enough.
   const resolvedIntroSkipSec =
     typeof introSkipSec === "number" && Number.isFinite(introSkipSec) && introSkipSec > 0
       ? introSkipSec
-      : 10;
+      : 30;
   const requestedSkipSamples = Math.max(0, Math.floor(resolvedIntroSkipSec * header.sampleRate));
-  const minStartSample = Math.min(maxStartSample, requestedSkipSamples);
 
-  const candidateCount = 5;
-  const candidates: number[] = [];
-  for (let i = 0; i < candidateCount; i += 1) {
-    const t = i / (candidateCount - 1);
-    const start = Math.round(minStartSample + t * (maxStartSample - minStartSample));
-    candidates.push(Math.max(0, Math.min(maxStartSample, start)));
-  }
-
-  let bestStart = candidates[0] ?? 0;
-  let bestScore = -1;
-
-  for (const start of new Set(candidates)) {
-    const score = computeEnergyScore(buffer, header, start, sampleCount);
-    if (score > bestScore) {
-      bestScore = score;
-      bestStart = start;
-    }
-  }
+  // If the audio is too short to honor the full intro skip, clamp to the latest
+  // valid start sample so we still avoid as much of the intro as possible.
+  const bestStart = Math.min(maxStartSample, requestedSkipSamples);
 
   return {
     startSample: bestStart,

@@ -190,9 +190,8 @@ describe("performance metrics", () => {
 
     const result = await generateAutoTags(plan, {
       extractMetadata: async (_options: ExtractMetadataOptions) => ({ title: "Test" }),
-      featureExtractor: async (_options: ExtractFeaturesOptions) => {
-        throw new Error("Should not be called");
-      },
+      // generateAutoTags extracts features for stations even when tags are manual-only.
+      featureExtractor: async (_options: ExtractFeaturesOptions) => ({ energy: 0.1 }),
       predictRatings: async (_options: PredictRatingsOptions) => {
         throw new Error("Should not be called");
       }

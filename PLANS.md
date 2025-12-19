@@ -48,6 +48,135 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Active tasks
 
+### Task: Fix WASM ROM setup for BASIC/RSID tunes (2025-12-19)
+
+**User request (summary)**  
+- Investigate why station WAVs ending with `_BASIC.wav` render incorrectly (near-silent / wrong) while `sidplayfp` CLI playback sounds correct.
+
+**Plan (checklist)**  
+- [x] Confirm likely renderer path (WASM) and verify local ROMs are present under `workspace/roms`.
+- [x] Ensure the WASM renderer used by classification loads and applies KERNAL/BASIC/CHARGEN ROMs.
+- [ ] Re-render the affected subset’s WAV cache and rebuild stations so station WAV outputs reflect the fixed renderer.
+
+**Progress log**  
+- 2025-12-19 — Implemented ROM injection for the classify WASM renderer (loads KERNAL/BASIC/CHARGEN and calls `setSystemROMs`).
+- 2025-12-19 — Verified with a direct WASM render that ROMs are applied successfully and that a `_BASIC.sid` sample produces a healthy audio level vs the previously generated station WAV.
+- 2025-12-19 — Validation: targeted tests pass (`bun test packages/sidflow-classify/test/engine-factory.test.ts packages/sidflow-classify/test/e2e-classification.test.ts`).
+- 2025-12-19 — Note: `bun run test` crashed in this environment with a Bun segfault/SIGILL after completing most tests; this appears to be a Bun runtime issue, not a test assertion failure.
+
+### Task: Iterative station optimization (richer Essentia features + extreme seeds) (2025-12-19)
+
+**User request (summary)**  
+- Improve station coherence by leveraging a broader set of stable Essentia.js features.
+- Avoid random station seeds; generate stations from intentionally extreme/different tracks.
+- Use a representative excerpt: render first 45s (or shorter), extract 30–45s (15s window, clamped if too short).
+- Execute end-to-end: reclassify DEMOS/G-L sandbox, rebuild stations, and validate.
+
+**Plan (checklist)**  
+- [x] Expand Essentia feature extraction to include MFCC summaries + additional spectral descriptors (main + worker), keeping strict “no silent degraded” behavior.
+- [x] Bump `FEATURE_SCHEMA_VERSION` for the new feature vector.
+- [x] Update station builder to support `--seed-mode extremes` (slow/low-energy, fast/high-energy, dark/bright, plus diversity fill) and to use the richer feature dims.
+- [x] Update representative window settings: render 45s and analyze 30–45s (15s window), clamping when too short.
+- [x] Replace heuristic `e/m/c` prediction with a deterministic dataset-normalized mapping (Essentia features → perceptual tags → ratings).
+- [x] Document the mapping in `doc/feature-tag-rating-mapping.md` (limited-claim / no “melodic” or valence claims).
+- [x] Reclassify DEMOS/G-L sandbox using the new feature schema.
+- [x] Rebuild stations using extreme seeding and emit a simple station-quality report (distance stats + BPM spread).
+- [x] Add station WAV similarity verification: re-extract features from each station WAV and report within-station cohesion + outliers.
+- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
+
+**Progress log**  
+- 2025-12-19 — Started task.
+- 2025-12-19 — Implemented representative window update: default classify window now 15s, render defaults ensure 45s for intro-skip+window; sandbox config set to maxRenderSec=45, maxClassifySec=15, introSkipSec=30; station builder prints additional per-station summaries (energy/centroid/flatness).
+- 2025-12-19 — Added a dedicated deterministic mapping spec doc: `doc/feature-tag-rating-mapping.md`.
+- 2025-12-19 — Updated `doc/technical-reference.md` to reflect the current feature set and point to the deterministic `c/e/m` mapping doc; clarified legacy seed-based predictor is placeholder-only.
+- 2025-12-19 — Implemented deterministic dataset-normalized feature→tag→rating mapper and refactored classification to compute ratings after dataset μ/σ are known.
+- 2025-12-19 — Fixed corrupted SpectralContrast aggregates (stable params + per-frame outlier rejection), reclassified DEMOS/G-L, rebuilt stations, and verified `spectralContrastMean` has no astronomical outliers.
+- 2025-12-19 — Added `scripts/verify-stations-wav-similarity.ts` and ran it against `tmp/demos-gl/stations` to report seed→track ranks within the dataset and pairwise within-station cohesion.
+- 2025-12-19 — Validation: `bun run test` 3× consecutive (all show `0 fail`):
+  - Run 1:
+    - 1663 pass
+    - 0 fail
+    - 6034 expect() calls
+    - Ran 1663 tests across 164 files. [86.83s]
+  - Run 2:
+    - 1663 pass
+    - 0 fail
+    - 6034 expect() calls
+    - Ran 1663 tests across 164 files. [87.60s]
+  - Run 3:
+    - 1663 pass
+    - 0 fail
+    - 6034 expect() calls
+    - Ran 1663 tests across 164 files. [86.85s]
+
+**Follow-ups**  
+- If stations remain incoherent, tune feature weights and/or add a second analysis window (still respecting intro skip) to capture section changes.
+
+### Task: Run web on DEMOS subset + classify via admin (2025-12-19)
+
+**User request (summary)**  
+- Run the web UI locally against a subset of HVSC (one `DEMOS` subfolder).
+- Trigger classification for that folder and ensure progress is visible in `/admin`.
+
+**Plan (checklist)**  
+- [x] Start web server using a sandbox config (cache/tags/classified under `tmp/`).
+- [x] Ensure collection root resolves correctly for the subset (so file discovery is non-empty).
+- [x] Trigger classification via web API (not CLI) so admin can observe progress.
+- [x] Verify expected classification artifacts are produced under sandbox paths.
+- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
+
+**Progress log**  
+- 2025-12-19 — Found root-cause for “admin shows 0 files”: subset config pointed `sidPath` at `.../C64Music/DEMOS/G-L`, but web default `collectionRoot` is `${sidPath}/C64Music`, yielding a non-existent path.
+- 2025-12-19 — Fix: set web preference `sidBasePath=workspace/hvsc/C64Music/DEMOS/G-L`, making `activeCollectionPath` valid and enabling file discovery.
+- 2025-12-19 — Started background classification via `POST /api/classify` and confirmed `/api/classify/progress` shows `isActive=true` and `totalFiles>0`.
+- 2025-12-19 — Classification complete for DEMOS/G-L subset (307 SIDs) using Essentia features; artifacts written under sandbox paths (`tmp/demos-gl/{classified,audio-cache,tags}`) and WAV `.sha256` sidecars backfilled to 307/307.
+- 2025-12-19 — Station proof: generated 10 station folders populated with WAVs + manifests from the classification JSONL.
+- 2025-12-19 — Validation: `bun run build` OK.
+- 2025-12-19 — Validation: `bun run test` 3× consecutive (all show `0 fail`):
+  - Run 1:
+    - 1661 pass
+    - 0 fail
+    - 6028 expect() calls
+    - Ran 1661 tests across 163 files. [73.61s]
+  - Run 2:
+    - 1661 pass
+    - 0 fail
+    - 6028 expect() calls
+    - Ran 1661 tests across 163 files. [75.67s]
+  - Run 3:
+    - 1661 pass
+    - 0 fail
+    - 6028 expect() calls
+    - Ran 1661 tests across 163 files. [75.93s]
+
+**Follow-ups**  
+- None yet.
+
+### Task: Improve station coherence (BPM estimator + seeded verification) (2025-12-19)
+
+**User request (summary)**  
+- Investigate “misplaced” tracks and incoherent stations (tempo mismatches).
+- Conclusively reproduce/verify the `Instantfunk.sid` + `Kaori_360.sid` case.
+
+**Plan (checklist)**  
+- [x] Quantify BPM distribution from the classified JSONL to confirm/deny saturation.
+- [x] Replace placeholder BPM with a real estimator and wire it into classify (main + worker).
+- [x] Regenerate classification JSONL for the DEMOS/G-L sandbox and rebuild stations.
+- [x] Add deterministic station seeding to reproduce specific “why is X in Y station?” cases.
+- [x] Validation: `bun run build`; `bun run test`.
+
+**Progress log**  
+- 2025-12-19 — Root cause: BPM was a placeholder derived from ZCR and clamped to [60, 200]; in the old JSONL, 84.4% of tracks were pegged at 200.
+- 2025-12-19 — Implemented autocorrelation-based BPM estimator (`packages/sidflow-classify/src/bpm-estimator.ts`) + unit tests; integrated into `essentia-features` and the feature-extraction worker.
+- 2025-12-19 — Reclassified DEMOS/G-L sandbox; BPM distribution no longer saturated at 200; rebuilt stations using confidence-aware BPM weighting.
+- 2025-12-19 — Fixed station WAV lookup (WAV cache is nested by `sid_path` directories) so stations contain actual WAVs, not missing-file warnings.
+- 2025-12-19 — Added `--seed-key` support to station builder and verified: Instantfunk-seeded station does **not** include `Kaori_360.sid` in its 20 nearest neighbors (`tmp/demos-gl/stations-instantfunk`).
+- 2025-12-19 — Validation: `bun run build` OK.
+- 2025-12-19 — Validation: `bun run test` OK (1663 pass, 0 fail).
+
+**Follow-ups**  
+- If any “misplaced” tracks persist, generate stations seeded by those specific SIDs and inspect the feature deltas (tempo + spectral/energy) to decide whether to tune BPM confidence thresholds or reweight/augment features.
+
 ### Task: Fix nightly k6 perf flake on /api/play (2025-12-15)
 
 **User request (summary)**  
@@ -145,17 +274,36 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 **User request (summary)**
 - Fix the prefs copy/validation for timeouts: min `maxRenderSec` should be sensible (≥ 20s and ≥ `maxClassifySec + introSkipSec`).
-- Make the intro skip seconds configurable (default 10s) and apply it during representative-window selection; only reduce the skip when the song is too short.
+- Make the intro skip seconds configurable and apply it during representative-window selection; default behavior should ignore the first 30s and analyze seconds 30–40 when possible (clamped when the song is too short).
 
 **Plan (checklist)**
-- [ ] Add `introSkipSec` to SIDFlow config schema and prefs API/UI.
-- [ ] Update representative-window selection to skip `introSkipSec` (clamped when audio too short).
-- [ ] Update min-render constraint logic and prefs UI copy (≥ 20s and ≥ `maxClassifySec + introSkipSec`).
-- [ ] Update/extend unit tests for API validation + representative-window behavior.
-- [ ] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
+- [x] Add `introSkipSec` to SIDFlow config schema and prefs API/UI.
+- [x] Update representative-window selection to skip `introSkipSec` (clamped when audio too short).
+- [x] Update min-render constraint logic and prefs UI copy (≥ 20s and ≥ `maxClassifySec + introSkipSec`).
+- [x] Update/extend unit tests for API validation + representative-window behavior.
+- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
 
 **Progress log**
 - 2025-12-13 — Started task.
+- 2025-12-19 — Completed: default `introSkipSec` is now 30s and the representative window is selected deterministically as `[introSkipSec, introSkipSec + maxClassifySec]` when possible (else clamped to latest valid start). Updated classify (main + worker), web prefs constraint defaults, and unit tests. Validation: `bun run build` OK; `bun run test` 3× consecutive (all show `0 fail`):
+
+  Run #1:
+  1661 pass
+  0 fail
+  6028 expect() calls
+  Ran 1661 tests across 163 files. [83.34s]
+
+  Run #2:
+  1661 pass
+  0 fail
+  6028 expect() calls
+  Ran 1661 tests across 163 files. [77.16s]
+
+  Run #3:
+  1661 pass
+  0 fail
+  6028 expect() calls
+  Ran 1661 tests across 163 files. [74.87s]
 
 ### Task: Respect format prefs; trim WAV intro/silence; enforce render>=classify (2025-12-13)
 

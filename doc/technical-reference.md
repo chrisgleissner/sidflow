@@ -35,18 +35,26 @@ Each CLI loads `.sidflow.json` by default (override via `--config` where support
 
 ## Classification (what it actually computes)
 
-`@sidflow/classify` extracts a small, fast feature set from WAV audio:
+`@sidflow/classify` renders SIDs to WAV and extracts a compact set of objective features from a representative audio window.
 
-- **Energy** (`energy`)
-- **RMS** (`rms`)
-- **Spectral centroid** (`spectralCentroid`)
-- **Spectral rolloff** (`spectralRolloff`)
-- **Zero-crossing rate** (`zeroCrossingRate`)
-- **Tempo estimate** (`bpm`) and a coarse `confidence`
+Core features used by the deterministic rating/spec mapping include:
+
+- `bpm` (plus `confidence` when available)
+- `rms`, `energy`
+- `spectralCentroid`, `spectralRolloff`, `spectralHfc`
+- `spectralFlatnessDb`, `spectralEntropy`, `spectralCrest`
+- `zeroCrossingRate`
 
 When Essentia.js is unavailable or fails, SIDFlow falls back to a lightweight heuristic extractor (still producing a compatible feature shape).
 
-Default rating prediction is heuristic. Model-based prediction is available when a TFJS model is configured/available.
+### Ratings (`c/e/m`)
+
+SIDFlow stores 3 ratings per song: `c` (complexity proxy), `e` (energy proxy), and `m` (mood proxy with restricted claims).
+
+- Default auto-derivation is deterministic and dataset-normalized (features → perceptual tags → ratings). See `doc/feature-tag-rating-mapping.md`.
+- A legacy seed-based “heuristic” predictor exists in code for testing/backwards-compatibility, but it is not a meaningful perceptual mapping (it does not use audio features) and should not be used as anything more than a placeholder.
+
+Model-based prediction is available when a TFJS model is configured/available.
 
 ## Web UI and API
 

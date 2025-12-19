@@ -32,12 +32,12 @@ describe("resolveRepresentativeAnalysisWindow", () => {
     expect(window.durationSec).toBeCloseTo(1.0, 3);
   });
 
-  it("prefers a later, higher-energy fragment (skips intro when possible)", () => {
+  it("uses the default intro skip (30s) when possible", () => {
     const sampleRate = 8000;
 
-    // 30s total: 0-10s silent, 10-30s loud.
-    // Default introSkipSec is 10s, so the representative window should start at >= 10s.
-    const silent = makeMonoPcm(sampleRate, 10.0, 0);
+    // 50s total: 0-30s silent, 30-50s loud.
+    // Default introSkipSec is 30s, so the representative window should start at ~30s.
+    const silent = makeMonoPcm(sampleRate, 30.0, 0);
     const loud = makeMonoPcm(sampleRate, 20.0, 12000);
 
     const combined = new Int16Array(silent.length + loud.length);
@@ -54,17 +54,17 @@ describe("resolveRepresentativeAnalysisWindow", () => {
       dataLength: combined.length * 2,
     };
 
-    const window = resolveRepresentativeAnalysisWindow(wav, header, 10);
+    const window = resolveRepresentativeAnalysisWindow(wav, header, 15);
 
-    expect(window.durationSec).toBeCloseTo(10.0, 2);
-    expect(window.startSec).toBeGreaterThanOrEqual(9.5);
+    expect(window.durationSec).toBeCloseTo(15.0, 2);
+    expect(window.startSec).toBeGreaterThanOrEqual(29.5);
   });
 
   it("clamps intro skip when the song is too short", () => {
     const sampleRate = 8000;
 
     // 15s total, request 10s window and 10s intro skip.
-    // Only 5s are available as a start offset (15 - 10), so skip must clamp to <= 5s.
+    // Only 5s are available as a start offset (15 - 10), so skip clamps to 5s.
     const silent = makeMonoPcm(sampleRate, 5.0, 0);
     const loud = makeMonoPcm(sampleRate, 10.0, 12000);
 
@@ -84,6 +84,6 @@ describe("resolveRepresentativeAnalysisWindow", () => {
 
     const window = resolveRepresentativeAnalysisWindow(wav, header, 10, 10);
     expect(window.durationSec).toBeCloseTo(10.0, 2);
-    expect(window.startSec).toBeLessThanOrEqual(5.1);
+    expect(window.startSec).toBeCloseTo(5.0, 2);
   });
 });

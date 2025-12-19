@@ -1,9 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { stat } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { FeatureExtractor, FeatureVector } from "./index.js";
 import { FEATURE_SCHEMA_VERSION, loadConfig } from "@sidflow/common";
 import { resolveRepresentativeAnalysisWindow } from "./audio-window.js";
+import { estimateBpmAutocorr } from "./bpm-estimator.js";
+import { extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 
 /**
  * Configuration for audio preprocessing.
@@ -12,12 +16,33 @@ import { resolveRepresentativeAnalysisWindow } from "./audio-window.js";
  */
 export const FEATURE_EXTRACTION_SAMPLE_RATE = 11025;
 
+function computeBasicStats(audioData: Float32Array): { energy: number; rms: number; zeroCrossingRate: number } {
+  if (audioData.length <= 0) {
+    return { energy: 0, rms: 0, zeroCrossingRate: 0 };
+  }
+  let sumSquares = 0;
+  let zeroCrossings = 0;
+  let prev = audioData[0];
+  for (let i = 0; i < audioData.length; i++) {
+    const s = audioData[i];
+    sumSquares += s * s;
+    if ((prev >= 0 && s < 0) || (prev < 0 && s >= 0)) zeroCrossings += 1;
+    prev = s;
+  }
+  const energy = sumSquares / audioData.length;
+  const rms = Math.sqrt(energy);
+  const zeroCrossingRate = zeroCrossings / audioData.length;
+  return { energy, rms, zeroCrossingRate };
+}
+
 // Lazy-load Essentia.js modules to avoid initialization issues
 let EssentiaWASM: any = null;
 let Essentia: any = null;
 let essentiaLoadAttempted = false;
 let essentiaAvailable = false;
 let essentiaInstance: any = null; // Cached Essentia instance for reuse
+let essentiaLoadError: unknown = null;
+let essentiaInitError: unknown = null;
 
 // Flag to control whether to use worker pool (disabled due to ESM/CJS compatibility issues)
 let useWorkerPool = false;
@@ -61,17 +86,45 @@ export function isEssentiaAvailable(): boolean {
   return essentiaAvailable;
 }
 
+function isAllowDegradedEnabled(): boolean {
+  const value = process.env.SIDFLOW_ALLOW_DEGRADED;
+  if (!value) {
+    return false;
+  }
+  return value === "1" || value.toLowerCase() === "true";
+}
+
+function formatUnknownError(error: unknown): string {
+  if (!error) {
+    return "";
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 async function getEssentia() {
   if (!essentiaLoadAttempted) {
     essentiaLoadAttempted = true;
     try {
-      const essentiaModule = await import("essentia.js");
+      // Bun can resolve dynamic imports relative to process.cwd().
+      // Use createRequire(import.meta.url) to resolve the dependency relative
+      // to this package, so it works no matter where the process starts.
+      const require = createRequire(import.meta.url);
+      const resolved = require.resolve("essentia.js");
+      const essentiaModule = await import(pathToFileURL(resolved).href);
       // EssentiaWASM is the already-initialized WASM module
       // Essentia is a class constructor that takes the WASM module
       EssentiaWASM = essentiaModule.EssentiaWASM;
       Essentia = essentiaModule.Essentia;
       essentiaAvailable = true;
     } catch (error) {
+      essentiaLoadError = error;
       essentiaAvailable = false;
     }
   }
@@ -98,6 +151,7 @@ async function getEssentiaInstance(): Promise<any | null> {
     essentiaInstance = new EssentiaClass(wasmModule);
     return essentiaInstance;
   } catch (error) {
+    essentiaInitError = error;
     console.warn("[essentiaFeatureExtractor] Failed to initialize Essentia:", error);
     return null;
   }
@@ -272,14 +326,34 @@ export const essentiaFeatureExtractor: FeatureExtractor = async ({ wavFile, sidF
   
   // If Essentia.js is not available, fall back to basic features
   if (!essentia) {
-    return await extractBasicFeatures(wavFile, sidFile);
+    if (isAllowDegradedEnabled()) {
+      return await extractBasicFeatures(wavFile, sidFile);
+    }
+
+    const loadErrorText = formatUnknownError(essentiaLoadError);
+    const initErrorText = formatUnknownError(essentiaInitError);
+    const detail = [loadErrorText, initErrorText].filter((part) => part && part.trim().length > 0).join(" | ");
+    const suffix = detail ? ` Details: ${detail}` : "";
+
+    throw new Error(
+      "Essentia.js feature extraction is required but was not available. " +
+        "Set SIDFLOW_ALLOW_DEGRADED=1 (or pass --allow-degraded) to permit heuristic fallback." +
+        suffix
+    );
   }
 
   try {
-    return await extractEssentiaFeaturesOptimized(wavFile, essentia);
+    return await extractEssentiaFeaturesOptimized(wavFile, sidFile, essentia);
   } catch (error) {
-    // If Essentia.js fails, fall back to basic features
-    return await extractBasicFeatures(wavFile, sidFile);
+    if (isAllowDegradedEnabled()) {
+      // If Essentia.js fails, fall back to basic features
+      return await extractBasicFeatures(wavFile, sidFile);
+    }
+    throw new Error(
+      `Essentia.js feature extraction failed for ${wavFile}. ` +
+        "Set SIDFLOW_ALLOW_DEGRADED=1 (or pass --allow-degraded) to permit heuristic fallback.",
+      { cause: error as Error }
+    );
   }
 };
 
@@ -293,10 +367,13 @@ async function extractAndDownsampleAudio(
 ): Promise<{
   audioData: Float32Array;
   originalSampleRate: number;
+  wavDurationSec: number;
   analysisStartSec: number;
   analysisWindowSec: number;
 }> {
   const bytesPerSample = header.bitsPerSample / 8;
+  const totalSamples = header.dataLength / (bytesPerSample * header.numChannels);
+  const wavDurationSec = totalSamples / header.sampleRate;
   const dataEnd = header.dataStart + header.dataLength;
   if (header.dataStart <= 0 || header.dataStart >= buffer.length) {
     throw new Error("Invalid WAV file: invalid data chunk offset");
@@ -306,8 +383,8 @@ async function extractAndDownsampleAudio(
   }
 
   const config = await loadConfig(process.env.SIDFLOW_CONFIG);
-  const maxExtractSec = config.maxClassifySec ?? 10;
-  const introSkipSec = config.introSkipSec ?? 10;
+  const maxExtractSec = config.maxClassifySec ?? 15;
+  const introSkipSec = config.introSkipSec ?? 30;
 
   const window = resolveRepresentativeAnalysisWindow(buffer, header, maxExtractSec, introSkipSec);
 
@@ -339,6 +416,7 @@ async function extractAndDownsampleAudio(
   return {
     audioData,
     originalSampleRate: header.sampleRate,
+    wavDurationSec,
     analysisStartSec: window.startSec,
     analysisWindowSec: audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE,
   };
@@ -348,57 +426,54 @@ async function extractAndDownsampleAudio(
  * Extract features using optimized Essentia.js pipeline.
  * Uses cached instance, downsampling, and spectrum reuse.
  */
-async function extractEssentiaFeaturesOptimized(wavFile: string, essentia: any): Promise<FeatureVector> {
+async function extractEssentiaFeaturesOptimized(wavFile: string, sidFile: string, essentia: any): Promise<FeatureVector> {
   // Read WAV file
   const wavBuffer = await readFile(wavFile);
+  const sidStats = await stat(sidFile);
   const header = parseWavHeader(wavBuffer);
-  const { audioData, originalSampleRate, analysisStartSec, analysisWindowSec } = await extractAndDownsampleAudio(wavBuffer, header);
+  const { audioData, originalSampleRate, analysisStartSec, wavDurationSec } = await extractAndDownsampleAudio(wavBuffer, header);
 
-  // Convert to Essentia vector format
-  const audioVector = essentia.arrayToVector(audioData);
+  const fullNumSamples = Math.max(1, Math.round(wavDurationSec * FEATURE_EXTRACTION_SAMPLE_RATE));
+  const analysisWindowSec = audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE;
 
   const features: FeatureVector = {};
 
-  try {
-    // Compute Spectrum once - reused by centroid and rolloff
-    const spectrum = essentia.Spectrum(audioVector);
-    
-    // Extract spectral features from shared spectrum
-    const spectralCentroid = essentia.Centroid(spectrum);
-    features.spectralCentroid = spectralCentroid;
+  const basic = computeBasicStats(audioData);
+  features.energy = basic.energy;
+  features.rms = basic.rms;
+  features.zeroCrossingRate = basic.zeroCrossingRate;
 
-    const spectralRolloff = essentia.RollOff(spectrum);
-    features.spectralRolloff = spectralRolloff;
+  const frameSummaries = extractEssentiaFrameSummaries(essentia, audioData, FEATURE_EXTRACTION_SAMPLE_RATE);
+  for (const [k, v] of Object.entries(frameSummaries)) {
+    features[k] = v;
+  }
 
-    // Energy and RMS from audio directly
-    const energy = essentia.Energy(audioVector);
-    features.energy = energy;
-
-    const rms = essentia.RMS(audioVector);
-    features.rms = rms;
-
-    const zcr = essentia.ZeroCrossingRate(audioVector);
-    features.zeroCrossingRate = zcr;
-
-    // RhythmExtractor2013 is intentionally not used here (too expensive for batch runs).
-    // Use a lightweight BPM estimate derived from zero-crossing rate instead.
-    const estimatedBpm = Math.min(200, Math.max(60, zcr * 5000));
+  const bpmEstimate = estimateBpmAutocorr(audioData, FEATURE_EXTRACTION_SAMPLE_RATE);
+  if (bpmEstimate && bpmEstimate.confidence >= 0.15 && Number.isFinite(bpmEstimate.bpm)) {
+    features.bpm = bpmEstimate.bpm;
+    features.confidence = bpmEstimate.confidence;
+    features.bpmMethod = bpmEstimate.method;
+  } else {
+    // Fallback: keep the old heuristic in case the autocorr estimator fails.
+    const z = basic.zeroCrossingRate;
+    const estimatedBpm = Math.min(200, Math.max(60, z * 5000));
     features.bpm = estimatedBpm;
-    features.confidence = 0.5; // Medium confidence for heuristic
-
-    // Cleanup spectrum
-    spectrum.delete();
-  } finally {
-    audioVector.delete();
+    features.confidence = 0.2;
+    features.bpmMethod = "zcr";
   }
 
   // Add metadata - use original sample rate for display but actual samples processed
+  features.wavBytes = wavBuffer.byteLength;
+  features.sidBytes = sidStats.size;
   features.sampleRate = originalSampleRate;
   features.analysisSampleRate = FEATURE_EXTRACTION_SAMPLE_RATE;
-  features.duration = analysisWindowSec;
+  // duration reflects the full source WAV duration.
+  features.duration = wavDurationSec;
   features.analysisWindowSec = analysisWindowSec;
   features.analysisStartSec = analysisStartSec;
-  features.numSamples = audioData.length;
+  // numSamples reflects the full downsampled length of the source WAV
+  // (not the shorter analysis frame used for some algorithms).
+  features.numSamples = fullNumSamples;
   features.featureSetVersion = FEATURE_SCHEMA_VERSION;
   features.featureVariant = "essentia";
 
@@ -416,7 +491,8 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
     const wavBuffer = await readFile(wavFile);
     const header = parseWavHeader(wavBuffer);
     // Use downsampled audio for faster processing
-    const { audioData, originalSampleRate, analysisStartSec, analysisWindowSec } = await extractAndDownsampleAudio(wavBuffer, header);
+    const { audioData, originalSampleRate, analysisStartSec, analysisWindowSec, wavDurationSec } = await extractAndDownsampleAudio(wavBuffer, header);
+    const fullNumSamples = Math.max(1, Math.round(wavDurationSec * FEATURE_EXTRACTION_SAMPLE_RATE));
     
     // Get file stats
     const [wavStats, sidStats] = await Promise.all([
@@ -456,10 +532,10 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
       spectralRolloff: 4000, // Placeholder
       sampleRate: originalSampleRate,
       analysisSampleRate: FEATURE_EXTRACTION_SAMPLE_RATE,
-      duration: analysisWindowSec,
+      duration: wavDurationSec,
       analysisWindowSec: analysisWindowSec,
       analysisStartSec,
-      numSamples: audioData.length,
+      numSamples: fullNumSamples,
       featureSetVersion: FEATURE_SCHEMA_VERSION,
       featureVariant: "heuristic",
       wavBytes: wavStats.size,

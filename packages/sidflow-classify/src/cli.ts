@@ -33,6 +33,7 @@ interface ClassifyCliOptions {
   forceRebuild?: boolean;
   skipAlreadyClassified?: boolean;
   deleteWavAfterClassification?: boolean;
+  allowDegraded?: boolean;
   limit?: number;
   sidPathPrefix?: string;
   featureModule?: string;
@@ -52,6 +53,7 @@ const KNOWN_FLAGS = new Set([
   "--force-rebuild",
   "--skip-already-classified",
   "--delete-wav-after-classification",
+  "--allow-degraded",
   "--limit",
   "--sid-path-prefix",
   "--feature-module",
@@ -83,6 +85,10 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
       }
       case "--delete-wav-after-classification": {
         options.deleteWavAfterClassification = true;
+        break;
+      }
+      case "--allow-degraded": {
+        options.allowDegraded = true;
         break;
       }
       case "--config":
@@ -151,6 +157,7 @@ function printHelp(): void {
     "  --force-rebuild                   Re-render WAVs even if cache is fresh",
     "  --skip-already-classified         Skip songs already in auto-tags.json",
     "  --delete-wav-after-classification Delete WAVs after classification (fly.io)",
+    "  --allow-degraded                  Allow heuristic feature fallback if Essentia fails",
     "  --limit <n>                       Only classify the first N songs (after filtering)",
     "  --sid-path-prefix <prefix>        Only classify SIDs under this relative path (e.g. C64Music/DEMOS)",
     "  --feature-module <path>           Module exporting a featureExtractor override",
@@ -384,6 +391,14 @@ export async function runClassifyCli(
       process.env.SIDFLOW_CONFIG = path.resolve(options.configPath);
       // Reset config cache to ensure the new env var is picked up
       resetConfigCache();
+    }
+
+    // By default, Essentia feature extraction is required.
+    // Users must explicitly opt into degraded heuristic fallback.
+    if (options.allowDegraded) {
+      process.env.SIDFLOW_ALLOW_DEGRADED = "1";
+    } else {
+      delete process.env.SIDFLOW_ALLOW_DEGRADED;
     }
     
     const plan = await runtime.planClassification({

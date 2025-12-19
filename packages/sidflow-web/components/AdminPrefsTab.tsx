@@ -211,7 +211,7 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
       );
       setMaxRenderSec(response.data.config.maxRenderSec ?? 10);
       setMaxClassifySec(response.data.config.maxClassifySec ?? 10);
-      setIntroSkipSec(response.data.config.introSkipSec ?? 10);
+      setIntroSkipSec(response.data.config.introSkipSec ?? 30);
       syncSidplayState(response.data.preferences.sidplayfpCliFlags ?? null);
     } else {
       onStatusChange(
@@ -907,7 +907,7 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
                     setPrefsInfo(response.data);
                     setMaxRenderSec(response.data.config.maxRenderSec ?? 10);
                     setMaxClassifySec(response.data.config.maxClassifySec ?? 10);
-                    setIntroSkipSec(response.data.config.introSkipSec ?? 10);
+                    setIntroSkipSec(response.data.config.introSkipSec ?? 30);
                     onStatusChange('Timeouts updated');
                   } else {
                     onStatusChange(
@@ -931,7 +931,7 @@ export function AdminPrefsTab({ onStatusChange }: AdminPrefsTabProps) {
                     setPrefsInfo(response.data);
                     setMaxRenderSec(response.data.config.maxRenderSec ?? 10);
                     setMaxClassifySec(response.data.config.maxClassifySec ?? 10);
-                    setIntroSkipSec(response.data.config.introSkipSec ?? 10);
+                    setIntroSkipSec(response.data.config.introSkipSec ?? 30);
                     onStatusChange('Timeouts reset to defaults');
                   } else {
                     onStatusChange(

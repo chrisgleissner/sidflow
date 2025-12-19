@@ -80,8 +80,10 @@ describe("generateAutoTags", () => {
       extractMetadata: async ({ sidFile }: ExtractMetadataOptions) =>
         metadataByFile[sidFile] ?? {},
       featureExtractor: async ({ wavFile }: ExtractFeaturesOptions) => {
-        expect(wavFile).toBe(autoWav);
-        return { energy: 0.5 };
+        // generateAutoTags extracts features for all songs (including manual-only)
+        // so accept either cached WAV path.
+        expect([autoWav, manualWav]).toContain(wavFile);
+        return { energy: wavFile === autoWav ? 0.5 : 0.25 };
       },
       predictRatings: async (_options: PredictRatingsOptions) => ({ e: 4, m: 2, c: 5 })
     });

@@ -98,9 +98,9 @@ describe('maxRenderSec duration capping (render)', () => {
     return captured as number;
   }
 
-  it('defaults to 10s when maxRenderSec is absent', async () => {
+  it('uses HVSC duration when maxRenderSec is absent and defaults exceed it', async () => {
     const ms = await runWithMaxRenderSec(undefined);
-    expect(ms).toBe(10_000);
+    expect(ms).toBe(30_000);
   });
 
   it('caps HVSC duration to maxRenderSec when shorter', async () => {

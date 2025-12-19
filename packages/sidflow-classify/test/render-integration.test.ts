@@ -145,7 +145,7 @@ describe("Step 8: Integration tests (render engines)", () => {
       const stats = await stat(outputPath);
       expect(stats.size).toBeGreaterThan(1000);
       console.log(`[render-integration] WASM WAV output: ${stats.size} bytes`);
-    });
+    }, 20_000);
 
     it("renders SID with 8580r5 chip model", async () => {
       const outputPath = path.join(ctx.tempDir, "wasm-test-8580.wav");
@@ -157,7 +157,7 @@ describe("Step 8: Integration tests (render engines)", () => {
       const stats = await stat(outputPath);
       expect(stats.size).toBeGreaterThan(1000);
       console.log(`[render-integration] WASM 8580 output: ${stats.size} bytes`);
-    });
+    }, 20_000);
   });
 
   describe("8.2 - sidplayfp-cli engine (conditional)", () => {

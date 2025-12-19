@@ -65,7 +65,7 @@ async function updateSidflowConfigLimits(update: {
     maxClassifySec: number,
     introSkipSec: number,
   ): number => {
-    const resolvedIntroSkipSec = Number.isFinite(introSkipSec) && introSkipSec > 0 ? introSkipSec : 10;
+    const resolvedIntroSkipSec = Number.isFinite(introSkipSec) && introSkipSec > 0 ? introSkipSec : 30;
     return Math.max(20, resolvedIntroSkipSec + maxClassifySec);
   };
 
@@ -110,7 +110,7 @@ async function updateSidflowConfigLimits(update: {
   const resolvedIntroSkipSec =
     typeof record.introSkipSec === 'number' && Number.isFinite(record.introSkipSec)
       ? record.introSkipSec
-      : 10;
+      : 30;
 
   if (resolvedMaxRenderSec !== undefined && resolvedMaxRenderSec < 20) {
     throw new Error('maxRenderSec must be >= 20');

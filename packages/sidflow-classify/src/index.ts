@@ -3,6 +3,7 @@ import {
   DEFAULT_RATINGS,
   clampRating,
   createLogger,
+  appendCanonicalJsonLines,
   ensureDir,
   loadConfig,
   lookupSongDurationsMs,
@@ -17,6 +18,7 @@ import {
   stringifyDeterministic,
   toPosixRelative,
   writeCanonicalJsonLines,
+  writeCanonicalJsonFile,
   type AudioFeatures,
   type ClassificationRecord,
   type JsonValue,
@@ -47,6 +49,7 @@ import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./rend
 import { sliceWavFileToRepresentativeStart, trimLeadingSilenceWavFile } from "./render/wav-postprocess.js";
 import { computeMinRenderSecForRepresentativeWindow } from "./audio-window.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
+import { DeterministicRatingModelBuilder, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -59,7 +62,10 @@ const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
 /**
  * Maximum render duration when creating WAV artifacts (ms).
  * This is used only when the cache artifact does not exist (or when force rebuild is enabled).
- * Configure via maxRenderSec in .sidflow.json (default: 10).
+ * Configure via maxRenderSec in .sidflow.json.
+ *
+ * Defaults are chosen to support representative-window extraction (intro skip + analysis window)
+ * even when the user does not configure these values explicitly.
  */
 function resolveEffectiveMaxRenderSec(config: SidflowConfig): number {
   const rawMaxRenderSec =
@@ -67,7 +73,18 @@ function resolveEffectiveMaxRenderSec(config: SidflowConfig): number {
       ? config.maxRenderSec
       : undefined;
 
-  let configuredMaxRenderSec = rawMaxRenderSec ?? 10;
+  const maxClassifySec =
+    typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
+      ? config.maxClassifySec
+      : 15;
+
+  const introSkipSec =
+    typeof config.introSkipSec === "number" && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
+      ? config.introSkipSec
+      : 30;
+
+  const defaultMaxRenderSec = computeMinRenderSecForRepresentativeWindow(maxClassifySec, introSkipSec);
+  let configuredMaxRenderSec = rawMaxRenderSec ?? defaultMaxRenderSec;
 
   if (rawMaxRenderSec !== undefined && rawMaxRenderSec < 20) {
     classifyLogger.warn(
@@ -76,24 +93,18 @@ function resolveEffectiveMaxRenderSec(config: SidflowConfig): number {
     configuredMaxRenderSec = 20;
   }
 
-  const maxClassifySec =
-    typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
-      ? config.maxClassifySec
-      : undefined;
-
-  const introSkipSec =
-    typeof config.introSkipSec === "number" && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
-      ? config.introSkipSec
-      : 10;
-
-  if (maxClassifySec === undefined) {
-    return configuredMaxRenderSec;
-  }
-
   const minRenderSec = computeMinRenderSecForRepresentativeWindow(maxClassifySec, introSkipSec);
   if (Number.isFinite(minRenderSec) && minRenderSec > 0 && configuredMaxRenderSec < minRenderSec) {
-    // This can happen if the user edits .sidflow.json directly (bypassing the web prefs validator).
-    // Prefer correctness over a silent failure: render a bit longer so analysis can skip intros.
+    // If the user explicitly configured maxRenderSec, respect it (after the minimum clamp above).
+    // The caller may adapt analysis-window selection accordingly; here we just warn.
+    if (rawMaxRenderSec !== undefined) {
+      classifyLogger.warn(
+        `maxRenderSec (${configuredMaxRenderSec}) is too small for maxClassifySec (${maxClassifySec}) with introSkipSec (${introSkipSec}); keeping configured value because maxRenderSec was explicitly set.`
+      );
+      return configuredMaxRenderSec;
+    }
+
+    // No explicit maxRenderSec: prefer correctness over a silent failure.
     classifyLogger.warn(
       `maxRenderSec (${configuredMaxRenderSec}) is too small for maxClassifySec (${maxClassifySec}) with introSkipSec (${introSkipSec}); using ${minRenderSec.toFixed(
         2
@@ -453,6 +464,18 @@ export async function needsWavRefresh(
 
   // If SID file is older than WAV, no refresh needed
   if (sidStats.mtimeMs <= wavStats.mtimeMs) {
+    // Ensure the cache hash sidecar exists even for WAVs produced by renderers
+    // that don't write it (e.g. sidplayfp-cli). This keeps the cache invariant
+    // stable and enables hash-based refresh decisions when timestamps change.
+    const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
+    if (!(await pathExists(hashFile))) {
+      try {
+        const hash = await computeFileHash(sidFile);
+        await writeFile(hashFile, hash, "utf8");
+      } catch {
+        // Best-effort only.
+      }
+    }
     return false;
   }
 
@@ -490,7 +513,14 @@ export const defaultRenderWav: RenderWav = async (options) => {
   const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const defaultFormats = (config.render?.defaultFormats ?? ['wav']) as RenderFormat[];
   const useCli = preferredEngines[0] === 'sidplayfp-cli';
-  const maxClassifySeconds = config.maxClassifySec;
+  const maxClassifySeconds =
+    typeof config.maxClassifySec === 'number' && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
+      ? config.maxClassifySec
+      : 15;
+  const introSkipSeconds =
+    typeof config.introSkipSec === 'number' && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
+      ? config.introSkipSec
+      : 30;
   
   // Check if we need multi-format rendering
   const needsMultiFormat = defaultFormats.length > 1 || 
@@ -518,6 +548,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
       songIndex: options.songIndex,
       maxRenderSeconds: options.maxRenderSeconds,
       maxClassifySeconds,
+      introSkipSeconds,
       targetDurationMs: options.targetDurationMs,
     });
     
@@ -529,6 +560,15 @@ export const defaultRenderWav: RenderWav = async (options) => {
     if (renderedFile !== options.wavFile) {
       const fs = await import('node:fs/promises');
       await fs.rename(renderedFile, options.wavFile);
+    }
+
+    // Match WASM renderer behavior: write SID hash sidecar for cache validation.
+    const hashFile = `${options.wavFile}${WAV_HASH_EXTENSION}`;
+    try {
+      const hash = await computeFileHash(options.sidFile);
+      await writeFile(hashFile, hash, "utf8");
+    } catch {
+      // Best-effort only.
     }
   } else if (useCli) {
     // Use sidplayfp-cli via RenderOrchestrator for WAV-only
@@ -547,7 +587,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
       songIndex: options.songIndex,
       maxRenderSeconds: options.maxRenderSeconds,
       maxClassifySeconds,
-      introSkipSeconds: config.introSkipSec ?? 10,
+      introSkipSeconds,
       targetDurationMs: options.targetDurationMs,
     });
     
@@ -559,6 +599,15 @@ export const defaultRenderWav: RenderWav = async (options) => {
     if (renderedFile !== options.wavFile) {
       const fs = await import('node:fs/promises');
       await fs.rename(renderedFile, options.wavFile);
+    }
+
+    // Match WASM renderer behavior: write SID hash sidecar for cache validation.
+    const hashFile = `${options.wavFile}${WAV_HASH_EXTENSION}`;
+    try {
+      const hash = await computeFileHash(options.sidFile);
+      await writeFile(hashFile, hash, "utf8");
+    } catch {
+      // Best-effort only.
     }
   } else {
     // Use the WASM engine directly for WAV-only (no multi-format support yet)
@@ -579,7 +628,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
     ) {
       await sliceWavFileToRepresentativeStart(options.wavFile, {
         maxWindowSeconds: maxClassifySeconds,
-        introSkipSec: config.introSkipSec ?? 10,
+        introSkipSec: introSkipSeconds,
       });
       await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
     }
@@ -1338,10 +1387,17 @@ export async function generateAutoTags(
       return relative === normalizedPrefix || relative.startsWith(`${normalizedPrefix}/`);
     });
   }
+
+  // Ensure deterministic traversal regardless of filesystem ordering.
+  sidFiles = [...sidFiles].sort((a, b) => {
+    const ra = toPosixRelative(resolveRelativeSidPath(plan.sidPath, a));
+    const rb = toPosixRelative(resolveRelativeSidPath(plan.sidPath, b));
+    return ra.localeCompare(rb);
+  });
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractorBase = options.featureExtractor ?? defaultFeatureExtractor;
   const featureExtractor = withFeatureExtractionPool(plan, featureExtractorBase);
-  const predictRatings = options.predictRatings ?? defaultPredictRatings;
+  const predictRatingsOverride = options.predictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
   const render = options.render ?? defaultRenderWav;
@@ -1369,6 +1425,12 @@ export async function generateAutoTags(
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
   const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
   let jsonlRecordCount = 0;
+
+  // Intermediate file: extracted features + metadata in deterministic order.
+  // This enables dataset-normalized deterministic ratings without holding the full dataset in memory.
+  const featuresJsonlFile = path.join(classifiedPath, `features_${timestamp}.jsonl`);
+  await rm(featuresJsonlFile, { force: true });
+  await rm(jsonlFile, { force: true });
   
   // Cache for auto-tags.json files to avoid repeated reads for songs in the same directory
   const autoTagsCache = new Map<string, Record<string, unknown> | null>();
@@ -1540,6 +1602,70 @@ export async function generateAutoTags(
   let rendererPool: WasmRendererPool | null = null;
 
   try {
+    type IntermediateRecord = {
+      sid_path: string;
+      song_index?: number;
+      song_count: number;
+      metadata: SidMetadata;
+      manual_ratings: PartialTagRatings | null;
+      features: FeatureVector;
+      render_engine: string;
+      classification_depth: number;
+      auto_file_path: string;
+      auto_key: string;
+    };
+
+    const preferredEnginesForRecords = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ["wasm"];
+    const renderEngineForRecords = preferredEnginesForRecords[0] ?? "wasm";
+
+    const builder = new DeterministicRatingModelBuilder();
+    const intermediateBuffer = new Map<number, IntermediateRecord>();
+    let nextIntermediateIndex = 0;
+    let intermediateFlushChain: Promise<void> = Promise.resolve();
+
+    const flushIntermediate = async (): Promise<void> => {
+      while (true) {
+        const rec = intermediateBuffer.get(nextIntermediateIndex);
+        if (!rec) return;
+        intermediateBuffer.delete(nextIntermediateIndex);
+
+        builder.add(rec.features);
+        await appendCanonicalJsonLines(featuresJsonlFile, [rec as unknown as JsonValue], {
+          details: { phase: "features", itemIndex: nextIntermediateIndex },
+        });
+        nextIntermediateIndex += 1;
+      }
+    };
+
+    // Fast-path: empty dataset. Keep metrics/timing consistent and avoid reading
+    // intermediate files that were never created.
+    if (jobs.length === 0) {
+      await ensureDir(path.dirname(jsonlFile));
+      await writeFile(jsonlFile, "", "utf8");
+      const endTime = Date.now();
+      const metrics: GenerateAutoTagsMetrics = {
+        startTime,
+        endTime,
+        durationMs: endTime - startTime,
+        totalFiles: 0,
+        autoTaggedCount: 0,
+        manualOnlyCount: 0,
+        mixedCount: 0,
+        predictionsGenerated: 0,
+        skippedAlreadyClassified: skippedAlreadyClassifiedCount,
+      };
+      return {
+        autoTagged,
+        manualEntries,
+        mixedEntries,
+        metadataFiles,
+        tagFiles,
+        jsonlFile,
+        jsonlRecordCount,
+        metrics,
+      };
+    }
+
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
     const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
     const taggingStartedAt = Date.now();
@@ -1552,12 +1678,10 @@ export async function generateAutoTags(
       songIndex: job.songCount > 1 ? job.songIndex : undefined,
     });
     const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
-    const needsAuto = !job.manualRecord || hasMissingDimensions(manualRatings ?? {});
-    let autoRatings: TagRatings | null = null;
-    let extractedFeatures: FeatureVector | undefined;
 
-    if (needsAuto) {
-      if (!(await pathExists(job.wavPath))) {
+    // Always ensure we have a WAV and extract features for every song.
+    // Stations depend on objective features, not just ratings.
+    if (!(await pathExists(job.wavPath))) {
         // Emit "building" phase for inline rendering
         const buildStartedAt = Date.now();
         onThreadUpdate?.({
@@ -1613,18 +1737,18 @@ export async function generateAutoTags(
           clearInterval(heartbeatInterval);
         }
         
-        // Switch back to tagging phase after rendering
-        const resumeTaggingAt = Date.now();
-        onThreadUpdate?.({
-          threadId: context.threadId,
-          phase: "tagging",
-          status: "working",
-          file: songLabel,
-          timestamp: resumeTaggingAt,
-        });
-      } else {
-        cachedFilesCount += 1;
-      }
+      // Switch back to tagging phase after rendering
+      const resumeTaggingAt = Date.now();
+      onThreadUpdate?.({
+        threadId: context.threadId,
+        phase: "tagging",
+        status: "working",
+        file: songLabel,
+        timestamp: resumeTaggingAt,
+      });
+    } else {
+      cachedFilesCount += 1;
+    }
 
       if (onProgress) {
         onProgress({
@@ -1640,106 +1764,57 @@ export async function generateAutoTags(
         });
       }
 
-      // Essentia feature extraction with structured logging
-      // Start heartbeat to prevent thread from appearing stale during long feature extractions
-      const extractionStartedAt = Date.now();
-      const extractionHeartbeatInterval = setInterval(() => {
-        const now = Date.now();
-        onThreadUpdate?.({
-          threadId: context.threadId,
-          phase: "tagging",
-          status: "working",
-          file: songLabel,
-          timestamp: now,
-          isHeartbeat: true,
-          phaseDurationMs: now - extractionStartedAt,
-        });
-      }, HEARTBEAT_INTERVAL_MS);
-
-      try {
-        extractedFeatures = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
-      } finally {
-        clearInterval(extractionHeartbeatInterval);
-      }
-      extractedFilesCount += 1;
-      const extractionDurationMs = Date.now() - extractionStartedAt;
-      
-      // Log feature extraction result
-      const featureCount = Object.keys(extractedFeatures).length;
-      const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
-      classifyLogger.debug(
-        `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
-      );
-      
-      autoRatings = await predictRatings({
-        features: extractedFeatures,
-        sidFile: job.sidFile,
-        relativePath: job.posixRelative,
-        metadata: job.metadata
+    // Essentia feature extraction with structured logging
+    // Start heartbeat to prevent thread from appearing stale during long feature extractions
+    const extractionStartedAt = Date.now();
+    const extractionHeartbeatInterval = setInterval(() => {
+      const now = Date.now();
+      onThreadUpdate?.({
+        threadId: context.threadId,
+        phase: "tagging",
+        status: "working",
+        file: songLabel,
+        timestamp: now,
+        isHeartbeat: true,
+        phaseDurationMs: now - extractionStartedAt,
       });
-      predictionsGenerated += 1;
+    }, HEARTBEAT_INTERVAL_MS);
+
+    let extractedFeatures: FeatureVector;
+    try {
+      extractedFeatures = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+    } finally {
+      clearInterval(extractionHeartbeatInterval);
     }
-
-    const { ratings, source } = combineRatings(manualRatings, autoRatings);
-
-    const songKey = job.songCount > 1 ? `${job.posixRelative}:${job.songIndex}` : job.posixRelative;
-
-    if (source === "auto") {
-      autoTagged.push(songKey);
-    } else if (source === "manual") {
-      manualEntries.push(songKey);
-    } else {
-      mixedEntries.push(songKey);
-    }
-
-    const autoFilePath = resolveAutoTagFilePath(
-      plan.tagsPath,
-      job.relativePath,
-      plan.classificationDepth
+    extractedFilesCount += 1;
+    const extractionDurationMs = Date.now() - extractionStartedAt;
+    const featureCount = Object.keys(extractedFeatures).length;
+    const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
+    classifyLogger.debug(
+      `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
     );
+
+    const autoFilePath = resolveAutoTagFilePath(plan.tagsPath, job.relativePath, plan.classificationDepth);
     const baseKey = toPosixRelative(resolveAutoTagKey(job.relativePath, plan.classificationDepth));
     const key = job.songCount > 1 ? `${baseKey}:${job.songIndex}` : baseKey;
 
-    const entry: AutoTagEntry = { ...ratings, source };
-    const existingEntries = grouped.get(autoFilePath);
-    if (existingEntries) {
-      existingEntries.set(key, entry);
-    } else {
-      grouped.set(autoFilePath, new Map([[key, entry]]));
-    }
-
-    // Write JSONL record immediately after feature extraction (flush per file)
-    const classificationRecord: ClassificationRecord = {
+    const intermediate: IntermediateRecord = {
       sid_path: job.posixRelative,
-      ratings,
-      source,
-      classified_at: new Date().toISOString(),
+      song_count: job.songCount,
+      metadata: job.metadata,
+      manual_ratings: manualRatings,
+      features: extractedFeatures,
+      render_engine: renderEngineForRecords,
+      classification_depth: plan.classificationDepth,
+      auto_file_path: autoFilePath,
+      auto_key: key,
     };
     if (job.songCount > 1) {
-      classificationRecord.song_index = job.songIndex;
+      intermediate.song_index = job.songIndex;
     }
-    if (extractedFeatures) {
-      classificationRecord.features = extractedFeatures as AudioFeatures;
-      // Mark degraded if using heuristic features
-      if (extractedFeatures.featureVariant === "heuristic") {
-        classificationRecord.degraded = true;
-      }
-    }
-    // Determine render engine used
-    const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
-    classificationRecord.render_engine = preferredEngines[0];
-    logJsonlPathOnce(jsonlFile);
-    await queueJsonlWrite(
-      jsonlFile,
-      [classificationRecord as unknown as JsonValue],
-      {
-        recordCount: 1,
-        phase: "classification",
-        songIndex: job.songIndex,
-        totalSongs: job.songCount
-      }
-    );
-    jsonlRecordCount += 1;
+
+    intermediateBuffer.set(context.itemIndex, intermediate);
+    intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
 
     processedSongs += 1;
 
@@ -1762,6 +1837,90 @@ export async function generateAutoTags(
       status: "idle"
     });
   });
+
+    // Ensure all intermediate records are flushed in deterministic order.
+    await intermediateFlushChain;
+    await flushIntermediate();
+
+    // Build dataset-normalized rating model and persist it.
+    const ratingModel: DeterministicRatingModel = builder.finalize(renderEngineForRecords);
+    const ratingModelPath = path.join(
+      classifiedPath,
+      "rating-models",
+      ratingModel.featureSetVersion,
+      `${ratingModel.renderEngine}.json`
+    );
+    await writeCanonicalJsonFile(
+      ratingModelPath,
+      {
+        createdAt: new Date().toISOString(),
+        featureSetVersion: ratingModel.featureSetVersion,
+        renderEngine: ratingModel.renderEngine,
+        features: ratingModel.features,
+      } as unknown as JsonValue,
+      { details: { phase: "rating-model" } }
+    );
+
+    // Phase 2: compute ratings (manual + deterministic auto) and emit canonical outputs.
+    const featuresContent = await readFile(featuresJsonlFile, "utf8");
+    const featureLines = featuresContent.split("\n").filter((l) => l.trim().length > 0);
+    const nowIso = new Date().toISOString();
+
+    for (const line of featureLines) {
+      const rec = JSON.parse(line) as IntermediateRecord;
+      const manual = rec.manual_ratings;
+      const needsAuto = !manual || hasMissingDimensions(manual);
+
+      let auto: TagRatings | null = null;
+      if (needsAuto) {
+        if (predictRatingsOverride) {
+          const sidFileAbs = path.join(plan.sidPath, rec.sid_path);
+          auto = await predictRatingsOverride({
+            features: rec.features,
+            sidFile: sidFileAbs,
+            relativePath: rec.sid_path,
+            metadata: rec.metadata,
+          });
+        } else {
+          auto = predictDeterministicRatings(ratingModel, rec.features).ratings;
+        }
+        predictionsGenerated += 1;
+      }
+
+      const combined = combineRatings(manual, auto);
+      const { ratings, source } = combined;
+
+      const songKey = rec.song_index ? `${rec.sid_path}:${rec.song_index}` : rec.sid_path;
+      if (source === "auto") autoTagged.push(songKey);
+      else if (source === "manual") manualEntries.push(songKey);
+      else mixedEntries.push(songKey);
+
+      const entry: AutoTagEntry = { ...ratings, source };
+      const existingEntries = grouped.get(rec.auto_file_path);
+      if (existingEntries) existingEntries.set(rec.auto_key, entry);
+      else grouped.set(rec.auto_file_path, new Map([[rec.auto_key, entry]]));
+
+      const classificationRecord: ClassificationRecord = {
+        sid_path: rec.sid_path,
+        ratings,
+        source,
+        classified_at: nowIso,
+        render_engine: rec.render_engine,
+        features: rec.features as unknown as AudioFeatures,
+      };
+      if (rec.song_index) {
+        classificationRecord.song_index = rec.song_index;
+      }
+      if (rec.features.featureVariant === "heuristic") {
+        classificationRecord.degraded = true;
+      }
+
+      logJsonlPathOnce(jsonlFile);
+      await appendCanonicalJsonLines(jsonlFile, [classificationRecord as unknown as JsonValue], {
+        details: { phase: "classification" },
+      });
+      jsonlRecordCount += 1;
+    }
   } finally {
     // Clean up renderer pool
     const pool = rendererPool as WasmRendererPool | null;
@@ -1836,7 +1995,7 @@ export async function generateAutoTags(
     classifyLogger.info(`Deleted ${deletedWavCount} WAV files`);
   }
 
-  // Flush all pending writes before returning
+  // Flush any pending queued writes (legacy queues used elsewhere)
   if (jsonlFile) {
     await flushWriterQueue(jsonlFile);
   }

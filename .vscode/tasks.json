@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "web:dev (demos-gl)",
+			"type": "shell",
+			"command": "cd packages/sidflow-web && SIDFLOW_CONFIG=/home/chris/dev/c64/sidflow/tmp/sidflow-demos-gl.json SIDFLOW_ADMIN_USER=admin SIDFLOW_ADMIN_PASSWORD=password bun run dev",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}
