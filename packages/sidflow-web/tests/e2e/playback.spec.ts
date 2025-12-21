@@ -448,15 +448,20 @@ if (!isPlaywrightRunner) {
             await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
             await page.evaluate(() => (window as { __sidflowQueueCleared?: Promise<unknown> }).__sidflowQueueCleared);
 
+            // Helper to select a preset with proper waiting
+            const selectPreset = async (name: string) => {
+                await page.getByRole('combobox').first().click();
+                await page.waitForFunction(() => {
+                    const options = document.querySelectorAll('[role="option"]');
+                    return options.length > 0;
+                }, { timeout: 10_000 });
+                await page.getByRole('option', { name }).click();
+            };
+
             // Change preset multiple times (Radix UI Select)
-            await page.getByRole('combobox').first().click();
-            await page.getByRole('option', { name: 'Quiet' }).click();
-
-            await page.getByRole('combobox').first().click();
-            await page.getByRole('option', { name: 'Energetic' }).click();
-
-            await page.getByRole('combobox').first().click();
-            await page.getByRole('option', { name: 'Dark' }).click();
+            await selectPreset('Quiet');
+            await selectPreset('Energetic');
+            await selectPreset('Dark');
         });
 
         test('displays track information during playback', async ({ page }, testInfo) => {
@@ -478,6 +483,13 @@ if (!isPlaywrightRunner) {
 
             // Select preset and wait for playlist to populate
             await page.getByRole('combobox').first().click();
+            
+            // Wait for dropdown options to render before selecting
+            await page.waitForFunction(() => {
+                const options = document.querySelectorAll('[role="option"]');
+                return options.length > 0;
+            }, { timeout: 10_000 });
+            
             await page.getByRole('option', { name: 'Ambient' }).click();
 
             const playButton = page.getByRole('button', { name: /play next track/i });
@@ -503,8 +515,16 @@ if (!isPlaywrightRunner) {
             await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
             await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
 
+            // Wait for combobox options to be populated before clicking
             const presetTrigger = page.getByRole('combobox').first();
             await presetTrigger.click();
+            
+            // Wait for dropdown options to render
+            await page.waitForFunction(() => {
+                const options = document.querySelectorAll('[role="option"]');
+                return options.length > 0;
+            }, { timeout: 10_000 });
+            
             await page.getByRole('option', { name: 'Energetic' }).click();
 
             const playButton = page.getByRole('button', { name: /play next track/i });

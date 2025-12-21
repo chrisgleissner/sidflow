@@ -270,6 +270,14 @@ test.describe('Playlists Feature', () => {
         const playlistsButton = page.getByRole('button', { name: /playlists/i });
         await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await waitForUISettle(page);
+        
+        // Wait for sheet content to load - the API mock needs time to respond
+        await page.waitForFunction(() => {
+            const sheet = document.querySelector('[role="dialog"]');
+            const text = sheet?.textContent || '';
+            // Wait for either the playlist name or the empty state
+            return text.includes('Delete Me') || text.includes('No playlists');
+        }, { timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
         // Should show playlist
         await expect(page.getByText('Delete Me')).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });

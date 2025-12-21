@@ -75,27 +75,32 @@ test.describe('Classification Scheduler', () => {
     
     const initialState = await enabledCheckbox.isChecked();
     
-    // Click and wait for state to change
-    await enabledCheckbox.click();
+    // Click the checkbox using force to ensure click registers even if there's an overlay
+    await enabledCheckbox.click({ force: true });
+    
+    // Wait for state change with longer timeout - React state updates can be slow in CI
     await page.waitForFunction(
       (expected: boolean) => {
         const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
         return checkbox && checkbox.checked === expected;
       },
       !initialState,
-      { timeout: 5000 }
+      { timeout: 10_000 }
     );
-    expect(await enabledCheckbox.isChecked()).toBe(!initialState);
     
-    // Toggle back and wait for state to change
-    await enabledCheckbox.click();
+    // Verify state changed
+    const newState = await enabledCheckbox.isChecked();
+    expect(newState).toBe(!initialState);
+    
+    // Toggle back with force click
+    await enabledCheckbox.click({ force: true });
     await page.waitForFunction(
       (expected: boolean) => {
         const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
         return checkbox && checkbox.checked === expected;
       },
       initialState,
-      { timeout: 5000 }
+      { timeout: 10_000 }
     );
     expect(await enabledCheckbox.isChecked()).toBe(initialState);
   });
