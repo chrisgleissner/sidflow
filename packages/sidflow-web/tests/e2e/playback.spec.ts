@@ -460,7 +460,10 @@ if (!isPlaywrightRunner) {
         });
 
         test('displays track information during playback', async ({ page }, testInfo) => {
-            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            // Increase test timeout for this test that involves playback
+            test.setTimeout(120_000);
+            
+            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
             await page.evaluate(() => (window as { __sidflowQueueCleared?: Promise<unknown> }).__sidflowQueueCleared);
 
             // Set up error tracking

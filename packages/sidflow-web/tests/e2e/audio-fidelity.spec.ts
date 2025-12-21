@@ -389,6 +389,9 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
 if (isPlaywrightRunner) {
   test.describe('Audio Fidelity - AudioWorklet + SAB Pipeline', () => {
     test('Rate and play tabs initialize shared pipeline', async ({ page }) => {
+      // Increase test timeout since this test navigates twice
+      test.setTimeout(90_000);
+      
       for (const tab of ['rate', 'play'] as const) {
         const pageErrors: Error[] = [];
         const errorHandler = (error: Error) => {
@@ -397,14 +400,14 @@ if (isPlaywrightRunner) {
         page.on('pageerror', errorHandler);
 
         const basePath = tab === 'rate' ? '/admin' : '/';
-        // Use domcontentloaded for faster navigation
-        await page.goto(`${basePath}?tab=${tab}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        // Use domcontentloaded for faster navigation, increase timeout for CI
+        await page.goto(`${basePath}?tab=${tab}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
-        await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
+        await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 15000 });
         const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
         expect(hasSharedArrayBuffer).toBe(true);
 
-        await page.waitForFunction(() => Boolean((window as any).__sidflowPlayer), { timeout: 10000 });
+        await page.waitForFunction(() => Boolean((window as any).__sidflowPlayer), { timeout: 15000 });
         const hasTelemetry = await page.evaluate(() => {
           const player = (window as any).__sidflowPlayer;
           return Boolean(player && typeof player.getTelemetry === 'function');

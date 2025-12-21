@@ -254,8 +254,16 @@ test.describe('Telemetry Validation', () => {
       }
     });
 
-    // Wait a moment for events to propagate
-    await page.waitForTimeout(500);
+    // Wait for telemetry sink to have events (deterministic wait instead of timeout)
+    await page.waitForFunction(
+      () => {
+        const sink = (window as any).telemetrySink;
+        return sink && sink.length > 0;
+      },
+      { timeout: 5000 }
+    ).catch(() => {
+      // If no events captured, test will fail on assertion below
+    });
 
     // Get telemetry sink
     const sink = await getTelemetrySink(page);
