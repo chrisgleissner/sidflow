@@ -85,8 +85,7 @@ async function getTelemetrySink(page: Page): Promise<any[]> {
  * Setup page and play a test track
  */
 async function setupAndPlayTrack(page: Page): Promise<void> {
-  await page.goto('/test/audio-capture');
-  await page.waitForTimeout(1000);
+  await page.goto('/test/audio-capture', { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
   const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
   expect(isIsolated).toBe(true);
@@ -233,8 +232,7 @@ test.describe('Telemetry Validation', () => {
 
   test('verifies telemetry sink works in test mode', async ({ page }) => {
     // Navigate to a page with telemetry
-    await page.goto('/admin?tab=rate');
-    await page.waitForTimeout(1000);
+    await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
     // Initialize telemetry sink and set mode to test
     await page.evaluate(() => {

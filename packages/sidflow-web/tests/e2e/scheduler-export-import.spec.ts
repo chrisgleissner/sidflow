@@ -74,11 +74,29 @@ test.describe('Classification Scheduler', () => {
     await expect(enabledCheckbox).toBeVisible({ timeout: 5000 });
     
     const initialState = await enabledCheckbox.isChecked();
+    
+    // Click and wait for state to change
     await enabledCheckbox.click();
+    await page.waitForFunction(
+      (expected: boolean) => {
+        const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
+        return checkbox && checkbox.checked === expected;
+      },
+      !initialState,
+      { timeout: 5000 }
+    );
     expect(await enabledCheckbox.isChecked()).toBe(!initialState);
     
-    // Toggle back
+    // Toggle back and wait for state to change
     await enabledCheckbox.click();
+    await page.waitForFunction(
+      (expected: boolean) => {
+        const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
+        return checkbox && checkbox.checked === expected;
+      },
+      initialState,
+      { timeout: 5000 }
+    );
     expect(await enabledCheckbox.isChecked()).toBe(initialState);
   });
 

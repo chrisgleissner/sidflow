@@ -200,7 +200,7 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
 
   try {
     // Navigate to test page
-    await page.goto('/test/audio-capture');
+    await page.goto('/test/audio-capture', { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
     // Check cross-origin isolation
     const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
@@ -397,7 +397,8 @@ if (isPlaywrightRunner) {
         page.on('pageerror', errorHandler);
 
         const basePath = tab === 'rate' ? '/admin' : '/';
-        await page.goto(`${basePath}?tab=${tab}`);
+        // Use domcontentloaded for faster navigation
+        await page.goto(`${basePath}?tab=${tab}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
         await page.waitForFunction(() => window.crossOriginIsolated === true, { timeout: 10000 });
         const hasSharedArrayBuffer = await page.evaluate(() => typeof SharedArrayBuffer !== 'undefined');
