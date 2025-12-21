@@ -1,6 +1,32 @@
 # Changelog
 
 
+## 0.4.0 (2025-12-21)
+
+- fix(e2e): increase navigation wait timeouts in accessibility tests
+- fix(e2e): increase timeout for search debounce and dialog
+- fix(e2e): additional flakiness fixes
+- fix(e2e): address remaining flaky test root causes
+- fix(e2e): address root causes of flaky tests
+- fix(e2e): increase global navigation and assertion timeouts for CI stability
+- fix(e2e): increase timeouts and use deterministic waits for CI stability
+- refactor: optimize page navigation and enhance test reliability with timeout adjustments
+- feat: add classification speed journey runner and related scripts
+- Add tests for BPM estimation and scripts for station building and verification
+- Refactor: Enhance k6 performance tests with retry logic and error handling
+- Refactor: Improve production readiness and test reliability (#80)
+- Merge pull request #79 from chrisgleissner/cursor/performance-test-reliability-3485
+- Fix CI flake: Bind Next.js server to 127.0.0.1
+- Add on-commit performance smoke tests
+- Refactor: Introduce runner profiles and SLOs for performance tests
+- Checkpoint before follow-up message
+- Merge pull request #78 from chrisgleissner/cursor/documentation-accuracy-and-consistency-7fb4
+- Refactor: Update docs and CLI commands for clarity and consistency
+- Update README.md
+- Remove user guide reference from README
+- chore: update CHANGES.md for 0.3.48
+
+
 ## 0.3.48 (2025-12-14)
 
 - Merge pull request #77 from chrisgleissner/cursor/test-suite-stability-and-fixes-44be
