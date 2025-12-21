@@ -114,7 +114,7 @@ if (!isPlaywrightRunner) {
 
   async function bootstrapPlayTab(page: Page): Promise<void> {
     console.log('[PauseResumeTest] Navigating to Play tab...');
-    await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
     
     await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 15000 });
     

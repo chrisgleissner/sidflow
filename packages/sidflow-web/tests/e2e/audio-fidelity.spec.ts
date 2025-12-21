@@ -200,7 +200,7 @@ async function testTabFidelity(page: Page, tabName: 'rate' | 'play'): Promise<Fi
 
   try {
     // Navigate to test page
-    await page.goto('/test/audio-capture', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto('/test/audio-capture', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
     // Check cross-origin isolation
     const isIsolated = await page.evaluate(() => window.crossOriginIsolated);

@@ -12,7 +12,7 @@ import { test, expect } from './test-hooks';
 
 test.describe('Social Features', () => {
     test('should display login and signup buttons when not authenticated', async ({ page }) => {
-        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Wait for user menu to render (it renders conditionally based on auth state)
         await page.waitForFunction(() => {
@@ -40,7 +40,7 @@ test.describe('Social Features', () => {
     });
 
     test('should open registration dialog and validate form', async ({ page }) => {
-        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Wait for user menu to render
         await page.waitForFunction(() => {
@@ -76,7 +76,7 @@ test.describe('Social Features', () => {
     });
 
     test('should open login dialog', async ({ page }) => {
-        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Wait for user menu to render
         await page.waitForFunction(() => {
@@ -111,7 +111,7 @@ test.describe('Social Features', () => {
     });
 
     test('should navigate to Activity tab', async ({ page }) => {
-        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Click on Activity tab
         const activityTab = page.getByTestId('tab-activity');
@@ -123,7 +123,7 @@ test.describe('Social Features', () => {
     });
 
     test('should display activity refresh button', async ({ page }) => {
-        await page.goto('/?tab=activity', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/?tab=activity', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Should see refresh button (may be disabled during loading)
         const refreshButton = page.getByTestId('activity-refresh-button');
@@ -147,7 +147,7 @@ test.describe('Social Features', () => {
     });
 
     test('should navigate to Profiles tab', async ({ page }) => {
-        await page.goto('/?tab=profiles', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/?tab=profiles', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Wait for loading to complete (deterministic)
         await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 5000 }).catch(() => {});
@@ -158,7 +158,7 @@ test.describe('Social Features', () => {
     });
 
     test('should allow profile search', async ({ page }) => {
-        await page.goto('/?tab=profiles', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/?tab=profiles', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Find search input
         const searchInput = page.locator('input[type="text"]').first();
@@ -176,7 +176,7 @@ test.describe('Social Features', () => {
     });
 
     test('should navigate to Charts tab', async ({ page }) => {
-        await page.goto('/?tab=charts', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/?tab=charts', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Wait for loading to complete (deterministic)
         await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 5000 }).catch(() => {});
@@ -187,7 +187,7 @@ test.describe('Social Features', () => {
     });
 
     test('should display all social tabs for public users', async ({ page }) => {
-        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Check that all social tabs are visible (use first() to handle multiple matches)
         await expect(page.getByTestId('tab-activity').first()).toBeVisible();

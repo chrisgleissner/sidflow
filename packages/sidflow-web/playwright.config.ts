@@ -52,6 +52,10 @@ const baseUse = {
   trace: 'on-first-retry' as const,
   headless: true,
   video: videoMode,
+  // CI is slower - increase navigation timeout from default 30s to 60s
+  navigationTimeout: 60_000,
+  // Also increase action timeout to 30s for slower CI environments
+  actionTimeout: 30_000,
   launchOptions: {
     args: [
       '--autoplay-policy=no-user-gesture-required',
@@ -107,8 +111,12 @@ const chromiumTestIgnore = includePerformanceSpecs
 
 export default defineConfig({
   testDir: './tests/e2e',
-  // Reduced from 60s to 45s - most tests complete much faster
-  timeout: 45 * 1000,
+  // Increase from 45s to 90s - audio playback tests need more time in CI
+  timeout: 90 * 1000,
+  // Expect timeout for assertions (default 5s is often too short in CI)
+  expect: {
+    timeout: 15_000,
+  },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

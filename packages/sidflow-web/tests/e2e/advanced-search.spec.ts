@@ -36,7 +36,7 @@ test.describe('Advanced Search & Discovery', () => {
         // Navigate to Play tab
         const playTab = page.getByRole('tab', { name: /play/i });
         await playTab.click();
-        await page.getByTestId('search-input').waitFor({ timeout: 30_000 });
+        await page.getByTestId('search-input').waitFor({ timeout: 60_000 });
     });
 
     test('should display advanced search bar with filters toggle', async ({ page }) => {

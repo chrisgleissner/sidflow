@@ -225,7 +225,7 @@ if (!isPlaywrightRunner) {
     test.describe.serial('RateTab Browser Playback', () => {
         test('loads and plays a random SID', async ({ page }) => {
             // Navigate to Rate tab
-            await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 60_000 });
             await expect(page.getByRole('heading', { name: /rate track/i })).toBeVisible();
 
             // Capture console messages and errors for debugging
@@ -325,7 +325,7 @@ if (!isPlaywrightRunner) {
 
 
         test('displays rating controls and allows submission', async ({ page }, testInfo) => {
-            await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
             // Set up error tracking
             const pageErrors: Error[] = [];
@@ -400,7 +400,7 @@ if (!isPlaywrightRunner) {
             // This test exercises complex WASM + AudioWorklet + SharedArrayBuffer which can be unstable
             // Browser crashes (~10% failure rate) are a known Chromium issue with SharedArrayBuffer
             test.slow(); // Mark as slow (gets 3x timeout)
-            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
             await page.evaluate(() => (window as { __sidflowQueueCleared?: Promise<unknown> }).__sidflowQueueCleared);
             await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
 
@@ -445,7 +445,7 @@ if (!isPlaywrightRunner) {
         });
 
         test('handles mood preset changes', async ({ page }) => {
-            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
             await page.evaluate(() => (window as { __sidflowQueueCleared?: Promise<unknown> }).__sidflowQueueCleared);
 
             // Change preset multiple times (Radix UI Select)
@@ -500,7 +500,7 @@ if (!isPlaywrightRunner) {
         });
 
         test('queues playback while offline and resumes once online', async ({ page, context }) => {
-            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
             await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible();
 
             const presetTrigger = page.getByRole('combobox').first();
@@ -606,7 +606,7 @@ if (!isPlaywrightRunner) {
             page.on('request', trackWasmRequest);
 
             try {
-                await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+                await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
                 // Trigger WASM loading by starting playback
                 const playButton = page.getByRole('button', { name: /play random sid/i });
@@ -645,7 +645,7 @@ if (!isPlaywrightRunner) {
                 attempt++;
 
                 try {
-                    await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+                    await page.goto('/admin?tab=rate', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
                     // Verify initial page load
                     const heading = page.getByRole('heading', { name: /rate track/i });
