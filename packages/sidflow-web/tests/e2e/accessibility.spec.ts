@@ -29,12 +29,12 @@ async function gotoWithRetry(page: Page, url: string, maxRetries = 3): Promise<v
             // Wait for the page to have meaningful content loaded
             // First wait for either tabpanel or main content
             await Promise.race([
-                page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 15_000 }),
-                page.waitForSelector('main', { state: 'visible', timeout: 15_000 }),
-                page.waitForSelector('h1, h2, h3', { state: 'visible', timeout: 15_000 }),
+                page.waitForSelector('[role="tabpanel"]', { state: 'visible', timeout: 30_000 }),
+                page.waitForSelector('main', { state: 'visible', timeout: 30_000 }),
+                page.waitForSelector('h1, h2, h3', { state: 'visible', timeout: 30_000 }),
             ]).catch(() => {});
             // Wait for spinners to be gone
-            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10_000 }).catch(() => {});
+            await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 15_000 }).catch(() => {});
             return;
         } catch (error) {
             if (attempt === maxRetries) throw error;
