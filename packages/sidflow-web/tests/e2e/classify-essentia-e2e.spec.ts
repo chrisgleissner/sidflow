@@ -99,7 +99,8 @@ async function waitForClassificationIdle(request: any, maxWaitMs = 30_000): Prom
 test.describe('Classification Output with Essentia.js Features', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'API tests only run in chromium');
   test.describe.configure({ mode: 'serial' });
-  test.setTimeout(120_000);
+  // Allow extra time for lock acquisition (90s) + classification (30s) + idle wait (30s)
+  test.setTimeout(180_000);
 
   test.beforeAll(async () => {
     const sidDir = path.join(SID_BASE_DIR, TEST_DIR);
@@ -123,7 +124,7 @@ test.describe('Classification Output with Essentia.js Features', () => {
   test('runs classification and verifies JSONL contains rich audio features', async ({ request }) => {
     await withClassificationLock(async () => {
       const jsonlBefore = await fs.readdir(CLASSIFIED_DIR).catch(() => []);
-      await waitForClassificationIdle(request, 30_000);
+      await waitForClassificationIdle(request, 60_000);
 
       const response = await request.post('/api/classify', {
         data: {

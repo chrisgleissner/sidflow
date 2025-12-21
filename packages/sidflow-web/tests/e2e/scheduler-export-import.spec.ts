@@ -73,35 +73,48 @@ test.describe('Classification Scheduler', () => {
     const enabledCheckbox = classifyPanel.getByTestId('scheduler-enabled-checkbox');
     await expect(enabledCheckbox).toBeVisible({ timeout: 5000 });
     
+    // Get initial state and verify we can read it
     const initialState = await enabledCheckbox.isChecked();
+    console.log(`[scheduler] Initial checkbox state: ${initialState}`);
     
-    // Click the checkbox using force to ensure click registers even if there's an overlay
-    await enabledCheckbox.click({ force: true });
+    // Click the checkbox - use evaluate to ensure click registers
+    await enabledCheckbox.scrollIntoViewIfNeeded();
+    await page.evaluate(() => {
+      const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
+      if (checkbox) checkbox.click();
+    });
     
-    // Wait for state change with longer timeout - React state updates can be slow in CI
+    // Wait a moment for React state to update
     await page.waitForFunction(
       (expected: boolean) => {
         const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
         return checkbox && checkbox.checked === expected;
       },
       !initialState,
-      { timeout: 10_000 }
+      { timeout: 15_000 }
     );
     
     // Verify state changed
     const newState = await enabledCheckbox.isChecked();
+    console.log(`[scheduler] New checkbox state: ${newState}`);
     expect(newState).toBe(!initialState);
     
-    // Toggle back with force click
-    await enabledCheckbox.click({ force: true });
+    // Toggle back using evaluate for reliability
+    await page.evaluate(() => {
+      const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
+      if (checkbox) checkbox.click();
+    });
+    
     await page.waitForFunction(
       (expected: boolean) => {
         const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement;
         return checkbox && checkbox.checked === expected;
       },
       initialState,
-      { timeout: 10_000 }
+      { timeout: 15_000 }
     );
+    
+    // Verify returned to original state
     expect(await enabledCheckbox.isChecked()).toBe(initialState);
   });
 

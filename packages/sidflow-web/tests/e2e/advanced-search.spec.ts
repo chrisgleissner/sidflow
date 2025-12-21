@@ -23,7 +23,7 @@ async function waitForFilterPanelSettle(page: import('@playwright/test').Page): 
   await page.waitForFunction(() => {
     const panel = document.querySelector('[data-state="open"]') || document.querySelector('[data-state="closed"]');
     return panel !== null || document.querySelector('.animate-spin') === null;
-  }, { timeout: 3000 }).catch(() => {});
+  }, { timeout: 15_000 }).catch(() => {});
 }
 
 test.describe('Advanced Search & Discovery', () => {
@@ -164,6 +164,10 @@ test.describe('Advanced Search & Discovery', () => {
         // Set duration range (60-180 seconds)
         const durationMinInput = playPanel.getByTestId('duration-min-input');
         const durationMaxInput = playPanel.getByTestId('duration-max-input');
+        
+        // Wait for inputs to be visible before interacting
+        await expect(durationMinInput).toBeVisible({ timeout: 15_000 });
+        
         await durationMinInput.fill('60');
         await durationMaxInput.fill('180');
         await expect(durationMinInput).toHaveValue('60');

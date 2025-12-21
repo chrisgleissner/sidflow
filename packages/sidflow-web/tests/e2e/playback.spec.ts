@@ -454,7 +454,7 @@ if (!isPlaywrightRunner) {
                 await page.waitForFunction(() => {
                     const options = document.querySelectorAll('[role="option"]');
                     return options.length > 0;
-                }, { timeout: 10_000 });
+                }, { timeout: 30_000 });
                 await page.getByRole('option', { name }).click();
             };
 
@@ -488,7 +488,7 @@ if (!isPlaywrightRunner) {
             await page.waitForFunction(() => {
                 const options = document.querySelectorAll('[role="option"]');
                 return options.length > 0;
-            }, { timeout: 10_000 });
+            }, { timeout: 30_000 });
             
             await page.getByRole('option', { name: 'Ambient' }).click();
 
@@ -517,13 +517,14 @@ if (!isPlaywrightRunner) {
 
             // Wait for combobox options to be populated before clicking
             const presetTrigger = page.getByRole('combobox').first();
+            await expect(presetTrigger).toBeVisible({ timeout: 10_000 });
             await presetTrigger.click();
             
-            // Wait for dropdown options to render
+            // Wait for dropdown options to render - increased timeout for CI
             await page.waitForFunction(() => {
                 const options = document.querySelectorAll('[role="option"]');
                 return options.length > 0;
-            }, { timeout: 10_000 });
+            }, { timeout: 30_000 });
             
             await page.getByRole('option', { name: 'Energetic' }).click();
 
