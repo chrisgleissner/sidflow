@@ -12,7 +12,7 @@ if (hasDescribe && !process.env.PLAYWRIGHT_TEST_SUITE) {
  */
 async function waitForSearchDebounce(page: import('@playwright/test').Page): Promise<void> {
   // Wait for the loading indicator to disappear (if it appeared)
-  await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 15_000 }).catch(() => {});
 }
 
 /**

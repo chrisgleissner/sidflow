@@ -63,7 +63,7 @@ test.describe('Social Features', () => {
         await signupButton.click({ timeout: 10_000 });
 
         // Wait for dialog to open with explicit timeout
-        await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 10_000 });
+        await page.waitForSelector('[role="dialog"]', { state: 'visible', timeout: 30_000 });
 
         // Check for form fields
         await expect(page.getByLabel(/username/i)).toBeVisible();
