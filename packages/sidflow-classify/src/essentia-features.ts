@@ -16,6 +16,14 @@ import { extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
  */
 export const FEATURE_EXTRACTION_SAMPLE_RATE = 11025;
 
+function resolveAnalysisSampleRate(config: { analysisSampleRate?: number }): number {
+  const configured = config.analysisSampleRate;
+  if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
+    return configured;
+  }
+  return FEATURE_EXTRACTION_SAMPLE_RATE;
+}
+
 function computeBasicStats(audioData: Float32Array): { energy: number; rms: number; zeroCrossingRate: number } {
   if (audioData.length <= 0) {
     return { energy: 0, rms: 0, zeroCrossingRate: 0 };
@@ -370,6 +378,7 @@ async function extractAndDownsampleAudio(
   wavDurationSec: number;
   analysisStartSec: number;
   analysisWindowSec: number;
+  analysisSampleRate: number;
 }> {
   const bytesPerSample = header.bitsPerSample / 8;
   const totalSamples = header.dataLength / (bytesPerSample * header.numChannels);
@@ -385,10 +394,11 @@ async function extractAndDownsampleAudio(
   const config = await loadConfig(process.env.SIDFLOW_CONFIG);
   const maxExtractSec = config.maxClassifySec ?? 15;
   const introSkipSec = config.introSkipSec ?? 30;
+  const analysisSampleRate = resolveAnalysisSampleRate(config);
 
   const window = resolveRepresentativeAnalysisWindow(buffer, header, maxExtractSec, introSkipSec);
 
-  const ratio = header.sampleRate / FEATURE_EXTRACTION_SAMPLE_RATE;
+  const ratio = header.sampleRate / analysisSampleRate;
   const outputLength = Math.max(1, Math.floor(window.sampleCount / ratio));
   const audioData = new Float32Array(outputLength);
 
@@ -418,7 +428,8 @@ async function extractAndDownsampleAudio(
     originalSampleRate: header.sampleRate,
     wavDurationSec,
     analysisStartSec: window.startSec,
-    analysisWindowSec: audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE,
+    analysisWindowSec: audioData.length / analysisSampleRate,
+    analysisSampleRate,
   };
 }
 
@@ -431,10 +442,10 @@ async function extractEssentiaFeaturesOptimized(wavFile: string, sidFile: string
   const wavBuffer = await readFile(wavFile);
   const sidStats = await stat(sidFile);
   const header = parseWavHeader(wavBuffer);
-  const { audioData, originalSampleRate, analysisStartSec, wavDurationSec } = await extractAndDownsampleAudio(wavBuffer, header);
+  const { audioData, originalSampleRate, analysisStartSec, wavDurationSec, analysisSampleRate } = await extractAndDownsampleAudio(wavBuffer, header);
 
-  const fullNumSamples = Math.max(1, Math.round(wavDurationSec * FEATURE_EXTRACTION_SAMPLE_RATE));
-  const analysisWindowSec = audioData.length / FEATURE_EXTRACTION_SAMPLE_RATE;
+  const fullNumSamples = Math.max(1, Math.round(wavDurationSec * analysisSampleRate));
+  const analysisWindowSec = audioData.length / analysisSampleRate;
 
   const features: FeatureVector = {};
 
@@ -443,12 +454,12 @@ async function extractEssentiaFeaturesOptimized(wavFile: string, sidFile: string
   features.rms = basic.rms;
   features.zeroCrossingRate = basic.zeroCrossingRate;
 
-  const frameSummaries = extractEssentiaFrameSummaries(essentia, audioData, FEATURE_EXTRACTION_SAMPLE_RATE);
+  const frameSummaries = extractEssentiaFrameSummaries(essentia, audioData, analysisSampleRate);
   for (const [k, v] of Object.entries(frameSummaries)) {
     features[k] = v;
   }
 
-  const bpmEstimate = estimateBpmAutocorr(audioData, FEATURE_EXTRACTION_SAMPLE_RATE);
+  const bpmEstimate = estimateBpmAutocorr(audioData, analysisSampleRate);
   if (bpmEstimate && bpmEstimate.confidence >= 0.15 && Number.isFinite(bpmEstimate.bpm)) {
     features.bpm = bpmEstimate.bpm;
     features.confidence = bpmEstimate.confidence;
@@ -466,7 +477,7 @@ async function extractEssentiaFeaturesOptimized(wavFile: string, sidFile: string
   features.wavBytes = wavBuffer.byteLength;
   features.sidBytes = sidStats.size;
   features.sampleRate = originalSampleRate;
-  features.analysisSampleRate = FEATURE_EXTRACTION_SAMPLE_RATE;
+  features.analysisSampleRate = analysisSampleRate;
   // duration reflects the full source WAV duration.
   features.duration = wavDurationSec;
   features.analysisWindowSec = analysisWindowSec;
@@ -491,8 +502,8 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
     const wavBuffer = await readFile(wavFile);
     const header = parseWavHeader(wavBuffer);
     // Use downsampled audio for faster processing
-    const { audioData, originalSampleRate, analysisStartSec, analysisWindowSec, wavDurationSec } = await extractAndDownsampleAudio(wavBuffer, header);
-    const fullNumSamples = Math.max(1, Math.round(wavDurationSec * FEATURE_EXTRACTION_SAMPLE_RATE));
+    const { audioData, originalSampleRate, analysisStartSec, analysisWindowSec, wavDurationSec, analysisSampleRate } = await extractAndDownsampleAudio(wavBuffer, header);
+    const fullNumSamples = Math.max(1, Math.round(wavDurationSec * analysisSampleRate));
     
     // Get file stats
     const [wavStats, sidStats] = await Promise.all([
@@ -531,7 +542,7 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
       spectralCentroid: 2000, // Placeholder
       spectralRolloff: 4000, // Placeholder
       sampleRate: originalSampleRate,
-      analysisSampleRate: FEATURE_EXTRACTION_SAMPLE_RATE,
+      analysisSampleRate,
       duration: wavDurationSec,
       analysisWindowSec: analysisWindowSec,
       analysisStartSec,

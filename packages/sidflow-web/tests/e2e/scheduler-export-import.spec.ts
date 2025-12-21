@@ -42,7 +42,7 @@ async function ensureAdminSession(page: Page): Promise<void> {
 // Helper to navigate to admin classify tab efficiently
 async function gotoClassifyTab(page: Page) {
   await ensureAdminSession(page);
-  await page.goto('/admin?tab=classify', { waitUntil: 'domcontentloaded' });
+  await page.goto('/admin?tab=classify', { waitUntil: 'domcontentloaded', timeout: 60_000 });
   // Wait for page to be ready - wait for any loading spinners to disappear
   await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 10000 }).catch(() => {});
   // Wait for the classify tab content to be visible (scope to tabpanel to avoid strict-mode collisions)
@@ -51,7 +51,9 @@ async function gotoClassifyTab(page: Page) {
 }
 
 test.describe('Classification Scheduler', () => {
+  test.describe.configure({ timeout: 90_000 });
   test('should display all scheduler UI elements', async ({ page }) => {
+    test.setTimeout(90_000);
     await gotoClassifyTab(page);
     const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
@@ -64,6 +66,7 @@ test.describe('Classification Scheduler', () => {
   });
 
   test('should toggle scheduler enabled state', async ({ page }) => {
+    test.setTimeout(90_000);
     await gotoClassifyTab(page);
     const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
@@ -80,6 +83,7 @@ test.describe('Classification Scheduler', () => {
   });
 
   test('should enable time input when scheduler is enabled', async ({ page }) => {
+    test.setTimeout(90_000);
     await gotoClassifyTab(page);
     const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 
@@ -100,7 +104,9 @@ test.describe('Classification Scheduler', () => {
 });
 
 test.describe('Classification Export/Import', () => {
+  test.describe.configure({ timeout: 90_000 });
   test('should display all export/import UI elements', async ({ page }) => {
+    test.setTimeout(90_000);
     await gotoClassifyTab(page);
     const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
 

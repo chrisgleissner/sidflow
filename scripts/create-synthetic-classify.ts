@@ -6,6 +6,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { updateDirectoryPlaylist } from "@sidflow/common";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -98,6 +99,8 @@ async function main() {
 
     console.log(`Created: ${song.name}.sid (${song.freq}Hz, ${song.duration}s)`);
   }
+
+  await updateDirectoryPlaylist(wavPath, { playlistName: "playlist.m3u8" });
 
   console.log("\n=== Extracting Essentia.js Features ===\n");
 

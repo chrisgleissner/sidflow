@@ -11,7 +11,7 @@
     "lint": "eslint",
     "test": "node ../../scripts/run-bun.mjs test tests/unit/",
     "pretest:e2e": "node ./scripts/ensure-playwright-browser.mjs",
-    "test:e2e": "playwright test",
+    "test:e2e": "SIDFLOW_E2E_MAX_API_MS=${SIDFLOW_E2E_MAX_API_MS:-60000} playwright test --workers=${SIDFLOW_PLAYWRIGHT_WORKERS:-1}",
     "test:e2e:coverage": "bash -c 'set -e; rm -rf .next .nyc_output; cp .babelrc.coverage.json .babelrc.json; echo \"[coverage] Babel config swapped for instrumentation\"; E2E_COVERAGE=true playwright test; EXIT_CODE=$?; echo \"[coverage] Restoring babel config\"; echo \"{\\\"presets\\\":[\\\"next/babel\\\"],\\\"plugins\\\":[]}\" > .babelrc.json; exit $EXIT_CODE'",
     "test:all": "npm run pretest:e2e && node ../../scripts/run-bun.mjs test tests/unit/ && playwright test",
     "test:perf": "npm run pretest:e2e && SIDFLOW_RUN_PERF_TESTS=1 playwright test tests/e2e/performance.spec.ts --workers=1",

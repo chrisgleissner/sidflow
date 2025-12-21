@@ -8,6 +8,56 @@
 			"isBackground": true,
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "validate:build",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-lc",
+				"cd /home/chris/dev/c64/sidflow && mkdir -p tmp/validation-2025-12-20 && scripts/run-with-timeout.sh 7200 -- bun run build > tmp/validation-2025-12-20/build-2.log 2>&1; echo build-2-exit=$?; tail -n 60 tmp/validation-2025-12-20/build-2.log"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "validate:test-1",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-lc",
+				"cd /home/chris/dev/c64/sidflow && mkdir -p tmp/validation-2025-12-20 && scripts/run-with-timeout.sh 7200 -- bun run test > tmp/validation-2025-12-20/test-2.log 2>&1; echo test-2-exit=$?; tail -n 80 tmp/validation-2025-12-20/test-2.log"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "validate:tail-test-2",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-lc",
+				"cd /home/chris/dev/c64/sidflow && ls -lh tmp/validation-2025-12-20/test-2.log && tail -n 120 tmp/validation-2025-12-20/test-2.log"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "validate:test-2",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-lc",
+				"cd /home/chris/dev/c64/sidflow && mkdir -p tmp/validation-2025-12-20 && set +e; scripts/run-with-timeout.sh 7200 -- bun run test > tmp/validation-2025-12-20/test-3.log 2>&1; status=$?; echo $status > tmp/validation-2025-12-20/test-3.status; echo test-3-exit=$status; tail -n 40 tmp/validation-2025-12-20/test-3.log; exit $status"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "validate:inspect-test-3",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-lc",
+				"cd /home/chris/dev/c64/sidflow && echo '--- tail' && tail -n 80 tmp/validation-2025-12-20/test-3.log && echo '--- grep killed' && grep -n -i 'killed\\|oom\\|exit 137\\|SIGKILL' -n tmp/validation-2025-12-20/test-3.log | tail -n 20 || true"
+			],
+			"isBackground": false
 		}
 	]
 }

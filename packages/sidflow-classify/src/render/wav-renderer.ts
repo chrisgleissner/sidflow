@@ -191,8 +191,10 @@ export async function renderWavWithEngine(
       break;
     }
 
+    // Copy the chunk immediately: some engines return views into a reused buffer.
+    // Keeping references would make earlier "chunks" mutate on later renderCycles calls.
     const slice = allowed === chunk.length ? chunk : chunk.subarray(0, allowed);
-    chunks.push(slice);
+    chunks.push(slice.slice());
     collectedSamples += slice.length;
 
     // Call progress callback at specified intervals to support heartbeat
@@ -230,7 +232,7 @@ export async function renderWavWithEngine(
   renderLogger.debug(`Computing hash for ${path.basename(wavFile)}`);
   const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
   try {
-    const hash = await computeFileHash(sidFile);
+    const hash = await computeFileHash(wavFile);
     await writeFile(hashFile, hash, "utf8");
   } catch (err) {
     renderLogger.warn(`Hash write failed for ${path.basename(wavFile)}`, err);

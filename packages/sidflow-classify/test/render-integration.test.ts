@@ -20,6 +20,11 @@ const TEST_SID_PATH = path.join(
   "test-data/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid"
 );
 
+// Keep render durations short to avoid stressing constrained test runners.
+const SHORT_WASM_RENDER_SEC = 12;
+const VERIFY_WASM_RENDER_SEC = 10;
+const MIN_WASM_RENDER_SEC = 8;
+
 interface RenderTestContext {
   tempDir: string;
   sidFile: string;
@@ -48,15 +53,15 @@ async function renderWithWasm(
   sidFile: string,
   outputPath: string,
   chip: "6581" | "8580r5" = "6581",
-  targetDurationSeconds = 60
+  targetDurationSeconds = SHORT_WASM_RENDER_SEC
 ): Promise<boolean> {
-  try {
-    const engine = new SidAudioEngine({
-      sampleRate: 44100,
-      stereo: true,
-      preferredSidModel: chip,
-    });
+  const engine = new SidAudioEngine({
+    sampleRate: 44100,
+    stereo: true,
+    preferredSidModel: chip,
+  });
 
+  try {
     const options: RenderWavOptions = {
       sidFile,
       wavFile: outputPath,
@@ -71,6 +76,8 @@ async function renderWithWasm(
   } catch (error) {
     console.error("[render-integration] WASM render failed:", error);
     return false;
+  } finally {
+    engine.dispose();
   }
 }
 
@@ -137,7 +144,7 @@ describe("Step 8: Integration tests (render engines)", () => {
   describe("8.1 - WASM engine", () => {
     it("renders SID to WAV with non-zero output", async () => {
       const outputPath = path.join(ctx.tempDir, "wasm-test-6581.wav");
-      const success = await renderWithWasm(ctx.sidFile, outputPath, "6581", 30);
+      const success = await renderWithWasm(ctx.sidFile, outputPath, "6581", SHORT_WASM_RENDER_SEC);
 
       expect(success).toBe(true);
       expect(await pathExists(outputPath)).toBe(true);
@@ -149,7 +156,7 @@ describe("Step 8: Integration tests (render engines)", () => {
 
     it("renders SID with 8580r5 chip model", async () => {
       const outputPath = path.join(ctx.tempDir, "wasm-test-8580.wav");
-      const success = await renderWithWasm(ctx.sidFile, outputPath, "8580r5", 30);
+      const success = await renderWithWasm(ctx.sidFile, outputPath, "8580r5", SHORT_WASM_RENDER_SEC);
 
       expect(success).toBe(true);
       expect(await pathExists(outputPath)).toBe(true);
@@ -284,7 +291,7 @@ describe("Step 9: Verification matrix", () => {
   describe("9.2 - Format and chip combinations", () => {
     it("renders with 6581 chip model", async () => {
       const outputPath = path.join(ctx.tempDir, "verify-6581.wav");
-      const success = await renderWithWasm(ctx.sidFile, outputPath, "6581", 20);
+      const success = await renderWithWasm(ctx.sidFile, outputPath, "6581", VERIFY_WASM_RENDER_SEC);
 
       expect(success).toBe(true);
       const stats = await stat(outputPath);
@@ -294,7 +301,7 @@ describe("Step 9: Verification matrix", () => {
 
     it("renders with 8580r5 chip model", async () => {
       const outputPath = path.join(ctx.tempDir, "verify-8580.wav");
-      const success = await renderWithWasm(ctx.sidFile, outputPath, "8580r5", 20);
+      const success = await renderWithWasm(ctx.sidFile, outputPath, "8580r5", VERIFY_WASM_RENDER_SEC);
 
       expect(success).toBe(true);
       const stats = await stat(outputPath);
@@ -347,7 +354,7 @@ describe("Step 9: Verification matrix", () => {
 
     it("validates non-zero WAV output requirement", async () => {
       const outputPath = path.join(ctx.tempDir, "verify-nonzero.wav");
-      const success = await renderWithWasm(ctx.sidFile, outputPath, "6581", 15);
+      const success = await renderWithWasm(ctx.sidFile, outputPath, "6581", MIN_WASM_RENDER_SEC);
 
       expect(success).toBe(true);
       const stats = await stat(outputPath);

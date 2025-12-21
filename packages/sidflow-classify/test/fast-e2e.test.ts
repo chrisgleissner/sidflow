@@ -19,6 +19,29 @@ import { generateAutoTags, type ClassificationPlan } from "../src/index.js";
 import { FEATURE_SCHEMA_VERSION, type ClassificationRecord } from "@sidflow/common";
 import type { SidflowConfig } from "@sidflow/common";
 
+async function getLatestJsonlFile(dir: string): Promise<string> {
+  const { readdir, stat } = await import("node:fs/promises");
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".jsonl"));
+  expect(files.length).toBeGreaterThan(0);
+
+  // Prefer mtime (robust across platforms). Fall back to lexicographic ordering.
+  const withMtime = await Promise.all(
+    files.map(async (name) => {
+      try {
+        const s = await stat(join(dir, name));
+        return { name, mtimeMs: s.mtimeMs };
+      } catch {
+        return { name, mtimeMs: 0 };
+      }
+    })
+  );
+
+  // If mtimes tie (common on CI with coarse timestamp resolution) prefer the
+  // lexicographically newest filename (these include timestamps).
+  withMtime.sort((a, b) => (b.mtimeMs - a.mtimeMs) || b.name.localeCompare(a.name));
+  return join(dir, withMtime[0].name);
+}
+
 /**
  * Generate a minimal valid WAV file for testing (mono, 16-bit, 44100Hz).
  * Creates a short sine wave tone.
@@ -170,13 +193,7 @@ describe("Fast Classification Pipeline E2E", () => {
   });
 
   test("JSONL output has valid schema and metadata", async () => {
-    // Read the most recent JSONL file
-    const { readdir } = await import("node:fs/promises");
-    const files = await readdir(classifiedPath);
-    const jsonlFiles = files.filter(f => f.endsWith(".jsonl"));
-    expect(jsonlFiles.length).toBeGreaterThan(0);
-
-    const jsonlFile = join(classifiedPath, jsonlFiles[0]);
+    const jsonlFile = await getLatestJsonlFile(classifiedPath);
     const content = await readFile(jsonlFile, "utf8");
     const lines = content.split("\n").filter(line => line.trim().length > 0);
 
@@ -229,11 +246,7 @@ describe("Fast Classification Pipeline E2E", () => {
 
   test("JSONL records are ordered deterministically", async () => {
     // Read the JSONL file twice and compare
-    const { readdir } = await import("node:fs/promises");
-    const files = await readdir(classifiedPath);
-    const jsonlFiles = files.filter(f => f.endsWith(".jsonl"));
-    
-    const jsonlFile = join(classifiedPath, jsonlFiles[0]);
+    const jsonlFile = await getLatestJsonlFile(classifiedPath);
     const content1 = await readFile(jsonlFile, "utf8");
     
     // Parse and extract paths in order
@@ -271,14 +284,9 @@ describe("Fast Classification Pipeline E2E", () => {
 
     await generateAutoTags(plan, { threads: 1 });
 
-    // Read both JSONL files
-    const { readdir } = await import("node:fs/promises");
-    
-    const files1 = await readdir(classifiedPath);
-    const files2 = await readdir(newClassifiedPath);
-    
-    const file1 = join(classifiedPath, files1.filter(f => f.endsWith(".jsonl"))[0]);
-    const file2 = join(newClassifiedPath, files2.filter(f => f.endsWith(".jsonl"))[0]);
+    // Read both JSONL files (deterministically select the output)
+    const file1 = await getLatestJsonlFile(classifiedPath);
+    const file2 = await getLatestJsonlFile(newClassifiedPath);
     
     const content1 = await readFile(file1, "utf8");
     const content2 = await readFile(file2, "utf8");
@@ -286,12 +294,18 @@ describe("Fast Classification Pipeline E2E", () => {
     const records1 = content1.split("\n").filter(l => l.trim()).map(l => JSON.parse(l) as ClassificationRecord);
     const records2 = content2.split("\n").filter(l => l.trim()).map(l => JSON.parse(l) as ClassificationRecord);
 
-    // Verify ratings match
-    for (let i = 0; i < records1.length; i++) {
-      expect(records1[i].sid_path).toBe(records2[i].sid_path);
-      expect(records1[i].ratings.e).toBe(records2[i].ratings.e);
-      expect(records1[i].ratings.m).toBe(records2[i].ratings.m);
-      expect(records1[i].ratings.c).toBe(records2[i].ratings.c);
+    // Verify ratings match (keyed by sid_path for robustness)
+    const byPath1 = new Map(records1.map((r) => [r.sid_path, r] as const));
+    const byPath2 = new Map(records2.map((r) => [r.sid_path, r] as const));
+    expect(byPath1.size).toBe(3);
+    expect(byPath2.size).toBe(3);
+
+    for (const [sidPathKey, a] of byPath1) {
+      const b = byPath2.get(sidPathKey);
+      expect(b).toBeDefined();
+      expect(a.ratings.e).toBe(b!.ratings.e);
+      expect(a.ratings.m).toBe(b!.ratings.m);
+      expect(a.ratings.c).toBe(b!.ratings.c);
     }
   });
 });

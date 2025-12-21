@@ -1,20 +1,42 @@
 import { test, expect } from './test-hooks';
 
-if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+const hasDescribe = typeof (globalThis as unknown as { describe?: unknown }).describe === 'function';
+if (hasDescribe && !process.env.PLAYWRIGHT_TEST_SUITE) {
   console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
   process.exit(0);
 }
 
+/**
+ * Helper to wait for search debounce to complete (deterministic).
+ * Uses waitForFunction instead of fixed timeout.
+ */
+async function waitForSearchDebounce(page: import('@playwright/test').Page): Promise<void> {
+  // Wait for the loading indicator to disappear (if it appeared)
+  await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 5000 }).catch(() => {});
+}
+
+/**
+ * Helper to wait for filter panel animation to complete.
+ */
+async function waitForFilterPanelSettle(page: import('@playwright/test').Page): Promise<void> {
+  // Wait for animation completion by checking for no CSS transitions
+  await page.waitForFunction(() => {
+    const panel = document.querySelector('[data-state="open"]') || document.querySelector('[data-state="closed"]');
+    return panel !== null || document.querySelector('.animate-spin') === null;
+  }, { timeout: 3000 }).catch(() => {});
+}
+
 test.describe('Advanced Search & Discovery', () => {
+    test.describe.configure({ timeout: 90_000 });
     test.beforeEach(async ({ page }) => {
-        await page.goto('http://localhost:3000');
-        await page.waitForLoadState('domcontentloaded');
-        await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
+        test.setTimeout(90_000);
+        await page.goto('/', { timeout: 120_000, waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 15_000 }).catch(() => {});
 
         // Navigate to Play tab
         const playTab = page.getByRole('tab', { name: /play/i });
         await playTab.click();
-        await page.waitForLoadState('domcontentloaded');
+        await page.getByTestId('search-input').waitFor({ timeout: 30_000 });
     });
 
     test('should display advanced search bar with filters toggle', async ({ page }) => {
@@ -40,8 +62,8 @@ test.describe('Advanced Search & Discovery', () => {
         await searchInput.fill('delta');
         await expect(searchInput).toHaveValue('delta');
 
-        // Wait for debounce with smaller timeout
-        await page.waitForTimeout(300);
+        // Wait for debounce (deterministic)
+        await waitForSearchDebounce(page);
 
         // Verify search input accepts text (results may or may not appear based on data)
         await expect(searchInput).toHaveValue('delta');
@@ -55,8 +77,8 @@ test.describe('Advanced Search & Discovery', () => {
         await searchInput.fill('hubbard');
         await expect(searchInput).toHaveValue('hubbard');
 
-        // Wait for debounce with smaller timeout
-        await page.waitForTimeout(300);
+        // Wait for debounce (deterministic)
+        await waitForSearchDebounce(page);
 
         // Verify search input accepts text
         await expect(searchInput).toHaveValue('hubbard');
@@ -68,7 +90,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Type a search query
         await searchInput.fill('delta');
-        await page.waitForTimeout(300);
+        await waitForSearchDebounce(page);
 
         // Find and click the clear button
         const clearButton = playPanel.locator('button[title="Clear search"]');
@@ -89,7 +111,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Click to expand filters
         await filtersButton.click();
-        await page.waitForTimeout(200);
+        await waitForFilterPanelSettle(page);
 
         // Now filters should be visible
         await expect(yearMinInput).toBeVisible();
@@ -99,7 +121,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Click to collapse filters
         await filtersButton.click();
-        await page.waitForTimeout(200);
+        await waitForFilterPanelSettle(page);
 
         // Filters should be hidden again
         await expect(yearMinInput).not.toBeVisible();
@@ -112,7 +134,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Expand filters
         await filtersButton.click();
-        await page.waitForTimeout(200);
+        await waitForFilterPanelSettle(page);
 
         // Set year range
         const yearMinInput = playPanel.getByTestId('year-min-input');
@@ -137,7 +159,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Expand filters
         await filtersButton.click();
-        await page.waitForTimeout(200);
+        await waitForFilterPanelSettle(page);
 
         // Set duration range (60-180 seconds)
         const durationMinInput = playPanel.getByTestId('duration-min-input');
@@ -161,7 +183,7 @@ test.describe('Advanced Search & Discovery', () => {
 
         // Expand filters
         await filtersButton.click();
-        await page.waitForTimeout(200);
+        await waitForFilterPanelSettle(page);
 
         // Set some filters
         const yearMinInput = playPanel.getByTestId('year-min-input');
@@ -189,8 +211,8 @@ test.describe('Advanced Search & Discovery', () => {
         // Perform search - use a common term that should exist in test data
         await searchInput.fill('tune');
         
-        // Wait for search debounce (300ms) + API call - reduced from 1500ms
-        await page.waitForTimeout(800);
+        // Wait for search debounce (deterministic)
+        await waitForSearchDebounce(page);
 
         // Check if results appear - they should if test data exists
         const resultsDropdown = playPanel.getByTestId('advanced-search-results');
@@ -232,7 +254,7 @@ test.describe('Advanced Search & Discovery', () => {
         // Search by artist
         await searchInput.fill('hubbard');
         await expect(searchInput).toHaveValue('hubbard');
-        await page.waitForTimeout(300);
+        await waitForSearchDebounce(page);
 
         // Verify search input is functional
         await expect(searchInput).toHaveValue('hubbard');
@@ -245,7 +267,7 @@ test.describe('Advanced Search & Discovery', () => {
         // Search for something that doesn't exist
         await searchInput.fill('xyznonexistent123');
         await expect(searchInput).toHaveValue('xyznonexistent123');
-        await page.waitForTimeout(300);
+        await waitForSearchDebounce(page);
 
         // Search input should still be functional
         await expect(searchInput).toHaveValue('xyznonexistent123');
@@ -258,11 +280,10 @@ test.describe('Advanced Search & Discovery', () => {
         // Perform search
         await searchInput.fill('delta');
         await expect(searchInput).toHaveValue('delta');
-        await page.waitForTimeout(300);
+        await waitForSearchDebounce(page);
 
         // Click outside the search box
         await page.locator('body').click({ position: { x: 10, y: 10 } });
-        await page.waitForTimeout(200);
 
         // Search input should retain its value
         await expect(searchInput).toHaveValue('delta');

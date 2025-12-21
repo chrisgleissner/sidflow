@@ -78,6 +78,9 @@ public:
         cfg.sidEmulation = builder.get();
         cfg.samplingMethod = SidConfig::RESAMPLE_INTERPOLATE;
         cfg.digiBoost = true;
+        // Ensure deterministic output: libsidplayfp defaults to a random power-on delay
+        // (DEFAULT_POWER_ON_DELAY = MAX + 1). Keeping it <= MAX yields constant results.
+        cfg.powerOnDelay = SidConfig::MAX_POWER_ON_DELAY;
 
         if (!player.config(cfg))
         {

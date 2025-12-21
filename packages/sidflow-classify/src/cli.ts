@@ -414,7 +414,14 @@ export async function runClassifyCli(
     // Determine thread count
     const threads = (typeof plan.config.threads === "number" && plan.config.threads > 0)
       ? plan.config.threads
-      : os.cpus().length;
+      : (() => {
+          const cores = os.cpus().length || 1;
+          const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
+          if (Number.isInteger(envMax) && envMax > 0) {
+            return Math.max(1, Math.min(cores, envMax));
+          }
+          return Math.max(1, cores);
+        })();
     runtime.stdout.write(`Starting classification (threads: ${threads})\n`);
     runtime.stdout.write(`SID path: ${resolvedPlan.sidPath}\n`);
     runtime.stdout.write(`WAV cache path: ${resolvedPlan.audioCachePath}\n\n`);

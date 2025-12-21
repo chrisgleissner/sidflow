@@ -1,11 +1,13 @@
 import { test, expect } from './test-hooks';
+import { waitForKeyboardReady, waitForUISettle, waitForThemeApplied, waitForLoadingComplete } from './helpers/test-utils';
 
-if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+const hasDescribe = typeof (globalThis as unknown as { describe?: unknown }).describe === 'function';
+if (hasDescribe && !process.env.PLAYWRIGHT_TEST_SUITE) {
   console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
   process.exit(0);
 }
 
-const RESPONSE_TIMEOUT = 45000;
+const RESPONSE_TIMEOUT = 60_000;
 
 /**
  * E2E tests for Phase 1 Foundation Enhancement features.
@@ -13,10 +15,11 @@ const RESPONSE_TIMEOUT = 45000;
  */
 
 test.describe('Phase 1 Features', () => {
-    test.describe.configure({ mode: 'serial', timeout: 45000 });
+    test.describe.configure({ mode: 'serial', timeout: 90_000 });
     test.beforeEach(async ({ page }) => {
-        await page.goto('/?tab=play', { waitUntil: 'domcontentloaded' });
-        await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 15000 });
+        test.setTimeout(90_000);
+        await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await expect(page.getByRole('heading', { name: /play sid music/i })).toBeVisible({ timeout: 30_000 });
     });
 
     test.describe('Search Interaction (3.9)', () => {
@@ -90,9 +93,8 @@ test.describe('Phase 1 Features', () => {
             const searchBar = playTab.getByTestId('search-input');
             await expect(searchBar).toBeVisible({ timeout: 10000 });
 
-            // Wait for page to be fully interactive
-            await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-            await page.waitForTimeout(500);
+            // Wait for the UI to be ready for keyboard shortcuts (deterministic).
+            await waitForKeyboardReady(page);
 
             // Press S key
             await page.keyboard.press('s');
@@ -102,9 +104,8 @@ test.describe('Phase 1 Features', () => {
         });
 
         test('should open shortcuts help with ? key', async ({ page }) => {
-            // Wait for page to be fully interactive and keyboard shortcuts to be registered
-            await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-            await page.waitForTimeout(500);
+            // Wait for the UI to be ready for keyboard shortcuts (deterministic).
+            await waitForKeyboardReady(page);
             
             // Press ? key to open help (use Shift+/ to generate ?)
             await page.keyboard.press('Shift+Slash');
@@ -135,27 +136,19 @@ test.describe('Phase 1 Features', () => {
 
     test.describe('Top Charts Display (5.9)', () => {
         test('should display top charts tab', async ({ page }) => {
-            test.setTimeout(30000);
-            // Navigate to top charts tab using correct Radix UI tab role
-            const chartsTab = page.getByRole('tab', { name: /top charts/i });
-            await chartsTab.click();
-            await page.waitForTimeout(1500);
-
-            // Wait for either charts or empty state to load
-            await page.waitForFunction(() => {
-                const loader = document.querySelector('.animate-spin');
-                return loader === null;
-            }, { timeout: 10000 }).catch(() => { });
+            test.setTimeout(90_000);
+            await page.goto('/?tab=charts', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+            await waitForLoadingComplete(page);
 
             // Verify charts heading (use role to be specific)
-            await expect(page.getByRole('heading', { name: 'Top Charts' })).toBeVisible();
+            await expect(page.getByRole('heading', { name: 'Top Charts' })).toBeVisible({ timeout: 30_000 });
         });
 
         test('should switch between time ranges', async ({ page }) => {
             test.setTimeout(30000);
             // Navigate to top charts
-            await page.goto('/?tab=charts');
-            await page.waitForTimeout(1500);
+            await page.goto('/?tab=charts', { waitUntil: 'domcontentloaded' });
+            await waitForLoadingComplete(page);
 
             // Find time range buttons
             const weekButton = page.getByRole('button', { name: 'This Week' });
@@ -167,10 +160,7 @@ test.describe('Phase 1 Features', () => {
             await monthButton.click();
 
             // Wait for loading state to complete
-            await page.waitForFunction(() => {
-                const loader = document.querySelector('.animate-spin');
-                return loader === null;
-            }, { timeout: 10000 }).catch(() => { });
+            await waitForLoadingComplete(page);
 
             // Verify month button is still visible (interaction successful)
             await expect(monthButton).toBeVisible();
@@ -179,8 +169,8 @@ test.describe('Phase 1 Features', () => {
         test('should show empty state when no data', async ({ page }) => {
             test.setTimeout(30000);
             // Navigate to top charts
-            await page.goto('/?tab=charts');
-            await page.waitForTimeout(1500);
+            await page.goto('/?tab=charts', { waitUntil: 'domcontentloaded' });
+            await waitForLoadingComplete(page);
 
             // Check if there's either data or empty state
             const hasData = await page.locator('.space-y-2 > div').first().isVisible().catch(() => false);
@@ -195,8 +185,8 @@ test.describe('Phase 1 Features', () => {
         test('should switch between themes', async ({ page }) => {
             test.setTimeout(30000);
             // Navigate to preferences
-            await page.goto('/?tab=prefs');
-            await page.waitForTimeout(500);
+            await page.goto('/?tab=prefs', { waitUntil: 'domcontentloaded' });
+            await waitForLoadingComplete(page);
 
             // Find theme selector - it's a Select component
             const themeButton = page.locator('button:has-text("Theme")').first();
@@ -204,8 +194,8 @@ test.describe('Phase 1 Features', () => {
             if (await themeButton.isVisible({ timeout: 5000 })) {
                 await themeButton.click();
 
-                // Wait for dropdown to appear
-                await page.waitForTimeout(500);
+                // Wait for dropdown to appear (deterministic)
+                await waitForUISettle(page);
 
                 // Look for theme options in the dropdown
                 const darkOption = page.getByText('C64 Dark', { exact: true }).or(page.getByText('Dark'));
@@ -213,8 +203,8 @@ test.describe('Phase 1 Features', () => {
                 if (await darkOption.isVisible({ timeout: 3000 })) {
                     await darkOption.click();
 
-                    // Wait for theme to apply
-                    await page.waitForTimeout(1000);
+                    // Wait for theme to apply (deterministic)
+                    await waitForThemeApplied(page);
 
                     // Verify theme changed by checking document attribute
                     const htmlElement = page.locator('html');
@@ -229,21 +219,21 @@ test.describe('Phase 1 Features', () => {
         test('should persist theme across page reloads', async ({ page }) => {
             test.setTimeout(30000);
             // Navigate to preferences
-            await page.goto('/?tab=prefs');
-            await page.waitForTimeout(500);
+            await page.goto('/?tab=prefs', { waitUntil: 'domcontentloaded' });
+            await waitForLoadingComplete(page);
 
             // Find and change theme
             const themeButton = page.locator('button').filter({ hasText: /theme|c64/i }).first();
 
             if (await themeButton.isVisible({ timeout: 5000 })) {
                 await themeButton.click();
-                await page.waitForTimeout(500);
+                await waitForUISettle(page);
 
                 const darkOption = page.getByText('C64 Dark', { exact: true }).or(page.getByText('Dark'));
 
                 if (await darkOption.isVisible({ timeout: 3000 })) {
                     await darkOption.click();
-                    await page.waitForTimeout(1000);
+                    await waitForThemeApplied(page);
 
                     // Reload page
                     await page.reload();

@@ -18,17 +18,29 @@
 
 import { parentPort } from "node:worker_threads";
 import { readFile, stat } from "node:fs/promises";
-import { FEATURE_SCHEMA_VERSION, loadConfig } from "@sidflow/common";
+import { FEATURE_SCHEMA_VERSION, loadConfig, type SidflowConfig } from "@sidflow/common";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { resolveRepresentativeAnalysisWindow } from "./audio-window.js";
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 
-// Target sample rate for SID music analysis
+// Default target sample rate for SID music analysis.
 // SID output is ~4kHz effective bandwidth, so 11025 Hz captures all relevant content
-// while reducing sample count by ~4x compared to 44100 Hz
-const TARGET_SAMPLE_RATE = 11025;
+// while reducing sample count by ~4x compared to 44100 Hz.
+//
+// Note: This can be overridden via SidflowConfig.analysisSampleRate.
+const DEFAULT_TARGET_SAMPLE_RATE = 11025;
+
+function resolveTargetSampleRate(config: SidflowConfig, inputSampleRate: number): number {
+  const configured = config.analysisSampleRate ?? DEFAULT_TARGET_SAMPLE_RATE;
+  if (typeof configured !== "number" || !Number.isFinite(configured)) {
+    return Math.min(DEFAULT_TARGET_SAMPLE_RATE, inputSampleRate);
+  }
+
+  const rounded = Math.max(1, Math.round(configured));
+  return Math.max(1, Math.min(rounded, Math.max(1, Math.round(inputSampleRate))));
+}
 
 function computeBasicStats(audioData: Float32Array): { energy: number; rms: number; zeroCrossingRate: number } {
   if (audioData.length <= 0) {
@@ -58,6 +70,20 @@ let essentiaLoadError: unknown = null;
 // Preallocated buffers for frame processing (reused across extractions)
 let frameBuffer: Float32Array | null = null;
 let spectrumBuffer: Float32Array | null = null;
+
+let cachedConfig: SidflowConfig | null = null;
+let cachedConfigKey: string | undefined;
+
+async function getWorkerConfig(configPath?: string): Promise<SidflowConfig> {
+  const resolvedPath = configPath ?? process.env.SIDFLOW_CONFIG;
+  const key = resolvedPath ?? "__default__";
+  if (cachedConfig && cachedConfigKey === key) {
+    return cachedConfig;
+  }
+  cachedConfig = await loadConfig(resolvedPath);
+  cachedConfigKey = key;
+  return cachedConfig;
+}
 
 function isAllowDegradedEnabled(): boolean {
   const value = process.env.SIDFLOW_ALLOW_DEGRADED;
@@ -125,6 +151,7 @@ interface WorkerMessage {
   jobId: number;
   wavFile: string;
   sidFile: string;
+  configPath?: string;
 }
 
 interface WorkerResponse {
@@ -255,8 +282,15 @@ function parseWavHeader(buffer: Buffer): WavHeader {
  */
 async function extractAndDownsampleAudio(
   buffer: Buffer,
-  header: WavHeader
-): Promise<{ audioData: Float32Array; analysisStartSec: number; analysisWindowSec: number; wavDurationSec: number }> {
+  header: WavHeader,
+  config: SidflowConfig
+): Promise<{
+  audioData: Float32Array;
+  analysisStartSec: number;
+  analysisWindowSec: number;
+  analysisSampleRate: number;
+  wavDurationSec: number;
+}> {
   const bytesPerSample = header.bitsPerSample / 8;
   const totalSamples = header.dataLength / (bytesPerSample * header.numChannels);
   const wavDurationSec = totalSamples / header.sampleRate;
@@ -268,13 +302,14 @@ async function extractAndDownsampleAudio(
     throw new Error("Invalid WAV file: invalid data chunk length");
   }
 
-  const config = await loadConfig(process.env.SIDFLOW_CONFIG);
   const maxExtractSec = config.maxClassifySec ?? 15;
   const introSkipSec = config.introSkipSec ?? 30;
 
   const window = resolveRepresentativeAnalysisWindow(buffer, header, maxExtractSec, introSkipSec);
 
-  const ratio = header.sampleRate / TARGET_SAMPLE_RATE;
+  const targetSampleRate = resolveTargetSampleRate(config, header.sampleRate);
+
+  const ratio = header.sampleRate / targetSampleRate;
   const outputLength = Math.max(1, Math.floor(window.sampleCount / ratio));
   const audioData = new Float32Array(outputLength);
 
@@ -302,7 +337,8 @@ async function extractAndDownsampleAudio(
     audioData,
     wavDurationSec,
     analysisStartSec: window.startSec,
-    analysisWindowSec: audioData.length / TARGET_SAMPLE_RATE,
+    analysisWindowSec: audioData.length / targetSampleRate,
+    analysisSampleRate: targetSampleRate,
   };
 }
 
@@ -312,10 +348,15 @@ async function extractAndDownsampleAudio(
  * - Computes Spectrum once and reuses for downstream algorithms
  * - Avoids intermediate allocations
  */
-async function extractFeatures(wavFile: string, sidFile: string): Promise<FeatureVector> {
+async function extractFeatures(
+  wavFile: string,
+  sidFile: string,
+  configPath?: string
+): Promise<FeatureVector> {
+  const config = await getWorkerConfig(configPath);
   if (!essentiaAvailable || !essentiaInstance) {
     if (isAllowDegradedEnabled()) {
-      return extractBasicFeatures(wavFile, sidFile);
+      return extractBasicFeatures(wavFile, sidFile, config);
     }
     const detail = formatUnknownError(essentiaLoadError);
     const suffix = detail ? ` Details: ${detail}` : "";
@@ -330,9 +371,9 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
     const wavBuffer = await readFile(wavFile);
     const sidStats = await stat(sidFile);
     const header = parseWavHeader(wavBuffer);
-    const { audioData, analysisStartSec, wavDurationSec } = await extractAndDownsampleAudio(wavBuffer, header);
-    const fullNumSamples = Math.max(1, Math.round(wavDurationSec * TARGET_SAMPLE_RATE));
-    const analysisWindowSec = audioData.length / TARGET_SAMPLE_RATE;
+    const { audioData, analysisStartSec, analysisSampleRate, analysisWindowSec, wavDurationSec } =
+      await extractAndDownsampleAudio(wavBuffer, header, config);
+    const fullNumSamples = Math.max(1, Math.round(wavDurationSec * analysisSampleRate));
 
     if (!frameBuffer || frameBuffer.length !== ESSENTIA_FRAME_SIZE) {
       frameBuffer = new Float32Array(ESSENTIA_FRAME_SIZE);
@@ -345,14 +386,14 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
     features.rms = basic.rms;
     features.zeroCrossingRate = basic.zeroCrossingRate;
 
-    const frameSummaries = extractEssentiaFrameSummaries(essentiaInstance, audioData, TARGET_SAMPLE_RATE, {
+    const frameSummaries = extractEssentiaFrameSummaries(essentiaInstance, audioData, analysisSampleRate, {
       frame: frameBuffer,
     });
     for (const [k, v] of Object.entries(frameSummaries)) {
       features[k] = v;
     }
 
-    const bpmEstimate = estimateBpmAutocorr(audioData, TARGET_SAMPLE_RATE);
+    const bpmEstimate = estimateBpmAutocorr(audioData, analysisSampleRate);
     if (bpmEstimate && bpmEstimate.confidence >= 0.15 && Number.isFinite(bpmEstimate.bpm)) {
       features.bpm = bpmEstimate.bpm;
       features.confidence = bpmEstimate.confidence;
@@ -369,7 +410,7 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
     features.wavBytes = wavBuffer.byteLength;
     features.sidBytes = sidStats.size;
     features.sampleRate = header.sampleRate;
-    features.analysisSampleRate = TARGET_SAMPLE_RATE;
+    features.analysisSampleRate = analysisSampleRate;
     features.duration = wavDurationSec;
     features.analysisWindowSec = analysisWindowSec;
     features.analysisStartSec = analysisStartSec;
@@ -380,7 +421,7 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
     return features;
   } catch (error) {
     if (isAllowDegradedEnabled()) {
-      return extractBasicFeatures(wavFile, sidFile);
+      return extractBasicFeatures(wavFile, sidFile, config);
     }
 
     const detail = formatUnknownError(error);
@@ -397,15 +438,17 @@ async function extractFeatures(wavFile: string, sidFile: string): Promise<Featur
 /**
  * Fallback basic feature extraction when Essentia is unavailable
  */
-async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<FeatureVector> {
+async function extractBasicFeatures(
+  wavFile: string,
+  sidFile: string,
+  config: SidflowConfig
+): Promise<FeatureVector> {
   const wavBuffer = await readFile(wavFile);
   const sidStats = await stat(sidFile);
   const header = parseWavHeader(wavBuffer);
-  const { audioData, analysisStartSec, analysisWindowSec, wavDurationSec } = await extractAndDownsampleAudio(
-    wavBuffer,
-    header
-  );
-  const fullNumSamples = Math.max(1, Math.round(wavDurationSec * TARGET_SAMPLE_RATE));
+  const { audioData, analysisStartSec, analysisWindowSec, analysisSampleRate, wavDurationSec } =
+    await extractAndDownsampleAudio(wavBuffer, header, config);
+  const fullNumSamples = Math.max(1, Math.round(wavDurationSec * analysisSampleRate));
 
   let sumSquares = 0;
   let zeroCrossings = 0;
@@ -433,7 +476,7 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
     spectralCentroid: 2000,
     spectralRolloff: 4000,
     sampleRate: header.sampleRate,
-    analysisSampleRate: TARGET_SAMPLE_RATE,
+    analysisSampleRate,
     duration: wavDurationSec,
     analysisWindowSec: analysisWindowSec,
     analysisStartSec,
@@ -448,12 +491,17 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
 /**
  * Handle incoming extraction requests
  */
-async function handleExtract(jobId: number, wavFile: string, sidFile: string): Promise<void> {
+async function handleExtract(
+  jobId: number,
+  wavFile: string,
+  sidFile: string,
+  configPath?: string
+): Promise<void> {
   try {
     // Ensure Essentia is initialized (once per worker)
     await initEssentia();
     
-    const features = await extractFeatures(wavFile, sidFile);
+    const features = await extractFeatures(wavFile, sidFile, configPath);
     const response: WorkerResponse = { type: "result", jobId, features };
     parentPort!.postMessage(response);
   } catch (error) {
@@ -478,6 +526,6 @@ parentPort.on("message", (message: WorkerMessage) => {
     return;
   }
   if (message.type === "extract") {
-    void handleExtract(message.jobId, message.wavFile, message.sidFile);
+    void handleExtract(message.jobId, message.wavFile, message.sidFile, message.configPath);
   }
 });

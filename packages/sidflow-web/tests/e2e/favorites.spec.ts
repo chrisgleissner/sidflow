@@ -1,6 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from './test-hooks';
 
-if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+const hasDescribe = typeof (globalThis as unknown as { describe?: unknown }).describe === 'function';
+if (hasDescribe && !process.env.PLAYWRIGHT_TEST_SUITE) {
   console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
   process.exit(0);
 }
@@ -90,12 +91,12 @@ async function waitForFavoritesRefresh(page: Page): Promise<void> {
 }
 
 async function openFavoritesTab(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
   options: { reload?: boolean } = {}
 ): Promise<void> {
   const attemptToOpen = async () => {
     const responsePromise = page.waitForResponse(
-      (resp) => resp.url().includes('/api/favorites') && resp.request().method() === 'GET',
+      (resp: { url: () => string; request: () => { method: () => string } }) => resp.url().includes('/api/favorites') && resp.request().method() === 'GET',
       { timeout: TIMEOUTS.PAGE_LOAD }
     ).catch(() => {});
     await page.locator('[data-testid="tab-favorites"]').click();
@@ -114,7 +115,8 @@ async function openFavoritesTab(
 
   if (options.reload) {
     await page.locator('[data-testid="tab-play"]').click();
-    await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
+    // Wait for loading to settle (deterministic)
+    await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: TIMEOUTS.HMR_SETTLE }).catch(() => {});
   }
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -125,18 +127,19 @@ async function openFavoritesTab(
       if (attempt === 1) {
         throw new Error('Favorites tab failed to load after retry');
       }
-      await page.waitForTimeout(TIMEOUTS.HMR_SETTLE);
+      // Wait for loading to settle before retry (deterministic)
+      await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: TIMEOUTS.HMR_SETTLE }).catch(() => {});
     }
   }
 }
 
 // Timeout constants for consistent test behavior
 const TIMEOUTS = {
-  TEST: 45000,          // Overall test timeout
-  PAGE_LOAD: 30000,     // Page navigation timeout
+  TEST: 90_000,          // Overall test timeout
+  PAGE_LOAD: 60_000,     // Page navigation timeout
   ELEMENT_VISIBLE: 10000, // Wait for element to be visible
   ELEMENT_QUICK: 5000,  // Quick element checks
-  LOADING_STATE: 45000, // Wait for loading states to complete (server under load)
+  LOADING_STATE: 60_000, // Wait for loading states to complete (server under load)
   HMR_SETTLE: 500,      // Let HMR/hot-reload settle
 } as const;
 
@@ -149,7 +152,8 @@ test.describe('Favorites Feature', () => {
 
     // Navigate to the public player with longer timeout
     await page.goto('/', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
-    await page.waitForTimeout(TIMEOUTS.HMR_SETTLE); // Let HMR settle
+    // Wait for loading to settle (deterministic)
+    await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: TIMEOUTS.HMR_SETTLE }).catch(() => {});
 
     // Wait for the page to load
     await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
@@ -234,7 +238,8 @@ test.describe('Favorites Feature', () => {
 
     // Switch to prefs tab
     await page.locator('[data-testid="tab-prefs"]').click();
-    await page.waitForTimeout(500);
+    // Wait for loading to settle (deterministic)
+    await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 5000 }).catch(() => {});
 
     // Switch back to favorites
     await openFavoritesTab(page);

@@ -117,18 +117,29 @@ describe("classification helpers", () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidFile = path.join(root, "track.sid");
     const wavFile = path.join(root, "track.wav");
-  const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
+    const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
+    const renderSettingsFile = `${wavFile}.render.json`;
     await writeFile(sidFile, "initial");
 
-    expect(await needsWavRefresh(sidFile, wavFile, false)).toBeTrue();
+    const config = {
+      maxRenderSec: 45,
+      introSkipSec: 30,
+      maxClassifySec: 15,
+    } as any;
+
+    expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeTrue();
 
     await writeFile(wavFile, "wav");
-    expect(await needsWavRefresh(sidFile, wavFile, false)).toBeFalse();
+    await writeFile(
+      renderSettingsFile,
+      JSON.stringify({ v: 1, maxRenderSec: 45, introSkipSec: 30, maxClassifySec: 15 })
+    );
+    expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeFalse();
 
     await new Promise((resolve) => setTimeout(resolve, 5));
     await writeFile(sidFile, "updated");
     // Without hash file, should trigger refresh
-    expect(await needsWavRefresh(sidFile, wavFile, false)).toBeTrue();
+    expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeTrue();
 
     // Now simulate having a hash file
     const crypto = await import("node:crypto");
@@ -142,12 +153,12 @@ describe("classification helpers", () => {
     await utimes(sidFile, now, now);
 
     // Should not trigger refresh because hash matches
-    expect(await needsWavRefresh(sidFile, wavFile, false)).toBeFalse();
+    expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeFalse();
 
     // Change content again
     await writeFile(sidFile, "changed-content");
     // Should trigger refresh because hash doesn't match
-    expect(await needsWavRefresh(sidFile, wavFile, false)).toBeTrue();
+    expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeTrue();
 
     await rm(root, { recursive: true, force: true });
   });
@@ -161,7 +172,11 @@ describe("classification helpers", () => {
     await writeFile(sidFile, "content");
 
     const plan = {
-      config: {} as ClassificationPlan["config"],
+      config: {
+        maxRenderSec: 45,
+        introSkipSec: 30,
+        maxClassifySec: 15,
+      } as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
       sidPath,
@@ -333,6 +348,56 @@ describe("classification helpers", () => {
     expect(rendered[0].wavFile).toContain("multi-1.wav");
     expect(rendered[1].wavFile).toContain("multi-2.wav");
     expect(rendered[2].wavFile).toContain("multi-3.wav");
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("emits playlists for directories containing multiple rendered WAV files", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const sidPath = path.join(root, "hvsc");
+    const audioCachePath = path.join(root, "wav");
+    const multiDir = path.join(sidPath, "C64Music", "TEST");
+    const soloDir = path.join(sidPath, "C64Music", "SOLO");
+    await mkdir(multiDir, { recursive: true });
+    await mkdir(soloDir, { recursive: true });
+
+    await writeFile(
+      path.join(multiDir, "First.sid"),
+      createSidBuffer({ songs: 1, title: "First", author: "Tester", released: "2025" })
+    );
+    await writeFile(
+      path.join(multiDir, "Second.sid"),
+      createSidBuffer({ songs: 1, title: "Second", author: "Tester", released: "2025" })
+    );
+    await writeFile(
+      path.join(soloDir, "Only.sid"),
+      createSidBuffer({ songs: 1, title: "Only", author: "Tester", released: "2025" })
+    );
+
+    const plan = {
+      config: { maxRenderSec: 45, introSkipSec: 30, maxClassifySec: 15 } as ClassificationPlan["config"],
+      forceRebuild: false,
+      classificationDepth: 3,
+      sidPath,
+      audioCachePath,
+      tagsPath: path.join(root, "tags")
+    } as unknown as ClassificationPlan;
+
+    await buildAudioCache(plan, {
+      render: async ({ wavFile }) => {
+        await mkdir(path.dirname(wavFile), { recursive: true });
+        await writeFile(wavFile, `wav-${path.basename(wavFile)}`);
+      }
+    });
+
+    const playlistPath = path.join(audioCachePath, "C64Music", "TEST", "playlist.m3u8");
+    const playlist = await readFile(playlistPath, "utf8");
+    expect(playlist).toContain("First.wav");
+    expect(playlist).toContain("Second.wav");
+    expect(playlist.startsWith("#EXTM3U")).toBeTrue();
+
+    const soloPlaylist = path.join(audioCachePath, "C64Music", "SOLO", "playlist.m3u8");
+    await expect(readFile(soloPlaylist, "utf8")).rejects.toThrow();
 
     await rm(root, { recursive: true, force: true });
   });

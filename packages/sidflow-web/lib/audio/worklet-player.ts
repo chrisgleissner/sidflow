@@ -208,9 +208,10 @@ export class WorkletPlayer {
         reject(error);
       };
 
+      // Shared runners and busy CI can delay worker bootstrap substantially.
       this.workerLoadedTimeout = setTimeout(() => {
         this.workerLoadedReject?.(new Error('Worker load timeout'));
-      }, 10000);
+      }, 30_000);
 
       if (signal) {
         if (signal.aborted) {
@@ -252,9 +253,10 @@ export class WorkletPlayer {
         reject(error);
       };
 
+      // Worker initialization can be slow if WASM compilation is contended.
       this.workerReadyTimeout = setTimeout(() => {
         this.workerReadyReject?.(new Error('Worker ready timeout'));
-      }, 10000);
+      }, 30_000);
     });
   }
 

@@ -7,7 +7,8 @@
  * Run with: bun run test:a11y or npm run test:e2e -- accessibility.spec.ts
  */
 
-if (typeof describe === "function" && !process.env.PLAYWRIGHT_TEST_SUITE) {
+const hasDescribe = typeof (globalThis as unknown as { describe?: unknown }).describe === 'function';
+if (hasDescribe && !process.env.PLAYWRIGHT_TEST_SUITE) {
   console.log("[sidflow-web] Skipping Playwright e2e spec; run via `bun run test:e2e`.");
   process.exit(0);
 }

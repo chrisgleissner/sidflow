@@ -72,6 +72,8 @@ export interface SidflowConfig {
   maxClassifySec?: number;
   /** Seconds to skip from the start when selecting a representative classification window (default: 10) */
   introSkipSec?: number;
+  /** Sample rate (Hz) used for feature extraction after downsampling (default: 11025) */
+  analysisSampleRate?: number;
   render?: RenderSettings;
   availability?: AvailabilityConfig;
   alerts?: AlertConfig;
@@ -260,6 +262,10 @@ function validateConfig(value: unknown, configPath: string): SidflowConfig {
     maxRenderSec: optionalNumber("maxRenderSec", (n) => n > 0),
     maxClassifySec: optionalNumber("maxClassifySec", (n) => n > 0),
     introSkipSec: optionalNumber("introSkipSec", (n) => n > 0),
+    analysisSampleRate: optionalNumber(
+      "analysisSampleRate",
+      (n) => Number.isFinite(n) && n > 0 && n <= 192000
+    ),
     render: parseRenderSettings(record.render, configPath),
     availability: parseAvailabilityConfig(record.availability, configPath),
     alerts: parseAlertConfig(record.alerts, configPath),

@@ -28,6 +28,7 @@ interface Job {
   id: number;
   wavFile: string;
   sidFile: string;
+  configPath?: string;
   resolve: (features: FeatureVector) => void;
   reject: (error: Error) => void;
 }
@@ -73,6 +74,8 @@ export class FeatureExtractionPool {
         id: this.nextJobId++,
         wavFile,
         sidFile,
+        // Workers do not observe parent env changes, so pass config explicitly.
+        configPath: process.env.SIDFLOW_CONFIG,
         resolve,
         reject
       };
@@ -222,7 +225,8 @@ export class FeatureExtractionPool {
         type: "extract", 
         jobId: job.id, 
         wavFile: job.wavFile,
-        sidFile: job.sidFile
+        sidFile: job.sidFile,
+        configPath: job.configPath,
       });
     }
   }
@@ -238,7 +242,10 @@ let globalPool: FeatureExtractionPool | null = null;
 export function getFeatureExtractionPool(size?: number): FeatureExtractionPool {
   if (!globalPool) {
     const normalizedSize = size === 0 ? undefined : size;
-    const poolSize = normalizedSize ?? Math.max(1, os.cpus().length || 1);
+    const cores = Math.max(1, os.cpus().length || 1);
+    const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
+    const cappedAutoSize = Number.isInteger(envMax) && envMax > 0 ? Math.min(cores, envMax) : cores;
+    const poolSize = normalizedSize ?? cappedAutoSize;
     globalPool = new FeatureExtractionPool(poolSize);
   }
   return globalPool;

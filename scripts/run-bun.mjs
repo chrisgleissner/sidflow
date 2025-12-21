@@ -12,6 +12,8 @@ async function main() {
     process.exit(1);
   }
 
+  const isBunTest = args[0] === "test";
+
   const bunPath = await ensureBun();
   const bunDir = path.dirname(bunPath);
   const repoRoot = path.resolve(new URL("../", import.meta.url).pathname);
@@ -21,7 +23,8 @@ async function main() {
     env: {
       ...process.env,
       PATH: `${bunDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      BUN_INSTALL: path.join(repoRoot, ".bun")
+      BUN_INSTALL: path.join(repoRoot, ".bun"),
+      ...(isBunTest ? { SIDFLOW_MAX_THREADS: process.env.SIDFLOW_MAX_THREADS ?? "1" } : {})
     }
   });
 

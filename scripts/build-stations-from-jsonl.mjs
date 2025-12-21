@@ -17,6 +17,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+const MIN_BPM_CONFIDENCE = 0.15;
+// Hard tempo constraint: avoid mixing slow vs fast. We allow modest variation,
+// and also consider half/double BPM to reduce false mismatches.
+const MAX_TEMPO_RATIO = 1.35;
+const MIN_PLAUSIBLE_BPM = 40;
+const MAX_PLAUSIBLE_BPM = 300;
+
 function parseArgs(argv) {
   const args = {
     jsonl: undefined,
@@ -26,7 +33,8 @@ function parseArgs(argv) {
     size: 20,
     seed: 42,
     seedKey: undefined,
-     seedMode: "extremes", // random | extremes
+    seedKeysFile: undefined,
+    seedMode: "extremes", // random | extremes
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -38,10 +46,11 @@ function parseArgs(argv) {
     else if (a === "--size") args.size = Number(argv[++i]);
     else if (a === "--seed") args.seed = Number(argv[++i]);
     else if (a === "--seed-key") args.seedKey = argv[++i];
+    else if (a === "--seed-keys-file") args.seedKeysFile = argv[++i];
     else if (a === "--seed-mode") args.seedMode = argv[++i];
     else if (a === "--help" || a === "-h") {
       console.log(
-        `Usage:\n  node scripts/build-stations-from-jsonl.mjs --jsonl <file> [--wav-cache <dir>] [--out <dir>] [--stations N] [--size N] [--seed N] [--seed-key <sid_path[:index]>] [--seed-mode random|extremes]`
+        `Usage:\n  node scripts/build-stations-from-jsonl.mjs --jsonl <file> [--wav-cache <dir>] [--out <dir>] [--stations N] [--size N] [--seed N] [--seed-key <sid_path[:index]>] [--seed-keys-file <file>] [--seed-mode random|extremes]`
       );
       process.exit(0);
     } else {
@@ -228,6 +237,40 @@ function clamp01(x) {
   return Math.min(1, Math.max(0, x));
 }
 
+function isFiniteNumber(x) {
+  return typeof x === "number" && Number.isFinite(x);
+}
+
+function normalizeBpmToAnchor(bpm, anchorBpm) {
+  if (!isFiniteNumber(bpm) || !isFiniteNumber(anchorBpm)) return null;
+
+  const candidates = [bpm, bpm * 2, bpm / 2].filter(
+    (x) => x >= MIN_PLAUSIBLE_BPM && x <= MAX_PLAUSIBLE_BPM
+  );
+  if (candidates.length === 0) return null;
+
+  let best = candidates[0];
+  let bestScore = Infinity;
+  for (const c of candidates) {
+    const ratio = Math.max(anchorBpm, c) / Math.min(anchorBpm, c);
+    // Compare in log space so ratios are symmetric.
+    const score = Math.abs(Math.log(ratio));
+    if (score < bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
+function tempoCompatible(anchorBpm, candidateBpm) {
+  if (!isFiniteNumber(anchorBpm) || !isFiniteNumber(candidateBpm)) return false;
+  const normalized = normalizeBpmToAnchor(candidateBpm, anchorBpm);
+  if (!isFiniteNumber(normalized)) return false;
+  const ratio = Math.max(anchorBpm, normalized) / Math.min(anchorBpm, normalized);
+  return ratio <= MAX_TEMPO_RATIO;
+}
+
 function distanceZ(a, b, std, weights, bpmIndex, aBpmConfidence, bBpmConfidence) {
   let sum = 0;
   for (let i = 0; i < a.length; i++) {
@@ -243,8 +286,127 @@ function distanceZ(a, b, std, weights, bpmIndex, aBpmConfidence, bBpmConfidence)
   return Math.sqrt(sum);
 }
 
+function pickCohesiveSubset(seed, candidates, std, weights, bpmIndex, size) {
+  // Greedy cohesion selection:
+  // 1) Preselect a reasonably sized pool of closest-to-seed candidates
+  // 2) Greedily add the candidate with smallest average distance to the current set
+  // Deterministic tie-breaker: candidate.key
+  const poolSize = Math.min(200, candidates.length);
+  const pool = candidates.slice(0, poolSize);
+
+  const selected = [];
+  const selectedKeys = new Set();
+
+  // Establish an anchor tempo as early as possible.
+  const seedBpm = bpmIndex >= 0 ? seed.vector?.[bpmIndex] : null;
+  const seedHasConfidentBpm = isFiniteNumber(seedBpm) && clamp01(seed.bpmConfidence) >= MIN_BPM_CONFIDENCE;
+  let anchorBpm = seedHasConfidentBpm ? seedBpm : null;
+
+  while (selected.length < Math.min(size, pool.length)) {
+    let best = null;
+    let bestScore = Infinity;
+    let bestKey = "";
+
+    for (const cand of pool) {
+      if (selectedKeys.has(cand.key)) continue;
+
+      // Hard tempo gating: require confident BPM for membership and keep within a ratio.
+      const candBpm = bpmIndex >= 0 ? cand.vector?.[bpmIndex] : null;
+      const candHasConfidentBpm = isFiniteNumber(candBpm) && clamp01(cand.bpmConfidence) >= MIN_BPM_CONFIDENCE;
+      if (!candHasConfidentBpm) continue;
+
+      if (anchorBpm !== null && !tempoCompatible(anchorBpm, candBpm)) continue;
+
+      // Average distance to (seed + selected).
+      let sum = 0;
+      let count = 0;
+
+      sum += distanceZ(
+        seed.vector,
+        cand.vector,
+        std,
+        weights,
+        bpmIndex,
+        seed.bpmConfidence,
+        cand.bpmConfidence
+      );
+      count++;
+
+      for (const s of selected) {
+        sum += distanceZ(
+          s.vector,
+          cand.vector,
+          std,
+          weights,
+          bpmIndex,
+          s.bpmConfidence,
+          cand.bpmConfidence
+        );
+        count++;
+      }
+
+      const score = sum / count;
+      if (
+        score < bestScore ||
+        (score === bestScore && (best === null || cand.key < bestKey))
+      ) {
+        best = cand;
+        bestScore = score;
+        bestKey = cand.key;
+      }
+    }
+
+    if (!best) break;
+    selected.push(best);
+    selectedKeys.add(best.key);
+
+    if (anchorBpm === null && bpmIndex >= 0) {
+      const bpm = best.vector?.[bpmIndex];
+      if (isFiniteNumber(bpm) && clamp01(best.bpmConfidence) >= MIN_BPM_CONFIDENCE) {
+        anchorBpm = bpm;
+      }
+    }
+  }
+
+  // Sort selected by distance-to-seed for stable ranking labels.
+  selected.sort((a, b) => a.dist - b.dist || a.key.localeCompare(b.key));
+  return selected;
+}
+
 async function ensureDir(dirPath) {
   await fs.mkdir(dirPath, { recursive: true });
+}
+
+async function writeStationPlaylist(dirPath, playlistName = "station.m3u8") {
+  const playlistPath = path.join(dirPath, playlistName);
+  let entries;
+  try {
+    entries = await fs.readdir(dirPath, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  const wavFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".wav"))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+
+  if (wavFiles.length < 2) {
+    await fs.rm(playlistPath, { force: true });
+    return;
+  }
+
+  const lines = ["#EXTM3U"];
+  for (const wav of wavFiles) {
+    const label = wav.replace(/\.wav$/i, "");
+    lines.push(`#EXTINF:-1,${label}`);
+    lines.push(wav);
+  }
+
+  await fs.writeFile(playlistPath, `${lines.join("\n")}\n`, "utf8");
 }
 
 async function main() {
@@ -320,8 +482,14 @@ async function main() {
   for (const r of records) {
     const v = getVector(r, dims);
     if (!v) continue;
+
+    // Tempo is paramount: only keep records with a reasonably confident BPM.
+    const bpmConf = r?.features?.confidence;
+    const bpmVal = bpmIndex >= 0 ? v[bpmIndex] : null;
+    if (!isFiniteNumber(bpmVal) || !isFiniteNumber(bpmConf) || clamp01(bpmConf) < MIN_BPM_CONFIDENCE) continue;
+
     vectors.push(v);
-    usable.push({ record: r, vector: v, key: recordKey(r), bpmConfidence: r?.features?.confidence });
+    usable.push({ record: r, vector: v, key: recordKey(r), bpmConfidence: bpmConf });
   }
 
   if (usable.length < args.stations) {
@@ -333,13 +501,35 @@ async function main() {
 
   await ensureDir(outAbs);
 
+  const seedIndices = [];
+  const seedIndexSet = new Set();
+
+  if (args.seedKeysFile) {
+    const seedFileAbs = path.resolve(args.seedKeysFile);
+    const seedText = await fs.readFile(seedFileAbs, "utf8");
+    const seedKeys = seedText
+      .split(/\r?\n/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    for (const key of seedKeys) {
+      if (seedIndices.length >= args.stations) break;
+      const idx = findSeedIndex(usable, key);
+      if (idx < 0) {
+        throw new Error(`--seed-keys-file contains key not found in JSONL records: ${key}`);
+      }
+      if (seedIndexSet.has(idx)) continue;
+      seedIndexSet.add(idx);
+      seedIndices.push(idx);
+    }
+  }
+
   const explicitSeedIndex = findSeedIndex(usable, args.seedKey);
   if (args.seedKey && explicitSeedIndex < 0) {
     throw new Error(`--seed-key not found in JSONL records: ${args.seedKey}`);
   }
-
-  const seedIndices = [];
-  if (explicitSeedIndex >= 0) {
+  if (explicitSeedIndex >= 0 && !seedIndexSet.has(explicitSeedIndex)) {
+    seedIndexSet.add(explicitSeedIndex);
     seedIndices.push(explicitSeedIndex);
   }
 
@@ -418,10 +608,34 @@ async function main() {
       const dist = distanceZ(seed.vector, candidate.vector, std, weights, bpmIndex, seed.bpmConfidence, candidate.bpmConfidence);
       scored.push({ candidate, dist, similarity: 1 / (1 + dist) });
     }
-    scored.sort((a, b) => a.dist - b.dist);
+    scored.sort((a, b) => {
+      const d = a.dist - b.dist;
+      if (d !== 0) return d;
+      return String(a.candidate?.key ?? "").localeCompare(String(b.candidate?.key ?? ""));
+    });
 
-    const take = Math.min(args.size, scored.length);
-    const picked = scored.slice(0, take);
+    // Cohesion-aware selection: keeps stations from containing mutually dissimilar tracks.
+    const pickedCandidates = pickCohesiveSubset(
+      seed,
+      scored.map((s) => ({
+        key: s.candidate.key,
+        record: s.candidate.record,
+        vector: s.candidate.vector,
+        bpmConfidence: s.candidate.bpmConfidence,
+        dist: s.dist,
+        similarity: s.similarity,
+      })),
+      std,
+      weights,
+      bpmIndex,
+      args.size
+    );
+
+    const picked = pickedCandidates.map((p) => ({
+      candidate: { key: p.key, record: p.record, vector: p.vector, bpmConfidence: p.bpmConfidence },
+      dist: p.dist,
+      similarity: p.similarity,
+    }));
 
     const seedWav = wavNameForRecord(seed.record);
     const seedLabel = sanitizeForPath(recordKey(seed.record));
@@ -440,6 +654,8 @@ async function main() {
         dims,
         weights,
         distance: "euclidean(z-scored)",
+        selection: "cohesion-greedy",
+        selectionPool: Math.min(200, scored.length),
         seed: args.seed,
         seedMode: args.seedMode,
         size: args.size,
@@ -510,6 +726,7 @@ async function main() {
     }
 
     await fs.writeFile(path.join(stationDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+    await writeStationPlaylist(stationDir);
 
     stationsIndex.push({
       stationId,

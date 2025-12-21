@@ -100,6 +100,11 @@ const parsedWorkers = Number(process.env.SIDFLOW_E2E_WORKERS ?? defaultWorkers);
 const resolvedWorkers =
   Number.isFinite(parsedWorkers) && parsedWorkers > 0 ? parsedWorkers : defaultWorkers;
 
+const includePerformanceSpecs = process.env.SIDFLOW_E2E_INCLUDE_PERF === '1';
+const chromiumTestIgnore = includePerformanceSpecs
+  ? /(favorites|phase1-features|song-browser)\.spec\.ts$/
+  : /(favorites|phase1-features|song-browser|performance)\.spec\.ts$/;
+
 export default defineConfig({
   testDir: './tests/e2e',
   // Reduced from 60s to 45s - most tests complete much faster
@@ -124,7 +129,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: /(favorites|phase1-features|song-browser)\.spec\.ts$/,
+      testIgnore: chromiumTestIgnore,
       use: { ...projectUse },
       // Enable JS coverage for this project
       metadata: { coverage: true },

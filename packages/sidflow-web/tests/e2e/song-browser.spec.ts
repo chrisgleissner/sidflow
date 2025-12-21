@@ -224,7 +224,7 @@ if (!isPlaywrightRunner) {
   test.describe('Volume Control', () => {
     test.beforeEach(async ({ page }) => {
       await installSongBrowserFixtures(page);
-      await page.goto('http://localhost:3000', { timeout: 30000 });
+      await page.goto('http://localhost:3000', { timeout: 60_000, waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('domcontentloaded');
       await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
       const playTab = page.getByRole('tab', { name: /play/i });
@@ -266,13 +266,30 @@ if (!isPlaywrightRunner) {
 
   test.describe('Playback Mode Display', () => {
     test.beforeEach(async ({ page }) => {
+      test.setTimeout(90_000);
+
       await installSongBrowserFixtures(page);
-      await page.goto('http://localhost:3000', { timeout: 30000 });
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await page.goto('http://localhost:3000/?tab=play', { timeout: 60_000, waitUntil: 'domcontentloaded' });
+          await page.waitForLoadState('domcontentloaded');
+          await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 15_000 }).catch(() => {});
+          break;
+        } catch (err) {
+          if (attempt === 1) {
+            throw err;
+          }
+          // Wait for loading to settle (deterministic)
+          await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 3000 }).catch(() => {});
+        }
+      }
+
       const playTab = page.getByRole('tab', { name: /play/i });
-      await playTab.click();
-      await page.waitForLoadState('domcontentloaded');
+      const selected = await playTab.getAttribute('aria-selected');
+      if (selected !== 'true') {
+        await playTab.click({ timeout: 15_000 });
+      }
     });
 
     test('shows default mood station mode', async ({ page }) => {
@@ -306,12 +323,23 @@ if (!isPlaywrightRunner) {
 
   test.describe('Play Controls', () => {
     test.beforeEach(async ({ page }) => {
-      test.setTimeout(30000); // Increase timeout for dev mode
+      test.setTimeout(90_000);
 
       await installSongBrowserFixtures(page);
-      await page.goto('http://localhost:3000', { timeout: 30000 });
-      await page.waitForLoadState('domcontentloaded');
-      await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await page.goto('http://localhost:3000', { timeout: 60_000, waitUntil: 'domcontentloaded' });
+          await page.waitForLoadState('domcontentloaded');
+          await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 15_000 }).catch(() => {});
+          break;
+        } catch (err) {
+          if (attempt === 1) {
+            throw err;
+          }
+          // Wait for loading to settle (deterministic)
+          await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 3000 }).catch(() => {});
+        }
+      }
       const playTab = page.getByRole('tab', { name: /play/i });
       await playTab.click();
       await page.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 5000 }).catch(() => {});

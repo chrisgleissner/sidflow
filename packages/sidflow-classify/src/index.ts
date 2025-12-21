@@ -17,6 +17,7 @@ import {
   sidMetadataToJson,
   stringifyDeterministic,
   toPosixRelative,
+  updateDirectoryPlaylist,
   writeCanonicalJsonLines,
   writeCanonicalJsonFile,
   type AudioFeatures,
@@ -58,6 +59,63 @@ const classifyLogger = createLogger("classify");
 
 /** Heartbeat interval for long-running operations (ms) */
 const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
+
+const WAV_RENDER_SETTINGS_EXTENSION = ".render.json";
+
+type WavRenderSettingsSidecar = {
+  v: 1;
+  maxRenderSec: number;
+  introSkipSec: number;
+  maxClassifySec: number;
+};
+
+function resolveIntroSkipSec(config: SidflowConfig): number {
+  return typeof config.introSkipSec === "number" && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
+    ? config.introSkipSec
+    : 30;
+}
+
+function resolveMaxClassifySec(config: SidflowConfig): number {
+  return typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
+    ? config.maxClassifySec
+    : 15;
+}
+
+async function writeWavRenderSettingsSidecar(
+  wavFile: string,
+  settings: WavRenderSettingsSidecar
+): Promise<void> {
+  const sidecarPath = `${wavFile}${WAV_RENDER_SETTINGS_EXTENSION}`;
+  try {
+    await writeFile(sidecarPath, `${stringifyDeterministic(settings)}\n`, "utf8");
+  } catch {
+    // Best-effort only.
+  }
+}
+
+async function readWavRenderSettingsSidecar(wavFile: string): Promise<WavRenderSettingsSidecar | null> {
+  const sidecarPath = `${wavFile}${WAV_RENDER_SETTINGS_EXTENSION}`;
+  if (!(await pathExists(sidecarPath))) {
+    return null;
+  }
+  try {
+    const raw = await readFile(sidecarPath, "utf8");
+    const parsed = JSON.parse(raw) as Partial<WavRenderSettingsSidecar>;
+    if (!parsed || parsed.v !== 1) {
+      return null;
+    }
+    if (
+      typeof parsed.maxRenderSec !== "number" ||
+      typeof parsed.introSkipSec !== "number" ||
+      typeof parsed.maxClassifySec !== "number"
+    ) {
+      return null;
+    }
+    return parsed as WavRenderSettingsSidecar;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Maximum render duration when creating WAV artifacts (ms).
@@ -178,6 +236,12 @@ function resolveThreadCount(requested?: number): number {
     return Math.max(1, Math.floor(requested));
   }
   const cores = os.cpus().length || 1;
+
+  const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
+  if (Number.isInteger(envMax) && envMax > 0) {
+    return Math.max(1, Math.min(cores, envMax));
+  }
+
   return Math.max(1, cores);
 }
 
@@ -418,7 +482,7 @@ export async function cleanAudioCache(audioCachePath: string): Promise<number> {
     return 0;
   }
 
-  const audioExtensions = [".wav", ".flac", ".m4a", WAV_HASH_EXTENSION];
+  const audioExtensions = [".wav", ".flac", ".m4a", WAV_HASH_EXTENSION, WAV_RENDER_SETTINGS_EXTENSION];
   let deletedCount = 0;
 
   async function cleanDir(current: string): Promise<void> {
@@ -450,7 +514,8 @@ export async function cleanAudioCache(audioCachePath: string): Promise<number> {
 export async function needsWavRefresh(
   sidFile: string,
   wavFile: string,
-  forceRebuild: boolean
+  forceRebuild: boolean,
+  configOverride?: SidflowConfig
 ): Promise<boolean> {
   if (forceRebuild) {
     return true;
@@ -458,6 +523,31 @@ export async function needsWavRefresh(
 
   if (!(await pathExists(wavFile))) {
     return true;
+  }
+
+  // The cached WAV is sliced in-place according to representative-window settings.
+  // If these settings change, the cache is no longer comparable/reproducible.
+  try {
+    const config = configOverride ?? (await loadConfig(process.env.SIDFLOW_CONFIG));
+    const desired: WavRenderSettingsSidecar = {
+      v: 1,
+      maxRenderSec: resolveEffectiveMaxRenderSec(config),
+      introSkipSec: resolveIntroSkipSec(config),
+      maxClassifySec: resolveMaxClassifySec(config),
+    };
+    const existing = await readWavRenderSettingsSidecar(wavFile);
+    if (!existing) {
+      return true;
+    }
+    if (
+      existing.maxRenderSec !== desired.maxRenderSec ||
+      existing.introSkipSec !== desired.introSkipSec ||
+      existing.maxClassifySec !== desired.maxClassifySec
+    ) {
+      return true;
+    }
+  } catch {
+    // If config is unavailable, fall back to legacy SID-hash behavior.
   }
 
   const [sidStats, wavStats] = await Promise.all([stat(sidFile), stat(wavFile)]);
@@ -570,6 +660,16 @@ export const defaultRenderWav: RenderWav = async (options) => {
     } catch {
       // Best-effort only.
     }
+
+    await writeWavRenderSettingsSidecar(options.wavFile, {
+      v: 1,
+      maxRenderSec:
+        typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
+          ? options.maxRenderSeconds
+          : resolveEffectiveMaxRenderSec(config),
+      introSkipSec: introSkipSeconds,
+      maxClassifySec: maxClassifySeconds,
+    });
   } else if (useCli) {
     // Use sidplayfp-cli via RenderOrchestrator for WAV-only
     const orchestrator = new RenderOrchestrator({
@@ -609,6 +709,16 @@ export const defaultRenderWav: RenderWav = async (options) => {
     } catch {
       // Best-effort only.
     }
+
+    await writeWavRenderSettingsSidecar(options.wavFile, {
+      v: 1,
+      maxRenderSec:
+        typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
+          ? options.maxRenderSeconds
+          : resolveEffectiveMaxRenderSec(config),
+      introSkipSec: introSkipSeconds,
+      maxClassifySec: maxClassifySeconds,
+    });
   } else {
     // Use the WASM engine directly for WAV-only (no multi-format support yet)
     // Multi-format with WASM is marked as 'future' in render matrix
@@ -632,6 +742,16 @@ export const defaultRenderWav: RenderWav = async (options) => {
       });
       await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
     }
+
+    await writeWavRenderSettingsSidecar(options.wavFile, {
+      v: 1,
+      maxRenderSec:
+        typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
+          ? options.maxRenderSeconds
+          : resolveEffectiveMaxRenderSec(config),
+      introSkipSec: introSkipSeconds,
+      maxClassifySec: maxClassifySeconds,
+    });
     
     // TODO: When WASM multi-format is implemented (render matrix status: mvp),
     // add audio encoding here for defaultFormats containing flac/m4a
@@ -702,6 +822,7 @@ export async function buildAudioCache(
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+  const playlistDirs = new Set<string>();
 
   const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
     const existing = songlengthPromises.get(sidFile);
@@ -767,7 +888,7 @@ export async function buildAudioCache(
           file: songLabel
         });
 
-        const needsRefresh = await needsWavRefresh(sidFile, wavFile, shouldForce);
+        const needsRefresh = await needsWavRefresh(sidFile, wavFile, shouldForce, plan.config);
         if (debugLogCount < 5) {
           classifyLogger.debug(
             `needsWavRefresh(${songLabel}): ${needsRefresh}, wavFile: ${wavFile}`
@@ -828,6 +949,8 @@ export async function buildAudioCache(
       songsToRender,
       buildConcurrency,
       async ({ sidFile, songIndex, wavFile, songCount }, context) => {
+        const wavDir = path.dirname(wavFile);
+        playlistDirs.add(wavDir);
         if (rendered.length < 3) {
           classifyLogger.debug(
             `Thread ${context.threadId} starting to render: ${wavFile}`
@@ -938,6 +1061,17 @@ export async function buildAudioCache(
             classifyLogger.debug(`Unable to truncate rendered WAV for ${songLabel}: ${message}`);
           }
         }
+
+        if (renderSucceeded) {
+          // Keep cache reproducible even for injected renderers: record the effective
+          // representative-window settings used to produce the WAV.
+          await writeWavRenderSettingsSidecar(wavFile, {
+            v: 1,
+            maxRenderSec: effectiveMaxRenderSeconds,
+            introSkipSec: resolveIntroSkipSec(plan.config),
+            maxClassifySec: resolveMaxClassifySec(plan.config),
+          });
+        }
         
         if (renderSucceeded) {
           rendered.push(wavFile);
@@ -946,6 +1080,8 @@ export async function buildAudioCache(
               `Thread ${context.threadId} successfully rendered: ${wavFile}`
             );
           }
+
+          await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
 
           if (onProgress) {
             const processed = skipped.length + rendered.length;
@@ -973,6 +1109,10 @@ export async function buildAudioCache(
     if (rendererPool) {
       await rendererPool.destroy();
     }
+  }
+
+  for (const dir of playlistDirs) {
+    await updateDirectoryPlaylist(dir, { playlistName: "playlist.m3u8" });
   }
 
   const endTime = Date.now();
@@ -1372,11 +1512,18 @@ export async function generateAutoTags(
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
   
-  // If force rebuild is requested, delete all existing audio files first
-  if (plan.forceRebuild) {
+  // If force rebuild is requested, we typically clean the whole audio cache to
+  // guarantee fresh renders. However, when running a filtered classification
+  // (sidPathPrefix/limit), a full cache purge is surprising and very expensive.
+  // The per-file force-rebuild logic already re-renders selected WAVs.
+  if (plan.forceRebuild && !options.sidPathPrefix) {
     classifyLogger.info("Force rebuild requested - cleaning audio cache...");
     const deletedCount = await cleanAudioCache(plan.audioCachePath);
     classifyLogger.info(`Deleted ${deletedCount} audio files from cache`);
+  } else if (plan.forceRebuild && options.sidPathPrefix) {
+    classifyLogger.info(
+      `Force rebuild requested (sidPathPrefix=${options.sidPathPrefix}) - skipping full audio cache clean`
+    );
   }
   
   let sidFiles = await collectSidFiles(plan.sidPath);
@@ -1667,17 +1814,18 @@ export async function generateAutoTags(
     }
 
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
-    const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
-    const taggingStartedAt = Date.now();
-    onThreadUpdate?.({
-      threadId: context.threadId,
-      phase: "tagging",
-      status: "working",
-      file: songLabel,
-      timestamp: taggingStartedAt,
-      songIndex: job.songCount > 1 ? job.songIndex : undefined,
-    });
-    const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
+      const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
+      const wavDir = path.dirname(job.wavPath);
+      const taggingStartedAt = Date.now();
+      onThreadUpdate?.({
+        threadId: context.threadId,
+        phase: "tagging",
+        status: "working",
+        file: songLabel,
+        timestamp: taggingStartedAt,
+        songIndex: job.songCount > 1 ? job.songIndex : undefined,
+      });
+      const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
 
     // Always ensure we have a WAV and extract features for every song.
     // Stations depend on objective features, not just ratings.
@@ -1749,6 +1897,8 @@ export async function generateAutoTags(
     } else {
       cachedFilesCount += 1;
     }
+
+      await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
 
       if (onProgress) {
         onProgress({

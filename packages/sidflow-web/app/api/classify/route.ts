@@ -45,7 +45,16 @@ export async function POST(request: NextRequest) {
     if (resolvedRequestedPath) {
       await fs.stat(resolvedRequestedPath);
     }
-    const threads = config.threads && config.threads > 0 ? config.threads : os.cpus().length;
+    const threads = config.threads && config.threads > 0
+      ? config.threads
+      : (() => {
+          const cores = os.cpus().length || 1;
+          const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
+          if (Number.isInteger(envMax) && envMax > 0) {
+            return Math.max(1, Math.min(cores, envMax));
+          }
+          return Math.max(1, cores);
+        })();
     
     // Resolve engine preferences
     const preferredEngines: RenderTechnology[] = [];
