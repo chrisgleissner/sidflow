@@ -419,6 +419,11 @@ if (!isPlaywrightRunner) {
 
             // Select a mood preset (Radix UI Select)
             await page.getByRole('combobox').first().click();
+            // Wait for dropdown options to render before selecting
+            await page.waitForFunction(() => {
+                const options = document.querySelectorAll('[role="option"]');
+                return options.length > 0;
+            }, { timeout: 30_000 });
             await page.getByRole('option', { name: 'Energetic' }).click();
 
             // Wait for playlist to populate - button text changes from "PLAYLIST EMPTY" to "PLAY NEXT TRACK"

@@ -161,7 +161,7 @@ test.describe('Social Features', () => {
         await page.goto('/?tab=profiles', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Wait for loading to complete (deterministic)
-        await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 5000 }).catch(() => {});
+        await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 15_000 }).catch(() => {});
 
         // Should see search form - look for username input specifically
         const searchInput = page.locator('input[type="text"]').first();
@@ -190,7 +190,7 @@ test.describe('Social Features', () => {
         await page.goto('/?tab=charts', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
         // Wait for loading to complete (deterministic)
-        await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 5000 }).catch(() => {});
+        await page.waitForFunction(() => document.querySelector('.animate-spin') === null, { timeout: 15_000 }).catch(() => {});
 
         // Should see charts content - check for visible content
         const visiblePanel = page.locator('[role="tabpanel"]:visible');
