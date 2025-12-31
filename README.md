@@ -3,27 +3,32 @@
 
 # SIDFlow
 
-Listen to C64 SID music with mood-based playback and a local web UI.
+A seamless stream of similar Commodore 64 SID songs.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/chrisgleissner/sidflow/ci.yaml?branch=main&logo=github&label=CI)](https://github.com/chrisgleissner/sidflow/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/chrisgleissner/sidflow/graph/badge.svg?token=ynAHHsMqMG)](https://codecov.io/github/chrisgleissner/sidflow)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
----
 
-## Overview
-
-**SIDFlow** is a CLI-first pipeline (fetch → classify → train → play) with an optional web interface.
-It works with the [High Voltage SID Collection](https://www.hvsc.c64.org/) (HVSC) or any local folder tree of `.sid` files.
+> [!NOTE]
+> This project is under active development. Some documented features may not yet be fully functional.
 
 ---
 
 ## Features
 
-- **Web player + admin console**: playback, search/browse, favorites, playlists, and pipeline controls.
-- **Audio classification**: renders SIDs to WAV, extracts audio features (Essentia.js when available; heuristic fallback otherwise), and writes JSONL output.
-- **Ratings + recommendations**: supports simple mood presets and similarity-based stations (LanceDB); can incorporate manual ratings and feedback where available.
+- **Automatic SID analysis**  
+  Structural and audio feature extraction used to compare tracks without manual metadata.
+
+- **Similarity-based SID stations**  
+  Automatically generate stations from a selected track based on analysed song structure.
+
+- **Web-based player**  
+  Browse, search, and play SID music, manage favourites, and build playlists.
+
+- **CLI tools**  
+  Optional command-line utilities for analysis, classification, and automation.
 
 ---
 
