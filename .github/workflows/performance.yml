@@ -1,9 +1,10 @@
 name: Nightly Performance Tests
 
 on:
-  schedule:
+  # schedule:
     # Run every night at 2:00 AM UTC
-    - cron: '0 2 * * *'
+    # TODO Enable once fixed
+    # - cron: '0 2 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
