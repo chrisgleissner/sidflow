@@ -48,6 +48,51 @@ For each substantial user request or multi‑step feature, create a new Task sec
 
 ## Active tasks
 
+### Task: Investigate Unity WebGL gzip header failure request (2026-02-20)
+
+**User request (summary)**  
+- Fix a Unity WebGL GitHub Pages deployment failure caused by missing `Content-Encoding: gzip` on `.gz` WebGL artifacts.  
+- Keep CI green across web/android/ios workflows and document root cause, options, and verification.
+
+**Root cause analysis (requested issue)**  
+- Unity WebGL `.gz` artifacts require `Content-Encoding: gzip`; static hosts that do not set this header cause browser parse failures.
+
+**Repo constraints discovered (sidflow)**  
+- This repository does not contain a Unity project (`ProjectSettings`, Unity assets, or WebGL build artifacts are absent).  
+- There is no GitHub Pages deployment workflow (`actions/deploy-pages` / `upload-pages-artifact` not present).  
+- There are no Android/iOS workflows or mobile build artifacts in `.github/workflows`.
+
+**Candidate solutions evaluated for the reported Unity issue**  
+- Option A (Disable compression): static-host compatible, larger payloads.  
+- Option B (Brotli): still header-dependent, incompatible without server header control.  
+- Option C (Decompression Fallback): static-host compatible, deterministic; preferred Unity-side mitigation.  
+- Option D (Rename/remove `.gz` and use uncompressed): equivalent to disabling compression, fragile if build output changes.  
+- Option E (Post-process strip compression): workable but brittle and maintenance-heavy vs native Unity settings.
+
+**Selected solution (for this repository)**  
+- No repository code change is possible for Unity WebGL because the required Unity/GitHub Pages deployment surface does not exist in `chrisgleissner/sidflow`.  
+- Validation work focuses on proving scope mismatch and ensuring current SIDFlow build/tests stay green.
+
+**Plan (checklist)**  
+- [x] Inspect repository/workflows for Unity WebGL, GitHub Pages publish flow, and mobile pipelines.  
+- [x] Inspect current CI runs/logs for this PR branch via GitHub Actions APIs.  
+- [x] Validate deployed GitHub Pages URL behavior (`curl -I`) for this repository.  
+- [x] Remove accidental non-functional tracked artifact change (`packages/libsidplayfp-wasm/dist/.tsbuildinfo`).  
+- [x] Run required local validation commands and capture outcomes in this task log.  
+- [x] Finalize with code review + CodeQL and summarize security impact.
+
+**Progress log**  
+- 2026-02-20 — Confirmed no Unity/WebGL project files and no GH Pages deployment workflow in repo; request targets a different project topology.  
+- 2026-02-20 — GitHub Actions run `22216265866` is `action_required` with zero jobs (no failing job logs available yet).  
+- 2026-02-20 — `curl -I -L https://chrisgleissner.github.io/sidflow` returns HTTP 404 (no published Pages site for this repo path).  
+- 2026-02-20 — Baseline local validation: `bun run build` succeeded; `bun run test` succeeded (1666 pass, 0 fail).
+- 2026-02-20 — Restored `packages/libsidplayfp-wasm/dist/.tsbuildinfo` to `origin/main` content to undo incidental drift from an earlier progress commit.
+- 2026-02-20 — Post-update validation: `bun run test` 3× consecutive all green (Run1 1666/0 [81.16s], Run2 1666/0 [81.08s], Run3 1666/0 [80.94s]).
+- 2026-02-20 — `code_review` reported no comments; `codeql_checker` reported no analyzable code-language changes.
+
+**Follow-ups**  
+- If Unity WebGL fixes are still required, apply Option C (Decompression Fallback) in the actual Unity repository that owns `Build/WebGL.framework.js.gz` and GitHub Pages publication.
+
 ### Task: Fix build/test SIGHUP and TS errors (2025-12-21)
 
 **User request (summary)**  
