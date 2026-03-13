@@ -167,7 +167,7 @@ export function getAdminConfig(): AdminConfig {
   }
 
   const username = process.env.SIDFLOW_ADMIN_USER ?? 'admin';
-  const password = process.env.SIDFLOW_ADMIN_PASSWORD ?? 'password';
+  const password = process.env.SIDFLOW_ADMIN_PASSWORD ?? (productionMode ? '' : 'password');
   if (!productionMode && process.env.SIDFLOW_ADMIN_PASSWORD == null) {
     // Warn loudly in dev if the insecure default is in use; do not crash.
     // This keeps /admin usable out of the box but makes it obvious in logs.
