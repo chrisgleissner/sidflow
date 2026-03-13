@@ -5,7 +5,7 @@ import { readFile, stat, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { ensureDir, pathExists, stringifyDeterministic } from '@sidflow/common';
+import { ensureDir, pathExists, stringifyDeterministic, type JsonValue } from '@sidflow/common';
 import { resolveFromRepoRoot } from '@/lib/server-env';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import type {
@@ -124,7 +124,7 @@ async function persistPlaybackSessions(now: number = Date.now()): Promise<void> 
         updatedAt: new Date(now).toISOString(),
         sessions: Array.from(sessions.values()),
     };
-    await writeFile(manifestPath, stringifyDeterministic(manifest), 'utf8');
+    await writeFile(manifestPath, stringifyDeterministic(manifest as unknown as JsonValue), 'utf8');
 }
 
 function normalizeRomPaths(input?: Partial<Record<SessionRomKind, string | null>> | null): SessionRomPaths | undefined {

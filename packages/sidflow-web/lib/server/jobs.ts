@@ -1,4 +1,4 @@
-import type { ClassifyProgressSnapshot } from '@/lib/types/classify-progress';
+import type { ClassifyProgressSnapshot, ClassifyThreadStatus } from '@/lib/types/classify-progress';
 import type { FetchProgressSnapshot } from '@/lib/types/fetch-progress';
 import { JobOrchestrator, pathExists, type JobDescriptor, type JobStatus, type JobType } from '@sidflow/common';
 import { resolveFromRepoRoot } from '@/lib/server-env';
@@ -169,7 +169,7 @@ export function buildClassifyProgressSnapshot(job: JobDescriptor | null): Classi
         : 'analyzing';
   const message = progress?.message
     ?? (job.status === 'pending' ? 'Classification job queued' : 'Classification job running');
-  const perThread = Array.from({ length: threads }, (_, index) => ({
+  const perThread: ClassifyThreadStatus[] = Array.from({ length: threads }, (_, index) => ({
     id: index + 1,
     status: job.status === 'completed' ? 'idle' : 'working',
     phase: phase === 'error' || phase === 'paused' || phase === 'completed' ? undefined : 'analyzing',

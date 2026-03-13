@@ -6,7 +6,7 @@
 
 import path from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
-import { ensureDir, pathExists, stringifyDeterministic } from '@sidflow/common';
+import { ensureDir, pathExists, stringifyDeterministic, type JsonValue } from '@sidflow/common';
 import { resolveFromRepoRoot } from '@/lib/server-env';
 
 export interface RateLimitConfig {
@@ -245,7 +245,7 @@ export class RateLimiter {
       updatedAt: new Date().toISOString(),
       clients: this.exportState(),
     };
-    await writeFile(this.config.persistPath, stringifyDeterministic(snapshot), 'utf8');
+    await writeFile(this.config.persistPath, stringifyDeterministic(snapshot as unknown as JsonValue), 'utf8');
     this.lastPersistedAt = Date.now();
   }
 
