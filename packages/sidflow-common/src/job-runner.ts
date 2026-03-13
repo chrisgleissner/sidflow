@@ -236,6 +236,15 @@ export function createDefaultJobCommandFactory(
     if (params.forceRebuild) {
       args.push("--force-rebuild");
     }
+    if (params.skipAlreadyClassified) {
+      args.push("--skip-already-classified");
+    }
+    if (params.deleteWavAfterClassification) {
+      args.push("--delete-wav-after-classification");
+    }
+    if (params.sidPathPrefix) {
+      args.push("--sid-path-prefix", params.sidPathPrefix);
+    }
     return { command: script, args };
   }
 

@@ -253,6 +253,21 @@ describe("playwright-executor", () => {
       expect(content).toContain('await page.getByTestId("favorite-track456").click()');
     });
 
+    it("converts apiRequest step", () => {
+      const spec: JourneySpec = {
+        id: "api-request",
+        steps: [{ action: "apiRequest", target: "/api/classify", method: "POST", body: { async: true }, expectedStatus: 202 } as any]
+      };
+      const content = generatePlaywrightScriptContent(spec, {
+        baseUrl: "http://localhost:3000",
+        users: 1
+      });
+
+      expect(content).toContain('fetch(baseUrl + "/api/classify"');
+      expect(content).toContain('method: "POST"');
+      expect(content).toContain('expected=202');
+    });
+
     it("handles unsupported action types", () => {
       const spec: JourneySpec = {
         id: "unsupported",

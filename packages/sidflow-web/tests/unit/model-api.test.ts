@@ -208,7 +208,7 @@ describe('Model API - GET /api/model/latest', () => {
     }
   });
 
-  test('should return stub manifest if model metadata is missing', async () => {
+  test('should return 503 if model metadata is missing', async () => {
     // Remove metadata temporarily
     const metadataPath = join(modelPath, 'model-metadata.json');
     const { rename } = await import('node:fs/promises');
@@ -218,10 +218,9 @@ describe('Model API - GET /api/model/latest', () => {
       const response = await GET();
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.modelVersion).toBe('stub');
-      expect(data.data.featureStats).toBeNull();
+      expect(response.status).toBe(503);
+      expect(data.success).toBe(false);
+      expect(data.error).toBe('No trained model artifacts available');
     } finally {
       // Restore metadata
       await rename(`${metadataPath}.bak`, metadataPath);

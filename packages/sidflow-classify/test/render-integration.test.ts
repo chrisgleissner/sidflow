@@ -93,10 +93,10 @@ async function renderWithSidplayfpCli(
 ): Promise<boolean> {
   try {
     const args = [
-      sidFile,
       `-w${outputPath}`,  // WAV output file (combined flag)
       `-t${targetDurationSeconds}`,  // Duration
       `-m${chip === "6581" ? "o" : "n"}`,  // SID model: old=6581, new=8580
+      sidFile,
     ];
 
     const proc = Bun.spawn(["sidplayfp", ...args], {
@@ -104,7 +104,14 @@ async function renderWithSidplayfpCli(
       stderr: "pipe",
     });
 
+    const watchdogMs = Math.max(15_000, targetDurationSeconds * 1000 + 5_000);
+    const watchdog = setTimeout(() => {
+      console.warn(`[render-integration] sidplayfp-cli exceeded ${watchdogMs}ms; terminating`);
+      proc.kill();
+    }, watchdogMs);
+
     await proc.exited;
+    clearTimeout(watchdog);
 
     if (proc.exitCode !== 0) {
       const stderr = await new Response(proc.stderr).text();

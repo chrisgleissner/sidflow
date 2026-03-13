@@ -30,16 +30,27 @@ export interface JobProgress {
 }
 
 export interface FetchJobParams {
+  readonly configPath?: string;
+  readonly remoteBaseUrl?: string;
+  readonly hvscVersionPath?: string;
   readonly force?: boolean;
 }
 
 export interface ClassifyJobParams {
+  readonly configPath?: string;
+  readonly sidPathPrefix?: string;
+  readonly forceRebuild?: boolean;
+  readonly skipAlreadyClassified?: boolean;
+  readonly deleteWavAfterClassification?: boolean;
+  readonly threads?: number;
+  readonly renderEngineDescription?: string;
   readonly sidPaths?: string[];
   readonly force?: boolean;
   readonly maxRenderSeconds?: number;
 }
 
 export interface TrainJobParams {
+  readonly configPath?: string;
   readonly epochs?: number;
   readonly batchSize?: number;
   readonly learningRate?: number;

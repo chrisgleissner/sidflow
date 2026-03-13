@@ -18,7 +18,7 @@ bun run test:e2e
 
 ## Project Structure
 
-```
+```text
 packages/
   sidflow-fetch/     # HVSC sync
   sidflow-classify/  # Feature extraction
@@ -35,11 +35,26 @@ data/                # Generated data (gitignored)
 ## Common Commands
 
 ```bash
+bun run build:quick    # Fast incremental TypeScript sanity build
 bun run build          # Build all packages
 bun run test           # Unit tests
 bun run test:e2e       # E2E tests (needs Playwright)
+bun run export:similarity -- --profile full   # Build offline similarity bundle
+node scripts/run-job-queue.ts   # Run the durable background job worker
 tsc -b                 # Type check
 ```
+
+For iterative phase work, prefer `bun run build:quick` plus targeted test files for the area you changed. Reserve `bun run build` and the full coverage suite from `bun run test` for phase gates and final validation.
+
+Queued web jobs created through `/api/fetch`, `/api/train`, and `/api/classify` with `async=true` rely on the manifest-backed worker started by `node scripts/run-job-queue.ts`. The web app now submits those jobs and reports their state; the worker owns execution.
+
+For offline consumer integrations, generate the portable similarity bundle after classification:
+
+```bash
+bun run export:similarity -- --profile full
+```
+
+The default artifacts land in `data/exports/`. See [doc/similarity-export.md](doc/similarity-export.md) for the bundle schema and the c64commander-style favorite-to-playlist workflow.
 
 ## Performance tests
 
@@ -55,6 +70,31 @@ bun run perf:run -- --env remote --enable-remote --executor k6 --base-url https:
 
 Outputs are written under `performance/results/` and `performance/tmp/`. For “hundreds of users” load, use `--profile scale` (remote-only).
 
+Checked-in journeys now include:
+
+- `performance/journeys/play-start-stream.json` for public playback startup
+- `performance/journeys/search-favorite-stream.json` for mixed search/play/favorite traffic
+- `performance/journeys/admin-classify-queue.json` for authenticated admin queue pressure
+
+Remote admin journeys that hit protected `/admin` or admin-only `/api/*` routes require:
+
+```bash
+export SIDFLOW_PERF_ADMIN_BASIC_AUTH="$(printf '%s:%s' "$SIDFLOW_ADMIN_USER" "$SIDFLOW_ADMIN_PASSWORD" | base64 -w0)"
+```
+
+Then run the scale profile against staging, for example:
+
+```bash
+bun run perf:run -- --env remote --enable-remote --executor k6 --base-url https://your-staging-app.example --profile scale --journey search-favorite-stream --journey admin-classify-queue --execute
+```
+
+For the reviewed Phase 4 staging bundle, prefer the wrapper script:
+
+```bash
+export SIDFLOW_PERF_BASE_URL=https://your-staging-app.example
+./scripts/perf/run-staging-validation.sh
+```
+
 ## Configuration
 
 SIDFlow reads configuration from `.sidflow.json` in the repository root by default.
@@ -63,6 +103,7 @@ SIDFlow reads configuration from `.sidflow.json` in the repository root by defau
 - For tests, the repo uses `.sidflow.test.json` as a minimal test config.
 
 Key paths in `.sidflow.json`:
+
 - `sidPath`: Root of your SID collection (HVSC or any folder tree containing `.sid` files)
 - `audioCachePath`: Rendered audio cache directory
 - `tagsPath`: Manual tags/ratings directory (separate from `data/feedback`)

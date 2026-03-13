@@ -291,9 +291,9 @@ export function ClassifyTab({ onStatusChange }: ClassifyTabProps) {
     onStatusChange(forceRebuild ? 'Starting FORCE REBUILD...' : 'Starting classification...');
 
     try {
-      const response = await classifyPath({ path: target, forceRebuild });
+      const response = await classifyPath({ path: target, forceRebuild, async: true });
       if (response.success) {
-        onStatusChange('Classification completed successfully');
+        onStatusChange(response.data.started ? 'Classification queued' : 'Classification completed successfully');
         await refreshProgress();
       } else {
         onStatusChange(`Classification failed: ${formatApiError(response)}`, true);

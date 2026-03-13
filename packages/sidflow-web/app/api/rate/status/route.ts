@@ -14,7 +14,7 @@ interface RatePlaybackStatus {
 
 export async function GET() {
   try {
-    const session = findLatestSessionByScope('rate');
+    const session = await findLatestSessionByScope('rate');
     if (!session) {
       const response: ApiResponse<RatePlaybackStatus> = {
         success: true,

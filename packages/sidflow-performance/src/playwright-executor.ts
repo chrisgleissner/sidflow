@@ -2,6 +2,7 @@ import path from "node:path";
 import { DEFAULT_PACING_SECONDS } from "./constants.js";
 import {
   type ClickStep,
+  type ApiRequestStep,
   type FavoriteToggleStep,
   type JourneySpec,
   type NavigateStep,
@@ -93,6 +94,36 @@ export function generatePlaywrightScriptContent(
           return `  await page.getByTestId(${JSON.stringify(
             `favorite-${favStep.trackRef}`
           )}).click();`;
+        }
+        case "apiRequest": {
+          const apiStep = step as ApiRequestStep;
+          const method = apiStep.method ?? "GET";
+          const headers = {
+            ...(apiStep.headers ?? {}),
+            ...(apiStep.auth === "admin-basic"
+              ? { Authorization: 'Basic ' + (process.env.SIDFLOW_PERF_ADMIN_BASIC_AUTH || '') }
+              : {}),
+          };
+          const bodyExpression = typeof apiStep.body === "string"
+            ? JSON.stringify(apiStep.body)
+            : JSON.stringify(apiStep.body ?? null);
+          const expectedStatuses = Array.isArray(apiStep.expectedStatus)
+            ? apiStep.expectedStatus
+            : typeof apiStep.expectedStatus === "number"
+              ? [apiStep.expectedStatus]
+              : [];
+          return [
+            `  {`,
+            `    const apiResponse = await fetch(baseUrl + ${JSON.stringify(apiStep.target)}, {`,
+            `      method: ${JSON.stringify(method)},`,
+            `      headers: ${JSON.stringify(headers)},`,
+            `      body: ${bodyExpression},`,
+            `    });`,
+            expectedStatuses.length > 0
+              ? `    if (!${JSON.stringify(expectedStatuses)}.includes(apiResponse.status)) { console.error("[apiRequest unexpected status] expected=${expectedStatuses.join(",")} actual=" + apiResponse.status); }`
+              : "",
+            `  }`
+          ].filter(Boolean).join("\n");
         }
         default: {
           // Exhaustive check: all JourneyStep actions should be handled above

@@ -203,7 +203,7 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
 /**
  * Enforce rate limiting for API routes.
  */
-function enforceRateLimit(request: NextRequest): NextResponse | null {
+async function enforceRateLimit(request: NextRequest): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname;
 
   // Skip rate limiting if disabled via environment variable (development)
@@ -222,7 +222,7 @@ function enforceRateLimit(request: NextRequest): NextResponse | null {
     : defaultRateLimiter;
 
   const clientIp = getClientIp(request.headers);
-  const result = rateLimiter.check(clientIp);
+  const result = await rateLimiter.checkAsync(clientIp);
 
   if (!result.allowed) {
     const response = NextResponse.json(
@@ -263,7 +263,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   
   // Apply rate limits only to non-authenticated-admin users
   if (!isAuthenticatedAdmin) {
-    const rateLimitResponse = enforceRateLimit(request);
+    const rateLimitResponse = await enforceRateLimit(request);
     if (rateLimitResponse) {
       return applySecurityHeaders(request, rateLimitResponse);
     }

@@ -21,6 +21,7 @@ import { runClassificationProcess } from '@/lib/classify-runner';
 import { resolveSidCollectionContext, buildCliEnvOverrides } from '@/lib/sid-collection';
 import { getWebPreferences } from '@/lib/preferences-store';
 import type { RenderTechnology } from '@sidflow/common';
+import { buildClassifyProgressSnapshot, findLatestJobByType, getJobOrchestrator } from '@/lib/server/jobs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     const validatedData = ClassifyRequestSchema.parse(body);
     const runInBackground = validatedData.async === true;
     if (runInBackground) {
-      console.log('[classify] Starting classification in background (202 Accepted)');
+      console.log('[classify] Queueing classification job in background (202 Accepted)');
     }
 
     const config = await getSidflowConfig();
@@ -148,28 +149,37 @@ export async function POST(request: NextRequest) {
     });
 
     if (runInBackground) {
-      void runPromise
-        .then(({ result, reason }) => {
-          if (reason === 'paused') {
-            pauseClassifyProgress('Classification paused by user');
-            return;
-          }
-          if (result.success) {
-            completeClassifyProgress('Classification completed successfully');
-          } else {
-            const { details } = describeCliFailure(command, result);
-            failClassifyProgress(details);
-          }
-        })
-        .catch((error) => {
-          failClassifyProgress(error instanceof Error ? error.message : String(error));
-        });
+      const orchestrator = await getJobOrchestrator();
+      const activeJob = findLatestJobByType(orchestrator.listJobs(), 'classify', ['pending', 'running', 'paused']);
+      if (activeJob) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Classification already running',
+          details: 'A classification job is already pending or running. Wait for it to finish before queueing another.',
+          progress: buildClassifyProgressSnapshot(activeJob) ?? getClassifyProgressSnapshot(),
+        };
+        return NextResponse.json(response, { status: 409 });
+      }
 
-      const response: ApiResponse<{ started: true; progress: ReturnType<typeof getClassifyProgressSnapshot> }> = {
+      const sidPathPrefix = cliArgs.includes('--sid-path-prefix')
+        ? cliArgs[cliArgs.indexOf('--sid-path-prefix') + 1]
+        : undefined;
+      const job = await orchestrator.createJob('classify', {
+        configPath: tempConfigPath,
+        sidPathPrefix,
+        forceRebuild: validatedData.forceRebuild,
+        skipAlreadyClassified: validatedData.skipAlreadyClassified,
+        deleteWavAfterClassification: validatedData.deleteWavAfterClassification,
+        threads,
+        renderEngineDescription: engineDescription,
+      });
+      const progress = buildClassifyProgressSnapshot(job) ?? getClassifyProgressSnapshot();
+      const response: ApiResponse<{ started: true; jobId: string; progress: ReturnType<typeof getClassifyProgressSnapshot> }> = {
         success: true,
         data: {
           started: true,
-          progress: getClassifyProgressSnapshot(),
+          jobId: job.id,
+          progress,
         },
       };
       return NextResponse.json(response, { status: 202 });

@@ -4,6 +4,11 @@
  * Tracks requests per client IP and enforces configurable thresholds.
  */
 
+import path from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
+import { ensureDir, pathExists, stringifyDeterministic } from '@sidflow/common';
+import { resolveFromRepoRoot } from '@/lib/server-env';
+
 export interface RateLimitConfig {
   /**
    * Maximum requests allowed per window (default: 100)
@@ -19,6 +24,11 @@ export interface RateLimitConfig {
    * Skip rate limiting for specific IPs (default: ['127.0.0.1', '::1'])
    */
   skipIps?: string[];
+
+  /**
+   * Optional path to persist rate limit state for restart recovery.
+   */
+  persistPath?: string;
 }
 
 export interface RateLimitResult {
@@ -32,6 +42,12 @@ interface RequestLog {
   timestamps: number[];
 }
 
+interface RateLimitStateSnapshot {
+  version: string;
+  updatedAt: string;
+  clients: Record<string, number[]>;
+}
+
 /**
  * In-memory rate limiter using sliding window algorithm.
  * Production deployments should use Redis or similar for distributed rate limiting.
@@ -39,12 +55,15 @@ interface RequestLog {
 export class RateLimiter {
   private logs: Map<string, RequestLog> = new Map();
   private config: Required<RateLimitConfig>;
+  private loaded = false;
+  private loadPromise: Promise<void> | null = null;
 
   constructor(config: RateLimitConfig) {
     this.config = {
       maxRequests: config.maxRequests,
       windowMs: config.windowMs,
       skipIps: config.skipIps ?? ['127.0.0.1', '::1'],
+      persistPath: config.persistPath ?? '',
     };
   }
 
@@ -102,6 +121,13 @@ export class RateLimiter {
     };
   }
 
+  async checkAsync(clientIp: string): Promise<RateLimitResult> {
+    await this.ensureLoaded();
+    const result = this.check(clientIp);
+    await this.persist();
+    return result;
+  }
+
   /**
    * Clear rate limit logs for a specific client (for testing).
    */
@@ -111,6 +137,12 @@ export class RateLimiter {
     } else {
       this.logs.clear();
     }
+  }
+
+  async resetAsync(clientIp?: string): Promise<void> {
+    await this.ensureLoaded();
+    this.reset(clientIp);
+    await this.persist();
   }
 
   /**
@@ -129,6 +161,12 @@ export class RateLimiter {
     }
   }
 
+  async cleanupAsync(): Promise<void> {
+    await this.ensureLoaded();
+    this.cleanup();
+    await this.persist();
+  }
+
   /**
    * Get current statistics for monitoring.
    */
@@ -142,6 +180,63 @@ export class RateLimiter {
       totalClients: this.logs.size,
       totalRequests,
     };
+  }
+
+  exportState(): Record<string, number[]> {
+    const clients: Record<string, number[]> = {};
+    for (const [clientIp, log] of this.logs.entries()) {
+      clients[clientIp] = [...log.timestamps];
+    }
+    return clients;
+  }
+
+  async loadFromDisk(): Promise<void> {
+    await this.ensureLoaded();
+  }
+
+  private async ensureLoaded(): Promise<void> {
+    if (this.loaded || !this.config.persistPath) {
+      this.loaded = true;
+      return;
+    }
+
+    if (this.loadPromise) {
+      await this.loadPromise;
+      return;
+    }
+
+    this.loadPromise = (async () => {
+      if (await pathExists(this.config.persistPath)) {
+        const contents = await readFile(this.config.persistPath, 'utf8');
+        const snapshot = JSON.parse(contents) as RateLimitStateSnapshot;
+        this.logs.clear();
+        for (const [clientIp, timestamps] of Object.entries(snapshot.clients ?? {})) {
+          this.logs.set(clientIp, { timestamps: [...timestamps] });
+        }
+        this.cleanup();
+      }
+      this.loaded = true;
+    })();
+
+    try {
+      await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
+    }
+  }
+
+  private async persist(): Promise<void> {
+    if (!this.config.persistPath) {
+      return;
+    }
+    this.cleanup();
+    await ensureDir(path.dirname(this.config.persistPath));
+    const snapshot: RateLimitStateSnapshot = {
+      version: '1.0.0',
+      updatedAt: new Date().toISOString(),
+      clients: this.exportState(),
+    };
+    await writeFile(this.config.persistPath, stringifyDeterministic(snapshot), 'utf8');
   }
 }
 
@@ -165,6 +260,16 @@ export function getClientIp(headers: Headers): string {
   return '127.0.0.1';
 }
 
+function getRateLimitPersistPath(name: 'default' | 'admin'): string {
+  const envVar = name === 'default'
+    ? process.env.SIDFLOW_DEFAULT_RATE_LIMIT_PATH?.trim()
+    : process.env.SIDFLOW_ADMIN_RATE_LIMIT_PATH?.trim();
+  if (envVar) {
+    return path.isAbsolute(envVar) ? envVar : resolveFromRepoRoot(envVar);
+  }
+  return resolveFromRepoRoot('data', 'rate-limits', `${name}.json`);
+}
+
 /**
  * Default rate limiter instance for general API endpoints.
  * Allows 300 requests per minute per client (5 per second sustained).
@@ -173,6 +278,7 @@ export function getClientIp(headers: Headers): string {
 export const defaultRateLimiter = new RateLimiter({
   maxRequests: 300,
   windowMs: 60 * 1000, // 1 minute
+  persistPath: getRateLimitPersistPath('default'),
 });
 
 /**
@@ -182,6 +288,7 @@ export const defaultRateLimiter = new RateLimiter({
 export const adminRateLimiter = new RateLimiter({
   maxRequests: 20,
   windowMs: 60 * 1000, // 1 minute
+  persistPath: getRateLimitPersistPath('admin'),
 });
 
 /**
@@ -189,7 +296,7 @@ export const adminRateLimiter = new RateLimiter({
  */
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
-    defaultRateLimiter.cleanup();
-    adminRateLimiter.cleanup();
+    void defaultRateLimiter.cleanupAsync();
+    void adminRateLimiter.cleanupAsync();
   }, 5 * 60 * 1000);
 }

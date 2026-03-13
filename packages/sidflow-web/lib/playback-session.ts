@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { ensureDir, pathExists, stringifyDeterministic } from '@sidflow/common';
+import { resolveFromRepoRoot } from '@/lib/server-env';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import type {
     PlaybackSessionDescriptor,
@@ -14,6 +16,8 @@ import type {
 } from '@/lib/types/playback-session';
 
 const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const SESSION_ACCESS_PERSIST_INTERVAL_MS = 30 * 1000;
+const SESSION_MANIFEST_VERSION = '1.0.0';
 
 const ROM_KINDS = ['kernal', 'basic', 'chargen'] as const;
 type SessionRomKind = (typeof ROM_KINDS)[number];
@@ -47,14 +51,80 @@ interface PlaybackSessionRecord {
     streamAssets?: SessionStreamAsset[];
 }
 
-const sessions = new Map<string, PlaybackSessionRecord>();
+interface PlaybackSessionManifest {
+    version: string;
+    updatedAt: string;
+    sessions: PlaybackSessionRecord[];
+}
 
-function pruneExpiredSessions(now: number = Date.now()): void {
+const sessions = new Map<string, PlaybackSessionRecord>();
+let sessionsLoaded = false;
+let sessionLoadPromise: Promise<void> | null = null;
+
+function getPlaybackSessionManifestPath(): string {
+    const configuredPath = process.env.SIDFLOW_PLAYBACK_SESSION_MANIFEST?.trim();
+    if (configuredPath) {
+        return path.isAbsolute(configuredPath)
+            ? configuredPath
+            : resolveFromRepoRoot(configuredPath);
+    }
+    return resolveFromRepoRoot('data', 'playback-sessions.json');
+}
+
+function pruneExpiredSessions(now: number = Date.now()): boolean {
+    let removed = false;
     for (const [id, session] of sessions.entries()) {
         if (now - session.lastAccessedAt > SESSION_TTL_MS) {
             sessions.delete(id);
+            removed = true;
         }
     }
+    return removed;
+}
+
+async function loadPlaybackSessions(): Promise<void> {
+    if (sessionsLoaded) {
+        return;
+    }
+    if (sessionLoadPromise) {
+        await sessionLoadPromise;
+        return;
+    }
+
+    sessionLoadPromise = (async () => {
+        sessions.clear();
+        const manifestPath = getPlaybackSessionManifestPath();
+        if (await pathExists(manifestPath)) {
+            const contents = await readFile(manifestPath, 'utf8');
+            const manifest = JSON.parse(contents) as PlaybackSessionManifest;
+            for (const session of manifest.sessions ?? []) {
+                sessions.set(session.id, session);
+            }
+            const pruned = pruneExpiredSessions();
+            if (pruned) {
+                await persistPlaybackSessions();
+            }
+        }
+        sessionsLoaded = true;
+    })();
+
+    try {
+        await sessionLoadPromise;
+    } finally {
+        sessionLoadPromise = null;
+    }
+}
+
+async function persistPlaybackSessions(now: number = Date.now()): Promise<void> {
+    pruneExpiredSessions(now);
+    const manifestPath = getPlaybackSessionManifestPath();
+    await ensureDir(path.dirname(manifestPath));
+    const manifest: PlaybackSessionManifest = {
+        version: SESSION_MANIFEST_VERSION,
+        updatedAt: new Date(now).toISOString(),
+        sessions: Array.from(sessions.values()),
+    };
+    await writeFile(manifestPath, stringifyDeterministic(manifest), 'utf8');
 }
 
 function normalizeRomPaths(input?: Partial<Record<SessionRomKind, string | null>> | null): SessionRomPaths | undefined {
@@ -111,7 +181,7 @@ function buildStreamUrls(id: string, assets?: SessionStreamAsset[] | null | unde
     return Object.keys(descriptors).length > 0 ? descriptors : undefined;
 }
 
-export function createPlaybackSession(options: {
+export async function createPlaybackSession(options: {
     scope: PlaybackSessionScope;
     sidPath: string;
     track: RateTrackInfo;
@@ -120,7 +190,8 @@ export function createPlaybackSession(options: {
     romPaths?: Partial<Record<SessionRomKind, string | null>> | null;
     fallbackHlsUrl?: string | null;
     streamAssets?: SessionStreamAsset[];
-}): PlaybackSessionDescriptor {
+}): Promise<PlaybackSessionDescriptor> {
+    await loadPlaybackSessions();
     const now = Date.now();
     pruneExpiredSessions(now);
 
@@ -140,6 +211,7 @@ export function createPlaybackSession(options: {
         streamAssets: options.streamAssets,
     };
     sessions.set(id, record);
+    await persistPlaybackSessions(now);
 
     const romUrls = buildRomUrls(id, romPaths);
     const streamUrls = buildStreamUrls(id, options.streamAssets);
@@ -157,18 +229,29 @@ export function createPlaybackSession(options: {
     };
 }
 
-export function getPlaybackSession(id: string): PlaybackSessionRecord | null {
-    pruneExpiredSessions();
+export async function getPlaybackSession(id: string): Promise<PlaybackSessionRecord | null> {
+    await loadPlaybackSessions();
+    const now = Date.now();
+    const pruned = pruneExpiredSessions(now);
     const record = sessions.get(id);
     if (!record) {
+        if (pruned) {
+            await persistPlaybackSessions(now);
+        }
         return null;
     }
-    record.lastAccessedAt = Date.now();
+    const shouldPersistAccess = now - record.lastAccessedAt >= SESSION_ACCESS_PERSIST_INTERVAL_MS;
+    record.lastAccessedAt = now;
+    if (pruned || shouldPersistAccess) {
+        await persistPlaybackSessions(now);
+    }
     return record;
 }
 
-export function findLatestSessionByScope(scope: PlaybackSessionScope): PlaybackSessionRecord | null {
-    pruneExpiredSessions();
+export async function findLatestSessionByScope(scope: PlaybackSessionScope): Promise<PlaybackSessionRecord | null> {
+    await loadPlaybackSessions();
+    const now = Date.now();
+    const pruned = pruneExpiredSessions(now);
     let candidate: PlaybackSessionRecord | null = null;
     for (const session of sessions.values()) {
         if (session.scope !== scope) {
@@ -178,11 +261,14 @@ export function findLatestSessionByScope(scope: PlaybackSessionScope): PlaybackS
             candidate = session;
         }
     }
+    if (pruned) {
+        await persistPlaybackSessions(now);
+    }
     return candidate;
 }
 
 export async function streamSessionSidFile(id: string): Promise<NextResponse> {
-    const session = getPlaybackSession(id);
+    const session = await getPlaybackSession(id);
     if (!session) {
         return NextResponse.json({ success: false, error: 'Playback session not found or expired' }, { status: 404 });
     }
@@ -206,7 +292,7 @@ export async function streamSessionSidFile(id: string): Promise<NextResponse> {
 }
 
 export async function streamSessionRomFile(id: string, kind: SessionRomKind): Promise<NextResponse> {
-    const session = getPlaybackSession(id);
+    const session = await getPlaybackSession(id);
     if (!session) {
         return NextResponse.json({ success: false, error: 'Playback session not found or expired' }, { status: 404 });
     }
@@ -243,7 +329,7 @@ export async function streamSessionAssetFile(
     id: string,
     format: StreamFormat
 ): Promise<NextResponse> {
-    const session = getPlaybackSession(id);
+    const session = await getPlaybackSession(id);
     if (!session) {
         return NextResponse.json({ success: false, error: 'Playback session not found or expired' }, { status: 404 });
     }
@@ -354,6 +440,12 @@ function getMimeType(format: StreamFormat): string {
         default:
             return 'application/octet-stream';
     }
+}
+
+export function resetPlaybackSessionStoreForTests(): void {
+    sessions.clear();
+    sessionsLoaded = false;
+    sessionLoadPromise = null;
 }
 
 export type {

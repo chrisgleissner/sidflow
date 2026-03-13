@@ -6,19 +6,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { JobOrchestrator, getDefaultAuditTrail } from "@sidflow/common";
-import path from "node:path";
-
-let orchestrator: JobOrchestrator | null = null;
-
-async function getOrchestrator(): Promise<JobOrchestrator> {
-  if (!orchestrator) {
-    const manifestPath = path.join(process.cwd(), "data", "jobs", "manifest.json");
-    orchestrator = new JobOrchestrator({ manifestPath });
-    await orchestrator.load();
-  }
-  return orchestrator;
-}
+import { getDefaultAuditTrail } from "@sidflow/common";
+import { getJobOrchestrator } from '@/lib/server/jobs';
 
 const auditTrail = getDefaultAuditTrail();
 
@@ -28,7 +17,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const orch = await getOrchestrator();
+    const orch = await getJobOrchestrator();
     const job = orch.getJob(id);
 
     if (!job) {
@@ -51,7 +40,7 @@ export async function PATCH(
     const body = await request.json();
     const { status, progress } = body;
 
-    const orch = await getOrchestrator();
+    const orch = await getJobOrchestrator();
 
     if (status) {
       await orch.updateJobStatus(id, status, body.metadata);
@@ -91,7 +80,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const orch = await getOrchestrator();
+    const orch = await getJobOrchestrator();
 
     await orch.deleteJob(id);
 

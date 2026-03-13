@@ -5,7 +5,8 @@ export type JourneyAction =
   | "waitForText"
   | "selectTrack"
   | "startPlayback"
-  | "favoriteToggle";
+  | "favoriteToggle"
+  | "apiRequest";
 
 export interface JourneyStepBase {
   action: JourneyAction;
@@ -49,6 +50,16 @@ export interface FavoriteToggleStep extends JourneyStepBase {
   toggle: "add" | "remove";
 }
 
+export interface ApiRequestStep extends JourneyStepBase {
+  action: "apiRequest";
+  target: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  body?: Record<string, unknown> | string;
+  headers?: Record<string, string>;
+  expectedStatus?: number | number[];
+  auth?: "admin-basic";
+}
+
 export type JourneyStep =
   | NavigateStep
   | ClickStep
@@ -56,7 +67,8 @@ export type JourneyStep =
   | WaitForTextStep
   | SelectTrackStep
   | StartPlaybackStep
-  | FavoriteToggleStep;
+  | FavoriteToggleStep
+  | ApiRequestStep;
 
 export interface TrackRef {
   sidPath: string;

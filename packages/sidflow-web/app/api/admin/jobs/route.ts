@@ -5,21 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { JobOrchestrator, getDefaultAuditTrail } from "@sidflow/common";
+import { getDefaultAuditTrail } from "@sidflow/common";
 import type { JobType, JobStatus } from "@sidflow/common";
-import { loadConfig } from "@sidflow/common";
-import path from "node:path";
-
-let orchestrator: JobOrchestrator | null = null;
-
-async function getOrchestrator(): Promise<JobOrchestrator> {
-  if (!orchestrator) {
-    const manifestPath = path.join(process.cwd(), "data", "jobs", "manifest.json");
-    orchestrator = new JobOrchestrator({ manifestPath });
-    await orchestrator.load();
-  }
-  return orchestrator;
-}
+import { getJobOrchestrator } from '@/lib/server/jobs';
 
 const auditTrail = getDefaultAuditTrail();
 
@@ -29,7 +17,7 @@ export async function GET(request: NextRequest) {
     const typeParam = searchParams.get("type");
     const statusParam = searchParams.get("status");
 
-    const orch = await getOrchestrator();
+    const orch = await getJobOrchestrator();
     const filters: { type?: JobType; status?: JobStatus } = {};
     if (typeParam) filters.type = typeParam as JobType;
     if (statusParam) filters.status = statusParam as JobStatus;
@@ -62,7 +50,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const orch = await getOrchestrator();
+    const orch = await getJobOrchestrator();
     const job = await orch.createJob(type, params);
 
     await auditTrail.logSuccess("job:create", "admin", job.id, { type, params });

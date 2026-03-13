@@ -1,43 +1,35 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
-
-mock.module('@/lib/classify-runner', () => ({
-  getClassificationRunnerPid: () => null,
-  requestClassificationPause: () => false,
-  runClassificationProcess: async () => ({
-    result: { success: true, stdout: 'ok', stderr: '', exitCode: 0 },
-    reason: 'completed',
-  }),
-}));
 
 const serverEnvModule = await import('@/lib/server-env');
 const { resetServerEnvCacheForTests, resetSidflowConfigCache } = serverEnvModule;
 
 const classifyRoute = await import('@/app/api/classify/route');
-const { POST } = classifyRoute;
+const classifyProgressRoute = await import('@/app/api/classify/progress/route');
 
 function buildPostRequest(payload: unknown): NextRequest {
-  const url = new URL('http://localhost/api/classify');
-  const request = new Request(url, {
+  return new NextRequest('http://localhost/api/classify', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  return new NextRequest(request);
 }
 
-describe('/api/classify temp config', () => {
+describe('/api/classify durable async job routing', () => {
   let tempRoot: string;
   let originalSidflowRoot: string | undefined;
   let originalSidflowConfig: string | undefined;
   let originalPrefsPath: string | undefined;
 
   beforeEach(async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'sidflow-classify-route-'));
-    await mkdir(path.join(tempRoot, 'data'), { recursive: true });
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'sidflow-classify-job-route-'));
+    await mkdir(path.join(tempRoot, 'data', 'jobs'), { recursive: true });
+    await mkdir(path.join(tempRoot, 'hvsc', 'C64Music'), { recursive: true });
+    await mkdir(path.join(tempRoot, 'wav-cache'), { recursive: true });
+    await mkdir(path.join(tempRoot, 'tags'), { recursive: true });
 
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     originalSidflowConfig = process.env.SIDFLOW_CONFIG;
@@ -47,10 +39,6 @@ describe('/api/classify temp config', () => {
     process.env.SIDFLOW_CONFIG = path.join(tempRoot, '.sidflow.json');
     process.env.SIDFLOW_PREFS_PATH = path.join(tempRoot, '.prefs.json');
 
-    await mkdir(path.join(tempRoot, 'hvsc', 'C64Music'), { recursive: true });
-    await mkdir(path.join(tempRoot, 'wav-cache'), { recursive: true });
-    await mkdir(path.join(tempRoot, 'tags'), { recursive: true });
-
     await writeFile(
       process.env.SIDFLOW_CONFIG,
       JSON.stringify(
@@ -58,11 +46,11 @@ describe('/api/classify temp config', () => {
           sidPath: './hvsc',
           audioCachePath: './wav-cache',
           tagsPath: './tags',
-          threads: 1,
+          threads: 2,
           classificationDepth: 1,
           render: {
             preferredEngines: ['wasm'],
-            defaultFormats: ['wav', 'flac', 'm4a'],
+            defaultFormats: ['wav'],
           },
         },
         null,
@@ -71,12 +59,7 @@ describe('/api/classify temp config', () => {
       'utf8',
     );
 
-    // Only WAV should be used during classification.
-    await writeFile(
-      process.env.SIDFLOW_PREFS_PATH,
-      JSON.stringify({ defaultFormats: ['wav'] }, null, 2),
-      'utf8',
-    );
+    await writeFile(process.env.SIDFLOW_PREFS_PATH, JSON.stringify({ defaultFormats: ['wav'] }, null, 2), 'utf8');
 
     resetServerEnvCacheForTests();
     resetSidflowConfigCache();
@@ -101,19 +84,21 @@ describe('/api/classify temp config', () => {
 
     resetServerEnvCacheForTests();
     resetSidflowConfigCache();
-
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  test('writes preferredEngines and defaultFormats into temp config', async () => {
-    const response = await POST(buildPostRequest({}));
-    expect(response.status).toBe(200);
+  test('queues async classify requests as durable jobs', async () => {
+    const response = await classifyRoute.POST(buildPostRequest({ async: true }));
+    expect(response.status).toBe(202);
 
-    const tempConfigPath = path.join(tempRoot, 'data', '.sidflow-classify-temp.json');
-    const contents = await readFile(tempConfigPath, 'utf8');
-    const parsed = JSON.parse(contents) as any;
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.jobId).toMatch(/^classify-/);
+    expect(body.data.progress.isActive).toBe(true);
 
-    expect(parsed.render.preferredEngines).toBeDefined();
-    expect(parsed.render.defaultFormats).toEqual(['wav']);
+    const progressResponse = await classifyProgressRoute.GET();
+    const progressBody = await progressResponse.json();
+    expect(progressBody.success).toBe(true);
+    expect(progressBody.data.isActive).toBe(true);
   });
 });

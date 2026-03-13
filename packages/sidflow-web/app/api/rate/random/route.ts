@@ -159,7 +159,7 @@ export async function POST() {
     const fallbackHlsUrl = await ensureHlsForTrack(track);
     const streamAssets = await resolveSessionStreamAssets(track);
 
-    const session = createPlaybackSession({
+    const session = await createPlaybackSession({
       scope: 'rate',
       sidPath,
       track,

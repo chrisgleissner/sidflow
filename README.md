@@ -142,6 +142,21 @@ bun run perf:run -- --env local --base-url http://localhost:3000 --results perfo
 - **Journeys** live in `performance/journeys/` (e.g. `play-start-stream.json`).
 - **Outputs**: `performance/results/<timestamp>/` (report + summaries) and `performance/tmp/<timestamp>/` (generated scripts).
 
+## Portable Similarity Export
+
+After classification, SIDFlow can export a portable offline similarity bundle for downstream consumers such as c64commander.
+
+```bash
+bun run export:similarity -- --profile full
+```
+
+By default this writes:
+
+- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
+- `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
+
+The SQLite bundle stores per-track ratings, feedback aggregates, optional vectors, and optional precomputed neighbors. See [doc/similarity-export.md](doc/similarity-export.md) for the schema, consumer workflow, and the full local classify-then-export sequence.
+
 ---
 
 ## Web UI

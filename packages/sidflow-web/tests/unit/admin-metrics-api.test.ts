@@ -20,13 +20,16 @@ describe("Admin Metrics API", () => {
 
     expect(data.jobs).toHaveProperty("pending");
     expect(data.jobs).toHaveProperty("running");
+    expect(data.jobs).toHaveProperty("paused");
     expect(data.jobs).toHaveProperty("completed");
     expect(data.jobs).toHaveProperty("failed");
     expect(data.jobs).toHaveProperty("totalDurationMs");
     expect(data.jobs).toHaveProperty("avgDurationMs");
+    expect(data.jobs).toHaveProperty("oldestActiveAgeMs");
 
     expect(typeof data.jobs.pending).toBe("number");
     expect(typeof data.jobs.running).toBe("number");
+    expect(typeof data.jobs.paused).toBe("number");
     expect(typeof data.jobs.completed).toBe("number");
     expect(typeof data.jobs.failed).toBe("number");
   });

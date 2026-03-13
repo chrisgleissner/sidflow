@@ -12,6 +12,7 @@ export * from "./jsonl-schema.js";
 export * from "./feedback.js";
 export * from "./lancedb-builder.js";
 export * from "./recommender.js";
+export * from "./similarity-export.js";
 export * from "./sid-parser.js";
 export * from "./playback-lock.js";
 export * from "./wasm-build.js";

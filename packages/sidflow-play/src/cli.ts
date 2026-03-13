@@ -20,6 +20,7 @@ import {
   createPlaybackController,
   createSessionManager,
   exportPlaylist,
+  runSimilarityExportCli,
   parseFilters,
   ExportFormat,
   type Playlist,
@@ -215,6 +216,10 @@ function mergeRuntime(overrides?: Partial<PlayCliRuntime>): PlayCliRuntime {
 }
 
 export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRuntime>): Promise<number> {
+  if (argv[0] === "export-similarity") {
+    return runSimilarityExportCli(argv.slice(1));
+  }
+
   const result = parsePlayArgs(argv);
   const runtime = mergeRuntime(overrides);
 

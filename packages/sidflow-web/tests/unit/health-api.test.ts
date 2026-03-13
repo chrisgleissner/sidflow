@@ -24,6 +24,8 @@ describe("Health Check API", () => {
     expect(response.status).toBeLessThan(600);
 
     expect(data).toHaveProperty("overall");
+    expect(data).toHaveProperty("liveness");
+    expect(data).toHaveProperty("readiness");
     expect(data).toHaveProperty("timestamp");
     expect(data).toHaveProperty("checks");
 
@@ -48,6 +50,23 @@ describe("Health Check API", () => {
       expect(response.status).toBe(200);
     } else if (data.overall === "unhealthy") {
       expect(response.status).toBe(503);
+    }
+  });
+
+  it("reports readiness blockers explicitly", async () => {
+    const response = await GET(new Request("http://localhost/api/health?scope=readiness"));
+    const data = await response.json();
+
+    expect(data.readiness).toHaveProperty("status");
+    expect(["ready", "not_ready"]).toContain(data.readiness.status);
+    expect(Array.isArray(data.readiness.blockingChecks)).toBe(true);
+
+    if (data.readiness.status === "ready") {
+      expect(response.status).toBe(200);
+      expect(data.readiness.blockingChecks).toHaveLength(0);
+    } else {
+      expect(response.status).toBe(503);
+      expect(data.readiness.blockingChecks.length).toBeGreaterThan(0);
     }
   });
 

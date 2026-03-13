@@ -64,21 +64,24 @@ The web app runs at:
 - **Admin UI** (auth required): `/admin`
 - **API**: `/api/*`
 
-The OpenAPI file documents a subset of endpoints:
+The OpenAPI file documents the supported stable HTTP surface for the main web flows:
 
 - `packages/sidflow-web/openapi.yaml`
 
-For the complete list, inspect `packages/sidflow-web/app/api/**/route.ts`.
+For the complete implementation inventory, inspect `packages/sidflow-web/app/api/**/route.ts`.
 
 Selected endpoints implemented in `packages/sidflow-web/app/api/**/route.ts`:
 
 - **Health / metrics**: `GET /api/health`, `GET /api/admin/metrics`
+- `GET /api/health?scope=readiness` returns `503` when blocking readiness checks fail.
+- `GET /api/model/latest` returns `503` until trained model artifacts exist.
 - **Playback sessions**: `POST /api/play`, `POST /api/play/random`, `POST /api/play/manual`
 - **Stations**: `POST /api/play/station-from-song`, plus additional station builders under `/api/play/*`
 - **Ratings**: `POST /api/rate` (writes manual tag files), `GET /api/rate/aggregate`
 - **Favorites**: `GET/POST/DELETE /api/favorites` (stored in `data/.sidflow-preferences.json`)
-- **Classification**: `POST /api/classify`, progress/control under `/api/classify/*`
-- **Fetch**: `POST /api/fetch`, progress under `/api/fetch/progress`
+- **Classification**: `POST /api/classify`, progress/control under `/api/classify/*`; the default web flow queues durable jobs and returns `202`.
+- **Fetch**: `POST /api/fetch`, progress under `/api/fetch/progress`; queued jobs return `202`.
+- **Training**: `POST /api/train`; queued jobs return `202`.
 
 ## Data layout (common defaults)
 
@@ -87,6 +90,18 @@ Selected endpoints implemented in `packages/sidflow-web/app/api/**/route.ts`:
 - **Manual tags/ratings**: `tagsPath` (e.g. `./workspace/tags`)
 - **Web preferences**: `data/.sidflow-preferences.json`
 - **HLS assets** (fallback playback): `workspace/hls/`
+- **Portable similarity exports**: `data/exports/sidcorr-*.sqlite` plus `*.manifest.json`
+
+## Portable offline similarity bundle
+
+The Phase 5 export is a SQLite-first artifact intended for downstream offline recommendation consumers.
+
+- Builder entrypoint: `bun run export:similarity -- --profile full`
+- Default output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
+- Sidecar manifest: `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
+- Shared query helpers: `recommendFromSeedTrack(...)` and `recommendFromFavorites(...)` from `@sidflow/common`
+
+The full schema and operator workflow live in [doc/similarity-export.md](doc/similarity-export.md).
 
 ## Configuration
 

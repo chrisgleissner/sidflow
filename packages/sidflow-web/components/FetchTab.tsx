@@ -104,7 +104,7 @@ export function FetchTab({ onStatusChange }: FetchTabProps) {
           setIsPolling(false);
           setIsLoading(false);
         }
-        onStatusChange('HVSC fetch completed successfully');
+        onStatusChange(snapshot?.isActive ? 'HVSC fetch queued' : 'HVSC fetch completed successfully');
       } else {
         const details = response.details ? ` – ${response.details}` : '';
         const logs = response.logs || response.details || 'sidflow-fetch did not return logs. Check server console.';

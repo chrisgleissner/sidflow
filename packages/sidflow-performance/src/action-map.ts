@@ -1,4 +1,4 @@
-import { type JourneyStep, type JourneySpec } from "./types.js";
+import { type ApiRequestStep, type JourneyStep, type JourneySpec } from "./types.js";
 
 export interface K6ActionMapping {
   searchEndpoint: string;
@@ -51,6 +51,31 @@ export function stepToK6Request(
     case "favoriteToggle":
       // TypeScript narrows step to FavoriteToggleStep within this case
       return `logRequest("${step.toggle === "remove" ? "DELETE" : "POST"}", baseUrl + "${mapping.favoritesEndpoint}", http.${step.toggle === "remove" ? "del" : "post"}(baseUrl + "${mapping.favoritesEndpoint}", JSON.stringify({ sid_path: "${spec.data?.trackRefs?.[step.trackRef]?.sidPath ?? step.trackRef}" }), params));`;
+    case "apiRequest": {
+      const requestStep = step as ApiRequestStep;
+      const method = requestStep.method ?? "GET";
+      const serializedHeaders = JSON.stringify(requestStep.headers ?? {});
+      const serializedBody = typeof requestStep.body === "string"
+        ? JSON.stringify(requestStep.body)
+        : JSON.stringify(requestStep.body ?? null);
+      const expectedStatuses = Array.isArray(requestStep.expectedStatus)
+        ? requestStep.expectedStatus
+        : typeof requestStep.expectedStatus === "number"
+          ? [requestStep.expectedStatus]
+          : [];
+      return [
+        `const apiHeaders = { ...params.headers, ...${serializedHeaders} };`,
+        requestStep.auth === "admin-basic"
+          ? `if (__ENV.SIDFLOW_PERF_ADMIN_BASIC_AUTH) { apiHeaders.Authorization = "Basic " + __ENV.SIDFLOW_PERF_ADMIN_BASIC_AUTH; }`
+          : "",
+        `const apiBody = ${serializedBody};`,
+        `const apiParams = { headers: apiHeaders };`,
+        `const apiRes = logRequest(${JSON.stringify(method)}, baseUrl + ${JSON.stringify(requestStep.target)}, http.request(${JSON.stringify(method)}, baseUrl + ${JSON.stringify(requestStep.target)}, apiBody, apiParams));`,
+        expectedStatuses.length > 0
+          ? `if (!${JSON.stringify(expectedStatuses)}.includes(apiRes.status)) { console.error("[k6 unexpected status] expected=${expectedStatuses.join(",")} actual=" + apiRes.status); }`
+          : ""
+      ].filter(Boolean).join("\n  ");
+    }
     default:
       return "// Unsupported action";
   }

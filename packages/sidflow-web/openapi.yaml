@@ -22,6 +22,8 @@ tags:
     description: SID music playback operations
   - name: rating
     description: Track rating operations
+  - name: health
+    description: Liveness, readiness, and model availability
   - name: classification
     description: Audio classification operations
   - name: sync
@@ -30,6 +32,64 @@ tags:
     description: ML model training operations
 
 paths:
+  /api/health:
+    get:
+      tags:
+        - health
+      summary: Report liveness and readiness
+      description: |
+        Returns the current service health report.
+
+        By default this returns the full health document. Use `scope=readiness`
+        to drive a readiness probe that returns `503` when blocking checks fail.
+      operationId: getHealth
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - readiness
+          description: When set to `readiness`, the HTTP status follows readiness only.
+      responses:
+        "200":
+          description: Service is live, and readiness passed or only degraded checks remain.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: One or more blocking readiness checks failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/model/latest:
+    get:
+      tags:
+        - health
+      summary: Load the latest trained model manifest
+      description: |
+        Returns the latest trained model artifacts for browser-side fine-tuning and inference.
+        If no trained model is available yet, the endpoint returns `503` instead of a stub payload.
+      operationId: getLatestModel
+      responses:
+        "200":
+          description: Latest trained model manifest.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ModelManifest"
+        "503":
+          $ref: "#/components/responses/CommandError"
+
   /api/play:
     post:
       tags:
@@ -45,7 +105,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PlayRequest'
+              $ref: "#/components/schemas/PlayRequest"
             examples:
               withPreset:
                 summary: Play with mood preset
@@ -57,16 +117,16 @@ paths:
                 value:
                   sid_path: /path/to/music.sid
       responses:
-        '200':
+        "200":
           description: Playback session created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlaybackSessionResponse'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '500':
-          $ref: '#/components/responses/CommandError'
+                $ref: "#/components/schemas/PlaybackSessionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/CommandError"
 
   /api/rate:
     post:
@@ -80,7 +140,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RateRequest'
+              $ref: "#/components/schemas/RateRequest"
             example:
               sid_path: /path/to/music.sid
               ratings:
@@ -89,13 +149,13 @@ paths:
                 c: 5
                 p: 4
       responses:
-        '200':
+        "200":
           description: Rating submitted successfully
           content:
             application/json:
               schema:
                 allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
+                  - $ref: "#/components/schemas/SuccessResponse"
                   - type: object
                     properties:
                       data:
@@ -104,51 +164,69 @@ paths:
                           message:
                             type: string
                             example: Rating submitted successfully
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '500':
-          $ref: '#/components/responses/CommandError'
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/CommandError"
 
   /api/classify:
     post:
       tags:
         - classification
       summary: Classify SID files
-      description: Trigger classification on a directory of SID files (render + feature extraction + JSONL output)
+      description: |
+        Trigger classification on a directory of SID files.
+
+        The default web flow sends `async: true`, which queues a durable background job and returns `202 Accepted`.
+        Synchronous execution remains available for callers that omit `async`.
       operationId: classifySids
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ClassifyRequest'
+              $ref: "#/components/schemas/ClassifyRequest"
             example:
               path: /path/to/sid/directory
+              async: true
       responses:
-        '200':
+        "200":
           description: Classification completed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '500':
-          $ref: '#/components/responses/CommandError'
+                $ref: "#/components/schemas/SuccessResponse"
+        "202":
+          description: Classification job queued successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ClassifyQueuedResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/CommandError"
+        "500":
+          $ref: "#/components/responses/CommandError"
 
   /api/fetch:
     post:
       tags:
         - sync
       summary: Synchronize HVSC collection
-      description: Download and sync the High Voltage SID Collection (HVSC)
+      description: Queue a durable HVSC synchronization job.
       operationId: fetchHvsc
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FetchRequest'
+              $ref: "#/components/schemas/FetchRequest"
             examples:
               default:
                 summary: Default sync
@@ -160,30 +238,37 @@ paths:
                   remoteBaseUrl: https://mirror.example.com/hvsc
                   hvscVersionPath: /custom/version.json
       responses:
-        '200':
-          description: Sync completed successfully
+        "202":
+          description: Sync job queued successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '500':
-          $ref: '#/components/responses/CommandError'
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FetchQueuedResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/CommandError"
+        "500":
+          $ref: "#/components/responses/CommandError"
 
   /api/train:
     post:
       tags:
         - training
       summary: Train ML model
-      description: Train/update the TensorFlow.js model artifacts
+      description: Queue a durable training job for TensorFlow.js model artifacts.
       operationId: trainModel
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TrainRequest'
+              $ref: "#/components/schemas/TrainRequest"
             examples:
               default:
                 summary: Default training
@@ -197,16 +282,23 @@ paths:
                   evaluate: true
                   force: false
       responses:
-        '200':
-          description: Training completed successfully
+        "202":
+          description: Training job queued successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '500':
-          $ref: '#/components/responses/CommandError'
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TrainQueuedResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/CommandError"
+        "500":
+          $ref: "#/components/responses/CommandError"
 
 components:
   schemas:
@@ -254,7 +346,7 @@ components:
         released:
           type: string
           description: Release year or label information
-          example: '1985'
+          example: "1985"
         songs:
           type: integer
           description: Total number of subtunes contained in the SID file
@@ -328,7 +420,7 @@ components:
           description: Currently selected subtune index (1-based)
           example: 1
         metadata:
-          $ref: '#/components/schemas/RateTrackMetadata'
+          $ref: "#/components/schemas/RateTrackMetadata"
         durationSeconds:
           type: number
           format: float
@@ -399,9 +491,9 @@ components:
             - session
           properties:
             track:
-              $ref: '#/components/schemas/RateTrackInfo'
+              $ref: "#/components/schemas/RateTrackInfo"
             session:
-              $ref: '#/components/schemas/PlaybackSession'
+              $ref: "#/components/schemas/PlaybackSession"
 
     RateRequest:
       type: object
@@ -449,14 +541,192 @@ components:
 
     ClassifyRequest:
       type: object
-      required:
-        - path
       properties:
         path:
           type: string
           description: Path to directory containing SID files to classify
           minLength: 1
           example: /home/user/hvsc/MUSICIANS/H
+        forceRebuild:
+          type: boolean
+          description: Force rerendering even when cached WAV data exists.
+        skipAlreadyClassified:
+          type: boolean
+          description: Skip entries already present in the auto-tag output.
+        deleteWavAfterClassification:
+          type: boolean
+          description: Delete rendered WAV files after classification to reduce disk use.
+        async:
+          type: boolean
+          description: Queue the classification as a durable background job.
+          default: false
+
+    HealthStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - unhealthy
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    ReadinessStatus:
+      type: object
+      required:
+        - status
+        - blockingChecks
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not_ready
+        blockingChecks:
+          type: array
+          items:
+            type: string
+
+    HealthChecks:
+      type: object
+      required:
+        - workspace
+        - ui
+        - wasm
+        - sidplayfpCli
+        - ffmpeg
+        - streamingAssets
+      properties:
+        workspace:
+          $ref: "#/components/schemas/HealthStatus"
+        ui:
+          $ref: "#/components/schemas/HealthStatus"
+        wasm:
+          $ref: "#/components/schemas/HealthStatus"
+        sidplayfpCli:
+          $ref: "#/components/schemas/HealthStatus"
+        ffmpeg:
+          $ref: "#/components/schemas/HealthStatus"
+        streamingAssets:
+          $ref: "#/components/schemas/HealthStatus"
+        ultimate64:
+          $ref: "#/components/schemas/HealthStatus"
+
+    HealthResponse:
+      type: object
+      required:
+        - overall
+        - liveness
+        - readiness
+        - timestamp
+        - checks
+      properties:
+        overall:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - unhealthy
+        liveness:
+          $ref: "#/components/schemas/HealthStatus"
+        readiness:
+          $ref: "#/components/schemas/ReadinessStatus"
+        timestamp:
+          type: integer
+          format: int64
+        checks:
+          $ref: "#/components/schemas/HealthChecks"
+
+    FetchProgress:
+      type: object
+      additionalProperties: true
+
+    FetchQueuedResponse:
+      type: object
+      required:
+        - jobId
+        - progress
+        - output
+        - logs
+      properties:
+        jobId:
+          type: string
+        progress:
+          $ref: "#/components/schemas/FetchProgress"
+        output:
+          type: string
+        logs:
+          type: string
+
+    ClassifyProgress:
+      type: object
+      additionalProperties: true
+
+    ClassifyQueuedResponse:
+      type: object
+      required:
+        - started
+        - jobId
+        - progress
+      properties:
+        started:
+          type: boolean
+          enum:
+            - true
+        jobId:
+          type: string
+        progress:
+          $ref: "#/components/schemas/ClassifyProgress"
+
+    TrainQueuedResponse:
+      type: object
+      required:
+        - jobId
+        - output
+        - logs
+      properties:
+        jobId:
+          type: string
+        output:
+          type: string
+        logs:
+          type: string
+
+    ModelManifest:
+      type: object
+      required:
+        - modelVersion
+      properties:
+        modelVersion:
+          type: string
+        featureStats:
+          type: object
+          nullable: true
+          additionalProperties: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        modelTopology:
+          type: object
+          nullable: true
+          additionalProperties: true
+        weightSpecs:
+          type: array
+          nullable: true
+          items:
+            type: object
+            additionalProperties: true
+        weightDataBase64:
+          type: string
+          nullable: true
 
     FetchRequest:
       type: object
@@ -553,7 +823,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error: Validation error
@@ -564,7 +834,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/ErrorResponse'
+            $ref: "#/components/schemas/ErrorResponse"
           example:
             success: false
             error: Playback command failed

@@ -48,12 +48,25 @@ export async function GET() {
   const manifest = resolvedPath ? await loadModelManifest(resolvedPath) : null;
 
   if (!manifest) {
-    console.warn('[Model API] Falling back to stub manifest', { resolvedPath });
+    const responsePayload: ApiResponse<GlobalModelManifestData> = {
+      success: false,
+      error: 'No trained model artifacts available',
+      details: resolvedPath
+        ? `Unable to load model metadata from ${resolvedPath}`
+        : 'Model path does not exist',
+    };
+
+    return NextResponse.json(responsePayload, {
+      status: 503,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    });
   }
 
   const responsePayload: ApiResponse<GlobalModelManifestData> = {
     success: true,
-    data: manifest ?? buildStubManifest(),
+    data: manifest,
   };
 
   return NextResponse.json(responsePayload, {
@@ -137,21 +150,4 @@ async function readJson<T>(filePath: string): Promise<T | null> {
   }
   const content = await readFile(filePath, 'utf-8');
   return JSON.parse(content) as T;
-}
-
-function buildStubManifest(): GlobalModelManifestData {
-  return {
-    modelVersion: 'stub',
-    featureStats: null,
-    metadata: {
-      featureSetVersion: 'stub',
-      createdAt: new Date(0).toISOString(),
-      trainedAt: new Date(0).toISOString(),
-      architecture: { note: 'stub model manifest for tests' },
-      samples: 0,
-    },
-    modelTopology: null,
-    weightSpecs: null,
-    weightDataBase64: null,
-  };
 }
