@@ -36,10 +36,10 @@ import {
 } from "./feature-extraction-pool.js";
 import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { WasmRendererPool } from "./render/wasm-render-pool.js";
 import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
+import { getLogicalCpuCount } from "./system.js";
 import {
   WAV_HASH_EXTENSION,
   computeFileHash,
@@ -235,7 +235,7 @@ function resolveThreadCount(requested?: number): number {
   if (typeof requested === "number" && requested > 0) {
     return Math.max(1, Math.floor(requested));
   }
-  const cores = os.cpus().length || 1;
+  const cores = getLogicalCpuCount();
 
   const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
   if (Number.isInteger(envMax) && envMax > 0) {

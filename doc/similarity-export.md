@@ -4,6 +4,48 @@ SIDFlow can export a portable offline similarity bundle for downstream consumers
 
 The primary artifact is a single SQLite file. A deterministic JSON sidecar manifest is written next to it so consumers and operators can inspect compatibility, counts, and checksums without opening SQLite.
 
+## One-command workflow
+
+Use the unattended helper script:
+
+- Local checkout: `scripts/run-similarity-export.sh --mode local`
+- GHCR Docker image: `scripts/run-similarity-export.sh --mode docker --hvsc /absolute/path/to/hvsc --state-dir /absolute/path/to/sidflow-state`
+
+The script is the authoritative workflow. It starts the required runtime, triggers classification, waits for completion, runs the SQLite export, and prints the final file locations.
+
+By default the script resumes from prior classified output. Use `--full-rerun true` only when you want to ignore existing classified data and rebuild everything from scratch.
+
+Show script options:
+
+```bash
+bash scripts/run-similarity-export.sh --help
+```
+
+Local prerequisites:
+
+- `bun` 1.3.1
+- `ffmpeg`
+- `sidplayfp`
+- `curl`
+- `python3`
+
+Ubuntu/Debian example:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ffmpeg sidplayfp curl python3 p7zip-full
+curl -fsSL https://bun.sh/install | bash
+source ~/.bashrc
+```
+
+Docker mode prerequisites:
+
+- `docker`
+- a local checkout of this repository so you can run the helper script
+- access to `ghcr.io/chrisgleissner/sidflow:latest`
+- an HVSC directory on the host
+- a writable host state directory for `audio-cache`, `tags`, `data`, and the final export
+
 ## Default output
 
 When you run the export with the repo's default `.sidflow.json`, SIDFlow reads the classified corpus from `data/classified`, feedback from `data/feedback`, and writes the bundle to:
@@ -13,12 +55,55 @@ When you run the export with the repo's default `.sidflow.json`, SIDFlow reads t
 
 If you pass `--profile mobile`, the default SQLite filename becomes `data/exports/sidcorr-hvsc-mobile-sidcorr-1.sqlite`.
 
-## Generate the export
+## Minimal commands
 
-Build the portable bundle after classification has produced JSONL output:
+Local checkout, using the repo's `.sidflow.json` and `workspace/hvsc`:
 
 ```bash
-bun run export:similarity -- --profile full
+cd /home/chris/dev/c64/sidflow
+bash scripts/run-similarity-export.sh --mode local
+```
+
+Force a complete rerun:
+
+```bash
+cd /home/chris/dev/c64/sidflow
+bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+GHCR Docker image, using the published runtime image and host-mounted state:
+
+```bash
+cd /home/chris/dev/c64/sidflow
+bash scripts/run-similarity-export.sh --mode docker --hvsc /absolute/path/to/hvsc --state-dir /absolute/path/to/sidflow-state
+```
+
+What the helper script does:
+
+1. Starts the web runtime and durable worker.
+2. Triggers classification through `POST /api/classify`.
+3. Polls `/api/classify/progress` until the corpus finishes.
+4. Runs `bun run export:similarity`.
+5. Prints the final SQLite and manifest paths.
+
+By default the helper uses these classify settings:
+
+- `async=true`
+- `skipAlreadyClassified=true`
+- `deleteWavAfterClassification=true`
+- `forceRebuild=false`
+
+Override them directly on the script when needed:
+
+```bash
+bash scripts/run-similarity-export.sh --mode local --skip-already-classified false --delete-wav-after-classification false --threads 8
+```
+
+Explicit full rerun in Docker mode:
+
+```bash
+cd /home/chris/dev/c64/sidflow
+bash scripts/run-similarity-export.sh --mode docker --hvsc /absolute/path/to/hvsc --state-dir /absolute/path/to/sidflow-state --full-rerun true
 ```
 
 Useful flags:
@@ -131,52 +216,14 @@ const recommendations = recommendFromFavorites(
 );
 ```
 
-## End-to-end local workflow
+## Result files
 
-With the repo defaults, the local SID collection root is `workspace/hvsc`.
-
-1. Start the web server:
-
-```bash
-cd packages/sidflow-web
-SIDFLOW_CONFIG=/home/chris/dev/c64/sidflow/.sidflow.json \
-SIDFLOW_ADMIN_USER=admin \
-SIDFLOW_ADMIN_PASSWORD=password \
-SIDFLOW_ADMIN_SECRET=local-dev-admin-secret-32-chars-min \
-JWT_SECRET=local-dev-jwt-secret-32-chars-min \
-bun run dev
-```
-
-2. In a second terminal, start the durable job worker:
-
-```bash
-cd /home/chris/dev/c64/sidflow
-SIDFLOW_CONFIG=/home/chris/dev/c64/sidflow/.sidflow.json bun run jobs:run
-```
-
-3. Queue classification for the entire configured collection:
-
-```bash
-curl -u admin:password \
-  -H 'content-type: application/json' \
-  -X POST http://localhost:3000/api/classify \
-  -d '{"async":true,"skipAlreadyClassified":true,"deleteWavAfterClassification":true}'
-```
-
-4. Poll progress until `phase` becomes `completed` and `isActive` is `false`:
-
-```bash
-watch -n 5 'curl -s http://localhost:3000/api/classify/progress | jq .data'
-```
-
-5. Export the offline bundle:
-
-```bash
-cd /home/chris/dev/c64/sidflow
-bun run export:similarity -- --profile full --corpus-version hvsc
-```
-
-Resulting files:
+Local mode writes to:
 
 - `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
 - `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
+
+Docker mode writes to the host state directory you pass in:
+
+- `/absolute/path/to/sidflow-state/data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
+- `/absolute/path/to/sidflow-state/data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`

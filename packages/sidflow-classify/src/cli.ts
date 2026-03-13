@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -24,6 +23,7 @@ import {
   type ThreadActivityUpdate,
   type AudioCacheProgress
 } from "./index.js";
+import { getLogicalCpuCount } from "./system.js";
 
 // Progress update throttle configuration
 const PROGRESS_THROTTLE_MS = 500; // Max 2 updates per second
@@ -415,7 +415,7 @@ export async function runClassifyCli(
     const threads = (typeof plan.config.threads === "number" && plan.config.threads > 0)
       ? plan.config.threads
       : (() => {
-          const cores = os.cpus().length || 1;
+          const cores = getLogicalCpuCount();
           const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
           if (Number.isInteger(envMax) && envMax > 0) {
             return Math.max(1, Math.min(cores, envMax));

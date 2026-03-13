@@ -1,0 +1,25 @@
+{
+  "jobs": {
+    "classify-1773398232779-p8l7iy": {
+      "id": "classify-1773398232779-p8l7iy",
+      "metadata": {
+        "createdAt": "2026-03-13T10:37:12.779Z",
+        "id": "classify-1773398232779-p8l7iy",
+        "status": "pending",
+        "type": "classify"
+      },
+      "params": {
+        "configPath": "/home/chris/dev/c64/sidflow/data/.sidflow-classify-temp.json",
+        "deleteWavAfterClassification": false,
+        "forceRebuild": false,
+        "renderEngineDescription": "sidplayfp-cli",
+        "skipAlreadyClassified": false,
+        "threads": 8
+      },
+      "status": "pending",
+      "type": "classify"
+    }
+  },
+  "lastUpdated": "2026-03-13T10:37:12.781Z",
+  "version": "1.0.0"
+}
