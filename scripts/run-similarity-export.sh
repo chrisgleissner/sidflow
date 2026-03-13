@@ -406,11 +406,14 @@ build_classify_payload() {
     "${SKIP_ALREADY_CLASSIFIED}" \
     "${DELETE_WAV_AFTER_CLASSIFICATION}" \
     "${FORCE_REBUILD}" \
-  "${THREADS}" \
-  "${MAX_SONGS}"
+    "${THREADS}" \
+    "${MAX_SONGS}"
 import json, sys
+
 payload = {
-  'async': False,
+    # Intentional: keep the classify request synchronous while this helper tails
+    # progress directly from the server log and the request exit status.
+    'async': False,
     'skipAlreadyClassified': sys.argv[1] == 'true',
     'deleteWavAfterClassification': sys.argv[2] == 'true',
     'forceRebuild': sys.argv[3] == 'true',
@@ -420,7 +423,7 @@ if threads:
     payload['threads'] = int(threads)
 limit = sys.argv[5]
 if limit:
-  payload['limit'] = int(limit)
+    payload['limit'] = int(limit)
 print(json.dumps(payload, separators=(',', ':')))
 PY
 }

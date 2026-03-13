@@ -40,13 +40,13 @@ bun run build          # Build all packages
 bun run test           # Unit tests
 bun run test:e2e       # E2E tests (needs Playwright)
 bun run export:similarity -- --profile full   # Build offline similarity bundle
-node scripts/run-job-queue.ts   # Run the durable background job worker
+bun run jobs:run      # Run the durable background job worker
 tsc -b                 # Type check
 ```
 
 For iterative phase work, prefer `bun run build:quick` plus targeted test files for the area you changed. Reserve `bun run build` and the full coverage suite from `bun run test` for phase gates and final validation.
 
-Queued web jobs created through `/api/fetch`, `/api/train`, and `/api/classify` with `async=true` rely on the manifest-backed worker started by `node scripts/run-job-queue.ts`. The web app now submits those jobs and reports their state; the worker owns execution.
+Queued web jobs created through `/api/fetch`, `/api/train`, and `/api/classify` with `async=true` rely on the manifest-backed worker started by `bun run jobs:run`. The web app now submits those jobs and reports their state; the worker owns execution.
 
 For offline consumer integrations, generate the portable similarity bundle after classification:
 

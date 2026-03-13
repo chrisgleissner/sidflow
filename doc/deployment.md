@@ -79,7 +79,7 @@ Long-running fetch, classify, and train requests are durable jobs stored under `
 Start or restart the worker with:
 
 ```bash
-bun ./scripts/run-job-queue.ts
+bun run jobs:run
 ```
 
 Recovery checklist after a restart or deploy:

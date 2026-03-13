@@ -59,6 +59,10 @@ data/model/model/weights.bin
 # Playlist storage (test artifacts, should not be committed)
 data/playlists/
 
+# Runtime job/rate-limit state (generated locally, should not be committed)
+data/jobs/manifest.json
+data/rate-limits/
+
 # User data (contains password hashes, should not be committed)
 data/users/
 

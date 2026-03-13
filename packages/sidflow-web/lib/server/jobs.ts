@@ -1,14 +1,55 @@
 import type { ClassifyProgressSnapshot } from '@/lib/types/classify-progress';
 import type { FetchProgressSnapshot } from '@/lib/types/fetch-progress';
-import { JobOrchestrator, type JobDescriptor, type JobStatus, type JobType } from '@sidflow/common';
+import { JobOrchestrator, pathExists, type JobDescriptor, type JobStatus, type JobType } from '@sidflow/common';
 import { resolveFromRepoRoot } from '@/lib/server-env';
+import { stat } from 'node:fs/promises';
+
+let cachedOrchestrator: JobOrchestrator | null = null;
+let cachedManifestPath = '';
+let cachedManifestMtimeMs = -1;
+let orchestratorLoadPromise: Promise<JobOrchestrator> | null = null;
+
+async function getManifestMtimeMs(manifestPath: string): Promise<number> {
+  if (!(await pathExists(manifestPath))) {
+    return -1;
+  }
+
+  const metadata = await stat(manifestPath);
+  return metadata.mtimeMs;
+}
 
 export async function getJobOrchestrator(): Promise<JobOrchestrator> {
-  const orchestrator = new JobOrchestrator({
-    manifestPath: resolveFromRepoRoot('data', 'jobs', 'manifest.json'),
-  });
-  await orchestrator.load();
-  return orchestrator;
+  const manifestPath = resolveFromRepoRoot('data', 'jobs', 'manifest.json');
+  const manifestMtimeMs = await getManifestMtimeMs(manifestPath);
+
+  if (
+    cachedOrchestrator
+    && cachedManifestPath === manifestPath
+    && cachedManifestMtimeMs === manifestMtimeMs
+  ) {
+    return cachedOrchestrator;
+  }
+
+  if (!orchestratorLoadPromise) {
+    orchestratorLoadPromise = (async () => {
+      const manifestReset = manifestMtimeMs < 0 && cachedManifestMtimeMs >= 0;
+      if (!cachedOrchestrator || cachedManifestPath !== manifestPath || manifestReset) {
+        cachedOrchestrator = new JobOrchestrator({ manifestPath });
+        cachedManifestPath = manifestPath;
+      }
+
+      if (manifestMtimeMs >= 0) {
+        await cachedOrchestrator.load();
+      }
+
+      cachedManifestMtimeMs = manifestMtimeMs;
+      return cachedOrchestrator;
+    })().finally(() => {
+      orchestratorLoadPromise = null;
+    });
+  }
+
+  return orchestratorLoadPromise;
 }
 
 export function findLatestJobByType(

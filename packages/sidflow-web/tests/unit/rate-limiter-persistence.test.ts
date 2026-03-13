@@ -22,6 +22,7 @@ describe('RateLimiter persistence', () => {
       maxRequests: 2,
       windowMs: 1000,
       persistPath,
+      persistDebounceMs: 0,
     });
 
     expect((await first.checkAsync('203.0.113.10')).allowed).toBe(true);
@@ -31,6 +32,7 @@ describe('RateLimiter persistence', () => {
       maxRequests: 2,
       windowMs: 1000,
       persistPath,
+      persistDebounceMs: 0,
     });
 
     const result = await second.checkAsync('203.0.113.10');
@@ -42,6 +44,7 @@ describe('RateLimiter persistence', () => {
       maxRequests: 1,
       windowMs: 1000,
       persistPath,
+      persistDebounceMs: 0,
     });
 
     expect((await first.checkAsync('203.0.113.11')).allowed).toBe(true);
@@ -51,6 +54,7 @@ describe('RateLimiter persistence', () => {
       maxRequests: 1,
       windowMs: 1000,
       persistPath,
+      persistDebounceMs: 0,
     });
 
     const result = await second.checkAsync('203.0.113.11');

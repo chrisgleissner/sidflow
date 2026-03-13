@@ -29,6 +29,11 @@ export interface RateLimitConfig {
    * Optional path to persist rate limit state for restart recovery.
    */
   persistPath?: string;
+
+  /**
+   * Minimum interval between persisted snapshots. Defaults to 5 seconds.
+   */
+  persistDebounceMs?: number;
 }
 
 export interface RateLimitResult {
@@ -57,6 +62,9 @@ export class RateLimiter {
   private config: Required<RateLimitConfig>;
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPersistedAt = 0;
+  private pendingPersistPromise: Promise<void> | null = null;
 
   constructor(config: RateLimitConfig) {
     this.config = {
@@ -64,6 +72,7 @@ export class RateLimiter {
       windowMs: config.windowMs,
       skipIps: config.skipIps ?? ['127.0.0.1', '::1'],
       persistPath: config.persistPath ?? '',
+      persistDebounceMs: config.persistDebounceMs ?? 5_000,
     };
   }
 
@@ -124,7 +133,7 @@ export class RateLimiter {
   async checkAsync(clientIp: string): Promise<RateLimitResult> {
     await this.ensureLoaded();
     const result = this.check(clientIp);
-    await this.persist();
+    await this.schedulePersist();
     return result;
   }
 
@@ -142,7 +151,7 @@ export class RateLimiter {
   async resetAsync(clientIp?: string): Promise<void> {
     await this.ensureLoaded();
     this.reset(clientIp);
-    await this.persist();
+    await this.persistNow();
   }
 
   /**
@@ -164,7 +173,7 @@ export class RateLimiter {
   async cleanupAsync(): Promise<void> {
     await this.ensureLoaded();
     this.cleanup();
-    await this.persist();
+    await this.persistNow();
   }
 
   /**
@@ -237,6 +246,47 @@ export class RateLimiter {
       clients: this.exportState(),
     };
     await writeFile(this.config.persistPath, stringifyDeterministic(snapshot), 'utf8');
+    this.lastPersistedAt = Date.now();
+  }
+
+  private async schedulePersist(): Promise<void> {
+    if (!this.config.persistPath) {
+      return;
+    }
+
+    const now = Date.now();
+    if (this.config.persistDebounceMs <= 0 || now - this.lastPersistedAt >= this.config.persistDebounceMs) {
+      await this.persistNow();
+      return;
+    }
+
+    if (!this.pendingPersistPromise) {
+      this.pendingPersistPromise = new Promise((resolve, reject) => {
+        const delayMs = Math.max(0, this.config.persistDebounceMs - (now - this.lastPersistedAt));
+        this.persistTimer = setTimeout(() => {
+          this.persistTimer = null;
+          void this.persist()
+            .then(resolve)
+            .catch(reject)
+            .finally(() => {
+              this.pendingPersistPromise = null;
+            });
+        }, delayMs);
+      });
+    }
+  }
+
+  private async persistNow(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+
+    try {
+      await this.persist();
+    } finally {
+      this.pendingPersistPromise = null;
+    }
   }
 }
 
