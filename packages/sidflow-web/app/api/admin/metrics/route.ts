@@ -99,20 +99,20 @@ async function collectJobMetrics(): Promise<JobMetrics> {
       switch (job.status) {
         case "pending":
           pending++;
-          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.createdAt));
+          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.metadata.createdAt));
           break;
         case "running":
           running++;
-          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.startedAt ?? job.createdAt));
+          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.metadata.startedAt ?? job.metadata.createdAt));
           break;
         case "paused":
           paused++;
-          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.startedAt ?? job.createdAt));
+          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.metadata.startedAt ?? job.metadata.createdAt));
           break;
         case "completed":
           completed++;
-          if (job.startedAt && job.completedAt) {
-            totalDurationMs += toTimestamp(job.completedAt) - toTimestamp(job.startedAt);
+          if (job.metadata.startedAt && job.metadata.completedAt) {
+            totalDurationMs += toTimestamp(job.metadata.completedAt) - toTimestamp(job.metadata.startedAt);
           }
           break;
         case "failed":
