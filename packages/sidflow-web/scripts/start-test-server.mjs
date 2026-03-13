@@ -1,6 +1,6 @@
 import { createServer } from 'http';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +75,25 @@ async function ensureProductionBuild() {
   await runNextBuild();
 }
 
+function copyStandaloneDirectory(sourcePath, destinationPath) {
+  if (!existsSync(sourcePath)) {
+    return;
+  }
+
+  mkdirSync(dirname(destinationPath), { recursive: true });
+  cpSync(sourcePath, destinationPath, { recursive: true, force: true });
+}
+
+function ensureStandaloneAssets() {
+  const standaloneRoot = resolve(process.cwd(), '.next', 'standalone', 'packages', 'sidflow-web');
+
+  copyStandaloneDirectory(
+    resolve(process.cwd(), '.next', 'static'),
+    resolve(standaloneRoot, '.next', 'static')
+  );
+  copyStandaloneDirectory(resolve(process.cwd(), 'public'), resolve(standaloneRoot, 'public'));
+}
+
 function getStandaloneServerPath() {
   const candidates = [
     resolve(process.cwd(), '.next/standalone/server.js'),
@@ -91,6 +110,7 @@ function getStandaloneServerPath() {
 
 async function startStandaloneServer() {
   const nodeBinary = process.env.SIDFLOW_NODE_BINARY ?? 'node';
+  ensureStandaloneAssets();
   const standaloneServer = getStandaloneServerPath();
 
   await new Promise((resolve, reject) => {

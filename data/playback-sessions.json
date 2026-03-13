@@ -1,0 +1,378 @@
+{
+  "sessions": [
+    {
+      "createdAt": 1773421861339,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme/song-01/index.m3u8",
+      "id": "e2f2c798-1a1b-41a4-8a01-98e7c405a66d",
+      "lastAccessedAt": 1773421861339,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Superman Pt02 Theme",
+        "durationSeconds": 180,
+        "filename": "Superman_Pt02_Theme.sid",
+        "metadata": {
+          "author": "Brian M. Szepatowski",
+          "clock": "NTSC",
+          "fileSizeBytes": 8510,
+          "released": "1985 Brian M. Szepatowski",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Superman Pt02 Theme",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
+      }
+    },
+    {
+      "createdAt": 1773421861341,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme/song-01/index.m3u8",
+      "id": "3ae93b7c-bf18-4578-bb30-790325d51c3e",
+      "lastAccessedAt": 1773421861341,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Superman Pt02 Theme",
+        "durationSeconds": 180,
+        "filename": "Superman_Pt02_Theme.sid",
+        "metadata": {
+          "author": "Brian M. Szepatowski",
+          "clock": "NTSC",
+          "fileSizeBytes": 8510,
+          "released": "1985 Brian M. Szepatowski",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Superman Pt02 Theme",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
+      }
+    },
+    {
+      "createdAt": 1773421915252,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme/song-01/index.m3u8",
+      "id": "c73ff05b-9682-4772-a287-8fa7c01e237d",
+      "lastAccessedAt": 1773421915252,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Superman Pt02 Theme",
+        "durationSeconds": 180,
+        "filename": "Superman_Pt02_Theme.sid",
+        "metadata": {
+          "author": "Brian M. Szepatowski",
+          "clock": "NTSC",
+          "fileSizeBytes": 8510,
+          "released": "1985 Brian M. Szepatowski",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Superman Pt02 Theme",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
+      }
+    },
+    {
+      "createdAt": 1773421915252,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/DEMOS/0-9/10_Orbyte/song-01/index.m3u8",
+      "id": "283f487d-ee26-4a8a-869f-088ea73aa9f6",
+      "lastAccessedAt": 1773421915252,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "10 Orbyte",
+        "durationSeconds": 180,
+        "filename": "10_Orbyte.sid",
+        "metadata": {
+          "author": "Michael Becker (Premium)",
+          "clock": "PAL",
+          "fileSizeBytes": 1584,
+          "released": "2014 Tristar & Red Sector Inc.",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "10 Orbyte",
+          "version": 2
+        },
+        "relativePath": "C64Music/DEMOS/0-9/10_Orbyte.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid"
+      }
+    },
+    {
+      "createdAt": 1773421964143,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols/song-01/index.m3u8",
+      "id": "d3dcd531-254e-4724-ac35-feb2ef290317",
+      "lastAccessedAt": 1773421964143,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Foreign Carols",
+        "durationSeconds": 180,
+        "filename": "Foreign_Carols.sid",
+        "metadata": {
+          "author": "Michael Greenlee",
+          "clock": "NTSC",
+          "fileSizeBytes": 8958,
+          "released": "198? Michael Greenlee",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Foreign Carols",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid"
+      }
+    },
+    {
+      "createdAt": 1773421964145,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols/song-01/index.m3u8",
+      "id": "0531cd0d-8977-4933-b404-a7f12c598654",
+      "lastAccessedAt": 1773421964145,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Foreign Carols",
+        "durationSeconds": 180,
+        "filename": "Foreign_Carols.sid",
+        "metadata": {
+          "author": "Michael Greenlee",
+          "clock": "NTSC",
+          "fileSizeBytes": 8958,
+          "released": "198? Michael Greenlee",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Foreign Carols",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid"
+      }
+    },
+    {
+      "createdAt": 1773421964145,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols/song-01/index.m3u8",
+      "id": "ecad6e25-52ea-4bb4-a605-a9ccab107bb0",
+      "lastAccessedAt": 1773421964145,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Foreign Carols",
+        "durationSeconds": 180,
+        "filename": "Foreign_Carols.sid",
+        "metadata": {
+          "author": "Michael Greenlee",
+          "clock": "NTSC",
+          "fileSizeBytes": 8958,
+          "released": "198? Michael Greenlee",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Foreign Carols",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid"
+      }
+    },
+    {
+      "createdAt": 1773422017047,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters/song-01/index.m3u8",
+      "id": "ac80b987-d836-4d15-be23-12c0122d88e3",
+      "lastAccessedAt": 1773422017047,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "The Great Giana Sisters",
+        "durationSeconds": 180,
+        "filename": "Great_Giana_Sisters.sid",
+        "metadata": {
+          "author": "Chris Hülsbeck",
+          "clock": "PAL",
+          "fileSizeBytes": 23445,
+          "released": "1987 Time Warp",
+          "sidModel": "MOS6581",
+          "sidType": "RSID",
+          "songs": 23,
+          "startSong": 1,
+          "title": "The Great Giana Sisters",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid"
+      }
+    },
+    {
+      "createdAt": 1773422037958,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/DEMOS/0-9/10_Orbyte/song-01/index.m3u8",
+      "id": "0959877c-ecfd-446e-b1d3-09106a80ce70",
+      "lastAccessedAt": 1773422037958,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "10 Orbyte",
+        "durationSeconds": 180,
+        "filename": "10_Orbyte.sid",
+        "metadata": {
+          "author": "Michael Becker (Premium)",
+          "clock": "PAL",
+          "fileSizeBytes": 1584,
+          "released": "2014 Tristar & Red Sector Inc.",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "10 Orbyte",
+          "version": 2
+        },
+        "relativePath": "C64Music/DEMOS/0-9/10_Orbyte.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid"
+      }
+    },
+    {
+      "createdAt": 1773422066709,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme/song-01/index.m3u8",
+      "id": "a889f9a4-742f-4ffc-af91-d4aaa0875594",
+      "lastAccessedAt": 1773422066709,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Superman Pt02 Theme",
+        "durationSeconds": 180,
+        "filename": "Superman_Pt02_Theme.sid",
+        "metadata": {
+          "author": "Brian M. Szepatowski",
+          "clock": "NTSC",
+          "fileSizeBytes": 8510,
+          "released": "1985 Brian M. Szepatowski",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Superman Pt02 Theme",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
+      }
+    },
+    {
+      "createdAt": 1773422103068,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip/song-01/index.m3u8",
+      "id": "10b9f324-b68b-4442-a2c1-2265a8807bd4",
+      "lastAccessedAt": 1773422103068,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Lully Marche Ceremonie Turcs Wip",
+        "durationSeconds": 180,
+        "filename": "Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "metadata": {
+          "author": "Eric F. (Garvalf)",
+          "clock": "Unknown",
+          "fileSizeBytes": 1038,
+          "released": "2016 Garvalf",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Lully Marche Ceremonie Turcs Wip",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid"
+      }
+    },
+    {
+      "createdAt": 1773422113022,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/DEMOS/0-9/10_Orbyte/song-01/index.m3u8",
+      "id": "d6c3b674-5d84-400d-9266-cf0e272fdefc",
+      "lastAccessedAt": 1773422113022,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "10 Orbyte",
+        "durationSeconds": 180,
+        "filename": "10_Orbyte.sid",
+        "metadata": {
+          "author": "Michael Becker (Premium)",
+          "clock": "PAL",
+          "fileSizeBytes": 1584,
+          "released": "2014 Tristar & Red Sector Inc.",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "10 Orbyte",
+          "version": 2
+        },
+        "relativePath": "C64Music/DEMOS/0-9/10_Orbyte.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid"
+      }
+    }
+  ],
+  "updatedAt": "2026-03-13T17:15:13.022Z",
+  "version": "1.0.0"
+}
