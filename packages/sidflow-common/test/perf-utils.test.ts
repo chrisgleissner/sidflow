@@ -96,7 +96,11 @@ describe("PerfTimer", () => {
 describe("measureAsync", () => {
     it("should measure async function execution", async () => {
         const { result, timing } = await measureAsync("async-test", async () => {
-            await new Promise((resolve) => setTimeout(resolve, 10));
+            await Promise.resolve();
+            const start = performance.now();
+            while (performance.now() - start < 10) {
+                // busy wait to keep the duration deterministic on shared CI runners
+            }
             return 42;
         });
 
