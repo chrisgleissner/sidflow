@@ -24,6 +24,7 @@ import { pathToFileURL } from "node:url";
 import { resolveRepresentativeAnalysisWindow } from "./audio-window.js";
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
+import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
 
 // Default target sample rate for SID music analysis.
 // SID output is ~4kHz effective bandwidth, so 11025 Hz captures all relevant content
@@ -281,6 +282,7 @@ function parseWavHeader(buffer: Buffer): WavHeader {
  * - Uses efficient TypedArray operations
  */
 async function extractAndDownsampleAudio(
+  wavFile: string,
   buffer: Buffer,
   header: WavHeader,
   config: SidflowConfig
@@ -304,6 +306,7 @@ async function extractAndDownsampleAudio(
 
   const maxExtractSec = config.maxClassifySec ?? 15;
   const introSkipSec = config.introSkipSec ?? 30;
+  const sourceOffsetSec = (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0;
 
   const window = resolveRepresentativeAnalysisWindow(buffer, header, maxExtractSec, introSkipSec);
 
@@ -336,7 +339,7 @@ async function extractAndDownsampleAudio(
   return {
     audioData,
     wavDurationSec,
-    analysisStartSec: window.startSec,
+    analysisStartSec: sourceOffsetSec + window.startSec,
     analysisWindowSec: audioData.length / targetSampleRate,
     analysisSampleRate: targetSampleRate,
   };
@@ -372,7 +375,7 @@ async function extractFeatures(
     const sidStats = await stat(sidFile);
     const header = parseWavHeader(wavBuffer);
     const { audioData, analysisStartSec, analysisSampleRate, analysisWindowSec, wavDurationSec } =
-      await extractAndDownsampleAudio(wavBuffer, header, config);
+      await extractAndDownsampleAudio(wavFile, wavBuffer, header, config);
     const fullNumSamples = Math.max(1, Math.round(wavDurationSec * analysisSampleRate));
 
     if (!frameBuffer || frameBuffer.length !== ESSENTIA_FRAME_SIZE) {
@@ -447,7 +450,7 @@ async function extractBasicFeatures(
   const sidStats = await stat(sidFile);
   const header = parseWavHeader(wavBuffer);
   const { audioData, analysisStartSec, analysisWindowSec, analysisSampleRate, wavDurationSec } =
-    await extractAndDownsampleAudio(wavBuffer, header, config);
+    await extractAndDownsampleAudio(wavFile, wavBuffer, header, config);
   const fullNumSamples = Math.max(1, Math.round(wavDurationSec * analysisSampleRate));
 
   let sumSquares = 0;

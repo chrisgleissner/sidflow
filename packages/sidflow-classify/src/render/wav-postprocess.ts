@@ -117,16 +117,26 @@ export async function trimLeadingSilenceWavFile(
     maxTrimSeconds?: number;
     threshold?: number;
   }
-): Promise<{ readonly trimmed: boolean; readonly bytesRemoved: number }>
+): Promise<{ readonly trimmed: boolean; readonly bytesRemoved: number; readonly startSec: number }>
 {
   const original = await fs.readFile(wavPath);
+  const validation = validateWavHeader(original);
   const trimmedBuffer = trimLeadingSilenceWavBuffer(original, options);
   if (trimmedBuffer === original || trimmedBuffer.length === original.length) {
-    return { trimmed: false, bytesRemoved: 0 };
+    return { trimmed: false, bytesRemoved: 0, startSec: 0 };
   }
 
   await fs.writeFile(wavPath, trimmedBuffer);
-  return { trimmed: true, bytesRemoved: Math.max(0, original.length - trimmedBuffer.length) };
+  const bytesRemoved = Math.max(0, original.length - trimmedBuffer.length);
+  const startSec =
+    validation.valid && validation.header
+      ? Math.max(
+          0,
+          bytesRemoved /
+            ((validation.header.bitsPerSample / 8) * Math.max(1, validation.header.numChannels) * validation.header.sampleRate)
+        )
+      : 0;
+  return { trimmed: true, bytesRemoved, startSec };
 }
 
 function sliceWavBufferFromStartSample(

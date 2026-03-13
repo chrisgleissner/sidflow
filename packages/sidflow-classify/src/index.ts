@@ -49,6 +49,12 @@ import {
 import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./render/render-orchestrator.js";
 import { sliceWavFileToRepresentativeStart, trimLeadingSilenceWavFile } from "./render/wav-postprocess.js";
 import { computeMinRenderSecForRepresentativeWindow } from "./audio-window.js";
+import {
+  WAV_RENDER_SETTINGS_EXTENSION,
+  readWavRenderSettingsSidecar,
+  writeWavRenderSettingsSidecar,
+  type WavRenderSettingsSidecar,
+} from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import { DeterministicRatingModelBuilder, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
 
@@ -60,15 +66,6 @@ const classifyLogger = createLogger("classify");
 /** Heartbeat interval for long-running operations (ms) */
 const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
 
-const WAV_RENDER_SETTINGS_EXTENSION = ".render.json";
-
-type WavRenderSettingsSidecar = {
-  v: 1;
-  maxRenderSec: number;
-  introSkipSec: number;
-  maxClassifySec: number;
-};
-
 function resolveIntroSkipSec(config: SidflowConfig): number {
   return typeof config.introSkipSec === "number" && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
     ? config.introSkipSec
@@ -79,42 +76,6 @@ function resolveMaxClassifySec(config: SidflowConfig): number {
   return typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
     ? config.maxClassifySec
     : 15;
-}
-
-async function writeWavRenderSettingsSidecar(
-  wavFile: string,
-  settings: WavRenderSettingsSidecar
-): Promise<void> {
-  const sidecarPath = `${wavFile}${WAV_RENDER_SETTINGS_EXTENSION}`;
-  try {
-    await writeFile(sidecarPath, `${stringifyDeterministic(settings)}\n`, "utf8");
-  } catch {
-    // Best-effort only.
-  }
-}
-
-async function readWavRenderSettingsSidecar(wavFile: string): Promise<WavRenderSettingsSidecar | null> {
-  const sidecarPath = `${wavFile}${WAV_RENDER_SETTINGS_EXTENSION}`;
-  if (!(await pathExists(sidecarPath))) {
-    return null;
-  }
-  try {
-    const raw = await readFile(sidecarPath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<WavRenderSettingsSidecar>;
-    if (!parsed || parsed.v !== 1) {
-      return null;
-    }
-    if (
-      typeof parsed.maxRenderSec !== "number" ||
-      typeof parsed.introSkipSec !== "number" ||
-      typeof parsed.maxClassifySec !== "number"
-    ) {
-      return null;
-    }
-    return parsed as WavRenderSettingsSidecar;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -530,10 +491,11 @@ export async function needsWavRefresh(
   try {
     const config = configOverride ?? (await loadConfig(process.env.SIDFLOW_CONFIG));
     const desired: WavRenderSettingsSidecar = {
-      v: 1,
+      v: 2,
       maxRenderSec: resolveEffectiveMaxRenderSec(config),
       introSkipSec: resolveIntroSkipSec(config),
       maxClassifySec: resolveMaxClassifySec(config),
+      sourceOffsetSec: 0,
     };
     const existing = await readWavRenderSettingsSidecar(wavFile);
     if (!existing) {
@@ -647,6 +609,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
     const trackSuffix = options.songIndex !== undefined ? `-${options.songIndex}` : '';
     const chip = config.render?.defaultChip ?? '6581';
     const renderedFile = path.join(outputDir, `${baseName}${trackSuffix}-sidplayfp-cli-${chip}.wav`);
+    const renderedSettings = await readWavRenderSettingsSidecar(renderedFile);
     if (renderedFile !== options.wavFile) {
       const fs = await import('node:fs/promises');
       await fs.rename(renderedFile, options.wavFile);
@@ -662,13 +625,13 @@ export const defaultRenderWav: RenderWav = async (options) => {
     }
 
     await writeWavRenderSettingsSidecar(options.wavFile, {
-      v: 1,
       maxRenderSec:
         typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
           ? options.maxRenderSeconds
           : resolveEffectiveMaxRenderSec(config),
       introSkipSec: introSkipSeconds,
       maxClassifySec: maxClassifySeconds,
+      sourceOffsetSec: renderedSettings?.sourceOffsetSec ?? 0,
     });
   } else if (useCli) {
     // Use sidplayfp-cli via RenderOrchestrator for WAV-only
@@ -696,6 +659,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
     const trackSuffix = options.songIndex !== undefined ? `-${options.songIndex}` : '';
     const chip = config.render?.defaultChip ?? '6581';
     const renderedFile = path.join(outputDir, `${baseName}${trackSuffix}-sidplayfp-cli-${chip}.wav`);
+    const renderedSettings = await readWavRenderSettingsSidecar(renderedFile);
     if (renderedFile !== options.wavFile) {
       const fs = await import('node:fs/promises');
       await fs.rename(renderedFile, options.wavFile);
@@ -711,13 +675,13 @@ export const defaultRenderWav: RenderWav = async (options) => {
     }
 
     await writeWavRenderSettingsSidecar(options.wavFile, {
-      v: 1,
       maxRenderSec:
         typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
           ? options.maxRenderSeconds
           : resolveEffectiveMaxRenderSec(config),
       introSkipSec: introSkipSeconds,
       maxClassifySec: maxClassifySeconds,
+      sourceOffsetSec: renderedSettings?.sourceOffsetSec ?? 0,
     });
   } else {
     // Use the WASM engine directly for WAV-only (no multi-format support yet)
@@ -726,7 +690,9 @@ export const defaultRenderWav: RenderWav = async (options) => {
     await renderWavWithEngine(engine, options);
 
     // WASM can emit a short leading silent segment; trim a small prefix.
-    await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+    let sourceOffsetSec = 0;
+    const leadingTrim = await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+    sourceOffsetSec += leadingTrim.startSec;
 
     if (
       typeof options.maxRenderSeconds === "number" &&
@@ -736,21 +702,23 @@ export const defaultRenderWav: RenderWav = async (options) => {
       Number.isFinite(maxClassifySeconds) &&
       maxClassifySeconds > 0
     ) {
-      await sliceWavFileToRepresentativeStart(options.wavFile, {
+      const representativeSlice = await sliceWavFileToRepresentativeStart(options.wavFile, {
         maxWindowSeconds: maxClassifySeconds,
         introSkipSec: introSkipSeconds,
       });
-      await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+      sourceOffsetSec += representativeSlice.startSec;
+      const postSliceTrim = await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+      sourceOffsetSec += postSliceTrim.startSec;
     }
 
     await writeWavRenderSettingsSidecar(options.wavFile, {
-      v: 1,
       maxRenderSec:
         typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
           ? options.maxRenderSeconds
           : resolveEffectiveMaxRenderSec(config),
       introSkipSec: introSkipSeconds,
       maxClassifySec: maxClassifySeconds,
+      sourceOffsetSec,
     });
     
     // TODO: When WASM multi-format is implemented (render matrix status: mvp),
@@ -1066,10 +1034,10 @@ export async function buildAudioCache(
           // Keep cache reproducible even for injected renderers: record the effective
           // representative-window settings used to produce the WAV.
           await writeWavRenderSettingsSidecar(wavFile, {
-            v: 1,
             maxRenderSec: effectiveMaxRenderSeconds,
             introSkipSec: resolveIntroSkipSec(plan.config),
             maxClassifySec: resolveMaxClassifySec(plan.config),
+            sourceOffsetSec: (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0,
           });
         }
         

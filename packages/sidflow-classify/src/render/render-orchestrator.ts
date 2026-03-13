@@ -30,6 +30,7 @@ import { renderWavWithEngine, resolveTimeLimitSeconds } from "./wav-renderer.js"
 import { createEngine } from "./engine-factory.js";
 import { truncateWavFileToDurationMs } from "./wav-truncate.js";
 import { sliceWavFileToRepresentativeStart, trimLeadingSilenceWavFile } from "./wav-postprocess.js";
+import { writeWavRenderSettingsSidecar } from "../wav-render-settings.js";
 
 const logger = createLogger("render-orchestrator");
 export type RenderEngine = "wasm" | "sidplayfp-cli" | "ultimate64";
@@ -243,6 +244,7 @@ export class RenderOrchestrator {
     try {
       captureStats = await this.renderWav(request, wavPath, chip);
       logger.debug(`WAV rendered: ${wavPath}`);
+      let sourceOffsetSec = 0;
 
       // sidplayfp-cli's -t option can overshoot by seconds for some tracks.
       // Enforce a hard upper bound on the produced WAV before any further processing.
@@ -257,7 +259,8 @@ export class RenderOrchestrator {
 
       // Some engines can produce an initial silent segment. Trim a small prefix so
       // cached WAVs and derived encodes start cleanly.
-      await trimLeadingSilenceWavFile(wavPath, { maxTrimSeconds: 2, threshold: 1e-4 });
+      const leadingTrim = await trimLeadingSilenceWavFile(wavPath, { maxTrimSeconds: 2, threshold: 1e-4 });
+      sourceOffsetSec += leadingTrim.startSec;
 
       // If we're capping render length, shift the audio start to a representative window
       // (intro-skipping) so the cached artifact doesn't always begin at t=0.
@@ -269,13 +272,31 @@ export class RenderOrchestrator {
         Number.isFinite(request.maxClassifySeconds) &&
         request.maxClassifySeconds > 0
       ) {
-        await sliceWavFileToRepresentativeStart(wavPath, {
+        const representativeSlice = await sliceWavFileToRepresentativeStart(wavPath, {
           maxWindowSeconds: request.maxClassifySeconds,
           introSkipSec: request.introSkipSeconds,
         });
+        sourceOffsetSec += representativeSlice.startSec;
         // Ensure any slice boundary doesn't reintroduce a small silent prefix.
-        await trimLeadingSilenceWavFile(wavPath, { maxTrimSeconds: 2, threshold: 1e-4 });
+        const postSliceTrim = await trimLeadingSilenceWavFile(wavPath, { maxTrimSeconds: 2, threshold: 1e-4 });
+        sourceOffsetSec += postSliceTrim.startSec;
       }
+
+      await writeWavRenderSettingsSidecar(wavPath, {
+        maxRenderSec:
+          typeof request.maxRenderSeconds === "number" && Number.isFinite(request.maxRenderSeconds) && request.maxRenderSeconds > 0
+            ? request.maxRenderSeconds
+            : timeLimitSeconds,
+        introSkipSec:
+          typeof request.introSkipSeconds === "number" && Number.isFinite(request.introSkipSeconds) && request.introSkipSeconds > 0
+            ? request.introSkipSeconds
+            : 30,
+        maxClassifySec:
+          typeof request.maxClassifySeconds === "number" && Number.isFinite(request.maxClassifySeconds) && request.maxClassifySeconds > 0
+            ? request.maxClassifySeconds
+            : 15,
+        sourceOffsetSec,
+      });
 
       if (request.formats.includes("wav")) {
         const stats = await fs.stat(wavPath);
