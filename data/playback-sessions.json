@@ -309,8 +309,70 @@
         "selectedSong": 1,
         "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
       }
+    },
+    {
+      "createdAt": 1773422103068,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip/song-01/index.m3u8",
+      "id": "10b9f324-b68b-4442-a2c1-2265a8807bd4",
+      "lastAccessedAt": 1773422103068,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Lully Marche Ceremonie Turcs Wip",
+        "durationSeconds": 180,
+        "filename": "Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "metadata": {
+          "author": "Eric F. (Garvalf)",
+          "clock": "Unknown",
+          "fileSizeBytes": 1038,
+          "released": "2016 Garvalf",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Lully Marche Ceremonie Turcs Wip",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid"
+      }
+    },
+    {
+      "createdAt": 1773422113022,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": "/hls/C64Music/DEMOS/0-9/10_Orbyte/song-01/index.m3u8",
+      "id": "d6c3b674-5d84-400d-9266-cf0e272fdefc",
+      "lastAccessedAt": 1773422113022,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "10 Orbyte",
+        "durationSeconds": 180,
+        "filename": "10_Orbyte.sid",
+        "metadata": {
+          "author": "Michael Becker (Premium)",
+          "clock": "PAL",
+          "fileSizeBytes": 1584,
+          "released": "2014 Tristar & Red Sector Inc.",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "10 Orbyte",
+          "version": 2
+        },
+        "relativePath": "C64Music/DEMOS/0-9/10_Orbyte.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid"
+      }
     }
   ],
-  "updatedAt": "2026-03-13T17:14:26.709Z",
+  "updatedAt": "2026-03-13T17:15:13.022Z",
   "version": "1.0.0"
 }
