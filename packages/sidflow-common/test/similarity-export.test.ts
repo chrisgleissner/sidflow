@@ -110,4 +110,49 @@ describe("similarity-export", () => {
     expect(recommendations.map((entry) => entry.sid_path)).toEqual(["B.sid", "C.sid"]);
     expect(recommendations[0].rank).toBe(1);
   });
+
+  test("deduplicates repeated sid_path records by keeping the newest classification", async () => {
+    await writeFile(
+      path.join(classifiedPath, "dupe.jsonl"),
+      [
+        JSON.stringify({ sid_path: "A.sid", ratings: { e: 4, m: 4, c: 4, p: 2 }, features: { bpm: 110 }, classified_at: "2026-03-13T12:00:00.000Z", source: "auto", render_engine: "sidplayfp-cli" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 1,
+    });
+
+    const recommendations = recommendFromSeedTrack(outputPath, {
+      seedSidPath: "A.sid",
+      limit: 1,
+    });
+
+    expect(recommendations[0]?.sid_path).toBe("C.sid");
+  });
+
+  test("skips malformed classification rows without ratings", async () => {
+    await writeFile(
+      path.join(classifiedPath, "invalid.jsonl"),
+      [
+        JSON.stringify({ sid_path: "BROKEN.sid", features: { bpm: 100 }, classified_at: "2026-03-13T12:05:00.000Z", source: "auto", render_engine: "wasm" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const result = await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 1,
+    });
+
+    expect(result.manifest.track_count).toBe(4);
+  });
 });

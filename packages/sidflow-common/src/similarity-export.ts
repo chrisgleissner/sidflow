@@ -220,14 +220,33 @@ function classificationToTrack(
   };
 }
 
-function assertUniqueSidPaths(classifications: ClassificationRecord[]): void {
-  const seen = new Set<string>();
+function hasValidRatings(classification: ClassificationRecord): boolean {
+  const ratings = classification.ratings as Partial<ClassificationRecord["ratings"]> | undefined;
+  return Boolean(
+    ratings &&
+    typeof ratings.e === "number" &&
+    typeof ratings.m === "number" &&
+    typeof ratings.c === "number"
+  );
+}
+
+function dedupeClassifications(classifications: ClassificationRecord[]): ClassificationRecord[] {
+  const deduped = new Map<string, ClassificationRecord>();
   for (const classification of classifications) {
-    if (seen.has(classification.sid_path)) {
-      throw new Error(`Duplicate sid_path in classified output: ${classification.sid_path}`);
+    const existing = deduped.get(classification.sid_path);
+    if (!existing) {
+      deduped.set(classification.sid_path, classification);
+      continue;
     }
-    seen.add(classification.sid_path);
+
+    const existingTimestamp = existing.classified_at ?? "";
+    const nextTimestamp = classification.classified_at ?? "";
+    if (nextTimestamp >= existingTimestamp) {
+      deduped.set(classification.sid_path, classification);
+    }
   }
+
+  return Array.from(deduped.values());
 }
 
 function cosineSimilarity(left: number[], right: number[]): number {
@@ -369,9 +388,10 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
     readJsonlFiles<FeedbackRecord>(options.feedbackPath),
   ]);
 
-  assertUniqueSidPaths(classifications);
+  const dedupedClassifications = dedupeClassifications(classifications);
   const feedbackBySidPath = aggregateFeedback(feedbackEvents);
-  const tracks = classifications
+  const tracks = dedupedClassifications
+    .filter((classification) => hasValidRatings(classification))
     .map((classification) => classificationToTrack(classification, feedbackBySidPath.get(classification.sid_path), dims))
     .sort((left, right) => left.sid_path.localeCompare(right.sid_path));
 
