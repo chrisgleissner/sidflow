@@ -16,6 +16,7 @@ import {
   defaultRateLimiter,
   getClientIp,
 } from '@/lib/server/rate-limiter';
+import { isDevelopmentOnlyBypassEnabled } from '@/lib/server/security-runtime';
 
 const ADMIN_ROUTE_PATTERN = /^\/(?:admin|api\/admin)(?:\/|$)/;
 const API_ROUTE_PATTERN = /^\/api\//;
@@ -126,7 +127,7 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
     return null;
   }
 
-  const disableAdminAuth = process.env.SIDFLOW_DISABLE_ADMIN_AUTH === '1';
+  const disableAdminAuth = isDevelopmentOnlyBypassEnabled('SIDFLOW_DISABLE_ADMIN_AUTH');
   if (disableAdminAuth) {
     return null;
   }
@@ -206,7 +207,7 @@ function enforceRateLimit(request: NextRequest): NextResponse | null {
   const pathname = request.nextUrl.pathname;
 
   // Skip rate limiting if disabled via environment variable (development)
-  if (process.env.SIDFLOW_DISABLE_RATE_LIMIT === '1') {
+  if (isDevelopmentOnlyBypassEnabled('SIDFLOW_DISABLE_RATE_LIMIT')) {
     return null;
   }
 

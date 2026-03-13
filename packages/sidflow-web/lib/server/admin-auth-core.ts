@@ -1,6 +1,8 @@
 /* istanbul ignore file -- @preserve Edge runtime does not support new Function() */
 export const ADMIN_SESSION_COOKIE = 'sidflow_admin_session';
 
+import { assertProductionSecurityConfig, isProductionSecurityMode } from './security-runtime';
+
 const DEFAULT_SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const SESSION_RENEWAL_THRESHOLD_RATIO = 0.25; // renew when <25% TTL remains
 
@@ -116,12 +118,13 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 function getEnvSignature(): string {
+  const productionMode = isProductionSecurityMode();
   return JSON.stringify({
     user: process.env.SIDFLOW_ADMIN_USER ?? 'admin',
-    // Use the effective fallback in the signature so cache invalidates if env is later set
-    password: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'password',
+    password: process.env.SIDFLOW_ADMIN_PASSWORD ?? (productionMode ? '' : 'password'),
     secret: process.env.SIDFLOW_ADMIN_SECRET ?? '',
     ttl: process.env.SIDFLOW_ADMIN_SESSION_TTL_MS ?? '',
+    nodeEnv: process.env.NODE_ENV ?? '',
   });
 }
 
@@ -158,9 +161,14 @@ export function getAdminConfig(): AdminConfig {
     return cachedConfig;
   }
 
+  const productionMode = isProductionSecurityMode();
+  if (productionMode) {
+    assertProductionSecurityConfig();
+  }
+
   const username = process.env.SIDFLOW_ADMIN_USER ?? 'admin';
   const password = process.env.SIDFLOW_ADMIN_PASSWORD ?? 'password';
-  if (process.env.SIDFLOW_ADMIN_PASSWORD == null) {
+  if (!productionMode && process.env.SIDFLOW_ADMIN_PASSWORD == null) {
     // Warn loudly in dev if the insecure default is in use; do not crash.
     // This keeps /admin usable out of the box but makes it obvious in logs.
     console.warn(

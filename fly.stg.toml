@@ -2,6 +2,7 @@
 # Requires pre-created app and volume:
 #   flyctl apps create sidflow-stg --region lhr
 #   flyctl volumes create sidflow_data --region lhr --size 3 --app sidflow-stg
+# Supported topology: one stateful machine. Do not scale out until Phase 2 lands.
 
 app = "sidflow-stg"
 primary_region = "lhr"
@@ -77,4 +78,4 @@ kill_timeout = "30s"
 # Scale configuration
 [scaling]
   min_machines = 1
-  max_machines = 2
+  max_machines = 1

@@ -1,551 +1,133 @@
-# PLANS.md — Multi‑hour plans for SIDFlow
+# PLANS.md — Multi-hour plans for SIDFlow
 
 <!-- markdownlint-disable MD032 MD036 MD039 MD051 -->
 
-This file is the long‑lived planning surface for complex or multi‑hour tasks in this repository, following the "Using PLANS.md for multi‑hour problem solving" pattern.
-
-Any LLM agent (Copilot, Cursor, Codex, etc.) working in this repo must:
-
-- Read this file at the start of a substantial task or when resuming work.
-- Keep an explicit, checklist‑style plan here for the current task.
-- Update the plan and progress sections as work proceeds.
-- Record assumptions, decisions, and known gaps so future contributors can continue smoothly.
+This file is the active planning surface for substantial SIDFlow work. Keep it convergent: it should describe the current execution roadmap, not every historical task ever completed in the repository.
 
 ## How to use this file
 
-For each substantial user request or multi‑step feature, create a new Task section:
+For each substantial user request or multi-step effort:
+
+- Read this file before acting.
+- Prefer updating the existing active roadmap instead of spawning unrelated new tasks.
+- Keep a checklist-style plan with clear sequencing and exit criteria.
+- Maintain a progress log with dated entries.
+- Move completed, superseded, or no-longer-needed tasks into `doc/plans/` rather than leaving them in the active surface.
+
+Template:
 
 ```markdown
 ### Task: <short title> (YYYY-MM-DD)
 
 **User request (summary)**  
-- <One or two bullet points>
+- <One or two bullets>
 
 **Plan (checklist)**  
 - [ ] Step 1 — ...
 
 **Progress log**  
-- YYYY‑MM‑DD — Started task.  
+- YYYY-MM-DD — Started task.
 
-**Follow‑ups**  
+**Follow-ups**  
 - <Out of scope items>
 ```
 
-**Guidelines:**
-- Prefer small, concrete steps over vague ones.
-- Update the checklist as you go.
-- When complete, either keep a short entry under “Archived Tasks” below or move it to a dedicated archive file if the repo has an archive folder.
-- Keep progress logs to last 2-3 days; summarize older entries.
-
 ## Maintenance rules
 
-1. **Pruning**: Move completed tasks to archive. Keep progress logs brief.
-2. **Structure**: Each task must have: User request, Plan, Progress log, Follow-ups.
-3. **Plan-then-act**: Keep checklist synchronized with actual work. Build/Test must pass before marking complete.
-4. **TOC**: Regenerate after adding/removing tasks.
+1. Keep `PLANS.md` focused on active work only.
+2. Archive completed/superseded tasks under `doc/plans/archive-*.md`.
+3. Preserve request summaries, status, and progress logs when archiving.
+4. Prefer one active convergent roadmap at a time unless the user explicitly wants parallel tracks.
+5. Every substantial task must keep a dated progress log.
+6. Build/test validation is required before marking work complete.
+
+## Archive index
+
+- `doc/plans/README.md` — archive conventions
+- `doc/plans/archive-2025-12-to-2026-03.md` — completed, superseded, and retired tasks moved out of the active surface on 2026-03-13
 
 ---
 
 ## Active tasks
 
-### Task: Fix build/test SIGHUP and TS errors (2025-12-21)
+### Task: Production rollout convergence roadmap (2026-03-13)
 
 **User request (summary)**  
-- Stop `bun run test` from crashing (SIGHUP/OOM) and clear the blocking TypeScript errors so the build/test pipeline is green.
+- Convert the findings in `doc/audits/audit1/audit.md` into a new multi-phase execution plan with strong convergence.
+- Restructure planning so completed or no-longer-needed tasks are archived into `doc/plans/` while active work retains a progress log.
+
+**Convergence rules**  
+- Only one phase below may be actively executed at a time.
+- Later phases do not start until the current phase exit criteria are met or explicitly re-scoped.
+- New work discovered during implementation must be attached to an existing phase or recorded as a follow-up; do not create parallel standalone tasks unless the user asks for them.
+- Every progress entry must state what changed, what evidence was gathered, and the next decisive action.
 
 **Plan (checklist)**  
-- [x] Reproduce the failing build/test runs and capture logs to isolate SIGHUP/TS crash points.
-- [x] Reduce render integration test resource use and dispose audio engines to prevent runaway processes.
-- [x] Stabilize libsidplayfp realtime playback stress test to avoid timing flakes under constrained threads.
-- [x] Fix TypeScript errors in `generateAutoTags` (playlist/wav directory scoping and undefined identifiers).
-- [x] Validate with `bun run test` 3× consecutive (record outputs).
+- [x] Phase 0 — Planning convergence and archive hygiene.
+  Done when: `PLANS.md` contains a single active roadmap, legacy tasks are archived under `doc/plans/`, and archive conventions are documented.
+- [ ] Phase 1 — Security and deployment invariants.
+  Work:
+  - Remove unsafe production fallbacks for admin auth and JWT secrets.
+  - Make startup fail fast when required production secrets/config are missing.
+  - Narrow Fly deployment stance to the topology the app can actually support today.
+  Exit criteria:
+  - Production boot cannot succeed with default credentials or dev secrets.
+  - Deployment docs and Fly config reflect actual supported topology.
+  - Validation: `bun run build`, `bun run test` 3x.
+- [ ] Phase 2 — Durable state and job architecture.
+  Work:
+  - Externalize mutable state: sessions, users, preferences, playlists, progress, and rate limiting.
+  - Move fetch/classify/train execution behind a durable worker/queue boundary.
+  - Remove web-process ownership of long-running job state and in-process scheduler assumptions.
+  Exit criteria:
+  - Restart/rolling-deploy correctness no longer depends on a single Bun process.
+  - Web app becomes a submit/query surface for jobs rather than the job owner.
+  - Validation: build/tests plus targeted restart/job-resume verification.
+- [ ] Phase 3 — Contract, observability, and readiness hardening.
+  Work:
+  - Define supported public/admin/internal routes.
+  - Bring OpenAPI and docs into line with supported API behavior.
+  - Replace silent stub/fallback responses with explicit availability semantics where needed.
+  - Strengthen health/readiness/metrics and operational documentation.
+  Exit criteria:
+  - Supported API surface is documented and testable.
+  - Health/readiness distinguish “alive” from “ready for traffic”.
+  - Runbooks cover deploy, rollback, secrets, and job recovery.
+- [ ] Phase 4 — Fly staging architecture and 100-user validation.
+  Work:
+  - Stand up staging with the intended production topology.
+  - Expand performance journeys to search, auth, favorites, playlists, playback, and admin load.
+  - Measure realistic mixed load, including rolling deploy behavior under traffic.
+  Exit criteria:
+  - Repository contains reproducible evidence that the chosen Fly topology supports the target workload.
+  - VM sizing and concurrency limits are based on measured p95/p99 behavior, not defaults.
+- [ ] Phase 5 — Portable SID correlation export.
+  Work:
+  - Implement the single-file offline export designed in the audit, with SQLite as the primary format.
+  - Add schema/versioning, validation, CLI generation, and optional download metadata.
+  - Provide a consumer-oriented example for c64commander-style favorite-to-playlist workflows.
+  Exit criteria:
+  - Export can be generated reproducibly from repo artifacts.
+  - Fixture tests verify offline retrieval from one or more favorites.
+  - Docs cover schema, lifecycle, and compatibility expectations.
+- [ ] Phase 6 — Launch gate.
+  Work:
+  - Reconcile the system against Section 13 of `doc/audits/audit1/audit.md`.
+  - Close or explicitly defer any remaining launch blockers with documented rationale.
+  Exit criteria:
+  - Fly rollout criteria are met for the intended topology.
+  - Validation evidence exists for build/tests/load/deploy readiness.
 
 **Progress log**  
-- 2025-12-21 — Reproduced failures: render integration and realtime playback stress tests exhausted resources, and `generateAutoTags` referenced undefined `playlistDirs`/`wavDir`.
-- 2025-12-21 — Shortened render-integration durations and disposed `SidAudioEngine`; reduced realtime playback cycles and added disposal + relaxed timing threshold.
-- 2025-12-21 — Fixed `generateAutoTags` scoping for playlist updates (`wavDir` now defined); TypeScript passes.
-- 2025-12-21 — Validation: `bun run test` 3× consecutive all green:
-  - Run 1: 1666 pass, 0 fail, 6047 expect() calls. Ran 1666 tests across 165 files. [87.05s]
-  - Run 2: 1666 pass, 0 fail, 6047 expect() calls. Ran 1666 tests across 165 files. [85.80s]
-  - Run 3: 1666 pass, 0 fail, 6047 expect() calls. Ran 1666 tests across 165 files. [86.48s]
+- 2026-03-13 — Derived this roadmap from `doc/audits/audit1/audit.md`.
+- 2026-03-13 — Archived completed, superseded, and no-longer-needed task history into `doc/plans/archive-2025-12-to-2026-03.md`.
+- 2026-03-13 — Added archive conventions in `doc/plans/README.md` and reduced `PLANS.md` to a single active roadmap for stronger convergence.
+- 2026-03-13 — Validation exposed a full-suite flake: `packages/sidflow-web/tests/unit/playlist-builder.test.ts` leaked `global.fetch` state across files. Fixed the test to reset/restore the mock and re-established 3 consecutive clean runs:
+  - Run 1: 1666 pass, 0 fail, 6047 expect() calls. Ran 1666 tests across 165 files. [120.00s]
+  - Run 2: 1666 pass, 0 fail, 6047 expect() calls. Ran 1666 tests across 165 files. [119.57s]
+  - Run 3: 1666 pass, 0 fail, 6047 expect() calls. Ran 1666 tests across 165 files. [118.76s]
+- 2026-03-13 — Next decisive action: start Phase 1 by enforcing production secret/deployment invariants in code, startup checks, Fly config, and deployment docs.
+- 2026-03-13 — Phase 1 implementation started. Changed auth/JWT runtime checks to reject weak production secrets, blocked middleware bypass flags in production, added fail-fast Docker startup validation, switched Fly guidance/config to a single-machine topology, and aligned deployment docs/workflows with the new secret requirements. Evidence gathering next: run focused unit tests, then `bun run build` and `bun run test` until Phase 1 exits cleanly.
 
 **Follow-ups**  
-- Monitor for any recurrence of SIGHUP/OOM during future runs; consider running `bun run build` separately if CI requires explicit logs.
-
-### Task: WAV playlist manifests (2025-12-20)
-
-**User request (summary)**  
-- Whenever the pipeline emits multiple WAV files into a folder (stations, audio cache batches, etc.), also emit an `.m3u8` playlist for that folder.
-- Scan the codebase and extend every relevant writer to keep the playlists in sync with the WAV contents.
-
-**Plan (checklist)**  
-- [ ] Inventory all code paths that write multiple WAV files into a directory (station builder, cache emitters, sample generators, etc.) and document expected playlist names.
-- [ ] Design a shared helper (likely in `@sidflow/common/fs`) to rebuild an `.m3u8` given a target directory + ordered WAV list (stable relative paths, deterministic sorting).
-- [ ] Update each WAV-emitting subsystem to call the helper after writes (station builder, classify cache, scripts) without regressing existing behavior; add targeted unit/integration tests.
-- [ ] Add regression tests ensuring playlists stay updated when files are added/removed; cover at least station builder and audio cache scenarios.
-- [ ] Run `bun run build` and relevant test suites (unit + any affected integration) and capture outputs for 3 consecutive runs.
-
-**Progress log**  
-- 2025-12-20 — Created plan and began auditing WAV emitters.
-
-**Follow-ups**  
-- Pending investigation.
-
-### Task: Classification speed vs station deviation journey (DEMOS/G-L) (2025-12-19)
-
-**User request (summary)**  
-- Speed up classification iteratively (intro skip, analysis sample rate, analysis window duration) and stop when stations deviate >10% from a baseline.
-- Fix a severe station error (very different tracks co-located) and fix CI failures in Fast Classification Pipeline E2E.
-- Finish with build + tests (including e2e) passing 3× consecutively.
-
-**Plan (checklist)**  
-- [x] Fix station membership selection to enforce within-station cohesion (prevents “seed-neighbor” collisions).
-- [x] Stabilize `Fast Classification Pipeline E2E` tests (avoid filesystem ordering assumptions).
-- [x] Ensure all speed knobs are actually effective end-to-end (notably worker extraction honoring `analysisSampleRate`).
-- [x] Add a minimal journey harness + document to track runtime and station deviation vs baseline.
-- [ ] Diagnose baseline drift vs settings (quantify determinism and reconcile “known good” baseline).
-- [ ] Run a variance-aware journey (DEMOS/G-L) to find the fastest config within the deviation budget.
-- [ ] Validation: `bun run build` + `bun run test` + `bun run test:e2e` all pass 3× consecutive (paste outputs).
-
-**Deviation metric (expert plan)**
-- Use a fixed station seed list extracted from the baseline station manifests (`seed.key`).
-- For each station (matched by `seed.key`), compare membership sets (seed + tracks) using:
-  - Jaccard similarity $J(A,B)=|A\cap B|/|A\cup B|$ (symmetric, robust to station size drift)
-  - Recall $R(A,B)=|A\cap B|/|A|$ (baseline coverage)
-- Use **both mean and min** across stations; enforce stop condition if `meanJaccard < 0.90` or `minJaccard < 0.90`.
-- To test determinism / “randomness”:
-  - Repeat the *same* classification settings multiple times (fresh render cache when measuring end-to-end) and compute overlap vs a captured baseline snapshot.
-  - If repeat variance is material, treat the deviation budget as relative to baseline stability (record baseline run-to-run distribution in the report).
-
-**Optimization approach (variance-aware)**
-- Phase 1 (fast, low-noise): run with cached WAVs (no re-render) and repeats=2 to pick promising settings for:
-  - `introSkipSec` (start offset)
-  - `maxClassifySec` (analysis window)
-  - `analysisSampleRate` (analysis downsample rate)
-- Phase 2 (end-to-end): run the promising settings with `--include-render` and repeats=2 to include render cost.
-- Stop on the first settings step that breaches the 10% deviation budget.
-- Record every attempt in the markdown table: settings, elapsed time, and overlap (mean/min Jaccard + recall).
-
-**Progress log**  
-- 2025-12-19 — Fixed incoherent station membership by switching station building selection to a cohesion-aware greedy subset (prevents mutually-dissimilar tracks being included together).
-- 2025-12-19 — Stabilized CI Fast E2E tests by selecting the latest JSONL deterministically and comparing ratings keyed by `sid_path`.
-- 2025-12-19 — Fixed worker feature extraction to honor `analysisSampleRate` from config (previously hardcoded to 11025).
-- 2025-12-19 — Added deterministic station comparison support via `--seed-keys-file` in the station builder, plus the journey runner + doc template.
-- 2025-12-20 — Discovery: baseline stations in `tmp/demos-gl/stations` were built from a JSONL whose feature window differs from the current sandbox config (manifest shows `analysisWindowSec=10` while config baseline was `maxClassifySec=15`). A “baseline run” using config settings will legitimately diverge; the journey harness is being updated to capture a baseline snapshot for apples-to-apples comparisons and to measure repeat variance.
-- 2025-12-20 — Fixed a major per-run config bug: feature-extraction workers did not observe `process.env.SIDFLOW_CONFIG` changes after spawn, so journey runs silently reused the first run’s config (now each job passes `configPath` explicitly).
-- 2025-12-20 — Made station building deterministic under distance ties (sort by `dist`, then by `key`) to prevent baseline-vs-baseline churn when many feature vectors collapse to identical distances.
-- 2025-12-20 — Improved representative window selection to avoid slicing into near-silent regions (pick highest-RMS window among deterministic candidates).
-- 2025-12-20 — Prevented `--force-rebuild` + `--sid-path-prefix` runs from wiping the entire audio cache (force-rebuild already re-renders selected files).
-- 2025-12-20 — Updated the speed-journey runner so `introSkipSec` only varies when `--include-render` is enabled (otherwise cached WAVs make skip changes ineffective).
-- 2025-12-20 — Implemented WAV cache invalidation keyed on representative-window render settings via a `.render.json` sidecar (prevents baseline-vs-baseline station drift when cached WAV content is stale).
-- 2025-12-20 — Implemented a hard tempo constraint in station selection (requires confident BPM and rejects candidates whose BPM differs beyond a ratio threshold, accounting for half/double BPM).
-- 2025-12-20 — Added `station.m3u8` generation in each station folder listing copied WAVs in deterministic order.
-- 2025-12-20 — Root-caused remaining nondeterminism to the render layer (WAV bytes differed between identical runs); fixed WAV chunk buffer reuse and `.wav.sha256` hashing; forced a libsidplayfp WASM rebuild to include deterministic `powerOnDelay`.
-- 2025-12-20 — Baseline determinism re-verified: `scripts/verify-baseline-station-determinism.ts` now reports mean/min Jaccard of 1.0000 (output: `tmp/demos-gl/determinism-2025-12-20c/summary.json`).
-- 2025-12-20 — Fixed a journey-runner stall: `scripts/classify-speed-journey.ts` now cleans up feature-extraction workers on early stop and has a per-run watchdog timeout (`--timeout-sec`) so automation won’t hang indefinitely.
-- 2025-12-20 — Fixed baseline calibration in the journey runner: if the provided baseline stations don’t match the current config/cache, it captures a baseline reference from the first baseline run and continues (instead of stopping immediately on the low overlap).
-- 2025-12-20 — Validation blocker: `bun run test` is being killed with exit 137 (likely OOM / memory pressure) before completion, even when passing `--max-concurrency=4`.
-- 2025-12-20 — Mitigation: added a test-mode cap on internal worker pool defaults via `SIDFLOW_MAX_THREADS` (default `2` when invoking `bun test` through `scripts/run-bun.mjs`). This clamps auto thread selection in classify core (`resolveThreadCount`), feature extraction pool default sizing, classify CLI “threads” default, and web `/api/classify` default thread selection.
-- 2025-12-20 — Next validation step: re-run `bun run test` (no extra flags) to confirm the thread cap makes the full suite complete in this environment; then proceed with the required 3× `build/test/test:e2e` log captures.
-
-**Follow-ups**  
-- If journey shows large deviations driven primarily by changed analysis window placement (intro skip), consider pinning seed list + only varying extraction costs first (sample rate / window length), then vary skip once extraction knobs are settled.
-
-### Task: Fix WASM ROM setup for BASIC/RSID tunes (2025-12-19)
-
-**User request (summary)**  
-- Investigate why station WAVs ending with `_BASIC.wav` render incorrectly (near-silent / wrong) while `sidplayfp` CLI playback sounds correct.
-
-**Plan (checklist)**  
-- [x] Confirm likely renderer path (WASM) and verify local ROMs are present under `workspace/roms`.
-- [x] Ensure the WASM renderer used by classification loads and applies KERNAL/BASIC/CHARGEN ROMs.
-- [ ] Re-render the affected subset’s WAV cache and rebuild stations so station WAV outputs reflect the fixed renderer.
-
-**Progress log**  
-- 2025-12-19 — Implemented ROM injection for the classify WASM renderer (loads KERNAL/BASIC/CHARGEN and calls `setSystemROMs`).
-- 2025-12-19 — Verified with a direct WASM render that ROMs are applied successfully and that a `_BASIC.sid` sample produces a healthy audio level vs the previously generated station WAV.
-- 2025-12-19 — Validation: targeted tests pass (`bun test packages/sidflow-classify/test/engine-factory.test.ts packages/sidflow-classify/test/e2e-classification.test.ts`).
-- 2025-12-19 — Note: `bun run test` crashed in this environment with a Bun segfault/SIGILL after completing most tests; this appears to be a Bun runtime issue, not a test assertion failure.
-
-### Task: Iterative station optimization (richer Essentia features + extreme seeds) (2025-12-19)
-
-**User request (summary)**  
-- Improve station coherence by leveraging a broader set of stable Essentia.js features.
-- Avoid random station seeds; generate stations from intentionally extreme/different tracks.
-- Use a representative excerpt: render first 45s (or shorter), extract 30–45s (15s window, clamped if too short).
-- Execute end-to-end: reclassify DEMOS/G-L sandbox, rebuild stations, and validate.
-
-**Plan (checklist)**  
-- [x] Expand Essentia feature extraction to include MFCC summaries + additional spectral descriptors (main + worker), keeping strict “no silent degraded” behavior.
-- [x] Bump `FEATURE_SCHEMA_VERSION` for the new feature vector.
-- [x] Update station builder to support `--seed-mode extremes` (slow/low-energy, fast/high-energy, dark/bright, plus diversity fill) and to use the richer feature dims.
-- [x] Update representative window settings: render 45s and analyze 30–45s (15s window), clamping when too short.
-- [x] Replace heuristic `e/m/c` prediction with a deterministic dataset-normalized mapping (Essentia features → perceptual tags → ratings).
-- [x] Document the mapping in `doc/feature-tag-rating-mapping.md` (limited-claim / no “melodic” or valence claims).
-- [x] Reclassify DEMOS/G-L sandbox using the new feature schema.
-- [x] Rebuild stations using extreme seeding and emit a simple station-quality report (distance stats + BPM spread).
-- [x] Add station WAV similarity verification: re-extract features from each station WAV and report within-station cohesion + outliers.
-- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
-
-**Progress log**  
-- 2025-12-19 — Started task.
-- 2025-12-19 — Implemented representative window update: default classify window now 15s, render defaults ensure 45s for intro-skip+window; sandbox config set to maxRenderSec=45, maxClassifySec=15, introSkipSec=30; station builder prints additional per-station summaries (energy/centroid/flatness).
-- 2025-12-19 — Added a dedicated deterministic mapping spec doc: `doc/feature-tag-rating-mapping.md`.
-- 2025-12-19 — Updated `doc/technical-reference.md` to reflect the current feature set and point to the deterministic `c/e/m` mapping doc; clarified legacy seed-based predictor is placeholder-only.
-- 2025-12-19 — Implemented deterministic dataset-normalized feature→tag→rating mapper and refactored classification to compute ratings after dataset μ/σ are known.
-- 2025-12-19 — Fixed corrupted SpectralContrast aggregates (stable params + per-frame outlier rejection), reclassified DEMOS/G-L, rebuilt stations, and verified `spectralContrastMean` has no astronomical outliers.
-- 2025-12-19 — Added `scripts/verify-stations-wav-similarity.ts` and ran it against `tmp/demos-gl/stations` to report seed→track ranks within the dataset and pairwise within-station cohesion.
-- 2025-12-19 — Validation: `bun run test` 3× consecutive (all show `0 fail`):
-  - Run 1:
-    - 1663 pass
-    - 0 fail
-    - 6034 expect() calls
-    - Ran 1663 tests across 164 files. [86.83s]
-  - Run 2:
-    - 1663 pass
-    - 0 fail
-    - 6034 expect() calls
-    - Ran 1663 tests across 164 files. [87.60s]
-  - Run 3:
-    - 1663 pass
-    - 0 fail
-    - 6034 expect() calls
-    - Ran 1663 tests across 164 files. [86.85s]
-
-**Follow-ups**  
-- If stations remain incoherent, tune feature weights and/or add a second analysis window (still respecting intro skip) to capture section changes.
-
-### Task: Run web on DEMOS subset + classify via admin (2025-12-19)
-
-**User request (summary)**  
-- Run the web UI locally against a subset of HVSC (one `DEMOS` subfolder).
-- Trigger classification for that folder and ensure progress is visible in `/admin`.
-
-**Plan (checklist)**  
-- [x] Start web server using a sandbox config (cache/tags/classified under `tmp/`).
-- [x] Ensure collection root resolves correctly for the subset (so file discovery is non-empty).
-- [x] Trigger classification via web API (not CLI) so admin can observe progress.
-- [x] Verify expected classification artifacts are produced under sandbox paths.
-- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
-
-**Progress log**  
-- 2025-12-19 — Found root-cause for “admin shows 0 files”: subset config pointed `sidPath` at `.../C64Music/DEMOS/G-L`, but web default `collectionRoot` is `${sidPath}/C64Music`, yielding a non-existent path.
-- 2025-12-19 — Fix: set web preference `sidBasePath=workspace/hvsc/C64Music/DEMOS/G-L`, making `activeCollectionPath` valid and enabling file discovery.
-- 2025-12-19 — Started background classification via `POST /api/classify` and confirmed `/api/classify/progress` shows `isActive=true` and `totalFiles>0`.
-- 2025-12-19 — Classification complete for DEMOS/G-L subset (307 SIDs) using Essentia features; artifacts written under sandbox paths (`tmp/demos-gl/{classified,audio-cache,tags}`) and WAV `.sha256` sidecars backfilled to 307/307.
-- 2025-12-19 — Station proof: generated 10 station folders populated with WAVs + manifests from the classification JSONL.
-- 2025-12-19 — Validation: `bun run build` OK.
-- 2025-12-19 — Validation: `bun run test` 3× consecutive (all show `0 fail`):
-  - Run 1:
-    - 1661 pass
-    - 0 fail
-    - 6028 expect() calls
-    - Ran 1661 tests across 163 files. [73.61s]
-  - Run 2:
-    - 1661 pass
-    - 0 fail
-    - 6028 expect() calls
-    - Ran 1661 tests across 163 files. [75.67s]
-  - Run 3:
-    - 1661 pass
-    - 0 fail
-    - 6028 expect() calls
-    - Ran 1661 tests across 163 files. [75.93s]
-
-**Follow-ups**  
-- None yet.
-
-### Task: Improve station coherence (BPM estimator + seeded verification) (2025-12-19)
-
-**User request (summary)**  
-- Investigate “misplaced” tracks and incoherent stations (tempo mismatches).
-- Conclusively reproduce/verify the `Instantfunk.sid` + `Kaori_360.sid` case.
-
-**Plan (checklist)**  
-- [x] Quantify BPM distribution from the classified JSONL to confirm/deny saturation.
-- [x] Replace placeholder BPM with a real estimator and wire it into classify (main + worker).
-- [x] Regenerate classification JSONL for the DEMOS/G-L sandbox and rebuild stations.
-- [x] Add deterministic station seeding to reproduce specific “why is X in Y station?” cases.
-- [x] Validation: `bun run build`; `bun run test`.
-
-**Progress log**  
-- 2025-12-19 — Root cause: BPM was a placeholder derived from ZCR and clamped to [60, 200]; in the old JSONL, 84.4% of tracks were pegged at 200.
-- 2025-12-19 — Implemented autocorrelation-based BPM estimator (`packages/sidflow-classify/src/bpm-estimator.ts`) + unit tests; integrated into `essentia-features` and the feature-extraction worker.
-- 2025-12-19 — Reclassified DEMOS/G-L sandbox; BPM distribution no longer saturated at 200; rebuilt stations using confidence-aware BPM weighting.
-- 2025-12-19 — Fixed station WAV lookup (WAV cache is nested by `sid_path` directories) so stations contain actual WAVs, not missing-file warnings.
-- 2025-12-19 — Added `--seed-key` support to station builder and verified: Instantfunk-seeded station does **not** include `Kaori_360.sid` in its 20 nearest neighbors (`tmp/demos-gl/stations-instantfunk`).
-- 2025-12-19 — Validation: `bun run build` OK.
-- 2025-12-19 — Validation: `bun run test` OK (1663 pass, 0 fail).
-
-**Follow-ups**  
-- If any “misplaced” tracks persist, generate stations seeded by those specific SIDs and inspect the feature deltas (tempo + spectral/energy) to decide whether to tune BPM confidence thresholds or reweight/augment features.
-
-### Task: Fix nightly k6 perf flake on /api/play (2025-12-15)
-
-**User request (summary)**  
-- Fix the nightly performance test failure where k6 reports `http_req_failed` > 5% due to intermittent `POST /api/play` connection resets/EOF.
-
-**Plan (checklist)**  
-- [x] Identify where k6 script crashes or amplifies transient transport errors (e.g., calling `res.json()` when body is null).
-- [x] Make k6 journey scripts resilient (retry transient failures; avoid aborting VU iterations) without loosening CI thresholds.
-- [ ] Validate locally (if feasible): run the reduced k6 profile against a local standalone server.
-- [x] Validation: `npm run test` 3× consecutive (paste outputs).
-
-**Progress log**  
-- 2025-12-15 — Started: traced CI failure to transient `POST /api/play` transport errors causing status=0 + null body; k6 script attempted `res.json()` and aborted VU iterations, pushing `http_req_failed` above threshold.
-- 2025-12-15 — Implemented: generated k6 scripts now retry `POST /api/play` (3 attempts with backoff), parse JSON defensively (`safeJson`), and add small per-VU jitter to avoid a thundering herd.
-- 2025-12-15 — Validation: `npm run test` 3× consecutive OK (1661 pass, 0 fail).
-- 2025-12-15 — Note: local end-to-end k6 execution not run here because `k6` binary is not installed in this environment.
-
-### Task: Production readiness review (core pipeline + web) (2025-12-14)
-
-**User request (summary)**  
-- Perform a thorough review of the main features of this project; fix bugs/omissions found.  
-- Ensure everything is tested well; further productionize the application.  
-
-**Plan (checklist)**  
-- [ ] Establish baseline: `bun install`, `bun run build`, `bun run validate:config`, `bun run test` (3×), and `bun run test:e2e` (as feasible).  
-- [ ] Review main product surfaces for production gaps: CLI pipeline (fetch/classify/train/play/rate), web API/UI, config/validation, error handling, security defaults, observability, and docs accuracy.  
-- [ ] Fix correctness/robustness bugs discovered (prefer minimal, additive changes; keep public CLI/API stable).  
-- [ ] Add/extend unit/e2e tests for any fixed bugs (and remove unjustified skips).  
-- [ ] Re-run build + validations; ensure 3× consecutive clean unit test runs; run e2e suite and address flakes/failures.  
-
-**Progress log**  
-- 2025-12-14 — Started: loaded `PLANS.md`, repo docs, and guardrails; established baseline build/test runs.  
-- 2025-12-14 — Fixed: `validate:config` was failing under Bun due to missing `flatbuffers` dependency transitively required by `apache-arrow`; added explicit dependency and verified `bun run validate:config` passes.  
-- 2025-12-14 — Hardened: `/api/charts` now treats missing `data/feedback/` as a normal “no data yet” state (no noisy error logs/stack traces); added unit test to prevent regression.  
-- 2025-12-14 — Hardened: web E2E Playwright “coverage reporter” is now opt-in only when `E2E_COVERAGE=true` to avoid misleading “no coverage” logs on normal `test:e2e` runs.  
-- 2025-12-14 — Fixed: `@sidflow/web` `start` script now matches the repo’s `output: "standalone"` Next build (`node .next/standalone/server.js`) rather than `next start`.  
-- 2025-12-14 — Fixed: `scripts/run-classify-sample.ts` no longer generates invalid WAVs/SIDs that caused `ci:verify` to crash (and later hang). It now writes a deterministic, valid silent WAV placeholder and exits explicitly to avoid native handles keeping the process alive.  
-- 2025-12-14 — Fixed: `packages/libsidplayfp-wasm/test/performance.test.ts` was flaky due to hard timing assertions; converted default suite to correctness checks and made timing assertions opt-in via `SIDFLOW_RUN_WASM_PERF_TESTS=1`.  
-- 2025-12-14 — Validation: `bun run build`, `bun run validate:config`, unit tests (3× consecutive), and `bun run test:e2e` all pass.  
-- 2025-12-14 — Validation: `bun run ci:verify` passes (config validation + fetch sample + classify sample + full e2e).  
-
-### Task: Performance test reliability + regression detection (2025-12-14)
-
-**User request (summary)**  
-- Ensure performance tests are reliable, repeatable, and documented accurately.  
-- Detect performance regressions and validate that the site remains usable under hundreds of concurrent users.  
-
-**Plan (checklist)**  
-- [ ] Inventory current performance tooling (unified runner, journeys, CI workflow) and distill intended coverage.  
-- [ ] Fix correctness gaps in the unified runner (k6 journey modeling, `/api/play` response parsing, realistic playback/stream request).  
-- [ ] Add/adjust SLO checks so regressions are detected reliably (error rate + latency percentiles + optional throughput), tuned for CI vs local.  
-- [ ] Align CI workflow artifacts/paths with actual outputs (results, reports, logs).  
-- [ ] Update docs (concise): how to run locally/CI, what is measured, and how to interpret results/thresholds.  
-- [ ] Validation: `bun run build` + `bun run test` 3× consecutive; run perf runner multiple times (local mode) to confirm stability.  
-
-**Progress log**  
-- 2025-12-14 — Started: audited `performance.yml`, unified runner, journeys, and current k6/Playwright generators; identified that k6 playback step does not parse `/api/play` response correctly (likely not exercising streaming under load).  
-- 2025-12-14 — Implemented: runner profiles (smoke/reduced/standard/scale), k6 per-VU iteration modeling, correct `/api/play` parsing + playback request, k6 SLO checks (error rate + p95/p99), and CI hardening (reduced k6-only, minimal SID fixture prep, standalone WASM path override). Docs updated (README + developer guide). Validation: `bun run test` passed 5× consecutively (see /workspace/tmp/test-loop-*.log).  
-- 2025-12-14 — Added: on-commit perf smoke in `.github/workflows/build-and-test.yaml` (k6-only, reduced, 1 VU, 1 journey, deterministic fixture). Local simulation passes end-to-end (standalone server + `bun run perf:run ...`).  
-- 2025-12-14 — Fixed CI flake: Next standalone server bound to container hostname, making `localhost:3000` unreachable; now binds to `127.0.0.1` and uses `http://127.0.0.1:3000` in both on-commit perf smoke + nightly perf workflow.  
-
-### Task: Documentation accuracy + link integrity sweep (2025-12-14)
-
-**User request (summary)**  
-- Review all documentation (markdown, source comments, UI descriptions) for accuracy, concision, and link integrity.
-
-**Plan (checklist)**  
-- [x] Inventory all markdown docs and referenced internal links; remove or fix any broken references.  
-- [x] Audit web/API docs (README, `doc/technical-reference.md`, `packages/*/README.md`, OpenAPI) against implemented routes and config.  
-- [x] Audit source-code doc comments and UI copy for accuracy (avoid “community”/hyperbole unless it’s true for the current implementation).  
-- [x] Run `bun run build` and `bun run test` 3× consecutive; fix any failures introduced by doc/comment changes.  
-
-**Progress log**  
-- 2025-12-14 — Started: inventoried all markdown files (17 total) and found broken links in `README.md`/`PLANS.md`/agent guidance; beginning fixes and UI copy alignment.
-- 2025-12-14 — Completed: fixed broken doc references, updated README/technical reference/OpenAPI, aligned key UI copy + source comments, and updated CLI help text + tests. Validation: `npm run build` OK; `npm run test` 3× consecutive OK.
-
-### Task: Enable all skipped tests + fix classify-heartbeat idle timeout (2025-12-13)
-
-**User request (summary)**  
-- Enable and fix all currently disabled tests (unit + e2e).
-- Fix failing e2e `classify-heartbeat` timeout: "Timed out waiting for classification to become idle".
-- Prove stability with 3 consecutive fully green runs.
-
-**Plan (checklist)**  
-- [ ] Inventory all skipped/disabled tests (unit + e2e) and identify why they’re skipped.
-- [ ] Fix `classify-heartbeat` by making “classification idle” deterministic (cleanup + self-healing progress state).
-- [ ] Re-enable skipped e2e specs by making them self-contained + fast (synthetic inputs, no dependency on existing `data/`).
-- [ ] Re-enable skipped unit tests (remove manual-only skips; make runtime bounds stable).
-- [ ] Validation: `bun run build && bun run test && bun run test:e2e` 3× consecutive (paste outputs).
-
-**Progress log**  
-- 2025-12-13 — Started: identified 5 skipped tests (3 e2e, 2 unit) and confirmed heartbeat fails while waiting for `/api/classify/progress` to report idle.
-
-### Task: Configurable intro skip + updated render/classify constraints (2025-12-13)
-
-**User request (summary)**
-- Fix the prefs copy/validation for timeouts: min `maxRenderSec` should be sensible (≥ 20s and ≥ `maxClassifySec + introSkipSec`).
-- Make the intro skip seconds configurable and apply it during representative-window selection; default behavior should ignore the first 30s and analyze seconds 30–40 when possible (clamped when the song is too short).
-
-**Plan (checklist)**
-- [x] Add `introSkipSec` to SIDFlow config schema and prefs API/UI.
-- [x] Update representative-window selection to skip `introSkipSec` (clamped when audio too short).
-- [x] Update min-render constraint logic and prefs UI copy (≥ 20s and ≥ `maxClassifySec + introSkipSec`).
-- [x] Update/extend unit tests for API validation + representative-window behavior.
-- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
-
-**Progress log**
-- 2025-12-13 — Started task.
-- 2025-12-19 — Completed: default `introSkipSec` is now 30s and the representative window is selected deterministically as `[introSkipSec, introSkipSec + maxClassifySec]` when possible (else clamped to latest valid start). Updated classify (main + worker), web prefs constraint defaults, and unit tests. Validation: `bun run build` OK; `bun run test` 3× consecutive (all show `0 fail`):
-
-  Run #1:
-  1661 pass
-  0 fail
-  6028 expect() calls
-  Ran 1661 tests across 163 files. [83.34s]
-
-  Run #2:
-  1661 pass
-  0 fail
-  6028 expect() calls
-  Ran 1661 tests across 163 files. [77.16s]
-
-  Run #3:
-  1661 pass
-  0 fail
-  6028 expect() calls
-  Ran 1661 tests across 163 files. [74.87s]
-
-### Task: Respect format prefs; trim WAV intro/silence; enforce render>=classify (2025-12-13)
-
-**User request (summary)**
-- Stop generating FLAC/M4A when deselected in prefs.
-- Remove ~1s silence at start of rendered WAVs.
-- When generating capped render artifacts (per `maxRenderSec`), skip intros in the rendered audio itself (postprocess to a representative snippet).
-- Enforce `maxRenderSec >= maxClassifySec` in UI + API.
-- Add unit tests; ensure full unit tests pass 3× consecutively (paste outputs).
-
-**Plan (checklist)**
-- [x] Wire web classify temp config to include prefs `defaultFormats`.
-- [x] Enforce `maxRenderSec >= maxClassifySec` in `/api/prefs`, UI, and config validation.
-- [x] Postprocess rendered WAVs: trim leading silence; select/slice representative snippet when `maxRenderSec` is active.
-- [x] Add fast unit tests for: prefs constraint rejection; temp config formats; WAV postprocessing.
-- [x] Validation: `bun run build`; `bun run test` 3× consecutive (paste outputs).
-
-**Progress log**
-- 2025-12-13 — Started task; locating render format selection, prefs persistence, and WAV postprocessing hooks.
-- 2025-12-13 — Implemented: classify temp config respects `defaultFormats`; WAV leading-silence trim; representative-window slicing for capped renders; prefs/UI validation for render/classify constraints; added unit tests.
-- 2025-12-13 — Validation: `bun run test` 3× consecutive (all show `0 fail`):
-
-  Run #1:
-  1656 pass
-  2 skip
-  0 fail
-  Ran 1658 tests across 163 files. [50.61s]
-
-  Run #2:
-  1656 pass
-  2 skip
-  0 fail
-  Ran 1658 tests across 163 files. [50.33s]
-
-  Run #3:
-  1656 pass
-  2 skip
-  0 fail
-  Ran 1658 tests across 163 files. [50.72s]
-
-**Follow-ups**
-- None yet.
-
-### Task: Preserve cached WAVs; cap feature extraction window (2025-12-13)
-
-**User request (summary)**
-- If an oversized WAV is already present in the cache, never reduce its size (no truncation/rewrites on cache hits).
-- Cap **feature extraction** by analyzing only a representative fragment according to `maxClassifySec` (max extract duration), not necessarily the first seconds (skip intro when possible).
-- Only when cache artifacts do not exist should rendering be limited (respect `maxRenderSec` when creating new artifacts).
-- Add relevant unit tests; ensure build + unit tests pass 3× consecutively (capture output).
-
-**Plan (checklist)**
-- [x] Remove cache-hit WAV truncation (preserve existing cached audio artifacts).
-- [x] Add representative-window selection logic (intro-skipping) used by Essentia extraction (main thread + worker).
-- [x] Ensure render-time limiting applies only when creating new artifacts (use `maxRenderSec`).
-- [x] Update/replace tests to cover: no cache-hit truncation; window-limited extraction; render caps remain enforced for new renders.
-- [x] Validation: `bun run build`; `bun run test` 3× consecutively (paste outputs).
-
-**Progress log**
-- 2025-12-13 — Started implementation; locating cache-hit truncation and full-WAV extraction code paths.
-- 2025-12-13 — Implemented representative-window extraction (intro skip + energy pick) and removed cache-hit truncation.
-- 2025-12-13 — Validation: `bun run build` x3 (passes; upstream check prints “Upstream changed; WASM rebuild required.” but exits 0).
-- 2025-12-13 — Validation: `bun run test` x3 consecutive: 1650 pass, 2 skip, 0 fail.
-
-**Follow-ups**
-- None yet.
-
-### Task: Wire maxRenderSec/maxClassifySec into prefs UI/API (2025-12-13)
-
-**User request (summary)**
-- Make `maxRenderSec` and `maxClassifySec` controllable via the prefs tab UI and the prefs REST API.
-- Add exceptionally fast tests covering edge conditions; ensure full build + tests pass 3× consecutively.
-
-**Plan (checklist)**
-- [x] Add prefs REST API support for reading/updating these config keys.
-- [x] Add prefs UI controls that round-trip through the API.
-- [x] Add fast unit tests for prefs route validation + persistence.
-- [x] Add fast unit tests for classification duration capping across edge values.
-- [x] Run `bun run build` and `bun run test` 3× consecutively (capture output).
-
-**Progress log**
-- 2025-12-13 — Wired config limits through /api/prefs and Admin prefs UI; added fast unit tests for API route + classification edge cases.
-- 2025-12-13 — Validation: `bun run build && bun run test` x3: 1643 pass, 2 skip, 0 fail (all 3 runs).
-
-### Task: Fix classify-heartbeat e2e test (2025-12-12)
-
-**User request (summary)**  
-- Unskip the classify-heartbeat test and make it pass reliably.
-
-**Plan (checklist)**  
-- [x] Inspect the current classify-heartbeat test setup and failure mode.
-- [x] Implement code/test fixes to prevent stale thread detection during classification.
-- [ ] Run targeted validations (at least the affected e2e/spec) and broader checks as feasible.
-- [ ] Record results and mark task complete once tests pass.
-
-**Progress log**  
-- 2025-12-12 — Started task, reviewing existing heartbeat test and classification progress handling.
-- 2025-12-12 — Converted heartbeat spec to Playwright (chromium-only, serial), added idle wait + stale tracking via API.
-
-**Follow-ups**  
-- None yet.
-
-### Task: Fix Fly.io CI deploy (2025-12-12)
-
-**User request (summary)**  
-- Make staging/production Fly.io deployments succeed in CI; staging currently fails because the app is missing.
-
-**Plan (checklist)**  
-- [x] Review current Fly.io workflow logic (app/volume creation, org defaults, secrets) and the failure path.
-- [x] Update GitHub Actions workflow to auto-create apps/volumes (with safe defaults) for staging and production.
-- [x] Fix Docker image startup to keep legacy `/sidflow/scripts` and `/app` paths alive for Fly.
-- [ ] Build and publish a new image via GitHub release, then deploy to staging and production. *(blocked: staging app access)*
-
-**Progress log**  
-- 2025-12-12 — Investigating release workflow; staging deploy fails when sidflow-stg is absent because FLY_CREATE_APPS is not set.
-- 2025-12-12 — Set workflow defaults to auto-create apps/volumes (FLY_CREATE_APPS/FLY_CREATE_VOLUMES=true, FLY_ORG default).
-- 2025-12-12 — Not running code/tests locally (workflow-only change).
-- 2025-12-12 — Validation blocked locally: Fly deployments require FLY_API_TOKEN/FLY_ORG in shell to run flyctl; tokens only available in GitHub Actions secrets.
-- 2025-12-12 — Local flyctl auth works with provided token but lacks app-create scope (creation of sidflow-stg fails: "Not authorized to deploy this app"); staging app still needs creation with a full-scope token or manual pre-create.
-- 2025-12-12 — Added compatibility symlinks in Dockerfile.production for `/sidflow/scripts` and `/app`; built image locally (sidflow:testfix) to verify startup script exists; `flyctl deploy --app sidflow-stg` blocked with "unauthorized".
-
-**Follow-ups**  
-- None yet.
-
----
-
-## Archived Tasks
-
-**Recently archived (December 2025):**
-- **Classification Pipeline Hardening & Productionization (2025-12-06)** — ✅ COMPLETE
-  - 8 phases delivered: contracts/fixtures, WAV validation, Essentia detection, metadata enhancement, JSONL writer queue, metrics/observability, test strategy, CI integration
-  - 44 new tests added (17 metrics + 12 writer queue + 15 WAV validation + 4 fast E2E)
-- **CI Build Speed & Test Stability (2025-12-06)** — ✅ COMPLETE
-  - Fixed scheduler-export-import test (wait for classification idle)
-  - Skipped slow classify-api-e2e tests in CI (can run locally)
-- Classification Pipeline Fixes (2025-12-04) — Fixed Essentia.js defaults
-- Codebase Deduplication & Cleanup (2025-12-04) — CLI parser consolidation
-- Documentation Consolidation Phase 1 & 2 (2025-12-06) — 98→16 files, 25k→2k lines
-
----
-
-**Next steps**: When starting new work, create a Task section above following the template.
+- If older archived work needs to be revived, reopen it by linking the archive entry and attaching it to one of the phases above instead of restoring it as an independent active task.

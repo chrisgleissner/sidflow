@@ -99,7 +99,7 @@ if flyctl deploy \
     --config "${TEMP_CONFIG}" \
     --app "${APP_NAME}" \
     --image "ghcr.io/chrisgleissner/sidflow:${TAG}" \
-    --strategy rolling \
+    --strategy immediate \
     --wait-timeout 300; then
     
     log_success "Deployment completed"

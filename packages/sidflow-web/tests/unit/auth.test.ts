@@ -138,6 +138,16 @@ describe('User Storage', () => {
 });
 
 describe('JWT Utilities', () => {
+    beforeEach(() => {
+        process.env.NODE_ENV = 'test';
+        process.env.JWT_SECRET = 'jwt-test-secret-abcdefghijklmnopqrstuvwxyz';
+    });
+
+    afterEach(() => {
+        delete process.env.NODE_ENV;
+        delete process.env.JWT_SECRET;
+    });
+
     test('should generate and verify valid token', () => {
         const payload = { userId: 'user-123', username: 'testuser' };
         const token = generateToken(payload);
@@ -164,5 +174,14 @@ describe('JWT Utilities', () => {
         const tampered = token.substring(0, token.length - 5) + 'xxxxx';
         const verified = verifyToken(tampered);
         expect(verified).toBeNull();
+    });
+
+    test('should reject production mode when JWT_SECRET is missing', () => {
+        process.env.NODE_ENV = 'production';
+        delete process.env.JWT_SECRET;
+
+        expect(() => generateToken({ userId: 'user-123', username: 'testuser' })).toThrow(
+            /Production security configuration is invalid/
+        );
     });
 });

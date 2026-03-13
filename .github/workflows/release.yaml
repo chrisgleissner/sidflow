@@ -365,14 +365,18 @@ jobs:
             fi
           fi
 
-          if [[ -z "${ADMIN_PASSWORD:-}" ]]; then
-            echo "❌ SIDFLOW_ADMIN_PASSWORD GitHub secret is not set."
-            echo "Add SIDFLOW_ADMIN_PASSWORD (or SIDFLOW_ADMIN_PASSWORD_STG) to repository secrets before deploying."
+          if [[ -z "${ADMIN_PASSWORD:-}" || -z "${{ secrets.SIDFLOW_ADMIN_SECRET_STG || secrets.SIDFLOW_ADMIN_SECRET }}" || -z "${{ secrets.JWT_SECRET_STG || secrets.JWT_SECRET }}" ]]; then
+            echo "❌ Required staging auth secrets are not fully configured."
+            echo "Add SIDFLOW_ADMIN_PASSWORD, SIDFLOW_ADMIN_SECRET, and JWT_SECRET repository secrets before deploying."
             exit 1
           fi
 
-          echo "Updating admin password secret in Fly.io..."
-          flyctl secrets set SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" --app "${STG_APP_NAME}" >/dev/null
+          echo "Updating auth secrets in Fly.io..."
+          flyctl secrets set \
+            SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+            SIDFLOW_ADMIN_SECRET="${{ secrets.SIDFLOW_ADMIN_SECRET_STG || secrets.SIDFLOW_ADMIN_SECRET }}" \
+            JWT_SECRET="${{ secrets.JWT_SECRET_STG || secrets.JWT_SECRET }}" \
+            --app "${STG_APP_NAME}" >/dev/null
           
           # Update image version in fly.stg.toml
           sed -i "s|image = .*|image = \"ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}\"|" fly.stg.toml
@@ -382,7 +386,7 @@ jobs:
             --config fly.stg.toml \
             --app "${STG_APP_NAME}" \
             --image "ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}" \
-            --strategy rolling \
+            --strategy immediate \
             --wait-timeout 300 || {
             echo "❌ Deployment failed"
             echo "Check logs: flyctl logs --app ${STG_APP_NAME}"
@@ -485,14 +489,18 @@ jobs:
             fi
           fi
 
-          if [[ -z "${ADMIN_PASSWORD:-}" ]]; then
-            echo "❌ SIDFLOW_ADMIN_PASSWORD GitHub secret is not set."
-            echo "Add SIDFLOW_ADMIN_PASSWORD (or SIDFLOW_ADMIN_PASSWORD_PRD) to repository secrets before deploying."
+          if [[ -z "${ADMIN_PASSWORD:-}" || -z "${{ secrets.SIDFLOW_ADMIN_SECRET_PRD || secrets.SIDFLOW_ADMIN_SECRET }}" || -z "${{ secrets.JWT_SECRET_PRD || secrets.JWT_SECRET }}" ]]; then
+            echo "❌ Required production auth secrets are not fully configured."
+            echo "Add SIDFLOW_ADMIN_PASSWORD, SIDFLOW_ADMIN_SECRET, and JWT_SECRET repository secrets before deploying."
             exit 1
           fi
 
-          echo "Updating admin password secret in Fly.io..."
-          flyctl secrets set SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" --app "${PRD_APP_NAME}" >/dev/null
+          echo "Updating auth secrets in Fly.io..."
+          flyctl secrets set \
+            SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+            SIDFLOW_ADMIN_SECRET="${{ secrets.SIDFLOW_ADMIN_SECRET_PRD || secrets.SIDFLOW_ADMIN_SECRET }}" \
+            JWT_SECRET="${{ secrets.JWT_SECRET_PRD || secrets.JWT_SECRET }}" \
+            --app "${PRD_APP_NAME}" >/dev/null
           
           # Update image version in fly.prd.toml
           sed -i "s|image = .*|image = \"ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}\"|" fly.prd.toml
@@ -502,7 +510,7 @@ jobs:
             --config fly.prd.toml \
             --app "${PRD_APP_NAME}" \
             --image "ghcr.io/${{ github.repository_owner }}/sidflow:${VERSION}" \
-            --strategy rolling \
+            --strategy immediate \
             --wait-timeout 300 || {
             echo "❌ Deployment failed"
             echo "Check logs: flyctl logs --app ${PRD_APP_NAME}"

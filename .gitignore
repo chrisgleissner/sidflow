@@ -72,3 +72,6 @@ coverage-merged/
 
 # Local installation directory (user-specific deployment configs)
 local-install/
+
+# Symlinked folders
+c64commander

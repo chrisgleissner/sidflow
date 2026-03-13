@@ -1,6 +1,6 @@
 /// <reference types="bun-types" />
 
-import { describe, expect, it, beforeEach, mock } from "bun:test";
+import { describe, expect, it, beforeEach, afterAll, mock } from "bun:test";
 import {
   buildSongPlaylist,
   buildFolderPlaylist,
@@ -8,21 +8,32 @@ import {
   type PlaylistOptions,
 } from "@/lib/playlist-builder";
 
-// Mock fetch globally
-const mockFetch = mock(() => Promise.resolve({
-  ok: true,
-  json: async () => ({
-    success: true,
-    path: "",
-    items: [],
-  }),
-}));
+const originalFetch = global.fetch;
 
+function createDefaultFetchResponse(): Promise<Response> {
+  return Promise.resolve({
+    ok: true,
+    json: async () => ({
+      success: true,
+      path: "",
+      items: [],
+    }),
+  } as Response);
+}
+
+// Mock fetch globally for this file, but restore it afterwards to avoid leaking
+// test-specific behavior into unrelated suites.
+const mockFetch = mock(() => createDefaultFetchResponse());
 global.fetch = mockFetch as unknown as typeof fetch;
 
 describe("Playlist Builder", () => {
   beforeEach(() => {
-    mockFetch.mockClear();
+    mockFetch.mockReset();
+    mockFetch.mockImplementation(() => createDefaultFetchResponse());
+  });
+
+  afterAll(() => {
+    global.fetch = originalFetch;
   });
 
   describe("buildSongPlaylist", () => {

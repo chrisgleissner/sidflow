@@ -13,8 +13,7 @@ kill_timeout = "30s"
   dockerfile = "Dockerfile.production"
 
 [deploy]
-  strategy = "rolling"
-  max_unavailable = 0.5
+  strategy = "immediate"
 
 [env]
   NODE_ENV = "production"
@@ -85,7 +84,8 @@ kill_timeout = "30s"
   cpus = 1
   memory_mb = 512
 
-# Scale configuration
+# Supported topology: single stateful machine only until Phase 2 externalizes
+# sessions, jobs, rate limiting, and playlist/user storage.
 [scaling]
   min_machines = 1
-  max_machines = 3
+  max_machines = 1

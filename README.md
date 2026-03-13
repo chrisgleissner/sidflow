@@ -72,6 +72,8 @@ See [Deployment Guide](doc/deployment.md) for Docker and Fly.io deployment optio
 
 ### Quick Deploy to Fly.io
 
+Fly deployment is currently supported only as a single stateful machine. Multi-machine scaling and rolling deploys remain blocked on the Phase 2 shared-state work in [PLANS.md](PLANS.md).
+
 ```bash
 # Install flyctl
 curl -L https://fly.io/install.sh | sh
@@ -95,13 +97,15 @@ Standard production scenario:
 docker run -p 3000:3000 \
   -e SIDFLOW_ADMIN_USER=admin \
   -e SIDFLOW_ADMIN_PASSWORD='your-password' \
+  -e SIDFLOW_ADMIN_SECRET='replace-with-a-32-character-secret-minimum' \
+  -e JWT_SECRET='replace-with-a-32-character-secret-minimum' \
   -v /path/to/hvsc:/sidflow/workspace/hvsc \
   -v /path/to/audio-cache:/sidflow/workspace/audio-cache \
   -v /path/to/tags:/sidflow/workspace/tags \
   -v /path/to/data:/sidflow/data \
   ghcr.io/chrisgleissner/sidflow:latest
 ```
-Web UI: <http://localhost:3000> (admin at `/admin` with user/password of `admin/password`).
+Web UI: <http://localhost:3000> (admin at `/admin` with the credentials you configured above).
 
 ## Run Locally
 
@@ -119,7 +123,7 @@ cd packages/sidflow-web
 bun run start
 ```
 
-Web UI: <http://localhost:3000> (admin at `/admin` with default user/password of `admin/password`).
+Web UI: <http://localhost:3000>.
 
 ## Performance Tests
 
@@ -158,10 +162,11 @@ bun run dev
 
 The admin console requires authentication for security:
 
-- **Default Username:** `admin` (configurable via `SIDFLOW_ADMIN_USER`)
-- **Default Password:** `password` (configurable via `SIDFLOW_ADMIN_PASSWORD`)
+- **Username:** `SIDFLOW_ADMIN_USER` (defaults to `admin` outside production)
+- **Password:** `SIDFLOW_ADMIN_PASSWORD`
+- **Session signing secret:** `SIDFLOW_ADMIN_SECRET`
 
-The default password `password` is intended for development only. Set `SIDFLOW_ADMIN_PASSWORD` in production deployments.
+Local development falls back to `admin/password` only when you have not configured credentials. Production startup now refuses default credentials, derived admin secrets, missing `SIDFLOW_ADMIN_SECRET`, or a missing `JWT_SECRET`.
 
 For web UI route details, see [packages/sidflow-web/README.md](packages/sidflow-web/README.md).
 
