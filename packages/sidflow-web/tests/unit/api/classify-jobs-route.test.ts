@@ -88,13 +88,19 @@ describe('/api/classify durable async job routing', () => {
   });
 
   test('queues async classify requests as durable jobs', async () => {
-    const response = await classifyRoute.POST(buildPostRequest({ async: true }));
+    const response = await classifyRoute.POST(buildPostRequest({ async: true, limit: 200 }));
     expect(response.status).toBe(202);
 
     const body = await response.json();
     expect(body.success).toBe(true);
     expect(body.data.jobId).toMatch(/^classify-/);
     expect(body.data.progress.isActive).toBe(true);
+
+    const manifestPath = path.join(tempRoot, 'data', 'jobs', 'manifest.json');
+    const manifest = JSON.parse(await Bun.file(manifestPath).text()) as {
+      jobs: Record<string, { params?: { limit?: number } }>;
+    };
+    expect(manifest.jobs[body.data.jobId]?.params?.limit).toBe(200);
 
     const progressResponse = await classifyProgressRoute.GET();
     const progressBody = await progressResponse.json();

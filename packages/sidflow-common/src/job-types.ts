@@ -39,6 +39,7 @@ export interface FetchJobParams {
 export interface ClassifyJobParams {
   readonly configPath?: string;
   readonly sidPathPrefix?: string;
+  readonly limit?: number;
   readonly forceRebuild?: boolean;
   readonly skipAlreadyClassified?: boolean;
   readonly deleteWavAfterClassification?: boolean;

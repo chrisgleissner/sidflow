@@ -5,7 +5,19 @@
       "metadata": {
         "createdAt": "2026-03-13T10:37:12.779Z",
         "id": "classify-1773398232779-p8l7iy",
-        "status": "pending",
+        "progress": {
+          "current": 0,
+          "message": "Running CLASSIFY stage",
+          "total": 1
+        },
+        "resumeData": {
+          "stageIndex": 0,
+          "stages": [
+            "CLASSIFY stage"
+          ]
+        },
+        "startedAt": "2026-03-13T13:23:10.545Z",
+        "status": "running",
         "type": "classify"
       },
       "params": {
@@ -16,10 +28,10 @@
         "skipAlreadyClassified": false,
         "threads": 8
       },
-      "status": "pending",
+      "status": "running",
       "type": "classify"
     }
   },
-  "lastUpdated": "2026-03-13T10:37:12.781Z",
+  "lastUpdated": "2026-03-13T13:23:10.547Z",
   "version": "1.0.0"
 }

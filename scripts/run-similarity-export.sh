@@ -10,6 +10,7 @@ PORT="3000"
 PROFILE="full"
 CORPUS_VERSION="hvsc"
 THREADS=""
+MAX_SONGS=""
 SKIP_ALREADY_CLASSIFIED="true"
 DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
@@ -31,6 +32,7 @@ SERVER_LOG="${RUNTIME_DIR}/server.log"
 WORKER_LOG="${RUNTIME_DIR}/worker.log"
 PROGRESS_LOG="${RUNTIME_DIR}/progress.log"
 REQUEST_LOG="${RUNTIME_DIR}/request.log"
+REQUEST_STATUS_FILE="${RUNTIME_DIR}/request.status"
 REPORT_STATE_FILE="${RUNTIME_DIR}/report-state.json"
 
 REPORT_EVERY_SONGS=100
@@ -38,6 +40,8 @@ REPORT_EVERY_SONGS=100
 LOCAL_SERVER_PID=""
 LOCAL_WORKER_PID=""
 DOCKER_CONTAINER_NAME=""
+CLASSIFY_REQUEST_PID=""
+CLASSIFY_STARTED_AT_MS=""
 CLASSIFIED_PATH=""
 EXPORT_OUTPUT_PATH=""
 
@@ -59,6 +63,7 @@ Options:
   --profile full|mobile               Export profile. Default: full
   --corpus-version LABEL              Manifest corpus label. Default: hvsc
   --threads N                         Optional classify thread count override
+  --max-songs N                       Stop each classification run after at most N songs
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
   --skip-already-classified true|false
                                       Default: true
@@ -71,6 +76,7 @@ Options:
 Examples:
   bash scripts/run-similarity-export.sh --mode local
   bash scripts/run-similarity-export.sh --mode local --full-rerun true
+  bash scripts/run-similarity-export.sh --mode local --max-songs 200
   bash scripts/run-similarity-export.sh --mode local --threads 8 --skip-already-classified false
   bash scripts/run-similarity-export.sh --mode docker --hvsc /srv/hvsc --state-dir /srv/sidflow-state
 EOF
@@ -93,6 +99,9 @@ cleanup() {
   local exit_code=$?
 
   if [[ "${MODE}" == "local" && "${KEEP_RUNTIME}" != "true" ]]; then
+    if [[ -n "${CLASSIFY_REQUEST_PID}" ]] && kill -0 "${CLASSIFY_REQUEST_PID}" >/dev/null 2>&1; then
+      kill "${CLASSIFY_REQUEST_PID}" >/dev/null 2>&1 || true
+    fi
     if [[ -n "${LOCAL_WORKER_PID}" ]] && kill -0 "${LOCAL_WORKER_PID}" >/dev/null 2>&1; then
       kill "${LOCAL_WORKER_PID}" >/dev/null 2>&1 || true
     fi
@@ -155,6 +164,10 @@ while [[ $# -gt 0 ]]; do
       THREADS="$2"
       shift 2
       ;;
+    --max-songs)
+      MAX_SONGS="$2"
+      shift 2
+      ;;
     --full-rerun)
       FULL_RERUN="$(parse_bool "$2")"
       shift 2
@@ -195,11 +208,16 @@ case "${PROFILE}" in
   *) fail "--profile must be full or mobile" ;;
 esac
 
+if [[ -n "${MAX_SONGS}" ]]; then
+  [[ "${MAX_SONGS}" =~ ^[1-9][0-9]*$ ]] || fail "--max-songs must be a positive integer"
+fi
+
 mkdir -p "${RUNTIME_DIR}"
 : > "${SERVER_LOG}"
 : > "${WORKER_LOG}"
 : > "${PROGRESS_LOG}"
 : > "${REQUEST_LOG}"
+rm -f "${REQUEST_STATUS_FILE}"
 printf '{"lastReportedProcessed":0}\n' > "${REPORT_STATE_FILE}"
 
 require_command python3
@@ -340,13 +358,6 @@ start_local_runtime() {
   ) >> "${SERVER_LOG}" 2>&1 &
   LOCAL_SERVER_PID=$!
 
-  log "Starting local durable worker"
-  (
-    cd "${REPO_ROOT}"
-    SIDFLOW_CONFIG="${CONFIG_PATH}" bun run jobs:run
-  ) >> "${WORKER_LOG}" 2>&1 &
-  LOCAL_WORKER_PID=$!
-
   wait_for_health
 }
 
@@ -388,9 +399,6 @@ PY
     "${IMAGE}" >> "${SERVER_LOG}" 2>&1
 
   wait_for_health
-
-  log "Starting durable worker inside ${DOCKER_CONTAINER_NAME}"
-  docker exec -d -w /sidflow/app "${DOCKER_CONTAINER_NAME}" bun run jobs:run >> "${WORKER_LOG}" 2>&1
 }
 
 build_classify_payload() {
@@ -398,10 +406,11 @@ build_classify_payload() {
     "${SKIP_ALREADY_CLASSIFIED}" \
     "${DELETE_WAV_AFTER_CLASSIFICATION}" \
     "${FORCE_REBUILD}" \
-    "${THREADS}"
+  "${THREADS}" \
+  "${MAX_SONGS}"
 import json, sys
 payload = {
-    'async': True,
+  'async': False,
     'skipAlreadyClassified': sys.argv[1] == 'true',
     'deleteWavAfterClassification': sys.argv[2] == 'true',
     'forceRebuild': sys.argv[3] == 'true',
@@ -409,79 +418,173 @@ payload = {
 threads = sys.argv[4]
 if threads:
     payload['threads'] = int(threads)
+limit = sys.argv[5]
+if limit:
+  payload['limit'] = int(limit)
 print(json.dumps(payload, separators=(',', ':')))
 PY
 }
 
 trigger_classification() {
   local payload
-  local http_code
   payload="$(build_classify_payload)"
+  CLASSIFY_STARTED_AT_MS="$(date +%s%3N)"
 
   log "Triggering classification with payload ${payload}"
-  http_code="$({
+  (
     curl -sS \
       -u "${ADMIN_USER}:${ADMIN_PASSWORD}" \
       -H 'content-type: application/json' \
       -o "${REQUEST_LOG}" \
       -w '%{http_code}' \
       -X POST "http://127.0.0.1:${PORT}/api/classify" \
-      -d "${payload}"
-  })"
-
-  case "${http_code}" in
-    200|202)
-      log "Classification accepted"
-      ;;
-    409)
-      log "Classification already running, reusing active job"
-      ;;
-    *)
-      fail "Classification request failed with HTTP ${http_code}. Response: $(cat "${REQUEST_LOG}")"
-      ;;
-  esac
+      -d "${payload}" > "${REQUEST_STATUS_FILE}"
+  ) &
+  CLASSIFY_REQUEST_PID=$!
+  log "Classification request started"
 }
 
 wait_for_classification() {
   log "Waiting for classification to finish"
+  local last_progress_record
+  local http_code
+  local status
 
   while true; do
-    python3 - <<'PY' "${PORT}" >> "${PROGRESS_LOG}"
-import json, sys, time, urllib.request
-port = sys.argv[1]
-with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/classify/progress', timeout=20) as response:
-    payload = json.load(response)
-data = payload.get('data') or {}
-record = {
-    'phase': data.get('phase'),
-    'processedFiles': data.get('processedFiles'),
-    'totalFiles': data.get('totalFiles'),
-  'renderedFiles': data.get('renderedFiles'),
-  'extractedFiles': data.get('extractedFiles'),
-  'taggedFiles': data.get('taggedFiles'),
-    'percentComplete': data.get('percentComplete'),
-    'isActive': data.get('isActive'),
-    'updatedAt': data.get('updatedAt'),
-  'startedAt': data.get('startedAt'),
-}
+  if [[ -s "${REQUEST_STATUS_FILE}" ]]; then
+    http_code="$(cat "${REQUEST_STATUS_FILE}")"
+    case "${http_code}" in
+    200)
+          if python3 - <<'PY' "${SERVER_LOG}" "${CLASSIFY_STARTED_AT_MS}" >> "${PROGRESS_LOG}"
+import json, re, sys, time
+
+log_path = sys.argv[1]
+started_at_ms = int(sys.argv[2]) if sys.argv[2] else int(time.time() * 1000)
+extracting = re.compile(r'\[Extracting Features\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\]')
+analyzing = re.compile(r'\[Analyzing\]\s+(\d+)/(\d+)\s+files.*\(([\d.]+)%\)')
+
+with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
+  lines = fh.readlines()
+
+record = None
+for line in reversed(lines):
+  match = extracting.search(line)
+  if match:
+    processed, total, _remaining, percent, rendered, _cached, extracted = match.groups()
+    record = {
+      'phase': 'completed' if int(processed) >= int(total) else 'tagging',
+      'processedFiles': int(processed),
+      'totalFiles': int(total),
+      'renderedFiles': int(rendered),
+      'extractedFiles': int(extracted),
+      'taggedFiles': int(processed),
+      'percentComplete': float(percent),
+      'isActive': False,
+      'updatedAt': int(time.time() * 1000),
+      'startedAt': started_at_ms,
+    }
+    break
+  match = analyzing.search(line)
+  if match:
+    processed, total, percent = match.groups()
+    record = {
+      'phase': 'analyzing',
+      'processedFiles': int(processed),
+      'totalFiles': int(total),
+      'renderedFiles': 0,
+      'extractedFiles': 0,
+      'taggedFiles': 0,
+      'percentComplete': float(percent),
+      'isActive': False,
+      'updatedAt': int(time.time() * 1000),
+      'startedAt': started_at_ms,
+    }
+    break
+
+if record is None:
+  raise SystemExit(11)
+
 print(json.dumps(record), flush=True)
-phase = data.get('phase')
-processed = data.get('processedFiles') or 0
-total = data.get('totalFiles') or 0
-is_active = data.get('isActive')
-if phase == 'completed' or (not is_active and total > 0 and processed >= total):
-    raise SystemExit(7)
-if phase == 'failed':
-    raise SystemExit(9)
 PY
-    local status=$?
-    if [[ ${status} -eq 0 ]]; then
-    tail -n 1 "${PROGRESS_LOG}" | python3 - <<'PY' "${REPORT_STATE_FILE}" "${REPORT_EVERY_SONGS}"
-import json, math, sys, time
+          then
+            status=7
+          else
+            status=$?
+          fi
+      ;;
+    *)
+      fail "Classification request failed with HTTP ${http_code}. Response: $(cat "${REQUEST_LOG}")"
+      ;;
+    esac
+  else
+      if python3 - <<'PY' "${SERVER_LOG}" "${CLASSIFY_STARTED_AT_MS}" >> "${PROGRESS_LOG}"
+import json, re, sys, time
+
+log_path = sys.argv[1]
+started_at_ms = int(sys.argv[2]) if sys.argv[2] else int(time.time() * 1000)
+extracting = re.compile(r'\[Extracting Features\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\]')
+analyzing = re.compile(r'\[Analyzing\]\s+(\d+)/(\d+)\s+files.*\(([\d.]+)%\)')
+
+with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
+  lines = fh.readlines()
+
+for line in reversed(lines):
+  match = extracting.search(line)
+  if match:
+    processed, total, _remaining, percent, rendered, _cached, extracted = match.groups()
+    print(json.dumps({
+      'phase': 'tagging',
+      'processedFiles': int(processed),
+      'totalFiles': int(total),
+      'renderedFiles': int(rendered),
+      'extractedFiles': int(extracted),
+      'taggedFiles': int(processed),
+      'percentComplete': float(percent),
+      'isActive': True,
+      'updatedAt': int(time.time() * 1000),
+      'startedAt': started_at_ms,
+    }), flush=True)
+    raise SystemExit(0)
+  match = analyzing.search(line)
+  if match:
+    processed, total, percent = match.groups()
+    print(json.dumps({
+      'phase': 'analyzing',
+      'processedFiles': int(processed),
+      'totalFiles': int(total),
+      'renderedFiles': 0,
+      'extractedFiles': 0,
+      'taggedFiles': 0,
+      'percentComplete': float(percent),
+      'isActive': True,
+      'updatedAt': int(time.time() * 1000),
+      'startedAt': started_at_ms,
+    }), flush=True)
+    raise SystemExit(0)
+
+raise SystemExit(11)
+PY
+      then
+        status=0
+      else
+        status=$?
+      fi
+  fi
+  if [[ ${status} -eq 11 ]]; then
+    sleep 5
+    continue
+  fi
+  if [[ ${status} -eq 0 ]]; then
+    last_progress_record="$(tail -n 1 "${PROGRESS_LOG}" 2>/dev/null || true)"
+    PROGRESS_RECORD="${last_progress_record}" python3 - <<'PY' "${REPORT_STATE_FILE}" "${REPORT_EVERY_SONGS}"
+import json, math, os, sys, time
 
 state_path = sys.argv[1]
 report_every = int(sys.argv[2])
-record = json.loads(sys.stdin.read())
+raw = os.environ.get('PROGRESS_RECORD', '').strip()
+if not raw:
+  sys.exit(0)
+record = json.loads(raw)
 
 try:
   with open(state_path, 'r', encoding='utf-8') as fh:
@@ -556,11 +659,15 @@ PY
     fi
 
     if [[ ${status} -eq 7 ]]; then
-    tail -n 1 "${PROGRESS_LOG}" | python3 - <<'PY' "${REPORT_STATE_FILE}"
-import json, sys, time
+  last_progress_record="$(tail -n 1 "${PROGRESS_LOG}" 2>/dev/null || true)"
+    PROGRESS_RECORD="${last_progress_record}" python3 - <<'PY' "${REPORT_STATE_FILE}"
+import json, os, sys, time
 
 state_path = sys.argv[1]
-record = json.loads(sys.stdin.read())
+raw = os.environ.get('PROGRESS_RECORD', '').strip()
+if not raw:
+  sys.exit(0)
+record = json.loads(raw)
 processed = int(record.get('processedFiles') or 0)
 total = int(record.get('totalFiles') or 0)
 remaining = max(total - processed, 0)
@@ -599,6 +706,23 @@ PY
   done
 
   log "Classification completed"
+
+  if [[ -n "${CLASSIFY_REQUEST_PID}" ]]; then
+    wait "${CLASSIFY_REQUEST_PID}"
+  fi
+
+  if [[ ! -f "${REQUEST_STATUS_FILE}" ]]; then
+    fail "Classification request did not record an HTTP status. See ${REQUEST_LOG}"
+  fi
+
+  http_code="$(cat "${REQUEST_STATUS_FILE}")"
+  case "${http_code}" in
+    200)
+      ;;
+    *)
+      fail "Classification request failed with HTTP ${http_code}. Response: $(cat "${REQUEST_LOG}")"
+      ;;
+  esac
 }
 
 run_export() {

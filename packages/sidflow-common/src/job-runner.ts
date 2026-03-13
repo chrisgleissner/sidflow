@@ -233,6 +233,9 @@ export function createDefaultJobCommandFactory(
     if (params.configPath) {
       args.push("--config", params.configPath);
     }
+    if (typeof params.limit === "number") {
+      args.push("--limit", String(params.limit));
+    }
     if (params.forceRebuild) {
       args.push("--force-rebuild");
     }

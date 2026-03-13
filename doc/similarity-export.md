@@ -99,6 +99,12 @@ Override them directly on the script when needed:
 bash scripts/run-similarity-export.sh --mode local --skip-already-classified false --delete-wav-after-classification false --threads 8
 ```
 
+Test with only the next 200 songs:
+
+```bash
+bash scripts/run-similarity-export.sh --mode local --max-songs 200
+```
+
 Explicit full rerun in Docker mode:
 
 ```bash

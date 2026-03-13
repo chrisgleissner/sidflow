@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
     if (resolvedRequestedPath) {
       await fs.stat(resolvedRequestedPath);
     }
+    const limit = validatedData.limit;
     const threads = config.threads && config.threads > 0
       ? config.threads
       : (() => {
@@ -117,6 +118,10 @@ export async function POST(request: NextRequest) {
         cliArgs.push('--sid-path-prefix', normalizedPrefix);
       }
     }
+    if (typeof limit === 'number') {
+      cliArgs.push('--limit', String(limit));
+      console.log(`[classify] Limit enabled - will process at most ${limit} songs`);
+    }
   
     // Add force-rebuild flag if requested
     if (validatedData.forceRebuild) {
@@ -170,6 +175,7 @@ export async function POST(request: NextRequest) {
         forceRebuild: validatedData.forceRebuild,
         skipAlreadyClassified: validatedData.skipAlreadyClassified,
         deleteWavAfterClassification: validatedData.deleteWavAfterClassification,
+        limit,
         threads,
         renderEngineDescription: engineDescription,
       });
