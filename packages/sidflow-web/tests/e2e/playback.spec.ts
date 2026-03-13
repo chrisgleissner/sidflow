@@ -5,11 +5,28 @@
  */
 
 import { test, expect, type Locator, type Page, type Request, type Route } from './test-hooks';
-import { createLogger } from '@sidflow/common';
 import { configureE2eLogging } from './utils/logging';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+type LogMethod = (message: string, ...args: unknown[]) => void;
+
+function createE2eLogger(namespace: string) {
+    const prefix = `[${namespace}]`;
+    const wrap = (method: LogMethod): LogMethod => {
+        return (message: string, ...args: unknown[]) => {
+            method(`${prefix} ${message}`, ...args);
+        };
+    };
+
+    return {
+        debug: wrap(console.debug),
+        info: wrap(console.info),
+        warn: wrap(console.warn),
+        error: wrap(console.error),
+    };
+}
 
 const FAST_AUDIO_TESTS =
     (process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ?? process.env.SIDFLOW_FAST_AUDIO_TESTS) === '1';
@@ -58,7 +75,7 @@ if (!isPlaywrightRunner) {
         };
     }
 
-    const playbackLogger = createLogger('playback-test');
+    const playbackLogger = createE2eLogger('playback-test');
 
     function registerSession(scope: 'rate' | 'play') {
         sessionCounter += 1;
