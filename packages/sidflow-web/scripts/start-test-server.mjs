@@ -75,6 +75,56 @@ async function ensureProductionBuild() {
   await runNextBuild();
 }
 
+function getStandaloneServerPath() {
+  const candidates = [
+    resolve(process.cwd(), '.next/standalone/server.js'),
+    resolve(process.cwd(), '.next/standalone/packages/sidflow-web/server.js'),
+  ];
+
+  const match = candidates.find((candidate) => existsSync(candidate));
+  if (!match) {
+    throw new Error(`Unable to locate standalone server entrypoint. Checked: ${candidates.join(', ')}`);
+  }
+
+  return match;
+}
+
+async function startStandaloneServer() {
+  const nodeBinary = process.env.SIDFLOW_NODE_BINARY ?? 'node';
+  const standaloneServer = getStandaloneServerPath();
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(nodeBinary, [standaloneServer], {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        HOSTNAME: hostname,
+        PORT: `${port}`,
+      },
+    });
+
+    const forwardSignal = (signal) => {
+      if (!child.killed) {
+        child.kill(signal);
+      }
+    };
+
+    process.on('SIGINT', () => forwardSignal('SIGINT'));
+    process.on('SIGTERM', () => forwardSignal('SIGTERM'));
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0 || code === null) {
+        resolve();
+      } else {
+        reject(new Error(`standalone server exited with code ${code}`));
+      }
+    });
+  });
+}
+
 const debugRequestErrors = process.env.SIDFLOW_DEBUG_REQUEST_ERRORS === '1';
 const suppressAbortLogs = process.env.SIDFLOW_SUPPRESS_ABORT_LOGS !== '0';
 
@@ -134,6 +184,8 @@ async function start() {
   try {
     if (isProductionMode) {
       await ensureProductionBuild();
+      await startStandaloneServer();
+      return;
     }
 
     const app = next({
