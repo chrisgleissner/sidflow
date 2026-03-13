@@ -142,11 +142,12 @@ async function pauseClassification(request: APIRequestContext): Promise<void> {
 
 test.describe.configure({ mode: 'serial' });
 test.skip(({ browserName }) => browserName !== 'chromium', 'Runs once per suite to avoid duplicate classification runs');
-test.setTimeout(120_000);
+test.setTimeout(180_000);
 
 test('Classification Heartbeat - threads should not become stale during feature extraction', async ({ request }) => {
   await withClassificationLock(async () => {
     const startedAt = Date.now();
+    let classificationRequest: Promise<Awaited<ReturnType<typeof request.post>>> | null = null;
     console.log('[heartbeat] ensuring classification is idle before starting');
     // If a previous attempt left a classify run behind (e.g. worker retries), stop it first.
     await pauseClassification(request);
@@ -172,31 +173,18 @@ test('Classification Heartbeat - threads should not become stale during feature 
         await fs.writeFile(`${wavPath}.sha256`, sha256, 'utf8');
       }
 
-      console.log('[heartbeat] starting background classification run');
-      const startResponse = await request.post('/api/classify', {
+      console.log('[heartbeat] starting synchronous classification run in background');
+      classificationRequest = request.post('/api/classify', {
         data: {
           path: TEST_DIR,
           forceRebuild: false,
           deleteWavAfterClassification: false,
           skipAlreadyClassified: false,
-          async: true,
         },
         headers: { 'Content-Type': 'application/json' },
-        timeout: 10_000,
+        timeout: 120_000,
       });
-      console.log('[heartbeat] classify start response status', startResponse.status());
-
-      const startData = ((await startResponse.json().catch(() => ({}))) || {}) as {
-        error?: string;
-        details?: string;
-      };
-      const alreadyRunning =
-        startData.error?.includes('already running') || startData.details?.includes('already running');
-      expect(
-        startResponse.ok() || alreadyRunning,
-        `Failed to start classification: ${JSON.stringify(startData)}`
-      ).toBe(true);
-      console.log('[heartbeat] classification start request accepted');
+      console.log('[heartbeat] classification request started');
 
       const staleSnapshots: Array<{
         timestamp: number;
@@ -290,10 +278,23 @@ test('Classification Heartbeat - threads should not become stale during feature 
       ).toBe(0);
 
       expect(activePolls).toBeGreaterThan(0);
+
+      const response = await classificationRequest;
+      const responseBody = ((await response.json().catch(() => ({}))) || {}) as {
+        success?: boolean;
+        error?: string;
+        details?: string;
+      };
+      expect(
+        response.ok(),
+        `Classification request failed: ${JSON.stringify(responseBody)}`
+      ).toBe(true);
+      expect(responseBody.success).toBe(true);
     } finally {
       // Always clean up so retries/other specs start from a known idle state.
       await pauseClassification(request);
       await waitForClassificationIdle(request, 20_000).catch(() => {});
+      await classificationRequest?.catch(() => undefined);
       await fs.rm(path.join(SID_BASE_DIR, TEST_DIR), { recursive: true, force: true }).catch(() => {});
       await fs.rm(path.join(AUDIO_CACHE_DIR, TEST_DIR_REL), { recursive: true, force: true }).catch(() => {});
     }

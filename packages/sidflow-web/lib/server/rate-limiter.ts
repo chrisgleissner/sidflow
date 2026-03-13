@@ -146,6 +146,12 @@ export class RateLimiter {
     } else {
       this.logs.clear();
     }
+
+    // When tests or runtime code explicitly reset the limiter, treat the
+    // current in-memory state as authoritative for the rest of this process.
+    // Otherwise a later checkAsync() can reload stale persisted counts and
+    // resurrect rate-limit state that was intentionally cleared.
+    this.loaded = true;
   }
 
   async resetAsync(clientIp?: string): Promise<void> {

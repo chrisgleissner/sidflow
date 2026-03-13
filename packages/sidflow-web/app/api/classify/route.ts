@@ -89,11 +89,6 @@ export async function POST(request: NextRequest) {
       console.log(`[engine-order] Using default WASM engine`);
     }
     
-    beginClassifyProgress(threads, engineDescription);
-    console.log('[engine-order] Classification starting');
-    console.log(`[engine-order] Effective engine order: ${effectiveEngineOrder.join(' → ')}`);
-
-    // Write temporary config with forced engine order
     const tempConfigPath = path.join(root, 'data', '.sidflow-classify-temp.json');
     const tempConfig = {
       ...config,
@@ -104,8 +99,6 @@ export async function POST(request: NextRequest) {
         ...(prefs.defaultFormats ? { defaultFormats: prefs.defaultFormats } : {}),
       },
     };
-    await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
-
     const command = 'sidflow-classify';
     const cliArgs: string[] = ['--config', tempConfigPath];
 
@@ -144,14 +137,6 @@ export async function POST(request: NextRequest) {
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
     };
-    const runPromise = runClassificationProcess({
-      command,
-      args: cliArgs,
-      cwd: root,
-      env: cliEnv,
-      onStdout: ingestClassifyStdout,
-      onStderr: (chunk) => console.error('[classify stderr]', chunk),
-    });
 
     if (runInBackground) {
       const orchestrator = await getJobOrchestrator();
@@ -165,6 +150,8 @@ export async function POST(request: NextRequest) {
         };
         return NextResponse.json(response, { status: 409 });
       }
+
+      await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
 
       const sidPathPrefix = cliArgs.includes('--sid-path-prefix')
         ? cliArgs[cliArgs.indexOf('--sid-path-prefix') + 1]
@@ -190,6 +177,20 @@ export async function POST(request: NextRequest) {
       };
       return NextResponse.json(response, { status: 202 });
     }
+
+    beginClassifyProgress(threads, engineDescription);
+    console.log('[engine-order] Classification starting');
+    console.log(`[engine-order] Effective engine order: ${effectiveEngineOrder.join(' → ')}`);
+    await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
+
+    const runPromise = runClassificationProcess({
+      command,
+      args: cliArgs,
+      cwd: root,
+      env: cliEnv,
+      onStdout: ingestClassifyStdout,
+      onStderr: (chunk) => console.error('[classify stderr]', chunk),
+    });
 
     const { result, reason } = await runPromise;
 

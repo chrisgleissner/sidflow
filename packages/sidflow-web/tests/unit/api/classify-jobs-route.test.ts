@@ -1,8 +1,19 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
+
+const runClassificationProcess = mock(async () => ({
+  result: { success: true, stdout: 'ok', stderr: '', exitCode: 0 },
+  reason: 'completed',
+}));
+
+mock.module('@/lib/classify-runner', () => ({
+  getClassificationRunnerPid: () => null,
+  requestClassificationPause: () => false,
+  runClassificationProcess,
+}));
 
 const serverEnvModule = await import('@/lib/server-env');
 const { resetServerEnvCacheForTests, resetSidflowConfigCache } = serverEnvModule;
@@ -88,6 +99,7 @@ describe('/api/classify durable async job routing', () => {
   });
 
   test('queues async classify requests as durable jobs', async () => {
+    runClassificationProcess.mockClear();
     const response = await classifyRoute.POST(buildPostRequest({ async: true, limit: 200 }));
     expect(response.status).toBe(202);
 
@@ -106,5 +118,6 @@ describe('/api/classify durable async job routing', () => {
     const progressBody = await progressResponse.json();
     expect(progressBody.success).toBe(true);
     expect(progressBody.data.isActive).toBe(true);
+    expect(runClassificationProcess).not.toHaveBeenCalled();
   });
 });

@@ -28,6 +28,7 @@ ADMIN_SECRET="sidflow-local-admin-secret-2026-32-chars-min"
 JWT_SECRET="sidflow-local-jwt-secret-2026-32-chars-min"
 
 RUNTIME_DIR="${REPO_ROOT}/tmp/runtime/similarity-export"
+RUN_LOCK_FILE="${RUNTIME_DIR}/.run.lock"
 SERVER_LOG="${RUNTIME_DIR}/server.log"
 WORKER_LOG="${RUNTIME_DIR}/worker.log"
 PROGRESS_LOG="${RUNTIME_DIR}/progress.log"
@@ -44,6 +45,7 @@ CLASSIFY_REQUEST_PID=""
 CLASSIFY_STARTED_AT_MS=""
 CLASSIFIED_PATH=""
 EXPORT_OUTPUT_PATH=""
+RUN_LOCK_HELD="false"
 
 usage() {
   cat <<'EOF'
@@ -91,6 +93,23 @@ fail() {
   exit 1
 }
 
+acquire_run_lock() {
+  mkdir -p "${RUNTIME_DIR}"
+
+  if [[ -f "${RUN_LOCK_FILE}" ]]; then
+    local existing
+    existing="$(cat "${RUN_LOCK_FILE}" 2>/dev/null || true)"
+    local existing_pid="${existing%% *}"
+    if [[ -n "${existing_pid}" ]] && kill -0 "${existing_pid}" >/dev/null 2>&1; then
+      fail "Another run-similarity-export.sh instance is already running (pid ${existing_pid}). Stop it before starting a new run."
+    fi
+    rm -f "${RUN_LOCK_FILE}"
+  fi
+
+  printf '%s %s\n' "$$" "$(date -Is)" > "${RUN_LOCK_FILE}"
+  RUN_LOCK_HELD="true"
+}
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
@@ -112,6 +131,14 @@ cleanup() {
 
   if [[ "${MODE}" == "docker" && "${KEEP_RUNTIME}" != "true" && -n "${DOCKER_CONTAINER_NAME}" ]]; then
     docker rm -f "${DOCKER_CONTAINER_NAME}" >/dev/null 2>&1 || true
+  fi
+
+  if [[ "${RUN_LOCK_HELD}" == "true" && -f "${RUN_LOCK_FILE}" ]]; then
+    local existing_pid
+    existing_pid="$(cut -d' ' -f1 "${RUN_LOCK_FILE}" 2>/dev/null || true)"
+    if [[ "${existing_pid}" == "$$" ]]; then
+      rm -f "${RUN_LOCK_FILE}" >/dev/null 2>&1 || true
+    fi
   fi
 
   exit "${exit_code}"
@@ -753,6 +780,7 @@ run_export() {
 }
 
 main() {
+  acquire_run_lock
   log "Mode: ${MODE}"
   if [[ "${MODE}" == "local" ]]; then
     start_local_runtime

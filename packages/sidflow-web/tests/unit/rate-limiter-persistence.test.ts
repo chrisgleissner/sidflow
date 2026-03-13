@@ -60,4 +60,27 @@ describe('RateLimiter persistence', () => {
     const result = await second.checkAsync('203.0.113.11');
     expect(result.allowed).toBe(true);
   });
+
+  test('reset keeps stale persisted state from being reloaded in-process', async () => {
+    const first = new RateLimiter({
+      maxRequests: 1,
+      windowMs: 1000,
+      persistPath,
+      persistDebounceMs: 0,
+    });
+
+    expect((await first.checkAsync('203.0.113.12')).allowed).toBe(true);
+
+    const second = new RateLimiter({
+      maxRequests: 1,
+      windowMs: 1000,
+      persistPath,
+      persistDebounceMs: 0,
+    });
+
+    second.reset('203.0.113.12');
+
+    const result = await second.checkAsync('203.0.113.12');
+    expect(result.allowed).toBe(true);
+  });
 });

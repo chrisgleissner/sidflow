@@ -229,8 +229,6 @@ test.describe.serial('Classification API E2E', () => {
       const response = await request.post('/api/classify', {
         data: {
           path: TEST_ARTIST_DIR,
-          // Run in background so the HTTP request is not blocked by feature extraction.
-          async: true,
           // Don't force rebuild - use the pre-rendered WAVs
           forceRebuild: false,
           deleteWavAfterClassification: false,
@@ -256,12 +254,7 @@ test.describe.serial('Classification API E2E', () => {
     
     expect(response.ok()).toBe(true);
     expect(responseBody.success).toBe(true);
-
-    // Wait for background classification to finish before validating outputs.
-    console.log(`\n⏳ Waiting for classification to complete...`);
-    await waitForClassificationIdle(request, 180_000);
-
-    console.log(`\n✅ Classification accepted (async) and completed in background`);
+    console.log(`\n✅ Classification completed successfully`);
 
     // Step 3: Identify the new JSONL file
     console.log('\n📁 Step 3: Identifying Output Files');
