@@ -10,10 +10,26 @@ const testData = resolve(repoRoot, 'test-data');
 // Web preferences are stored under repoRoot/data/.sidflow-preferences.json (see lib/preferences-store.ts).
 // Keep E2E runs deterministic by resetting scheduler + sidBasePath there.
 const prefsFile = resolve(repoRoot, 'data', '.sidflow-preferences.json');
+const runtimePathsToReset = [
+  resolve(repoRoot, 'data', 'jobs'),
+  resolve(repoRoot, 'data', 'rate-limits'),
+  resolve(repoRoot, 'data', 'playback-sessions.json'),
+  resolve(repoRoot, 'packages', 'sidflow-web', 'data', 'playlists'),
+  resolve(repoRoot, 'packages', 'sidflow-web', 'data', 'users'),
+];
 
 console.log('Setting up test workspace...');
 console.log(`  Source: ${testData}`);
 console.log(`  Target: ${testWorkspace}`);
+
+console.log('  Resetting durable runtime state...');
+for (const runtimePath of runtimePathsToReset) {
+  if (!existsSync(runtimePath)) {
+    continue;
+  }
+  rmSync(runtimePath, { recursive: true, force: true });
+}
+console.log('  ✓ Durable runtime state cleared');
 
 // Reset preferences to avoid conflicts with production sidBasePath
 console.log('  Resetting preferences for test run...');
