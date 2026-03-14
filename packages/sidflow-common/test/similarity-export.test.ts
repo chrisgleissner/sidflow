@@ -28,7 +28,7 @@ describe("similarity-export", () => {
     await mkdir(feedbackPath, { recursive: true });
 
     await writeFile(
-      path.join(classifiedPath, "tracks.jsonl"),
+      path.join(classifiedPath, "classification_tracks.jsonl"),
       [
         JSON.stringify({ sid_path: "A.sid", ratings: { e: 1, m: 1, c: 1, p: 3 }, features: { bpm: 90 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm" }),
         JSON.stringify({ sid_path: "B.sid", ratings: { e: 1, m: 1, c: 2, p: 3 }, features: { bpm: 92 }, classified_at: "2026-03-13T10:01:00.000Z", source: "auto", render_engine: "wasm" }),
@@ -113,7 +113,7 @@ describe("similarity-export", () => {
 
   test("deduplicates repeated sid_path records by keeping the newest classification", async () => {
     await writeFile(
-      path.join(classifiedPath, "dupe.jsonl"),
+      path.join(classifiedPath, "classification_dupe.jsonl"),
       [
         JSON.stringify({ sid_path: "A.sid", ratings: { e: 4, m: 4, c: 4, p: 2 }, features: { bpm: 110 }, classified_at: "2026-03-13T12:00:00.000Z", source: "auto", render_engine: "sidplayfp-cli" }),
       ].join("\n") + "\n",
@@ -138,7 +138,7 @@ describe("similarity-export", () => {
 
   test("skips malformed classification rows without ratings", async () => {
     await writeFile(
-      path.join(classifiedPath, "invalid.jsonl"),
+      path.join(classifiedPath, "classification_invalid.jsonl"),
       [
         JSON.stringify({ sid_path: "BROKEN.sid", features: { bpm: 100 }, classified_at: "2026-03-13T12:05:00.000Z", source: "auto", render_engine: "wasm" }),
       ].join("\n") + "\n",
@@ -154,5 +154,71 @@ describe("similarity-export", () => {
     });
 
     expect(result.manifest.track_count).toBe(4);
+  });
+
+  test("recovers exportable tracks from orphaned feature-phase JSONL files", async () => {
+    await writeFile(
+      path.join(classifiedPath, "features_2026-03-13_18-02-43-329.jsonl"),
+      [
+        JSON.stringify({
+          sid_path: "E.sid",
+          song_count: 1,
+          manual_ratings: null,
+          render_engine: "wasm",
+          features: {
+            featureSetVersion: "1.2.0",
+            bpm: 100,
+            confidence: 0.8,
+            rms: 0.12,
+            energy: 0.04,
+            spectralCentroid: 300,
+            spectralRolloff: 2200,
+            spectralFlatnessDb: 0.2,
+            spectralEntropy: 6.5,
+            spectralCrest: 30,
+            spectralHfc: 5000,
+            zeroCrossingRate: 0.04,
+          },
+        }),
+        JSON.stringify({
+          sid_path: "F.sid",
+          song_count: 1,
+          manual_ratings: { e: 5 },
+          render_engine: "wasm",
+          features: {
+            featureSetVersion: "1.2.0",
+            bpm: 140,
+            confidence: 0.7,
+            rms: 0.2,
+            energy: 0.08,
+            spectralCentroid: 800,
+            spectralRolloff: 6400,
+            spectralFlatnessDb: 0.35,
+            spectralEntropy: 8.9,
+            spectralCrest: 55,
+            spectralHfc: 14000,
+            zeroCrossingRate: 0.14,
+          },
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const result = await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 0,
+    });
+
+    expect(result.manifest.track_count).toBe(6);
+
+    const recommendations = recommendFromFavorites(outputPath, {
+      favoriteSidPaths: ["E.sid"],
+      limit: 2,
+    });
+
+    expect(recommendations.length).toBe(2);
   });
 });

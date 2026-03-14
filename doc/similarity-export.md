@@ -15,6 +15,8 @@ The script is the authoritative workflow. It starts the required runtime, trigge
 
 By default the script resumes from prior classified output. Use `--full-rerun true` only when you want to ignore existing classified data and rebuild everything from scratch.
 
+If a previous classify run was interrupted after feature extraction but before `classification_*.jsonl` was fully written, the export step now recovers those rows from the orphaned `features_*.jsonl` files instead of silently under-exporting the corpus.
+
 Show script options:
 
 ```bash
@@ -133,6 +135,8 @@ The SQLite bundle uses schema version `sidcorr-1` and stores three tables:
    One row per SID path, with ratings, feedback aggregates, and optional vector/features payloads.
 3. `neighbors`
    Optional precomputed nearest-neighbor rows keyed by `(profile, seed_sid_path, rank)`.
+
+The `tracks` table is keyed by `sid_path`, not by subsong. A multi-song SID contributes multiple classify rows during feature extraction, but only one exported track row for that SID path.
 
 `tracks` columns:
 

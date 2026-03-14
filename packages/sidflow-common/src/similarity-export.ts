@@ -1,15 +1,16 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { writeCanonicalJsonFile } from "./canonical-writer.js";
 import { ensureDir, pathExists } from "./fs.js";
 import {
   FEATURE_SCHEMA_VERSION,
+  type AudioFeatures,
   type ClassificationRecord,
   type FeedbackRecord,
 } from "./jsonl-schema.js";
-import { DEFAULT_RATING } from "./ratings.js";
+import { DEFAULT_RATING, DEFAULT_RATINGS, clampRating, type TagRatings } from "./ratings.js";
 
 export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
 
@@ -126,6 +127,383 @@ interface PersistedTrackRow {
   skips: number;
   plays: number;
   last_played: string | null;
+}
+
+type RatingDimension = "e" | "m" | "c";
+
+type PartialRatings = Partial<TagRatings>;
+
+interface FeaturePhaseRecord {
+  sid_path: string;
+  song_index?: number;
+  manual_ratings?: PartialRatings | null;
+  features: AudioFeatures;
+  render_engine?: string;
+}
+
+interface FeatureNormStats {
+  mu: number;
+  sigma: number;
+  count: number;
+  nonZeroCount: number;
+}
+
+interface DeterministicRatingModel {
+  featureSetVersion: string;
+  renderEngine: string;
+  features: Partial<Record<DeterministicFeatureKey, FeatureNormStats>>;
+}
+
+type DeterministicFeatureKey =
+  | "bpm"
+  | "rms"
+  | "energy"
+  | "spectralCentroid"
+  | "spectralRolloff"
+  | "spectralFlatnessDb"
+  | "spectralEntropy"
+  | "spectralCrest"
+  | "spectralHfc"
+  | "zeroCrossingRate";
+
+type WeightedTerm = {
+  w: number;
+  x?: number;
+};
+
+const RATING_DIMENSIONS: readonly RatingDimension[] = ["e", "m", "c"] as const;
+
+const DETERMINISTIC_FEATURE_KEYS: readonly DeterministicFeatureKey[] = [
+  "bpm",
+  "rms",
+  "energy",
+  "spectralCentroid",
+  "spectralRolloff",
+  "spectralFlatnessDb",
+  "spectralEntropy",
+  "spectralCrest",
+  "spectralHfc",
+  "zeroCrossingRate",
+] as const;
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clamp01(value: number): number {
+  return clamp(value, 0, 1);
+}
+
+function sigmoid(value: number): number {
+  return 1 / (1 + Math.exp(-value));
+}
+
+function ratingFromRaw(value: number): number {
+  return clampRating(Math.round(1 + 4 * clamp01(value)));
+}
+
+function weightedAverageTerms(terms: WeightedTerm[]): { value: number; present: boolean } {
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  for (const term of terms) {
+    if (!isFiniteNumber(term.x) || !isFiniteNumber(term.w) || term.w <= 0) {
+      continue;
+    }
+    weightedSum += term.w * term.x;
+    totalWeight += term.w;
+  }
+
+  if (totalWeight <= 0) {
+    return { value: 0, present: false };
+  }
+
+  return { value: weightedSum / totalWeight, present: true };
+}
+
+function sigmoidFromNormalizedTerms(terms: WeightedTerm[]): { value: number; present: boolean } {
+  const average = weightedAverageTerms(terms);
+  if (!average.present) {
+    return { value: 0.5, present: false };
+  }
+  return { value: sigmoid(average.value), present: true };
+}
+
+function normalizeFeature(
+  model: DeterministicRatingModel,
+  key: DeterministicFeatureKey,
+  value: unknown,
+): number | undefined {
+  if (!isFiniteNumber(value)) {
+    return undefined;
+  }
+
+  const stats = model.features[key];
+  if (!stats) {
+    return undefined;
+  }
+
+  return clamp((value - stats.mu) / stats.sigma, -3, 3);
+}
+
+function buildDeterministicRatingModel(records: FeaturePhaseRecord[]): DeterministicRatingModel {
+  const online = new Map<DeterministicFeatureKey, { count: number; mean: number; m2: number; nonZeroCount: number }>();
+  let featureSetVersion = FEATURE_SCHEMA_VERSION;
+  let renderEngine = "unknown";
+
+  for (const record of records) {
+    if (typeof record.features.featureSetVersion === "string" && record.features.featureSetVersion) {
+      featureSetVersion = record.features.featureSetVersion;
+    }
+    if (typeof record.render_engine === "string" && record.render_engine) {
+      renderEngine = record.render_engine;
+    }
+
+    for (const key of DETERMINISTIC_FEATURE_KEYS) {
+      const raw = record.features[key];
+      if (!isFiniteNumber(raw)) {
+        continue;
+      }
+
+      const stats = online.get(key) ?? { count: 0, mean: 0, m2: 0, nonZeroCount: 0 };
+      stats.count += 1;
+      const delta = raw - stats.mean;
+      stats.mean += delta / stats.count;
+      const delta2 = raw - stats.mean;
+      stats.m2 += delta * delta2;
+      if (Math.abs(raw) > 1e-12) {
+        stats.nonZeroCount += 1;
+      }
+      online.set(key, stats);
+    }
+  }
+
+  const model: DeterministicRatingModel = {
+    featureSetVersion,
+    renderEngine,
+    features: {},
+  };
+
+  for (const key of DETERMINISTIC_FEATURE_KEYS) {
+    const stats = online.get(key);
+    if (!stats || stats.nonZeroCount <= 0 || stats.count <= 0) {
+      continue;
+    }
+
+    const sigma = Math.sqrt(Math.max(0, stats.m2 / stats.count));
+    if (!Number.isFinite(sigma) || sigma <= 0) {
+      continue;
+    }
+
+    model.features[key] = {
+      mu: stats.mean,
+      sigma,
+      count: stats.count,
+      nonZeroCount: stats.nonZeroCount,
+    };
+  }
+
+  return model;
+}
+
+function predictRecoveredRatings(model: DeterministicRatingModel, features: AudioFeatures): TagRatings {
+  const tempoFast = (() => {
+    const bpmNorm = normalizeFeature(model, "bpm", features.bpm);
+    if (bpmNorm === undefined) {
+      return { value: 0.5, present: false };
+    }
+    const confidence = isFiniteNumber(features.confidence) ? clamp(features.confidence, 0, 1) : 1;
+    return { value: sigmoid(bpmNorm * confidence), present: true };
+  })();
+
+  const bright = sigmoidFromNormalizedTerms([
+    { w: 0.45, x: normalizeFeature(model, "spectralCentroid", features.spectralCentroid) },
+    { w: 0.35, x: normalizeFeature(model, "spectralRolloff", features.spectralRolloff) },
+    { w: 0.2, x: normalizeFeature(model, "spectralHfc", features.spectralHfc) },
+  ]);
+
+  const noisy = sigmoidFromNormalizedTerms([
+    { w: 0.45, x: normalizeFeature(model, "spectralFlatnessDb", features.spectralFlatnessDb) },
+    { w: 0.25, x: normalizeFeature(model, "zeroCrossingRate", features.zeroCrossingRate) },
+    { w: 0.3, x: normalizeFeature(model, "spectralEntropy", features.spectralEntropy) },
+  ]);
+
+  const percussive = sigmoidFromNormalizedTerms([
+    { w: 0.5, x: normalizeFeature(model, "spectralCrest", features.spectralCrest) },
+    { w: 0.3, x: normalizeFeature(model, "zeroCrossingRate", features.zeroCrossingRate) },
+    { w: 0.2, x: normalizeFeature(model, "spectralHfc", features.spectralHfc) },
+  ]);
+
+  const dynamicLoud = sigmoidFromNormalizedTerms([
+    { w: 0.7, x: normalizeFeature(model, "rms", features.rms) },
+    { w: 0.3, x: normalizeFeature(model, "energy", features.energy) },
+  ]);
+
+  const tonalClarity = noisy.present
+    ? { value: 1 - noisy.value, present: true }
+    : { value: 0.5, present: false };
+
+  const complexity = weightedAverageTerms([
+    { w: 0.35, x: percussive.present ? percussive.value : undefined },
+    { w: 0.25, x: tempoFast.present ? tempoFast.value : undefined },
+    { w: 0.25, x: bright.present ? bright.value : undefined },
+    { w: 0.15, x: noisy.present ? noisy.value : undefined },
+  ]);
+
+  const energy = weightedAverageTerms([
+    { w: 0.4, x: dynamicLoud.present ? dynamicLoud.value : undefined },
+    { w: 0.35, x: tempoFast.present ? tempoFast.value : undefined },
+    { w: 0.25, x: percussive.present ? percussive.value : undefined },
+  ]);
+
+  const mood = weightedAverageTerms([
+    { w: 0.45, x: tonalClarity.present ? tonalClarity.value : undefined },
+    { w: 0.25, x: percussive.present ? 1 - percussive.value : undefined },
+    { w: 0.15, x: bright.present ? 1 - bright.value : undefined },
+    { w: 0.15, x: dynamicLoud.present ? 1 - dynamicLoud.value : undefined },
+  ]);
+
+  return {
+    c: ratingFromRaw(complexity.present ? complexity.value : 0.5),
+    e: ratingFromRaw(energy.present ? energy.value : 0.5),
+    m: ratingFromRaw(mood.present ? mood.value : 0.5),
+  };
+}
+
+function hasMissingDimensions(ratings: PartialRatings): boolean {
+  return RATING_DIMENSIONS.some((dimension) => ratings[dimension] === undefined);
+}
+
+function combineRecoveredRatings(
+  manual: PartialRatings | null | undefined,
+  automatic: TagRatings | null,
+): { ratings: TagRatings; source: "manual" | "auto" | "mixed" } {
+  const ratings: TagRatings = { ...DEFAULT_RATINGS };
+  let manualCount = 0;
+  let autoCount = 0;
+
+  for (const dimension of RATING_DIMENSIONS) {
+    if (manual && manual[dimension] !== undefined) {
+      ratings[dimension] = clampRating(manual[dimension] as number);
+      manualCount += 1;
+      continue;
+    }
+
+    if (automatic && automatic[dimension] !== undefined) {
+      ratings[dimension] = clampRating(automatic[dimension]);
+      autoCount += 1;
+      continue;
+    }
+  }
+
+  if (manual?.p !== undefined) {
+    ratings.p = clampRating(manual.p);
+  }
+
+  if (manualCount === 0 && autoCount > 0) {
+    return { ratings, source: "auto" };
+  }
+  if (manualCount > 0 && autoCount > 0) {
+    return { ratings, source: "mixed" };
+  }
+  return { ratings, source: "manual" };
+}
+
+function parseTimestampFromJsonlName(fileName: string): string | undefined {
+  const match = fileName.match(/_(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})-(\d{3})\.jsonl$/);
+  if (!match) {
+    return undefined;
+  }
+  const [, date, hour, minute, second, millis] = match;
+  return `${date}T${hour}:${minute}:${second}.${millis}Z`;
+}
+
+function isFeaturePhaseRecord(value: unknown): value is FeaturePhaseRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return typeof record.sid_path === "string" && !!record.features && typeof record.features === "object";
+}
+
+function recoverClassificationsFromFeatureFile(
+  records: FeaturePhaseRecord[],
+  classifiedAt: string | undefined,
+): ClassificationRecord[] {
+  if (records.length === 0) {
+    return [];
+  }
+
+  const model = buildDeterministicRatingModel(records);
+  return records.map((record) => {
+    const needsAutomaticRatings = !record.manual_ratings || hasMissingDimensions(record.manual_ratings);
+    const automaticRatings = needsAutomaticRatings ? predictRecoveredRatings(model, record.features) : null;
+    const combined = combineRecoveredRatings(record.manual_ratings, automaticRatings);
+    const classification: ClassificationRecord = {
+      sid_path: record.sid_path,
+      ratings: combined.ratings,
+      source: combined.source,
+      classified_at: classifiedAt,
+      render_engine: record.render_engine,
+      features: record.features,
+    };
+    if (record.song_index !== undefined) {
+      classification.song_index = record.song_index;
+    }
+    if (record.features.featureVariant === "heuristic") {
+      classification.degraded = true;
+    }
+    return classification;
+  });
+}
+
+async function readClassificationsForExport(dirPath: string): Promise<ClassificationRecord[]> {
+  const records: ClassificationRecord[] = [];
+
+  if (!(await pathExists(dirPath))) {
+    return records;
+  }
+
+  async function walk(currentPath: string): Promise<void> {
+    const entries = await readdir(currentPath, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const fullPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.endsWith(".jsonl")) {
+        continue;
+      }
+
+      const contents = await readFile(fullPath, "utf8");
+      const lines = contents.split("\n").map((line) => line.trim()).filter(Boolean);
+
+      if (entry.name.startsWith("features_")) {
+        const featureRecords = lines
+          .map((line) => JSON.parse(line) as unknown)
+          .filter(isFeaturePhaseRecord);
+        records.push(...recoverClassificationsFromFeatureFile(featureRecords, parseTimestampFromJsonlName(entry.name)));
+        continue;
+      }
+
+      if (!entry.name.startsWith("classification_")) {
+        continue;
+      }
+
+      for (const line of lines) {
+        records.push(JSON.parse(line) as ClassificationRecord);
+      }
+    }
+  }
+
+  await walk(dirPath);
+  return records;
 }
 
 async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
@@ -375,6 +753,11 @@ function openReadonlyDatabase(dbPath: string): Database {
   return new Database(dbPath, { readonly: true });
 }
 
+function computeTemporaryOutputPath(outputPath: string): string {
+  const parsed = path.parse(outputPath);
+  return path.join(parsed.dir, `.${parsed.base}.tmp-${Date.now()}`);
+}
+
 export async function buildSimilarityExport(options: BuildSimilarityExportOptions): Promise<BuildSimilarityExportResult> {
   const startedAt = Date.now();
   const profile = options.profile ?? "full";
@@ -384,7 +767,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
   const manifestPath = options.manifestPath ?? computeDefaultManifestPath(options.outputPath);
 
   const [classifications, feedbackEvents] = await Promise.all([
-    readJsonlFiles<ClassificationRecord>(options.classifiedPath),
+    readClassificationsForExport(options.classifiedPath),
     readJsonlFiles<FeedbackRecord>(options.feedbackPath),
   ]);
 
@@ -396,9 +779,11 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
     .sort((left, right) => left.sid_path.localeCompare(right.sid_path));
 
   await ensureDir(path.dirname(options.outputPath));
-  await rm(options.outputPath, { force: true });
+  const temporaryOutputPath = computeTemporaryOutputPath(options.outputPath);
+  await rm(temporaryOutputPath, { force: true });
 
-  const database = new Database(options.outputPath, { create: true, strict: true });
+  let neighborRowCount = 0;
+  const database = new Database(temporaryOutputPath, { create: true, strict: true });
   try {
     database.exec(`
       PRAGMA journal_mode = DELETE;
@@ -478,7 +863,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       );
     }
 
-    const neighborRowCount = insertNeighbors(database, profile, tracks, neighborCount);
+    neighborRowCount = insertNeighbors(database, profile, tracks, neighborCount);
 
     const classifiedChecksum = await computeDirectoryChecksum(options.classifiedPath);
     const feedbackChecksum = await computeDirectoryChecksum(options.feedbackPath);
@@ -514,7 +899,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
     database.close();
   }
 
-  const sqliteChecksum = await computeFileChecksum(options.outputPath);
+  const sqliteChecksum = await computeFileChecksum(temporaryOutputPath);
   const manifest: SimilarityExportManifest = {
     schema_version: SIMILARITY_EXPORT_SCHEMA_VERSION,
     export_profile: profile,
@@ -540,12 +925,15 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
     tables: ["meta", "tracks", "neighbors"],
   };
 
-  const writerDatabase = new Database(options.outputPath, { create: true });
+  const writerDatabase = new Database(temporaryOutputPath, { create: true });
   try {
     writerDatabase.query("UPDATE meta SET value = ? WHERE key = ?").run(JSON.stringify(manifest), "manifest_json");
   } finally {
     writerDatabase.close();
   }
+
+  await rm(options.outputPath, { force: true });
+  await rename(temporaryOutputPath, options.outputPath);
 
   await writeCanonicalJsonFile(manifestPath, manifest as unknown as import("./json.js").JsonValue, {
     details: {

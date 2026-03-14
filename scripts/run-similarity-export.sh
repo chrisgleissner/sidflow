@@ -301,7 +301,7 @@ count = 0
 if os.path.isdir(root):
     for current_root, _, files in os.walk(root):
         for name in files:
-            if not name.endswith('.jsonl'):
+      if not name.startswith('classification_') or not name.endswith('.jsonl'):
                 continue
             full_path = os.path.join(current_root, name)
             with open(full_path, 'r', encoding='utf-8', errors='ignore') as fh:
@@ -312,9 +312,31 @@ print(count)
 PY
 }
 
+count_feature_rows() {
+  local target_path="$1"
+  python3 - "$target_path" <<'PY'
+import os, sys
+
+root = sys.argv[1]
+count = 0
+if os.path.isdir(root):
+  for current_root, _, files in os.walk(root):
+    for name in files:
+      if not name.startswith('features_') or not name.endswith('.jsonl'):
+        continue
+      full_path = os.path.join(current_root, name)
+      with open(full_path, 'r', encoding='utf-8', errors='ignore') as fh:
+        for line in fh:
+          if line.strip():
+            count += 1
+print(count)
+PY
+}
+
 print_resume_summary() {
   local classified_count="$1"
-  local export_path="$2"
+  local feature_count="$2"
+  local export_path="$3"
   local manifest_path="${export_path%.sqlite}.manifest.json"
 
   if [[ "${FULL_RERUN}" == "true" ]]; then
@@ -328,6 +350,10 @@ print_resume_summary() {
     log "Resume mode: no prior classified songs found under ${CLASSIFIED_PATH}; starting fresh"
   fi
 
+  if [[ "${feature_count}" -gt "${classified_count}" ]]; then
+    log "Resume mode: detected $((feature_count - classified_count)) additional feature-phase rows without matching classification rows; export recovery will include them if classification was interrupted mid-run"
+  fi
+
   if [[ -f "${export_path}" && -f "${manifest_path}" ]]; then
     log "Resume mode: existing export detected at ${export_path}; it will be replaced after classification completes"
   fi
@@ -335,6 +361,7 @@ print_resume_summary() {
 
 prepare_run_state() {
   local classified_count
+  local feature_count
 
   if [[ "${MODE}" == "local" ]]; then
     CLASSIFIED_PATH="$(resolve_local_classified_path)"
@@ -345,7 +372,8 @@ prepare_run_state() {
   fi
 
   classified_count="$(count_classified_rows "${CLASSIFIED_PATH}")"
-  print_resume_summary "${classified_count}" "${EXPORT_OUTPUT_PATH}"
+  feature_count="$(count_feature_rows "${CLASSIFIED_PATH}")"
+  print_resume_summary "${classified_count}" "${feature_count}" "${EXPORT_OUTPUT_PATH}"
 
   if [[ "${FULL_RERUN}" == "true" ]]; then
     rm -f "${EXPORT_OUTPUT_PATH}" "${EXPORT_OUTPUT_PATH%.sqlite}.manifest.json"
