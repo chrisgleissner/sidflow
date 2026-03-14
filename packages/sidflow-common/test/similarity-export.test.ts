@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -72,9 +73,28 @@ describe("similarity-export", () => {
 
     const manifestFromFile = await readSimilarityExportManifest(manifestPath);
     const manifestFromDatabase = readSimilarityExportManifestFromDatabase(outputPath);
-    expect(manifestFromFile.schema_version).toBe("sidcorr-2");
+    expect(manifestFromFile.schema_version).toBe("sidcorr-1");
     expect(manifestFromDatabase.track_count).toBe(5);
     expect(manifestFromDatabase.corpus_version).toBe("TEST-1");
+
+    const database = new Database(outputPath, { readonly: true, strict: true });
+    try {
+      const firstTrack = database
+        .query("SELECT likes, plays FROM tracks WHERE track_id = ?")
+        .get(buildSimilarityTrackId("A.sid", 1)) as { likes: number; plays: number };
+      const secondTrack = database
+        .query("SELECT likes, plays FROM tracks WHERE track_id = ?")
+        .get(buildSimilarityTrackId("A.sid", 2)) as { likes: number; plays: number };
+      const neighborIndex = database
+        .query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'neighbors_seed_idx'")
+        .get() as { name: string } | null;
+
+      expect(firstTrack).toEqual({ likes: 0, plays: 0 });
+      expect(secondTrack).toEqual({ likes: 1, plays: 1 });
+      expect(neighborIndex).toBeNull();
+    } finally {
+      database.close();
+    }
   });
 
   test("recommends similar tracks from a seed track id", async () => {

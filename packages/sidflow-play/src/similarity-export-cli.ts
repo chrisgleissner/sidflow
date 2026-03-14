@@ -29,7 +29,7 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--output",
     type: "string",
-    description: "SQLite output path (default: data/exports/sidcorr-<corpus>-<profile>-sidcorr-2.sqlite)",
+    description: "SQLite output path (default: data/exports/sidcorr-<corpus>-<profile>-sidcorr-1.sqlite)",
   },
   {
     name: "--profile",
@@ -75,7 +75,7 @@ const HELP_TEXT = formatHelp(
   ARG_DEFS,
   [
     "sidflow-play export-similarity",
-    "sidflow-play export-similarity --profile full --output data/exports/sidcorr-hvsc-full-sidcorr-2.sqlite",
+    "sidflow-play export-similarity --profile full --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --neighbors 25 --corpus-version HVSC-82",
   ],
 );
@@ -89,7 +89,7 @@ function inferCorpusLabel(sidPath: string): string {
 }
 
 function defaultOutputPath(corpusLabel: string, profile: "full" | "mobile"): string {
-  return path.join("data", "exports", `sidcorr-${corpusLabel}-${profile}-sidcorr-2.sqlite`);
+  return path.join("data", "exports", `sidcorr-${corpusLabel}-${profile}-sidcorr-1.sqlite`);
 }
 
 export async function runSimilarityExportCli(argv: string[]): Promise<number> {

@@ -16,7 +16,7 @@ DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
 KEEP_RUNTIME="false"
-SCHEMA_VERSION="sidcorr-2"
+SCHEMA_VERSION="sidcorr-1"
 
 CONFIG_PATH="${REPO_ROOT}/.sidflow.json"
 IMAGE="ghcr.io/chrisgleissner/sidflow:latest"

@@ -125,6 +125,22 @@ Useful flags:
 
 `--neighbors` is optional. For a full HVSC export, the portable workflow is usually best with vectors enabled and `--neighbors 0`, because downstream consumers can compute recommendations from the vector table directly.
 
+## Android-oriented notes
+
+The relational model stays explicit on purpose: `tracks` keeps `track_id`, `sid_path`, and `song_index` visible instead of hiding identity behind a surrogate integer. That keeps offline debugging, import/export checks, and consumer SQL straightforward.
+
+Low-hanging optimizations worth taking early without weakening that model:
+
+- The keyed SQLite tables are created `WITHOUT ROWID`, which avoids a second hidden B-tree for text/composite primary keys and reduces both file size and cache pressure on weaker devices.
+- The export does not create a separate `neighbors` index because the `(profile, seed_track_id, rank)` primary key already covers the hot lookup path.
+- `mobile` profile keeps the same relational shape but omits heavyweight payloads such as `features_json`; keep using that profile when the client does not need full feature inspection.
+
+Tradeoffs to keep explicit rather than hiding behind premature abstraction:
+
+- Keep `track_id = sid_path#song_index` materialized. Deriving it on every join would save a column but complicate consumers and make bug triage harder.
+- Keep `sid_path` and `song_index` alongside `track_id`. That small amount of duplication buys clearer SQL and simpler downstream integrations.
+- Only precompute `neighbors` when the target experience is mostly seed-track lookup. If the client needs arbitrary centroid playlists from many favorites, vectors plus `--neighbors 0` remain the more expressive default.
+
 ## SQLite schema
 
 The SQLite bundle uses schema version `sidcorr-1` and stores three tables:
@@ -132,15 +148,17 @@ The SQLite bundle uses schema version `sidcorr-1` and stores three tables:
 1. `meta`
    Stores small key/value metadata, including the full manifest JSON under `manifest_json`.
 2. `tracks`
-   One row per SID path, with ratings, feedback aggregates, and optional vector/features payloads.
+  One row per playable SID track, keyed by `track_id = sid_path#song_index`, with ratings, feedback aggregates, and optional vector/features payloads.
 3. `neighbors`
-   Optional precomputed nearest-neighbor rows keyed by `(profile, seed_sid_path, rank)`.
+  Optional precomputed nearest-neighbor rows keyed by `(profile, seed_track_id, rank)`.
 
-The `tracks` table is keyed by `sid_path`, not by subsong. A multi-song SID contributes multiple classify rows during feature extraction, but only one exported track row for that SID path.
+Classification has always run per subsong when a SID file exposes multiple tracks. `sidcorr-1` now preserves that identity in the export instead of collapsing everything back to one row per SID file.
 
 `tracks` columns:
 
-- `sid_path TEXT PRIMARY KEY`
+- `track_id TEXT PRIMARY KEY`
+- `sid_path TEXT NOT NULL`
+- `song_index INTEGER NOT NULL`
 - `vector_json TEXT NULL`
 - `e REAL NOT NULL`
 - `m REAL NOT NULL`
@@ -160,8 +178,8 @@ The `tracks` table is keyed by `sid_path`, not by subsong. A multi-song SID cont
 `neighbors` columns:
 
 - `profile TEXT NOT NULL`
-- `seed_sid_path TEXT NOT NULL`
-- `neighbor_sid_path TEXT NOT NULL`
+- `seed_track_id TEXT NOT NULL`
+- `neighbor_track_id TEXT NOT NULL`
 - `rank INTEGER NOT NULL`
 - `similarity REAL NOT NULL`
 
@@ -192,7 +210,7 @@ The expected consumer workflow for c64commander-style playback is:
 
 1. Start with a few random songs from the full collection.
 2. Let the user like, skip, or dislike songs.
-3. Collect the liked SID paths as favorites.
+3. Collect the liked track IDs as favorites.
 4. Read the exported SQLite bundle offline.
 5. Compute a centroid over the favorite vectors.
 6. Rank the remaining tracks by cosine similarity to that centroid.
@@ -200,8 +218,9 @@ The expected consumer workflow for c64commander-style playback is:
 
 SIDFlow exposes helper functions in `@sidflow/common` for the two core cases:
 
-- `recommendFromSeedTrack(dbPath, { seedSidPath, limit })`
-- `recommendFromFavorites(dbPath, { favoriteSidPaths, limit, weightsBySidPath })`
+- `buildSimilarityTrackId(sidPath, songIndex)`
+- `recommendFromSeedTrack(dbPath, { seedTrackId, limit })`
+- `recommendFromFavorites(dbPath, { favoriteTrackIds, limit, weightsByTrackId })`
 
 Example:
 
@@ -209,18 +228,18 @@ Example:
 import { recommendFromFavorites } from "@sidflow/common";
 
 const playlistSeeds = [
-  "MUSICIANS/H/Hubbard_Rob/Commando.sid",
-  "MUSICIANS/G/Galway_Martin/Parallax.sid",
+  buildSimilarityTrackId("MUSICIANS/H/Hubbard_Rob/Commando.sid", 1),
+  buildSimilarityTrackId("MUSICIANS/G/Galway_Martin/Parallax.sid", 2),
 ];
 
 const recommendations = recommendFromFavorites(
   "data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
   {
-    favoriteSidPaths: playlistSeeds,
+    favoriteTrackIds: playlistSeeds,
     limit: 25,
-    weightsBySidPath: {
-      "MUSICIANS/H/Hubbard_Rob/Commando.sid": 1.0,
-      "MUSICIANS/G/Galway_Martin/Parallax.sid": 1.2,
+    weightsByTrackId: {
+      [buildSimilarityTrackId("MUSICIANS/H/Hubbard_Rob/Commando.sid", 1)]: 1.0,
+      [buildSimilarityTrackId("MUSICIANS/G/Galway_Martin/Parallax.sid", 2)]: 1.2,
     },
   },
 );

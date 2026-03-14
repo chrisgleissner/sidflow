@@ -12,7 +12,7 @@ import {
 } from "./jsonl-schema.js";
 import { DEFAULT_RATING, DEFAULT_RATINGS, clampRating, type TagRatings } from "./ratings.js";
 
-export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-2";
+export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
 
 export type SimilarityExportProfile = "full" | "mobile";
 
@@ -807,11 +807,21 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
   ]);
 
   const dedupedClassifications = dedupeClassifications(classifications);
-  const feedbackBySidPath = aggregateFeedback(feedbackEvents);
+  const feedbackByTrackId = aggregateFeedback(feedbackEvents);
   const tracks = dedupedClassifications
     .filter((classification) => hasValidRatings(classification))
-    .map((classification) => classificationToTrack(classification, feedbackBySidPath.get(classification.sid_path), dims))
-    .sort((left, right) => left.sid_path.localeCompare(right.sid_path));
+    .map((classification) => classificationToTrack(
+      classification,
+      feedbackByTrackId.get(buildSimilarityTrackId(classification.sid_path, classification.song_index)),
+      dims,
+    ))
+    .sort((left, right) => {
+      const sidPathCompare = left.sid_path.localeCompare(right.sid_path);
+      if (sidPathCompare !== 0) {
+        return sidPathCompare;
+      }
+      return left.song_index - right.song_index;
+    });
 
   await ensureDir(path.dirname(options.outputPath));
   const temporaryOutputPath = computeTemporaryOutputPath(options.outputPath);
@@ -826,7 +836,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       CREATE TABLE meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
-      );
+      ) WITHOUT ROWID;
       CREATE TABLE tracks (
         track_id TEXT PRIMARY KEY,
         sid_path TEXT NOT NULL,
@@ -846,7 +856,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         render_engine TEXT,
         feature_schema_version TEXT,
         features_json TEXT
-      );
+      ) WITHOUT ROWID;
       CREATE TABLE neighbors (
         profile TEXT NOT NULL,
         seed_track_id TEXT NOT NULL,
@@ -854,8 +864,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         rank INTEGER NOT NULL,
         similarity REAL NOT NULL,
         PRIMARY KEY (profile, seed_track_id, rank)
-      );
-      CREATE INDEX neighbors_seed_idx ON neighbors (profile, seed_track_id, rank);
+      ) WITHOUT ROWID;
       CREATE INDEX tracks_sid_path_idx ON tracks (sid_path, song_index);
     `);
 

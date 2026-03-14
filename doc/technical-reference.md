@@ -97,8 +97,8 @@ Selected endpoints implemented in `packages/sidflow-web/app/api/**/route.ts`:
 The Phase 5 export is a SQLite-first artifact intended for downstream offline recommendation consumers.
 
 - Builder entrypoint: `bun run export:similarity -- --profile full`
-- Default output: `data/exports/sidcorr-hvsc-full-sidcorr-2.sqlite`
-- Sidecar manifest: `data/exports/sidcorr-hvsc-full-sidcorr-2.manifest.json`
+- Default output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
+- Sidecar manifest: `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
 - Shared query helpers: `recommendFromSeedTrack(...)` and `recommendFromFavorites(...)` from `@sidflow/common`
 
 The full schema and operator workflow live in [doc/similarity-export.md](doc/similarity-export.md).
