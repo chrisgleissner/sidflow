@@ -12,12 +12,14 @@ import {
 } from "./jsonl-schema.js";
 import { DEFAULT_RATING, DEFAULT_RATINGS, clampRating, type TagRatings } from "./ratings.js";
 
-export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
+export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-2";
 
 export type SimilarityExportProfile = "full" | "mobile";
 
 export interface SimilarityExportTrack {
+  track_id: string;
   sid_path: string;
+  song_index: number;
   vector: number[];
   e: number;
   m: number;
@@ -79,7 +81,9 @@ export interface BuildSimilarityExportResult {
 }
 
 export interface SimilarityExportRecommendation {
+  track_id: string;
   sid_path: string;
+  song_index: number;
   score: number;
   rank: number;
   e: number;
@@ -94,17 +98,17 @@ export interface SimilarityExportRecommendation {
 }
 
 export interface RecommendFromSeedTrackOptions {
-  seedSidPath: string;
+  seedTrackId: string;
   limit?: number;
   profile?: SimilarityExportProfile;
-  excludeSidPaths?: string[];
+  excludeTrackIds?: string[];
 }
 
 export interface RecommendFromFavoritesOptions {
-  favoriteSidPaths: string[];
+  favoriteTrackIds: string[];
   limit?: number;
-  excludeSidPaths?: string[];
-  weightsBySidPath?: Record<string, number>;
+  excludeTrackIds?: string[];
+  weightsByTrackId?: Record<string, number>;
 }
 
 interface FeedbackAggregate {
@@ -116,7 +120,9 @@ interface FeedbackAggregate {
 }
 
 interface PersistedTrackRow {
+  track_id: string;
   sid_path: string;
+  song_index: number;
   vector_json: string | null;
   e: number;
   m: number;
@@ -185,6 +191,28 @@ const DETERMINISTIC_FEATURE_KEYS: readonly DeterministicFeatureKey[] = [
   "spectralHfc",
   "zeroCrossingRate",
 ] as const;
+
+function normalizeSongIndex(songIndex?: number): number {
+  return Number.isInteger(songIndex) && (songIndex as number) > 0 ? (songIndex as number) : 1;
+}
+
+export function buildSimilarityTrackId(sidPath: string, songIndex?: number): string {
+  return `${sidPath}#${normalizeSongIndex(songIndex)}`;
+}
+
+export function parseSimilarityTrackId(trackId: string): { sid_path: string; song_index: number } {
+  const hashIndex = trackId.lastIndexOf("#");
+  if (hashIndex <= 0 || hashIndex === trackId.length - 1) {
+    return { sid_path: trackId, song_index: 1 };
+  }
+
+  const sidPath = trackId.slice(0, hashIndex);
+  const rawSongIndex = Number.parseInt(trackId.slice(hashIndex + 1), 10);
+  return {
+    sid_path: sidPath,
+    song_index: normalizeSongIndex(rawSongIndex),
+  };
+}
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -542,7 +570,8 @@ async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
 function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggregate> {
   const aggregates = new Map<string, FeedbackAggregate>();
   for (const event of events) {
-    const aggregate = aggregates.get(event.sid_path) ?? {
+    const trackId = buildSimilarityTrackId(event.sid_path, event.song_index);
+    const aggregate = aggregates.get(trackId) ?? {
       likes: 0,
       dislikes: 0,
       skips: 0,
@@ -565,7 +594,7 @@ function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggreg
     if ((event.action === "play" || event.action === "like") && (!aggregate.lastPlayed || event.ts > aggregate.lastPlayed)) {
       aggregate.lastPlayed = event.ts;
     }
-    aggregates.set(event.sid_path, aggregate);
+    aggregates.set(trackId, aggregate);
   }
   return aggregates;
 }
@@ -576,11 +605,14 @@ function classificationToTrack(
   dims: 3 | 4,
 ): SimilarityExportTrack {
   const { e, m, c, p } = classification.ratings;
+  const songIndex = normalizeSongIndex(classification.song_index);
   const vector = dims === 3
     ? [e, m, c]
     : [e, m, c, p ?? DEFAULT_RATING];
   return {
+    track_id: buildSimilarityTrackId(classification.sid_path, songIndex),
     sid_path: classification.sid_path,
+    song_index: songIndex,
     vector,
     e,
     m,
@@ -611,16 +643,17 @@ function hasValidRatings(classification: ClassificationRecord): boolean {
 function dedupeClassifications(classifications: ClassificationRecord[]): ClassificationRecord[] {
   const deduped = new Map<string, ClassificationRecord>();
   for (const classification of classifications) {
-    const existing = deduped.get(classification.sid_path);
+    const trackId = buildSimilarityTrackId(classification.sid_path, classification.song_index);
+    const existing = deduped.get(trackId);
     if (!existing) {
-      deduped.set(classification.sid_path, classification);
+      deduped.set(trackId, classification);
       continue;
     }
 
     const existingTimestamp = existing.classified_at ?? "";
     const nextTimestamp = classification.classified_at ?? "";
     if (nextTimestamp >= existingTimestamp) {
-      deduped.set(classification.sid_path, classification);
+      deduped.set(trackId, classification);
     }
   }
 
@@ -711,21 +744,21 @@ function insertNeighbors(database: Database, profile: SimilarityExportProfile, t
   }
 
   const insert = database.query(
-    "INSERT INTO neighbors (profile, seed_sid_path, neighbor_sid_path, rank, similarity) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO neighbors (profile, seed_track_id, neighbor_track_id, rank, similarity) VALUES (?, ?, ?, ?, ?)",
   );
   let inserted = 0;
   for (const seedTrack of tracks) {
     const ranked = tracks
-      .filter((candidate) => candidate.sid_path !== seedTrack.sid_path)
+      .filter((candidate) => candidate.track_id !== seedTrack.track_id)
       .map((candidate) => ({
-        sid_path: candidate.sid_path,
+        track_id: candidate.track_id,
         similarity: cosineSimilarity(seedTrack.vector, candidate.vector),
       }))
       .sort((left, right) => right.similarity - left.similarity)
       .slice(0, neighborCount);
 
     ranked.forEach((neighbor, index) => {
-      insert.run(profile, seedTrack.sid_path, neighbor.sid_path, index + 1, Number(neighbor.similarity.toFixed(8)));
+      insert.run(profile, seedTrack.track_id, neighbor.track_id, index + 1, Number(neighbor.similarity.toFixed(8)));
       inserted += 1;
     });
   }
@@ -734,7 +767,9 @@ function insertNeighbors(database: Database, profile: SimilarityExportProfile, t
 
 function trackRowToRecommendation(row: PersistedTrackRow, score: number, rank: number): SimilarityExportRecommendation {
   return {
+    track_id: row.track_id,
     sid_path: row.sid_path,
+    song_index: row.song_index,
     score,
     rank,
     e: row.e,
@@ -793,7 +828,9 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         value TEXT NOT NULL
       );
       CREATE TABLE tracks (
-        sid_path TEXT PRIMARY KEY,
+        track_id TEXT PRIMARY KEY,
+        sid_path TEXT NOT NULL,
+        song_index INTEGER NOT NULL,
         vector_json TEXT,
         e REAL NOT NULL,
         m REAL NOT NULL,
@@ -812,18 +849,21 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       );
       CREATE TABLE neighbors (
         profile TEXT NOT NULL,
-        seed_sid_path TEXT NOT NULL,
-        neighbor_sid_path TEXT NOT NULL,
+        seed_track_id TEXT NOT NULL,
+        neighbor_track_id TEXT NOT NULL,
         rank INTEGER NOT NULL,
         similarity REAL NOT NULL,
-        PRIMARY KEY (profile, seed_sid_path, rank)
+        PRIMARY KEY (profile, seed_track_id, rank)
       );
-      CREATE INDEX neighbors_seed_idx ON neighbors (profile, seed_sid_path, rank);
+      CREATE INDEX neighbors_seed_idx ON neighbors (profile, seed_track_id, rank);
+      CREATE INDEX tracks_sid_path_idx ON tracks (sid_path, song_index);
     `);
 
     const insertTrack = database.query(
       `INSERT INTO tracks (
+        track_id,
         sid_path,
+        song_index,
         vector_json,
         e,
         m,
@@ -839,12 +879,14 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         render_engine,
         feature_schema_version,
         features_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     for (const track of tracks) {
       insertTrack.run(
+        track.track_id,
         track.sid_path,
+        track.song_index,
         includeVectors ? JSON.stringify(track.vector) : null,
         track.e,
         track.m,
@@ -978,35 +1020,35 @@ export function recommendFromSeedTrack(
   try {
     const limit = options.limit ?? 20;
     const profile = options.profile ?? "full";
-    const excluded = new Set([options.seedSidPath, ...(options.excludeSidPaths ?? [])]);
+    const excluded = new Set([options.seedTrackId, ...(options.excludeTrackIds ?? [])]);
 
     const rows = database.query(
-      `SELECT t.sid_path, t.e, t.m, t.c, t.p, t.likes, t.dislikes, t.skips, t.plays, t.last_played, n.similarity, n.rank
+      `SELECT t.track_id, t.sid_path, t.song_index, t.vector_json, t.e, t.m, t.c, t.p, t.likes, t.dislikes, t.skips, t.plays, t.last_played, n.similarity, n.rank
        FROM neighbors n
-       JOIN tracks t ON t.sid_path = n.neighbor_sid_path
-       WHERE n.profile = ? AND n.seed_sid_path = ?
+       JOIN tracks t ON t.track_id = n.neighbor_track_id
+       WHERE n.profile = ? AND n.seed_track_id = ?
        ORDER BY n.rank ASC
        LIMIT ?`,
-    ).all(profile, options.seedSidPath, limit + excluded.size) as Array<PersistedTrackRow & { similarity: number; rank: number }>;
+    ).all(profile, options.seedTrackId, limit + excluded.size) as Array<PersistedTrackRow & { similarity: number; rank: number }>;
 
     if (rows.length > 0) {
       return rows
-        .filter((row) => !excluded.has(row.sid_path))
+        .filter((row) => !excluded.has(row.track_id))
         .slice(0, limit)
         .map((row, index) => trackRowToRecommendation(row, row.similarity, index + 1));
     }
 
-    const seed = database.query("SELECT vector_json FROM tracks WHERE sid_path = ?").get(options.seedSidPath) as { vector_json: string | null } | null;
+    const seed = database.query("SELECT vector_json FROM tracks WHERE track_id = ?").get(options.seedTrackId) as { vector_json: string | null } | null;
     if (!seed?.vector_json) {
-      throw new Error(`Seed track ${options.seedSidPath} missing vector data in similarity export`);
+      throw new Error(`Seed track ${options.seedTrackId} missing vector data in similarity export`);
     }
     const seedVector = JSON.parse(seed.vector_json) as number[];
     const candidates = database.query(
-      "SELECT sid_path, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played FROM tracks",
+      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played FROM tracks",
     ).all() as PersistedTrackRow[];
 
     return candidates
-      .filter((row) => row.vector_json && !excluded.has(row.sid_path))
+      .filter((row) => row.vector_json && !excluded.has(row.track_id))
       .map((row) => ({ row, score: cosineSimilarity(seedVector, JSON.parse(row.vector_json as string) as number[]) }))
       .sort((left, right) => right.score - left.score)
       .slice(0, limit)
@@ -1020,22 +1062,22 @@ export function recommendFromFavorites(
   dbPath: string,
   options: RecommendFromFavoritesOptions,
 ): SimilarityExportRecommendation[] {
-  if (options.favoriteSidPaths.length === 0) {
+  if (options.favoriteTrackIds.length === 0) {
     return [];
   }
 
   const database = openReadonlyDatabase(dbPath);
   try {
     const limit = options.limit ?? 20;
-    const excluded = new Set([...options.favoriteSidPaths, ...(options.excludeSidPaths ?? [])]);
+    const excluded = new Set([...options.favoriteTrackIds, ...(options.excludeTrackIds ?? [])]);
     const favoriteRows = database.query(
-      `SELECT sid_path, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played
+      `SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played
        FROM tracks
-       WHERE sid_path IN (${options.favoriteSidPaths.map(() => "?").join(", ")})`,
-    ).all(...options.favoriteSidPaths) as PersistedTrackRow[];
+       WHERE track_id IN (${options.favoriteTrackIds.map(() => "?").join(", ")})`,
+    ).all(...options.favoriteTrackIds) as PersistedTrackRow[];
 
     if (favoriteRows.length === 0) {
-      throw new Error("None of the favorite SID paths were found in the similarity export");
+      throw new Error("None of the favorite track IDs were found in the similarity export");
     }
 
     const vectors = favoriteRows.map((row) => {
@@ -1044,14 +1086,14 @@ export function recommendFromFavorites(
       }
       return JSON.parse(row.vector_json) as number[];
     });
-    const weights = favoriteRows.map((row) => options.weightsBySidPath?.[row.sid_path] ?? 1);
+    const weights = favoriteRows.map((row) => options.weightsByTrackId?.[row.track_id] ?? 1);
     const centroid = buildCentroid(vectors, weights);
     const candidates = database.query(
-      "SELECT sid_path, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played FROM tracks",
+      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played FROM tracks",
     ).all() as PersistedTrackRow[];
 
     return candidates
-      .filter((row) => row.vector_json && !excluded.has(row.sid_path))
+      .filter((row) => row.vector_json && !excluded.has(row.track_id))
       .map((row) => ({ row, score: cosineSimilarity(centroid, JSON.parse(row.vector_json as string) as number[]) }))
       .sort((left, right) => right.score - left.score)
       .slice(0, limit)

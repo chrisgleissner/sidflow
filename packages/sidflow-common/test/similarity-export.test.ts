@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  buildSimilarityTrackId,
   buildSimilarityExport,
   readSimilarityExportManifest,
   readSimilarityExportManifestFromDatabase,
@@ -30,10 +31,11 @@ describe("similarity-export", () => {
     await writeFile(
       path.join(classifiedPath, "classification_tracks.jsonl"),
       [
-        JSON.stringify({ sid_path: "A.sid", ratings: { e: 1, m: 1, c: 1, p: 3 }, features: { bpm: 90 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm" }),
-        JSON.stringify({ sid_path: "B.sid", ratings: { e: 1, m: 1, c: 2, p: 3 }, features: { bpm: 92 }, classified_at: "2026-03-13T10:01:00.000Z", source: "auto", render_engine: "wasm" }),
-        JSON.stringify({ sid_path: "C.sid", ratings: { e: 5, m: 5, c: 5, p: 3 }, features: { bpm: 140 }, classified_at: "2026-03-13T10:02:00.000Z", source: "auto", render_engine: "wasm" }),
-        JSON.stringify({ sid_path: "D.sid", ratings: { e: 1, m: 2, c: 1, p: 4 }, features: { bpm: 88 }, classified_at: "2026-03-13T10:03:00.000Z", source: "manual", render_engine: "sidplayfp-cli" }),
+        JSON.stringify({ sid_path: "A.sid", song_index: 1, ratings: { e: 1, m: 1, c: 1, p: 3 }, features: { bpm: 90 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm" }),
+        JSON.stringify({ sid_path: "A.sid", song_index: 2, ratings: { e: 5, m: 5, c: 5, p: 4 }, features: { bpm: 145 }, classified_at: "2026-03-13T10:00:30.000Z", source: "auto", render_engine: "wasm" }),
+        JSON.stringify({ sid_path: "B.sid", song_index: 1, ratings: { e: 1, m: 1, c: 2, p: 3 }, features: { bpm: 92 }, classified_at: "2026-03-13T10:01:00.000Z", source: "auto", render_engine: "wasm" }),
+        JSON.stringify({ sid_path: "C.sid", song_index: 1, ratings: { e: 5, m: 5, c: 4, p: 3 }, features: { bpm: 140 }, classified_at: "2026-03-13T10:02:00.000Z", source: "auto", render_engine: "wasm" }),
+        JSON.stringify({ sid_path: "D.sid", song_index: 1, ratings: { e: 1, m: 2, c: 1, p: 4 }, features: { bpm: 88 }, classified_at: "2026-03-13T10:03:00.000Z", source: "manual", render_engine: "sidplayfp-cli" }),
       ].join("\n") + "\n",
       "utf8",
     );
@@ -41,10 +43,10 @@ describe("similarity-export", () => {
     await writeFile(
       path.join(feedbackPath, "events.jsonl"),
       [
-        JSON.stringify({ ts: "2026-03-13T11:00:00.000Z", sid_path: "A.sid", action: "play" }),
-        JSON.stringify({ ts: "2026-03-13T11:01:00.000Z", sid_path: "A.sid", action: "like" }),
-        JSON.stringify({ ts: "2026-03-13T11:02:00.000Z", sid_path: "B.sid", action: "play" }),
-        JSON.stringify({ ts: "2026-03-13T11:03:00.000Z", sid_path: "D.sid", action: "like" }),
+        JSON.stringify({ ts: "2026-03-13T11:00:00.000Z", sid_path: "A.sid", song_index: 2, action: "play" }),
+        JSON.stringify({ ts: "2026-03-13T11:01:00.000Z", sid_path: "A.sid", song_index: 2, action: "like" }),
+        JSON.stringify({ ts: "2026-03-13T11:02:00.000Z", sid_path: "B.sid", song_index: 1, action: "play" }),
+        JSON.stringify({ ts: "2026-03-13T11:03:00.000Z", sid_path: "D.sid", song_index: 1, action: "like" }),
       ].join("\n") + "\n",
       "utf8",
     );
@@ -64,18 +66,18 @@ describe("similarity-export", () => {
       neighbors: 2,
     });
 
-    expect(result.manifest.track_count).toBe(4);
-    expect(result.manifest.neighbor_row_count).toBe(8);
+    expect(result.manifest.track_count).toBe(5);
+    expect(result.manifest.neighbor_row_count).toBe(10);
     expect(result.manifest.file_checksums.sqlite_sha256).toHaveLength(64);
 
     const manifestFromFile = await readSimilarityExportManifest(manifestPath);
     const manifestFromDatabase = readSimilarityExportManifestFromDatabase(outputPath);
-    expect(manifestFromFile.schema_version).toBe("sidcorr-1");
-    expect(manifestFromDatabase.track_count).toBe(4);
+    expect(manifestFromFile.schema_version).toBe("sidcorr-2");
+    expect(manifestFromDatabase.track_count).toBe(5);
     expect(manifestFromDatabase.corpus_version).toBe("TEST-1");
   });
 
-  test("recommends similar tracks from a seed SID path", async () => {
+  test("recommends similar tracks from a seed track id", async () => {
     await buildSimilarityExport({
       classifiedPath,
       feedbackPath: path.join(tempRoot, "feedback"),
@@ -85,15 +87,18 @@ describe("similarity-export", () => {
     });
 
     const recommendations = recommendFromSeedTrack(outputPath, {
-      seedSidPath: "A.sid",
+      seedTrackId: buildSimilarityTrackId("A.sid", 1),
       limit: 2,
     });
 
-    expect(recommendations.map((entry) => entry.sid_path)).toEqual(["D.sid", "B.sid"]);
+    expect(recommendations.map((entry) => entry.track_id)).toEqual([
+      buildSimilarityTrackId("D.sid", 1),
+      buildSimilarityTrackId("B.sid", 1),
+    ]);
     expect(recommendations[0].score).toBeGreaterThan(recommendations[1].score);
   });
 
-  test("recommends a centroid-based playlist from favorites", async () => {
+  test("recommends a centroid-based playlist from favorite track ids", async () => {
     await buildSimilarityExport({
       classifiedPath,
       feedbackPath: path.join(tempRoot, "feedback"),
@@ -103,19 +108,25 @@ describe("similarity-export", () => {
     });
 
     const recommendations = recommendFromFavorites(outputPath, {
-      favoriteSidPaths: ["A.sid", "D.sid"],
+      favoriteTrackIds: [
+        buildSimilarityTrackId("A.sid", 2),
+        buildSimilarityTrackId("C.sid", 1),
+      ],
       limit: 2,
     });
 
-    expect(recommendations.map((entry) => entry.sid_path)).toEqual(["B.sid", "C.sid"]);
+    expect(recommendations.map((entry) => entry.track_id)).toEqual([
+      buildSimilarityTrackId("B.sid", 1),
+      buildSimilarityTrackId("A.sid", 1),
+    ]);
     expect(recommendations[0].rank).toBe(1);
   });
 
-  test("deduplicates repeated sid_path records by keeping the newest classification", async () => {
+  test("deduplicates repeated track records by keeping the newest classification", async () => {
     await writeFile(
       path.join(classifiedPath, "classification_dupe.jsonl"),
       [
-        JSON.stringify({ sid_path: "A.sid", ratings: { e: 4, m: 4, c: 4, p: 2 }, features: { bpm: 110 }, classified_at: "2026-03-13T12:00:00.000Z", source: "auto", render_engine: "sidplayfp-cli" }),
+        JSON.stringify({ sid_path: "A.sid", song_index: 1, ratings: { e: 4, m: 4, c: 4, p: 2 }, features: { bpm: 110 }, classified_at: "2026-03-13T12:00:00.000Z", source: "auto", render_engine: "sidplayfp-cli" }),
       ].join("\n") + "\n",
       "utf8",
     );
@@ -129,11 +140,11 @@ describe("similarity-export", () => {
     });
 
     const recommendations = recommendFromSeedTrack(outputPath, {
-      seedSidPath: "A.sid",
+      seedTrackId: buildSimilarityTrackId("A.sid", 1),
       limit: 1,
     });
 
-    expect(recommendations[0]?.sid_path).toBe("C.sid");
+    expect(recommendations[0]?.track_id).toBe(buildSimilarityTrackId("C.sid", 1));
   });
 
   test("skips malformed classification rows without ratings", async () => {
@@ -153,7 +164,7 @@ describe("similarity-export", () => {
       neighbors: 1,
     });
 
-    expect(result.manifest.track_count).toBe(4);
+    expect(result.manifest.track_count).toBe(5);
   });
 
   test("recovers exportable tracks from orphaned feature-phase JSONL files", async () => {
@@ -162,6 +173,7 @@ describe("similarity-export", () => {
       [
         JSON.stringify({
           sid_path: "E.sid",
+          song_index: 1,
           song_count: 1,
           manual_ratings: null,
           render_engine: "wasm",
@@ -182,6 +194,7 @@ describe("similarity-export", () => {
         }),
         JSON.stringify({
           sid_path: "F.sid",
+          song_index: 2,
           song_count: 1,
           manual_ratings: { e: 5 },
           render_engine: "wasm",
@@ -212,10 +225,10 @@ describe("similarity-export", () => {
       neighbors: 0,
     });
 
-    expect(result.manifest.track_count).toBe(6);
+    expect(result.manifest.track_count).toBe(7);
 
     const recommendations = recommendFromFavorites(outputPath, {
-      favoriteSidPaths: ["E.sid"],
+      favoriteTrackIds: [buildSimilarityTrackId("E.sid", 1)],
       limit: 2,
     });
 

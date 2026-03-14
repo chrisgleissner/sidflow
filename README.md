@@ -152,8 +152,8 @@ bun run export:similarity -- --profile full
 
 By default this writes:
 
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
+- `data/exports/sidcorr-hvsc-full-sidcorr-2.sqlite`
+- `data/exports/sidcorr-hvsc-full-sidcorr-2.manifest.json`
 
 The SQLite bundle stores per-track ratings, feedback aggregates, optional vectors, and optional precomputed neighbors. See [doc/similarity-export.md](doc/similarity-export.md) for the schema, consumer workflow, and the full local classify-then-export sequence.
 

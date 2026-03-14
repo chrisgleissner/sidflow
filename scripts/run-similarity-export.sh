@@ -16,6 +16,7 @@ DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
 KEEP_RUNTIME="false"
+SCHEMA_VERSION="sidcorr-2"
 
 CONFIG_PATH="${REPO_ROOT}/.sidflow.json"
 IMAGE="ghcr.io/chrisgleissner/sidflow:latest"
@@ -365,10 +366,10 @@ prepare_run_state() {
 
   if [[ "${MODE}" == "local" ]]; then
     CLASSIFIED_PATH="$(resolve_local_classified_path)"
-    EXPORT_OUTPUT_PATH="${REPO_ROOT}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-sidcorr-1.sqlite"
+    EXPORT_OUTPUT_PATH="${REPO_ROOT}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   else
     CLASSIFIED_PATH="${STATE_DIR}/data/classified"
-    EXPORT_OUTPUT_PATH="${STATE_DIR}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-sidcorr-1.sqlite"
+    EXPORT_OUTPUT_PATH="${STATE_DIR}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   fi
 
   classified_count="$(count_classified_rows "${CLASSIFIED_PATH}")"
@@ -791,12 +792,12 @@ run_export() {
       cd "${REPO_ROOT}"
       bun run export:similarity -- --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}"
     )
-    output_path="${REPO_ROOT}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-sidcorr-1.sqlite"
+    output_path="${REPO_ROOT}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   else
     log "Running export inside docker container"
     docker exec -w /sidflow/app "${DOCKER_CONTAINER_NAME}" \
       bun run export:similarity -- --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}"
-    output_path="${STATE_DIR}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-sidcorr-1.sqlite"
+    output_path="${STATE_DIR}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   fi
 
   [[ -f "${output_path}" ]] || fail "Expected export not found: ${output_path}"
