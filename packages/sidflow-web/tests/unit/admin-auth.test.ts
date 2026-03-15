@@ -12,6 +12,7 @@ import {
   verifyAdminCredentials,
   type AdminSessionPayload,
 } from '@/lib/server/admin-auth-core';
+import { resetSecurityRuntimeWarnings } from '@/lib/server/security-runtime';
 
 const AUTH_HEADER_PREFIX = 'Basic ';
 
@@ -20,19 +21,24 @@ function buildBasicAuth(username: string, password: string): string {
 }
 
 beforeEach(() => {
+  process.env.NODE_ENV = 'test';
   process.env.SIDFLOW_ADMIN_USER = 'ops';
   process.env.SIDFLOW_ADMIN_PASSWORD = 'test-pass-123';
-  process.env.SIDFLOW_ADMIN_SECRET = 'sidflow-test-secret-456789';
+  process.env.SIDFLOW_ADMIN_SECRET = 'sidflow-test-secret-456789-abcdefgh';
   process.env.SIDFLOW_ADMIN_SESSION_TTL_MS = '60000';
   resetAdminAuthConfigCache();
+  resetSecurityRuntimeWarnings();
 });
 
 afterEach(() => {
+  delete process.env.NODE_ENV;
   delete process.env.SIDFLOW_ADMIN_USER;
   delete process.env.SIDFLOW_ADMIN_PASSWORD;
   delete process.env.SIDFLOW_ADMIN_SECRET;
+  delete process.env.JWT_SECRET;
   delete process.env.SIDFLOW_ADMIN_SESSION_TTL_MS;
   resetAdminAuthConfigCache();
+  resetSecurityRuntimeWarnings();
 });
 
 describe('admin auth', () => {
@@ -90,6 +96,25 @@ describe('admin auth', () => {
     expect(config.password).toBe('password');
     // Secret should derive from the fallback password when explicit secret is absent
     expect(config.secret).toBe('sidflow-password');
+  });
+
+  it('rejects production mode when admin secrets are missing or weak', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.SIDFLOW_ADMIN_PASSWORD;
+    delete process.env.SIDFLOW_ADMIN_SECRET;
+    resetAdminAuthConfigCache();
+
+    expect(() => getAdminConfig()).toThrow(/Production security configuration is invalid/);
+  });
+
+  it('rejects production mode when the admin secret is derived from the password', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SIDFLOW_ADMIN_PASSWORD = 'super-secret-password-123456';
+    process.env.SIDFLOW_ADMIN_SECRET = 'sidflow-super-secret-password-123456';
+    process.env.JWT_SECRET = 'jwt-secret-abcdefghijklmnopqrstuvwxyz';
+    resetAdminAuthConfigCache();
+
+    expect(() => getAdminConfig()).toThrow(/SIDFLOW_ADMIN_SECRET must not be derived/);
   });
 
   it('parses valid credentials and rejects malformed headers', () => {

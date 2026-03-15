@@ -1,6 +1,6 @@
 import { createServer } from 'http';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +75,76 @@ async function ensureProductionBuild() {
   await runNextBuild();
 }
 
+function copyStandaloneDirectory(sourcePath, destinationPath) {
+  if (!existsSync(sourcePath)) {
+    return;
+  }
+
+  mkdirSync(dirname(destinationPath), { recursive: true });
+  cpSync(sourcePath, destinationPath, { recursive: true, force: true });
+}
+
+function ensureStandaloneAssets() {
+  const standaloneRoot = resolve(process.cwd(), '.next', 'standalone', 'packages', 'sidflow-web');
+
+  copyStandaloneDirectory(
+    resolve(process.cwd(), '.next', 'static'),
+    resolve(standaloneRoot, '.next', 'static')
+  );
+  copyStandaloneDirectory(resolve(process.cwd(), 'public'), resolve(standaloneRoot, 'public'));
+}
+
+function getStandaloneServerPath() {
+  const candidates = [
+    resolve(process.cwd(), '.next/standalone/server.js'),
+    resolve(process.cwd(), '.next/standalone/packages/sidflow-web/server.js'),
+  ];
+
+  const match = candidates.find((candidate) => existsSync(candidate));
+  if (!match) {
+    throw new Error(`Unable to locate standalone server entrypoint. Checked: ${candidates.join(', ')}`);
+  }
+
+  return match;
+}
+
+async function startStandaloneServer() {
+  const nodeBinary = process.env.SIDFLOW_NODE_BINARY ?? 'node';
+  ensureStandaloneAssets();
+  const standaloneServer = getStandaloneServerPath();
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(nodeBinary, [standaloneServer], {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        HOSTNAME: hostname,
+        PORT: `${port}`,
+      },
+    });
+
+    const forwardSignal = (signal) => {
+      if (!child.killed) {
+        child.kill(signal);
+      }
+    };
+
+    process.on('SIGINT', () => forwardSignal('SIGINT'));
+    process.on('SIGTERM', () => forwardSignal('SIGTERM'));
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0 || code === null) {
+        resolve();
+      } else {
+        reject(new Error(`standalone server exited with code ${code}`));
+      }
+    });
+  });
+}
+
 const debugRequestErrors = process.env.SIDFLOW_DEBUG_REQUEST_ERRORS === '1';
 const suppressAbortLogs = process.env.SIDFLOW_SUPPRESS_ABORT_LOGS !== '0';
 
@@ -134,6 +204,8 @@ async function start() {
   try {
     if (isProductionMode) {
       await ensureProductionBuild();
+      await startStandaloneServer();
+      return;
     }
 
     const app = next({

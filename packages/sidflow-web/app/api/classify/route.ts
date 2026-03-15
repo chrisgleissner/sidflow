@@ -21,6 +21,7 @@ import { runClassificationProcess } from '@/lib/classify-runner';
 import { resolveSidCollectionContext, buildCliEnvOverrides } from '@/lib/sid-collection';
 import { getWebPreferences } from '@/lib/preferences-store';
 import type { RenderTechnology } from '@sidflow/common';
+import { buildClassifyProgressSnapshot, findLatestJobByType, getJobOrchestrator } from '@/lib/server/jobs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     const validatedData = ClassifyRequestSchema.parse(body);
     const runInBackground = validatedData.async === true;
     if (runInBackground) {
-      console.log('[classify] Starting classification in background (202 Accepted)');
+      console.log('[classify] Queueing classification job in background (202 Accepted)');
     }
 
     const config = await getSidflowConfig();
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
     if (resolvedRequestedPath) {
       await fs.stat(resolvedRequestedPath);
     }
+    const limit = validatedData.limit;
     const threads = config.threads && config.threads > 0
       ? config.threads
       : (() => {
@@ -87,11 +89,6 @@ export async function POST(request: NextRequest) {
       console.log(`[engine-order] Using default WASM engine`);
     }
     
-    beginClassifyProgress(threads, engineDescription);
-    console.log('[engine-order] Classification starting');
-    console.log(`[engine-order] Effective engine order: ${effectiveEngineOrder.join(' → ')}`);
-
-    // Write temporary config with forced engine order
     const tempConfigPath = path.join(root, 'data', '.sidflow-classify-temp.json');
     const tempConfig = {
       ...config,
@@ -102,8 +99,6 @@ export async function POST(request: NextRequest) {
         ...(prefs.defaultFormats ? { defaultFormats: prefs.defaultFormats } : {}),
       },
     };
-    await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
-
     const command = 'sidflow-classify';
     const cliArgs: string[] = ['--config', tempConfigPath];
 
@@ -115,6 +110,10 @@ export async function POST(request: NextRequest) {
         const normalizedPrefix = relativePrefix.replace(/\\+/g, '/');
         cliArgs.push('--sid-path-prefix', normalizedPrefix);
       }
+    }
+    if (typeof limit === 'number') {
+      cliArgs.push('--limit', String(limit));
+      console.log(`[classify] Limit enabled - will process at most ${limit} songs`);
     }
   
     // Add force-rebuild flag if requested
@@ -138,6 +137,52 @@ export async function POST(request: NextRequest) {
     const cliEnv = {
       ...buildCliEnvOverrides(collection),
     };
+
+    if (runInBackground) {
+      const orchestrator = await getJobOrchestrator();
+      const activeJob = findLatestJobByType(orchestrator.listJobs(), 'classify', ['pending', 'running', 'paused']);
+      if (activeJob) {
+        const response: ApiResponse = {
+          success: false,
+          error: 'Classification already running',
+          details: 'A classification job is already pending or running. Wait for it to finish before queueing another.',
+          progress: buildClassifyProgressSnapshot(activeJob) ?? getClassifyProgressSnapshot(),
+        };
+        return NextResponse.json(response, { status: 409 });
+      }
+
+      await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
+
+      const sidPathPrefix = cliArgs.includes('--sid-path-prefix')
+        ? cliArgs[cliArgs.indexOf('--sid-path-prefix') + 1]
+        : undefined;
+      const job = await orchestrator.createJob('classify', {
+        configPath: tempConfigPath,
+        sidPathPrefix,
+        forceRebuild: validatedData.forceRebuild,
+        skipAlreadyClassified: validatedData.skipAlreadyClassified,
+        deleteWavAfterClassification: validatedData.deleteWavAfterClassification,
+        limit,
+        threads,
+        renderEngineDescription: engineDescription,
+      });
+      const progress = buildClassifyProgressSnapshot(job) ?? getClassifyProgressSnapshot();
+      const response: ApiResponse<{ started: true; jobId: string; progress: ReturnType<typeof getClassifyProgressSnapshot> }> = {
+        success: true,
+        data: {
+          started: true,
+          jobId: job.id,
+          progress,
+        },
+      };
+      return NextResponse.json(response, { status: 202 });
+    }
+
+    beginClassifyProgress(threads, engineDescription);
+    console.log('[engine-order] Classification starting');
+    console.log(`[engine-order] Effective engine order: ${effectiveEngineOrder.join(' → ')}`);
+    await fs.writeFile(tempConfigPath, JSON.stringify(tempConfig, null, 2), 'utf8');
+
     const runPromise = runClassificationProcess({
       command,
       args: cliArgs,
@@ -146,34 +191,6 @@ export async function POST(request: NextRequest) {
       onStdout: ingestClassifyStdout,
       onStderr: (chunk) => console.error('[classify stderr]', chunk),
     });
-
-    if (runInBackground) {
-      void runPromise
-        .then(({ result, reason }) => {
-          if (reason === 'paused') {
-            pauseClassifyProgress('Classification paused by user');
-            return;
-          }
-          if (result.success) {
-            completeClassifyProgress('Classification completed successfully');
-          } else {
-            const { details } = describeCliFailure(command, result);
-            failClassifyProgress(details);
-          }
-        })
-        .catch((error) => {
-          failClassifyProgress(error instanceof Error ? error.message : String(error));
-        });
-
-      const response: ApiResponse<{ started: true; progress: ReturnType<typeof getClassifyProgressSnapshot> }> = {
-        success: true,
-        data: {
-          started: true,
-          progress: getClassifyProgressSnapshot(),
-        },
-      };
-      return NextResponse.json(response, { status: 202 });
-    }
 
     const { result, reason } = await runPromise;
 

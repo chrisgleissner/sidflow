@@ -1,0 +1,19 @@
+{
+  "id": "admin-classify-queue",
+  "description": "Queue a durable classification job through the authenticated admin surface without waiting for it to complete.",
+  "pacingSeconds": 5,
+  "steps": [
+    {
+      "action": "apiRequest",
+      "target": "/api/classify",
+      "method": "POST",
+      "auth": "admin-basic",
+      "expectedStatus": [202, 409],
+      "body": {
+        "async": true,
+        "skipAlreadyClassified": true,
+        "deleteWavAfterClassification": true
+      }
+    }
+  ]
+}

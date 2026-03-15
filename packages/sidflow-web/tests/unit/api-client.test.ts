@@ -275,8 +275,8 @@ describe('api-client POST helpers', () => {
         name: 'classifyPath',
         endpoint: '/api/classify',
         invoke: () => classifyPath(),
-        expectedBody: JSON.stringify({}),
-        response: { success: true, data: { output: 'ok', logs: 'log output', progress: classifyProgressSnapshot } },
+        expectedBody: JSON.stringify({ async: true }),
+        response: { success: true, data: { started: true, jobId: 'classify-123', logs: 'log output', progress: classifyProgressSnapshot } },
       },
       {
         name: 'updatePreferences',

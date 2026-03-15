@@ -1,14 +1,53 @@
 /// <reference types="bun-types" />
 
 import { describe, expect, test, it } from "bun:test";
+import { Database } from "bun:sqlite";
+import { mkdtemp } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 import { Writable } from "node:stream";
 import type { Stats } from "node:fs";
 
 import { parsePlayArgs, runPlayCli } from "../src/cli.js";
+import { parseStationDemoArgs, runStationDemoCli } from "../src/station-demo-cli.js";
 import { PlaybackState, type PlaybackEvent } from "../src/index.js";
 import type { Recommendation } from "@sidflow/common";
 import type { Playlist, PlaylistConfig } from "../src/playlist.js";
 import type { PlaybackOptions } from "../src/playback.js";
+
+async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: string }> {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "sidflow-station-demo-"));
+  const dbPath = path.join(workspace, "sidcorr.sqlite");
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE tracks (
+      track_id TEXT PRIMARY KEY,
+      sid_path TEXT NOT NULL,
+      song_index INTEGER NOT NULL,
+      vector_json TEXT,
+      e INTEGER NOT NULL,
+      m INTEGER NOT NULL,
+      c INTEGER NOT NULL,
+      p INTEGER,
+      likes INTEGER NOT NULL DEFAULT 0,
+      dislikes INTEGER NOT NULL DEFAULT 0,
+      skips INTEGER NOT NULL DEFAULT 0,
+      plays INTEGER NOT NULL DEFAULT 0,
+      last_played TEXT
+    );
+  `);
+  const insert = db.query(`
+    INSERT INTO tracks (track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  insert.run("A/song1.sid#1", "A/song1.sid", 1, JSON.stringify([1, 0, 0]), 5, 4, 2, 4, 2, 0, 0, 5, null);
+  insert.run("A/song2.sid#1", "A/song2.sid", 1, JSON.stringify([0.9, 0.1, 0]), 4, 5, 2, 5, 1, 0, 0, 3, null);
+  insert.run("B/song3.sid#1", "B/song3.sid", 1, JSON.stringify([0, 1, 0]), 2, 2, 4, 2, 0, 0, 0, 1, null);
+  insert.run("C/song4.sid#1", "C/song4.sid", 1, JSON.stringify([0.95, 0.05, 0]), 5, 5, 3, 5, 3, 0, 0, 8, null);
+  insert.run("D/song5.sid#1", "D/song5.sid", 1, JSON.stringify([0.85, 0.15, 0]), 4, 4, 3, 4, 2, 0, 0, 4, null);
+  db.close();
+  return { dbPath, workspace };
+}
 
 describe("CLI argument parsing", () => {
   test("parses help flag", () => {
@@ -127,6 +166,21 @@ describe("CLI argument parsing", () => {
   test("returns error for unexpected argument", () => {
     const result = parsePlayArgs(["unexpected"]);
     expect(result.errors).toContain("Unexpected argument: unexpected");
+  });
+});
+
+describe("station demo CLI argument parsing", () => {
+  test("parses station demo defaults", () => {
+    const result = parseStationDemoArgs([]);
+    expect(result.options.playback).toBeUndefined();
+    expect(result.options.adventure).toBe(3);
+    expect(result.options.sampleSize).toBe(10);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("rejects invalid adventure during parsing", () => {
+    const result = parseStationDemoArgs(["--adventure", "9"]);
+    expect(result.errors[0]).toContain("must be at most 5");
   });
 });
 
@@ -562,5 +616,138 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(1);
     expect(errors.join("\n")).toContain("must be json, m3u, or m3u8");
+  });
+
+  it("runs the station demo against the exported sqlite without playback", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        stderrChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const answers = ["5", "4", "n", "q"];
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "2",
+        "--station-size", "2",
+        "--adventure", "2",
+      ],
+      {
+        stdout,
+        stderr,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => answers.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 123_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stderrChunks.join("")).toBe("");
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Recommendations come from the SQLite export");
+    expect(output).toContain("Station ready with 2 tracks from the standalone SQLite export");
+    expect(output).toContain("Previous:");
+    expect(output).toContain("Current:");
+  });
+
+  it("infers c64u playback when a c64u host is supplied", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--c64u-host", "192.168.1.13",
+        "--sample-size", "1",
+        "--station-size", "1",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+        random: () => 0,
+        createPlaybackAdapter: async (mode) => {
+          expect(mode).toBe("c64u");
+          return {
+            start: async () => undefined,
+            stop: async () => undefined,
+          };
+        },
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 30_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdoutChunks.join("")).toContain("Playback mode: c64u");
   });
 });

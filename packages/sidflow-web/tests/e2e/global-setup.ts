@@ -1,8 +1,17 @@
-import { rmSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
+import { rmSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FullConfig } from '@playwright/test';
 
+const AUTH_STATE_PATH = join(process.cwd(), 'test-results', 'e2e', '.auth', 'admin.json');
+
+function ensureAuthStateDirectory() {
+  mkdirSync(join(process.cwd(), 'test-results', 'e2e', '.auth'), { recursive: true });
+}
+
 export default async function globalSetup(config: FullConfig) {
+  ensureAuthStateDirectory();
+  writeFileSync(AUTH_STATE_PATH, JSON.stringify({ cookies: [], origins: [] }, null, 2));
+
   if (process.env.E2E_COVERAGE === 'true') {
     const nycOutput = join(process.cwd(), '.nyc_output');
 
@@ -28,4 +37,5 @@ export default async function globalSetup(config: FullConfig) {
       console.warn('[E2E Coverage] ⚠️  WARNING: .babelrc.json not found!');
     }
   }
+
 }

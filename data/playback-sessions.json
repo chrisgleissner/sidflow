@@ -1,0 +1,161 @@
+{
+  "sessions": [
+    {
+      "createdAt": 1773425539299,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "4ec595b2-4837-4179-8fbf-782a7e783ebd",
+      "lastAccessedAt": 1773425539299,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/S/Scanpjucka/Sukhebauhe_Intro_1_v1.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Sukhebauhe Intro 1 v1",
+        "durationSeconds": 180,
+        "filename": "Sukhebauhe_Intro_1_v1.sid",
+        "metadata": {
+          "author": "Scanpjucka",
+          "clock": "PAL",
+          "fileSizeBytes": 2301,
+          "released": "1993 Sukhebauhe Ink.",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Sukhebauhe Intro 1 v1",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Scanpjucka/Sukhebauhe_Intro_1_v1.sid",
+        "selectedSong": 1,
+        "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/S/Scanpjucka/Sukhebauhe_Intro_1_v1.sid"
+      }
+    },
+    {
+      "createdAt": 1773425539299,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "242e38ca-b8ff-4bad-ae11-91fa53d8954c",
+      "lastAccessedAt": 1773425539299,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/C/Cabbage_Drop/Open_Tool_Shed_in_the_Sun.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Open Tool Shed in the Sun",
+        "durationSeconds": 180,
+        "filename": "Open_Tool_Shed_in_the_Sun.sid",
+        "metadata": {
+          "author": "cabbage drop",
+          "clock": "NTSC",
+          "fileSizeBytes": 1370,
+          "released": "2023 cabbage drop",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Open Tool Shed in the Sun",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/C/Cabbage_Drop/Open_Tool_Shed_in_the_Sun.sid",
+        "selectedSong": 1,
+        "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/C/Cabbage_Drop/Open_Tool_Shed_in_the_Sun.sid"
+      }
+    },
+    {
+      "createdAt": 1773425539299,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "406ab996-3649-4b9e-9c84-a4c1ec4034c9",
+      "lastAccessedAt": 1773425539299,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/P/Pievspie/As_I_Am_You_Will_Be.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "As I Am You Will Be",
+        "durationSeconds": 180,
+        "filename": "As_I_Am_You_Will_Be.sid",
+        "metadata": {
+          "author": "Rob Southworth (Pievspie)",
+          "clock": "PAL",
+          "fileSizeBytes": 2765,
+          "released": "2012 Pievspie",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "As I Am You Will Be",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/P/Pievspie/As_I_Am_You_Will_Be.sid",
+        "selectedSong": 1,
+        "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/P/Pievspie/As_I_Am_You_Will_Be.sid"
+      }
+    },
+    {
+      "createdAt": 1773425554862,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "31f29440-9c4e-4496-8473-810c76f60ce1",
+      "lastAccessedAt": 1773425554862,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/C/Chris-Do/Pippi_Langstrumpf.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Pippi Langstrumpf",
+        "durationSeconds": 180,
+        "filename": "Pippi_Langstrumpf.sid",
+        "metadata": {
+          "author": "Christoph Strokosch (Chris-Do)",
+          "clock": "PAL",
+          "fileSizeBytes": 9776,
+          "released": "2021 Chris-Do",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Pippi Langstrumpf",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/C/Chris-Do/Pippi_Langstrumpf.sid",
+        "selectedSong": 1,
+        "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/C/Chris-Do/Pippi_Langstrumpf.sid"
+      }
+    },
+    {
+      "createdAt": 1773425555123,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "e4580bbd-a6a7-4bca-9037-445189a65675",
+      "lastAccessedAt": 1773425555123,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/N/Narciso/Street_Fighter_II_Opening.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Street Fighter II (Opening)",
+        "durationSeconds": 180,
+        "filename": "Street_Fighter_II_Opening.sid",
+        "metadata": {
+          "author": "Narciso Quintana (Narcisound)",
+          "clock": "PAL",
+          "fileSizeBytes": 2549,
+          "released": "2020 Onslaught",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 2,
+          "startSong": 1,
+          "title": "Street Fighter II (Opening)",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/N/Narciso/Street_Fighter_II_Opening.sid",
+        "selectedSong": 1,
+        "sidPath": "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/MUSICIANS/N/Narciso/Street_Fighter_II_Opening.sid"
+      }
+    }
+  ],
+  "updatedAt": "2026-03-13T18:12:35.123Z",
+  "version": "1.0.0"
+}

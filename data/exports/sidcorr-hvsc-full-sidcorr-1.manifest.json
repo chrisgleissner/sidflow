@@ -1,0 +1,29 @@
+{
+  "corpus_version": "hvsc",
+  "export_profile": "full",
+  "feature_schema_version": "1.2.0",
+  "file_checksums": {
+    "sqlite_sha256": "2ade55b27f78a11f0cd7f712cec8aa59774e4a047abbbbfd56f6008e959d0e8f"
+  },
+  "generated_at": "2026-03-13T17:38:36.159Z",
+  "include_vectors": true,
+  "neighbor_count_per_track": 0,
+  "neighbor_row_count": 0,
+  "paths": {
+    "manifest": "data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json",
+    "sqlite": "data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite"
+  },
+  "schema_version": "sidcorr-1",
+  "source_checksums": {
+    "classified": "79ee1f23b909edf45f02a473741002f9156083efa8e2480683ad260838adfaa3",
+    "feedback": "empty"
+  },
+  "tables": [
+    "meta",
+    "tracks",
+    "neighbors"
+  ],
+  "track_count": 7,
+  "vector_dimensions": 4
+}
+

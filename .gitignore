@@ -47,7 +47,7 @@ data/audit/admin-actions.jsonl
 !data/feedback/**/*.jsonl
 
 # Classification output files (generated during tests/runs)
-data/classified/classification_*.jsonl
+data/classified/*.jsonl
 
 # Training logs and model artifacts change on each build/test run
 # Tests should use test-specific directories instead
@@ -58,6 +58,10 @@ data/model/model/weights.bin
 
 # Playlist storage (test artifacts, should not be committed)
 data/playlists/
+
+# Runtime job/rate-limit state (generated locally, should not be committed)
+data/jobs/manifest.json
+data/rate-limits/
 
 # User data (contains password hashes, should not be committed)
 data/users/
@@ -72,3 +76,10 @@ coverage-merged/
 
 # Local installation directory (user-specific deployment configs)
 local-install/
+
+# Symlinked folders
+c64commander
+hvsc
+.next/
+data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json

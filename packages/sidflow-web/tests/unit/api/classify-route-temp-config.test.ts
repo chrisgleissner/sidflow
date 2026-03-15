@@ -5,6 +5,8 @@ import path from 'node:path';
 import { NextRequest } from 'next/server';
 
 mock.module('@/lib/classify-runner', () => ({
+  getClassificationRunnerPid: () => null,
+  requestClassificationPause: () => false,
   runClassificationProcess: async () => ({
     result: { success: true, stdout: 'ok', stderr: '', exitCode: 0 },
     reason: 'completed',

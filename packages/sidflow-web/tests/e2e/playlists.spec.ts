@@ -212,8 +212,20 @@ test.describe('Playlists Feature', () => {
         await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await waitForUISettle(page);
 
+        const sheetContent = page.getByRole('dialog');
+        await expect(sheetContent).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        await expect(sheetContent.getByText('My Playlists')).toBeVisible({ timeout: TIMEOUTS.ELEMENT_QUICK });
+        await page.waitForFunction(() => {
+            const dialog = document.querySelector('[role="dialog"]');
+            if (!dialog) {
+                return false;
+            }
+            const text = dialog.textContent ?? '';
+            return text.includes('No playlists yet') && !text.includes('Loading playlists...');
+        }, { timeout: TIMEOUTS.ELEMENT_VISIBLE });
+
         // Should show empty state in the sheet
-        await expect(page.getByText('No playlists yet', { exact: false })).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
+        await expect(sheetContent.getByText('No playlists yet', { exact: false })).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });
     });
 
     test('should create playlist and show in list', async ({ page }) => {

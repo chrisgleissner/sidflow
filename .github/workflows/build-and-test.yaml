@@ -133,6 +133,8 @@ jobs:
             --journey play-start-stream \
             --k6-users 1 \
             --k6-journeys-per-vu 1 \
+            --k6-max-p95-ms 15000 \
+            --k6-max-p99-ms 25000 \
             --pacing 0.2 \
             --base-url http://127.0.0.1:3000 \
             --results performance/results \

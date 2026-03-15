@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
 
     const session = preview
       ? null
-      : createPlaybackSession({
+      : await createPlaybackSession({
         scope: 'play',
         sidPath,
         track: enrichedTrack,

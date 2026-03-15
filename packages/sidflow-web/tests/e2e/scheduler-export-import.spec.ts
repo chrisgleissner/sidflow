@@ -48,6 +48,7 @@ async function gotoClassifyTab(page: Page) {
   // Wait for the classify tab content to be visible (scope to tabpanel to avoid strict-mode collisions)
   const classifyPanel = page.getByRole('tabpanel', { name: /classify/i });
   await classifyPanel.getByTestId('scheduler-enabled-checkbox').waitFor({ state: 'visible', timeout: 10000 });
+  await expect(classifyPanel.getByText(/^Status:/)).toBeVisible({ timeout: 10000 });
 }
 
 test.describe('Classification Scheduler', () => {
@@ -130,11 +131,17 @@ test.describe('Classification Scheduler', () => {
 
     // Ensure scheduler is disabled first
     if (await enabledCheckbox.isChecked()) {
-      await enabledCheckbox.click();
+      await enabledCheckbox.uncheck();
+      await expect(enabledCheckbox).not.toBeChecked();
     }
 
     await expect(timeInput).toBeDisabled();
-    await enabledCheckbox.click();
+    await enabledCheckbox.check();
+    await page.waitForFunction(() => {
+      const checkbox = document.querySelector('[data-testid="scheduler-enabled-checkbox"]') as HTMLInputElement | null;
+      const input = document.querySelector('[data-testid="scheduler-time-input"]') as HTMLInputElement | null;
+      return checkbox?.checked === true && input?.disabled === false;
+    }, { timeout: 15_000 });
     await expect(timeInput).toBeEnabled();
   });
 });

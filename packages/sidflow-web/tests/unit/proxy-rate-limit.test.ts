@@ -1,13 +1,31 @@
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { proxy } from '@/proxy';
 import { NextRequest } from 'next/server';
 import { adminRateLimiter, defaultRateLimiter } from '@/lib/server/rate-limiter';
+import { resetAdminAuthConfigCache } from '@/lib/server/admin-auth-core';
+import { resetSecurityRuntimeWarnings } from '@/lib/server/security-runtime';
 
 describe('Proxy rate limiting', () => {
   beforeEach(() => {
+    process.env.NODE_ENV = 'test';
     // Reset rate limiters before each test
     adminRateLimiter.reset();
     defaultRateLimiter.reset();
+    resetAdminAuthConfigCache();
+    resetSecurityRuntimeWarnings();
+  });
+
+  afterEach(() => {
+    delete process.env.NODE_ENV;
+    delete process.env.SIDFLOW_DISABLE_ADMIN_AUTH;
+    delete process.env.SIDFLOW_DISABLE_RATE_LIMIT;
+    delete process.env.SIDFLOW_ADMIN_PASSWORD;
+    delete process.env.SIDFLOW_ADMIN_SECRET;
+    delete process.env.JWT_SECRET;
+    adminRateLimiter.reset();
+    defaultRateLimiter.reset();
+    resetAdminAuthConfigCache();
+    resetSecurityRuntimeWarnings();
   });
 
   test('rate limits API routes', async () => {
@@ -152,6 +170,48 @@ describe('Proxy rate limiting', () => {
     // Verify security headers are still applied
     expect(response.headers.has('Cross-Origin-Opener-Policy')).toBe(true);
     expect(response.headers.has('Cross-Origin-Embedder-Policy')).toBe(true);
+  });
+
+  test('rejects production mode when the admin auth bypass flag is set', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SIDFLOW_DISABLE_ADMIN_AUTH = '1';
+    process.env.SIDFLOW_ADMIN_PASSWORD = 'test-password-123';
+    process.env.SIDFLOW_ADMIN_SECRET = 'admin-secret-abcdefghijklmnopqrstuvwxyz';
+    process.env.JWT_SECRET = 'jwt-secret-abcdefghijklmnopqrstuvwxyz-012345';
+    resetAdminAuthConfigCache();
+
+    const response = await proxy(
+      new NextRequest('http://localhost/api/admin/metrics', {
+        headers: { 'x-forwarded-for': '203.0.113.1' },
+      })
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  test('ignores the rate limit bypass flag in production mode', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SIDFLOW_DISABLE_RATE_LIMIT = '1';
+    process.env.SIDFLOW_ADMIN_PASSWORD = 'test-password-123';
+    process.env.SIDFLOW_ADMIN_SECRET = 'admin-secret-abcdefghijklmnopqrstuvwxyz';
+    process.env.JWT_SECRET = 'jwt-secret-abcdefghijklmnopqrstuvwxyz';
+    resetAdminAuthConfigCache();
+
+    for (let i = 0; i < 300; i++) {
+      await proxy(
+        new NextRequest('http://localhost/api/health', {
+          headers: { 'x-forwarded-for': '203.0.113.1' },
+        })
+      );
+    }
+
+    const response = await proxy(
+      new NextRequest('http://localhost/api/health', {
+        headers: { 'x-forwarded-for': '203.0.113.1' },
+      })
+    );
+
+    expect(response.status).toBe(429);
   });
 
   test('admin route rate limit is enforced before authentication', async () => {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSidflowConfig } from "@/lib/server-env";
 import { readFile, stat, readdir } from "node:fs/promises";
 import path from "node:path";
+import { getJobOrchestrator } from "@/lib/server/jobs";
 
 /**
  * Admin metrics endpoint
@@ -11,10 +12,12 @@ import path from "node:path";
 interface JobMetrics {
   pending: number;
   running: number;
+  paused: number;
   completed: number;
   failed: number;
   totalDurationMs: number;
   avgDurationMs: number;
+  oldestActiveAgeMs: number;
 }
 
 interface CacheMetrics {
@@ -44,7 +47,7 @@ export async function GET() {
   const config = await getSidflowConfig();
 
     // Collect job metrics
-    const jobMetrics = await collectJobMetrics(config.sidPath);
+    const jobMetrics = await collectJobMetrics();
 
     // Collect cache metrics
     const cacheMetrics = await collectCacheMetrics(
@@ -79,63 +82,74 @@ export async function GET() {
   }
 }
 
-async function collectJobMetrics(sidPath: string): Promise<JobMetrics> {
-  const jobQueuePath = path.join(sidPath, "..", "data", "jobs");
-
+async function collectJobMetrics(): Promise<JobMetrics> {
   let pending = 0;
   let running = 0;
+  let paused = 0;
   let completed = 0;
   let failed = 0;
   let totalDurationMs = 0;
+  let oldestActiveCreatedAt = Number.POSITIVE_INFINITY;
 
   try {
-    const files = await readdir(jobQueuePath);
+    const orchestrator = await getJobOrchestrator();
+    const jobs = orchestrator.listJobs();
 
-    for (const file of files) {
-      if (!file.endsWith(".json")) {
-        continue;
-      }
-
-      try {
-        const jobPath = path.join(jobQueuePath, file);
-        const content = await readFile(jobPath, "utf-8");
-        const job = JSON.parse(content);
-
-        switch (job.status) {
-          case "pending":
-            pending++;
-            break;
-          case "running":
-            running++;
-            break;
-          case "completed":
-            completed++;
-            if (job.startedAt && job.completedAt) {
-              totalDurationMs += job.completedAt - job.startedAt;
-            }
-            break;
-          case "failed":
-            failed++;
-            break;
-        }
-      } catch {
-        // Skip malformed job files
+    for (const job of jobs) {
+      switch (job.status) {
+        case "pending":
+          pending++;
+          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.metadata.createdAt));
+          break;
+        case "running":
+          running++;
+          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.metadata.startedAt ?? job.metadata.createdAt));
+          break;
+        case "paused":
+          paused++;
+          oldestActiveCreatedAt = Math.min(oldestActiveCreatedAt, toTimestamp(job.metadata.startedAt ?? job.metadata.createdAt));
+          break;
+        case "completed":
+          completed++;
+          if (job.metadata.startedAt && job.metadata.completedAt) {
+            totalDurationMs += toTimestamp(job.metadata.completedAt) - toTimestamp(job.metadata.startedAt);
+          }
+          break;
+        case "failed":
+          failed++;
+          break;
       }
     }
   } catch {
-    // Job queue directory doesn't exist yet
+    // Durable job manifest does not exist yet
   }
 
   const totalCompleted = completed || 1; // Avoid division by zero
+  const oldestActiveAgeMs = Number.isFinite(oldestActiveCreatedAt)
+    ? Math.max(0, Date.now() - oldestActiveCreatedAt)
+    : 0;
 
   return {
     pending,
     running,
+    paused,
     completed,
     failed,
     totalDurationMs,
     avgDurationMs: totalDurationMs / totalCompleted,
+    oldestActiveAgeMs,
   };
+}
+
+function toTimestamp(value: string | number | undefined): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
 }
 
 async function collectCacheMetrics(

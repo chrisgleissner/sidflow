@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { essentiaFeatureExtractor } from "@sidflow/classify";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-essentia-");
 
@@ -160,6 +161,56 @@ describe("essentiaFeatureExtractor", () => {
     ).rejects.toThrow();
 
     await rm(root, { recursive: true, force: true });
+  });
+
+  it("reports analysisStartSec against the original song timeline when the WAV was pre-sliced", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const wavFile = path.join(root, "representative.wav");
+    const sidFile = path.join(root, "representative.sid");
+
+    const originalConfig = process.env.SIDFLOW_CONFIG;
+    const configPath = path.join(root, ".sidflow.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        sidPath: root,
+        audioCachePath: root,
+        tagsPath: root,
+        threads: 0,
+        classificationDepth: 3,
+        maxClassifySec: 10,
+        introSkipSec: 10,
+      }),
+      "utf8"
+    );
+    process.env.SIDFLOW_CONFIG = configPath;
+
+    const wavData = generateTestWav(10, 440, 44100);
+    await writeFile(wavFile, wavData);
+    await writeFile(sidFile, Buffer.from("dummy sid data"));
+    await writeWavRenderSettingsSidecar(wavFile, {
+      maxRenderSec: 20,
+      introSkipSec: 10,
+      maxClassifySec: 10,
+      sourceOffsetSec: 10,
+    });
+
+    try {
+      const features = await essentiaFeatureExtractor({
+        wavFile,
+        sidFile,
+      });
+
+      expect(features.analysisWindowSec).toBeCloseTo(10, 1);
+      expect(features.analysisStartSec).toBeCloseTo(10, 3);
+    } finally {
+      if (originalConfig === undefined) {
+        delete process.env.SIDFLOW_CONFIG;
+      } else {
+        process.env.SIDFLOW_CONFIG = originalConfig;
+      }
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("handles 32-bit WAV files", async () => {

@@ -72,6 +72,8 @@ See [Deployment Guide](doc/deployment.md) for Docker and Fly.io deployment optio
 
 ### Quick Deploy to Fly.io
 
+Fly deployment is currently supported only as a single stateful machine. Multi-machine scaling and rolling deploys remain blocked on the Phase 2 shared-state work in [PLANS.md](PLANS.md).
+
 ```bash
 # Install flyctl
 curl -L https://fly.io/install.sh | sh
@@ -95,13 +97,15 @@ Standard production scenario:
 docker run -p 3000:3000 \
   -e SIDFLOW_ADMIN_USER=admin \
   -e SIDFLOW_ADMIN_PASSWORD='your-password' \
+  -e SIDFLOW_ADMIN_SECRET='replace-with-a-32-character-secret-minimum' \
+  -e JWT_SECRET='replace-with-a-32-character-secret-minimum' \
   -v /path/to/hvsc:/sidflow/workspace/hvsc \
   -v /path/to/audio-cache:/sidflow/workspace/audio-cache \
   -v /path/to/tags:/sidflow/workspace/tags \
   -v /path/to/data:/sidflow/data \
   ghcr.io/chrisgleissner/sidflow:latest
 ```
-Web UI: <http://localhost:3000> (admin at `/admin` with user/password of `admin/password`).
+Web UI: <http://localhost:3000> (admin at `/admin` with the credentials you configured above).
 
 ## Run Locally
 
@@ -119,7 +123,7 @@ cd packages/sidflow-web
 bun run start
 ```
 
-Web UI: <http://localhost:3000> (admin at `/admin` with default user/password of `admin/password`).
+Web UI: <http://localhost:3000>.
 
 ## Performance Tests
 
@@ -137,6 +141,57 @@ bun run perf:run -- --env local --base-url http://localhost:3000 --results perfo
 - **Hundreds of users**: opt-in only via `--profile scale` (remote-only guard to avoid accidental load).
 - **Journeys** live in `performance/journeys/` (e.g. `play-start-stream.json`).
 - **Outputs**: `performance/results/<timestamp>/` (report + summaries) and `performance/tmp/<timestamp>/` (generated scripts).
+
+## Portable Similarity Export
+
+After classification, SIDFlow can export a portable offline similarity bundle for downstream consumers.
+
+```bash
+bun run export:similarity -- --profile full
+```
+
+By default this writes:
+
+- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
+- `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
+
+The SQLite bundle stores per-track ratings, feedback aggregates, optional vectors, and optional precomputed neighbors. See [doc/similarity-export.md](doc/similarity-export.md) for the schema, consumer workflow, and the full local classify-then-export sequence.
+
+If you already have classified feature output in `data/classified` and only need the SQLite bundle, you do not need to re-run classification. The exporter will read the existing `features_*.jsonl` and `classification_*.jsonl` files from the configured `classifiedPath` and build the SQLite bundle directly:
+
+```bash
+bun run export:similarity -- --profile full --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+```
+
+For example, if `data/classified/features_2026-03-14_13-03-41-920.jsonl` already exists, the command above converts that classified corpus into the portable SQLite export.
+
+If your classified JSONL files live in another directory, point SIDFlow at that directory via an alternate config and export from there:
+
+```bash
+cp .sidflow.json /tmp/sidflow-export.json
+# edit /tmp/sidflow-export.json so classifiedPath points at the directory containing your features_*.jsonl files
+bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --output /path/to/sidcorr.sqlite
+```
+
+The exporter also recovers rows from existing `features_*.jsonl` files when a previous classify run was interrupted before all `classification_*.jsonl` rows were written, so an existing large features file is still enough to produce a complete SQLite bundle.
+
+To prove the standalone SQLite export is usable on its own, run the interactive station demo wrapper:
+
+```bash
+./scripts/run-station-demo.sh
+```
+
+To target an Ultimate64 on the LAN:
+
+```bash
+./scripts/run-station-demo.sh --c64u-host 192.168.1.13
+```
+
+If the export already exists and you only want to publish the bundle to the separate `sidflow-data` release repository, you can skip classification and export generation entirely:
+
+```bash
+bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
+```
 
 ---
 
@@ -158,10 +213,11 @@ bun run dev
 
 The admin console requires authentication for security:
 
-- **Default Username:** `admin` (configurable via `SIDFLOW_ADMIN_USER`)
-- **Default Password:** `password` (configurable via `SIDFLOW_ADMIN_PASSWORD`)
+- **Username:** `SIDFLOW_ADMIN_USER` (defaults to `admin` outside production)
+- **Password:** `SIDFLOW_ADMIN_PASSWORD`
+- **Session signing secret:** `SIDFLOW_ADMIN_SECRET`
 
-The default password `password` is intended for development only. Set `SIDFLOW_ADMIN_PASSWORD` in production deployments.
+Local development falls back to `admin/password` only when you have not configured credentials. Production startup now refuses default credentials, derived admin secrets, missing `SIDFLOW_ADMIN_SECRET`, or a missing `JWT_SECRET`.
 
 For web UI route details, see [packages/sidflow-web/README.md](packages/sidflow-web/README.md).
 

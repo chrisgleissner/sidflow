@@ -10,11 +10,13 @@
 import { getWebPreferences, type SchedulerConfig } from './preferences-store';
 import { isFetchRunning } from './fetch-progress-store';
 import { getClassifyProgressSnapshot } from './classify-progress-store';
+import { findLatestJobByType, getJobOrchestrator } from '@/lib/server/jobs';
 
 let schedulerTimeoutId: NodeJS.Timeout | null = null;
 let isSchedulerActive = false;
 let lastScheduledRun: Date | null = null;
 let nextScheduledRun: Date | null = null;
+let lastObservedPipelineRunning = false;
 
 /**
  * Parses a time string in HH:MM format
@@ -72,12 +74,18 @@ export function getMillisUntilNextRun(config: SchedulerConfig, now: Date = new D
 /**
  * Checks if the pipeline (fetch or classify) is currently running
  */
-export function isPipelineRunning(): boolean {
+export async function isPipelineRunning(): Promise<boolean> {
   const fetchRunning = isFetchRunning();
   const classifySnapshot = getClassifyProgressSnapshot();
   const classifyRunning = classifySnapshot.isActive;
-  
-  return fetchRunning || classifyRunning;
+
+  const orchestrator = await getJobOrchestrator();
+  const jobs = orchestrator.listJobs();
+  const queuedFetch = findLatestJobByType(jobs, 'fetch', ['pending', 'running', 'paused']);
+  const queuedClassify = findLatestJobByType(jobs, 'classify', ['pending', 'running', 'paused']);
+
+  lastObservedPipelineRunning = Boolean(fetchRunning || classifyRunning || queuedFetch || queuedClassify);
+  return lastObservedPipelineRunning;
 }
 
 /**
@@ -126,7 +134,7 @@ async function executeScheduledRun(): Promise<void> {
   lastScheduledRun = new Date();
   
   // Check if already running
-  if (isPipelineRunning()) {
+  if (await isPipelineRunning()) {
     console.log('[scheduler] Pipeline already running, skipping scheduled run');
     // Schedule the next run
     await scheduleNextRun();
@@ -194,7 +202,7 @@ export function getSchedulerStatus(): {
     isActive: isSchedulerActive,
     lastRun: lastScheduledRun,
     nextRun: nextScheduledRun,
-    isPipelineRunning: isPipelineRunning(),
+    isPipelineRunning: lastObservedPipelineRunning,
   };
 }
 

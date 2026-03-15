@@ -122,7 +122,7 @@ jobs:
           # Public GitHub runners are noisy and resource-constrained. Keep the CI profile intentionally small.
           # Remote/scale runs (hundreds of users) are supported via `--env remote --profile scale --enable-remote`,
           # but are intentionally not exercised here until Fly.io + Raspberry Pi targets exist and are stable.
-          npm run perf:run -- --env ci --profile reduced --executor k6 --pacing 1 --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
+          npm run perf:run -- --env ci --profile reduced --executor k6 --pacing 1 --k6-max-p95-ms 15000 --k6-max-p99-ms 25000 --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
           EXIT_CODE=$?
           
           # Always show server log excerpt after test run

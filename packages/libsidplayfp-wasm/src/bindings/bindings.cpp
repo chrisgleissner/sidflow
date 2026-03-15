@@ -7,13 +7,26 @@
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
+#include <config.h>
 #include <sidplayfp/sidplayfp.h>
 #include <sidplayfp/SidConfig.h>
 #include <sidplayfp/SidInfo.h>
 #include <sidplayfp/SidTune.h>
 #include <sidplayfp/SidTuneInfo.h>
 
+#ifdef HAVE_RESIDFP
 #include <residfp.h>
+#else
+#include <sidlite.h>
+#endif
+
+#ifdef HAVE_RESIDFP
+using DefaultSidBuilder = ReSIDfpBuilder;
+static constexpr const char *kDefaultBuilderName = "WasmReSIDfp";
+#else
+using DefaultSidBuilder = SIDLiteBuilder;
+static constexpr const char *kDefaultBuilderName = "WasmSIDLite";
+#endif
 
 namespace
 {
@@ -52,7 +65,7 @@ class SidPlayerContext
 {
 public:
     SidPlayerContext()
-        : builder(std::make_unique<ReSIDfpBuilder>("WasmReSIDfp")),
+                : builder(std::make_unique<DefaultSidBuilder>(kDefaultBuilderName)),
           stereo(kDefaultStereo),
           channels(kDefaultStereo ? 2u : 1u),
           sampleRate(kDefaultSampleRate),
@@ -397,7 +410,7 @@ private:
     }
 
     sidplayfp player;
-    std::unique_ptr<ReSIDfpBuilder> builder;
+    std::unique_ptr<DefaultSidBuilder> builder;
     std::unique_ptr<SidTune> tune;
     std::vector<uint8_t> tuneBuffer;
     std::vector<int16_t> mixBuffer;

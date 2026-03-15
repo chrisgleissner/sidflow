@@ -5,11 +5,14 @@ import { fileURLToPath } from 'url';
 
 process.env.NEXT_PUBLIC_SIDFLOW_FAST_AUDIO_TESTS ??= '1';
 process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';
-process.env.SIDFLOW_ADMIN_SECRET ??= 'sidflow-test-pass-123';
+process.env.SIDFLOW_ADMIN_USER ??= 'ops';
+process.env.SIDFLOW_ADMIN_PASSWORD ??= 'test-pass-123';
+process.env.SIDFLOW_ADMIN_SECRET ??= 'sidflow-test-secret-456789';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 process.env.SIDFLOW_SKIP_SONGBROWSER_ACTIONS ??= '1';
 const stubToolsPath = path.resolve(configDir, 'tests/stubs');
+const authStatePath = path.resolve(configDir, 'test-results/e2e/.auth/admin.json');
 const repoRoot = path.resolve(configDir, '..', '..');
 const defaultModelPath = path.resolve(repoRoot, 'data', 'model');
 const testConfigPath = path.resolve(repoRoot, '.sidflow.test.json');
@@ -97,6 +100,9 @@ const serverNodeEnv = normalizedServerMode === 'production' ? 'production' : 'de
 const webServerTimeout = normalizedServerMode === 'production' ? 240 * 1000 : 180 * 1000;
 const skipNextBuildFlag = process.env.SIDFLOW_SKIP_NEXT_BUILD ?? '1';
 const serverNodeOptions = process.env.SIDFLOW_WEB_SERVER_NODE_OPTIONS;
+const adminUser = process.env.SIDFLOW_ADMIN_USER ?? 'ops';
+const adminPassword = process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123';
+const adminBasicAuth = `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString('base64')}`;
 // CI optimization: 4 workers provides good balance between parallelism and resource contention
 // GitHub Actions runners have 2 cores but can handle 4 workers efficiently for I/O-bound tests
 const defaultWorkers = process.env.CI ? 4 : 3;
@@ -132,7 +138,17 @@ export default defineConfig({
     // E2E coverage is opt-in (see `npm run coverage:e2e`). Avoid noisy "no coverage" logs on normal runs.
     ...(process.env.E2E_COVERAGE === 'true' ? ([['./tests/e2e/coverage-reporter.ts']] as const) : []),
   ],
-  use: baseUse,
+  use: {
+    ...baseUse,
+    storageState: authStatePath,
+    ...(normalizedServerMode === 'production'
+      ? {
+          extraHTTPHeaders: {
+            Authorization: adminBasicAuth,
+          },
+        }
+      : {}),
+  },
 
   projects: [
     {
@@ -200,8 +216,7 @@ export default defineConfig({
       // Pass admin credentials to server so middleware can validate them
       SIDFLOW_ADMIN_USER: process.env.SIDFLOW_ADMIN_USER ?? 'ops',
       SIDFLOW_ADMIN_PASSWORD: process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123',
-      SIDFLOW_ADMIN_SECRET: process.env.SIDFLOW_ADMIN_SECRET ?? 'sidflow-test-pass-123',
-      SIDFLOW_DISABLE_ADMIN_AUTH: '1',
+      SIDFLOW_ADMIN_SECRET: process.env.SIDFLOW_ADMIN_SECRET ?? 'sidflow-test-secret-456789',
     },
   },
 });

@@ -94,9 +94,15 @@ describe('RateRequestSchema', () => {
 
 describe('ClassifyRequestSchema', () => {
   test('validates valid classify request', () => {
-    const valid = { path: '/path/to/directory' };
+    const valid = { path: '/path/to/directory', limit: 200 };
     const result = ClassifyRequestSchema.safeParse(valid);
     expect(result.success).toBe(true);
+  });
+
+  test('rejects non-positive limit', () => {
+    const invalid = { limit: 0 };
+    const result = ClassifyRequestSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
   });
 
   test('rejects empty path', () => {

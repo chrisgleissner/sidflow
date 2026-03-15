@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const fallbackHlsUrl = await ensureHlsForTrack(track);
     const streamAssets = await resolveSessionStreamAssets(track);
 
-    const session = createPlaybackSession({
+    const session = await createPlaybackSession({
       scope: 'play',
       sidPath,
       track,

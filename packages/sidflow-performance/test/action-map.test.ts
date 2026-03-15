@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { defaultK6Mapping, stepToK6Request, type K6ActionMapping } from "../src/action-map.js";
 import {
+  type ApiRequestStep,
   type ClickStep,
   type FavoriteToggleStep,
   type JourneySpec,
@@ -128,6 +129,22 @@ describe("action-map", () => {
       const step = { action: "unknownAction" } as any;
       const result = stepToK6Request(step, mockSpec);
       expect(result).toBe("// Unsupported action");
+    });
+
+    it("converts apiRequest step with admin auth and expected statuses", () => {
+      const step: ApiRequestStep = {
+        action: "apiRequest",
+        target: "/api/classify",
+        method: "POST",
+        body: { async: true, skipAlreadyClassified: true },
+        auth: "admin-basic",
+        expectedStatus: [202, 409],
+      };
+      const result = stepToK6Request(step, mockSpec);
+      expect(result).toContain("http.request");
+      expect(result).toContain("SIDFLOW_PERF_ADMIN_BASIC_AUTH");
+      expect(result).toContain("/api/classify");
+      expect(result).toContain("202,409");
     });
   });
 

@@ -33,6 +33,7 @@ export const ClassifyRequestSchema = z.object({
     .trim()
     .min(1, 'Path must not be empty')
     .optional(),
+  limit: z.number().int().positive().optional(),
   forceRebuild: z.boolean().optional(),
   /** Skip songs that are already classified (based on auto-tags.json) */
   skipAlreadyClassified: z.boolean().optional(),

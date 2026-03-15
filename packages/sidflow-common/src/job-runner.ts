@@ -233,8 +233,20 @@ export function createDefaultJobCommandFactory(
     if (params.configPath) {
       args.push("--config", params.configPath);
     }
+    if (typeof params.limit === "number") {
+      args.push("--limit", String(params.limit));
+    }
     if (params.forceRebuild) {
       args.push("--force-rebuild");
+    }
+    if (params.skipAlreadyClassified) {
+      args.push("--skip-already-classified");
+    }
+    if (params.deleteWavAfterClassification) {
+      args.push("--delete-wav-after-classification");
+    }
+    if (params.sidPathPrefix) {
+      args.push("--sid-path-prefix", params.sidPathPrefix);
     }
     return { command: script, args };
   }

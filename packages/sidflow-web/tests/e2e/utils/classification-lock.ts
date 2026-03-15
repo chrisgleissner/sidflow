@@ -10,15 +10,37 @@ import path from 'node:path';
 
 const STALE_LOCK_AGE_MS = 120_000; // Consider lock stale after 2 minutes
 
+function isLiveProcess(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException)?.code !== 'ESRCH';
+  }
+}
+
 async function cleanupStaleLock(lockPath: string): Promise<void> {
   try {
     const content = await fs.readFile(lockPath, 'utf8');
-    const [, timestamp] = content.split('-');
+    const [pidText, timestampText] = content.trim().split('-', 2);
+    const pid = Number.parseInt(pidText ?? '', 10);
+    if (!isLiveProcess(pid)) {
+      console.log(`[classification-lock] Removing abandoned lock owned by pid=${pidText ?? 'unknown'}`);
+      await fs.rm(lockPath, { force: true });
+      return;
+    }
+
+    const timestamp = timestampText;
     if (timestamp) {
       const lockTime = parseInt(timestamp, 10);
       if (!isNaN(lockTime) && Date.now() - lockTime > STALE_LOCK_AGE_MS) {
-        console.log(`[classification-lock] Removing stale lock (age: ${Math.round((Date.now() - lockTime) / 1000)}s)`);
-        await fs.rm(lockPath, { force: true });
+        console.log(
+          `[classification-lock] Lock owned by live pid=${pid} is ${Math.round((Date.now() - lockTime) / 1000)}s old; keeping it in place`
+        );
       }
     }
   } catch {
@@ -87,4 +109,3 @@ export async function withClassificationLock<T>(
     await fs.rm(lockPath, { force: true }).catch(() => {});
   }
 }
-

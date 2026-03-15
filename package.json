@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "bun": "node scripts/run-bun.mjs",
+    "build:quick": "tsc -b",
     "build": "node scripts/run-bun.mjs install --frozen-lockfile && node scripts/run-bun.mjs run wasm:check-upstream && tsc -b",
     "wasm:check-upstream": "node scripts/run-bun.mjs run scripts/check-libsidplayfp-upstream.ts",
     "wasm:build": "node scripts/run-bun.mjs run scripts/build-libsidplayfp-wasm.ts",
@@ -25,6 +26,7 @@
     "ci:verify": "npm run validate:config && npm run fetch:sample && npm run classify:sample && npm run test:e2e",
     "format:json": "node scripts/run-bun.mjs run scripts/format-json.ts",
     "build:db": "node scripts/run-bun.mjs run scripts/build-db.ts",
+    "export:similarity": "node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity",
     "start:release": "bash scripts/start-release-server.sh",
     "release:prepare": "node scripts/run-bun.mjs run scripts/ci/release-prepare.ts --",
     "changes:entry": "node scripts/run-bun.mjs run scripts/ci/extract-changes-entry.ts",

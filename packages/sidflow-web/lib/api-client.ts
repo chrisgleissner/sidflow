@@ -102,8 +102,13 @@ export async function rateTrack(request: RateRequest): Promise<ApiResponse<{ mes
   return apiRequest('/rate', request);
 }
 
-export async function classifyPath(request: ClassifyRequest = {}): Promise<ApiResponse<{ output: string; logs: string; progress: ClassifyProgressSnapshot }>> {
-  return apiRequest('/classify', request);
+export async function classifyPath(
+  request: ClassifyRequest = {}
+): Promise<ApiResponse<{ jobId?: string; output?: string; logs?: string; progress: ClassifyProgressSnapshot; started?: boolean }>> {
+  return apiRequest('/classify', {
+    async: request.async ?? true,
+    ...request,
+  });
 }
 
 export async function getPreferences(): Promise<ApiResponse<PreferencesPayload>> {
@@ -146,7 +151,9 @@ export async function listHvscFolders(relative: string = ''): Promise<ApiRespons
   return response.json();
 }
 
-export async function fetchHvsc(request: FetchRequest = {}): Promise<ApiResponse<{ output: string; logs: string; progress: FetchProgressSnapshot }>> {
+export async function fetchHvsc(
+  request: FetchRequest = {}
+): Promise<ApiResponse<{ jobId?: string; output?: string; logs?: string; progress: FetchProgressSnapshot }>> {
   return apiRequest('/fetch', request);
 }
 
@@ -160,7 +167,9 @@ export async function fetchHvscProgress(): Promise<ApiResponse<FetchProgressSnap
   return response.json();
 }
 
-export async function trainModel(request: TrainRequest = {}): Promise<ApiResponse<{ output: string }>> {
+export async function trainModel(
+  request: TrainRequest = {}
+): Promise<ApiResponse<{ jobId?: string; output?: string; logs?: string }>> {
   return apiRequest('/train', request);
 }
 

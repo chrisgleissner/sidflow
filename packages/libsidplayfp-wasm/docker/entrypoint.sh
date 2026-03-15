@@ -63,6 +63,7 @@ em++ bindings.cpp src/.libs/libsidplayfp.a \
     -I./src \
     -I./src/sidplayfp \
     -I./src/sidtune \
+  -I./src/builders/sidlite-builder \
     -I./src/builders/residfp-builder \
     --bind -O3 \
     -sMODULARIZE=1 \

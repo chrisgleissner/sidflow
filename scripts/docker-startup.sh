@@ -61,6 +61,59 @@ if [ -n "${SIDFLOW_ADMIN_SECRET:-}" ]; then
 fi
 echo ""
 
+validate_production_security() {
+    local admin_password="${SIDFLOW_ADMIN_PASSWORD:-}"
+    local admin_secret="${SIDFLOW_ADMIN_SECRET:-}"
+    local jwt_secret="${JWT_SECRET:-}"
+    local failures=0
+
+    if [ "${NODE_ENV:-}" != "production" ] || [ -n "${SIDFLOW_TEST_SERVER_MODE:-}" ]; then
+        return 0
+    fi
+
+    echo "=== Production Security Validation ==="
+
+    if [ -z "$admin_password" ] || [ "${#admin_password}" -lt 12 ] || [ "$admin_password" = "password" ]; then
+        echo "FATAL: SIDFLOW_ADMIN_PASSWORD must be set to a non-default value with at least 12 characters in production"
+        failures=$((failures + 1))
+    else
+        echo "✓ SIDFLOW_ADMIN_PASSWORD is set"
+    fi
+
+    if [ -z "$admin_secret" ] || [ "${#admin_secret}" -lt 32 ] || [ "$admin_secret" = "sidflow-$admin_password" ]; then
+        echo "FATAL: SIDFLOW_ADMIN_SECRET must be set with at least 32 characters and must not derive from the admin password"
+        failures=$((failures + 1))
+    else
+        echo "✓ SIDFLOW_ADMIN_SECRET is set"
+    fi
+
+    if [ -z "$jwt_secret" ] || [ "${#jwt_secret}" -lt 32 ] || [ "$jwt_secret" = "sidflow-dev-secret-change-in-production" ]; then
+        echo "FATAL: JWT_SECRET must be set with at least 32 characters and must not use the development fallback"
+        failures=$((failures + 1))
+    else
+        echo "✓ JWT_SECRET is set"
+    fi
+
+    if [ "${SIDFLOW_DISABLE_ADMIN_AUTH:-0}" = "1" ]; then
+        echo "FATAL: SIDFLOW_DISABLE_ADMIN_AUTH is not supported in production"
+        failures=$((failures + 1))
+    fi
+
+    if [ "${SIDFLOW_DISABLE_RATE_LIMIT:-0}" = "1" ]; then
+        echo "FATAL: SIDFLOW_DISABLE_RATE_LIMIT is not supported in production"
+        failures=$((failures + 1))
+    fi
+
+    if [ "$failures" -gt 0 ]; then
+        exit 1
+    fi
+
+    echo "✓ Production security validation passed"
+    echo ""
+}
+
+validate_production_security
+
 echo "=== Volume Mount Setup ==="
 # Universal architecture:
 #   /sidflow/app/       - Application code (immutable from Docker image)

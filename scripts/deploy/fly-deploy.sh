@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 ENVIRONMENT=""
 TAG="latest"
 REGION="lhr"  # London
-DEPLOY_STRATEGY="${FLY_DEPLOY_STRATEGY:-rolling}"
+DEPLOY_STRATEGY="${FLY_DEPLOY_STRATEGY:-immediate}"
 VOLUME_COUNT="${FLY_VOLUME_COUNT:-1}"
 VOLUME_SIZE="${FLY_VOLUME_SIZE:-}"
 AUTO_CREATE_VOLUMES="${FLY_CREATE_VOLUMES:-false}"
@@ -50,8 +50,8 @@ OPTIONS:
     -e, --environment <stg|prd>   Deployment environment (required)
     -t, --tag <tag>               Docker image tag (default: latest)
     -r, --region <region>         Fly.io region (default: lhr)
-    --strategy <strategy>         Deployment strategy (default: rolling, e.g. immediate)
-    --volume-count <n>            Desired sidflow_data volume count (default: 1, set 2 for rolling updates)
+    --strategy <strategy>         Deployment strategy (default: immediate)
+    --volume-count <n>            Desired sidflow_data volume count (default: 1)
     --volume-size <gb>            Volume size in GB (default: 3 for stg, 10 for prd)
     --create-volumes              Auto-create missing volumes (respects count/size)
     -f, --force                   Force deployment without confirmation
@@ -175,8 +175,29 @@ check_volumes() {
     else
         log_warning "Only ${volume_count}/${desired_count} sidflow_data volume(s) present."
         log_info "Set --create-volumes (or FLY_CREATE_VOLUMES=true) and optionally --volume-count/--volume-size to auto-create missing volumes."
-        log_info "Deployment may fail without sufficient volumes for rolling updates."
     fi
+}
+
+check_required_secrets() {
+    local app_name="$1"
+    local secrets_json required_secret
+
+    log_info "Checking required Fly secrets for ${app_name}..."
+    secrets_json=$(flyctl secrets list --app "${app_name}" --json 2>/dev/null || true)
+    if [[ -z "${secrets_json}" ]]; then
+        log_error "Unable to inspect Fly secrets for ${app_name}"
+        exit 1
+    fi
+
+    for required_secret in SIDFLOW_ADMIN_PASSWORD SIDFLOW_ADMIN_SECRET JWT_SECRET; do
+        if ! printf "%s" "${secrets_json}" | grep -q "\"Name\":\"${required_secret}\""; then
+            log_error "Required Fly secret '${required_secret}' is missing for ${app_name}"
+            log_info "Set it with: flyctl secrets set ${required_secret}=<value> --app ${app_name}"
+            exit 1
+        fi
+    done
+
+    log_success "Required Fly secrets are present"
 }
 
 build_fly_toml() {
@@ -347,6 +368,7 @@ main() {
     
     check_app_exists "${app_name}"
     check_volumes "${app_name}"
+    check_required_secrets "${app_name}"
     
     local temp_toml
     temp_toml=$(build_fly_toml "${app_name}")
@@ -358,7 +380,7 @@ main() {
     
     log_success "Deployment to ${ENVIRONMENT} completed successfully!"
     log_info "View logs: flyctl logs --app ${app_name}"
-    log_info "Scale app: flyctl scale count 2 --app ${app_name}"
+    log_info "Scale app only after Phase 2 shared-state work lands; current supported topology is one machine."
     log_info "SSH access: flyctl ssh console --app ${app_name}"
 }
 

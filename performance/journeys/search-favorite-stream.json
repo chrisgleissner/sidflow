@@ -1,0 +1,45 @@
+{
+  "id": "search-favorite-stream",
+  "description": "Search for a tune, start playback, and toggle favorite state to exercise mixed user traffic.",
+  "pacingSeconds": 2,
+  "steps": [
+    {
+      "action": "navigate",
+      "target": "/"
+    },
+    {
+      "action": "type",
+      "selector": "[data-testid='search-input']",
+      "value": "ambient"
+    },
+    {
+      "action": "waitForText",
+      "text": "Ambient Dream"
+    },
+    {
+      "action": "selectTrack",
+      "trackRef": "ambientDream"
+    },
+    {
+      "action": "startPlayback",
+      "expectStream": true
+    },
+    {
+      "action": "favoriteToggle",
+      "trackRef": "ambientDream",
+      "toggle": "add"
+    },
+    {
+      "action": "favoriteToggle",
+      "trackRef": "ambientDream",
+      "toggle": "remove"
+    }
+  ],
+  "data": {
+    "trackRefs": {
+      "ambientDream": {
+        "sidPath": "Test_Artist/Ambient_Dream.sid"
+      }
+    }
+  }
+}

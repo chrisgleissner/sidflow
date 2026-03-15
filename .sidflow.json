@@ -6,9 +6,9 @@
   },
   "classificationDepth": 3,
   "classifiedPath": "./data/classified",
-  "introSkipSec": 10,
-  "maxClassifySec": 10,
-  "maxRenderSec": 20,
+  "introSkipSec": 20,
+  "maxClassifySec": 20,
+  "maxRenderSec": 45,
   "render": {
     "audioEncoder": {
       "implementation": "auto",
