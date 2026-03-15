@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build (e.g. v0.3.10)"
+        description: "Tag to build (e.g. v0.5.0 or v0.5.0-rc1)"
         required: true
         type: string
       deploy_stg:
@@ -47,12 +47,34 @@ jobs:
         run: |
           TAG="${TAG_NAME}"
           CLEAN="${TAG#v}"
-          if [ -z "${CLEAN}" ] || ! printf '%s' "${CLEAN}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Invalid or empty tag: '${TAG}'. Provide a semver tag (e.g. v0.3.10)." >&2
+          if [ -z "${CLEAN}" ] || ! printf '%s' "${CLEAN}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "Invalid or empty tag: '${TAG}'. Provide a semver tag (e.g. v0.5.0 or v0.5.0-rc1)." >&2
             exit 1
+          fi
+          MAJOR="${CLEAN%%.*}"
+          REST="${CLEAN#${MAJOR}.}"
+          MINOR="${REST%%.*}"
+          if printf '%s' "${CLEAN}" | grep -q -- '-'; then
+            IS_PRERELEASE=true
+            {
+              echo "docker_tags<<EOF"
+              echo "type=raw,value=${CLEAN}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            IS_PRERELEASE=false
+            {
+              echo "docker_tags<<EOF"
+              echo "type=raw,value=${CLEAN}"
+              echo "type=raw,value=${MAJOR}.${MINOR}"
+              echo "type=raw,value=${MAJOR}"
+              echo "type=raw,value=latest"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
           echo "version=$CLEAN" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
 
       - name: Auto-generate CHANGES.md entry if missing
         env:
@@ -157,11 +179,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }}
-            type=semver,pattern={{major}},value=${{ steps.version.outputs.version }}
-            type=raw,value=latest
+          tags: ${{ steps.version.outputs.docker_tags }}
           labels: |
             org.opencontainers.image.title=SIDFlow
             org.opencontainers.image.description=C64 music player with mood-based classification
@@ -183,69 +201,14 @@ jobs:
           sbom: false
 
       - name: Smoke test Docker image
+        env:
+          IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+          DOCKER_SMOKE_MODE: pull
+          CONTAINER_NAME: sidflow-smoke-test-${{ github.run_id }}
+          PORT: "3000"
         run: |
           set -euo pipefail
-          
-          # Use the first tag from meta output (the version tag)
-          IMAGE_TAG="ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}"
-          CONTAINER_NAME="sidflow-smoke-test-${{ github.run_id }}"
-          PORT=3000
-          
-          echo "Starting smoke test for ${IMAGE_TAG}"
-          
-          # Pull the image (this verifies upload succeeded)
-          echo "Pulling image..."
-          docker pull "${IMAGE_TAG}"
-          
-          # Start the container
-          echo "Starting container..."
-          CONTAINER_ID=$(docker run -d -p ${PORT}:3000 --name "${CONTAINER_NAME}" "${IMAGE_TAG}")
-          
-          echo "Container started: ${CONTAINER_ID}"
-          
-          # Wait for health check to pass (max 2 minutes)
-          echo "Waiting for health check..."
-          TIMEOUT=120
-          ELAPSED=0
-          INTERVAL=5
-          
-          while [[ $ELAPSED -lt $TIMEOUT ]]; do
-            if docker inspect --format='{{.State.Health.Status}}' "${CONTAINER_ID}" 2>/dev/null | grep -q "healthy"; then
-              echo "✓ Health check passed after ${ELAPSED}s"
-              
-              # Also verify the health endpoint directly
-              echo "Verifying /api/health endpoint..."
-              if ! curl -fsS "http://localhost:${PORT}/api/health" > /tmp/health-response.json; then
-                echo "✗ Health endpoint returned error"
-                docker logs "${CONTAINER_ID}"
-                docker stop "${CONTAINER_ID}" 2>/dev/null || true
-                docker rm "${CONTAINER_ID}" 2>/dev/null || true
-                exit 1
-              fi
-              
-              echo "✓ Health endpoint responding correctly"
-              # Format JSON output with jq if available, otherwise use raw output
-              jq '.' /tmp/health-response.json 2>/dev/null || cat /tmp/health-response.json
-              
-              # Cleanup
-              docker stop "${CONTAINER_ID}" 2>/dev/null || true
-              docker rm "${CONTAINER_ID}" 2>/dev/null || true
-              echo "✓ Smoke test passed"
-              exit 0
-            fi
-            
-            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "${CONTAINER_ID}" 2>/dev/null || echo "unknown")
-            echo "Health status: ${HEALTH_STATUS} (${ELAPSED}s elapsed)"
-            
-            sleep $INTERVAL
-            ELAPSED=$((ELAPSED + INTERVAL))
-          done
-          
-          echo "✗ Health check timeout after ${TIMEOUT}s"
-          docker logs "${CONTAINER_ID}"
-          docker stop "${CONTAINER_ID}" 2>/dev/null || true
-          docker rm "${CONTAINER_ID}" 2>/dev/null || true
-          exit 1
+          bash scripts/docker-smoke.sh
 
       - name: Update GitHub release notes
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -273,6 +236,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
 
   # ===== FLY.IO DEPLOYMENTS (DEFAULT) =====
   # Requires FLY_API_TOKEN secret; apps/volumes will be auto-created when missing
@@ -285,7 +249,8 @@ jobs:
       contents: read
     if: |
       github.event_name == 'push' && 
-      needs.docker.result == 'success'
+      needs.docker.result == 'success' &&
+      needs.docker.outputs.is_prerelease != 'true'
     environment:
       name: staging-fly
       url: https://sidflow-stg.fly.dev
@@ -422,6 +387,7 @@ jobs:
     if: |
       github.event_name == 'push' && 
       needs.docker.result == 'success' &&
+      needs.docker.outputs.is_prerelease != 'true' &&
       (needs.deploy-fly-stg.result == 'success' || needs.deploy-fly-stg.result == 'skipped')
     environment:
       name: production-fly

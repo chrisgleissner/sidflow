@@ -15,11 +15,11 @@ function die(message: string): never {
 
 function normalizeVersion(value: string | undefined): string {
   if (!value) {
-    die("release-prepare requires a version argument, e.g. bun run release:prepare -- 0.2.0");
+    die("release-prepare requires a version argument, e.g. bun run release:prepare -- 0.5.0-rc1");
   }
   const cleaned = value.trim().replace(/^v/i, "");
-  if (!/^\d+\.\d+\.\d+$/.test(cleaned)) {
-    die(`Invalid semver version \"${value}\". Expected format: 1.2.3`);
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(cleaned)) {
+    die(`Invalid semver version \"${value}\". Expected format: 1.2.3 or 1.2.3-rc1`);
   }
   return cleaned;
 }
