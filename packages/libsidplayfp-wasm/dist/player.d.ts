@@ -30,6 +30,7 @@ export declare class SidAudioEngine {
     private romSupportDisabled;
     private romFailureLogged;
     private readonly bufferPool;
+    private releaseContext;
     constructor(options?: SidAudioEngineOptions);
     private ensureModule;
     private createConfiguredContext;

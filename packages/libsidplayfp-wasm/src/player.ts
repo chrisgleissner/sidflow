@@ -50,6 +50,11 @@ export interface SidAudioEngineOptions extends SidPlayerContextOptions {
   cacheSecondsLimit?: number;
 }
 
+type DisposableSidPlayerContext = SidPlayerContext & {
+  delete?: () => void;
+  isDeleted?: () => boolean;
+};
+
 export class SidAudioEngine {
   private readonly modulePromise: Promise<LibsidplayfpWasmModule>;
   private module: LibsidplayfpWasmModule | undefined;
@@ -75,6 +80,22 @@ export class SidAudioEngine {
   private romSupportDisabled = false;
   private romFailureLogged = false;
   private readonly bufferPool: BufferPool;
+
+  private releaseContext(context: SidPlayerContext | undefined): void {
+    const disposableContext = context as DisposableSidPlayerContext | undefined;
+    if (!disposableContext?.delete) {
+      return;
+    }
+
+    try {
+      if (disposableContext.isDeleted?.()) {
+        return;
+      }
+      disposableContext.delete();
+    } catch {
+      // Ignore teardown failures during reload/dispose.
+    }
+  }
 
   constructor(options: SidAudioEngineOptions = {}) {
     const {
@@ -114,16 +135,23 @@ export class SidAudioEngine {
 
   private async loadPatchedBuffer(patched: Uint8Array): Promise<SidPlayerContext> {
     const ctx = await this.createConfiguredContext();
-    if (!ctx.loadSidBuffer(patched)) {
-      throw new Error(ctx.getLastError());
+    try {
+      if (!ctx.loadSidBuffer(patched)) {
+        throw new Error(ctx.getLastError());
+      }
+      this.applySystemROMs(ctx);
+      if (!ctx.reset()) {
+        throw new Error(ctx.getLastError());
+      }
+      const previousContext = this.context;
+      this.context = ctx;
+      this.configured = true;
+      this.releaseContext(previousContext);
+      return ctx;
+    } catch (error) {
+      this.releaseContext(ctx);
+      throw error;
     }
-    this.applySystemROMs(ctx);
-    if (!ctx.reset()) {
-      throw new Error(ctx.getLastError());
-    }
-    this.context = ctx;
-    this.configured = true;
-    return ctx;
   }
 
   private cloneInput(data: Uint8Array | ArrayBufferView): Uint8Array {
@@ -529,64 +557,68 @@ export class SidAudioEngine {
   private async buildCacheBuffer(buffer: Uint8Array, token: number): Promise<void> {
     const module = await this.ensureModule();
     const ctx = new module.SidPlayerContext();
-    if (!ctx.configure(this.sampleRate, this.stereo)) {
-      return;
-    }
-    if (!ctx.loadSidBuffer(buffer)) {
-      return;
-    }
     try {
-      this.applySystemROMs(ctx);
-    } catch {
-      return;
-    }
-    if (!ctx.reset()) {
-      return;
-    }
-    const channels = this.stereo ? 2 : 1;
-    const maxSamples = Math.floor(this.sampleRate * channels * this.maxCacheSeconds);
-    const chunks: Int16Array[] = [];
-    let collected = 0;
-    let iterationCount = 0;
-
-    while (collected < maxSamples) {
-      // Yield to event loop every 20 iterations (balanced for performance and responsiveness)
-      if (++iterationCount % 20 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
+      if (!ctx.configure(this.sampleRate, this.stereo)) {
+        return;
       }
-
-      let chunk: Int16Array | null;
+      if (!ctx.loadSidBuffer(buffer)) {
+        return;
+      }
       try {
-        chunk = ctx.render(100000);
+        this.applySystemROMs(ctx);
       } catch {
-        break;
+        return;
       }
-      if (chunk === null || chunk.length === 0) {
-        break;
+      if (!ctx.reset()) {
+        return;
+      }
+      const channels = this.stereo ? 2 : 1;
+      const maxSamples = Math.floor(this.sampleRate * channels * this.maxCacheSeconds);
+      const chunks: Int16Array[] = [];
+      let collected = 0;
+      let iterationCount = 0;
+
+      while (collected < maxSamples) {
+        // Yield to event loop every 20 iterations (balanced for performance and responsiveness)
+        if (++iterationCount % 20 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        let chunk: Int16Array | null;
+        try {
+          chunk = ctx.render(100000);
+        } catch {
+          break;
+        }
+        if (chunk === null || chunk.length === 0) {
+          break;
+        }
+
+        // Store a defensive copy - render() returns WASM memory that may be reused
+        const copy = chunk.slice();
+        chunks.push(copy);
+        collected += copy.length;
       }
 
-      // Store a defensive copy - render() returns WASM memory that may be reused
-      const copy = chunk.slice();
-      chunks.push(copy);
-      collected += copy.length;
-    }
+      if (this.cacheToken !== token) {
+        return;
+      }
 
-    if (this.cacheToken !== token) {
-      return;
+      // Combine all chunks into final cache buffer
+      // Use single allocation instead of pool (this buffer lives for entire cache lifetime)
+      const combined = new Int16Array(collected);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      this.cachedPcm = combined;
+      this.cacheSampleRate = this.sampleRate;
+      this.cacheChannels = channels;
+      this.cacheCursor = 0;
+    } finally {
+      this.releaseContext(ctx);
     }
-
-    // Combine all chunks into final cache buffer
-    // Use single allocation instead of pool (this buffer lives for entire cache lifetime)
-    const combined = new Int16Array(collected);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-    this.cachedPcm = combined;
-    this.cacheSampleRate = this.sampleRate;
-    this.cacheChannels = channels;
-    this.cacheCursor = 0;
   }
 
   private cacheAvailable(): boolean {
@@ -602,6 +634,9 @@ export class SidAudioEngine {
    * Call this when the engine instance is no longer needed.
    */
   dispose(): void {
+    this.releaseContext(this.context);
+    this.context = undefined;
+    this.configured = false;
     this.bufferPool.clear();
     this.resetCacheState();
     this.originalSidBuffer = null;

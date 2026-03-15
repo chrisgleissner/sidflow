@@ -15,6 +15,81 @@ beforeAll(() => {
 });
 
 describe('SidAudioEngine buffer pool', () => {
+    it('should delete superseded and disposed WASM contexts', async () => {
+        const deleteCalls: string[] = [];
+
+        class FakeContext {
+            private readonly name: string;
+            private deleted = false;
+
+            constructor(name: string) {
+                this.name = name;
+            }
+
+            configure(): boolean {
+                return true;
+            }
+
+            loadSidBuffer(): boolean {
+                return true;
+            }
+
+            reset(): boolean {
+                return true;
+            }
+
+            getChannels(): number {
+                return 2;
+            }
+
+            getSampleRate(): number {
+                return 44100;
+            }
+
+            getTuneInfo(): Record<string, unknown> | null {
+                return null;
+            }
+
+            getLastError(): string {
+                return '';
+            }
+
+            render(): Int16Array {
+                return new Int16Array([1, 2, 3, 4]);
+            }
+
+            delete(): void {
+                this.deleted = true;
+                deleteCalls.push(this.name);
+            }
+
+            isDeleted(): boolean {
+                return this.deleted;
+            }
+        }
+
+        let contextCount = 0;
+        const module = Promise.resolve({
+            SidPlayerContext: class extends FakeContext {
+                constructor() {
+                    contextCount += 1;
+                    super(`ctx-${contextCount}`);
+                }
+            },
+        } as any);
+
+        const engine = new SidAudioEngine({ module });
+
+        await engine.loadSidBuffer(testSidData);
+        await engine.loadSidBuffer(testSidData);
+
+        expect(deleteCalls).toEqual(['ctx-1']);
+
+        engine.dispose();
+
+        expect(deleteCalls).toEqual(['ctx-1', 'ctx-2']);
+    });
+
     it('should initialize buffer pool in constructor', async () => {
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
 
