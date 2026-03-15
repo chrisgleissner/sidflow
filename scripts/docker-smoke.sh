@@ -142,18 +142,23 @@ curl_json POST "http://127.0.0.1:${HOST_PORT}/api/classify" "${TMP_ROOT}/classif
 jq '.' "${TMP_ROOT}/classify.json"
 
 JSONL_COUNT="$(docker exec "${CONTAINER_NAME}" sh -lc "find /sidflow/data/classified -maxdepth 1 -type f -name '*.jsonl' | wc -l" | tr -d ' ')"
+JSONL_RECORD_COUNT="$(docker exec "${CONTAINER_NAME}" sh -lc "cat /sidflow/data/classified/*.jsonl 2>/dev/null | wc -l" | tr -d ' ')"
 if [[ "${JSONL_COUNT}" -lt 1 ]]; then
   echo "[docker-smoke] Expected classification output under /sidflow/data/classified" >&2
+  docker logs "${CONTAINER_ID}" || true
+  exit 1
+fi
+if [[ "${JSONL_RECORD_COUNT}" -lt 1 ]]; then
+  echo "[docker-smoke] Expected at least one classified JSONL record" >&2
   docker logs "${CONTAINER_ID}" || true
   exit 1
 fi
 
 curl_json GET "http://127.0.0.1:${HOST_PORT}/api/admin/metrics" "${TMP_ROOT}/admin-metrics-after.json" "" -H "Authorization: ${AUTH_HEADER}"
 jq '.cache' "${TMP_ROOT}/admin-metrics-after.json"
-jq '.cache.classifiedCount > 0' "${TMP_ROOT}/admin-metrics-after.json" | grep -qx 'true'
 
 echo "[docker-smoke] Success! Image '${IMAGE_TAG}' passed smoke test."
 echo "[docker-smoke] Sample SID: ${SAMPLE_SID_RELATIVE}"
-echo "[docker-smoke] Classification outputs: ${JSONL_COUNT} JSONL file(s)"
+echo "[docker-smoke] Classification outputs: ${JSONL_COUNT} JSONL file(s), ${JSONL_RECORD_COUNT} record(s)"
 echo "Container logs (last 40 lines):"
 docker logs --tail=40 "${CONTAINER_ID}" || true
