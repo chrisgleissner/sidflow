@@ -144,7 +144,7 @@ bun run perf:run -- --env local --base-url http://localhost:3000 --results perfo
 
 ## Portable Similarity Export
 
-After classification, SIDFlow can export a portable offline similarity bundle for downstream consumers such as c64commander.
+After classification, SIDFlow can export a portable offline similarity bundle for downstream consumers.
 
 ```bash
 bun run export:similarity -- --profile full
@@ -156,6 +156,42 @@ By default this writes:
 - `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
 
 The SQLite bundle stores per-track ratings, feedback aggregates, optional vectors, and optional precomputed neighbors. See [doc/similarity-export.md](doc/similarity-export.md) for the schema, consumer workflow, and the full local classify-then-export sequence.
+
+If you already have classified feature output in `data/classified` and only need the SQLite bundle, you do not need to re-run classification. The exporter will read the existing `features_*.jsonl` and `classification_*.jsonl` files from the configured `classifiedPath` and build the SQLite bundle directly:
+
+```bash
+bun run export:similarity -- --profile full --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+```
+
+For example, if `data/classified/features_2026-03-14_13-03-41-920.jsonl` already exists, the command above converts that classified corpus into the portable SQLite export.
+
+If your classified JSONL files live in another directory, point SIDFlow at that directory via an alternate config and export from there:
+
+```bash
+cp .sidflow.json /tmp/sidflow-export.json
+# edit /tmp/sidflow-export.json so classifiedPath points at the directory containing your features_*.jsonl files
+bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --output /path/to/sidcorr.sqlite
+```
+
+The exporter also recovers rows from existing `features_*.jsonl` files when a previous classify run was interrupted before all `classification_*.jsonl` rows were written, so an existing large features file is still enough to produce a complete SQLite bundle.
+
+To prove the standalone SQLite export is usable on its own, run the interactive station demo wrapper:
+
+```bash
+./scripts/run-station-demo.sh
+```
+
+To target an Ultimate64 on the LAN:
+
+```bash
+./scripts/run-station-demo.sh --c64u-host 192.168.1.13
+```
+
+If the export already exists and you only want to publish the bundle to the separate `sidflow-data` release repository, you can skip classification and export generation entirely:
+
+```bash
+bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
+```
 
 ---
 

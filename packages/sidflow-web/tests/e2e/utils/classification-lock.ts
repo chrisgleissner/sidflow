@@ -38,8 +38,9 @@ async function cleanupStaleLock(lockPath: string): Promise<void> {
     if (timestamp) {
       const lockTime = parseInt(timestamp, 10);
       if (!isNaN(lockTime) && Date.now() - lockTime > STALE_LOCK_AGE_MS) {
-        console.log(`[classification-lock] Removing stale lock (age: ${Math.round((Date.now() - lockTime) / 1000)}s)`);
-        await fs.rm(lockPath, { force: true });
+        console.log(
+          `[classification-lock] Lock owned by live pid=${pid} is ${Math.round((Date.now() - lockTime) / 1000)}s old; keeping it in place`
+        );
       }
     }
   } catch {

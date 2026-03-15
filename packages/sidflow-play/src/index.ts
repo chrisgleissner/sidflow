@@ -10,4 +10,5 @@ export * from "./playback.js";
 export * from "./session.js";
 export * from "./export.js";
 export * from "./similarity-export-cli.js";
+export * from "./station-demo-cli.js";
 export * from "./filters.js";

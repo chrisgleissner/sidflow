@@ -80,3 +80,6 @@ local-install/
 # Symlinked folders
 c64commander
 hvsc
+.next/
+data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
