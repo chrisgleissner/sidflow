@@ -50,6 +50,39 @@ Template:
 
 ## Active tasks
 
+### Task: Station demo TUI and station correctness overhaul (2026-03-20)
+
+**User request (summary)**  
+- Improve `scripts/run-station-demo.sh` / `sidflow-play station-demo` so seed collection continues until at least 10 songs are actually rated and skipped songs do not count.
+- Fix the station flow so playback reflects ratings, add a redraw-based immersive CLI UI with colors, progress, an 11-song playlist window, richer transport controls, and non-interrupting station recalculation.
+
+**Plan (checklist)**  
+- [ ] Trace the current wrapper + `@sidflow/play` station-demo implementation, confirm the recommendation/playback bug, and define the minimal compatibility guardrails for the export DB.
+- [ ] Refactor the station demo into a full-screen redraw loop with explicit rating semantics, progress display, playlist window, and cursor-key transport handling.
+- [ ] Preserve current playback while allowing replay and deferred station recalculation that keeps the current song in the queue.
+- [ ] Add focused CLI tests for the new seed-rating loop, redraw/control flow, and rebuild semantics.
+- [ ] Validate with `bun run build:quick`, focused tests, then full `bun run test` 3x with 0 failures.
+
+**Progress log**  
+- 2026-03-20 — Started task. Read `AGENTS.md`, `PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`, and inspected `scripts/run-station-demo.sh`, `packages/sidflow-play/src/station-demo-cli.ts`, and similarity-export helpers. Confirmed the current demo only rates a fixed sample instead of collecting 10 actual ratings, uses line-by-line output instead of redraws, and lacks deferred rebuild/navigation behavior. Also verified the checked-in repo export at `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` still uses the older schema without `track_id`/`song_index`, so the demo needs a clear schema/version guard or compatibility handling to avoid confusing failures.
+- 2026-03-20 — Reworked `sidflow-play station-demo` into a redraw-based terminal UI. The demo now keeps pulling fresh random seeds until at least 10 songs are actually rated, shows an always-visible 1-5 meaning legend, renders a progress bar for the active song, shows an 11-track playlist window (5 before/current/5 after), supports arrow-key previous/next navigation plus replay, and rebuilds the station from updated ratings without interrupting the current song or dropping it from the queue. Local playback now launches `sidplayfp` in single-track mode and the CLI fails fast on legacy similarity exports that do not contain track-level identity/vector data.
+- 2026-03-20 — Expanded `packages/sidflow-play/test/cli.test.ts` to cover the new station-demo contract: realistic export/HVSC fixtures, minimum-rated-song behavior when skips occur, and a clear legacy-schema failure path. Focused validation passed with `bun run build:quick` and `bun test packages/sidflow-play/test/cli.test.ts` (`32 pass, 0 fail`).
+- 2026-03-20 — Final validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly:
+  - Run 1: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [22.79s]
+  - Run 2: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [21.93s]
+  - Run 3: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [22.23s]
+- 2026-03-20 — Follow-up user request: exclude tracks shorter than 15 seconds from the station demo, with a configurable threshold. Added a station-demo `--min-duration` option (default 15s), applied the gate to both random seed intake and rebuilt station queues, surfaced the active threshold in the TUI, and added focused tests for parsing, positive filtering, and the “not enough long tracks” failure path. Validation next: rerun `bun run build`, then `bun run test` three consecutive times for the updated totals.
+- 2026-03-20 — Duration-gate validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly after the new station-demo tests increased the suite totals:
+  - Run 1: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.59s]
+  - Run 2: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.97s]
+  - Run 3: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.97s]
+- 2026-03-20 — Follow-up user request: make like/dislike actions trivial during playback and clarify skip semantics. Added `l`/`+` as like (`5`), `d`/`x` as dislike (`0`), and made station-phase `s` mean skip-as-dislike while left/right navigation remains unrated movement only. The TUI/help text now advertises those shortcuts, dislikes display as `0/5`, and recommendation weighting ignores fully disliked-only seed sets unless some positive rating exists. Focused validation passed with `bun run build:quick` and `bun test packages/sidflow-play/test/cli.test.ts` (`36 pass, 0 fail`).
+- 2026-03-20 — Like/dislike follow-up validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly after the playback shortcut tests increased the suite totals:
+  - Run 1: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.09s]
+  - Run 2: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.10s]
+  - Run 3: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.09s]
+- 2026-03-20 — Follow-up user request: extend the station demo into a longer-form player with a 100-song minimum playlist, a second playlist-position progress bar, separate browse-vs-play navigation (`←/→` play prev/next, `↑/↓/PgUp/PgDn` browse, `Enter` play selected), and pause/resume on space. The playback UI also needs more deliberate color coding, and Ultimate64 pause/resume should use the documented machine pause/resume plus SID-volume silencing via the REST memory-write endpoint. Validation next: `bun run build:quick`, focused `packages/sidflow-play/test/cli.test.ts`, then `bun run build` and `bun run test` three consecutive times with 0 failures.
+
 ### Task: Production rollout convergence roadmap (2026-03-13)
 
 **User request (summary)**  

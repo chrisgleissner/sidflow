@@ -2,7 +2,7 @@
 
 import { describe, expect, test, it } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { Writable } from "node:stream";
@@ -40,11 +40,26 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
     INSERT INTO tracks (track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  insert.run("A/song1.sid#1", "A/song1.sid", 1, JSON.stringify([1, 0, 0]), 5, 4, 2, 4, 2, 0, 0, 5, null);
-  insert.run("A/song2.sid#1", "A/song2.sid", 1, JSON.stringify([0.9, 0.1, 0]), 4, 5, 2, 5, 1, 0, 0, 3, null);
-  insert.run("B/song3.sid#1", "B/song3.sid", 1, JSON.stringify([0, 1, 0]), 2, 2, 4, 2, 0, 0, 0, 1, null);
-  insert.run("C/song4.sid#1", "C/song4.sid", 1, JSON.stringify([0.95, 0.05, 0]), 5, 5, 3, 5, 3, 0, 0, 8, null);
-  insert.run("D/song5.sid#1", "D/song5.sid", 1, JSON.stringify([0.85, 0.15, 0]), 4, 4, 3, 4, 2, 0, 0, 4, null);
+  const rows = [
+    ["A/song1.sid#1", "A/song1.sid", [1, 0, 0], 5, 4, 2, 4, 2, 0, 0, 5],
+    ["A/song2.sid#1", "A/song2.sid", [0.97, 0.03, 0], 5, 5, 2, 5, 1, 0, 0, 3],
+    ["A/song3.sid#1", "A/song3.sid", [0.95, 0.05, 0], 4, 5, 2, 5, 1, 0, 0, 2],
+    ["A/song4.sid#1", "A/song4.sid", [0.93, 0.07, 0], 5, 4, 3, 4, 2, 0, 0, 4],
+    ["A/song5.sid#1", "A/song5.sid", [0.91, 0.09, 0], 4, 4, 3, 4, 1, 0, 0, 4],
+    ["A/song6.sid#1", "A/song6.sid", [0.89, 0.11, 0], 4, 4, 2, 4, 0, 0, 0, 1],
+    ["B/song7.sid#1", "B/song7.sid", [0, 1, 0], 2, 2, 4, 2, 0, 0, 0, 1],
+    ["B/song8.sid#1", "B/song8.sid", [0.1, 0.9, 0], 2, 3, 4, 2, 0, 0, 0, 1],
+    ["C/song9.sid#1", "C/song9.sid", [0.94, 0.06, 0], 5, 5, 3, 5, 3, 0, 0, 8],
+    ["D/song10.sid#1", "D/song10.sid", [0.87, 0.13, 0], 4, 4, 3, 4, 2, 0, 0, 4],
+    ["E/song11.sid#1", "E/song11.sid", [0.86, 0.14, 0], 4, 4, 3, 4, 2, 0, 0, 4],
+    ["F/song12.sid#1", "F/song12.sid", [0.84, 0.16, 0], 4, 4, 3, 4, 2, 0, 0, 4],
+  ] as const;
+
+  for (const [trackId, sidPath, vector, e, m, c, p, likes, dislikes, skips, plays] of rows) {
+    insert.run(trackId, sidPath, 1, JSON.stringify(vector), e, m, c, p, likes, dislikes, skips, plays, null);
+    await mkdir(path.dirname(path.join(workspace, sidPath)), { recursive: true });
+    await writeFile(path.join(workspace, sidPath), "PSID", "utf8");
+  }
   db.close();
   return { dbPath, workspace };
 }
@@ -175,12 +190,18 @@ describe("station demo CLI argument parsing", () => {
     expect(result.options.playback).toBeUndefined();
     expect(result.options.adventure).toBe(3);
     expect(result.options.sampleSize).toBe(10);
+    expect(result.options.minDuration).toBe(15);
     expect(result.errors).toHaveLength(0);
   });
 
   test("rejects invalid adventure during parsing", () => {
     const result = parseStationDemoArgs(["--adventure", "9"]);
     expect(result.errors[0]).toContain("must be at most 5");
+  });
+
+  test("rejects invalid min-duration during parsing", () => {
+    const result = parseStationDemoArgs(["--min-duration", "0"]);
+    expect(result.errors[0]).toContain("must be at least 1");
   });
 });
 
@@ -637,13 +658,13 @@ describe("runPlayCli", () => {
       }
     });
 
-    const answers = ["5", "4", "n", "q"];
+    const answers = ["5", "5", "4", "4", "5", "4", "5", "4", "5", "4", "right", "q"];
     const exitCode = await runStationDemoCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
         "--playback", "none",
-        "--sample-size", "2",
+        "--sample-size", "10",
         "--station-size", "2",
         "--adventure", "2",
       ],
@@ -676,22 +697,301 @@ describe("runPlayCli", () => {
           initAddress: 0,
           playAddress: 0,
         }),
-        lookupSongDurationMs: async () => 123_000,
+        lookupSongDurationMs: async (filePath: string) => filePath.includes("song8.sid") ? 10_000 : 123_000,
       },
     );
 
     expect(exitCode).toBe(0);
     expect(stderrChunks.join("")).toBe("");
     const output = stdoutChunks.join("");
-    expect(output).toContain("Recommendations come from the SQLite export");
-    expect(output).toContain("Station ready with 2 tracks from the standalone SQLite export");
-    expect(output).toContain("Previous:");
-    expect(output).toContain("Current:");
+    expect(output).toContain("Legend");
+    expect(output).toContain("5 locks the vibe in");
+    expect(output).toContain("Playlist Window");
+    expect(output).toContain("Duration gate");
+    expect(output).not.toContain("song8.sid");
+  });
+
+  it("supports like and dislike shortcuts while songs are playing", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const answers = ["l", "d", "5", "5", "5", "5", "5", "5", "5", "5", "5", "s", "q"];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+        "--station-size", "2",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => answers.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("l like(5)");
+    expect(output).toContain("d dislike(0)");
+    expect(output).toContain("Liked ");
+    expect(output).toContain("Disliked ");
+    expect(output).toContain("Disliked this track and rebuilt the station without interrupting playback.");
+  });
+
+  it("treats next navigation as unrated movement", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const answers = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "right", "q"];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+        "--station-size", "2",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => answers.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Moved to the next station track.");
+    expect(output).not.toContain("Disliked this track");
+  });
+
+  it("keeps asking for seeds until 10 songs are actually rated", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const answers = ["s", "5", "s", "5", "5", "5", "5", "5", "5", "5", "5", "5", "right", "q"];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+        "--station-size", "2",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => answers.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("You rated 10/10");
+    expect(output).toContain("Skipped. It does not count toward the station target.");
+  });
+
+  it("fails when too few tracks satisfy the minimum duration gate", async () => {
+    const fixture = await createStationDemoFixture();
+    const stderrChunks: string[] = [];
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        stderrChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+        "--min-duration", "15",
+      ],
+      {
+        stderr,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 10_000,
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderrChunks.join("")).toContain("satisfy the 15s minimum");
+  });
+
+  it("fails clearly on legacy similarity exports without track identity columns", async () => {
+    const fixture = await createStationDemoFixture();
+    const legacyDbPath = path.join(fixture.workspace, "legacy.sqlite");
+    const legacyDb = new Database(legacyDbPath);
+    legacyDb.exec(`
+      CREATE TABLE tracks (
+        sid_path TEXT PRIMARY KEY,
+        vector_json TEXT,
+        e REAL NOT NULL,
+        m REAL NOT NULL,
+        c REAL NOT NULL,
+        p REAL
+      );
+    `);
+    legacyDb.close();
+
+    const stderrChunks: string[] = [];
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        stderrChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      ["--db", legacyDbPath, "--hvsc", fixture.workspace, "--playback", "none"],
+      {
+        stderr,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderrChunks.join("")).toContain("older similarity export schema");
   });
 
   it("infers c64u playback when a c64u host is supplied", async () => {
     const fixture = await createStationDemoFixture();
     const stdoutChunks: string[] = [];
+    const answers = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "q"];
 
     const stdout = new Writable({
       write(chunk, _encoding, callback) {
@@ -705,7 +1005,7 @@ describe("runPlayCli", () => {
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
         "--c64u-host", "192.168.1.13",
-        "--sample-size", "1",
+        "--sample-size", "10",
         "--station-size", "1",
       ],
       {
@@ -720,7 +1020,7 @@ describe("runPlayCli", () => {
           threads: 0,
           classificationDepth: 3,
         }),
-        prompt: async () => "q",
+        prompt: async () => answers.shift() ?? "q",
         random: () => 0,
         createPlaybackAdapter: async (mode) => {
           expect(mode).toBe("c64u");
@@ -748,6 +1048,6 @@ describe("runPlayCli", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(stdoutChunks.join("")).toContain("Playback mode: c64u");
+    expect(stdoutChunks.join("")).toContain("c64u");
   });
 });
