@@ -46,6 +46,9 @@ data/audit/admin-actions.jsonl
 !data/classified/sample.jsonl
 !data/feedback/**/*.jsonl
 
+# Cache
+data/cache
+
 # Classification output files (generated during tests/runs)
 data/classified/*.jsonl
 

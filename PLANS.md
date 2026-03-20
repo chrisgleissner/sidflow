@@ -50,6 +50,19 @@ Template:
 
 ## Active tasks
 
+### Task: Pull request convergence check (2026-03-20)
+
+**User request (summary)**  
+- Bring the current pull request to a merge-ready state by resolving review comments, fixing CI, and validating the branch.
+
+**Plan (checklist)**  
+- [x] Identify the active pull request associated with the current branch or repository state.
+- [ ] Review open comments/threads and determine required code or explanation changes.
+- [ ] Apply fixes, validate locally, commit, push, and confirm CI is green.
+
+**Progress log**  
+- 2026-03-20 — Checked the local repo state and GitHub PR state with `gh pr status` and `gh pr list --state open --limit 20 --json number,title,headRefName,baseRefName,author,isDraft,reviewDecision,statusCheckRollup,url`. The workspace is on `main`, there is no PR associated with the current branch, and the repository currently has no open pull requests. This blocks the convergence loop because there is no live PR with review threads or CI status to process.
+
 ### Task: Station demo TUI and station correctness overhaul (2026-03-20)
 
 **User request (summary)**  
