@@ -28,7 +28,7 @@ A seamless stream of similar Commodore 64 SID songs.
   Browse, search, and play SID music, manage favourites, and build playlists.
 
 - **CLI tools**  
-  Optional command-line utilities for analysis, classification, and automation.
+  Command-line utilities for analysis, classification, and automation, including a CLI-based SID radio station.
 
 ---
 
@@ -49,8 +49,6 @@ Windows:
 ```sh
 powershell -c "irm bun.sh/install.ps1|iex"
 ```
-
-
 
 ### Build Project
 
@@ -87,7 +85,7 @@ curl -L https://fly.io/install.sh | sh
 
 See [Deployment Guide](doc/deployment.md) for details.
 
-## Run with Docker
+### Run with Docker
 
 See **Deployment Guide** for full Docker instructions, CLI usage, health checks, and smoke-testing: [doc/deployment.md](doc/deployment.md).
 
@@ -107,7 +105,7 @@ docker run -p 3000:3000 \
 ```
 Web UI: <http://localhost:3000> (admin at `/admin` with the credentials you configured above).
 
-## Run Locally
+### Run Locally
 
 Development mode with hot reload:
 
@@ -125,7 +123,7 @@ bun run start
 
 Web UI: <http://localhost:3000>.
 
-## Performance Tests
+### Performance Tests
 
 Run the unified performance suite (journey-driven; k6 and optional Playwright) with the shared runner:
 
@@ -175,6 +173,8 @@ bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --
 
 The exporter also recovers rows from existing `features_*.jsonl` files when a previous classify run was interrupted before all `classification_*.jsonl` rows were written, so an existing large features file is still enough to produce a complete SQLite bundle.
 
+### CLI SID Radio Station
+
 To prove the standalone SQLite export is usable on its own, run the interactive station demo wrapper:
 
 ```bash
@@ -192,8 +192,6 @@ If the export already exists and you only want to publish the bundle to the sepa
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
-
----
 
 ## Web UI
 
@@ -297,6 +295,12 @@ If you prefer automation or terminal workflows, use the CLI tools documented in 
 - **[sidflow-train](packages/sidflow-train/README.md)** - Train/update the TensorFlow.js model artifacts
 - **[sidflow-rate](packages/sidflow-rate/README.md)** - Write manual rating/tag files
 - **[sidflow-play](packages/sidflow-play/README.md)** - Generate playlists / exports using similarity search
+
+Start your own local SID radio station with:
+
+```bash
+./scripts/run-station-demo.sh
+```
 
 ---
 
