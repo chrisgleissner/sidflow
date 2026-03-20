@@ -104,6 +104,7 @@ Template:
   - Run 1: 1711 pass, 0 fail, 6201 expect() calls. Ran 1711 tests across 172 files. [22.78s]
   - Run 2: 1711 pass, 0 fail, 6201 expect() calls. Ran 1711 tests across 172 files. [22.80s]
   - Run 3: 1711 pass, 0 fail, 6201 expect() calls. Ran 1711 tests across 172 files. [23.40s]
+- 2026-03-20 — Follow-up user request: add a dedicated interactive station-playlist filter that matches title or artist case-insensitively while typing, tone pure help text down to light gray, separate the source block visually at the top of the TUI and move provenance under the DB line, and fix Ultimate64 pause/resume so pausing truly silences all SID chips while resume restores the captured SID volume registers. Validation next: add focused CLI coverage for filtering plus Ultimate64 mute/restore, then rerun build + full tests 3x.
 
 ### Task: Production rollout convergence roadmap (2026-03-13)
 

@@ -42,6 +42,11 @@ export interface WriteMemoryOptions {
   readonly data: Uint8Array;
 }
 
+export interface ReadMemoryOptions {
+  readonly address: number;
+  readonly length: number;
+}
+
 export class Ultimate64Client {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
@@ -141,6 +146,41 @@ export class Ultimate64Client {
   }
 
   /**
+   * Read memory via the REST DMA endpoint.
+   * Accepts either raw bytes or a JSON payload containing a data field.
+   */
+  async readMemory(options: ReadMemoryOptions): Promise<Uint8Array> {
+    const params = new URLSearchParams();
+    params.set("address", options.address.toString(16).toUpperCase());
+    params.set("size", String(options.length));
+
+    const response = await this.fetchRaw(`/v1/machine:readmem?${params.toString()}`, "GET");
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const payload = (await response.json()) as { data?: number[] | string | { bytes?: number[] | string } };
+      const value = payload.data ?? payload;
+      if (Array.isArray(value)) {
+        return Uint8Array.from(value);
+      }
+      if (typeof value === "string") {
+        return this.decodeHexBytes(value);
+      }
+      if (value && typeof value === "object" && "bytes" in value) {
+        const bytes = value.bytes;
+        if (Array.isArray(bytes)) {
+          return Uint8Array.from(bytes);
+        }
+        if (typeof bytes === "string") {
+          return this.decodeHexBytes(bytes);
+        }
+      }
+      throw new Error("Ultimate64 readMemory returned an unsupported payload");
+    }
+
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  /**
    * Get configuration categories
    */
   async getConfigCategories(): Promise<Ultimate64Response> {
@@ -195,18 +235,7 @@ export class Ultimate64Client {
    * Execute HTTP GET request
    */
   private async get(path: string): Promise<Ultimate64Response> {
-    const url = `${this.baseUrl}${path}`;
-    logger.debug(`GET ${url}`);
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: this.headers,
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
+    const response = await this.fetchRaw(path, "GET");
     return (await response.json()) as Ultimate64Response;
   }
 
@@ -214,19 +243,7 @@ export class Ultimate64Client {
    * Execute HTTP PUT request
    */
   private async put(path: string, body?: Uint8Array): Promise<Ultimate64Response> {
-    const url = `${this.baseUrl}${path}`;
-    logger.debug(`PUT ${url}`);
-
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: this.headers,
-      body: body as any,
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
+    const response = await this.fetchRaw(path, "PUT", body);
     return (await response.json()) as Ultimate64Response;
   }
 
@@ -234,14 +251,26 @@ export class Ultimate64Client {
    * Execute HTTP POST request
    */
   private async post(path: string, body?: Uint8Array): Promise<Ultimate64Response> {
+    const response = await this.fetchRaw(path, "POST", body, {
+      "Content-Type": "application/octet-stream",
+    });
+    return (await response.json()) as Ultimate64Response;
+  }
+
+  private async fetchRaw(
+    path: string,
+    method: "GET" | "POST" | "PUT",
+    body?: Uint8Array,
+    extraHeaders?: Record<string, string>,
+  ): Promise<Response> {
     const url = `${this.baseUrl}${path}`;
-    logger.debug(`POST ${url}`);
+    logger.debug(`${method} ${url}`);
 
     const response = await fetch(url, {
-      method: "POST",
+      method,
       headers: {
         ...this.headers,
-        "Content-Type": "application/octet-stream",
+        ...extraHeaders,
       },
       body: body as any,
     });
@@ -250,6 +279,19 @@ export class Ultimate64Client {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return (await response.json()) as Ultimate64Response;
+    return response;
+  }
+
+  private decodeHexBytes(value: string): Uint8Array {
+    const normalized = value.replace(/[^0-9a-f]/gi, "");
+    if (normalized.length === 0) {
+      return new Uint8Array();
+    }
+    const padded = normalized.length % 2 === 0 ? normalized : `0${normalized}`;
+    const bytes = new Uint8Array(padded.length / 2);
+    for (let index = 0; index < padded.length; index += 2) {
+      bytes[index / 2] = Number.parseInt(padded.slice(index, index + 2), 16);
+    }
+    return bytes;
   }
 }

@@ -838,10 +838,10 @@ describe("runPlayCli", () => {
         }),
         cwd: () => fixture.workspace,
         now: () => new Date("2026-03-20T18:00:00.000Z"),
-        fetchImpl: async () => {
+        fetchImpl: (async () => {
           fetchCalls += 1;
           throw new Error("network should not be touched when the cache is fresh");
-        },
+        }) as unknown as typeof fetch,
         loadConfig: async () => ({
           sidPath: fixture.workspace,
           audioCachePath: fixture.workspace,
@@ -895,7 +895,7 @@ describe("runPlayCli", () => {
         }),
         cwd: () => fixture.workspace,
         now: () => new Date("2026-03-20T18:00:00.000Z"),
-        fetchImpl: async (url: string | URL | Request) => {
+        fetchImpl: (async (url: string | URL | Request) => {
           const href = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
           if (href.endsWith("/releases/latest")) {
             latestReleaseChecks += 1;
@@ -915,7 +915,7 @@ describe("runPlayCli", () => {
           }
           assetDownloads += 1;
           throw new Error(`unexpected download ${href}`);
-        },
+        }) as typeof fetch,
         loadConfig: async () => ({
           sidPath: fixture.workspace,
           audioCachePath: fixture.workspace,
@@ -969,10 +969,10 @@ describe("runPlayCli", () => {
           }
         }),
         cwd: () => fixture.workspace,
-        fetchImpl: async () => {
+        fetchImpl: (async () => {
           fetchCalls += 1;
           throw new Error("explicit local DB should bypass sidflow-data");
-        },
+        }) as unknown as typeof fetch,
         loadConfig: async () => ({
           sidPath: fixture.workspace,
           audioCachePath: fixture.workspace,
@@ -1252,6 +1252,154 @@ describe("runPlayCli", () => {
     expect(playbackEvents).toContain("resume");
   });
 
+  it("filters the playlist by title or artist from the dedicated filter command", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "/", "hubbard", "q"];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => actions.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: filePath.includes("song120.sid") ? "Rob Hubbard" : "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("/ filter title/artist");
+    expect(output).toContain("Filtering playlist by \"hubbard\"");
+    expect(output).toContain("filter \"hubbard\"");
+    expect(output).toContain("song120.sid");
+    expect(output).toContain("Playlist Window");
+  });
+
+  it("captures and restores Ultimate64 SID volumes around pause and resume", async () => {
+    const fixture = await createStationDemoFixture();
+    const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "space", "space", "q"];
+    const fetchCalls: Array<{ url: string; method: string; body?: Uint8Array }> = [];
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const method = init?.method ?? "GET";
+      const body = init?.body instanceof Uint8Array ? init.body : undefined;
+      fetchCalls.push({ url, method, body });
+
+      if (url.includes(":readmem")) {
+        const address = new URL(url).searchParams.get("address");
+        const values: Record<string, number> = {
+          D418: 0x1f,
+          D438: 0x2d,
+          D458: 0x3a,
+        };
+        return new Response(Uint8Array.from([values[address ?? "D418"] ?? 0x0f]), { status: 200 });
+      }
+
+      return new Response(JSON.stringify({ errors: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    try {
+      const exitCode = await runStationDemoCli(
+        [
+          "--db", fixture.dbPath,
+          "--hvsc", fixture.workspace,
+          "--playback", "c64u",
+          "--c64u-host", "192.168.1.13",
+          "--sample-size", "10",
+          "--station-size", "2",
+        ],
+        {
+          cwd: () => fixture.workspace,
+          loadConfig: async () => ({
+            sidPath: fixture.workspace,
+            audioCachePath: fixture.workspace,
+            tagsPath: fixture.workspace,
+            classifiedPath: fixture.workspace,
+            sidplayPath: "/usr/bin/sidplayfp",
+            threads: 0,
+            classificationDepth: 3,
+          }),
+          prompt: async () => actions.shift() ?? "q",
+          random: () => 0,
+          parseSidFile: async (filePath: string) => ({
+            type: "PSID",
+            version: 2,
+            title: path.basename(filePath),
+            author: "Test Composer",
+            released: "1989 Test Release",
+            songs: 1,
+            startSong: 1,
+            clock: "PAL",
+            sidModel1: "MOS6581",
+            loadAddress: 0,
+            initAddress: 0,
+            playAddress: 0,
+          }),
+          lookupSongDurationMs: async () => 60_000,
+        },
+      );
+
+      expect(exitCode).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const writeMemBodies = fetchCalls
+      .filter((call) => call.url.includes(":writemem"))
+      .map((call) => Array.from(call.body ?? new Uint8Array()));
+    expect(fetchCalls.filter((call) => call.url.includes(":readmem"))).toHaveLength(3);
+    expect(fetchCalls.some((call) => call.url.includes(":pause"))).toBe(true);
+    expect(fetchCalls.some((call) => call.url.includes(":resume"))).toBe(true);
+    expect(writeMemBodies).toContainEqual([0x10]);
+    expect(writeMemBodies).toContainEqual([0x20]);
+    expect(writeMemBodies).toContainEqual([0x30]);
+    expect(writeMemBodies).toContainEqual([0x1f]);
+    expect(writeMemBodies).toContainEqual([0x2d]);
+    expect(writeMemBodies).toContainEqual([0x3a]);
+  });
+
   it("shuffles the playlist around the current song without restarting playback", async () => {
     const fixture = await createStationDemoFixture();
     const stdoutChunks: string[] = [];
@@ -1521,6 +1669,8 @@ describe("runPlayCli", () => {
           return {
             start: async () => undefined,
             stop: async () => undefined,
+            pause: async () => undefined,
+            resume: async () => undefined,
           };
         },
         parseSidFile: async (filePath: string) => ({

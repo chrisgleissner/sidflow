@@ -121,6 +121,7 @@ type StationAction =
   | { type: "pageDown" }
   | { type: "playSelected" }
   | { type: "togglePause" }
+  | { type: "setFilter"; value: string; editing: boolean }
   | { type: "shuffle" }
   | { type: "replay" }
   | { type: "rebuild" }
@@ -153,6 +154,9 @@ interface StationScreenState {
   durationMs?: number;
   playlistElapsedMs?: number;
   playlistDurationMs?: number;
+  filterQuery?: string;
+  filterEditing?: boolean;
+  filterMatchCount?: number;
   minDurationSeconds?: number;
   paused?: boolean;
   statusLine?: string;
@@ -294,7 +298,7 @@ Workflow:
 
 Commands:
   Rating phase: 0-5 rate, l like(5), d dislike(0), s skip, b back, r replay, q quit
-  Station phase: left/right play prev/next, up/down/pgup/pgdn browse, enter play selected, space pause/resume, h shuffle, s skip=dislike, l like(5), d dislike(0), r replay, u rebuild, 0-5 rate+rebuild, q quit`,
+  Station phase: / filter title/artist, left/right play prev/next, up/down/pgup/pgdn browse, enter play selected, space pause/resume, h shuffle, s skip=dislike, l like(5), d dislike(0), r replay, u rebuild, 0-5 rate+rebuild, q quit`,
   ARG_DEFS,
   [
     "sidflow-play station-demo",
@@ -1003,6 +1007,10 @@ function bold(enabled: boolean, value: string): string {
   return colorize(enabled, ANSI.bold, value);
 }
 
+function subtle(enabled: boolean, value: string): string {
+  return colorize(enabled, ANSI.brightBlack, value);
+}
+
 function dim(enabled: boolean, value: string): string {
   return colorize(enabled, ANSI.dim, value);
 }
@@ -1063,31 +1071,127 @@ function renderProgressLine(
   );
 }
 
+function normalizeFilterQuery(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function trackMatchesFilter(track: StationTrackDetails, filterQuery: string): boolean {
+  const normalized = normalizeFilterQuery(filterQuery);
+  if (!normalized) {
+    return true;
+  }
+  const title = (track.title || path.basename(track.sid_path)).toLowerCase();
+  const author = (track.author || "").toLowerCase();
+  return title.includes(normalized) || author.includes(normalized);
+}
+
+function getFilteredTrackIndices(queue: StationTrackDetails[], filterQuery: string): number[] {
+  const normalized = normalizeFilterQuery(filterQuery);
+  if (!normalized) {
+    return queue.map((_, index) => index);
+  }
+
+  const indices: number[] = [];
+  for (let index = 0; index < queue.length; index += 1) {
+    if (trackMatchesFilter(queue[index]!, normalized)) {
+      indices.push(index);
+    }
+  }
+  return indices;
+}
+
+function clampSelectionToMatches(matches: number[], preferredIndex: number, fallbackIndex: number): number {
+  if (matches.length === 0) {
+    return Math.max(0, fallbackIndex);
+  }
+  if (matches.includes(preferredIndex)) {
+    return preferredIndex;
+  }
+  if (matches.includes(fallbackIndex)) {
+    return fallbackIndex;
+  }
+
+  let closest = matches[0]!;
+  let closestDistance = Math.abs(closest - preferredIndex);
+  for (const index of matches) {
+    const distance = Math.abs(index - preferredIndex);
+    if (distance < closestDistance) {
+      closest = index;
+      closestDistance = distance;
+    }
+  }
+  return closest;
+}
+
+function moveSelectionInMatches(matches: number[], selectedIndex: number, delta: number): number | null {
+  if (matches.length === 0) {
+    return null;
+  }
+  const currentPosition = matches.indexOf(selectedIndex);
+  const startPosition = currentPosition >= 0 ? currentPosition : 0;
+  const nextPosition = Math.max(0, Math.min(matches.length - 1, startPosition + delta));
+  return matches[nextPosition] ?? null;
+}
+
+function moveCurrentInMatches(matches: number[], currentIndex: number, direction: -1 | 1): number | null {
+  if (matches.length === 0) {
+    return null;
+  }
+
+  if (direction > 0) {
+    for (const index of matches) {
+      if (index > currentIndex) {
+        return index;
+      }
+    }
+    return matches[matches.length - 1] ?? null;
+  }
+
+  for (let matchIndex = matches.length - 1; matchIndex >= 0; matchIndex -= 1) {
+    if (matches[matchIndex]! < currentIndex) {
+      return matches[matchIndex] ?? null;
+    }
+  }
+  return matches[0] ?? null;
+}
+
 function renderTrackWindow(
   enabled: boolean,
   queue: StationTrackDetails[],
+  filteredIndices: number[],
   currentIndex: number,
   selectedIndex: number,
   width: number,
   visibleRows: number,
 ): string[] {
-  const focusIndex = Math.max(0, Math.min(queue.length - 1, selectedIndex));
+  if (filteredIndices.length === 0) {
+    const rows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, visibleRows);
+    const lines = [truncate(subtle(enabled, "No playlist matches the current filter."), width)];
+    while (lines.length < rows) {
+      lines.push(subtle(enabled, "·"));
+    }
+    return lines;
+  }
+
+  const focusPosition = filteredIndices.indexOf(selectedIndex);
+  const focusIndex = Math.max(0, Math.min(filteredIndices.length - 1, focusPosition >= 0 ? focusPosition : 0));
   const rows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, visibleRows);
   const beforeCount = Math.floor((rows - 1) / 2);
   const afterCount = rows - beforeCount - 1;
   let windowStart = Math.max(0, focusIndex - beforeCount);
-  let windowEnd = Math.min(queue.length, focusIndex + afterCount + 1);
+  let windowEnd = Math.min(filteredIndices.length, focusIndex + afterCount + 1);
   const deficit = rows - (windowEnd - windowStart);
   if (deficit > 0) {
     windowStart = Math.max(0, windowStart - deficit);
-    windowEnd = Math.min(queue.length, windowStart + rows);
+    windowEnd = Math.min(filteredIndices.length, windowStart + rows);
   }
   const lines: string[] = [];
 
-  for (let index = windowStart; index < windowEnd; index += 1) {
+  for (let matchPosition = windowStart; matchPosition < windowEnd; matchPosition += 1) {
+    const index = filteredIndices[matchPosition]!;
     const isCurrent = index === currentIndex;
     const isSelected = index === selectedIndex;
-    const track = queue[index];
+    const track = queue[index]!;
     const title = track.title || path.basename(track.sid_path);
     const author = track.author || "unknown";
     const marker = isCurrent && isSelected
@@ -1103,12 +1207,12 @@ function renderTrackWindow(
       ? bold(enabled, colorize(enabled, ANSI.green, line))
       : isSelected
         ? colorize(enabled, ANSI.yellow, line)
-        : dim(enabled, line);
+        : subtle(enabled, line);
     lines.push(truncate(styledLine, width));
   }
 
   while (lines.length < rows) {
-    lines.push(dim(enabled, "·"));
+    lines.push(subtle(enabled, "·"));
   }
 
   return lines;
@@ -1125,6 +1229,11 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
   const playlistDurationMs = state.playlistDurationMs ?? durationMs;
   const selectedIndex = state.selectedIndex ?? state.index;
   const selectedTrack = state.queue?.[selectedIndex];
+  const filterQuery = state.filterQuery ?? "";
+  const filteredIndices = getFilteredTrackIndices(state.queue ?? [state.current], filterQuery);
+  const filterBadge = filterQuery
+    ? `${state.filterEditing ? "filtering" : "filter"} \"${filterQuery}\" (${filteredIndices.length}/${state.queue?.length ?? 1})`
+    : "filter off";
   const titleLine = truncate(`${colorize(ansiEnabled, ANSI.green, current.title || path.basename(current.sid_path))} — ${current.author || "unknown author"}`, width);
   const playbackBadge = state.playbackMode === "none"
     ? colorize(ansiEnabled, ANSI.brightBlack, "silent")
@@ -1132,12 +1241,18 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
   const pausedBadge = state.paused ? colorize(ansiEnabled, ANSI.brightYellow, "paused") : colorize(ansiEnabled, ANSI.brightBlack, "live");
 
   const lines = [
-    `${title}  ${dim(ansiEnabled, state.phase === "rating" ? "seed capture" : "station playback")}  ${playbackBadge}  ${pausedBadge}`,
-    `${dim(ansiEnabled, "Dataset")} ${truncate(state.dataSource, width - 9)}`,
-    `${dim(ansiEnabled, "DB")} ${truncate(state.dbPath, width - 4)}`,
-    `${dim(ansiEnabled, "Legend")} ${renderLegend(ansiEnabled)}`,
-    `${dim(ansiEnabled, "Best")} 5 locks the vibe in for future picks. 0 is a hard dislike.`,
-    `${dim(ansiEnabled, "Duration gate")} >= ${Math.max(1, state.minDurationSeconds ?? 15)}s`,
+    title,
+    `${subtle(ansiEnabled, state.phase === "rating" ? "seed capture" : "station playback")}  ${playbackBadge}  ${pausedBadge}`,
+    "",
+    bold(ansiEnabled, "Source"),
+    `${subtle(ansiEnabled, "Dataset")} ${truncate(state.dataSource, width - 9)}`,
+    `${subtle(ansiEnabled, "DB")} ${truncate(state.dbPath, width - 4)}`,
+    ...(state.featuresJsonl ? [truncate(`${subtle(ansiEnabled, "Provenance")} ${state.featuresJsonl}`, width)] : []),
+    "",
+    bold(ansiEnabled, "Guide"),
+    `${subtle(ansiEnabled, "Legend")} ${renderLegend(ansiEnabled)}`,
+    `${subtle(ansiEnabled, "Best")} 5 locks the vibe in for future picks. 0 is a hard dislike.`,
+    `${subtle(ansiEnabled, "Duration gate")} >= ${Math.max(1, state.minDurationSeconds ?? 15)}s`,
     "",
     `${bold(ansiEnabled, state.phase === "rating" ? `Rate songs until ${state.ratedTarget} are scored` : "Now Playing")}`,
     titleLine,
@@ -1151,8 +1266,8 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
 
   if (state.phase === "rating") {
     lines.push(
-      truncate(`${bold(ansiEnabled, `Seed ${state.index + 1}`)}  ${dim(ansiEnabled, "Controls")} 1-5 rate  s skip  b back  r replay  q quit`, width),
-      truncate(`${dim(ansiEnabled, "Shortcuts")} l like(5)  d dislike(0)`, width),
+      truncate(`${bold(ansiEnabled, `Seed ${state.index + 1}`)}  ${subtle(ansiEnabled, "Controls")} 1-5 rate  s skip  b back  r replay  q quit`, width),
+      truncate(`${subtle(ansiEnabled, "Shortcuts")} l like(5)  d dislike(0)`, width),
       truncate(state.statusLine ?? "Skipped songs do not count. Keep rating until the target is reached.", width),
       truncate(state.hintLine ?? "", width),
     );
@@ -1162,21 +1277,18 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
         ? `Selected ${selectedIndex + 1}/${state.total}: ${selectedTrack.title || path.basename(selectedTrack.sid_path)}`
         : "Selection is on the currently playing song."
     );
-    const reservedRows = lines.length + 7 + (state.featuresJsonl ? 2 : 0);
+    const reservedRows = lines.length + 8;
     const playlistRows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, Math.min(state.queue?.length ?? 1, height - reservedRows));
     lines.push(
-      truncate(`${bold(ansiEnabled, `Station ${state.index + 1}/${state.total}`)}  ${dim(ansiEnabled, "Controls")} ←/→ play prev/next  ↑/↓ browse  PgUp/PgDn jump  Enter play selected`, width),
-      truncate(`${dim(ansiEnabled, "Shortcuts")} space pause/resume  h shuffle  s skip=dislike  l like(5)  d dislike(0)  r replay  u rebuild  0-5 rate+rebuild  q quit`, width),
+      truncate(`${bold(ansiEnabled, `Station ${state.index + 1}/${state.total}`)}  ${subtle(ansiEnabled, "Controls")} ←/→ play prev/next  ↑/↓ browse  PgUp/PgDn jump  Enter play selected`, width),
+      truncate(`${subtle(ansiEnabled, "Shortcuts")} / filter title/artist  space pause/resume  h shuffle  s skip=dislike  l like(5)  d dislike(0)  r replay  u rebuild  0-5 rate+rebuild  q quit`, width),
+      truncate(`${subtle(ansiEnabled, "Filter")} ${filterBadge}${state.filterEditing ? "  Enter keep  Esc clear" : "  / edit  Esc clear"}`, width),
       truncate(state.statusLine ?? "Recommendations reflect the rated tracks shown above.", width),
       truncate(selectionHint, width),
       "",
-      bold(ansiEnabled, `Playlist Window (${playlistRows} visible)`),
-      ...renderTrackWindow(ansiEnabled, state.queue ?? [state.current], state.index, selectedIndex, width, playlistRows),
+      bold(ansiEnabled, `Playlist Window (${playlistRows} visible${filterQuery ? `, ${filteredIndices.length} filtered` : ""})`),
+      ...renderTrackWindow(ansiEnabled, state.queue ?? [state.current], filteredIndices, state.index, selectedIndex, width, playlistRows),
     );
-  }
-
-  if (state.featuresJsonl) {
-    lines.push("", truncate(`${dim(ansiEnabled, "Provenance")} ${state.featuresJsonl}`, width));
   }
 
   return `${lines.join("\n")}\n`;
@@ -1302,6 +1414,9 @@ function mapStationToken(token: string): StationAction | null {
   if (token === " ") {
     return { type: "togglePause" };
   }
+  if (["/", "f"].includes(token)) {
+    return { type: "setFilter", value: "", editing: true };
+  }
   if (["h"].includes(token)) {
     return { type: "shuffle" };
   }
@@ -1347,8 +1462,12 @@ class PromptInputController implements InputController {
   async readStationAction(_timeoutMs: number): Promise<StationAction> {
     while (true) {
       const answer = normalizePromptResponse(
-        await this.ask("Command left/right/up/down/pgup/pgdn, enter=play, space=pause, h=shuffle, s=skip-dislike, l=like, d=dislike, r=replay, u=rebuild, 0-5=rate, q=quit > "),
+        await this.ask("Command / filter, left/right/up/down/pgup/pgdn, enter=play, space=pause, h=shuffle, s=skip-dislike, l=like, d=dislike, r=replay, u=rebuild, 0-5=rate, q=quit > "),
       );
+      if (["/", "f"].includes(answer)) {
+        const filterValue = await this.ask("Filter title/artist (blank clears) > ");
+        return { type: "setFilter", value: filterValue, editing: false };
+      }
       const action = mapStationToken(answer);
       if (action) {
         return action;
@@ -1392,9 +1511,19 @@ function decodeTerminalInput(chunk: string): string[] {
       index += 3;
       continue;
     }
+    if (remainder.startsWith("\u001b")) {
+      tokens.push("escape");
+      index += 1;
+      continue;
+    }
     const char = chunk[index];
     if (char === " ") {
       tokens.push(" ");
+      index += 1;
+      continue;
+    }
+    if (char === "\u007f" || char === "\b") {
+      tokens.push("backspace");
       index += 1;
       continue;
     }
@@ -1413,6 +1542,8 @@ class RawInputController implements InputController {
   private readonly queue: string[] = [];
   private readonly handleData: (chunk: string) => void;
   private closed = false;
+  private filterEditing = false;
+  private filterBuffer = "";
 
   constructor(runtime: StationDemoRuntime) {
     this.stdin = runtime.stdin as NodeJS.ReadStream;
@@ -1462,7 +1593,42 @@ class RawInputController implements InputController {
   }
 
   async readStationAction(timeoutMs: number, onTick?: () => void): Promise<StationAction> {
-    const action = await this.nextMappedAction<StationAction>(timeoutMs, mapStationToken, onTick);
+    const action = await this.nextMappedAction<StationAction>(
+      timeoutMs,
+      (token) => {
+        if (this.filterEditing) {
+          if (token === "\u0003") {
+            return { type: "quit" };
+          }
+          if (token === "escape") {
+            this.filterEditing = false;
+            this.filterBuffer = "";
+            return { type: "setFilter", value: "", editing: false };
+          }
+          if (token === "") {
+            this.filterEditing = false;
+            return { type: "setFilter", value: this.filterBuffer, editing: false };
+          }
+          if (token === "backspace") {
+            this.filterBuffer = this.filterBuffer.slice(0, -1);
+            return { type: "setFilter", value: this.filterBuffer, editing: true };
+          }
+          if (token.length === 1 && token >= " ") {
+            this.filterBuffer += token;
+            return { type: "setFilter", value: this.filterBuffer, editing: true };
+          }
+          return null;
+        }
+
+        if (["/", "f"].includes(token)) {
+          this.filterEditing = true;
+          return { type: "setFilter", value: this.filterBuffer, editing: true };
+        }
+
+        return mapStationToken(token);
+      },
+      onTick,
+    );
     return action ?? { type: "timeout" };
   }
 }
@@ -1678,7 +1844,7 @@ class LocalSidplayPlaybackAdapter implements PlaybackAdapter {
 }
 
 class Ultimate64PlaybackAdapter implements PlaybackAdapter {
-  private sidVolumes = new Uint8Array([0x0f, 0x0f, 0x0f]);
+  private sidVolumes: Uint8Array = Uint8Array.from([0x0f, 0x0f, 0x0f]);
   private paused = false;
 
   constructor(private readonly client: Ultimate64Client) {}
@@ -1698,10 +1864,16 @@ class Ultimate64PlaybackAdapter implements PlaybackAdapter {
     if (this.paused) {
       return;
     }
+
+    try {
+      this.sidVolumes = await this.captureSidVolumes();
+    } catch {
+      // Keep the most recent known values if the machine cannot serve memory reads.
+    }
+
     await Promise.all(
       U64_SID_VOLUME_REGISTERS.map(async (address, index) => {
-        this.sidVolumes[index] = 0x0f;
-        await this.client.writeMemory({ address, data: new Uint8Array([0x00]) });
+        await this.client.writeMemory({ address, data: new Uint8Array([this.sidVolumes[index]! & 0xf0]) });
       }),
     );
     await this.client.pause();
@@ -1719,6 +1891,20 @@ class Ultimate64PlaybackAdapter implements PlaybackAdapter {
     );
     await this.client.resume();
     this.paused = false;
+  }
+
+  private async captureSidVolumes(): Promise<Uint8Array> {
+    const values = await Promise.all(
+      U64_SID_VOLUME_REGISTERS.map(async (address, index) => {
+        try {
+          const data = await this.client.readMemory({ address, length: 1 });
+          return data[0] ?? this.sidVolumes[index] ?? 0x0f;
+        } catch {
+          return this.sidVolumes[index] ?? 0x0f;
+        }
+      }),
+    );
+    return Uint8Array.from(values);
   }
 }
 
@@ -2117,6 +2303,8 @@ export async function runStationDemoCli(
 
     let stationIndex = 0;
     let selectedIndex = 0;
+    let stationFilter = "";
+    let filterEditing = false;
     const initialSummary = summarizeRatingAnchors(ratings);
     let stationStatus = `Station ready from ${ratings.size} ratings (${initialSummary.strong} strong anchors, ${initialSummary.excluded} excluded dislikes). Flow is sequenced by similarity.`;
 
@@ -2138,12 +2326,14 @@ export async function runStationDemoCli(
           const liveElapsedMs = getCurrentElapsedMs();
           const livePlaylistDurationMs = sumPlaylistDurationMs(stationQueue);
           const livePlaylistElapsedMs = resolvePlaylistPositionMs(stationQueue, stationIndex, liveElapsedMs);
-          const selectedTrack = stationQueue[selectedIndex];
+          const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
+          const effectiveSelectedIndex = clampSelectionToMatches(filteredIndices, selectedIndex, stationIndex);
+          const selectedTrack = stationQueue[effectiveSelectedIndex];
           renderer.render({
             phase: "station",
             current,
             index: stationIndex,
-            selectedIndex,
+            selectedIndex: effectiveSelectedIndex,
             total: stationQueue.length,
             ratedCount: ratings.size,
             ratedTarget,
@@ -2160,10 +2350,13 @@ export async function runStationDemoCli(
             durationMs,
             playlistElapsedMs: livePlaylistElapsedMs,
             playlistDurationMs: livePlaylistDurationMs,
+            filterQuery: stationFilter,
+            filterEditing,
+            filterMatchCount: filteredIndices.length,
             paused,
             statusLine: stationStatus,
             hintLine: selectedTrack && selectedTrack.track_id !== current.track_id
-              ? `Selected ${selectedIndex + 1}/${stationQueue.length}: ${selectedTrack.title || path.basename(selectedTrack.sid_path)}`
+              ? `Selected ${effectiveSelectedIndex + 1}/${stationQueue.length}: ${selectedTrack.title || path.basename(selectedTrack.sid_path)}`
               : `Playhead ${stationIndex + 1}/${stationQueue.length}. Browse with ↑/↓/PgUp/PgDn, Enter plays the selected track.`,
           });
         };
@@ -2194,11 +2387,12 @@ export async function runStationDemoCli(
           const liveElapsedMs = getCurrentElapsedMs();
           const livePlaylistDurationMs = sumPlaylistDurationMs(stationQueue);
           const livePlaylistElapsedMs = resolvePlaylistPositionMs(stationQueue, stationIndex, liveElapsedMs);
+          const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
           renderer.render({
             phase: "station",
             current,
             index: stationIndex,
-            selectedIndex,
+            selectedIndex: clampSelectionToMatches(filteredIndices, selectedIndex, stationIndex),
             total: stationQueue.length,
             ratedCount: ratings.size,
             ratedTarget,
@@ -2215,6 +2409,9 @@ export async function runStationDemoCli(
             durationMs,
             playlistElapsedMs: livePlaylistElapsedMs,
             playlistDurationMs: livePlaylistDurationMs,
+            filterQuery: stationFilter,
+            filterEditing,
+            filterMatchCount: filteredIndices.length,
             paused,
             statusLine: "Station session ended.",
           });
@@ -2227,52 +2424,103 @@ export async function runStationDemoCli(
           startedAt = Date.now();
           elapsedBeforePauseMs = 0;
           paused = false;
-          selectedIndex = stationIndex;
+          selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), stationIndex, stationIndex);
           stationStatus = `Replaying ${current.title || path.basename(current.sid_path)}.`;
           continue;
         }
 
+        if (action.type === "setFilter") {
+          stationFilter = normalizeFilterQuery(action.value);
+          filterEditing = action.editing;
+          const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
+          if (filteredIndices.length > 0) {
+            selectedIndex = clampSelectionToMatches(filteredIndices, selectedIndex, stationIndex);
+            stationStatus = stationFilter
+              ? `Filtering playlist by \"${stationFilter}\" (${filteredIndices.length}/${stationQueue.length} matches).`
+              : "Cleared the playlist filter.";
+          } else {
+            stationStatus = stationFilter
+              ? `No playlist matches for \"${stationFilter}\". Press Esc or / to adjust the filter.`
+              : "Cleared the playlist filter.";
+          }
+          continue;
+        }
+
+        const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
+
         if (action.type === "next") {
+          const nextIndex = stationFilter
+            ? moveCurrentInMatches(filteredIndices, stationIndex, 1)
+            : Math.min(stationQueue.length - 1, stationIndex + 1);
+          if (nextIndex === null || nextIndex === stationIndex) {
+            stationStatus = stationFilter
+              ? `Already at the end of the filtered playlist for \"${stationFilter}\".`
+              : "Already at the end of the station playlist.";
+            continue;
+          }
           await stopPlayback();
-          stationIndex = Math.min(stationQueue.length - 1, stationIndex + 1);
+          stationIndex = nextIndex;
           selectedIndex = stationIndex;
           stationStatus = "Moved to the next station track.";
           break;
         }
 
         if (action.type === "back") {
+          const previousIndex = stationFilter
+            ? moveCurrentInMatches(filteredIndices, stationIndex, -1)
+            : Math.max(0, stationIndex - 1);
+          if (previousIndex === null || previousIndex === stationIndex) {
+            stationStatus = stationFilter
+              ? `Already at the start of the filtered playlist for \"${stationFilter}\".`
+              : "Already at the start of the station playlist.";
+            continue;
+          }
           await stopPlayback();
-          stationIndex = Math.max(0, stationIndex - 1);
+          stationIndex = previousIndex;
           selectedIndex = stationIndex;
           stationStatus = "Moved to the previous station track.";
           break;
         }
 
         if (action.type === "cursorUp") {
-          selectedIndex = Math.max(0, selectedIndex - 1);
+          selectedIndex = stationFilter
+            ? moveSelectionInMatches(filteredIndices, selectedIndex, -1) ?? selectedIndex
+            : Math.max(0, selectedIndex - 1);
           stationStatus = `Selected track ${selectedIndex + 1}/${stationQueue.length} without interrupting playback.`;
           continue;
         }
 
         if (action.type === "cursorDown") {
-          selectedIndex = Math.min(stationQueue.length - 1, selectedIndex + 1);
+          selectedIndex = stationFilter
+            ? moveSelectionInMatches(filteredIndices, selectedIndex, 1) ?? selectedIndex
+            : Math.min(stationQueue.length - 1, selectedIndex + 1);
           stationStatus = `Selected track ${selectedIndex + 1}/${stationQueue.length} without interrupting playback.`;
           continue;
         }
 
         if (action.type === "pageUp") {
-          selectedIndex = Math.max(0, selectedIndex - 10);
+          selectedIndex = stationFilter
+            ? moveSelectionInMatches(filteredIndices, selectedIndex, -10) ?? selectedIndex
+            : Math.max(0, selectedIndex - 10);
           stationStatus = `Jumped selection to track ${selectedIndex + 1}/${stationQueue.length}.`;
           continue;
         }
 
         if (action.type === "pageDown") {
-          selectedIndex = Math.min(stationQueue.length - 1, selectedIndex + 10);
+          selectedIndex = stationFilter
+            ? moveSelectionInMatches(filteredIndices, selectedIndex, 10) ?? selectedIndex
+            : Math.min(stationQueue.length - 1, selectedIndex + 10);
           stationStatus = `Jumped selection to track ${selectedIndex + 1}/${stationQueue.length}.`;
           continue;
         }
 
         if (action.type === "playSelected") {
+          if (filteredIndices.length === 0) {
+            stationStatus = stationFilter
+              ? `No playlist matches for \"${stationFilter}\". Press Esc or / to adjust the filter.`
+              : "The playlist is empty.";
+            continue;
+          }
           if (selectedIndex === stationIndex) {
             stationStatus = paused
               ? "Selection is already paused on the current song. Press space to resume."
@@ -2303,7 +2551,7 @@ export async function runStationDemoCli(
         if (action.type === "shuffle") {
           stationQueue = shuffleQueueKeepingCurrent(stationQueue, stationIndex, runtime.random);
           stationIndex = 0;
-          selectedIndex = 0;
+          selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), 0, 0);
           stationStatus = "Shuffled the remaining playlist around the current song.";
           continue;
         }
@@ -2324,7 +2572,7 @@ export async function runStationDemoCli(
             const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex);
             stationQueue = merged.queue;
             stationIndex = merged.index;
-            selectedIndex = stationIndex;
+            selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), stationIndex, stationIndex);
             const rebuiltSummary = summarizeRatingAnchors(ratings);
             stationStatus = action.rating === 5
               ? `Liked this track. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
@@ -2355,7 +2603,7 @@ export async function runStationDemoCli(
           const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex);
           stationQueue = merged.queue;
           stationIndex = merged.index;
-          selectedIndex = stationIndex;
+          selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), stationIndex, stationIndex);
           const rebuiltSummary = summarizeRatingAnchors(ratings);
           stationStatus = `Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`;
         } else {
