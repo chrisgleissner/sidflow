@@ -37,6 +37,11 @@ export interface Ultimate64Response {
   readonly [key: string]: unknown;
 }
 
+export interface WriteMemoryOptions {
+  readonly address: number;
+  readonly data: Uint8Array;
+}
+
 export class Ultimate64Client {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
@@ -110,6 +115,29 @@ export class Ultimate64Client {
    */
   async reset(): Promise<Ultimate64Response> {
     return await this.put("/v1/machine:reset");
+  }
+
+  /**
+   * Pause the C64 machine
+   */
+  async pause(): Promise<Ultimate64Response> {
+    return await this.put("/v1/machine:pause");
+  }
+
+  /**
+   * Resume the C64 machine
+   */
+  async resume(): Promise<Ultimate64Response> {
+    return await this.put("/v1/machine:resume");
+  }
+
+  /**
+   * Write memory via the REST DMA endpoint
+   */
+  async writeMemory(options: WriteMemoryOptions): Promise<Ultimate64Response> {
+    const params = new URLSearchParams();
+    params.set("address", options.address.toString(16).toUpperCase());
+    return await this.post(`/v1/machine:writemem?${params.toString()}`, options.data);
   }
 
   /**

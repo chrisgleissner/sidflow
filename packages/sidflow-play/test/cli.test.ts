@@ -2,7 +2,7 @@
 
 import { describe, expect, test, it } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { Writable } from "node:stream";
@@ -40,7 +40,7 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
     INSERT INTO tracks (track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const rows = [
+  const rows: Array<[string, string, [number, number, number], number, number, number, number, number, number, number, number]> = [
     ["A/song1.sid#1", "A/song1.sid", [1, 0, 0], 5, 4, 2, 4, 2, 0, 0, 5],
     ["A/song2.sid#1", "A/song2.sid", [0.97, 0.03, 0], 5, 5, 2, 5, 1, 0, 0, 3],
     ["A/song3.sid#1", "A/song3.sid", [0.95, 0.05, 0], 4, 5, 2, 5, 1, 0, 0, 2],
@@ -53,7 +53,27 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
     ["D/song10.sid#1", "D/song10.sid", [0.87, 0.13, 0], 4, 4, 3, 4, 2, 0, 0, 4],
     ["E/song11.sid#1", "E/song11.sid", [0.86, 0.14, 0], 4, 4, 3, 4, 2, 0, 0, 4],
     ["F/song12.sid#1", "F/song12.sid", [0.84, 0.16, 0], 4, 4, 3, 4, 2, 0, 0, 4],
-  ] as const;
+  ];
+
+  for (let index = 13; index <= 140; index += 1) {
+    const group = String.fromCharCode(65 + ((index - 1) % 20));
+    const sidPath = `${group}/song${index}.sid`;
+    const energy = Math.max(0.2, 0.99 - (index * 0.003));
+    const mood = Number((1 - energy).toFixed(3));
+    rows.push([
+      `${sidPath}#1`,
+      sidPath,
+      [Number(energy.toFixed(3)), mood, 0],
+      4,
+      4,
+      3,
+      4,
+      1,
+      0,
+      0,
+      2,
+    ]);
+  }
 
   for (const [trackId, sidPath, vector, e, m, c, p, likes, dislikes, skips, plays] of rows) {
     insert.run(trackId, sidPath, 1, JSON.stringify(vector), e, m, c, p, likes, dislikes, skips, plays, null);
@@ -62,6 +82,30 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
   }
   db.close();
   return { dbPath, workspace };
+}
+
+async function seedStationDemoReleaseCache(
+  workspace: string,
+  dbPath: string,
+  checkedAt: string,
+  releaseTag = "sidcorr-hvsc-full-20260315T095426Z",
+): Promise<void> {
+  const cacheDir = path.join(workspace, "data", "cache", "station-demo", "sidflow-data");
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    path.join(cacheDir, "latest-release.json"),
+    JSON.stringify({
+      assetName: "hvsc-full-sidcorr-1-20260315T095426Z.tar.gz",
+      assetUrl: "https://example.invalid/hvsc-full-sidcorr-1-20260315T095426Z.tar.gz",
+      bundleDir: path.join(cacheDir, "releases", releaseTag, "bundle"),
+      checkedAt,
+      dbPath,
+      manifestPath: dbPath.replace(/\.sqlite$/, ".manifest.json"),
+      publishedAt: "2026-03-15T09:54:33Z",
+      releaseTag,
+    }, null, 2),
+    "utf8",
+  );
 }
 
 describe("CLI argument parsing", () => {
@@ -189,8 +233,18 @@ describe("station demo CLI argument parsing", () => {
     const result = parseStationDemoArgs([]);
     expect(result.options.playback).toBeUndefined();
     expect(result.options.adventure).toBe(3);
+    expect(result.options.forceLocalDb).toBeUndefined();
+    expect(result.options.localDb).toBeUndefined();
     expect(result.options.sampleSize).toBe(10);
+    expect(result.options.stationSize).toBe(100);
     expect(result.options.minDuration).toBe(15);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("parses local dataset override flags", () => {
+    const result = parseStationDemoArgs(["--force-local-db", "--local-db", "custom.sqlite"]);
+    expect(result.options.forceLocalDb).toBe(true);
+    expect(result.options.localDb).toBe("custom.sqlite");
     expect(result.errors).toHaveLength(0);
   });
 
@@ -707,8 +761,300 @@ describe("runPlayCli", () => {
     expect(output).toContain("Legend");
     expect(output).toContain("5 locks the vibe in");
     expect(output).toContain("Playlist Window");
+    expect(output).toContain("Song Progress");
+    expect(output).toContain("Playlist Pos ");
+    expect(output).toContain("Station 1/100");
     expect(output).toContain("Duration gate");
+    expect(output).toContain("Flow is sequenced by simila");
     expect(output).not.toContain("song8.sid");
+  });
+
+  it("sizes the playlist window to the available terminal height", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const stdout = Object.assign(new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    }), { rows: 40, columns: 140 });
+    const answers = ["5", "5", "4", "4", "5", "4", "5", "4", "5", "4", "q"];
+
+    const exitCode = await runStationDemoCli(
+      ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--sample-size", "10"],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => answers.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 123_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Playlist Window (18 visible)");
+    expect(output).toContain("018/100");
+  });
+
+  it("reuses a fresh sidflow-data cache without checking GitHub again", async () => {
+    const fixture = await createStationDemoFixture();
+    await writeFile(fixture.dbPath.replace(/\.sqlite$/, ".manifest.json"), "{}", "utf8");
+    await seedStationDemoReleaseCache(fixture.workspace, fixture.dbPath, "2026-03-20T12:00:00.000Z");
+    const stdoutChunks: string[] = [];
+    let fetchCalls = 0;
+
+    const exitCode = await runStationDemoCli(
+      ["--hvsc", fixture.workspace, "--playback", "none"],
+      {
+        stdout: new Writable({
+          write(chunk, _encoding, callback) {
+            stdoutChunks.push(chunk.toString());
+            callback();
+          }
+        }),
+        cwd: () => fixture.workspace,
+        now: () => new Date("2026-03-20T18:00:00.000Z"),
+        fetchImpl: async () => {
+          fetchCalls += 1;
+          throw new Error("network should not be touched when the cache is fresh");
+        },
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 123_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(fetchCalls).toBe(0);
+    expect(stdoutChunks.join("")).toContain("sidflow-data release sidcorr-hvsc-full-20260315T095426Z (cached)");
+  });
+
+  it("checks sidflow-data once per day and keeps the cached bundle when the latest tag is unchanged", async () => {
+    const fixture = await createStationDemoFixture();
+    await writeFile(fixture.dbPath.replace(/\.sqlite$/, ".manifest.json"), "{}", "utf8");
+    await seedStationDemoReleaseCache(fixture.workspace, fixture.dbPath, "2026-03-18T09:00:00.000Z");
+    const stdoutChunks: string[] = [];
+    let latestReleaseChecks = 0;
+    let assetDownloads = 0;
+
+    const exitCode = await runStationDemoCli(
+      ["--hvsc", fixture.workspace, "--playback", "none"],
+      {
+        stdout: new Writable({
+          write(chunk, _encoding, callback) {
+            stdoutChunks.push(chunk.toString());
+            callback();
+          }
+        }),
+        cwd: () => fixture.workspace,
+        now: () => new Date("2026-03-20T18:00:00.000Z"),
+        fetchImpl: async (url: string | URL | Request) => {
+          const href = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+          if (href.endsWith("/releases/latest")) {
+            latestReleaseChecks += 1;
+            return new Response(JSON.stringify({
+              tag_name: "sidcorr-hvsc-full-20260315T095426Z",
+              published_at: "2026-03-15T09:54:33Z",
+              assets: [
+                {
+                  name: "hvsc-full-sidcorr-1-20260315T095426Z.tar.gz",
+                  browser_download_url: "https://example.invalid/hvsc-full-sidcorr-1-20260315T095426Z.tar.gz",
+                },
+              ],
+            }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          assetDownloads += 1;
+          throw new Error(`unexpected download ${href}`);
+        },
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 123_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(latestReleaseChecks).toBe(1);
+    expect(assetDownloads).toBe(0);
+    expect(stdoutChunks.join("")).toContain("cached, checked today");
+  });
+
+  it("uses an explicit local database override without touching sidflow-data", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const explicitLocalDb = path.join(fixture.workspace, "custom", "override.sqlite");
+    await mkdir(path.dirname(explicitLocalDb), { recursive: true });
+    await copyFile(fixture.dbPath, explicitLocalDb);
+
+    let fetchCalls = 0;
+    const exitCode = await runStationDemoCli(
+      ["--local-db", explicitLocalDb, "--hvsc", fixture.workspace, "--playback", "none"],
+      {
+        stdout: new Writable({
+          write(chunk, _encoding, callback) {
+            stdoutChunks.push(chunk.toString());
+            callback();
+          }
+        }),
+        cwd: () => fixture.workspace,
+        fetchImpl: async () => {
+          fetchCalls += 1;
+          throw new Error("explicit local DB should bypass sidflow-data");
+        },
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 123_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(fetchCalls).toBe(0);
+    expect(stdoutChunks.join("")).toContain("local SQLite override");
+  });
+
+  it("rebuilds the remaining queue from updated playback ratings", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const answers = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "q"];
+
+    const exitCode = await runStationDemoCli(
+      ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--sample-size", "10"],
+      {
+        stdout: new Writable({
+          write(chunk, _encoding, callback) {
+            stdoutChunks.push(chunk.toString());
+            callback();
+          }
+        }),
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => answers.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 123_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Rebuilt from 11 ratings");
+    expect(output).toContain("remaining queue re-sequenced by sim");
   });
 
   it("supports like and dislike shortcuts while songs are playing", async () => {
@@ -769,7 +1115,7 @@ describe("runPlayCli", () => {
     expect(output).toContain("d dislike(0)");
     expect(output).toContain("Liked ");
     expect(output).toContain("Disliked ");
-    expect(output).toContain("Disliked this track and rebuilt the station without interrupting playback.");
+    expect(output).toContain("Disliked this track. Rebuilt from");
   });
 
   it("treats next navigation as unrated movement", async () => {
@@ -828,6 +1174,154 @@ describe("runPlayCli", () => {
     const output = stdoutChunks.join("");
     expect(output).toContain("Moved to the next station track.");
     expect(output).not.toContain("Disliked this track");
+  });
+
+  it("supports browse-only navigation plus play-selected and pause/resume", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "down", "down", "enter", "space", "space", "q"];
+    const playbackEvents: string[] = [];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        createPlaybackAdapter: async () => ({
+          start: async (track) => {
+            playbackEvents.push(`start:${track.sid_path}`);
+          },
+          stop: async () => {
+            playbackEvents.push("stop");
+          },
+          pause: async () => {
+            playbackEvents.push("pause");
+          },
+          resume: async () => {
+            playbackEvents.push("resume");
+          },
+        }),
+        prompt: async () => actions.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Selected track 2/100");
+    expect(output).toContain("Started selected track 3/100.");
+    expect(output).toContain("Paused ");
+    expect(output).toContain("Resumed ");
+    expect(playbackEvents).toContain("pause");
+    expect(playbackEvents).toContain("resume");
+  });
+
+  it("shuffles the playlist around the current song without restarting playback", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "h", "q"];
+    const playbackEvents: string[] = [];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        createPlaybackAdapter: async () => ({
+          start: async (track) => {
+            playbackEvents.push(`start:${track.sid_path}`);
+          },
+          stop: async () => {
+            playbackEvents.push("stop");
+          },
+          pause: async () => undefined,
+          resume: async () => undefined,
+        }),
+        prompt: async () => actions.shift() ?? "q",
+        random: (() => {
+          const values = [0.8, 0.2, 0.7, 0.1, 0.6];
+          let index = 0;
+          return () => values[index++ % values.length]!;
+        })(),
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Shuffled the remaining playlist around the current song.");
+    expect(playbackEvents.filter((event) => event.startsWith("start:"))).toHaveLength(11);
   });
 
   it("keeps asking for seeds until 10 songs are actually rated", async () => {

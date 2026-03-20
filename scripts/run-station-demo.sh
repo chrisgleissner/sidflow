@@ -2,28 +2,24 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEFAULT_ARTIFACT_DB="${ROOT_DIR}/workspace/artifacts/similarity-export/hvsc-full-sidcorr-1-2026-03-14/sidcorr-hvsc-full-sidcorr-1.sqlite"
-DEFAULT_REPO_DB="${ROOT_DIR}/data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite"
-
-DB_PATH=""
 HVSC_PATH="${ROOT_DIR}/workspace/hvsc"
-FEATURES_PATH="${ROOT_DIR}/data/classified/features_2026-03-14_13-03-41-920.jsonl"
+LOCAL_DB_PATH=""
+FORCE_LOCAL_DB="false"
+FEATURES_PATH=""
 PLAYBACK_MODE="local"
 PLAYBACK_MODE_SET="false"
 C64U_HOST=""
 EXTRA_ARGS=()
 
-if [[ -f "${DEFAULT_ARTIFACT_DB}" ]]; then
-  DB_PATH="${DEFAULT_ARTIFACT_DB}"
-else
-  DB_PATH="${DEFAULT_REPO_DB}"
-fi
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --db)
-      DB_PATH="$2"
+    --db|--local-db)
+      LOCAL_DB_PATH="$2"
       shift 2
+      ;;
+    --force-local-db)
+      FORCE_LOCAL_DB="true"
+      shift
       ;;
     --hvsc)
       HVSC_PATH="$2"
@@ -47,16 +43,16 @@ while [[ $# -gt 0 ]]; do
 Usage: scripts/run-station-demo.sh [options] [-- additional station-demo args]
 
 Defaults:
-  --db               workspace/artifacts/.../sidcorr-hvsc-full-sidcorr-1.sqlite when present
-                     otherwise data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+  similarity DB      latest cached sidflow-data release bundle
   --hvsc             workspace/hvsc
-  --features-jsonl   data/classified/features_2026-03-14_13-03-41-920.jsonl
   --playback         local
 
 Wrapper-specific options:
-  --db <path>
+  --local-db <path>  Specific local similarity SQLite bundle
+  --db <path>        Deprecated alias for --local-db
+  --force-local-db   Use the latest local export under data/exports
   --hvsc <path>
-  --features-jsonl <path>
+  --features-jsonl <path>  Optional local provenance path to display in the TUI
   --playback <local|c64u|none>
   --c64u-host <host>
 
@@ -84,11 +80,19 @@ fi
 CMD=(
   "${ROOT_DIR}/scripts/sidflow-play"
   station-demo
-  --db "${DB_PATH}"
   --hvsc "${HVSC_PATH}"
-  --features-jsonl "${FEATURES_PATH}"
   --playback "${PLAYBACK_MODE}"
 )
+
+if [[ -n "${LOCAL_DB_PATH}" ]]; then
+  CMD+=(--local-db "${LOCAL_DB_PATH}")
+elif [[ "${FORCE_LOCAL_DB}" == "true" ]]; then
+  CMD+=(--force-local-db)
+fi
+
+if [[ -n "${FEATURES_PATH}" ]]; then
+  CMD+=(--features-jsonl "${FEATURES_PATH}")
+fi
 
 if [[ -n "${C64U_HOST}" ]]; then
   CMD+=(--c64u-host "${C64U_HOST}")

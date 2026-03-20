@@ -2,10 +2,12 @@
 
 import process from "node:process";
 import path from "node:path";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import type { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { Database } from "bun:sqlite";
 import {
+  ensureDir,
   formatHelp,
   handleParseResult,
   loadConfig,
@@ -14,7 +16,9 @@ import {
   parseSidFile,
   pathExists,
   recommendFromFavorites,
+  writeCanonicalJsonFile,
   type ArgDef,
+  type JsonValue,
   type SidFileMetadata,
   type SidflowConfig,
   type SimilarityExportRecommendation,
@@ -27,6 +31,8 @@ type Phase = "rating" | "station";
 interface StationDemoCliOptions {
   config?: string;
   db?: string;
+  localDb?: string;
+  forceLocalDb?: boolean;
   hvsc?: string;
   featuresJsonl?: string;
   playback?: PlaybackMode;
@@ -73,15 +79,19 @@ interface MetadataResolver {
 interface PlaybackAdapter {
   start(track: StationTrackDetails): Promise<void>;
   stop(): Promise<void>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
 }
 
 interface StationDemoRuntime extends MetadataResolver {
   loadConfig: typeof loadConfig;
   createPlaybackAdapter?: (mode: PlaybackMode, config: SidflowConfig, options: StationDemoCliOptions) => Promise<PlaybackAdapter>;
+  fetchImpl: typeof fetch;
   stdout: NodeJS.WritableStream;
   stderr: NodeJS.WritableStream;
   stdin: NodeJS.ReadableStream;
   cwd: () => string;
+  now: () => Date;
   prompt?: (message: string) => Promise<string>;
   random: () => number;
   onSignal: (signal: NodeJS.Signals, handler: () => void) => void;
@@ -105,6 +115,13 @@ type StationAction =
   | { type: "rate"; rating: number }
   | { type: "next" }
   | { type: "back" }
+  | { type: "cursorUp" }
+  | { type: "cursorDown" }
+  | { type: "pageUp" }
+  | { type: "pageDown" }
+  | { type: "playSelected" }
+  | { type: "togglePause" }
+  | { type: "shuffle" }
   | { type: "replay" }
   | { type: "rebuild" }
   | { type: "quit" }
@@ -120,21 +137,59 @@ interface StationScreenState {
   phase: Phase;
   current: StationTrackDetails;
   index: number;
+  selectedIndex?: number;
   total: number;
   ratedCount: number;
   ratedTarget: number;
   ratings: Map<string, number>;
   playbackMode: PlaybackMode;
   adventure: number;
+  dataSource: string;
   dbPath: string;
   featuresJsonl?: string;
   currentRating?: number;
   queue?: StationTrackDetails[];
   elapsedMs?: number;
   durationMs?: number;
+  playlistElapsedMs?: number;
+  playlistDurationMs?: number;
   minDurationSeconds?: number;
+  paused?: boolean;
   statusLine?: string;
   hintLine?: string;
+}
+
+interface StationTrackVectorRow {
+  track_id: string;
+  vector_json: string | null;
+}
+
+interface CachedStationDatasetState {
+  assetName: string;
+  assetUrl: string;
+  bundleDir: string;
+  checkedAt: string;
+  dbPath: string;
+  manifestPath?: string;
+  publishedAt: string;
+  releaseTag: string;
+}
+
+interface GitHubReleaseAsset {
+  browser_download_url?: string;
+  name?: string;
+}
+
+interface GitHubRelease {
+  assets?: GitHubReleaseAsset[];
+  published_at?: string;
+  tag_name?: string;
+}
+
+interface StationDatasetResolution {
+  dataSource: string;
+  dbPath: string;
+  featuresJsonl?: string;
 }
 
 const ARG_DEFS: ArgDef[] = [
@@ -146,7 +201,17 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--db",
     type: "string",
-    description: "Path to exported similarity SQLite database",
+    description: "Deprecated alias for --local-db",
+  },
+  {
+    name: "--local-db",
+    type: "string",
+    description: "Path to a specific local similarity SQLite database",
+  },
+  {
+    name: "--force-local-db",
+    type: "boolean",
+    description: "Use the latest local similarity export under data/exports",
   },
   {
     name: "--hvsc",
@@ -200,8 +265,8 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--station-size",
     type: "integer",
-    description: "Number of recommendations to keep in the station queue",
-    defaultValue: 20,
+    description: "Number of recommendations to keep in the station queue (minimum effective queue: 100 songs)",
+    defaultValue: 100,
     constraints: { min: 1 },
   },
   {
@@ -216,22 +281,24 @@ const ARG_DEFS: ArgDef[] = [
 const HELP_TEXT = formatHelp(
   "sidflow-play station-demo [options]",
   `Interactive demo proving the exported similarity SQLite DB is self-contained.
-The station is built from the exported SQLite DB; the optional features JSONL is only shown as companion provenance.
+By default the station uses the latest cached sidflow-data release bundle and checks GitHub for a newer bundle at most once per day.
+Use --force-local-db for the latest local export or --local-db to point at a specific local SQLite bundle.
+The optional features JSONL is only shown as companion provenance for local data.
 
 Workflow:
   1. Pull random tracks directly from the export DB.
   2. Keep rating until at least 10 songs are actually rated.
   3. Build a station from the export vectors.
-  4. Navigate with arrows, replay, or rebuild the queue without stopping the current song.
+  4. Navigate with arrows, replay, pause, or rebuild the queue without losing the current station context.
   5. Ignore tracks shorter than --min-duration.
 
 Commands:
   Rating phase: 0-5 rate, l like(5), d dislike(0), s skip, b back, r replay, q quit
-  Station phase: right/left next/back, s skip=dislike, l like(5), d dislike(0), r replay, u rebuild, 0-5 rate+rebuild, q quit`,
+  Station phase: left/right play prev/next, up/down/pgup/pgdn browse, enter play selected, space pause/resume, h shuffle, s skip=dislike, l like(5), d dislike(0), r replay, u rebuild, 0-5 rate+rebuild, q quit`,
   ARG_DEFS,
   [
     "sidflow-play station-demo",
-    "sidflow-play station-demo --playback none --sample-size 10 --station-size 8 --min-duration 20",
+    "sidflow-play station-demo --playback none --sample-size 10 --station-size 100 --min-duration 20",
     "sidflow-play station-demo --c64u-host 192.168.1.13 --adventure 5",
   ],
 );
@@ -240,10 +307,12 @@ const defaultRuntime: StationDemoRuntime = {
   loadConfig,
   parseSidFile,
   lookupSongDurationMs,
+  fetchImpl: fetch,
   stdout: process.stdout,
   stderr: process.stderr,
   stdin: process.stdin,
   cwd: () => process.cwd(),
+  now: () => new Date(),
   random: () => Math.random(),
   onSignal: (signal, handler) => {
     process.on(signal, handler);
@@ -274,6 +343,14 @@ const ANSI = {
 };
 
 const MINIMUM_RATED_TRACKS = 10;
+const MINIMUM_STATION_TRACKS = 100;
+const U64_SID_VOLUME_REGISTERS = [0xD418, 0xD438, 0xD458] as const;
+const MINIMUM_PLAYLIST_WINDOW_ROWS = 7;
+const DEFAULT_PLAYLIST_WINDOW_ROWS = 11;
+const STATION_DEMO_CACHE_DIR = path.join("data", "cache", "station-demo", "sidflow-data");
+const STATION_DEMO_CACHE_STATE = "latest-release.json";
+const STATION_DEMO_RELEASE_REPO = "chrisgleissner/sidflow-data";
+const STATION_DEMO_RELEASE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function parseStationDemoArgs(argv: string[]) {
   return parseArgs<StationDemoCliOptions>(argv, ARG_DEFS);
@@ -321,6 +398,310 @@ function resolveTrackDurationMs(track: StationTrackDetails): number {
 
 function isTrackLongEnough(track: StationTrackDetails, minDurationSeconds: number): boolean {
   return resolveTrackDurationMs(track) >= Math.max(1, minDurationSeconds) * 1000;
+}
+
+function isStaleTimestamp(value: string | undefined, now: Date): boolean {
+  if (!value) {
+    return true;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return true;
+  }
+  return now.getTime() - parsed >= STATION_DEMO_RELEASE_CHECK_INTERVAL_MS;
+}
+
+async function safeReadJsonFile<T>(filePath: string): Promise<T | undefined> {
+  if (!(await pathExists(filePath))) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(await readFile(filePath, "utf8")) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+async function findFilesWithSuffix(rootPath: string, suffix: string): Promise<string[]> {
+  if (!(await pathExists(rootPath))) {
+    return [];
+  }
+
+  const results: string[] = [];
+  const queue = [rootPath];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(suffix)) {
+        results.push(fullPath);
+      }
+    }
+  }
+
+  return results;
+}
+
+async function resolveLatestLocalExportDb(exportsDir: string): Promise<string | undefined> {
+  if (!(await pathExists(exportsDir))) {
+    return undefined;
+  }
+
+  const entries = await readdir(exportsDir, { withFileTypes: true });
+  const candidates = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".sqlite"))
+      .map(async (entry) => {
+        const filePath = path.join(exportsDir, entry.name);
+        const fileStat = await stat(filePath);
+        return {
+          filePath,
+          mtimeMs: fileStat.mtimeMs,
+        };
+      }),
+  );
+
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs || right.filePath.localeCompare(left.filePath));
+  return candidates[0]?.filePath;
+}
+
+function renderRelativePath(baseDir: string, targetPath: string): string {
+  const relative = path.relative(baseDir, targetPath);
+  if (!relative || relative.startsWith("..")) {
+    return targetPath;
+  }
+  return relative;
+}
+
+async function fetchGitHubLatestRelease(runtime: StationDemoRuntime): Promise<GitHubRelease> {
+  const headers: HeadersInit = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "sidflow-station-demo",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await runtime.fetchImpl(
+    `https://api.github.com/repos/${STATION_DEMO_RELEASE_REPO}/releases/latest`,
+    { headers },
+  );
+  if (!response.ok) {
+    throw new Error(`GitHub latest-release check failed with HTTP ${response.status}`);
+  }
+  return await response.json() as GitHubRelease;
+}
+
+function selectReleaseAsset(release: GitHubRelease): { name: string; url: string } {
+  const assets = release.assets ?? [];
+  const preferred = assets.find((asset) =>
+    typeof asset.name === "string"
+      && typeof asset.browser_download_url === "string"
+      && asset.name.endsWith(".tar.gz")
+      && asset.name.includes("sidcorr-1"),
+  ) ?? assets.find((asset) =>
+    typeof asset.name === "string"
+      && typeof asset.browser_download_url === "string"
+      && asset.name.endsWith(".tar.gz"),
+  );
+
+  if (!preferred?.name || !preferred.browser_download_url) {
+    throw new Error("Latest sidflow-data release does not expose a .tar.gz similarity bundle asset.");
+  }
+
+  return {
+    name: preferred.name,
+    url: preferred.browser_download_url,
+  };
+}
+
+async function downloadToFile(runtime: StationDemoRuntime, url: string, destinationPath: string): Promise<void> {
+  const response = await runtime.fetchImpl(url, {
+    headers: {
+      Accept: "application/octet-stream",
+      "User-Agent": "sidflow-station-demo",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Download failed with HTTP ${response.status} for ${url}`);
+  }
+  const payload = new Uint8Array(await response.arrayBuffer());
+  await ensureDir(path.dirname(destinationPath));
+  await writeFile(destinationPath, payload);
+}
+
+async function extractTarGz(archivePath: string, destinationPath: string): Promise<void> {
+  await ensureDir(destinationPath);
+  await rm(destinationPath, { force: true, recursive: true });
+  await ensureDir(destinationPath);
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("tar", ["-xzf", archivePath, "-C", destinationPath], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const stderrChunks: string[] = [];
+    child.stderr?.on("data", (chunk) => {
+      stderrChunks.push(chunk.toString());
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`tar extraction failed for ${archivePath}: ${stderrChunks.join("").trim() || `exit ${code ?? "unknown"}`}`));
+    });
+  });
+}
+
+async function resolveCachedReleaseState(statePath: string): Promise<CachedStationDatasetState | undefined> {
+  const cached = await safeReadJsonFile<CachedStationDatasetState>(statePath);
+  if (!cached?.dbPath || !(await pathExists(cached.dbPath))) {
+    return undefined;
+  }
+  return cached;
+}
+
+async function writeCachedReleaseState(statePath: string, state: CachedStationDatasetState): Promise<void> {
+  await writeCanonicalJsonFile(statePath, state as unknown as JsonValue, {
+    action: "data:modify",
+  });
+}
+
+async function materializeReleaseBundle(
+  runtime: StationDemoRuntime,
+  cacheRoot: string,
+  releaseTag: string,
+  publishedAt: string,
+  assetName: string,
+  assetUrl: string,
+): Promise<CachedStationDatasetState> {
+  const releaseRoot = path.join(cacheRoot, "releases", releaseTag);
+  const archivePath = path.join(releaseRoot, assetName);
+  const bundleDir = path.join(releaseRoot, "bundle");
+  await ensureDir(releaseRoot);
+
+  if (!(await pathExists(archivePath))) {
+    await downloadToFile(runtime, assetUrl, archivePath);
+  }
+
+  await extractTarGz(archivePath, bundleDir);
+  const sqliteFiles = await findFilesWithSuffix(bundleDir, ".sqlite");
+  if (sqliteFiles.length === 0) {
+    throw new Error(`Release asset ${assetName} did not contain a similarity SQLite database.`);
+  }
+
+  const manifestFiles = await findFilesWithSuffix(bundleDir, ".manifest.json");
+  return {
+    assetName,
+    assetUrl,
+    bundleDir,
+    checkedAt: runtime.now().toISOString(),
+    dbPath: sqliteFiles[0]!,
+    manifestPath: manifestFiles[0],
+    publishedAt,
+    releaseTag,
+  };
+}
+
+async function resolveRemoteStationDataset(
+  runtime: StationDemoRuntime,
+  cwd: string,
+): Promise<StationDatasetResolution> {
+  const cacheRoot = path.resolve(cwd, STATION_DEMO_CACHE_DIR);
+  const statePath = path.join(cacheRoot, STATION_DEMO_CACHE_STATE);
+  const cached = await resolveCachedReleaseState(statePath);
+  const now = runtime.now();
+
+  if (cached && !isStaleTimestamp(cached.checkedAt, now)) {
+    return {
+      dataSource: `sidflow-data release ${cached.releaseTag} (cached)`,
+      dbPath: cached.dbPath,
+    };
+  }
+
+  try {
+    const release = await fetchGitHubLatestRelease(runtime);
+    const releaseTag = release.tag_name;
+    const publishedAt = release.published_at;
+    if (!releaseTag || !publishedAt) {
+      throw new Error("GitHub latest-release response was missing tag_name/published_at.");
+    }
+    const asset = selectReleaseAsset(release);
+
+    if (cached && cached.releaseTag === releaseTag && await pathExists(cached.dbPath)) {
+      const refreshed: CachedStationDatasetState = {
+        ...cached,
+        checkedAt: now.toISOString(),
+      };
+      await writeCachedReleaseState(statePath, refreshed);
+      return {
+        dataSource: `sidflow-data release ${releaseTag} (cached, checked today)`,
+        dbPath: refreshed.dbPath,
+      };
+    }
+
+    const materialized = await materializeReleaseBundle(runtime, cacheRoot, releaseTag, publishedAt, asset.name, asset.url);
+    await writeCachedReleaseState(statePath, materialized);
+    return {
+      dataSource: `sidflow-data release ${releaseTag} (downloaded ${publishedAt.slice(0, 10)})`,
+      dbPath: materialized.dbPath,
+    };
+  } catch (error) {
+    if (cached) {
+      return {
+        dataSource: `sidflow-data release ${cached.releaseTag} (cached, latest check failed)`,
+        dbPath: cached.dbPath,
+      };
+    }
+    throw error;
+  }
+}
+
+async function resolveStationDataset(
+  runtime: StationDemoRuntime,
+  options: StationDemoCliOptions,
+  config: SidflowConfig,
+): Promise<StationDatasetResolution> {
+  const cwd = runtime.cwd();
+  const classifiedPath = path.resolve(cwd, config.classifiedPath ?? "data/classified");
+  const explicitLocalDb = options.localDb ?? options.db;
+
+  if (explicitLocalDb) {
+    return {
+      dataSource: `local SQLite override ${renderRelativePath(cwd, path.resolve(cwd, explicitLocalDb))}`,
+      dbPath: path.resolve(cwd, explicitLocalDb),
+      featuresJsonl: options.featuresJsonl ? path.resolve(cwd, options.featuresJsonl) : undefined,
+    };
+  }
+
+  if (options.forceLocalDb) {
+    const exportsDir = path.resolve(cwd, "data/exports");
+    const latestLocalDb = await resolveLatestLocalExportDb(exportsDir);
+    if (!latestLocalDb) {
+      throw new Error(`No local similarity export .sqlite files were found under ${exportsDir}`);
+    }
+    return {
+      dataSource: `latest local export ${renderRelativePath(cwd, latestLocalDb)}`,
+      dbPath: latestLocalDb,
+      featuresJsonl: options.featuresJsonl
+        ? path.resolve(cwd, options.featuresJsonl)
+        : await resolveLatestFeaturesJsonl(classifiedPath),
+    };
+  }
+
+  const remote = await resolveRemoteStationDataset(runtime, cwd);
+  return {
+    ...remote,
+    featuresJsonl: options.featuresJsonl ? path.resolve(cwd, options.featuresJsonl) : undefined,
+  };
 }
 
 function buildSidplayArgs(track: StationTrackDetails): string[] {
@@ -400,22 +781,85 @@ function readTrackRowById(dbPath: string, trackId: string): StationTrackRow | nu
   }
 }
 
+function readTrackVectorsByIds(dbPath: string, trackIds: string[]): Map<string, number[]> {
+  if (trackIds.length === 0) {
+    return new Map();
+  }
+
+  const database = openReadonlyDatabase(dbPath);
+  try {
+    const placeholders = trackIds.map(() => "?").join(", ");
+    const rows = database
+      .query(
+        `SELECT track_id, vector_json
+         FROM tracks
+         WHERE track_id IN (${placeholders})`,
+      )
+      .all(...trackIds) as StationTrackVectorRow[];
+
+    const result = new Map<string, number[]>();
+    for (const row of rows) {
+      if (!row.vector_json) {
+        continue;
+      }
+      result.set(row.track_id, JSON.parse(row.vector_json) as number[]);
+    }
+    return result;
+  } finally {
+    database.close();
+  }
+}
+
 function buildWeightsByTrackId(ratings: Map<string, number>): Record<string, number> {
   const result: Record<string, number> = {};
   for (const [trackId, rating] of ratings) {
-    result[trackId] = Math.max(0.1, rating);
+    if (rating >= 5) {
+      result[trackId] = 9;
+      continue;
+    }
+    if (rating >= 4) {
+      result[trackId] = 4;
+      continue;
+    }
+    if (rating >= 3) {
+      result[trackId] = 1.5;
+      continue;
+    }
+    result[trackId] = 0.1;
   }
   return result;
 }
 
 function pickFavoriteTrackIds(ratings: Map<string, number>): string[] {
   const ordered = [...ratings.entries()].sort((left, right) => right[1] - left[1]);
-  const favorites = ordered.filter(([, rating]) => rating >= 3).map(([trackId]) => trackId);
-  if (favorites.length > 0) {
-    return favorites;
+  const loved = ordered.filter(([, rating]) => rating >= 4).map(([trackId]) => trackId);
+  if (loved.length > 0) {
+    return loved;
+  }
+  const liked = ordered.filter(([, rating]) => rating >= 3).map(([trackId]) => trackId);
+  if (liked.length > 0) {
+    return liked;
   }
   const fallback = ordered.find(([, rating]) => rating > 0);
   return fallback ? [fallback[0]] : [];
+}
+
+function cosineSimilarity(left: number[], right: number[]): number {
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+  const dimensions = Math.min(left.length, right.length);
+  for (let index = 0; index < dimensions; index += 1) {
+    const leftValue = left[index] ?? 0;
+    const rightValue = right[index] ?? 0;
+    dot += leftValue * rightValue;
+    leftNorm += leftValue * leftValue;
+    rightNorm += rightValue * rightValue;
+  }
+  if (leftNorm === 0 || rightNorm === 0) {
+    return 0;
+  }
+  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
 }
 
 function chooseStationTracks(
@@ -450,6 +894,60 @@ function chooseStationTracks(
   return chosen;
 }
 
+function orderStationTracksByFlow(
+  recommendations: SimilarityExportRecommendation[],
+  vectorsByTrackId: Map<string, number[]>,
+  adventure: number,
+  random: () => number,
+): SimilarityExportRecommendation[] {
+  if (recommendations.length <= 2) {
+    return [...recommendations];
+  }
+
+  const remaining = [...recommendations].sort((left, right) => right.score - left.score || left.rank - right.rank);
+  const ordered = [remaining.shift()!];
+  const shortlistSize = Math.max(1, Math.min(remaining.length, 1 + Math.floor(adventure / 2)));
+
+  while (remaining.length > 0) {
+    const previous = ordered[ordered.length - 1]!;
+    const previousVector = vectorsByTrackId.get(previous.track_id);
+    const scored = remaining
+      .map((candidate) => {
+        const candidateVector = vectorsByTrackId.get(candidate.track_id);
+        const continuity = previousVector && candidateVector
+          ? cosineSimilarity(previousVector, candidateVector)
+          : candidate.score;
+        const blended = (continuity * 0.72) + (candidate.score * 0.28);
+        return { blended, candidate };
+      })
+      .sort((left, right) => right.blended - left.blended || right.candidate.score - left.candidate.score || left.candidate.rank - right.candidate.rank);
+
+    const picked = scored[Math.min(scored.length - 1, Math.floor(random() * Math.min(scored.length, shortlistSize)))]!.candidate;
+    ordered.push(picked);
+    remaining.splice(remaining.findIndex((entry) => entry.track_id === picked.track_id), 1);
+  }
+
+  return ordered;
+}
+
+function summarizeRatingAnchors(ratings: Map<string, number>): { excluded: number; positive: number; strong: number } {
+  let excluded = 0;
+  let positive = 0;
+  let strong = 0;
+  for (const rating of ratings.values()) {
+    if (rating <= 2) {
+      excluded += 1;
+    }
+    if (rating >= 3) {
+      positive += 1;
+    }
+    if (rating >= 4) {
+      strong += 1;
+    }
+  }
+  return { excluded, positive, strong };
+}
+
 async function resolveLatestFeaturesJsonl(classifiedPath: string): Promise<string | undefined> {
   if (!(await pathExists(classifiedPath))) {
     return undefined;
@@ -474,8 +972,12 @@ function formatDuration(durationMs?: number): string {
     return "unknown";
   }
   const totalSeconds = Math.round(durationMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
@@ -523,13 +1025,15 @@ function formatPercent(elapsedMs: number, durationMs: number): string {
   return `${Math.round(ratio * 100)}%`;
 }
 
-function renderProgressBar(enabled: boolean, elapsedMs: number, durationMs: number, width: number): string {
+function renderProgressBar(enabled: boolean, elapsedMs: number, durationMs: number, width: number, filledColor: string): string {
   const safeWidth = Math.max(10, width);
   const ratio = durationMs > 0 ? Math.max(0, Math.min(1, elapsedMs / durationMs)) : 0;
   const filled = Math.round(safeWidth * ratio);
   const full = enabled ? "█" : "#";
   const empty = enabled ? "░" : "-";
-  return `${full.repeat(filled)}${empty.repeat(Math.max(0, safeWidth - filled))}`;
+  const filledPart = full.repeat(filled);
+  const emptyPart = empty.repeat(Math.max(0, safeWidth - filled));
+  return `${colorize(enabled, filledColor, filledPart)}${colorize(enabled, ANSI.brightBlack, emptyPart)}`;
 }
 
 function renderLegend(enabled: boolean): string {
@@ -543,50 +1047,104 @@ function renderLegend(enabled: boolean): string {
   ].join("  ");
 }
 
-function renderTrackWindow(enabled: boolean, queue: StationTrackDetails[], currentIndex: number, width: number): string[] {
-  const windowStart = Math.max(0, currentIndex - 5);
-  const windowEnd = Math.min(queue.length, currentIndex + 6);
+function renderProgressLine(
+  enabled: boolean,
+  label: string,
+  elapsedMs: number,
+  durationMs: number,
+  width: number,
+  accentColor: string,
+): string {
+  const barWidth = Math.max(16, Math.min(36, width - 34));
+  const labelText = colorize(enabled, accentColor, label);
+  return truncate(
+    `${labelText} [${renderProgressBar(enabled, elapsedMs, durationMs, barWidth, accentColor)}] ${formatDuration(elapsedMs)} / ${formatDuration(durationMs)} (${formatPercent(elapsedMs, durationMs)})`,
+    width,
+  );
+}
+
+function renderTrackWindow(
+  enabled: boolean,
+  queue: StationTrackDetails[],
+  currentIndex: number,
+  selectedIndex: number,
+  width: number,
+  visibleRows: number,
+): string[] {
+  const focusIndex = Math.max(0, Math.min(queue.length - 1, selectedIndex));
+  const rows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, visibleRows);
+  const beforeCount = Math.floor((rows - 1) / 2);
+  const afterCount = rows - beforeCount - 1;
+  let windowStart = Math.max(0, focusIndex - beforeCount);
+  let windowEnd = Math.min(queue.length, focusIndex + afterCount + 1);
+  const deficit = rows - (windowEnd - windowStart);
+  if (deficit > 0) {
+    windowStart = Math.max(0, windowStart - deficit);
+    windowEnd = Math.min(queue.length, windowStart + rows);
+  }
   const lines: string[] = [];
 
   for (let index = windowStart; index < windowEnd; index += 1) {
-    const marker = index === currentIndex ? colorize(enabled, ANSI.brightGreen, "▶") : colorize(enabled, ANSI.brightBlack, "•");
+    const isCurrent = index === currentIndex;
+    const isSelected = index === selectedIndex;
     const track = queue[index];
     const title = track.title || path.basename(track.sid_path);
     const author = track.author || "unknown";
-    const line = `${marker} ${String(index + 1).padStart(2, "0")}/${String(queue.length).padStart(2, "0")} ${title} — ${author} — ${formatDuration(track.durationMs)}`;
-    lines.push(truncate(line, width));
+    const marker = isCurrent && isSelected
+      ? colorize(enabled, ANSI.brightGreen, "◆")
+      : isCurrent
+        ? colorize(enabled, ANSI.brightGreen, "▶")
+        : isSelected
+          ? colorize(enabled, ANSI.brightYellow, "›")
+          : colorize(enabled, ANSI.brightBlack, "•");
+    const position = `${String(index + 1).padStart(3, "0")}/${String(queue.length).padStart(3, "0")}`;
+    const line = `${marker} ${position} ${title} — ${author} — ${formatDuration(track.durationMs)}`;
+    const styledLine = isCurrent
+      ? bold(enabled, colorize(enabled, ANSI.green, line))
+      : isSelected
+        ? colorize(enabled, ANSI.yellow, line)
+        : dim(enabled, line);
+    lines.push(truncate(styledLine, width));
   }
 
-  while (lines.length < 11) {
+  while (lines.length < rows) {
     lines.push(dim(enabled, "·"));
   }
 
   return lines;
 }
 
-function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, columns: number): string {
+function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, columns: number, rows: number): string {
   const width = Math.max(80, columns);
+  const height = Math.max(24, rows);
   const title = bold(ansiEnabled, "SIDFlow Station Demo");
   const current = state.current;
   const elapsedMs = Math.min(state.elapsedMs ?? 0, state.durationMs ?? resolveTrackDurationMs(current));
   const durationMs = state.durationMs ?? resolveTrackDurationMs(current);
-  const titleLine = truncate(`${current.title || path.basename(current.sid_path)} — ${current.author || "unknown author"}`, width);
+  const playlistElapsedMs = Math.min(state.playlistElapsedMs ?? 0, state.playlistDurationMs ?? durationMs);
+  const playlistDurationMs = state.playlistDurationMs ?? durationMs;
+  const selectedIndex = state.selectedIndex ?? state.index;
+  const selectedTrack = state.queue?.[selectedIndex];
+  const titleLine = truncate(`${colorize(ansiEnabled, ANSI.green, current.title || path.basename(current.sid_path))} — ${current.author || "unknown author"}`, width);
   const playbackBadge = state.playbackMode === "none"
     ? colorize(ansiEnabled, ANSI.brightBlack, "silent")
     : colorize(ansiEnabled, ANSI.brightGreen, state.playbackMode);
+  const pausedBadge = state.paused ? colorize(ansiEnabled, ANSI.brightYellow, "paused") : colorize(ansiEnabled, ANSI.brightBlack, "live");
 
   const lines = [
-    `${title}  ${dim(ansiEnabled, state.phase === "rating" ? "seed capture" : "station playback")}  ${playbackBadge}`,
+    `${title}  ${dim(ansiEnabled, state.phase === "rating" ? "seed capture" : "station playback")}  ${playbackBadge}  ${pausedBadge}`,
+    `${dim(ansiEnabled, "Dataset")} ${truncate(state.dataSource, width - 9)}`,
     `${dim(ansiEnabled, "DB")} ${truncate(state.dbPath, width - 4)}`,
     `${dim(ansiEnabled, "Legend")} ${renderLegend(ansiEnabled)}`,
     `${dim(ansiEnabled, "Best")} 5 locks the vibe in for future picks. 0 is a hard dislike.`,
     `${dim(ansiEnabled, "Duration gate")} >= ${Math.max(1, state.minDurationSeconds ?? 15)}s`,
     "",
-    `${bold(ansiEnabled, state.phase === "rating" ? `Rate songs until ${state.ratedTarget} are scored` : "Current station track")}`,
+    `${bold(ansiEnabled, state.phase === "rating" ? `Rate songs until ${state.ratedTarget} are scored` : "Now Playing")}`,
     titleLine,
     truncate(`${current.sid_path}#${current.song_index}  |  ${current.released || "unknown release"}  |  e=${current.e} m=${current.m} c=${current.c}${current.p ? ` p=${current.p}` : ""}`, width),
     truncate(`Feedback  likes=${current.likes}  dislikes=${current.dislikes}  skips=${current.skips}  plays=${current.plays}`, width),
-    truncate(`Progress  [${renderProgressBar(ansiEnabled, elapsedMs, durationMs, Math.max(16, Math.min(36, width - 30)))}] ${formatDuration(elapsedMs)} / ${formatDuration(durationMs)} (${formatPercent(elapsedMs, durationMs)})`, width),
+    renderProgressLine(ansiEnabled, "Song Progress", elapsedMs, durationMs, width, ANSI.brightGreen),
+    renderProgressLine(ansiEnabled, "Playlist Pos ", playlistElapsedMs, playlistDurationMs, width, ANSI.brightCyan),
     truncate(`You rated ${state.ratedCount}/${state.ratedTarget}${state.currentRating !== undefined ? `  |  current=${state.currentRating}/5` : ""}`, width),
     "",
   ];
@@ -599,14 +1157,21 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
       truncate(state.hintLine ?? "", width),
     );
   } else {
+    const selectionHint = state.hintLine ?? (
+      selectedTrack && selectedTrack.track_id !== current.track_id
+        ? `Selected ${selectedIndex + 1}/${state.total}: ${selectedTrack.title || path.basename(selectedTrack.sid_path)}`
+        : "Selection is on the currently playing song."
+    );
+    const reservedRows = lines.length + 7 + (state.featuresJsonl ? 2 : 0);
+    const playlistRows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, Math.min(state.queue?.length ?? 1, height - reservedRows));
     lines.push(
-      truncate(`${bold(ansiEnabled, `Station ${state.index + 1}/${state.total}`)}  ${dim(ansiEnabled, "Controls")} ← previous  → next  s skip=dislike  r replay  u rebuild  1-5 rate+rebuild  q quit`, width),
-      truncate(`${dim(ansiEnabled, "Shortcuts")} l like(5)  d dislike(0)  arrows are navigation only`, width),
+      truncate(`${bold(ansiEnabled, `Station ${state.index + 1}/${state.total}`)}  ${dim(ansiEnabled, "Controls")} ←/→ play prev/next  ↑/↓ browse  PgUp/PgDn jump  Enter play selected`, width),
+      truncate(`${dim(ansiEnabled, "Shortcuts")} space pause/resume  h shuffle  s skip=dislike  l like(5)  d dislike(0)  r replay  u rebuild  0-5 rate+rebuild  q quit`, width),
       truncate(state.statusLine ?? "Recommendations reflect the rated tracks shown above.", width),
-      truncate(state.hintLine ?? "", width),
+      truncate(selectionHint, width),
       "",
-      bold(ansiEnabled, "Playlist Window"),
-      ...renderTrackWindow(ansiEnabled, state.queue ?? [state.current], state.index, width),
+      bold(ansiEnabled, `Playlist Window (${playlistRows} visible)`),
+      ...renderTrackWindow(ansiEnabled, state.queue ?? [state.current], state.index, selectedIndex, width, playlistRows),
     );
   }
 
@@ -626,9 +1191,10 @@ class ScreenRenderer {
   }
 
   render(state: StationScreenState): void {
-    const stdout = this.runtime.stdout as NodeJS.WriteStream & { columns?: number };
+    const stdout = this.runtime.stdout as NodeJS.WriteStream & { columns?: number; rows?: number };
     const columns = stdout.columns ?? 100;
-    const screen = renderStationScreen(state, this.ansiEnabled, columns);
+    const rows = stdout.rows ?? 32;
+    const screen = renderStationScreen(state, this.ansiEnabled, columns, rows);
 
     if (this.ansiEnabled) {
       const prefix = this.firstPaint ? "\u001b[?25l" : "";
@@ -664,6 +1230,21 @@ function normalizePromptResponse(value: string): string {
   if (trimmed === "up") {
     return "up";
   }
+  if (trimmed === "down") {
+    return "down";
+  }
+  if (trimmed === "pgup" || trimmed === "pageup") {
+    return "pgup";
+  }
+  if (trimmed === "pgdn" || trimmed === "pagedown") {
+    return "pgdn";
+  }
+  if (trimmed === "enter") {
+    return "";
+  }
+  if (trimmed === "space") {
+    return " ";
+  }
   return trimmed;
 }
 
@@ -697,13 +1278,34 @@ function mapStationToken(token: string): StationAction | null {
   if (["q", "\u0003"].includes(token)) {
     return { type: "quit" };
   }
-  if (["right", "n", ""].includes(token)) {
+  if (["right", "n"].includes(token)) {
     return { type: "next" };
   }
   if (["left", "b"].includes(token)) {
     return { type: "back" };
   }
-  if (["up", "r"].includes(token)) {
+  if (["up", "k"].includes(token)) {
+    return { type: "cursorUp" };
+  }
+  if (["down", "j"].includes(token)) {
+    return { type: "cursorDown" };
+  }
+  if (["pgup"].includes(token)) {
+    return { type: "pageUp" };
+  }
+  if (["pgdn"].includes(token)) {
+    return { type: "pageDown" };
+  }
+  if (token === "") {
+    return { type: "playSelected" };
+  }
+  if (token === " ") {
+    return { type: "togglePause" };
+  }
+  if (["h"].includes(token)) {
+    return { type: "shuffle" };
+  }
+  if (["r"].includes(token)) {
     return { type: "replay" };
   }
   if (["s"].includes(token)) {
@@ -744,7 +1346,9 @@ class PromptInputController implements InputController {
 
   async readStationAction(_timeoutMs: number): Promise<StationAction> {
     while (true) {
-      const answer = normalizePromptResponse(await this.ask("Command left/right, s=skip-dislike, l=like, d=dislike, r=replay, u=rebuild, 0-5=rate, q=quit > "));
+      const answer = normalizePromptResponse(
+        await this.ask("Command left/right/up/down/pgup/pgdn, enter=play, space=pause, h=shuffle, s=skip-dislike, l=like, d=dislike, r=replay, u=rebuild, 0-5=rate, q=quit > "),
+      );
       const action = mapStationToken(answer);
       if (action) {
         return action;
@@ -758,6 +1362,16 @@ function decodeTerminalInput(chunk: string): string[] {
   let index = 0;
   while (index < chunk.length) {
     const remainder = chunk.slice(index);
+    if (remainder.startsWith("\u001b[5~")) {
+      tokens.push("pgup");
+      index += 4;
+      continue;
+    }
+    if (remainder.startsWith("\u001b[6~")) {
+      tokens.push("pgdn");
+      index += 4;
+      continue;
+    }
     if (remainder.startsWith("\u001b[C")) {
       tokens.push("right");
       index += 3;
@@ -779,6 +1393,11 @@ function decodeTerminalInput(chunk: string): string[] {
       continue;
     }
     const char = chunk[index];
+    if (char === " ") {
+      tokens.push(" ");
+      index += 1;
+      continue;
+    }
     if (char === "\r" || char === "\n") {
       tokens.push("");
     } else {
@@ -958,10 +1577,19 @@ class NoopPlaybackAdapter implements PlaybackAdapter {
   async stop(): Promise<void> {
     return;
   }
+
+  async pause(): Promise<void> {
+    return;
+  }
+
+  async resume(): Promise<void> {
+    return;
+  }
 }
 
 class LocalSidplayPlaybackAdapter implements PlaybackAdapter {
   private current: ChildProcess | null = null;
+  private paused = false;
 
   constructor(private readonly sidplayPath: string) {}
 
@@ -977,6 +1605,7 @@ class LocalSidplayPlaybackAdapter implements PlaybackAdapter {
       });
 
       this.current = proc;
+      this.paused = false;
 
       const startupTimer = setTimeout(() => {
         if (!settled) {
@@ -1018,28 +1647,78 @@ class LocalSidplayPlaybackAdapter implements PlaybackAdapter {
 
   async stop(): Promise<void> {
     if (!this.current) {
+      this.paused = false;
       return;
     }
 
     const proc = this.current;
     this.current = null;
+    this.paused = false;
     if (proc.exitCode !== null) {
       return;
     }
     proc.kill("SIGTERM");
   }
+
+  async pause(): Promise<void> {
+    if (!this.current || this.paused || this.current.exitCode !== null) {
+      return;
+    }
+    this.current.kill("SIGSTOP");
+    this.paused = true;
+  }
+
+  async resume(): Promise<void> {
+    if (!this.current || !this.paused || this.current.exitCode !== null) {
+      return;
+    }
+    this.current.kill("SIGCONT");
+    this.paused = false;
+  }
 }
 
 class Ultimate64PlaybackAdapter implements PlaybackAdapter {
+  private sidVolumes = new Uint8Array([0x0f, 0x0f, 0x0f]);
+  private paused = false;
+
   constructor(private readonly client: Ultimate64Client) {}
 
   async start(track: StationTrackDetails): Promise<void> {
     const buffer = await readFile(track.absolutePath);
+    this.paused = false;
     await this.client.sidplay({ sidBuffer: buffer, songNumber: track.song_index });
   }
 
   async stop(): Promise<void> {
+    this.paused = false;
     await this.client.reset();
+  }
+
+  async pause(): Promise<void> {
+    if (this.paused) {
+      return;
+    }
+    await Promise.all(
+      U64_SID_VOLUME_REGISTERS.map(async (address, index) => {
+        this.sidVolumes[index] = 0x0f;
+        await this.client.writeMemory({ address, data: new Uint8Array([0x00]) });
+      }),
+    );
+    await this.client.pause();
+    this.paused = true;
+  }
+
+  async resume(): Promise<void> {
+    if (!this.paused) {
+      return;
+    }
+    await Promise.all(
+      U64_SID_VOLUME_REGISTERS.map(async (address, index) => {
+        await this.client.writeMemory({ address, data: new Uint8Array([this.sidVolumes[index]]) });
+      }),
+    );
+    await this.client.resume();
+    this.paused = false;
   }
 }
 
@@ -1058,26 +1737,64 @@ async function buildStationQueue(
     return [];
   }
 
-  const candidates = recommendFromFavorites(dbPath, {
-    favoriteTrackIds,
-    excludeTrackIds: [...ratings.entries()].filter(([, rating]) => rating <= 2).map(([trackId]) => trackId),
-    weightsByTrackId: buildWeightsByTrackId(ratings),
-    limit: Math.max(stationSize * (2 + adventure), stationSize + 8),
-  });
-  const chosen = chooseStationTracks(candidates, stationSize, adventure, runtime.random);
+  const excludeTrackIds = [...ratings.entries()].filter(([, rating]) => rating <= 2).map(([trackId]) => trackId);
+  const recommendationLimitFloor = Math.max(stationSize * (3 + adventure), stationSize + 128);
+  let recommendationLimit = recommendationLimitFloor;
+  let details: StationTrackDetails[] = [];
+  let previousCandidateCount = -1;
 
-  const details: StationTrackDetails[] = [];
-  for (const recommendation of chosen) {
-    const row = readTrackRowById(dbPath, recommendation.track_id);
-    if (!row) {
-      continue;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const candidates = recommendFromFavorites(dbPath, {
+      favoriteTrackIds,
+      excludeTrackIds,
+      weightsByTrackId: buildWeightsByTrackId(ratings),
+      limit: recommendationLimit,
+    });
+
+    if (candidates.length === previousCandidateCount) {
+      break;
     }
-    const detail = await resolveTrackDetails(row, hvscRoot, runtime, metadataCache);
-    if (!isTrackLongEnough(detail, minDurationSeconds)) {
-      continue;
+    previousCandidateCount = candidates.length;
+
+    const detailByTrackId = new Map<string, StationTrackDetails>();
+    const filteredCandidates: SimilarityExportRecommendation[] = [];
+    for (const recommendation of candidates) {
+      const row = readTrackRowById(dbPath, recommendation.track_id);
+      if (!row) {
+        continue;
+      }
+      const detail = await resolveTrackDetails(row, hvscRoot, runtime, metadataCache);
+      if (!isTrackLongEnough(detail, minDurationSeconds)) {
+        continue;
+      }
+      detailByTrackId.set(detail.track_id, detail);
+      filteredCandidates.push(recommendation);
     }
-    details.push(detail);
+
+    const chosen = chooseStationTracks(filteredCandidates, stationSize, adventure, runtime.random);
+    const orderedChosen = orderStationTracksByFlow(
+      chosen,
+      readTrackVectorsByIds(dbPath, chosen.map((recommendation) => recommendation.track_id)),
+      adventure,
+      runtime.random,
+    );
+    const nextDetails: StationTrackDetails[] = [];
+    for (const recommendation of orderedChosen) {
+      const detail = detailByTrackId.get(recommendation.track_id);
+      if (detail) {
+        nextDetails.push(detail);
+      }
+    }
+
+    if (nextDetails.length > details.length) {
+      details = nextDetails;
+    }
+    if (details.length >= stationSize || candidates.length < recommendationLimit) {
+      break;
+    }
+    recommendationLimit = Math.max(recommendationLimit + stationSize, recommendationLimit * 2);
   }
+
   return details;
 }
 
@@ -1092,7 +1809,41 @@ function mergeQueueKeepingCurrent(
   return { queue: deduped, index: nextIndex };
 }
 
+function shuffleQueueKeepingCurrent(
+  queue: StationTrackDetails[],
+  currentIndex: number,
+  random: () => number,
+): StationTrackDetails[] {
+  if (queue.length <= 2) {
+    return [...queue];
+  }
+
+  const current = queue[currentIndex]!;
+  const tail = [...queue.slice(0, currentIndex), ...queue.slice(currentIndex + 1)];
+  for (let index = tail.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    const next = tail[index]!;
+    tail[index] = tail[swapIndex]!;
+    tail[swapIndex] = next;
+  }
+  return [current, ...tail];
+}
+
+function sumPlaylistDurationMs(queue: StationTrackDetails[]): number {
+  return queue.reduce((total, track) => total + resolveTrackDurationMs(track), 0);
+}
+
+function resolvePlaylistPositionMs(
+  queue: StationTrackDetails[],
+  currentIndex: number,
+  currentElapsedMs: number,
+): number {
+  const beforeCurrent = queue.slice(0, currentIndex).reduce((total, track) => total + resolveTrackDurationMs(track), 0);
+  return beforeCurrent + Math.max(0, Math.min(currentElapsedMs, resolveTrackDurationMs(queue[currentIndex] ?? queue[0]!)));
+}
+
 function buildInitialSeedStatus(
+  dataSource: string,
   dbPath: string,
   playbackMode: PlaybackMode,
   adventure: number,
@@ -1114,6 +1865,7 @@ function buildInitialSeedStatus(
     ratings: new Map(),
     playbackMode,
     adventure,
+    dataSource,
     dbPath,
     featuresJsonl,
     currentRating,
@@ -1142,12 +1894,15 @@ export async function runStationDemoCli(
   }
 
   const config = await runtime.loadConfig(options.config);
-  const dbPath = path.resolve(runtime.cwd(), options.db ?? "data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite");
   const hvscRoot = path.resolve(runtime.cwd(), options.hvsc ?? config.sidPath);
-  const classifiedPath = path.resolve(runtime.cwd(), config.classifiedPath ?? "data/classified");
-  const featuresJsonl = options.featuresJsonl
-    ? path.resolve(runtime.cwd(), options.featuresJsonl)
-    : await resolveLatestFeaturesJsonl(classifiedPath);
+  let dataset: StationDatasetResolution;
+  try {
+    dataset = await resolveStationDataset(runtime, options, config);
+  } catch (error) {
+    runtime.stderr.write(`Error: ${(error as Error).message}\n`);
+    return 1;
+  }
+  const { dataSource, dbPath, featuresJsonl } = dataset;
 
   if (!(await pathExists(dbPath))) {
     runtime.stderr.write(`Error: similarity export database not found at ${dbPath}\n`);
@@ -1183,6 +1938,7 @@ export async function runStationDemoCli(
     : await createPlaybackAdapter(playbackMode, config, options);
   const metadataCache = new Map<string, Promise<{ metadata?: SidFileMetadata; durationMs?: number }>>();
   const ratedTarget = Math.max(MINIMUM_RATED_TRACKS, options.sampleSize ?? MINIMUM_RATED_TRACKS);
+  const stationTarget = Math.max(MINIMUM_STATION_TRACKS, options.stationSize ?? MINIMUM_STATION_TRACKS);
   const minDurationSeconds = Math.max(1, options.minDuration ?? 15);
 
   const stopPlayback = async (): Promise<void> => {
@@ -1190,6 +1946,22 @@ export async function runStationDemoCli(
       await playback.stop();
     } catch {
       // ignore cleanup errors
+    }
+  };
+
+  const pausePlayback = async (): Promise<void> => {
+    try {
+      await playback.pause();
+    } catch {
+      // ignore pause errors
+    }
+  };
+
+  const resumePlayback = async (): Promise<void> => {
+    try {
+      await playback.resume();
+    } catch {
+      // ignore resume errors
     }
   };
 
@@ -1241,6 +2013,7 @@ export async function runStationDemoCli(
         const currentRating = ratings.get(current.track_id);
         renderer.render({
           ...buildInitialSeedStatus(
+            dataSource,
             dbPath,
             playbackMode,
             options.adventure ?? 3,
@@ -1262,6 +2035,7 @@ export async function runStationDemoCli(
         if (action.type === "quit") {
           renderer.render({
             ...buildInitialSeedStatus(
+              dataSource,
               dbPath,
               playbackMode,
               options.adventure ?? 3,
@@ -1323,7 +2097,7 @@ export async function runStationDemoCli(
       dbPath,
       hvscRoot,
       ratings,
-      options.stationSize ?? 20,
+      stationTarget,
       options.adventure ?? 3,
       minDurationSeconds,
       runtime,
@@ -1334,75 +2108,114 @@ export async function runStationDemoCli(
       runtime.stderr.write("Error: no station candidates were produced from the supplied ratings\n");
       return 1;
     }
+    if (stationQueue.length < stationTarget) {
+      runtime.stderr.write(
+        `Error: only ${stationQueue.length} long-enough station tracks were available; at least ${stationTarget} are required for the playlist.\n`,
+      );
+      return 1;
+    }
 
     let stationIndex = 0;
-    let stationStatus = `Station ready from ${ratings.size} rated songs.`;
+    let selectedIndex = 0;
+    const initialSummary = summarizeRatingAnchors(ratings);
+    let stationStatus = `Station ready from ${ratings.size} ratings (${initialSummary.strong} strong anchors, ${initialSummary.excluded} excluded dislikes). Flow is sequenced by similarity.`;
 
     while (!interrupted && stationQueue.length > 0) {
       const current = stationQueue[stationIndex];
       const durationMs = resolveTrackDurationMs(current);
+      let elapsedBeforePauseMs = 0;
       let startedAt = Date.now();
+      let paused = false;
       await playback.start(current);
 
       while (!interrupted) {
+        const getCurrentElapsedMs = () => (
+          paused
+            ? elapsedBeforePauseMs
+            : Math.min(durationMs, elapsedBeforePauseMs + (Date.now() - startedAt))
+        );
         const render = () => {
+          const liveElapsedMs = getCurrentElapsedMs();
+          const livePlaylistDurationMs = sumPlaylistDurationMs(stationQueue);
+          const livePlaylistElapsedMs = resolvePlaylistPositionMs(stationQueue, stationIndex, liveElapsedMs);
+          const selectedTrack = stationQueue[selectedIndex];
           renderer.render({
             phase: "station",
             current,
             index: stationIndex,
+            selectedIndex,
             total: stationQueue.length,
             ratedCount: ratings.size,
             ratedTarget,
             ratings,
             playbackMode,
             adventure: options.adventure ?? 3,
+            dataSource,
             dbPath,
             featuresJsonl,
             queue: stationQueue,
             currentRating: ratings.get(current.track_id),
             minDurationSeconds,
-            elapsedMs: Date.now() - startedAt,
+            elapsedMs: liveElapsedMs,
             durationMs,
+            playlistElapsedMs: livePlaylistElapsedMs,
+            playlistDurationMs: livePlaylistDurationMs,
+            paused,
             statusLine: stationStatus,
-            hintLine: `Current playlist shows 5 tracks before and after the active song when available.`,
+            hintLine: selectedTrack && selectedTrack.track_id !== current.track_id
+              ? `Selected ${selectedIndex + 1}/${stationQueue.length}: ${selectedTrack.title || path.basename(selectedTrack.sid_path)}`
+              : `Playhead ${stationIndex + 1}/${stationQueue.length}. Browse with ↑/↓/PgUp/PgDn, Enter plays the selected track.`,
           });
         };
 
         render();
-        const action = await input.readStationAction(durationMs, render);
+        const currentElapsedMs = getCurrentElapsedMs();
+        const remainingMs = paused ? 86_400_000 : Math.max(1, durationMs - currentElapsedMs);
+        const action = await input.readStationAction(remainingMs, render);
         render();
 
         if (action.type === "timeout") {
           await stopPlayback();
           if (stationQueue.length === 1) {
             startedAt = Date.now();
+            elapsedBeforePauseMs = 0;
+            paused = false;
             await playback.start(current);
             stationStatus = "Only one track is available, replaying it.";
             continue;
           }
           stationIndex = Math.min(stationQueue.length - 1, stationIndex + 1);
+          selectedIndex = stationIndex;
           stationStatus = "Advanced to the next track.";
           break;
         }
 
         if (action.type === "quit") {
+          const liveElapsedMs = getCurrentElapsedMs();
+          const livePlaylistDurationMs = sumPlaylistDurationMs(stationQueue);
+          const livePlaylistElapsedMs = resolvePlaylistPositionMs(stationQueue, stationIndex, liveElapsedMs);
           renderer.render({
             phase: "station",
             current,
             index: stationIndex,
+            selectedIndex,
             total: stationQueue.length,
             ratedCount: ratings.size,
             ratedTarget,
             ratings,
             playbackMode,
             adventure: options.adventure ?? 3,
+            dataSource,
             dbPath,
             featuresJsonl,
             queue: stationQueue,
             currentRating: ratings.get(current.track_id),
             minDurationSeconds,
-            elapsedMs: Date.now() - startedAt,
+            elapsedMs: liveElapsedMs,
             durationMs,
+            playlistElapsedMs: livePlaylistElapsedMs,
+            playlistDurationMs: livePlaylistDurationMs,
+            paused,
             statusLine: "Station session ended.",
           });
           return 0;
@@ -1412,6 +2225,9 @@ export async function runStationDemoCli(
           await stopPlayback();
           await playback.start(current);
           startedAt = Date.now();
+          elapsedBeforePauseMs = 0;
+          paused = false;
+          selectedIndex = stationIndex;
           stationStatus = `Replaying ${current.title || path.basename(current.sid_path)}.`;
           continue;
         }
@@ -1419,6 +2235,7 @@ export async function runStationDemoCli(
         if (action.type === "next") {
           await stopPlayback();
           stationIndex = Math.min(stationQueue.length - 1, stationIndex + 1);
+          selectedIndex = stationIndex;
           stationStatus = "Moved to the next station track.";
           break;
         }
@@ -1426,8 +2243,69 @@ export async function runStationDemoCli(
         if (action.type === "back") {
           await stopPlayback();
           stationIndex = Math.max(0, stationIndex - 1);
+          selectedIndex = stationIndex;
           stationStatus = "Moved to the previous station track.";
           break;
+        }
+
+        if (action.type === "cursorUp") {
+          selectedIndex = Math.max(0, selectedIndex - 1);
+          stationStatus = `Selected track ${selectedIndex + 1}/${stationQueue.length} without interrupting playback.`;
+          continue;
+        }
+
+        if (action.type === "cursorDown") {
+          selectedIndex = Math.min(stationQueue.length - 1, selectedIndex + 1);
+          stationStatus = `Selected track ${selectedIndex + 1}/${stationQueue.length} without interrupting playback.`;
+          continue;
+        }
+
+        if (action.type === "pageUp") {
+          selectedIndex = Math.max(0, selectedIndex - 10);
+          stationStatus = `Jumped selection to track ${selectedIndex + 1}/${stationQueue.length}.`;
+          continue;
+        }
+
+        if (action.type === "pageDown") {
+          selectedIndex = Math.min(stationQueue.length - 1, selectedIndex + 10);
+          stationStatus = `Jumped selection to track ${selectedIndex + 1}/${stationQueue.length}.`;
+          continue;
+        }
+
+        if (action.type === "playSelected") {
+          if (selectedIndex === stationIndex) {
+            stationStatus = paused
+              ? "Selection is already paused on the current song. Press space to resume."
+              : "Selection is already the live song.";
+            continue;
+          }
+          await stopPlayback();
+          stationIndex = selectedIndex;
+          stationStatus = `Started selected track ${stationIndex + 1}/${stationQueue.length}.`;
+          break;
+        }
+
+        if (action.type === "togglePause") {
+          if (paused) {
+            await resumePlayback();
+            startedAt = Date.now();
+            paused = false;
+            stationStatus = `Resumed ${current.title || path.basename(current.sid_path)}.`;
+          } else {
+            elapsedBeforePauseMs = currentElapsedMs;
+            await pausePlayback();
+            paused = true;
+            stationStatus = `Paused ${current.title || path.basename(current.sid_path)}.`;
+          }
+          continue;
+        }
+
+        if (action.type === "shuffle") {
+          stationQueue = shuffleQueueKeepingCurrent(stationQueue, stationIndex, runtime.random);
+          stationIndex = 0;
+          selectedIndex = 0;
+          stationStatus = "Shuffled the remaining playlist around the current song.";
+          continue;
         }
 
         if (action.type === "rate") {
@@ -1436,21 +2314,23 @@ export async function runStationDemoCli(
             dbPath,
             hvscRoot,
             ratings,
-            options.stationSize ?? 20,
+            stationTarget,
             options.adventure ?? 3,
             minDurationSeconds,
             runtime,
             metadataCache,
           );
-          if (rebuilt.length > 0) {
+          if (rebuilt.length >= stationTarget) {
             const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex);
             stationQueue = merged.queue;
             stationIndex = merged.index;
+            selectedIndex = stationIndex;
+            const rebuiltSummary = summarizeRatingAnchors(ratings);
             stationStatus = action.rating === 5
-              ? "Liked this track and rebuilt the station without interrupting playback."
+              ? `Liked this track. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
               : action.rating === 0
-                ? "Disliked this track and rebuilt the station without interrupting playback."
-                : `Stored ${action.rating}/5 and rebuilt the station without interrupting playback.`;
+                ? `Disliked this track. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
+                : `Stored ${action.rating}/5. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`;
           } else {
             stationStatus = action.rating === 5
               ? "Liked this track. Rebuild produced no better candidates, so the current queue stays active."
@@ -1465,19 +2345,21 @@ export async function runStationDemoCli(
           dbPath,
           hvscRoot,
           ratings,
-          options.stationSize ?? 20,
+          stationTarget,
           options.adventure ?? 3,
           minDurationSeconds,
           runtime,
           metadataCache,
         );
-        if (rebuilt.length > 0) {
+        if (rebuilt.length >= stationTarget) {
           const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex);
           stationQueue = merged.queue;
           stationIndex = merged.index;
-          stationStatus = "Rebuilt the station around the current song.";
+          selectedIndex = stationIndex;
+          const rebuiltSummary = summarizeRatingAnchors(ratings);
+          stationStatus = `Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`;
         } else {
-          stationStatus = "Rebuild produced no candidates; the current queue stays active.";
+          stationStatus = "Rebuild did not produce a full 100-song queue; the current playlist stays active.";
         }
       }
     }
