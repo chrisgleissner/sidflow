@@ -118,6 +118,9 @@ Template:
   - Run 2: 1711 pass, 0 fail, 6201 expect() calls. Ran 1711 tests across 172 files. [22.80s]
   - Run 3: 1711 pass, 0 fail, 6201 expect() calls. Ran 1711 tests across 172 files. [23.40s]
 - 2026-03-20 — Follow-up user request: add a dedicated interactive station-playlist filter that matches title or artist case-insensitively while typing, tone pure help text down to light gray, separate the source block visually at the top of the TUI and move provenance under the DB line, and fix Ultimate64 pause/resume so pausing truly silences all SID chips while resume restores the captured SID volume registers. Validation next: add focused CLI coverage for filtering plus Ultimate64 mute/restore, then rerun build + full tests 3x.
+- 2026-03-20 — Follow-up user request: prove and fix remaining station queue correctness issues with backend-level regressions for random and similarity-driven rating patterns, make playlist browsing highlights more obvious and less jumpy, and preserve prior station selections between runs unless the user explicitly requests a fresh seed-rating session. Validation next: add focused station backend/UI tests for non-alphabetic queue composition and viewport behavior, implement persisted-selection reuse with an explicit reset flag, then rerun build + full tests 3x and inspect GitHub CI failures with `gh` until green.
+- 2026-03-20 — Follow-up user request: after the final push, keep polling GitHub Actions and do not stop until CI is green. Any failure must be identified with `gh`, fixed locally, pushed, and re-polled in a convergence loop.
+- 2026-03-20 — Follow-up user request: modularize `packages/sidflow-play/src/station-demo-cli.ts` into smaller TypeScript modules that match repo conventions, with no behavioral changes. This is a maintainability refactor to take only after the active correctness/persistence changes are stabilized and validated.
 
 ### Task: Production rollout convergence roadmap (2026-03-13)
 

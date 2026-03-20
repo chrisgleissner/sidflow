@@ -2,16 +2,17 @@
 
 import { describe, expect, test, it } from "bun:test";
 import { Database } from "bun:sqlite";
-import { copyFile, mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { Writable } from "node:stream";
 import type { Stats } from "node:fs";
 
 import { parsePlayArgs, runPlayCli } from "../src/cli.js";
-import { parseStationDemoArgs, runStationDemoCli } from "../src/station-demo-cli.js";
+import { __stationDemoTestUtils, parseStationDemoArgs, runStationDemoCli } from "../src/station-demo-cli.js";
 import { PlaybackState, type PlaybackEvent } from "../src/index.js";
 import type { Recommendation } from "@sidflow/common";
+import type { SidFileMetadata } from "@sidflow/common";
 import type { Playlist, PlaylistConfig } from "../src/playlist.js";
 import type { PlaybackOptions } from "../src/playback.js";
 
@@ -82,6 +83,120 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
   }
   db.close();
   return { dbPath, workspace };
+}
+
+async function createLargeStationQueueFixture(
+  mode: "uniform" | "clustered",
+): Promise<{ dbPath: string; workspace: string; ratedTrackIds: string[]; preferredBucketPrefixes: string[] }> {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `sidflow-station-queue-${mode}-`));
+  const dbPath = path.join(workspace, "sidcorr.sqlite");
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE tracks (
+      track_id TEXT PRIMARY KEY,
+      sid_path TEXT NOT NULL,
+      song_index INTEGER NOT NULL,
+      vector_json TEXT,
+      e INTEGER NOT NULL,
+      m INTEGER NOT NULL,
+      c INTEGER NOT NULL,
+      p INTEGER,
+      likes INTEGER NOT NULL DEFAULT 0,
+      dislikes INTEGER NOT NULL DEFAULT 0,
+      skips INTEGER NOT NULL DEFAULT 0,
+      plays INTEGER NOT NULL DEFAULT 0,
+      last_played TEXT
+    );
+  `);
+  const insert = db.query(`
+    INSERT INTO tracks (track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const bucketPrefixes = [
+    "DEMOS/A-F",
+    "DEMOS/G-L",
+    "GAMES/A-F",
+    "GAMES/G-L",
+    "MUSICIANS/A-F",
+    "MUSICIANS/G-L",
+  ] as const;
+  const preferredBucketPrefixes = ["DEMOS/G-L", "GAMES/G-L", "MUSICIANS/G-L"];
+  const ratedTrackIds: string[] = [];
+  let globalIndex = 1;
+
+  for (const bucketPrefix of bucketPrefixes) {
+    for (let trackOffset = 1; trackOffset <= 200; trackOffset += 1) {
+      const sidPath = `${bucketPrefix}/song${String(globalIndex).padStart(4, "0")}.sid`;
+      const bucketIsPreferred = preferredBucketPrefixes.includes(bucketPrefix);
+      const vector = mode === "uniform"
+        ? [1, 1, 1]
+        : bucketIsPreferred
+          ? [0.02, 0.98, Number(((trackOffset % 7) * 0.001).toFixed(3))]
+          : [0.98, 0.02, Number(((trackOffset % 7) * 0.001).toFixed(3))];
+      const e = bucketIsPreferred ? 2 : 5;
+      const m = bucketIsPreferred ? 5 : 2;
+      const c = 3;
+      const p = bucketIsPreferred ? 5 : 2;
+      const trackId = `${sidPath}#1`;
+      insert.run(trackId, sidPath, 1, JSON.stringify(vector), e, m, c, p, 0, 0, 0, 1, null);
+      await mkdir(path.dirname(path.join(workspace, sidPath)), { recursive: true });
+      await writeFile(path.join(workspace, sidPath), "PSID", "utf8");
+
+      if (bucketIsPreferred && ratedTrackIds.length < 10 && trackOffset <= 4) {
+        ratedTrackIds.push(trackId);
+      }
+      if (mode === "uniform" && ratedTrackIds.length < 10 && trackOffset <= 4) {
+        ratedTrackIds.push(trackId);
+      }
+      globalIndex += 1;
+    }
+  }
+
+  db.close();
+  return { dbPath, workspace, ratedTrackIds, preferredBucketPrefixes: [...preferredBucketPrefixes] };
+}
+
+function createStationRuntime(workspace: string) {
+  return {
+    random: (() => {
+      const values = [0.91, 0.17, 0.73, 0.29, 0.64, 0.43, 0.87, 0.35];
+      let index = 0;
+      return () => values[index++ % values.length]!;
+    })(),
+    parseSidFile: async (filePath: string): Promise<SidFileMetadata> => ({
+      type: "PSID",
+      version: 2,
+      title: path.basename(filePath),
+      author: path.dirname(filePath).split(path.sep).slice(-2).join(" / "),
+      released: "1989 Test Release",
+      songs: 1,
+      startSong: 1,
+      clock: "PAL",
+      sidModel1: "MOS6581",
+      loadAddress: 0,
+      initAddress: 0,
+      playAddress: 0,
+    }),
+    lookupSongDurationMs: async () => 60_000,
+    loadConfig: async () => ({
+      sidPath: workspace,
+      audioCachePath: workspace,
+      tagsPath: workspace,
+      classifiedPath: workspace,
+      sidplayPath: "/usr/bin/sidplayfp",
+      threads: 0,
+      classificationDepth: 3,
+    }),
+    fetchImpl: globalThis.fetch,
+    stdout: new Writable({ write(_chunk, _encoding, callback) { callback(); } }),
+    stderr: new Writable({ write(_chunk, _encoding, callback) { callback(); } }),
+    stdin: process.stdin,
+    cwd: () => workspace,
+    now: () => new Date("2026-03-20T12:00:00.000Z"),
+    onSignal: () => undefined,
+    offSignal: () => undefined,
+  };
 }
 
 async function seedStationDemoReleaseCache(
@@ -256,6 +371,62 @@ describe("station demo CLI argument parsing", () => {
   test("rejects invalid min-duration during parsing", () => {
     const result = parseStationDemoArgs(["--min-duration", "0"]);
     expect(result.errors[0]).toContain("must be at least 1");
+  });
+
+  test("parses reset-selections flag", () => {
+    const result = parseStationDemoArgs(["--reset-selections"]);
+    expect(result.options.resetSelections).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe("station demo backend queue building", () => {
+  it("builds a random-rating station across collection buckets instead of collapsing into early alphabetical paths", async () => {
+    const fixture = await createLargeStationQueueFixture("uniform");
+    const ratings = new Map(fixture.ratedTrackIds.map((trackId, index) => [trackId, (index % 6)]));
+
+    const queue = await __stationDemoTestUtils.buildStationQueue(
+      fixture.dbPath,
+      fixture.workspace,
+      ratings,
+      100,
+      3,
+      15,
+      createStationRuntime(fixture.workspace),
+      new Map(),
+    );
+
+    expect(queue).toHaveLength(100);
+    const firstThirtyBuckets = new Set(queue.slice(0, 30).map((track) => __stationDemoTestUtils.deriveStationBucketKey(track.sid_path)));
+    expect(firstThirtyBuckets.size).toBeGreaterThanOrEqual(4);
+    const sortedPaths = [...queue].map((track) => track.sid_path).sort();
+    expect(queue.map((track) => track.sid_path)).not.toEqual(sortedPaths);
+    const topLevelRoots = new Set(queue.map((track) => track.sid_path.split("/")[0]));
+    expect(topLevelRoots.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps recommendations aligned with the preferred classification cluster without reverting to alphabetical order", async () => {
+    const fixture = await createLargeStationQueueFixture("clustered");
+    const ratings = new Map(fixture.ratedTrackIds.map((trackId, index) => [trackId, index % 2 === 0 ? 5 : 4]));
+
+    const queue = await __stationDemoTestUtils.buildStationQueue(
+      fixture.dbPath,
+      fixture.workspace,
+      ratings,
+      100,
+      3,
+      15,
+      createStationRuntime(fixture.workspace),
+      new Map(),
+    );
+
+    expect(queue).toHaveLength(100);
+    const preferredTracks = queue.filter((track) => fixture.preferredBucketPrefixes.some((prefix) => track.sid_path.startsWith(prefix)));
+    expect(preferredTracks.length).toBeGreaterThanOrEqual(80);
+    const preferredBuckets = new Set(preferredTracks.slice(0, 30).map((track) => __stationDemoTestUtils.deriveStationBucketKey(track.sid_path)));
+    expect(preferredBuckets.size).toBeGreaterThanOrEqual(3);
+    const sortedPreferredPaths = [...preferredTracks].map((track) => track.sid_path).sort();
+    expect(preferredTracks.map((track) => track.sid_path)).not.toEqual(sortedPreferredPaths);
   });
 });
 
@@ -1246,6 +1417,8 @@ describe("runPlayCli", () => {
     const output = stdoutChunks.join("");
     expect(output).toContain("Selected track 2/100");
     expect(output).toContain("Started selected track 3/100.");
+    expect(output).toContain("➜ 002/100");
+    expect(output).toContain("▶ 001/100");
     expect(output).toContain("Paused ");
     expect(output).toContain("Resumed ");
     expect(playbackEvents).toContain("pause");
@@ -1289,7 +1462,7 @@ describe("runPlayCli", () => {
           type: "PSID",
           version: 2,
           title: path.basename(filePath),
-          author: filePath.includes("song120.sid") ? "Rob Hubbard" : "Test Composer",
+          author: filePath.includes("song") ? "Rob Hubbard" : "Test Composer",
           released: "1989 Test Release",
           songs: 1,
           startSong: 1,
@@ -1308,8 +1481,148 @@ describe("runPlayCli", () => {
     expect(output).toContain("/ filter title/artist");
     expect(output).toContain("Filtering playlist by \"hubbard\"");
     expect(output).toContain("filter \"hubbard\"");
-    expect(output).toContain("song120.sid");
+    expect(output).toContain("Rob Hubbard");
     expect(output).toContain("Playlist Window");
+  });
+
+  it("reuses persisted station selections and skips seed capture by default", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const selectionStatePath = __stationDemoTestUtils.buildSelectionStatePath(
+      fixture.workspace,
+      fixture.dbPath,
+      fixture.workspace,
+    );
+    const persistedRatings = Object.fromEntries(
+      Array.from({ length: 10 }, (_, index) => [`A/song${index + 1}.sid#1`, 5]),
+    );
+
+    await mkdir(path.dirname(selectionStatePath), { recursive: true });
+    await writeFile(
+      selectionStatePath,
+      JSON.stringify({
+        dbPath: fixture.dbPath,
+        hvscRoot: fixture.workspace,
+        ratedTarget: 10,
+        ratings: persistedRatings,
+        savedAt: "2026-03-20T12:00:00.000Z",
+      }),
+      "utf8",
+    );
+
+    const exitCode = await runStationDemoCli(
+      ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--sample-size", "10"],
+      {
+        stdout: new Writable({
+          write(chunk, _encoding, callback) {
+            stdoutChunks.push(chunk.toString());
+            callback();
+          }
+        }),
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Reused 10 persisted ratings. Station ready immediately");
+    expect(output).not.toContain("Seed 1");
+    expect(output).toContain("Station 1/100");
+  });
+
+  it("resets persisted station selections when explicitly requested", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const selectionStatePath = __stationDemoTestUtils.buildSelectionStatePath(
+      fixture.workspace,
+      fixture.dbPath,
+      fixture.workspace,
+    );
+
+    await mkdir(path.dirname(selectionStatePath), { recursive: true });
+    await writeFile(
+      selectionStatePath,
+      JSON.stringify({
+        dbPath: fixture.dbPath,
+        hvscRoot: fixture.workspace,
+        ratedTarget: 10,
+        ratings: { "A/song1.sid#1": 5, "A/song2.sid#1": 5 },
+        savedAt: "2026-03-20T12:00:00.000Z",
+      }),
+      "utf8",
+    );
+
+    const exitCode = await runStationDemoCli(
+      ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--reset-selections"],
+      {
+        stdout: new Writable({
+          write(chunk, _encoding, callback) {
+            stdoutChunks.push(chunk.toString());
+            callback();
+          }
+        }),
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Cleared persisted ratings. Keep rating until the target is reached.");
+    expect(output).toContain("Seed 1");
+    const persistedContent = await readFile(selectionStatePath, "utf8").catch(() => "");
+    expect(persistedContent).toBe("");
   });
 
   it("captures and restores Ultimate64 SID volumes around pause and resume", async () => {
