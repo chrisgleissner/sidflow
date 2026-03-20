@@ -6,9 +6,9 @@ SIDFlow is a CLI-first pipeline with an optional web UI:
 
 ```mermaid
 graph LR
-    A[Fetch (HVSC)] --> B[Render + Classify]
-    B --> C[Train (optional)]
-    C --> D[Play / Recommend]
+    A["Fetch HVSC"] --> B["Render and Classify"]
+    B --> C["Train (optional)"]
+    C --> D["Play or Recommend"]
 ```
 
 ## Key packages

@@ -1043,7 +1043,7 @@ function resolvePlaylistWindowStart(
     return 0;
   }
 
-  const rows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, visibleRows);
+  const rows = Math.max(1, visibleRows);
   const maxWindowStart = Math.max(0, filteredIndices.length - rows);
   let windowStart = Math.max(0, Math.min(previousWindowStart, maxWindowStart));
   const focusPosition = Math.max(0, filteredIndices.indexOf(selectedIndex));
@@ -1148,6 +1148,21 @@ function getTerminalSize(stream: NodeJS.WritableStream): { columns: number; rows
 function resolvePlaylistWindowRows(queueLength: number, terminalRows: number): number {
   const visibleRows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, terminalRows - STATION_SCREEN_RESERVED_ROWS);
   return Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, Math.min(queueLength, visibleRows));
+}
+
+function resolvePlaylistWindowRowsForScreen(queueLength: number, terminalRows: number, reservedRows: number): number {
+  if (queueLength <= 0) {
+    return 0;
+  }
+  const availableRows = Math.max(0, terminalRows - reservedRows);
+  if (availableRows <= 0) {
+    return 0;
+  }
+  return Math.min(queueLength, availableRows);
+}
+
+function getStationReservedRows(featuresJsonl?: string): number {
+  return featuresJsonl ? 29 : 28;
 }
 
 function deriveStationBucketKey(sidPath: string): string {
@@ -1359,14 +1374,20 @@ function renderTrackWindow(
   visibleRows: number,
 ): string[] {
   if (filteredIndices.length === 0) {
-    const rows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, visibleRows);
+    const rows = Math.max(0, visibleRows);
+    if (rows === 0) {
+      return [];
+    }
     const lines = [truncate(subtle(enabled, "No playlist matches the current filter."), width)];
     while (lines.length < rows) {
       lines.push(subtle(enabled, "·"));
     }
     return lines;
   }
-  const rows = Math.max(MINIMUM_PLAYLIST_WINDOW_ROWS, visibleRows);
+  const rows = Math.max(0, visibleRows);
+  if (rows === 0) {
+    return [];
+  }
   const clampedWindowStart = Math.max(0, Math.min(windowStart, Math.max(0, filteredIndices.length - rows)));
   const windowEnd = Math.min(filteredIndices.length, clampedWindowStart + rows);
   const lines: string[] = [];
@@ -1383,14 +1404,14 @@ function renderTrackWindow(
       : isCurrent
         ? colorize(enabled, ANSI.brightGreen, "▶")
         : isSelected
-          ? colorize(enabled, ANSI.brightYellow, "➜")
+          ? colorize(enabled, ANSI.green, "➜")
           : colorize(enabled, ANSI.brightBlack, "•");
     const position = `${String(index + 1).padStart(3, "0")}/${String(queue.length).padStart(3, "0")}`;
     const line = `${marker} ${position} ${title} — ${author} — ${formatDuration(track.durationMs)}`;
     const styledLine = isCurrent
       ? bold(enabled, colorize(enabled, ANSI.brightGreen, line))
       : isSelected
-        ? colorize(enabled, ANSI.yellow, line)
+        ? colorize(enabled, ANSI.green, line)
         : subtle(enabled, line);
     lines.push(truncate(styledLine, width));
   }
@@ -1443,7 +1464,7 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
     truncate(`${current.sid_path}#${current.song_index}  |  ${current.released || "unknown release"}  |  e=${current.e} m=${current.m} c=${current.c}${current.p ? ` p=${current.p}` : ""}`, width),
     truncate(`Feedback  likes=${current.likes}  dislikes=${current.dislikes}  skips=${current.skips}  plays=${current.plays}`, width),
     renderProgressLine(ansiEnabled, "Song Progress", elapsedMs, durationMs, width, ANSI.brightGreen),
-    renderProgressLine(ansiEnabled, "Playlist Pos ", playlistElapsedMs, playlistDurationMs, width, ANSI.brightCyan),
+    renderProgressLine(ansiEnabled, "Playlist Pos ", playlistElapsedMs, playlistDurationMs, width, ANSI.green),
     truncate(`You rated ${state.ratedCount}/${state.ratedTarget}${state.currentRating !== undefined ? `  |  current=${state.currentRating}/5` : ""}`, width),
     "",
   ];
@@ -1461,7 +1482,11 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
         ? `Selected ${selectedIndex + 1}/${state.total}: ${selectedTrack.title || path.basename(selectedTrack.sid_path)}`
         : "Selection is on the currently playing song."
     );
-    const playlistRows = resolvePlaylistWindowRows(state.queue?.length ?? 1, height);
+    const playlistRows = resolvePlaylistWindowRowsForScreen(
+      state.queue?.length ?? 1,
+      height,
+      getStationReservedRows(state.featuresJsonl),
+    );
     lines.push(
       truncate(`${bold(ansiEnabled, `Station ${state.index + 1}/${state.total}`)}  ${subtle(ansiEnabled, "Controls")} ←/→ play prev/next  ↑/↓ browse  PgUp/PgDn jump  Enter play selected`, width),
       truncate(`${subtle(ansiEnabled, "Shortcuts")} / filter title/artist  space pause/resume  h shuffle  s skip=dislike  l like(5)  d dislike(0)  r replay  u rebuild  0-5 rate+rebuild  q quit`, width),
@@ -1470,6 +1495,8 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
       truncate(selectionHint, width),
       "",
       bold(ansiEnabled, `Playlist Window (${playlistRows} visible${filterQuery ? `, ${filteredIndices.length} filtered` : ""})`),
+    );
+    lines.push(
       ...renderTrackWindow(
         ansiEnabled,
         state.queue ?? [state.current],
@@ -1483,7 +1510,7 @@ function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, co
     );
   }
 
-  return `${lines.join("\n")}\n`;
+  return lines.slice(0, height).join("\n");
 }
 
 class ScreenRenderer {
@@ -1499,8 +1526,8 @@ class ScreenRenderer {
     const screen = renderStationScreen(state, this.ansiEnabled, columns, rows);
 
     if (this.ansiEnabled) {
-      const prefix = this.firstPaint ? "\u001b[?25l" : "";
-      this.runtime.stdout.write(`${prefix}\u001b[H\u001b[2J${screen}`);
+      const prefix = this.firstPaint ? "\u001b[?1049h\u001b[?25l" : "";
+      this.runtime.stdout.write(`${prefix}\u001b[H${screen}\u001b[J`);
       this.firstPaint = false;
       return;
     }
@@ -1510,7 +1537,7 @@ class ScreenRenderer {
 
   close(): void {
     if (this.ansiEnabled) {
-      this.runtime.stdout.write(`${ANSI.reset}\u001b[?25h`);
+      this.runtime.stdout.write(`${ANSI.reset}\u001b[?25h\u001b[?1049l`);
     }
   }
 }
@@ -2013,7 +2040,31 @@ class LocalSidplayPlaybackAdapter implements PlaybackAdapter {
     if (proc.exitCode !== null) {
       return;
     }
-    proc.kill("SIGTERM");
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(killTimer);
+        clearTimeout(forceResolveTimer);
+        proc.off("close", finish);
+        proc.off("exit", finish);
+        resolve();
+      };
+
+      const killTimer = setTimeout(() => {
+        if (proc.exitCode === null) {
+          proc.kill("SIGKILL");
+        }
+      }, 500);
+      const forceResolveTimer = setTimeout(finish, 1_000);
+
+      proc.once("close", finish);
+      proc.once("exit", finish);
+      proc.kill("SIGTERM");
+    });
   }
 
   async pause(): Promise<void> {
@@ -2178,8 +2229,15 @@ function mergeQueueKeepingCurrent(
   current: StationTrackDetails,
   rebuilt: StationTrackDetails[],
   currentIndex: number,
+  pinCurrent = true,
 ): { queue: StationTrackDetails[]; index: number } {
   const deduped = rebuilt.filter((track) => track.track_id !== current.track_id);
+  if (!pinCurrent) {
+    if (deduped.length === 0) {
+      return { queue: [], index: 0 };
+    }
+    return { queue: deduped, index: Math.max(0, Math.min(currentIndex, deduped.length - 1)) };
+  }
   const nextIndex = Math.min(currentIndex, deduped.length);
   deduped.splice(nextIndex, 0, current);
   return { queue: deduped, index: nextIndex };
@@ -2537,7 +2595,11 @@ export async function runStationDemoCli(
           const livePlaylistElapsedMs = resolvePlaylistPositionMs(stationQueue, stationIndex, liveElapsedMs);
           const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
           const effectiveSelectedIndex = clampSelectionToMatches(filteredIndices, selectedIndex, stationIndex);
-          const playlistRows = resolvePlaylistWindowRows(stationQueue.length, terminalSize.rows);
+          const playlistRows = resolvePlaylistWindowRowsForScreen(
+            stationQueue.length,
+            terminalSize.rows,
+            getStationReservedRows(featuresJsonl),
+          );
           playlistWindowStart = resolvePlaylistWindowStart(filteredIndices, effectiveSelectedIndex, playlistRows, playlistWindowStart);
           const selectedTrack = stationQueue[effectiveSelectedIndex];
           renderer.render({
@@ -2652,7 +2714,11 @@ export async function runStationDemoCli(
             playlistWindowStart = resolvePlaylistWindowStart(
               filteredIndices,
               selectedIndex,
-              resolvePlaylistWindowRows(stationQueue.length, getTerminalSize(runtime.stdout).rows),
+              resolvePlaylistWindowRowsForScreen(
+                stationQueue.length,
+                getTerminalSize(runtime.stdout).rows,
+                getStationReservedRows(featuresJsonl),
+              ),
               playlistWindowStart,
             );
             stationStatus = stationFilter
@@ -2794,7 +2860,12 @@ export async function runStationDemoCli(
             metadataCache,
           );
           if (rebuilt.length >= stationTarget) {
-            const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex);
+            const shouldSkipCurrent = action.rating === 0;
+            const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex, !shouldSkipCurrent);
+            if (merged.queue.length === 0) {
+              stationStatus = "Rebuild removed the current song but did not produce a replacement, so the current playlist stays active.";
+              continue;
+            }
             stationQueue = merged.queue;
             stationIndex = merged.index;
             selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), stationIndex, stationIndex);
@@ -2804,8 +2875,12 @@ export async function runStationDemoCli(
             stationStatus = action.rating === 5
               ? `Liked this track. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
               : action.rating === 0
-                ? `Disliked this track. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
+                ? `Disliked this track. Rebuilt from ${ratings.size} ratings; skipped to the next song and re-sequenced the remaining queue by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
                 : `Stored ${action.rating}/5. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`;
+            if (shouldSkipCurrent) {
+              await stopPlayback();
+              break;
+            }
           } else {
             stationStatus = action.rating === 5
               ? "Liked this track. Rebuild produced no better candidates, so the current queue stays active."
@@ -2860,6 +2935,7 @@ export const __stationDemoTestUtils = {
   deriveStationBucketKey,
   getTerminalSize,
   orderStationTracksByFlow,
+  renderStationScreen,
   resolvePlaylistWindowRows,
   resolvePlaylistWindowStart,
 };

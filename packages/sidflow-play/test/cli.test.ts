@@ -987,8 +987,135 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     const output = stdoutChunks.join("");
-    expect(output).toContain("Playlist Window (18 visible)");
-    expect(output).toContain("018/100");
+    expect(output).toContain("Playlist Window (12 visible)");
+    expect(output).toContain("012/100");
+  });
+
+  it("keeps station redraws within the terminal height and uses distinct green highlights", () => {
+    const queue = Array.from({ length: 20 }, (_, index) => ({
+      track_id: `track-${index + 1}`,
+      sid_path: `A/song${index + 1}.sid`,
+      song_index: 1,
+      e: 4,
+      m: 4,
+      c: 3,
+      p: 4,
+      likes: 0,
+      dislikes: 0,
+      skips: 0,
+      plays: 1,
+      last_played: null,
+      absolutePath: `/tmp/song${index + 1}.sid`,
+      title: `Song ${index + 1}`,
+      author: "Test Composer",
+      released: "1989 Test Release",
+      durationMs: 60_000,
+    }));
+
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      {
+        phase: "station",
+        current: queue[0]!,
+        index: 0,
+        selectedIndex: 1,
+        playlistWindowStart: 0,
+        total: queue.length,
+        ratedCount: 10,
+        ratedTarget: 10,
+        ratings: new Map([[queue[0]!.track_id, 5]]),
+        playbackMode: "local",
+        adventure: 3,
+        dataSource: "test dataset",
+        dbPath: "/tmp/test.sqlite",
+        queue,
+        currentRating: 5,
+        minDurationSeconds: 15,
+        elapsedMs: 5_000,
+        durationMs: 60_000,
+        playlistElapsedMs: 5_000,
+        playlistDurationMs: 60_000 * queue.length,
+        statusLine: "Station ready.",
+      },
+      true,
+      120,
+      32,
+    );
+
+    expect(screen.split("\n").length).toBeLessThanOrEqual(32);
+    expect(screen).toContain(`${String.fromCharCode(27)}[92m▶`);
+    expect(screen).toContain(`${String.fromCharCode(27)}[32m➜`);
+    expect(screen).toContain("Playlist Window (4 visible)");
+  });
+
+  it("skips to the next rebuilt song when a playing track is disliked", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "s", "q"];
+    const playbackEvents: string[] = [];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationDemoCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        createPlaybackAdapter: async () => ({
+          start: async (track) => {
+            playbackEvents.push(`start:${track.track_id}`);
+          },
+          stop: async () => {
+            playbackEvents.push("stop");
+          },
+          pause: async () => undefined,
+          resume: async () => undefined,
+        }),
+        prompt: async () => actions.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Disliked this track. Rebuilt from 11 ratings; skipped to the next song");
+    const stationStarts = playbackEvents.filter((event) => event.startsWith("start:")).slice(-2);
+    expect(stationStarts).toHaveLength(2);
+    expect(stationStarts[0]).not.toBe(stationStarts[1]);
+    expect(playbackEvents).toContain("stop");
   });
 
   it("reuses a fresh sidflow-data cache without checking GitHub again", async () => {
