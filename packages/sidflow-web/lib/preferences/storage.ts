@@ -129,8 +129,14 @@ export async function __resetPreferencesStorageForTests(): Promise<void> {
 
   try {
     db = await openDatabase();
+    if (!db) {
+      throw new Error('Failed to open IndexedDB test database');
+    }
+
+    const openedDb = db;
+
     await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
+      const transaction = openedDb.transaction(
         [STORE_PREFERENCES, STORE_ROM_BUNDLES, STORE_PLAYBACK_QUEUE, STORE_PLAYBACK_CACHE],
         'readwrite'
       );
