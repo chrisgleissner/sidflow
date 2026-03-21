@@ -50,6 +50,80 @@ Template:
 
 ## Active tasks
 
+### Task: Coverage Drive ≥81% (2026-03-21)
+
+**User request (summary)**
+- Increase Codecov-reported test coverage from ~69% (src: 71%) to ≥81% while preserving correctness and build stability.
+
+**Baseline (2026-03-21)**
+- Source-only (dist excluded): 71% — 20140/27981 covered lines
+- Total LCOV (including dist): 63% — 21313/33703
+- Need: ~2524 more source lines covered to reach 81%
+
+**Coverage by package (src, no dist, as of 2026-03-21)**
+| Package | % | Lines |
+|---------|---|-------|
+| sidflow-web | 59% | 10713 |
+| libsidplayfp-wasm | 68% | 535 |
+| sidflow-classify | 76% | 6378 |
+| sidflow-play | 80% | 3331 |
+| sidflow-common | 81% | 5416 |
+| sidflow-fetch | 87% | 404 |
+| sidflow-performance | 91% | 764 |
+| sidflow-train | 96% | 341 |
+| sidflow-rate | 97% | 94 |
+
+**Top uncovered files (priority order)**
+| File | % | Uncovered lines |
+|------|---|----------------|
+| sidflow-web/lib/fetch-progress-store.ts | 3% | ~227 |
+| sidflow-web/lib/server/similarity-search.ts | 2% | ~197 |
+| sidflow-web/lib/preferences/storage.ts | 2% | ~383 |
+| sidflow-web/lib/feedback/storage.ts | 16% | ~405 |
+| sidflow-web/lib/audio/worklet-player.ts | 22% | ~553 (browser, hard) |
+| sidflow-web/lib/player/sidflow-player.ts | 24% | ~575 (browser, hard) |
+| sidflow-common/src/audio-encoding.ts | 38% | ~322 |
+| sidflow-classify/src/render/cli.ts | 36% | ~419 |
+| sidflow-web/lib/feedback/features.ts | 26% | ~47 |
+| sidflow-web/lib/feedback/recorder.ts | 7% | ~50 |
+| sidflow-web/lib/server/game-soundtrack.ts | 20% | ~82 |
+| sidflow-play/src/station/dataset.ts | 41% | ~161 |
+| sidflow-play/src/station/playback-adapters.ts | 44% | ~118 |
+| sidflow-web/lib/playback-session.ts | 40% | ~208 |
+| sidflow-web/lib/api-client.ts | 50% | ~151 |
+
+**Plan (checklist)**
+
+Wave A — Fast wins (~5%)
+- [x] Create `packages/sidflow-web/tests/unit/fetch-progress-store.test.ts` — pure state machine logic
+- [x] Create `packages/sidflow-web/tests/unit/feedback-features.test.ts` — pure functions
+- [x] Create `packages/sidflow-web/tests/unit/feedback-recorder.test.ts` — wrapper coverage
+- [x] Expand `packages/sidflow-classify/test/render-cli.test.ts` — error paths and more branches
+
+Wave B — IndexedDB coverage (~4%)
+- [x] Expand `packages/sidflow-web/tests/unit/preferences-storage.test.ts` — playback queue, cache, localStorage
+- [x] Expand `packages/sidflow-web/tests/unit/feedback-storage.test.ts` — model snapshots, more branches
+
+Wave C — Logic + classify (~3%)
+- [x] Create `packages/sidflow-web/tests/unit/game-soundtrack.test.ts` — pure functions
+- [x] Create `packages/sidflow-play/test/station-dataset.test.ts` — dataset utilities
+- [x] Create `packages/sidflow-play/test/playback-adapters.test.ts` — buildSidplayArgs etc.
+- [x] Expand audio-encoding test with more branches
+
+Wave D — Server logic (~3%)
+- [ ] Expand `packages/sidflow-web/tests/unit/similarity-search.test.ts` with mocked module calls
+- [ ] Expand playback-session, api-client, rate-playback tests
+
+**Progress log**
+- 2026-03-21 — Task started. Baseline analysis complete. Plan created.
+
+**Termination criteria**
+- Codecov coverage ≥ 81% on source files
+- 0 test failures on 3 consecutive runs
+- PLANS.md updated with final coverage numbers
+
+---
+
 ### Task: Release tag CI fix — 0.5.0-RC3 (2026-03-21)
 
 **Problem Statement**  
