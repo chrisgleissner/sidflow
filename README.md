@@ -30,6 +30,7 @@ A seamless stream of similar Commodore 64 SID songs.
 - **CLI tools**  
   Command-line utilities for analysis, classification, and automation, including a CLI-based SID radio station.
 
+
 ---
 
 ## Getting Started
@@ -192,6 +193,10 @@ If the export already exists and you only want to publish the bundle to the sepa
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
+
+Screenshot:
+
+![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station-demo.png)  
 
 ## Web UI
 
