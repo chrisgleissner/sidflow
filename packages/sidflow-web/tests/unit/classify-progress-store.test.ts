@@ -8,6 +8,7 @@ import {
   checkGlobalStall,
   ingestClassifyStdout,
   getClassifyProgressSnapshot,
+  reconcileClassifyProgressWithRunner,
 } from '../../lib/classify-progress-store';
 
 describe('classify-progress-store', () => {
@@ -360,6 +361,56 @@ describe('classify-progress-store', () => {
       const now = Date.now();
       expect(now - snapshot.perThread[0].updatedAt).toBeLessThan(1000);
       expect(now - snapshot.perThread[1].updatedAt).toBeLessThan(1000);
+    });
+  });
+
+  describe('additional coverage', () => {
+    it('ensureThreads clamps count to 1 when beginClassifyProgress called with 0', () => {
+      beginClassifyProgress(0, 'wasm');
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.threads).toBe(1);
+      expect(snapshot.perThread).toHaveLength(1);
+    });
+
+    it('applyThreadStatusUpdate ignores thread ID 0 via ingestClassifyStdout', () => {
+      beginClassifyProgress(2, 'wasm');
+      // Thread 0 is invalid (index -1), should be silently ignored
+      ingestClassifyStdout('[Thread 0][building][WORKING] /path/to/file.sid\n');
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.threads).toBe(2);
+    });
+
+    it('recordNoAudioEvent logs error after reaching streak threshold', () => {
+      beginClassifyProgress(1, 'wasm');
+      // NO_AUDIO_STREAK_THRESHOLD is 3, so on the 3rd call the error is logged
+      recordNoAudioEvent(1);
+      recordNoAudioEvent(1);
+      recordNoAudioEvent(1); // covers console.error branch (line 192)
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.perThread[0].noAudioStreak).toBe(3);
+    });
+
+    it('ingestClassifyStdout detects no-audio event from stdout line', () => {
+      beginClassifyProgress(2, 'wasm');
+      // This line matches the no-audio pattern → triggers recordNoAudioEvent
+      ingestClassifyStdout('[Thread 1] no audio output detected\n');
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.perThread[0].noAudioStreak).toBeGreaterThan(0);
+    });
+
+    it('reconcileClassifyProgressWithRunner resets active state when runner is gone', () => {
+      beginClassifyProgress(1, 'wasm');
+      expect(getClassifyProgressSnapshot().isActive).toBe(true);
+      reconcileClassifyProgressWithRunner(null);
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.isActive).toBe(false);
+      expect(snapshot.phase).toBe('idle');
+    });
+
+    it('reconcileClassifyProgressWithRunner is no-op when runner pid is present', () => {
+      beginClassifyProgress(1, 'wasm');
+      reconcileClassifyProgressWithRunner(12345);
+      expect(getClassifyProgressSnapshot().isActive).toBe(true);
     });
   });
 });

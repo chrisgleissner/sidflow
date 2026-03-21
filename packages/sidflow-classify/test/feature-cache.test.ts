@@ -258,4 +258,60 @@ describe("Feature Cache Cleanup", () => {
         const { cleanupStaleCache } = await import("../src/feature-cache.js");
         expect(typeof cleanupStaleCache).toBe("function");
     });
+
+    it("should return 0 when features directory does not exist", async () => {
+        const { cleanupStaleCache } = await import("../src/feature-cache.js");
+        const cleaned = await cleanupStaleCache(TEST_DIR);
+        expect(cleaned).toBe(0);
+    });
+
+    it("should traverse cache entries and return 0 for fresh files", async () => {
+        const { cleanupStaleCache } = await import("../src/feature-cache.js");
+        // Create a fresh cache entry by calling cacheFeatures
+        const wavPath = path.join(TEST_DIR, "cleanup-test.wav");
+        const wavData = createTestWavFile();
+        await writeFile(wavPath, wavData);
+
+        const features = { tempo: 130, energy: 0.6 };
+        await cacheFeatures(wavPath, features, TEST_DIR);
+
+        // cleanupStaleCache should traverse the directory but not delete fresh files
+        const cleaned = await cleanupStaleCache(TEST_DIR);
+        expect(cleaned).toBe(0);
+    });
+
+    it("should delete stale cache entries older than TTL", async () => {
+        const { cleanupStaleCache } = await import("../src/feature-cache.js");
+        const { utimes, mkdir: mkdirFs } = await import("node:fs/promises");
+
+        // First create a real cache entry
+        const wavPath = path.join(TEST_DIR, "stale-test.wav");
+        const wavData = createTestWavFile();
+        await writeFile(wavPath, wavData);
+        const features = { tempo: 100, energy: 0.4 };
+        await cacheFeatures(wavPath, features, TEST_DIR);
+
+        // Find and backdate the cache file to simulate a stale entry
+        const { readdir } = await import("node:fs/promises");
+        const featuresDir = path.join(TEST_DIR, "features");
+        const subdirs = await readdir(featuresDir);
+        let cacheFilePath: string | null = null;
+        for (const subdir of subdirs) {
+            const files = await readdir(path.join(featuresDir, subdir));
+            for (const file of files) {
+                if (file.endsWith(".json")) {
+                    cacheFilePath = path.join(featuresDir, subdir, file);
+                }
+            }
+        }
+
+        expect(cacheFilePath).not.toBeNull();
+
+        // Backdate the file by 8 days (TTL is 7 days)
+        const staleDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+        await utimes(cacheFilePath!, staleDate, staleDate);
+
+        const cleaned = await cleanupStaleCache(TEST_DIR);
+        expect(cleaned).toBe(1);
+    });
 });

@@ -243,4 +243,52 @@ describe('feedback storage — additional paths', () => {
     const results = await listImplicitEventsByStatus(['pending'], 2);
     expect(results).toHaveLength(2);
   });
+
+  it('enqueueRatingEvents with empty array returns empty result', async () => {
+    const ids = await enqueueRatingEvents([]);
+    expect(ids).toEqual([]);
+  });
+
+  it('enqueueImplicitEvents with empty array returns empty result', async () => {
+    const ids = await enqueueImplicitEvents([]);
+    expect(ids).toEqual([]);
+  });
+
+  it('listRatingEventsByStatus with empty statuses returns empty array', async () => {
+    await enqueueRatingEvents([{ uuid: 'x1', sidPath: 's.sid', ratings, timestamp: 1, source: 'explicit' }]);
+    const result = await listRatingEventsByStatus([]);
+    expect(result).toEqual([]);
+  });
+
+  it('listImplicitEventsByStatus with empty statuses returns empty array', async () => {
+    await enqueueImplicitEvents([{ uuid: 'x1', sidPath: 's.sid', action: 'play', timestamp: 1 }]);
+    const result = await listImplicitEventsByStatus([]);
+    expect(result).toEqual([]);
+  });
+
+  it('listRatingEventsForTraining respects limit and returns slice', async () => {
+    await enqueueRatingEvents([
+      { uuid: 'trn-1', sidPath: 's.sid', ratings, timestamp: 1, source: 'explicit' },
+      { uuid: 'trn-2', sidPath: 's.sid', ratings, timestamp: 2, source: 'explicit' },
+      { uuid: 'trn-3', sidPath: 's.sid', ratings, timestamp: 3, source: 'explicit' },
+    ]);
+    const results = await listRatingEventsForTraining(undefined, 2);
+    expect(results.length).toBe(2);
+  });
+
+  it('storeModelSnapshot replaces existing snapshot with same version', async () => {
+    const snap1 = { modelVersion: 'v1.0', weights: new Uint8Array([1, 2, 3]) };
+    const id1 = await storeModelSnapshot(snap1);
+    expect(id1).toBe(1);
+
+    // Store a second snapshot with the same version — triggers cursor delete path
+    const snap2 = { modelVersion: 'v1.0', weights: new Uint8Array([4, 5, 6]) };
+    const id2 = await storeModelSnapshot(snap2);
+    expect(id2).toBeGreaterThan(0);
+
+    // Only one snapshot should exist for v1.0
+    const latest = await readLatestModelSnapshot('v1.0');
+    expect(latest).not.toBeNull();
+    expect(latest?.weights).toEqual(new Uint8Array([4, 5, 6]));
+  });
 });

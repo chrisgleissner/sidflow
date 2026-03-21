@@ -4,12 +4,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
 
+let mockClassifyResult: { success: boolean; stdout: string; stderr: string; exitCode: number } = {
+  success: true,
+  stdout: 'ok',
+  stderr: '',
+  exitCode: 0,
+};
+
 mock.module('@/lib/classify-runner', () => ({
   getClassificationRunnerPid: () => null,
   requestClassificationPause: () => false,
   runClassificationProcess: async () => ({
-    result: { success: true, stdout: 'ok', stderr: '', exitCode: 0 },
-    reason: 'completed',
+    result: mockClassifyResult,
+    reason: mockClassifyResult.success ? 'completed' : 'failed',
   }),
 }));
 
@@ -115,5 +122,45 @@ describe('/api/classify temp config', () => {
 
     expect(parsed.render.preferredEngines).toBeDefined();
     expect(parsed.render.defaultFormats).toEqual(['wav']);
+  });
+
+  test('returns 400 when request body fails Zod validation', async () => {
+    const response = await POST(buildPostRequest({ limit: 'not-a-number' }));
+    expect(response.status).toBe(400);
+    const body = await response.json() as any;
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('Validation');
+  });
+
+  test('returns 500 when classify CLI fails', async () => {
+    mockClassifyResult = { success: false, stdout: '', stderr: 'Error!', exitCode: 1 };
+    try {
+      const response = await POST(buildPostRequest({}));
+      expect(response.status).toBe(500);
+      const body = await response.json() as any;
+      expect(body.success).toBe(false);
+    } finally {
+      mockClassifyResult = { success: true, stdout: 'ok', stderr: '', exitCode: 0 };
+    }
+  });
+
+  test('passes limit, forceRebuild, skipAlreadyClassified, deleteWavAfterClassification flags', async () => {
+    const response = await POST(buildPostRequest({
+      limit: 5,
+      forceRebuild: true,
+      skipAlreadyClassified: true,
+      deleteWavAfterClassification: true,
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as any;
+    expect(body.success).toBe(true);
+  });
+
+  test('returns 500 for non-ZodError exceptions', async () => {
+    // Pass a path that does not exist → fs.stat throws ENOENT → generic error handler
+    const response = await POST(buildPostRequest({ path: 'NonExistent/Dir/Songs' }));
+    expect(response.status).toBe(500);
+    const body = await response.json() as any;
+    expect(body.success).toBe(false);
   });
 });

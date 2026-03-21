@@ -10,6 +10,7 @@ import {
   getMetrics,
   resetMetrics,
   formatPrometheusMetrics,
+  logMetricsSummary,
   METRIC_NAMES,
 } from "../src/classify-metrics.js";
 
@@ -227,6 +228,40 @@ describe("Classification Pipeline Metrics", () => {
       // Original snapshot should be unchanged
       expect(snapshot1.counters.get(METRIC_NAMES.FILES_TOTAL)?.value).toBe(5);
       expect(snapshot2.counters.get(METRIC_NAMES.FILES_TOTAL)?.value).toBe(8);
+    });
+  });
+
+  describe("logMetricsSummary", () => {
+    test("logs summary without throwing when metrics are empty", () => {
+      resetMetrics();
+      expect(() => logMetricsSummary()).not.toThrow();
+    });
+
+    test("logs summary with counters, timers, and gauges", () => {
+      resetMetrics();
+      incrementCounter(METRIC_NAMES.FILES_TOTAL, 10, { result: "rendered" });
+      incrementCounter(METRIC_NAMES.RENDERED_TOTAL, 8);
+      incrementCounter(METRIC_NAMES.SKIPPED_TOTAL, 2);
+      incrementCounter(METRIC_NAMES.ERRORS_TOTAL, 1);
+      recordTimer(METRIC_NAMES.RENDER_DURATION, 1200);
+      recordTimer(METRIC_NAMES.RENDER_DURATION, 800);
+      recordTimer(METRIC_NAMES.EXTRACT_DURATION, 500);
+      setGauge(METRIC_NAMES.QUEUE_DEPTH, 3);
+      expect(() => logMetricsSummary()).not.toThrow();
+    });
+
+    test("logs summary with only render timer (no extract timer)", () => {
+      resetMetrics();
+      incrementCounter(METRIC_NAMES.FILES_TOTAL, 5);
+      recordTimer(METRIC_NAMES.RENDER_DURATION, 2000);
+      expect(() => logMetricsSummary()).not.toThrow();
+    });
+
+    test("logs summary with only extract timer (no render timer)", () => {
+      resetMetrics();
+      incrementCounter(METRIC_NAMES.FILES_TOTAL, 3);
+      recordTimer(METRIC_NAMES.EXTRACT_DURATION, 300);
+      expect(() => logMetricsSummary()).not.toThrow();
     });
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach, setSystemTime } from "bun:test";
 import { writeFile, mkdir, rm, utimes } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -378,5 +378,47 @@ describe("Metadata Cache", () => {
         const stats = getMetadataCacheStats();
         expect(stats.hits).toBe(1);
         expect(stats.misses).toBe(1);
+    });
+
+    it("should invalidate stale entry after STALE_THRESHOLD_MS", async () => {
+        const sidPath = path.join(TEST_DIR, "stale-test.sid");
+        const sidData = createTestSidFile();
+        await writeFile(sidPath, sidData);
+
+        // Parse and cache at current real time
+        const metadata = await getOrParseMetadata(sidPath);
+        expect(metadata).not.toBeNull();
+
+        // Advance system time by 6 minutes (past STALE_THRESHOLD_MS of 5 minutes)
+        const futureTime = new Date(Date.now() + 6 * 60 * 1000);
+        setSystemTime(futureTime);
+        try {
+            // getCachedMetadata should see entry as stale (age > 5 minutes)
+            const cached = await getCachedMetadata(sidPath);
+            expect(cached).toBeNull();
+
+            const stats = getMetadataCacheStats();
+            expect(stats.invalidations).toBeGreaterThan(0);
+        } finally {
+            setSystemTime(new Date()); // Restore real time
+        }
+    });
+
+    it("should trim loadTimes array when it exceeds 100 entries", async () => {
+        const sidData = createTestSidFile();
+        resetMetadataCacheStats();
+
+        // Parse 101 unique files to populate loadTimes
+        for (let i = 0; i < 101; i++) {
+            const sidPath = path.join(TEST_DIR, `loadtimes-${i}.sid`);
+            await writeFile(sidPath, sidData);
+            await getOrParseMetadata(sidPath);
+        }
+
+        const stats = getMetadataCacheStats();
+        // avgLoadTimeMs should be set (loadTimes were tracked and trimmed)
+        expect(stats.avgLoadTimeMs).toBeGreaterThanOrEqual(0);
+        // Verify the 101st parse succeeded
+        expect(stats.misses).toBe(101);
     });
 });

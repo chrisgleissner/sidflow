@@ -7,7 +7,9 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "bun:test";
 
-import { safeReadJsonFile, resolveLatestFeaturesJsonl } from "../src/station/dataset.js";
+import { safeReadJsonFile, resolveLatestFeaturesJsonl, resolveStationDataset } from "../src/station/dataset.js";
+import type { StationRuntime } from "../src/station/types.js";
+import type { SidflowConfig } from "@sidflow/common";
 
 async function makeTmpDir(): Promise<string> {
   const dir = path.join(tmpdir(), `station-dataset-test-${randomUUID()}`);
@@ -98,5 +100,134 @@ describe("resolveLatestFeaturesJsonl", () => {
     await writeFile(path.join(dir, "features_2024-05-01.txt"), "");
     const result = await resolveLatestFeaturesJsonl(dir);
     expect(result).toBeUndefined();
+  });
+});
+
+function makeStubRuntime(cwd: string): StationRuntime {
+  return {
+    cwd: () => cwd,
+    now: () => new Date(),
+    fetchImpl: fetch as any,
+    loadConfig: async () => { throw new Error("not needed"); },
+    stdout: process.stdout,
+    stderr: process.stderr,
+    stdin: process.stdin,
+    random: () => Math.random(),
+    parseSidFile: async () => { throw new Error("not needed"); },
+    lookupSongDurationMs: async () => undefined,
+  } as unknown as StationRuntime;
+}
+
+const baseConfig: SidflowConfig = {
+  sidPath: "/hvsc",
+  audioCachePath: "/cache",
+  tagsPath: "/tags",
+  threads: 1,
+  classificationDepth: 1,
+} as SidflowConfig;
+
+describe("resolveStationDataset — explicit local DB", () => {
+  it("returns explicit localDb path when options.localDb is set", async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeStubRuntime(dir);
+    const result = await resolveStationDataset(
+      runtime,
+      { localDb: "my-local.sqlite" },
+      baseConfig,
+    );
+    expect(result.dbPath).toBe(path.resolve(dir, "my-local.sqlite"));
+    expect(result.dataSource).toContain("local SQLite override");
+    expect(result.featuresJsonl).toBeUndefined();
+  });
+
+  it("returns explicit db path when options.db is set", async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeStubRuntime(dir);
+    const result = await resolveStationDataset(
+      runtime,
+      { db: "other.sqlite" },
+      baseConfig,
+    );
+    expect(result.dbPath).toBe(path.resolve(dir, "other.sqlite"));
+    expect(result.dataSource).toContain("local SQLite override");
+  });
+
+  it("includes featuresJsonl when options.featuresJsonl is set alongside localDb", async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeStubRuntime(dir);
+    const result = await resolveStationDataset(
+      runtime,
+      { localDb: "my-local.sqlite", featuresJsonl: "features.jsonl" },
+      baseConfig,
+    );
+    expect(result.featuresJsonl).toBe(path.resolve(dir, "features.jsonl"));
+  });
+
+  it("resolves absolute localDb path unchanged", async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeStubRuntime(dir);
+    const absPath = path.join(dir, "absolute.sqlite");
+    const result = await resolveStationDataset(
+      runtime,
+      { localDb: absPath },
+      baseConfig,
+    );
+    expect(result.dbPath).toBe(absPath);
+  });
+});
+
+describe("resolveStationDataset — forceLocalDb", () => {
+  it("throws when forceLocalDb is true but no sqlite files exist", async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeStubRuntime(dir);
+    await expect(
+      resolveStationDataset(runtime, { forceLocalDb: true }, baseConfig)
+    ).rejects.toThrow("No local similarity export .sqlite files");
+  });
+
+  it("returns the sqlite file when forceLocalDb is true and file exists", async () => {
+    const dir = await makeTmpDir();
+    const exportsDir = path.join(dir, "data", "exports");
+    await mkdir(exportsDir, { recursive: true });
+    const sqliteFile = path.join(exportsDir, "similarity-2024-01.sqlite");
+    await writeFile(sqliteFile, "sqlite header");
+    const runtime = makeStubRuntime(dir);
+    const result = await resolveStationDataset(
+      runtime,
+      { forceLocalDb: true },
+      baseConfig,
+    );
+    expect(result.dbPath).toBe(sqliteFile);
+    expect(result.dataSource).toContain("latest local export");
+  });
+
+  it("picks the most recently modified sqlite when multiple exist", async () => {
+    const dir = await makeTmpDir();
+    const exportsDir = path.join(dir, "data", "exports");
+    await mkdir(exportsDir, { recursive: true });
+    const older = path.join(exportsDir, "alpha.sqlite");
+    const newer = path.join(exportsDir, "beta.sqlite");
+    await writeFile(older, "old data");
+    // Write newer after a tiny pause to ensure different mtime
+    await new Promise((r) => setTimeout(r, 10));
+    await writeFile(newer, "new data");
+    const runtime = makeStubRuntime(dir);
+    const result = await resolveStationDataset(runtime, { forceLocalDb: true }, baseConfig);
+    // Should pick the most recently modified file
+    expect(result.dbPath).toBe(newer);
+  });
+
+  it("uses explicit featuresJsonl when forceLocalDb is true and featuresJsonl is set", async () => {
+    const dir = await makeTmpDir();
+    const exportsDir = path.join(dir, "data", "exports");
+    await mkdir(exportsDir, { recursive: true });
+    await writeFile(path.join(exportsDir, "sim.sqlite"), "header");
+    const runtime = makeStubRuntime(dir);
+    const result = await resolveStationDataset(
+      runtime,
+      { forceLocalDb: true, featuresJsonl: "custom-features.jsonl" },
+      baseConfig,
+    );
+    expect(result.featuresJsonl).toBe(path.resolve(dir, "custom-features.jsonl"));
   });
 });

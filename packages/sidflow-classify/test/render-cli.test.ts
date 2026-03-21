@@ -399,3 +399,36 @@ describe("resolveEngineOrder — edge cases", () => {
     expect(wasmCount).toBe(1);
   });
 });
+
+describe("resolveFormats — unsupported format", () => {
+  const cfg: SidflowConfig = {
+    sidPath: "/hvsc",
+    audioCachePath: "/cache",
+    tagsPath: "/tags",
+    threads: 1,
+    classificationDepth: 1,
+  } as SidflowConfig;
+
+  it("skips unsupported format entries", () => {
+    const formats = resolveFormats(
+      { formats: ["wav", "mp3" as any, "flac"] } as any,
+      cfg
+    );
+    expect(formats).toEqual(["wav", "flac"]);
+  });
+
+  it("deduplicates repeated formats", () => {
+    const formats = resolveFormats(
+      { formats: ["wav", "wav", "flac"] } as any,
+      cfg
+    );
+    expect(formats).toEqual(["wav", "flac"]);
+  });
+});
+
+describe("parseSidSpec — empty path part", () => {
+  it("returns null when pathPart is empty (value starts with #)", () => {
+    expect(parseSidSpec("#3")).toBeNull();
+    expect(parseSidSpec("#")).toBeNull();
+  });
+});

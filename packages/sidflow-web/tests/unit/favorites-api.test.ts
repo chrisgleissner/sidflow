@@ -224,4 +224,44 @@ describe('Favorites API', () => {
       expect(prefs.favorites).toEqual([]);
     });
   });
+
+  describe('error paths', () => {
+    it('GET returns 500 when preferences loading fails', async () => {
+      await fs.writeFile(testPrefsPath, 'not valid json', 'utf8');
+      resetFavoritesCache();
+      const response = await GET();
+      expect(response.status).toBe(500);
+      const body = await response.json() as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+      expect(body.error).toContain('Failed to load');
+    });
+
+    it('POST returns 500 when preferences loading fails', async () => {
+      await fs.writeFile(testPrefsPath, 'not valid json', 'utf8');
+      resetFavoritesCache();
+      const request = new Request('http://localhost/api/favorites', {
+        method: 'POST',
+        body: JSON.stringify({ sid_path: '/test.sid' }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const response = await POST(request as any);
+      expect(response.status).toBe(500);
+      const body = await response.json() as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+    });
+
+    it('DELETE returns 500 when preferences loading fails', async () => {
+      await fs.writeFile(testPrefsPath, 'not valid json', 'utf8');
+      resetFavoritesCache();
+      const request = new Request('http://localhost/api/favorites', {
+        method: 'DELETE',
+        body: JSON.stringify({ sid_path: '/test.sid' }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const response = await DELETE(request as any);
+      expect(response.status).toBe(500);
+      const body = await response.json() as { success: boolean; error: string };
+      expect(body.success).toBe(false);
+    });
+  });
 });

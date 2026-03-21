@@ -125,6 +125,50 @@ describe("parseClassifyArgs", () => {
     const result = parseClassifyArgs(["--unknown"]);
     expect(result.errors).toEqual(["Unknown option: --unknown"]);
   });
+
+  it("parses --allow-degraded flag", () => {
+    const result = parseClassifyArgs(["--allow-degraded"]);
+    expect(result.errors).toHaveLength(0);
+    expect(result.options.allowDegraded).toBeTrue();
+  });
+
+  it("parses --limit with a valid positive integer", () => {
+    const result = parseClassifyArgs(["--limit", "10"]);
+    expect(result.errors).toHaveLength(0);
+    expect(result.options.limit).toBe(10);
+  });
+
+  it("flags --limit with a non-positive integer", () => {
+    const resultNeg = parseClassifyArgs(["--limit", "-1"]);
+    expect(resultNeg.errors).toHaveLength(1);
+    expect(resultNeg.errors[0]).toContain("--limit must be a positive integer");
+
+    const resultZero = parseClassifyArgs(["--limit", "0"]);
+    expect(resultZero.errors).toHaveLength(1);
+  });
+
+  it("flags --limit with a non-integer value", () => {
+    const result = parseClassifyArgs(["--limit", "foo"]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("--limit must be a positive integer");
+  });
+
+  it("parses --sid-path-prefix", () => {
+    const result = parseClassifyArgs(["--sid-path-prefix", "./music"]);
+    expect(result.errors).toHaveLength(0);
+    expect(result.options.sidPathPrefix).toBe("./music");
+  });
+
+  it("flags unexpected positional argument", () => {
+    const result = parseClassifyArgs(["positional-arg"]);
+    expect(result.errors).toEqual(["Unexpected argument: positional-arg"]);
+  });
+
+  it("flags flag missing value when next token starts with --", () => {
+    const result = parseClassifyArgs(["--config", "--other-flag"]);
+    expect(result.errors.length).toBeGreaterThanOrEqual(1);
+    expect(result.errors[0]).toContain("--config requires a value");
+  });
 });
 
 describe("runClassifyCli", () => {
@@ -247,6 +291,49 @@ describe("runClassifyCli", () => {
     const output = captured.stderr.join("\n");
     expect(output).toContain("--config requires a value");
     expect(output).toContain("Use --help to list supported options.");
+  });
+
+  it("passes --allow-degraded to runtime by setting SIDFLOW_ALLOW_DEGRADED env", async () => {
+    const originalEnv = process.env.SIDFLOW_ALLOW_DEGRADED;
+
+    const captured: { stdout: string[] } = { stdout: [] };
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        captured.stdout.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const plan = createPlan();
+    const exitCode = await runClassifyCli(["--allow-degraded"], {
+      stdout,
+      planClassification: (async () => plan) as any,
+      buildAudioCache: (async () => ({
+        rendered: [],
+        skipped: [],
+        metrics: { startTime: 0, endTime: 10, durationMs: 10, totalFiles: 0, rendered: 0, skipped: 0, cacheHitRate: 0 }
+      })) as any,
+      generateAutoTags: (async () => ({
+        autoTagged: [],
+        manualEntries: [],
+        mixedEntries: [],
+        metadataFiles: [],
+        tagFiles: [],
+        jsonlFile: "/tmp/test.jsonl",
+        jsonlRecordCount: 0,
+        metrics: { startTime: 0, endTime: 10, durationMs: 10, totalFiles: 0, autoTaggedCount: 0, manualOnlyCount: 0, mixedCount: 0, predictionsGenerated: 0 }
+      })) as any
+    });
+
+    // Restore original env
+    if (originalEnv === undefined) {
+      delete process.env.SIDFLOW_ALLOW_DEGRADED;
+    } else {
+      process.env.SIDFLOW_ALLOW_DEGRADED = originalEnv;
+    }
+
+    expect(exitCode).toBe(0);
+    expect(captured.stdout.join("")).toContain("Classification complete.");
   });
 
   it("loads override modules through default runtime", async () => {

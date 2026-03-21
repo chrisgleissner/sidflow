@@ -47,8 +47,7 @@ describe('scheduler', () => {
         enabled: true,
         time: 'invalid',
         timezone: 'UTC',
-      };
-      
+      };      
       const now = new Date('2025-01-15T03:00:00Z');
       const nextRun = calculateNextRunTime(config, now);
       
@@ -99,6 +98,41 @@ describe('scheduler', () => {
       expect(nextRun.getUTCHours()).toBe(0);
       expect(nextRun.getUTCMinutes()).toBe(0);
       expect(nextRun.getUTCDate()).toBe(16); // Next day
+    });
+
+    test('should warn and fall back to 06:00 for out-of-range hours (>23)', () => {
+      const config: SchedulerConfig = {
+        enabled: true,
+        time: '25:00',
+        timezone: 'UTC',
+      };
+      const now = new Date('2025-01-15T03:00:00Z');
+      const nextRun = calculateNextRunTime(config, now);
+      // Invalid hours → parseTimeString returns { hours: 6, minutes: 0 }
+      expect(nextRun.getUTCHours()).toBe(6);
+      expect(nextRun.getUTCMinutes()).toBe(0);
+    });
+
+    test('should warn and fall back to 06:00 for out-of-range minutes (>59)', () => {
+      const config: SchedulerConfig = {
+        enabled: true,
+        time: '10:99',
+        timezone: 'UTC',
+      };
+      const now = new Date('2025-01-15T03:00:00Z');
+      const nextRun = calculateNextRunTime(config, now);
+      expect(nextRun.getUTCHours()).toBe(6);
+      expect(nextRun.getUTCMinutes()).toBe(0);
+    });
+
+    test('should throw an error for non-UTC timezone', () => {
+      const config: SchedulerConfig = {
+        enabled: true,
+        time: '06:00',
+        timezone: 'America/New_York',
+      };
+      const now = new Date('2025-01-15T03:00:00Z');
+      expect(() => calculateNextRunTime(config, now)).toThrow("Only 'UTC' timezone is supported");
     });
   });
 

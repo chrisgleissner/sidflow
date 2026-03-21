@@ -192,12 +192,14 @@ describe('playback-session ROM paths', () => {
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     process.env.SIDFLOW_ROOT = tempRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
   });
 
   afterEach(async () => {
     if (originalSidflowRoot === undefined) delete process.env.SIDFLOW_ROOT;
     else process.env.SIDFLOW_ROOT = originalSidflowRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
     await rm(tempRoot, { recursive: true, force: true });
   });
@@ -279,12 +281,14 @@ describe('playback-session stream assets', () => {
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     process.env.SIDFLOW_ROOT = tempRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
   });
 
   afterEach(async () => {
     if (originalSidflowRoot === undefined) delete process.env.SIDFLOW_ROOT;
     else process.env.SIDFLOW_ROOT = originalSidflowRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
     await rm(tempRoot, { recursive: true, force: true });
   });
@@ -366,12 +370,14 @@ describe('streamSessionSidFile', () => {
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     process.env.SIDFLOW_ROOT = tempRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
   });
 
   afterEach(async () => {
     if (originalSidflowRoot === undefined) delete process.env.SIDFLOW_ROOT;
     else process.env.SIDFLOW_ROOT = originalSidflowRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
     await rm(tempRoot, { recursive: true, force: true });
   });
@@ -427,12 +433,14 @@ describe('streamSessionRomFile', () => {
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     process.env.SIDFLOW_ROOT = tempRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
   });
 
   afterEach(async () => {
     if (originalSidflowRoot === undefined) delete process.env.SIDFLOW_ROOT;
     else process.env.SIDFLOW_ROOT = originalSidflowRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
     await rm(tempRoot, { recursive: true, force: true });
   });
@@ -505,12 +513,14 @@ describe('streamSessionAssetFile', () => {
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     process.env.SIDFLOW_ROOT = tempRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
   });
 
   afterEach(async () => {
     if (originalSidflowRoot === undefined) delete process.env.SIDFLOW_ROOT;
     else process.env.SIDFLOW_ROOT = originalSidflowRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
     await rm(tempRoot, { recursive: true, force: true });
   });
@@ -662,12 +672,14 @@ describe('playback-session TTL expiry', () => {
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     process.env.SIDFLOW_ROOT = tempRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
   });
 
   afterEach(async () => {
     if (originalSidflowRoot === undefined) delete process.env.SIDFLOW_ROOT;
     else process.env.SIDFLOW_ROOT = originalSidflowRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
     await rm(tempRoot, { recursive: true, force: true });
   });
@@ -742,12 +754,14 @@ describe('playback-session load from manifest', () => {
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
     originalSidflowRoot = process.env.SIDFLOW_ROOT;
     process.env.SIDFLOW_ROOT = tempRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
   });
 
   afterEach(async () => {
     if (originalSidflowRoot === undefined) delete process.env.SIDFLOW_ROOT;
     else process.env.SIDFLOW_ROOT = originalSidflowRoot;
+    resetServerEnvCacheForTests();
     resetPlaybackSessionStoreForTests();
     await rm(tempRoot, { recursive: true, force: true });
   });
