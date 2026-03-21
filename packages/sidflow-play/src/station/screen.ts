@@ -3,17 +3,97 @@ import type { StationScreenState, StationTrackDetails, StationRuntime } from "./
 import { MINIMUM_PLAYLIST_WINDOW_ROWS, STATION_SCREEN_RESERVED_ROWS } from "./constants.js";
 import {
   ANSI,
+  RATING_COLUMN_WIDTH,
   bold,
   colorize,
+  extractYear,
   formatDuration,
   getTerminalSize,
+  normalizeRating,
   renderLegend,
   renderProgressLine,
+  renderStars,
   resolveTrackDurationMs,
   subtle,
   supportsAnsi,
   truncate,
 } from "./formatting.js";
+
+const INDEX_COLUMN_WIDTH = 7;
+const MARKER_COLUMN_WIDTH = 2;
+const DURATION_COLUMN_WIDTH = 6;
+const META_COLUMN_WIDTH = 6;
+const PLAYLIST_COLUMN_GAP = 1;
+
+interface PlaylistLayout {
+  titleWidth: number;
+  artistWidth: number;
+}
+
+function fitCell(value: string, width: number, align: "left" | "right" = "left"): string {
+  if (width <= 0) {
+    return "";
+  }
+  const clipped = truncate(value, width);
+  return align === "right" ? clipped.padStart(width, " ") : clipped.padEnd(width, " ");
+}
+
+function resolvePlaylistLayout(width: number): PlaylistLayout {
+  const fixedWidth = INDEX_COLUMN_WIDTH
+    + MARKER_COLUMN_WIDTH
+    + RATING_COLUMN_WIDTH
+    + DURATION_COLUMN_WIDTH
+    + META_COLUMN_WIDTH
+    + (PLAYLIST_COLUMN_GAP * 6);
+  const flexibleWidth = Math.max(24, width - fixedWidth);
+  const artistWidth = Math.max(12, Math.floor(flexibleWidth * 0.36));
+  const titleWidth = Math.max(12, flexibleWidth - artistWidth);
+  return { titleWidth, artistWidth };
+}
+
+function renderPlaylistMarker(enabled: boolean, isCurrent: boolean, isSelected: boolean): string {
+  const marker = isCurrent ? "►" : isSelected ? ">" : "";
+  const padded = marker.padStart(MARKER_COLUMN_WIDTH, " ");
+  if (isCurrent) {
+    return colorize(enabled, ANSI.brightGreen, padded);
+  }
+  if (isSelected) {
+    return colorize(enabled, ANSI.green, padded);
+  }
+  return subtle(enabled, padded);
+}
+
+function formatPlaylistRow(
+  enabled: boolean,
+  track: StationTrackDetails,
+  rowIndex: number,
+  totalRows: number,
+  rating: number | null | undefined,
+  isCurrent: boolean,
+  isSelected: boolean,
+  layout: PlaylistLayout,
+): string {
+  const title = track.title || path.basename(track.sid_path);
+  const author = track.author || "unknown";
+  const year = track.year || extractYear(track.released) || "-";
+  const rawLine = [
+    fitCell(`${String(rowIndex + 1).padStart(3, "0")}/${String(totalRows).padStart(3, "0")}`, INDEX_COLUMN_WIDTH, "right"),
+    renderPlaylistMarker(enabled, isCurrent, isSelected),
+    renderStars(normalizeRating(rating)),
+    fitCell(title, layout.titleWidth),
+    fitCell(author, layout.artistWidth),
+    fitCell(formatDuration(track.durationMs), DURATION_COLUMN_WIDTH, "right"),
+    fitCell(year, META_COLUMN_WIDTH),
+  ].join(" ");
+
+  if (isCurrent) {
+    return bold(enabled, colorize(enabled, ANSI.brightGreen, rawLine));
+  }
+  if (isSelected) {
+    return colorize(enabled, ANSI.green, rawLine);
+  }
+  return subtle(enabled, rawLine);
+}
 
 export function normalizeFilterQuery(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();
@@ -146,6 +226,7 @@ export function getStationReservedRows(featuresJsonl?: string): number {
 function renderTrackWindow(
   enabled: boolean,
   queue: StationTrackDetails[],
+  ratings: Map<string, number>,
   filteredIndices: number[],
   currentIndex: number,
   selectedIndex: number,
@@ -171,29 +252,25 @@ function renderTrackWindow(
   const clampedWindowStart = Math.max(0, Math.min(windowStart, Math.max(0, filteredIndices.length - rows)));
   const windowEnd = Math.min(filteredIndices.length, clampedWindowStart + rows);
   const lines: string[] = [];
+  const layout = resolvePlaylistLayout(width);
 
   for (let matchPosition = clampedWindowStart; matchPosition < windowEnd; matchPosition += 1) {
     const index = filteredIndices[matchPosition]!;
     const isCurrent = index === currentIndex;
     const isSelected = index === selectedIndex;
     const track = queue[index]!;
-    const title = track.title || path.basename(track.sid_path);
-    const author = track.author || "unknown";
-    const marker = isCurrent && isSelected
-      ? colorize(enabled, ANSI.brightGreen, "◆")
-      : isCurrent
-        ? colorize(enabled, ANSI.brightGreen, "▶")
-        : isSelected
-          ? colorize(enabled, ANSI.green, "➜")
-          : colorize(enabled, ANSI.brightBlack, "•");
-    const position = `${String(index + 1).padStart(3, "0")}/${String(queue.length).padStart(3, "0")}`;
-    const line = `${marker} ${position} ${title} — ${author} — ${formatDuration(track.durationMs)}`;
-    const styledLine = isCurrent
-      ? bold(enabled, colorize(enabled, ANSI.brightGreen, line))
-      : isSelected
-        ? colorize(enabled, ANSI.green, line)
-        : subtle(enabled, line);
-    lines.push(truncate(styledLine, width));
+    lines.push(
+      formatPlaylistRow(
+        enabled,
+        track,
+        index,
+        queue.length,
+        ratings.get(track.track_id),
+        isCurrent,
+        isSelected,
+        layout,
+      ),
+    );
   }
 
   while (lines.length < rows) {
@@ -280,6 +357,7 @@ export function renderStationScreen(state: StationScreenState, ansiEnabled: bool
       ...renderTrackWindow(
         ansiEnabled,
         state.queue ?? [state.current],
+        state.ratings,
         filteredIndices,
         state.index,
         selectedIndex,

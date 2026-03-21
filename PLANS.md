@@ -221,6 +221,7 @@ All of the following must be true:
 **User request (summary)**  
 - Improve `scripts/sid-station.sh` / `sidflow-play station` so seed collection continues until at least 10 songs are actually rated and skipped songs do not count.
 - Fix the station flow so playback reflects ratings, add a redraw-based immersive CLI UI with colors, progress, an 11-song playlist window, richer transport controls, and non-interrupting station recalculation.
+- Extend the playlist window layout with a deterministic fixed-width star rating column immediately after the playback/selection marker so every visible track shows `[★★★★★]`-style feedback without relying on ANSI color.
 
 **Plan (checklist)**  
 - [ ] Trace the current wrapper + `@sidflow/play` station-demo implementation, confirm the recommendation/playback bug, and define the minimal compatibility guardrails for the export DB.
@@ -228,6 +229,15 @@ All of the following must be true:
 - [ ] Preserve current playback while allowing replay and deferred station recalculation that keeps the current song in the queue.
 - [ ] Add focused CLI tests for the new seed-rating loop, redraw/control flow, and rebuild semantics.
 - [ ] Validate with `bun run build:quick`, focused tests, then full `bun run test` 3x with 0 failures.
+- [ ] Update the playlist window layout spec to `index(7, right)`, `marker(2)`, `rating(7)`, `title(fixed)`, `artist(fixed)`, `duration(6, right)`, `extra/meta(fixed)` with constant inter-column spacing and no per-row width recomputation.
+- [ ] Normalize station ratings through a pure clamp helper (`null`/missing -> `0`, out-of-range -> clamp to `[0,5]`, fractional -> integer truncation), precompute star strings for `0..5`, and render them for every playlist row.
+- [ ] Add deterministic unit, snapshot-style layout, property-based width, and malformed-rating regression tests for the new rating column.
+
+**Layout notes**
+- Rating source of truth: the existing station selection ratings map persisted by the station CLI; missing ratings render as `0`.
+- Rating glyph contract: always `[★★★★★]`, `[★★★★☆]`, `[★★★☆☆]`, `[★★☆☆☆]`, `[★☆☆☆☆]`, or `[☆☆☆☆☆]`.
+- Risk: terminal Unicode width handling for `★`/`☆` may vary across fonts/locales, so validation must assert string-width invariants in plain rendering and note the terminal-width dependency.
+- Follow-up TODO: add a minimal-keystroke filter for “at least N stars” in the playlist window, parallel to `/` text filtering, so users can quickly constrain the queue by minimum rating.
 
 **Progress log**  
 - 2026-03-20 — Started task. Read `AGENTS.md`, `PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`, and inspected `scripts/run-station-demo.sh`, `packages/sidflow-play/src/station-demo-cli.ts`, and similarity-export helpers. Confirmed the current demo only rates a fixed sample instead of collecting 10 actual ratings, uses line-by-line output instead of redraws, and lacks deferred rebuild/navigation behavior. Also verified the checked-in repo export at `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` still uses the older schema without `track_id`/`song_index`, so the demo needs a clear schema/version guard or compatibility handling to avoid confusing failures.
@@ -258,6 +268,8 @@ All of the following must be true:
   - Run 1: 1705 pass, 0 fail, 6179 expect() calls. Ran 1705 tests across 172 files. [22.25s]
   - Run 2: 1705 pass, 0 fail, 6179 expect() calls. Ran 1705 tests across 172 files. [21.93s]
   - Run 3: 1705 pass, 0 fail, 6179 expect() calls. Ran 1705 tests across 172 files. [22.66s]
+- 2026-03-21 — Follow-up user addendum requires a first-class fixed-width star rating column in the station playlist window. The implementation plan is to normalize the existing per-track station ratings map into `[0,5]`, precompute `[★★★★★]` strings, insert the `rating(7)` column immediately after the marker, and lock the playlist row renderer to a deterministic column contract with snapshot/property/regression coverage. Validation next: `bun run build:quick`, focused station layout tests, then `bun run build` and `bun run test` three consecutive times.
+- 2026-03-21 — Additional follow-up TODO recorded: add a fast minimum-star filter shortcut alongside the existing `/` text filter. This is explicitly deferred while finishing the fixed-width rating-column integration and test coverage.
 - 2026-03-20 — Follow-up user request: make the station demo default to the latest cached `sidflow-data` release bundle instead of an ambiguous local export, with only a once-per-day latest-release check. Add explicit flags for forcing the latest local export or for pointing at a specific local similarity database so the active rating dataset is obvious. Validation next: implement remote-release cache resolution plus source display, update the wrapper/help text, add focused CLI tests for remote cache reuse and local overrides, then rerun build + full tests 3x.
   - Completed: `sidflow-play station-demo` now defaults to the latest cached `sidflow-data` release bundle, checks GitHub for a newer release at most once per day, and surfaces the active dataset source in the TUI. Added explicit `--force-local-db` and `--local-db` controls while keeping `--db` as a compatibility alias, and updated `scripts/run-station-demo.sh` so it no longer forces a local export by default.
   - Validation: `bun run build:quick`; `bun test packages/sidflow-play/test/cli.test.ts` => 42 pass, 0 fail, 129 expect() calls; `bun run build`; `bun run test` x3.

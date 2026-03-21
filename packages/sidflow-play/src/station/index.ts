@@ -40,7 +40,9 @@ export {
   resolveTrackDurationMs,
   isTrackLongEnough,
   formatDuration,
+  normalizeRating,
   formatTrackSummary,
+  RATING_COLUMN_WIDTH,
   supportsAnsi,
   colorize,
   bold,
@@ -51,6 +53,7 @@ export {
   renderProgressBar,
   renderLegend,
   renderProgressLine,
+  renderStars,
   extractYear,
   renderRelativePath,
 } from "./formatting.js";

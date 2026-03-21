@@ -156,3 +156,58 @@ Result: **SUCCESS** ✅
 5. ✅ Functional smoke: UI accessible, classify (10 songs) works, playback works
 6. ✅ PLANS.md updated with final state
 7. ✅ WORKLOG.md contains full trace
+
+---
+
+## 2026-03-21 — SID CLI Station rating-column integration
+
+### Source of rating data
+
+- The playlist window now sources per-track ratings from the existing station selection ratings map that is already persisted and reused by the station CLI.
+- Rendering reads `state.ratings.get(track.track_id)` for each playlist row.
+- Missing ratings are normalized to `0` and render as `[☆☆☆☆☆]`.
+
+### Invalid rating handling
+
+- Before the change, malformed persisted ratings outside `0..5` were discarded during selection-state hydration.
+- That meant bad historical values such as `11` implicitly fell back to “missing”, which rendered as zero stars instead of a clamped maximum.
+- The normalization layer now clamps every numeric persisted rating through a pure `normalizeRating(...)` helper:
+  - `null`/missing/NaN -> `0`
+  - negative -> `0`
+  - greater than `5` -> `5`
+  - fractional -> truncated integer, then clamped
+- Regression coverage now verifies that malformed persisted values such as `11` render as `[★★★★★]` instead of disappearing.
+
+### Layout comparison
+
+Before:
+```text
+▶ 001/100 Title — Author — 1:00
+```
+
+After:
+```text
+001/100  ► [★★★★★] Title...  Author...  1:00 1989
+```
+
+- The playlist row layout is now a fixed column contract:
+  - `index(7, right-aligned)`
+  - `marker(2)`
+  - `rating(7)`
+  - `title(fixed width)`
+  - `artist(fixed width)`
+  - `duration(6, right-aligned)`
+  - `extra/meta(6)`
+- Column widths are resolved once per render width and reused for every row, so mixed ratings and long titles no longer shift downstream columns.
+
+### Performance considerations
+
+- Star rendering uses a precomputed string table for ratings `0..5` rather than rebuilding star strings for every row.
+- Rating normalization is a small pure clamp/truncation helper with no I/O and no per-row dynamic width discovery.
+- Playlist row widths are computed once per render call, not per row, which keeps redraw cost stable even with a long visible playlist window.
+
+### Validation status
+
+- Fast build: `bun run build:quick` — PASS
+- Focused station tests: `packages/sidflow-play/test/cli.test.ts` — PASS after adding unit, regression, and exact-layout assertions for the new rating column
+- Full build + full-suite validation: in progress

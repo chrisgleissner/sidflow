@@ -1,6 +1,17 @@
 import path from "node:path";
 import type { StationTrackDetails, StationRuntime } from "./types.js";
 
+const STAR_RATINGS = [
+  "[☆☆☆☆☆]",
+  "[★☆☆☆☆]",
+  "[★★☆☆☆]",
+  "[★★★☆☆]",
+  "[★★★★☆]",
+  "[★★★★★]",
+] as const;
+
+export const RATING_COLUMN_WIDTH = 7;
+
 export const ANSI = {
   reset: "\u001b[0m",
   bold: "\u001b[1m",
@@ -44,6 +55,27 @@ export function formatDuration(durationMs?: number): string {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+export function normalizeRating(input: number | null | undefined): number {
+  if (input == null) {
+    return 0;
+  }
+  if (!Number.isFinite(input)) {
+    return 0;
+  }
+  const integerRating = Math.trunc(input);
+  if (integerRating < 0) {
+    return 0;
+  }
+  if (integerRating > 5) {
+    return 5;
+  }
+  return integerRating;
+}
+
+export function renderStars(rating: number | null | undefined): string {
+  return STAR_RATINGS[normalizeRating(rating)] ?? STAR_RATINGS[0];
 }
 
 export function formatTrackSummary(track: StationTrackDetails): string {

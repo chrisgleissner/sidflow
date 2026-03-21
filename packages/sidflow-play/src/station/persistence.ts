@@ -8,6 +8,7 @@ import {
 import type { PersistedStationSelectionState } from "./types.js";
 import { STATION_SELECTIONS_DIR } from "./constants.js";
 import { safeReadJsonFile } from "./dataset.js";
+import { normalizeRating } from "./formatting.js";
 
 export function buildSelectionStatePath(cwd: string, dbPath: string, hvscRoot: string): string {
   const digest = createHash("sha256").update(`${dbPath}\n${hvscRoot}`).digest("hex").slice(0, 16);
@@ -21,8 +22,8 @@ function sanitizePersistedRatings(value: Record<string, number> | undefined): Ma
   }
 
   for (const [trackId, rating] of Object.entries(value)) {
-    if (Number.isInteger(rating) && rating >= 0 && rating <= 5) {
-      ratings.set(trackId, rating);
+    if (typeof rating === "number" && Number.isFinite(rating)) {
+      ratings.set(trackId, normalizeRating(rating));
     }
   }
   return ratings;

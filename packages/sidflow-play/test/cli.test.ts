@@ -11,7 +11,10 @@ import type { Stats } from "node:fs";
 import { parsePlayArgs, runPlayCli } from "../src/cli.js";
 import {
   __stationDemoTestUtils,
+  normalizeRating,
   parseStationDemoArgs as parseStationArgs,
+  readPersistedStationSelections,
+  renderStars,
   runStationDemoCli as runStationCli,
   normalizeFilterQuery,
   trackMatchesFilter,
@@ -1051,8 +1054,10 @@ describe("runPlayCli", () => {
     );
 
     expect(screen.split("\n").length).toBeLessThanOrEqual(32);
-    expect(screen).toContain(`${String.fromCharCode(27)}[92m▶`);
-    expect(screen).toContain(`${String.fromCharCode(27)}[32m➜`);
+    expect(screen).toContain(`${String.fromCharCode(27)}[92m ►`);
+    expect(screen).toContain(`${String.fromCharCode(27)}[32m >`);
+    expect(screen).toContain("[★★★★★]");
+    expect(screen).toContain("[☆☆☆☆☆]");
     expect(screen).toContain("Playlist Window (4 visible)");
   });
 
@@ -1553,8 +1558,8 @@ describe("runPlayCli", () => {
     const output = stdoutChunks.join("");
     expect(output).toContain("Selected track 2/100");
     expect(output).toContain("Started selected track 3/100.");
-    expect(output).toContain("➜ 002/100");
-    expect(output).toContain("▶ 001/100");
+    expect(output).toContain("002/100  > [");
+    expect(output).toContain("001/100  ► [");
     expect(output).toContain("Paused ");
     expect(output).toContain("Resumed ");
     expect(playbackEvents).toContain("pause");
@@ -2159,6 +2164,8 @@ function makeTrack(overrides: Partial<{
   sid_path: string;
   title: string;
   author: string;
+  released: string;
+  durationMs: number;
 }> = {}) {
   return {
     track_id: overrides.track_id ?? "test-track",
@@ -2176,10 +2183,177 @@ function makeTrack(overrides: Partial<{
     absolutePath: `/tmp/${overrides.track_id ?? "test"}.sid`,
     title: overrides.title ?? "Test Song",
     author: overrides.author ?? "Test Composer",
-    released: "1989",
-    durationMs: 60_000,
+    released: overrides.released ?? "1989",
+    durationMs: overrides.durationMs ?? 60_000,
   };
 }
+
+function extractPlaylistWindowRows(screen: string, count: number): string[] {
+  const lines = screen.split("\n");
+  const headerIndex = lines.findIndex((line) => line.includes("Playlist Window"));
+  if (headerIndex < 0) {
+    return [];
+  }
+  return lines.slice(headerIndex + 1, headerIndex + 1 + count);
+}
+
+describe("station rating formatting", () => {
+  test("normalizeRating clamps invalid inputs", () => {
+    expect(normalizeRating(undefined)).toBe(0);
+    expect(normalizeRating(null)).toBe(0);
+    expect(normalizeRating(-3)).toBe(0);
+    expect(normalizeRating(2.9)).toBe(2);
+    expect(normalizeRating(5)).toBe(5);
+    expect(normalizeRating(11)).toBe(5);
+    expect(normalizeRating(Number.NaN)).toBe(0);
+  });
+
+  test("renderStars returns exact fixed-width strings for 0 through 5", () => {
+    expect([0, 1, 2, 3, 4, 5].map((rating) => renderStars(rating))).toEqual([
+      "[☆☆☆☆☆]",
+      "[★☆☆☆☆]",
+      "[★★☆☆☆]",
+      "[★★★☆☆]",
+      "[★★★★☆]",
+      "[★★★★★]",
+    ]);
+  });
+
+  test("renderStars keeps a constant width for random ratings", () => {
+    let seed = 0x5eed1234;
+    for (let index = 0; index < 512; index += 1) {
+      seed = (1664525 * seed + 1013904223) >>> 0;
+      const raw = (seed / 0x100000000) * 30 - 10;
+      const stars = renderStars(raw);
+      expect(stars.length).toBe(7);
+      expect(stars.startsWith("[")).toBe(true);
+      expect(stars.endsWith("]")).toBe(true);
+      expect(stars.slice(1, -1).length).toBe(5);
+    }
+  });
+
+  test("clamps malformed high ratings to five stars", () => {
+    expect(renderStars(11)).toBe("[★★★★★]");
+  });
+
+  test("clamps malformed persisted ratings when selections are read back", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "sidflow-station-ratings-"));
+    const statePath = path.join(workspace, "selections.json");
+    await writeFile(statePath, JSON.stringify({
+      dbPath: "/tmp/test.sqlite",
+      hvscRoot: "/tmp/hvsc",
+      ratedTarget: 10,
+      ratings: {
+        "bad-high": 11,
+        "bad-low": -4,
+        "good-mid": 3,
+      },
+      savedAt: new Date(0).toISOString(),
+    }), "utf8");
+
+    const ratings = await readPersistedStationSelections(statePath, "/tmp/test.sqlite", "/tmp/hvsc");
+    expect(ratings.get("bad-high")).toBe(5);
+    expect(ratings.get("bad-low")).toBe(0);
+    expect(ratings.get("good-mid")).toBe(3);
+  });
+});
+
+describe("station playlist rating column layout", () => {
+  test("renders mixed ratings in a fixed-width aligned row layout", () => {
+    const queue = [
+      makeTrack({ track_id: "t1", title: "SX-64 Demo", author: "Katsenos", released: "1984" }),
+      makeTrack({ track_id: "t2", title: "Monty on the Run", author: "Rob Hubbard", released: "1985" }),
+      makeTrack({ track_id: "t3", title: "Lightforce", author: "Martin Galway", released: "1986" }),
+      makeTrack({ track_id: "t4", title: "Delta", author: "Rob Hubbard", released: "1987" }),
+    ];
+    const screen = __stationDemoTestUtils.renderStationScreen({
+      phase: "station",
+      current: queue[0]!,
+      index: 0,
+      selectedIndex: 1,
+      playlistWindowStart: 0,
+      total: queue.length,
+      ratedCount: 10,
+      ratedTarget: 10,
+      ratings: new Map([
+        ["t1", 4],
+        ["t2", 3],
+        ["t3", 0],
+        ["t4", 5],
+      ]),
+      playbackMode: "none",
+      adventure: 3,
+      dataSource: "test",
+      dbPath: "/tmp/test.sqlite",
+      queue,
+      minDurationSeconds: 15,
+      elapsedMs: 0,
+      durationMs: 60_000,
+      playlistElapsedMs: 0,
+      playlistDurationMs: 240_000,
+      statusLine: "Ready.",
+    }, false, 100, 36);
+
+    const rows = extractPlaylistWindowRows(screen, 4);
+    expect(rows).toEqual([
+      "001/004  ► [★★★★☆] SX-64 Demo                                  Katsenos                  1:00 1984  ",
+      "002/004  > [★★★☆☆] Monty on the Run                            Rob Hubbard               1:00 1985  ",
+      "003/004    [☆☆☆☆☆] Lightforce                                  Martin Galway             1:00 1986  ",
+      "004/004    [★★★★★] Delta                                       Rob Hubbard               1:00 1987  ",
+    ]);
+    expect(new Set(rows.map((row) => row.length))).toEqual(new Set([100]));
+  });
+
+  test("keeps rating and downstream columns aligned for long titles", () => {
+    const queue = [
+      makeTrack({
+        track_id: "long-1",
+        title: "A Very Long Demo Title That Should Truncate Cleanly Without Moving Stars",
+        author: "Extremely Verbose Composer Name",
+        released: "1988",
+      }),
+      makeTrack({
+        track_id: "long-2",
+        title: "Short Title",
+        author: "Short Name",
+        released: "1989",
+      }),
+    ];
+    const screen = __stationDemoTestUtils.renderStationScreen({
+      phase: "station",
+      current: queue[0]!,
+      index: 0,
+      selectedIndex: 1,
+      playlistWindowStart: 0,
+      total: queue.length,
+      ratedCount: 10,
+      ratedTarget: 10,
+      ratings: new Map([
+        ["long-1", 5],
+        ["long-2", 1],
+      ]),
+      playbackMode: "none",
+      adventure: 3,
+      dataSource: "test",
+      dbPath: "/tmp/test.sqlite",
+      queue,
+      minDurationSeconds: 15,
+      elapsedMs: 0,
+      durationMs: 60_000,
+      playlistElapsedMs: 0,
+      playlistDurationMs: 120_000,
+      statusLine: "Ready.",
+    }, false, 92, 36);
+
+    const rows = extractPlaylistWindowRows(screen, 2);
+    expect(rows).toEqual([
+      "001/002  ► [★★★★★] A Very Long Demo Title That Should Tr… Extremely Verbose C…   1:00 1988  ",
+      "002/002  > [★☆☆☆☆] Short Title                            Short Name             1:00 1989  ",
+    ]);
+    expect(rows[0]?.indexOf("[★★★★★]")).toBe(rows[1]?.indexOf("[★☆☆☆☆]"));
+    expect(rows[0]?.indexOf("1:00")).toBe(rows[1]?.indexOf("1:00"));
+  });
+});
 
 describe("normalizeFilterQuery", () => {
   test("returns empty string for undefined", () => {
