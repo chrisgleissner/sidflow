@@ -108,12 +108,12 @@ Workflow:
   1. Pull random tracks directly from the export DB.
   2. Keep rating until at least 10 songs are actually rated.
   3. Build a station from the export vectors.
-  4. Navigate with arrows, replay, pause, and refresh the queue on demand without losing the current live song.
+  4. Navigate with arrows, pause playback, rebuild recommendations on demand, and manage saved playlists without losing the current live song.
   5. Ignore tracks shorter than --min-duration.
 
 Commands:
-  Rating phase: 0-5 rate, l like(5), d dislike(0), s skip, b back, r replay, q quit
-  Station phase: / text filter, ? star filter (*0-*5), left/right play prev/next, up/down/pgup/pgdn browse, enter play selected, space pause/resume, h shuffle, s skip=0, l like(5), d dislike(0), r replay, u refresh queue, 0-5 rate, q quit`,
+  Rating phase: 0-5 rate, l like(5), d dislike(0), s skip, b back, r refresh, q quit
+  Station phase: * star filter, / text filter, Esc clear, left/right play prev/next, up/down/pgup/pgdn browse, enter play selected, space pause/resume, h reshuffle current playlist, g rebuild queue, w save playlist, o open playlist, s skip, l like(5), d dislike(0), r refresh, 0-5 rate, q quit`,
   ARG_DEFS,
   [
     "sidflow-play station",

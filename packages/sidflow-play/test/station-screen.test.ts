@@ -77,18 +77,21 @@ describe("resolvePlaylistWindowStart", () => {
     expect(resolvePlaylistWindowStart([0, 1, 2], 1, 5, 0)).toBe(0);
   });
 
-  it("scrolls window down when selected item is below view", () => {
-    // filteredIndices has 10 items, visibleRows = 5, selectedIndex = 9
+  it("keeps viewport stable while playing row stays above the bottom buffer threshold", () => {
     const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    const result = resolvePlaylistWindowStart(indices, 9, 5, 0);
-    // focusPosition = 9, windowStart = 0, 9 >= 0+5 → windowStart = 9-5+1 = 5
-    expect(result).toBe(5);
+    const result = resolvePlaylistWindowStart(indices, 4, 10, 0);
+    expect(result).toBe(0);
   });
 
-  it("scrolls window up when selected item is above view", () => {
+  it("scrolls when the playing row crosses the bottom buffer threshold", () => {
+    const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const result = resolvePlaylistWindowStart(indices, 7, 10, 0);
+    expect(result).toBe(2);
+  });
+
+  it("scrolls up when the playing row moves above the viewport top", () => {
     const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     const result = resolvePlaylistWindowStart(indices, 2, 5, 7);
-    // focusPosition = 2, windowStart = 7, 2 < 7 → windowStart = 2
     expect(result).toBe(2);
   });
 
@@ -99,10 +102,9 @@ describe("resolvePlaylistWindowStart", () => {
     expect(result).toBe(0);
   });
 
-  it("handles selectedIndex not in filteredIndices", () => {
+  it("keeps the existing window when the playing row is not in the filtered set", () => {
     const indices = [0, 1, 2, 3, 4];
-    // indexOf returns -1, focusPosition = max(0, -1) = 0
-    const result = resolvePlaylistWindowStart(indices, 99, 5, 0);
+    const result = resolvePlaylistWindowStart(indices, 99, 5, 3);
     expect(result).toBe(0);
   });
 });

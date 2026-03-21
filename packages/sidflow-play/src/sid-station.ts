@@ -14,28 +14,40 @@ export type { StationCliOptions as StationDemoCliOptions } from "./station/index
 export type { StationRuntime as StationDemoRuntime } from "./station/index.js";
 
 import {
+  buildPlaylistStatePath,
+  buildStationSongKey,
   buildStationQueue,
   buildSelectionStatePath,
   chooseStationTracks,
   deriveStationBucketKey,
   getTerminalSize,
+  listPersistedStationPlaylists,
   orderStationTracksByFlow,
+  readPersistedStationPlaylist,
   renderStationScreen,
   resolvePlaylistWindowRows,
   resolvePlaylistWindowStart,
+  shuffleQueueKeepingCurrent,
+  writePersistedStationPlaylist,
 } from "./station/index.js";
 
 /** @deprecated Use the named exports directly from `./station/index.js`. */
 export const __stationDemoTestUtils = {
+  buildPlaylistStatePath,
+  buildStationSongKey,
   buildStationQueue,
   buildSelectionStatePath,
   chooseStationTracks,
   deriveStationBucketKey,
   getTerminalSize,
+  listPersistedStationPlaylists,
   orderStationTracksByFlow,
+  readPersistedStationPlaylist,
   renderStationScreen,
   resolvePlaylistWindowRows,
   resolvePlaylistWindowStart,
+  shuffleQueueKeepingCurrent,
+  writePersistedStationPlaylist,
 };
 
 if (import.meta.main) {

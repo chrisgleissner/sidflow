@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { StationScreenState, StationTrackDetails, StationRuntime } from "./types.js";
+import type { StationDialogState, StationScreenState, StationTrackDetails, StationRuntime } from "./types.js";
 import { MINIMUM_PLAYLIST_WINDOW_ROWS, STATION_SCREEN_RESERVED_ROWS } from "./constants.js";
 import {
   ANSI,
@@ -9,8 +9,8 @@ import {
   extractYear,
   formatDuration,
   getTerminalSize,
+  inverse,
   normalizeRating,
-  renderLegend,
   renderProgressLine,
   renderStars,
   resolveTrackDurationMs,
@@ -24,6 +24,8 @@ const MARKER_COLUMN_WIDTH = 2;
 const DURATION_COLUMN_WIDTH = 5;
 const YEAR_COLUMN_WIDTH = 4;
 const PLAYLIST_COLUMN_GAP = 1;
+const NOW_PLAYING_BLOCK_HEIGHT = 5;
+const VIEWPORT_BOTTOM_BUFFER = 5;
 
 interface PlaylistLayout {
   titleWidth: number;
@@ -52,13 +54,10 @@ function resolvePlaylistLayout(width: number): PlaylistLayout {
 }
 
 function renderPlaylistMarker(enabled: boolean, isCurrent: boolean, isSelected: boolean): string {
-  const marker = isCurrent ? "►" : isSelected ? ">" : "";
+  const marker = isCurrent ? "►" : isSelected ? " " : "";
   const padded = marker.padStart(MARKER_COLUMN_WIDTH, " ");
   if (isCurrent) {
     return colorize(enabled, ANSI.brightGreen, padded);
-  }
-  if (isSelected) {
-    return colorize(enabled, ANSI.green, padded);
   }
   return subtle(enabled, padded);
 }
@@ -90,7 +89,7 @@ function formatPlaylistRow(
     return bold(enabled, colorize(enabled, ANSI.brightGreen, rawLine));
   }
   if (isSelected) {
-    return colorize(enabled, ANSI.green, rawLine);
+    return inverse(enabled, rawLine);
   }
   return subtle(enabled, rawLine);
 }
@@ -220,7 +219,7 @@ export function moveCurrentInMatches(matches: number[], currentIndex: number, di
 
 export function resolvePlaylistWindowStart(
   filteredIndices: number[],
-  selectedIndex: number,
+  playingIndex: number,
   visibleRows: number,
   previousWindowStart: number,
 ): number {
@@ -231,12 +230,18 @@ export function resolvePlaylistWindowStart(
   const rows = Math.max(1, visibleRows);
   const maxWindowStart = Math.max(0, filteredIndices.length - rows);
   let windowStart = Math.max(0, Math.min(previousWindowStart, maxWindowStart));
-  const focusPosition = Math.max(0, filteredIndices.indexOf(selectedIndex));
+  const focusPosition = filteredIndices.indexOf(playingIndex);
+  if (focusPosition < 0) {
+    return windowStart;
+  }
+  const bottomBuffer = Math.min(VIEWPORT_BOTTOM_BUFFER, Math.max(0, rows - 1));
+  const viewportBottom = windowStart + rows - 1;
+  const thresholdBottom = viewportBottom - bottomBuffer;
 
   if (focusPosition < windowStart) {
     windowStart = focusPosition;
-  } else if (focusPosition >= windowStart + rows) {
-    windowStart = focusPosition - rows + 1;
+  } else if (focusPosition > thresholdBottom) {
+    windowStart = focusPosition - thresholdBottom + windowStart;
   }
 
   return Math.max(0, Math.min(windowStart, maxWindowStart));
@@ -292,24 +297,24 @@ function renderTrackWindow(
   const windowEnd = Math.min(filteredIndices.length, clampedWindowStart + rows);
   const lines: string[] = [];
   const layout = resolvePlaylistLayout(width);
+  const nextTrackIndex = currentIndex < queue.length - 1 ? currentIndex + 1 : -1;
 
   for (let matchPosition = clampedWindowStart; matchPosition < windowEnd; matchPosition += 1) {
     const index = filteredIndices[matchPosition]!;
     const isCurrent = index === currentIndex;
     const isSelected = index === selectedIndex;
     const track = queue[index]!;
-    lines.push(
-      formatPlaylistRow(
-        enabled,
-        track,
-        index,
-        queue.length,
-        ratings.get(track.track_id),
-        isCurrent,
-        isSelected,
-        layout,
-      ),
-    );
+    const nextMarker = index === nextTrackIndex && !isCurrent ? colorize(enabled, ANSI.brightYellow, ">") : " ";
+    lines.push(`${nextMarker} ${formatPlaylistRow(
+      enabled,
+      track,
+      index,
+      queue.length,
+      ratings.get(track.track_id),
+      isCurrent,
+      isSelected,
+      layout,
+    )}`);
   }
 
   while (lines.length < rows) {
@@ -319,19 +324,92 @@ function renderTrackWindow(
   return lines;
 }
 
-export function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, columns: number, rows: number): string {
-  const width = Math.max(80, columns);
-  const height = Math.max(24, rows);
-  const title = bold(ansiEnabled, "SIDFlow SID CLI Station");
+function renderHeader(enabled: boolean): string[] {
+  return [bold(enabled, "SID Flow Station  |  C64U Live")];
+}
+
+function renderNowPlaying(state: StationScreenState, enabled: boolean, width: number): string[] {
   const current = state.current;
   const elapsedMs = Math.min(state.elapsedMs ?? 0, state.durationMs ?? resolveTrackDurationMs(current));
   const durationMs = state.durationMs ?? resolveTrackDurationMs(current);
-  const playlistElapsedMs = Math.min(state.playlistElapsedMs ?? 0, state.playlistDurationMs ?? durationMs);
-  const playlistDurationMs = state.playlistDurationMs ?? durationMs;
+  const lines = [
+    bold(enabled, "Now Playing"),
+    truncate(`${current.title || path.basename(current.sid_path)}  |  ${current.author || "unknown"}`, width),
+    truncate(`${current.sid_path}#${current.song_index}  |  ${current.year || extractYear(current.released) || "-"}`, width),
+    renderProgressLine(enabled, "Song", elapsedMs, durationMs, width, ANSI.brightGreen),
+    truncate(`Rating ${state.currentRating ?? 0}/5  |  ${state.paused ? "paused" : "playing"}  |  ${formatDuration(durationMs)}`, width),
+  ];
+  while (lines.length < NOW_PLAYING_BLOCK_HEIGHT) {
+    lines.push("");
+  }
+  return lines.slice(0, NOW_PLAYING_BLOCK_HEIGHT);
+}
+
+function renderFilterBar(state: StationScreenState, enabled: boolean, width: number): string {
+  const parts: string[] = [];
+  if (state.minimumRating !== undefined) {
+    parts.push(colorize(enabled, ANSI.brightYellow, `★≥${state.minimumRating}`));
+  }
+  if (state.filterQuery) {
+    parts.push(colorize(enabled, ANSI.brightCyan, `text="${state.filterQuery}"`));
+  }
+  if (state.ratingFilterEditing && state.ratingFilterQuery === "") {
+    parts.push(colorize(enabled, ANSI.brightYellow, "★=?"));
+  }
+  if (state.filterEditing && !state.filterQuery) {
+    parts.push(colorize(enabled, ANSI.brightCyan, 'text=""'));
+  }
+  const content = parts.length > 0 ? parts.join("  |  ") : subtle(enabled, "none");
+  return truncate(`[Filter] ${content}`, width);
+}
+
+function renderControls(enabled: boolean, width: number): string[] {
+  return [
+    truncate(`Controls  ←/→ prev/next   ↑/↓ move   Enter play   Space pause`, width),
+    truncate(`Filter    * stars   / text   Esc clear`, width),
+    truncate(`Rate      0-5 rate   l like   d dislike   s skip`, width),
+    truncate(`Other     h shuffle   g rebuild   r refresh   w save   o open   q quit`, width),
+  ].map((line) => subtle(enabled, line));
+}
+
+function renderDialog(dialog: StationDialogState | undefined, enabled: boolean, width: number): string[] {
+  if (!dialog) {
+    return [];
+  }
+  if (dialog.mode === "save-playlist") {
+    return [
+      bold(enabled, "[Save Playlist]"),
+      truncate(`Name: ${dialog.inputValue ?? ""}`, width),
+      subtle(enabled, "Enter save   Esc cancel"),
+    ];
+  }
+  const playlists = dialog.playlists ?? [];
+  const selected = dialog.selectedPlaylistIndex ?? 0;
+  const lines = [bold(enabled, "[Open Playlist]")];
+  if (playlists.length === 0) {
+    lines.push(subtle(enabled, "No saved playlists."));
+  } else {
+    for (let index = 0; index < Math.min(5, playlists.length); index += 1) {
+      const playlist = playlists[index]!;
+      const label = `${playlist.name}  (${playlist.trackIds.length} songs)`;
+      lines.push(index === selected ? inverse(enabled, label) : label);
+    }
+  }
+  lines.push(subtle(enabled, "↑/↓ select   Enter load   Esc cancel"));
+  return lines.map((line) => truncate(line, width));
+}
+
+function renderFooter(state: StationScreenState, enabled: boolean, width: number): string[] {
+  const footer = state.hintLine ? [truncate(state.hintLine, width)] : [];
+  footer.push(truncate(state.statusLine ?? "", width));
+  return footer.map((line) => subtle(enabled, line));
+}
+
+function renderStationLines(state: StationScreenState, ansiEnabled: boolean, columns: number, rows: number): string[] {
+  const width = Math.max(80, columns);
+  const height = Math.max(24, rows);
   const selectedIndex = state.selectedIndex ?? state.index;
-  const selectedTrack = state.queue?.[selectedIndex];
   const filterQuery = state.filterQuery ?? "";
-  const ratingFilterQuery = state.ratingFilterQuery ?? "";
   const minimumRating = state.minimumRating;
   const filteredIndices = getFilteredTrackIndicesWithRatings(
     state.queue ?? [state.current],
@@ -339,101 +417,50 @@ export function renderStationScreen(state: StationScreenState, ansiEnabled: bool
     state.ratings,
     minimumRating,
   );
-  const textBadge = renderActiveBadge(
-    ansiEnabled,
-    state.filterEditing ? "TEXT>" : "TEXT",
-    filterQuery ? `"${filterQuery}"` : "off",
-    ANSI.brightCyan,
-    Boolean(filterQuery) || Boolean(state.filterEditing),
+  const playlistRows = resolvePlaylistWindowRowsForScreen(
+    state.queue?.length ?? 1,
+    height,
+    getStationReservedRows(state.featuresJsonl),
   );
-  const starsBadge = renderActiveBadge(
-    ansiEnabled,
-    state.ratingFilterEditing ? "STARS>" : "STARS",
-    state.ratingFilterEditing && ratingFilterQuery
-      ? ratingFilterQuery
-      : formatMinimumRatingFilter(minimumRating),
-    ANSI.brightYellow,
-    minimumRating !== undefined || Boolean(state.ratingFilterEditing),
-  );
-  const titleLine = truncate(`${colorize(ansiEnabled, ANSI.green, current.title || path.basename(current.sid_path))} — ${current.author || "unknown author"}`, width);
-  const playbackBadge = state.playbackMode === "none"
-    ? colorize(ansiEnabled, ANSI.brightBlack, "silent")
-    : colorize(ansiEnabled, ANSI.brightGreen, state.playbackMode);
-  const pausedBadge = state.paused ? colorize(ansiEnabled, ANSI.brightYellow, "paused") : colorize(ansiEnabled, ANSI.brightBlack, "live");
-
   const lines = [
-    title,
-    `${subtle(ansiEnabled, state.phase === "rating" ? "seed capture" : "station playback")}  ${playbackBadge}  ${pausedBadge}`,
+    ...renderHeader(ansiEnabled),
     "",
-    bold(ansiEnabled, "Data"),
-    `${subtle(ansiEnabled, "Dataset")} ${truncate(state.dataSource, width - 9)}`,
-    `${subtle(ansiEnabled, "DB")} ${truncate(state.dbPath, width - 4)}`,
-    ...(state.featuresJsonl ? [truncate(`${subtle(ansiEnabled, "Provenance")} ${state.featuresJsonl}`, width)] : []),
+    ...renderNowPlaying(state, ansiEnabled, width),
     "",
-    bold(ansiEnabled, "Keys"),
-    `${subtle(ansiEnabled, "Legend")} ${renderLegend(ansiEnabled)}`,
-    `${subtle(ansiEnabled, "Scale")} 5 anchor  4 strong  3 keep  2 weak  1 reject  0 block`,
-    `${subtle(ansiEnabled, "Duration gate")} >= ${Math.max(1, state.minDurationSeconds ?? 15)}s`,
+    renderFilterBar(state, ansiEnabled, width),
+    ...renderControls(ansiEnabled, width),
+    ...renderDialog(state.dialog, ansiEnabled, width),
     "",
-    `${bold(ansiEnabled, state.phase === "rating" ? `Seed pass ${state.ratedCount}/${state.ratedTarget}` : "Now Playing")}`,
-    titleLine,
-    truncate(`${current.sid_path}#${current.song_index}  |  ${current.released || "unknown release"}  |  e=${current.e} m=${current.m} c=${current.c}${current.p ? ` p=${current.p}` : ""}`, width),
-    truncate(`Feedback  likes=${current.likes}  dislikes=${current.dislikes}  skips=${current.skips}  plays=${current.plays}`, width),
-    renderProgressLine(ansiEnabled, "Song Progress", elapsedMs, durationMs, width, ANSI.brightGreen),
-    renderProgressLine(ansiEnabled, "Playlist Pos ", playlistElapsedMs, playlistDurationMs, width, ANSI.green),
-    truncate(`Ratings ${state.ratedCount} total  Target ${state.ratedTarget}${state.currentRating !== undefined ? `  Current ${state.currentRating}/5` : ""}`, width),
+    bold(ansiEnabled, `Playlist Window (${playlistRows} visible)  ${filteredIndices.length}/${state.queue?.length ?? 1}`),
+    ...renderTrackWindow(
+      ansiEnabled,
+      state.queue ?? [state.current],
+      state.ratings,
+      filteredIndices,
+      state.index,
+      selectedIndex,
+      state.playlistWindowStart ?? 0,
+      width - 2,
+      playlistRows,
+    ),
     "",
+    ...renderFooter(state, ansiEnabled, width),
   ];
-
-  if (state.phase === "rating") {
-    lines.push(
-      truncate(`${bold(ansiEnabled, `Seed ${state.index + 1}`)}  ${subtle(ansiEnabled, "Controls")} 1-5 rate  s skip  b back  r replay  q quit`, width),
-      truncate(`${subtle(ansiEnabled, "Shortcuts")} l like(5)  d dislike(0)`, width),
-      truncate(state.statusLine ?? "Skipped songs do not count. Keep rating until the target is reached.", width),
-      truncate(state.hintLine ?? "", width),
-    );
-  } else {
-    const selectionHint = state.hintLine ?? (
-      selectedTrack && selectedTrack.track_id !== current.track_id
-        ? `Selected ${selectedIndex + 1}/${state.total}: ${selectedTrack.title || path.basename(selectedTrack.sid_path)}`
-        : "Selection is on the currently playing song."
-    );
-    const playlistRows = resolvePlaylistWindowRowsForScreen(
-      state.queue?.length ?? 1,
-      height,
-      getStationReservedRows(state.featuresJsonl),
-    );
-    lines.push(
-      truncate(`${bold(ansiEnabled, `Station ${state.index + 1}/${state.total}`)}  ${subtle(ansiEnabled, "Controls")} ←/→ play prev/next  ↑/↓ browse  PgUp/PgDn jump  Enter play selected`, width),
-      truncate(`${subtle(ansiEnabled, "Shortcuts")} / text  ? stars  space pause  h shuffle  s skip=0  l like=5  d dislike=0  r replay  u refresh  0-5 rate  q quit`, width),
-      truncate(`${subtle(ansiEnabled, "Filters")} ${textBadge}  ${starsBadge}  ${filteredIndices.length}/${state.queue?.length ?? 1}${state.filterEditing || state.ratingFilterEditing ? "  Enter keep  Esc clear" : "  / edit  ? edit"}`, width),
-      truncate(state.statusLine ?? "Recommendations reflect the rated tracks shown above.", width),
-      truncate(selectionHint, width),
-      "",
-      bold(ansiEnabled, `Playlist Window (${playlistRows} visible${filterQuery || minimumRating !== undefined ? `, ${filteredIndices.length} shown` : ""})`),
-    );
-    lines.push(
-      ...renderTrackWindow(
-        ansiEnabled,
-        state.queue ?? [state.current],
-        state.ratings,
-        filteredIndices,
-        state.index,
-        selectedIndex,
-        state.playlistWindowStart ?? 0,
-        width,
-        playlistRows,
-      ),
-    );
+  while (lines.length < height) {
+    lines.push("");
   }
+  return lines.slice(0, height);
+}
 
-  return lines.slice(0, height).join("\n");
+export function renderStationScreen(state: StationScreenState, ansiEnabled: boolean, columns: number, rows: number): string {
+  return renderStationLines(state, ansiEnabled, columns, rows).join("\n");
 }
 
 export class ScreenRenderer {
   private readonly ansiEnabled: boolean;
   private firstPaint = true;
   private lastSize?: { columns: number; rows: number };
+  private forceFullRefresh = false;
 
   constructor(private readonly runtime: StationRuntime) {
     this.ansiEnabled = supportsAnsi(runtime);
@@ -441,19 +468,30 @@ export class ScreenRenderer {
 
   render(state: StationScreenState): void {
     const { columns, rows } = getTerminalSize(this.runtime.stdout);
-    const screen = renderStationScreen(state, this.ansiEnabled, columns, rows);
+    const lines = renderStationLines(state, this.ansiEnabled, columns, rows);
 
     if (this.ansiEnabled) {
       const resized = !this.lastSize || this.lastSize.columns !== columns || this.lastSize.rows !== rows;
       const prefix = this.firstPaint ? "\u001b[?1049h\u001b[?25l" : "";
-      const refresh = resized ? "\u001b[2J\u001b[H" : "\u001b[H";
-      this.runtime.stdout.write(`${prefix}${refresh}${screen}\u001b[J`);
+      const refresh = this.forceFullRefresh || resized ? "\u001b[2J\u001b[H" : "";
+      this.runtime.stdout.write(`${prefix}${refresh}`);
+      for (let row = 0; row < lines.length; row += 1) {
+        this.runtime.stdout.write(`\u001b[${row + 1};1H${lines[row] ?? ""}\u001b[K`);
+      }
+      for (let row = lines.length; row < rows; row += 1) {
+        this.runtime.stdout.write(`\u001b[${row + 1};1H\u001b[K`);
+      }
       this.firstPaint = false;
+      this.forceFullRefresh = false;
       this.lastSize = { columns, rows };
       return;
     }
 
-    this.runtime.stdout.write(screen);
+    this.runtime.stdout.write(lines.join("\n"));
+  }
+
+  refresh(): void {
+    this.forceFullRefresh = true;
   }
 
   close(): void {

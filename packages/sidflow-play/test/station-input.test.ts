@@ -28,11 +28,7 @@ describe('mapSeedToken', () => {
   });
 
   it('r → replay', () => {
-    expect(mapSeedToken('r')).toEqual({ type: 'replay' });
-  });
-
-  it('up → replay', () => {
-    expect(mapSeedToken('up')).toEqual({ type: 'replay' });
+    expect(mapSeedToken('r')).toEqual({ type: 'refresh' });
   });
 
   it('l → like (rating 5)', () => {
@@ -108,7 +104,7 @@ describe('mapStationToken', () => {
   });
 
   it('n → next', () => {
-    expect(mapStationToken('n')).toEqual({ type: 'next' });
+    expect(mapStationToken('n')).toBeNull();
   });
 
   it('left → back', () => {
@@ -116,7 +112,7 @@ describe('mapStationToken', () => {
   });
 
   it('b → back', () => {
-    expect(mapStationToken('b')).toEqual({ type: 'back' });
+    expect(mapStationToken('b')).toBeNull();
   });
 
   it('up → cursorUp', () => {
@@ -124,7 +120,7 @@ describe('mapStationToken', () => {
   });
 
   it('k → cursorUp', () => {
-    expect(mapStationToken('k')).toEqual({ type: 'cursorUp' });
+    expect(mapStationToken('k')).toBeNull();
   });
 
   it('down → cursorDown', () => {
@@ -132,7 +128,7 @@ describe('mapStationToken', () => {
   });
 
   it('j → cursorDown', () => {
-    expect(mapStationToken('j')).toEqual({ type: 'cursorDown' });
+    expect(mapStationToken('j')).toBeNull();
   });
 
   it('pgup → pageUp', () => {
@@ -155,24 +151,36 @@ describe('mapStationToken', () => {
     expect(mapStationToken('/')).toEqual({ type: 'setFilter', value: '', editing: true });
   });
 
-  it('f → setFilter (editing)', () => {
-    expect(mapStationToken('f')).toEqual({ type: 'setFilter', value: '', editing: true });
+  it('* → setRatingFilter (editing)', () => {
+    expect(mapStationToken('*')).toEqual({ type: 'setRatingFilter', value: '', editing: true });
   });
 
   it('h → shuffle', () => {
     expect(mapStationToken('h')).toEqual({ type: 'shuffle' });
   });
 
-  it('r → replay', () => {
-    expect(mapStationToken('r')).toEqual({ type: 'replay' });
+  it('escape → clear filters', () => {
+    expect(mapStationToken('escape')).toEqual({ type: 'clearFilters' });
   });
 
-  it('s → rate 0', () => {
-    expect(mapStationToken('s')).toEqual({ type: 'rate', rating: 0 });
+  it('r → refresh', () => {
+    expect(mapStationToken('r')).toEqual({ type: 'refresh' });
   });
 
-  it('u → rebuild', () => {
-    expect(mapStationToken('u')).toEqual({ type: 'rebuild' });
+  it('s → skip', () => {
+    expect(mapStationToken('s')).toEqual({ type: 'skip' });
+  });
+
+  it('g → rebuild', () => {
+    expect(mapStationToken('g')).toEqual({ type: 'rebuild' });
+  });
+
+  it('w → open save playlist dialog', () => {
+    expect(mapStationToken('w')).toEqual({ type: 'openSavePlaylistDialog' });
+  });
+
+  it('o → open load playlist dialog', () => {
+    expect(mapStationToken('o')).toEqual({ type: 'openLoadPlaylistDialog' });
   });
 
   it('l → like (rate 5)', () => {

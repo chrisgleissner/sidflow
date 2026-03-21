@@ -16,6 +16,7 @@ export const ANSI = {
   reset: "\u001b[0m",
   bold: "\u001b[1m",
   dim: "\u001b[2m",
+  inverse: "\u001b[7m",
   red: "\u001b[31m",
   green: "\u001b[32m",
   yellow: "\u001b[33m",
@@ -106,6 +107,10 @@ export function subtle(enabled: boolean, value: string): string {
 
 export function dim(enabled: boolean, value: string): string {
   return colorize(enabled, ANSI.dim, value);
+}
+
+export function inverse(enabled: boolean, value: string): string {
+  return colorize(enabled, ANSI.inverse, value);
 }
 
 export function truncate(value: string, width: number): string {

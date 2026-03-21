@@ -216,49 +216,64 @@ All of the following must be true:
 - 2026-03-21 — Active PR confirmed: #83 (`test/coverage` → `main`). Retrieved 11 Copilot review comments and the live workflow state with `gh pr view` / `gh api graphql` / `gh run view`. All open threads are actionable and focused on new test hygiene: tighten one playback-session assertion, reset cached server env around playback-session manifest env mutations, clean temp dirs in the new station dataset/render CLI tests, and keep the plan filename aligned with the actual `station-playback-adapters` test file.
 - 2026-03-21 — Investigated the reported “36 minute build” symptom. The CI build step itself completed in ~4s; the active run is spending its time in `Run unit tests with coverage`. Isolated timings for the newly added suites are moderate (`playback-session.test.ts` ~5.9s, `station-{dataset,input,playback-adapters}.test.ts` ~5.6s combined, `render-cli.test.ts` ~5.6s), so the current hypothesis is cumulative coverage overhead or a later full-suite interaction rather than a single infinite loop. Next step: apply the review fixes, rerun targeted tests, then run the full coverage suite locally to confirm whether the branch reproduces the CI slowdown or hang.
 
-### Task: SID CLI Station TUI and station correctness overhaul (2026-03-20)
+### Task: SID CLI Station deterministic TUI overhaul (2026-03-21)
 
-**User request (summary)**  
-- Improve `scripts/sid-station.sh` / `sidflow-play station` so seed collection continues until at least 10 songs are actually rated and skipped songs do not count.
-- Fix the station flow so playback reflects ratings, add a redraw-based immersive CLI UI with colors, progress, an 11-song playlist window, richer transport controls, and non-interrupting station recalculation.
-- Extend the playlist window layout with a deterministic fixed-width star rating column immediately after the playback/selection marker so every visible track shows `[★★★★★]`-style feedback without relying on ANSI color.
+**User request (summary)**
+- Fix all Station CLI functional, rendering, and UX issues.
+- Implement deterministic, composable `stars + text` filtering with always-visible explicit state.
+- Eliminate ambiguous key bindings, stale rendering artifacts, and unexpected viewport jumps.
 
-**Plan (checklist)**  
-- [ ] Trace the current wrapper + `@sidflow/play` station-demo implementation, confirm the recommendation/playback bug, and define the minimal compatibility guardrails for the export DB.
-- [ ] Refactor the station demo into a full-screen redraw loop with explicit rating semantics, progress display, playlist window, and cursor-key transport handling.
-- [ ] Preserve current playback while allowing replay and deferred station recalculation that keeps the current song in the queue.
-- [ ] Add focused CLI tests for the new seed-rating loop, redraw/control flow, and rebuild semantics.
-- [ ] Validate with `bun run build:quick`, focused tests, then full `bun run test` 3x with 0 failures.
-- [ ] Update the playlist window layout spec to `index(7, right)`, `marker(2)`, `rating(7)`, `title(fixed)`, `artist(fixed)`, `duration(6, right)`, `extra/meta(fixed)` with constant inter-column spacing and no per-row width recomputation.
-- [ ] Normalize station ratings through a pure clamp helper (`null`/missing -> `0`, out-of-range -> clamp to `[0,5]`, fractional -> integer truncation), precompute star strings for `0..5`, and render them for every playlist row.
-- [ ] Add deterministic unit, snapshot-style layout, property-based width, and malformed-rating regression tests for the new rating column.
-- [ ] Tighten the station UX follow-up: resilient resize redraws, denser playlist columns, duration-before-title ordering, author-year grouping, concise rating counters, and combined text-plus-stars filtering with always-visible active badges.
-- [ ] Change station rating/skip semantics so playlist rebuilds happen only on an explicit refresh shortcut; ratings and skips must never auto-rebuild, and refresh must preserve the currently playing song at its current playlist position while rebuilding the surrounding queue.
+**Acceptance criteria**
+- [ ] `*` then `3` applies a `stars >= 3` filter immediately and consistently.
+- [ ] `*` + star threshold and `/moller` combine as a strict intersection.
+- [ ] Active filters are always visible in a dedicated single-line filter bar.
+- [ ] Rendering leaves no stale characters after repeated updates, playback changes, or refreshes.
+- [ ] `r` performs a hard full-screen redraw and restores a clean screen.
+- [ ] Playlist viewport obeys the explicit bottom-buffer playback rule and never jumps on `Enter` play.
+- [ ] Controls are compressed to four lines and understandable at a glance.
+- [ ] No duplicate or ambiguous key bindings remain.
+- [ ] Generated and reloaded playlists contain unique songs only; no duplicate song appears twice in one playlist.
+- [ ] Shuffle can reshuffle the current playlist order without changing its song set.
+- [ ] Playlist save/load works through an explicit dialog that can show previously saved playlist names.
 
-**Layout notes**
-- Rating source of truth: the existing station selection ratings map persisted by the station CLI; missing ratings render as `0`.
-- Rating glyph contract: always `[★★★★★]`, `[★★★★☆]`, `[★★★☆☆]`, `[★★☆☆☆]`, `[★☆☆☆☆]`, or `[☆☆☆☆☆]`.
-- Risk: terminal Unicode width handling for `★`/`☆` may vary across fonts/locales, so validation must assert string-width invariants in plain rendering and note the terminal-width dependency.
-- Follow-up TODO: add a minimal-keystroke filter for “at least N stars” in the playlist window, parallel to `/` text filtering, so users can quickly constrain the queue by minimum rating.
+**Phases**
+- [ ] Phase 1 — Input system + filters
+  - [ ] Rebind Station keys to the strict model: arrows navigate/playback, `Space` pause, `s` skip, `h` shuffle, `r` hard refresh, `0-5` rate, `l` like, `d` dislike, `*` star filter, `/` text filter, `Esc` clear.
+  - [ ] Remove duplicate `?` / legacy bindings from prompt and raw input flows.
+  - [ ] Make star filtering deterministic: `*` enters a one-keystroke pending state and only accepts `[0-5]`.
+  - [ ] Keep text filtering live-updating and AND-combine it with star filtering.
+- [ ] Phase 2 — Rendering correctness
+  - [ ] Replace blob redraw behavior with structured section rendering.
+  - [ ] Ensure every dynamic line is written with cursor positioning plus clear-to-end-of-line.
+  - [ ] Make the now-playing area fixed-height and fully overwritten on every refresh.
+  - [ ] Implement `r` as clear-screen + cursor-home + full redraw.
+- [ ] Phase 3 — Viewport logic
+  - [ ] Apply the strict playback viewport rule with `bottom_buffer = 5`.
+  - [ ] Keep user selection movement independent from playback scrolling.
+  - [ ] Ensure `Enter` plays the selected track without recentering or otherwise jumping the viewport.
+- [ ] Phase 4 — UX compression
+  - [ ] Replace verbose help blocks with the required four grouped control lines.
+  - [ ] Add a dedicated single-line filter bar with explicit sections and separators.
+  - [ ] Simplify header copy to `SID Flow Station  |  C64U Live` with no duplicate metadata.
+- [ ] Add explicit save/load playlist controls and a compact modal dialog for naming, listing, and loading playlists.
+- [ ] Phase 5 — Visual polish
+  - [ ] Preserve strict playlist column alignment: `index | stars | duration | title | composer | year` plus playback/selection markers.
+  - [ ] Clearly differentiate current track, selected row, and next-track marker.
+  - [ ] Fix corrupted or stale status-line behavior and validate repeated redraw stability.
+- [ ] Guarantee queue uniqueness across generation, refresh, shuffle, save, and load operations.
 
-**Progress log**  
-- 2026-03-20 — Started task. Read `AGENTS.md`, `PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`, and inspected `scripts/run-station-demo.sh`, `packages/sidflow-play/src/station-demo-cli.ts`, and similarity-export helpers. Confirmed the current demo only rates a fixed sample instead of collecting 10 actual ratings, uses line-by-line output instead of redraws, and lacks deferred rebuild/navigation behavior. Also verified the checked-in repo export at `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` still uses the older schema without `track_id`/`song_index`, so the demo needs a clear schema/version guard or compatibility handling to avoid confusing failures.
-- 2026-03-20 — Reworked `sidflow-play station-demo` into a redraw-based terminal UI. The demo now keeps pulling fresh random seeds until at least 10 songs are actually rated, shows an always-visible 1-5 meaning legend, renders a progress bar for the active song, shows an 11-track playlist window (5 before/current/5 after), supports arrow-key previous/next navigation plus replay, and rebuilds the station from updated ratings without interrupting the current song or dropping it from the queue. Local playback now launches `sidplayfp` in single-track mode and the CLI fails fast on legacy similarity exports that do not contain track-level identity/vector data.
-- 2026-03-20 — Expanded `packages/sidflow-play/test/cli.test.ts` to cover the new station-demo contract: realistic export/HVSC fixtures, minimum-rated-song behavior when skips occur, and a clear legacy-schema failure path. Focused validation passed with `bun run build:quick` and `bun test packages/sidflow-play/test/cli.test.ts` (`32 pass, 0 fail`).
-- 2026-03-20 — Final validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly:
-  - Run 1: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [22.79s]
-  - Run 2: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [21.93s]
-  - Run 3: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [22.23s]
-- 2026-03-20 — Follow-up user request: exclude tracks shorter than 15 seconds from the station demo, with a configurable threshold. Added a station-demo `--min-duration` option (default 15s), applied the gate to both random seed intake and rebuilt station queues, surfaced the active threshold in the TUI, and added focused tests for parsing, positive filtering, and the “not enough long tracks” failure path. Validation next: rerun `bun run build`, then `bun run test` three consecutive times for the updated totals.
-- 2026-03-20 — Duration-gate validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly after the new station-demo tests increased the suite totals:
-  - Run 1: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.59s]
-  - Run 2: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.97s]
-  - Run 3: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.97s]
-- 2026-03-20 — Follow-up user request: make like/dislike actions trivial during playback and clarify skip semantics. Added `l`/`+` as like (`5`), `d`/`x` as dislike (`0`), and made station-phase `s` mean skip-as-dislike while left/right navigation remains unrated movement only. The TUI/help text now advertises those shortcuts, dislikes display as `0/5`, and recommendation weighting ignores fully disliked-only seed sets unless some positive rating exists. Focused validation passed with `bun run build:quick` and `bun test packages/sidflow-play/test/cli.test.ts` (`36 pass, 0 fail`).
-- 2026-03-20 — Like/dislike follow-up validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly after the playback shortcut tests increased the suite totals:
-  - Run 1: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.09s]
-  - Run 2: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.10s]
-  - Run 3: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.09s]
+**Risks**
+- Terminal ANSI width and alternate-screen behavior can vary across environments; validation must exercise both ANSI rendering and pure string rendering.
+- The runtime loop currently mixes state transitions with render-driven viewport updates; refactoring must preserve playback semantics while making scroll rules explicit.
+- The repo requires full validation discipline, so phase gates must use fast targeted checks first and full suite validation at the end.
+- Save/load needs an explicit key choice that does not conflict with the fixed transport/filter/rating model; implementation will use `w` for save and `o` for open/load and surface that choice directly in the controls block.
+
+**Progress log**
+- 2026-03-21 — Started deterministic TUI overhaul. Re-read `PLANS.md`, `README.md`, `doc/developer.md`, and `doc/technical-reference.md`; inspected `packages/sidflow-play/src/station/{input,screen,run,formatting,types}.ts` plus current tests. Confirmed the current state still violates the target spec: `?` is the star filter trigger, `r` is replay while `u` is refresh, the filter bar is embedded in a verbose shortcuts line, viewport movement is still selection-driven, and ANSI rendering still writes a full-screen blob instead of clearing each dynamic line explicitly.
+- 2026-03-21 — Phase 1 in progress. Next changes: rebind keys to the strict spec, add explicit star-input pending state, keep AND-combined filtering visible, then move into per-line rendering and viewport-rule refactoring.
+- 2026-03-21 — Scope expanded during implementation: the Station must also guarantee unique songs per playlist, support in-place reshuffling of the current playlist without changing membership, and provide save/load playlist dialogs with visible prior saves. The queue and persistence layers will be extended first so those capabilities remain deterministic across refresh, shuffle, and reload paths.
+- 2026-03-21 — Implemented the new Station key model (`*`, `/`, `Esc`, `g`, `r`, `w`, `o`), playlist uniqueness guards, save/load playlist persistence, compact dialog rendering, line-by-line ANSI redraws, playback-driven viewport updates, and the compressed four-line controls block. Focused validation passed with `bun run build:quick` and `runTests` over `packages/sidflow-play/test/{station-input,station-screen,cli}.test.ts` (`188 pass, 0 fail`).
+- 2026-03-21 — Broader validation remains open. A repository-level `bun run test` task currently exits with code `137` after progressing deep into the suite, so the deterministic Station-focused changes are validated, but full-suite completion still needs a separate follow-up investigation of the kill/timeout condition.
 - 2026-03-20 — Follow-up user request: extend the station demo into a longer-form player with a 100-song minimum playlist, a second playlist-position progress bar, separate browse-vs-play navigation (`←/→` play prev/next, `↑/↓/PgUp/PgDn` browse, `Enter` play selected), and pause/resume on space. The playback UI also needs more deliberate color coding, and Ultimate64 pause/resume should use the documented machine pause/resume plus SID-volume silencing via the REST memory-write endpoint. Validation next: `bun run build:quick`, focused `packages/sidflow-play/test/cli.test.ts`, then `bun run build` and `bun run test` three consecutive times with 0 failures.
 - 2026-03-21 — Follow-up user request: polish the station dashboard UX without dropping features. Scope includes smart redraw on terminal resize, denser playlist columns, moving duration before the title, grouping author and year, replacing the ambiguous `You rated x/y` label with a concise counter, and adding a visible `?` star-threshold filter (`*N`) that ANDs with `/` text filtering. Validation next: `bun run build:quick`, focused `packages/sidflow-play/test/cli.test.ts`, then full `bun run test` and CI-status inspection.
 - 2026-03-21 — Scope expanded again: station ratings and skip/dislike actions must not rebuild the queue immediately. Rebuild becomes an explicit documented refresh shortcut only, and the refresh path must keep the current song playing and pinned at its existing playlist index while the rest of the queue is regenerated around it.
