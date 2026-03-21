@@ -22,11 +22,13 @@ import { getTerminalSize, isTrackLongEnough, resolveTrackDurationMs } from "./fo
 import {
   ScreenRenderer,
   clampSelectionToMatches,
-  getFilteredTrackIndices,
+  getFilteredTrackIndicesWithRatings,
   getStationReservedRows,
   moveCurrentInMatches,
   moveSelectionInMatches,
   normalizeFilterQuery,
+  normalizeRatingFilterQuery,
+  parseMinimumRatingFilter,
   resolvePlaylistWindowRowsForScreen,
   resolvePlaylistWindowStart,
 } from "./screen.js";
@@ -395,6 +397,9 @@ export async function runStationCli(
     let playlistWindowStart = 0;
     let stationFilter = "";
     let filterEditing = false;
+    let ratingFilterQuery = "";
+    let ratingFilterEditing = false;
+    let minimumRating: number | undefined;
     const initialSummary = summarizeRatingAnchors(ratings);
     let stationStatus = reusedPersistedRatings
       ? `Reused ${ratings.size} persisted ratings. Station ready immediately (${initialSummary.strong} strong anchors, ${initialSummary.excluded} excluded dislikes). Flow is sequenced by similarity.`
@@ -419,7 +424,7 @@ export async function runStationCli(
           const liveElapsedMs = getCurrentElapsedMs();
           const livePlaylistDurationMs = sumPlaylistDurationMs(stationQueue);
           const livePlaylistElapsedMs = resolvePlaylistPositionMs(stationQueue, stationIndex, liveElapsedMs);
-          const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
+          const filteredIndices = getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating);
           const effectiveSelectedIndex = clampSelectionToMatches(filteredIndices, selectedIndex, stationIndex);
           const playlistRows = resolvePlaylistWindowRowsForScreen(
             stationQueue.length,
@@ -452,6 +457,9 @@ export async function runStationCli(
             playlistDurationMs: livePlaylistDurationMs,
             filterQuery: stationFilter,
             filterEditing,
+            ratingFilterQuery,
+            ratingFilterEditing,
+            minimumRating,
             filterMatchCount: filteredIndices.length,
             paused,
             statusLine: stationStatus,
@@ -487,7 +495,7 @@ export async function runStationCli(
           const liveElapsedMs = getCurrentElapsedMs();
           const livePlaylistDurationMs = sumPlaylistDurationMs(stationQueue);
           const livePlaylistElapsedMs = resolvePlaylistPositionMs(stationQueue, stationIndex, liveElapsedMs);
-          const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
+          const filteredIndices = getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating);
           renderer.render({
             phase: "station",
             current,
@@ -512,6 +520,9 @@ export async function runStationCli(
             playlistDurationMs: livePlaylistDurationMs,
             filterQuery: stationFilter,
             filterEditing,
+            ratingFilterQuery,
+            ratingFilterEditing,
+            minimumRating,
             filterMatchCount: filteredIndices.length,
             paused,
             statusLine: "Station session ended.",
@@ -525,7 +536,11 @@ export async function runStationCli(
           startedAt = Date.now();
           elapsedBeforePauseMs = 0;
           paused = false;
-          selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), stationIndex, stationIndex);
+          selectedIndex = clampSelectionToMatches(
+            getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating),
+            stationIndex,
+            stationIndex,
+          );
           playlistWindowStart = 0;
           stationStatus = `Replaying ${current.title || path.basename(current.sid_path)}.`;
           continue;
@@ -543,7 +558,7 @@ export async function runStationCli(
             stationFilter = newFilterValue;
           }
           filterEditing = action.editing;
-          const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
+          const filteredIndices = getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating);
           if (filteredIndices.length > 0) {
             selectedIndex = clampSelectionToMatches(filteredIndices, selectedIndex, stationIndex);
             playlistWindowStart = resolvePlaylistWindowStart(
@@ -557,18 +572,66 @@ export async function runStationCli(
               playlistWindowStart,
             );
             stationStatus = stationFilter
-              ? `Filtering playlist by \"${stationFilter}\" (${filteredIndices.length}/${stationQueue.length} matches).`
-              : "Cleared the playlist filter.";
+              ? `Text filter \"${stationFilter}\"  ${filteredIndices.length}/${stationQueue.length}.`
+              : minimumRating !== undefined
+                ? `Text filter cleared. Stars ${minimumRating}+ still active.`
+                : "Text filter cleared.";
           } else {
             playlistWindowStart = 0;
             stationStatus = stationFilter
-              ? `No playlist matches for \"${stationFilter}\". Press Esc or / to adjust the filter.`
-              : "Cleared the playlist filter.";
+              ? `No matches for text \"${stationFilter}\". Esc clears.`
+              : minimumRating !== undefined
+                ? `Text filter cleared. Stars ${minimumRating}+ still active.`
+                : "Text filter cleared.";
           }
           continue;
         }
 
-        const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
+        if (action.type === "setRatingFilter") {
+          const nextQuery = normalizeRatingFilterQuery(action.value);
+          if (!action.editing) {
+            const parsedMinimum = parseMinimumRatingFilter(nextQuery);
+            if (nextQuery && parsedMinimum === undefined) {
+              ratingFilterEditing = false;
+              stationStatus = "Star filter must be *0 through *5.";
+              continue;
+            }
+            minimumRating = parsedMinimum;
+            ratingFilterQuery = parsedMinimum === undefined ? "" : `*${parsedMinimum}`;
+          } else {
+            ratingFilterQuery = nextQuery;
+          }
+          ratingFilterEditing = action.editing;
+          const filteredIndices = getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating);
+          if (filteredIndices.length > 0) {
+            selectedIndex = clampSelectionToMatches(filteredIndices, selectedIndex, stationIndex);
+            playlistWindowStart = resolvePlaylistWindowStart(
+              filteredIndices,
+              selectedIndex,
+              resolvePlaylistWindowRowsForScreen(
+                stationQueue.length,
+                getTerminalSize(runtime.stdout).rows,
+                getStationReservedRows(featuresJsonl),
+              ),
+              playlistWindowStart,
+            );
+            stationStatus = minimumRating === undefined
+              ? stationFilter
+                ? `Stars cleared. Text \"${stationFilter}\" still active.`
+                : "Star filter cleared."
+              : `Stars ${minimumRating}+  ${filteredIndices.length}/${stationQueue.length}.`;
+          } else {
+            playlistWindowStart = 0;
+            stationStatus = minimumRating === undefined
+              ? stationFilter
+                ? `Stars cleared. Text \"${stationFilter}\" still active.`
+                : "Star filter cleared."
+              : `No matches for stars ${minimumRating}+. Esc clears.`;
+          }
+          continue;
+        }
+
+        const filteredIndices = getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating);
 
         if (action.type === "next") {
           const nextIndex = stationFilter
@@ -676,7 +739,7 @@ export async function runStationCli(
         if (action.type === "shuffle") {
           stationQueue = shuffleQueueKeepingCurrent(stationQueue, stationIndex, runtime.random);
           stationIndex = 0;
-          selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), 0, 0);
+          selectedIndex = clampSelectionToMatches(getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating), 0, 0);
           playlistWindowStart = 0;
           stationStatus = "Shuffled the remaining playlist around the current song.";
           continue;
@@ -684,44 +747,27 @@ export async function runStationCli(
 
         if (action.type === "rate") {
           ratings.set(current.track_id, action.rating);
-          const rebuilt = await buildStationQueue(
-            dbPath,
-            hvscRoot,
-            ratings,
-            stationTarget,
-            options.adventure ?? 3,
-            minDurationSeconds,
-            runtime,
-            metadataCache,
-          );
-          if (rebuilt.length >= stationTarget) {
-            const shouldSkipCurrent = action.rating === 0;
-            const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex, !shouldSkipCurrent);
-            if (merged.queue.length === 0) {
-              stationStatus = "Rebuild removed the current song but did not produce a replacement, so the current playlist stays active.";
+          await writePersistedStationSelections(selectionStatePath, dbPath, hvscRoot, ratedTarget, ratings, runtime.now().toISOString());
+          if (action.rating === 0) {
+            const nextIndex = stationIndex < stationQueue.length - 1 ? stationIndex + 1 : stationIndex;
+            if (nextIndex === stationIndex) {
+              stationStatus = "Skipped current track. Queue unchanged. Refresh with u.";
               continue;
             }
-            stationQueue = merged.queue;
-            stationIndex = merged.index;
-            selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), stationIndex, stationIndex);
+            await stopPlayback();
+            stationIndex = nextIndex;
+            selectedIndex = clampSelectionToMatches(
+              getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating),
+              stationIndex,
+              stationIndex,
+            );
             playlistWindowStart = 0;
-            await writePersistedStationSelections(selectionStatePath, dbPath, hvscRoot, ratedTarget, ratings, runtime.now().toISOString());
-            const rebuiltSummary = summarizeRatingAnchors(ratings);
-            stationStatus = action.rating === 5
-              ? `Liked this track. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
-              : action.rating === 0
-                ? `Disliked this track. Rebuilt from ${ratings.size} ratings; skipped to the next song and re-sequenced the remaining queue by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`
-                : `Stored ${action.rating}/5. Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`;
-            if (shouldSkipCurrent) {
-              await stopPlayback();
-              break;
-            }
+            stationStatus = "Skipped current track. Queue unchanged. Refresh with u.";
+            break;
           } else {
             stationStatus = action.rating === 5
-              ? "Liked this track. Rebuild produced no better candidates, so the current queue stays active."
-              : action.rating === 0
-                ? "Disliked this track. Rebuild produced no better candidates, so the current queue stays active."
-                : `Stored ${action.rating}/5. Rebuild produced no better candidates, so the current queue stays active.`;
+              ? "Liked current track. Queue unchanged. Refresh with u."
+              : `Stored ${action.rating}/5. Queue unchanged. Refresh with u.`;
           }
           continue;
         }
@@ -740,13 +786,13 @@ export async function runStationCli(
           const merged = mergeQueueKeepingCurrent(current, rebuilt, stationIndex);
           stationQueue = merged.queue;
           stationIndex = merged.index;
-          selectedIndex = clampSelectionToMatches(getFilteredTrackIndices(stationQueue, stationFilter), stationIndex, stationIndex);
+          selectedIndex = clampSelectionToMatches(getFilteredTrackIndicesWithRatings(stationQueue, stationFilter, ratings, minimumRating), stationIndex, stationIndex);
           playlistWindowStart = 0;
           await writePersistedStationSelections(selectionStatePath, dbPath, hvscRoot, ratedTarget, ratings, runtime.now().toISOString());
           const rebuiltSummary = summarizeRatingAnchors(ratings);
-          stationStatus = `Rebuilt from ${ratings.size} ratings; current song pinned, remaining queue re-sequenced by similarity (${rebuiltSummary.strong} strong anchors, ${rebuiltSummary.excluded} excluded dislikes).`;
+          stationStatus = `Refreshed queue from ${ratings.size} ratings; live track pinned at ${stationIndex + 1}/${stationQueue.length} (${rebuiltSummary.strong} strong, ${rebuiltSummary.excluded} blocked).`;
         } else {
-          stationStatus = "Rebuild did not produce a full 100-song queue; the current playlist stays active.";
+          stationStatus = "Refresh did not produce a full queue; playlist unchanged.";
         }
       }
     }

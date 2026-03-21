@@ -105,6 +105,7 @@ export type StationAction =
   | { type: "playSelected" }
   | { type: "togglePause" }
   | { type: "setFilter"; value: string; editing: boolean }
+  | { type: "setRatingFilter"; value: string; editing: boolean }
   | { type: "shuffle" }
   | { type: "replay" }
   | { type: "rebuild" }
@@ -140,6 +141,9 @@ export interface StationScreenState {
   playlistDurationMs?: number;
   filterQuery?: string;
   filterEditing?: boolean;
+  ratingFilterQuery?: string;
+  ratingFilterEditing?: boolean;
+  minimumRating?: number;
   filterMatchCount?: number;
   minDurationSeconds?: number;
   paused?: boolean;

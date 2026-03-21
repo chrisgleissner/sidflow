@@ -92,6 +92,9 @@ export function mapStationToken(token: string): StationAction | null {
   if (["/", "f"].includes(token)) {
     return { type: "setFilter", value: "", editing: true };
   }
+  if (["?"].includes(token)) {
+    return { type: "setRatingFilter", value: "", editing: true };
+  }
   if (["h"].includes(token)) {
     return { type: "shuffle" };
   }
@@ -137,11 +140,15 @@ class PromptInputController implements InputController {
   async readStationAction(_timeoutMs: number): Promise<StationAction> {
     while (true) {
       const answer = normalizePromptResponse(
-        await this.ask("Command / filter, left/right/up/down/pgup/pgdn, enter=play, space=pause, h=shuffle, s=skip-dislike, l=like, d=dislike, r=replay, u=rebuild, 0-5=rate, q=quit > "),
+        await this.ask("Command / text, ? stars, left/right/up/down/pgup/pgdn, enter=play, space=pause, h=shuffle, s=skip, l=like, d=dislike, r=replay, u=refresh, 0-5=rate, q=quit > "),
       );
       if (["/", "f"].includes(answer)) {
         const filterValue = await this.ask("Filter title/artist (blank clears) > ");
         return { type: "setFilter", value: filterValue, editing: false };
+      }
+      if (["?"].includes(answer)) {
+        const filterValue = await this.ask("Min stars *0-*5 (blank clears) > ");
+        return { type: "setRatingFilter", value: filterValue, editing: false };
       }
       const action = mapStationToken(answer);
       if (action) {
@@ -217,8 +224,9 @@ class RawInputController implements InputController {
   private readonly queue: string[] = [];
   private readonly handleData: (chunk: string) => void;
   private closed = false;
-  private filterEditing = false;
-  private filterBuffer = "";
+  private filterMode: "text" | "rating" | null = null;
+  private textFilterBuffer = "";
+  private ratingFilterBuffer = "";
 
   constructor(runtime: StationRuntime) {
     this.stdin = runtime.stdin as NodeJS.ReadStream;
@@ -271,34 +279,56 @@ class RawInputController implements InputController {
     const action = await this.nextMappedAction<StationAction>(
       timeoutMs,
       (token) => {
-        if (this.filterEditing) {
+        if (this.filterMode) {
           if (token === "\u0003") {
             return { type: "quit" };
           }
           if (token === "escape") {
-            this.filterEditing = false;
-            this.filterBuffer = "";
-            return { type: "setFilter", value: "", editing: false };
+            const actionType = this.filterMode === "text" ? "setFilter" : "setRatingFilter";
+            this.filterMode = null;
+            this.textFilterBuffer = "";
+            this.ratingFilterBuffer = "";
+            return actionType === "setFilter"
+              ? { type: "setFilter", value: "", editing: false }
+              : { type: "setRatingFilter", value: "", editing: false };
           }
           if (token === "") {
-            this.filterEditing = false;
-            return { type: "setFilter", value: this.filterBuffer, editing: false };
+            const actionType = this.filterMode === "text" ? "setFilter" : "setRatingFilter";
+            const value = this.filterMode === "text" ? this.textFilterBuffer : this.ratingFilterBuffer;
+            this.filterMode = null;
+            return actionType === "setFilter"
+              ? { type: "setFilter", value, editing: false }
+              : { type: "setRatingFilter", value, editing: false };
           }
           if (token === "backspace") {
-            this.filterBuffer = this.filterBuffer.slice(0, -1);
-            return { type: "setFilter", value: this.filterBuffer, editing: true };
+            if (this.filterMode === "text") {
+              this.textFilterBuffer = this.textFilterBuffer.slice(0, -1);
+              return { type: "setFilter", value: this.textFilterBuffer, editing: true };
+            }
+            this.ratingFilterBuffer = this.ratingFilterBuffer.slice(0, -1);
+            return { type: "setRatingFilter", value: this.ratingFilterBuffer, editing: true };
           }
           if (token.length === 1 && token >= " ") {
-            this.filterBuffer += token;
-            return { type: "setFilter", value: this.filterBuffer, editing: true };
+            if (this.filterMode === "text") {
+              this.textFilterBuffer += token;
+              return { type: "setFilter", value: this.textFilterBuffer, editing: true };
+            }
+            this.ratingFilterBuffer += token;
+            return { type: "setRatingFilter", value: this.ratingFilterBuffer, editing: true };
           }
           return null;
         }
 
         if (["/", "f"].includes(token)) {
-          this.filterEditing = true;
-          this.filterBuffer = "";
+          this.filterMode = "text";
+          this.textFilterBuffer = "";
           return { type: "setFilter", value: "", editing: true };
+        }
+
+        if (["?"].includes(token)) {
+          this.filterMode = "rating";
+          this.ratingFilterBuffer = "";
+          return { type: "setRatingFilter", value: "", editing: true };
         }
 
         return mapStationToken(token);

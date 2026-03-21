@@ -942,7 +942,7 @@ describe("runPlayCli", () => {
     expect(stderrChunks.join("")).toBe("");
     const output = stdoutChunks.join("");
     expect(output).toContain("Legend");
-    expect(output).toContain("5 locks the vibe in");
+    expect(output).toContain("Scale 5 anchor");
     expect(output).toContain("Playlist Window");
     expect(output).toContain("Song Progress");
     expect(output).toContain("Playlist Pos ");
@@ -1059,9 +1059,11 @@ describe("runPlayCli", () => {
     expect(screen).toContain("[★★★★★]");
     expect(screen).toContain("[☆☆☆☆☆]");
     expect(screen).toContain("Playlist Window (4 visible)");
+    expect(screen).toContain("TEXT off");
+    expect(screen).toContain("STARS off");
   });
 
-  it("skips to the next rebuilt song when a playing track is disliked", async () => {
+  it("skips to the next song without rebuilding when a playing track is disliked", async () => {
     const fixture = await createStationDemoFixture();
     const stdoutChunks: string[] = [];
     const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "s", "q"];
@@ -1125,7 +1127,7 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     const output = stdoutChunks.join("");
-    expect(output).toContain("Disliked this track. Rebuilt from 11 ratings; skipped to the next song");
+    expect(output).toContain("Skipped current track. Queue unchanged. Refresh with u.");
     const stationStarts = playbackEvents.filter((event) => event.startsWith("start:")).slice(-2);
     expect(stationStarts).toHaveLength(2);
     expect(stationStarts[0]).not.toBe(stationStarts[1]);
@@ -1319,10 +1321,11 @@ describe("runPlayCli", () => {
     expect(stdoutChunks.join("")).toContain("local SQLite override");
   });
 
-  it("rebuilds the remaining queue from updated playback ratings", async () => {
+  it("refreshes the remaining queue only when explicitly requested", async () => {
     const fixture = await createStationDemoFixture();
     const stdoutChunks: string[] = [];
-    const answers = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "q"];
+    const answers = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "right", "u", "q"];
+    const playbackEvents: string[] = [];
 
     const exitCode = await runStationCli(
       ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--sample-size", "10"],
@@ -1342,6 +1345,16 @@ describe("runPlayCli", () => {
           sidplayPath: "/usr/bin/sidplayfp",
           threads: 0,
           classificationDepth: 3,
+        }),
+        createPlaybackAdapter: async () => ({
+          start: async (track) => {
+            playbackEvents.push(`start:${track.track_id}`);
+          },
+          stop: async () => {
+            playbackEvents.push("stop");
+          },
+          pause: async () => undefined,
+          resume: async () => undefined,
         }),
         prompt: async () => answers.shift() ?? "q",
         random: () => 0,
@@ -1365,8 +1378,9 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     const output = stdoutChunks.join("");
-    expect(output).toContain("Rebuilt from 11 ratings");
-    expect(output).toContain("remaining queue re-sequenced by sim");
+    expect(output).toContain("Moved to the next station track.");
+    expect(output).toContain("Refreshed queue from 10 ratings; live track pinned at 2/100");
+    expect(playbackEvents.filter((event) => event.startsWith("start:")).slice(-2)).toHaveLength(2);
   });
 
   it("supports like and dislike shortcuts while songs are playing", async () => {
@@ -1427,7 +1441,7 @@ describe("runPlayCli", () => {
     expect(output).toContain("d dislike(0)");
     expect(output).toContain("Liked ");
     expect(output).toContain("Disliked ");
-    expect(output).toContain("Disliked this track. Rebuilt from");
+    expect(output).toContain("Skipped current track. Queue unchanged. Refresh with u.");
   });
 
   it("treats next navigation as unrated movement", async () => {
@@ -1622,13 +1636,70 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     const output = stdoutChunks.join("");
-    expect(output).toContain("/ filter title/artist");
-    expect(output).toContain("Filtering playlist by \"galway\"");
-    expect(output).toContain("filter \"galway\"");
+    expect(output).toContain("/ text");
+    expect(output).toContain("Text filter \"galway\"");
+    expect(output).toContain("TEXT \"galway\"");
     expect(output).toContain("Playlist Window");
-    // The filter badge must show a non-zero match count less than the total queue,
-    // confirming filtering actually excluded some tracks.
-    expect(output).toMatch(/filter "galway" \(\d+\/\d+\)/);
+    expect(output).toMatch(/TEXT "galway"/);
+    expect(output).toMatch(/\d+\/\d+/);
+  });
+
+  it("filters the playlist by minimum star rating from the dedicated star command", async () => {
+    const fixture = await createStationDemoFixture();
+    const stdoutChunks: string[] = [];
+    const actions = ["5", "4", "3", "2", "1", "5", "4", "3", "2", "1", "?", "*4", "q"];
+
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runStationCli(
+      [
+        "--db", fixture.dbPath,
+        "--hvsc", fixture.workspace,
+        "--playback", "none",
+        "--sample-size", "10",
+      ],
+      {
+        stdout,
+        cwd: () => fixture.workspace,
+        loadConfig: async () => ({
+          sidPath: fixture.workspace,
+          audioCachePath: fixture.workspace,
+          tagsPath: fixture.workspace,
+          classifiedPath: fixture.workspace,
+          sidplayPath: "/usr/bin/sidplayfp",
+          threads: 0,
+          classificationDepth: 3,
+        }),
+        prompt: async () => actions.shift() ?? "q",
+        random: () => 0,
+        parseSidFile: async (filePath: string) => ({
+          type: "PSID",
+          version: 2,
+          title: path.basename(filePath),
+          author: "Test Composer",
+          released: "1989 Test Release",
+          songs: 1,
+          startSong: 1,
+          clock: "PAL",
+          sidModel1: "MOS6581",
+          loadAddress: 0,
+          initAddress: 0,
+          playAddress: 0,
+        }),
+        lookupSongDurationMs: async () => 60_000,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const output = stdoutChunks.join("");
+    expect(output).toContain("? stars");
+    expect(output).toContain("STARS *4");
+    expect(output).toContain("0/100");
   });
 
   it("reuses persisted station selections and skips seed capture by default", async () => {
@@ -1985,7 +2056,7 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     const output = stdoutChunks.join("");
-    expect(output).toContain("You rated 10/10");
+    expect(output).toContain("Ratings 10 total  Target 10");
     expect(output).toContain("Skipped. It does not count toward the station target.");
   });
 
@@ -2259,7 +2330,7 @@ describe("station rating formatting", () => {
 });
 
 describe("station playlist rating column layout", () => {
-  test("renders mixed ratings in a fixed-width aligned row layout", () => {
+  test("renders mixed ratings in a dense duration-first row layout", () => {
     const queue = [
       makeTrack({ track_id: "t1", title: "SX-64 Demo", author: "Katsenos", released: "1984" }),
       makeTrack({ track_id: "t2", title: "Monty on the Run", author: "Rob Hubbard", released: "1985" }),
@@ -2295,12 +2366,16 @@ describe("station playlist rating column layout", () => {
     }, false, 100, 36);
 
     const rows = extractPlaylistWindowRows(screen, 4);
-    expect(rows).toEqual([
-      "001/004  ► [★★★★☆] SX-64 Demo                                  Katsenos                  1:00 1984  ",
-      "002/004  > [★★★☆☆] Monty on the Run                            Rob Hubbard               1:00 1985  ",
-      "003/004    [☆☆☆☆☆] Lightforce                                  Martin Galway             1:00 1986  ",
-      "004/004    [★★★★★] Delta                                       Rob Hubbard               1:00 1987  ",
-    ]);
+    expect(rows[0]).toContain("001/004  ► [★★★★☆]  1:00 SX-64 Demo");
+    expect(rows[1]).toContain("002/004  > [★★★☆☆]  1:00 Monty on the Run");
+    expect(rows[2]).toContain("[☆☆☆☆☆]  1:00 Lightforce");
+    expect(rows[3]).toContain("[★★★★★]  1:00 Delta");
+    expect(rows[0]).toContain("Katsenos");
+    expect(rows[0]).toContain("1984");
+    expect(rows[1]).toContain("Rob Hubbard");
+    expect(rows[1]).toContain("1985");
+    expect((rows[0]?.indexOf("1984") ?? -1)).toBeGreaterThan(rows[0]?.indexOf("Katsenos") ?? -1);
+    expect((rows[1]?.indexOf("1985") ?? -1)).toBeGreaterThan(rows[1]?.indexOf("Rob Hubbard") ?? -1);
     expect(new Set(rows.map((row) => row.length))).toEqual(new Set([100]));
   });
 
@@ -2346,10 +2421,8 @@ describe("station playlist rating column layout", () => {
     }, false, 92, 36);
 
     const rows = extractPlaylistWindowRows(screen, 2);
-    expect(rows).toEqual([
-      "001/002  ► [★★★★★] A Very Long Demo Title That Should Tr… Extremely Verbose C…   1:00 1988  ",
-      "002/002  > [★☆☆☆☆] Short Title                            Short Name             1:00 1989  ",
-    ]);
+    expect(rows[0]).toContain("001/002  ► [★★★★★]  1:00 A Very Long Demo Title");
+    expect(rows[1]).toContain("002/002  > [★☆☆☆☆]  1:00 Short Title");
     expect(rows[0]?.indexOf("[★★★★★]")).toBe(rows[1]?.indexOf("[★☆☆☆☆]"));
     expect(rows[0]?.indexOf("1:00")).toBe(rows[1]?.indexOf("1:00"));
   });
@@ -2474,6 +2547,10 @@ describe("renderStationScreen filter", () => {
     current?: ReturnType<typeof makeTrack>;
     filterQuery?: string;
     filterEditing?: boolean;
+    ratingFilterQuery?: string;
+    ratingFilterEditing?: boolean;
+    minimumRating?: number;
+    ratings?: Map<string, number>;
   } = {}) {
     return {
       phase: "station" as const,
@@ -2484,7 +2561,7 @@ describe("renderStationScreen filter", () => {
       total: mixedQueue.length,
       ratedCount: 10,
       ratedTarget: 10,
-      ratings: new Map<string, number>(),
+      ratings: extra.ratings ?? new Map<string, number>(),
       playbackMode: "none" as const,
       adventure: 3,
       dataSource: "test",
@@ -2499,6 +2576,9 @@ describe("renderStationScreen filter", () => {
       statusLine: "Ready.",
       filterQuery: extra.filterQuery ?? "",
       filterEditing: extra.filterEditing ?? false,
+      ratingFilterQuery: extra.ratingFilterQuery ?? "",
+      ratingFilterEditing: extra.ratingFilterEditing ?? false,
+      minimumRating: extra.minimumRating,
     };
   }
 
@@ -2558,7 +2638,8 @@ describe("renderStationScreen filter", () => {
     expect(windowSection).not.toContain("Rob Hubbard");
     expect(windowSection).not.toContain("Martin Galway");
     // Filter badge must report 0 matches
-    expect(screen).toContain('"zimmer" (0/10)');
+    expect(screen).toContain("TEXT \"zimmer\"");
+    expect(screen).toContain("0/10");
   });
 
   test("filter badge shows editing state when filterEditing is true", () => {
@@ -2566,7 +2647,7 @@ describe("renderStationScreen filter", () => {
       makeState({ filterQuery: "hub", filterEditing: true }),
       false, 120, 60,
     );
-    expect(screen).toContain("filtering");
+    expect(screen).toContain("TEXT>");
     expect(screen).toContain('"hub"');
   });
 
@@ -2575,8 +2656,8 @@ describe("renderStationScreen filter", () => {
       makeState({ filterQuery: "hub", filterEditing: false }),
       false, 120, 60,
     );
-    expect(screen).toContain('filter "hub"');
-    expect(screen).not.toContain("filtering");
+    expect(screen).toContain('TEXT "hub"');
+    expect(screen).not.toContain("TEXT>");
   });
 
   test("filter badge reports correct match count", () => {
@@ -2585,7 +2666,27 @@ describe("renderStationScreen filter", () => {
       false, 120, 60,
     );
     // 5 hubbard + 5 galway = 10 total, 5 match "hubbard"
-    expect(screen).toContain('"hubbard" (5/10)');
+    expect(screen).toContain('TEXT "hubbard"');
+    expect(screen).toContain("5/10");
+  });
+
+  test("star filter badge shows active threshold and combines with text filters", () => {
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      makeState({
+        filterQuery: "galway",
+        minimumRating: 4,
+        ratingFilterQuery: "*4",
+        ratings: new Map([
+          [mixedQueue[5]!.track_id, 5],
+          [mixedQueue[6]!.track_id, 4],
+          [mixedQueue[7]!.track_id, 3],
+        ]),
+      }),
+      false, 120, 60,
+    );
+    expect(screen).toContain('TEXT "galway"');
+    expect(screen).toContain("STARS *4");
+    expect(screen).toContain("2/10");
   });
 });
 
@@ -2599,11 +2700,20 @@ describe("mapStationToken filter keys", () => {
     const action = mapStationToken("f");
     expect(action).toEqual({ type: "setFilter", value: "", editing: true });
   });
+
+  test("'?' enters star filter editing mode", () => {
+    const action = mapStationToken("?");
+    expect(action).toEqual({ type: "setRatingFilter", value: "", editing: true });
+  });
 });
 
 describe("decodeTerminalInput", () => {
   test("decodes slash as '/'", () => {
     expect(decodeTerminalInput("/")).toEqual(["/"]);
+  });
+
+  test("decodes question mark as '?'", () => {
+    expect(decodeTerminalInput("?")).toEqual(["?"]);
   });
 
   test("decodes escape sequence", () => {
