@@ -532,7 +532,16 @@ export async function runStationCli(
         }
 
         if (action.type === "setFilter") {
-          stationFilter = normalizeFilterQuery(action.value);
+          const newFilterValue = normalizeFilterQuery(action.value);
+          // When entering editing mode (editing:true) with an empty value the
+          // user just pressed "/" to start a new query. Preserve the existing
+          // stationFilter so the playlist doesn't flash back to unfiltered
+          // while the user hasn't typed anything yet. Once the user types the
+          // first character (non-empty value) or commits/cancels (editing:false)
+          // the filter is updated normally.
+          if (!action.editing || newFilterValue !== "" || filterEditing) {
+            stationFilter = newFilterValue;
+          }
           filterEditing = action.editing;
           const filteredIndices = getFilteredTrackIndices(stationQueue, stationFilter);
           if (filteredIndices.length > 0) {

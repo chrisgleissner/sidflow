@@ -297,7 +297,8 @@ class RawInputController implements InputController {
 
         if (["/", "f"].includes(token)) {
           this.filterEditing = true;
-          return { type: "setFilter", value: this.filterBuffer, editing: true };
+          this.filterBuffer = "";
+          return { type: "setFilter", value: "", editing: true };
         }
 
         return mapStationToken(token);

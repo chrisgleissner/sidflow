@@ -9,7 +9,16 @@ import { Writable } from "node:stream";
 import type { Stats } from "node:fs";
 
 import { parsePlayArgs, runPlayCli } from "../src/cli.js";
-import { __stationDemoTestUtils, parseStationDemoArgs as parseStationArgs, runStationDemoCli as runStationCli } from "../src/sid-station.js";
+import {
+  __stationDemoTestUtils,
+  parseStationDemoArgs as parseStationArgs,
+  runStationDemoCli as runStationCli,
+  normalizeFilterQuery,
+  trackMatchesFilter,
+  getFilteredTrackIndices,
+  mapStationToken,
+  decodeTerminalInput,
+} from "../src/sid-station.js";
 import { PlaybackState, type PlaybackEvent } from "../src/index.js";
 import type { Recommendation } from "@sidflow/common";
 import type { SidFileMetadata } from "@sidflow/common";
@@ -1555,7 +1564,9 @@ describe("runPlayCli", () => {
   it("filters the playlist by title or artist from the dedicated filter command", async () => {
     const fixture = await createStationDemoFixture();
     const stdoutChunks: string[] = [];
-    const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "/", "hubbard", "q"];
+    // Filter by "galway" — only tracks in group E/ get "Martin Galway";
+    // all others get "Rob Hubbard", so non-matching tracks exist in the queue.
+    const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "/", "galway", "q"];
 
     const stdout = new Writable({
       write(chunk, _encoding, callback) {
@@ -1589,7 +1600,8 @@ describe("runPlayCli", () => {
           type: "PSID",
           version: 2,
           title: path.basename(filePath),
-          author: filePath.includes("song") ? "Rob Hubbard" : "Test Composer",
+          // Tracks in E/ get "Martin Galway"; everything else gets "Rob Hubbard"
+          author: filePath.includes("/E/") || filePath.includes("\\E\\") ? "Martin Galway" : "Rob Hubbard",
           released: "1989 Test Release",
           songs: 1,
           startSong: 1,
@@ -1606,10 +1618,12 @@ describe("runPlayCli", () => {
     expect(exitCode).toBe(0);
     const output = stdoutChunks.join("");
     expect(output).toContain("/ filter title/artist");
-    expect(output).toContain("Filtering playlist by \"hubbard\"");
-    expect(output).toContain("filter \"hubbard\"");
-    expect(output).toContain("Rob Hubbard");
+    expect(output).toContain("Filtering playlist by \"galway\"");
+    expect(output).toContain("filter \"galway\"");
     expect(output).toContain("Playlist Window");
+    // The filter badge must show a non-zero match count less than the total queue,
+    // confirming filtering actually excluded some tracks.
+    expect(output).toMatch(/filter "galway" \(\d+\/\d+\)/);
   });
 
   it("reuses persisted station selections and skips seed capture by default", async () => {
@@ -2133,5 +2147,305 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(0);
     expect(stdoutChunks.join("")).toContain("c64u");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Filter unit tests — track matching, index computation, and screen rendering
+// ---------------------------------------------------------------------------
+
+function makeTrack(overrides: Partial<{
+  track_id: string;
+  sid_path: string;
+  title: string;
+  author: string;
+}> = {}) {
+  return {
+    track_id: overrides.track_id ?? "test-track",
+    sid_path: overrides.sid_path ?? "A/test.sid",
+    song_index: 1,
+    e: 4,
+    m: 4,
+    c: 3,
+    p: 4,
+    likes: 0,
+    dislikes: 0,
+    skips: 0,
+    plays: 1,
+    last_played: null,
+    absolutePath: `/tmp/${overrides.track_id ?? "test"}.sid`,
+    title: overrides.title ?? "Test Song",
+    author: overrides.author ?? "Test Composer",
+    released: "1989",
+    durationMs: 60_000,
+  };
+}
+
+describe("normalizeFilterQuery", () => {
+  test("returns empty string for undefined", () => {
+    expect(normalizeFilterQuery(undefined)).toBe("");
+  });
+  test("trims whitespace", () => {
+    expect(normalizeFilterQuery("  rob  ")).toBe("rob");
+  });
+  test("lowercases the query", () => {
+    expect(normalizeFilterQuery("ROB HUBBARD")).toBe("rob hubbard");
+  });
+  test("returns empty string for whitespace-only", () => {
+    expect(normalizeFilterQuery("   ")).toBe("");
+  });
+});
+
+describe("trackMatchesFilter", () => {
+  const hubbard = makeTrack({ title: "Thing on a Spring", author: "Rob Hubbard" });
+  const galway = makeTrack({ title: "Green Beret", author: "Martin Galway" });
+  const noAuthor = makeTrack({ sid_path: "A/my-track.sid", title: "", author: "" });
+
+  test("empty filter matches every track", () => {
+    expect(trackMatchesFilter(hubbard, "")).toBe(true);
+    expect(trackMatchesFilter(galway, "")).toBe(true);
+  });
+
+  test("matches author case-insensitively", () => {
+    expect(trackMatchesFilter(hubbard, "hubbard")).toBe(true);
+    expect(trackMatchesFilter(hubbard, "HUBBARD")).toBe(true);
+    expect(trackMatchesFilter(hubbard, "Rob")).toBe(true);
+  });
+
+  test("matches title case-insensitively", () => {
+    expect(trackMatchesFilter(galway, "green")).toBe(true);
+    expect(trackMatchesFilter(galway, "BERET")).toBe(true);
+  });
+
+  test("does not cross-match unrelated tracks", () => {
+    expect(trackMatchesFilter(hubbard, "galway")).toBe(false);
+    expect(trackMatchesFilter(galway, "hubbard")).toBe(false);
+  });
+
+  test("falls back to sid_path basename when title is empty", () => {
+    // "my-track" is in the basename of A/my-track.sid
+    expect(trackMatchesFilter(noAuthor, "my-track")).toBe(true);
+    expect(trackMatchesFilter(noAuthor, "othertitle")).toBe(false);
+  });
+
+  test("partial substring match works", () => {
+    expect(trackMatchesFilter(hubbard, "bba")).toBe(true);  // from "hubbard"
+    expect(trackMatchesFilter(galway, "ting")).toBe(false);
+  });
+
+  test("matches within the title portion only when author is empty", () => {
+    const noAuthorTrack = makeTrack({ title: "Shockwave", author: "" });
+    expect(trackMatchesFilter(noAuthorTrack, "shock")).toBe(true);
+    expect(trackMatchesFilter(noAuthorTrack, "galway")).toBe(false);
+  });
+});
+
+describe("getFilteredTrackIndices", () => {
+  const queue = [
+    makeTrack({ track_id: "t1", title: "Thing on a Spring", author: "Rob Hubbard" }),
+    makeTrack({ track_id: "t2", title: "Green Beret", author: "Martin Galway" }),
+    makeTrack({ track_id: "t3", title: "Monty on the Run", author: "Rob Hubbard" }),
+    makeTrack({ track_id: "t4", title: "Delta", author: "Rob Hubbard" }),
+    makeTrack({ track_id: "t5", title: "Lightforce", author: "Martin Galway" }),
+  ];
+
+  test("empty filter returns all indices", () => {
+    expect(getFilteredTrackIndices(queue, "")).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  test("filter by author returns only matching indices", () => {
+    expect(getFilteredTrackIndices(queue, "hubbard")).toEqual([0, 2, 3]);
+    expect(getFilteredTrackIndices(queue, "galway")).toEqual([1, 4]);
+  });
+
+  test("filter by partial title matches correctly", () => {
+    expect(getFilteredTrackIndices(queue, "delta")).toEqual([3]);
+    expect(getFilteredTrackIndices(queue, "on")).toEqual([0, 2]);  // "Thing on" and "Monty on"
+  });
+
+  test("case-insensitive filter", () => {
+    expect(getFilteredTrackIndices(queue, "HUBBARD")).toEqual([0, 2, 3]);
+    expect(getFilteredTrackIndices(queue, "Martin")).toEqual([1, 4]);
+  });
+
+  test("filter that matches nothing returns empty array", () => {
+    expect(getFilteredTrackIndices(queue, "zimmer")).toEqual([]);
+  });
+
+  test("empty queue returns empty array", () => {
+    expect(getFilteredTrackIndices([], "hubbard")).toEqual([]);
+  });
+
+  test("whitespace-only filter returns all indices (treated as empty)", () => {
+    expect(getFilteredTrackIndices(queue, "   ")).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe("renderStationScreen filter", () => {
+  const hubbardTracks = Array.from({ length: 5 }, (_, i) => makeTrack({
+    track_id: `h${i}`,
+    sid_path: `H/track${i}.sid`,
+    title: `Hubbard Track ${i}`,
+    author: "Rob Hubbard",
+  }));
+  const galwayTracks = Array.from({ length: 5 }, (_, i) => makeTrack({
+    track_id: `g${i}`,
+    sid_path: `G/track${i}.sid`,
+    title: `Galway Track ${i}`,
+    author: "Martin Galway",
+  }));
+  const mixedQueue = [...hubbardTracks, ...galwayTracks];
+
+  function makeState(extra: {
+    current?: ReturnType<typeof makeTrack>;
+    filterQuery?: string;
+    filterEditing?: boolean;
+  } = {}) {
+    return {
+      phase: "station" as const,
+      current: extra.current ?? mixedQueue[0]!,
+      index: 0,
+      selectedIndex: 0,
+      playlistWindowStart: 0,
+      total: mixedQueue.length,
+      ratedCount: 10,
+      ratedTarget: 10,
+      ratings: new Map<string, number>(),
+      playbackMode: "none" as const,
+      adventure: 3,
+      dataSource: "test",
+      dbPath: "/tmp/test.sqlite",
+      queue: mixedQueue,
+      currentRating: undefined,
+      minDurationSeconds: 15,
+      elapsedMs: 0,
+      durationMs: 60_000,
+      playlistElapsedMs: 0,
+      playlistDurationMs: 600_000,
+      statusLine: "Ready.",
+      filterQuery: extra.filterQuery ?? "",
+      filterEditing: extra.filterEditing ?? false,
+    };
+  }
+
+  test("no filter shows all tracks in playlist window", () => {
+    const screen = __stationDemoTestUtils.renderStationScreen(makeState(), false, 120, 60);
+    // Playlist window should show both authors
+    const windowSection = screen.split("Playlist Window")[1] ?? "";
+    expect(windowSection).toContain("Rob Hubbard");
+    expect(windowSection).toContain("Martin Galway");
+  });
+
+  test("filter by 'hubbard' hides Martin Galway from the playlist window", () => {
+    // Use a Hubbard track as current so Now Playing doesn't confuse assertions
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      makeState({ current: hubbardTracks[0], filterQuery: "hubbard" }),
+      false, 120, 60,
+    );
+    const windowSection = screen.split("Playlist Window")[1] ?? "";
+    expect(windowSection).toContain("Rob Hubbard");
+    expect(windowSection).not.toContain("Martin Galway");
+  });
+
+  test("filter by 'galway' hides Rob Hubbard from the playlist window", () => {
+    // Use a Galway track as current so Now Playing doesn't confuse assertions
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      makeState({ current: galwayTracks[0], filterQuery: "galway" }),
+      false, 120, 60,
+    );
+    const windowSection = screen.split("Playlist Window")[1] ?? "";
+    expect(windowSection).toContain("Martin Galway");
+    expect(windowSection).not.toContain("Rob Hubbard");
+  });
+
+  test("filter is case-insensitive in the playlist window", () => {
+    const lower = __stationDemoTestUtils.renderStationScreen(
+      makeState({ current: galwayTracks[0], filterQuery: "galway" }),
+      false, 120, 60,
+    );
+    const upper = __stationDemoTestUtils.renderStationScreen(
+      makeState({ current: galwayTracks[0], filterQuery: "GALWAY" }),
+      false, 120, 60,
+    );
+    for (const screen of [lower, upper]) {
+      const windowSection = screen.split("Playlist Window")[1] ?? "";
+      expect(windowSection).toContain("Martin Galway");
+      expect(windowSection).not.toContain("Rob Hubbard");
+    }
+  });
+
+  test("filter matching nothing shows 'No playlist matches' in playlist window", () => {
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      makeState({ filterQuery: "zimmer" }),
+      false, 120, 60,
+    );
+    const windowSection = screen.split("Playlist Window")[1] ?? "";
+    expect(windowSection).toContain("No playlist matches");
+    expect(windowSection).not.toContain("Rob Hubbard");
+    expect(windowSection).not.toContain("Martin Galway");
+    // Filter badge must report 0 matches
+    expect(screen).toContain('"zimmer" (0/10)');
+  });
+
+  test("filter badge shows editing state when filterEditing is true", () => {
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      makeState({ filterQuery: "hub", filterEditing: true }),
+      false, 120, 60,
+    );
+    expect(screen).toContain("filtering");
+    expect(screen).toContain('"hub"');
+  });
+
+  test("filter badge shows committed state when filterEditing is false", () => {
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      makeState({ filterQuery: "hub", filterEditing: false }),
+      false, 120, 60,
+    );
+    expect(screen).toContain('filter "hub"');
+    expect(screen).not.toContain("filtering");
+  });
+
+  test("filter badge reports correct match count", () => {
+    const screen = __stationDemoTestUtils.renderStationScreen(
+      makeState({ filterQuery: "hubbard" }),
+      false, 120, 60,
+    );
+    // 5 hubbard + 5 galway = 10 total, 5 match "hubbard"
+    expect(screen).toContain('"hubbard" (5/10)');
+  });
+});
+
+describe("mapStationToken filter keys", () => {
+  test("'/' enters filter editing mode", () => {
+    const action = mapStationToken("/");
+    expect(action).toEqual({ type: "setFilter", value: "", editing: true });
+  });
+
+  test("'f' also enters filter editing mode", () => {
+    const action = mapStationToken("f");
+    expect(action).toEqual({ type: "setFilter", value: "", editing: true });
+  });
+});
+
+describe("decodeTerminalInput", () => {
+  test("decodes slash as '/'", () => {
+    expect(decodeTerminalInput("/")).toEqual(["/"]);
+  });
+
+  test("decodes escape sequence", () => {
+    expect(decodeTerminalInput("\u001b")).toEqual(["escape"]);
+  });
+
+  test("decodes enter as empty string", () => {
+    expect(decodeTerminalInput("\r")).toEqual([""]);
+    expect(decodeTerminalInput("\n")).toEqual([""]);
+  });
+
+  test("decodes backspace", () => {
+    expect(decodeTerminalInput("\u007f")).toEqual(["backspace"]);
+  });
+
+  test("decodes mixed input stream", () => {
+    expect(decodeTerminalInput("/rob\r")).toEqual(["/", "r", "o", "b", ""]);
   });
 });
