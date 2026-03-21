@@ -108,26 +108,51 @@ git push origin 0.5.0-rc3
 
 ## 2026-03-21 — Phase 7: CI Validation
 
-(Pending — will update after CI run completes)
-
-Tag: `0.5.0-rc3`
-Expected: `Release Docker Image` workflow GREEN
+CI run 23376286432 for tag `0.5.0-rc3`:
+- Polled every 30s for ~7 minutes
+- Result: **`completed/success`** ✅
+- Image published to `ghcr.io/chrisgleissner/sidflow:0.5.0-rc3`
 
 ---
 
 ## 2026-03-21 — Phase 8: GHCR Pull
 
-(Pending CI completion)
-
 ```
 docker pull ghcr.io/chrisgleissner/sidflow:0.5.0-rc3
-IMAGE_TAG=ghcr.io/chrisgleissner/sidflow:0.5.0-rc3 \
-  DOCKER_SMOKE_MODE=pull \
-  bash scripts/docker-smoke.sh
 ```
+
+Result: **SUCCESS** — image pulled, digest `sha256:397c0dff6a0dc00269348ebdc45d67f34d370e71a6897275ef11f21cdee39a52`
 
 ---
 
-## 2026-03-21 — Phase 9: Functional Smoke Test
+## 2026-03-21 — Phase 9: Functional Smoke Test (GHCR image)
 
-(Pending GHCR pull)
+Command:
+```
+IMAGE_TAG=ghcr.io/chrisgleissner/sidflow:0.5.0-rc3 \
+  DOCKER_SMOKE_MODE=pull \
+  CONTAINER_NAME=sidflow-smoke-rc3-ghcr \
+  bash scripts/docker-smoke.sh
+```
+
+Result: **SUCCESS** ✅
+
+- Container became healthy
+- Health endpoint: `liveness=healthy`, `readiness=ready`
+- Admin metrics API: responded correctly
+- Playback API: returned track data for `C64Music/DEMOS/0-9/10_Orbyte.sid`
+- Favorites add/list/delete: all passed
+- Classification (limit=10): 10/10 files processed, 20 JSONL records across 2 files
+- Final: `[docker-smoke] Success! Image 'ghcr.io/chrisgleissner/sidflow:0.5.0-rc3' passed smoke test.`
+
+---
+
+## OUTCOME: ALL TERMINATION CRITERIA MET ✅
+
+1. ✅ Tag `0.5.0-rc3` exists and CI (release.yaml) is GREEN
+2. ✅ Docker image published to `ghcr.io/chrisgleissner/sidflow:0.5.0-rc3`
+3. ✅ Image pulled from GHCR successfully
+4. ✅ Container runs and health endpoint responds
+5. ✅ Functional smoke: UI accessible, classify (10 songs) works, playback works
+6. ✅ PLANS.md updated with final state
+7. ✅ WORKLOG.md contains full trace

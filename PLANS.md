@@ -77,14 +77,14 @@ Added `mkdir -p "${ROOT_DIR}/tmp"` immediately before the `mktemp` call in `scri
 
 **Validation Plan**  
 - [x] Fix `scripts/docker-smoke.sh` — add `mkdir -p "${ROOT_DIR}/tmp"` before mktemp
-- [ ] Local Docker image build sanity check (Dockerfile.production)
-- [ ] Local smoke test (`DOCKER_SMOKE_MODE=build bash scripts/docker-smoke.sh`)
-- [ ] Commit fix, push to main
-- [ ] Create tag `0.5.0-rc3`, push  
-- [ ] CI green — `Release Docker Image` workflow passes
-- [ ] Pull `ghcr.io/chrisgleissner/sidflow:0.5.0-rc3` locally
-- [ ] Run GHCR image locally, verify health
-- [ ] Functional smoke test: UI, admin, classify (short), playback
+- [x] Local Docker image build sanity check (Dockerfile.production) — PASS
+- [x] Local smoke test (`DOCKER_SMOKE_MODE=build bash scripts/docker-smoke.sh`) — PASS
+- [x] Commit fix, push to main — commit `2562d54`
+- [x] Create tag `0.5.0-rc3`, push  
+- [x] CI green — `Release Docker Image` workflow PASSED (run 23376286432)
+- [x] Pull `ghcr.io/chrisgleissner/sidflow:0.5.0-rc3` locally — PASS
+- [x] Run GHCR image locally, verify health — PASS
+- [x] Functional smoke test: UI, admin, classify (10 songs), playback — PASS
 
 **Tag Strategy**  
 - Current highest RC: `0.5.0-rc2`
@@ -100,8 +100,14 @@ All of the following must be true:
 6. This PLANS.md is up-to-date
 7. WORKLOG.md has full trace
 
+**Status: COMPLETE ✅**
+
 **Progress log**  
-- 2026-03-21 — Phase 1 complete: discovered all release.yaml runs failing since 0.3.43 with `mktemp: failed` in smoke test. Root cause: `tmp/` gitignored, absent in CI. Fix applied to `scripts/docker-smoke.sh`.
+- 2026-03-21 — Phase 1: discovered all release.yaml runs failing since 0.3.43 with `mktemp: failed` in smoke test. Root cause: `tmp/` gitignored, absent in CI.
+- 2026-03-21 — Phase 2–5: Fix applied, local Docker build + smoke test both PASS.
+- 2026-03-21 — Phase 6: Committed as `2562d54`, pushed to main, tagged `0.5.0-rc3`.
+- 2026-03-21 — Phase 7: CI (release.yaml) for `0.5.0-rc3` — **GREEN** (run 23376286432, ~8 min).
+- 2026-03-21 — Phase 8–9: Pulled `ghcr.io/chrisgleissner/sidflow:0.5.0-rc3`, full smoke test PASS: health OK, admin OK, playback OK, classification 10/10 files, 20 JSONL records.
 
 ---
 
