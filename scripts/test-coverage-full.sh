@@ -13,12 +13,7 @@ NC='\033[0m' # No Color
 
 # Step 1: Run unit tests with coverage
 echo -e "${BLUE}[1/4] Running unit tests with coverage...${NC}"
-bun test $(find packages/*/test packages/sidflow-web/tests/unit integration-tests -name '*.test.ts' -type f 2>/dev/null) \
-  --coverage \
-  --coverage-reporter=lcov \
-  --exclude='**/*.spec.ts' \
-  --exclude='**/tests/e2e/**' \
-  --exclude='**/dist/**'
+node scripts/run-unit-coverage-batches.mjs
 
 UNIT_EXIT=$?
 if [ $UNIT_EXIT -ne 0 ]; then

@@ -156,7 +156,7 @@ describe('playback-session persistence', () => {
       streamAssets: [],
     });
 
-    // Access second session to update its lastAccessedAt
+    await new Promise((resolve) => setTimeout(resolve, 2));
     await getPlaybackSession(second.sessionId);
 
     const latest = await findLatestSessionByScope('rate');

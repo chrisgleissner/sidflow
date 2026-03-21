@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { rm, stat, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -99,23 +100,29 @@ async function renderWithSidplayfpCli(
       sidFile,
     ];
 
-    const proc = Bun.spawn(["sidplayfp", ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
+    const watchdogMs = Math.max(15_000, targetDurationSeconds * 1000 + 5_000);
+    const result = spawnSync("sidplayfp", args, {
+      stdio: ["ignore", "ignore", "pipe"],
+      timeout: watchdogMs,
+      killSignal: "SIGKILL",
+      encoding: "utf8",
     });
 
-    const watchdogMs = Math.max(15_000, targetDurationSeconds * 1000 + 5_000);
-    const watchdog = setTimeout(() => {
-      console.warn(`[render-integration] sidplayfp-cli exceeded ${watchdogMs}ms; terminating`);
-      proc.kill();
-    }, watchdogMs);
+    if (result.error) {
+      if (result.error.message.includes("ETIMEDOUT")) {
+        console.warn(`[render-integration] sidplayfp-cli timed out after ${watchdogMs}ms`);
+        return false;
+      }
+      throw result.error;
+    }
 
-    await proc.exited;
-    clearTimeout(watchdog);
+    if (result.signal !== null) {
+      console.warn(`[render-integration] sidplayfp-cli timed out after ${watchdogMs}ms`);
+      return false;
+    }
 
-    if (proc.exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      console.warn("[render-integration] sidplayfp-cli failed:", stderr);
+    if (result.status !== 0) {
+      console.warn("[render-integration] sidplayfp-cli failed:", result.stderr);
       return false;
     }
 
@@ -176,12 +183,6 @@ describe("Step 8: Integration tests (render engines)", () => {
 
   describe("8.2 - sidplayfp-cli engine (conditional)", () => {
     it("renders SID to WAV if sidplayfp is available", async () => {
-      // sidplayfp can be slow on some hosts; allow more time.
-      // Bun default timeout is 5s, which is too tight for a 30s render.
-      // This test still skips if sidplayfp isn't available.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (it as any).timeout?.(60_000);
-
       // This test requires sidplayfp-cli binary and skips gracefully if not available
       const available = await isSidplayfpCliAvailable();
 
@@ -208,7 +209,7 @@ describe("Step 8: Integration tests (render engines)", () => {
       const stats = await stat(outputPath);
       expect(stats.size).toBeGreaterThan(1000);
       console.log(`[render-integration] sidplayfp-cli output: ${stats.size} bytes`);
-    });
+    }, 25_000);
 
     it("skips gracefully when sidplayfp is not available", async () => {
       const available = await isSidplayfpCliAvailable();

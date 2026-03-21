@@ -60,6 +60,12 @@ interface PlaybackSessionManifest {
 const sessions = new Map<string, PlaybackSessionRecord>();
 let sessionsLoaded = false;
 let sessionLoadPromise: Promise<void> | null = null;
+let lastAssignedSessionTimestamp = 0;
+
+function allocateSessionTimestamp(baseTime: number = Date.now()): number {
+    lastAssignedSessionTimestamp = Math.max(baseTime, lastAssignedSessionTimestamp + 1);
+    return lastAssignedSessionTimestamp;
+}
 
 function getPlaybackSessionManifestPath(): string {
     const configuredPath = process.env.SIDFLOW_PLAYBACK_SESSION_MANIFEST?.trim();
@@ -93,12 +99,18 @@ async function loadPlaybackSessions(): Promise<void> {
 
     sessionLoadPromise = (async () => {
         sessions.clear();
+        lastAssignedSessionTimestamp = 0;
         const manifestPath = getPlaybackSessionManifestPath();
         if (await pathExists(manifestPath)) {
             const contents = await readFile(manifestPath, 'utf8');
             const manifest = JSON.parse(contents) as PlaybackSessionManifest;
             for (const session of manifest.sessions ?? []) {
                 sessions.set(session.id, session);
+                lastAssignedSessionTimestamp = Math.max(
+                    lastAssignedSessionTimestamp,
+                    session.createdAt,
+                    session.lastAccessedAt
+                );
             }
             const pruned = pruneExpiredSessions();
             if (pruned) {
@@ -192,7 +204,7 @@ export async function createPlaybackSession(options: {
     streamAssets?: SessionStreamAsset[];
 }): Promise<PlaybackSessionDescriptor> {
     await loadPlaybackSessions();
-    const now = Date.now();
+    const now = allocateSessionTimestamp();
     pruneExpiredSessions(now);
 
     const id = randomUUID();
@@ -231,7 +243,7 @@ export async function createPlaybackSession(options: {
 
 export async function getPlaybackSession(id: string): Promise<PlaybackSessionRecord | null> {
     await loadPlaybackSessions();
-    const now = Date.now();
+    const now = allocateSessionTimestamp();
     const pruned = pruneExpiredSessions(now);
     const record = sessions.get(id);
     if (!record) {
@@ -446,6 +458,7 @@ export function resetPlaybackSessionStoreForTests(): void {
     sessions.clear();
     sessionsLoaded = false;
     sessionLoadPromise = null;
+    lastAssignedSessionTimestamp = 0;
 }
 
 export type {
