@@ -1,11 +1,11 @@
 /// <reference types="bun-types" />
 
 import path from "node:path";
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 
 import {
   parseRenderArgs,
@@ -322,11 +322,19 @@ describe("parseSidSpec", () => {
 });
 
 describe("loadSidListFile", () => {
+  const tempDirs = new Set<string>();
+
   async function makeTmpDir(): Promise<string> {
     const dir = path.join(tmpdir(), `render-cli-test-${randomUUID()}`);
     await mkdir(dir, { recursive: true });
+    tempDirs.add(dir);
     return dir;
   }
+
+  afterEach(async () => {
+    await Promise.all(Array.from(tempDirs, (dir) => rm(dir, { recursive: true, force: true })));
+    tempDirs.clear();
+  });
 
   it("returns empty array when file does not exist", async () => {
     const specs = await loadSidListFile("/nonexistent/path/sids.txt");

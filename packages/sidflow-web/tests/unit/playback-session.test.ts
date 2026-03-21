@@ -160,8 +160,8 @@ describe('playback-session persistence', () => {
     await getPlaybackSession(second.sessionId);
 
     const latest = await findLatestSessionByScope('rate');
-    // The most recently accessed session should be found
-    expect([first.sessionId, second.sessionId]).toContain(latest?.id);
+    expect(first.sessionId).not.toBe(second.sessionId);
+    expect(latest?.id).toBe(second.sessionId);
   });
 
   test('session includes correct durationSeconds', async () => {
@@ -792,6 +792,8 @@ describe('playback-session load from manifest', () => {
   test('custom manifest path via SIDFLOW_PLAYBACK_SESSION_MANIFEST env var', async () => {
     const customPath = path.join(tempRoot, 'custom-sessions.json');
     process.env.SIDFLOW_PLAYBACK_SESSION_MANIFEST = customPath;
+    resetServerEnvCacheForTests();
+    resetPlaybackSessionStoreForTests();
     const sidPath = path.join(tempRoot, 'T.sid');
     await writeFile(sidPath, 'x', 'utf8');
     try {
@@ -807,6 +809,8 @@ describe('playback-session load from manifest', () => {
       expect(loaded).not.toBeNull();
     } finally {
       delete process.env.SIDFLOW_PLAYBACK_SESSION_MANIFEST;
+      resetServerEnvCacheForTests();
+      resetPlaybackSessionStoreForTests();
     }
   });
 });

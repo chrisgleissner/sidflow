@@ -1,11 +1,11 @@
 /// <reference types="bun-types" />
 
 import path from "node:path";
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 
 import { safeReadJsonFile, resolveLatestFeaturesJsonl, resolveStationDataset } from "../src/station/dataset.js";
 import type { StationRuntime } from "../src/station/types.js";
@@ -14,8 +14,16 @@ import type { SidflowConfig } from "@sidflow/common";
 async function makeTmpDir(): Promise<string> {
   const dir = path.join(tmpdir(), `station-dataset-test-${randomUUID()}`);
   await mkdir(dir, { recursive: true });
+  tempDirs.add(dir);
   return dir;
 }
+
+const tempDirs = new Set<string>();
+
+afterEach(async () => {
+  await Promise.all(Array.from(tempDirs, (dir) => rm(dir, { recursive: true, force: true })));
+  tempDirs.clear();
+});
 
 describe("safeReadJsonFile", () => {
   it("returns undefined when file does not exist", async () => {
@@ -207,13 +215,14 @@ describe("resolveStationDataset — forceLocalDb", () => {
     await mkdir(exportsDir, { recursive: true });
     const older = path.join(exportsDir, "alpha.sqlite");
     const newer = path.join(exportsDir, "beta.sqlite");
+    const now = new Date();
+    const olderTime = new Date(now.getTime() - 60_000);
     await writeFile(older, "old data");
-    // Write newer after a tiny pause to ensure different mtime
-    await new Promise((r) => setTimeout(r, 10));
     await writeFile(newer, "new data");
+    await utimes(older, olderTime, olderTime);
+    await utimes(newer, now, now);
     const runtime = makeStubRuntime(dir);
     const result = await resolveStationDataset(runtime, { forceLocalDb: true }, baseConfig);
-    // Should pick the most recently modified file
     expect(result.dbPath).toBe(newer);
   });
 

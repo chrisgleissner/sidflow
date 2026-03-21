@@ -107,7 +107,7 @@ Wave B — IndexedDB coverage (~4%)
 Wave C — Logic + classify (~3%)
 - [x] Create `packages/sidflow-web/tests/unit/game-soundtrack.test.ts` — pure functions
 - [x] Create `packages/sidflow-play/test/station-dataset.test.ts` — dataset utilities
-- [x] Create `packages/sidflow-play/test/playback-adapters.test.ts` — buildSidplayArgs etc.
+- [x] Create `packages/sidflow-play/test/station-playback-adapters.test.ts` — buildSidplayArgs etc.
 - [x] Expand audio-encoding test with more branches
 
 Wave D — Server logic (~3%)
@@ -206,11 +206,15 @@ All of the following must be true:
 
 **Plan (checklist)**  
 - [x] Identify the active pull request associated with the current branch or repository state.
-- [ ] Review open comments/threads and determine required code or explanation changes.
-- [ ] Apply fixes, validate locally, commit, push, and confirm CI is green.
+- [x] Review open comments/threads and determine required code or explanation changes.
+- [ ] Apply focused fixes for open review comments and any test-runtime regressions.
+- [ ] Validate with build plus targeted and full test coverage runs.
+- [ ] Push fixes, reply on each thread, resolve threads, and confirm CI is green.
 
 **Progress log**  
 - 2026-03-20 — Checked the local repo state and GitHub PR state with `gh pr status` and `gh pr list --state open --limit 20 --json number,title,headRefName,baseRefName,author,isDraft,reviewDecision,statusCheckRollup,url`. The workspace is on `main`, there is no PR associated with the current branch, and the repository currently has no open pull requests. This blocks the convergence loop because there is no live PR with review threads or CI status to process.
+- 2026-03-21 — Active PR confirmed: #83 (`test/coverage` → `main`). Retrieved 11 Copilot review comments and the live workflow state with `gh pr view` / `gh api graphql` / `gh run view`. All open threads are actionable and focused on new test hygiene: tighten one playback-session assertion, reset cached server env around playback-session manifest env mutations, clean temp dirs in the new station dataset/render CLI tests, and keep the plan filename aligned with the actual `station-playback-adapters` test file.
+- 2026-03-21 — Investigated the reported “36 minute build” symptom. The CI build step itself completed in ~4s; the active run is spending its time in `Run unit tests with coverage`. Isolated timings for the newly added suites are moderate (`playback-session.test.ts` ~5.9s, `station-{dataset,input,playback-adapters}.test.ts` ~5.6s combined, `render-cli.test.ts` ~5.6s), so the current hypothesis is cumulative coverage overhead or a later full-suite interaction rather than a single infinite loop. Next step: apply the review fixes, rerun targeted tests, then run the full coverage suite locally to confirm whether the branch reproduces the CI slowdown or hang.
 
 ### Task: SID CLI Station TUI and station correctness overhaul (2026-03-20)
 
