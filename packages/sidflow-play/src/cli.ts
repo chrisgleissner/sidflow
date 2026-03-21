@@ -221,7 +221,7 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
     return runSimilarityExportCli(argv.slice(1));
   }
 
-  if (argv[0] === "station-demo") {
+  if (argv[0] === "station" || argv[0] === "station-demo") {
     return runStationDemoCli(argv.slice(1));
   }
 

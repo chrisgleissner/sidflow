@@ -9,7 +9,7 @@ import { Writable } from "node:stream";
 import type { Stats } from "node:fs";
 
 import { parsePlayArgs, runPlayCli } from "../src/cli.js";
-import { __stationDemoTestUtils, parseStationDemoArgs, runStationDemoCli } from "../src/station-demo-cli.js";
+import { __stationDemoTestUtils, parseStationDemoArgs as parseStationArgs, runStationDemoCli as runStationCli } from "../src/sid-station.js";
 import { PlaybackState, type PlaybackEvent } from "../src/index.js";
 import type { Recommendation } from "@sidflow/common";
 import type { SidFileMetadata } from "@sidflow/common";
@@ -345,7 +345,7 @@ describe("CLI argument parsing", () => {
 
 describe("station demo CLI argument parsing", () => {
   test("parses station demo defaults", () => {
-    const result = parseStationDemoArgs([]);
+    const result = parseStationArgs([]);
     expect(result.options.playback).toBeUndefined();
     expect(result.options.adventure).toBe(3);
     expect(result.options.forceLocalDb).toBeUndefined();
@@ -357,24 +357,24 @@ describe("station demo CLI argument parsing", () => {
   });
 
   test("parses local dataset override flags", () => {
-    const result = parseStationDemoArgs(["--force-local-db", "--local-db", "custom.sqlite"]);
+    const result = parseStationArgs(["--force-local-db", "--local-db", "custom.sqlite"]);
     expect(result.options.forceLocalDb).toBe(true);
     expect(result.options.localDb).toBe("custom.sqlite");
     expect(result.errors).toHaveLength(0);
   });
 
   test("rejects invalid adventure during parsing", () => {
-    const result = parseStationDemoArgs(["--adventure", "9"]);
+    const result = parseStationArgs(["--adventure", "9"]);
     expect(result.errors[0]).toContain("must be at most 5");
   });
 
   test("rejects invalid min-duration during parsing", () => {
-    const result = parseStationDemoArgs(["--min-duration", "0"]);
+    const result = parseStationArgs(["--min-duration", "0"]);
     expect(result.errors[0]).toContain("must be at least 1");
   });
 
   test("parses reset-selections flag", () => {
-    const result = parseStationDemoArgs(["--reset-selections"]);
+    const result = parseStationArgs(["--reset-selections"]);
     expect(result.options.resetSelections).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
@@ -884,7 +884,7 @@ describe("runPlayCli", () => {
     });
 
     const answers = ["5", "5", "4", "4", "5", "4", "5", "4", "5", "4", "right", "q"];
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -951,7 +951,7 @@ describe("runPlayCli", () => {
     }), { rows: 40, columns: 140 });
     const answers = ["5", "5", "4", "4", "5", "4", "5", "4", "5", "4", "q"];
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--sample-size", "10"],
       {
         stdout,
@@ -1060,7 +1060,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -1125,7 +1125,7 @@ describe("runPlayCli", () => {
     const stdoutChunks: string[] = [];
     let fetchCalls = 0;
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--hvsc", fixture.workspace, "--playback", "none"],
       {
         stdout: new Writable({
@@ -1174,15 +1174,15 @@ describe("runPlayCli", () => {
     expect(stdoutChunks.join("")).toContain("sidflow-data release sidcorr-hvsc-full-20260315T095426Z (cached)");
   });
 
-  it("checks sidflow-data once per day and keeps the cached bundle when the latest tag is unchanged", async () => {
+  it("checks sidflow-data once per week and keeps the cached bundle when the latest tag is unchanged", async () => {
     const fixture = await createStationDemoFixture();
     await writeFile(fixture.dbPath.replace(/\.sqlite$/, ".manifest.json"), "{}", "utf8");
-    await seedStationDemoReleaseCache(fixture.workspace, fixture.dbPath, "2026-03-18T09:00:00.000Z");
+    await seedStationDemoReleaseCache(fixture.workspace, fixture.dbPath, "2026-03-10T09:00:00.000Z");
     const stdoutChunks: string[] = [];
     let latestReleaseChecks = 0;
     let assetDownloads = 0;
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--hvsc", fixture.workspace, "--playback", "none"],
       {
         stdout: new Writable({
@@ -1257,7 +1257,7 @@ describe("runPlayCli", () => {
     await copyFile(fixture.dbPath, explicitLocalDb);
 
     let fetchCalls = 0;
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--local-db", explicitLocalDb, "--hvsc", fixture.workspace, "--playback", "none"],
       {
         stdout: new Writable({
@@ -1310,7 +1310,7 @@ describe("runPlayCli", () => {
     const stdoutChunks: string[] = [];
     const answers = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "q"];
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--sample-size", "10"],
       {
         stdout: new Writable({
@@ -1367,7 +1367,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -1428,7 +1428,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -1487,7 +1487,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -1564,7 +1564,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -1637,7 +1637,7 @@ describe("runPlayCli", () => {
       "utf8",
     );
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--sample-size", "10"],
       {
         stdout: new Writable({
@@ -1705,7 +1705,7 @@ describe("runPlayCli", () => {
       "utf8",
     );
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--db", fixture.dbPath, "--hvsc", fixture.workspace, "--playback", "none", "--reset-selections"],
       {
         stdout: new Writable({
@@ -1781,7 +1781,7 @@ describe("runPlayCli", () => {
     }) as typeof fetch;
 
     try {
-      const exitCode = await runStationDemoCli(
+      const exitCode = await runStationCli(
         [
           "--db", fixture.dbPath,
           "--hvsc", fixture.workspace,
@@ -1853,7 +1853,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -1924,7 +1924,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -1980,7 +1980,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,
@@ -2048,7 +2048,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       ["--db", legacyDbPath, "--hvsc", fixture.workspace, "--playback", "none"],
       {
         stderr,
@@ -2082,7 +2082,7 @@ describe("runPlayCli", () => {
       }
     });
 
-    const exitCode = await runStationDemoCli(
+    const exitCode = await runStationCli(
       [
         "--db", fixture.dbPath,
         "--hvsc", fixture.workspace,

@@ -174,19 +174,21 @@ bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --
 
 The exporter also recovers rows from existing `features_*.jsonl` files when a previous classify run was interrupted before all `classification_*.jsonl` rows were written, so an existing large features file is still enough to produce a complete SQLite bundle.
 
-### CLI SID Radio Station
+### SID Flow CLI Station
 
-To prove the standalone SQLite export is usable on its own, run the interactive station demo wrapper:
-
-```bash
-./scripts/run-station-demo.sh
-```
-
-To target an Ultimate64 on the LAN:
+To prove the standalone SQLite export is usable on its own, run the SID Flow CLI Station for local playback: 
 
 ```bash
-./scripts/run-station-demo.sh --c64u-host 192.168.1.13
+./scripts/sid-station.sh
 ```
+
+For remote playback on a Commodore 64 Ultimate in your LAN, try this:
+
+```bash
+./scripts/sid-station.sh --c64u-host c64u
+```
+
+If `workspace/hvsc` is missing or empty, the wrapper  bootstraps HVSC automatically with the existing fetch CLI before starting the demo.
 
 If the export already exists and you only want to publish the bundle to the separate `sidflow-data` release repository, you can skip classification and export generation entirely:
 
@@ -196,7 +198,7 @@ bash scripts/run-similarity-export.sh --workflow publish-only --mode local --pub
 
 Screenshot:
 
-![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station-demo.png)  
+![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station.png)  
 
 ## Web UI
 
@@ -301,10 +303,10 @@ If you prefer automation or terminal workflows, use the CLI tools documented in 
 - **[sidflow-rate](packages/sidflow-rate/README.md)** - Write manual rating/tag files
 - **[sidflow-play](packages/sidflow-play/README.md)** - Generate playlists / exports using similarity search
 
-Start your own local SID radio station with:
+Start your own local SID CLI station on the command line with:
 
 ```bash
-./scripts/run-station-demo.sh
+./scripts/sid-station.sh
 ```
 
 ---

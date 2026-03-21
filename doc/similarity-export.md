@@ -198,9 +198,9 @@ bash scripts/run-similarity-export.sh \
 
 If `gh` is missing, unauthenticated, or the target release tag already exists, the helper fails with a clear error instead of silently skipping publication.
 
-## Station demo CLI
+## SID Flow CLI Station
 
-`scripts/run-station-demo.sh` is the quickest proof that the exported SQLite bundle is usable and self-contained.
+`scripts/sid-station.sh` is the quickest proof that the exported SQLite bundle is usable and self-contained.
 
 What it demonstrates:
 
@@ -214,26 +214,26 @@ Examples:
 
 ```bash
 cd /home/chris/dev/c64/sidflow
-scripts/run-station-demo.sh
+scripts/sid-station.sh
 ```
 
 Use the exported DB explicitly and disable audio output for a dry run:
 
 ```bash
 cd /home/chris/dev/c64/sidflow
-scripts/run-station-demo.sh \
+scripts/sid-station.sh \
   --db data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
   --hvsc workspace/hvsc \
   --playback none
 ```
 
-Target Ultimate64 playback:
+Target Commodore 64 Ultimate playback:
 
 ```bash
 cd /home/chris/dev/c64/sidflow
-scripts/run-station-demo.sh \
+scripts/sid-station.sh \
   --playback c64u \
-  --c64u-host 192.168.1.13
+  --c64u-host c64u
 ```
 
 Controls:

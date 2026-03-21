@@ -50,6 +50,20 @@ Template:
 
 ## Active tasks
 
+### Task: SID CLI Station HVSC bootstrap fallback (2026-03-21)
+
+**User request (summary)**
+- Fix `scripts/sid-station.sh` so it transparently downloads HVSC when the local collection is missing and SID CLI Station cannot resolve SID files.
+
+**Plan (checklist)**
+- [ ] Trace the wrapper and existing fetch CLI so the bootstrap path reuses the repo's normal HVSC sync flow.
+- [ ] Update the wrapper to bootstrap missing HVSC content before launch and retry once after a missing-SID failure.
+- [ ] Validate the wrapper with syntax checks and a focused harness that exercises the fallback path.
+
+**Progress log**
+- 2026-03-21 — Started task. Read `PLANS.md`, `README.md`, `doc/developer.md`, and `doc/technical-reference.md`; inspected `scripts/sid-station.sh`, `packages/sidflow-fetch/src/cli.ts`, `packages/sidflow-fetch/src/sync.ts`, `packages/sidflow-play/src/station-demo-cli.ts`, and `.sidflow.json`. Confirmed the wrapper currently forwards `--hvsc` only to playback, while the fetch CLI downloads into configured `sidPath`. The station command throws `SID file not found under <hvscRoot>: <sidPath>` when a track is missing, so the fix should live in the wrapper via existing `sidflow-fetch` plus a one-time retry.
+- 2026-03-21 — Follow-up user request expanded the scope: modularize the oversized station CLI implementation into smaller files (each under 500 lines), rename the public module to `sid-station`, remove stale `station-demo` import paths/symbols, preserve behavior, and add a once-per-week HVSC freshness check on wrapper startup so cached HVSC is reused unless the last check is stale.
+
 ### Task: Pull request convergence check (2026-03-20)
 
 **User request (summary)**  
@@ -63,10 +77,10 @@ Template:
 **Progress log**  
 - 2026-03-20 — Checked the local repo state and GitHub PR state with `gh pr status` and `gh pr list --state open --limit 20 --json number,title,headRefName,baseRefName,author,isDraft,reviewDecision,statusCheckRollup,url`. The workspace is on `main`, there is no PR associated with the current branch, and the repository currently has no open pull requests. This blocks the convergence loop because there is no live PR with review threads or CI status to process.
 
-### Task: Station demo TUI and station correctness overhaul (2026-03-20)
+### Task: SID CLI Station TUI and station correctness overhaul (2026-03-20)
 
 **User request (summary)**  
-- Improve `scripts/run-station-demo.sh` / `sidflow-play station-demo` so seed collection continues until at least 10 songs are actually rated and skipped songs do not count.
+- Improve `scripts/sid-station.sh` / `sidflow-play station` so seed collection continues until at least 10 songs are actually rated and skipped songs do not count.
 - Fix the station flow so playback reflects ratings, add a redraw-based immersive CLI UI with colors, progress, an 11-song playlist window, richer transport controls, and non-interrupting station recalculation.
 
 **Plan (checklist)**  
