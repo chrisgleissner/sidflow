@@ -1,6 +1,73 @@
 # Changelog
 
 
+## 0.5.0-rc2 (2026-03-21)
+
+- Added SID CLI Station screenshot
+- feat(cli): improve station screen rendering and playlist management
+- feat: enhance station demo CLI with reset selections functionality
+- feat: update .gitignore to include cache directory and add pull request convergence task in PLANS.md
+- feat: add PR convergence prompt for merging process guidance
+- feat: update README with enhanced CLI tools description and new CLI SID radio station section
+- feat(cli): add interactive filter for station playlist by title or artist
+- feat(cli): enhance station demo CLI with local database options
+- Enhance station demo CLI and add Ultimate 64 REST API documentation
+- feat: enhance docker smoke script with JSONL record count validation and improved output logging
+- chore: update CHANGES.md for 0.5.0-rc1
+- refactor: simplify docker smoke script by removing unused variables and adjusting paths
+- feat: enhance release workflow and smoke test scripts with improved version handling and health checks
+- chore: update CHANGES.md for 0.5.0
+- feat: enhance SidAudioEngine with context management and disposal
+- Merge pull request #82 from chrisgleissner/feat/prod-hardening-1
+- feat(cli): add station demo CLI and related tests
+- Update similarity export schema to version 1; enhance export functionality and improve CLI output paths
+- Update similarity export schema to version 2; enhance export functionality and improve CLI output paths
+- Enhance similarity export functionality; recover orphaned feature-phase rows and improve export summary logging
+- Enhance performance tests and playback session data; update k6 latency thresholds and improve playlist UI assertions
+- Merge remote-tracking branch 'origin/feat/prod-hardening-1' into feat/prod-hardening-1
+- Fix CI classification failures and enhance export reliability; update rate limiter persistence and add run lock to export script
+- Add new playback sessions for "Lully Marche Ceremonie Turcs Wip" and "10 Orbyte"
+- Add tracing and playback session data, enhance test server setup
+- Stabilize async perf timing test
+- Enhance WAV render settings management and analysis timing accuracy
+- Fix Playwright Node test discovery
+- Fix production Playwright harness
+- Fix web build typing regressions
+- Address follow-up PR review feedback
+- Fix admin metrics job timestamp typing
+- Address PR review feedback on admin auth fallback
+- Refactor code structure for improved readability and maintainability
+- feat: enhance classification job with limit parameter and update related files
+- feat: add similarity export script and classification job manifest
+- feat: add similarity export functionality and CLI support
+- Add security runtime validation and configuration checks
+- Disable nightly performance test schedule
+- Revise README with new project details and features
+- chore: update CHANGES.md for 0.4.0
+- fix(e2e): increase navigation wait timeouts in accessibility tests
+- fix(e2e): increase timeout for search debounce and dialog
+- fix(e2e): additional flakiness fixes
+- fix(e2e): address remaining flaky test root causes
+- fix(e2e): address root causes of flaky tests
+- fix(e2e): increase global navigation and assertion timeouts for CI stability
+- fix(e2e): increase timeouts and use deterministic waits for CI stability
+- refactor: optimize page navigation and enhance test reliability with timeout adjustments
+- feat: add classification speed journey runner and related scripts
+- Add tests for BPM estimation and scripts for station building and verification
+- Refactor: Enhance k6 performance tests with retry logic and error handling
+- Refactor: Improve production readiness and test reliability (#80)
+- Merge pull request #79 from chrisgleissner/cursor/performance-test-reliability-3485
+- Fix CI flake: Bind Next.js server to 127.0.0.1
+- Add on-commit performance smoke tests
+- Refactor: Introduce runner profiles and SLOs for performance tests
+- Checkpoint before follow-up message
+- Merge pull request #78 from chrisgleissner/cursor/documentation-accuracy-and-consistency-7fb4
+- Refactor: Update docs and CLI commands for clarity and consistency
+- Update README.md
+- Remove user guide reference from README
+- chore: update CHANGES.md for 0.3.48
+
+
 ## 0.5.0-rc1 (2026-03-15)
 
 - refactor: simplify docker smoke script by removing unused variables and adjusting paths
