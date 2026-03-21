@@ -50,6 +50,61 @@ Template:
 
 ## Active tasks
 
+### Task: Release tag CI fix — 0.5.0-RC3 (2026-03-21)
+
+**Problem Statement**  
+Git tags (e.g. `0.5.0-rc2`) fail in the `Release Docker Image` GitHub Actions workflow. All tags back to `0.3.43` have been failing. The main branch CI succeeds.
+
+**Observed Failure Mode**  
+The `Smoke test Docker image` step in `release.yaml` crashes immediately with:  
+```
+mktemp: failed to create directory via template '.../sidflow/tmp/docker-smoke.XXXXXX': No such file or directory
+```  
+The `tmp/` directory is in `.gitignore` and is therefore absent in fresh CI checkouts. `docker-smoke.sh` tries to create a temp dir inside `tmp/` before `mkdir -p` runs.
+
+**Root Cause**  
+In `scripts/docker-smoke.sh`, line:  
+```bash
+TMP_ROOT="$(mktemp -d "${ROOT_DIR}/tmp/docker-smoke.XXXXXX")"
+```  
+runs before `mkdir -p "${TMP_ROOT}"` (which only creates the leaf, not the parent). The parent `${ROOT_DIR}/tmp/` must be created first.
+
+**Fix (applied 2026-03-21)**  
+Added `mkdir -p "${ROOT_DIR}/tmp"` immediately before the `mktemp` call in `scripts/docker-smoke.sh`.
+
+**Hypotheses — ranked**  
+1. ✅ CONFIRMED: `tmp/` absent in CI → mktemp fails → smoke test fails before Docker image is even evaluated.
+
+**Validation Plan**  
+- [x] Fix `scripts/docker-smoke.sh` — add `mkdir -p "${ROOT_DIR}/tmp"` before mktemp
+- [ ] Local Docker image build sanity check (Dockerfile.production)
+- [ ] Local smoke test (`DOCKER_SMOKE_MODE=build bash scripts/docker-smoke.sh`)
+- [ ] Commit fix, push to main
+- [ ] Create tag `0.5.0-rc3`, push  
+- [ ] CI green — `Release Docker Image` workflow passes
+- [ ] Pull `ghcr.io/chrisgleissner/sidflow:0.5.0-rc3` locally
+- [ ] Run GHCR image locally, verify health
+- [ ] Functional smoke test: UI, admin, classify (short), playback
+
+**Tag Strategy**  
+- Current highest RC: `0.5.0-rc2`
+- Next candidate: `0.5.0-rc3`
+
+**Termination Criteria**  
+All of the following must be true:
+1. Tag `0.5.0-rc3` exists and CI (release.yaml) is GREEN
+2. Docker image published to `ghcr.io/chrisgleissner/sidflow:0.5.0-rc3`
+3. Image pulls successfully
+4. Container runs and health endpoint responds
+5. Functional smoke: UI accessible, classify (short) works, playback works
+6. This PLANS.md is up-to-date
+7. WORKLOG.md has full trace
+
+**Progress log**  
+- 2026-03-21 — Phase 1 complete: discovered all release.yaml runs failing since 0.3.43 with `mktemp: failed` in smoke test. Root cause: `tmp/` gitignored, absent in CI. Fix applied to `scripts/docker-smoke.sh`.
+
+---
+
 ### Task: SID CLI Station HVSC bootstrap fallback (2026-03-21)
 
 **User request (summary)**
