@@ -45,7 +45,7 @@ cd packages/sidflow-web
 bun run dev
 ```
 
-Open **<http://localhost:3000>** — you're playing SID music.
+Open **<http://localhost:3000>**.
 
 The first-time setup wizard guides you through downloading HVSC and configuring your collection. Local dev mode defaults to `admin / password` for the admin console at **<http://localhost:3000/admin>**.
 
@@ -57,8 +57,8 @@ SIDFlow ships a **Next.js + React** interface with two access points:
 
 | URL | Purpose |
 |-----|---------|
-| `http://localhost:3000` | Public player — casual listening |
-| `http://localhost:3000/admin` | Admin console — pipeline control |
+| `http://localhost:3000` | Public player |
+| `http://localhost:3000/admin` | Admin console |
 
 ### Public Player
 
@@ -75,7 +75,7 @@ Pick a mood preset and hit play. The queue fills automatically with similar trac
 
 The admin console (`/admin`) controls the full pipeline. Authenticate with `SIDFLOW_ADMIN_USER` / `SIDFLOW_ADMIN_PASSWORD` (defaults to `admin/password` in local dev only).
 
-#### Wizard — first-time setup
+#### Wizard - first-time setup
 
 Select your HVSC root and confirm cache locations.
 
@@ -87,19 +87,19 @@ Tweak themes, fonts, render engines, ROM paths, and collection settings.
 
 ![preferences panel](./doc/web-screenshots/02-prefs.png)
 
-#### Fetch — download HVSC
+#### Fetch - download HVSC
 
 Sync the High Voltage SID Collection from official mirrors.
 
 ![fetch panel](./doc/web-screenshots/03-fetch.png)
 
-#### Rate — tag your collection
+#### Rate - tag your collection
 
 Manually rate songs on energy, complexity, mood, and preference. Ratings feed into the training pipeline.
 
 ![rate panel](./doc/web-screenshots/04-rate-playback.png)
 
-#### Classify — audio feature extraction
+#### Classify - audio feature extraction
 
 Automatically analyse your entire collection. Progress is displayed in real time.
 
@@ -119,10 +119,10 @@ sidflow-fetch → sidflow-classify → sidflow-train → sidflow-play
   HVSC sync      audio features      ML model       playlists
 ```
 
-1. **Fetch** — downloads and synchronises HVSC (or any local SID collection).
-2. **Classify** — renders each SID to WAV cache, extracts structural and audio features, and writes JSONL.
-3. **Train** — consumes classified JSONL plus manual feedback to produce LanceDB model artifacts.
-4. **Play** — uses similarity search against the model to generate context-aware queues.
+1. **Fetch** - downloads and synchronises HVSC (or any local SID collection).
+2. **Classify** - renders each SID to WAV cache, extracts structural and audio features, and writes JSONL.
+3. **Train** - consumes classified JSONL plus manual feedback to produce LanceDB model artifacts.
+4. **Play** - uses similarity search against the model to generate context-aware queues.
 
 The web UI, Docker image, and CLI tools are all thin wrappers over these same pipeline stages.
 
@@ -142,11 +142,11 @@ All pipeline stages are available as standalone CLIs for automation and scriptin
 
 Full CLI reference: [Technical Reference](./doc/technical-reference.md).
 
-### SID Station — terminal radio
+### SID Station - command line radio
 
-Launch a self-contained CLI radio station that selects and streams similar SID tracks:
+Launch a self-contained radio station in a Bash terminal that selects and streams similar SID tracks:
 
-![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station.png)
+![SID Flow Station](./doc/cli-screenshots/sidflow-station.png)
 
 ```bash
 ./scripts/sid-station.sh
@@ -227,7 +227,7 @@ bun run export:similarity -- --profile full
 
 Output:
 
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` — per-track ratings, feedback aggregates, optional vectors, and precomputed neighbors
+- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` - per-track ratings, feedback aggregates, optional vectors, and precomputed neighbors
 - `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
 
 If classified JSONL already exists in `data/classified`, the exporter skips re-classification and reads those files directly.
@@ -273,8 +273,8 @@ Journeys live in `performance/journeys/`; outputs in `performance/results/<times
 
 ## Developer Documentation
 
-- **[Technical Reference](doc/technical-reference.md)** — architecture, CLI tools, APIs
-- **[Developer Guide](doc/developer.md)** — setup, testing, contributions
+- **[Technical Reference](doc/technical-reference.md)** - architecture, CLI tools, APIs
+- **[Developer Guide](doc/developer.md)** - setup, testing, contributions
 
 ---
 
