@@ -174,9 +174,13 @@ bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --
 
 The exporter also recovers rows from existing `features_*.jsonl` files when a previous classify run was interrupted before all `classification_*.jsonl` rows were written, so an existing large features file is still enough to produce a complete SQLite bundle.
 
-### SID Flow CLI Station
+### SID Flow Station
 
-To prove the standalone SQLite export is usable on its own, run the SID Flow CLI Station for local playback: 
+SID Flow Station is a CLI SID player and demonstration for the SQLite SID classification export.
+
+![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station.png)  
+
+Here's how you start it: 
 
 ```bash
 ./scripts/sid-station.sh
@@ -195,10 +199,6 @@ If the export already exists and you only want to publish the bundle to the sepa
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
-
-Screenshot:
-
-![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station.png)  
 
 ## Web UI
 
