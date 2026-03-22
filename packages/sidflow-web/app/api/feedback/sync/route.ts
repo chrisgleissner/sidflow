@@ -96,7 +96,11 @@ async function persistRawSyncBatch(
   ratings: NormalizedRatingPayload[],
   implicit: NormalizedImplicitPayload[],
 ): Promise<string> {
-  const submittedAt = payload.submittedAt ? new Date(payload.submittedAt) : new Date();
+  // Validate submittedAt: fall back to now() if absent or unparsable to prevent NaN paths.
+  const parsedSubmittedAt = typeof payload.submittedAt === 'string' ? Date.parse(payload.submittedAt) : NaN;
+  const submittedAt = Number.isFinite(parsedSubmittedAt) ? new Date(parsedSubmittedAt) : new Date();
+  // Compute a single ISO string for all records in this batch so timestamps are consistent.
+  const submittedAtIso = payload.submittedAt ?? submittedAt.toISOString();
   const year = String(submittedAt.getUTCFullYear());
   const month = String(submittedAt.getUTCMonth() + 1).padStart(2, '0');
   const day = String(submittedAt.getUTCDate()).padStart(2, '0');
@@ -104,8 +108,8 @@ async function persistRawSyncBatch(
   await ensureDir(dir);
   const filePath = path.join(dir, 'events.jsonl');
   const records = [
-    ...ratings.map((entry) => ({ kind: 'rating', submittedAt: payload.submittedAt ?? new Date().toISOString(), baseModelVersion: payload.baseModelVersion ?? null, ...entry })),
-    ...implicit.map((entry) => ({ kind: 'implicit', submittedAt: payload.submittedAt ?? new Date().toISOString(), baseModelVersion: payload.baseModelVersion ?? null, ...entry })),
+    ...ratings.map((entry) => ({ kind: 'rating', submittedAt: submittedAtIso, baseModelVersion: payload.baseModelVersion ?? null, ...entry })),
+    ...implicit.map((entry) => ({ kind: 'implicit', submittedAt: submittedAtIso, baseModelVersion: payload.baseModelVersion ?? null, ...entry })),
   ];
   if (records.length > 0) {
     await appendCanonicalJsonLines(filePath, records as unknown as JsonValue[], { details: { phase: 'feedback-sync', count: records.length } });

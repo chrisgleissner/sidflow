@@ -681,10 +681,18 @@ function resolveClassificationVector(classification: ClassificationRecord, targe
   if (storedVector && storedVector.length >= targetDimensions) {
     return storedVector.slice(0, targetDimensions);
   }
+  let base: number[];
   if (storedVector && storedVector.length > 0) {
-    return [...storedVector, ...buildFallbackPerceptualVector(classification.ratings).slice(storedVector.length, targetDimensions)];
+    base = [...storedVector, ...buildFallbackPerceptualVector(classification.ratings).slice(storedVector.length)];
+  } else {
+    base = buildFallbackPerceptualVector(classification.ratings);
   }
-  return buildFallbackPerceptualVector(classification.ratings).slice(0, targetDimensions);
+  if (base.length >= targetDimensions) {
+    return base.slice(0, targetDimensions);
+  }
+  // Pad with zeros so callers always receive exactly targetDimensions elements,
+  // preventing inconsistent vector lengths in the export DB and manifest metadata.
+  return [...base, ...new Array(targetDimensions - base.length).fill(0)];
 }
 
 function classificationToTrack(

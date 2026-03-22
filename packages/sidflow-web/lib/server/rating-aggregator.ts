@@ -80,7 +80,8 @@ interface FeedbackAggregate {
 export function calculateTemporalDecayWeight(timestamp: string, now: Date = new Date(), halfLifeDays = FEEDBACK_HALF_LIFE_DAYS): number {
   const eventTime = Date.parse(timestamp);
   if (!Number.isFinite(eventTime)) {
-    return 1;
+    // Unparsable timestamps should not be treated as fully recent; ignore them with weight 0.
+    return 0;
   }
   const ageDays = Math.max(0, (now.getTime() - eventTime) / (24 * 60 * 60 * 1000));
   const lambda = Math.log(2) / Math.max(1, halfLifeDays);
@@ -198,8 +199,8 @@ export function aggregateFeedback(events: FeedbackRecord[], now: Date = new Date
         break;
     }
     
-    // Track most recent play timestamp
-    if (event.action === 'play' || event.action === 'like') {
+    // Track most recent play timestamp for play, play_complete, replay, and like.
+    if ((event.action === 'play' || event.action === 'play_complete' || event.action === 'replay' || event.action === 'like')) {
       if (!existing.lastPlayed || event.ts > existing.lastPlayed) {
         existing.lastPlayed = event.ts;
       }
@@ -233,7 +234,7 @@ export function calculateAverageRating(aggregate: FeedbackAggregate): { average:
   
   const average = weightedSum / totalRatings;
   
-  return { average, total: Math.round(totalRatings) };
+  return { average, total: totalRatings };
 }
 
 /**
