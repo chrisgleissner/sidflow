@@ -186,6 +186,8 @@ async function main() {
     process.exit(1);
   }
 
+  await rm(coverageDir, { recursive: true, force: true });
+
   console.log(`[coverage-batches] Running ${batches.length} coverage batches...`);
 
   for (const [index, batch] of batches.entries()) {
