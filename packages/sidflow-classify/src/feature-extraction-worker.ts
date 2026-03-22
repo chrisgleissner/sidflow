@@ -21,7 +21,11 @@ import { readFile, stat } from "node:fs/promises";
 import { FEATURE_SCHEMA_VERSION, loadConfig, type SidflowConfig } from "@sidflow/common";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { resolveRepresentativeAnalysisWindow } from "./audio-window.js";
+import {
+  DEFAULT_ANALYSIS_SKIP_SEC,
+  DEFAULT_ANALYSIS_WINDOW_SEC,
+  resolveRepresentativeAnalysisWindow,
+} from "./audio-window.js";
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
@@ -304,8 +308,8 @@ async function extractAndDownsampleAudio(
     throw new Error("Invalid WAV file: invalid data chunk length");
   }
 
-  const maxExtractSec = config.maxClassifySec ?? 15;
-  const introSkipSec = config.introSkipSec ?? 30;
+  const maxExtractSec = config.maxClassifySec ?? DEFAULT_ANALYSIS_WINDOW_SEC;
+  const introSkipSec = config.introSkipSec ?? DEFAULT_ANALYSIS_SKIP_SEC;
   const sourceOffsetSec = (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0;
 
   const window = resolveRepresentativeAnalysisWindow(buffer, header, maxExtractSec, introSkipSec);

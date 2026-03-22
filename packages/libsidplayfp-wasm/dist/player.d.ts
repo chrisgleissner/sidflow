@@ -5,6 +5,12 @@ export interface SidAudioEngineOptions extends SidPlayerContextOptions {
     module?: Promise<LibsidplayfpWasmModule>;
     cacheSecondsLimit?: number;
 }
+export interface SidWriteTrace {
+    sidNumber: number;
+    address: number;
+    value: number;
+    cyclePhi1: number;
+}
 export declare class SidAudioEngine {
     private readonly modulePromise;
     private module;
@@ -13,6 +19,7 @@ export declare class SidAudioEngine {
     private readonly stereo;
     private readonly maxCacheSeconds;
     private configured;
+    private sidWriteTraceEnabled;
     private originalSidBuffer;
     private currentSongIndex;
     private cachePromise;
@@ -46,6 +53,8 @@ export declare class SidAudioEngine {
     getSampleRate(): number;
     getTuneInfo(): Record<string, unknown> | null;
     reset(): void;
+    setSidWriteTraceEnabled(enabled: boolean): void;
+    getAndClearSidWriteTraces(): SidWriteTrace[];
     renderCycles(cycles?: number): Int16Array | null;
     renderSeconds(seconds: number, cyclesPerChunk?: number, onProgress?: (samplesWritten: number) => void): Promise<Int16Array>;
     renderFrames(frames: number, cyclesPerChunk?: number, onProgress?: (samplesWritten: number) => void, { loop }?: {

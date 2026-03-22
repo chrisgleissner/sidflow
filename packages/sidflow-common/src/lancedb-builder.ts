@@ -16,6 +16,7 @@ import { DEFAULT_RATING } from "./ratings.js";
 import { ensureDir } from "./fs.js";
 import { writeCanonicalJsonFile } from "./canonical-writer.js";
 import type { JsonValue } from "./json.js";
+import { aggregateFeedbackBySidPath, type AggregatedFeedback } from "./feedback-aggregation.js";
 
 /**
  * Average number of records per JSONL file (used for estimating file count).
@@ -49,21 +50,15 @@ export interface DatabaseRecord {
   skips: number;
   /** Total play count */
   plays: number;
+  /** Decayed feedback statistics */
+  decayed_likes: number;
+  decayed_dislikes: number;
+  decayed_skips: number;
+  decayed_plays: number;
   /** Most recent play timestamp */
   last_played?: string;
   /** Allow additional properties for LanceDB compatibility */
   [key: string]: unknown;
-}
-
-/**
- * Feedback aggregates for a single SID.
- */
-interface FeedbackAggregate {
-  likes: number;
-  dislikes: number;
-  skips: number;
-  plays: number;
-  lastPlayed?: string;
 }
 
 /**
@@ -178,54 +173,11 @@ async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
 }
 
 /**
- * Aggregates feedback events by SID path.
- */
-function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggregate> {
-  const aggregates = new Map<string, FeedbackAggregate>();
-  
-  for (const event of events) {
-    const existing = aggregates.get(event.sid_path) ?? {
-      likes: 0,
-      dislikes: 0,
-      skips: 0,
-      plays: 0
-    };
-    
-    // Update counts based on action
-    switch (event.action) {
-      case "like":
-        existing.likes++;
-        break;
-      case "dislike":
-        existing.dislikes++;
-        break;
-      case "skip":
-        existing.skips++;
-        break;
-      case "play":
-        existing.plays++;
-        break;
-    }
-    
-    // Track most recent play timestamp
-    if (event.action === "play" || event.action === "like") {
-      if (!existing.lastPlayed || event.ts > existing.lastPlayed) {
-        existing.lastPlayed = event.ts;
-      }
-    }
-    
-    aggregates.set(event.sid_path, existing);
-  }
-  
-  return aggregates;
-}
-
-/**
  * Converts a classification record and feedback aggregate into a database record.
  */
 function toDatabaseRecord(
   classification: ClassificationRecord,
-  feedback?: FeedbackAggregate
+  feedback?: AggregatedFeedback
 ): DatabaseRecord {
   const { e, m, c, p } = classification.ratings;
   
@@ -242,7 +194,11 @@ function toDatabaseRecord(
     likes: feedback?.likes ?? 0,
     dislikes: feedback?.dislikes ?? 0,
     skips: feedback?.skips ?? 0,
-    plays: feedback?.plays ?? 0
+    plays: feedback?.plays ?? 0,
+    decayed_likes: feedback?.decayedLikes ?? 0,
+    decayed_dislikes: feedback?.decayedDislikes ?? 0,
+    decayed_skips: feedback?.decayedSkips ?? 0,
+    decayed_plays: feedback?.decayedPlays ?? 0,
   };
   
   // Only include optional fields if they have values (LanceDB has issues with undefined/null)
@@ -321,7 +277,7 @@ export async function buildDatabase(
   const feedbackEvents = await readJsonlFiles<FeedbackRecord>(feedbackPath);
   
   // Aggregate feedback by SID path
-  const feedbackAggregates = aggregateFeedback(feedbackEvents);
+  const feedbackAggregates = aggregateFeedbackBySidPath(feedbackEvents);
   
   // Convert to database records
   const records: DatabaseRecord[] = classifications.map(classification =>

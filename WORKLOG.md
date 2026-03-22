@@ -4,6 +4,168 @@ Append-only execution trace. Each entry records commands, CI results, observatio
 
 ---
 
+## 2026-03-22 — SID-native enhancement implementation slice: shared windows + shared feedback semantics
+
+### Scope
+
+Implemented the first production-code slice from `doc/research/sid-classification-enhancement-report.md` after the design/audit pass:
+- settle the shared classify window at `15s` skip + `15s` analyze
+- remove the remaining common-layer drift in feedback aggregation / recommendation semantics before starting SID-native trace work
+
+### Files changed
+
+- `packages/sidflow-classify/src/audio-window.ts`
+- `packages/sidflow-classify/src/index.ts`
+- `packages/sidflow-classify/src/essentia-features.ts`
+- `packages/sidflow-classify/src/feature-extraction-worker.ts`
+- `packages/sidflow-classify/src/render/render-orchestrator.ts`
+- `packages/sidflow-classify/test/audio-window.test.ts`
+- `packages/sidflow-classify/test/index.test.ts`
+- `packages/sidflow-common/src/feedback-aggregation.ts`
+- `packages/sidflow-common/src/vector-similarity.ts`
+- `packages/sidflow-common/src/index.ts`
+- `packages/sidflow-common/src/lancedb-builder.ts`
+- `packages/sidflow-common/src/recommender.ts`
+- `packages/sidflow-common/src/similarity-export.ts`
+- `packages/sidflow-web/lib/server/rating-aggregator.ts`
+- `packages/sidflow-common/test/feedback-aggregation.test.ts`
+- `packages/sidflow-common/test/recommender.test.ts`
+- `packages/sidflow-common/test/similarity-export.test.ts`
+
+### Implemented
+
+- Introduced shared classify defaults `DEFAULT_ANALYSIS_SKIP_SEC = 15` and `DEFAULT_ANALYSIS_WINDOW_SEC = 15` and threaded them through the representative-window, render, and feature-extraction paths.
+- Added `packages/sidflow-common/src/feedback-aggregation.ts` with shared temporal decay and action-weight semantics for `play_complete`, `skip_early`, `skip_late`, and `replay`.
+- Added `packages/sidflow-common/src/vector-similarity.ts` so 24D weighted cosine behavior is defined once and reused rather than reimplemented.
+- Migrated these consumers onto the shared helpers:
+  - `packages/sidflow-common/src/lancedb-builder.ts`
+  - `packages/sidflow-common/src/similarity-export.ts`
+  - `packages/sidflow-common/src/recommender.ts`
+  - `packages/sidflow-web/lib/server/rating-aggregator.ts`
+- Extended similarity export and LanceDB records to persist decayed feedback metrics alongside raw counts.
+
+### Validation
+
+Focused tests:
+
+```bash
+bun test packages/sidflow-common/test/feedback-aggregation.test.ts \
+  packages/sidflow-common/test/recommender.test.ts \
+  packages/sidflow-common/test/similarity-export.test.ts \
+  packages/sidflow-web/tests/unit/rating-aggregator-decay.test.ts
+```
+
+Result:
+- initial run: `31 passed, 1 failed`
+- failure cause: new recommender test helper wrote to the fixed shared temp DB path instead of the test-local path
+- fix: updated `createTestDatabase` test helper to support an alternate DB path
+- rerun: `32 passed, 0 failed`
+
+Quick build:
+
+```bash
+bun run build:quick
+```
+
+Result:
+- PASS (`tsc -b`)
+
+### Outcome
+
+The current codebase now matches the settled 15s/15s analysis window and no longer has separate feedback-decay implementations in the common export path versus the web aggregator. The next unresolved enhancement step is the actual SID-native trace/binding work in `@sidflow/libsidplayfp-wasm`.
+
+---
+
+## 2026-03-22 — SID-native enhancement implementation slice: WASM SID write tracing
+
+### Scope
+
+Implemented the first SID-native runtime hook from the enhancement roadmap: deterministic SID register-write tracing exposed through `@sidflow/libsidplayfp-wasm`.
+
+### Files changed
+
+- `packages/libsidplayfp-wasm/src/bindings/bindings.cpp`
+- `packages/libsidplayfp-wasm/src/player.ts`
+- `packages/libsidplayfp-wasm/test/index.test.ts`
+- `packages/libsidplayfp-wasm/test/sid-write-trace.test.ts`
+
+### Implemented
+
+- Added a tracing SID builder/wrapper in `bindings.cpp` that wraps each created `sidemu` instance, intercepts validated register writes, and records `{ sidNumber, address, value, cyclePhi1 }` entries.
+- Exposed two new runtime methods on `SidPlayerContext`:
+  - `setSidWriteTraceEnabled(boolean)`
+  - `getAndClearSidWriteTraces()`
+- Added matching `SidAudioEngine` methods in `player.ts` and preserved the trace-enabled flag across context reloads so tracing can be enabled before `loadSidBuffer()` to capture init writes.
+
+### Validation
+
+Commands run:
+
+```bash
+bun test packages/libsidplayfp-wasm/test/sid-write-trace.test.ts
+bun run build:quick
+bun run scripts/build-libsidplayfp-wasm.ts --skip-check
+bun test packages/libsidplayfp-wasm/test/index.test.ts \
+  packages/libsidplayfp-wasm/test/sid-write-trace.test.ts
+```
+
+Observed results:
+- `sid-write-trace.test.ts` — PASS (`1 passed, 0 failed`)
+- `bun run build:quick` — PASS (`tsc -b`)
+- first wasm rebuild attempt — FAIL due to missing `libsidplayfp::` namespace qualifiers for `event_clock_t` and `EVENT_CLOCK_PHI1`
+- second wasm rebuild attempt — PASS; artifacts regenerated under `packages/libsidplayfp-wasm/dist`
+- focused libsidplayfp-wasm tests — PASS (`15 passed, 0 failed`)
+
+### Outcome
+
+The codebase now has a real SID-native write-trace API available from the wasm player layer. The next step is no longer emulator plumbing; it is transforming those raw trace entries into canonical frame-bucketed events for feature extraction.
+
+---
+
+## 2026-03-22 — SID-native enhancement implementation slice: canonical frame compaction
+
+### Scope
+
+Implemented the next roadmap slice after raw trace capture: deterministic compaction of SID register writes into PAL/NTSC frame-bucketed canonical register events for classify-side feature extraction.
+
+### Files changed
+
+- `packages/sidflow-classify/src/sid-register-trace.ts`
+- `packages/sidflow-classify/src/index.ts`
+- `packages/sidflow-classify/test/sid-register-trace.test.ts`
+
+### Implemented
+
+- Added `packages/sidflow-classify/src/sid-register-trace.ts` with:
+  - deterministic PAL/NTSC clock normalization (`Unknown` and `PAL+NTSC` resolve to PAL)
+  - frame-window resolution from the settled 15s skip + 15s analyze model
+  - raw `SidWriteTrace[]` sorting and frame bucketing
+  - carry-forward SID register state snapshots across skipped and analysis frames
+  - canonical per-frame voice events for all voice-local registers
+  - broadcast per-frame events for global SID registers (`$D415-$D418`) across voices
+  - derived signal decoding for frequency, pulse width, ADSR, waveform/control bits, filter routing, and volume/mode state
+- Re-exported the new helpers from `@sidflow/classify`.
+- Added focused tests covering clock normalization, frame-window calculation, carry-forward state through the skip window, last-write-wins semantics within a frame, and multi-SID separation.
+
+### Validation
+
+Commands run:
+
+```bash
+bun test packages/sidflow-classify/test/sid-register-trace.test.ts
+bun run build:quick
+```
+
+Observed results:
+- focused sid-register-trace tests — PASS (`5 passed, 0 failed`)
+- quick build — PASS (`tsc -b`)
+
+### Outcome
+
+The classify package now has a deterministic canonical SID event layer sitting between the wasm raw write trace API and the upcoming SID-native feature extractor. The next implementation step is I4: aggregating these canonical frame events into bounded causal features for the hybrid classifier.
+
+---
+
 ## 2026-03-22 — Station similarity audit implementation (Phases A and B)
 
 ### Phase 0: Repo guidance and code-path discovery
@@ -258,6 +420,69 @@ Implemented:
 
 Validation:
 - `packages/sidflow-web/tests/unit/playback-stream-prep.test.ts` — PASS
+
+---
+
+## 2026-03-22 — SID-native classification enhancement audit + design
+
+### Scope and mandatory inputs
+
+Read and incorporated:
+- `doc/research/sid-station-similarity-audit.md`
+- `doc/c64/sid-file-structure.md`
+- `doc/c64/sid-spec.md`
+- `doc/research/phase-ab-sample-24d-classification.json`
+- supporting repo guidance: `PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`
+
+Explicit constraints fixed up front:
+- offline-first
+- deterministic execution
+- commodity hardware target: 8 CPU cores, <= 16 GiB RAM
+- shared analysis region: skip first 15s, analyze next 15s only
+- frame-based SID timing only: PAL 50 Hz or NTSC 60 Hz
+- anti-double-counting invariant for all retained features
+
+### Evidence-based implementation audit findings
+
+Verified directly in source:
+- Phase A station fixes are implemented in `packages/sidflow-play/src/station/{constants,queue,run}.ts`
+  - `MINIMUM_RATED_TRACKS = 5`
+  - softened rating weights (`5→3, 4→2, 3→1, 2→0.3, 1→0.1`)
+  - minimum similarity floors and per-dimension deviation rejection
+- Phase B representation changes are implemented in `packages/sidflow-classify/src/deterministic-ratings.ts`, `packages/sidflow-classify/src/index.ts`, and `packages/sidflow-common/src/jsonl-schema.ts`
+  - new audio features present in schema and extraction pipeline
+  - deterministic 24D vector construction present and emitted in classification output
+- Phase C station-model changes are implemented in `packages/sidflow-play/src/station/{intent,queue}.ts`
+  - multi-centroid intent clustering
+  - adventure radius expansion with exploit/explore split
+- Phase D training stack is implemented in `packages/sidflow-train/src/{pair-builder,metric-learning,evaluate,scheduler,cli}.ts`
+  - pair derivation, metric-learning MLP, challenger evaluation, versioned model save, CLI rollback
+
+Confirmed residual gaps / partials:
+- No SID-native register-trace or canonical register-event model exists. Current `packages/sidflow-common/src/sid-parser.ts` parses PSID/RSID headers only.
+- Current WAV classification defaults still use `introSkipSec ?? 30` and `maxClassifySec ?? 15`, so the requested shared 15s+15s window is not the current implementation.
+- Feedback modernization is not propagated consistently into all shared aggregation paths:
+  - `packages/sidflow-web/lib/server/rating-aggregator.ts` applies 90-day temporal decay and new action types
+  - `packages/sidflow-common/src/lancedb-builder.ts` still aggregates only `play|like|dislike|skip` with raw counts
+  - `packages/sidflow-common/src/similarity-export.ts` still uses count-based feedback aggregation without decay
+  - `packages/sidflow-common/src/recommender.ts` still contains an unweighted cosine implementation
+- `runScheduler()` exists, but source inspection found no autonomous service integration; it is currently invoked via the train CLI path rather than a continuously running scheduler.
+
+### Deliverable written
+
+Created:
+- `doc/research/sid-classification-enhancement-report.md`
+
+Content delivered there:
+- atomic implementation audit table with DONE / PARTIAL / MISSING status
+- bounded SID-native execution model tied to PSID/RSID init/play semantics and the SID register map
+- formal feature definitions for arpeggios, ADSR classes, waveform usage, filter sweeps, D418 digi detection, rhythm, and voice roles
+- WAV/SID orthogonalization table with KEEP / REPLACE / FUSE / REMOVE actions
+- final hybrid vector design, evaluation thresholds, roadmap, and test plan
+
+### Validation note
+
+No production code changed in this task; only planning and research documents were updated. I did not run build/test gates because there was no executable behavior change to validate.
 - `bun run build` — PASS
 - live standalone repro after restart:
   - `POST /api/play` returned `200` immediately

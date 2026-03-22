@@ -39,6 +39,7 @@ export class SidAudioEngine {
     stereo;
     maxCacheSeconds;
     configured = false;
+    sidWriteTraceEnabled = false;
     originalSidBuffer = null;
     currentSongIndex = 0;
     cachePromise = null;
@@ -95,6 +96,7 @@ export class SidAudioEngine {
         if (!ctx.configure(this.sampleRate, this.stereo)) {
             throw new Error(`Failed to configure SID player: ${ctx.getLastError()}`);
         }
+        ctx.setSidWriteTraceEnabled?.(this.sidWriteTraceEnabled);
         return ctx;
     }
     async loadPatchedBuffer(patched) {
@@ -264,6 +266,14 @@ export class SidAudioEngine {
             return;
         }
         this.context.reset();
+    }
+    setSidWriteTraceEnabled(enabled) {
+        this.sidWriteTraceEnabled = enabled;
+        this.context?.setSidWriteTraceEnabled?.(enabled);
+    }
+    getAndClearSidWriteTraces() {
+        const traces = this.context?.getAndClearSidWriteTraces?.();
+        return Array.isArray(traces) ? traces.slice() : [];
     }
     renderCycles(cycles = 100000) {
         if (!this.context || !this.configured) {

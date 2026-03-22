@@ -48,7 +48,12 @@ import {
 } from "./render/wav-renderer.js";
 import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./render/render-orchestrator.js";
 import { sliceWavFileToRepresentativeStart, trimLeadingSilenceWavFile } from "./render/wav-postprocess.js";
-import { computeMinRenderSecForRepresentativeWindow } from "./audio-window.js";
+import {
+  computeMinRenderSecForRepresentativeWindow,
+  DEFAULT_ANALYSIS_SKIP_SEC,
+  DEFAULT_ANALYSIS_WINDOW_SEC,
+} from "./audio-window.js";
+export * from "./sid-register-trace.js";
 import {
   WAV_RENDER_SETTINGS_EXTENSION,
   readWavRenderSettingsSidecar,
@@ -69,13 +74,13 @@ const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
 function resolveIntroSkipSec(config: SidflowConfig): number {
   return typeof config.introSkipSec === "number" && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
     ? config.introSkipSec
-    : 30;
+    : DEFAULT_ANALYSIS_SKIP_SEC;
 }
 
 function resolveMaxClassifySec(config: SidflowConfig): number {
   return typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
     ? config.maxClassifySec
-    : 15;
+    : DEFAULT_ANALYSIS_WINDOW_SEC;
 }
 
 /**
@@ -95,12 +100,12 @@ function resolveEffectiveMaxRenderSec(config: SidflowConfig): number {
   const maxClassifySec =
     typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
       ? config.maxClassifySec
-      : 15;
+      : DEFAULT_ANALYSIS_WINDOW_SEC;
 
   const introSkipSec =
     typeof config.introSkipSec === "number" && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
       ? config.introSkipSec
-      : 30;
+      : DEFAULT_ANALYSIS_SKIP_SEC;
 
   const defaultMaxRenderSec = computeMinRenderSecForRepresentativeWindow(maxClassifySec, introSkipSec);
   let configuredMaxRenderSec = rawMaxRenderSec ?? defaultMaxRenderSec;
@@ -568,11 +573,11 @@ export const defaultRenderWav: RenderWav = async (options) => {
   const maxClassifySeconds =
     typeof config.maxClassifySec === 'number' && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
       ? config.maxClassifySec
-      : 15;
+      : DEFAULT_ANALYSIS_WINDOW_SEC;
   const introSkipSeconds =
     typeof config.introSkipSec === 'number' && Number.isFinite(config.introSkipSec) && config.introSkipSec > 0
       ? config.introSkipSec
-      : 30;
+      : DEFAULT_ANALYSIS_SKIP_SEC;
   
   // Check if we need multi-format rendering
   const needsMultiFormat = defaultFormats.length > 1 || 

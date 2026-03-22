@@ -80,17 +80,20 @@ describe("similarity-export", () => {
     const database = new Database(outputPath, { readonly: true, strict: true });
     try {
       const firstTrack = database
-        .query("SELECT likes, plays FROM tracks WHERE track_id = ?")
-        .get(buildSimilarityTrackId("A.sid", 1)) as { likes: number; plays: number };
+        .query("SELECT likes, plays, decayed_likes, decayed_plays FROM tracks WHERE track_id = ?")
+        .get(buildSimilarityTrackId("A.sid", 1)) as { likes: number; plays: number; decayed_likes: number; decayed_plays: number };
       const secondTrack = database
-        .query("SELECT likes, plays FROM tracks WHERE track_id = ?")
-        .get(buildSimilarityTrackId("A.sid", 2)) as { likes: number; plays: number };
+        .query("SELECT likes, plays, decayed_likes, decayed_plays FROM tracks WHERE track_id = ?")
+        .get(buildSimilarityTrackId("A.sid", 2)) as { likes: number; plays: number; decayed_likes: number; decayed_plays: number };
       const neighborIndex = database
         .query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'neighbors_seed_idx'")
         .get() as { name: string } | null;
 
-      expect(firstTrack).toEqual({ likes: 0, plays: 0 });
-      expect(secondTrack).toEqual({ likes: 1, plays: 1 });
+      expect(firstTrack).toEqual({ likes: 0, plays: 0, decayed_likes: 0, decayed_plays: 0 });
+      expect(secondTrack.likes).toBe(1);
+      expect(secondTrack.plays).toBe(1);
+      expect(secondTrack.decayed_likes).toBeGreaterThan(0);
+      expect(secondTrack.decayed_plays).toBeGreaterThan(0);
       expect(neighborIndex).toBeNull();
     } finally {
       database.close();

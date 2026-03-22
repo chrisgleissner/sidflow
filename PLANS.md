@@ -50,6 +50,90 @@ Template:
 
 ## Active tasks
 
+### Task: SID-native classification enhancement implementation (2026-03-22)
+
+**User request (summary)**
+- Fully implement the deterministic SID-native plus WAV hybrid classification roadmap from `doc/research/sid-classification-enhancement-report.md`.
+- Keep the shared analysis window fixed at 15s skip plus 15s analyze for the current session and carry the implementation forward without reintroducing legacy aggregation behavior.
+
+**Current focus**
+- Use the new canonical frame-compaction layer as the basis for SID-native feature extraction in classify.
+
+**Plan (checklist)**
+- [x] I1 — align the shared WAV analysis window defaults to 15s skip + 15s analyze across classify sources and focused tests
+- [x] I7a — unify shared feedback decay/action semantics across common export paths and the legacy recommender
+- [x] I2 — add a SID write-trace API to `@sidflow/libsidplayfp-wasm`
+- [x] I3 — add canonical frame compaction for SID register events
+- [ ] I4 — implement SID-native feature extraction over canonical traces
+- [ ] I5 — residualize WAV timbre against SID-native causal features
+- [ ] I6 — build the final no-duplication 24D hybrid vector
+- [ ] I7b — propagate the unified feedback aggregates into any remaining downstream consumers
+- [ ] I8 — wire autonomous retraining triggers into a persistent service path
+- [ ] I9 — add the offline hybrid evaluation harness
+
+**Progress log**
+- 2026-03-22 — Landed the shared 15s skip + 15s analyze defaults in `packages/sidflow-classify/src/{audio-window,index,essentia-features,feature-extraction-worker,render/render-orchestrator}.ts` and updated the focused classify tests accordingly.
+- 2026-03-22 — Added shared `feedback-aggregation` and `vector-similarity` utilities in `@sidflow/common`, migrated `lancedb-builder.ts`, `similarity-export.ts`, `recommender.ts`, and `packages/sidflow-web/lib/server/rating-aggregator.ts` onto them, and persisted decayed feedback aggregates in the SQLite similarity export and LanceDB records.
+- 2026-03-22 — Validated the shared-consistency slice with focused tests (`feedback-aggregation`, `recommender`, `similarity-export`, `rating-aggregator-decay`) and `bun run build:quick`; all passed after fixing an isolated test helper path bug.
+- 2026-03-22 — Implemented I2 in `packages/libsidplayfp-wasm`: a tracing SID builder/wrapper in `src/bindings/bindings.cpp`, runtime trace controls in `src/player.ts`, and focused tests for both the fake-module TS path and the rebuilt wasm runtime. Validated with `bun run scripts/build-libsidplayfp-wasm.ts --skip-check`, `packages/libsidplayfp-wasm/test/index.test.ts`, `packages/libsidplayfp-wasm/test/sid-write-trace.test.ts`, and `bun run build:quick`.
+- 2026-03-22 — Implemented I3 in `packages/sidflow-classify/src/sid-register-trace.ts`: deterministic PAL/NTSC frame-window resolution, raw SID-write bucketing, carry-forward register state snapshots, per-voice event emission, and broadcast global-register events. Validated with `packages/sidflow-classify/test/sid-register-trace.test.ts` and `bun run build:quick`.
+
+**Immediate next step**
+- Start I4 by extracting bounded SID-native causal features from the canonical frame-bucketed register events.
+
+### Task: SID-native classification enhancement audit + design (2026-03-22)
+
+**User request (summary)**
+- Verify whether every recommendation in `doc/research/sid-station-similarity-audit.md` is implemented in the current codebase with concrete evidence.
+- Produce an implementation-ready, deterministic design for a bounded SID-native register-analysis pipeline and a strictly non-overlapping SID+WAV hybrid feature system.
+
+**Constraints and assumptions**
+- Offline-first, deterministic execution on commodity hardware.
+- Shared analysis window for all modalities: skip first 15s, analyze the next 15s only.
+- Frame-based SID analysis only: PAL 50 Hz or NTSC 60 Hz.
+- No duplicate features: every retained feature must be unique, fused explicitly, or removed.
+
+**Performance budget assumptions**
+- Reference machine: 8 CPU cores, <= 16 GiB RAM, GPU optional and never required.
+- Proposed classification budget per track: target <= 6s mean wall-clock, hard cap <= 8s on the reference machine.
+- Proposed SID-native slice budget: <= 1.0s per track for frame tracing and register aggregation after tune load.
+
+**Task graph**
+- P0 docs + repo evidence -> P1 audit normalization -> P2 implementation verification -> P3 SID-native execution model -> P4 hybrid orthogonalization -> P5 evaluation + roadmap -> P6 report/log convergence
+
+**Success criteria by phase**
+- [x] P0: Required inputs loaded (`sid-station-similarity-audit.md`, `sid-file-structure.md`, `sid-spec.md`, sample 24D JSON) and constraints restated
+- [x] P1: Audit recommendations normalized into atomic requirements with status and code evidence
+- [x] P2: Missing/partial implementations identified precisely rather than inferred
+- [x] P3: Deterministic bounded SID execution model specified, including frame counts and safety limits
+- [x] P4: WAV/SID feature overlap resolved with explicit KEEP/REPLACE/FUSE/REMOVE decisions
+- [x] P5: Final hybrid vector, evaluation framework, and deterministic backlog defined
+- [x] P6: `WORKLOG.md` updated and `doc/research/sid-classification-enhancement-report.md` written
+
+**Plan (checklist)**
+- [x] Read required docs and inspect live implementation paths
+- [x] Normalize audit recommendations into an evidence table
+- [x] Verify implemented vs partial vs missing items directly in source
+- [x] Design bounded SID-native frame/register pipeline
+- [x] Design anti-overlap hybrid feature system with explicit formulas
+- [x] Define evaluation metrics, testing strategy, and implementation roadmap
+- [x] Update `PLANS.md` and `WORKLOG.md`
+- [x] Write `doc/research/sid-classification-enhancement-report.md`
+
+**Progress log**
+- 2026-03-22 — Started by re-reading `PLANS.md`, `WORKLOG.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`, `doc/research/sid-station-similarity-audit.md`, `doc/c64/sid-file-structure.md`, `doc/c64/sid-spec.md`, and the tracked 24D sample classification artifact.
+- 2026-03-22 — Verified the implemented Phase A-D code paths directly in `packages/sidflow-play`, `packages/sidflow-classify`, `packages/sidflow-common`, `packages/sidflow-web`, and `packages/sidflow-train`. Confirmed strong coverage for station thresholds, 24D vectors, multi-centroid intent modeling, and metric-learning training/evaluation.
+- 2026-03-22 — Confirmed notable residual gaps: no SID register trace/event model in `@sidflow/common` or `@sidflow/libsidplayfp-wasm`; current WAV defaults still use a 30s intro skip; richer feedback actions/temporal decay are not propagated consistently into all shared aggregation paths (`lancedb-builder.ts`, legacy export aggregation, and unused `recommender.ts` remain old-model oriented).
+- 2026-03-22 — Completed the implementation-ready enhancement report with: evidence-based audit statuses, bounded SID-native execution design, formally scoped feature extraction, WAV/SID orthogonalization decisions, hybrid vector spec, evaluation thresholds, and a deterministic backlog.
+
+**Termination criteria**
+- Audit table completed with evidence-backed DONE/PARTIAL/MISSING statuses
+- Shared 15s skip + 15s analyze window specified for both WAV and SID-native analysis
+- Canonical per-frame SID event model defined
+- Final no-duplication hybrid vector defined with normalization and weights
+- Evaluation and testing framework specified
+- `WORKLOG.md` and `doc/research/sid-classification-enhancement-report.md` updated
+
 ### Task: Station similarity audit implementation — Phases A and B (2026-03-22)
 
 **User request (summary)**

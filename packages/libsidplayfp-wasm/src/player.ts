@@ -50,6 +50,18 @@ export interface SidAudioEngineOptions extends SidPlayerContextOptions {
   cacheSecondsLimit?: number;
 }
 
+export interface SidWriteTrace {
+  sidNumber: number;
+  address: number;
+  value: number;
+  cyclePhi1: number;
+}
+
+type TraceCapableSidPlayerContext = SidPlayerContext & {
+  setSidWriteTraceEnabled?: (enabled: boolean) => void;
+  getAndClearSidWriteTraces?: () => SidWriteTrace[];
+};
+
 type DisposableSidPlayerContext = SidPlayerContext & {
   delete?: () => void;
   isDeleted?: () => boolean;
@@ -58,11 +70,12 @@ type DisposableSidPlayerContext = SidPlayerContext & {
 export class SidAudioEngine {
   private readonly modulePromise: Promise<LibsidplayfpWasmModule>;
   private module: LibsidplayfpWasmModule | undefined;
-  private context: SidPlayerContext | undefined;
+  private context: TraceCapableSidPlayerContext | undefined;
   private readonly sampleRate: number;
   private readonly stereo: boolean;
   private readonly maxCacheSeconds: number;
   private configured = false;
+  private sidWriteTraceEnabled = false;
   private originalSidBuffer: Uint8Array | null = null;
   private currentSongIndex = 0;
   private cachePromise: Promise<void> | null = null;
@@ -81,7 +94,7 @@ export class SidAudioEngine {
   private romFailureLogged = false;
   private readonly bufferPool: BufferPool;
 
-  private releaseContext(context: SidPlayerContext | undefined): void {
+  private releaseContext(context: TraceCapableSidPlayerContext | undefined): void {
     const disposableContext = context as DisposableSidPlayerContext | undefined;
     if (!disposableContext?.delete) {
       return;
@@ -124,16 +137,17 @@ export class SidAudioEngine {
     return this.module;
   }
 
-  private async createConfiguredContext(): Promise<SidPlayerContext> {
+  private async createConfiguredContext(): Promise<TraceCapableSidPlayerContext> {
     const module = await this.ensureModule();
-    const ctx = new module.SidPlayerContext();
+    const ctx = new module.SidPlayerContext() as TraceCapableSidPlayerContext;
     if (!ctx.configure(this.sampleRate, this.stereo)) {
       throw new Error(`Failed to configure SID player: ${ctx.getLastError()}`);
     }
+    ctx.setSidWriteTraceEnabled?.(this.sidWriteTraceEnabled);
     return ctx;
   }
 
-  private async loadPatchedBuffer(patched: Uint8Array): Promise<SidPlayerContext> {
+  private async loadPatchedBuffer(patched: Uint8Array): Promise<TraceCapableSidPlayerContext> {
     const ctx = await this.createConfiguredContext();
     try {
       if (!ctx.loadSidBuffer(patched)) {
@@ -329,6 +343,16 @@ export class SidAudioEngine {
       return;
     }
     this.context.reset();
+  }
+
+  setSidWriteTraceEnabled(enabled: boolean): void {
+    this.sidWriteTraceEnabled = enabled;
+    this.context?.setSidWriteTraceEnabled?.(enabled);
+  }
+
+  getAndClearSidWriteTraces(): SidWriteTrace[] {
+    const traces = this.context?.getAndClearSidWriteTraces?.();
+    return Array.isArray(traces) ? traces.slice() : [];
   }
 
   renderCycles(cycles = 100000): Int16Array | null {

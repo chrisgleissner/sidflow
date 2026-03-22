@@ -11,6 +11,8 @@ import {
   type FeedbackRecord,
 } from "./jsonl-schema.js";
 import { DEFAULT_RATING, DEFAULT_RATINGS, clampRating, type TagRatings } from "./ratings.js";
+import { aggregateFeedbackRecordsByKey, type AggregatedFeedback } from "./feedback-aggregation.js";
+import { cosineSimilarity } from "./vector-similarity.js";
 
 export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
 
@@ -29,6 +31,10 @@ export interface SimilarityExportTrack {
   dislikes: number;
   skips: number;
   plays: number;
+  decayed_likes: number;
+  decayed_dislikes: number;
+  decayed_skips: number;
+  decayed_plays: number;
   last_played?: string;
   classified_at?: string;
   source?: string;
@@ -94,6 +100,10 @@ export interface SimilarityExportRecommendation {
   dislikes: number;
   skips: number;
   plays: number;
+  decayed_likes: number;
+  decayed_dislikes: number;
+  decayed_skips: number;
+  decayed_plays: number;
   last_played?: string;
 }
 
@@ -111,14 +121,6 @@ export interface RecommendFromFavoritesOptions {
   weightsByTrackId?: Record<string, number>;
 }
 
-interface FeedbackAggregate {
-  likes: number;
-  dislikes: number;
-  skips: number;
-  plays: number;
-  lastPlayed?: string;
-}
-
 interface PersistedTrackRow {
   track_id: string;
   sid_path: string;
@@ -132,6 +134,10 @@ interface PersistedTrackRow {
   dislikes: number;
   skips: number;
   plays: number;
+  decayed_likes: number;
+  decayed_dislikes: number;
+  decayed_skips: number;
+  decayed_plays: number;
   last_played: string | null;
 }
 
@@ -190,14 +196,6 @@ const DETERMINISTIC_FEATURE_KEYS: readonly DeterministicFeatureKey[] = [
   "spectralCrest",
   "spectralHfc",
   "zeroCrossingRate",
-] as const;
-
-const PERCEPTUAL_VECTOR_DIMENSIONS = 24;
-const PERCEPTUAL_VECTOR_WEIGHTS = [
-  1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-  1.2, 1.2, 1.2, 1.2, 1.2, 1.2,
-  0.8, 0.8, 0.8, 0.8, 0.8,
-  1.5, 1.5, 1.5, 1.5, 1.5,
 ] as const;
 
 function normalizeSongIndex(songIndex?: number): number {
@@ -575,43 +573,6 @@ async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
   return records;
 }
 
-function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggregate> {
-  const aggregates = new Map<string, FeedbackAggregate>();
-  for (const event of events) {
-    const trackId = buildSimilarityTrackId(event.sid_path, event.song_index);
-    const aggregate = aggregates.get(trackId) ?? {
-      likes: 0,
-      dislikes: 0,
-      skips: 0,
-      plays: 0,
-    };
-    switch (event.action) {
-      case "like":
-        aggregate.likes += 1;
-        break;
-      case "dislike":
-        aggregate.dislikes += 1;
-        break;
-      case "skip":
-      case "skip_early":
-      case "skip_late":
-        aggregate.skips += 1;
-        break;
-      case "play":
-      case "play_complete":
-      case "replay":
-        aggregate.plays += 1;
-        break;
-    }
-    if ((event.action === "play" || event.action === "play_complete" || event.action === "replay" || event.action === "like")
-      && (!aggregate.lastPlayed || event.ts > aggregate.lastPlayed)) {
-      aggregate.lastPlayed = event.ts;
-    }
-    aggregates.set(trackId, aggregate);
-  }
-  return aggregates;
-}
-
 function buildLegacyVector(ratings: TagRatings, dims: number): number[] {
   if (dims <= 3) {
     return [ratings.e, ratings.m, ratings.c].slice(0, dims);
@@ -697,7 +658,7 @@ function resolveClassificationVector(classification: ClassificationRecord, targe
 
 function classificationToTrack(
   classification: ClassificationRecord,
-  feedback: FeedbackAggregate | undefined,
+  feedback: AggregatedFeedback | undefined,
   dims: number,
 ): SimilarityExportTrack {
   const { e, m, c, p } = classification.ratings;
@@ -716,6 +677,10 @@ function classificationToTrack(
     dislikes: feedback?.dislikes ?? 0,
     skips: feedback?.skips ?? 0,
     plays: feedback?.plays ?? 0,
+    decayed_likes: feedback?.decayedLikes ?? 0,
+    decayed_dislikes: feedback?.decayedDislikes ?? 0,
+    decayed_skips: feedback?.decayedSkips ?? 0,
+    decayed_plays: feedback?.decayedPlays ?? 0,
     last_played: feedback?.lastPlayed,
     classified_at: classification.classified_at,
     source: classification.source,
@@ -752,31 +717,6 @@ function dedupeClassifications(classifications: ClassificationRecord[]): Classif
   }
 
   return Array.from(deduped.values());
-}
-
-function cosineSimilarity(left: number[], right: number[]): number {
-  const useWeights = left.length === PERCEPTUAL_VECTOR_DIMENSIONS && right.length === PERCEPTUAL_VECTOR_DIMENSIONS;
-  const dimensions = Math.min(left.length, right.length, useWeights ? PERCEPTUAL_VECTOR_WEIGHTS.length : Number.POSITIVE_INFINITY);
-  if (dimensions <= 0) {
-    return 0;
-  }
-  let dotProduct = 0;
-  let leftNorm = 0;
-  let rightNorm = 0;
-  for (let index = 0; index < dimensions; index += 1) {
-    const weight = useWeights ? PERCEPTUAL_VECTOR_WEIGHTS[index]! : 1;
-    const leftValue = left[index] ?? 0;
-    const rightValue = right[index] ?? 0;
-    dotProduct += weight * leftValue * rightValue;
-    leftNorm += weight * leftValue * leftValue;
-    rightNorm += weight * rightValue * rightValue;
-  }
-
-  if (leftNorm === 0 || rightNorm === 0) {
-    return 0;
-  }
-
-  return dotProduct / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
 }
 
 function buildCentroid(vectors: number[][], weights?: number[]): number[] {
@@ -879,6 +819,10 @@ function trackRowToRecommendation(row: PersistedTrackRow, score: number, rank: n
     dislikes: row.dislikes,
     skips: row.skips,
     plays: row.plays,
+    decayed_likes: row.decayed_likes,
+    decayed_dislikes: row.decayed_dislikes,
+    decayed_skips: row.decayed_skips,
+    decayed_plays: row.decayed_plays,
     last_played: row.last_played ?? undefined,
   };
 }
@@ -906,7 +850,10 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
 
   const dedupedClassifications = dedupeClassifications(classifications);
   const dims = resolveTargetVectorDimensions(dedupedClassifications, options.dims);
-  const feedbackByTrackId = aggregateFeedback(feedbackEvents);
+  const feedbackByTrackId = aggregateFeedbackRecordsByKey(
+    feedbackEvents,
+    (event) => buildSimilarityTrackId(event.sid_path, event.song_index),
+  );
   const tracks = dedupedClassifications
     .filter((classification) => hasValidRatings(classification))
     .map((classification) => classificationToTrack(
@@ -949,6 +896,10 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         dislikes INTEGER NOT NULL,
         skips INTEGER NOT NULL,
         plays INTEGER NOT NULL,
+        decayed_likes REAL NOT NULL,
+        decayed_dislikes REAL NOT NULL,
+        decayed_skips REAL NOT NULL,
+        decayed_plays REAL NOT NULL,
         last_played TEXT,
         classified_at TEXT,
         source TEXT,
@@ -981,13 +932,17 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         dislikes,
         skips,
         plays,
+        decayed_likes,
+        decayed_dislikes,
+        decayed_skips,
+        decayed_plays,
         last_played,
         classified_at,
         source,
         render_engine,
         feature_schema_version,
         features_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     for (const track of tracks) {
@@ -1004,6 +959,10 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         track.dislikes,
         track.skips,
         track.plays,
+        track.decayed_likes,
+        track.decayed_dislikes,
+        track.decayed_skips,
+        track.decayed_plays,
         track.last_played ?? null,
         track.classified_at ?? null,
         track.source ?? null,
@@ -1131,7 +1090,7 @@ export function recommendFromSeedTrack(
     const excluded = new Set([options.seedTrackId, ...(options.excludeTrackIds ?? [])]);
 
     const rows = database.query(
-      `SELECT t.track_id, t.sid_path, t.song_index, t.vector_json, t.e, t.m, t.c, t.p, t.likes, t.dislikes, t.skips, t.plays, t.last_played, n.similarity, n.rank
+      `SELECT t.track_id, t.sid_path, t.song_index, t.vector_json, t.e, t.m, t.c, t.p, t.likes, t.dislikes, t.skips, t.plays, t.decayed_likes, t.decayed_dislikes, t.decayed_skips, t.decayed_plays, t.last_played, n.similarity, n.rank
        FROM neighbors n
        JOIN tracks t ON t.track_id = n.neighbor_track_id
        WHERE n.profile = ? AND n.seed_track_id = ?
@@ -1152,7 +1111,7 @@ export function recommendFromSeedTrack(
     }
     const seedVector = JSON.parse(seed.vector_json) as number[];
     const candidates = database.query(
-      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played FROM tracks",
+      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, decayed_likes, decayed_dislikes, decayed_skips, decayed_plays, last_played FROM tracks",
     ).all() as PersistedTrackRow[];
 
     return candidates
@@ -1179,7 +1138,7 @@ export function recommendFromFavorites(
     const limit = options.limit ?? 20;
     const excluded = new Set([...options.favoriteTrackIds, ...(options.excludeTrackIds ?? [])]);
     const favoriteRows = database.query(
-      `SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played
+      `SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, decayed_likes, decayed_dislikes, decayed_skips, decayed_plays, last_played
        FROM tracks
        WHERE track_id IN (${options.favoriteTrackIds.map(() => "?").join(", ")})`,
     ).all(...options.favoriteTrackIds) as PersistedTrackRow[];
@@ -1197,7 +1156,7 @@ export function recommendFromFavorites(
     const weights = favoriteRows.map((row) => options.weightsByTrackId?.[row.track_id] ?? 1);
     const centroid = buildCentroid(vectors, weights);
     const candidates = database.query(
-      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played FROM tracks",
+      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, decayed_likes, decayed_dislikes, decayed_skips, decayed_plays, last_played FROM tracks",
     ).all() as PersistedTrackRow[];
 
     return candidates
