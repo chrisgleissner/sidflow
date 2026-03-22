@@ -108,6 +108,10 @@ function InfoRow({ label, value }: InfoProps) {
   );
 }
 
+function getHvscRelativePath(track: PlaylistTrack): string {
+  return track.relativePath || track.sidPath;
+}
+
 export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const { preferences } = usePreferences();
   const { isOnline } = useNetworkStatus();
@@ -1601,38 +1605,60 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
     emptyLabel: string,
     variant: 'played' | 'upcoming'
   ) => {
-    if (tracks.length === 0) {
-      return <p className="text-xs text-muted-foreground">{emptyLabel}</p>;
-    }
     return (
-      <div className="space-y-2">
-        {tracks.map((track) => (
-          <div
-            key={`${variant}-${track.playlistNumber}-${track.sidPath}`}
-            className="flex items-center justify-between rounded border border-border/50 px-2 py-1 text-xs"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-foreground truncate">
-                #{track.playlistNumber} • {track.displayName}
-              </p>
-              <p className="text-muted-foreground truncate">{track.metadata.author ?? '—'}</p>
-            </div>
-            {variant === 'played' ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6"
-                onClick={() => replayFromHistory(track)}
-                aria-label="Replay this song"
-                title="Replay this song"
+      <div className="overflow-hidden rounded border border-border/50 text-xs">
+        <div
+          className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1.6fr)_auto] gap-3 border-b border-border/50 bg-muted/80 px-2 py-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground backdrop-blur supports-[backdrop-filter]:bg-muted/70"
+          data-testid={`${variant}-tracks-header`}
+        >
+          <span>Song</span>
+          <span>HVSC Path</span>
+          <span className="text-right">{variant === 'played' ? 'Replay' : 'Status'}</span>
+        </div>
+        <div className="max-h-56 overflow-y-auto">
+          {tracks.length === 0 ? (
+            <div className="px-2 py-3 text-xs text-muted-foreground">{emptyLabel}</div>
+          ) : tracks.map((track) => {
+            const relativePath = getHvscRelativePath(track);
+            return (
+              <div
+                key={`${variant}-${track.playlistNumber}-${track.sidPath}`}
+                className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1.6fr)_auto] gap-3 border-b border-border/40 px-2 py-2 last:border-b-0"
+                data-testid={`${variant}-track-row`}
               >
-                <Play className="h-3 w-3" />
-              </Button>
-            ) : (
-              <span className="text-muted-foreground text-[10px]">Queued</span>
-            )}
-          </div>
-        ))}
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground truncate">
+                    #{track.playlistNumber} • {track.displayName}
+                  </p>
+                  <p className="text-muted-foreground truncate">{track.metadata.author ?? '—'}</p>
+                </div>
+                <div
+                  className="min-w-0 font-mono text-[10px] text-muted-foreground md:text-[11px]"
+                  title={relativePath}
+                  data-testid={`${variant}-track-relative-path`}
+                >
+                  <p className="truncate">{relativePath}</p>
+                </div>
+                <div className="flex items-center justify-end">
+                  {variant === 'played' ? (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => replayFromHistory(track)}
+                      aria-label="Replay this song"
+                      title="Replay this song"
+                    >
+                      <Play className="h-3 w-3" />
+                    </Button>
+                  ) : (
+                    <span className="text-muted-foreground text-[10px]">Queued</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   };

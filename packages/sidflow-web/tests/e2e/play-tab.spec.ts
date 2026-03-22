@@ -117,6 +117,21 @@ if (!isPlaywrightRunner) {
       }
     });
 
+    test('shows sticky playlist headers and HVSC-relative paths', async ({ page }) => {
+      test.setTimeout(90000);
+      await bootstrapPlayTab(page);
+
+      const upcomingHeader = page.getByTestId('upcoming-tracks-header');
+      await expect(upcomingHeader).toBeVisible({ timeout: 30000 });
+      await expect(upcomingHeader.getByText('Song')).toBeVisible();
+      await expect(upcomingHeader.getByText('HVSC Path')).toBeVisible();
+      await expect(upcomingHeader.getByText('Status')).toBeVisible();
+
+      const pathCells = page.getByTestId('upcoming-track-relative-path');
+      await expect(pathCells.first()).toBeVisible({ timeout: 30000 });
+      await expect(pathCells.first()).toContainText(/virtual\/playlist-track-\d+\.sid/i);
+    });
+
     test('displays personal and aggregate ratings for the song in play', async ({ page }) => {
       test.setTimeout(90000); // Increase timeout for CI environment
       await bootstrapPlayTab(page);

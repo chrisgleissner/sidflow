@@ -74,6 +74,7 @@ Template:
 - [x] I7c — keep similarity-export recommendation readers backward-compatible with cached pre-decay `sidcorr-1` station bundles
 - [ ] I8 — wire autonomous retraining triggers into a persistent service path
 - [ ] I9 — add the offline hybrid evaluation harness
+- [x] I10 — extend the Play tab playlist with non-scrolling column headers and an HVSC-relative path column shown to the right of the song name
 
 **Progress log**
 - 2026-03-22 — Landed the shared 15s skip + 15s analyze defaults in `packages/sidflow-classify/src/{audio-window,index,essentia-features,feature-extraction-worker,render/render-orchestrator}.ts` and updated the focused classify tests accordingly.
@@ -85,9 +86,11 @@ Template:
 - 2026-03-22 — Fixed the libsidplayfp-wasm full-suite blockers by releasing old `SidPlayerContext` instances before reload and by making the synthetic-tone assertions match the actual deterministic waveform behavior; fresh full-suite validation cleared the previously failing wasm batch.
 - 2026-03-22 — Added follow-up scope for two new requirements: station compatibility with cached pre-decay `sidcorr-1` SQLite bundles and an explicit WAV-first merge policy so SID-native augmentation does not replace overlapping WAV-derived fields in the current implementation.
 - 2026-03-22 — Completed I4b and I7c: `createHybridFeatureExtractor(...)` now preserves existing WAV-derived keys on collisions, and the similarity-export recommendation readers now tolerate cached pre-decay `sidcorr-1` bundles by synthesizing zero decayed aggregates when those columns are absent. Validated with focused common/classify regressions and `bun run build:quick`.
+- 2026-03-22 — Added I10 for the Play tab queue UI: show each track's HVSC-relative path in a dedicated column to the right of the song column, and keep the playlist column headers fixed while the track rows scroll.
+- 2026-03-22 — Completed I10 in `packages/sidflow-web/components/PlayTab.tsx` by converting the Played/Upcoming queue cards into a columned playlist view with persistent headers and a dedicated HVSC-relative path column using each track's existing `relativePath`. Validated with `cd /home/chris/dev/c64/sidflow/packages/sidflow-web && bunx tsc -p tsconfig.json --noEmit` and a fresh-build Playwright check for `tests/e2e/play-tab.spec.ts --grep "sticky playlist headers"`.
 
 **Immediate next step**
-- Complete I4b and I7c, then resume I5/I6 with the clarified rule that WAV-derived features remain the trusted source wherever overlap exists.
+- Resume I5/I6, then continue the broader green-validation pass with the clarified rule that WAV-derived features remain the trusted source wherever overlap exists.
 
 ### Task: SID-native classification enhancement audit + design (2026-03-22)
 
