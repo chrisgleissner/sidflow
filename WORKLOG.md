@@ -151,6 +151,55 @@ Next step queued:
 
 ---
 
+## 2026-03-22 — Phase 5: Repository build and test validation (final gates)
+
+### Build gate
+
+Command: `bun run build` (installs deps, checks upstream WASM, runs `tsc -b`)
+Result: **PASS** — `tsc -b` exits 0, zero TypeScript errors across all packages.
+WASM upstream check emits an informational warning (upstream changed but no code
+changes required for current task).
+
+### Test gate — package-by-package results (3 consecutive runs each)
+
+Test runner: `bun test` via `node scripts/run-bun.mjs test <package-dir>`
+
+| Package | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| sidflow-play | 385/385 pass | 385/385 pass | 385/385 pass |
+| sidflow-common | 445/445 pass | 445/445 pass | 445/445 pass |
+| sidflow-classify | 287/287 pass | 287/287 pass | 287/287 pass |
+| sidflow-web (unit) | 1062/1062 pass | 1062/1062 pass | 1062/1062 pass |
+| sidflow-train | 23/23 pass | — | — |
+| libsidplayfp-wasm + fetch + performance + rate | 173/173 pass | — | — |
+
+All Phase A/B modified packages: **100% pass across 3 consecutive runs.**
+
+### Timing-sensitive flaky tests (pre-existing, not related to Phase A/B)
+
+When all packages are combined in a single bun test invocation under concurrent
+scheduler pressure, 7 time-dependent tests in `cache.test.ts` and
+`rate-limiter.test.ts` fail intermittently (LRUCache TTL and RateLimiter window
+timeout assertions). These tests pass in isolation and were not modified in any
+Phase A/B commit (confirmed via git log). They represent a pre-existing
+infrastructure flakiness documented in prior WORKLOG entries.
+
+### Convergence confirmation
+
+All Phase A/B PLANS.md tasks are DONE. All acceptance criteria met:
+- A1: min similarity threshold 0.75 (cold-start 0.82) enforced in station queue
+- A2: weight mapping 5→3, 4→2, 3→1, 2→0.3, 1→0.1 applied
+- A3: minimum rated tracks reduced from 10 to 5
+- A4: per-dimension deviation ≤1.5 rejection applied against weighted centroid
+- B1: onset_density, rhythmic_regularity, spectral_flux_mean, dynamic_range,
+      pitch_salience, inharmonicity, low_frequency_energy_ratio extracted
+- B2: 24D perceptual vector built deterministically from normalized features
+- B3: similarity export handles 4D and 24D with auto-detected weighted cosine
+- B4: sync route persists play_complete/skip_early/skip_late/replay events
+- B5: 90-day half-life temporal decay applied in server rating aggregator
+
+---
+
 ## 2026-03-21 — Phase 1: Discovery
 
 ### Observation: All release tags failing in CI

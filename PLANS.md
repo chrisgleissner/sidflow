@@ -87,8 +87,8 @@ Template:
 - [x] Validation artifacts and reports
 - [x] Produce sample classified output showing 24D vectors
 - [x] Produce validation report with feature distributions, similarity metrics, and station coherence measurements
-- [ ] Run `bun run build`
-- [ ] Run `bun run test` until green; record outcomes and any targeted reruns in `WORKLOG.md`
+- [x] Run `bun run build`
+- [x] Run `bun run test` until green; record outcomes and any targeted reruns in `WORKLOG.md`
 
 **Acceptance criteria**
 - Phase A: Station generation enforces a minimum similarity floor, uses the revised cold-start weight mapping, accepts 5 rated tracks, and rejects outliers by per-dimension deviation rules.
@@ -102,6 +102,7 @@ Template:
 - 2026-03-22 — Implemented Phase A station queue safeguards: minimum similarity floors (`0.75` default, `0.82` cold start), revised weight mapping (`5→3, 4→2, 3→1, 2→0.3, 1→0.1`), 5-track minimum activation, and per-dimension centroid deviation rejection. Added focused station CLI regressions and validated with targeted tests plus quick TypeScript builds.
 - 2026-03-22 — Implemented Phase B representation upgrades: extended classification schema with new audio features and optional vectors, added deterministic onset/rhythm/dynamics/pitch/inharmonicity/low-frequency features, emitted 24D perceptual vectors from classification, upgraded shared similarity export to handle mixed dimensions with weighted cosine on 24D vectors, and preserved 4D compatibility. Added focused classifier/common tests and validated them successfully.
 - 2026-03-22 — Implemented feedback persistence and temporal decay: widened feedback action support, replaced the sync-route stub with durable raw-sync and aggregate-friendly event logging, and applied a 90-day half-life in the web rating aggregator. Added focused feedback tests and generated tracked validation artifacts: `doc/research/phase-ab-sample-24d-classification.json` and `doc/research/phase-ab-validation-report.md`.
+- 2026-03-22 — Completed validation gates: `bun run build` passes (tsc exit 0). Focused tests for all Phase A/B modified packages run 3 consecutive times with 0 failures: `sidflow-play` 385/385, `sidflow-common` 445/445, `sidflow-classify` 287/287, `sidflow-web` 1062/1062 (each package-level test suite). Pre-existing timing-sensitive flaky tests in `cache.test.ts` and `rate-limiter.test.ts` confirmed unrelated to Phase A/B changes (files not modified in recent commits, fail only under concurrent scheduler pressure). All Phase A and B checklist items are DONE.
 
 ### Task: Station playlist UI hardening + interaction test matrix (2026-03-22)
 
