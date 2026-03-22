@@ -5,9 +5,59 @@ import { describe, expect, it } from "bun:test";
 import {
   moveSelectionInMatches,
   moveCurrentInMatches,
+  renderStationScreen,
   resolvePlaylistWindowStart,
   resolvePlaylistWindowRows,
 } from "../src/station/screen.js";
+import type { StationScreenState, StationTrackDetails } from "../src/station/types.js";
+
+function makeTrack(index: number): StationTrackDetails {
+  return {
+    track_id: `track-${index}`,
+    sid_path: `/music/track-${index}.sid`,
+    song_index: 1,
+    e: 3,
+    m: 3,
+    c: 3,
+    p: null,
+    likes: 0,
+    dislikes: 0,
+    skips: 0,
+    plays: 0,
+    last_played: null,
+    absolutePath: `/music/track-${index}.sid`,
+    title: `Track ${index}`,
+    author: `Author ${index}`,
+    released: "1987",
+    year: "1987",
+    durationMs: 120_000,
+  };
+}
+
+function makeState(overrides: Partial<StationScreenState> = {}): StationScreenState {
+  const queue = Array.from({ length: 8 }, (_, index) => makeTrack(index));
+  return {
+    phase: "station",
+    current: queue[2]!,
+    index: 2,
+    selectedIndex: 5,
+    playlistWindowStart: 3,
+    total: queue.length,
+    ratedCount: 0,
+    ratedTarget: 10,
+    ratings: new Map(),
+    playbackMode: "local",
+    adventure: 3,
+    dataSource: "test",
+    dbPath: "data/test.sqlite",
+    queue,
+    elapsedMs: 10_000,
+    durationMs: 120_000,
+    filterMatchCount: queue.length,
+    statusLine: "ok",
+    ...overrides,
+  };
+}
 
 describe("moveSelectionInMatches", () => {
   it("returns null for empty matches array", () => {
@@ -70,42 +120,54 @@ describe("moveCurrentInMatches", () => {
 
 describe("resolvePlaylistWindowStart", () => {
   it("returns 0 for empty filteredIndices", () => {
-    expect(resolvePlaylistWindowStart([], 0, 5, 0)).toBe(0);
+    expect(resolvePlaylistWindowStart([], 0, 0, 5, 0)).toBe(0);
   });
 
   it("keeps windowStart at 0 when content fits in view", () => {
-    expect(resolvePlaylistWindowStart([0, 1, 2], 1, 5, 0)).toBe(0);
+    expect(resolvePlaylistWindowStart([0, 1, 2], 1, 1, 5, 0)).toBe(0);
   });
 
   it("keeps viewport stable while playing row stays above the bottom buffer threshold", () => {
     const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    const result = resolvePlaylistWindowStart(indices, 4, 10, 0);
+    const result = resolvePlaylistWindowStart(indices, 4, 4, 10, 0);
     expect(result).toBe(0);
   });
 
   it("scrolls when the playing row crosses the bottom buffer threshold", () => {
     const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-    const result = resolvePlaylistWindowStart(indices, 7, 10, 0);
+    const result = resolvePlaylistWindowStart(indices, 7, 7, 10, 0);
     expect(result).toBe(2);
   });
 
   it("scrolls up when the playing row moves above the viewport top", () => {
     const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    const result = resolvePlaylistWindowStart(indices, 2, 5, 7);
+    const result = resolvePlaylistWindowStart(indices, 2, 2, 5, 7);
     expect(result).toBe(2);
   });
 
   it("clamps windowStart to maxWindowStart", () => {
     const indices = [0, 1, 2, 3, 4];
-    const result = resolvePlaylistWindowStart(indices, 4, 5, 100);
+    const result = resolvePlaylistWindowStart(indices, 4, 4, 5, 100);
     // maxWindowStart = max(0, 5-5) = 0
     expect(result).toBe(0);
   });
 
   it("keeps the existing window when the playing row is not in the filtered set", () => {
     const indices = [0, 1, 2, 3, 4];
-    const result = resolvePlaylistWindowStart(indices, 99, 5, 3);
+    const result = resolvePlaylistWindowStart(indices, 99, 99, 5, 3);
     expect(result).toBe(0);
+  });
+
+  it("scrolls to keep the selected row visible when browsing away from the playhead", () => {
+    const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const result = resolvePlaylistWindowStart(indices, 2, 8, 5, 0);
+    expect(result).toBe(4);
+  });
+
+  it("does not let playhead scrolling dislodge a visible selected row", () => {
+    const indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const result = resolvePlaylistWindowStart(indices, 7, 3, 5, 2);
+    expect(result).toBe(2);
   });
 });
 
@@ -128,5 +190,34 @@ describe("resolvePlaylistWindowRows", () => {
 
   it("returns MINIMUM_PLAYLIST_WINDOW_ROWS as minimum", () => {
     expect(resolvePlaylistWindowRows(0, 100)).toBe(7);
+  });
+});
+
+describe("renderStationScreen", () => {
+  it("does not render the obsolete next-track prefix marker", () => {
+    const output = renderStationScreen(makeState(), false, 120, 32);
+    expect(output).not.toContain("\n> ");
+  });
+
+  it("renders the selected row when browsing away from the current song", () => {
+    const output = renderStationScreen(makeState(), false, 120, 32);
+    const playlistSection = output.split("Playlist Window")[1] ?? "";
+    expect(playlistSection).toContain("Track 5");
+    expect(playlistSection).not.toContain("Track 2                                                       Author 2");
+  });
+
+  it("does not embed dim marker ANSI codes inside an inverse-selected row", () => {
+    const output = renderStationScreen(makeState(), true, 120, 32);
+    const selectedRow = output.split("\n").find((line) => line.includes("Track 5")) ?? "";
+    expect(selectedRow).toContain(`${String.fromCharCode(27)}[7m`);
+    expect(selectedRow).not.toContain(`${String.fromCharCode(27)}[90m`);
+  });
+
+  it("keeps the current row fully styled as the playhead row when current and selected match", () => {
+    const output = renderStationScreen(makeState({ current: makeTrack(5), index: 5, selectedIndex: 5, playlistWindowStart: 4 }), true, 120, 32);
+    const playlistSection = output.split("Playlist Window")[1] ?? "";
+    const currentRow = playlistSection.split("\n").find((line) => line.includes("Track 5")) ?? "";
+    expect(currentRow).toContain("►");
+    expect(currentRow).not.toContain(`${String.fromCharCode(27)}[7m`);
   });
 });

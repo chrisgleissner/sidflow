@@ -482,7 +482,13 @@ export async function runStationCli(
             terminalSize.rows,
             getStationReservedRows(featuresJsonl),
           );
-          playlistWindowStart = resolvePlaylistWindowStart(filteredIndices, stationIndex, playlistRows, playlistWindowStart);
+          playlistWindowStart = resolvePlaylistWindowStart(
+            filteredIndices,
+            stationIndex,
+            effectiveSelectedIndex,
+            playlistRows,
+            playlistWindowStart,
+          );
           const selectedTrack = stationQueue[effectiveSelectedIndex];
           renderer.render({
             phase: "station",

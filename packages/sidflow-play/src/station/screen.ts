@@ -55,11 +55,7 @@ function resolvePlaylistLayout(width: number): PlaylistLayout {
 
 function renderPlaylistMarker(enabled: boolean, isCurrent: boolean, isSelected: boolean): string {
   const marker = isCurrent ? "►" : isSelected ? " " : "";
-  const padded = marker.padStart(MARKER_COLUMN_WIDTH, " ");
-  if (isCurrent) {
-    return colorize(enabled, ANSI.brightGreen, padded);
-  }
-  return subtle(enabled, padded);
+  return marker.padStart(MARKER_COLUMN_WIDTH, " ");
 }
 
 function formatPlaylistRow(
@@ -220,6 +216,7 @@ export function moveCurrentInMatches(matches: number[], currentIndex: number, di
 export function resolvePlaylistWindowStart(
   filteredIndices: number[],
   playingIndex: number,
+  selectedIndex: number,
   visibleRows: number,
   previousWindowStart: number,
 ): number {
@@ -230,6 +227,21 @@ export function resolvePlaylistWindowStart(
   const rows = Math.max(1, visibleRows);
   const maxWindowStart = Math.max(0, filteredIndices.length - rows);
   let windowStart = Math.max(0, Math.min(previousWindowStart, maxWindowStart));
+  const selectedPosition = filteredIndices.indexOf(selectedIndex);
+  const visibleFocusPosition = selectedPosition >= 0 ? selectedPosition : filteredIndices.indexOf(playingIndex);
+
+  if (visibleFocusPosition >= 0) {
+    if (visibleFocusPosition < windowStart) {
+      windowStart = visibleFocusPosition;
+    } else if (visibleFocusPosition >= windowStart + rows) {
+      windowStart = visibleFocusPosition - rows + 1;
+    }
+  }
+
+  if (selectedPosition >= 0 && selectedIndex !== playingIndex) {
+    return Math.max(0, Math.min(windowStart, maxWindowStart));
+  }
+
   const focusPosition = filteredIndices.indexOf(playingIndex);
   if (focusPosition < 0) {
     return windowStart;
@@ -297,15 +309,13 @@ function renderTrackWindow(
   const windowEnd = Math.min(filteredIndices.length, clampedWindowStart + rows);
   const lines: string[] = [];
   const layout = resolvePlaylistLayout(width);
-  const nextTrackIndex = currentIndex < queue.length - 1 ? currentIndex + 1 : -1;
 
   for (let matchPosition = clampedWindowStart; matchPosition < windowEnd; matchPosition += 1) {
     const index = filteredIndices[matchPosition]!;
     const isCurrent = index === currentIndex;
     const isSelected = index === selectedIndex;
     const track = queue[index]!;
-    const nextMarker = index === nextTrackIndex && !isCurrent ? colorize(enabled, ANSI.brightYellow, ">") : " ";
-    lines.push(`${nextMarker} ${formatPlaylistRow(
+    lines.push(formatPlaylistRow(
       enabled,
       track,
       index,
@@ -314,7 +324,7 @@ function renderTrackWindow(
       isCurrent,
       isSelected,
       layout,
-    )}`);
+    ));
   }
 
   while (lines.length < rows) {
@@ -366,9 +376,9 @@ function renderFilterBar(state: StationScreenState, enabled: boolean, width: num
 function renderControls(enabled: boolean, width: number): string[] {
   return [
     truncate(`Controls  ←/→ prev/next   ↑/↓ move   Enter play   Space pause`, width),
+    truncate(`Browse    PgUp/PgDn page   ↑/↓ step   Enter on live track = no-op`, width),
     truncate(`Filter    * stars   / text   Esc clear`, width),
-    truncate(`Rate      0-5 rate   l like   d dislike   s skip`, width),
-    truncate(`Other     h shuffle   g rebuild   r refresh   w save   o open   q quit`, width),
+    truncate(`Rate      0-5 rate   l like   d dislike   s skip   h shuffle   g rebuild   r refresh   w save   o open   q quit`, width),
   ].map((line) => subtle(enabled, line));
 }
 

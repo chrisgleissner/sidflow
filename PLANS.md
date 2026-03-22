@@ -228,6 +228,8 @@ All of the following must be true:
 - Fix all Station CLI functional, rendering, and UX issues.
 - Implement deterministic, composable `stars + text` filtering with always-visible explicit state.
 - Eliminate ambiguous key bindings, stale rendering artifacts, and unexpected viewport jumps.
+- Keep the reverse-highlighted selection visible and moving correctly while browsing, remove the obsolete next-track `>` marker, allow selecting the currently playing song without changing playback state, and support fast PgUp/PgDn selection jumps.
+- Strengthen playlist update reliability so left/right playback navigation always moves the live-song marker, scan edge conditions that can desynchronize the playlist from `Now Playing`, and harden reverse-marker rendering at the same time.
 
 **Acceptance criteria**
 - [ ] `*` then `3` applies a `stars >= 3` filter immediately and consistently.
@@ -236,8 +238,13 @@ All of the following must be true:
 - [ ] Rendering leaves no stale characters after repeated updates, playback changes, or refreshes.
 - [ ] `r` performs a hard full-screen redraw and restores a clean screen.
 - [ ] Playlist viewport obeys the explicit bottom-buffer playback rule and never jumps on `Enter` play.
+- [ ] Reverse highlighting never disappears or gets stuck while the selected song changes, and the selected row stays visible while browsing.
+- [ ] Left/right playback navigation always moves the live-song marker in the playlist when the song changes, with no stale or missing current-song indicator.
 - [ ] Controls are compressed to four lines and understandable at a glance.
 - [ ] No duplicate or ambiguous key bindings remain.
+- [ ] The obsolete next-track `>` marker is removed and playlist rows start two characters further left.
+- [ ] Selecting the currently playing song is a no-op for playback and does not corrupt selection rendering.
+- [ ] `PgUp` and `PgDn` jump the selection by a full visible page in both behavior and on-screen guidance.
 - [ ] Generated and reloaded playlists contain unique songs only; no duplicate song appears twice in one playlist.
 - [ ] Shuffle can reshuffle the current playlist order without changing its song set.
 - [ ] Playlist save/load works through an explicit dialog that can show previously saved playlist names.
@@ -253,10 +260,13 @@ All of the following must be true:
   - [ ] Ensure every dynamic line is written with cursor positioning plus clear-to-end-of-line.
   - [ ] Make the now-playing area fixed-height and fully overwritten on every refresh.
   - [ ] Implement `r` as clear-screen + cursor-home + full redraw.
+  - [ ] Eliminate nested ANSI/reset interactions that can break the current-row marker or reverse-selected row styling.
 - [ ] Phase 3 — Viewport logic
   - [ ] Apply the strict playback viewport rule with `bottom_buffer = 5`.
   - [ ] Keep user selection movement independent from playback scrolling.
   - [ ] Ensure `Enter` plays the selected track without recentering or otherwise jumping the viewport.
+  - [ ] Keep the selected row visible whenever browsing moves it away from the playhead, without letting reverse highlighting disappear off-screen.
+  - [ ] Support full-page `PgUp` / `PgDn` selection jumps that use the current visible playlist height.
 - [ ] Phase 4 — UX compression
   - [ ] Replace verbose help blocks with the required four grouped control lines.
   - [ ] Add a dedicated single-line filter bar with explicit sections and separators.
@@ -264,7 +274,7 @@ All of the following must be true:
 - [ ] Add explicit save/load playlist controls and a compact modal dialog for naming, listing, and loading playlists.
 - [ ] Phase 5 — Visual polish
   - [ ] Preserve strict playlist column alignment: `index | stars | duration | title | composer | year` plus playback/selection markers.
-  - [ ] Clearly differentiate current track, selected row, and next-track marker.
+  - [ ] Clearly differentiate current track and selected row while removing the obsolete next-track marker.
   - [ ] Fix corrupted or stale status-line behavior and validate repeated redraw stability.
 - [ ] Guarantee queue uniqueness across generation, refresh, shuffle, save, and load operations.
 
@@ -295,6 +305,9 @@ All of the following must be true:
   - Run 3: 1705 pass, 0 fail, 6179 expect() calls. Ran 1705 tests across 172 files. [22.66s]
 - 2026-03-21 — Follow-up user addendum requires a first-class fixed-width star rating column in the station playlist window. The implementation plan is to normalize the existing per-track station ratings map into `[0,5]`, precompute `[★★★★★]` strings, insert the `rating(7)` column immediately after the marker, and lock the playlist row renderer to a deterministic column contract with snapshot/property/regression coverage. Validation next: `bun run build:quick`, focused station layout tests, then `bun run build` and `bun run test` three consecutive times.
 - 2026-03-21 — Additional follow-up TODO recorded: add a fast minimum-star filter shortcut alongside the existing `/` text filter. This is explicitly deferred while finishing the fixed-width rating-column integration and test coverage.
+- 2026-03-21 — Follow-up user addendum: reverse-highlight selection can disappear or appear stuck while `Selected x/100` keeps changing, the small `>` next-track marker is no longer wanted, selecting the live song must stay a no-op, and PgUp/PgDn selection jumps must be explicitly supported. Next change: make viewport anchoring selection-aware, remove the extra prefix marker from playlist rows, and add regression coverage for selection visibility.
+- 2026-03-21 — Implemented selection-aware station viewport anchoring so browse selection stays visible instead of drifting off-screen behind the playhead. Removed the obsolete next-track `>` prefix, shifted playlist rows left by two characters, kept Enter-on-current as a no-op, and surfaced PgUp/PgDn behavior in the controls block. Focused validation passed with `bun run build:quick`, `bun test packages/sidflow-play/test/station-screen.test.ts packages/sidflow-play/test/station-input.test.ts` (`93 pass, 0 fail`), and `bun test packages/sidflow-play/test/cli.test.ts` (`99 pass, 0 fail`).
+- 2026-03-21 — Follow-up user report adds a stronger reliability requirement: the live-song marker sometimes fails to move even though playback and `Now Playing` advance, and reverse selection can still degrade. Root-cause audit identified nested ANSI marker styling inside playlist rows as a likely source of broken current/inverse rendering, so the next patch removes inner marker colorization, adds explicit current-vs-selected row regressions, and widens station navigation validation before pushing.
 - 2026-03-20 — Follow-up user request: make the station demo default to the latest cached `sidflow-data` release bundle instead of an ambiguous local export, with only a once-per-day latest-release check. Add explicit flags for forcing the latest local export or for pointing at a specific local similarity database so the active rating dataset is obvious. Validation next: implement remote-release cache resolution plus source display, update the wrapper/help text, add focused CLI tests for remote cache reuse and local overrides, then rerun build + full tests 3x.
   - Completed: `sidflow-play station-demo` now defaults to the latest cached `sidflow-data` release bundle, checks GitHub for a newer release at most once per day, and surfaces the active dataset source in the TUI. Added explicit `--force-local-db` and `--local-db` controls while keeping `--db` as a compatibility alias, and updated `scripts/run-station-demo.sh` so it no longer forces a local export by default.
   - Validation: `bun run build:quick`; `bun test packages/sidflow-play/test/cli.test.ts` => 42 pass, 0 fail, 129 expect() calls; `bun run build`; `bun run test` x3.

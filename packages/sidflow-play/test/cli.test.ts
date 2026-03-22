@@ -945,7 +945,7 @@ describe("runPlayCli", () => {
     expect(output).toContain("Now Playing");
     expect(output).toContain("Playlist Window");
     expect(output).toContain("[Filter] none");
-    expect(output).toContain("Other     h shuffle   g rebuild   r refresh   w save   o open   q quit");
+    expect(output).toContain("Browse    PgUp/PgDn page   ↑/↓ step   Enter on live track = no-op");
     expect(output).toContain("Flow is sequenced by simila");
     expect(output).not.toContain("song8.sid");
   });
@@ -1052,8 +1052,7 @@ describe("runPlayCli", () => {
     );
 
     expect(screen.split("\n").length).toBeLessThanOrEqual(32);
-    expect(screen).toContain(`${String.fromCharCode(27)}[92m ►`);
-    expect(screen).toContain(`${String.fromCharCode(27)}[93m>`);
+    expect(screen).toContain(`${String.fromCharCode(27)}[92m001/020  ►`);
     expect(screen).toContain(`${String.fromCharCode(27)}[7m`);
     expect(screen).toContain("[★★★★★]");
     expect(screen).toContain("[☆☆☆☆☆]");
@@ -1572,7 +1571,7 @@ describe("runPlayCli", () => {
     expect(output).toContain("Selected 3/100:");
     expect(output).toContain("Started selected track 3/100.");
     expect(output).toContain("001/100  ► [");
-    expect(output).toContain("> 002/100");
+    expect(output).toContain("002/100    [");
     expect(output).toContain("Paused ");
     expect(output).toContain("Resumed ");
     expect(playbackEvents).toContain("pause");
@@ -2372,7 +2371,7 @@ describe("station playlist rating column layout", () => {
     expect(rows[0]).toContain("[★★★★☆]");
     expect(rows[0]).toContain("1:00 SX-64 Demo");
     expect(rows[1]).toContain("002/004");
-    expect(rows[1]).toContain("> ");
+    expect(rows[1]).not.toContain("> ");
     expect(rows[1]).toContain("[★★★☆☆]");
     expect(rows[1]).toContain("1:00 Monty on the Run");
     expect(rows[2]).toContain("[☆☆☆☆☆]  1:00 Lightforce");
@@ -2383,7 +2382,7 @@ describe("station playlist rating column layout", () => {
     expect(rows[1]).toContain("1985");
     expect((rows[0]?.indexOf("1984") ?? -1)).toBeGreaterThan(rows[0]?.indexOf("Katsenos") ?? -1);
     expect((rows[1]?.indexOf("1985") ?? -1)).toBeGreaterThan(rows[1]?.indexOf("Rob Hubbard") ?? -1);
-    expect(new Set(rows.map((row) => row.length))).toEqual(new Set([100]));
+    expect(new Set(rows.map((row) => row.length))).toEqual(new Set([98]));
   });
 
   test("keeps rating and downstream columns aligned for long titles", () => {
@@ -2433,7 +2432,7 @@ describe("station playlist rating column layout", () => {
     expect(rows[0]).toContain("[★★★★★]");
     expect(rows[0]).toContain("1:00 A Very Long Demo Title");
     expect(rows[1]).toContain("002/002");
-    expect(rows[1]).toContain("> ");
+    expect(rows[1]).not.toContain("> ");
     expect(rows[1]).toContain("[★☆☆☆☆]");
     expect(rows[1]).toContain("1:00 Short Title");
     expect(rows[0]?.indexOf("[★★★★★]")).toBe(rows[1]?.indexOf("[★☆☆☆☆]"));
