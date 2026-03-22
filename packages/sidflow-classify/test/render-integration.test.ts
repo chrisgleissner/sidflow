@@ -36,12 +36,12 @@ interface RenderTestContext {
  */
 async function isSidplayfpCliAvailable(): Promise<boolean> {
   try {
-    const proc = Bun.spawn(["which", "sidplayfp"], {
-      stdout: "pipe",
-      stderr: "pipe",
+    const result = spawnSync("which", ["sidplayfp"], {
+      stdio: "ignore",
+      timeout: 5_000,
+      killSignal: "SIGKILL",
     });
-    await proc.exited;
-    return proc.exitCode === 0;
+    return result.status === 0 && result.signal === null;
   } catch {
     return false;
   }
@@ -90,7 +90,7 @@ async function renderWithSidplayfpCli(
   outputPath: string,
   format: RenderFormat = "wav",
   chip: "6581" | "8580r5" = "6581",
-  targetDurationSeconds = 60
+  targetDurationSeconds = 2
 ): Promise<boolean> {
   try {
     const args = [
@@ -100,9 +100,9 @@ async function renderWithSidplayfpCli(
       sidFile,
     ];
 
-    const watchdogMs = Math.max(15_000, targetDurationSeconds * 1000 + 5_000);
+    const watchdogMs = Math.max(10_000, targetDurationSeconds * 1000 + 4_000);
     const result = spawnSync("sidplayfp", args, {
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: "ignore",
       timeout: watchdogMs,
       killSignal: "SIGKILL",
       encoding: "utf8",
@@ -200,7 +200,7 @@ describe("Step 8: Integration tests (render engines)", () => {
         outputPath,
         "wav",
         "6581",
-        10
+        2
       );
 
       expect(success).toBe(true);

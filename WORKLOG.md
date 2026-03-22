@@ -149,6 +149,34 @@ Measured outputs:
 Next step queued:
 - Run full repository `build` and `test` gates and record the final results here
 
+### Phase 5: Full repository validation and test-harness hardening
+
+Commands run:
+
+```bash
+bun run build
+npm run test:ci
+```
+
+Observed outcomes:
+- `bun run build` completed successfully
+- `npm run test:ci` completed successfully with exit code `0`
+- A separate local repro established that `packages/sidflow-classify/test/render-integration.test.ts` passes under direct coverage execution but can hang when the entire test run is wrapped by `scripts/run-with-timeout.sh`
+
+Follow-up hardening change:
+- Updated `packages/sidflow-classify/test/render-integration.test.ts` to avoid the Bun-based `which sidplayfp` probe, switch to `spawnSync` availability detection, reduce the sidplayfp render duration from `10s` to `2s`, tighten the watchdog window, and stop piping child stderr in the integration helper
+
+Validation evidence:
+- Direct isolated repro: `node scripts/run-bun.mjs test packages/sidflow-classify/test/render-integration.test.ts --coverage --coverage-reporter=lcov --exclude=**/*.spec.ts --exclude=**/tests/e2e/** --exclude=**/dist/**` — PASS (`17 pass, 0 fail`)
+- Direct suite run written to `tmp/phase-ab-direct-1774189212/test.log` with `tmp/phase-ab-direct-1774189212/test.status = 0`
+
+Coverage snapshot for key Phase A/B files from merged LCOV:
+- `packages/sidflow-play/src/station/queue.ts` — `467/503` (`92.8%`)
+- `packages/sidflow-classify/src/deterministic-ratings.ts` — `301/328` (`91.8%`)
+- `packages/sidflow-classify/src/essentia-frame-features.ts` — `222/269` (`82.5%`)
+- `packages/sidflow-common/src/jsonl-schema.ts` — `11/11` (`100.0%`)
+- `packages/sidflow-web/app/api/feedback/sync/route.ts` — `90/105` (`85.7%`)
+
 ---
 
 ## 2026-03-22 — Phase 5: Repository build and test validation (final gates)
