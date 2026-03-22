@@ -1,6 +1,25 @@
 # Changelog
 
 
+## 0.5.2 (2026-03-22)
+
+- Merge pull request #84 from chrisgleissner/feat/improve-classification
+- ci: warm up /api/play before k6 perf smoke to prevent WASM-init flakiness
+- feat: implement playback session stream preparation and refactor related API routes
+- test(ci): stabilize render integration coverage
+- fix: address Copilot PR review comments
+- fix: update chunk size for sidflow-classify in coverage batch processing; enhance validation gates in WORKLOG
+- fix: remove existing coverage directory before running coverage batches
+- fix: adjust chunk sizes for sidflow-classify and sidflow-web in coverage batch processing
+- Add unit tests for deterministic ratings and feedback sync route; implement validation script for phase A/B
+- Update README formatting and headings
+- Clarify SIDFlow project description [skip ci]
+- Revise development status note in README [skip ci]
+- docs: streamline README.md for clarity and conciseness, update installation and usage instructions
+- docs: update README.md to clarify SID Flow Station usage and add CLI player description
+- chore: update CHANGES.md for 0.5.1
+
+
 ## 0.5.1 (2026-03-22)
 
 - Merge pull request #83 from chrisgleissner/test/coverage
