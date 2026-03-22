@@ -198,10 +198,90 @@ Template:
 - Root cause #5: Station CLI has no minimum similarity threshold — accepts any cosine score
 
 **Follow-ups**
-- Implement Phase A quickfixes (A1–A4) as separate task
-- Implement Phase B feature extraction + 24D vector as separate task
-- Implement Phase C advanced model changes when B is validated
-- Implement Phase D self-improvement system when C is stable
+- ~~Implement Phase A quickfixes (A1–A4) as separate task~~ DONE
+- ~~Implement Phase B feature extraction + 24D vector as separate task~~ DONE
+- Implement Phase C advanced model changes — see active task below
+- Implement Phase D self-improvement system — see active task below
+
+---
+
+### Task: Station & Similarity System — Phase C and D (2026-03-22)
+
+**User request (summary)**
+- Implement Phase C (multi-centroid intent model, weighted cosine verification, adventure radius expansion) and Phase D (training pair derivation, metric learning MLP, champion/challenger evaluation, retraining scheduler, rollback mechanism) on top of the completed Phase A/B system.
+- Full end-to-end: CLI commands for training/evaluation/rollback, test suites, and measurable validation.
+
+**Constraints**
+- Offline-first, CPU-only, deterministic
+- No external ML services
+- Must not degrade Phase A/B functionality
+- Training must complete within 2 minutes on commodity hardware
+- Coverage ≥ 80% on new code
+
+**Plan (checklist)**
+
+Phase C — Advanced model changes:
+- [ ] C1: Multi-centroid intent model — new `packages/sidflow-play/src/station/intent.ts`
+  - `buildIntentModel()`: pairwise distance check; k-means k=2 when max dist > 0.5
+  - Integrate with `buildStationQueue` to generate per-centroid candidates and interleave
+- [ ] C2: Weighted cosine with dimension groups — verify Phase B3's PERCEPTUAL_VECTOR_WEIGHTS alignment
+  - spectral dims 0–7: weight 1.0; temporal dims 8–13: weight 1.2; MFCC dims 14–18: weight 0.8; derived dims 19–23: weight 1.5
+  - Add explicit unit test proving weighted ≠ unweighted similarity
+- [ ] C3: Adventure radius expansion — replace score-exponent model in `queue.ts`
+  - `min_sim = max(0.50, 0.82 - adventure * 0.03)`; hard floor 0.50
+  - 70/30 exploit/explore split in `chooseStationTracks`
+  - Acceptance: adventure=0 → all tracks >0.82, adventure=5 → tracks 0.67–0.95, none <0.50
+
+Phase D — Self-improvement system:
+- [ ] D1: Training pair derivation — new `packages/sidflow-train/src/pair-builder.ts`
+  - Positive pairs: like+like same session, play_complete sequences
+  - Negative pairs: like vs dislike, like vs skip_early
+  - Generate triplets (anchor, positive, negative) and ranking pairs
+  - Acceptance: ≥50 valid pairs from 100 events
+- [ ] D2: Metric learning MLP — new `packages/sidflow-train/src/metric-learning.ts`
+  - Architecture: 24 → 48 → 24, pure TypeScript (no external ML libs for training)
+  - Triplet loss + margin ranking loss
+  - Deterministic via seeded PRNG, CPU-only, <2 min training for 50K tracks
+  - Acceptance: positive pairs closer than negative pairs >70% accuracy
+- [ ] D3: Evaluation system — new `packages/sidflow-train/src/evaluate.ts`
+  - 5 metrics: holdout accuracy ≥0.6, coherence ≥0.70, diversity ≥40%, drift ≤0.15, feedback correlation ≥baseline
+  - Promote if ≥3/5 pass; champion/challenger promotion logic
+- [ ] D4: Retraining scheduler — new `packages/sidflow-train/src/scheduler.ts`
+  - Trigger: ≥50 events OR time interval
+  - Full automation: load → train → evaluate → promote/reject
+- [ ] D5: Rollback mechanism — extend `packages/sidflow-train/src/cli.ts`
+  - `sidflow-train --rollback <version>` reverts to versioned model
+  - Maintain last 5 models in versioned directories
+  - Acceptance: rollback restores exact behavior deterministically
+
+CLI deliverables:
+- [ ] `sidflow-train` — extended with `--rollback`, `--list-models`, `--auto` (trigger scheduler)
+- [ ] Model versioning in `data/model/` with `current/`, `v1/`, `v2/`, ... `v5/`
+
+Test suites:
+- [ ] `packages/sidflow-play/test/intent.test.ts` — clustering correctness
+- [ ] `packages/sidflow-play/test/queue-adventure.test.ts` — radius expansion, exploit/explore split
+- [ ] `packages/sidflow-train/test/pair-builder.test.ts` — pair derivation from 100 events
+- [ ] `packages/sidflow-train/test/metric-learning.test.ts` — MLP forward/backward, loss functions, convergence
+- [ ] `packages/sidflow-train/test/evaluate.test.ts` — evaluation system, promotion logic
+- [ ] `packages/sidflow-train/test/scheduler.test.ts` — scheduler trigger logic
+
+Validation gates:
+- [ ] `bun run build` passes
+- [ ] All new tests pass 3 consecutive times
+- [ ] No Phase A/B regressions
+
+**Acceptance criteria**
+- Intent model: mixed-preference input produces dual-cluster candidates; no collapse into midpoint
+- Adventure: min_sim >= 0.50 enforced; higher adventure increases diversity measurably
+- Pair builder: ≥50 valid pairs from 100 feedback events
+- MLP: positive pairs rank higher than negative pairs >70% of the time after training
+- Evaluation: automatic pass/fail on all 5 metrics; promotion correct
+- Scheduler: automated pipeline runs without manual intervention
+- Rollback: outputs identical after rollback to version N
+
+**Progress log**
+- 2026-03-22 — Started Phase C/D implementation. Phase A and B confirmed complete. Mapping existing code to gaps: C1 needs new `intent.ts`; C2 weights are already laid out correctly in `PERCEPTUAL_VECTOR_WEIGHTS` (just needs verification test); C3 requires replacing `chooseStationTracks` score-exponent model; D1–D5 are all new files in `@sidflow/train`.
 
 ---
 
