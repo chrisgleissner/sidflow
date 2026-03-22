@@ -2175,6 +2175,31 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
             </div>
           </div>
 
+          <div className="pt-2">
+            <ControlRow title="Playlist" testId="play-control-row-playlist">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => {
+                    void rebuildPlaylist();
+                  }}
+                  disabled={isLoading || isAudioLoading}
+                >
+                  <RefreshCw className="h-4 w-4" /> Refresh
+                </Button>
+                <SaveQueueDialog
+                  currentQueue={[currentTrack, ...upcomingTracks].filter((t): t is PlaylistTrack => t !== null)}
+                  onSaved={() => {
+                    notifyStatus('Playlist saved successfully!', false);
+                  }}
+                />
+                <PlaylistBrowser onLoadPlaylist={handleLoadPlaylist} />
+              </div>
+            </ControlRow>
+          </div>
+
           {currentTrack && (
             <div className="rounded border border-border/60 bg-muted/30 p-3 space-y-2">
               <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
@@ -2281,31 +2306,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                   )}
                 </div>
               )}
-
               <div className="space-y-2 pt-2">
-                <ControlRow title="Playlist" testId="play-control-row-playlist">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1"
-                      onClick={() => {
-                        void rebuildPlaylist();
-                      }}
-                      disabled={isLoading || isAudioLoading}
-                    >
-                      <RefreshCw className="h-4 w-4" /> Refresh
-                    </Button>
-                    <SaveQueueDialog
-                      currentQueue={[currentTrack, ...upcomingTracks].filter((t): t is PlaylistTrack => t !== null)}
-                      onSaved={() => {
-                        notifyStatus('Playlist saved successfully!', false);
-                      }}
-                    />
-                    <PlaylistBrowser onLoadPlaylist={handleLoadPlaylist} />
-                  </div>
-                </ControlRow>
-
                 <ControlRow title="Rate" testId="play-control-row-rate">
                   <div className="flex flex-wrap gap-2">
                     <FavoriteButton
