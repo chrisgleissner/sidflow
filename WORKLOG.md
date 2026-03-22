@@ -834,17 +834,16 @@ Full redesign covers: weighted cosine similarity, confidence-aware cold start, m
 
 **C1 — Multi-centroid intent model**
 - New file: `packages/sidflow-play/src/station/intent.ts`
-- Exports: `buildIntentModel()`, `kMeans2()`, `interleaveClusterResults()`, `weightedCosine()`
-- `buildIntentModel`: computes pairwise cosine distances; if max distance > 0.5, runs k-means k=2 (up to 100 iterations) to detect dual-cluster preferences; builds per-cluster `{ trackIds, weights, centroid }`
-- `kMeans2`: seeded deterministic k-means with cosine distance; handles degenerate cases (empty clusters reset to random seed track)
-- `interleaveClusterResults`: merges two arrays by alternating elements; shorter exhausted first
-- `weightedCosine`: applies per-dimension group weights (spectral 1.0 / temporal 1.2 / MFCC 0.8 / derived 1.5) to produce weighted cosine similarity
+- Exports: `buildIntentModel()`, `kMeans2()`, `interleaveClusterResults()`, and cosine helpers
+- `buildIntentModel`: computes pairwise cosine distances; if max distance > 0.5, runs k-means k=2 (up to 50 iterations via `KMEANS_MAX_ITER`) to detect dual-cluster preferences; builds per-cluster `{ trackIds, weights, centroid }`
+- `kMeans2`: deterministic k-means seeded from the most distant pair; collapses back to a single cluster if one side ends up empty
+- `interleaveClusterResults`: merges two arrays by alternating elements while preserving intra-cluster order
 - Integration: `buildStationQueue` reads `intentModel.multiCluster`; if true, calls `recommendFromFavorites` for each cluster with half-limit, interleaves, and dedupes by `track_id`
 
-**C2 — Weighted cosine with dimension groups**
-- `weightedCosine()` in `intent.ts` uses `PERCEPTUAL_VECTOR_WEIGHTS` (dims 0–7: 1.0, 8–13: 1.2, 14–18: 0.8, 19–23: 1.5)
-- Added unit test to `intent.test.ts` confirming weighted ≠ unweighted for dimension-skewed vectors
-- Results verified: weighted similarity differs measurably for tracks heavy in different dimension ranges
+**C2 — Cosine helpers and validation**
+- `intent.ts` exposes pure unweighted cosine helpers (`cosineSim`, `cosineDist`, `weightedCentroid`) used by `buildIntentModel` and `kMeans2`
+- Added unit tests in `intent.test.ts` covering identical, orthogonal, and centroid-construction cases for the intent math helpers
+- Results verified: intent clustering remains deterministic and favors near-identical tracks over distant ones without introducing a second weighted-similarity implementation in the station layer
 
 **C3 — Adventure radius expansion**
 - Replaced the old score-flattening exponent with `computeAdventureMinSimilarity(adventure)`:

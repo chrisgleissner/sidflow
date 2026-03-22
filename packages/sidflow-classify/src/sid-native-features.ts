@@ -65,10 +65,18 @@ export function createHybridFeatureExtractor(
       wavFeatureExtractor(options),
       sidNativeFeatureExtractor(options),
     ]);
-    return {
+    const merged: FeatureVector = {
       ...wavFeatures,
-      ...sidFeatures,
     };
+
+    for (const [key, value] of Object.entries(sidFeatures)) {
+      if (Object.prototype.hasOwnProperty.call(merged, key)) {
+        continue;
+      }
+      merged[key] = value;
+    }
+
+    return merged;
   };
 }
 

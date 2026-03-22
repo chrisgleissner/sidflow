@@ -2,7 +2,7 @@
 
 import process from "node:process";
 import path from "node:path";
-import { readFile, copyFile, readdir } from "node:fs/promises";
+import { readFile, copyFile } from "node:fs/promises";
 import {
   parseArgs,
   formatHelp,

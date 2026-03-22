@@ -19,8 +19,10 @@ import path from "node:path";
 import {
   pathExists,
   ensureDir,
+  stringifyDeterministic,
   type FeedbackRecord,
   type ClassificationRecord,
+  type JsonValue,
 } from "@sidflow/common";
 import { loadFeedback } from "./index.js";
 import { deriveTrainingPairs } from "./pair-builder.js";
@@ -89,7 +91,7 @@ async function loadState(modelPath: string): Promise<SchedulerState> {
 async function saveState(modelPath: string, state: SchedulerState): Promise<void> {
   await ensureDir(modelPath);
   const filePath = path.join(modelPath, STATE_FILENAME);
-  await writeFile(filePath, JSON.stringify(state, null, 2), "utf8");
+  await writeFile(filePath, `${stringifyDeterministic(state as unknown as JsonValue)}\n`, "utf8");
 }
 
 // ---------------------------------------------------------------------------
@@ -178,19 +180,27 @@ export async function saveVersionedModel(model: MetricModel, modelPath: string):
 
   // Promote new model to current
   await ensureDir(currentPath);
-  await writeFile(currentFile, JSON.stringify(model, null, 2), "utf8");
+  await writeFile(currentFile, `${stringifyDeterministic(model as unknown as JsonValue)}\n`, "utf8");
 }
 
 // ---------------------------------------------------------------------------
-// Simple holdout split (deterministic by index)
+// Simple holdout split with deterministic ordering
 // ---------------------------------------------------------------------------
 
 function splitHoldout<T>(items: T[]): { train: T[]; holdout: T[] } {
-  const holdoutCount = Math.floor(items.length * HOLDOUT_FRACTION);
-  // Take last N as holdout (most recent events → most representative)
+  const sorted = [...items].sort((left, right) => {
+    const leftTs = typeof (left as { ts?: unknown }).ts === "string" ? ((left as { ts: string }).ts) : "";
+    const rightTs = typeof (right as { ts?: unknown }).ts === "string" ? ((right as { ts: string }).ts) : "";
+    if (leftTs !== rightTs) {
+      return leftTs.localeCompare(rightTs);
+    }
+    return stringifyDeterministic(left as unknown as JsonValue, 0)
+      .localeCompare(stringifyDeterministic(right as unknown as JsonValue, 0));
+  });
+  const holdoutCount = Math.floor(sorted.length * HOLDOUT_FRACTION);
   return {
-    train: items.slice(0, items.length - holdoutCount),
-    holdout: items.slice(items.length - holdoutCount),
+    train: sorted.slice(0, sorted.length - holdoutCount),
+    holdout: sorted.slice(sorted.length - holdoutCount),
   };
 }
 

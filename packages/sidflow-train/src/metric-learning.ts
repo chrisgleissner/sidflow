@@ -207,7 +207,6 @@ function backprop(
     for (let k = 0; k < OUTPUT_DIM; k++) {
       g.dW2[j * OUTPUT_DIM + k] = hidden[j]! * dOutput[k]!;
     }
-    g.db2[j] = 0; // db2 handled below
   }
   for (let k = 0; k < OUTPUT_DIM; k++) {
     g.db2[k] = dOutput[k]!;

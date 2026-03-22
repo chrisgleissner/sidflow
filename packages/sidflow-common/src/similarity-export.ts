@@ -141,6 +141,12 @@ interface PersistedTrackRow {
   last_played: string | null;
 }
 
+interface TrackColumnSupport {
+  hasTrackId: boolean;
+  hasSongIndex: boolean;
+  hasDecayedFeedback: boolean;
+}
+
 type RatingDimension = "e" | "m" | "c";
 
 type PartialRatings = Partial<TagRatings>;
@@ -827,6 +833,105 @@ function trackRowToRecommendation(row: PersistedTrackRow, score: number, rank: n
   };
 }
 
+function getTrackColumnSupport(database: Database): TrackColumnSupport {
+  const columns = database.query("PRAGMA table_info(tracks)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+  return {
+    hasTrackId: names.has("track_id"),
+    hasSongIndex: names.has("song_index"),
+    hasDecayedFeedback:
+      names.has("decayed_likes")
+      && names.has("decayed_dislikes")
+      && names.has("decayed_skips")
+      && names.has("decayed_plays"),
+  };
+}
+
+function qualifyTrackColumn(column: string, tableAlias?: string): string {
+  return tableAlias ? `${tableAlias}.${column}` : column;
+}
+
+function buildTrackIdExpression(columnSupport: TrackColumnSupport, tableAlias?: string): string {
+  if (columnSupport.hasTrackId) {
+    return qualifyTrackColumn("track_id", tableAlias);
+  }
+  const sidPath = qualifyTrackColumn("sid_path", tableAlias);
+  const songIndex = columnSupport.hasSongIndex ? qualifyTrackColumn("song_index", tableAlias) : "1";
+  return `(${sidPath} || '#' || ${songIndex})`;
+}
+
+function buildSongIndexExpression(columnSupport: TrackColumnSupport, tableAlias?: string): string {
+  return columnSupport.hasSongIndex ? qualifyTrackColumn("song_index", tableAlias) : "1";
+}
+
+function buildTrackSelectList(columnSupport: TrackColumnSupport, tableAlias?: string): string {
+  const selectParts = [
+    `${buildTrackIdExpression(columnSupport, tableAlias)} AS track_id`,
+    `${qualifyTrackColumn("sid_path", tableAlias)} AS sid_path`,
+    `${buildSongIndexExpression(columnSupport, tableAlias)} AS song_index`,
+    `${qualifyTrackColumn("vector_json", tableAlias)} AS vector_json`,
+    `${qualifyTrackColumn("e", tableAlias)} AS e`,
+    `${qualifyTrackColumn("m", tableAlias)} AS m`,
+    `${qualifyTrackColumn("c", tableAlias)} AS c`,
+    `${qualifyTrackColumn("p", tableAlias)} AS p`,
+    `${qualifyTrackColumn("likes", tableAlias)} AS likes`,
+    `${qualifyTrackColumn("dislikes", tableAlias)} AS dislikes`,
+    `${qualifyTrackColumn("skips", tableAlias)} AS skips`,
+    `${qualifyTrackColumn("plays", tableAlias)} AS plays`,
+  ];
+
+  if (columnSupport.hasDecayedFeedback) {
+    selectParts.push(
+      `${qualifyTrackColumn("decayed_likes", tableAlias)} AS decayed_likes`,
+      `${qualifyTrackColumn("decayed_dislikes", tableAlias)} AS decayed_dislikes`,
+      `${qualifyTrackColumn("decayed_skips", tableAlias)} AS decayed_skips`,
+      `${qualifyTrackColumn("decayed_plays", tableAlias)} AS decayed_plays`,
+    );
+  } else {
+    selectParts.push(
+      "0 AS decayed_likes",
+      "0 AS decayed_dislikes",
+      "0 AS decayed_skips",
+      "0 AS decayed_plays",
+    );
+  }
+
+  selectParts.push(`${qualifyTrackColumn("last_played", tableAlias)} AS last_played`);
+  return selectParts.join(", ");
+}
+
+function buildTrackIdentityWhereClause(
+  columnSupport: TrackColumnSupport,
+  trackIds: readonly string[],
+  tableAlias?: string,
+): { clause: string; params: Array<number | string> } {
+  if (trackIds.length === 0) {
+    return { clause: "0", params: [] };
+  }
+
+  if (columnSupport.hasTrackId) {
+    return {
+      clause: `${qualifyTrackColumn("track_id", tableAlias)} IN (${trackIds.map(() => "?").join(", ")})`,
+      params: [...trackIds],
+    };
+  }
+
+  const conditions: string[] = [];
+  const params: Array<number | string> = [];
+  for (const trackId of trackIds) {
+    const parsed = parseSimilarityTrackId(trackId);
+    if (columnSupport.hasSongIndex) {
+      conditions.push(`(${qualifyTrackColumn("sid_path", tableAlias)} = ? AND ${qualifyTrackColumn("song_index", tableAlias)} = ?)`);
+      params.push(parsed.sid_path, parsed.song_index);
+      continue;
+    }
+    conditions.push(`${qualifyTrackColumn("sid_path", tableAlias)} = ?`);
+    params.push(parsed.sid_path);
+  }
+
+  return { clause: conditions.join(" OR "), params };
+}
+
 function openReadonlyDatabase(dbPath: string): Database {
   return new Database(dbPath, { readonly: true });
 }
@@ -1088,15 +1193,18 @@ export function recommendFromSeedTrack(
     const limit = options.limit ?? 20;
     const profile = options.profile ?? "full";
     const excluded = new Set([options.seedTrackId, ...(options.excludeTrackIds ?? [])]);
+    const columnSupport = getTrackColumnSupport(database);
 
-    const rows = database.query(
-      `SELECT t.track_id, t.sid_path, t.song_index, t.vector_json, t.e, t.m, t.c, t.p, t.likes, t.dislikes, t.skips, t.plays, t.decayed_likes, t.decayed_dislikes, t.decayed_skips, t.decayed_plays, t.last_played, n.similarity, n.rank
-       FROM neighbors n
-       JOIN tracks t ON t.track_id = n.neighbor_track_id
-       WHERE n.profile = ? AND n.seed_track_id = ?
-       ORDER BY n.rank ASC
-       LIMIT ?`,
-    ).all(profile, options.seedTrackId, limit + excluded.size) as Array<PersistedTrackRow & { similarity: number; rank: number }>;
+    const rows = columnSupport.hasTrackId
+      ? database.query(
+        `SELECT ${buildTrackSelectList(columnSupport, "t")}, n.similarity, n.rank
+         FROM neighbors n
+         JOIN tracks t ON t.track_id = n.neighbor_track_id
+         WHERE n.profile = ? AND n.seed_track_id = ?
+         ORDER BY n.rank ASC
+         LIMIT ?`,
+      ).all(profile, options.seedTrackId, limit + excluded.size) as Array<PersistedTrackRow & { similarity: number; rank: number }>
+      : [];
 
     if (rows.length > 0) {
       return rows
@@ -1105,13 +1213,16 @@ export function recommendFromSeedTrack(
         .map((row, index) => trackRowToRecommendation(row, row.similarity, index + 1));
     }
 
-    const seed = database.query("SELECT vector_json FROM tracks WHERE track_id = ?").get(options.seedTrackId) as { vector_json: string | null } | null;
+    const seedIdentity = buildTrackIdentityWhereClause(columnSupport, [options.seedTrackId]);
+    const seed = database
+      .query(`SELECT vector_json FROM tracks WHERE ${seedIdentity.clause}`)
+      .get(...seedIdentity.params) as { vector_json: string | null } | null;
     if (!seed?.vector_json) {
       throw new Error(`Seed track ${options.seedTrackId} missing vector data in similarity export`);
     }
     const seedVector = JSON.parse(seed.vector_json) as number[];
     const candidates = database.query(
-      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, decayed_likes, decayed_dislikes, decayed_skips, decayed_plays, last_played FROM tracks",
+      `SELECT ${buildTrackSelectList(columnSupport)} FROM tracks`,
     ).all() as PersistedTrackRow[];
 
     return candidates
@@ -1137,11 +1248,13 @@ export function recommendFromFavorites(
   try {
     const limit = options.limit ?? 20;
     const excluded = new Set([...options.favoriteTrackIds, ...(options.excludeTrackIds ?? [])]);
+    const columnSupport = getTrackColumnSupport(database);
+    const favoriteIdentity = buildTrackIdentityWhereClause(columnSupport, options.favoriteTrackIds);
     const favoriteRows = database.query(
-      `SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, decayed_likes, decayed_dislikes, decayed_skips, decayed_plays, last_played
+      `SELECT ${buildTrackSelectList(columnSupport)}
        FROM tracks
-       WHERE track_id IN (${options.favoriteTrackIds.map(() => "?").join(", ")})`,
-    ).all(...options.favoriteTrackIds) as PersistedTrackRow[];
+       WHERE ${favoriteIdentity.clause}`,
+    ).all(...favoriteIdentity.params) as PersistedTrackRow[];
 
     if (favoriteRows.length === 0) {
       throw new Error("None of the favorite track IDs were found in the similarity export");
@@ -1156,7 +1269,7 @@ export function recommendFromFavorites(
     const weights = favoriteRows.map((row) => options.weightsByTrackId?.[row.track_id] ?? 1);
     const centroid = buildCentroid(vectors, weights);
     const candidates = database.query(
-      "SELECT track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, decayed_likes, decayed_dislikes, decayed_skips, decayed_plays, last_played FROM tracks",
+      `SELECT ${buildTrackSelectList(columnSupport)} FROM tracks`,
     ).all() as PersistedTrackRow[];
 
     return candidates

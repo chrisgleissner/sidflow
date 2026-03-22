@@ -124,6 +124,19 @@ describe("extractSidNativeFeaturesFromWriteTrace", () => {
 });
 
 describe("hybrid SID-native classify integration", () => {
+  it("keeps WAV-derived values when SID-native features collide on a key", async () => {
+    const featureExtractor = createHybridFeatureExtractor(
+      async () => ({ energy: 0.75, featureVariant: "test-wav" }),
+      async () => ({ energy: 0.1, sidFeatureVariant: "sid-native" }),
+    );
+
+    const features = await featureExtractor({} as Parameters<typeof featureExtractor>[0]);
+
+    expect(features.energy).toBe(0.75);
+    expect(features.featureVariant).toBe("test-wav");
+    expect(features.sidFeatureVariant).toBe("sid-native");
+  });
+
   it("writes merged WAV and SID-native features into classification JSONL", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");

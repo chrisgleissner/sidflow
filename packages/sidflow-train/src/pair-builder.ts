@@ -207,15 +207,6 @@ export function deriveTrainingPairs(records: FeedbackRecord[]): DerivedTrainingP
     }
   }
 
-  // Also build cross-session positive pairs (same track liked in multiple sessions)
-  const globalLikedTracks = new Map<string, number>();
-  for (const r of eligibleRecords) {
-    const strength = classifySignal(r.action);
-    if (isPositive(strength)) {
-      globalLikedTracks.set(toTrackId(r), Math.max(globalLikedTracks.get(toTrackId(r)) ?? 0, signalWeight(strength)));
-    }
-  }
-
   // Triplet construction: (anchor=positive, positive=other_positive, negative=negative)
   const triplets: TrainingTriplet[] = [];
   const seenTriplets = new Set<string>();
@@ -225,6 +216,7 @@ export function deriveTrainingPairs(records: FeedbackRecord[]): DerivedTrainingP
       // Use the anchor from the positive pair as the triplet anchor
       const anchor = pos.anchor;
       const positiveTrack = pos.other;
+      if (neg.anchor !== anchor) continue;
       const negativeTrack = neg.other;
 
       if (anchor === positiveTrack || anchor === negativeTrack || positiveTrack === negativeTrack) continue;

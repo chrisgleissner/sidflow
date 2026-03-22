@@ -55,9 +55,11 @@ Template:
 **User request (summary)**
 - Fully implement the deterministic SID-native plus WAV hybrid classification roadmap from `doc/research/sid-classification-enhancement-report.md`.
 - Keep the shared analysis window fixed at 15s skip plus 15s analyze for the current session and carry the implementation forward without reintroducing legacy aggregation behavior.
+- Keep SID-native augmentation strictly additive for the current implementation: WAV-derived features remain authoritative whenever both modalities expose the same concept.
+- Fix `./scripts/sid-station.sh --c64u-host c64u` against cached `sidcorr-1` SQLite bundles that predate the decayed feedback columns.
 
 **Current focus**
-- Use the new default hybrid classify path as the basis for residualization and final hybrid-vector assembly.
+- Keep the current hybrid classify path WAV-first while restoring backward-compatible station/export reads for pre-decay `sidcorr-1` bundles.
 
 **Plan (checklist)**
 - [x] I1 — align the shared WAV analysis window defaults to 15s skip + 15s analyze across classify sources and focused tests
@@ -65,9 +67,11 @@ Template:
 - [x] I2 — add a SID write-trace API to `@sidflow/libsidplayfp-wasm`
 - [x] I3 — add canonical frame compaction for SID register events
 - [x] I4 — implement SID-native feature extraction over canonical traces
+- [x] I4b — harden the default hybrid classify merge so SID-native fields never overwrite existing WAV-derived feature keys
 - [ ] I5 — residualize WAV timbre against SID-native causal features
 - [ ] I6 — build the final no-duplication 24D hybrid vector
 - [ ] I7b — propagate the unified feedback aggregates into any remaining downstream consumers
+- [x] I7c — keep similarity-export recommendation readers backward-compatible with cached pre-decay `sidcorr-1` station bundles
 - [ ] I8 — wire autonomous retraining triggers into a persistent service path
 - [ ] I9 — add the offline hybrid evaluation harness
 
@@ -78,9 +82,12 @@ Template:
 - 2026-03-22 — Implemented I2 in `packages/libsidplayfp-wasm`: a tracing SID builder/wrapper in `src/bindings/bindings.cpp`, runtime trace controls in `src/player.ts`, and focused tests for both the fake-module TS path and the rebuilt wasm runtime. Validated with `bun run scripts/build-libsidplayfp-wasm.ts --skip-check`, `packages/libsidplayfp-wasm/test/index.test.ts`, `packages/libsidplayfp-wasm/test/sid-write-trace.test.ts`, and `bun run build:quick`.
 - 2026-03-22 — Implemented I3 in `packages/sidflow-classify/src/sid-register-trace.ts`: deterministic PAL/NTSC frame-window resolution, raw SID-write bucketing, carry-forward register state snapshots, per-voice event emission, and broadcast global-register events. Validated with `packages/sidflow-classify/test/sid-register-trace.test.ts` and `bun run build:quick`.
 - 2026-03-22 — Implemented I4 in `packages/sidflow-classify/src/sid-native-features.ts` and wired it into the default classify path. The classify pipeline now merges WAV-domain features with SID-native trace-derived features by default, while keeping custom feature extractors unchanged. Validated with focused tests for pure trace aggregation, hybrid record emission, and `bun run build:quick`.
+- 2026-03-22 — Fixed the libsidplayfp-wasm full-suite blockers by releasing old `SidPlayerContext` instances before reload and by making the synthetic-tone assertions match the actual deterministic waveform behavior; fresh full-suite validation cleared the previously failing wasm batch.
+- 2026-03-22 — Added follow-up scope for two new requirements: station compatibility with cached pre-decay `sidcorr-1` SQLite bundles and an explicit WAV-first merge policy so SID-native augmentation does not replace overlapping WAV-derived fields in the current implementation.
+- 2026-03-22 — Completed I4b and I7c: `createHybridFeatureExtractor(...)` now preserves existing WAV-derived keys on collisions, and the similarity-export recommendation readers now tolerate cached pre-decay `sidcorr-1` bundles by synthesizing zero decayed aggregates when those columns are absent. Validated with focused common/classify regressions and `bun run build:quick`.
 
 **Immediate next step**
-- Start I5 by residualizing the remaining WAV timbre descriptors against the new SID-native causal feature set and threading that into the final hybrid vector builder.
+- Complete I4b and I7c, then resume I5/I6 with the clarified rule that WAV-derived features remain the trusted source wherever overlap exists.
 
 ### Task: SID-native classification enhancement audit + design (2026-03-22)
 
@@ -309,9 +316,9 @@ Phase C — Advanced model changes:
 - [x] C1: Multi-centroid intent model — new `packages/sidflow-play/src/station/intent.ts`
   - `buildIntentModel()`: pairwise distance check; k-means k=2 when max dist > 0.5
   - Integrate with `buildStationQueue` to generate per-centroid candidates and interleave
-- [x] C2: Weighted cosine with dimension groups — verify Phase B3's PERCEPTUAL_VECTOR_WEIGHTS alignment
-  - spectral dims 0–7: weight 1.0; temporal dims 8–13: weight 1.2; MFCC dims 14–18: weight 0.8; derived dims 19–23: weight 1.5
-  - Add explicit unit test proving weighted ≠ unweighted similarity
+- [x] C2: Cosine helpers and validation for intent clustering
+  - Keep the station-layer intent math on the existing pure cosine helpers rather than introducing a second weighted similarity implementation there
+  - Add explicit unit tests for cosine similarity, cosine distance, and centroid construction so the clustering logic stays deterministic and well-specified
 - [x] C3: Adventure radius expansion — replace score-exponent model in `queue.ts`
   - `min_sim = max(0.50, 0.82 - adventure * 0.03)`; hard floor 0.50
   - 70/30 exploit/explore split in `chooseStationTracks`
@@ -370,6 +377,8 @@ Validation gates:
 - 2026-03-22 — Implemented all Phase C components: `intent.ts` with `buildIntentModel` / `kMeans2` / `interleaveClusterResults`; integrated multi-centroid into `buildStationQueue`; C3 adventure radius expansion in `chooseStationTracks` (`min_sim = max(0.50, 0.82 − adventure×0.03)`) with 70/30 exploit/explore logic.
 - 2026-03-22 — Implemented all Phase D components: `pair-builder.ts` (D1), `metric-learning.ts` 24→48→24 MLP with triplet+ranking loss (D2), `evaluate.ts` 5-metric champion/challenger system (D3), `scheduler.ts` event-count + interval trigger (D4), extended `cli.ts` with `--rollback`, `--list-models`, `--auto` (D5).
 - 2026-03-22 — Wrote 80 Phase C/D tests across 6 new test files. Fixed flakiness in adventure fixture (extended `createStationDemoFixture` to 250 high-energy tracks). All tests pass 3× consecutively: 1052 pass / 0 fail (non-web packages). Build clean. COMPLETED.
+- 2026-03-22 — Addressed the remaining PR review findings in the Phase C/D files and docs: removed the unused `readdir` import from `packages/sidflow-train/src/cli.ts`, made scheduler/model persistence deterministic in `packages/sidflow-train/src/scheduler.ts`, sorted holdout inputs deterministically before splitting, removed dead `globalLikedTracks` code and fixed triplet anchor selection in `packages/sidflow-train/src/pair-builder.ts`, corrected the `db2` indexing bug in `packages/sidflow-train/src/metric-learning.ts`, fixed broken links in `doc/c64/sid-file-structure.md`, and aligned the `PLANS.md` / `WORKLOG.md` wording with the actual cosine-helper implementation in `packages/sidflow-play/src/station/intent.ts`.
+- 2026-03-22 — Revalidated the PR-comment cleanup with focused tests: `packages/sidflow-train/test/pair-builder.test.ts`, `packages/sidflow-train/test/metric-learning.test.ts`, `packages/sidflow-train/test/scheduler.test.ts`, and `packages/sidflow-play/test/intent.test.ts` all passed (`51 pass, 0 fail`). Re-ran `bun run build:quick` after those fixes and it passed (`tsc -b`).
 
 ---
 
