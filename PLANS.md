@@ -57,14 +57,14 @@ Template:
 - Keep the shared analysis window fixed at 15s skip plus 15s analyze for the current session and carry the implementation forward without reintroducing legacy aggregation behavior.
 
 **Current focus**
-- Use the new canonical frame-compaction layer as the basis for SID-native feature extraction in classify.
+- Use the new default hybrid classify path as the basis for residualization and final hybrid-vector assembly.
 
 **Plan (checklist)**
 - [x] I1 — align the shared WAV analysis window defaults to 15s skip + 15s analyze across classify sources and focused tests
 - [x] I7a — unify shared feedback decay/action semantics across common export paths and the legacy recommender
 - [x] I2 — add a SID write-trace API to `@sidflow/libsidplayfp-wasm`
 - [x] I3 — add canonical frame compaction for SID register events
-- [ ] I4 — implement SID-native feature extraction over canonical traces
+- [x] I4 — implement SID-native feature extraction over canonical traces
 - [ ] I5 — residualize WAV timbre against SID-native causal features
 - [ ] I6 — build the final no-duplication 24D hybrid vector
 - [ ] I7b — propagate the unified feedback aggregates into any remaining downstream consumers
@@ -77,9 +77,10 @@ Template:
 - 2026-03-22 — Validated the shared-consistency slice with focused tests (`feedback-aggregation`, `recommender`, `similarity-export`, `rating-aggregator-decay`) and `bun run build:quick`; all passed after fixing an isolated test helper path bug.
 - 2026-03-22 — Implemented I2 in `packages/libsidplayfp-wasm`: a tracing SID builder/wrapper in `src/bindings/bindings.cpp`, runtime trace controls in `src/player.ts`, and focused tests for both the fake-module TS path and the rebuilt wasm runtime. Validated with `bun run scripts/build-libsidplayfp-wasm.ts --skip-check`, `packages/libsidplayfp-wasm/test/index.test.ts`, `packages/libsidplayfp-wasm/test/sid-write-trace.test.ts`, and `bun run build:quick`.
 - 2026-03-22 — Implemented I3 in `packages/sidflow-classify/src/sid-register-trace.ts`: deterministic PAL/NTSC frame-window resolution, raw SID-write bucketing, carry-forward register state snapshots, per-voice event emission, and broadcast global-register events. Validated with `packages/sidflow-classify/test/sid-register-trace.test.ts` and `bun run build:quick`.
+- 2026-03-22 — Implemented I4 in `packages/sidflow-classify/src/sid-native-features.ts` and wired it into the default classify path. The classify pipeline now merges WAV-domain features with SID-native trace-derived features by default, while keeping custom feature extractors unchanged. Validated with focused tests for pure trace aggregation, hybrid record emission, and `bun run build:quick`.
 
 **Immediate next step**
-- Start I4 by extracting bounded SID-native causal features from the canonical frame-bucketed register events.
+- Start I5 by residualizing the remaining WAV timbre descriptors against the new SID-native causal feature set and threading that into the final hybrid vector builder.
 
 ### Task: SID-native classification enhancement audit + design (2026-03-22)
 

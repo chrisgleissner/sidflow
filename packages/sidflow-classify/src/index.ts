@@ -54,6 +54,8 @@ import {
   DEFAULT_ANALYSIS_WINDOW_SEC,
 } from "./audio-window.js";
 export * from "./sid-register-trace.js";
+export * from "./sid-native-features.js";
+import { createHybridFeatureExtractor, createSidNativeFeatureExtractor } from "./sid-native-features.js";
 import {
   WAV_RENDER_SETTINGS_EXTENSION,
   readWavRenderSettingsSidecar,
@@ -1324,6 +1326,8 @@ export interface FeatureVector {
 export interface ExtractFeaturesOptions {
   wavFile: string;
   sidFile: string;
+  songIndex?: number;
+  songCount?: number;
 }
 
 export type FeatureExtractor = (options: ExtractFeaturesOptions) => Promise<FeatureVector>;
@@ -1338,10 +1342,12 @@ export interface PredictRatingsOptions {
 export type PredictRatings = (options: PredictRatingsOptions) => Promise<TagRatings>;
 
 /**
- * Default feature extractor uses Essentia.js with automatic fallback to heuristic features.
+ * Default WAV feature extractor uses Essentia.js with automatic fallback to heuristic features.
  * This enables advanced audio analysis by default while maintaining robustness.
  */
 export const defaultFeatureExtractor: FeatureExtractor = essentiaFeatureExtractor;
+
+export const defaultSidNativeFeatureExtractor: FeatureExtractor = createSidNativeFeatureExtractor();
 
 /**
  * Default rating predictor uses fast, deterministic heuristic algorithm.
@@ -1515,8 +1521,11 @@ export async function generateAutoTags(
     return ra.localeCompare(rb);
   });
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
-  const featureExtractorBase = options.featureExtractor ?? defaultFeatureExtractor;
-  const featureExtractor = withFeatureExtractionPool(plan, featureExtractorBase);
+  const wavFeatureExtractorBase = options.featureExtractor ?? defaultFeatureExtractor;
+  const wavFeatureExtractor = withFeatureExtractionPool(plan, wavFeatureExtractorBase);
+  const featureExtractor = options.featureExtractor
+    ? wavFeatureExtractor
+    : createHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
   const predictRatingsOverride = options.predictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
@@ -1905,7 +1914,12 @@ export async function generateAutoTags(
 
     let extractedFeatures: FeatureVector;
     try {
-      extractedFeatures = await featureExtractor({ wavFile: job.wavPath, sidFile: job.sidFile });
+      extractedFeatures = await featureExtractor({
+        wavFile: job.wavPath,
+        sidFile: job.sidFile,
+        songIndex: job.songCount > 1 ? job.songIndex : undefined,
+        songCount: job.songCount,
+      });
     } finally {
       clearInterval(extractionHeartbeatInterval);
     }
@@ -2181,8 +2195,9 @@ export async function generateJsonlOutput(
   const startTime = Date.now();
   const sidFiles = await collectSidFiles(plan.sidPath);
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
-  // Use defaultFeatureExtractor (essentiaFeatureExtractor) for Essentia.js audio analysis
-  const featureExtractor = options.featureExtractor ?? defaultFeatureExtractor;
+  const featureExtractor = options.featureExtractor
+    ? options.featureExtractor
+    : createHybridFeatureExtractor(defaultFeatureExtractor, defaultSidNativeFeatureExtractor);
   // Use defaultPredictRatings (heuristicPredictRatings) for rating prediction
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
   const onProgress = options.onProgress;
@@ -2244,7 +2259,12 @@ export async function generateJsonlOutput(
 
       if (await pathExists(wavPath)) {
         // Extract features from WAV file
-        const rawFeatures = await featureExtractor({ wavFile: wavPath, sidFile });
+        const rawFeatures = await featureExtractor({
+          wavFile: wavPath,
+          sidFile,
+          songIndex: songCount > 1 ? songIndex : undefined,
+          songCount,
+        });
         features = rawFeatures as AudioFeatures;
 
         // If we have manual ratings with all dimensions, use them; otherwise predict

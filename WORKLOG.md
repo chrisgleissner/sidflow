@@ -166,6 +166,55 @@ The classify package now has a deterministic canonical SID event layer sitting b
 
 ---
 
+## 2026-03-22 — SID-native enhancement implementation slice: feature extraction + default hybrid classify path
+
+### Scope
+
+Implemented classify-side SID-native feature extraction over canonical frame events and wired it into the default classify pipeline so emitted records now merge WAV-domain and SID-native causal features.
+
+### Files changed
+
+- `packages/sidflow-classify/src/sid-native-features.ts`
+- `packages/sidflow-classify/src/index.ts`
+- `packages/sidflow-classify/test/sid-native-features.test.ts`
+
+### Implemented
+
+- Added `packages/sidflow-classify/src/sid-native-features.ts` with:
+  - a default SID trace provider backed by `SidAudioEngine` and the wasm write-trace API
+  - a pure `extractSidNativeFeaturesFromWriteTrace(...)` path for deterministic aggregation and testing
+  - bounded causal feature extraction for gate-onset density, rhythmic regularity, arpeggio activity, waveform occupancy, PWM activity, filter cutoff/motion, `$D418` write intensity, voice-role ratios, and ADSR pluck/pad ratios
+  - `createHybridFeatureExtractor(...)` to merge WAV and SID-native feature groups without changing custom extractor contracts
+- Updated the default classify flow in `packages/sidflow-classify/src/index.ts` so:
+  - default runs merge pooled/default WAV features with SID-native features
+  - explicit custom `featureExtractor` overrides keep their existing behavior unchanged
+  - multi-song calls now pass `songIndex` and `songCount` through feature extraction options
+- Added focused tests for:
+  - pure SID-native feature aggregation from representative raw traces
+  - stable empty-feature behavior when no trace exists
+  - end-to-end `generateAutoTags(...)` emission of merged WAV + SID-native features using an injected trace provider
+
+### Validation
+
+Commands run:
+
+```bash
+bun test packages/sidflow-classify/test/sid-register-trace.test.ts \
+  packages/sidflow-classify/test/sid-native-features.test.ts \
+  packages/sidflow-classify/test/auto-tags.test.ts
+bun run build:quick
+```
+
+Observed results:
+- focused classify suite — PASS (`9 passed, 0 failed`)
+- quick build — PASS (`tsc -b`)
+
+### Outcome
+
+The suggested next steps after I3 are now in place: the new compactor is connected to classify through a real SID-native feature extractor, the default classify path emits hybrid feature records, and focused tests cover compaction-to-feature extraction and record emission. The next roadmap step is I5: residualizing output-domain timbre against these causal SID-native features.
+
+---
+
 ## 2026-03-22 — Station similarity audit implementation (Phases A and B)
 
 ### Phase 0: Repo guidance and code-path discovery

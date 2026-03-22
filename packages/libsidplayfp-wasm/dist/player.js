@@ -100,6 +100,10 @@ export class SidAudioEngine {
         return ctx;
     }
     async loadPatchedBuffer(patched) {
+        const previousContext = this.context;
+        this.context = undefined;
+        this.configured = false;
+        this.releaseContext(previousContext);
         const ctx = await this.createConfiguredContext();
         try {
             if (!ctx.loadSidBuffer(patched)) {
@@ -109,10 +113,8 @@ export class SidAudioEngine {
             if (!ctx.reset()) {
                 throw new Error(ctx.getLastError());
             }
-            const previousContext = this.context;
             this.context = ctx;
             this.configured = true;
-            this.releaseContext(previousContext);
             return ctx;
         }
         catch (error) {
