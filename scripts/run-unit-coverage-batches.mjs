@@ -19,14 +19,14 @@ const coverageArgs = [
 
 const batchRoots = [
   { name: "libsidplayfp-wasm", dir: "packages/libsidplayfp-wasm/test", chunkSize: 10 },
-  { name: "sidflow-classify", dir: "packages/sidflow-classify/test", chunkSize: 8 },
+  { name: "sidflow-classify", dir: "packages/sidflow-classify/test", chunkSize: 4 },
   { name: "sidflow-common", dir: "packages/sidflow-common/test", chunkSize: 16 },
   { name: "sidflow-fetch", dir: "packages/sidflow-fetch/test", chunkSize: 12 },
   { name: "sidflow-performance", dir: "packages/sidflow-performance/test", chunkSize: 12 },
   { name: "sidflow-play", dir: "packages/sidflow-play/test", chunkSize: 10 },
   { name: "sidflow-rate", dir: "packages/sidflow-rate/test", chunkSize: 12 },
   { name: "sidflow-train", dir: "packages/sidflow-train/test", chunkSize: 12 },
-  { name: "sidflow-web", dir: "packages/sidflow-web/tests/unit", chunkSize: 20 },
+  { name: "sidflow-web", dir: "packages/sidflow-web/tests/unit", chunkSize: 10 },
   { name: "integration-tests", dir: "integration-tests", chunkSize: 10 },
 ];
 
