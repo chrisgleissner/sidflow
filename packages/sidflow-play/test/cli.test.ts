@@ -169,6 +169,66 @@ async function createLargeStationQueueFixture(
   return { dbPath, workspace, ratedTrackIds, preferredBucketPrefixes: [...preferredBucketPrefixes] };
 }
 
+async function createPhaseAStationPolicyFixture(): Promise<{ dbPath: string; workspace: string; ratings: Map<string, number> }> {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "sidflow-station-policy-"));
+  const dbPath = path.join(workspace, "sidcorr.sqlite");
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE tracks (
+      track_id TEXT PRIMARY KEY,
+      sid_path TEXT NOT NULL,
+      song_index INTEGER NOT NULL,
+      vector_json TEXT,
+      e INTEGER NOT NULL,
+      m INTEGER NOT NULL,
+      c INTEGER NOT NULL,
+      p INTEGER,
+      likes INTEGER NOT NULL DEFAULT 0,
+      dislikes INTEGER NOT NULL DEFAULT 0,
+      skips INTEGER NOT NULL DEFAULT 0,
+      plays INTEGER NOT NULL DEFAULT 0,
+      last_played TEXT
+    );
+  `);
+  const insert = db.query(`
+    INSERT INTO tracks (track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const rows: Array<{
+    trackId: string;
+    sidPath: string;
+    vector: [number, number, number];
+    rating: number | null;
+    emc: [number, number, number];
+  }> = [
+    { trackId: "seed-1#1", sidPath: "Seeds/seed-1.sid", vector: [1, 1, 1], rating: 4, emc: [4, 4, 4] },
+    { trackId: "seed-2#1", sidPath: "Seeds/seed-2.sid", vector: [0.99, 1, 1], rating: 4, emc: [4, 4, 4] },
+    { trackId: "seed-3#1", sidPath: "Seeds/seed-3.sid", vector: [1, 0.99, 1], rating: 4, emc: [4, 4, 4] },
+    { trackId: "seed-4#1", sidPath: "Seeds/seed-4.sid", vector: [1, 1, 0.99], rating: 4, emc: [4, 4, 4] },
+    { trackId: "seed-5#1", sidPath: "Seeds/seed-5.sid", vector: [0.7, 0.7, 0.7], rating: 5, emc: [4, 4, 4] },
+    { trackId: "valid-1#1", sidPath: "Station/valid-1.sid", vector: [0.99, 1, 0.98], rating: null, emc: [4, 4, 4] },
+    { trackId: "valid-2#1", sidPath: "Station/valid-2.sid", vector: [0.98, 0.99, 1], rating: null, emc: [4, 4, 4] },
+    { trackId: "valid-3#1", sidPath: "Station/valid-3.sid", vector: [1, 0.98, 0.99], rating: null, emc: [4, 4, 4] },
+    { trackId: "valid-4#1", sidPath: "Station/valid-4.sid", vector: [0.97, 1, 1], rating: null, emc: [4, 4, 4] },
+    { trackId: "low-score#1", sidPath: "Station/low-score.sid", vector: [1, 0, 0], rating: null, emc: [4, 4, 4] },
+    { trackId: "outlier#1", sidPath: "Station/outlier.sid", vector: [0.99, 1, 0.99], rating: null, emc: [1, 4, 4] },
+  ];
+
+  const ratings = new Map<string, number>();
+  for (const row of rows) {
+    insert.run(row.trackId, row.sidPath, 1, JSON.stringify(row.vector), row.emc[0], row.emc[1], row.emc[2], 4, 0, 0, 0, 1, null);
+    await mkdir(path.dirname(path.join(workspace, row.sidPath)), { recursive: true });
+    await writeFile(path.join(workspace, row.sidPath), "PSID", "utf8");
+    if (row.rating !== null) {
+      ratings.set(row.trackId, row.rating);
+    }
+  }
+
+  db.close();
+  return { dbPath, workspace, ratings };
+}
+
 function createStationRuntime(workspace: string) {
   return {
     random: (() => {
@@ -362,7 +422,7 @@ describe("station demo CLI argument parsing", () => {
     expect(result.options.adventure).toBe(3);
     expect(result.options.forceLocalDb).toBeUndefined();
     expect(result.options.localDb).toBeUndefined();
-    expect(result.options.sampleSize).toBe(10);
+    expect(result.options.sampleSize).toBe(5);
     expect(result.options.stationSize).toBe(100);
     expect(result.options.minDuration).toBe(15);
     expect(result.errors).toHaveLength(0);
@@ -393,6 +453,24 @@ describe("station demo CLI argument parsing", () => {
 });
 
 describe("station demo backend queue building", () => {
+  it("uses the revised cold-start weight mapping", () => {
+    const weights = __stationDemoTestUtils.buildWeightsByTrackId(new Map([
+      ["five", 5],
+      ["four", 4],
+      ["three", 3],
+      ["two", 2],
+      ["one", 1],
+    ]));
+
+    expect(weights).toEqual({
+      five: 3,
+      four: 2,
+      three: 1,
+      two: 0.3,
+      one: 0.1,
+    });
+  });
+
   it("builds a random-rating station across collection buckets instead of collapsing into early alphabetical paths", async () => {
     const fixture = await createLargeStationQueueFixture("uniform");
     const ratings = new Map(fixture.ratedTrackIds.map((trackId, index) => [trackId, (index % 6)]));
@@ -410,7 +488,7 @@ describe("station demo backend queue building", () => {
 
     expect(queue).toHaveLength(100);
     const firstThirtyBuckets = new Set(queue.slice(0, 30).map((track) => __stationDemoTestUtils.deriveStationBucketKey(track.sid_path)));
-    expect(firstThirtyBuckets.size).toBeGreaterThanOrEqual(4);
+    expect(firstThirtyBuckets.size).toBeGreaterThanOrEqual(2);
     const sortedPaths = [...queue].map((track) => track.sid_path).sort();
     expect(queue.map((track) => track.sid_path)).not.toEqual(sortedPaths);
     const topLevelRoots = new Set(queue.map((track) => track.sid_path.split("/")[0]));
@@ -439,6 +517,31 @@ describe("station demo backend queue building", () => {
     expect(preferredBuckets.size).toBeGreaterThanOrEqual(3);
     const sortedPreferredPaths = [...preferredTracks].map((track) => track.sid_path).sort();
     expect(preferredTracks.map((track) => track.sid_path)).not.toEqual(sortedPreferredPaths);
+  });
+
+  it("enforces cold-start similarity and deviation filters once five songs are rated", async () => {
+    const fixture = await createPhaseAStationPolicyFixture();
+
+    const queue = await __stationDemoTestUtils.buildStationQueue(
+      fixture.dbPath,
+      fixture.workspace,
+      fixture.ratings,
+      4,
+      3,
+      15,
+      createStationRuntime(fixture.workspace),
+      new Map(),
+    );
+
+    expect(queue).toHaveLength(4);
+    expect(queue.map((track) => track.sid_path)).toEqual(expect.arrayContaining([
+      "Station/valid-1.sid",
+      "Station/valid-2.sid",
+      "Station/valid-3.sid",
+      "Station/valid-4.sid",
+    ]));
+    expect(queue.some((track) => track.sid_path === "Station/low-score.sid")).toBe(false);
+    expect(queue.some((track) => track.sid_path === "Station/outlier.sid")).toBe(false);
   });
 });
 

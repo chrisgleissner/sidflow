@@ -254,4 +254,45 @@ describe("similarity-export", () => {
 
     expect(recommendations.length).toBe(2);
   });
+
+  test("prefers stored 24D perceptual vectors and reports 24D exports in the manifest", async () => {
+    const vectorSeed = Array.from({ length: 24 }, (_, index) => (index === 19 ? 1 : 0));
+    const vectorNear = Array.from({ length: 24 }, (_, index) => (index === 19 ? 0.95 : index === 20 ? 0.2 : 0));
+    const vectorFar = Array.from({ length: 24 }, (_, index) => (index === 14 ? 1 : 0));
+
+    await writeFile(
+      path.join(classifiedPath, "classification_24d.jsonl"),
+      [
+        JSON.stringify({ sid_path: "P24/seed.sid", song_index: 1, ratings: { e: 4, m: 4, c: 4 }, vector: vectorSeed, classified_at: "2026-03-13T12:10:00.000Z", source: "auto", render_engine: "wasm" }),
+        JSON.stringify({ sid_path: "P24/near.sid", song_index: 1, ratings: { e: 4, m: 4, c: 4 }, vector: vectorNear, classified_at: "2026-03-13T12:10:01.000Z", source: "auto", render_engine: "wasm" }),
+        JSON.stringify({ sid_path: "P24/far.sid", song_index: 1, ratings: { e: 4, m: 4, c: 4 }, vector: vectorFar, classified_at: "2026-03-13T12:10:02.000Z", source: "auto", render_engine: "wasm" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const result = await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 0,
+    });
+
+    expect(result.manifest.vector_dimensions).toBe(24);
+
+    const recommendations = recommendFromFavorites(outputPath, {
+      favoriteTrackIds: [buildSimilarityTrackId("P24/seed.sid", 1)],
+      limit: 2,
+    });
+
+    expect(recommendations[0]?.track_id).toBe(buildSimilarityTrackId("P24/near.sid", 1));
+
+    const database = new Database(outputPath, { readonly: true, strict: true });
+    try {
+      const row = database.query("SELECT vector_json FROM tracks WHERE track_id = ?").get(buildSimilarityTrackId("P24/seed.sid", 1)) as { vector_json: string | null };
+      expect(JSON.parse(row.vector_json ?? "[]")).toHaveLength(24);
+    } finally {
+      database.close();
+    }
+  });
 });

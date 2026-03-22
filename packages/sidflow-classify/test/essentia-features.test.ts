@@ -72,6 +72,13 @@ describe("essentiaFeatureExtractor", () => {
     expect(typeof features.spectralCentroid).toBe("number");
     expect(typeof features.spectralRolloff).toBe("number");
     expect(typeof features.zeroCrossingRate).toBe("number");
+    expect(typeof features.onsetDensity).toBe("number");
+    expect(typeof features.rhythmicRegularity).toBe("number");
+    expect(typeof features.spectralFluxMean).toBe("number");
+    expect(typeof features.dynamicRange).toBe("number");
+    expect(typeof features.pitchSalience).toBe("number");
+    expect(typeof features.inharmonicity).toBe("number");
+    expect(typeof features.lowFrequencyEnergyRatio).toBe("number");
     expect(typeof features.sampleRate).toBe("number");
     expect(typeof features.duration).toBe("number");
     expect(typeof features.numSamples).toBe("number");
@@ -80,6 +87,16 @@ describe("essentiaFeatureExtractor", () => {
     expect(features.energy).toBeGreaterThan(0);
     expect(features.rms).toBeGreaterThan(0);
     expect(features.spectralCentroid).toBeGreaterThan(0);
+    expect(features.rhythmicRegularity).toBeGreaterThanOrEqual(0);
+    expect(features.rhythmicRegularity).toBeLessThanOrEqual(1);
+    expect(features.dynamicRange).toBeGreaterThanOrEqual(0);
+    expect(features.dynamicRange).toBeLessThanOrEqual(1);
+    expect(features.pitchSalience).toBeGreaterThanOrEqual(0);
+    expect(features.pitchSalience).toBeLessThanOrEqual(1);
+    expect(features.inharmonicity).toBeGreaterThanOrEqual(0);
+    expect(features.inharmonicity).toBeLessThanOrEqual(1);
+    expect(features.lowFrequencyEnergyRatio).toBeGreaterThanOrEqual(0);
+    expect(features.lowFrequencyEnergyRatio).toBeLessThanOrEqual(1);
     expect(features.sampleRate).toBe(44100);
     expect(features.duration).toBeCloseTo(2, 0.1);
     // numSamples reflects downsampled count (11025 Hz from 44100 Hz = 4x reduction)

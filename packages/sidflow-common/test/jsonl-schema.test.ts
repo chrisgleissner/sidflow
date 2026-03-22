@@ -15,7 +15,7 @@ describe("FEEDBACK_WEIGHTS", () => {
     expect(FEEDBACK_WEIGHTS.play).toBe(0.0);
   });
   it("contains all feedback actions", () => {
-    const actions: FeedbackAction[] = ["play", "like", "dislike", "skip"];
+    const actions: FeedbackAction[] = ["play", "play_complete", "like", "dislike", "skip", "skip_early", "skip_late", "replay"];
     actions.forEach(action => {
       expect(FEEDBACK_WEIGHTS[action]).toBeDefined();
       expect(typeof FEEDBACK_WEIGHTS[action]).toBe("number");
@@ -27,7 +27,7 @@ describe("ClassificationRecord", () => {
   it("accepts valid classification record", () => {
     const record: ClassificationRecord = {
       sid_path: "MUSICIANS/A/Artist/Song.sid",
-      ratings: { e: 3, m: 4, f: 5 },
+      ratings: { e: 3, m: 4, c: 5 },
     };
     expect(record.sid_path).toBe("MUSICIANS/A/Artist/Song.sid");
     expect(record.ratings.e).toBe(3);
@@ -36,7 +36,7 @@ describe("ClassificationRecord", () => {
     const record: ClassificationRecord = {
       sid_path: "test.sid",
       song_index: 2,
-      ratings: { e: 3, m: 3, f: 3 },
+      ratings: { e: 3, m: 3, c: 3 },
     };
     expect(record.song_index).toBe(2);
   });
@@ -49,10 +49,12 @@ describe("ClassificationRecord", () => {
     };
     const record: ClassificationRecord = {
       sid_path: "test.sid",
-      ratings: { e: 3, m: 3, f: 3 },
+      ratings: { e: 3, m: 3, c: 3 },
       features,
+      vector: new Array(24).fill(0.5),
     };
     expect(record.features?.duration).toBe(120.5);
+    expect(record.vector).toHaveLength(24);
   });
 });
 
@@ -84,7 +86,7 @@ describe("FeedbackRecord", () => {
     expect(record.uuid).toBe("123e4567-e89b-12d3-a456-426614174000");
   });
   it("accepts all feedback actions", () => {
-    const actions: FeedbackAction[] = ["play", "like", "dislike", "skip"];
+    const actions: FeedbackAction[] = ["play", "play_complete", "like", "dislike", "skip", "skip_early", "skip_late", "replay"];
     actions.forEach(action => {
       const record: FeedbackRecord = {
         ts: "2025-11-19T10:00:00Z",
@@ -126,5 +128,19 @@ describe("AudioFeatures", () => {
     };
     expect(features.energy).toBeUndefined();
     expect(features.rms).toBe(0.5);
+  });
+
+  it("accepts new perceptual feature fields", () => {
+    const features: AudioFeatures = {
+      onsetDensity: 2.1,
+      rhythmicRegularity: 0.8,
+      spectralFluxMean: 0.22,
+      dynamicRange: 0.45,
+      pitchSalience: 0.9,
+      inharmonicity: 0.1,
+      lowFrequencyEnergyRatio: 0.33,
+    };
+    expect(features.rhythmicRegularity).toBe(0.8);
+    expect(features.pitchSalience).toBe(0.9);
   });
 });

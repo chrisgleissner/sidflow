@@ -9,8 +9,9 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { loadConfig } from '@sidflow/common';
 import type { FeedbackRecord } from '@sidflow/common';
+
+const FEEDBACK_HALF_LIFE_DAYS = 90;
 
 /**
  * Cache entry for aggregated feedback data.
@@ -68,7 +69,22 @@ interface FeedbackAggregate {
   skips: number;
   plays: number;
   recentPlays: number;
+  decayedLikes: number;
+  decayedDislikes: number;
+  decayedSkips: number;
+  decayedPlays: number;
+  decayedRecentPlays: number;
   lastPlayed?: string;
+}
+
+export function calculateTemporalDecayWeight(timestamp: string, now: Date = new Date(), halfLifeDays = FEEDBACK_HALF_LIFE_DAYS): number {
+  const eventTime = Date.parse(timestamp);
+  if (!Number.isFinite(eventTime)) {
+    return 1;
+  }
+  const ageDays = Math.max(0, (now.getTime() - eventTime) / (24 * 60 * 60 * 1000));
+  const lambda = Math.log(2) / Math.max(1, halfLifeDays);
+  return Math.exp(-lambda * ageDays);
 }
 
 /**
@@ -112,35 +128,72 @@ async function readFeedbackFiles(feedbackPath: string): Promise<FeedbackRecord[]
 /**
  * Aggregates feedback events by SID path.
  */
-function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggregate> {
+export function aggregateFeedback(events: FeedbackRecord[], now: Date = new Date()): Map<string, FeedbackAggregate> {
   const aggregates = new Map<string, FeedbackAggregate>();
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   
   for (const event of events) {
+    const decayWeight = calculateTemporalDecayWeight(event.ts, now);
     const existing = aggregates.get(event.sid_path) ?? {
       likes: 0,
       dislikes: 0,
       skips: 0,
       plays: 0,
       recentPlays: 0,
+      decayedLikes: 0,
+      decayedDislikes: 0,
+      decayedSkips: 0,
+      decayedPlays: 0,
+      decayedRecentPlays: 0,
     };
     
     // Update counts based on action
     switch (event.action) {
       case 'like':
         existing.likes++;
+        existing.decayedLikes += decayWeight;
         break;
       case 'dislike':
         existing.dislikes++;
+        existing.decayedDislikes += decayWeight;
         break;
       case 'skip':
         existing.skips++;
+        existing.decayedSkips += decayWeight;
+        break;
+      case 'skip_early':
+        existing.skips++;
+        existing.decayedSkips += decayWeight * 1.2;
+        break;
+      case 'skip_late':
+        existing.skips++;
+        existing.decayedSkips += decayWeight * 0.6;
         break;
       case 'play':
         existing.plays++;
+        existing.decayedPlays += decayWeight;
         // Count recent plays for trending
         if (event.ts >= sevenDaysAgo) {
           existing.recentPlays++;
+          existing.decayedRecentPlays += decayWeight;
+        }
+        break;
+      case 'play_complete':
+        existing.plays++;
+        existing.decayedPlays += decayWeight * 1.1;
+        existing.decayedLikes += decayWeight * 0.6;
+        if (event.ts >= sevenDaysAgo) {
+          existing.recentPlays++;
+          existing.decayedRecentPlays += decayWeight;
+        }
+        break;
+      case 'replay':
+        existing.plays++;
+        existing.decayedPlays += decayWeight * 1.2;
+        existing.decayedLikes += decayWeight * 1.2;
+        if (event.ts >= sevenDaysAgo) {
+          existing.recentPlays++;
+          existing.decayedRecentPlays += decayWeight * 1.1;
         }
         break;
     }
@@ -162,39 +215,39 @@ function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggreg
  * Calculates average rating from feedback.
  * Like = 5, Skip = 3, Dislike = 1
  */
-function calculateAverageRating(aggregate: FeedbackAggregate): { average: number; total: number } {
+export function calculateAverageRating(aggregate: FeedbackAggregate): { average: number; total: number } {
   const likeWeight = 5;
   const skipWeight = 3;
   const dislikeWeight = 1;
   
-  const totalRatings = aggregate.likes + aggregate.skips + aggregate.dislikes;
+  const totalRatings = aggregate.decayedLikes + aggregate.decayedSkips + aggregate.decayedDislikes;
   
   if (totalRatings === 0) {
     return { average: 3, total: 0 }; // Default neutral rating
   }
   
   const weightedSum =
-    aggregate.likes * likeWeight +
-    aggregate.skips * skipWeight +
-    aggregate.dislikes * dislikeWeight;
+    aggregate.decayedLikes * likeWeight +
+    aggregate.decayedSkips * skipWeight +
+    aggregate.decayedDislikes * dislikeWeight;
   
   const average = weightedSum / totalRatings;
   
-  return { average, total: totalRatings };
+  return { average, total: Math.round(totalRatings) };
 }
 
 /**
  * Calculates trending score based on recent activity.
  */
-function calculateTrendingScore(aggregate: FeedbackAggregate): { score: number; isTrending: boolean } {
+export function calculateTrendingScore(aggregate: FeedbackAggregate): { score: number; isTrending: boolean } {
   // Trending algorithm:
   // - Recent plays in last 7 days
   // - Weighted by likes vs dislikes
   // - Normalized to 0-1 scale
   
-  const recentPlays = aggregate.recentPlays;
-  const likeRatio = aggregate.likes > 0 
-    ? aggregate.likes / (aggregate.likes + aggregate.dislikes + 1)
+  const recentPlays = aggregate.decayedRecentPlays;
+  const likeRatio = aggregate.decayedLikes > 0 
+    ? aggregate.decayedLikes / (aggregate.decayedLikes + aggregate.decayedDislikes + 1)
     : 0.5;
   
   // Score increases with recent plays and positive feedback

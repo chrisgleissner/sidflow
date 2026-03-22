@@ -17,6 +17,9 @@ import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
  */
 export const FEATURE_EXTRACTION_SAMPLE_RATE = 11025;
 
+const ENVELOPE_FRAME_SIZE = 1024;
+const ENVELOPE_HOP_SIZE = 512;
+
 function resolveAnalysisSampleRate(config: { analysisSampleRate?: number }): number {
   const configured = config.analysisSampleRate;
   if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
@@ -42,6 +45,81 @@ function computeBasicStats(audioData: Float32Array): { energy: number; rms: numb
   const rms = Math.sqrt(energy);
   const zeroCrossingRate = zeroCrossings / audioData.length;
   return { energy, rms, zeroCrossingRate };
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function computeEnvelopeFeatures(audioData: Float32Array, sampleRate: number): Record<string, number> {
+  if (audioData.length <= 0) {
+    return {
+      onsetDensity: 0,
+      rhythmicRegularity: 0,
+      dynamicRange: 0,
+    };
+  }
+
+  const rmsFrames: number[] = [];
+  for (let start = 0; start < audioData.length; start += ENVELOPE_HOP_SIZE) {
+    const end = Math.min(audioData.length, start + ENVELOPE_FRAME_SIZE);
+    let sumSquares = 0;
+    for (let index = start; index < end; index += 1) {
+      const sample = audioData[index] ?? 0;
+      sumSquares += sample * sample;
+    }
+    const frameLength = Math.max(1, end - start);
+    rmsFrames.push(Math.sqrt(sumSquares / frameLength));
+  }
+
+  const novelty: number[] = [];
+  for (let index = 1; index < rmsFrames.length; index += 1) {
+    novelty.push(Math.max(0, rmsFrames[index]! - rmsFrames[index - 1]!));
+  }
+
+  const noveltyMean = novelty.length > 0 ? novelty.reduce((sum, value) => sum + value, 0) / novelty.length : 0;
+  const noveltyVariance = novelty.length > 0
+    ? novelty.reduce((sum, value) => sum + ((value - noveltyMean) ** 2), 0) / novelty.length
+    : 0;
+  const noveltyStd = Math.sqrt(Math.max(0, noveltyVariance));
+  const noveltyThreshold = noveltyMean + (noveltyStd * 0.5);
+  const minPeakDistanceFrames = Math.max(1, Math.round((sampleRate * 0.08) / ENVELOPE_HOP_SIZE));
+
+  const onsetTimes: number[] = [];
+  let lastPeakIndex = -minPeakDistanceFrames;
+  for (let index = 1; index < novelty.length - 1; index += 1) {
+    const current = novelty[index] ?? 0;
+    if (current < noveltyThreshold || current < (novelty[index - 1] ?? 0) || current < (novelty[index + 1] ?? 0)) {
+      continue;
+    }
+    if ((index - lastPeakIndex) < minPeakDistanceFrames) {
+      continue;
+    }
+    lastPeakIndex = index;
+    onsetTimes.push((index * ENVELOPE_HOP_SIZE) / sampleRate);
+  }
+
+  const durationSeconds = audioData.length / sampleRate;
+  const onsetDensity = durationSeconds > 0 ? onsetTimes.length / durationSeconds : 0;
+
+  let rhythmicRegularity = 0;
+  if (onsetTimes.length >= 3) {
+    const intervals = onsetTimes.slice(1).map((time, index) => time - onsetTimes[index]!);
+    const meanInterval = intervals.reduce((sum, value) => sum + value, 0) / intervals.length;
+    const variance = intervals.reduce((sum, value) => sum + ((value - meanInterval) ** 2), 0) / intervals.length;
+    const stdInterval = Math.sqrt(Math.max(0, variance));
+    rhythmicRegularity = meanInterval > 0 ? clamp01(1 - (stdInterval / meanInterval)) : 0;
+  }
+
+  const minRms = Math.min(...rmsFrames);
+  const maxRms = Math.max(...rmsFrames);
+  const dynamicRange = maxRms > 1e-9 ? clamp01((maxRms - minRms) / maxRms) : 0;
+
+  return {
+    onsetDensity,
+    rhythmicRegularity,
+    dynamicRange,
+  };
 }
 
 // Lazy-load Essentia.js modules to avoid initialization issues
@@ -461,6 +539,7 @@ async function extractEssentiaFeaturesOptimized(wavFile: string, sidFile: string
   for (const [k, v] of Object.entries(frameSummaries)) {
     features[k] = v;
   }
+  Object.assign(features, computeEnvelopeFeatures(audioData, analysisSampleRate));
 
   const bpmEstimate = estimateBpmAutocorr(audioData, analysisSampleRate);
   if (bpmEstimate && bpmEstimate.confidence >= 0.15 && Number.isFinite(bpmEstimate.bpm)) {
@@ -532,6 +611,7 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
     const rms = Math.sqrt(sumSquares / audioData.length);
     const energy = sumSquares / audioData.length;
     const zeroCrossingRate = zeroCrossings / audioData.length;
+    const derived = computeEnvelopeFeatures(audioData, analysisSampleRate);
 
     // Estimate tempo from zero crossing rate (rough heuristic)
     const estimatedBpm = Math.min(200, Math.max(60, zeroCrossingRate * 5000));
@@ -543,7 +623,13 @@ async function extractBasicFeatures(wavFile: string, sidFile: string): Promise<F
       bpm: estimatedBpm,
       confidence: 0.3, // Low confidence for heuristic
       spectralCentroid: 2000, // Placeholder
+      spectralCentroidStd: 0,
       spectralRolloff: 4000, // Placeholder
+      spectralFluxMean: 0,
+      pitchSalience: 0.5,
+      inharmonicity: 0.5,
+      lowFrequencyEnergyRatio: 0.5,
+      ...derived,
       sampleRate: originalSampleRate,
       analysisSampleRate,
       duration: wavDurationSec,

@@ -4,6 +4,153 @@ Append-only execution trace. Each entry records commands, CI results, observatio
 
 ---
 
+## 2026-03-22 — Station similarity audit implementation (Phases A and B)
+
+### Phase 0: Repo guidance and code-path discovery
+
+Read and confirmed:
+- `PLANS.md`
+- `README.md`
+- `doc/developer.md`
+- `doc/technical-reference.md`
+- `doc/research/sid-station-similarity-audit.md`
+
+Key findings from live code inspection before edits:
+- `packages/sidflow-play/src/station/queue.ts`
+  - `buildWeightsByTrackId()` still uses the old aggressive mapping `5→9, 4→4, 3→1.5, else 0.1`
+  - local queue-flow cosine helper is unweighted and dimension-agnostic, but there is no minimum similarity filter or deviation rejection around candidate retrieval
+- `packages/sidflow-common/src/similarity-export.ts`
+  - export vectors are still assembled only from `e/m/c` or `e/m/c/p` (`dims?: 3 | 4`)
+  - `recommendFromSeedTrack()` and `recommendFromFavorites()` still use plain cosine on stored vectors
+  - feedback aggregation there still understands only `play|like|dislike|skip`
+- `packages/sidflow-classify/src/deterministic-ratings.ts`
+  - deterministic tag/rating mapping exists, but there is no perceptual-vector builder yet
+- `packages/sidflow-classify/src/index.ts`
+  - classification JSONL currently writes ratings plus features; no 24D vector field is included
+- `packages/sidflow-common/src/jsonl-schema.ts`
+  - feedback actions are still limited to `play|like|dislike|skip`
+  - classification schema has no explicit vector field yet
+- `packages/sidflow-web/app/api/feedback/sync/route.ts`
+  - route is still a stub returning `{ success: true }` without persistence
+- `packages/sidflow-web/lib/server/rating-aggregator.ts`
+  - aggregation is count-based only; no temporal decay is applied
+
+Implementation order chosen:
+1. Update plan/log files first
+2. Land Phase A in shared similarity + station queue code with tests
+3. Extend schema + classifier feature/vector pipeline
+4. Upgrade similarity/export to variable dimensions and weighted cosine
+5. Finish feedback sync + temporal decay
+6. Produce validation artifacts and run build/tests
+
+### Phase 1: Station core quick fixes (A1-A4)
+
+Files changed:
+- `packages/sidflow-play/src/station/constants.ts`
+- `packages/sidflow-play/src/station/args.ts`
+- `packages/sidflow-play/src/station/queue.ts`
+- `packages/sidflow-play/src/station/index.ts`
+- `packages/sidflow-play/src/sid-station.ts`
+- `packages/sidflow-play/test/cli.test.ts`
+
+Implemented:
+- Reduced the minimum rated-track gate from `10` to `5`
+- Updated CLI defaults/help to reflect the 5-track activation threshold
+- Replaced the old aggressive weight curve with `5→3, 4→2, 3→1, 2→0.3, 1→0.1`
+- Added minimum similarity thresholds: `0.82` during cold start (`<10` ratings) and `0.75` otherwise
+- Added weighted centroid construction across favorite rows and rejected candidates whose `e/m/c` deviations exceed `1.5`
+
+Focused validation:
+- `packages/sidflow-play/test/cli.test.ts` — PASS after updating expectations for the stricter queue policy
+- `tsc -b` quick build — PASS
+
+### Phase 2: Schema, features, and 24D perceptual vectors (B1-B3)
+
+Files changed:
+- `packages/sidflow-common/src/jsonl-schema.ts`
+- `packages/sidflow-classify/src/deterministic-ratings.ts`
+- `packages/sidflow-classify/src/essentia-features.ts`
+- `packages/sidflow-classify/src/essentia-frame-features.ts`
+- `packages/sidflow-classify/src/index.ts`
+- `packages/sidflow-common/src/similarity-export.ts`
+- `packages/sidflow-classify/test/deterministic-ratings.test.ts`
+- `packages/sidflow-classify/test/essentia-features.test.ts`
+- `packages/sidflow-classify/test/jsonl.test.ts`
+- `packages/sidflow-common/test/jsonl-schema.test.ts`
+- `packages/sidflow-common/test/similarity-export.test.ts`
+
+Implemented:
+- Extended the shared classification schema with `vector?: number[]` and the new feature fields: `onsetDensity`, `rhythmicRegularity`, `spectralFluxMean`, `dynamicRange`, `pitchSalience`, `inharmonicity`, `lowFrequencyEnergyRatio`, and `spectralCentroidStd`
+- Added deterministic/heuristic extraction for those features in both Essentia and fallback paths
+- Added `buildPerceptualVector()` to construct a 24D vector from normalized spectral, temporal, MFCC, and derived features
+- Threaded the 24D vector through both classification-record emission paths
+- Upgraded shared similarity export and recommendation helpers to auto-detect vector dimensionality, preserve legacy 4D behavior, and use weighted cosine automatically for 24D vectors
+
+Focused validation:
+- Classifier/common focused tests — PASS (`32 passed, 0 failed`)
+- `tsc -b` quick build — PASS after importing `buildDeterministicRatingModel` in `packages/sidflow-classify/src/index.ts`
+
+### Phase 3: Feedback persistence and temporal decay (B4-B5)
+
+Files changed:
+- `packages/sidflow-common/src/feedback.ts`
+- `packages/sidflow-web/app/api/feedback/sync/route.ts`
+- `packages/sidflow-web/lib/server/rating-aggregator.ts`
+- `packages/sidflow-web/tests/unit/feedback-sync-route.test.ts`
+- `packages/sidflow-web/tests/unit/rating-aggregator-decay.test.ts`
+- `packages/sidflow-web/tests/unit/feedback-recorder.test.ts`
+
+Implemented:
+- Extended feedback logging/types to support `play_complete`, `skip_early`, `skip_late`, `replay`, and persisted `song_index`
+- Replaced the sync endpoint stub with real persistence of raw sync batches under `data/feedback-sync/YYYY/MM/DD/events.jsonl`
+- Emitted aggregate-friendly implicit feedback events under `data/feedback/YYYY/MM/DD/events.jsonl`
+- Applied a 90-day half-life decay model in the server rating aggregator and differentiated skip/play/replay event weights
+
+Focused validation:
+- Feedback/web focused tests — PASS (`43 passed, 0 failed`)
+- `tsc -b` quick build — PASS
+
+### Phase 4: Validation artifacts
+
+Files added:
+- `scripts/validate-phase-ab.ts`
+- `doc/research/phase-ab-sample-24d-classification.json`
+- `doc/research/phase-ab-validation-report.md`
+
+Command run:
+
+```bash
+bun run scripts/validate-phase-ab.ts
+```
+
+Results written to `tmp/phase-ab-validation/` and promoted to tracked deliverables.
+
+Measured outputs:
+- Vector dimensions: `24`
+- Sample classification artifact: `MUSICIANS/A/Artist/ambient-1.sid` with ratings `{ c: 2, e: 2, m: 4 }`
+- Feature means:
+  - `onsetDensity = 2.56`
+  - `rhythmicRegularity = 0.556`
+  - `spectralFluxMean = 0.274`
+  - `dynamicRange = 0.558`
+  - `pitchSalience = 0.646`
+  - `inharmonicity = 0.414`
+  - `lowFrequencyEnergyRatio = 0.210`
+- Similarity ranking from ambient seed:
+  - `ambient-2.sid = 0.9890891539407359`
+  - `demo-hybrid.sid = 0.8984677871565525`
+  - `game-drive.sid = 0.6770255496725501`
+  - `game-drive-2.sid = 0.6420971850981998`
+- Station coherence:
+  - `meanPairwiseWeightedCosine = 0.9389623462074951`
+  - `minPairwiseWeightedCosine = 0.8984677871565525`
+  - `maxPairwiseWeightedCosine = 0.9890891539407359`
+
+Next step queued:
+- Run full repository `build` and `test` gates and record the final results here
+
+---
+
 ## 2026-03-21 — Phase 1: Discovery
 
 ### Observation: All release tags failing in CI
@@ -251,3 +398,41 @@ After:
 - `Esc` clears active input first, then clears filters when idle.
 - `Enter` plays the selected track without recentring the viewport.
 - `r` performs a full refresh with no stale status or now-playing residue.
+
+---
+
+## 2026-03-22 — Station & Similarity System Audit
+
+### Task
+
+Full end-to-end audit and redesign of the SIDFlow similarity/station pipeline.
+
+### Discovery
+
+Mapped the complete data flow:
+```
+SID → WAV (11025Hz, 15s) → 35+ features (Essentia.js) → 7 sigmoid tags → 3 integer ratings [1-5]
+→ vector [e,m,c,p] → SQLite/LanceDB → cosine similarity → bucket diversification → station
+```
+
+### Root Causes Proven (5)
+
+1. **Dimensionality collapse**: 35+ features crushed to 3 integers (125 states for 50K+ tracks). Cosine similarity between `[3,4,3,3]` and `[4,4,3,3]` = 0.9978 — effectively identical despite different character.
+2. **Missing perceptual dimensions**: No rhythm structure (onset patterns), timbral dynamics (spectral flux, filter sweeps), atmosphere modeling, danceability, or SID-specific features (arpeggio, voice count, waveform type).
+3. **Cold-start centroid instability**: Rating 5 → weight 9x vs rating 4 → weight 4x. Ratio 90:1 (5→9 vs 1→0.1) means a single outlier highly-rated track dominates the centroid with 10 ratings.
+4. **Feedback system not connected**: `POST /api/feedback/sync` accepts payloads but does not persist them server-side. No automated retraining cycle exists.
+5. **No outlier rejection**: Station CLI (`buildStationQueue`) has no minimum similarity threshold. All recommendations from `recommendFromFavorites` are candidates regardless of score.
+
+### Design Output
+
+24D perceptual vector replacing 4D integer vector:
+- 8 dims: spectral shape (continuous, not quantized)
+- 6 dims: temporal dynamics (onset rate, regularity, spectral flux, dynamic range, etc.)
+- 5 dims: MFCC texture
+- 5 dims: derived perceptual axes (energy, mood, complexity, danceability, atmosphere)
+
+Full redesign covers: weighted cosine similarity, confidence-aware cold start, multi-centroid intent model, metric learning self-improvement, champion/challenger safety, 4-phase roadmap.
+
+### Output
+
+`doc/research/sid-station-similarity-audit.md` — comprehensive research document (14 sections, all phases)

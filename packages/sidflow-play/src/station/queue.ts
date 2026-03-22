@@ -16,6 +16,10 @@ import type {
 } from "./types.js";
 import { extractYear, isTrackLongEnough, resolveTrackDurationMs } from "./formatting.js";
 
+const DEFAULT_MIN_SIMILARITY = 0.75;
+const COLD_START_MIN_SIMILARITY = 0.82;
+const MAX_RATING_DEVIATION = 1.5;
+
 export function buildStationSongKey(track: Pick<StationTrackRow, "sid_path" | "song_index">): string {
   return `${track.sid_path}#${track.song_index}`;
 }
@@ -155,24 +159,73 @@ function readTrackVectorsByIds(dbPath: string, trackIds: string[]): Map<string, 
   }
 }
 
-function buildWeightsByTrackId(ratings: Map<string, number>): Record<string, number> {
+export function buildWeightsByTrackId(ratings: Map<string, number>): Record<string, number> {
   const result: Record<string, number> = {};
   for (const [trackId, rating] of ratings) {
     if (rating >= 5) {
-      result[trackId] = 9;
+      result[trackId] = 3;
       continue;
     }
     if (rating >= 4) {
-      result[trackId] = 4;
+      result[trackId] = 2;
       continue;
     }
     if (rating >= 3) {
-      result[trackId] = 1.5;
+      result[trackId] = 1;
+      continue;
+    }
+    if (rating >= 2) {
+      result[trackId] = 0.3;
       continue;
     }
     result[trackId] = 0.1;
   }
   return result;
+}
+
+function resolveMinimumSimilarity(ratings: Map<string, number>): number {
+  return ratings.size < 10 ? COLD_START_MIN_SIMILARITY : DEFAULT_MIN_SIMILARITY;
+}
+
+function buildWeightedRatingCentroid(rows: StationTrackRow[], weightsByTrackId: Record<string, number>): Pick<StationTrackRow, "e" | "m" | "c"> | null {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  let totalWeight = 0;
+  let energy = 0;
+  let mood = 0;
+  let complexity = 0;
+  for (const row of rows) {
+    const weight = weightsByTrackId[row.track_id] ?? 1;
+    totalWeight += weight;
+    energy += row.e * weight;
+    mood += row.m * weight;
+    complexity += row.c * weight;
+  }
+
+  if (totalWeight <= 0) {
+    return null;
+  }
+
+  return {
+    e: energy / totalWeight,
+    m: mood / totalWeight,
+    c: complexity / totalWeight,
+  };
+}
+
+function passesDeviationFilter(
+  candidate: Pick<StationTrackRow, "e" | "m" | "c">,
+  centroid: Pick<StationTrackRow, "e" | "m" | "c"> | null,
+): boolean {
+  if (!centroid) {
+    return true;
+  }
+
+  return Math.abs(candidate.e - centroid.e) <= MAX_RATING_DEVIATION
+    && Math.abs(candidate.m - centroid.m) <= MAX_RATING_DEVIATION
+    && Math.abs(candidate.c - centroid.c) <= MAX_RATING_DEVIATION;
 }
 
 function pickFavoriteTrackIds(ratings: Map<string, number>): string[] {
@@ -445,6 +498,10 @@ export async function buildStationQueue(
     return [];
   }
 
+  const weightsByTrackId = buildWeightsByTrackId(ratings);
+  const favoriteRows = [...readTrackRowsByIds(dbPath, favoriteTrackIds).values()];
+  const ratingCentroid = buildWeightedRatingCentroid(favoriteRows, weightsByTrackId);
+  const minSimilarity = resolveMinimumSimilarity(ratings);
   const excludeTrackIds = [...ratings.entries()].filter(([, rating]) => rating <= 2).map(([trackId]) => trackId);
   const recommendationLimitFloor = Math.max(stationSize * (3 + adventure), stationSize + 128);
   let recommendationLimit = recommendationLimitFloor;
@@ -455,7 +512,7 @@ export async function buildStationQueue(
     const candidates = recommendFromFavorites(dbPath, {
       favoriteTrackIds,
       excludeTrackIds,
-      weightsByTrackId: buildWeightsByTrackId(ratings),
+      weightsByTrackId,
       limit: recommendationLimit,
     });
 
@@ -467,8 +524,14 @@ export async function buildStationQueue(
     const detailByTrackId = new Map<string, StationTrackDetails>();
     const filteredCandidates: SimilarityExportRecommendation[] = [];
     for (const recommendation of candidates) {
+      if (recommendation.score < minSimilarity) {
+        continue;
+      }
       const row = readTrackRowById(dbPath, recommendation.track_id);
       if (!row) {
+        continue;
+      }
+      if (!passesDeviationFilter(row, ratingCentroid)) {
         continue;
       }
       const detail = await resolveTrackDetails(row, hvscRoot, runtime, metadataCache);

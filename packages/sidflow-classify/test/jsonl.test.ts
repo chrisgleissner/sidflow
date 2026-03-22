@@ -131,6 +131,7 @@ describe("generateJsonlOutput", () => {
     expect(record.ratings.e).toBe(2);
     expect(record.ratings.m).toBe(3);
     expect(record.ratings.c).toBe(4);
+    expect(record.vector).toHaveLength(24);
   });
 
   test("includes features in JSONL output when WAV exists", async () => {

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export const MINIMUM_RATED_TRACKS = 10;
+export const MINIMUM_RATED_TRACKS = 5;
 export const MINIMUM_STATION_TRACKS = 100;
 export const U64_SID_VOLUME_REGISTERS = [0xD418, 0xD438, 0xD458] as const;
 export const MINIMUM_PLAYLIST_WINDOW_ROWS = 7;
