@@ -237,6 +237,7 @@ describe("createDefaultJobCommandFactory", () => {
         epochs: 100,
         batchSize: 32,
         learningRate: 0.001,
+        auto: true,
         evaluate: false,
         force: true,
       },
@@ -253,6 +254,7 @@ describe("createDefaultJobCommandFactory", () => {
     expect(plan!.stages[0].command.args).toContain("32");
     expect(plan!.stages[0].command.args).toContain("--learning-rate");
     expect(plan!.stages[0].command.args).toContain("0.001");
+    expect(plan!.stages[0].command.args).toContain("--auto");
     expect(plan!.stages[0].command.args).toContain("--no-evaluate");
     expect(plan!.stages[0].command.args).toContain("--force");
   });

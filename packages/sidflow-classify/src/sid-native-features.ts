@@ -153,6 +153,15 @@ export function extractSidNativeFeaturesFromWriteTrace(
   const roleRatios = computeVoiceRoleRatios(activeVoiceFrames);
   const adsrRatios = computeAdsrRatios(onsets);
   const arpeggioActivity = computeArpeggioActivity(activeVoiceFrames);
+  const syncopation = computeSyncopation(onsets);
+  const registerMotion = computeRegisterMotion(activeVoiceFrames, globalFrames);
+  const melodicClarity = computeMelodicClarity({
+    roleLeadRatio: roleRatios.lead,
+    waveNoiseRatio: waveformRatios.noise,
+    arpeggioActivity,
+    rhythmicRegularity: computeRhythmicRegularity(onsets),
+  });
+  const voiceRoleEntropy = computeVoiceRoleEntropy(roleRatios);
   const d418WritesPerFrame = bucketAddressWritesByFrame(options.traces, 0x18, frameWindow);
 
   return {
@@ -163,6 +172,7 @@ export function extractSidNativeFeaturesFromWriteTrace(
     sidActiveVoiceFrameRatio: safeDivide(activeVoiceFrames.length, Math.max(1, frameWindow.analysisFrames * 3)),
     sidGateOnsetDensity: safeDivide(onsets.length, Math.max(1 / frameWindow.frameRate, frameWindow.analysisFrames / frameWindow.frameRate)),
     sidRhythmicRegularity: computeRhythmicRegularity(onsets),
+    sidSyncopation: syncopation,
     sidArpeggioActivity: arpeggioActivity,
     sidWaveTriangleRatio: waveformRatios.triangle,
     sidWaveSawRatio: waveformRatios.saw,
@@ -170,6 +180,7 @@ export function extractSidNativeFeaturesFromWriteTrace(
     sidWaveNoiseRatio: waveformRatios.noise,
     sidWaveMixedRatio: waveformRatios.mixed,
     sidPwmActivity: pwmActivity,
+    sidRegisterMotion: registerMotion,
     sidFilterCutoffMean: filterStats.cutoffMean,
     sidFilterMotion: filterStats.cutoffMotion,
     sidFilterResonanceMean: filterStats.resonanceMean,
@@ -178,6 +189,8 @@ export function extractSidNativeFeaturesFromWriteTrace(
     sidRoleBassRatio: roleRatios.bass,
     sidRoleLeadRatio: roleRatios.lead,
     sidRoleAccompanimentRatio: roleRatios.accompaniment,
+    sidVoiceRoleEntropy: voiceRoleEntropy,
+    sidMelodicClarity: melodicClarity,
     sidAdsrPluckRatio: adsrRatios.pluck,
     sidAdsrPadRatio: adsrRatios.pad,
   };
@@ -195,6 +208,7 @@ function createEmptySidNativeFeatures(
     sidActiveVoiceFrameRatio: 0,
     sidGateOnsetDensity: 0,
     sidRhythmicRegularity: 0,
+    sidSyncopation: 0,
     sidArpeggioActivity: 0,
     sidWaveTriangleRatio: 0,
     sidWaveSawRatio: 0,
@@ -202,6 +216,7 @@ function createEmptySidNativeFeatures(
     sidWaveNoiseRatio: 0,
     sidWaveMixedRatio: 0,
     sidPwmActivity: 0,
+    sidRegisterMotion: 0,
     sidFilterCutoffMean: 0,
     sidFilterMotion: 0,
     sidFilterResonanceMean: 0,
@@ -210,6 +225,8 @@ function createEmptySidNativeFeatures(
     sidRoleBassRatio: 0,
     sidRoleLeadRatio: 0,
     sidRoleAccompanimentRatio: 0,
+    sidVoiceRoleEntropy: 0,
+    sidMelodicClarity: 0,
     sidAdsrPluckRatio: 0,
     sidAdsrPadRatio: 0,
   };
@@ -343,6 +360,41 @@ function computeRhythmicRegularity(onsets: Array<{ timeSec: number }>): number {
 
   const variance = intervals.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / intervals.length;
   return clamp01(1 - Math.sqrt(Math.max(0, variance)) / mean);
+}
+
+function computeSyncopation(onsets: Array<{ timeSec: number }>): number {
+  if (onsets.length < 3) {
+    return 0;
+  }
+
+  const intervals: number[] = [];
+  for (let index = 1; index < onsets.length; index += 1) {
+    const interval = onsets[index]!.timeSec - onsets[index - 1]!.timeSec;
+    if (interval > 0) {
+      intervals.push(interval);
+    }
+  }
+
+  if (intervals.length === 0) {
+    return 0;
+  }
+
+  const sorted = [...intervals].sort((left, right) => left - right);
+  const dominantPeriod = sorted[Math.floor(sorted.length / 2)]!;
+  if (dominantPeriod <= 0) {
+    return 0;
+  }
+
+  let offBeatCount = 0;
+  for (let index = 1; index < onsets.length; index += 1) {
+    const phase = (onsets[index]!.timeSec / dominantPeriod) % 1;
+    const distanceToGrid = Math.min(phase, 1 - phase);
+    if (distanceToGrid > 0.2 && distanceToGrid < 0.45) {
+      offBeatCount += 1;
+    }
+  }
+
+  return clamp01(safeDivide(offBeatCount, Math.max(1, onsets.length - 1)));
 }
 
 function computeWaveformRatios(voiceFrames: VoiceFrameSummary[]): Record<"triangle" | "saw" | "pulse" | "noise" | "mixed", number> {
@@ -494,6 +546,51 @@ function computeAdsrRatios(onsets: VoiceFrameSummary[]): Record<"pluck" | "pad",
   };
 }
 
+function computeRegisterMotion(
+  voiceFrames: VoiceFrameSummary[],
+  globalFrames: GlobalFrameSummary[],
+): number {
+  const groupedVoiceFrames = groupVoiceFrames(voiceFrames);
+  const motionSamples: number[] = [];
+
+  for (const frames of groupedVoiceFrames.values()) {
+    for (let index = 1; index < frames.length; index += 1) {
+      const previous = frames[index - 1]!;
+      const current = frames[index]!;
+      if (current.frame !== previous.frame + 1) {
+        continue;
+      }
+
+      const frequencyMotion = clamp01(Math.abs(12 * Math.log2(Math.max(1, current.frequencyWord) / Math.max(1, previous.frequencyWord))) / 12);
+      const pulseMotion = Math.abs(current.pulseWidth - previous.pulseWidth) / SID_MAX_PULSE_WIDTH;
+      const gateMotion = current.gate === previous.gate ? 0 : 1;
+      const waveformMotion = current.waveform === previous.waveform ? 0 : 1;
+      motionSamples.push(clamp01((0.45 * frequencyMotion) + (0.25 * pulseMotion) + (0.15 * gateMotion) + (0.15 * waveformMotion)));
+    }
+  }
+
+  const groupedGlobalFrames = new Map<number, GlobalFrameSummary[]>();
+  for (const frame of globalFrames) {
+    const existing = groupedGlobalFrames.get(frame.sidNumber) ?? [];
+    existing.push(frame);
+    groupedGlobalFrames.set(frame.sidNumber, existing);
+  }
+
+  for (const frames of groupedGlobalFrames.values()) {
+    for (let index = 1; index < frames.length; index += 1) {
+      const previous = frames[index - 1]!;
+      const current = frames[index]!;
+      if (current.frame !== previous.frame + 1) {
+        continue;
+      }
+      const filterMotion = Math.abs(current.filterCutoff - previous.filterCutoff) / SID_MAX_FILTER_CUTOFF;
+      motionSamples.push(clamp01(filterMotion));
+    }
+  }
+
+  return clamp01(safeDivide(sumNumbers(motionSamples), Math.max(1, motionSamples.length)));
+}
+
 function computeArpeggioActivity(voiceFrames: VoiceFrameSummary[]): number {
   const grouped = groupVoiceFrames(voiceFrames.filter((frame) => frame.gate && frame.frequencyWord > 0));
   let qualifyingChanges = 0;
@@ -516,6 +613,30 @@ function computeArpeggioActivity(voiceFrames: VoiceFrameSummary[]): number {
   }
 
   return clamp01(safeDivide(qualifyingChanges, Math.max(1, totalChanges)));
+}
+
+function computeMelodicClarity(options: {
+  roleLeadRatio: number;
+  waveNoiseRatio: number;
+  arpeggioActivity: number;
+  rhythmicRegularity: number;
+}): number {
+  return clamp01(
+    (0.45 * options.roleLeadRatio) +
+      (0.25 * (1 - options.waveNoiseRatio)) +
+      (0.15 * (1 - options.arpeggioActivity)) +
+      (0.15 * options.rhythmicRegularity),
+  );
+}
+
+function computeVoiceRoleEntropy(roleRatios: Record<"bass" | "lead" | "accompaniment", number>): number {
+  const values = [roleRatios.bass, roleRatios.lead, roleRatios.accompaniment].filter((value) => value > 0);
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const entropy = -values.reduce((sum, value) => sum + (value * Math.log(value)), 0);
+  return clamp01(entropy / Math.log(3));
 }
 
 function groupVoiceFrames(voiceFrames: VoiceFrameSummary[]): Map<string, VoiceFrameSummary[]> {

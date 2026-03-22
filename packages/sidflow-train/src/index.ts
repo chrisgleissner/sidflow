@@ -451,3 +451,4 @@ export * from "./pair-builder.js";
 export * from "./metric-learning.js";
 export * from "./evaluate.js";
 export * from "./scheduler.js";
+export * from "./offline-evaluation.js";

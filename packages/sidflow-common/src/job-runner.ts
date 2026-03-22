@@ -266,6 +266,9 @@ export function createDefaultJobCommandFactory(
     if (typeof params.learningRate === "number") {
       args.push("--learning-rate", String(params.learningRate));
     }
+    if (params.auto) {
+      args.push("--auto");
+    }
     if (params.evaluate === false) {
       args.push("--no-evaluate");
     }

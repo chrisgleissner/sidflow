@@ -1,10 +1,9 @@
 export const PERCEPTUAL_VECTOR_DIMENSIONS = 24;
 
 export const PERCEPTUAL_VECTOR_WEIGHTS = [
-  1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-  1.2, 1.2, 1.2, 1.2, 1.2, 1.2,
-  0.8, 0.8, 0.8, 0.8, 0.8,
-  1.5, 1.5, 1.5, 1.5, 1.5,
+  1.1, 1.1, 1.2, 1.0, 1.0, 0.9, 0.9, 0.9,
+  1.0, 0.9, 0.8, 1.1, 1.2, 1.2, 1.1, 0.8,
+  0.8, 0.9, 0.9, 1.0, 0.9, 0.9, 0.7, 0.7,
 ] as const;
 
 export function cosineSimilarity(left: number[], right: number[]): number {

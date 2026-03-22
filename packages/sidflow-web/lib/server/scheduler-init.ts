@@ -25,6 +25,7 @@ export async function runScheduledPipeline(): Promise<void> {
     const jobs = orchestrator.listJobs();
     const activeFetch = findLatestJobByType(jobs, 'fetch', ['pending', 'running', 'paused']);
     const activeClassify = findLatestJobByType(jobs, 'classify', ['pending', 'running', 'paused']);
+    const activeTrain = findLatestJobByType(jobs, 'train', ['pending', 'running', 'paused']);
 
     if (!activeFetch) {
       const fetchJob = await orchestrator.createJob('fetch', {});
@@ -41,6 +42,17 @@ export async function runScheduledPipeline(): Promise<void> {
       console.log('[scheduler-init] Queued classify job', { jobId: classifyJob.id });
     } else {
       console.log('[scheduler-init] Reusing active classify job', { jobId: activeClassify.id });
+    }
+
+    if (prefs.training?.enabled) {
+      if (!activeTrain) {
+        const trainJob = await orchestrator.createJob('train', {
+          auto: true,
+        });
+        console.log('[scheduler-init] Queued automatic train job', { jobId: trainJob.id });
+      } else {
+        console.log('[scheduler-init] Reusing active train job', { jobId: activeTrain.id });
+      }
     }
     
     console.log('[scheduler-init] Scheduled pipeline run completed');

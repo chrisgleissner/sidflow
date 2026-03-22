@@ -56,6 +56,8 @@ export interface TrainJobParams {
   readonly batchSize?: number;
   readonly learningRate?: number;
   readonly evaluate?: boolean;
+  readonly auto?: boolean;
+  readonly force?: boolean;
 }
 
 export type RenderEngineSelection = RenderEngine | "auto";

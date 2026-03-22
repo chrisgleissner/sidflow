@@ -98,12 +98,16 @@ describe("extractSidNativeFeaturesFromWriteTrace", () => {
     expect(features.sidWavePulseRatio).toBeGreaterThan(0);
     expect(features.sidWaveSawRatio).toBeGreaterThan(0);
     expect(features.sidWaveTriangleRatio).toBeGreaterThan(0);
+    expect(features.sidSyncopation).toBeGreaterThanOrEqual(0);
     expect(features.sidPwmActivity).toBeGreaterThan(0);
+    expect(features.sidRegisterMotion).toBeGreaterThan(0);
     expect(features.sidFilterCutoffMean).toBeGreaterThan(0);
     expect(features.sidFilterMotion).toBeGreaterThan(0);
     expect(features.sidSamplePlaybackActivity).toBeGreaterThan(0);
     expect(features.sidRoleBassRatio).toBeGreaterThan(0);
     expect(features.sidRoleLeadRatio).toBeGreaterThan(0);
+    expect(features.sidVoiceRoleEntropy).toBeGreaterThanOrEqual(0);
+    expect(features.sidMelodicClarity).toBeGreaterThan(0);
     expect(features.sidAdsrPluckRatio).toBeGreaterThan(0);
     expect(features.sidAdsrPadRatio).toBeGreaterThan(0);
   });
@@ -119,6 +123,7 @@ describe("extractSidNativeFeaturesFromWriteTrace", () => {
     expect(features.sidFeatureVariant).toBe("empty");
     expect(features.sidTraceEventCount).toBe(0);
     expect(features.sidWavePulseRatio).toBe(0);
+    expect(features.sidRegisterMotion).toBe(0);
     expect(features.sidFilterMotion).toBe(0);
   });
 });

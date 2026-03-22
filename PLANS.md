@@ -68,13 +68,15 @@ Template:
 - [x] I3 — add canonical frame compaction for SID register events
 - [x] I4 — implement SID-native feature extraction over canonical traces
 - [x] I4b — harden the default hybrid classify merge so SID-native fields never overwrite existing WAV-derived feature keys
-- [ ] I5 — residualize WAV timbre against SID-native causal features
-- [ ] I6 — build the final no-duplication 24D hybrid vector
-- [ ] I7b — propagate the unified feedback aggregates into any remaining downstream consumers
+- [x] I5 — residualize WAV timbre against SID-native causal features
+- [x] I6 — build the final no-duplication 24D hybrid vector
+- [x] I7b — propagate the unified feedback aggregates into any remaining downstream consumers
 - [x] I7c — keep similarity-export recommendation readers backward-compatible with cached pre-decay `sidcorr-1` station bundles
-- [ ] I8 — wire autonomous retraining triggers into a persistent service path
-- [ ] I9 — add the offline hybrid evaluation harness
+- [x] I8 — wire autonomous retraining triggers into a persistent service path
+- [x] I9 — add the offline hybrid evaluation harness
 - [x] I10 — extend the Play tab playlist with non-scrolling column headers and an HVSC-relative path column shown to the right of the song name
+- [x] I11 — add CLI-backed C64U LED controls to the web Play tab, and extend the SID station CLI/wrapper to accept an explicit `--c64u-password` that is forwarded on C64U REST calls
+- [x] I12 — rename newly introduced and future `ultimate64*` fix surfaces to `c64u*`, and plan the broader code/doc migration for existing Ultimate 64-prefixed files and symbols
 
 **Progress log**
 - 2026-03-22 — Landed the shared 15s skip + 15s analyze defaults in `packages/sidflow-classify/src/{audio-window,index,essentia-features,feature-extraction-worker,render/render-orchestrator}.ts` and updated the focused classify tests accordingly.
@@ -88,9 +90,18 @@ Template:
 - 2026-03-22 — Completed I4b and I7c: `createHybridFeatureExtractor(...)` now preserves existing WAV-derived keys on collisions, and the similarity-export recommendation readers now tolerate cached pre-decay `sidcorr-1` bundles by synthesizing zero decayed aggregates when those columns are absent. Validated with focused common/classify regressions and `bun run build:quick`.
 - 2026-03-22 — Added I10 for the Play tab queue UI: show each track's HVSC-relative path in a dedicated column to the right of the song column, and keep the playlist column headers fixed while the track rows scroll.
 - 2026-03-22 — Completed I10 in `packages/sidflow-web/components/PlayTab.tsx` by converting the Played/Upcoming queue cards into a columned playlist view with persistent headers and a dedicated HVSC-relative path column using each track's existing `relativePath`. Validated with `cd /home/chris/dev/c64/sidflow/packages/sidflow-web && bunx tsc -p tsconfig.json --noEmit` and a fresh-build Playwright check for `tests/e2e/play-tab.spec.ts --grep "sticky playlist headers"`.
+- 2026-03-22 — Added I11 after the follow-up C64U request. Scope now includes a CLI-backed LED control path for the Play tab plus an explicit SID station `--c64u-password` option surfaced consistently in both `sidflow-play station` and `scripts/sid-station.sh`, forwarding to the documented `X-Password` header for all Ultimate64 REST calls.
+- 2026-03-22 — Follow-up constraint: keep `--c64u-password` as the user-facing parameter name and remove `--network-password` anywhere it was introduced while building the C64U control path.
+- 2026-03-22 — Added I12 after the naming follow-up: the main device terminology is C64U, so new fixes and new files should use `c64u*` naming (for example `c64u-capture.ts` / `c64u-led.ts`), while existing broader repo and doc renames are tracked as an explicit migration task rather than being done piecemeal.
+- 2026-03-22 — Completed I11: added the `sidflow-play c64u-led` CLI with shared validation/snapshot shaping, exposed a CLI-backed `/api/play/c64u-led` route that forwards the password via `SIDFLOW_C64U_PASSWORD`, refactored the Play tab into titled Playlist / Rate / LED control rows, and added focused CLI, route, and Playwright coverage. Validation passed with focused `bun test`, `bun run build:quick`, `packages/sidflow-web bun run build`, and Playwright checks for the updated Play tab rows.
+- 2026-03-22 — Completed I5 and I6 in `packages/sidflow-classify`: extended SID-native extraction with syncopation/register-motion/melodic-clarity/role-entropy signals, rebuilt the final 24D hybrid vector with WAV-first overlap semantics and SID-aware residual MFCC handling, updated shared vector weights, and bumped `FEATURE_SCHEMA_VERSION` to `1.3.0`. Focused classify tests passed.
+- 2026-03-22 — Completed the remaining I7b propagation by switching station queue flow ordering onto the shared weighted vector similarity path used by export/recommender code. Focused queue tests passed and a full `bun run build` stayed green.
+- 2026-03-22 — Completed I8 by wiring the existing durable web scheduler and job system to queue `train` jobs in `--auto` mode when server-side background training is enabled. Added coverage for job command generation, scheduler-init queuing, and the scheduler API's training toggle.
+- 2026-03-22 — Completed I9 by adding `packages/sidflow-train/src/offline-evaluation.ts` plus `scripts/evaluate-hybrid-similarity.ts`, giving one-command offline comparison of baseline vs hybrid embedding corpora across pairwise ranking accuracy, `NDCG@10`, station coherence, rating agreement, and early-skip AUC.
+- 2026-03-22 — Completed I12 planning by documenting the staged `ultimate64` → `c64u` migration in `doc/plans/c64u-migration.md`. New work remains `c64u*`, while existing public compatibility contracts stay unchanged until an explicit deprecation window.
 
 **Immediate next step**
-- Resume I5/I6, then continue the broader green-validation pass with the clarified rule that WAV-derived features remain the trusted source wherever overlap exists.
+- Run the broader green-validation pass for the completed roadmap slice, then push once the required validation runs are clean.
 
 ### Task: SID-native classification enhancement audit + design (2026-03-22)
 

@@ -10,6 +10,7 @@ import {
   rateTrack,
   requestRandomPlayTrack,
   requestStationFromSong,
+  requestC64ULed,
   getAggregateRating,
   getPlaylist,
   type RateTrackInfo,
@@ -18,8 +19,8 @@ import {
 } from '@/lib/api-client';
 import { formatApiError } from '@/lib/format-error';
 import { SidflowPlayer, type SidflowPlayerState } from '@/lib/player/sidflow-player';
-import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio, Star, TrendingUp, Settings, Shuffle } from 'lucide-react';
-import type { FeedbackAction } from '@sidflow/common';
+import { Play, Pause, SkipForward, SkipBack, ThumbsUp, ThumbsDown, Forward, Music2, Loader2, AlertTriangle, Volume2, VolumeX, Radio, Star, TrendingUp, Settings, Shuffle, RefreshCw } from 'lucide-react';
+import { C64U_LED_OPTIONS, type C64ULedSnapshot, type FeedbackAction } from '@sidflow/common';
 import { recordExplicitRating, recordImplicitAction } from '@/lib/feedback/recorder';
 import {
   Select,
@@ -93,6 +94,13 @@ const HISTORY_LIMIT = 3;
 const UPCOMING_DISPLAY_LIMIT = 3;
 const INITIAL_PLAYLIST_SIZE = 12;
 const PREFETCH_WAIT_MS = 3000;
+const DEFAULT_C64U_LED_SETTINGS: C64ULedSnapshot['settings'] = {
+  mode: 'Fixed Color',
+  autoSidMode: 'Enabled',
+  pattern: 'SingleColor',
+  intensity: 25,
+  fixedColor: 'Indigo',
+};
 
 interface InfoProps {
   label: string;
@@ -108,6 +116,25 @@ function InfoRow({ label, value }: InfoProps) {
   );
 }
 
+interface ControlRowProps {
+  title: string;
+  testId?: string;
+  children: ReactNode;
+}
+
+function ControlRow({ title, testId, children }: ControlRowProps) {
+  return (
+    <div className="rounded border border-border/50 bg-muted/20 px-3 py-2" data-testid={testId}>
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+        <div className="w-full text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground md:w-24 md:flex-shrink-0">
+          {title}
+        </div>
+        <div className="flex-1">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 function getHvscRelativePath(track: PlaylistTrack): string {
   return track.relativePath || track.sidPath;
 }
@@ -115,6 +142,7 @@ function getHvscRelativePath(track: PlaylistTrack): string {
 export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const { preferences } = usePreferences();
   const { isOnline } = useNetworkStatus();
+  const c64uPreferences = preferences.ultimate64;
   const [preset, setPreset] = useState<MoodPreset>('energetic');
   const [currentTrack, setCurrentTrack] = useState<PlaylistTrack | null>(null);
   const [duration, setDuration] = useState(180);
@@ -153,6 +181,10 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const [showChipModelSelector, setShowChipModelSelector] = useState(false);
   const [isLoadingChipStation, setIsLoadingChipStation] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [c64uLedSnapshot, setC64uLedSnapshot] = useState<C64ULedSnapshot | null>(null);
+  const [c64uLedDraft, setC64uLedDraft] = useState<C64ULedSnapshot['settings'] | null>(null);
+  const [isC64ULedLoading, setIsC64ULedLoading] = useState(false);
+  const [isC64ULedSaving, setIsC64ULedSaving] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const isAudioLoadingRef = useRef(isAudioLoading);
   const isOnlineRef = useRef(isOnline);
@@ -381,6 +413,75 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const notifyStatus = useCallback((message: string, isError = false) => {
     statusHandlerRef.current(message, isError);
   }, []);
+
+  const loadC64ULedSnapshot = useCallback(async () => {
+    if (!c64uPreferences) {
+      setC64uLedSnapshot(null);
+      setC64uLedDraft(null);
+      return;
+    }
+
+    setIsC64ULedLoading(true);
+    try {
+      const response = await requestC64ULed({
+        c64uHost: c64uPreferences.host,
+        c64uHttps: c64uPreferences.https,
+        c64uPassword: c64uPreferences.secretHeader,
+      });
+      if (!response.success) {
+        notifyStatus(`Unable to load C64U LED settings: ${formatApiError(response)}`, true);
+        return;
+      }
+      setC64uLedSnapshot(response.data);
+      setC64uLedDraft(response.data.settings);
+    } catch (error) {
+      notifyStatus(
+        `Unable to load C64U LED settings: ${error instanceof Error ? error.message : String(error)}`,
+        true,
+      );
+    } finally {
+      setIsC64ULedLoading(false);
+    }
+  }, [c64uPreferences, notifyStatus]);
+
+  const applyC64ULedPatch = useCallback(
+    async (patch: Partial<C64ULedSnapshot['settings']>) => {
+      if (!c64uPreferences) {
+        notifyStatus('Configure the C64U connection in Preferences before using LED controls.', true);
+        return;
+      }
+
+      setIsC64ULedSaving(true);
+      try {
+        const response = await requestC64ULed({
+          c64uHost: c64uPreferences.host,
+          c64uHttps: c64uPreferences.https,
+          c64uPassword: c64uPreferences.secretHeader,
+          ...patch,
+        });
+        if (!response.success) {
+          notifyStatus(`Unable to update C64U LED settings: ${formatApiError(response)}`, true);
+          setC64uLedDraft(c64uLedSnapshot?.settings ?? null);
+          return;
+        }
+        setC64uLedSnapshot(response.data);
+        setC64uLedDraft(response.data.settings);
+      } catch (error) {
+        notifyStatus(
+          `Unable to update C64U LED settings: ${error instanceof Error ? error.message : String(error)}`,
+          true,
+        );
+        setC64uLedDraft(c64uLedSnapshot?.settings ?? null);
+      } finally {
+        setIsC64ULedSaving(false);
+      }
+    },
+    [c64uLedSnapshot?.settings, c64uPreferences, notifyStatus],
+  );
+
+  useEffect(() => {
+    void loadC64ULedSnapshot();
+  }, [loadC64ULedSnapshot]);
 
   const notifyTrackPlayed = useCallback((sidPath: string) => {
     trackPlayedHandlerRef.current(sidPath);
@@ -1762,17 +1863,6 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
         />
       </div>
 
-      {/* Playlist Management */}
-      <div className="mb-4 flex gap-2">
-        <SaveQueueDialog
-          currentQueue={[currentTrack, ...upcomingTracks].filter((t): t is PlaylistTrack => t !== null)}
-          onSaved={(playlistId) => {
-            notifyStatus('Playlist saved successfully!', false);
-          }}
-        />
-        <PlaylistBrowser onLoadPlaylist={handleLoadPlaylist} />
-      </div>
-
       {/* Keyboard Shortcuts Help Modal */}
       <KeyboardShortcutsHelp
         open={showShortcutsHelp}
@@ -2192,105 +2282,290 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-2 pt-2">
-                <FavoriteButton
-                  sidPath={currentTrack.sidPath}
-                  size="sm"
-                  variant="outline"
-                  showLabel
-                  onStatusChange={notifyStatus}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  disabled={isRating}
-                  onClick={() => {
-                    recordImplicitForCurrent('like', {
-                      origin: 'play-tab',
-                      control: 'quick-like',
-                      preset,
-                    });
-                    void submitRating(5, 'Like', true);
-                  }}
-                >
-                  <ThumbsUp className="h-4 w-4" /> Like
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  disabled={isRating}
-                  onClick={() => {
-                    recordImplicitForCurrent('dislike', {
-                      origin: 'play-tab',
-                      control: 'quick-dislike',
-                      preset,
-                    });
-                    void submitRating(1, 'Dislike', true);
-                  }}
-                >
-                  <ThumbsDown className="h-4 w-4" /> Dislike
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  disabled={isRating}
-                  onClick={() => {
-                    recordImplicitForCurrent('skip', {
-                      origin: 'play-tab',
-                      control: 'quick-skip',
-                      preset,
-                    });
-                    void submitRating(3, 'Skipped', true);
-                  }}
-                >
-                  <Forward className="h-4 w-4" /> Next
-                </Button>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1"
-                    onClick={() => {
-                      void handleStartStation(currentTrack.sidPath);
-                    }}
-                    title="Create a personalized radio station based on this song"
-                  >
-                    <Radio className="h-4 w-4" /> Start Station
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => setShowStationSettings(!showStationSettings)}
-                    title="Adjust station parameters"
-                  >
-                    <Settings className="h-3 w-3" />
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  onClick={handleFindRemixes}
-                  disabled={isFindingRemixes}
-                  title="Find covers, remixes, and reinterpretations"
-                >
-                  <Shuffle className="h-4 w-4" />
-                  {isFindingRemixes ? 'SCANNING…' : 'Find Remixes'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1"
-                  onClick={handleFindSimilarComposers}
-                  disabled={!currentTrack.metadata.author}
-                  title="Find composers with similar musical styles"
-                >
-                  <Music2 className="h-4 w-4" /> Similar Composers
-                </Button>
+              <div className="space-y-2 pt-2">
+                <ControlRow title="Playlist" testId="play-control-row-playlist">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => {
+                        void rebuildPlaylist();
+                      }}
+                      disabled={isLoading || isAudioLoading}
+                    >
+                      <RefreshCw className="h-4 w-4" /> Refresh
+                    </Button>
+                    <SaveQueueDialog
+                      currentQueue={[currentTrack, ...upcomingTracks].filter((t): t is PlaylistTrack => t !== null)}
+                      onSaved={() => {
+                        notifyStatus('Playlist saved successfully!', false);
+                      }}
+                    />
+                    <PlaylistBrowser onLoadPlaylist={handleLoadPlaylist} />
+                  </div>
+                </ControlRow>
+
+                <ControlRow title="Rate" testId="play-control-row-rate">
+                  <div className="flex flex-wrap gap-2">
+                    <FavoriteButton
+                      sidPath={currentTrack.sidPath}
+                      size="sm"
+                      variant="outline"
+                      showLabel
+                      onStatusChange={notifyStatus}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      disabled={isRating}
+                      onClick={() => {
+                        recordImplicitForCurrent('like', {
+                          origin: 'play-tab',
+                          control: 'quick-like',
+                          preset,
+                        });
+                        void submitRating(5, 'Like', true);
+                      }}
+                    >
+                      <ThumbsUp className="h-4 w-4" /> Like
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      disabled={isRating}
+                      onClick={() => {
+                        recordImplicitForCurrent('dislike', {
+                          origin: 'play-tab',
+                          control: 'quick-dislike',
+                          preset,
+                        });
+                        void submitRating(1, 'Dislike', true);
+                      }}
+                    >
+                      <ThumbsDown className="h-4 w-4" /> Dislike
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      disabled={isRating}
+                      onClick={() => {
+                        recordImplicitForCurrent('skip', {
+                          origin: 'play-tab',
+                          control: 'quick-skip',
+                          preset,
+                        });
+                        void submitRating(3, 'Skipped', true);
+                      }}
+                    >
+                      <Forward className="h-4 w-4" /> Next
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => {
+                          void handleStartStation(currentTrack.sidPath);
+                        }}
+                        title="Create a personalized radio station based on this song"
+                      >
+                        <Radio className="h-4 w-4" /> Start Station
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setShowStationSettings(!showStationSettings)}
+                        title="Adjust station parameters"
+                      >
+                        <Settings className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={handleFindRemixes}
+                      disabled={isFindingRemixes}
+                      title="Find covers, remixes, and reinterpretations"
+                    >
+                      <Shuffle className="h-4 w-4" />
+                      {isFindingRemixes ? 'SCANNING…' : 'Find Remixes'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={handleFindSimilarComposers}
+                      disabled={!currentTrack.metadata.author}
+                      title="Find composers with similar musical styles"
+                    >
+                      <Music2 className="h-4 w-4" /> Similar Composers
+                    </Button>
+                  </div>
+                </ControlRow>
+
+                <ControlRow title="LED" testId="play-control-row-led">
+                  {c64uPreferences ? (
+                    <div className="space-y-2" data-testid="c64u-led-row">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => {
+                            void loadC64ULedSnapshot();
+                          }}
+                          disabled={isC64ULedLoading || isC64ULedSaving}
+                        >
+                          <RefreshCw className={`h-4 w-4 ${isC64ULedLoading ? 'animate-spin' : ''}`} /> Read
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                          {isC64ULedSaving
+                            ? 'Applying C64U LED settings…'
+                            : `Target ${c64uPreferences.host}${c64uPreferences.https ? ' via HTTPS' : ''}`}
+                        </span>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="space-y-1">
+                          <label className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Mode</label>
+                          <Select
+                            value={c64uLedDraft?.mode ?? c64uLedSnapshot?.settings.mode ?? C64U_LED_OPTIONS.mode[0]}
+                            onValueChange={(value) => {
+                              setC64uLedDraft((current: C64ULedSnapshot['settings'] | null) => ({
+                                ...(current ?? c64uLedSnapshot?.settings ?? DEFAULT_C64U_LED_SETTINGS),
+                                mode: value,
+                              }));
+                              void applyC64ULedPatch({ mode: value });
+                            }}
+                            disabled={isC64ULedLoading || isC64ULedSaving}
+                          >
+                            <SelectTrigger data-testid="c64u-led-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {C64U_LED_OPTIONS.mode.map((option: string) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Auto SID</label>
+                          <Select
+                            value={c64uLedDraft?.autoSidMode ?? c64uLedSnapshot?.settings.autoSidMode ?? C64U_LED_OPTIONS.autoSidMode[0]}
+                            onValueChange={(value) => {
+                              setC64uLedDraft((current: C64ULedSnapshot['settings'] | null) => ({
+                                ...(current ?? c64uLedSnapshot?.settings ?? DEFAULT_C64U_LED_SETTINGS),
+                                autoSidMode: value,
+                              }));
+                              void applyC64ULedPatch({ autoSidMode: value });
+                            }}
+                            disabled={isC64ULedLoading || isC64ULedSaving}
+                          >
+                            <SelectTrigger data-testid="c64u-led-auto-sid-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {C64U_LED_OPTIONS.autoSidMode.map((option: string) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Pattern</label>
+                          <Select
+                            value={c64uLedDraft?.pattern ?? c64uLedSnapshot?.settings.pattern ?? C64U_LED_OPTIONS.pattern[0]}
+                            onValueChange={(value) => {
+                              setC64uLedDraft((current: C64ULedSnapshot['settings'] | null) => ({
+                                ...(current ?? c64uLedSnapshot?.settings ?? DEFAULT_C64U_LED_SETTINGS),
+                                pattern: value,
+                              }));
+                              void applyC64ULedPatch({ pattern: value });
+                            }}
+                            disabled={isC64ULedLoading || isC64ULedSaving}
+                          >
+                            <SelectTrigger data-testid="c64u-led-pattern">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {C64U_LED_OPTIONS.pattern.map((option: string) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Color</label>
+                          <Select
+                            value={c64uLedDraft?.fixedColor ?? c64uLedSnapshot?.settings.fixedColor ?? C64U_LED_OPTIONS.fixedColor[0]}
+                            onValueChange={(value) => {
+                              setC64uLedDraft((current: C64ULedSnapshot['settings'] | null) => ({
+                                ...(current ?? c64uLedSnapshot?.settings ?? DEFAULT_C64U_LED_SETTINGS),
+                                fixedColor: value,
+                              }));
+                              void applyC64ULedPatch({ fixedColor: value });
+                            }}
+                            disabled={isC64ULedLoading || isC64ULedSaving}
+                          >
+                            <SelectTrigger data-testid="c64u-led-fixed-color">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {C64U_LED_OPTIONS.fixedColor.map((option: string) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                          <span>Intensity</span>
+                          <span className="font-semibold normal-case tracking-normal text-foreground">
+                            {c64uLedDraft?.intensity ?? c64uLedSnapshot?.settings.intensity ?? 25}
+                          </span>
+                        </div>
+                        <Slider
+                          value={[c64uLedDraft?.intensity ?? c64uLedSnapshot?.settings.intensity ?? 25]}
+                          onValueChange={(value) => {
+                            const nextIntensity = value[0] ?? 25;
+                            setC64uLedDraft((current: C64ULedSnapshot['settings'] | null) => ({
+                              ...(current ?? c64uLedSnapshot?.settings ?? DEFAULT_C64U_LED_SETTINGS),
+                              intensity: nextIntensity,
+                            }));
+                          }}
+                          onValueCommit={(value) => {
+                            const nextIntensity = value[0] ?? 25;
+                            void applyC64ULedPatch({ intensity: nextIntensity });
+                          }}
+                          min={C64U_LED_OPTIONS.intensity.min}
+                          max={C64U_LED_OPTIONS.intensity.max}
+                          step={1}
+                          disabled={isC64ULedLoading || isC64ULedSaving}
+                          data-testid="c64u-led-intensity"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Configure a C64U host in Preferences to enable LED controls.
+                    </div>
+                  )}
+                </ControlRow>
               </div>
 
               {showComposerDiscovery && similarComposers.length > 0 && (

@@ -16,6 +16,7 @@ import {
 } from "@sidflow/common";
 import type { Stats } from "node:fs";
 import {
+  runC64ULedCli,
   createPlaylistBuilder,
   createPlaybackController,
   createSessionManager,
@@ -217,6 +218,10 @@ function mergeRuntime(overrides?: Partial<PlayCliRuntime>): PlayCliRuntime {
 }
 
 export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRuntime>): Promise<number> {
+  if (argv[0] === "c64u-led") {
+    return runC64ULedCli(argv.slice(1));
+  }
+
   if (argv[0] === "export-similarity") {
     return runSimilarityExportCli(argv.slice(1));
   }

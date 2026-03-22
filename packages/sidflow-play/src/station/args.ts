@@ -59,7 +59,7 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--c64u-password",
     type: "string",
-    description: "Override Ultimate64 API password",
+    description: "Override the Ultimate64 Network Password (sent as X-Password)",
   },
   {
     name: "--c64u-https",

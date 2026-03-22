@@ -27,6 +27,7 @@ export * from "./job-runner.js";
 export * from "./job-queue.js";
 export * from "./audio-encoding.js";
 export * from "./ultimate64-client.js";
+export * from "./c64u-led.js";
 export * from "./ultimate64-capture.js";
 export * from "./render-matrix.js";
 export * from "./audit-trail.js";

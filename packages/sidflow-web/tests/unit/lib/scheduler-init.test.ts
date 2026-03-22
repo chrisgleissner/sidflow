@@ -25,6 +25,7 @@ describe('scheduler-init durable jobs', () => {
       JSON.stringify({
         scheduler: { enabled: true, time: '06:00', timezone: 'UTC' },
         renderPrefs: { preserveWav: false, enableFlac: false, enableM4a: false },
+        training: { enabled: true },
       }, null, 2),
       'utf8',
     );
@@ -46,17 +47,22 @@ describe('scheduler-init durable jobs', () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  test('queues fetch and classify jobs instead of calling internal HTTP routes', async () => {
+  test('queues fetch, classify, and automatic train jobs instead of calling internal HTTP routes', async () => {
     await runScheduledPipeline();
 
     const orchestrator = await getJobOrchestrator();
     const jobs = orchestrator.listJobs();
-    expect(jobs.map((job) => job.type).sort()).toEqual(['classify', 'fetch']);
+    expect(jobs.map((job) => job.type).sort()).toEqual(['classify', 'fetch', 'train']);
 
     const classifyJob = jobs.find((job) => job.type === 'classify');
     expect(classifyJob?.params).toMatchObject({
       skipAlreadyClassified: true,
       deleteWavAfterClassification: true,
+    });
+
+    const trainJob = jobs.find((job) => job.type === 'train');
+    expect(trainJob?.params).toMatchObject({
+      auto: true,
     });
   });
 });

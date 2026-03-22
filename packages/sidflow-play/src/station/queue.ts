@@ -1,6 +1,7 @@
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import {
+  cosineSimilarity,
   pathExists,
   recommendFromFavorites,
   type SidFileMetadata,
@@ -265,24 +266,6 @@ function pickFavoriteTrackIds(ratings: Map<string, number>): string[] {
   }
   const fallback = ordered.find(([, rating]) => rating > 0);
   return fallback ? [fallback[0]] : [];
-}
-
-function cosineSimilarity(left: number[], right: number[]): number {
-  let dot = 0;
-  let leftNorm = 0;
-  let rightNorm = 0;
-  const dimensions = Math.min(left.length, right.length);
-  for (let index = 0; index < dimensions; index += 1) {
-    const leftValue = left[index] ?? 0;
-    const rightValue = right[index] ?? 0;
-    dot += leftValue * rightValue;
-    leftNorm += leftValue * leftValue;
-    rightNorm += rightValue * rightValue;
-  }
-  if (leftNorm === 0 || rightNorm === 0) {
-    return 0;
-  }
-  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
 }
 
 export function deriveStationBucketKey(sidPath: string): string {

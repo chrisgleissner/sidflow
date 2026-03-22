@@ -9,6 +9,7 @@ export * from "./playlist.js";
 export * from "./playback.js";
 export * from "./session.js";
 export * from "./export.js";
+export * from "./c64u-led-cli.js";
 export * from "./similarity-export-cli.js";
 export * from "./sid-station.js";
 export * from "./filters.js";

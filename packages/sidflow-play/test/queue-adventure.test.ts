@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   computeAdventureMinSimilarity,
   chooseStationTracks,
+  orderStationTracksByFlow,
 } from "../src/station/queue.js";
 import type { SimilarityExportRecommendation } from "@sidflow/common";
 
@@ -133,5 +134,35 @@ describe("chooseStationTracks", () => {
     const hasMid = result10.some((r) => r.score < 0.82);
     // Not guaranteed to pick mid tracks but they are eligible
     expect(typeof hasMid).toBe("boolean"); // just verify it runs
+  });
+});
+
+describe("orderStationTracksByFlow", () => {
+  it("uses shared weighted similarity for continuity ordering", () => {
+    const recommendations = [
+      makeRec("seed", "MUSICIANS/A/seed.sid", 0.99),
+      makeRec("late-heavy", "MUSICIANS/A/late-heavy.sid", 0.95),
+      makeRec("front-heavy", "MUSICIANS/A/front-heavy.sid", 0.7),
+    ];
+
+    const seedVector = Array.from({ length: 24 }, (_, index) => {
+      if (index === 0 || index === 23) {
+        return 1;
+      }
+      return 0;
+    });
+    const vectorsByTrackId = new Map<string, number[]>([
+      ["seed", seedVector],
+      ["late-heavy", Array.from({ length: 24 }, (_, index) => (index === 23 ? 1 : 0))],
+      ["front-heavy", Array.from({ length: 24 }, (_, index) => (index === 0 ? 1 : 0))],
+    ]);
+
+    const ordered = orderStationTracksByFlow(recommendations, vectorsByTrackId, 0, () => 0);
+
+    expect(ordered.map((entry) => entry.track_id)).toEqual([
+      "seed",
+      "front-heavy",
+      "late-heavy",
+    ]);
   });
 });
