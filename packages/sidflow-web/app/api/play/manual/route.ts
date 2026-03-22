@@ -7,8 +7,7 @@ import {
   createRateTrackInfo,
 } from '@/lib/rate-playback';
 import { createPlaybackSession } from '@/lib/playback-session';
-import { ensureHlsForTrack } from '@/lib/server/hls-service';
-import { resolveSessionStreamAssets } from '@/lib/server/availability-service';
+import { preparePlaybackSessionStreams } from '@/lib/server/playback-stream-prep';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { ZodError } from 'zod';
 
@@ -41,8 +40,7 @@ export async function POST(request: NextRequest) {
       sidPath,
       relativeBase: 'hvsc',
     });
-    const fallbackHlsUrl = await ensureHlsForTrack(track);
-    const streamAssets = await resolveSessionStreamAssets(track);
+    const { fallbackHlsUrl, streamAssets } = await preparePlaybackSessionStreams(track);
 
     const session = await createPlaybackSession({
       scope: 'manual',
