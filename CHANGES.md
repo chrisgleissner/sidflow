@@ -1,6 +1,23 @@
 # Changelog
 
 
+## 0.5.1 (2026-03-22)
+
+- Merge pull request #83 from chrisgleissner/test/coverage
+- feat: complete station playlist UI hardening and interaction test matrix
+- Add exhaustive interaction-level tests for SIDFlow station rendering engine
+- feat: update playback sessions and improve playlist handling
+- Fix E2E storage reset typecheck
+- Fix batched test storage reset
+- feat: implement unit coverage batching and improve playback session handling
+- feat: enhance station screen rendering and playlist management
+- feat: enhance station CLI with rating filters and improved navigation
+- feat: integrate fixed-width star rating column in station playlist window
+- Add demo-basic.prg file with initial content
+- Add comprehensive tests for various API endpoints and utility functions
+- Add unit tests for station dataset and playback adapters
+
+
 ## 0.5.0-rc3 (2026-03-21)
 
 - fix(ci): create tmp/ dir before mktemp in docker-smoke.sh
