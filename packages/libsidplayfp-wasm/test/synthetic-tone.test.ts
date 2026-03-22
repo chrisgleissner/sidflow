@@ -155,26 +155,27 @@ describe('Synthetic C4 Tone Verification', () => {
         console.log('╚════════════════════════════════════════╝\n');
 
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
-        const sidBytes = loadSyntheticSid();
+        try {
+            const sidBytes = loadSyntheticSid();
 
-        console.log('Loading synthetic C4 SID file...');
-        await engine.loadSidBuffer(sidBytes);
+            console.log('Loading synthetic C4 SID file...');
+            await engine.loadSidBuffer(sidBytes);
 
-        const sampleRate = engine.getSampleRate();
-        const channels = engine.getChannels();
-        console.log('Tune info:', engine.getTuneInfo());
-        console.log(`✓ Loaded (${sampleRate}Hz, ${channels}ch)\n`);
+            const sampleRate = engine.getSampleRate();
+            const channels = engine.getChannels();
+            console.log('Tune info:', engine.getTuneInfo());
+            console.log(`✓ Loaded (${sampleRate}Hz, ${channels}ch)\n`);
 
-        // Render the full 3+ seconds
-        console.log('Rendering audio...');
-        const pcm = await engine.renderSeconds(5); // Use default cycle batches
-        const actualDuration = pcm.length / channels / sampleRate;
-        console.log(`✓ Rendered ${pcm.length} samples (${actualDuration.toFixed(2)}s)\n`);
+            // Render the full 3+ seconds
+            console.log('Rendering audio...');
+            const pcm = await engine.renderSeconds(5); // Use default cycle batches
+            const actualDuration = pcm.length / channels / sampleRate;
+            console.log(`✓ Rendered ${pcm.length} samples (${actualDuration.toFixed(2)}s)\n`);
 
-        const zeroSamples = pcm.reduce((count, value) => count + (value === 0 ? 1 : 0), 0);
-        console.log(`Zero sample ratio: ${(zeroSamples / pcm.length * 100).toFixed(2)}%`);
-        const nonZero = pcm.filter(v => v !== 0).slice(0, 20);
-        console.log('First non-zero samples:', nonZero.join(', '));
+            const zeroSamples = pcm.reduce((count, value) => count + (value === 0 ? 1 : 0), 0);
+            console.log(`Zero sample ratio: ${(zeroSamples / pcm.length * 100).toFixed(2)}%`);
+            const nonZero = pcm.filter(v => v !== 0).slice(0, 20);
+            console.log('First non-zero samples:', nonZero.join(', '));
 
         // Test 1: Check for silent periods
         console.log('TEST 1: Silence Detection');
@@ -313,14 +314,17 @@ describe('Synthetic C4 Tone Verification', () => {
             console.log('\n   → Pipeline has problems!\n');
         }
 
-        // Assertions
-        expect(silentPeriods.length).toBe(0); // NO dropouts allowed
-        expect(channelFrequencyDelta).toBeLessThan(1.0); // Both channels should stay aligned
-        expect(measuredFreqLeft).toBeGreaterThan(220); // Stable pitched output in the intended octave
-        expect(measuredFreqLeft).toBeLessThan(320);
-        expect(ampAnalysis.coefficientOfVariation).toBeLessThan(30); // Reasonable stability
-        expect(transientRate).toBeLessThan(6); // Sparse control-frame transients are acceptable
-        expect(actualDuration).toBeGreaterThanOrEqual(3.0); // At least 3 seconds
+            // Assertions
+            expect(silentPeriods.length).toBe(0); // NO dropouts allowed
+            expect(channelFrequencyDelta).toBeLessThan(1.0); // Both channels should stay aligned
+            expect(measuredFreqLeft).toBeGreaterThan(220); // Stable pitched output in the intended octave
+            expect(measuredFreqLeft).toBeLessThan(320);
+            expect(ampAnalysis.coefficientOfVariation).toBeLessThan(30); // Reasonable stability
+            expect(transientRate).toBeLessThan(6); // Sparse control-frame transients are acceptable
+            expect(actualDuration).toBeGreaterThanOrEqual(3.0); // At least 3 seconds
+        } finally {
+            engine.dispose();
+        }
     });
 
     test('verify browser pipeline with synthetic tone', async () => {
@@ -332,17 +336,18 @@ describe('Synthetic C4 Tone Verification', () => {
 
         // Exact browser flow
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
-        const sidBytes = loadSyntheticSid();
-        await engine.loadSidBuffer(sidBytes);
+        try {
+            const sidBytes = loadSyntheticSid();
+            await engine.loadSidBuffer(sidBytes);
 
-        const sampleRate = engine.getSampleRate();
-        const channels = engine.getChannels();
+            const sampleRate = engine.getSampleRate();
+            const channels = engine.getChannels();
 
-        // Render
-        const renderStart = performance.now();
-        const pcm = await engine.renderSeconds(5, 40000);
-        const renderTime = performance.now() - renderStart;
-        const actualDuration = pcm.length / channels / sampleRate;
+            // Render
+            const renderStart = performance.now();
+            const pcm = await engine.renderSeconds(5, 40000);
+            const renderTime = performance.now() - renderStart;
+            const actualDuration = pcm.length / channels / sampleRate;
 
         console.log(`Rendered: ${actualDuration.toFixed(2)}s in ${renderTime.toFixed(0)}ms`);
         console.log(`Speed: ${(actualDuration * 1000 / renderTime).toFixed(1)}x realtime`);
@@ -394,7 +399,10 @@ describe('Synthetic C4 Tone Verification', () => {
         console.log(`  Fast enough? ${isRealtime ? '✓' : '❌'}`);
         console.log(`  Conversion errors? ${conversionErrors === 0 ? '✓ NO' : `❌ ${conversionErrors}`}\n`);
 
-        expect(isRealtime).toBe(true);
-        expect(conversionErrors).toBe(0);
+            expect(isRealtime).toBe(true);
+            expect(conversionErrors).toBe(0);
+        } finally {
+            engine.dispose();
+        }
     });
 });
