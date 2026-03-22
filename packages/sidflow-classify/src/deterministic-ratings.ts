@@ -6,12 +6,26 @@ const FEATURE_KEYS = [
   "rms",
   "energy",
   "spectralCentroid",
+  "spectralCentroidStd",
   "spectralRolloff",
   "spectralFlatnessDb",
   "spectralEntropy",
   "spectralCrest",
   "spectralHfc",
   "zeroCrossingRate",
+  "spectralContrastMean",
+  "mfccMean1",
+  "mfccMean2",
+  "mfccMean3",
+  "mfccMean4",
+  "mfccMean5",
+  "onsetDensity",
+  "rhythmicRegularity",
+  "spectralFluxMean",
+  "dynamicRange",
+  "pitchSalience",
+  "inharmonicity",
+  "lowFrequencyEnergyRatio",
 ] as const;
 
 export type DeterministicFeatureKey = (typeof FEATURE_KEYS)[number];
@@ -166,6 +180,33 @@ function clamp01(x: number): number {
   return clamp(x, 0, 1);
 }
 
+function normalize01(model: DeterministicRatingModel, key: DeterministicFeatureKey, value: unknown, fallback = 0.5): number {
+  const normalized = normalizeFeature(model, key, value);
+  if (normalized === undefined) {
+    return fallback;
+  }
+  return clamp01((normalized + 3) / 6);
+}
+
+function normalizeSigned(model: DeterministicRatingModel, key: DeterministicFeatureKey, value: unknown): number {
+  const normalized = normalizeFeature(model, key, value);
+  if (normalized === undefined) {
+    return 0;
+  }
+  return clamp(normalized / 3, -1, 1);
+}
+
+function direct01(value: unknown, fallback = 0.5): number {
+  return isFiniteNumber(value) ? clamp01(value) : fallback;
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0.5;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
 export interface DeterministicTags {
   tempo_fast: { value: number; present: boolean };
   bright: { value: number; present: boolean };
@@ -277,4 +318,88 @@ export function predictDeterministicRatings(
       m: ratingFromRaw(mRaw),
     },
   };
+}
+
+export function buildPerceptualVector(
+  model: DeterministicRatingModel,
+  features: FeatureVector,
+): number[] {
+  const brightness = average([
+    normalize01(model, "spectralCentroid", features.spectralCentroid),
+    normalize01(model, "spectralRolloff", features.spectralRolloff),
+    normalize01(model, "spectralHfc", features.spectralHfc),
+  ]);
+  const noisiness = average([
+    normalize01(model, "spectralFlatnessDb", features.spectralFlatnessDb),
+    normalize01(model, "spectralEntropy", features.spectralEntropy),
+    normalize01(model, "zeroCrossingRate", features.zeroCrossingRate),
+  ]);
+  const percussiveness = average([
+    normalize01(model, "spectralCrest", features.spectralCrest),
+    normalize01(model, "zeroCrossingRate", features.zeroCrossingRate),
+    normalize01(model, "spectralHfc", features.spectralHfc),
+  ]);
+  const loudness = average([
+    normalize01(model, "rms", features.rms),
+    normalize01(model, "energy", features.energy),
+  ]);
+  const bassPresence = direct01(features.lowFrequencyEnergyRatio);
+  const spectralComplexity = average([
+    normalize01(model, "spectralContrastMean", features.spectralContrastMean),
+    normalize01(model, "spectralEntropy", features.spectralEntropy),
+  ]);
+  const harmonicClarity = average([
+    direct01(features.pitchSalience),
+    1 - direct01(features.inharmonicity),
+  ]);
+  const dissonance = average([
+    direct01(features.inharmonicity),
+    noisiness,
+  ]);
+
+  const tempo = normalize01(model, "bpm", features.bpm);
+  const onsetDensity = normalize01(model, "onsetDensity", features.onsetDensity);
+  const rhythmicRegularity = direct01(features.rhythmicRegularity);
+  const spectralFluxMean = normalize01(model, "spectralFluxMean", features.spectralFluxMean);
+  const dynamicRange = direct01(features.dynamicRange);
+  const timbralModulation = normalize01(model, "spectralCentroidStd", features.spectralCentroidStd);
+
+  const mfcc1 = normalizeSigned(model, "mfccMean1", features.mfccMean1);
+  const mfcc2 = normalizeSigned(model, "mfccMean2", features.mfccMean2);
+  const mfcc3 = normalizeSigned(model, "mfccMean3", features.mfccMean3);
+  const mfcc4 = normalizeSigned(model, "mfccMean4", features.mfccMean4);
+  const mfcc5 = normalizeSigned(model, "mfccMean5", features.mfccMean5);
+
+  const energyComposite = clamp01((0.35 * loudness) + (0.25 * tempo) + (0.2 * onsetDensity) + (0.2 * percussiveness));
+  const moodProxy = clamp01((0.35 * harmonicClarity) + (0.25 * (1 - dissonance)) + (0.2 * (1 - noisiness)) + (0.2 * (1 - percussiveness)));
+  const complexityProxy = clamp01((0.25 * spectralComplexity) + (0.25 * onsetDensity) + (0.25 * timbralModulation) + (0.25 * (1 - rhythmicRegularity)));
+  const danceability = clamp01((0.4 * rhythmicRegularity) + (0.3 * tempo) + (0.3 * percussiveness));
+  const atmosphere = clamp01((0.3 * dynamicRange) + (0.3 * spectralFluxMean) + (0.2 * (1 - rhythmicRegularity)) + (0.2 * timbralModulation));
+
+  return [
+    brightness,
+    noisiness,
+    percussiveness,
+    loudness,
+    bassPresence,
+    spectralComplexity,
+    harmonicClarity,
+    dissonance,
+    tempo,
+    onsetDensity,
+    rhythmicRegularity,
+    spectralFluxMean,
+    dynamicRange,
+    timbralModulation,
+    mfcc1,
+    mfcc2,
+    mfcc3,
+    mfcc4,
+    mfcc5,
+    energyComposite,
+    moodProxy,
+    complexityProxy,
+    danceability,
+    atmosphere,
+  ];
 }

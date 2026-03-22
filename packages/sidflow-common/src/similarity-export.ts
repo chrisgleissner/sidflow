@@ -68,7 +68,7 @@ export interface BuildSimilarityExportOptions {
   manifestPath?: string;
   profile?: SimilarityExportProfile;
   corpusVersion?: string;
-  dims?: 3 | 4;
+  dims?: number;
   includeVectors?: boolean;
   neighbors?: number;
 }
@@ -190,6 +190,14 @@ const DETERMINISTIC_FEATURE_KEYS: readonly DeterministicFeatureKey[] = [
   "spectralCrest",
   "spectralHfc",
   "zeroCrossingRate",
+] as const;
+
+const PERCEPTUAL_VECTOR_DIMENSIONS = 24;
+const PERCEPTUAL_VECTOR_WEIGHTS = [
+  1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+  1.2, 1.2, 1.2, 1.2, 1.2, 1.2,
+  0.8, 0.8, 0.8, 0.8, 0.8,
+  1.5, 1.5, 1.5, 1.5, 1.5,
 ] as const;
 
 function normalizeSongIndex(songIndex?: number): number {
@@ -585,13 +593,18 @@ function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggreg
         aggregate.dislikes += 1;
         break;
       case "skip":
+      case "skip_early":
+      case "skip_late":
         aggregate.skips += 1;
         break;
       case "play":
+      case "play_complete":
+      case "replay":
         aggregate.plays += 1;
         break;
     }
-    if ((event.action === "play" || event.action === "like") && (!aggregate.lastPlayed || event.ts > aggregate.lastPlayed)) {
+    if ((event.action === "play" || event.action === "play_complete" || event.action === "replay" || event.action === "like")
+      && (!aggregate.lastPlayed || event.ts > aggregate.lastPlayed)) {
       aggregate.lastPlayed = event.ts;
     }
     aggregates.set(trackId, aggregate);
@@ -599,16 +612,97 @@ function aggregateFeedback(events: FeedbackRecord[]): Map<string, FeedbackAggreg
   return aggregates;
 }
 
+function buildLegacyVector(ratings: TagRatings, dims: number): number[] {
+  if (dims <= 3) {
+    return [ratings.e, ratings.m, ratings.c].slice(0, dims);
+  }
+  return [ratings.e, ratings.m, ratings.c, ratings.p ?? DEFAULT_RATING].slice(0, dims);
+}
+
+function buildFallbackPerceptualVector(ratings: TagRatings): number[] {
+  const energy = clamp01((ratings.e - 1) / 4);
+  const mood = clamp01((ratings.m - 1) / 4);
+  const complexity = clamp01((ratings.c - 1) / 4);
+  return [
+    energy,
+    1 - mood,
+    complexity,
+    energy,
+    0.5,
+    complexity,
+    mood,
+    1 - mood,
+    energy,
+    complexity,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0,
+    0,
+    0,
+    0,
+    0,
+    energy,
+    mood,
+    complexity,
+    0.5,
+    0.5,
+  ];
+}
+
+function sanitizeVector(value: unknown): number[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const vector = value.filter((entry): entry is number => typeof entry === "number" && Number.isFinite(entry));
+  return vector.length > 0 ? vector : null;
+}
+
+function resolveTargetVectorDimensions(classifications: ClassificationRecord[], dims?: number): number {
+  if (typeof dims === "number" && Number.isFinite(dims) && dims > 0) {
+    return Math.max(1, Math.floor(dims));
+  }
+
+  const maxStoredDimensions = classifications.reduce((max, classification) => {
+    const stored = sanitizeVector(classification.vector)?.length ?? 0;
+    return Math.max(max, stored);
+  }, 0);
+
+  return maxStoredDimensions > 4 ? maxStoredDimensions : 4;
+}
+
+function resolveClassificationVector(classification: ClassificationRecord, targetDimensions: number): number[] {
+  if (targetDimensions <= 4) {
+    return buildLegacyVector(classification.ratings, targetDimensions);
+  }
+
+  const storedVector = sanitizeVector(classification.vector);
+  if (storedVector && storedVector.length >= targetDimensions) {
+    return storedVector.slice(0, targetDimensions);
+  }
+  let base: number[];
+  if (storedVector && storedVector.length > 0) {
+    base = [...storedVector, ...buildFallbackPerceptualVector(classification.ratings).slice(storedVector.length)];
+  } else {
+    base = buildFallbackPerceptualVector(classification.ratings);
+  }
+  if (base.length >= targetDimensions) {
+    return base.slice(0, targetDimensions);
+  }
+  // Pad with zeros so callers always receive exactly targetDimensions elements,
+  // preventing inconsistent vector lengths in the export DB and manifest metadata.
+  return [...base, ...new Array(targetDimensions - base.length).fill(0)];
+}
+
 function classificationToTrack(
   classification: ClassificationRecord,
   feedback: FeedbackAggregate | undefined,
-  dims: 3 | 4,
+  dims: number,
 ): SimilarityExportTrack {
   const { e, m, c, p } = classification.ratings;
   const songIndex = normalizeSongIndex(classification.song_index);
-  const vector = dims === 3
-    ? [e, m, c]
-    : [e, m, c, p ?? DEFAULT_RATING];
+  const vector = resolveClassificationVector(classification, dims);
   return {
     track_id: buildSimilarityTrackId(classification.sid_path, songIndex),
     sid_path: classification.sid_path,
@@ -661,17 +755,21 @@ function dedupeClassifications(classifications: ClassificationRecord[]): Classif
 }
 
 function cosineSimilarity(left: number[], right: number[]): number {
-  if (left.length !== right.length) {
-    throw new Error("Vector dimensions must match");
+  const useWeights = left.length === PERCEPTUAL_VECTOR_DIMENSIONS && right.length === PERCEPTUAL_VECTOR_DIMENSIONS;
+  const dimensions = Math.min(left.length, right.length, useWeights ? PERCEPTUAL_VECTOR_WEIGHTS.length : Number.POSITIVE_INFINITY);
+  if (dimensions <= 0) {
+    return 0;
   }
-
   let dotProduct = 0;
   let leftNorm = 0;
   let rightNorm = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    dotProduct += left[index] * right[index];
-    leftNorm += left[index] * left[index];
-    rightNorm += right[index] * right[index];
+  for (let index = 0; index < dimensions; index += 1) {
+    const weight = useWeights ? PERCEPTUAL_VECTOR_WEIGHTS[index]! : 1;
+    const leftValue = left[index] ?? 0;
+    const rightValue = right[index] ?? 0;
+    dotProduct += weight * leftValue * rightValue;
+    leftNorm += weight * leftValue * leftValue;
+    rightNorm += weight * rightValue * rightValue;
   }
 
   if (leftNorm === 0 || rightNorm === 0) {
@@ -686,13 +784,14 @@ function buildCentroid(vectors: number[][], weights?: number[]): number[] {
     throw new Error("At least one vector is required");
   }
 
-  const centroid = new Array(vectors[0].length).fill(0);
+  const dimensionCount = vectors.reduce((max, vector) => Math.max(max, vector.length), 0);
+  const centroid = new Array(dimensionCount).fill(0);
   let totalWeight = 0;
   for (let index = 0; index < vectors.length; index += 1) {
     const weight = weights?.[index] ?? 1;
     totalWeight += weight;
-    for (let dimension = 0; dimension < vectors[index].length; dimension += 1) {
-      centroid[dimension] += vectors[index][dimension] * weight;
+    for (let dimension = 0; dimension < dimensionCount; dimension += 1) {
+      centroid[dimension] += (vectors[index][dimension] ?? 0) * weight;
     }
   }
 
@@ -796,7 +895,6 @@ function computeTemporaryOutputPath(outputPath: string): string {
 export async function buildSimilarityExport(options: BuildSimilarityExportOptions): Promise<BuildSimilarityExportResult> {
   const startedAt = Date.now();
   const profile = options.profile ?? "full";
-  const dims = options.dims ?? 4;
   const includeVectors = options.includeVectors ?? true;
   const neighborCount = Math.max(0, options.neighbors ?? 0);
   const manifestPath = options.manifestPath ?? computeDefaultManifestPath(options.outputPath);
@@ -807,6 +905,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
   ]);
 
   const dedupedClassifications = dedupeClassifications(classifications);
+  const dims = resolveTargetVectorDimensions(dedupedClassifications, options.dims);
   const feedbackByTrackId = aggregateFeedback(feedbackEvents);
   const tracks = dedupedClassifications
     .filter((classification) => hasValidRatings(classification))

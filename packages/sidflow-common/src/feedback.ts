@@ -21,6 +21,8 @@ export interface LogFeedbackOptions {
   feedbackPath: string;
   /** SID path relative to HVSC root */
   sidPath: string;
+  /** Optional song index within the SID file */
+  songIndex?: number;
   /** User action type */
   action: FeedbackAction;
   /** Optional timestamp (defaults to current time) */
@@ -62,7 +64,7 @@ export interface ValidateFeedbackResult {
  * @returns Path to the log file where the event was written
  */
 export async function logFeedback(options: LogFeedbackOptions): Promise<string> {
-  const { feedbackPath, sidPath, action, timestamp, uuid } = options;
+  const { feedbackPath, sidPath, songIndex, action, timestamp, uuid } = options;
   
   const ts = timestamp ?? new Date();
   const year = ts.getFullYear();
@@ -81,6 +83,10 @@ export async function logFeedback(options: LogFeedbackOptions): Promise<string> 
     sid_path: sidPath,
     action
   };
+
+  if (typeof songIndex === "number" && Number.isInteger(songIndex) && songIndex > 0) {
+    record.song_index = songIndex;
+  }
   
   // Add UUID if provided
   if (uuid) {
@@ -186,7 +192,7 @@ export async function validateFeedbackLogs(
                 }
                 
                 // Validate action type
-                const validActions: FeedbackAction[] = ["play", "like", "dislike", "skip"];
+                const validActions: FeedbackAction[] = ["play", "play_complete", "like", "dislike", "skip", "skip_early", "skip_late", "replay"];
                 if (!validActions.includes(record.action)) {
                   invalidRecords++;
                   errors.push(`Line ${i + 1}: Invalid action "${record.action}"`);

@@ -56,7 +56,7 @@ import {
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
-import { DeterministicRatingModelBuilder, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
+import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -2025,6 +2025,7 @@ export async function generateAutoTags(
         classified_at: nowIso,
         render_engine: rec.render_engine,
         features: rec.features as unknown as AudioFeatures,
+        vector: buildPerceptualVector(ratingModel, rec.features),
       };
       if (rec.song_index) {
         classificationRecord.song_index = rec.song_index;
@@ -2286,6 +2287,12 @@ export async function generateJsonlOutput(
       // Include features if available
       if (features) {
         record.features = features;
+        // Do not compute a perceptual vector here: generateJsonlOutput processes one track at a time
+        // so there is no population-level model to normalize against.  A single-sample model has
+        // sigma=0 for every feature, which causes buildPerceptualVector to return degenerate 0.5
+        // defaults that are not comparable across tracks.  Perceptual vectors are only emitted by
+        // generateAutoTags, which builds a shared DeterministicRatingModel over the full corpus
+        // before writing any JSONL record.
       }
 
       // Write record immediately to JSONL file via queue (serialized append)

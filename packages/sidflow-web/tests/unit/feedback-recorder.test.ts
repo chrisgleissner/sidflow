@@ -195,4 +195,10 @@ describe('recordImplicitAction', () => {
     const events = await flushAndGetImplicit();
     expect(events[0]?.timestamp).toBe(ts);
   });
+
+  it('stores enhanced implicit feedback actions', async () => {
+    recordImplicitAction({ track: makeTrack(), action: 'play_complete' });
+    const events = await flushAndGetImplicit();
+    expect(events[0]?.action).toBe('play_complete');
+  });
 });

@@ -76,8 +76,8 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--sample-size",
     type: "integer",
-    description: "Minimum number of songs to rate before station generation (minimum effective target: 10)",
-    defaultValue: 10,
+    description: "Minimum number of songs to rate before station generation (minimum effective target: 5)",
+    defaultValue: 5,
     constraints: { min: 1 },
   },
   {
@@ -106,7 +106,7 @@ The optional features JSONL is only shown as companion provenance for local data
 
 Workflow:
   1. Pull random tracks directly from the export DB.
-  2. Keep rating until at least 10 songs are actually rated.
+  2. Keep rating until at least 5 songs are actually rated.
   3. Build a station from the export vectors.
   4. Navigate with arrows, pause playback, rebuild recommendations on demand, and manage saved playlists without losing the current live song.
   5. Ignore tracks shorter than --min-duration.
@@ -117,7 +117,7 @@ Commands:
   ARG_DEFS,
   [
     "sidflow-play station",
-    "sidflow-play station --playback none --sample-size 10 --station-size 100 --min-duration 20",
+    "sidflow-play station --playback none --sample-size 5 --station-size 100 --min-duration 20",
     "sidflow-play station --c64u-host 192.168.1.13 --adventure 5",
   ],
 );

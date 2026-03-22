@@ -34,6 +34,10 @@ function std(stats: OnlineStats): number | undefined {
   return Math.sqrt(Math.max(0, variance));
 }
 
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
 function isArrayLikeNumber(x: unknown): x is ArrayLike<number> {
   return (
     !!x &&
@@ -110,12 +114,17 @@ export function extractEssentiaFrameSummaries(
   const spectralCrest = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
   const spectralEntropy = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
   const spectralHfc = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
+  const spectralFlux = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
+  const pitchSalience = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
+  const inharmonicity = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
+  const lowFrequencyEnergyRatio = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
 
   const mfccStats: OnlineStats[] = Array.from({ length: 5 }, () => ({ count: 0, sum: 0, sumSq: 0 }));
 
   const contrast = { count: 0, sum: 0, sumSq: 0 } satisfies OnlineStats;
 
   const frame = buffers?.frame ?? new Float32Array(frameSize);
+  let previousSpectrum: number[] | null = null;
 
   for (const frameIndex of frameIndices) {
     const start = frameIndex * hopSize;
@@ -140,6 +149,32 @@ export function extractEssentiaFrameSummaries(
         add(spectralCrest, essentia.Crest(spectrum)?.crest);
         add(spectralEntropy, essentia.Entropy(spectrum)?.entropy);
         add(spectralHfc, essentia.HFC(spectrum, sampleRate)?.hfc);
+
+        const spectrumArray = toNumberArray(essentia, spectrum);
+        if (spectrumArray) {
+          const totalEnergy = spectrumArray.reduce((sum, value) => sum + Math.max(0, value), 0);
+          const lowBandLimit = Math.max(1, Math.floor((250 / (sampleRate / 2)) * spectrumArray.length));
+          const lowEnergy = spectrumArray.slice(0, lowBandLimit).reduce((sum, value) => sum + Math.max(0, value), 0);
+          add(lowFrequencyEnergyRatio, totalEnergy > 0 ? lowEnergy / totalEnergy : 0);
+
+          const peak = spectrumArray.reduce((max, value) => Math.max(max, value), 0);
+          const meanMagnitude = totalEnergy / Math.max(1, spectrumArray.length);
+          const salience = meanMagnitude > 0 ? clamp01((peak / meanMagnitude - 1) / 12) : 0;
+          add(pitchSalience, salience);
+          add(inharmonicity, 1 - salience);
+
+          if (previousSpectrum && previousSpectrum.length === spectrumArray.length) {
+            let flux = 0;
+            for (let index = 0; index < spectrumArray.length; index += 1) {
+              const delta = spectrumArray[index]! - previousSpectrum[index]!;
+              if (delta > 0) {
+                flux += delta;
+              }
+            }
+            add(spectralFlux, totalEnergy > 0 ? flux / totalEnergy : 0);
+          }
+          previousSpectrum = spectrumArray;
+        }
 
         const mfccRaw = essentia.MFCC(
           spectrum,
@@ -223,6 +258,8 @@ export function extractEssentiaFrameSummaries(
 
   const centroidMean = mean(spectralCentroid);
   if (centroidMean !== undefined) result.spectralCentroid = centroidMean;
+  const centroidStd = std(spectralCentroid);
+  if (centroidStd !== undefined) result.spectralCentroidStd = centroidStd;
 
   const rolloffMean = mean(spectralRolloff);
   if (rolloffMean !== undefined) result.spectralRolloff = rolloffMean;
@@ -238,6 +275,18 @@ export function extractEssentiaFrameSummaries(
 
   const hfcMean = mean(spectralHfc);
   if (hfcMean !== undefined) result.spectralHfc = hfcMean;
+
+  const fluxMean = mean(spectralFlux);
+  if (fluxMean !== undefined) result.spectralFluxMean = fluxMean;
+
+  const salienceMean = mean(pitchSalience);
+  if (salienceMean !== undefined) result.pitchSalience = salienceMean;
+
+  const inharmonicityMean = mean(inharmonicity);
+  if (inharmonicityMean !== undefined) result.inharmonicity = inharmonicityMean;
+
+  const lowFrequencyEnergyRatioMean = mean(lowFrequencyEnergyRatio);
+  if (lowFrequencyEnergyRatioMean !== undefined) result.lowFrequencyEnergyRatio = lowFrequencyEnergyRatioMean;
 
   for (let i = 0; i < mfccStats.length; i++) {
     const m = mean(mfccStats[i]);

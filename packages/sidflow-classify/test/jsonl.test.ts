@@ -131,6 +131,9 @@ describe("generateJsonlOutput", () => {
     expect(record.ratings.e).toBe(2);
     expect(record.ratings.m).toBe(3);
     expect(record.ratings.c).toBe(4);
+    // generateJsonlOutput does not emit vectors: there is no population-level model to normalize
+    // against when processing files one at a time.  Vectors are only present in generateAutoTags output.
+    expect(record.vector).toBeUndefined();
   });
 
   test("includes features in JSONL output when WAV exists", async () => {

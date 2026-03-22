@@ -52,6 +52,22 @@ export interface AudioFeatures {
   featureSetVersion?: string;
   /** Variant: 'essentia' | 'heuristic' | 'cached' */
   featureVariant?: string;
+  /** Estimated note-onset density in onsets per second */
+  onsetDensity?: number;
+  /** Normalized rhythm regularity (0-1, higher = more regular) */
+  rhythmicRegularity?: number;
+  /** Mean spectral flux across analysis frames */
+  spectralFluxMean?: number;
+  /** Normalized frame-level dynamic range */
+  dynamicRange?: number;
+  /** Approximate pitch salience / tonal prominence (0-1) */
+  pitchSalience?: number;
+  /** Approximate inharmonicity / roughness (0-1) */
+  inharmonicity?: number;
+  /** Fraction of energy below 250 Hz (0-1) */
+  lowFrequencyEnergyRatio?: number;
+  /** Temporal standard deviation of the spectral centroid */
+  spectralCentroidStd?: number;
   /** Allow any additional feature fields */
   [feature: string]: number | string | undefined;
 }
@@ -75,6 +91,8 @@ export interface ClassificationRecord {
   ratings: TagRatings;
   /** All extracted audio features from classifier (optional, classifier output only) */
   features?: AudioFeatures;
+  /** Deterministic perceptual vector for similarity/export (4D legacy or 24D enhanced) */
+  vector?: number[];
   /** Classification timestamp (ISO 8601) */
   classified_at?: string;
   /** Source of ratings: 'auto' | 'manual' | 'mixed' */
@@ -88,7 +106,7 @@ export interface ClassificationRecord {
 /**
  * User feedback actions with defined weighting.
  */
-export type FeedbackAction = "play" | "like" | "dislike" | "skip";
+export type FeedbackAction = "play" | "play_complete" | "like" | "dislike" | "skip" | "skip_early" | "skip_late" | "replay";
 
 /**
  * Single feedback event in JSONL format.
@@ -113,6 +131,10 @@ export interface FeedbackRecord {
 export const FEEDBACK_WEIGHTS: Record<FeedbackAction, number> = {
   like: 1.0,
   skip: -0.3,
+  skip_early: -0.5,
+  skip_late: -0.2,
   dislike: -1.0,
-  play: 0.0
+  play: 0.0,
+  play_complete: 0.35,
+  replay: 0.6,
 } as const;

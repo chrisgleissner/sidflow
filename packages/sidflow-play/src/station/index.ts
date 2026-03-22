@@ -101,6 +101,7 @@ export {
   readTrackRowsByIds,
   buildStationQueue,
   buildStationSongKey,
+  buildWeightsByTrackId,
   mergeQueueKeepingCurrent,
   shuffleQueueKeepingCurrent,
   sumPlaylistDurationMs,

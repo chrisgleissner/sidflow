@@ -121,6 +121,30 @@ jobs:
             sleep 1
           done
 
+          # Warm up /api/play so the WASM engine is fully initialised before k6 starts.
+          # On the first call the engine loads lazily (can take 10-20 s); without this the
+          # opening k6 request sees an EOF or a very slow response that fails the
+          # http_req_failed threshold.
+          echo "Warming up /api/play endpoint..."
+          for i in {1..60}; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X POST http://127.0.0.1:3000/api/play \
+              -H 'Content-Type: application/json' \
+              -d '{"sid_path":"Test_Artist/Ambient_Dream.sid"}' \
+              --max-time 30)
+            if [ "$status" = "200" ]; then
+              echo "Play endpoint warm after ${i} attempt(s)"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "ERROR: Play endpoint never became ready (last HTTP status: $status)"
+              tail -n 200 /tmp/perf-ci-server.log || true
+              exit 1
+            fi
+            echo "  /api/play not ready yet (HTTP $status), retrying..."
+            sleep 2
+          done
+
       - name: Run perf smoke (k6, reduced)
         if: success()
         run: |
