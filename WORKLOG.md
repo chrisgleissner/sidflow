@@ -226,6 +226,44 @@ All Phase A/B PLANS.md tasks are DONE. All acceptance criteria met:
 - B4: sync route persists play_complete/skip_early/skip_late/replay events
 - B5: 90-day half-life temporal decay applied in server rating aggregator
 
+### Phase 6: CI perf-smoke investigation and fix
+
+Problem observed from GitHub Actions:
+- `Build and Test` was failing after unit tests and Playwright succeeded
+- failure point was perf smoke (`k6`) with `http_req_failed` threshold crossed on `play-start-stream`
+
+Local reproduction against the production-like standalone server:
+- `GET /api/health` — immediate `200`
+- `GET /api/search?q=ambient` — immediate `200` with `Test_Artist/Ambient_Dream.sid`
+- `POST /api/play` — stalled before response headers when the server had no prebuilt HLS assets
+
+Root cause:
+- `packages/sidflow-web/app/api/play/route.ts` and sibling playback-entry routes awaited `ensureHlsForTrack()` on the request path
+- in fresh CI containers, that forced on-demand WAV render + ffmpeg HLS generation before returning a playback session
+- the reduced k6 journey treats any stalled/non-2xx request as failure, so the smoke test tripped on cold-start asset generation rather than on search or path resolution
+
+Files changed:
+- `packages/sidflow-web/lib/server/playback-stream-prep.ts`
+- `packages/sidflow-web/app/api/play/route.ts`
+- `packages/sidflow-web/app/api/play/manual/route.ts`
+- `packages/sidflow-web/app/api/play/random/route.ts`
+- `packages/sidflow-web/app/api/rate/random/route.ts`
+- `packages/sidflow-web/tests/unit/playback-stream-prep.test.ts`
+
+Implemented:
+- Added `preparePlaybackSessionStreams()` to keep playback session creation non-blocking
+- If stream assets already exist, sessions include them immediately
+- If no stream assets exist yet, routes now kick off HLS warming in the background instead of awaiting it
+- Playback sessions still return `sidUrl` immediately, so the perf smoke and legacy playback path can start without waiting for HLS generation
+
+Validation:
+- `packages/sidflow-web/tests/unit/playback-stream-prep.test.ts` — PASS
+- `bun run build` — PASS
+- live standalone repro after restart:
+  - `POST /api/play` returned `200` immediately
+  - response included `sidUrl` and `fallbackHlsUrl: null`
+- exact local `perf:run` k6 smoke could not be executed end-to-end in this environment because `k6` is not installed locally (`spawn k6 ENOENT`); GitHub Actions already installs it in the workflow
+
 ---
 
 ## 2026-03-21 — Phase 1: Discovery
