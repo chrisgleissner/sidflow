@@ -10,50 +10,32 @@ A seamless stream of similar Commodore 64 SID songs.
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
-
 > [!NOTE]
 > This project is under active development. Some documented features may not yet be fully functional.
 
 ---
 
-## Features
+SIDFlow analyses your Commodore 64 SID music collection — extracting audio features, learning your taste, and generating a continuous stream of similar tracks.
 
-- **Automatic SID analysis**  
-  Structural and audio feature extraction used to compare tracks without manual metadata.
-
-- **Similarity-based SID stations**  
-  Automatically generate stations from a selected track based on analysed song structure.
-
-- **Web-based player**  
-  Browse, search, and play SID music, manage favourites, and build playlists.
-
-- **CLI tools**  
-  Command-line utilities for analysis, classification, and automation, including a CLI-based SID radio station.
-
+Pick a mood, press play, and the queue builds itself.
 
 ---
 
-## Getting Started
+## Quick Start
 
-### Install Bun
+Three commands to a running local player:
 
-First install Bun (see [bun.com/docs/installation](https://bun.com/docs/installation)):
-
-macOS and Linux:
+**1. Install [Bun](https://bun.com/docs/installation)**
 
 ```sh
+# macOS / Linux
 curl -fsSL https://bun.com/install | bash
-```
 
-Windows:
-
-```sh
+# Windows
 powershell -c "irm bun.sh/install.ps1|iex"
 ```
 
-### Build Project
-
-Then install and build this project:
+**2. Clone and build**
 
 ```bash
 git clone https://github.com/chrisgleissner/sidflow.git
@@ -61,36 +43,153 @@ cd sidflow
 bun run build
 ```
 
-## Deployment
-
-See [Deployment Guide](doc/deployment.md) for Docker and Fly.io deployment options.
-
-**Docker images:**  
-- `ghcr.io/chrisgleissner/sidflow:<version>` (e.g., `v0.3.10`)  
-- [ghcr.io/chrisgleissner/sidflow:latest](https://github.com/chrisgleissner/sidflow/pkgs/container/sidflow)
-
-### Quick Deploy to Fly.io
-
-Fly deployment is currently supported only as a single stateful machine. Multi-machine scaling and rolling deploys remain blocked on the Phase 2 shared-state work in [PLANS.md](PLANS.md).
+**3. Start the web player**
 
 ```bash
-# Install flyctl
-curl -L https://fly.io/install.sh | sh
-
-# Deploy to staging
-./scripts/deploy/fly-deploy.sh -e stg
-
-# Deploy to production
-./scripts/deploy/fly-deploy.sh -e prd -t <tag>
+cd packages/sidflow-web
+bun run dev
 ```
 
-See [Deployment Guide](doc/deployment.md) for details.
+Open **<http://localhost:3000>** — you're playing SID music.
 
-### Run with Docker
+The first-time setup wizard guides you through downloading HVSC and configuring your collection. Local dev mode defaults to `admin / password` for the admin console at **<http://localhost:3000/admin>**.
 
-See **Deployment Guide** for full Docker instructions, CLI usage, health checks, and smoke-testing: [doc/deployment.md](doc/deployment.md).
+---
 
-Standard production scenario:
+## Web UI
+
+SIDFlow ships a **Next.js + React** interface with two access points:
+
+| URL | Purpose |
+|-----|---------|
+| `http://localhost:3000` | Public player — casual listening |
+| `http://localhost:3000/admin` | Admin console — pipeline control |
+
+### Public Player
+
+Pick a mood preset and hit play. The queue fills automatically with similar tracks.
+
+![play panel](./doc/web-screenshots/07-play.png)
+
+**Keyboard shortcuts (Play tab):** `Space` play/pause · `←/→` prev/next · `↑/↓` volume · `M` mute · `S` focus search · `?` help
+
+**Favorites** are stored server-side (`data/.sidflow-preferences.json`) and shared across all browsers pointing at the same server.  
+**Recently played** is stored per-browser in localStorage (up to 100 entries).
+
+### Admin Console
+
+The admin console (`/admin`) controls the full pipeline. Authenticate with `SIDFLOW_ADMIN_USER` / `SIDFLOW_ADMIN_PASSWORD` (defaults to `admin/password` in local dev only).
+
+#### Wizard — first-time setup
+
+Select your HVSC root and confirm cache locations.
+
+![wizard panel](./doc/web-screenshots/01-wizard.png)
+
+#### Preferences
+
+Tweak themes, fonts, render engines, ROM paths, and collection settings.
+
+![preferences panel](./doc/web-screenshots/02-prefs.png)
+
+#### Fetch — download HVSC
+
+Sync the High Voltage SID Collection from official mirrors.
+
+![fetch panel](./doc/web-screenshots/03-fetch.png)
+
+#### Rate — tag your collection
+
+Manually rate songs on energy, complexity, mood, and preference. Ratings feed into the training pipeline.
+
+![rate panel](./doc/web-screenshots/04-rate-playback.png)
+
+#### Classify — audio feature extraction
+
+Automatically analyse your entire collection. Progress is displayed in real time.
+
+![classify panel](./doc/web-screenshots/05-classify-progress.png)
+
+For more details on routes and the REST API, see [packages/sidflow-web/README.md](packages/sidflow-web/README.md) and the [OpenAPI spec](packages/sidflow-web/openapi.yaml).
+
+---
+
+## How It Works
+
+SIDFlow is a CLI-first pipeline. Each stage reads and writes JSONL under `data/` and is configured via `.sidflow.json`:
+
+```
+sidflow-fetch → sidflow-classify → sidflow-train → sidflow-play
+     ↓                 ↓                 ↓               ↓
+  HVSC sync      audio features      ML model       playlists
+```
+
+1. **Fetch** — downloads and synchronises HVSC (or any local SID collection).
+2. **Classify** — renders each SID to WAV cache, extracts structural and audio features, and writes JSONL.
+3. **Train** — consumes classified JSONL plus manual feedback to produce LanceDB model artifacts.
+4. **Play** — uses similarity search against the model to generate context-aware queues.
+
+The web UI, Docker image, and CLI tools are all thin wrappers over these same pipeline stages.
+
+---
+
+## CLI Tools
+
+All pipeline stages are available as standalone CLIs for automation and scripting:
+
+| CLI | Description |
+|-----|-------------|
+| **[sidflow-fetch](packages/sidflow-fetch/README.md)** | Sync HVSC from official mirrors |
+| **[sidflow-classify](packages/sidflow-classify/README.md)** | Render WAV cache + extract features |
+| **[sidflow-train](packages/sidflow-train/README.md)** | Train / update model artifacts |
+| **[sidflow-rate](packages/sidflow-rate/README.md)** | Write manual rating/tag files |
+| **[sidflow-play](packages/sidflow-play/README.md)** | Generate playlists via similarity search |
+
+Full CLI reference: [Technical Reference](./doc/technical-reference.md).
+
+### SID Station — terminal radio
+
+Launch a self-contained CLI radio station that selects and streams similar SID tracks:
+
+![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station.png)
+
+```bash
+./scripts/sid-station.sh
+```
+
+For playback on a real Commodore 64 Ultimate over your LAN:
+
+```bash
+./scripts/sid-station.sh --c64u-host c64u
+```
+
+If `workspace/hvsc` is missing or empty, the script bootstraps HVSC automatically before starting.
+
+---
+
+## Config
+
+`.sidflow.json` controls all runtime paths. The defaults work out of the box:
+
+```json
+{
+  "sidPath": "./workspace/hvsc",
+  "audioCachePath": "./workspace/audio-cache",
+  "tagsPath": "./workspace/tags",
+  "threads": 0,
+  "classificationDepth": 3
+}
+```
+
+Pass `--config /path/to/custom.json` to any CLI or set `SIDFLOW_CONFIG` for the web server to override the config location.
+
+---
+
+## Deployment
+
+### Docker
+
+Pre-built images: [`ghcr.io/chrisgleissner/sidflow:latest`](https://github.com/chrisgleissner/sidflow/pkgs/container/sidflow)
 
 ```bash
 docker run -p 3000:3000 \
@@ -104,233 +203,83 @@ docker run -p 3000:3000 \
   -v /path/to/data:/sidflow/data \
   ghcr.io/chrisgleissner/sidflow:latest
 ```
-Web UI: <http://localhost:3000> (admin at `/admin` with the credentials you configured above).
 
-### Run Locally
+Web UI at **<http://localhost:3000>**, admin at `/admin`.
 
-Development mode with hot reload:
+Production startup rejects default credentials, derived secrets, or a missing `JWT_SECRET`. Full Docker instructions, health checks, and smoke-testing are in [doc/deployment.md](doc/deployment.md).
 
-```bash
-cd packages/sidflow-web
-bun run dev
-```
+### Fly.io
 
-Production mode (after `bun run build`):
+Fly deployment is supported as a single stateful machine:
 
 ```bash
-cd packages/sidflow-web
-bun run start
+curl -L https://fly.io/install.sh | sh          # install flyctl
+./scripts/deploy/fly-deploy.sh -e stg            # staging
+./scripts/deploy/fly-deploy.sh -e prd -t <tag>   # production
 ```
 
-Web UI: <http://localhost:3000>.
+See [Deployment Guide](doc/deployment.md) for details.
 
-### Performance Tests
-
-Run the unified performance suite (journey-driven; k6 and optional Playwright) with the shared runner:
-
-```bash
-# Point at an already-running server
-bun run perf:run -- --env local --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
-```
-
-- **Profiles**: `--profile smoke|reduced|standard|scale` (defaults: local→smoke, CI→reduced, remote→reduced).
-- **GitHub runner (CI)**: runs **reduced** load and **k6-only** for stability (see `.github/workflows/performance.yml`).
-- **CI data**: uses a tiny, deterministic SID fixture (no HVSC download) via `scripts/perf/prepare-perf-fixtures.sh`.
-- **Fly.io / Raspberry Pi (remote targets)**: supported via `--env remote --enable-remote --base-url <url>` (typically with `--executor k6`).
-- **Hundreds of users**: opt-in only via `--profile scale` (remote-only guard to avoid accidental load).
-- **Journeys** live in `performance/journeys/` (e.g. `play-start-stream.json`).
-- **Outputs**: `performance/results/<timestamp>/` (report + summaries) and `performance/tmp/<timestamp>/` (generated scripts).
+---
 
 ## Portable Similarity Export
 
-After classification, SIDFlow can export a portable offline similarity bundle for downstream consumers.
+After classification, SIDFlow can produce a self-contained SQLite bundle for offline or downstream consumers:
 
 ```bash
 bun run export:similarity -- --profile full
 ```
 
-By default this writes:
+Output:
 
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
+- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` — per-track ratings, feedback aggregates, optional vectors, and precomputed neighbors
 - `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
 
-The SQLite bundle stores per-track ratings, feedback aggregates, optional vectors, and optional precomputed neighbors. See [doc/similarity-export.md](doc/similarity-export.md) for the schema, consumer workflow, and the full local classify-then-export sequence.
+If classified JSONL already exists in `data/classified`, the exporter skips re-classification and reads those files directly.
 
-If you already have classified feature output in `data/classified` and only need the SQLite bundle, you do not need to re-run classification. The exporter will read the existing `features_*.jsonl` and `classification_*.jsonl` files from the configured `classifiedPath` and build the SQLite bundle directly:
-
-```bash
-bun run export:similarity -- --profile full --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
-```
-
-For example, if `data/classified/features_2026-03-14_13-03-41-920.jsonl` already exists, the command above converts that classified corpus into the portable SQLite export.
-
-If your classified JSONL files live in another directory, point SIDFlow at that directory via an alternate config and export from there:
+To export from a different directory:
 
 ```bash
 cp .sidflow.json /tmp/sidflow-export.json
-# edit /tmp/sidflow-export.json so classifiedPath points at the directory containing your features_*.jsonl files
+# edit classifiedPath in /tmp/sidflow-export.json
 bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --output /path/to/sidcorr.sqlite
 ```
 
-The exporter also recovers rows from existing `features_*.jsonl` files when a previous classify run was interrupted before all `classification_*.jsonl` rows were written, so an existing large features file is still enough to produce a complete SQLite bundle.
+The exporter recovers from interrupted classify runs: an existing `features_*.jsonl` is sufficient even when `classification_*.jsonl` is incomplete.
 
-### SID Flow Station
-
-SID Flow Station is a CLI SID player and demonstration for the SQLite SID classification export.
-
-![SID Flow CLI Station](./doc/cli-screenshots/sidflow-station.png)  
-
-Here's how you start it: 
-
-```bash
-./scripts/sid-station.sh
-```
-
-For remote playback on a Commodore 64 Ultimate in your LAN, try this:
-
-```bash
-./scripts/sid-station.sh --c64u-host c64u
-```
-
-If `workspace/hvsc` is missing or empty, the wrapper  bootstraps HVSC automatically with the existing fetch CLI before starting the demo.
-
-If the export already exists and you only want to publish the bundle to the separate `sidflow-data` release repository, you can skip classification and export generation entirely:
+To publish an already-built bundle to the `sidflow-data` release repository without regenerating it:
 
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
 
-## Web UI
-
-For those who prefer a graphical interface, SID Flow includes a **Next.js + React** control panel with two interfaces:
-
-### Two Access Points
-
-- **Public Player** at **<http://localhost:3000>** - Simple playback interface for casual listening
-- **Admin Console** at **<http://localhost:3000/admin>** - Full pipeline control and operations
-
-```bash
-cd packages/sidflow-web
-bun run dev
-```
-
-### Admin Authentication
-
-The admin console requires authentication for security:
-
-- **Username:** `SIDFLOW_ADMIN_USER` (defaults to `admin` outside production)
-- **Password:** `SIDFLOW_ADMIN_PASSWORD`
-- **Session signing secret:** `SIDFLOW_ADMIN_SECRET`
-
-Local development falls back to `admin/password` only when you have not configured credentials. Production startup now refuses default credentials, derived admin secrets, missing `SIDFLOW_ADMIN_SECRET`, or a missing `JWT_SECRET`.
-
-For web UI route details, see [packages/sidflow-web/README.md](packages/sidflow-web/README.md).
-
-### Public Player Features
-
-The public interface at **<http://localhost:3000>** provides:
-
-- **Play Tab** - Mood-based playback with presets (Quiet, Ambient, Energetic, Dark, Bright, Complex)
-- **Preferences** - Local theme and font settings
-
-### Admin Console Features
-
-The admin interface at **<http://localhost:3000/admin>** provides full system control:
-
-#### Wizard
-
-First-time setup walks you through selecting your HVSC root and confirming cache locations.
-
-![wizard panel](./doc/web-screenshots/01-wizard.png)
-
-#### Preferences
-
-Tweak themes, fonts, render engines, ROM paths, and collection settings.
-
-![preferences panel](./doc/web-screenshots/02-prefs.png)
-
-#### Fetch HVSC
-
-Download and synchronize the High Voltage SID Collection.
-
-![fetch panel](./doc/web-screenshots/03-fetch.png)
-
-#### Rate
-
-Manually rate songs on energy, complexity, mood, and preference. Ratings are stored as tag files under `tagsPath` and can be used by training/classification workflows.
-
-![rate panel](./doc/web-screenshots/04-rate-playback.png)
-
-#### Classify
-
-Automatically analyze your entire collection using audio features.
-
-![classify panel](./doc/web-screenshots/05-classify-progress.png)
-
-#### Play
-
-Create mood-based queues with full playback controls and history.
-
-![play panel](./doc/web-screenshots/07-play.png)
-
-### Player notes
-
-- **Search**: available in the Play tab; press `S` to focus the search input.
-- **Keyboard shortcuts (Play tab)**: Space (play/pause), ←/→ (prev/next), ↑/↓ (volume), `M` (mute), `?` (help). Shortcuts are disabled while typing in inputs.
-- **Favorites**: stored server-side (in `data/.sidflow-preferences.json`) and shared across browsers pointing at the same server. “Play All” / “Shuffle” currently start playback from the first selected entry (queueing the rest is not implemented yet).
-- **Recently played**: stored in the browser (localStorage), up to 100 entries, with a “Clear History” action.
-
-### Additional Features
-
-- Play and control SID playback by mood
-- Trigger HVSC fetch and training jobs
-- Real-time system feedback and status display
-- RESTful API and [OpenAPI Spec](packages/sidflow-web/openapi.yaml)
-
-Documentation: [packages/sidflow-web/README.md](packages/sidflow-web/README.md)
+Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-export.md).
 
 ---
 
-## Command-Line Tools
+## Performance Tests
 
-If you prefer automation or terminal workflows, use the CLI tools documented in the [Technical Reference](./doc/technical-reference.md).
-
-### Available CLIs
-
-- **[sidflow-fetch](packages/sidflow-fetch/README.md)** - Sync HVSC collection from official mirrors
-- **[sidflow-classify](packages/sidflow-classify/README.md)** - Render + extract features; write classification JSONL
-- **[sidflow-train](packages/sidflow-train/README.md)** - Train/update the TensorFlow.js model artifacts
-- **[sidflow-rate](packages/sidflow-rate/README.md)** - Write manual rating/tag files
-- **[sidflow-play](packages/sidflow-play/README.md)** - Generate playlists / exports using similarity search
-
-Start your own local SID CLI station on the command line with:
+Journey-driven performance suite (k6 + optional Playwright):
 
 ```bash
-./scripts/sid-station.sh
+# Run against a local server
+bun run perf:run -- --env local --base-url http://localhost:3000 --results performance/results --tmp performance/tmp --execute
 ```
+
+| Option | Notes |
+|--------|-------|
+| `--profile smoke\|reduced\|standard\|scale` | Defaults: local→smoke, CI→reduced |
+| `--profile scale` | Hundreds-of-users load; remote-only guard |
+| `--env remote --enable-remote` | Fly.io / Raspberry Pi targets |
+
+Journeys live in `performance/journeys/`; outputs in `performance/results/<timestamp>/`. CI uses `--profile reduced` with k6-only for stability.
 
 ---
-
-## Config
-
-The `.sidflow.json` file defines where SIDFlow should read your SID collection along with other runtime paths:
-
-```json
-{
-  "sidPath": "./workspace/hvsc",
-  "audioCachePath": "./workspace/audio-cache",
-  "tagsPath": "./workspace/tags",
-  "threads": 0,
-  "classificationDepth": 3
-}
-```
-
-
 
 ## Developer Documentation
 
-- **[Technical Reference](doc/technical-reference.md)** – architecture, CLI tools, APIs  
-- **[Developer Guide](doc/developer.md)** – setup, testing, contributions
+- **[Technical Reference](doc/technical-reference.md)** — architecture, CLI tools, APIs
+- **[Developer Guide](doc/developer.md)** — setup, testing, contributions
 
 ---
 
@@ -339,7 +288,7 @@ The `.sidflow.json` file defines where SIDFlow should read your SID collection a
 SIDFlow is [GPLv2](LICENSE)-licensed and builds upon open-source software and datasets:
 
 | Component | License | Source | Credit |
-|------------|----------|---------|-----|
+|-----------|---------|--------|--------|
 | **Bun** | MIT | [github.com/oven-sh/bun](https://github.com/oven-sh/bun) | JS runtime and tooling |
-| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | Software SID emulator (compiled to WASM for browser playback) |
+| **libsidplayfp** | GPL v2+ | [github.com/libsidplayfp/libsidplayfp](https://github.com/libsidplayfp/libsidplayfp) | SID emulator compiled to WASM for browser playback |
 | **High Voltage SID Collection (HVSC)** | Free for personal use | [hvsc.c64.org](https://www.hvsc.c64.org/) | Largest SID collection |
