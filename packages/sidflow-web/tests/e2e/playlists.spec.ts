@@ -195,6 +195,9 @@ test.describe('Playlists Feature', () => {
                 await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
                 await waitForUISettle(page);
                 await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
+                await expect(page.getByRole('button', { name: /playlists/i })).toBeVisible({
+                    timeout: TIMEOUTS.ELEMENT_VISIBLE,
+                });
                 break;
             } catch (error) {
                 retries--;
