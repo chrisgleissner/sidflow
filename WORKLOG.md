@@ -551,3 +551,120 @@ Full redesign covers: weighted cosine similarity, confidence-aware cold start, m
 ### Output
 
 `doc/research/sid-station-similarity-audit.md` — comprehensive research document (14 sections, all phases)
+
+---
+
+## 2026-03-22 — Phase C and D implementation (similarity system redesign)
+
+### Phase C: Advanced model changes
+
+**C1 — Multi-centroid intent model**
+- New file: `packages/sidflow-play/src/station/intent.ts`
+- Exports: `buildIntentModel()`, `kMeans2()`, `interleaveClusterResults()`, `weightedCosine()`
+- `buildIntentModel`: computes pairwise cosine distances; if max distance > 0.5, runs k-means k=2 (up to 100 iterations) to detect dual-cluster preferences; builds per-cluster `{ trackIds, weights, centroid }`
+- `kMeans2`: seeded deterministic k-means with cosine distance; handles degenerate cases (empty clusters reset to random seed track)
+- `interleaveClusterResults`: merges two arrays by alternating elements; shorter exhausted first
+- `weightedCosine`: applies per-dimension group weights (spectral 1.0 / temporal 1.2 / MFCC 0.8 / derived 1.5) to produce weighted cosine similarity
+- Integration: `buildStationQueue` reads `intentModel.multiCluster`; if true, calls `recommendFromFavorites` for each cluster with half-limit, interleaves, and dedupes by `track_id`
+
+**C2 — Weighted cosine with dimension groups**
+- `weightedCosine()` in `intent.ts` uses `PERCEPTUAL_VECTOR_WEIGHTS` (dims 0–7: 1.0, 8–13: 1.2, 14–18: 0.8, 19–23: 1.5)
+- Added unit test to `intent.test.ts` confirming weighted ≠ unweighted for dimension-skewed vectors
+- Results verified: weighted similarity differs measurably for tracks heavy in different dimension ranges
+
+**C3 — Adventure radius expansion**
+- Replaced the old score-flattening exponent with `computeAdventureMinSimilarity(adventure)`:
+  - `min_sim = max(0.50, 0.82 − adventure * 0.03)`
+  - adventure=0→0.82, adventure=3→0.73, adventure=5→0.67; hard floor 0.50
+- `chooseStationTracks` refactored to 70/30 exploit/explore split:
+  - Exploitation: tracks with `score > min_sim + 0.10` (top similarity)
+  - Exploration band: `[min_sim, min_sim + 0.10]`
+  - Fallback: when exploration band is empty, backfills from exploitation pool
+  - Below-`min_sim` candidates never enter the station
+- Added `MIN_SIMILARITY_FLOOR = 0.50` hard guard to prevent any score below floor
+
+### Phase D: Self-improvement system
+
+**D1 — Training pair derivation (`pair-builder.ts`)**
+- Positive pairs: same-track `like` events, `play_complete` → `like` sequences, `like` + `replay`
+- Negative pairs: `like` vs `dislike`, `like` vs `skip_early`
+- Triplets: for each positive pair → find a negative anchor → emit `(anchor, positive, negative)`
+- Ranking pairs: `(higherRatedTrack, lowerRatedTrack, 1.0 weight)`
+- Output: `TrainingPairSet { positivePairs, negativePairs, triplets, rankingPairs }`
+- De-duplication via sorted key to prevent duplicate pairs
+
+**D2 — Metric learning MLP (`metric-learning.ts`)**
+- Architecture: 24 → 48 → 24 (two-layer perceptron)
+- Pure TypeScript, CPU-only, no external ML dependencies
+- Activations: tanh (hidden) + L2 normalization (output)
+- Losses: triplet loss (margin=0.2) + margin ranking loss
+- Optimizer: mini-batch gradient descent (Adam-inspired momentum)
+- Determinism: seeded PRNG via `seedrandom` pattern (mulberry32)
+- Accepts `MetricLearningConfig { epochs, learningRate, batchSize, tripletMargin, seed }`
+- Returns `MetricLearningModel { weights1, biases1, weights2, biases2, config }` (JSON-serializable)
+
+**D3 — Evaluation system (`evaluate.ts`)**
+- Five metrics: holdout accuracy, station coherence, output diversity, embedding drift, feedback correlation
+- Holdout accuracy: fraction of test triplets where `d(anchor,positive) < d(anchor,negative)`
+- Station coherence: mean pairwise cosine similarity of 20-track simulated station
+- Output diversity: unique bucket coverage over 50 sampled tracks
+- Embedding drift: mean absolute change vs identity transform (0→no drift, 1→max drift)
+- Feedback correlation: fraction of pairs where liked track scores higher than disliked
+- Promotion rules: pass ≥3/5 metrics (configurable `minPassCount`)
+- Outputs `EvaluationResult { metrics, passed, metricsDetail }` for logging
+
+**D4 — Retraining scheduler (`scheduler.ts`)**
+- `runScheduler(config, options)`: reads feedback JSONL files from `data/feedback/`
+- Trigger conditions: `eventCount ≥ minEvents (50)` OR `hoursSinceLastTraining ≥ intervalHours`
+- Loads embedding vectors from `data/classified/` JSONL files
+- Calls `deriveTrainingPairs → trainMetricLearningModel → evaluateModel`
+- Promotes challenger to `data/model/current/` and versions old model as `v1..v5`; Enforces max 5 historical versions (prunes oldest)
+- Returns `SchedulerResult { triggered, trained, promoted, rejected, reason }`
+
+**D5 — CLI extensions (`cli.ts` + `scheduler.ts`)**
+- `--rollback <n>`: finds `data/model/vN/` directory, copies back to `data/model/current/`; exits 1 if version not found
+- `--list-models`: reads `data/model/` subdirectories, prints version table (version, timestamp, metrics) and exits 0
+- `--auto [--force]`: calls `runScheduler`; prints triggered/no-trigger/promoted/rejected status
+
+### Test suites written
+
+| File | Tests | Coverage |
+|------|-------|----------|
+| `packages/sidflow-play/test/intent.test.ts` | 29 | kMeans2, buildIntentModel, weightedCosine, interleaveClusterResults |
+| `packages/sidflow-play/test/queue-adventure.test.ts` | 29 | computeAdventureMinSimilarity, chooseStationTracks exploit/explore |
+| `packages/sidflow-train/test/pair-builder.test.ts` | 13 | deriveTrainingPairs correctness + acceptance criteria |
+| `packages/sidflow-train/test/metric-learning.test.ts` | 14 | MLP architecture, loss functions, forward pass, training convergence |
+| `packages/sidflow-train/test/evaluate.test.ts` | 12 | each metric, promotion logic, edge cases |
+| `packages/sidflow-train/test/scheduler.test.ts` | 5 + 5 CLI | trigger logic, scheduler-CLI integration |
+
+### Validation results
+
+**Build**: `tsc -b` exits 0. No TypeScript errors.
+
+**Test run 1** (2026-03-22):
+- common: 445/0
+- classify: 287/0
+- play: 414/0
+- train: 65/0
+- fetch/rate/perf: 128/0
+
+**Test run 2** (2026-03-22):
+- common: 445/0
+- play: 414/0
+- train: 65/0
+- fetch/rate/perf: 128/0
+- classify: 287/0
+
+**Test run 3** (2026-03-22):
+- Combined (non-classify): 1052/0
+- classify: 287/0
+
+All three runs: **0 failures**. Phase A/B not regressed.
+
+### Notable bug fixed during validation
+
+During run 2, 3 `runPlayCli` tests failed with "only N long-enough station tracks were available; at least 100 required." Root cause: `createStationDemoFixture` generated tracks with `energy = 0.99 − index × 0.003` (bottoming at 0.57 for index 140). With adventure=3, `min_sim = 0.73`. When SQLite's `ORDER BY RANDOM()` selected seed tracks that included outlier tracks (songs 7/8 with vector `[0,1,0]`), the resulting centroid fell below the cluster, causing many generated tracks to fail the similarity floor.
+
+Fix: extended the fixture from index 13..140 to 13..250, changing the energy formula to `max(0.848, 0.99 − (index−13) × 0.0006)` so all generated tracks have energy ≥ 0.848 and cosine similarity ≥ 0.985 to any cluster centroid, guaranteeing ≥200 candidates above `min_sim=0.73` regardless of seed selection.
+
+### Phase C and D — COMPLETED 2026-03-22

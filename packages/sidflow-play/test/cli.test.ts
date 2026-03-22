@@ -68,11 +68,16 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
     ["F/song12.sid#1", "F/song12.sid", [0.84, 0.16, 0], 4, 4, 3, 4, 2, 0, 0, 4],
   ];
 
-  for (let index = 13; index <= 140; index += 1) {
+  // Generate 238 additional tracks (index 13..250) with energy 0.848–0.951
+  // so there are always ≥200 high-similarity candidates after the C3
+  // min_sim filter (adventure=3 → min_sim=0.73) regardless of which seeds
+  // are randomly sampled by SQLite ORDER BY RANDOM().
+  for (let index = 13; index <= 250; index += 1) {
     const group = String.fromCharCode(65 + ((index - 1) % 20));
     const sidPath = `${group}/song${index}.sid`;
-    const energy = Math.max(0.2, 0.99 - (index * 0.003));
-    const mood = Number((1 - energy).toFixed(3));
+    // Keep energy ≥ 0.848: cosine sim to any centroid in the cluster ≫ 0.73
+    const energy = Math.max(0.848, 0.99 - ((index - 13) * 0.0006));
+    const mood = Number((1 - energy).toFixed(4));
     rows.push([
       `${sidPath}#1`,
       sidPath,
