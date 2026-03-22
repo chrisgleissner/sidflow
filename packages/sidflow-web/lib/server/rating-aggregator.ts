@@ -16,6 +16,8 @@ import {
   type FeedbackRecord,
 } from '@sidflow/common';
 
+export { calculateTemporalDecayWeight } from '@sidflow/common';
+
 /**
  * Cache entry for aggregated feedback data.
  */

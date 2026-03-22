@@ -50,6 +50,27 @@ Template:
 
 ## Active tasks
 
+### Task: PR #85 convergence (2026-03-22)
+
+**User request (summary)**
+- Bring PR #85 to a merge-ready state by addressing all review comments, resolving review threads, and driving CI to green.
+
+**Current blockers**
+- Unresolved review threads remain in `packages/sidflow-train`, `PLANS.md`, `WORKLOG.md`, and `doc/c64/sid-file-structure.md`.
+- GitHub reports `Build and test / Build and Test` failing on the current head commit.
+
+**Plan (checklist)**
+- [ ] Audit every unresolved review thread and classify it as fix / already resolved / no longer applicable
+- [ ] Implement the remaining code or doc fixes with focused regression coverage where needed
+- [ ] Reply to every unresolved thread with the technical disposition and resolve the thread
+- [ ] Re-run required local validation for the touched surfaces and confirm repository build health
+- [ ] Push fixes to `feat/improve-classification-2` and iterate on CI until all checks pass
+
+**Progress log**
+- 2026-03-22 — Started convergence pass. Pulled unresolved review threads and status checks for PR #85 via `gh api graphql`. Current state: three non-outdated code comments in `packages/sidflow-train/src/{pair-builder,scheduler}.ts`, several outdated-but-unresolved doc/worklog threads that still need replies/resolution, and one failing `Build and test / Build and Test` check.
+- 2026-03-22 — Confirmed most review comments were already fixed on the PR head before this pass: `packages/sidflow-train/src/{cli,pair-builder,scheduler,metric-learning}.ts`, `doc/c64/sid-file-structure.md`, `PLANS.md`, and `WORKLOG.md` all already reflect the suggested changes. The remaining live CI failure came from `packages/sidflow-web/tests/unit/rating-aggregator-decay.test.ts` importing `calculateTemporalDecayWeight` from `packages/sidflow-web/lib/server/rating-aggregator.ts` after the helper stopped re-exporting it.
+- 2026-03-22 — Restored the missing `calculateTemporalDecayWeight` re-export in `packages/sidflow-web/lib/server/rating-aggregator.ts`, converted the long-running WASM real-time playback test in `packages/libsidplayfp-wasm/test/realtime-playback.test.ts` to Bun's explicit timeout-options form so coverage runs honor the intended 15s timeout, and revalidated with: targeted web decay test (`2 pass, 0 fail`), targeted PR-comment train/play tests (`51 pass, 0 fail`), targeted real-time WASM test file (`6 pass, 0 fail`), and `bun run build` (`exit 0`). A local full `bun run test` coverage pass still hit environment kill `137` mid-run after the repaired batches completed, so final convergence will rely on authoritative GitHub CI after push/rerun.
+
 ### Task: SID-native classification enhancement implementation (2026-03-22)
 
 **User request (summary)**

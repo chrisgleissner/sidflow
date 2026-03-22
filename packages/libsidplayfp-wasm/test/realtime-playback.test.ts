@@ -16,7 +16,7 @@ function loadTestSid(): Uint8Array {
 }
 
 describe('Real-Time Streaming Simulation', () => {
-    test('simulate continuous 60-second playback at 44.1kHz', async () => {
+    test('simulate continuous 60-second playback at 44.1kHz', { timeout: 15000 }, async () => {
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
         try {
             const sidBuffer = loadTestSid();
@@ -97,7 +97,7 @@ describe('Real-Time Streaming Simulation', () => {
         } finally {
             engine.dispose();
         }
-    }, 15000);
+    });
 
     test('measure jitter in render times', async () => {
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
