@@ -50,6 +50,59 @@ Template:
 
 ## Active tasks
 
+### Task: Station playlist UI hardening + interaction test matrix (2026-03-22)
+
+**User request (summary)**
+- Reproduce and fix the class of bugs: playlist stops updating visually, current/selected highlights become stale or disappear, sliding window fails to track correctly.
+- Build a comprehensive headless interaction-level test infrastructure (simulator + screen parser + invariant checker) capable of catching these and all future regressions.
+
+**Analysis summary**
+- `renderPlaylistMarker` in `screen.ts` uses `" "` (single space) for selected-but-not-current rows, yielding `"  "` (two spaces, identical to neutral) after `padStart(2)`. With ANSI disabled (CI headless), selected and neutral rows are **structurally indistinguishable** — semantic state is carried by ANSI inverse styling alone.
+- Window logic in `resolvePlaylistWindowStart` ensures the **selected** row is visible when selected ≠ current, but does not guarantee the **current/playing** row remains visible. This is an intentional UX trade-off (window follows selection when browsing), documented as an accepted behaviour.
+- **No interaction-level tests** exist for the station state machine. All existing coverage is on pure utility functions. The entire `run.ts` inner loop is untested.
+
+**Root-cause hypothesis**
+1. PRIMARY (confirmed): `renderPlaylistMarker` returns `" "` for `isSelected && !isCurrent`, making the selection invisible without ANSI. Fix: use `"▸"` instead.
+2. SECONDARY (structural gap): Zero test coverage of state transitions means any future regression in `run.ts` will be invisible until visual inspection.
+
+**UX invariants (testable)**
+- Exactly one row in the playlist has the `"►"` current marker when the current index is visible.
+- At most one row has the `"▸"` selected marker; it appears only when `selectedIndex ≠ stationIndex`.
+- The selected row (effective) is always in the visible window when both filtered and viewport constraints allow.
+- Footer hint matches: shows "Selected N/M: title" when selected ≠ current, otherwise "Playhead" text.
+- Status line reflects the most recent user action.
+
+**Plan (checklist)**
+- [x] repository analysis completed
+- [x] interaction inventory completed
+- [ ] `renderPlaylistMarker` fix: change `" "` → `"▸"` for selected-only rows
+- [ ] semantic screen parser implemented (`test/helpers/screen-parser.ts`)
+- [ ] station simulator implemented (`test/helpers/station-simulator.ts`)
+- [ ] deterministic scenario tests (each action individually)
+- [ ] pairwise interaction tests
+- [ ] sequence tests (multi-step sessions)
+- [ ] boundary tests (first/last/single/empty)
+- [ ] sliding-window tests
+- [ ] filter state tests (text + rating + combined)
+- [ ] footer/status verification tests
+- [ ] visual semantics tests (marker detection)
+- [ ] stress tests (hundreds of cursor operations)
+- [ ] soak tests (mixed long sequences with invariant checking)
+- [ ] fuzz/randomized tests with multiple seeds
+- [ ] metamorphic tests (structural properties)
+- [ ] root cause proven by new tests
+- [ ] all new tests pass 3× consecutively
+
+**Progress log**
+- 2026-03-22 — Started. Deep analysis complete. Two root causes identified. Implementing fix + full test matrix.
+
+**Termination criteria**
+- All checklist items green
+- 0 test failures across 3 consecutive `bun run test` runs
+- `renderPlaylistMarker` fix merged, new test file covering all interaction categories exists
+
+---
+
 ### Task: Coverage Drive ≥81% (2026-03-21)
 
 **User request (summary)**
@@ -308,6 +361,8 @@ All of the following must be true:
 - 2026-03-21 — Follow-up user addendum: reverse-highlight selection can disappear or appear stuck while `Selected x/100` keeps changing, the small `>` next-track marker is no longer wanted, selecting the live song must stay a no-op, and PgUp/PgDn selection jumps must be explicitly supported. Next change: make viewport anchoring selection-aware, remove the extra prefix marker from playlist rows, and add regression coverage for selection visibility.
 - 2026-03-21 — Implemented selection-aware station viewport anchoring so browse selection stays visible instead of drifting off-screen behind the playhead. Removed the obsolete next-track `>` prefix, shifted playlist rows left by two characters, kept Enter-on-current as a no-op, and surfaced PgUp/PgDn behavior in the controls block. Focused validation passed with `bun run build:quick`, `bun test packages/sidflow-play/test/station-screen.test.ts packages/sidflow-play/test/station-input.test.ts` (`93 pass, 0 fail`), and `bun test packages/sidflow-play/test/cli.test.ts` (`99 pass, 0 fail`).
 - 2026-03-21 — Follow-up user report adds a stronger reliability requirement: the live-song marker sometimes fails to move even though playback and `Now Playing` advance, and reverse selection can still degrade. Root-cause audit identified nested ANSI marker styling inside playlist rows as a likely source of broken current/inverse rendering, so the next patch removes inner marker colorization, adds explicit current-vs-selected row regressions, and widens station navigation validation before pushing.
+- 2026-03-22 — Completed the playlist marker hardening pass. `renderPlaylistMarker(...)` now emits plain padded marker text so row-level current/selected styling owns all ANSI state, which fixes the stale or disappearing live-marker/reverse-highlight behavior during left-right playback changes and browse movement. Validation passed with `bun run build:quick`, `bun test packages/sidflow-play/test/station-screen.test.ts packages/sidflow-play/test/station-input.test.ts` (`95 pass, 0 fail`), and `bun test packages/sidflow-play/test/cli.test.ts` (`99 pass, 0 fail`).
+- 2026-03-22 — Branch convergence validation update: `bun run build` passed, and a direct `bun run test:ci` run completed cleanly through coverage merge (`287 pass, 0 fail` in the final `sidflow-web-4` batch). An older VS Code task-wrapper `bun run test` path still reports `137` during classify/render integration, but that kill has not been reproduced in the direct shell run used for branch validation.
 - 2026-03-20 — Follow-up user request: make the station demo default to the latest cached `sidflow-data` release bundle instead of an ambiguous local export, with only a once-per-day latest-release check. Add explicit flags for forcing the latest local export or for pointing at a specific local similarity database so the active rating dataset is obvious. Validation next: implement remote-release cache resolution plus source display, update the wrapper/help text, add focused CLI tests for remote cache reuse and local overrides, then rerun build + full tests 3x.
   - Completed: `sidflow-play station-demo` now defaults to the latest cached `sidflow-data` release bundle, checks GitHub for a newer release at most once per day, and surfaces the active dataset source in the TUI. Added explicit `--force-local-db` and `--local-db` controls while keeping `--db` as a compatibility alias, and updated `scripts/run-station-demo.sh` so it no longer forces a local export by default.
   - Validation: `bun run build:quick`; `bun test packages/sidflow-play/test/cli.test.ts` => 42 pass, 0 fail, 129 expect() calls; `bun run build`; `bun run test` x3.

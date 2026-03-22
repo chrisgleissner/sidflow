@@ -54,7 +54,8 @@ function resolvePlaylistLayout(width: number): PlaylistLayout {
 }
 
 function renderPlaylistMarker(enabled: boolean, isCurrent: boolean, isSelected: boolean): string {
-  const marker = isCurrent ? "►" : isSelected ? " " : "";
+  // "►" = currently playing; "▸" = queued-next / user selection; "" = neutral
+  const marker = isCurrent ? "►" : isSelected ? "▸" : "";
   return marker.padStart(MARKER_COLUMN_WIDTH, " ");
 }
 
