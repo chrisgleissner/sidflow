@@ -11,9 +11,7 @@ A seamless stream of similar Commodore 64 SID songs.
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
 
-SIDFlow analyses your Commodore 64 SID music collection — extracting audio features, learning your taste, and generating a continuous stream of similar tracks.
-
-Pick a mood, press play, and the queue builds itself.
+SIDFlow analyses your Commodore 64 SID music collection. It extracts audio features, learns your taste, and generates a continuous stream of similar tracks.
 
 > [!NOTE]
 > This project is under active development. Some documented features may not yet be fully functional. 
