@@ -121,7 +121,7 @@ async function loadEmbeddings(classifiedPath: string): Promise<Map<string, numbe
       if (!trimmed) continue;
       try {
         const record = JSON.parse(trimmed) as ClassificationRecord;
-        const vec = record.perceptual_vector ?? (record as unknown as { features?: { perceptual_vector?: number[] } }).features?.perceptual_vector;
+        const vec = record.vector;
         if (!vec || !Array.isArray(vec) || vec.length !== 24) continue;
         const songIndex = record.song_index ?? 1;
         const trackId = `${record.sid_path}#${songIndex}`;

@@ -395,8 +395,11 @@ export function chooseStationTracks(
     pickFromPoolBucketDiversified(exploitPool, exploitCount, true);
     pickFromPoolBucketDiversified(explorePool, exploreCount, false);
   } else {
-    // Fallback: use all candidates with score-weighted bucket diversification
-    pickFromPoolBucketDiversified(sorted, stationSize, true);
+    // Fallback: prefer tracks at or above minSim; only widen to the full
+    // sorted list when we cannot fill stationSize from the qualified pool.
+    const filteredFallback = sorted.filter((r) => r.score >= minSim);
+    const pool = filteredFallback.length >= stationSize ? filteredFallback : sorted;
+    pickFromPoolBucketDiversified(pool, stationSize, true);
   }
 
   return chosen;
