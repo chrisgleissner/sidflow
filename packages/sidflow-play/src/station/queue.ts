@@ -16,6 +16,24 @@ import type {
 } from "./types.js";
 import { extractYear, isTrackLongEnough, resolveTrackDurationMs } from "./formatting.js";
 
+export function buildStationSongKey(track: Pick<StationTrackRow, "sid_path" | "song_index">): string {
+  return `${track.sid_path}#${track.song_index}`;
+}
+
+function dedupeQueueBySongKey<T extends Pick<StationTrackRow, "sid_path" | "song_index">>(tracks: T[]): T[] {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+  for (const track of tracks) {
+    const key = buildStationSongKey(track);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(track);
+  }
+  return deduped;
+}
+
 function openReadonlyDatabase(dbPath: string): Database {
   return new Database(dbPath, { readonly: true, strict: true });
 }
@@ -65,6 +83,27 @@ export function readRandomTracksExcluding(dbPath: string, limit: number, exclude
          LIMIT ?`,
       )
       .all(...excluded, limit) as StationTrackRow[];
+  } finally {
+    database.close();
+  }
+}
+
+export function readTrackRowsByIds(dbPath: string, trackIds: string[]): Map<string, StationTrackRow> {
+  if (trackIds.length === 0) {
+    return new Map();
+  }
+
+  const database = openReadonlyDatabase(dbPath);
+  try {
+    const placeholders = trackIds.map(() => "?").join(", ");
+    const rows = database
+      .query(
+        `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
+         FROM tracks
+         WHERE track_id IN (${placeholders})`,
+      )
+      .all(...trackIds) as StationTrackRow[];
+    return new Map(rows.map((row) => [row.track_id, row]));
   } finally {
     database.close();
   }
@@ -440,7 +479,7 @@ export async function buildStationQueue(
       filteredCandidates.push(recommendation);
     }
 
-    const chosen = chooseStationTracks(filteredCandidates, stationSize, adventure, runtime.random);
+    const chosen = chooseStationTracks(dedupeQueueBySongKey(filteredCandidates), stationSize, adventure, runtime.random);
     const orderedChosen = orderStationTracksByFlow(
       chosen,
       readTrackVectorsByIds(dbPath, chosen.map((recommendation) => recommendation.track_id)),
@@ -455,8 +494,9 @@ export async function buildStationQueue(
       }
     }
 
-    if (nextDetails.length > details.length) {
-      details = nextDetails;
+    const uniqueNextDetails = dedupeQueueBySongKey(nextDetails);
+    if (uniqueNextDetails.length > details.length) {
+      details = uniqueNextDetails;
     }
     if (details.length >= stationSize || candidates.length < recommendationLimit) {
       break;
@@ -464,7 +504,7 @@ export async function buildStationQueue(
     recommendationLimit = Math.max(recommendationLimit + stationSize, recommendationLimit * 2);
   }
 
-  return details;
+  return dedupeQueueBySongKey(details);
 }
 
 export function mergeQueueKeepingCurrent(
@@ -473,7 +513,7 @@ export function mergeQueueKeepingCurrent(
   currentIndex: number,
   pinCurrent = true,
 ): { queue: StationTrackDetails[]; index: number } {
-  const deduped = rebuilt.filter((track) => track.track_id !== current.track_id);
+  const deduped = dedupeQueueBySongKey(rebuilt.filter((track) => track.track_id !== current.track_id));
   if (!pinCurrent) {
     if (deduped.length === 0) {
       return { queue: [], index: 0 };
@@ -482,7 +522,7 @@ export function mergeQueueKeepingCurrent(
   }
   const nextIndex = Math.min(currentIndex, deduped.length);
   deduped.splice(nextIndex, 0, current);
-  return { queue: deduped, index: nextIndex };
+  return { queue: dedupeQueueBySongKey(deduped), index: nextIndex };
 }
 
 export function shuffleQueueKeepingCurrent(
@@ -491,18 +531,18 @@ export function shuffleQueueKeepingCurrent(
   random: () => number,
 ): StationTrackDetails[] {
   if (queue.length <= 2) {
-    return [...queue];
+    return dedupeQueueBySongKey([...queue]);
   }
 
   const current = queue[currentIndex]!;
-  const tail = [...queue.slice(0, currentIndex), ...queue.slice(currentIndex + 1)];
+  const tail = dedupeQueueBySongKey([...queue.slice(0, currentIndex), ...queue.slice(currentIndex + 1)]);
   for (let index = tail.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(random() * (index + 1));
     const next = tail[index]!;
     tail[index] = tail[swapIndex]!;
     tail[swapIndex] = next;
   }
-  return [current, ...tail];
+  return dedupeQueueBySongKey([current, ...tail]);
 }
 
 export function sumPlaylistDurationMs(queue: StationTrackDetails[]): number {

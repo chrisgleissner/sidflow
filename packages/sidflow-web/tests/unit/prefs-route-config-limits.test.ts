@@ -160,4 +160,247 @@ describe('/api/prefs config limits', () => {
     expect(json.success).toBe(false);
     expect(String(json.details)).toContain('maxRenderSec');
   });
+
+  test('POST rejects empty body (no fields provided)', async () => {
+    const response = await POST(buildPostRequest({}));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(json.details).toBeTruthy();
+  });
+
+  test('POST rejects invalid renderEngine', async () => {
+    const response = await POST(buildPostRequest({ renderEngine: 'turbo-sid' }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('renderEngine');
+  });
+
+  test('POST rejects renderEngine non-string', async () => {
+    const response = await POST(buildPostRequest({ renderEngine: 42 }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('renderEngine');
+  });
+
+  test('POST rejects preferredEngines non-array', async () => {
+    const response = await POST(buildPostRequest({ preferredEngines: 'wasm' }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('preferredEngines');
+  });
+
+  test('POST rejects preferredEngines with non-string element', async () => {
+    const response = await POST(buildPostRequest({ preferredEngines: [42] }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('preferredEngines');
+  });
+
+  test('POST rejects preferredEngines with invalid engine', async () => {
+    const response = await POST(buildPostRequest({ preferredEngines: ['mega-sid'] }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('preferredEngines');
+  });
+
+  test('POST rejects empty preferredEngines array', async () => {
+    const response = await POST(buildPostRequest({ preferredEngines: [] }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('preferredEngines');
+  });
+
+  test('POST accepts null renderEngine (reset to default)', async () => {
+    const response = await POST(buildPostRequest({ renderEngine: null }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts null preferredEngines (reset to default)', async () => {
+    const response = await POST(buildPostRequest({ preferredEngines: null }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST rejects defaultFormats non-array', async () => {
+    const response = await POST(buildPostRequest({ defaultFormats: 'wav' }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('defaultFormats');
+  });
+
+  test('POST rejects defaultFormats with non-string element', async () => {
+    const response = await POST(buildPostRequest({ defaultFormats: [42] }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('defaultFormats');
+  });
+
+  test('POST rejects defaultFormats with unsupported format', async () => {
+    const response = await POST(buildPostRequest({ defaultFormats: ['mp3'] }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('defaultFormats');
+  });
+
+  test('POST rejects empty defaultFormats array', async () => {
+    const response = await POST(buildPostRequest({ defaultFormats: [] }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('defaultFormats');
+  });
+
+  test('POST accepts null defaultFormats (reset to default)', async () => {
+    const response = await POST(buildPostRequest({ defaultFormats: null }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts valid defaultFormats', async () => {
+    const response = await POST(buildPostRequest({ defaultFormats: ['wav', 'flac'] }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST rejects sidplayfpCliFlags non-string', async () => {
+    const response = await POST(buildPostRequest({ sidplayfpCliFlags: 42 }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('sidplayfpCliFlags');
+  });
+
+  test('POST accepts sidplayfpCliFlags string', async () => {
+    const response = await POST(buildPostRequest({ sidplayfpCliFlags: '--gain 90' }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts null sidplayfpCliFlags (reset)', async () => {
+    const response = await POST(buildPostRequest({ sidplayfpCliFlags: null }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts whitespace sidplayfpCliFlags (treated as null)', async () => {
+    const response = await POST(buildPostRequest({ sidplayfpCliFlags: '   ' }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts valid renderEngine', async () => {
+    const response = await POST(buildPostRequest({ renderEngine: 'wasm' }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts valid preferredEngines combination', async () => {
+    const response = await POST(buildPostRequest({ preferredEngines: ['sidplayfp-cli', 'wasm'] }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST deduplicates preferredEngines', async () => {
+    const response = await POST(buildPostRequest({ preferredEngines: ['wasm', 'wasm', 'sidplayfp-cli'] }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST rejects maxRenderSec smaller than intro-skip minimum (>= 20 but below window minimum)', async () => {
+    // maxClassifySec=30, introSkipSec=20 → minRender = max(20, 20+30) = 50; send maxRenderSec=35
+    const response = await POST(buildPostRequest({ maxRenderSec: 35, maxClassifySec: 30, introSkipSec: 20 }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+    expect(String(json.details)).toContain('maxRenderSec must be >=');
+    expect(String(json.details)).toContain('introSkipSec');
+  });
+
+  test('POST accepts sidBasePath as a valid directory path', async () => {
+    // Create a subdirectory to use as sidBasePath
+    const sidDir = path.join(tempRoot, 'hvsc');
+    await mkdir(sidDir, { recursive: true });
+    const response = await POST(buildPostRequest({ sidBasePath: sidDir }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts sidBasePath as null to clear it', async () => {
+    const response = await POST(buildPostRequest({ sidBasePath: null }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts sidBasePath as empty string (treated as null)', async () => {
+    const response = await POST(buildPostRequest({ sidBasePath: '   ' }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST rejects sidBasePath that is not a directory', async () => {
+    // Create a file (not a dir) to use as sidBasePath
+    const filePath = path.join(tempRoot, 'notadir.txt');
+    await writeFile(filePath, 'hello', 'utf8');
+    const response = await POST(buildPostRequest({ sidBasePath: filePath }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+  });
+
+  test('POST rejects sidBasePath that is a non-string non-null', async () => {
+    const response = await POST(buildPostRequest({ sidBasePath: 42 }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+  });
+
+  test('POST accepts kernalRomPath as a valid file path', async () => {
+    // Create a temp file to use as a ROM
+    const romFile = path.join(tempRoot, 'kernal.rom');
+    await writeFile(romFile, 'fake rom data', 'utf8');
+    const response = await POST(buildPostRequest({ kernalRomPath: romFile }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST accepts kernalRomPath as null to clear it', async () => {
+    const response = await POST(buildPostRequest({ kernalRomPath: null }));
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.success).toBe(true);
+  });
+
+  test('POST rejects kernalRomPath that is not a file', async () => {
+    const dirPath = path.join(tempRoot, 'notafile');
+    await mkdir(dirPath, { recursive: true });
+    const response = await POST(buildPostRequest({ kernalRomPath: dirPath }));
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.success).toBe(false);
+  });
 });

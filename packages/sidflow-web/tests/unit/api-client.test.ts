@@ -18,6 +18,23 @@ import {
   requestRandomRateTrack,
   trainModel,
   updatePreferences,
+  requestStationFromSong,
+  getAggregateRating,
+  getFavorites,
+  addFavorite,
+  removeFavorite,
+  searchTracks,
+  getCharts,
+  listPlaylists,
+  getPlaylist,
+  createPlaylist,
+  updatePlaylist,
+  deletePlaylist,
+  reorderPlaylistTracks,
+  getSchedulerConfig,
+  updateSchedulerConfig,
+  exportClassifications,
+  importClassifications,
 } from '../../lib/api-client';
 import type {
   ClassifyProgressWithStorage,
@@ -27,6 +44,15 @@ import type {
   RatePlaybackStatus,
   RateTrackWithSession,
   RatingHistoryResponse,
+  StationFromSongRequest,
+  StationFromSongResponse,
+  AggregateRating,
+  FavoritesResponse,
+  SearchResponse,
+  ChartsResponse,
+  ChartEntry,
+  SchedulerResponse,
+  ClassificationExportData,
 } from '../../lib/api-client';
 import type { ClassifyProgressSnapshot } from '../../lib/types/classify-progress';
 import type { FetchProgressSnapshot } from '../../lib/types/fetch-progress';
@@ -483,5 +509,324 @@ describe('api-client fetch wrappers', () => {
     expect(call.init?.method).toBe('GET');
     expect(call.init?.headers).toEqual({ Accept: 'application/json' });
     expect(result).toEqual(response);
+  });
+});
+
+describe('requestStationFromSong', () => {
+  it('POSTs to /api/play/station-from-song with the request body', async () => {
+    const stationResponse: StationFromSongResponse = {
+      seedTrack: sampleTrackInfo as any,
+      similarTracks: [],
+      stationName: 'Songs Like Example',
+    };
+    const response: ApiResponse<StationFromSongResponse> = { success: true, data: stationResponse };
+    mockFetch(response);
+
+    const request: StationFromSongRequest = { sid_path: '/music/example.sid', limit: 10, similarity: 0.8 };
+    const result = await requestStationFromSong(request);
+
+    expect(fetchCalls).toHaveLength(1);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/play/station-from-song');
+    expect(call.init?.method).toBe('POST');
+    expect(call.init?.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(call.init?.body).toBe(JSON.stringify(request));
+    expect(result).toEqual(response);
+  });
+});
+
+describe('getAggregateRating', () => {
+  it('GETs /api/rate/aggregate with sid_path query param', async () => {
+    const rating: AggregateRating = { avgRating: 4.2, ratingCount: 17, weightedScore: 4.1, confidence: 0.9 };
+    const response: ApiResponse<AggregateRating> = { success: true, data: rating };
+    mockFetch(response);
+
+    const result = await getAggregateRating('/music/foo.sid');
+
+    expect(fetchCalls).toHaveLength(1);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/rate/aggregate?sid_path=%2Fmusic%2Ffoo.sid');
+    expect(call.init?.method).toBe('GET');
+    expect(result).toEqual(response);
+  });
+});
+
+describe('getFavorites / addFavorite / removeFavorite', () => {
+  it('getFavorites GETs /api/favorites', async () => {
+    const response: ApiResponse<FavoritesResponse> = { success: true, data: { favorites: ['/a.sid'] } };
+    mockFetch(response);
+
+    const result = await getFavorites();
+
+    expect(fetchCalls).toHaveLength(1);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/favorites');
+    expect(call.init?.method).toBe('GET');
+    expect(result).toEqual(response);
+  });
+
+  it('addFavorite POSTs sid_path to /api/favorites', async () => {
+    const response: ApiResponse<{ favorites: string[]; added: boolean }> = {
+      success: true,
+      data: { favorites: ['/a.sid'], added: true },
+    };
+    mockFetch(response);
+
+    const result = await addFavorite('/a.sid');
+
+    expect(fetchCalls).toHaveLength(1);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/favorites');
+    expect(call.init?.method).toBe('POST');
+    expect(call.init?.body).toBe(JSON.stringify({ sid_path: '/a.sid' }));
+    expect(result).toEqual(response);
+  });
+
+  it('removeFavorite DELETEs sid_path from /api/favorites', async () => {
+    const response: ApiResponse<{ favorites: string[]; removed: boolean }> = {
+      success: true,
+      data: { favorites: [], removed: true },
+    };
+    mockFetch(response);
+
+    const result = await removeFavorite('/a.sid');
+
+    expect(fetchCalls).toHaveLength(1);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/favorites');
+    expect(call.init?.method).toBe('DELETE');
+    expect(call.init?.body).toBe(JSON.stringify({ sid_path: '/a.sid' }));
+    expect(result).toEqual(response);
+  });
+});
+
+describe('searchTracks', () => {
+  it('GETs /api/search with query only', async () => {
+    const response: ApiResponse<SearchResponse> = {
+      success: true,
+      data: { query: 'knight', results: [], total: 0, limit: 20 },
+    };
+    mockFetch(response);
+
+    const result = await searchTracks('knight');
+
+    expect(fetchCalls).toHaveLength(1);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/search?q=knight');
+    expect(call.init?.method).toBe('GET');
+    expect(result).toEqual(response);
+  });
+
+  it('includes limit param when provided', async () => {
+    const response: ApiResponse<SearchResponse> = {
+      success: true,
+      data: { query: 'rob', results: [], total: 0, limit: 5 },
+    };
+    mockFetch(response);
+
+    await searchTracks('rob', 5);
+
+    expect(fetchCalls[0].url).toBe('/api/search?q=rob&limit=5');
+  });
+
+  it('includes all filter params when provided', async () => {
+    const response: ApiResponse<SearchResponse> = {
+      success: true,
+      data: { query: 'tune', results: [], total: 0, limit: 20 },
+    };
+    mockFetch(response);
+
+    await searchTracks('tune', undefined, {
+      yearMin: 1985,
+      yearMax: 1990,
+      chipModel: 'MOS6581',
+      sidModel: '6581',
+      durationMin: 60,
+      durationMax: 300,
+      minRating: 3,
+    });
+
+    const url = fetchCalls[0].url;
+    expect(url).toContain('q=tune');
+    expect(url).toContain('yearMin=1985');
+    expect(url).toContain('yearMax=1990');
+    expect(url).toContain('chipModel=MOS6581');
+    expect(url).toContain('sidModel=6581');
+    expect(url).toContain('durationMin=60');
+    expect(url).toContain('durationMax=300');
+    expect(url).toContain('minRating=3');
+  });
+});
+
+describe('getCharts', () => {
+  it('GETs /api/charts with default range=week', async () => {
+    const entry: ChartEntry = { sidPath: '/a.sid', displayName: 'A', artist: 'X', playCount: 5, avgRating: 4.0, rank: 1 };
+    const response: ApiResponse<ChartsResponse> = {
+      success: true,
+      data: { range: 'week', charts: [entry] },
+    };
+    mockFetch(response);
+
+    const result = await getCharts();
+
+    expect(fetchCalls).toHaveLength(1);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/charts?range=week');
+    expect(call.init?.method).toBe('GET');
+    expect(result).toEqual(response);
+  });
+
+  it('includes limit when provided', async () => {
+    const response: ApiResponse<ChartsResponse> = {
+      success: true,
+      data: { range: 'month', charts: [] },
+    };
+    mockFetch(response);
+
+    await getCharts('month', 10);
+
+    expect(fetchCalls[0].url).toBe('/api/charts?range=month&limit=10');
+  });
+});
+
+describe('Playlist API', () => {
+  it('listPlaylists GETs /api/playlists', async () => {
+    mockFetch({ success: true, data: [] });
+    await listPlaylists();
+    expect(fetchCalls[0].url).toBe('/api/playlists');
+    expect(fetchCalls[0].init?.method).toBe('GET');
+  });
+
+  it('getPlaylist GETs /api/playlists/:id', async () => {
+    mockFetch({ success: true, data: { id: 'abc', name: 'My List' } });
+    await getPlaylist('abc');
+    expect(fetchCalls[0].url).toBe('/api/playlists/abc');
+    expect(fetchCalls[0].init?.method).toBe('GET');
+  });
+
+  it('createPlaylist POSTs to /api/playlists', async () => {
+    mockFetch({ success: true, data: { id: 'new' } });
+    const tracks = [{ sidPath: '/a.sid', title: 'A' }];
+    await createPlaylist('My List', 'desc', tracks);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/playlists');
+    expect(call.init?.method).toBe('POST');
+    expect(call.init?.body).toBe(JSON.stringify({ name: 'My List', description: 'desc', tracks }));
+  });
+
+  it('updatePlaylist PUTs to /api/playlists/:id', async () => {
+    mockFetch({ success: true, data: {} });
+    await updatePlaylist('abc', { name: 'Updated' });
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/playlists/abc');
+    expect(call.init?.method).toBe('PUT');
+    expect(call.init?.body).toBe(JSON.stringify({ name: 'Updated' }));
+  });
+
+  it('deletePlaylist DELETEs /api/playlists/:id', async () => {
+    mockFetch({ success: true });
+    await deletePlaylist('abc');
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/playlists/abc');
+    expect(call.init?.method).toBe('DELETE');
+  });
+
+  it('reorderPlaylistTracks POSTs trackOrder to /api/playlists/:id/reorder', async () => {
+    mockFetch({ success: true });
+    await reorderPlaylistTracks('abc', ['/a.sid', '/b.sid']);
+    const call = fetchCalls[0];
+    expect(call.url).toBe('/api/playlists/abc/reorder');
+    expect(call.init?.method).toBe('POST');
+    expect(call.init?.body).toBe(JSON.stringify({ trackOrder: ['/a.sid', '/b.sid'] }));
+  });
+});
+
+describe('Scheduler API', () => {
+  it('getSchedulerConfig GETs /api/scheduler', async () => {
+    const mockData: SchedulerResponse = {
+      scheduler: { enabled: false, time: '02:00', timezone: 'UTC' },
+      renderPrefs: { preserveWav: false, enableFlac: true, enableM4a: false },
+      status: { isActive: false, lastRun: null, nextRun: null, isPipelineRunning: false },
+    };
+    const response: ApiResponse<SchedulerResponse> = { success: true, data: mockData };
+    mockFetch(response);
+
+    const result = await getSchedulerConfig();
+
+    expect(fetchCalls[0].url).toBe('/api/scheduler');
+    expect(fetchCalls[0].init?.method).toBe('GET');
+    expect(result).toEqual(response);
+  });
+
+  it('updateSchedulerConfig POSTs payload to /api/scheduler', async () => {
+    const mockData: SchedulerResponse = {
+      scheduler: { enabled: true, time: '03:00', timezone: 'UTC' },
+      renderPrefs: { preserveWav: false, enableFlac: true, enableM4a: false },
+      status: { isActive: false, lastRun: null, nextRun: null, isPipelineRunning: false },
+    };
+    const response: ApiResponse<SchedulerResponse> = { success: true, data: mockData };
+    mockFetch(response);
+
+    const payload = { scheduler: { enabled: true, time: '03:00', timezone: 'UTC' } };
+    const result = await updateSchedulerConfig(payload);
+
+    expect(fetchCalls[0].url).toBe('/api/scheduler');
+    expect(fetchCalls[0].init?.method).toBe('POST');
+    expect(fetchCalls[0].init?.body).toBe(JSON.stringify(payload));
+    expect(result).toEqual(response);
+  });
+});
+
+describe('Classification Export/Import API', () => {
+  it('importClassifications POSTs to /api/classify/export', async () => {
+    const response: ApiResponse<{ filesWritten: number; entriesWritten: number }> = {
+      success: true,
+      data: { filesWritten: 5, entriesWritten: 100 },
+    };
+    mockFetch(response);
+
+    const data: ClassificationExportData = {
+      version: '1.0',
+      exportedAt: '2025-01-01T00:00:00Z',
+      classificationDepth: 3,
+      totalEntries: 1,
+      classifications: { '/a.sid': { e: 4, m: 3, c: 2, source: 'manual' } },
+    };
+    const result = await importClassifications(data);
+
+    expect(fetchCalls[0].url).toBe('/api/classify/export');
+    expect(fetchCalls[0].init?.method).toBe('POST');
+    expect(fetchCalls[0].init?.body).toBe(JSON.stringify(data));
+    expect(result).toEqual(response);
+  });
+
+  it('exportClassifications GETs /api/classify/export and returns Blob on success', async () => {
+    const blobContent = '{"version":"1.0"}';
+    fetchCalls = [];
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+      fetchCalls.push({ url: typeof input === 'string' ? input : String(input) });
+      return new Response(blobContent, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const result = await exportClassifications();
+
+    expect(fetchCalls[0].url).toBe('/api/classify/export');
+    expect(result).toBeInstanceOf(Blob);
+  });
+
+  it('exportClassifications throws on error response', async () => {
+    fetchCalls = [];
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+      fetchCalls.push({ url: typeof input === 'string' ? input : String(input) });
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    await expect(exportClassifications()).rejects.toThrow('Not found');
   });
 });

@@ -215,6 +215,30 @@ describe("PlaybackLock", () => {
       const meta = await lock.getMetadata();
       expect(meta).toBe(null);
     });
+
+    it("waits for process exit after SIGTERM on live process", async () => {
+      // Spawn a subprocess that sleeps briefly
+      const child = Bun.spawn(["sleep", "10"], { stdout: "ignore", stderr: "ignore" });
+      const childPid = child.pid;
+
+      const lock = new PlaybackLock(lockPath);
+      await lock.registerProcess({
+        pid: childPid,
+        command: "sleep",
+        startedAt: new Date().toISOString(),
+      });
+
+      // stopExistingPlayback should SIGTERM the child and wait for it to exit,
+      // exercising waitForProcessExit
+      await lock.stopExistingPlayback("test");
+
+      // After stop, lock should be cleared
+      const meta = await lock.getMetadata();
+      expect(meta).toBe(null);
+
+      // Ensure child is cleaned up
+      try { child.kill(); } catch { /* ignore */ }
+    });
   });
 
   describe("error handling", () => {

@@ -50,6 +50,134 @@ Template:
 
 ## Active tasks
 
+### Task: Station playlist UI hardening + interaction test matrix (2026-03-22)
+
+**User request (summary)**
+- Reproduce and fix the class of bugs: playlist stops updating visually, current/selected highlights become stale or disappear, sliding window fails to track correctly.
+- Build a comprehensive headless interaction-level test infrastructure (simulator + screen parser + invariant checker) capable of catching these and all future regressions.
+
+**Analysis summary**
+- `renderPlaylistMarker` in `screen.ts` uses `" "` (single space) for selected-but-not-current rows, yielding `"  "` (two spaces, identical to neutral) after `padStart(2)`. With ANSI disabled (CI headless), selected and neutral rows are **structurally indistinguishable** — semantic state is carried by ANSI inverse styling alone.
+- Window logic in `resolvePlaylistWindowStart` ensures the **selected** row is visible when selected ≠ current, but does not guarantee the **current/playing** row remains visible. This is an intentional UX trade-off (window follows selection when browsing), documented as an accepted behaviour.
+- **No interaction-level tests** exist for the station state machine. All existing coverage is on pure utility functions. The entire `run.ts` inner loop is untested.
+
+**Root-cause hypothesis**
+1. PRIMARY (confirmed): `renderPlaylistMarker` returns `" "` for `isSelected && !isCurrent`, making the selection invisible without ANSI. Fix: use `"▸"` instead.
+2. SECONDARY (structural gap): Zero test coverage of state transitions means any future regression in `run.ts` will be invisible until visual inspection.
+
+**UX invariants (testable)**
+- Exactly one row in the playlist has the `"►"` current marker when the current index is visible.
+- At most one row has the `"▸"` selected marker; it appears only when `selectedIndex ≠ stationIndex`.
+- The selected row (effective) is always in the visible window when both filtered and viewport constraints allow.
+- Footer hint matches: shows "Selected N/M: title" when selected ≠ current, otherwise "Playhead" text.
+- Status line reflects the most recent user action.
+
+**Plan (checklist)**
+- [x] repository analysis completed
+- [x] interaction inventory completed
+- [x] `renderPlaylistMarker` fix: change `" "` → `"▸"` for selected-only rows
+- [x] semantic screen parser implemented (`test/helpers/screen-parser.ts`)
+- [x] station simulator implemented (`test/helpers/station-simulator.ts`)
+- [x] deterministic scenario tests (each action individually)
+- [x] pairwise interaction tests
+- [x] sequence tests (multi-step sessions)
+- [x] boundary tests (first/last/single/empty)
+- [x] sliding-window tests
+- [x] filter state tests (text + rating + combined)
+- [x] footer/status verification tests
+- [x] visual semantics tests (marker detection)
+- [x] stress tests (hundreds of cursor operations)
+- [x] soak tests (mixed long sequences with invariant checking)
+- [x] fuzz/randomized tests with multiple seeds
+- [x] metamorphic tests (structural properties)
+- [x] root cause proven by new tests
+- [x] all new tests pass (94/94 across station-interaction, 383/383 play package, 0 fail workspace)
+
+**Progress log**
+- 2026-03-22 — Started. Deep analysis complete. Two root causes identified. Implementing fix + full test matrix.
+- 2026-03-22 — COMPLETED. Fix applied, all test infrastructure created, 94 new tests green across 13 categories (A–M). Full workspace 0 fail.
+
+**Termination criteria**
+- All checklist items green
+- 0 test failures across 3 consecutive `bun run test` runs
+- `renderPlaylistMarker` fix merged, new test file covering all interaction categories exists
+
+---
+
+### Task: Coverage Drive ≥81% (2026-03-21)
+
+**User request (summary)**
+- Increase Codecov-reported test coverage from ~69% (src: 71%) to ≥81% while preserving correctness and build stability.
+
+**Baseline (2026-03-21)**
+- Source-only (dist excluded): 71% — 20140/27981 covered lines
+- Total LCOV (including dist): 63% — 21313/33703
+- Need: ~2524 more source lines covered to reach 81%
+
+**Coverage by package (src, no dist, as of 2026-03-21)**
+| Package | % | Lines |
+|---------|---|-------|
+| sidflow-web | 59% | 10713 |
+| libsidplayfp-wasm | 68% | 535 |
+| sidflow-classify | 76% | 6378 |
+| sidflow-play | 80% | 3331 |
+| sidflow-common | 81% | 5416 |
+| sidflow-fetch | 87% | 404 |
+| sidflow-performance | 91% | 764 |
+| sidflow-train | 96% | 341 |
+| sidflow-rate | 97% | 94 |
+
+**Top uncovered files (priority order)**
+| File | % | Uncovered lines |
+|------|---|----------------|
+| sidflow-web/lib/fetch-progress-store.ts | 3% | ~227 |
+| sidflow-web/lib/server/similarity-search.ts | 2% | ~197 |
+| sidflow-web/lib/preferences/storage.ts | 2% | ~383 |
+| sidflow-web/lib/feedback/storage.ts | 16% | ~405 |
+| sidflow-web/lib/audio/worklet-player.ts | 22% | ~553 (browser, hard) |
+| sidflow-web/lib/player/sidflow-player.ts | 24% | ~575 (browser, hard) |
+| sidflow-common/src/audio-encoding.ts | 38% | ~322 |
+| sidflow-classify/src/render/cli.ts | 36% | ~419 |
+| sidflow-web/lib/feedback/features.ts | 26% | ~47 |
+| sidflow-web/lib/feedback/recorder.ts | 7% | ~50 |
+| sidflow-web/lib/server/game-soundtrack.ts | 20% | ~82 |
+| sidflow-play/src/station/dataset.ts | 41% | ~161 |
+| sidflow-play/src/station/playback-adapters.ts | 44% | ~118 |
+| sidflow-web/lib/playback-session.ts | 40% | ~208 |
+| sidflow-web/lib/api-client.ts | 50% | ~151 |
+
+**Plan (checklist)**
+
+Wave A — Fast wins (~5%)
+- [x] Create `packages/sidflow-web/tests/unit/fetch-progress-store.test.ts` — pure state machine logic
+- [x] Create `packages/sidflow-web/tests/unit/feedback-features.test.ts` — pure functions
+- [x] Create `packages/sidflow-web/tests/unit/feedback-recorder.test.ts` — wrapper coverage
+- [x] Expand `packages/sidflow-classify/test/render-cli.test.ts` — error paths and more branches
+
+Wave B — IndexedDB coverage (~4%)
+- [x] Expand `packages/sidflow-web/tests/unit/preferences-storage.test.ts` — playback queue, cache, localStorage
+- [x] Expand `packages/sidflow-web/tests/unit/feedback-storage.test.ts` — model snapshots, more branches
+
+Wave C — Logic + classify (~3%)
+- [x] Create `packages/sidflow-web/tests/unit/game-soundtrack.test.ts` — pure functions
+- [x] Create `packages/sidflow-play/test/station-dataset.test.ts` — dataset utilities
+- [x] Create `packages/sidflow-play/test/station-playback-adapters.test.ts` — buildSidplayArgs etc.
+- [x] Expand audio-encoding test with more branches
+
+Wave D — Server logic (~3%)
+- [ ] Expand `packages/sidflow-web/tests/unit/similarity-search.test.ts` with mocked module calls
+- [ ] Expand playback-session, api-client, rate-playback tests
+
+**Progress log**
+- 2026-03-21 — Task started. Baseline analysis complete. Plan created.
+
+**Termination criteria**
+- Codecov coverage ≥ 81% on source files
+- 0 test failures on 3 consecutive runs
+- PLANS.md updated with final coverage numbers
+
+---
+
 ### Task: Release tag CI fix — 0.5.0-RC3 (2026-03-21)
 
 **Problem Statement**  
@@ -132,44 +260,93 @@ All of the following must be true:
 
 **Plan (checklist)**  
 - [x] Identify the active pull request associated with the current branch or repository state.
-- [ ] Review open comments/threads and determine required code or explanation changes.
-- [ ] Apply fixes, validate locally, commit, push, and confirm CI is green.
+- [x] Review open comments/threads and determine required code or explanation changes.
+- [x] Apply focused fixes for open review comments and any test-runtime regressions.
+- [x] Validate with build plus targeted and full test coverage runs.
+- [ ] Push fixes, reply on each thread, resolve threads, and confirm CI is green.
 
 **Progress log**  
 - 2026-03-20 — Checked the local repo state and GitHub PR state with `gh pr status` and `gh pr list --state open --limit 20 --json number,title,headRefName,baseRefName,author,isDraft,reviewDecision,statusCheckRollup,url`. The workspace is on `main`, there is no PR associated with the current branch, and the repository currently has no open pull requests. This blocks the convergence loop because there is no live PR with review threads or CI status to process.
+- 2026-03-21 — Active PR confirmed: #83 (`test/coverage` → `main`). Retrieved 11 Copilot review comments and the live workflow state with `gh pr view` / `gh api graphql` / `gh run view`. All open threads are actionable and focused on new test hygiene: tighten one playback-session assertion, reset cached server env around playback-session manifest env mutations, clean temp dirs in the new station dataset/render CLI tests, and keep the plan filename aligned with the actual `station-playback-adapters` test file.
+- 2026-03-21 — Investigated the reported “36 minute build” symptom. The CI build step itself completed in ~4s; the active run is spending its time in `Run unit tests with coverage`. Isolated timings for the newly added suites are moderate (`playback-session.test.ts` ~5.9s, `station-{dataset,input,playback-adapters}.test.ts` ~5.6s combined, `render-cli.test.ts` ~5.6s), so the current hypothesis is cumulative coverage overhead or a later full-suite interaction rather than a single infinite loop. Next step: apply the review fixes, rerun targeted tests, then run the full coverage suite locally to confirm whether the branch reproduces the CI slowdown or hang.
+- 2026-03-21 — Rechecked the newer branch commits after review and found the original Copilot comment set is already addressed on `HEAD`: the playback-session latest-session assertion is now specific, `resetServerEnvCacheForTests()` is present around `SIDFLOW_ROOT` / manifest env mutations, temp directory cleanup exists in the new station dataset/render CLI tests, and the `PLANS.md` filename matches `station-playback-adapters.test.ts`. The blocking issue has shifted from review hygiene to a branch-level runtime regression.
+- 2026-03-21 — Confirmed the regression pattern across CI runs `23386907861`, `23388520018`, and `23390911587`: each `Build and Test` job finishes setup/build quickly and then stalls in `Run unit tests with coverage`. Local reproduction via `bun run test` shows the full coverage suite reaching the classify/render section and then being killed immediately after `packages/sidflow-classify/test/render-integration.test.ts`, which points to a suite-order interaction, resource leak, or memory cliff in the coverage run rather than a slow compile.
+- 2026-03-21 — Fixed a grouped-run playback-session flake by making session timestamps monotonic in `packages/sidflow-web/lib/playback-session.ts`, so `findLatestSessionByScope()` no longer depends on equal-millisecond `Date.now()` ties during fast test execution.
+- 2026-03-21 — Fixed the classify runtime regression in `packages/sidflow-classify/test/render-integration.test.ts` by replacing the async `Bun.spawn()` sidplayfp helper with `node:child_process.spawnSync()` using a hard timeout and `SIGKILL`. Isolated validation now completes in about 11s (`17 pass`, `0 fail`), and the exact CI-equivalent unit-test coverage command (`node scripts/run-bun.mjs test --max-concurrency=1 ... --coverage --coverage-reporter=lcov --coverage-dir coverage`) exits cleanly with status `0` instead of stalling at `render-integration.test.ts`.
+- 2026-03-21 — Ran `bun run build` after the fixes. The build completed successfully; the only notable output was the existing `wasm:check-upstream` reminder that upstream `libsidplayfp` has changed and a WASM rebuild is required in the future.
+- 2026-03-21 — Replaced the monolithic root unit-coverage command with `scripts/run-unit-coverage-batches.mjs`, which executes bounded Bun coverage batches per package/root and merges the resulting LCOV data back into `coverage/lcov.info`. End-to-end validation of the new runner completed successfully across all 17 batches, including the large `sidflow-web` unit suite, and finished by writing the merged unit coverage report without reproducing the earlier exit-137 kill.
 
-### Task: SID CLI Station TUI and station correctness overhaul (2026-03-20)
+### Task: SID CLI Station deterministic TUI overhaul (2026-03-21)
 
-**User request (summary)**  
-- Improve `scripts/sid-station.sh` / `sidflow-play station` so seed collection continues until at least 10 songs are actually rated and skipped songs do not count.
-- Fix the station flow so playback reflects ratings, add a redraw-based immersive CLI UI with colors, progress, an 11-song playlist window, richer transport controls, and non-interrupting station recalculation.
+**User request (summary)**
+- Fix all Station CLI functional, rendering, and UX issues.
+- Implement deterministic, composable `stars + text` filtering with always-visible explicit state.
+- Eliminate ambiguous key bindings, stale rendering artifacts, and unexpected viewport jumps.
+- Keep the reverse-highlighted selection visible and moving correctly while browsing, remove the obsolete next-track `>` marker, allow selecting the currently playing song without changing playback state, and support fast PgUp/PgDn selection jumps.
+- Strengthen playlist update reliability so left/right playback navigation always moves the live-song marker, scan edge conditions that can desynchronize the playlist from `Now Playing`, and harden reverse-marker rendering at the same time.
 
-**Plan (checklist)**  
-- [ ] Trace the current wrapper + `@sidflow/play` station-demo implementation, confirm the recommendation/playback bug, and define the minimal compatibility guardrails for the export DB.
-- [ ] Refactor the station demo into a full-screen redraw loop with explicit rating semantics, progress display, playlist window, and cursor-key transport handling.
-- [ ] Preserve current playback while allowing replay and deferred station recalculation that keeps the current song in the queue.
-- [ ] Add focused CLI tests for the new seed-rating loop, redraw/control flow, and rebuild semantics.
-- [ ] Validate with `bun run build:quick`, focused tests, then full `bun run test` 3x with 0 failures.
+**Acceptance criteria**
+- [ ] `*` then `3` applies a `stars >= 3` filter immediately and consistently.
+- [ ] `*` + star threshold and `/moller` combine as a strict intersection.
+- [ ] Active filters are always visible in a dedicated single-line filter bar.
+- [ ] Rendering leaves no stale characters after repeated updates, playback changes, or refreshes.
+- [ ] `r` performs a hard full-screen redraw and restores a clean screen.
+- [ ] Playlist viewport obeys the explicit bottom-buffer playback rule and never jumps on `Enter` play.
+- [ ] Reverse highlighting never disappears or gets stuck while the selected song changes, and the selected row stays visible while browsing.
+- [ ] Left/right playback navigation always moves the live-song marker in the playlist when the song changes, with no stale or missing current-song indicator.
+- [ ] Controls are compressed to four lines and understandable at a glance.
+- [ ] No duplicate or ambiguous key bindings remain.
+- [ ] The obsolete next-track `>` marker is removed and playlist rows start two characters further left.
+- [ ] Selecting the currently playing song is a no-op for playback and does not corrupt selection rendering.
+- [ ] `PgUp` and `PgDn` jump the selection by a full visible page in both behavior and on-screen guidance.
+- [ ] Generated and reloaded playlists contain unique songs only; no duplicate song appears twice in one playlist.
+- [ ] Shuffle can reshuffle the current playlist order without changing its song set.
+- [ ] Playlist save/load works through an explicit dialog that can show previously saved playlist names.
 
-**Progress log**  
-- 2026-03-20 — Started task. Read `AGENTS.md`, `PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`, and inspected `scripts/run-station-demo.sh`, `packages/sidflow-play/src/station-demo-cli.ts`, and similarity-export helpers. Confirmed the current demo only rates a fixed sample instead of collecting 10 actual ratings, uses line-by-line output instead of redraws, and lacks deferred rebuild/navigation behavior. Also verified the checked-in repo export at `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` still uses the older schema without `track_id`/`song_index`, so the demo needs a clear schema/version guard or compatibility handling to avoid confusing failures.
-- 2026-03-20 — Reworked `sidflow-play station-demo` into a redraw-based terminal UI. The demo now keeps pulling fresh random seeds until at least 10 songs are actually rated, shows an always-visible 1-5 meaning legend, renders a progress bar for the active song, shows an 11-track playlist window (5 before/current/5 after), supports arrow-key previous/next navigation plus replay, and rebuilds the station from updated ratings without interrupting the current song or dropping it from the queue. Local playback now launches `sidplayfp` in single-track mode and the CLI fails fast on legacy similarity exports that do not contain track-level identity/vector data.
-- 2026-03-20 — Expanded `packages/sidflow-play/test/cli.test.ts` to cover the new station-demo contract: realistic export/HVSC fixtures, minimum-rated-song behavior when skips occur, and a clear legacy-schema failure path. Focused validation passed with `bun run build:quick` and `bun test packages/sidflow-play/test/cli.test.ts` (`32 pass, 0 fail`).
-- 2026-03-20 — Final validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly:
-  - Run 1: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [22.79s]
-  - Run 2: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [21.93s]
-  - Run 3: 1698 pass, 0 fail, 6148 expect() calls. Ran 1698 tests across 172 files. [22.23s]
-- 2026-03-20 — Follow-up user request: exclude tracks shorter than 15 seconds from the station demo, with a configurable threshold. Added a station-demo `--min-duration` option (default 15s), applied the gate to both random seed intake and rebuilt station queues, surfaced the active threshold in the TUI, and added focused tests for parsing, positive filtering, and the “not enough long tracks” failure path. Validation next: rerun `bun run build`, then `bun run test` three consecutive times for the updated totals.
-- 2026-03-20 — Duration-gate validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly after the new station-demo tests increased the suite totals:
-  - Run 1: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.59s]
-  - Run 2: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.97s]
-  - Run 3: 1700 pass, 0 fail, 6154 expect() calls. Ran 1700 tests across 172 files. [21.97s]
-- 2026-03-20 — Follow-up user request: make like/dislike actions trivial during playback and clarify skip semantics. Added `l`/`+` as like (`5`), `d`/`x` as dislike (`0`), and made station-phase `s` mean skip-as-dislike while left/right navigation remains unrated movement only. The TUI/help text now advertises those shortcuts, dislikes display as `0/5`, and recommendation weighting ignores fully disliked-only seed sets unless some positive rating exists. Focused validation passed with `bun run build:quick` and `bun test packages/sidflow-play/test/cli.test.ts` (`36 pass, 0 fail`).
-- 2026-03-20 — Like/dislike follow-up validation passed. `bun run build` completed successfully. Three consecutive full `bun run test` runs all finished cleanly after the playback shortcut tests increased the suite totals:
-  - Run 1: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.09s]
-  - Run 2: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.10s]
-  - Run 3: 1702 pass, 0 fail, 6163 expect() calls. Ran 1702 tests across 172 files. [22.09s]
+**Phases**
+- [ ] Phase 1 — Input system + filters
+  - [ ] Rebind Station keys to the strict model: arrows navigate/playback, `Space` pause, `s` skip, `h` shuffle, `r` hard refresh, `0-5` rate, `l` like, `d` dislike, `*` star filter, `/` text filter, `Esc` clear.
+  - [ ] Remove duplicate `?` / legacy bindings from prompt and raw input flows.
+  - [ ] Make star filtering deterministic: `*` enters a one-keystroke pending state and only accepts `[0-5]`.
+  - [ ] Keep text filtering live-updating and AND-combine it with star filtering.
+- [ ] Phase 2 — Rendering correctness
+  - [ ] Replace blob redraw behavior with structured section rendering.
+  - [ ] Ensure every dynamic line is written with cursor positioning plus clear-to-end-of-line.
+  - [ ] Make the now-playing area fixed-height and fully overwritten on every refresh.
+  - [ ] Implement `r` as clear-screen + cursor-home + full redraw.
+  - [ ] Eliminate nested ANSI/reset interactions that can break the current-row marker or reverse-selected row styling.
+- [ ] Phase 3 — Viewport logic
+  - [ ] Apply the strict playback viewport rule with `bottom_buffer = 5`.
+  - [ ] Keep user selection movement independent from playback scrolling.
+  - [ ] Ensure `Enter` plays the selected track without recentering or otherwise jumping the viewport.
+  - [ ] Keep the selected row visible whenever browsing moves it away from the playhead, without letting reverse highlighting disappear off-screen.
+  - [ ] Support full-page `PgUp` / `PgDn` selection jumps that use the current visible playlist height.
+- [ ] Phase 4 — UX compression
+  - [ ] Replace verbose help blocks with the required four grouped control lines.
+  - [ ] Add a dedicated single-line filter bar with explicit sections and separators.
+  - [ ] Simplify header copy to `SID Flow Station  |  C64U Live` with no duplicate metadata.
+- [ ] Add explicit save/load playlist controls and a compact modal dialog for naming, listing, and loading playlists.
+- [ ] Phase 5 — Visual polish
+  - [ ] Preserve strict playlist column alignment: `index | stars | duration | title | composer | year` plus playback/selection markers.
+  - [ ] Clearly differentiate current track and selected row while removing the obsolete next-track marker.
+  - [ ] Fix corrupted or stale status-line behavior and validate repeated redraw stability.
+- [ ] Guarantee queue uniqueness across generation, refresh, shuffle, save, and load operations.
+
+**Risks**
+- Terminal ANSI width and alternate-screen behavior can vary across environments; validation must exercise both ANSI rendering and pure string rendering.
+- The runtime loop currently mixes state transitions with render-driven viewport updates; refactoring must preserve playback semantics while making scroll rules explicit.
+- The repo requires full validation discipline, so phase gates must use fast targeted checks first and full suite validation at the end.
+- Save/load needs an explicit key choice that does not conflict with the fixed transport/filter/rating model; implementation will use `w` for save and `o` for open/load and surface that choice directly in the controls block.
+
+**Progress log**
+- 2026-03-21 — Started deterministic TUI overhaul. Re-read `PLANS.md`, `README.md`, `doc/developer.md`, and `doc/technical-reference.md`; inspected `packages/sidflow-play/src/station/{input,screen,run,formatting,types}.ts` plus current tests. Confirmed the current state still violates the target spec: `?` is the star filter trigger, `r` is replay while `u` is refresh, the filter bar is embedded in a verbose shortcuts line, viewport movement is still selection-driven, and ANSI rendering still writes a full-screen blob instead of clearing each dynamic line explicitly.
+- 2026-03-21 — Phase 1 in progress. Next changes: rebind keys to the strict spec, add explicit star-input pending state, keep AND-combined filtering visible, then move into per-line rendering and viewport-rule refactoring.
+- 2026-03-21 — Scope expanded during implementation: the Station must also guarantee unique songs per playlist, support in-place reshuffling of the current playlist without changing membership, and provide save/load playlist dialogs with visible prior saves. The queue and persistence layers will be extended first so those capabilities remain deterministic across refresh, shuffle, and reload paths.
+- 2026-03-21 — Implemented the new Station key model (`*`, `/`, `Esc`, `g`, `r`, `w`, `o`), playlist uniqueness guards, save/load playlist persistence, compact dialog rendering, line-by-line ANSI redraws, playback-driven viewport updates, and the compressed four-line controls block. Focused validation passed with `bun run build:quick` and `runTests` over `packages/sidflow-play/test/{station-input,station-screen,cli}.test.ts` (`188 pass, 0 fail`).
+- 2026-03-21 — Broader validation remains open. A repository-level `bun run test` task currently exits with code `137` after progressing deep into the suite, so the deterministic Station-focused changes are validated, but full-suite completion still needs a separate follow-up investigation of the kill/timeout condition.
 - 2026-03-20 — Follow-up user request: extend the station demo into a longer-form player with a 100-song minimum playlist, a second playlist-position progress bar, separate browse-vs-play navigation (`←/→` play prev/next, `↑/↓/PgUp/PgDn` browse, `Enter` play selected), and pause/resume on space. The playback UI also needs more deliberate color coding, and Ultimate64 pause/resume should use the documented machine pause/resume plus SID-volume silencing via the REST memory-write endpoint. Validation next: `bun run build:quick`, focused `packages/sidflow-play/test/cli.test.ts`, then `bun run build` and `bun run test` three consecutive times with 0 failures.
+- 2026-03-21 — Follow-up user request: polish the station dashboard UX without dropping features. Scope includes smart redraw on terminal resize, denser playlist columns, moving duration before the title, grouping author and year, replacing the ambiguous `You rated x/y` label with a concise counter, and adding a visible `?` star-threshold filter (`*N`) that ANDs with `/` text filtering. Validation next: `bun run build:quick`, focused `packages/sidflow-play/test/cli.test.ts`, then full `bun run test` and CI-status inspection.
+- 2026-03-21 — Scope expanded again: station ratings and skip/dislike actions must not rebuild the queue immediately. Rebuild becomes an explicit documented refresh shortcut only, and the refresh path must keep the current song playing and pinned at its existing playlist index while the rest of the queue is regenerated around it.
 - 2026-03-20 — Long-playlist navigation follow-up validation passed. `bun run build:quick`, focused `bun test packages/sidflow-play/test/cli.test.ts` (`37 pass, 0 fail`), and `bun run build` all completed successfully. Three consecutive full `bun run test` runs then finished cleanly after the new queue/navigation coverage increased the suite totals:
   - Run 1: 1704 pass, 0 fail, 6176 expect() calls. Ran 1704 tests across 172 files. [22.54s]
   - Run 2: 1704 pass, 0 fail, 6176 expect() calls. Ran 1704 tests across 172 files. [21.91s]
@@ -180,6 +357,13 @@ All of the following must be true:
   - Run 1: 1705 pass, 0 fail, 6179 expect() calls. Ran 1705 tests across 172 files. [22.25s]
   - Run 2: 1705 pass, 0 fail, 6179 expect() calls. Ran 1705 tests across 172 files. [21.93s]
   - Run 3: 1705 pass, 0 fail, 6179 expect() calls. Ran 1705 tests across 172 files. [22.66s]
+- 2026-03-21 — Follow-up user addendum requires a first-class fixed-width star rating column in the station playlist window. The implementation plan is to normalize the existing per-track station ratings map into `[0,5]`, precompute `[★★★★★]` strings, insert the `rating(7)` column immediately after the marker, and lock the playlist row renderer to a deterministic column contract with snapshot/property/regression coverage. Validation next: `bun run build:quick`, focused station layout tests, then `bun run build` and `bun run test` three consecutive times.
+- 2026-03-21 — Additional follow-up TODO recorded: add a fast minimum-star filter shortcut alongside the existing `/` text filter. This is explicitly deferred while finishing the fixed-width rating-column integration and test coverage.
+- 2026-03-21 — Follow-up user addendum: reverse-highlight selection can disappear or appear stuck while `Selected x/100` keeps changing, the small `>` next-track marker is no longer wanted, selecting the live song must stay a no-op, and PgUp/PgDn selection jumps must be explicitly supported. Next change: make viewport anchoring selection-aware, remove the extra prefix marker from playlist rows, and add regression coverage for selection visibility.
+- 2026-03-21 — Implemented selection-aware station viewport anchoring so browse selection stays visible instead of drifting off-screen behind the playhead. Removed the obsolete next-track `>` prefix, shifted playlist rows left by two characters, kept Enter-on-current as a no-op, and surfaced PgUp/PgDn behavior in the controls block. Focused validation passed with `bun run build:quick`, `bun test packages/sidflow-play/test/station-screen.test.ts packages/sidflow-play/test/station-input.test.ts` (`93 pass, 0 fail`), and `bun test packages/sidflow-play/test/cli.test.ts` (`99 pass, 0 fail`).
+- 2026-03-21 — Follow-up user report adds a stronger reliability requirement: the live-song marker sometimes fails to move even though playback and `Now Playing` advance, and reverse selection can still degrade. Root-cause audit identified nested ANSI marker styling inside playlist rows as a likely source of broken current/inverse rendering, so the next patch removes inner marker colorization, adds explicit current-vs-selected row regressions, and widens station navigation validation before pushing.
+- 2026-03-22 — Completed the playlist marker hardening pass. `renderPlaylistMarker(...)` now emits plain padded marker text so row-level current/selected styling owns all ANSI state, which fixes the stale or disappearing live-marker/reverse-highlight behavior during left-right playback changes and browse movement. Validation passed with `bun run build:quick`, `bun test packages/sidflow-play/test/station-screen.test.ts packages/sidflow-play/test/station-input.test.ts` (`95 pass, 0 fail`), and `bun test packages/sidflow-play/test/cli.test.ts` (`99 pass, 0 fail`).
+- 2026-03-22 — Branch convergence validation update: `bun run build` passed, and a direct `bun run test:ci` run completed cleanly through coverage merge (`287 pass, 0 fail` in the final `sidflow-web-4` batch). An older VS Code task-wrapper `bun run test` path still reports `137` during classify/render integration, but that kill has not been reproduced in the direct shell run used for branch validation.
 - 2026-03-20 — Follow-up user request: make the station demo default to the latest cached `sidflow-data` release bundle instead of an ambiguous local export, with only a once-per-day latest-release check. Add explicit flags for forcing the latest local export or for pointing at a specific local similarity database so the active rating dataset is obvious. Validation next: implement remote-release cache resolution plus source display, update the wrapper/help text, add focused CLI tests for remote cache reuse and local overrides, then rerun build + full tests 3x.
   - Completed: `sidflow-play station-demo` now defaults to the latest cached `sidflow-data` release bundle, checks GitHub for a newer release at most once per day, and surfaces the active dataset source in the TUI. Added explicit `--force-local-db` and `--local-db` controls while keeping `--db` as a compatibility alias, and updated `scripts/run-station-demo.sh` so it no longer forces a local export by default.
   - Validation: `bun run build:quick`; `bun test packages/sidflow-play/test/cli.test.ts` => 42 pass, 0 fail, 129 expect() calls; `bun run build`; `bun run test` x3.

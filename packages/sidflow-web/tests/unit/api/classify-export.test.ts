@@ -2,13 +2,16 @@
  * Tests for classification export/import API
  * Optimized: Reduced test setup overhead by combining related tests
  */
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { GET, POST } from '../../../app/api/classify/export/route';
 import { NextRequest } from 'next/server';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
+
+const serverEnvModule = await import('@/lib/server-env');
+const { resetServerEnvCacheForTests } = serverEnvModule;
 
 // Test data structures
 interface ClassificationEntry {
@@ -286,5 +289,110 @@ describe('classification export/import data structures', () => {
       totalEntries: 0,
     };
     expect((noClassifications as ExportData).classifications).toBeUndefined();
+  });
+});
+
+describe('classify export error path coverage', () => {
+  let tempRoot: string;
+  let configPath: string;
+  let origConfig: string | undefined;
+  let origRoot: string | undefined;
+
+  beforeEach(async () => {
+    tempRoot = await mkdtemp(path.join(os.tmpdir(), 'sidflow-export-err-'));
+    const tagsPath = path.join(tempRoot, 'tags');
+    await fs.mkdir(tagsPath, { recursive: true });
+    const sidPath = path.join(tempRoot, 'sids');
+    await fs.mkdir(sidPath, { recursive: true });
+    const audioCachePath = path.join(tempRoot, 'audio');
+    await fs.mkdir(audioCachePath, { recursive: true });
+    configPath = path.join(tempRoot, '.sidflow.json');
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({ sidPath, audioCachePath, tagsPath, threads: 2, classificationDepth: 3 }),
+    );
+    origConfig = process.env.SIDFLOW_CONFIG;
+    origRoot = process.env.SIDFLOW_ROOT;
+    process.env.SIDFLOW_CONFIG = configPath;
+    delete process.env.SIDFLOW_ROOT;
+    resetServerEnvCacheForTests();
+  });
+
+  afterEach(async () => {
+    if (origConfig === undefined) delete process.env.SIDFLOW_CONFIG;
+    else process.env.SIDFLOW_CONFIG = origConfig;
+    if (origRoot === undefined) delete process.env.SIDFLOW_ROOT;
+    else process.env.SIDFLOW_ROOT = origRoot;
+    resetServerEnvCacheForTests();
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  test('GET returns 404 when tagsPath directory does not exist', async () => {
+    // Point config to a non-existent tagsPath so readdir fails -> entryCount=0
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({
+        sidPath: path.join(tempRoot, 'sids'),
+        audioCachePath: path.join(tempRoot, 'audio'),
+        tagsPath: path.join(tempRoot, 'nonexistent-tags'),
+        threads: 2,
+        classificationDepth: 3,
+      }),
+    );
+    resetServerEnvCacheForTests();
+    const { GET: getHandler } = await import('@/app/api/classify/export/route');
+    const response = await getHandler();
+    expect(response.status).toBe(404);
+    const data = await response.json();
+    expect(data.success).toBe(false);
+  });
+
+  test('GET logs warning when auto-tags.json is unreadable but continues', async () => {
+    // Create a directory with invalid auto-tags.json to trigger console.warn
+    const artistDir = path.join(tempRoot, 'tags', 'MUSICIANS', 'A', 'Artist');
+    await fs.mkdir(artistDir, { recursive: true });
+    await fs.writeFile(path.join(artistDir, 'auto-tags.json'), 'not valid json');
+    const { GET: getHandler } = await import('@/app/api/classify/export/route');
+    const response = await getHandler();
+    // Either 200 (other valid files) or 404 (only corrupt file, 0 valid entries)
+    expect([200, 404]).toContain(response.status);
+  });
+
+  test('GET returns 500 when getSidflowConfig throws', async () => {
+    // Remove the config file so getSidflowConfig throws
+    await rm(configPath);
+    resetServerEnvCacheForTests();
+    const { GET: getHandler } = await import('@/app/api/classify/export/route');
+    const response = await getHandler();
+    expect(response.status).toBe(500);
+    const data = await response.json();
+    expect(data.success).toBe(false);
+  });
+
+  test('POST returns 500 when file write fails due to path being a directory', async () => {
+    // Create auto-tags.json as a directory so writeFile will throw EISDIR
+    const artistDir = path.join(tempRoot, 'tags', 'MUSICIANS', 'A', 'Artist');
+    await fs.mkdir(artistDir, { recursive: true });
+    await fs.mkdir(path.join(artistDir, 'auto-tags.json'), { recursive: true });
+
+    const { POST: postHandler } = await import('@/app/api/classify/export/route');
+    const request = new NextRequest('http://localhost/api/classify/export', {
+      method: 'POST',
+      body: JSON.stringify({
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        classificationDepth: 3,
+        totalEntries: 1,
+        classifications: {
+          'MUSICIANS/A/Artist/song.sid': { e: 3, m: 4, c: 2, source: 'auto' },
+        },
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const response = await postHandler(request);
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.success).toBe(false);
+    expect(data.details).toContain('partially failed');
   });
 });

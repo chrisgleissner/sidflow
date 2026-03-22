@@ -1,10 +1,22 @@
 import path from "node:path";
 import type { StationTrackDetails, StationRuntime } from "./types.js";
 
+const STAR_RATINGS = [
+  "[☆☆☆☆☆]",
+  "[★☆☆☆☆]",
+  "[★★☆☆☆]",
+  "[★★★☆☆]",
+  "[★★★★☆]",
+  "[★★★★★]",
+] as const;
+
+export const RATING_COLUMN_WIDTH = 7;
+
 export const ANSI = {
   reset: "\u001b[0m",
   bold: "\u001b[1m",
   dim: "\u001b[2m",
+  inverse: "\u001b[7m",
   red: "\u001b[31m",
   green: "\u001b[32m",
   yellow: "\u001b[33m",
@@ -46,6 +58,27 @@ export function formatDuration(durationMs?: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+export function normalizeRating(input: number | null | undefined): number {
+  if (input == null) {
+    return 0;
+  }
+  if (!Number.isFinite(input)) {
+    return 0;
+  }
+  const integerRating = Math.trunc(input);
+  if (integerRating < 0) {
+    return 0;
+  }
+  if (integerRating > 5) {
+    return 5;
+  }
+  return integerRating;
+}
+
+export function renderStars(rating: number | null | undefined): string {
+  return STAR_RATINGS[normalizeRating(rating)] ?? STAR_RATINGS[0];
+}
+
 export function formatTrackSummary(track: StationTrackDetails): string {
   const title = track.title || path.basename(track.sid_path);
   const author = track.author || "unknown author";
@@ -74,6 +107,10 @@ export function subtle(enabled: boolean, value: string): string {
 
 export function dim(enabled: boolean, value: string): string {
   return colorize(enabled, ANSI.dim, value);
+}
+
+export function inverse(enabled: boolean, value: string): string {
+  return colorize(enabled, ANSI.inverse, value);
 }
 
 export function truncate(value: string, width: number): string {

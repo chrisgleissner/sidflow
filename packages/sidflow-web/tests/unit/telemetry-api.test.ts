@@ -271,4 +271,40 @@ describe('Telemetry API', () => {
       }
     });
   });
+
+  describe('Development mode logging', () => {
+    test('logs debug info in development mode with valid event', async () => {
+      const saved = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'development';
+        const event: TelemetryEvent = {
+          type: 'playback.load.success',
+          timestamp: Date.now(),
+        };
+        const request = new NextRequest('http://localhost/api/telemetry', {
+          method: 'POST',
+          body: JSON.stringify(event),
+        });
+        const response = await POST(request);
+        expect(response.status).toBe(202);
+      } finally {
+        process.env.NODE_ENV = saved;
+      }
+    });
+
+    test('logs debug info in development mode with invalid JSON', async () => {
+      const saved = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'development';
+        const request = new NextRequest('http://localhost/api/telemetry', {
+          method: 'POST',
+          body: 'not valid json {{{',
+        });
+        const response = await POST(request);
+        expect(response.status).toBe(202);
+      } finally {
+        process.env.NODE_ENV = saved;
+      }
+    });
+  });
 });

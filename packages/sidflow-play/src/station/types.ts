@@ -91,11 +91,12 @@ export type SeedAction =
   | { type: "rate"; rating: number }
   | { type: "skip" }
   | { type: "back" }
-  | { type: "replay" }
+  | { type: "refresh" }
   | { type: "quit" };
 
 export type StationAction =
   | { type: "rate"; rating: number }
+  | { type: "skip" }
   | { type: "next" }
   | { type: "back" }
   | { type: "cursorUp" }
@@ -105,9 +106,19 @@ export type StationAction =
   | { type: "playSelected" }
   | { type: "togglePause" }
   | { type: "setFilter"; value: string; editing: boolean }
+  | { type: "setRatingFilter"; value: string; editing: boolean }
+  | { type: "clearFilters" }
+  | { type: "cancelInput" }
+  | { type: "openSavePlaylistDialog" }
+  | { type: "openLoadPlaylistDialog" }
+  | { type: "updateSavePlaylistName"; value: string }
+  | { type: "submitSavePlaylistDialog"; value: string }
+  | { type: "movePlaylistDialogSelection"; delta: -1 | 1 }
+  | { type: "confirmPlaylistDialog" }
+  | { type: "cancelPlaylistDialog" }
   | { type: "shuffle" }
-  | { type: "replay" }
   | { type: "rebuild" }
+  | { type: "refresh" }
   | { type: "quit" }
   | { type: "timeout" };
 
@@ -140,11 +151,15 @@ export interface StationScreenState {
   playlistDurationMs?: number;
   filterQuery?: string;
   filterEditing?: boolean;
+  ratingFilterQuery?: string;
+  ratingFilterEditing?: boolean;
+  minimumRating?: number;
   filterMatchCount?: number;
   minDurationSeconds?: number;
   paused?: boolean;
   statusLine?: string;
   hintLine?: string;
+  dialog?: StationDialogState;
 }
 
 export interface StationTrackVectorRow {
@@ -169,6 +184,30 @@ export interface PersistedStationSelectionState {
   ratedTarget: number;
   ratings: Record<string, number>;
   savedAt: string;
+}
+
+export interface PersistedStationPlaylistState {
+  dbPath: string;
+  hvscRoot: string;
+  name: string;
+  savedAt: string;
+  currentIndex: number;
+  trackIds: string[];
+}
+
+export interface PersistedStationPlaylistSummary {
+  currentIndex: number;
+  name: string;
+  savedAt: string;
+  statePath: string;
+  trackIds: string[];
+}
+
+export interface StationDialogState {
+  mode: "save-playlist" | "load-playlist";
+  inputValue?: string;
+  playlists?: PersistedStationPlaylistSummary[];
+  selectedPlaylistIndex?: number;
 }
 
 export interface GitHubReleaseAsset {

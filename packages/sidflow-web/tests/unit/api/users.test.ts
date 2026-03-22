@@ -145,4 +145,25 @@ describe.serial('/api/users/[username]', () => {
         expect(data.success).toBe(true);
         expect(data.data.stats.totalPlays).toBe(1); // Only valid line counted
     });
+
+    test('should return 400 when username is empty string', async () => {
+        const request = new Request('http://localhost:3000/api/users/');
+        const context = { params: Promise.resolve({ username: '' }) };
+        const response = await GET(request, context);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.success).toBe(false);
+        expect(data.error).toContain('required');
+    });
+
+    test('should return 500 when params promise rejects', async () => {
+        const request = new Request('http://localhost:3000/api/users/testuser');
+        const context = { params: Promise.reject(new Error('Unexpected param error')) };
+        const response = await GET(request, context);
+        const data = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(data.success).toBe(false);
+    });
 });

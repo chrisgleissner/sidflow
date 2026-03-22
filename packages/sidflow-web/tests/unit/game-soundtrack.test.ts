@@ -115,4 +115,27 @@ describe('Game Soundtrack helpers', () => {
         expect(extractGameTitle(metadata, '/path/Game-Title!/music.sid')).toBe('GameTitle');
         expect(extractGameTitle(metadata, '/path/Game_(1984)/track.sid')).toBe('Game 1984');
     });
+
+    test('extractGameTitle returns empty string for path with no directory part', () => {
+        const metadata = {
+            title: '',
+            author: '',
+            released: '',
+            songs: 1,
+            startSong: 1,
+            sidType: 'PSID',
+            version: 2,
+            sidModel: '6581',
+            clock: 'PAL',
+            length: '',
+            fileSizeBytes: 0,
+        };
+        expect(extractGameTitle(metadata, 'just-a-file.sid')).toBe('');
+    });
+
+    test('normalizeGameTitle returns empty string for falsy inputs', () => {
+        expect(normalizeGameTitle(undefined)).toBe('');
+        expect(normalizeGameTitle(null)).toBe('');
+        expect(normalizeGameTitle('')).toBe('');
+    });
 });

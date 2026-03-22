@@ -116,19 +116,50 @@ async function deleteDatabase(): Promise<void> {
 }
 
 export async function __resetPreferencesStorageForTests(): Promise<void> {
-  if (dbPromise) {
-    try {
-      const db = await dbPromise;
-      db.close();
-    } catch {
-      // ignore
-    }
-  }
-  dbPromise = null;
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(PREFERENCES_LOCAL_STORAGE_KEY);
   }
-  await deleteDatabase();
+
+  if (!hasIndexedDb()) {
+    dbPromise = null;
+    return;
+  }
+
+  let db: IDBDatabase | null = null;
+
+  try {
+    db = await openDatabase();
+    if (!db) {
+      throw new Error('Failed to open IndexedDB test database');
+    }
+
+    const openedDb = db;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = openedDb.transaction(
+        [STORE_PREFERENCES, STORE_ROM_BUNDLES, STORE_PLAYBACK_QUEUE, STORE_PLAYBACK_CACHE],
+        'readwrite'
+      );
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Failed to clear IndexedDB test stores'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Clearing IndexedDB test stores was aborted'));
+
+      transaction.objectStore(STORE_PREFERENCES).clear();
+      transaction.objectStore(STORE_ROM_BUNDLES).clear();
+      transaction.objectStore(STORE_PLAYBACK_QUEUE).clear();
+      transaction.objectStore(STORE_PLAYBACK_CACHE).clear();
+    });
+  } catch {
+    await deleteDatabase();
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // ignore
+    }
+    dbPromise = null;
+  }
 }
 
 export function writePreferencesToLocalStorage(preferences: BrowserPreferences): void {
