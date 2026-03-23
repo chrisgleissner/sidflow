@@ -529,10 +529,7 @@ export class RenderOrchestrator {
         targetDurationMs: request.targetDurationMs,
       });
     } finally {
-      // Clean up engine resources
-      if (typeof (engine as any).destroy === "function") {
-        await (engine as any).destroy();
-      }
+      engine.dispose();
     }
   }
 

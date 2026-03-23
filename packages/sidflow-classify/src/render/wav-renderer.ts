@@ -39,7 +39,8 @@ export interface RenderProgress {
 }
 
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
-export const MAX_RENDER_SECONDS = 600;
+/** Hard fallback render cap: 15s intro-skip + 15s analysis window = 30s. */
+export const MAX_RENDER_SECONDS = 30;
 export const MAX_SILENT_ITERATIONS = 32;
 export const WAV_HASH_EXTENSION = ".sha256";
 /** Extension for the SID register-write trace sidecar captured during WAV rendering. */

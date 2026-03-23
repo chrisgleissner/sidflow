@@ -23,9 +23,8 @@ async function getEngine() {
 }
 
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {
+  const engine = await getEngine();
   try {
-    const engine = await getEngine();
-    
     // Add progress callback to send heartbeat messages back to main thread
     const optionsWithProgress: RenderWavOptions = {
       ...options,
@@ -35,7 +34,7 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
         parentPort!.postMessage(response);
       }
     };
-    
+
     await renderWavWithEngine(engine, optionsWithProgress);
     const response: WorkerResponse = { type: "result", jobId };
     parentPort!.postMessage(response);
@@ -50,6 +49,8 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
       }
     };
     parentPort!.postMessage(response);
+  } finally {
+    engine.dispose();
   }
 }
 
