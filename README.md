@@ -49,6 +49,24 @@ Open **<http://localhost:3000>**.
 
 The first-time setup wizard guides you through downloading HVSC and configuring your collection. Local dev mode defaults to `admin / password` for the admin console at **<http://localhost:3000/admin>**.
 
+### System ROMs
+
+Many SID songs require the Commodore 64 system ROM files in **`workspace/roms/`** at the repository root:
+
+| File name (preferred) | ROM | Size |
+|-----------------------|-----|------|
+| `kernal.901227-03.bin` (or `kernal.bin`) | C64 Kernal | 8 KB |
+| `basic.901226-01.bin` (or `basic.bin`) | C64 BASIC | 8 KB |
+| `characters.901225-01.bin` (or `chargen.bin`) | Character generator | 4 KB |
+
+Obtain these files from a physical Commodore 64 or a BIOS dump. The `workspace/roms/` directory is git-ignored so the ROM files are never committed.
+
+Alternative locations (checked in order):
+1. `$SIDFLOW_ROMS_DIR` or `$SIDFLOW_ROM_DIR` environment variable
+2. `$SIDFLOW_ROOT/workspace/roms`
+3. `workspace/roms/` ← **recommended default**
+4. `public/roms/`
+
 ---
 
 ## Web UI
@@ -221,12 +239,42 @@ See [Deployment Guide](doc/deployment.md) for details.
 
 Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 24-dimensional perceptual vectors (WAV + SID-native hybrid) for offline and downstream consumers.
 
-Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish).
+Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish). Many SID songs also rqeuire [C64 system ROMs](#system-roms) in `workspace/roms/`.
+
+**0. Download HVSC:**
+
+Download the latest High Voltage SID Collection:
+
+```bash
+./scripts/sidflow-fetch
+```
+
+This downloads the latest HVSC base archive plus any delta archives from `https://hvsc.brona.dk/HVSC/` and extracts them into `workspace/hvsc/` (i.e. the `sidPath` configured in `.sidflow.json`). The extracted SID files will be under `workspace/hvsc/C64Music/`. 
+
+If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.json` at that directory instead and skip this step.
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
+Classifying all 60,572 SID songs (as of HVSC version 84 in March 2026) takes about 3 hours on an Intel 14600K CPU using Kubuntu 24.04:
+
 ```bash
 bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+Expected logs:
+```
+16:42 $ bash scripts/run-similarity-export.sh --mode local --full-rerun true
+[sidcorr] Mode is full rerun: existing classified data and export artifacts will be ignored and replaced
+[sidcorr] Mode: local
+[sidcorr] Installing dependencies for local mode
+[sidcorr] Starting local web server on port 3000
+[sidcorr] Triggering classification with payload {"async":false,"skipAlreadyClassified":false,"deleteWavAfterClassification":true,"forceRebuild":true}
+[sidcorr] Classification request started
+[sidcorr] Waiting for classification to finish
+[sidcorr] progress update: completed=211 remaining=86863 total=87074 elapsed=40s eta=4h 35m 13s rate=5.26 songs/s percent=0.2 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=212, extracted=211, tagged=211]
+...
+[sidcorr] progress update: completed=3191 remaining=83883 total=87074 elapsed=6m 41s eta=2h 55m 31s rate=7.97 songs/s percent=3.7 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=3192, extracted=3191, tagged=3191]
+...
 ```
 
 Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` and `sidcorr-hvsc-full-sidcorr-1.manifest.json`.
@@ -238,6 +286,8 @@ bun run export:similarity -- --profile full
 ```
 
 **3. Publish the export as a release to `chrisgleissner/sidflow-data`:**
+
+The following command requires permissions to create new releases on `chrisgleissner/sidflow-data` and is only intended for the repo maintainers:
 
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
