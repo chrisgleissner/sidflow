@@ -463,6 +463,10 @@ prepare_run_state() {
   print_resume_summary "${classified_count}" "${feature_count}" "${EXPORT_OUTPUT_PATH}"
 
   if [[ "${FULL_RERUN}" == "true" ]]; then
+    if [[ -d "${CLASSIFIED_PATH}" ]]; then
+      log "Full rerun: removing prior classified JSONL artifacts from ${CLASSIFIED_PATH}"
+      find "${CLASSIFIED_PATH}" -type f \( -name 'classification_*.jsonl' -o -name 'features_*.jsonl' \) -delete
+    fi
     rm -f "${EXPORT_OUTPUT_PATH}" "${EXPORT_OUTPUT_PATH%.sqlite}.manifest.json"
   fi
 }

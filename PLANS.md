@@ -26,6 +26,8 @@ Bring `main` back to a stable, merge-ready state by identifying the regression i
 - 2026-03-23: The failure pattern is consistent across that entire window: `Build and test / Build and Test` fails specifically at the `Run unit tests with coverage` step; build and package verification are green.
 - 2026-03-23: Reproduced the similarity-export truncation from captured local artifacts in `tmp/runtime/similarity-export/`. The classify response body included `Classification failed: Out of memory`, but the API still returned `success: true` and the progress store synthesized a completed snapshot after only 1,175 of 87,074 songs.
 - 2026-03-23: Root cause split into two regressions: classify tagging oversubscribed memory with `2N` outer tasks on top of `N` render and `N` feature workers, and the classify route plus `run-similarity-export.sh` trusted HTTP 200/exit code 0 even when logs and counters proved the run was partial.
+- 2026-03-23: Verified the OOM/reporting fix with a bounded maintenance-script run: `bash scripts/run-similarity-export.sh --mode local --full-rerun true --max-songs 1500` completed classification and export successfully with `Tracks: 1500`.
+- 2026-03-23: Identified a separate `full-rerun` data-retention bug: the script cleared audio cache and export outputs but left prior `data/classified/classification_*.jsonl` and `features_*.jsonl` files in place, causing export to merge stale history and report `Tracks: 8298` after a fresh 1,500-song classify. Updated the script to delete prior classified JSONL artifacts on full reruns before starting classification.
 
 ## 2026-03-23 PR convergence
 
