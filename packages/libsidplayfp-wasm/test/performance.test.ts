@@ -28,41 +28,45 @@ function loadTestSid(): Uint8Array {
 describe('WASM Rendering Performance', () => {
     test('measure render throughput (samples/second)', async () => {
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
-        const sidBuffer = loadTestSid();
-        await engine.loadSidBuffer(sidBuffer);
+        try {
+            const sidBuffer = loadTestSid();
+            await engine.loadSidBuffer(sidBuffer);
 
-        const targetSeconds = 5; // Render 5 seconds (more realistic)
-        const startTime = performance.now();
+            const targetSeconds = 5; // Render 5 seconds (more realistic)
+            const startTime = performance.now();
 
-        const pcm = await engine.renderSeconds(targetSeconds);
+            const pcm = await engine.renderSeconds(targetSeconds);
 
-        const endTime = performance.now();
-        const elapsedMs = endTime - startTime;
-        const elapsedSeconds = elapsedMs / 1000;
+            const endTime = performance.now();
+            const elapsedMs = endTime - startTime;
+            const elapsedSeconds = elapsedMs / 1000;
 
-        const sampleRate = engine.getSampleRate();
-        const channels = engine.getChannels();
-        const samplesRendered = pcm.length;
-        const framesRendered = samplesRendered / channels;
-        const actualSeconds = framesRendered / sampleRate;
-        const throughputRatio = actualSeconds / elapsedSeconds;
+            const sampleRate = engine.getSampleRate();
+            const channels = engine.getChannels();
+            const samplesRendered = pcm.length;
+            const framesRendered = samplesRendered / channels;
+            const actualSeconds = framesRendered / sampleRate;
+            const throughputRatio = actualSeconds / elapsedSeconds;
 
-        console.log(`\n=== WASM Render Performance ===`);
-        console.log(`Target duration: ${targetSeconds}s`);
-        console.log(`Actual duration: ${actualSeconds.toFixed(2)}s`);
-        console.log(`Render time: ${elapsedMs.toFixed(0)}ms`);
-        console.log(`Throughput: ${throughputRatio.toFixed(2)}x realtime`);
-        console.log(`Samples/sec: ${(samplesRendered / elapsedSeconds).toFixed(0)}`);
-        console.log(`Samples rendered: ${samplesRendered} (expected: ${Math.floor(sampleRate * channels * targetSeconds)})`);
+            console.log(`\n=== WASM Render Performance ===`);
+            console.log(`Target duration: ${targetSeconds}s`);
+            console.log(`Actual duration: ${actualSeconds.toFixed(2)}s`);
+            console.log(`Render time: ${elapsedMs.toFixed(0)}ms`);
+            console.log(`Throughput: ${throughputRatio.toFixed(2)}x realtime`);
+            console.log(`Samples/sec: ${(samplesRendered / elapsedSeconds).toFixed(0)}`);
+            console.log(`Samples rendered: ${samplesRendered} (expected: ${Math.floor(sampleRate * channels * targetSeconds)})`);
 
-        // Assert we got reasonable amount of data. Some tunes terminate early, so if
-        // the measured duration is extremely short we skip the strict throughput
-        // assertion and only require non-zero output.
-        const MIN_DURATION_FOR_THROUGHPUT = 0.5; // seconds of PCM needed for a stable reading
+            // Assert we got reasonable amount of data. Some tunes terminate early, so if
+            // the measured duration is extremely short we skip the strict throughput
+            // assertion and only require non-zero output.
+            const MIN_DURATION_FOR_THROUGHPUT = 0.5; // seconds of PCM needed for a stable reading
 
-        expect(samplesRendered).toBeGreaterThan(0);
-        if (RUN_WASM_PERF_ASSERTS && actualSeconds >= MIN_DURATION_FOR_THROUGHPUT) {
-            expect(throughputRatio).toBeGreaterThan(1.5); // Maintain a comfortable realtime margin
+            expect(samplesRendered).toBeGreaterThan(0);
+            if (RUN_WASM_PERF_ASSERTS && actualSeconds >= MIN_DURATION_FOR_THROUGHPUT) {
+                expect(throughputRatio).toBeGreaterThan(1.5); // Maintain a comfortable realtime margin
+            }
+        } finally {
+            engine.dispose();
         }
     });
 
@@ -72,65 +76,73 @@ describe('WASM Rendering Performance', () => {
             stereo: true,
             cacheSecondsLimit: 60 // Build 60 seconds of cache
         });
-        const sidBuffer = loadTestSid();
+        try {
+            const sidBuffer = loadTestSid();
 
-        const startTime = performance.now();
-        await engine.loadSidBuffer(sidBuffer);
-        const endTime = performance.now();
+            const startTime = performance.now();
+            await engine.loadSidBuffer(sidBuffer);
+            const endTime = performance.now();
 
-        const elapsedMs = endTime - startTime;
+            const elapsedMs = endTime - startTime;
 
-        console.log(`\n=== Cache Build Performance ===`);
-        console.log(`Cache limit: 60s`);
-        console.log(`Build time: ${elapsedMs.toFixed(0)}ms`);
-        console.log(`Throughput: ${(60000 / elapsedMs).toFixed(2)}x realtime`);
+            console.log(`\n=== Cache Build Performance ===`);
+            console.log(`Cache limit: 60s`);
+            console.log(`Build time: ${elapsedMs.toFixed(0)}ms`);
+            console.log(`Throughput: ${(60000 / elapsedMs).toFixed(2)}x realtime`);
 
-        // Cache should build fast (background builds have more leeway), but timing assertions are opt-in
-        // because shared CI runners can vary significantly.
-        expect(elapsedMs).toBeGreaterThan(0);
-        if (RUN_WASM_PERF_ASSERTS) {
-            expect(elapsedMs).toBeLessThan(10000); // Less than 10 seconds to cache 60s
+            // Cache should build fast (background builds have more leeway), but timing assertions are opt-in
+            // because shared CI runners can vary significantly.
+            expect(elapsedMs).toBeGreaterThan(0);
+            if (RUN_WASM_PERF_ASSERTS) {
+                expect(elapsedMs).toBeLessThan(10000); // Less than 10 seconds to cache 60s
+            }
+        } finally {
+            engine.dispose();
         }
     });
 
     test('measure renderCycles call overhead', async () => {
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
-        const sidBuffer = loadTestSid();
-        await engine.loadSidBuffer(sidBuffer);
+        try {
+            const sidBuffer = loadTestSid();
+            await engine.loadSidBuffer(sidBuffer);
 
-        const targetIterations = 1000;
-        const cyclesPerCall = 20000;
+            const targetIterations = 1000;
+            const cyclesPerCall = 20000;
 
-        const startTime = performance.now();
-        let iterations = 0;
-        while (iterations < targetIterations) {
-            const chunk = engine.renderCycles(cyclesPerCall);
-            if (!chunk || chunk.length === 0) {
-                break;
+            const startTime = performance.now();
+            let iterations = 0;
+            while (iterations < targetIterations) {
+                const chunk = engine.renderCycles(cyclesPerCall);
+                if (!chunk || chunk.length === 0) {
+                    break;
+                }
+                iterations++;
             }
-            iterations++;
-        }
-        const endTime = performance.now();
+            const endTime = performance.now();
 
-        const elapsedMs = endTime - startTime;
-        const avgCallTime = iterations === 0 ? elapsedMs : elapsedMs / iterations;
+            const elapsedMs = endTime - startTime;
+            const avgCallTime = iterations === 0 ? elapsedMs : elapsedMs / iterations;
 
-        console.log(`\n=== WASM Call Overhead ===`);
-        console.log(`Iterations: ${iterations}`);
-        console.log(`Cycles per call: ${cyclesPerCall}`);
-        console.log(`Total time: ${elapsedMs.toFixed(0)}ms`);
-        console.log(`Avg call time: ${avgCallTime.toFixed(3)}ms`);
-        console.log(`Calls/sec: ${(1000 / avgCallTime).toFixed(0)}`);
+            console.log(`\n=== WASM Call Overhead ===`);
+            console.log(`Iterations: ${iterations}`);
+            console.log(`Cycles per call: ${cyclesPerCall}`);
+            console.log(`Total time: ${elapsedMs.toFixed(0)}ms`);
+            console.log(`Avg call time: ${avgCallTime.toFixed(3)}ms`);
+            console.log(`Calls/sec: ${(1000 / avgCallTime).toFixed(0)}`);
 
-        // Each call should be very fast. Some short tunes terminate after only a few
-        // renderCycles calls, which results in small sample sizes and higher variance
-        // when CI is heavily loaded. In that case we relax the threshold slightly to
-        // avoid flaky failures while still ensuring sub-25ms overhead per call.
-        const relaxedThreshold = iterations >= 50 ? 10 : 25;
+            // Each call should be very fast. Some short tunes terminate after only a few
+            // renderCycles calls, which results in small sample sizes and higher variance
+            // when CI is heavily loaded. In that case we relax the threshold slightly to
+            // avoid flaky failures while still ensuring sub-25ms overhead per call.
+            const relaxedThreshold = iterations >= 50 ? 10 : 25;
 
-        expect(iterations).toBeGreaterThan(0);
-        if (RUN_WASM_PERF_ASSERTS) {
-            expect(avgCallTime).toBeLessThan(relaxedThreshold);
+            expect(iterations).toBeGreaterThan(0);
+            if (RUN_WASM_PERF_ASSERTS) {
+                expect(avgCallTime).toBeLessThan(relaxedThreshold);
+            }
+        } finally {
+            engine.dispose();
         }
     });
 });
@@ -260,44 +272,48 @@ describe('End-to-End Hot Path', () => {
         // Stage 1: Engine initialization
         const t0 = performance.now();
         const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
-        const t1 = performance.now();
-        console.log(`Engine init: ${(t1 - t0).toFixed(2)}ms`);
+        try {
+            const t1 = performance.now();
+            console.log(`Engine init: ${(t1 - t0).toFixed(2)}ms`);
 
-        // Stage 2: Load SID buffer
-        const t2 = performance.now();
-        await engine.loadSidBuffer(sidBuffer);
-        const t3 = performance.now();
-        console.log(`Load buffer: ${(t3 - t2).toFixed(2)}ms`);
+            // Stage 2: Load SID buffer
+            const t2 = performance.now();
+            await engine.loadSidBuffer(sidBuffer);
+            const t3 = performance.now();
+            console.log(`Load buffer: ${(t3 - t2).toFixed(2)}ms`);
 
-        // Stage 3: Render PCM
-        const targetSeconds = 5;
-        const t4 = performance.now();
-        const pcm = await engine.renderSeconds(targetSeconds);
-        const t5 = performance.now();
-        console.log(`Render ${targetSeconds}s PCM: ${(t5 - t4).toFixed(2)}ms`);
+            // Stage 3: Render PCM
+            const targetSeconds = 5;
+            const t4 = performance.now();
+            const pcm = await engine.renderSeconds(targetSeconds);
+            const t5 = performance.now();
+            console.log(`Render ${targetSeconds}s PCM: ${(t5 - t4).toFixed(2)}ms`);
 
-        // Stage 4: Convert to Float32 (simulating AudioBuffer creation)
-        const t6 = performance.now();
-        const sampleRate = engine.getSampleRate();
-        const channels = engine.getChannels();
-        const frames = Math.floor(pcm.length / channels);
-        const INT16_SCALE = 1 / 0x8000;
+            // Stage 4: Convert to Float32 (simulating AudioBuffer creation)
+            const t6 = performance.now();
+            const sampleRate = engine.getSampleRate();
+            const channels = engine.getChannels();
+            const frames = Math.floor(pcm.length / channels);
+            const INT16_SCALE = 1 / 0x8000;
 
-        const left = new Float32Array(frames);
-        const right = new Float32Array(frames);
-        for (let frame = 0; frame < frames; frame++) {
-            const idx = frame * 2;
-            left[frame] = pcm[idx] * INT16_SCALE;
-            right[frame] = pcm[idx + 1] * INT16_SCALE;
+            const left = new Float32Array(frames);
+            const right = new Float32Array(frames);
+            for (let frame = 0; frame < frames; frame++) {
+                const idx = frame * 2;
+                left[frame] = pcm[idx] * INT16_SCALE;
+                right[frame] = pcm[idx + 1] * INT16_SCALE;
+            }
+            const t7 = performance.now();
+            console.log(`INT16→Float32: ${(t7 - t6).toFixed(2)}ms`);
+
+            const totalTime = t7 - t0;
+            console.log(`Total pipeline: ${totalTime.toFixed(2)}ms`);
+            console.log(`Throughput: ${((targetSeconds * 1000) / totalTime).toFixed(2)}x realtime`);
+
+            // Complete pipeline should be very fast (relaxed for parallel test runs under system load)
+            expect(totalTime).toBeLessThan(2000); // Less than 2s for 5s audio (relaxed from 1500ms)
+        } finally {
+            engine.dispose();
         }
-        const t7 = performance.now();
-        console.log(`INT16→Float32: ${(t7 - t6).toFixed(2)}ms`);
-
-        const totalTime = t7 - t0;
-        console.log(`Total pipeline: ${totalTime.toFixed(2)}ms`);
-        console.log(`Throughput: ${((targetSeconds * 1000) / totalTime).toFixed(2)}x realtime`);
-
-        // Complete pipeline should be very fast (relaxed for parallel test runs under system load)
-        expect(totalTime).toBeLessThan(2000); // Less than 2s for 5s audio (relaxed from 1500ms)
     });
 });

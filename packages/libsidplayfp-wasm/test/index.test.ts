@@ -47,6 +47,14 @@ describe("loadLibsidplayfp", () => {
         expect(ctx.getSampleRate).toBeDefined();
         expect(ctx.getChannels).toBeDefined();
     });
+
+    it("exposes SID write trace controls on the runtime context", async () => {
+        const module = await loadLibsidplayfp();
+        const ctx = new module.SidPlayerContext() as Record<string, unknown>;
+
+        expect(typeof ctx.setSidWriteTraceEnabled).toBe("function");
+        expect(typeof ctx.getAndClearSidWriteTraces).toBe("function");
+    });
 });
 
 describe("index exports", () => {

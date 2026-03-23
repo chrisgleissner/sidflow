@@ -9,6 +9,8 @@
 import { connect, type Table } from "vectordb";
 import type { DatabaseRecord } from "./lancedb-builder.js";
 import { DEFAULT_RATING } from "./ratings.js";
+import { calculateNormalizedSongFeedback } from "./feedback-aggregation.js";
+import { cosineSimilarity } from "./vector-similarity.js";
 
 /**
  * Mood preset definitions for quick seed selections.
@@ -259,7 +261,7 @@ export class RecommendationEngine {
   ): Recommendation[] {
     return records.map(record => {
       // Compute cosine similarity
-      const similarity = this.cosineSimilarity(seedVector, record.vector);
+      const similarity = cosineSimilarity(seedVector, record.vector);
       
       // Compute song feedback score
       const songFeedback = this.computeSongFeedback(record);
@@ -318,39 +320,14 @@ export class RecommendationEngine {
    * Compute cosine similarity between two vectors.
    */
   private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) {
-      throw new Error("Vector dimensions must match");
-    }
-
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    normA = Math.sqrt(normA);
-    normB = Math.sqrt(normB);
-
-    if (normA === 0 || normB === 0) {
-      return 0;
-    }
-
-    return dotProduct / (normA * normB);
+    return cosineSimilarity(a, b);
   }
 
   /**
    * Compute song feedback score: (likes - dislikes - 0.3·skips) / max(plays, 1)
    */
   private computeSongFeedback(record: DatabaseRecord): number {
-    const plays = Math.max(record.plays, 1);
-    const score = (record.likes - record.dislikes - 0.3 * record.skips) / plays;
-    
-    // Normalize to [0, 1] range assuming feedback scores typically range from -2 to +2
-    return Math.max(0, Math.min(1, (score + 2) / 4));
+    return calculateNormalizedSongFeedback(record);
   }
 
   /**

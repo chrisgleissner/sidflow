@@ -1,112 +1,205 @@
 {
   "sessions": [
     {
-      "createdAt": 1774190888970,
-      "durationSeconds": 180,
-      "fallbackHlsUrl": "/hls/Test_Artist/Ambient_Dream/song-01/index.m3u8",
-      "id": "2ef07242-9a4e-4759-9cb2-db3749d01d03",
-      "lastAccessedAt": 1774190888970,
-      "scope": "play",
-      "selectedSong": 1,
-      "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid",
-      "streamAssets": [],
-      "track": {
-        "displayName": "The Great Giana Sisters",
-        "durationSeconds": 180,
-        "filename": "Ambient_Dream.sid",
-        "metadata": {
-          "author": "Chris Hülsbeck",
-          "clock": "PAL",
-          "fileSizeBytes": 23445,
-          "released": "1987 Time Warp",
-          "sidModel": "MOS6581",
-          "sidType": "RSID",
-          "songs": 23,
-          "startSong": 1,
-          "title": "The Great Giana Sisters",
-          "version": 2
-        },
-        "relativePath": "Test_Artist/Ambient_Dream.sid",
-        "selectedSong": 1,
-        "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid"
-      }
-    },
-    {
-      "createdAt": 1774190934476,
-      "durationSeconds": 180,
-      "fallbackHlsUrl": "/hls/Test_Artist/Ambient_Dream/song-01/index.m3u8",
-      "id": "b7acdaab-697b-4af8-8e7b-4c8681c1e1f6",
-      "lastAccessedAt": 1774190934476,
-      "scope": "play",
-      "selectedSong": 1,
-      "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid",
-      "streamAssets": [],
-      "track": {
-        "displayName": "The Great Giana Sisters",
-        "durationSeconds": 180,
-        "filename": "Ambient_Dream.sid",
-        "metadata": {
-          "author": "Chris Hülsbeck",
-          "clock": "PAL",
-          "fileSizeBytes": 23445,
-          "released": "1987 Time Warp",
-          "sidModel": "MOS6581",
-          "sidType": "RSID",
-          "songs": 23,
-          "startSong": 1,
-          "title": "The Great Giana Sisters",
-          "version": 2
-        },
-        "relativePath": "Test_Artist/Ambient_Dream.sid",
-        "selectedSong": 1,
-        "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid"
-      }
-    },
-    {
-      "createdAt": 1774191071378,
-      "durationSeconds": 180,
-      "fallbackHlsUrl": "/hls/Test_Artist/Ambient_Dream/song-01/index.m3u8",
-      "id": "44a15851-8241-414a-9945-c993004337fb",
-      "lastAccessedAt": 1774191071378,
-      "scope": "play",
-      "selectedSong": 1,
-      "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid",
-      "streamAssets": [],
-      "track": {
-        "displayName": "The Great Giana Sisters",
-        "durationSeconds": 180,
-        "filename": "Ambient_Dream.sid",
-        "metadata": {
-          "author": "Chris Hülsbeck",
-          "clock": "PAL",
-          "fileSizeBytes": 23445,
-          "released": "1987 Time Warp",
-          "sidModel": "MOS6581",
-          "sidType": "RSID",
-          "songs": 23,
-          "startSong": 1,
-          "title": "The Great Giana Sisters",
-          "version": 2
-        },
-        "relativePath": "Test_Artist/Ambient_Dream.sid",
-        "selectedSong": 1,
-        "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid"
-      }
-    },
-    {
-      "createdAt": 1774191147401,
+      "createdAt": 1774222730906,
       "durationSeconds": 180,
       "fallbackHlsUrl": null,
-      "id": "e3d64abf-9cf3-4261-9a53-bd812098dd44",
-      "lastAccessedAt": 1774191147401,
-      "scope": "play",
+      "id": "1e298e0f-6aae-4aa1-880d-74136276a97d",
+      "lastAccessedAt": 1774222730906,
+      "scope": "manual",
       "selectedSong": 1,
-      "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid",
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Superman Pt02 Theme",
+        "durationSeconds": 180,
+        "filename": "Superman_Pt02_Theme.sid",
+        "metadata": {
+          "author": "Brian M. Szepatowski",
+          "clock": "NTSC",
+          "fileSizeBytes": 8510,
+          "released": "1985 Brian M. Szepatowski",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Superman Pt02 Theme",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
+      }
+    },
+    {
+      "createdAt": 1774222746588,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "de426f7b-e1fc-4edf-b21b-6a648d19327c",
+      "lastAccessedAt": 1774222746588,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Lully Marche Ceremonie Turcs Wip",
+        "durationSeconds": 180,
+        "filename": "Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "metadata": {
+          "author": "Eric F. (Garvalf)",
+          "clock": "Unknown",
+          "fileSizeBytes": 1038,
+          "released": "2016 Garvalf",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Lully Marche Ceremonie Turcs Wip",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid"
+      }
+    },
+    {
+      "createdAt": 1774222762448,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "2d35235a-93cf-4a8e-9369-4aa5920efe99",
+      "lastAccessedAt": 1774222762448,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Lully Marche Ceremonie Turcs Wip",
+        "durationSeconds": 180,
+        "filename": "Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "metadata": {
+          "author": "Eric F. (Garvalf)",
+          "clock": "Unknown",
+          "fileSizeBytes": 1038,
+          "released": "2016 Garvalf",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Lully Marche Ceremonie Turcs Wip",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid"
+      }
+    },
+    {
+      "createdAt": 1774222778795,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "12a68d4f-7760-4f1e-8757-ce6060bc04e6",
+      "lastAccessedAt": 1774222778795,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Lully Marche Ceremonie Turcs Wip",
+        "durationSeconds": 180,
+        "filename": "Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "metadata": {
+          "author": "Eric F. (Garvalf)",
+          "clock": "Unknown",
+          "fileSizeBytes": 1038,
+          "released": "2016 Garvalf",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Lully Marche Ceremonie Turcs Wip",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid"
+      }
+    },
+    {
+      "createdAt": 1774222794116,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "be9db659-eb63-432a-ba6f-8b3e19885dcb",
+      "lastAccessedAt": 1774222794116,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Superman Pt02 Theme",
+        "durationSeconds": 180,
+        "filename": "Superman_Pt02_Theme.sid",
+        "metadata": {
+          "author": "Brian M. Szepatowski",
+          "clock": "NTSC",
+          "fileSizeBytes": 8510,
+          "released": "1985 Brian M. Szepatowski",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Superman Pt02 Theme",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
+      }
+    },
+    {
+      "createdAt": 1774222809315,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "c224bb3d-3b1b-410f-8faa-a366c26fdd4a",
+      "lastAccessedAt": 1774222809315,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Lully Marche Ceremonie Turcs Wip",
+        "durationSeconds": 180,
+        "filename": "Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "metadata": {
+          "author": "Eric F. (Garvalf)",
+          "clock": "Unknown",
+          "fileSizeBytes": 1038,
+          "released": "2016 Garvalf",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Lully Marche Ceremonie Turcs Wip",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid"
+      }
+    },
+    {
+      "createdAt": 1774222826106,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "aecaa02b-8928-40df-aec9-5a1ea0e34117",
+      "lastAccessedAt": 1774222826106,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
       "streamAssets": [],
       "track": {
         "displayName": "The Great Giana Sisters",
         "durationSeconds": 180,
-        "filename": "Ambient_Dream.sid",
+        "filename": "Great_Giana_Sisters.sid",
         "metadata": {
           "author": "Chris Hülsbeck",
           "clock": "PAL",
@@ -119,12 +212,136 @@
           "title": "The Great Giana Sisters",
           "version": 2
         },
-        "relativePath": "Test_Artist/Ambient_Dream.sid",
+        "relativePath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
         "selectedSong": 1,
-        "sidPath": "/home/chris/dev/c64/sidflow/workspace/hvsc/Test_Artist/Ambient_Dream.sid"
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid"
+      }
+    },
+    {
+      "createdAt": 1774222841343,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "7d96d7ad-81c6-4e5a-a9f1-cce08fbc59fe",
+      "lastAccessedAt": 1774222841343,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Foreign Carols",
+        "durationSeconds": 180,
+        "filename": "Foreign_Carols.sid",
+        "metadata": {
+          "author": "Michael Greenlee",
+          "clock": "NTSC",
+          "fileSizeBytes": 8958,
+          "released": "198? Michael Greenlee",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Foreign Carols",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid"
+      }
+    },
+    {
+      "createdAt": 1774222856585,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "168e7bf0-8605-462b-9ea8-bc4350b3e5a4",
+      "lastAccessedAt": 1774222856585,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "10 Orbyte",
+        "durationSeconds": 180,
+        "filename": "10_Orbyte.sid",
+        "metadata": {
+          "author": "Michael Becker (Premium)",
+          "clock": "PAL",
+          "fileSizeBytes": 1584,
+          "released": "2014 Tristar & Red Sector Inc.",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "10 Orbyte",
+          "version": 2
+        },
+        "relativePath": "C64Music/DEMOS/0-9/10_Orbyte.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/DEMOS/0-9/10_Orbyte.sid"
+      }
+    },
+    {
+      "createdAt": 1774222873417,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "f581710f-3e91-4c3a-8788-f8cf6efc3198",
+      "lastAccessedAt": 1774222873417,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Superman Pt02 Theme",
+        "durationSeconds": 180,
+        "filename": "Superman_Pt02_Theme.sid",
+        "metadata": {
+          "author": "Brian M. Szepatowski",
+          "clock": "NTSC",
+          "fileSizeBytes": 8510,
+          "released": "1985 Brian M. Szepatowski",
+          "sidModel": "MOS6581",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Superman Pt02 Theme",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/S/Szepatowski_Brian/Superman_Pt02_Theme.sid"
+      }
+    },
+    {
+      "createdAt": 1774222888711,
+      "durationSeconds": 180,
+      "fallbackHlsUrl": null,
+      "id": "1d3a0a9b-e5dc-4a41-8835-ca2038316b04",
+      "lastAccessedAt": 1774222888711,
+      "scope": "manual",
+      "selectedSong": 1,
+      "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+      "streamAssets": [],
+      "track": {
+        "displayName": "Lully Marche Ceremonie Turcs Wip",
+        "durationSeconds": 180,
+        "filename": "Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "metadata": {
+          "author": "Eric F. (Garvalf)",
+          "clock": "Unknown",
+          "fileSizeBytes": 1038,
+          "released": "2016 Garvalf",
+          "sidModel": "MOS8580",
+          "sidType": "PSID",
+          "songs": 1,
+          "startSong": 1,
+          "title": "Lully Marche Ceremonie Turcs Wip",
+          "version": 2
+        },
+        "relativePath": "C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid",
+        "selectedSong": 1,
+        "sidPath": "/home/chris/dev/c64/sidflow/test-workspace/hvsc/C64Music/MUSICIANS/G/Garvalf/Lully_Marche_Ceremonie_Turcs_Wip.sid"
       }
     }
   ],
-  "updatedAt": "2026-03-22T14:52:27.401Z",
+  "updatedAt": "2026-03-22T23:41:28.711Z",
   "version": "1.0.0"
 }

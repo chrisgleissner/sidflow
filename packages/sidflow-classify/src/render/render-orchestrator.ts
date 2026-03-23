@@ -26,6 +26,7 @@ import type {
 } from "@sidflow/common";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { DEFAULT_ANALYSIS_SKIP_SEC, DEFAULT_ANALYSIS_WINDOW_SEC } from "../audio-window.js";
 import { renderWavWithEngine, resolveTimeLimitSeconds } from "./wav-renderer.js";
 import { createEngine } from "./engine-factory.js";
 import { truncateWavFileToDurationMs } from "./wav-truncate.js";
@@ -290,11 +291,11 @@ export class RenderOrchestrator {
         introSkipSec:
           typeof request.introSkipSeconds === "number" && Number.isFinite(request.introSkipSeconds) && request.introSkipSeconds > 0
             ? request.introSkipSeconds
-            : 30,
+            : DEFAULT_ANALYSIS_SKIP_SEC,
         maxClassifySec:
           typeof request.maxClassifySeconds === "number" && Number.isFinite(request.maxClassifySeconds) && request.maxClassifySeconds > 0
             ? request.maxClassifySeconds
-            : 15,
+            : DEFAULT_ANALYSIS_WINDOW_SEC,
         sourceOffsetSec,
       });
 

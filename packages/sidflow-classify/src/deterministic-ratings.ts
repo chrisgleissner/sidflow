@@ -200,6 +200,10 @@ function direct01(value: unknown, fallback = 0.5): number {
   return isFiniteNumber(value) ? clamp01(value) : fallback;
 }
 
+function directSigned(value: unknown): number {
+  return isFiniteNumber(value) ? clamp(value, -1, 1) : 0;
+}
+
 function average(values: number[]): number {
   if (values.length === 0) {
     return 0.5;
@@ -324,82 +328,107 @@ export function buildPerceptualVector(
   model: DeterministicRatingModel,
   features: FeatureVector,
 ): number[] {
-  const brightness = average([
-    normalize01(model, "spectralCentroid", features.spectralCentroid),
-    normalize01(model, "spectralRolloff", features.spectralRolloff),
-    normalize01(model, "spectralHfc", features.spectralHfc),
-  ]);
-  const noisiness = average([
-    normalize01(model, "spectralFlatnessDb", features.spectralFlatnessDb),
-    normalize01(model, "spectralEntropy", features.spectralEntropy),
-    normalize01(model, "zeroCrossingRate", features.zeroCrossingRate),
-  ]);
-  const percussiveness = average([
-    normalize01(model, "spectralCrest", features.spectralCrest),
-    normalize01(model, "zeroCrossingRate", features.zeroCrossingRate),
-    normalize01(model, "spectralHfc", features.spectralHfc),
-  ]);
-  const loudness = average([
-    normalize01(model, "rms", features.rms),
-    normalize01(model, "energy", features.energy),
-  ]);
-  const bassPresence = direct01(features.lowFrequencyEnergyRatio);
-  const spectralComplexity = average([
-    normalize01(model, "spectralContrastMean", features.spectralContrastMean),
-    normalize01(model, "spectralEntropy", features.spectralEntropy),
-  ]);
-  const harmonicClarity = average([
-    direct01(features.pitchSalience),
-    1 - direct01(features.inharmonicity),
-  ]);
-  const dissonance = average([
-    direct01(features.inharmonicity),
-    noisiness,
-  ]);
+  const sidAvailable = typeof features.sidFeatureVariant === "string" && features.sidFeatureVariant === "sid-native";
 
-  const tempo = normalize01(model, "bpm", features.bpm);
-  const onsetDensity = normalize01(model, "onsetDensity", features.onsetDensity);
-  const rhythmicRegularity = direct01(features.rhythmicRegularity);
-  const spectralFluxMean = normalize01(model, "spectralFluxMean", features.spectralFluxMean);
-  const dynamicRange = direct01(features.dynamicRange);
-  const timbralModulation = normalize01(model, "spectralCentroidStd", features.spectralCentroidStd);
+  const tempoWav = normalize01(model, "bpm", features.bpm);
+  const onsetDensityWav = normalize01(model, "onsetDensity", features.onsetDensity);
+  const rhythmicRegularityWav = direct01(features.rhythmicRegularity);
+  const centroidStdWav = normalize01(model, "spectralCentroidStd", features.spectralCentroidStd);
+  const spectralFluxWav = normalize01(model, "spectralFluxMean", features.spectralFluxMean);
+  const pitchSalienceWav = direct01(features.pitchSalience);
+  const lowFrequencyEnergyWav = direct01(features.lowFrequencyEnergyRatio);
+  const rmsNorm = normalize01(model, "rms", features.rms);
+  const energyNorm = normalize01(model, "energy", features.energy);
+  const dynamicRangeWav = direct01(features.dynamicRange);
+  const inharmonicityWav = direct01(features.inharmonicity);
+  const mfccNorm1 = normalizeSigned(model, "mfccMean1", features.mfccMean1);
+  const mfccNorm2 = normalizeSigned(model, "mfccMean2", features.mfccMean2);
 
-  const mfcc1 = normalizeSigned(model, "mfccMean1", features.mfccMean1);
-  const mfcc2 = normalizeSigned(model, "mfccMean2", features.mfccMean2);
-  const mfcc3 = normalizeSigned(model, "mfccMean3", features.mfccMean3);
-  const mfcc4 = normalizeSigned(model, "mfccMean4", features.mfccMean4);
-  const mfcc5 = normalizeSigned(model, "mfccMean5", features.mfccMean5);
+  const tempoSid = sidAvailable ? clamp01(direct01(features.sidGateOnsetDensity) / 4) : tempoWav;
+  const onsetDensitySid = sidAvailable ? clamp01(direct01(features.sidGateOnsetDensity) / 4) : onsetDensityWav;
+  const rhythmicRegularitySid = sidAvailable ? direct01(features.sidRhythmicRegularity) : rhythmicRegularityWav;
+  const syncopationSid = sidAvailable ? direct01(features.sidSyncopation) : 0;
+  const arpeggioRateSid = sidAvailable ? direct01(features.sidArpeggioActivity) : 0;
+  const waveTriangleRatio = sidAvailable ? direct01(features.sidWaveTriangleRatio) : 0;
+  const waveSawRatio = sidAvailable ? direct01(features.sidWaveSawRatio) : 0;
+  const wavePulseRatio = sidAvailable ? direct01(features.sidWavePulseRatio) : 0;
+  const waveNoiseRatio = sidAvailable ? direct01(features.sidWaveNoiseRatio) : 0;
+  const pwmActivitySid = sidAvailable ? direct01(features.sidPwmActivity) : 0;
+  const filterCutoffMeanSid = sidAvailable ? direct01(features.sidFilterCutoffMean) : 0;
+  const filterSweepSid = sidAvailable ? direct01(features.sidFilterMotion) : centroidStdWav;
+  const registerMotionSid = sidAvailable ? direct01(features.sidRegisterMotion) : spectralFluxWav;
+  const samplePlaybackRate = sidAvailable ? direct01(features.sidSamplePlaybackActivity) : 0;
+  const melodyConfidenceSid = sidAvailable ? direct01(features.sidMelodicClarity) : pitchSalienceWav;
+  const bassShareSid = sidAvailable ? direct01(features.sidRoleBassRatio) : lowFrequencyEnergyWav;
+  const accompanimentShareSid = sidAvailable ? direct01(features.sidRoleAccompanimentRatio) : 0;
+  const voiceRoleEntropySid = sidAvailable ? direct01(features.sidVoiceRoleEntropy) : 0;
+  const adsrPluckRatioSid = sidAvailable ? direct01(features.sidAdsrPluckRatio) : 0;
+  const adsrPadRatioSid = sidAvailable ? direct01(features.sidAdsrPadRatio) : 0;
 
-  const energyComposite = clamp01((0.35 * loudness) + (0.25 * tempo) + (0.2 * onsetDensity) + (0.2 * percussiveness));
-  const moodProxy = clamp01((0.35 * harmonicClarity) + (0.25 * (1 - dissonance)) + (0.2 * (1 - noisiness)) + (0.2 * (1 - percussiveness)));
-  const complexityProxy = clamp01((0.25 * spectralComplexity) + (0.25 * onsetDensity) + (0.25 * timbralModulation) + (0.25 * (1 - rhythmicRegularity)));
-  const danceability = clamp01((0.4 * rhythmicRegularity) + (0.3 * tempo) + (0.3 * percussiveness));
-  const atmosphere = clamp01((0.3 * dynamicRange) + (0.3 * spectralFluxMean) + (0.2 * (1 - rhythmicRegularity)) + (0.2 * timbralModulation));
+  const digiPresent = samplePlaybackRate > 0.15;
+  const tempoFused = clamp01((digiPresent ? 0.5 : 0.7) * tempoSid + (digiPresent ? 0.5 : 0.3) * tempoWav);
+  const onsetDensityFused = clamp01((0.7 * onsetDensitySid) + (0.3 * onsetDensityWav));
+  const rhythmicRegularityFused = clamp01((0.7 * rhythmicRegularitySid) + (0.3 * rhythmicRegularityWav));
+  const filterMotionFused = clamp01((0.75 * filterSweepSid) + (0.25 * centroidStdWav));
+  const melodicClarityFused = clamp01((0.6 * melodyConfidenceSid) + (0.4 * pitchSalienceWav));
+  const bassPresenceFused = clamp01((0.6 * bassShareSid) + (0.4 * lowFrequencyEnergyWav));
+  const loudnessFused = clamp01((0.6 * rmsNorm) + (0.4 * energyNorm));
+
+  const sidTimbreBasis = [
+    waveTriangleRatio,
+    waveSawRatio,
+    wavePulseRatio,
+    waveNoiseRatio,
+    sidAvailable ? direct01(features.sidWaveMixedRatio) : 0,
+    pwmActivitySid,
+    filterCutoffMeanSid,
+    filterSweepSid,
+    samplePlaybackRate,
+  ];
+  const mfccResidual1 = computeMfccResidual(mfccNorm1, sidTimbreBasis, [0.18, 0.26, 0.31, 0.14, 0.19, 0.22, 0.08, 0.11, 0.16], sidAvailable);
+  const mfccResidual2 = computeMfccResidual(mfccNorm2, sidTimbreBasis, [-0.08, 0.11, 0.14, 0.17, 0.1, 0.15, 0.04, 0.08, 0.1], sidAvailable);
 
   return [
-    brightness,
-    noisiness,
-    percussiveness,
-    loudness,
-    bassPresence,
-    spectralComplexity,
-    harmonicClarity,
-    dissonance,
-    tempo,
-    onsetDensity,
-    rhythmicRegularity,
-    spectralFluxMean,
-    dynamicRange,
-    timbralModulation,
-    mfcc1,
-    mfcc2,
-    mfcc3,
-    mfcc4,
-    mfcc5,
-    energyComposite,
-    moodProxy,
-    complexityProxy,
-    danceability,
-    atmosphere,
+    tempoFused,
+    onsetDensityFused,
+    rhythmicRegularityFused,
+    syncopationSid,
+    arpeggioRateSid,
+    waveTriangleRatio,
+    waveSawRatio,
+    wavePulseRatio,
+    waveNoiseRatio,
+    pwmActivitySid,
+    filterCutoffMeanSid,
+    filterMotionFused,
+    samplePlaybackRate,
+    melodicClarityFused,
+    bassPresenceFused,
+    accompanimentShareSid,
+    voiceRoleEntropySid,
+    adsrPluckRatioSid,
+    adsrPadRatioSid,
+    loudnessFused,
+    dynamicRangeWav,
+    inharmonicityWav,
+    mfccResidual1,
+    mfccResidual2,
   ];
+}
+
+function computeMfccResidual(
+  mfccNorm: number,
+  sidTimbreBasis: number[],
+  regressionWeights: number[],
+  sidAvailable: boolean,
+): number {
+  if (!sidAvailable) {
+    return mfccNorm;
+  }
+
+  let predicted = 0;
+  for (let index = 0; index < Math.min(sidTimbreBasis.length, regressionWeights.length); index += 1) {
+    predicted += sidTimbreBasis[index]! * regressionWeights[index]!;
+  }
+  return clamp(mfccNorm - predicted, -1, 1);
 }

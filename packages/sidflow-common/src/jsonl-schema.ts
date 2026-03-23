@@ -11,7 +11,7 @@ import type { TagRatings } from "./ratings.js";
  * Feature set version for tracking breaking changes to feature schema.
  * Increment when adding/removing features or changing computation methods.
  */
-export const FEATURE_SCHEMA_VERSION = "1.2.0";
+export const FEATURE_SCHEMA_VERSION = "1.3.0";
 
 /**
  * Extended audio features extracted from WAV files during classification.

@@ -16,6 +16,9 @@ export interface AnalysisWindow {
   totalDurationSec: number;
 }
 
+export const DEFAULT_ANALYSIS_SKIP_SEC = 15;
+export const DEFAULT_ANALYSIS_WINDOW_SEC = 15;
+
 export function computeMinRenderSecForRepresentativeWindow(
   maxClassifySec: number,
   introSkipSec: number
@@ -25,7 +28,7 @@ export function computeMinRenderSecForRepresentativeWindow(
   }
 
   const resolvedIntroSkipSec =
-    Number.isFinite(introSkipSec) && introSkipSec > 0 ? introSkipSec : 30;
+    Number.isFinite(introSkipSec) && introSkipSec > 0 ? introSkipSec : DEFAULT_ANALYSIS_SKIP_SEC;
 
   // To skip intros by `introSkipSec` while still having a full classify window available,
   // a capped render must cover at least: introSkipSec + maxClassifySec.
@@ -77,12 +80,12 @@ export function resolveRepresentativeAnalysisWindow(
 
   // Try to avoid intros: skip a configurable number of seconds from the start.
   // If the audio is long enough, we deterministically select the window
-  // [introSkipSec, introSkipSec + maxDurationSec] (e.g. 30s-45s).
+  // [introSkipSec, introSkipSec + maxDurationSec] (e.g. 15s-30s).
   // Only deviate (do not skip) when the audio is not long enough.
   const resolvedIntroSkipSec =
     typeof introSkipSec === "number" && Number.isFinite(introSkipSec) && introSkipSec > 0
       ? introSkipSec
-      : 30;
+      : DEFAULT_ANALYSIS_SKIP_SEC;
   const requestedSkipSamples = Math.max(0, Math.floor(resolvedIntroSkipSec * header.sampleRate));
 
   // If the audio is too short to honor the full intro skip, clamp to the latest

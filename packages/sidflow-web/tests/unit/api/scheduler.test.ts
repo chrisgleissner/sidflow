@@ -18,6 +18,7 @@ describe('/api/scheduler', () => {
       expect(data.data).toBeDefined();
       expect(data.data.scheduler).toBeDefined();
       expect(data.data.renderPrefs).toBeDefined();
+      expect(data.data.training).toBeDefined();
       expect(data.data.status).toBeDefined();
       
       // Default scheduler values
@@ -31,6 +32,8 @@ describe('/api/scheduler', () => {
       expect(data.data.renderPrefs).toHaveProperty('preserveWav');
       expect(data.data.renderPrefs).toHaveProperty('enableFlac');
       expect(data.data.renderPrefs).toHaveProperty('enableM4a');
+
+      expect(data.data.training).toEqual({ enabled: false });
       
       // Scheduler status
       expect(data.data.status).toHaveProperty('isActive');
@@ -109,6 +112,24 @@ describe('/api/scheduler', () => {
       await POST(new NextRequest('http://localhost/api/scheduler', {
         method: 'POST',
         body: JSON.stringify({ renderPrefs: { preserveWav: true, enableFlac: false } }),
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    });
+
+    test('should update training preferences', async () => {
+      const response = await POST(new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({ training: { enabled: true } }),
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      const data = await response.json();
+      expect(response.status).toBe(200);
+      expect(data.data.training).toEqual({ enabled: true });
+
+      await POST(new NextRequest('http://localhost/api/scheduler', {
+        method: 'POST',
+        body: JSON.stringify({ training: { enabled: false } }),
         headers: { 'Content-Type': 'application/json' },
       }));
     });

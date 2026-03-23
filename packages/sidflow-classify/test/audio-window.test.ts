@@ -32,12 +32,12 @@ describe("resolveRepresentativeAnalysisWindow", () => {
     expect(window.durationSec).toBeCloseTo(1.0, 3);
   });
 
-  it("uses the default intro skip (30s) when possible", () => {
+  it("uses the default intro skip (15s) when possible", () => {
     const sampleRate = 8000;
 
-    // 50s total: 0-30s silent, 30-50s loud.
-    // Default introSkipSec is 30s, so the representative window should start at ~30s.
-    const silent = makeMonoPcm(sampleRate, 30.0, 0);
+    // 35s total: 0-15s silent, 15-35s loud.
+    // Default introSkipSec is 15s, so the representative window should start at ~15s.
+    const silent = makeMonoPcm(sampleRate, 15.0, 0);
     const loud = makeMonoPcm(sampleRate, 20.0, 12000);
 
     const combined = new Int16Array(silent.length + loud.length);
@@ -57,7 +57,8 @@ describe("resolveRepresentativeAnalysisWindow", () => {
     const window = resolveRepresentativeAnalysisWindow(wav, header, 15);
 
     expect(window.durationSec).toBeCloseTo(15.0, 2);
-    expect(window.startSec).toBeGreaterThanOrEqual(29.5);
+    expect(window.startSec).toBeGreaterThanOrEqual(14.5);
+    expect(window.startSec).toBeLessThanOrEqual(15.5);
   });
 
   it("clamps intro skip when the song is too short", () => {

@@ -30,7 +30,34 @@ if (!isPlaywrightRunner) {
     await context.addInitScript(
       ({ personalRating, sidPaths }: { personalRating: number; sidPaths: string[] }) => {
         try {
-          window.localStorage.removeItem('sidflow.preferences');
+          window.localStorage.setItem(
+            'sidflow.preferences',
+            JSON.stringify({
+              version: 2,
+              migratedFrom: null,
+              theme: 'system',
+              font: 'mono',
+              romBundleId: null,
+              playbackEngine: 'wasm',
+              ultimate64: {
+                host: 'c64u.local',
+                https: false,
+                secretHeader: 'secret',
+              },
+              training: {
+                enabled: false,
+                iterationBudget: 200,
+                syncCadenceMinutes: 60,
+                allowUpload: false,
+              },
+              localCache: {
+                maxEntries: 25,
+                maxBytes: 33554432,
+                preferOffline: false,
+              },
+              lastSeenModelVersion: null,
+            }),
+          );
         } catch {
           // ignore storage errors in headless environments
         }
@@ -115,6 +142,33 @@ if (!isPlaywrightRunner) {
       for (const title of STATION_TRACK_TITLES) {
         await expect(page.getByText(title)).toBeVisible({ timeout: 10000 });
       }
+    });
+
+    test('shows sticky playlist headers and HVSC-relative paths', async ({ page }) => {
+      test.setTimeout(90000);
+      await bootstrapPlayTab(page);
+
+      const upcomingHeader = page.getByTestId('upcoming-tracks-header');
+      await expect(upcomingHeader).toBeVisible({ timeout: 30000 });
+      await expect(upcomingHeader.getByText('Song')).toBeVisible();
+      await expect(upcomingHeader.getByText('HVSC Path')).toBeVisible();
+      await expect(upcomingHeader.getByText('Status')).toBeVisible();
+
+      const pathCells = page.getByTestId('upcoming-track-relative-path');
+      await expect(pathCells.first()).toBeVisible({ timeout: 30000 });
+      await expect(pathCells.first()).toContainText(/virtual\/playlist-track-\d+\.sid/i);
+    });
+
+    test('shows titled playlist, rate, and LED control rows', async ({ page }) => {
+      test.setTimeout(90000);
+      await bootstrapPlayTab(page);
+
+      await expect(page.getByTestId('play-control-row-playlist')).toBeVisible({ timeout: 30000 });
+      await expect(page.getByTestId('play-control-row-rate')).toBeVisible();
+      await expect(page.getByTestId('play-control-row-led')).toBeVisible();
+      await expect(page.getByTestId('c64u-led-row')).toBeVisible();
+      await expect(page.getByTestId('c64u-led-mode')).toBeVisible();
+      await expect(page.getByTestId('c64u-led-intensity')).toBeVisible();
     });
 
     test('displays personal and aggregate ratings for the song in play', async ({ page }) => {

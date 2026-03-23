@@ -20,6 +20,14 @@ export const STATION_TRACK_TITLES = ['Station Track Alpha', 'Station Track Beta'
 export const COMMUNITY_AVERAGE_RATING = 4.2;
 export const PERSONAL_RATING_VALUE = 5;
 
+const C64U_LED_SETTINGS = {
+  mode: 'SID Music',
+  autoSidMode: 'Enabled',
+  pattern: 'SingleColor',
+  intensity: 24,
+  fixedColor: 'Indigo',
+};
+
 const PREFS_PAYLOAD = {
   hvscRoot: '/test-workspace/hvsc',
   defaultCollectionPath: '/test-workspace/hvsc/C64Music',
@@ -257,6 +265,31 @@ export async function installPlayTabRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ success: true, data: PREFS_PAYLOAD }),
+    });
+  });
+
+  await context.route('**/api/play/c64u-led', async (route) => {
+    const request = route.request();
+    const body = request.postDataJSON?.() as Partial<typeof C64U_LED_SETTINGS> | undefined;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: {
+          settings: {
+            ...C64U_LED_SETTINGS,
+            ...body,
+          },
+          options: {
+            mode: ['Off', 'Fixed Color', 'SID Music', 'Rainbow', 'Rainbow Sparkle', 'Sparkle', 'Default'],
+            autoSidMode: ['Disabled', 'Enabled'],
+            pattern: ['SingleColor', 'Left to Right', 'Right to Left', 'Serpentine', 'Outward'],
+            fixedColor: ['Indigo', 'Azure', 'White', 'Amber'],
+            intensity: { min: 0, max: 31 },
+          },
+        },
+      }),
     });
   });
 

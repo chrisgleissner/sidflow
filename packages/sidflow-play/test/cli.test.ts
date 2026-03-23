@@ -68,11 +68,16 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
     ["F/song12.sid#1", "F/song12.sid", [0.84, 0.16, 0], 4, 4, 3, 4, 2, 0, 0, 4],
   ];
 
-  for (let index = 13; index <= 140; index += 1) {
+  // Generate 238 additional tracks (index 13..250) with energy 0.848–0.951
+  // so there are always ≥200 high-similarity candidates after the C3
+  // min_sim filter (adventure=3 → min_sim=0.73) regardless of which seeds
+  // are randomly sampled by SQLite ORDER BY RANDOM().
+  for (let index = 13; index <= 250; index += 1) {
     const group = String.fromCharCode(65 + ((index - 1) % 20));
     const sidPath = `${group}/song${index}.sid`;
-    const energy = Math.max(0.2, 0.99 - (index * 0.003));
-    const mood = Number((1 - energy).toFixed(3));
+    // Keep energy ≥ 0.848: cosine sim to any centroid in the cluster ≫ 0.73
+    const energy = Math.max(0.848, 0.99 - ((index - 13) * 0.0006));
+    const mood = Number((1 - energy).toFixed(4));
     rows.push([
       `${sidPath}#1`,
       sidPath,
@@ -448,6 +453,12 @@ describe("station demo CLI argument parsing", () => {
   test("parses reset-selections flag", () => {
     const result = parseStationArgs(["--reset-selections"]);
     expect(result.options.resetSelections).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("parses --c64u-password for C64U playback auth", () => {
+    const result = parseStationArgs(["--c64u-password", "secret-value"]);
+    expect(result.options.c64uPassword).toBe("secret-value");
     expect(result.errors).toHaveLength(0);
   });
 });
@@ -1949,14 +1960,24 @@ describe("runPlayCli", () => {
   it("captures and restores Ultimate64 SID volumes around pause and resume", async () => {
     const fixture = await createStationDemoFixture();
     const actions = ["5", "5", "5", "5", "5", "5", "5", "5", "5", "5", "space", "space", "q"];
-    const fetchCalls: Array<{ url: string; method: string; body?: Uint8Array }> = [];
+    const fetchCalls: Array<{ url: string; method: string; body?: Uint8Array; xPassword?: string }> = [];
     const originalFetch = globalThis.fetch;
 
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? "GET";
       const body = init?.body instanceof Uint8Array ? init.body : undefined;
-      fetchCalls.push({ url, method, body });
+      const rawHeaders = init?.headers;
+      let xPassword: string | undefined;
+      if (rawHeaders instanceof Headers) {
+        xPassword = rawHeaders.get("X-Password") ?? undefined;
+      } else if (Array.isArray(rawHeaders)) {
+        xPassword = rawHeaders.find(([name]) => name.toLowerCase() === "x-password")?.[1];
+      } else if (rawHeaders && typeof rawHeaders === "object") {
+        const entries = Object.entries(rawHeaders as Record<string, string>);
+        xPassword = entries.find(([name]) => name.toLowerCase() === "x-password")?.[1];
+      }
+      fetchCalls.push({ url, method, body, xPassword });
 
       if (url.includes(":readmem")) {
         const address = new URL(url).searchParams.get("address");
@@ -1981,6 +2002,7 @@ describe("runPlayCli", () => {
           "--hvsc", fixture.workspace,
           "--playback", "c64u",
           "--c64u-host", "192.168.1.13",
+          "--c64u-password", "opensesame",
           "--sample-size", "10",
           "--station-size", "2",
         ],
@@ -2026,6 +2048,7 @@ describe("runPlayCli", () => {
     expect(fetchCalls.filter((call) => call.url.includes(":readmem"))).toHaveLength(3);
     expect(fetchCalls.some((call) => call.url.includes(":pause"))).toBe(true);
     expect(fetchCalls.some((call) => call.url.includes(":resume"))).toBe(true);
+    expect(fetchCalls.every((call) => call.xPassword === "opensesame")).toBe(true);
     expect(writeMemBodies).toContainEqual([0x10]);
     expect(writeMemBodies).toContainEqual([0x20]);
     expect(writeMemBodies).toContainEqual([0x30]);

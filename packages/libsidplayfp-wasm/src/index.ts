@@ -47,5 +47,6 @@ export type {
 } from "../dist/libsidplayfp.js";
 
 export { SidAudioEngine } from "./player.js";
+export type { SidWriteTrace } from "./player.js";
 
 export default loadLibsidplayfp;

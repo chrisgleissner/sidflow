@@ -195,6 +195,9 @@ test.describe('Playlists Feature', () => {
                 await page.goto('/?tab=play', { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.PAGE_LOAD });
                 await waitForUISettle(page);
                 await page.waitForSelector('[data-testid="tab-play"]', { timeout: TIMEOUTS.LOADING_STATE });
+                await expect(page.getByRole('button', { name: /playlists/i })).toBeVisible({
+                    timeout: TIMEOUTS.ELEMENT_VISIBLE,
+                });
                 break;
             } catch (error) {
                 retries--;
@@ -361,6 +364,12 @@ test.describe('Playlists Feature', () => {
         const playlistsButton = page.getByRole('button', { name: /playlists/i });
         await playlistsButton.click({ timeout: TIMEOUTS.ELEMENT_QUICK });
         await waitForUISettle(page);
+
+        await page.waitForFunction((playlistName) => {
+            const sheet = document.querySelector('[role="dialog"]');
+            const text = sheet?.textContent || '';
+            return text.includes(String(playlistName)) || text.includes('No playlists');
+        }, playlist.name, { timeout: TIMEOUTS.ELEMENT_VISIBLE });
 
         // Should show playlist
         await expect(page.getByText('M3U Test')).toBeVisible({ timeout: TIMEOUTS.ELEMENT_VISIBLE });

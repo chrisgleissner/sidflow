@@ -80,17 +80,20 @@ describe("similarity-export", () => {
     const database = new Database(outputPath, { readonly: true, strict: true });
     try {
       const firstTrack = database
-        .query("SELECT likes, plays FROM tracks WHERE track_id = ?")
-        .get(buildSimilarityTrackId("A.sid", 1)) as { likes: number; plays: number };
+        .query("SELECT likes, plays, decayed_likes, decayed_plays FROM tracks WHERE track_id = ?")
+        .get(buildSimilarityTrackId("A.sid", 1)) as { likes: number; plays: number; decayed_likes: number; decayed_plays: number };
       const secondTrack = database
-        .query("SELECT likes, plays FROM tracks WHERE track_id = ?")
-        .get(buildSimilarityTrackId("A.sid", 2)) as { likes: number; plays: number };
+        .query("SELECT likes, plays, decayed_likes, decayed_plays FROM tracks WHERE track_id = ?")
+        .get(buildSimilarityTrackId("A.sid", 2)) as { likes: number; plays: number; decayed_likes: number; decayed_plays: number };
       const neighborIndex = database
         .query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'neighbors_seed_idx'")
         .get() as { name: string } | null;
 
-      expect(firstTrack).toEqual({ likes: 0, plays: 0 });
-      expect(secondTrack).toEqual({ likes: 1, plays: 1 });
+      expect(firstTrack).toEqual({ likes: 0, plays: 0, decayed_likes: 0, decayed_plays: 0 });
+      expect(secondTrack.likes).toBe(1);
+      expect(secondTrack.plays).toBe(1);
+      expect(secondTrack.decayed_likes).toBeGreaterThan(0);
+      expect(secondTrack.decayed_plays).toBeGreaterThan(0);
       expect(neighborIndex).toBeNull();
     } finally {
       database.close();
@@ -140,6 +143,70 @@ describe("similarity-export", () => {
       buildSimilarityTrackId("A.sid", 1),
     ]);
     expect(recommendations[0].rank).toBe(1);
+  });
+
+  test("reads recommendation data from cached pre-decay sidcorr bundles", async () => {
+    const legacyDbPath = path.join(tempRoot, "exports", "sidcorr-legacy.sqlite");
+    await mkdir(path.dirname(legacyDbPath), { recursive: true });
+
+    const legacyDb = new Database(legacyDbPath, { create: true, strict: true });
+    try {
+      legacyDb.exec(`
+        CREATE TABLE tracks (
+          track_id TEXT PRIMARY KEY,
+          sid_path TEXT NOT NULL,
+          song_index INTEGER NOT NULL,
+          vector_json TEXT,
+          e REAL NOT NULL,
+          m REAL NOT NULL,
+          c REAL NOT NULL,
+          p REAL,
+          likes INTEGER NOT NULL,
+          dislikes INTEGER NOT NULL,
+          skips INTEGER NOT NULL,
+          plays INTEGER NOT NULL,
+          last_played TEXT
+        ) WITHOUT ROWID;
+        CREATE TABLE neighbors (
+          profile TEXT NOT NULL,
+          seed_track_id TEXT NOT NULL,
+          neighbor_track_id TEXT NOT NULL,
+          rank INTEGER NOT NULL,
+          similarity REAL NOT NULL,
+          PRIMARY KEY (profile, seed_track_id, rank)
+        ) WITHOUT ROWID;
+      `);
+
+      const insertTrack = legacyDb.query(`
+        INSERT INTO tracks (
+          track_id, sid_path, song_index, vector_json, e, m, c, p, likes, dislikes, skips, plays, last_played
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      insertTrack.run(buildSimilarityTrackId("A.sid", 1), "A.sid", 1, JSON.stringify([1, 0, 0, 0]), 1, 1, 1, 3, 0, 0, 0, 0, null);
+      insertTrack.run(buildSimilarityTrackId("B.sid", 1), "B.sid", 1, JSON.stringify([0.9, 0.1, 0, 0]), 1, 1, 2, 3, 2, 0, 0, 2, "2026-03-13T11:00:00.000Z");
+      insertTrack.run(buildSimilarityTrackId("C.sid", 1), "C.sid", 1, JSON.stringify([0, 1, 0, 0]), 5, 5, 5, 4, 5, 0, 0, 5, "2026-03-13T11:05:00.000Z");
+
+      legacyDb.query(
+        "INSERT INTO neighbors (profile, seed_track_id, neighbor_track_id, rank, similarity) VALUES (?, ?, ?, ?, ?)",
+      ).run("full", buildSimilarityTrackId("A.sid", 1), buildSimilarityTrackId("B.sid", 1), 1, 0.97);
+    } finally {
+      legacyDb.close();
+    }
+
+    const fromFavorites = recommendFromFavorites(legacyDbPath, {
+      favoriteTrackIds: [buildSimilarityTrackId("A.sid", 1)],
+      limit: 2,
+    });
+    expect(fromFavorites[0]?.track_id).toBe(buildSimilarityTrackId("B.sid", 1));
+    expect(fromFavorites[0]?.decayed_likes).toBe(0);
+    expect(fromFavorites[0]?.decayed_plays).toBe(0);
+
+    const fromSeed = recommendFromSeedTrack(legacyDbPath, {
+      seedTrackId: buildSimilarityTrackId("A.sid", 1),
+      limit: 1,
+    });
+    expect(fromSeed[0]?.track_id).toBe(buildSimilarityTrackId("B.sid", 1));
+    expect(fromSeed[0]?.decayed_likes).toBe(0);
   });
 
   test("deduplicates repeated track records by keeping the newest classification", async () => {

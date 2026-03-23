@@ -17,10 +17,15 @@ const TEST_DB_PATH = "/tmp/test-recommender-db";
  * Create test database with sample records.
  */
 async function createTestDatabase(records: DatabaseRecord[]): Promise<void> {
-  await rm(TEST_DB_PATH, { recursive: true, force: true });
-  await mkdir(TEST_DB_PATH, { recursive: true });
+  await createTestDatabaseAt(TEST_DB_PATH, records);
 
-  const db = await connect(TEST_DB_PATH);
+}
+
+async function createTestDatabaseAt(dbPath: string, records: DatabaseRecord[]): Promise<void> {
+  await rm(dbPath, { recursive: true, force: true });
+  await mkdir(dbPath, { recursive: true });
+
+  const db = await connect(dbPath);
   await db.createTable("sidflow", records);
 }
 
@@ -490,6 +495,62 @@ describe("RecommendationEngine", () => {
     }
 
     await engine.disconnect();
+  });
+
+  test("prefers fresh decayed feedback over stale raw totals when beta dominates", async () => {
+    const dbPath = "/tmp/test-recommender-decayed-db";
+    await rm(dbPath, { recursive: true, force: true });
+
+    await createTestDatabaseAt(dbPath, [
+      {
+        sid_path: "stale_popular.sid",
+        vector: [4, 5, 3, 3],
+        e: 4,
+        m: 5,
+        c: 3,
+        p: 3,
+        likes: 100,
+        dislikes: 0,
+        skips: 0,
+        plays: 100,
+        decayed_likes: 0.5,
+        decayed_dislikes: 0,
+        decayed_skips: 0,
+        decayed_plays: 10,
+      },
+      {
+        sid_path: "fresh_favorite.sid",
+        vector: [4, 5, 3, 3],
+        e: 4,
+        m: 5,
+        c: 3,
+        p: 3,
+        likes: 5,
+        dislikes: 0,
+        skips: 0,
+        plays: 5,
+        decayed_likes: 5,
+        decayed_dislikes: 0,
+        decayed_skips: 0,
+        decayed_plays: 5,
+      },
+    ]);
+
+    const engine = createRecommendationEngine({ dbPath });
+    await engine.connect();
+
+    const recommendations = await engine.recommend({
+      seed: "bright",
+      limit: 2,
+      weights: { alpha: 0, beta: 1, gamma: 0 },
+      k: 10,
+    });
+
+    expect(recommendations[0]?.sid_path).toBe("fresh_favorite.sid");
+    expect(recommendations[0]?.songFeedback).toBeGreaterThan(recommendations[1]?.songFeedback ?? 0);
+
+    await engine.disconnect();
+    await rm(dbPath, { recursive: true, force: true });
   });
 
   test("user affinity considers preference ratings", async () => {

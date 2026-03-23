@@ -5,7 +5,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { FeatureExtractor, FeatureVector } from "./index.js";
 import { FEATURE_SCHEMA_VERSION, loadConfig } from "@sidflow/common";
-import { resolveRepresentativeAnalysisWindow } from "./audio-window.js";
+import {
+  DEFAULT_ANALYSIS_SKIP_SEC,
+  DEFAULT_ANALYSIS_WINDOW_SEC,
+  resolveRepresentativeAnalysisWindow,
+} from "./audio-window.js";
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
 import { extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
@@ -472,8 +476,8 @@ async function extractAndDownsampleAudio(
   }
 
   const config = await loadConfig(process.env.SIDFLOW_CONFIG);
-  const maxExtractSec = config.maxClassifySec ?? 15;
-  const introSkipSec = config.introSkipSec ?? 30;
+  const maxExtractSec = config.maxClassifySec ?? DEFAULT_ANALYSIS_WINDOW_SEC;
+  const introSkipSec = config.introSkipSec ?? DEFAULT_ANALYSIS_SKIP_SEC;
   const analysisSampleRate = resolveAnalysisSampleRate(config);
   const sourceOffsetSec = (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0;
 

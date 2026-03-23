@@ -11,6 +11,7 @@ FEATURES_PATH=""
 PLAYBACK_MODE="local"
 PLAYBACK_MODE_SET="false"
 C64U_HOST=""
+C64U_PASSWORD=""
 CONFIG_PATH=""
 EXTRA_ARGS=()
 TEMP_CONFIG_PATH=""
@@ -145,6 +146,10 @@ build_station_demo_cmd() {
     CMD+=(--c64u-host "${C64U_HOST}")
   fi
 
+  if [[ -n "${C64U_PASSWORD}" ]]; then
+    CMD+=(--c64u-password "${C64U_PASSWORD}")
+  fi
+
   CMD+=("${EXTRA_ARGS[@]}")
 }
 
@@ -205,6 +210,10 @@ while [[ $# -gt 0 ]]; do
       C64U_HOST="$2"
       shift 2
       ;;
+    --c64u-password)
+      C64U_PASSWORD="$2"
+      shift 2
+      ;;
     --help|-h)
       cat <<'EOF'
 Usage: scripts/sid-station.sh [options] [-- additional station args]
@@ -224,6 +233,7 @@ Wrapper-specific options:
   --features-jsonl <path>  Optional local provenance path to display in the TUI
   --playback <local|c64u|none>
   --c64u-host <host>
+  --c64u-password <value>  Ultimate64 Network Password forwarded as X-Password
 
 Any remaining arguments are passed through to:
   scripts/sidflow-play station

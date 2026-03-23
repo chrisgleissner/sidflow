@@ -22,9 +22,9 @@ const TEST_SID_PATH = path.join(
 );
 
 // Keep render durations short to avoid stressing constrained test runners.
-const SHORT_WASM_RENDER_SEC = 12;
-const VERIFY_WASM_RENDER_SEC = 10;
-const MIN_WASM_RENDER_SEC = 8;
+const SHORT_WASM_RENDER_SEC = 4;
+const VERIFY_WASM_RENDER_SEC = 3;
+const MIN_WASM_RENDER_SEC = 2;
 
 interface RenderTestContext {
   tempDir: string;
@@ -269,8 +269,9 @@ describe("Step 9: Verification matrix", () => {
 
   describe("9.1 - Engine verification", () => {
     it("verifies WASM engine availability", async () => {
+      let engine: SidAudioEngine | undefined;
       try {
-        const engine = new SidAudioEngine({
+        engine = new SidAudioEngine({
           sampleRate: 44100,
           stereo: true,
         });
@@ -278,6 +279,8 @@ describe("Step 9: Verification matrix", () => {
         console.log("[render-integration] WASM engine: available ✓");
       } catch (error) {
         throw new Error(`WASM engine not available: ${error}`);
+      } finally {
+        engine?.dispose();
       }
     });
 

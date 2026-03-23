@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -13,6 +14,9 @@
 #include <sidplayfp/SidInfo.h>
 #include <sidplayfp/SidTune.h>
 #include <sidplayfp/SidTuneInfo.h>
+#include <sidplayfp/sidbuilder.h>
+
+#include <sidemu.h>
 
 #ifdef HAVE_RESIDFP
 #include <residfp.h>
@@ -32,6 +36,14 @@ namespace
 {
     constexpr uint32_t kDefaultSampleRate = 44100;
     constexpr bool kDefaultStereo = true;
+
+    struct SidWriteTraceRecord
+    {
+        uint32_t sidNumber;
+        uint32_t address;
+        uint32_t value;
+        uint32_t cyclePhi1;
+    };
 
     emscripten::val makeEmptyInt16Array()
     {
@@ -61,11 +73,156 @@ namespace
     }
 }
 
+class TracingSidEmu final : public libsidplayfp::sidemu
+{
+public:
+    TracingSidEmu(
+        sidbuilder *builder,
+        std::unique_ptr<libsidplayfp::sidemu> inner,
+        uint32_t sidNumber,
+        std::vector<SidWriteTraceRecord> *traceSink,
+        bool *traceEnabled)
+        : libsidplayfp::sidemu(builder),
+          inner(std::move(inner)),
+          sidNumber(sidNumber),
+          traceSink(traceSink),
+          traceEnabled(traceEnabled)
+    {
+        syncBufferState();
+    }
+
+    bool lock(libsidplayfp::EventScheduler *scheduler) override
+    {
+        if (!libsidplayfp::sidemu::lock(scheduler))
+        {
+            return false;
+        }
+        if (!inner->lock(scheduler))
+        {
+            libsidplayfp::sidemu::unlock();
+            m_error = inner->error();
+            return false;
+        }
+        syncBufferState();
+        return true;
+    }
+
+    void unlock() override
+    {
+        inner->unlock();
+        libsidplayfp::sidemu::unlock();
+        syncBufferState();
+    }
+
+    void clock() override
+    {
+        inner->clock();
+        syncBufferState();
+    }
+
+    void model(SidConfig::sid_model_t model, bool digiboost) override
+    {
+        inner->model(model, digiboost);
+        m_error = inner->error();
+        syncBufferState();
+    }
+
+    void sampling(float systemfreq, float outputfreq, SidConfig::sampling_method_t method) override
+    {
+        inner->sampling(systemfreq, outputfreq, method);
+        m_error = inner->error();
+        syncBufferState();
+    }
+
+protected:
+    uint8_t read(uint_least8_t addr) override
+    {
+        const uint8_t value = inner->peek(addr);
+        syncBufferState();
+        return value;
+    }
+
+    void write(uint_least8_t addr, uint8_t data) override
+    {
+        if (traceEnabled != nullptr && *traceEnabled && traceSink != nullptr)
+        {
+            const libsidplayfp::event_clock_t cycle = eventScheduler != nullptr
+                ? eventScheduler->getTime(libsidplayfp::EVENT_CLOCK_PHI1)
+                : 0;
+            traceSink->push_back(SidWriteTraceRecord{
+                sidNumber,
+                static_cast<uint32_t>(addr & 0x1f),
+                static_cast<uint32_t>(data),
+                static_cast<uint32_t>(cycle),
+            });
+        }
+
+        inner->poke(addr, data);
+        syncBufferState();
+    }
+
+    void reset(uint8_t volume) override
+    {
+        inner->reset();
+        if (volume != 0x0f)
+        {
+            inner->poke(0x18, volume);
+        }
+        syncBufferState();
+    }
+
+private:
+    void syncBufferState()
+    {
+        m_buffer = inner->buffer();
+        bufferpos(inner->bufferpos());
+        m_error = inner->error();
+    }
+
+    std::unique_ptr<libsidplayfp::sidemu> inner;
+    uint32_t sidNumber;
+    std::vector<SidWriteTraceRecord> *traceSink;
+    bool *traceEnabled;
+};
+
+class TracingSidBuilder final : public DefaultSidBuilder
+{
+public:
+    TracingSidBuilder(const char *name, std::vector<SidWriteTraceRecord> *traceSink, bool *traceEnabled)
+        : DefaultSidBuilder(name),
+          traceSink(traceSink),
+          traceEnabled(traceEnabled)
+    {
+    }
+
+    void resetTraceState()
+    {
+        nextSidNumber = 0;
+    }
+
+protected:
+    libsidplayfp::sidemu *create() override
+    {
+        std::unique_ptr<libsidplayfp::sidemu> inner(DefaultSidBuilder::create());
+        if (!inner)
+        {
+            return nullptr;
+        }
+
+        return new TracingSidEmu(this, std::move(inner), nextSidNumber++, traceSink, traceEnabled);
+    }
+
+private:
+    std::vector<SidWriteTraceRecord> *traceSink;
+    bool *traceEnabled;
+    uint32_t nextSidNumber = 0;
+};
+
 class SidPlayerContext
 {
 public:
     SidPlayerContext()
-                : builder(std::make_unique<DefaultSidBuilder>(kDefaultBuilderName)),
+                : builder(std::make_unique<TracingSidBuilder>(kDefaultBuilderName, &sidWriteTrace, &traceEnabled)),
           stereo(kDefaultStereo),
           channels(kDefaultStereo ? 2u : 1u),
           sampleRate(kDefaultSampleRate),
@@ -94,6 +251,9 @@ public:
         // Ensure deterministic output: libsidplayfp defaults to a random power-on delay
         // (DEFAULT_POWER_ON_DELAY = MAX + 1). Keeping it <= MAX yields constant results.
         cfg.powerOnDelay = SidConfig::MAX_POWER_ON_DELAY;
+
+        builder->resetTraceState();
+        clearSidWriteTrace();
 
         if (!player.config(cfg))
         {
@@ -167,6 +327,8 @@ public:
             lastError = player.error();
         }
 
+        clearSidWriteTrace();
+
         return selected;
     }
 
@@ -212,7 +374,34 @@ public:
             lastError = player.error();
             return false;
         }
+        clearSidWriteTrace();
         return true;
+    }
+
+    void setSidWriteTraceEnabled(bool enabled)
+    {
+        traceEnabled = enabled;
+        if (!traceEnabled)
+        {
+            clearSidWriteTrace();
+        }
+    }
+
+    emscripten::val getAndClearSidWriteTraces()
+    {
+        emscripten::val traces = emscripten::val::array();
+        for (size_t index = 0; index < sidWriteTrace.size(); ++index)
+        {
+            const SidWriteTraceRecord &trace = sidWriteTrace[index];
+            emscripten::val entry = emscripten::val::object();
+            entry.set("sidNumber", trace.sidNumber);
+            entry.set("address", trace.address);
+            entry.set("value", trace.value);
+            entry.set("cyclePhi1", trace.cyclePhi1);
+            traces.set(index, entry);
+        }
+        clearSidWriteTrace();
+        return traces;
     }
 
     bool hasTune() const
@@ -379,6 +568,11 @@ public:
     }
 
 private:
+    void clearSidWriteTrace()
+    {
+        sidWriteTrace.clear();
+    }
+
     bool finalizeTuneLoad()
     {
         if (!configured && !configure(sampleRate, stereo))
@@ -387,6 +581,9 @@ private:
         }
 
         tune->selectSong(0);
+
+        builder->resetTraceState();
+        clearSidWriteTrace();
 
         if (!player.load(tune.get()))
         {
@@ -410,7 +607,7 @@ private:
     }
 
     sidplayfp player;
-    std::unique_ptr<DefaultSidBuilder> builder;
+    std::unique_ptr<TracingSidBuilder> builder;
     std::unique_ptr<SidTune> tune;
     std::vector<uint8_t> tuneBuffer;
     std::vector<int16_t> mixBuffer;
@@ -421,7 +618,9 @@ private:
     unsigned int channels;
     uint32_t sampleRate;
     bool configured;
+    bool traceEnabled = false;
     std::string lastError;
+    std::vector<SidWriteTraceRecord> sidWriteTrace;
 };
 
 EMSCRIPTEN_BINDINGS(libsidplayfp_wasm)
@@ -434,6 +633,8 @@ EMSCRIPTEN_BINDINGS(libsidplayfp_wasm)
         .function("selectSong", &SidPlayerContext::selectSong)
         .function("render", &SidPlayerContext::render)
         .function("reset", &SidPlayerContext::reset)
+        .function("setSidWriteTraceEnabled", &SidPlayerContext::setSidWriteTraceEnabled)
+        .function("getAndClearSidWriteTraces", &SidPlayerContext::getAndClearSidWriteTraces)
         .function("hasTune", &SidPlayerContext::hasTune)
         .function("isStereo", &SidPlayerContext::isStereo)
         .function("getChannels", &SidPlayerContext::getChannels)

@@ -9,9 +9,14 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import type { FeedbackRecord } from '@sidflow/common';
+import {
+  aggregateFeedbackBySidPath,
+  calculateTemporalDecayWeight,
+  type AggregatedFeedback,
+  type FeedbackRecord,
+} from '@sidflow/common';
 
-const FEEDBACK_HALF_LIFE_DAYS = 90;
+export { calculateTemporalDecayWeight } from '@sidflow/common';
 
 /**
  * Cache entry for aggregated feedback data.
@@ -63,30 +68,7 @@ export interface AggregateRating {
   };
 }
 
-interface FeedbackAggregate {
-  likes: number;
-  dislikes: number;
-  skips: number;
-  plays: number;
-  recentPlays: number;
-  decayedLikes: number;
-  decayedDislikes: number;
-  decayedSkips: number;
-  decayedPlays: number;
-  decayedRecentPlays: number;
-  lastPlayed?: string;
-}
-
-export function calculateTemporalDecayWeight(timestamp: string, now: Date = new Date(), halfLifeDays = FEEDBACK_HALF_LIFE_DAYS): number {
-  const eventTime = Date.parse(timestamp);
-  if (!Number.isFinite(eventTime)) {
-    // Unparsable timestamps should not be treated as fully recent; ignore them with weight 0.
-    return 0;
-  }
-  const ageDays = Math.max(0, (now.getTime() - eventTime) / (24 * 60 * 60 * 1000));
-  const lambda = Math.log(2) / Math.max(1, halfLifeDays);
-  return Math.exp(-lambda * ageDays);
-}
+interface FeedbackAggregate extends AggregatedFeedback {}
 
 /**
  * Reads all feedback JSONL files from a directory recursively.
@@ -130,86 +112,7 @@ async function readFeedbackFiles(feedbackPath: string): Promise<FeedbackRecord[]
  * Aggregates feedback events by SID path.
  */
 export function aggregateFeedback(events: FeedbackRecord[], now: Date = new Date()): Map<string, FeedbackAggregate> {
-  const aggregates = new Map<string, FeedbackAggregate>();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  
-  for (const event of events) {
-    const decayWeight = calculateTemporalDecayWeight(event.ts, now);
-    const existing = aggregates.get(event.sid_path) ?? {
-      likes: 0,
-      dislikes: 0,
-      skips: 0,
-      plays: 0,
-      recentPlays: 0,
-      decayedLikes: 0,
-      decayedDislikes: 0,
-      decayedSkips: 0,
-      decayedPlays: 0,
-      decayedRecentPlays: 0,
-    };
-    
-    // Update counts based on action
-    switch (event.action) {
-      case 'like':
-        existing.likes++;
-        existing.decayedLikes += decayWeight;
-        break;
-      case 'dislike':
-        existing.dislikes++;
-        existing.decayedDislikes += decayWeight;
-        break;
-      case 'skip':
-        existing.skips++;
-        existing.decayedSkips += decayWeight;
-        break;
-      case 'skip_early':
-        existing.skips++;
-        existing.decayedSkips += decayWeight * 1.2;
-        break;
-      case 'skip_late':
-        existing.skips++;
-        existing.decayedSkips += decayWeight * 0.6;
-        break;
-      case 'play':
-        existing.plays++;
-        existing.decayedPlays += decayWeight;
-        // Count recent plays for trending
-        if (event.ts >= sevenDaysAgo) {
-          existing.recentPlays++;
-          existing.decayedRecentPlays += decayWeight;
-        }
-        break;
-      case 'play_complete':
-        existing.plays++;
-        existing.decayedPlays += decayWeight * 1.1;
-        existing.decayedLikes += decayWeight * 0.6;
-        if (event.ts >= sevenDaysAgo) {
-          existing.recentPlays++;
-          existing.decayedRecentPlays += decayWeight;
-        }
-        break;
-      case 'replay':
-        existing.plays++;
-        existing.decayedPlays += decayWeight * 1.2;
-        existing.decayedLikes += decayWeight * 1.2;
-        if (event.ts >= sevenDaysAgo) {
-          existing.recentPlays++;
-          existing.decayedRecentPlays += decayWeight * 1.1;
-        }
-        break;
-    }
-    
-    // Track most recent play timestamp for play, play_complete, replay, and like.
-    if ((event.action === 'play' || event.action === 'play_complete' || event.action === 'replay' || event.action === 'like')) {
-      if (!existing.lastPlayed || event.ts > existing.lastPlayed) {
-        existing.lastPlayed = event.ts;
-      }
-    }
-    
-    aggregates.set(event.sid_path, existing);
-  }
-  
-  return aggregates;
+  return aggregateFeedbackBySidPath(events, now);
 }
 
 /**

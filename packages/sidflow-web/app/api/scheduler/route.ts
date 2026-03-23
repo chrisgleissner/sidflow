@@ -10,6 +10,9 @@ import type { ApiResponse } from '@/lib/validation';
 interface SchedulerResponse {
   scheduler: SchedulerConfig;
   renderPrefs: RenderPreferences;
+  training: {
+    enabled: boolean;
+  };
   status: ReturnType<typeof getSchedulerStatus>;
 }
 
@@ -37,6 +40,9 @@ export async function GET() {
           enableFlac: false,
           enableM4a: false,
         },
+        training: {
+          enabled: prefs.training?.enabled ?? false,
+        },
         status,
       },
     };
@@ -58,7 +64,8 @@ export async function GET() {
  * Request body:
  * {
  *   scheduler?: { enabled?: boolean, time?: string, timezone?: string },
- *   renderPrefs?: { preserveWav?: boolean, enableFlac?: boolean, enableM4a?: boolean }
+ *   renderPrefs?: { preserveWav?: boolean, enableFlac?: boolean, enableM4a?: boolean },
+ *   training?: { enabled?: boolean }
  * }
  */
 export async function POST(request: NextRequest) {
@@ -118,6 +125,21 @@ export async function POST(request: NextRequest) {
         timezone: scheduler.timezone ?? currentPrefs.scheduler?.timezone ?? 'UTC',
       };
     }
+
+    let trainingUpdate: { enabled: boolean } | undefined;
+    if (body.training !== undefined) {
+      const training = body.training;
+      if (typeof training !== 'object' || training === null || Array.isArray(training)) {
+        throw new Error('training must be an object');
+      }
+      if (training.enabled !== undefined && typeof training.enabled !== 'boolean') {
+        throw new Error('training.enabled must be a boolean');
+      }
+
+      trainingUpdate = {
+        enabled: training.enabled ?? currentPrefs.training?.enabled ?? false,
+      };
+    }
     
     // Validate and normalize render preferences
     let renderPrefsUpdate: RenderPreferences | undefined;
@@ -142,8 +164,8 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if any updates were provided
-    if (schedulerUpdate === undefined && renderPrefsUpdate === undefined) {
-      throw new Error('Request body must contain at least one of: scheduler, renderPrefs');
+    if (schedulerUpdate === undefined && renderPrefsUpdate === undefined && trainingUpdate === undefined) {
+      throw new Error('Request body must contain at least one of: scheduler, renderPrefs, training');
     }
     
     // Apply updates
@@ -153,6 +175,9 @@ export async function POST(request: NextRequest) {
     }
     if (renderPrefsUpdate !== undefined) {
       updates.renderPrefs = renderPrefsUpdate;
+    }
+    if (trainingUpdate !== undefined) {
+      updates.training = trainingUpdate;
     }
     
     const updatedPrefs = await updateWebPreferences(updates);
@@ -176,6 +201,9 @@ export async function POST(request: NextRequest) {
           preserveWav: true,
           enableFlac: false,
           enableM4a: false,
+        },
+        training: {
+          enabled: updatedPrefs.training?.enabled ?? false,
         },
         status,
       },

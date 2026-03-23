@@ -123,7 +123,7 @@ describe("classification helpers", () => {
 
     const config = {
       maxRenderSec: 45,
-      introSkipSec: 30,
+      introSkipSec: 15,
       maxClassifySec: 15,
     } as any;
 
@@ -132,7 +132,7 @@ describe("classification helpers", () => {
     await writeFile(wavFile, "wav");
     await writeFile(
       renderSettingsFile,
-      JSON.stringify({ v: 1, maxRenderSec: 45, introSkipSec: 30, maxClassifySec: 15 })
+      JSON.stringify({ v: 1, maxRenderSec: 45, introSkipSec: 15, maxClassifySec: 15 })
     );
     expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeFalse();
 
@@ -174,7 +174,7 @@ describe("classification helpers", () => {
     const plan = {
       config: {
         maxRenderSec: 45,
-        introSkipSec: 30,
+        introSkipSec: 15,
         maxClassifySec: 15,
       } as ClassificationPlan["config"],
       forceRebuild: false,
@@ -375,7 +375,7 @@ describe("classification helpers", () => {
     );
 
     const plan = {
-      config: { maxRenderSec: 45, introSkipSec: 30, maxClassifySec: 15 } as ClassificationPlan["config"],
+      config: { maxRenderSec: 45, introSkipSec: 15, maxClassifySec: 15 } as ClassificationPlan["config"],
       forceRebuild: false,
       classificationDepth: 3,
       sidPath,
@@ -442,8 +442,8 @@ describe("classification helpers", () => {
       }
     });
 
-    // Use the resolved HVSC duration when it is below the effective max render duration.
-    expect(observedDuration).toBe(30_500);
+    // The shared 15s skip + 15s analysis window caps the default render at 30s.
+    expect(observedDuration).toBe(30_000);
 
     await rm(root, { recursive: true, force: true });
   });

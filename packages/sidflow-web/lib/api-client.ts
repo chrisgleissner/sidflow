@@ -16,6 +16,7 @@ import type { ClassifyProgressSnapshot, ClassifyStorageStats } from './types/cla
 import type { RateTrackInfo, RateTrackMetadata } from './types/rate-track';
 import type { PlaybackSessionDescriptor } from './types/playback-session';
 import type { RenderTechnology } from '@sidflow/common';
+import type { C64ULedSnapshot } from '@sidflow/common';
 
 export type { RateTrackInfo, RateTrackMetadata };
 
@@ -225,6 +226,24 @@ export async function requestStationFromSong(
     body: JSON.stringify(request),
   });
   return response.json();
+}
+
+export interface C64ULedRequest {
+  configPath?: string;
+  c64uHost?: string;
+  c64uPassword?: string;
+  c64uHttps?: boolean;
+  mode?: string;
+  autoSidMode?: string;
+  pattern?: string;
+  intensity?: number;
+  fixedColor?: string;
+}
+
+export async function requestC64ULed(
+  request: C64ULedRequest = {}
+): Promise<ApiResponse<C64ULedSnapshot>> {
+  return apiRequest('/play/c64u-led', request);
 }
 
 export interface SidCollectionPathsPayload {

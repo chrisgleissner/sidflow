@@ -445,3 +445,10 @@ export async function trainModel(
     summary
   };
 }
+
+// Re-export D1–D5 modules for consumers that import from @sidflow/train
+export * from "./pair-builder.js";
+export * from "./metric-learning.js";
+export * from "./evaluate.js";
+export * from "./scheduler.js";
+export * from "./offline-evaluation.js";

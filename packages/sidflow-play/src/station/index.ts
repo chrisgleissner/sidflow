@@ -111,7 +111,21 @@ export {
   chooseStationTracks,
   orderStationTracksByFlow,
   summarizeRatingAnchors,
+  computeAdventureMinSimilarity,
 } from "./queue.js";
+
+export {
+  buildIntentModel,
+  interleaveClusterResults,
+  cosineSim,
+  cosineDist,
+  weightedCentroid,
+  kMeans2,
+  CLUSTER_SPLIT_THRESHOLD,
+  CLUSTER_MIN_TRACKS,
+  type IntentCluster,
+  type IntentModel,
+} from "./intent.js";
 
 export {
   buildSelectionStatePath,

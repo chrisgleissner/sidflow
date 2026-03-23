@@ -1,6 +1,7 @@
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import {
+  cosineSimilarity,
   pathExists,
   recommendFromFavorites,
   type SidFileMetadata,
@@ -15,10 +16,30 @@ import type {
   StationRuntime,
 } from "./types.js";
 import { extractYear, isTrackLongEnough, resolveTrackDurationMs } from "./formatting.js";
+import { buildIntentModel, interleaveClusterResults, type IntentModel } from "./intent.js";
 
 const DEFAULT_MIN_SIMILARITY = 0.75;
 const COLD_START_MIN_SIMILARITY = 0.82;
 const MAX_RATING_DEVIATION = 1.5;
+
+/** C3: Minimum similarity floor (hard), regardless of adventure setting. */
+const ADVENTURE_HARD_FLOOR = 0.50;
+/** C3: Base minimum similarity at adventure=0. */
+const ADVENTURE_BASE_SIM = 0.82;
+/** C3: How much each adventure unit relaxes the threshold. */
+const ADVENTURE_STEP = 0.03;
+/** C3: Fraction of station slots filled from top-similarity candidates (exploitation). */
+const EXPLOIT_FRACTION = 0.70;
+/** C3: Width of the exploration band above min_sim. */
+const EXPLORE_BAND_WIDTH = 0.10;
+
+/**
+ * C3: Compute the adventure-adjusted minimum similarity threshold.
+ * min_sim = max(ADVENTURE_HARD_FLOOR, ADVENTURE_BASE_SIM - adventure * ADVENTURE_STEP)
+ */
+export function computeAdventureMinSimilarity(adventure: number): number {
+  return Math.max(ADVENTURE_HARD_FLOOR, ADVENTURE_BASE_SIM - adventure * ADVENTURE_STEP);
+}
 
 export function buildStationSongKey(track: Pick<StationTrackRow, "sid_path" | "song_index">): string {
   return `${track.sid_path}#${track.song_index}`;
@@ -183,7 +204,12 @@ export function buildWeightsByTrackId(ratings: Map<string, number>): Record<stri
   return result;
 }
 
-function resolveMinimumSimilarity(ratings: Map<string, number>): number {
+function resolveMinimumSimilarity(ratings: Map<string, number>, adventure?: number): number {
+  // C3: If adventure is given, use radius-expansion formula
+  if (adventure !== undefined) {
+    return computeAdventureMinSimilarity(adventure);
+  }
+  // Phase A fallback: cold-start vs default
   return ratings.size < 10 ? COLD_START_MIN_SIMILARITY : DEFAULT_MIN_SIMILARITY;
 }
 
@@ -242,24 +268,6 @@ function pickFavoriteTrackIds(ratings: Map<string, number>): string[] {
   return fallback ? [fallback[0]] : [];
 }
 
-function cosineSimilarity(left: number[], right: number[]): number {
-  let dot = 0;
-  let leftNorm = 0;
-  let rightNorm = 0;
-  const dimensions = Math.min(left.length, right.length);
-  for (let index = 0; index < dimensions; index += 1) {
-    const leftValue = left[index] ?? 0;
-    const rightValue = right[index] ?? 0;
-    dot += leftValue * rightValue;
-    leftNorm += leftValue * leftValue;
-    rightNorm += rightValue * rightValue;
-  }
-  if (leftNorm === 0 || rightNorm === 0) {
-    return 0;
-  }
-  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
-}
-
 export function deriveStationBucketKey(sidPath: string): string {
   const segments = sidPath.split(/[\\/]+/).filter(Boolean);
   if (segments.length === 0) {
@@ -284,86 +292,97 @@ export function chooseStationTracks(
     return recommendations;
   }
 
+  // C3: Adventure radius expansion — split into exploit (top 70%) and explore (boundary band 30%)
+  const minSim = computeAdventureMinSimilarity(adventure);
+  const exploitCount = Math.max(1, Math.round(stationSize * EXPLOIT_FRACTION));
+  const exploreCount = stationSize - exploitCount;
+
+  const sorted = [...recommendations].sort((left, right) => right.score - left.score || left.rank - right.rank);
+
+  // Exploitation pool: all candidates above min_sim + explore_band_width (top similarity)
+  const exploitPool = sorted.filter((r) => r.score > minSim + EXPLORE_BAND_WIDTH);
+  // Exploration band: candidates between [min_sim, min_sim + explore_band_width]
+  const explorePool = sorted.filter((r) => r.score >= minSim && r.score <= minSim + EXPLORE_BAND_WIDTH);
+
+  // If exploit pool is too small, fold all candidates into it
+  const useExploitExplore = exploitPool.length >= exploitCount && explorePool.length > 0;
+
   const chosen: SimilarityExportRecommendation[] = [];
   const used = new Set<string>();
   const bucketCounts = new Map<string, number>();
-  const sorted = [...recommendations].sort((left, right) => right.score - left.score || left.rank - right.rank);
-  const bestScore = sorted[0]?.score ?? 0;
-  const worstScore = sorted[sorted.length - 1]?.score ?? bestScore;
-  const scoreExponent = Math.max(1.15, 3.05 - (Math.max(1, adventure) * 0.35));
-  const candidatesByBucket = new Map<string, SimilarityExportRecommendation[]>();
 
-  for (const recommendation of sorted) {
-    const bucketKey = deriveStationBucketKey(recommendation.sid_path);
-    const bucket = candidatesByBucket.get(bucketKey) ?? [];
-    bucket.push(recommendation);
-    candidatesByBucket.set(bucketKey, bucket);
+  function pickFromPoolBucketDiversified(pool: SimilarityExportRecommendation[], targetCount: number, weighted: boolean): void {
+    const candidatesByBucket = new Map<string, SimilarityExportRecommendation[]>();
+    for (const rec of pool) {
+      if (used.has(rec.track_id)) continue;
+      const key = deriveStationBucketKey(rec.sid_path);
+      const arr = candidatesByBucket.get(key) ?? [];
+      arr.push(rec);
+      candidatesByBucket.set(key, arr);
+    }
+
+    const bestScore = pool[0]?.score ?? 0;
+    const worstScore = pool[pool.length - 1]?.score ?? bestScore;
+
+    for (let index = 0; index < targetCount; index++) {
+      const bucketEntries = [...candidatesByBucket.entries()].filter(([, cands]) => cands.some((e) => !used.has(e.track_id)));
+      if (bucketEntries.length === 0) break;
+
+      const minBucketCount = Math.min(...bucketEntries.map(([key]) => bucketCounts.get(key) ?? 0));
+      const eligibleBuckets = bucketEntries.filter(([key]) => (bucketCounts.get(key) ?? 0) === minBucketCount);
+
+      const weightedBuckets = eligibleBuckets.map(([key, cands]) => {
+        const next = cands.find((e) => !used.has(e.track_id));
+        let w: number;
+        if (!weighted || !next || bestScore === worstScore) {
+          w = 1;
+        } else {
+          const norm = Math.max(0, Math.min(1, (next.score - worstScore) / (bestScore - worstScore)));
+          w = Math.max(0.0001, Math.pow(0.05 + norm * 0.95, 2));
+        }
+        return { key, cands, w };
+      });
+
+      const totalW = weightedBuckets.reduce((s, b) => s + b.w, 0);
+      let cursor = random() * totalW;
+      let selBucket = weightedBuckets[weightedBuckets.length - 1]!;
+      for (const b of weightedBuckets) {
+        cursor -= b.w;
+        if (cursor <= 0) { selBucket = b; break; }
+      }
+
+      const available = selBucket.cands.filter((e) => !used.has(e.track_id));
+      if (available.length === 0) continue;
+
+      // In explore band: uniform random pick; in exploit: score-weighted pick
+      let pick: SimilarityExportRecommendation;
+      if (!weighted) {
+        pick = available[Math.floor(random() * available.length)]!;
+      } else {
+        const totalScore = available.reduce((s, e) => s + Math.max(0.0001, e.score), 0);
+        let sc = random() * totalScore;
+        pick = available[available.length - 1]!;
+        for (const e of available) {
+          sc -= Math.max(0.0001, e.score);
+          if (sc <= 0) { pick = e; break; }
+        }
+      }
+
+      chosen.push(pick);
+      used.add(pick.track_id);
+      bucketCounts.set(selBucket.key, (bucketCounts.get(selBucket.key) ?? 0) + 1);
+    }
   }
 
-  for (let index = 0; index < stationSize && used.size < sorted.length; index += 1) {
-    const bucketEntries = [...candidatesByBucket.entries()].filter(([, bucketCandidates]) => bucketCandidates.some((entry) => !used.has(entry.track_id)));
-    if (bucketEntries.length === 0) {
-      break;
-    }
-
-    const minBucketCount = Math.min(...bucketEntries.map(([bucketKey]) => bucketCounts.get(bucketKey) ?? 0));
-    const eligibleBuckets = bucketEntries.filter(([bucketKey]) => (bucketCounts.get(bucketKey) ?? 0) === minBucketCount);
-
-    const weightedBuckets = eligibleBuckets.map(([bucketKey, bucketCandidates]) => {
-      const nextCandidate = bucketCandidates.find((entry) => !used.has(entry.track_id));
-      const normalizedScore = !nextCandidate || bestScore === worstScore
-        ? 1
-        : Math.max(0, Math.min(1, (nextCandidate.score - worstScore) / (bestScore - worstScore)));
-      const scoreWeight = Math.pow(0.05 + (normalizedScore * 0.95), scoreExponent);
-      return {
-        bucketCandidates,
-        bucketKey,
-        weight: Math.max(0.0001, scoreWeight),
-      };
-    });
-
-    const totalBucketWeight = weightedBuckets.reduce((sum, bucket) => sum + bucket.weight, 0);
-    let bucketCursor = random() * totalBucketWeight;
-    let selectedBucket = weightedBuckets[weightedBuckets.length - 1]!;
-    for (const bucket of weightedBuckets) {
-      bucketCursor -= bucket.weight;
-      if (bucketCursor <= 0) {
-        selectedBucket = bucket;
-        break;
-      }
-    }
-
-    const bucketCandidates = selectedBucket.bucketCandidates.filter((entry) => !used.has(entry.track_id));
-    if (bucketCandidates.length === 0) {
-      continue;
-    }
-
-    const weightedCandidates = bucketCandidates.map((entry) => {
-      const normalizedScore = bestScore === worstScore
-        ? 1
-        : Math.max(0, Math.min(1, (entry.score - worstScore) / (bestScore - worstScore)));
-      const scoreWeight = Math.pow(0.05 + (normalizedScore * 0.95), scoreExponent);
-      return {
-        entry,
-        weight: Math.max(0.0001, scoreWeight),
-      };
-    });
-
-    const totalWeight = weightedCandidates.reduce((sum, candidate) => sum + candidate.weight, 0);
-    let cursor = random() * totalWeight;
-    let picked = weightedCandidates[weightedCandidates.length - 1]!;
-
-    for (const candidate of weightedCandidates) {
-      cursor -= candidate.weight;
-      if (cursor <= 0) {
-        picked = candidate;
-        break;
-      }
-    }
-
-    chosen.push(picked.entry);
-    used.add(picked.entry.track_id);
-    bucketCounts.set(selectedBucket.bucketKey, (bucketCounts.get(selectedBucket.bucketKey) ?? 0) + 1);
+  if (useExploitExplore) {
+    pickFromPoolBucketDiversified(exploitPool, exploitCount, true);
+    pickFromPoolBucketDiversified(explorePool, exploreCount, false);
+  } else {
+    // Fallback: prefer tracks at or above minSim; only widen to the full
+    // sorted list when we cannot fill stationSize from the qualified pool.
+    const filteredFallback = sorted.filter((r) => r.score >= minSim);
+    const pool = filteredFallback.length >= stationSize ? filteredFallback : sorted;
+    pickFromPoolBucketDiversified(pool, stationSize, true);
   }
 
   return chosen;
@@ -501,20 +520,58 @@ export async function buildStationQueue(
   const weightsByTrackId = buildWeightsByTrackId(ratings);
   const favoriteRows = [...readTrackRowsByIds(dbPath, favoriteTrackIds).values()];
   const ratingCentroid = buildWeightedRatingCentroid(favoriteRows, weightsByTrackId);
-  const minSimilarity = resolveMinimumSimilarity(ratings);
+
+  // C3: Use adventure-radius-expansion min_sim
+  const minSimilarity = computeAdventureMinSimilarity(adventure);
+
   const excludeTrackIds = [...ratings.entries()].filter(([, rating]) => rating <= 2).map(([trackId]) => trackId);
+
+  // C1: Build intent model to detect multi-cluster preferences
+  const favoriteVectors = readTrackVectorsByIds(dbPath, favoriteTrackIds);
+  const weightsMap = new Map<string, number>(Object.entries(weightsByTrackId));
+  const intentModel: IntentModel = buildIntentModel(favoriteTrackIds, favoriteVectors, weightsMap);
+
   const recommendationLimitFloor = Math.max(stationSize * (3 + adventure), stationSize + 128);
   let recommendationLimit = recommendationLimitFloor;
   let details: StationTrackDetails[] = [];
   let previousCandidateCount = -1;
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const candidates = recommendFromFavorites(dbPath, {
-      favoriteTrackIds,
-      excludeTrackIds,
-      weightsByTrackId,
-      limit: recommendationLimit,
-    });
+    let candidates: SimilarityExportRecommendation[];
+
+    if (intentModel.multiCluster) {
+      // C1: Multi-centroid — fetch per cluster then interleave
+      const halfLimit = Math.max(1, Math.floor(recommendationLimit / 2));
+      const clusterCandidatesA = recommendFromFavorites(dbPath, {
+        favoriteTrackIds: intentModel.clusters[0]!.trackIds,
+        excludeTrackIds,
+        weightsByTrackId: Object.fromEntries(intentModel.clusters[0]!.trackIds.map((id, i) => [id, intentModel.clusters[0]!.weights[i] ?? 1])),
+        limit: halfLimit,
+      });
+      const clusterCandidatesB = recommendFromFavorites(dbPath, {
+        favoriteTrackIds: intentModel.clusters[1]!.trackIds,
+        excludeTrackIds,
+        weightsByTrackId: Object.fromEntries(intentModel.clusters[1]!.trackIds.map((id, i) => [id, intentModel.clusters[1]!.weights[i] ?? 1])),
+        limit: halfLimit,
+      });
+      // Interleave cluster results then dedupe by track_id
+      const interleaved = interleaveClusterResults(clusterCandidatesA, clusterCandidatesB);
+      const seenIds = new Set<string>();
+      candidates = [];
+      for (const c of interleaved) {
+        if (!seenIds.has(c.track_id)) {
+          seenIds.add(c.track_id);
+          candidates.push(c);
+        }
+      }
+    } else {
+      candidates = recommendFromFavorites(dbPath, {
+        favoriteTrackIds,
+        excludeTrackIds,
+        weightsByTrackId,
+        limit: recommendationLimit,
+      });
+    }
 
     if (candidates.length === previousCandidateCount) {
       break;
