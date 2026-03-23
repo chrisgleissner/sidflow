@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
+import type { SidAudioEngine, SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
 
 export interface RenderWavOptions {
   sidFile: string;
@@ -15,6 +15,18 @@ export interface RenderWavOptions {
   onProgress?: (progress: RenderProgress) => void;
   /** Interval in ms between progress callbacks (default: 1000ms) */
   progressIntervalMs?: number;
+  /**
+   * If true, capture SID register-write traces during rendering and write a
+   * .trace.json sidecar alongside the WAV. The sidecar can be reused by the
+   * SID-native feature extractor to avoid a second full WASM render pass.
+   */
+  captureTrace?: boolean;
+  /** Clock standard to store in the trace sidecar (default "PAL"). */
+  traceClock?: string;
+  /** Intro-skip seconds stored in the trace sidecar (should match introSkipSec config). */
+  traceIntroSkipSec?: number;
+  /** Analysis-window seconds stored in the trace sidecar (should match maxClassifySec config). */
+  traceAnalysisSec?: number;
 }
 
 export interface RenderProgress {
@@ -28,6 +40,23 @@ export const RENDER_CYCLES_PER_CHUNK = 20_000;
 export const MAX_RENDER_SECONDS = 600;
 export const MAX_SILENT_ITERATIONS = 32;
 export const WAV_HASH_EXTENSION = ".sha256";
+/** Extension for the SID register-write trace sidecar captured during WAV rendering. */
+export const SID_TRACE_EXTENSION = ".trace.json";
+
+/**
+ * SID register-write trace sidecar written alongside the WAV.
+ * Allows the SID-native feature extractor to reuse the trace from the WAV render
+ * instead of performing a second full WASM render pass.
+ */
+export interface SidTraceSidecar {
+  traces: SidWriteTrace[];
+  /** Clock standard used during rendering ("PAL" | "NTSC"). */
+  clock: string;
+  /** Seconds to skip from the start (matches introSkipSec). */
+  skipSeconds: number;
+  /** Seconds of analysis window (matches maxClassifySec). */
+  analysisSeconds: number;
+}
 
 const renderLogger = createLogger("renderWav");
 
@@ -104,6 +133,12 @@ export async function renderWavWithEngine(
   const { sidFile, wavFile, songIndex } = options;
 
   await ensureDir(path.dirname(wavFile));
+
+  // Enable trace capture BEFORE loading the buffer so the context is configured with
+  // tracing on from the first cycle. getAndClearSidWriteTraces() is called after rendering.
+  if (options.captureTrace) {
+    engine.setSidWriteTraceEnabled(true);
+  }
 
   const sidBuffer = new Uint8Array(await readFile(sidFile));
   await engine.loadSidBuffer(sidBuffer);
@@ -239,4 +274,21 @@ export async function renderWavWithEngine(
   }
 
   renderLogger.debug(`✓ COMPLETE for ${path.basename(wavFile)}`);
+
+  // Write trace sidecar so the SID-native feature extractor can reuse these traces
+  // instead of performing a second full WASM render pass for the same song.
+  if (options.captureTrace) {
+    const traces = engine.getAndClearSidWriteTraces();
+    const sidecar: SidTraceSidecar = {
+      traces,
+      clock: options.traceClock ?? "PAL",
+      skipSeconds: options.traceIntroSkipSec ?? 15,
+      analysisSeconds: options.traceAnalysisSec ?? 15,
+    };
+    try {
+      await writeFile(`${wavFile}${SID_TRACE_EXTENSION}`, JSON.stringify(sidecar));
+    } catch (err) {
+      renderLogger.warn(`Trace sidecar write failed for ${path.basename(wavFile)}`, err);
+    }
+  }
 }

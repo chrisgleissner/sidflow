@@ -42,6 +42,7 @@ import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.
 import { getLogicalCpuCount } from "./system.js";
 import {
   WAV_HASH_EXTENSION,
+  SID_TRACE_EXTENSION,
   computeFileHash,
   renderWavWithEngine,
   type RenderWavOptions
@@ -450,7 +451,7 @@ export async function cleanAudioCache(audioCachePath: string): Promise<number> {
     return 0;
   }
 
-  const audioExtensions = [".wav", ".flac", ".m4a", WAV_HASH_EXTENSION, WAV_RENDER_SETTINGS_EXTENSION];
+  const audioExtensions = [".wav", ".flac", ".m4a", WAV_HASH_EXTENSION, WAV_RENDER_SETTINGS_EXTENSION, SID_TRACE_EXTENSION];
   let deletedCount = 0;
 
   async function cleanDir(current: string): Promise<void> {
@@ -1523,9 +1524,19 @@ export async function generateAutoTags(
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const wavFeatureExtractorBase = options.featureExtractor ?? defaultFeatureExtractor;
   const wavFeatureExtractor = withFeatureExtractionPool(plan, wavFeatureExtractorBase);
+  // When the WASM feature pool is active, SID-native extraction happens inside the
+  // worker threads (reading the trace sidecar written by the WAV render workers).
+  // In that case we use the pool result directly to avoid serialising the same
+  // work on the main thread. Without the pool (threads=1 / no WASM) we fall back
+  // to the hybrid extractor which runs SID-native on the main thread.
+  const poolIsActive = !options.featureExtractor
+    && ((plan.config.render?.preferredEngines as RenderEngine[] | undefined) ?? ["wasm"]).includes("wasm")
+    && plan.config.threads !== 1;
   const featureExtractor = options.featureExtractor
     ? wavFeatureExtractor
-    : createHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
+    : poolIsActive
+      ? wavFeatureExtractor
+      : createHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
   const predictRatingsOverride = options.predictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
@@ -1844,7 +1855,13 @@ export async function generateAutoTags(
           wavFile: job.wavPath,
           songIndex: job.songCount > 1 ? job.songIndex : undefined,
           maxRenderSeconds: effectiveMaxRenderSeconds,
-          targetDurationMs: job.targetDurationMs
+          targetDurationMs: job.targetDurationMs,
+          // Capture SID register-write trace during WAV rendering so the
+          // SID-native feature extractor can reuse it without a second render pass.
+          captureTrace: true,
+          traceClock: sidMetadataCache.get(job.sidFile)?.clock,
+          traceIntroSkipSec: resolveIntroSkipSec(plan.config),
+          traceAnalysisSec: resolveMaxClassifySec(plan.config),
         };
         
         try {
@@ -1930,6 +1947,10 @@ export async function generateAutoTags(
     classifyLogger.debug(
       `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
     );
+
+    // Delete trace sidecar immediately after extraction — it was only needed for this step.
+    // This keeps peak disk usage near zero rather than accumulating for all songs.
+    void rm(`${job.wavPath}${SID_TRACE_EXTENSION}`, { force: true });
 
     const autoFilePath = resolveAutoTagFilePath(plan.tagsPath, job.relativePath, plan.classificationDepth);
     const baseKey = toPosixRelative(resolveAutoTagKey(job.relativePath, plan.classificationDepth));
@@ -2122,6 +2143,8 @@ export async function generateAutoTags(
           // Also delete the hash file if it exists
           const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
           await rm(hashFile, { force: true });
+          // Trace sidecar is deleted per-song after extraction, but clean up any stragglers.
+          await rm(`${wavFile}${SID_TRACE_EXTENSION}`, { force: true });
           successCount += 1;
         } catch (error) {
           classifyLogger.warn(`Failed to delete ${wavFile}: ${(error as Error).message}`);

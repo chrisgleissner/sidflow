@@ -29,6 +29,12 @@ import {
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
+import { extractSidNativeFeaturesFromWriteTrace } from "./sid-native-features.js";
+import type { SidTraceSidecar } from "./render/wav-renderer.js";
+
+// Mirror of the constant in wav-renderer.ts — kept in sync manually to avoid pulling
+// in the WAV renderer's WASM dependencies at worker startup.
+const SID_TRACE_EXTENSION = ".trace.json";
 
 // Default target sample rate for SID music analysis.
 // SID output is ~4kHz effective bandwidth, so 11025 Hz captures all relevant content
@@ -496,6 +502,28 @@ async function extractBasicFeatures(
 }
 
 /**
+ * Read the trace sidecar (written by the WAV render worker alongside the WAV)
+ * and extract SID-native features within this worker thread.
+ * Returns an empty object if the sidecar is absent or corrupt.
+ */
+async function extractSidNativeFeaturesForWorker(wavFile: string): Promise<FeatureVector> {
+  const traceFile = `${wavFile}${SID_TRACE_EXTENSION}`;
+  try {
+    const raw = await readFile(traceFile, "utf8");
+    const sidecar = JSON.parse(raw) as SidTraceSidecar;
+    return extractSidNativeFeaturesFromWriteTrace({
+      traces: sidecar.traces,
+      clock: sidecar.clock as "PAL" | "NTSC",
+      skipSeconds: sidecar.skipSeconds,
+      analysisSeconds: sidecar.analysisSeconds,
+    });
+  } catch {
+    // Sidecar absent (cached WAV) or corrupt — return no SID features.
+    return {};
+  }
+}
+
+/**
  * Handle incoming extraction requests
  */
 async function handleExtract(
@@ -508,7 +536,17 @@ async function handleExtract(
     // Ensure Essentia is initialized (once per worker)
     await initEssentia();
     
-    const features = await extractFeatures(wavFile, sidFile, configPath);
+    const [wavFeatures, sidFeatures] = await Promise.all([
+      extractFeatures(wavFile, sidFile, configPath),
+      extractSidNativeFeaturesForWorker(wavFile),
+    ]);
+    // Merge: WAV features take priority; SID-native keys only added where absent.
+    const features: FeatureVector = { ...wavFeatures };
+    for (const [key, value] of Object.entries(sidFeatures)) {
+      if (!Object.prototype.hasOwnProperty.call(features, key)) {
+        features[key] = value;
+      }
+    }
     const response: WorkerResponse = { type: "result", jobId, features };
     parentPort!.postMessage(response);
   } catch (error) {

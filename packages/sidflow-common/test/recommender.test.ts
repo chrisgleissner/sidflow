@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { rm, mkdir, writeFile } from "node:fs/promises";
+import { rm, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { connect } from "vectordb";
 import {
   RecommendationEngine,
@@ -11,7 +12,7 @@ import {
 } from "../src/recommender.js";
 import type { DatabaseRecord } from "../src/lancedb-builder.js";
 
-const TEST_DB_PATH = "/tmp/test-recommender-db";
+let TEST_DB_PATH = "";
 
 /**
  * Create test database with sample records.
@@ -112,6 +113,7 @@ describe("RecommendationEngine", () => {
   ];
 
   beforeAll(async () => {
+    TEST_DB_PATH = await mkdtemp(join(tmpdir(), "test-recommender-db-"));
     await createTestDatabase(sampleRecords);
   });
 
@@ -498,8 +500,7 @@ describe("RecommendationEngine", () => {
   });
 
   test("prefers fresh decayed feedback over stale raw totals when beta dominates", async () => {
-    const dbPath = "/tmp/test-recommender-decayed-db";
-    await rm(dbPath, { recursive: true, force: true });
+    const dbPath = await mkdtemp(join(tmpdir(), "test-recommender-decayed-db-"));
 
     await createTestDatabaseAt(dbPath, [
       {
@@ -575,9 +576,7 @@ describe("RecommendationEngine", () => {
   });
 
   test("handles database with no tables gracefully", async () => {
-    const emptyDbPath = "/tmp/test-empty-db";
-    await rm(emptyDbPath, { recursive: true, force: true });
-    await mkdir(emptyDbPath, { recursive: true });
+    const emptyDbPath = await mkdtemp(join(tmpdir(), "test-empty-db-"));
     await connect(emptyDbPath); // Create empty database
 
     const engine = createRecommendationEngine({ dbPath: emptyDbPath });

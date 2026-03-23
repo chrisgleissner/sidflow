@@ -1,5 +1,5 @@
-import { parseSidFile, type SidClock } from "@sidflow/common";
-import { SidAudioEngine, type SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import { parseSidFile, pathExists, type SidClock } from "@sidflow/common";
+import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -9,7 +9,7 @@ import {
   type CompactSidWriteTraceOptions,
   type SidTraceVideoStandard,
 } from "./sid-register-trace.js";
-import { RENDER_CYCLES_PER_CHUNK } from "./render/wav-renderer.js";
+import { RENDER_CYCLES_PER_CHUNK, SID_TRACE_EXTENSION, type SidTraceSidecar } from "./render/wav-renderer.js";
 import type { ExtractFeaturesOptions, FeatureExtractor, FeatureVector } from "./index.js";
 
 const SID_MAX_FILTER_CUTOFF = 0x07ff;
@@ -103,8 +103,31 @@ export function createSidNativeFeatureExtractor(
 export async function defaultSidWriteTraceProvider(
   options: ExtractFeaturesOptions,
 ): Promise<SidWriteTraceCapture> {
+  // Fast path: reuse the trace sidecar written during WAV rendering.
+  // This avoids a second full WASM render pass (identical analysis window guaranteed
+  // because captureTrace uses the same introSkipSec / maxClassifySec config values).
+  if (options.wavFile) {
+    const traceFile = `${options.wavFile}${SID_TRACE_EXTENSION}`;
+    try {
+      if (await pathExists(traceFile)) {
+        const raw = await readFile(traceFile, "utf8");
+        const sidecar = JSON.parse(raw) as SidTraceSidecar;
+        return {
+          traces: sidecar.traces,
+          clock: sidecar.clock as SidClock,
+          skipSeconds: sidecar.skipSeconds,
+          analysisSeconds: sidecar.analysisSeconds,
+        };
+      }
+    } catch {
+      // Sidecar is unreadable or corrupt — fall through to full re-render.
+    }
+  }
+
+  // Slow path: render from scratch (no sidecar available, e.g. cached WAV from prior run).
   const metadata = await parseSidFile(options.sidFile);
   const sidBuffer = new Uint8Array(await readFile(options.sidFile));
+  const { SidAudioEngine } = await import("@sidflow/libsidplayfp-wasm");
   const engine = new SidAudioEngine();
 
   try {
