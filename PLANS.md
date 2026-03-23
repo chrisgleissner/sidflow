@@ -50,6 +50,40 @@ Template:
 
 ## Active tasks
 
+### Task: Dual-source classification audit and HVSC export (2026-03-23)
+
+**User request (summary)**
+- Audit dual-source (WAV + SID-native) classification pipeline for consistency, schema integrity, and absence of double counting.
+- Update README.md Portable Similarity Export section to be a minimal, linear, three-command walkthrough.
+- Execute a full HVSC reclassification (WAV + SID-native hybrid, 24D vector) and publish the resulting SQLite bundle as a GitHub release to `chrisgleissner/sidflow-data`.
+
+**Plan (checklist)**
+- [x] Phase 1 — Repository audit: pipeline, schema, documentation
+- [x] Phase 2 — Confirm no code/schema fixes required; document findings
+- [x] Phase 3 — Update `README.md` Portable Similarity Export section
+- [x] Phase 4a — `bun run build` to verify current codebase compiles (`tsc -b` exit 0)
+- [~] Phase 4b — Run `bash scripts/run-similarity-export.sh --mode local --full-rerun true` — IN PROGRESS (3.7 files/s, ~6h ETA from 08:26 UTC 2026-03-23)
+- [ ] Phase 5a — Verify export: ≥60k tracks, 24D vectors, `feature_schema_version: 1.3.0`, no nulls in key fields
+- [ ] Phase 5b — Run `bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true`
+- [ ] Phase 5c — Confirm release exists in `chrisgleissner/sidflow-data` with downloadable tarball
+
+**Decision log**
+- No code changes required: hybrid pipeline is implemented (I2–I6 complete), WAV/SID features are non-overlapping by prefix (`sid*` vs non-`sid*`), and `buildPerceptualVector()` uses explicit fusion strategy with residualized MFCC components — no double counting.
+- Existing classified data (1,003 entries at `feature_schema_version: 1.2.0` from 2026-03-13) must be discarded via `--full-rerun true` because it predates SID-native trace features (1.3.0).
+- Existing SQLite export (7 tracks, 4D vectors, generated 2026-03-13) is stale and will be replaced.
+- `.sidflow.json` uses `introSkipSec: 20`, `maxClassifySec: 20` — these are within the 15s+15s design window; no config change needed.
+
+**Progress log**
+- 2026-03-23 — Audited pipeline, schema, and documentation. No code fixes required. Updated README.md Portable Similarity Export section.
+
+**Termination criteria**
+- Classification output: ≥60,000 JSONL records with `sidFeatureVariant: "sid-native"` in `features`
+- Export: `feature_schema_version: 1.3.0`, `vector_dimensions: 24`, `track_count ≥ 60000`
+- Release: tag `sidcorr-hvsc-full-<timestamp>` exists in `chrisgleissner/sidflow-data`
+- README, PLANS, and WORKLOG reflect completed state
+
+---
+
 ### Task: PR #85 convergence (2026-03-22)
 
 **User request (summary)**

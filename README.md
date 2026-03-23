@@ -219,30 +219,25 @@ See [Deployment Guide](doc/deployment.md) for details.
 
 ## Portable Similarity Export
 
-After classification, SIDFlow can produce a self-contained SQLite bundle for offline or downstream consumers:
+Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 24-dimensional perceptual vectors (WAV + SID-native hybrid) for offline and downstream consumers.
+
+Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3`, `gh` (authenticated).
+
+**1. Reclassify the entire HVSC collection and generate the export:**
+
+```bash
+bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` and `sidcorr-hvsc-full-sidcorr-1.manifest.json`.
+
+**2. Regenerate the export from existing classified data (skip reclassification):**
 
 ```bash
 bun run export:similarity -- --profile full
 ```
 
-Output:
-
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` - per-track ratings, feedback aggregates, optional vectors, and precomputed neighbors
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
-
-If classified JSONL already exists in `data/classified`, the exporter skips re-classification and reads those files directly.
-
-To export from a different directory:
-
-```bash
-cp .sidflow.json /tmp/sidflow-export.json
-# edit classifiedPath in /tmp/sidflow-export.json
-bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --output /path/to/sidcorr.sqlite
-```
-
-The exporter recovers from interrupted classify runs: an existing `features_*.jsonl` is sufficient even when `classification_*.jsonl` is incomplete.
-
-To publish an already-built bundle to the `sidflow-data` release repository without regenerating it:
+**3. Publish the export as a release to `chrisgleissner/sidflow-data`:**
 
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true

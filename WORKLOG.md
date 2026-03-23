@@ -4,6 +4,65 @@ Append-only execution trace. Each entry records commands, CI results, observatio
 
 ---
 
+## 2026-03-23 — Dual-source classification audit and HVSC export
+
+### Scope
+
+Phase 1 audit of the dual-source (WAV + SID-native) classification pipeline, schema, and documentation; followed by full HVSC reclassification and SQLite export.
+
+### Phase 1 audit findings
+
+**Pipeline**
+- SID-native register-write tracing is fully implemented in `packages/libsidplayfp-wasm/src/bindings/bindings.cpp` and exposed via `SidAudioEngine.setSidWriteTraceEnabled()` / `getAndClearSidWriteTraces()`.
+- Frame compaction is implemented in `packages/sidflow-classify/src/sid-register-trace.ts` (PAL/NTSC, carry-forward state, per-voice and global events).
+- SID-native feature extraction is implemented in `packages/sidflow-classify/src/sid-native-features.ts`; all 29 extracted fields use the `sid` prefix (`sidFeatureVariant`, `sidTraceClock`, `sidGateOnsetDensity`, etc.).
+- `createHybridFeatureExtractor()` merges WAV and SID-native results with WAV-first collision semantics: SID fields never overwrite existing WAV-derived keys.
+- The 24D perceptual vector is built by `buildPerceptualVector()` in `packages/sidflow-classify/src/deterministic-ratings.ts`. Shared features (`tempo`, `onsetDensity`, `rhythmicRegularity`, `filterMotion`, `melodicClarity`, `bassPresence`, `loudness`) are explicitly fused via weighted blends; `mfccResidual1/2` subtract the SID-timbre-basis projection, preventing double counting of timbral variance.
+- Feature schema version bumped to `1.3.0` for the SID-native additions.
+
+**No double counting identified.** WAV and SID signals share no vector dimension independently; every dimension is either purely one source or an explicit weighted fusion/residual.
+
+**Schema**
+- SQLite `tracks` table stores: `track_id`, `sid_path`, `song_index`, `vector_json` (24D), `e`/`m`/`c`/`p` ratings, raw and decayed feedback counters, `last_played`, `classified_at`, `source`, `render_engine`, `features_json` (all features serialized; WAV features identifiable by absence of `sid` prefix, SID features by `sid*` prefix).
+- Schema version is `sidcorr-1`. No changes required.
+
+**Existing state (stale)**
+- `data/classified/`: 1,003 entries from 2026-03-13 at `feature_schema_version: 1.2.0` — these predate SID-native features and must be replaced with a full rerun.
+- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`: 7 tracks, 4D vectors, generated 2026-03-13 — stale test artifact, will be replaced.
+
+**Documentation**
+- `README.md` "Portable Similarity Export" section lacked the reclassification command and contained optional branching steps. Updated in this session.
+- `doc/similarity-export.md` is complete and accurate.
+
+**Phase 2 conclusion: no code or schema changes required.**
+
+### Commands
+
+Build:
+```bash
+bun run build
+```
+
+Full reclassification + export (Phase 4):
+```bash
+bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+Publish (Phase 5):
+```bash
+bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
+```
+
+### Validation
+
+- Build result: `tsc -b` exit 0 ✅
+- Reclassification result: RUNNING (started 2026-03-23 08:26 UTC; 87,074 total items including sub-songs; 103 processed at 08:28, ~7h estimated)
+- Export track count: PENDING
+- SQLite feature_schema_version: PENDING
+- Release publish: PENDING
+
+---
+
 ## 2026-03-22 — SID-native enhancement implementation slice: shared windows + shared feedback semantics
 
 ### Scope
