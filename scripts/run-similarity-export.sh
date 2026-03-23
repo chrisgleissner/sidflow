@@ -600,59 +600,43 @@ wait_for_classification() {
     http_code="$(cat "${REQUEST_STATUS_FILE}")"
     case "${http_code}" in
     200)
-          if python3 - <<'PY' "${SERVER_LOG}" "${CLASSIFY_STARTED_AT_MS}" >> "${PROGRESS_LOG}"
-import json, re, sys, time
+          if python3 - <<'PY' "${REQUEST_LOG}" >> "${PROGRESS_LOG}"
+import json, sys
 
-log_path = sys.argv[1]
-started_at_ms = int(sys.argv[2]) if sys.argv[2] else int(time.time() * 1000)
-extracting = re.compile(r'\[Extracting Features\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\]')
-analyzing = re.compile(r'\[Analyzing\]\s+(\d+)/(\d+)\s+files.*\(([\d.]+)%\)')
+request_path = sys.argv[1]
 
-with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
-  lines = fh.readlines()
+with open(request_path, 'r', encoding='utf-8', errors='ignore') as fh:
+  payload = json.load(fh)
 
-record = None
-for line in reversed(lines):
-  match = extracting.search(line)
-  if match:
-    processed, total, _remaining, percent, rendered, _cached, extracted = match.groups()
-    record = {
-      'phase': 'completed' if int(processed) >= int(total) else 'tagging',
-      'processedFiles': int(processed),
-      'totalFiles': int(total),
-      'renderedFiles': int(rendered),
-      'extractedFiles': int(extracted),
-      'taggedFiles': int(processed),
-      'percentComplete': float(percent),
-      'isActive': False,
-      'updatedAt': int(time.time() * 1000),
-      'startedAt': started_at_ms,
-    }
-    break
-  match = analyzing.search(line)
-  if match:
-    processed, total, percent = match.groups()
-    record = {
-      'phase': 'analyzing',
-      'processedFiles': int(processed),
-      'totalFiles': int(total),
-      'renderedFiles': 0,
-      'extractedFiles': 0,
-      'taggedFiles': 0,
-      'percentComplete': float(percent),
-      'isActive': False,
-      'updatedAt': int(time.time() * 1000),
-      'startedAt': started_at_ms,
-    }
-    break
-
-if record is None:
+progress = payload.get('data', {}).get('progress') or payload.get('progress')
+if not isinstance(progress, dict):
   raise SystemExit(11)
 
-print(json.dumps(record), flush=True)
+print(json.dumps(progress), flush=True)
+
+combined_output = '\n'.join(
+  str(value)
+  for value in (
+    payload.get('data', {}).get('output'),
+    payload.get('data', {}).get('logs'),
+    payload.get('details'),
+    payload.get('error'),
+  )
+  if value
+)
+
+total = int(progress.get('totalFiles') or 0)
+completed = int(progress.get('taggedFiles') or 0) + int(progress.get('skippedFiles') or 0)
+is_complete = total <= 0 or completed >= total
+has_failure = 'Classification failed:' in combined_output or 'Out of memory' in combined_output
+
+if payload.get('success') is True and is_complete and not has_failure:
+  raise SystemExit(7)
+
+raise SystemExit(9)
 PY
           then
-            status=7
+            status=$?
           else
             status=$?
           fi
@@ -818,6 +802,7 @@ total = int(record.get('totalFiles') or 0)
 remaining = max(total - processed, 0)
 started_at_ms = record.get('startedAt')
 elapsed_seconds = max(time.time() - (started_at_ms / 1000.0), 1.0) if isinstance(started_at_ms, (int, float)) and started_at_ms else None
+phase = record.get('phase') or 'completed'
 
 def fmt_duration(seconds):
   if seconds is None:
@@ -835,7 +820,7 @@ print(
   '[sidcorr] progress update: '
   f'completed={processed} remaining={remaining} total={total} '
   f'elapsed={fmt_duration(elapsed_seconds)} eta=0s rate={(processed / elapsed_seconds) if elapsed_seconds else 0.0:.2f} songs/s '
-  'phase=completed phases[analyzing=done, metadata=done, building=done, tagging=done, completed=done] '
+  f'phase={phase} phases[analyzing=done, metadata=done, building=done, tagging=done, completed=done] '
   f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}]'
 )
 
@@ -845,7 +830,7 @@ PY
       break
     fi
     if [[ ${status} -eq 9 ]]; then
-      fail "Classification reported failed status. See ${PROGRESS_LOG}"
+      fail "Classification reported failed or incomplete status. Response: $(cat "${REQUEST_LOG}")"
     fi
     fail "Progress polling failed. See ${PROGRESS_LOG}"
   done
@@ -863,6 +848,35 @@ PY
   http_code="$(cat "${REQUEST_STATUS_FILE}")"
   case "${http_code}" in
     200)
+      if ! python3 - <<'PY' "${REQUEST_LOG}"
+import json, sys
+
+with open(sys.argv[1], 'r', encoding='utf-8', errors='ignore') as fh:
+  payload = json.load(fh)
+
+progress = payload.get('data', {}).get('progress') or payload.get('progress') or {}
+combined_output = '\n'.join(
+  str(value)
+  for value in (
+    payload.get('data', {}).get('output'),
+    payload.get('data', {}).get('logs'),
+    payload.get('details'),
+    payload.get('error'),
+  )
+  if value
+)
+total = int(progress.get('totalFiles') or 0)
+completed = int(progress.get('taggedFiles') or 0) + int(progress.get('skippedFiles') or 0)
+if payload.get('success') is not True:
+  raise SystemExit(1)
+if total > 0 and completed < total:
+  raise SystemExit(1)
+if 'Classification failed:' in combined_output or 'Out of memory' in combined_output:
+  raise SystemExit(1)
+PY
+      then
+        fail "Classification returned HTTP 200 but the body reports failure or incomplete progress. Response: $(cat "${REQUEST_LOG}")"
+      fi
       ;;
     *)
       fail "Classification request failed with HTTP ${http_code}. Response: $(cat "${REQUEST_LOG}")"

@@ -2,6 +2,31 @@
 
 ## Objective
 
+## 2026-03-23 Main branch convergence
+
+### Goal
+
+Bring `main` back to a stable, merge-ready state by identifying the regression introduced after `c392f08`, fixing the root cause, validating locally, and confirming GitHub Actions returns to all-green on `main`.
+
+### Checklist
+
+- [x] Inspect recent `main` CI runs and identify the first failing commit window
+- [x] Verify current branch/head state and recent commit history
+- [ ] Extract failed unit-test-with-coverage logs from GitHub Actions
+- [ ] Reproduce the failure locally
+- [ ] Implement the minimal root-cause fix
+- [ ] Run required local validation
+- [ ] Commit and push to `main`
+- [ ] Confirm GitHub Actions is green on `main`
+
+### Progress
+
+- 2026-03-23: Confirmed `main` is clean locally and currently at `9854cc2`.
+- 2026-03-23: GitHub Actions `Continuous Integration` is failing on the latest five `main` pushes (`e6ea3b4` through `9854cc2`), while `c392f08` was green.
+- 2026-03-23: The failure pattern is consistent across that entire window: `Build and test / Build and Test` fails specifically at the `Run unit tests with coverage` step; build and package verification are green.
+- 2026-03-23: Reproduced the similarity-export truncation from captured local artifacts in `tmp/runtime/similarity-export/`. The classify response body included `Classification failed: Out of memory`, but the API still returned `success: true` and the progress store synthesized a completed snapshot after only 1,175 of 87,074 songs.
+- 2026-03-23: Root cause split into two regressions: classify tagging oversubscribed memory with `2N` outer tasks on top of `N` render and `N` feature workers, and the classify route plus `run-similarity-export.sh` trusted HTTP 200/exit code 0 even when logs and counters proved the run was partial.
+
 ## 2026-03-23 PR convergence
 
 ### Goal

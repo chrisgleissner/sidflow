@@ -55,6 +55,14 @@ describe('classify-progress-store', () => {
       expect(snapshot.isActive).toBe(false);
       expect(snapshot.message).toBe('Done!');
     });
+
+    it('does not inflate taggedFiles beyond observed progress', () => {
+      ingestClassifyStdout('[Extracting Features] 80/100 files (80.0%)\n');
+      completeClassifyProgress('Done!');
+      const snapshot = getClassifyProgressSnapshot();
+      expect(snapshot.taggedFiles).toBe(80);
+      expect(snapshot.totalFiles).toBe(100);
+    });
   });
 
   describe('failClassifyProgress', () => {
@@ -283,12 +291,13 @@ describe('classify-progress-store', () => {
       expect(after.updatedAt).toBe(before.updatedAt);
     });
 
-    it('completeClassifyProgress sets taggedFiles to total when complete', () => {
+    it('completeClassifyProgress preserves observed taggedFiles when no tagging progress was reported', () => {
       ingestClassifyStdout('[Analyzing] 100/100 files (100.0%)\n');
       completeClassifyProgress('All done');
       const snapshot = getClassifyProgressSnapshot();
       expect(snapshot.phase).toBe('completed');
-      expect(snapshot.taggedFiles).toBe(100);
+      expect(snapshot.taggedFiles).toBe(0);
+      expect(snapshot.processedFiles).toBe(100);
     });
 
     it('tracks phase transitions through thread updates', () => {

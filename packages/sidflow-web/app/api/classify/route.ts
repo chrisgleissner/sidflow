@@ -3,6 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ClassifyRequestSchema, type ApiResponse } from '@/lib/validation';
+import type { CliResult } from '@/lib/cli-executor';
 import { ZodError } from 'zod';
 import { describeCliFailure, describeCliSuccess } from '@/lib/cli-logs';
 import path from 'node:path';
@@ -22,6 +23,39 @@ import { resolveSidCollectionContext, buildCliEnvOverrides } from '@/lib/sid-col
 import { getWebPreferences } from '@/lib/preferences-store';
 import type { RenderTechnology } from '@sidflow/common';
 import { buildClassifyProgressSnapshot, findLatestJobByType, getJobOrchestrator } from '@/lib/server/jobs';
+import type { ClassifyProgressSnapshot } from '@/lib/types/classify-progress';
+
+function findClassificationFailureMarker(result: CliResult): string | null {
+  const combinedOutput = [result.stderr, result.stdout].filter(Boolean).join('\n');
+  const failureLine = combinedOutput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^Classification failed:/i.test(line));
+
+  if (failureLine) {
+    return failureLine;
+  }
+  if (/\bout of memory\b/i.test(combinedOutput)) {
+    return 'Classification failed: Out of memory';
+  }
+  return null;
+}
+
+function isClassificationProgressComplete(progress: ClassifyProgressSnapshot): boolean {
+  if (progress.totalFiles <= 0) {
+    return true;
+  }
+  return progress.taggedFiles + progress.skippedFiles >= progress.totalFiles;
+}
+
+function describeIncompleteClassification(progress: ClassifyProgressSnapshot): string {
+  if (progress.totalFiles <= 0) {
+    return 'Classification exited without reporting final progress';
+  }
+
+  const completed = progress.taggedFiles + progress.skippedFiles;
+  return `Classification stopped early after ${completed}/${progress.totalFiles} songs`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -206,7 +240,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 200 });
     }
 
-    if (result.success) {
+    const progressSnapshot = getClassifyProgressSnapshot();
+    const failureMarker = findClassificationFailureMarker(result);
+    const completedAllWork = isClassificationProgressComplete(progressSnapshot);
+
+    if (result.success && !failureMarker && completedAllWork) {
       const { logs } = describeCliSuccess(command, result);
       completeClassifyProgress('Classification completed successfully');
       const response: ApiResponse<{ output: string; logs: string; progress: ReturnType<typeof getClassifyProgressSnapshot> }> = {
@@ -219,7 +257,10 @@ export async function POST(request: NextRequest) {
       };
       return NextResponse.json(response, { status: 200 });
     } else {
-      const { details, logs } = describeCliFailure(command, result);
+      const logs = describeCliSuccess(command, result).logs;
+      const details = !result.success
+        ? describeCliFailure(command, result).details
+        : failureMarker ?? describeIncompleteClassification(progressSnapshot);
       failClassifyProgress(details);
       const response: ApiResponse = {
         success: false,

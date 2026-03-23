@@ -8,17 +8,33 @@ const isServerLikeEnvironment = typeof globalThis === "object"
     ? (typeof globalThis.window === "undefined" && typeof process !== "undefined")
     : false;
 const artifactBaseUrl = new URL("../dist/", import.meta.url);
-export async function loadLibsidplayfp(options = {}) {
+let cachedDefaultModulePromise = null;
+function createModulePromise(options) {
     const locate = options.locateFile ?? ((asset) => {
         if (isServerLikeEnvironment && wasmPathOverride) {
             return wasmPathOverride;
         }
         return new URL(asset, artifactBaseUrl).href;
     });
-    return await createLibsidplayfp({
+    return createLibsidplayfp({
         ...options,
         locateFile: locate
     });
+}
+function isCacheableDefaultLoad(options) {
+    return Object.keys(options).length === 0;
+}
+export async function loadLibsidplayfp(options = {}) {
+    if (isCacheableDefaultLoad(options)) {
+        if (!cachedDefaultModulePromise) {
+            cachedDefaultModulePromise = createModulePromise(options).catch((error) => {
+                cachedDefaultModulePromise = null;
+                throw error;
+            });
+        }
+        return await cachedDefaultModulePromise;
+    }
+    return await createModulePromise(options);
 }
 export { SidAudioEngine } from "./player.js";
 export default loadLibsidplayfp;
