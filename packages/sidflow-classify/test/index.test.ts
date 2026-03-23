@@ -23,9 +23,40 @@ import {
   resolveManualTagPath,
   resolveRelativeSidPath
 } from "@sidflow/common";
-import { WAV_HASH_EXTENSION, type RenderWavOptions } from "../src/render/wav-renderer.js";
+import {
+  SID_TRACE_SIDECAR_VERSION,
+  WAV_HASH_EXTENSION,
+  writeSidTraceSidecar,
+  type RenderWavOptions,
+} from "../src/render/wav-renderer.js";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-");
+
+async function seedWasmCacheArtifact(
+  wavFile: string,
+  options: {
+    maxRenderSec?: number;
+    introSkipSec?: number;
+    maxClassifySec?: number;
+  } = {}
+): Promise<void> {
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: options.maxRenderSec ?? 45,
+    introSkipSec: options.introSkipSec ?? 15,
+    maxClassifySec: options.maxClassifySec ?? 15,
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: true,
+    traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
+  });
+  await writeSidTraceSidecar(wavFile, {
+    traces: [],
+    clock: "PAL",
+    skipSeconds: options.introSkipSec ?? 15,
+    analysisSeconds: options.maxClassifySec ?? 15,
+  });
+}
 
 function createSidBuffer(options: { songs: number; title: string; author: string; released: string }): Buffer {
   const buffer = Buffer.alloc(0x80);
@@ -125,6 +156,7 @@ describe("classification helpers", () => {
       maxRenderSec: 45,
       introSkipSec: 15,
       maxClassifySec: 15,
+      render: { preferredEngines: ["wasm"] },
     } as any;
 
     expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeTrue();
@@ -134,6 +166,9 @@ describe("classification helpers", () => {
       renderSettingsFile,
       JSON.stringify({ v: 1, maxRenderSec: 45, introSkipSec: 15, maxClassifySec: 15 })
     );
+    expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeTrue();
+
+    await seedWasmCacheArtifact(wavFile);
     expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeFalse();
 
     await new Promise((resolve) => setTimeout(resolve, 5));
@@ -190,6 +225,7 @@ describe("classification helpers", () => {
         rendered.push(wavFile);
         await mkdir(path.dirname(wavFile), { recursive: true });
         await writeFile(wavFile, "wav");
+        await seedWasmCacheArtifact(wavFile);
       }
     });
 
@@ -209,6 +245,7 @@ describe("classification helpers", () => {
         invoked = true;
         await mkdir(path.dirname(wavFile), { recursive: true });
         await writeFile(wavFile, "re-render");
+        await seedWasmCacheArtifact(wavFile);
       }
     });
 
@@ -220,6 +257,38 @@ describe("classification helpers", () => {
     expect(resultSecond.metrics.rendered).toBe(0);
     expect(resultSecond.metrics.skipped).toBe(1);
     expect(resultSecond.metrics.cacheHitRate).toBe(1);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("keeps sidplayfp-cli caches fresh without requiring a same-pass trace sidecar", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const sidFile = path.join(root, "track.sid");
+    const wavFile = path.join(root, "track.wav");
+    await writeFile(sidFile, "initial");
+    await writeFile(wavFile, "wav");
+    await writeFile(
+      `${wavFile}.render.json`,
+      JSON.stringify({
+        v: 3,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        sourceOffsetSec: 0,
+        renderEngine: "sidplayfp-cli",
+        traceCaptureEnabled: false,
+        traceSidecarVersion: null,
+      })
+    );
+
+    const config = {
+      maxRenderSec: 45,
+      introSkipSec: 15,
+      maxClassifySec: 15,
+      render: { preferredEngines: ["sidplayfp-cli"] },
+    } as any;
+
+    expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeFalse();
 
     await rm(root, { recursive: true, force: true });
   });
@@ -558,6 +627,87 @@ describe("metadata helpers", () => {
 });
 
 describe("generateAutoTags", () => {
+  it("preserves trace sidecars and writes render settings for fresh renders", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    try {
+      const sidPath = path.join(root, "hvsc");
+      const audioCachePath = path.join(root, "wav");
+      const tagsPath = path.join(root, "tags");
+      const classifiedPath = path.join(root, "classified");
+      await Promise.all([
+        mkdir(path.join(sidPath, "MUSICIANS"), { recursive: true }),
+        mkdir(audioCachePath, { recursive: true }),
+        mkdir(tagsPath, { recursive: true }),
+        mkdir(classifiedPath, { recursive: true }),
+      ]);
+
+      const sidFile = path.join(sidPath, "MUSICIANS", "Fresh.sid");
+      await writeFile(
+        sidFile,
+        createSidBuffer({ songs: 1, title: "Fresh", author: "Composer", released: "1992" })
+      );
+
+      const config: ClassificationPlan["config"] = {
+        sidPath,
+        audioCachePath,
+        tagsPath,
+        threads: 1,
+        classificationDepth: 2,
+        classifiedPath,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["wasm"] },
+      };
+
+      const plan: ClassificationPlan = {
+        config,
+        audioCachePath,
+        tagsPath,
+        forceRebuild: false,
+        classificationDepth: config.classificationDepth,
+        sidPath,
+      };
+
+      const wavPath = resolveWavPath(plan, sidFile);
+      const tracePath = `${wavPath}.trace.jsonl`;
+      const renderPath = `${wavPath}.render.json`;
+
+      const result = await generateAutoTags(plan, {
+        extractMetadata: async () => ({ title: "Fresh", author: "Composer", released: "1992" }),
+        featureExtractor: async () => ({ energy: 1, featureVariant: "test" }),
+        predictRatings: async () => ({ e: 3, m: 3, c: 3 }),
+        render: async (options: RenderWavOptions) => {
+          await mkdir(path.dirname(options.wavFile), { recursive: true });
+          await writeFile(options.wavFile, "wav-single");
+          if (options.captureTrace) {
+            await writeSidTraceSidecar(options.wavFile, {
+              traces: [],
+              clock: "PAL",
+              skipSeconds: options.traceIntroSkipSec ?? 15,
+              analysisSeconds: options.traceAnalysisSec ?? 15,
+            });
+          }
+        },
+      });
+
+      expect(result.jsonlRecordCount).toBe(1);
+      expect(await readFile(tracePath, "utf8")).toContain('"kind":"header"');
+      const renderSettings = JSON.parse(await readFile(renderPath, "utf8")) as {
+        v: number;
+        renderEngine: string | null;
+        traceCaptureEnabled: boolean;
+        traceSidecarVersion: number | null;
+      };
+      expect(renderSettings.v).toBe(3);
+      expect(renderSettings.renderEngine).toBe("wasm");
+      expect(renderSettings.traceCaptureEnabled).toBeTrue();
+      expect(renderSettings.traceSidecarVersion).toBe(SID_TRACE_SIDECAR_VERSION);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("writes metadata and auto-tag files with mixed sources", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     try {
@@ -597,7 +747,11 @@ describe("generateAutoTags", () => {
         tagsPath,
         threads: 2,
         classificationDepth: 2,
-        classifiedPath
+        classifiedPath,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["wasm"] },
       };
 
       const plan: ClassificationPlan = {
@@ -619,9 +773,12 @@ describe("generateAutoTags", () => {
           const wav2 = resolveWavPath(plan, sidFile, 2);
           await writeFile(wav1, "wav-1");
           await writeFile(wav2, "wav-2");
+          await seedWasmCacheArtifact(wav1);
+          await seedWasmCacheArtifact(wav2);
         } else {
           const wav = resolveWavPath(plan, sidFile);
           await writeFile(wav, "wav-single");
+          await seedWasmCacheArtifact(wav);
         }
       }
 

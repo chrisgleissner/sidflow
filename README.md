@@ -219,36 +219,72 @@ See [Deployment Guide](doc/deployment.md) for details.
 
 ## Portable Similarity Export
 
-After classification, SIDFlow can produce a self-contained SQLite bundle for offline or downstream consumers:
+Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 24-dimensional perceptual vectors (WAV + SID-native hybrid) for offline and downstream consumers.
+
+Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish).
+
+**1. Reclassify the entire HVSC collection and generate the export:**
+
+```bash
+bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` and `sidcorr-hvsc-full-sidcorr-1.manifest.json`.
+
+**2. Regenerate the export from existing classified data (skip reclassification):**
 
 ```bash
 bun run export:similarity -- --profile full
 ```
 
-Output:
-
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` - per-track ratings, feedback aggregates, optional vectors, and precomputed neighbors
-- `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
-
-If classified JSONL already exists in `data/classified`, the exporter skips re-classification and reads those files directly.
-
-To export from a different directory:
-
-```bash
-cp .sidflow.json /tmp/sidflow-export.json
-# edit classifiedPath in /tmp/sidflow-export.json
-bun run export:similarity -- --config /tmp/sidflow-export.json --profile full --output /path/to/sidcorr.sqlite
-```
-
-The exporter recovers from interrupted classify runs: an existing `features_*.jsonl` is sufficient even when `classification_*.jsonl` is incomplete.
-
-To publish an already-built bundle to the `sidflow-data` release repository without regenerating it:
+**3. Publish the export as a release to `chrisgleissner/sidflow-data`:**
 
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
 
 Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-export.md).
+
+### Classification Vector Reference
+
+Each exported song also gets a 24-number similarity vector. It mixes what SIDFlow hears in the rendered WAV with what it reads from the SID chip write trace. The raw per-song feature dump is larger, but these 24 fields are the compact fingerprint used for similarity search and station building.
+
+Sample record: [doc/examples/classification-vector-sample.json](doc/examples/classification-vector-sample.json)
+
+| Internal name | Source | Meaning |
+|---------------|--------|---------|
+| `tempoFused` | Hybrid | Overall speed feel |
+| `onsetDensityFused` | Hybrid | How often new notes or hits happen |
+| `rhythmicRegularityFused` | Hybrid | How steady the rhythm feels |
+| `syncopationSid` | SID | How much the beat pushes off the obvious pulse |
+| `arpeggioRateSid` | SID | How much fast chord-cycling the tune uses |
+| `waveTriangleRatio` | SID | Share of smooth triangle tone |
+| `waveSawRatio` | SID | Share of buzzy saw tone |
+| `wavePulseRatio` | SID | Share of hollow pulse tone |
+| `waveNoiseRatio` | SID | Share of noisy/percussion-like tone |
+| `pwmActivitySid` | SID | How much pulse-width modulation is moving |
+| `filterCutoffMeanSid` | SID | Typical brightness of the SID filter |
+| `filterMotionFused` | Hybrid | How much the tone color sweeps over time |
+| `samplePlaybackRate` | SID | How much digi-sample playback is present |
+| `melodicClarityFused` | Hybrid | How clearly a lead melody stands out |
+| `bassPresenceFused` | Hybrid | How bass-heavy the tune feels |
+| `accompanimentShareSid` | SID | How much of the arrangement acts as backing parts |
+| `voiceRoleEntropySid` | SID | How evenly the SID voices split their jobs |
+| `adsrPluckRatioSid` | SID | How often notes sound short and plucky |
+| `adsrPadRatioSid` | SID | How often notes sound long and sustained |
+| `loudnessFused` | Hybrid | Overall strength/loudness impression |
+| `dynamicRangeWav` | WAV | Difference between softer and louder moments |
+| `inharmonicityWav` | WAV | How rough or bell-like the spectrum is |
+| `mfccResidual1` | Hybrid | Timbre detail left after obvious SID waveform patterns are removed |
+| `mfccResidual2` | Hybrid | Another timbre detail channel for fine tonal differences |
+
+`Source` means:
+
+| Value | Meaning |
+|-------|---------|
+| `WAV` | Measured from the rendered audio |
+| `SID` | Derived from SID register-write traces |
+| `Hybrid` | SIDFlow combines WAV and SID evidence |
 
 ---
 

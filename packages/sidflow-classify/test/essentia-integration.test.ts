@@ -14,9 +14,29 @@ import {
   resolveWavPath,
 } from "../src/index.js";
 import { parseSidFile, type SidflowConfig, resolveRelativeSidPath } from "@sidflow/common";
-import { computeFileHash, WAV_HASH_EXTENSION } from "../src/render/wav-renderer.js";
+import { computeFileHash, SID_TRACE_SIDECAR_VERSION, WAV_HASH_EXTENSION, writeSidTraceSidecar } from "../src/render/wav-renderer.js";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-essentia-integration-");
+
+async function seedWasmCacheArtifact(wavPath: string, sidFile: string): Promise<void> {
+  await writeWavRenderSettingsSidecar(wavPath, {
+    maxRenderSec: 45,
+    introSkipSec: 15,
+    maxClassifySec: 15,
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: true,
+    traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
+  });
+  await writeSidTraceSidecar(wavPath, {
+    traces: [],
+    clock: "PAL",
+    skipSeconds: 15,
+    analysisSeconds: 15,
+  });
+  await require("node:fs/promises").writeFile(`${wavPath}${WAV_HASH_EXTENSION}`, await computeFileHash(sidFile), "utf8");
+}
 
 /**
  * Create a minimal test SID file (Real 64 Commodore format)
@@ -138,6 +158,10 @@ describe("Essentia.js integration in classification", () => {
         audioCachePath,
         tagsPath,
         classifiedPath,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["wasm"] },
         threads: 1,
         classificationDepth: 3,
       };
@@ -149,9 +173,7 @@ describe("Essentia.js integration in classification", () => {
       const wavPath = resolveWavPath(plan, sidFile);
       await require("node:fs/promises").mkdir(path.dirname(wavPath), { recursive: true });
       await require("node:fs/promises").writeFile(wavPath, createWavFile(1, 440));
-      // If the SID mtime changes (or clocks are coarse), needsWavRefresh may rebuild unless a hash exists.
-      const hashPath = `${wavPath}${WAV_HASH_EXTENSION}`;
-      await require("node:fs/promises").writeFile(hashPath, await computeFileHash(sidFile), "utf8");
+      await seedWasmCacheArtifact(wavPath, sidFile);
       
       // Run classification (ensure defaultRenderWav reads the same config if invoked).
       const previousConfigEnv = process.env.SIDFLOW_CONFIG;

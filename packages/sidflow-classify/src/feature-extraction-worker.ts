@@ -28,7 +28,9 @@ import {
 } from "./audio-window.js";
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
+import { readSidTraceSidecar } from "./render/wav-renderer.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
+import { extractSidNativeFeaturesFromWriteTrace } from "./sid-native-features.js";
 
 // Default target sample rate for SID music analysis.
 // SID output is ~4kHz effective bandwidth, so 11025 Hz captures all relevant content
@@ -496,6 +498,24 @@ async function extractBasicFeatures(
 }
 
 /**
+ * Read the trace sidecar (written by the WAV render worker alongside the WAV)
+ * and extract SID-native features within this worker thread.
+ */
+async function extractSidNativeFeaturesForWorker(wavFile: string, sidFile: string): Promise<FeatureVector> {
+  const sidecar = await readSidTraceSidecar(wavFile);
+  if (sidecar) {
+    return extractSidNativeFeaturesFromWriteTrace({
+      traces: sidecar.traces,
+      clock: sidecar.clock as "PAL" | "NTSC",
+      skipSeconds: sidecar.skipSeconds,
+      analysisSeconds: sidecar.analysisSeconds,
+    });
+  }
+
+  throw new Error(`Missing or invalid SID trace sidecar for ${wavFile}`);
+}
+
+/**
  * Handle incoming extraction requests
  */
 async function handleExtract(
@@ -508,7 +528,17 @@ async function handleExtract(
     // Ensure Essentia is initialized (once per worker)
     await initEssentia();
     
-    const features = await extractFeatures(wavFile, sidFile, configPath);
+    const [wavFeatures, sidFeatures] = await Promise.all([
+      extractFeatures(wavFile, sidFile, configPath),
+      extractSidNativeFeaturesForWorker(wavFile, sidFile),
+    ]);
+    // Merge: WAV features take priority; SID-native keys only added where absent.
+    const features: FeatureVector = { ...wavFeatures };
+    for (const [key, value] of Object.entries(sidFeatures)) {
+      if (!Object.prototype.hasOwnProperty.call(features, key)) {
+        features[key] = value;
+      }
+    }
     const response: WorkerResponse = { type: "result", jobId, features };
     parentPort!.postMessage(response);
   } catch (error) {

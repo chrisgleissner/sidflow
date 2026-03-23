@@ -297,6 +297,9 @@ export class RenderOrchestrator {
             ? request.maxClassifySeconds
             : DEFAULT_ANALYSIS_WINDOW_SEC,
         sourceOffsetSec,
+        renderEngine: request.engine,
+        traceCaptureEnabled: false,
+        traceSidecarVersion: null,
       });
 
       if (request.formats.includes("wav")) {

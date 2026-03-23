@@ -71,6 +71,34 @@ async function collectTestFiles(relativeDir) {
   return files;
 }
 
+async function waitForCoverageArtifact(timeoutMs = 5000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    try {
+      return await readFile(mergedLcovPath, "utf8");
+    } catch (error) {
+      if (!(error && typeof error === "object" && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  let coverageListing = [];
+  try {
+    coverageListing = await readdir(coverageDir);
+  } catch (error) {
+    if (!(error && typeof error === "object" && error.code === "ENOENT")) {
+      throw error;
+    }
+  }
+
+  throw new Error(
+    `Coverage reporter did not produce ${path.relative(repoRoot, mergedLcovPath)} within ${timeoutMs}ms` +
+      (coverageListing.length > 0 ? ` (found: ${coverageListing.sort().join(", ")})` : "")
+  );
+}
+
 function spawnCommand(command, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -195,7 +223,7 @@ async function main() {
     console.log(`[coverage-batches] Batch ${index + 1}/${batches.length}: ${batch.name} (${batch.files.length} files)`);
     await rm(coverageDir, { recursive: true, force: true });
     await spawnCommand("node", ["scripts/run-bun.mjs", "test", ...batch.files, ...coverageArgs]);
-    const lcovContent = await readFile(mergedLcovPath, "utf8");
+    const lcovContent = await waitForCoverageArtifact();
     mergeCoverage(mergedFiles, parseLcov(lcovContent));
     console.log(`[coverage-batches] Completed ${batch.name} in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
   }
