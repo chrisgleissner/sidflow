@@ -1767,7 +1767,14 @@ export async function generateAutoTags(
     classifyLogger.info(`Skipped ${skippedAlreadyClassifiedCount} already classified songs`);
   }
 
-  const taggingConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
+  const baseConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
+  // Run 2× as many outer pipeline slots as there are pool workers.  With N
+  // workers in both the render pool and the Essentia pool, having only N outer
+  // tasks means all tasks render together then all extract together — a
+  // thundering-herd sawtooth that leaves both pools idle during transitions.
+  // 2N outer tasks ensure ~N are rendering while ~N are extracting at all
+  // times, keeping every CPU core busy with no synchronisation gaps.
+  const taggingConcurrency = baseConcurrency * 2;
   let processedSongs = 0;
 
   // Renderer pool for inline WAV rendering during tagging phase.
@@ -1901,8 +1908,10 @@ export async function generateAutoTags(
         
         try {
           // Lazily create worker pool only when a render is actually required.
+          // Use baseConcurrency (= number of CPU cores) for pool workers, not
+          // taggingConcurrency (= 2× cores) which is the outer pipeline depth.
           if (shouldUsePool && rendererPool === null) {
-            rendererPool = new WasmRendererPool(taggingConcurrency);
+            rendererPool = new WasmRendererPool(baseConcurrency);
           }
 
           // Use worker pool for non-blocking rendering if available

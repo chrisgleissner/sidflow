@@ -145,17 +145,30 @@ export async function writeSidTraceSidecar(
   wavFile: string,
   sidecar: Omit<SidTraceSidecar, "v">
 ): Promise<void> {
-  await initializeSidTraceSidecar(wavFile, {
+  // Write header + single batch + footer in one writeFile call to minimise
+  // syscall overhead when called from parallel render workers.
+  const header: SidTraceSidecarHeader = {
+    kind: "header",
+    v: SID_TRACE_SIDECAR_VERSION,
+    format: "sid-trace-jsonl",
     clock: sidecar.clock,
     skipSeconds: sidecar.skipSeconds,
     analysisSeconds: sidecar.analysisSeconds,
-  });
-  await appendSidTraceBatch(wavFile, sidecar.traces);
-  await finalizeSidTraceSidecar(wavFile, {
+  };
+  const batch: SidTraceSidecarBatch = {
+    kind: "batch",
+    records: sidecar.traces.map(traceToTuple),
+  };
+  const footer: SidTraceSidecarFooter = {
     kind: "footer",
     eventCount: sidecar.traces.length,
     batchCount: sidecar.traces.length > 0 ? 1 : 0,
-  });
+  };
+  const content =
+    stringifySidTraceLine(header as unknown as JsonValue) +
+    stringifySidTraceLine(batch as unknown as JsonValue) +
+    stringifySidTraceLine(footer as unknown as JsonValue);
+  await writeFile(getSidTraceSidecarPath(wavFile), content, "utf8");
 }
 
 export async function readSidTraceSidecar(wavFile: string): Promise<SidTraceSidecar | null> {
@@ -386,16 +399,11 @@ export async function renderWavWithEngine(
   const progressIntervalMs = options.progressIntervalMs ?? 1000;
   const startTime = Date.now();
   let lastProgressTime = startTime;
-  let traceEventCount = 0;
-  let traceBatchCount = 0;
-
-  if (options.captureTrace) {
-    await initializeSidTraceSidecar(wavFile, {
-      clock: options.traceClock ?? "PAL",
-      skipSeconds: options.traceIntroSkipSec ?? 15,
-      analysisSeconds: options.traceAnalysisSec ?? 15,
-    });
-  }
+  // Accumulate SID register-write traces in memory during the render loop.
+  // Writing to disk on every chunk (~1 500 times per song) causes all worker
+  // threads to issue appendFile syscalls in lock-step, artificially creating
+  // a CPU sawtooth.  We write the entire sidecar in one shot after the loop.
+  const pendingTraces: SidWriteTrace[] = [];
 
   while (collectedSamples < maxSamples && iterations < maxIterations) {
     iterations += 1;
@@ -403,11 +411,7 @@ export async function renderWavWithEngine(
 
     if (options.captureTrace) {
       const traceBatch = engine.getAndClearSidWriteTraces();
-      if (traceBatch.length > 0) {
-        await appendSidTraceBatch(wavFile, traceBatch);
-        traceEventCount += traceBatch.length;
-        traceBatchCount += 1;
-      }
+      for (const t of traceBatch) pendingTraces.push(t);
     }
 
     if (chunk === null) {
@@ -483,16 +487,15 @@ export async function renderWavWithEngine(
   // instead of performing a second full WASM render pass for the same song.
   if (options.captureTrace) {
     try {
+      // Drain any events buffered after the last chunk.
       const tailBatch = engine.getAndClearSidWriteTraces();
-      if (tailBatch.length > 0) {
-        await appendSidTraceBatch(wavFile, tailBatch);
-        traceEventCount += tailBatch.length;
-        traceBatchCount += 1;
-      }
-      await finalizeSidTraceSidecar(wavFile, {
-        kind: "footer",
-        eventCount: traceEventCount,
-        batchCount: traceBatchCount,
+      for (const t of tailBatch) pendingTraces.push(t);
+      // Single atomic write: header + one batch + footer in one writeFile call.
+      await writeSidTraceSidecar(wavFile, {
+        traces: pendingTraces,
+        clock: options.traceClock ?? "PAL",
+        skipSeconds: options.traceIntroSkipSec ?? 15,
+        analysisSeconds: options.traceAnalysisSec ?? 15,
       });
     } catch (err) {
       renderLogger.warn(`Trace sidecar write failed for ${path.basename(wavFile)}`, err);
