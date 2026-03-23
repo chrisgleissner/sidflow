@@ -1,7 +1,6 @@
 import { parentPort } from "node:worker_threads";
 import { createEngine } from "./engine-factory.js";
 import { renderWavWithEngine, type RenderWavOptions, type RenderProgress } from "./wav-renderer.js";
-import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 
 if (!parentPort) {
   throw new Error("WASM renderer worker must be started as a worker thread");
@@ -18,29 +17,16 @@ interface WorkerResponse {
   progress?: RenderProgress;
 }
 
-// Reuse a single engine across render jobs within this worker thread.
-// SidAudioEngine.loadSidBuffer() (called by renderWavWithEngine) fully resets
-// the emulation context for each song, so no state leaks between renders.
-// Caching the engine avoids repeated WASM module compilation + engine setup.
-let cachedEngine: SidAudioEngine | null = null;
-
-async function getEngine(): Promise<SidAudioEngine> {
-  if (cachedEngine) {
-    return cachedEngine;
-  }
-  cachedEngine = await createEngine();
-  return cachedEngine;
+// Create a fresh engine per render job.  The WASM *module* (compiled code) is
+// cached inside engine-factory.ts, so we skip re-compilation.  However, the
+// SidAudioEngine (which holds a SidPlayerContext on the WASM heap) is created
+// fresh and disposed after each render to guarantee clean emulation state.
+async function getEngine() {
+  return await createEngine();
 }
 
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {
-  let engine: SidAudioEngine;
-  try {
-    engine = await getEngine();
-  } catch (initError) {
-    // Engine creation failed — clear cache and propagate
-    cachedEngine = null;
-    throw initError;
-  }
+  const engine = await getEngine();
   try {
     // Add progress callback to send heartbeat messages back to main thread
     const optionsWithProgress: RenderWavOptions = {
@@ -56,9 +42,6 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
     const response: WorkerResponse = { type: "result", jobId };
     parentPort!.postMessage(response);
   } catch (error) {
-    // Discard the engine on render failure to ensure isolation for subsequent jobs
-    cachedEngine = null;
-    try { engine.dispose(); } catch { /* ignore disposal errors */ }
     const err = error instanceof Error ? error : new Error(String(error));
     const response: WorkerResponse = {
       type: "error",
@@ -69,6 +52,8 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
       }
     };
     parentPort!.postMessage(response);
+  } finally {
+    engine.dispose();
   }
 }
 
@@ -79,11 +64,7 @@ parentPort.on("message", (message: WorkerMessage) => {
   if (message.type === "render") {
     void handleRender(message.jobId, message.options);
   } else if (message.type === "terminate") {
-    // Dispose cached engine before exiting
-    if (cachedEngine) {
-      try { cachedEngine.dispose(); } catch { /* ignore */ }
-      cachedEngine = null;
-    }
+    // Gracefully exit when instructed; Node will terminate the worker.
     process.exit(0);
   }
 });

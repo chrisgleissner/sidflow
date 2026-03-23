@@ -1848,18 +1848,6 @@ export async function generateAutoTags(
       };
     }
 
-    // --- Performance instrumentation (temporary) ---
-    const perfTimings = {
-      wavCheckMs: 0,
-      renderMs: 0,
-      playlistMs: 0,
-      extractMs: 0,
-      flushMs: 0,
-      otherMs: 0,
-      songCount: 0,
-    };
-    const PERF_LOG_INTERVAL = 50; // Log aggregates every N songs
-
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
       const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
       const wavDir = path.dirname(job.wavPath);
@@ -1876,9 +1864,7 @@ export async function generateAutoTags(
 
     // Always ensure we have a WAV and extract features for every song.
     // Stations depend on objective features, not just ratings.
-    const wavCheckStart = performance.now();
     const wavNeedsRefresh = await needsWavRefresh(job.sidFile, job.wavPath, false, plan.config);
-    perfTimings.wavCheckMs += performance.now() - wavCheckStart;
     if (wavNeedsRefresh) {
         // Emit "building" phase for inline rendering
         const buildStartedAt = Date.now();
@@ -1920,8 +1906,6 @@ export async function generateAutoTags(
           traceIntroSkipSec: resolveIntroSkipSec(plan.config),
           traceAnalysisSec: resolveMaxClassifySec(plan.config),
         };
-        
-        const renderStart = performance.now();
         try {
           // Lazily create worker pool only when a render is actually required.
           // Use baseConcurrency (= number of CPU cores) for pool workers, not
@@ -1940,7 +1924,6 @@ export async function generateAutoTags(
           // Track the WAV file for potential cleanup after classification
           renderedWavFiles.push(job.wavPath);
           renderedFilesCount += 1;
-          perfTimings.renderMs += performance.now() - renderStart;
           classifyLogger.debug(`[Thread ${context.threadId}] Rendered WAV for ${songLabel} in ${Date.now() - buildStartedAt}ms`);
         } finally {
           clearInterval(heartbeatInterval);
@@ -1959,9 +1942,7 @@ export async function generateAutoTags(
       cachedFilesCount += 1;
     }
 
-      const playlistStart = performance.now();
       await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
-      perfTimings.playlistMs += performance.now() - playlistStart;
 
       if (onProgress) {
         onProgress({
@@ -1980,7 +1961,6 @@ export async function generateAutoTags(
     // Essentia feature extraction with structured logging
     // Start heartbeat to prevent thread from appearing stale during long feature extractions
     const extractionStartedAt = Date.now();
-    const extractPerfStart = performance.now();
     const extractionHeartbeatInterval = setInterval(() => {
       const now = Date.now();
       onThreadUpdate?.({
@@ -2006,7 +1986,6 @@ export async function generateAutoTags(
       clearInterval(extractionHeartbeatInterval);
     }
     extractedFilesCount += 1;
-    perfTimings.extractMs += performance.now() - extractPerfStart;
     const extractionDurationMs = Date.now() - extractionStartedAt;
     const featureCount = Object.keys(extractedFeatures).length;
     const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
@@ -2037,20 +2016,6 @@ export async function generateAutoTags(
     intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
 
     processedSongs += 1;
-    perfTimings.songCount += 1;
-
-    // Log performance breakdown periodically
-    if (perfTimings.songCount % PERF_LOG_INTERVAL === 0) {
-      const n = perfTimings.songCount;
-      const total = perfTimings.wavCheckMs + perfTimings.renderMs + perfTimings.playlistMs + perfTimings.extractMs;
-      classifyLogger.info(
-        `[PERF @${n} songs] wavCheck=${(perfTimings.wavCheckMs/n).toFixed(1)}ms/song ` +
-        `render=${(perfTimings.renderMs/n).toFixed(1)}ms/song ` +
-        `playlist=${(perfTimings.playlistMs/n).toFixed(1)}ms/song ` +
-        `extract=${(perfTimings.extractMs/n).toFixed(1)}ms/song ` +
-        `total_measured=${(total/n).toFixed(1)}ms/song`
-      );
-    }
 
     if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
       onProgress({
@@ -2071,23 +2036,6 @@ export async function generateAutoTags(
       status: "idle"
     });
   });
-
-    // --- Final performance summary ---
-    if (perfTimings.songCount > 0) {
-      const n = perfTimings.songCount;
-      const totalMeasured = perfTimings.wavCheckMs + perfTimings.renderMs + perfTimings.playlistMs + perfTimings.extractMs;
-      const wallMs = Date.now() - startTime;
-      classifyLogger.info(
-        `[PERF SUMMARY] ${n} songs in ${(wallMs/1000).toFixed(1)}s (${(n/(wallMs/1000)).toFixed(2)} songs/s)\n` +
-        `  wavCheck:  ${(perfTimings.wavCheckMs).toFixed(0)}ms total, ${(perfTimings.wavCheckMs/n).toFixed(1)}ms/song (${(perfTimings.wavCheckMs/totalMeasured*100).toFixed(1)}%)\n` +
-        `  render:    ${(perfTimings.renderMs).toFixed(0)}ms total, ${(perfTimings.renderMs/n).toFixed(1)}ms/song (${(perfTimings.renderMs/totalMeasured*100).toFixed(1)}%)\n` +
-        `  playlist:  ${(perfTimings.playlistMs).toFixed(0)}ms total, ${(perfTimings.playlistMs/n).toFixed(1)}ms/song (${(perfTimings.playlistMs/totalMeasured*100).toFixed(1)}%)\n` +
-        `  extract:   ${(perfTimings.extractMs).toFixed(0)}ms total, ${(perfTimings.extractMs/n).toFixed(1)}ms/song (${(perfTimings.extractMs/totalMeasured*100).toFixed(1)}%)\n` +
-        `  measured:  ${(totalMeasured).toFixed(0)}ms total, ${(totalMeasured/n).toFixed(1)}ms/song\n` +
-        `  wall:      ${wallMs}ms total, ${(wallMs/n).toFixed(1)}ms/song\n` +
-        `  overhead:  ${(wallMs - totalMeasured/taggingConcurrency).toFixed(0)}ms (scheduling + metadata + flush)`
-      );
-    }
 
     // Ensure all intermediate records are flushed in deterministic order.
     await intermediateFlushChain;

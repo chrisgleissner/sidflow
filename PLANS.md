@@ -281,30 +281,36 @@ bash scripts/run-similarity-export.sh --mode local --full-rerun true
 ### Phases
 
 #### Phase 1 — Baseline reproduction
-- [ ] Run a small subset classification (~200–500 songs) to establish a reproducible baseline
-- [ ] Record throughput (songs/s), wall-clock time, CPU utilization
-- [ ] Capture timing breakdown per pipeline stage
+- [x] Run a small subset classification (~200–500 songs) to establish a reproducible baseline
+- [x] Record throughput (songs/s), wall-clock time, CPU utilization
+- [x] Capture timing breakdown per pipeline stage
+- **Result**: 200 Hubbard_Rob songs, 4.87 songs/s, 41.1s wall-clock. render=94.5%, extract=5.5%.
 
 #### Phase 2 — Profiling and attribution
-- [ ] Instrument the tagging loop to measure per-song render time, extraction time, I/O time
-- [ ] Identify where time is actually spent (render vs extract vs I/O vs serialization vs idle)
-- [ ] Measure worker pool utilization (idle time, queue depth)
+- [x] Instrument the tagging loop to measure per-song render time, extraction time, I/O time
+- [x] Identify where time is actually spent (render vs extract vs I/O vs serialization vs idle)
+- [x] Measure worker pool utilization (idle time, queue depth)
+- **Result**: WASM rendering dominated at 94.5% of measured time. Each render required full WebAssembly.compile() + instantiation, creating a serialised bottleneck across all 20 workers.
 
 #### Phase 3 — Root-cause isolation
-- [ ] Identify the single largest bottleneck from profiling data
-- [ ] Determine whether the bottleneck is CPU-bound, I/O-bound, or concurrency-structural
+- [x] Identify the single largest bottleneck from profiling data
+- [x] Determine whether the bottleneck is CPU-bound, I/O-bound, or concurrency-structural
+- **Result**: CPU-bound WASM compilation. Each render worker independently compiled the same 392 KB WASM binary from scratch, wasting ~90% of render time on redundant compilation. Two unsafe optimisation attempts (Emscripten module caching → heap corruption; engine reuse → silent render failures) were rejected before arriving at the safe approach.
 
 #### Phase 4 — Fix implementation
-- [ ] Implement a targeted fix for the identified bottleneck
-- [ ] Keep changes minimal and focused
+- [x] Implement a targeted fix for the identified bottleneck
+- [x] Keep changes minimal and focused
+- **Result**: Implemented `WebAssembly.Module` compilation caching via Emscripten's `instantiateWasm` hook in `engine-factory.ts`. Pre-compiles the WASM binary once to an immutable `WebAssembly.Module`, then each engine creation calls `WebAssembly.instantiate(compiledModule, imports)` to get a fresh `WebAssembly.Instance` with its own linear memory. Zero shared mutable state.
 
 #### Phase 5 — Verification
-- [ ] Re-run the same baseline measurement
-- [ ] Confirm improvement with evidence
+- [x] Re-run the same baseline measurement
+- [x] Confirm improvement with evidence
+- **Result**: 200 songs in 29.1s, **6.88 songs/s (+41% improvement)**. Pipeline now balanced: render=49.4%, extract=49.3%. Zero WASM errors, zero audio failures across all 200 songs. All 10 engine-factory tests pass.
 
 #### Phase 6 — Finalisation
-- [ ] Record all evidence in WORKLOG.md
-- [ ] Update any relevant docs
+- [x] Record all evidence in WORKLOG.md
+- [x] Update any relevant docs
+- [x] Remove temporary profiling instrumentation from index.ts
 
 ### Key observations from code review
 

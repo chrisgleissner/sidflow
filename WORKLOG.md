@@ -283,6 +283,45 @@ bun run tmp/bench-single-pass-20260323/build-similar-playlist.ts \
 
 - Run the broader validation gate required by the repo (`bun run build`, then `bun run test` three consecutive times) before calling the branch fully complete.
 
+## 2026-03-23 — Performance investigation: classification throughput regression
+
+### Problem
+
+Classification throughput regressed from ~9 songs/s to ~6.5 songs/s. CPU utilization oscillated between 50% and 10%, averaging ~30% on a 20-core machine.
+
+### Baseline measurement
+
+- Corpus: 200 Hubbard_Rob songs, `--force-rebuild --delete-wav-after-classification`
+- Result: **4.87 songs/s**, 41.1s wall-clock
+- Breakdown: render=94.5%, extract=5.5%
+- Log: `tmp/perf-profile-20260323/run1.log`
+
+### Root cause
+
+Each of the 20 WASM render workers independently called `WebAssembly.compile()` on the same 392 KB WASM binary for every song render. Compilation dominated render time at ~94.5%, turning WASM compilation into a serialised CPU bottleneck.
+
+### Fix: `WebAssembly.Module` compilation caching
+
+Changed `engine-factory.ts` to pre-compile the WASM binary once to an immutable `WebAssembly.Module`, then inject it via Emscripten's `instantiateWasm` hook. Each engine creation now calls `WebAssembly.instantiate(compiledModule, imports)` to get a fresh `WebAssembly.Instance` with its own linear memory. Zero shared mutable state.
+
+Two unsafe approaches were attempted and rejected first:
+1. **Emscripten module caching**: Shared the full Emscripten module object — caused "Out of bounds memory access" due to shared linear WASM memory across engine create/dispose cycles.
+2. **Engine reuse**: Reused SidAudioEngine instances across songs — caused "no audio" silent render failures due to incompletely resettable engine state.
+
+### Verification
+
+- 200 songs in 29.1s, **6.88 songs/s (+41% improvement)**
+- Pipeline balanced: render=49.4%, extract=49.3%
+- Zero WASM errors, zero audio failures
+- 10/10 engine-factory tests pass
+- Log: `tmp/perf-profile-20260323/run4-compile-cache.log`
+
+### Files changed
+
+- `packages/sidflow-classify/src/render/engine-factory.ts` — rewritten with `WebAssembly.Module` compilation caching
+- `packages/sidflow-classify/test/engine-factory.test.ts` — updated for `getCompiledWasmModule` API
+- `packages/sidflow-classify/src/index.ts` — temporary profiling instrumentation added then removed
+
 ## 2026-03-23T18:30:00Z — Performance investigation: classification throughput regression
 
 ### Context

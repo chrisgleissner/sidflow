@@ -1,11 +1,11 @@
 import loadLibsidplayfp, {
   SidAudioEngine,
-  type LibsidplayfpWasmModule
 } from "@sidflow/libsidplayfp-wasm";
 
 import { createLogger, pathExists } from "@sidflow/common";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 let engineFactoryOverride: (() => Promise<SidAudioEngine>) | null = null;
 
@@ -135,40 +135,80 @@ export function setEngineFactoryOverride(
   engineFactoryOverride = override;
 }
 
-// Cache the compiled WASM module per thread.  The module is stateless compiled
-// code — only SidPlayerContext instances carry mutable emulation state, and
-// those are created fresh by SidAudioEngine.loadSidBuffer() on each render.
-let cachedWasmModulePromise: Promise<LibsidplayfpWasmModule> | null = null;
+// Cache the pre-compiled WebAssembly.Module.  A WebAssembly.Module contains
+// only immutable compiled code with no mutable state — each WebAssembly.
+// instantiate() from it gets a fresh WebAssembly.Instance with independent
+// linear memory.  This skips both file I/O and WASM compilation on subsequent
+// engine creations while keeping full memory isolation between engines.
+let compiledWasmModulePromise: Promise<WebAssembly.Module> | null = null;
 
-export async function getWasmModule(): Promise<LibsidplayfpWasmModule> {
-  if (!cachedWasmModulePromise) {
-    cachedWasmModulePromise = loadLibsidplayfp();
+async function compileWasmModule(): Promise<WebAssembly.Module> {
+  const pkgEntry = import.meta.resolve("@sidflow/libsidplayfp-wasm");
+  const entryDir = path.dirname(fileURLToPath(pkgEntry));
+  // import.meta.resolve may point to src/ (source) or dist/ depending on
+  // whether we're running from TypeScript source or compiled output.
+  const candidates = [
+    path.join(entryDir, "libsidplayfp.wasm"),
+    path.join(entryDir, "..", "dist", "libsidplayfp.wasm"),
+  ];
+  for (const wasmPath of candidates) {
+    if (await pathExists(wasmPath)) {
+      const bytes = await readFile(wasmPath);
+      return WebAssembly.compile(bytes);
+    }
   }
-  return await cachedWasmModulePromise;
+  throw new Error(`Could not find libsidplayfp.wasm; looked in: ${candidates.join(", ")}`);
 }
 
-/** Reset the cached WASM module — used by tests. */
+export function getCompiledWasmModule(): Promise<WebAssembly.Module> {
+  if (!compiledWasmModulePromise) {
+    compiledWasmModulePromise = compileWasmModule();
+  }
+  return compiledWasmModulePromise;
+}
+
+/** Reset the cached compiled WASM module — used by tests. */
 export function resetWasmModuleCache(): void {
-  cachedWasmModulePromise = null;
+  compiledWasmModulePromise = null;
 }
 
 export async function createEngine(): Promise<SidAudioEngine> {
   if (engineFactoryOverride) {
     return await engineFactoryOverride();
   }
-  const module = await getWasmModule();
-  
-  // Create engine with explicit configuration and cached module
-  const engine = new SidAudioEngine({ 
-    module: Promise.resolve(module),
+
+  const compiledModule = await getCompiledWasmModule();
+
+  // Load a fresh Emscripten module using instantiateWasm to inject the
+  // pre-compiled WebAssembly.Module.  Each call creates a new Emscripten
+  // instance with its own WebAssembly.Instance and linear memory, but
+  // skips the expensive WASM compilation and file I/O.
+  const wasmModule = await loadLibsidplayfp({
+    instantiateWasm(
+      imports: WebAssembly.Imports,
+      successCallback: (instance: WebAssembly.Instance) => void
+    ) {
+      WebAssembly.instantiate(compiledModule, imports).then(
+        (instance) => successCallback(instance),
+        (error) => {
+          logger.error("Failed to instantiate pre-compiled WASM module", { error });
+          throw error;
+        }
+      );
+      return {};
+    },
+  });
+
+  const engine = new SidAudioEngine({
+    module: Promise.resolve(wasmModule),
     sampleRate: 44100,
-    stereo: true
+    stereo: true,
   });
 
   const roms = await getCachedSystemRoms();
   if (roms.kernal && roms.basic && roms.chargen) {
     await engine.setSystemROMs(roms.kernal, roms.basic, roms.chargen);
   }
-  
+
   return engine;
 }
