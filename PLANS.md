@@ -45,11 +45,9 @@ Design, implement, benchmark, and validate a single-pass SID classification pipe
 
 ### Partially implemented / still conflicting with target state
 
-- `defaultSidWriteTraceProvider(...)` still falls back to a full second render when the sidecar is absent or corrupt.
-- Worker-side SID-native extraction silently returns `{}` on missing/corrupt sidecars rather than enforcing a deterministic cache contract.
-- `.render.json` does not record whether trace capture was produced, so cache validation cannot distinguish a WAV built before sidecars existed from a valid single-pass artifact.
-- Trace sidecars are written with plain `JSON.stringify(...)` and without a versioned schema contract tied to the render sidecar.
-- Existing cache reuse paths can preserve stale WAV artifacts that lack trace sidecars, causing either a second pass or missing SID-native features.
+- The code path is now single-pass by default, but the final repo-wide validation gate is still open.
+- README coverage now includes the exported vector layout and a JSON sample, but the deeper technical-reference refresh is still pending.
+- The new 200-song end-to-end proof is CI-safe and local-fixture-backed, but it still needs to be carried through the final full-suite gate.
 
 ### Dead code / temporary behavior to remove or isolate
 
@@ -62,16 +60,15 @@ Design, implement, benchmark, and validate a single-pass SID classification pipe
 
 ## Current architecture summary
 
-- Render phase: `renderWavWithEngine(...)` renders the WAV and can capture raw SID register writes in the same engine run.
+- Render phase: `renderWavWithEngine(...)` renders the WAV and captures raw SID register writes in the same engine run on the default WASM path.
 - Sidecars today:
   - `.sha256` for WAV content hash
   - `.render.json` for render settings
-  - `.trace.json` for SID write traces
+  - `.trace.jsonl` for SID write traces
 - Extraction phase:
   - WAV features come from the WAV artifact.
-  - SID-native features come from `.trace.json` when present.
-  - Worker path currently drops SID-native features if sidecar loading fails.
-  - Main-thread fallback path currently performs a second render if sidecar loading fails.
+  - SID-native features come from `.trace.jsonl` and fail deterministically when the required sidecar is missing.
+  - Worker and main-thread paths enforce the same trace-sidecar contract.
 - Merge phase:
   - WAV-derived keys win on collisions.
   - SID-derived fields use the `sid*` namespace and feed explicit hybrid-vector fusion logic.
@@ -106,18 +103,18 @@ Design, implement, benchmark, and validate a single-pass SID classification pipe
 
 ### Phase 2 — Single-pass contract implementation
 
-- [ ] Add explicit render-sidecar metadata describing trace capture and trace schema/version
-- [ ] Make cache validation reject or rebuild WAV artifacts that lack valid trace sidecars for hybrid classification
-- [ ] Remove the default second-render fallback from SID-native extraction
-- [ ] Align worker and main-thread behavior so missing/corrupt sidecars are handled consistently and deterministically
-- [ ] Ensure trace sidecar writing uses deterministic serialization
-- [ ] Ensure the SID-native extraction stage converts raw SID register traces into stable, higher-level musical signals that are suitable for export and similarity decisions
+- [x] Add explicit render-sidecar metadata describing trace capture and trace schema/version
+- [x] Make cache validation reject or rebuild WAV artifacts that lack valid trace sidecars for hybrid classification
+- [x] Remove the default second-render fallback from SID-native extraction
+- [x] Align worker and main-thread behavior so missing/corrupt sidecars are handled consistently and deterministically
+- [x] Ensure trace sidecar writing uses deterministic serialization
+- [x] Ensure the SID-native extraction stage converts raw SID register traces into stable, higher-level musical signals that are suitable for export and similarity decisions
 
 ### Phase 3 — Regression coverage
 
-- [ ] Add tests for stale cache invalidation and trace-sidecar contract enforcement
-- [ ] Add tests for deterministic trace-sidecar serialization/metadata
-- [ ] Add or extend export validation tests if schema-sensitive behavior changes
+- [x] Add tests for stale cache invalidation and trace-sidecar contract enforcement
+- [x] Add tests for deterministic trace-sidecar serialization/metadata
+- [x] Add or extend export validation tests if schema-sensitive behavior changes
 
 ### Phase 4 — Validation and benchmarking
 
@@ -146,6 +143,7 @@ Design, implement, benchmark, and validate a single-pass SID classification pipe
 - [x] Diff representative classification outputs old vs new where feasible
 - [x] Spot-check representative songs for WAV and SID-native fields
 - [x] Build/validate SQLite export and confirm feature/vector/schema integrity
+- [x] Add a 200-song end-to-end station proof that classifies locally, exports SQLite, simulates ratings, and validates a 20-song similar-only rebuilt queue
 - [ ] Update technical docs to describe the final architecture and operational expectations
 
 ### Phase 6 — Final gate
