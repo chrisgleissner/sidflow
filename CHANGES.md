@@ -1,6 +1,25 @@
 # Changelog
 
 
+## 0.5.3 (2026-03-23)
+
+- Merge pull request #85 from chrisgleissner/feat/improve-classification-2
+- test(web): stabilize browser audio fidelity checks
+- fix(web): always show playlist browser controls
+- feat(tests): add visibility check for playlists button in E2E tests
+- fix(ci): restore decay export and stabilize wasm test
+- feat: enhance performance tests with error handling and resource management
+- feat: add C64U LED CLI integration and offline evaluation metrics
+- Refactor code structure for improved readability and maintainability
+- feat: Enhance SID-native classification by preserving WAV-derived features and improving compatibility with cached bundles
+- feat: Enhance SID feature extraction and testing
+- feat: add SID write tracing and feedback aggregation functionality
+- fix: extend station demo fixture for C3 min_sim stability; mark Phase C/D complete in PLANS/WORKLOG
+- Add comprehensive tests for queue adventure and evaluation modules
+- feat: Implement metric-learning MLP for triplet and ranking pair training
+- chore: update CHANGES.md for 0.5.2
+
+
 ## 0.5.2 (2026-03-22)
 
 - Merge pull request #84 from chrisgleissner/feat/improve-classification
