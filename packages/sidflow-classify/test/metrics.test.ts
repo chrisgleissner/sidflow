@@ -13,18 +13,75 @@ import {
   type PredictRatingsOptions
 } from "@sidflow/classify";
 import { ensureDir, resolveManualTagPath, stringifyDeterministic } from "@sidflow/common";
+import { SID_TRACE_SIDECAR_VERSION, writeSidTraceSidecar } from "../src/render/wav-renderer.js";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-metrics-");
 
+function createMinimalSidBuffer(options: { title: string; author: string; released: string }): Buffer {
+  const buffer = Buffer.alloc(0x80);
+  buffer.write("PSID", 0, "ascii");
+  buffer.writeUInt16BE(2, 0x04);
+  buffer.writeUInt16BE(0x007c, 0x06);
+  buffer.writeUInt16BE(0x1000, 0x08);
+  buffer.writeUInt16BE(0x1000, 0x0a);
+  buffer.writeUInt16BE(0x1003, 0x0c);
+  buffer.writeUInt16BE(1, 0x0e);
+  buffer.writeUInt16BE(1, 0x10);
+  buffer.write(options.title, 0x16, "latin1");
+  buffer.write(options.author, 0x36, "latin1");
+  buffer.write(options.released, 0x56, "latin1");
+
+  // Minimal valid player bytes: init = RTS at $1000, play = RTS at $1003.
+  buffer[0x7c] = 0x60;
+  buffer[0x7d] = 0xea;
+  buffer[0x7e] = 0xea;
+  buffer[0x7f] = 0x60;
+  return buffer;
+}
+
+function createMinimalSidFixture(name: string): Buffer {
+  return createMinimalSidBuffer({
+    title: name,
+    author: "SIDFlow",
+    released: "2026",
+  });
+}
+
 function createPlan(sidPath: string, audioCachePath: string, tagsPath: string): ClassificationPlan {
   return {
-    config: {} as ClassificationPlan["config"],
+    config: {
+      maxRenderSec: 45,
+      introSkipSec: 15,
+      maxClassifySec: 15,
+      render: { preferredEngines: ["wasm"] },
+    } as ClassificationPlan["config"],
     forceRebuild: false,
     classificationDepth: 3,
     sidPath,
     audioCachePath,
     tagsPath
   } as unknown as ClassificationPlan;
+}
+
+async function seedWasmCacheArtifact(wavFile: string): Promise<void> {
+  await ensureDir(path.dirname(wavFile));
+  await writeFile(wavFile, "wav");
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: 45,
+    introSkipSec: 15,
+    maxClassifySec: 15,
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: true,
+    traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
+  });
+  await writeSidTraceSidecar(wavFile, {
+    traces: [],
+    clock: "PAL",
+    skipSeconds: 15,
+    analysisSeconds: 15,
+  });
 }
 
 describe("performance metrics", () => {
@@ -41,15 +98,14 @@ describe("performance metrics", () => {
     await Promise.all(
       [1, 2, 3, 4, 5].map(async (i) => {
         const sidFile = path.join(sidPath, `song${i}.sid`);
-        await writeFile(sidFile, `content${i}`);
+        await writeFile(sidFile, createMinimalSidFixture(`song${i}`));
       })
     );
 
     const startTime = Date.now();
     const result = await buildAudioCache(plan, {
       render: async ({ wavFile }: { wavFile: string }) => {
-        await mkdir(path.dirname(wavFile), { recursive: true });
-        await writeFile(wavFile, "wav");
+        await seedWasmCacheArtifact(wavFile);
       }
     });
     const endTime = Date.now();
@@ -68,8 +124,7 @@ describe("performance metrics", () => {
     // Run again to test cache hit rate
     const secondResult = await buildAudioCache(plan, {
       render: async ({ wavFile }: { wavFile: string }) => {
-        await mkdir(path.dirname(wavFile), { recursive: true });
-        await writeFile(wavFile, "wav");
+        await seedWasmCacheArtifact(wavFile);
       }
     });
 
@@ -96,9 +151,9 @@ describe("performance metrics", () => {
     const mixedSid = path.join(sidPath, "Music", "mixed.sid");
 
     await Promise.all([
-      writeFile(manualSid, "manual"),
-      writeFile(autoSid, "auto"),
-      writeFile(mixedSid, "mixed")
+      writeFile(manualSid, createMinimalSidFixture("manual")),
+      writeFile(autoSid, createMinimalSidFixture("auto")),
+      writeFile(mixedSid, createMinimalSidFixture("mixed"))
     ]);
 
     // Add manual tag for first file (complete)
@@ -130,8 +185,7 @@ describe("performance metrics", () => {
     // Create WAV cache for all files
     for (const sid of [manualSid, autoSid, mixedSid]) {
       const wavPath = resolveWavPath(plan, sid);
-      await ensureDir(path.dirname(wavPath));
-      await writeFile(wavPath, "wav");
+      await seedWasmCacheArtifact(wavPath);
     }
 
     const startTime = Date.now();
@@ -167,7 +221,7 @@ describe("performance metrics", () => {
     const plan = createPlan(sidPath, audioCachePath, tagsPath);
 
     const sidFile = path.join(sidPath, "Music", "complete.sid");
-    await writeFile(sidFile, "content");
+    await writeFile(sidFile, createMinimalSidFixture("complete"));
 
     // Add complete manual tag
     const tagPath = resolveManualTagPath(sidPath, tagsPath, sidFile);
@@ -185,8 +239,7 @@ describe("performance metrics", () => {
 
     // Create WAV cache
     const wavPath = resolveWavPath(plan, sidFile);
-    await ensureDir(path.dirname(wavPath));
-    await writeFile(wavPath, "wav");
+    await seedWasmCacheArtifact(wavPath);
 
     const result = await generateAutoTags(plan, {
       extractMetadata: async (_options: ExtractMetadataOptions) => ({ title: "Test" }),
@@ -218,8 +271,7 @@ describe("performance metrics", () => {
 
     const wavResult = await buildAudioCache(plan, {
       render: async ({ wavFile }: { wavFile: string }) => {
-        await mkdir(path.dirname(wavFile), { recursive: true });
-        await writeFile(wavFile, "wav");
+        await seedWasmCacheArtifact(wavFile);
       }
     });
 

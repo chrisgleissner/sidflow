@@ -2,6 +2,30 @@
 
 ## Objective
 
+## 2026-03-23 PR convergence
+
+### Goal
+
+Bring PR #86 to merge-ready by addressing remaining review feedback, validating the branch locally, and ensuring CI reaches all-green status.
+
+### Checklist
+
+- [x] Inspect PR review threads and branch CI status
+- [x] Verify active README review comments against current content
+- [x] Apply minimal doc fixes for valid comments
+- [ ] Run required local validation for the branch state
+- [ ] Respond to each review thread with technical resolution notes
+- [ ] Resolve all review threads
+- [ ] Confirm all PR checks are green
+
+### Progress
+
+- 2026-03-23: Identified two active README review comments with valid documentation fixes and one outdated PLANS comment that needs a resolution note rather than a code change.
+- 2026-03-23: Full test gate exposed a real regression in `packages/sidflow-classify/test/metrics.test.ts`. Root causes were `generateAutoTags` reporting `totalFiles` as SID-file count instead of per-song total, and the metrics test seeding fake cached WAVs without the now-required WASM render/trace sidecars, which forced unintended rerenders against invalid short SID fixtures.
+- 2026-03-23: Fixed `generateAutoTags` metrics accounting and updated the metrics test to seed cache artifacts that satisfy the single-pass WASM trace contract. Targeted `bun test packages/sidflow-classify/test/metrics.test.ts` now passes.
+- 2026-03-23: Read `doc/c64/sid-spec.md`, `doc/c64/sid-file-structure.md`, and `doc/c64/assembly-spec.md`, then analyzed `test-data/C64Music/MUSICIANS/N/Ninja/Ta-Boo.sid`. Verified it is a compact PSID v2 file with `dataOffset = 0x7c`, one song, external metadata strings, and a short 6502 payload with distinct init/play entry points. Updated test fixtures to use valid PSID structure plus real payload bytes instead of arbitrary short strings.
+- 2026-03-23: The next full-suite blocker was not a test assertion but the coverage batch runner reading `coverage/lcov.info` too early. Added an explicit wait-for-artifact step, and a direct end-to-end `node scripts/run-unit-coverage-batches.mjs` run now completes successfully and writes merged coverage.
+
 Design, implement, benchmark, and validate a single-pass SID classification pipeline in which one LibSidPlayFP execution produces both the WAV artifact and a deterministic sidecar for SID-native feature extraction, with no second playback pass required on the optimized path, and with classification plus SQLite export integrity preserved.
 
 ## Branch-vs-main findings

@@ -2198,7 +2198,7 @@ export async function generateAutoTags(
     startTime,
     endTime,
     durationMs: endTime - startTime,
-    totalFiles: sidFiles.length,
+    totalFiles,
     autoTaggedCount: autoTagged.length,
     manualOnlyCount: manualEntries.length,
     mixedCount: mixedEntries.length,

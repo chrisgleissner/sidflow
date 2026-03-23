@@ -221,7 +221,7 @@ See [Deployment Guide](doc/deployment.md) for details.
 
 Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 24-dimensional perceptual vectors (WAV + SID-native hybrid) for offline and downstream consumers.
 
-Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3`, `gh` (authenticated).
+Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish).
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
