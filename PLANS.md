@@ -222,3 +222,95 @@ Design, implement, benchmark, and validate a single-pass SID classification pipe
 ## Deferred items
 
 - Additional trace compaction or binary sidecar work beyond the current schema is deferred unless benchmarks show `.trace.jsonl` write/parse overhead is still a material bottleneck after removing second-pass behavior.
+
+## Backlog
+
+### Constant SID-native classification features
+
+**Status**: Not started
+**Filed**: 2026-03-23
+
+Many SID-derived classification features are initialized to constant or near-constant values across the entire corpus, producing no discriminatory signal for similarity or recommendation. Analysis of 500 records from `data/classified/features_2026-03-23_18-13-03-454.jsonl` shows:
+
+**Always zero (8 features — completely useless for classification):**
+- `sidArpeggioActivity` = 0
+- `sidFilterMotion` = 0
+- `sidPwmActivity` = 0
+- `sidRegisterMotion` = 0
+- `sidRhythmicRegularity` = 0
+- `sidSamplePlaybackActivity` = 0
+- `sidSyncopation` = 0
+- (also `sidFeatureVariant` = "sid-native", but this is a label, not a signal)
+
+**Severely quantized (only 2–5 distinct values, all simple fractions like 0, 1/3, 1/2, 2/3, 1):**
+- `sidActiveVoiceFrameRatio`, `sidAdsrPadRatio`, `sidAdsrPluckRatio`
+- `sidGateOnsetDensity` (only 5 values: 0, 1/15, 2/15, 1/5, 1/3)
+- `sidRoleAccompanimentRatio`, `sidRoleBassRatio`, `sidRoleLeadRatio`
+- `sidWaveMixedRatio`, `sidWaveNoiseRatio`
+- `sidTraceFrameCount` (only 750 or 900 = PAL/NTSC)
+
+**Healthy variance (genuine signal):**
+- `sidBytes`, `sidFilterCutoffMean`, `sidFilterResonanceMean`, `sidTraceEventCount`, `sidVolumeMean`
+- `sidMelodicClarity`, `sidVoiceRoleEntropy`
+- `sidWavePulseRatio`, `sidWaveSawRatio`, `sidWaveTriangleRatio`
+
+**Root cause hypothesis**: The SID-native feature extractor (`sid-native-features.ts`) computes many features from per-frame or per-voice summaries that collapse temporal information into binary or ternary buckets. For example, waveform ratios are likely computed as "fraction of voices using waveform X" (yielding only 0, 1/3, 2/3, 1 for a 3-voice SID), and temporal features like arpeggio activity, filter motion, syncopation, and rhythmic regularity appear to use thresholds or detection logic that never triggers on real trace data.
+
+**Required fix**: Audit `sid-native-features.ts` and its trace-to-feature pipeline. Replace per-voice-only aggregation with per-frame temporal analysis where appropriate. Fix detection thresholds that produce constant zero. Ensure features truly extract SID register behavior instead of defaulting to hard-coded values.
+
+---
+
+## 2026-03-23 Performance investigation: classification throughput regression
+
+### Problem statement
+
+Classification throughput has regressed from ~9 songs/s to ~6.5 songs/s. CPU utilization oscillates between 50% and 10%, averaging ~30% on a 20-core machine. The pipeline should fully utilize available cores during the tagging phase.
+
+### Environment
+
+- 20 logical CPUs, Linux 6.17.0-19-generic, Bun 1.3.10
+- 61,275 SID files in HVSC collection
+- Config: introSkipSec=15, maxClassifySec=15, maxRenderSec=30, WASM engine, threads=0 (auto)
+
+### Reproduction
+
+```bash
+bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+### Phases
+
+#### Phase 1 — Baseline reproduction
+- [ ] Run a small subset classification (~200–500 songs) to establish a reproducible baseline
+- [ ] Record throughput (songs/s), wall-clock time, CPU utilization
+- [ ] Capture timing breakdown per pipeline stage
+
+#### Phase 2 — Profiling and attribution
+- [ ] Instrument the tagging loop to measure per-song render time, extraction time, I/O time
+- [ ] Identify where time is actually spent (render vs extract vs I/O vs serialization vs idle)
+- [ ] Measure worker pool utilization (idle time, queue depth)
+
+#### Phase 3 — Root-cause isolation
+- [ ] Identify the single largest bottleneck from profiling data
+- [ ] Determine whether the bottleneck is CPU-bound, I/O-bound, or concurrency-structural
+
+#### Phase 4 — Fix implementation
+- [ ] Implement a targeted fix for the identified bottleneck
+- [ ] Keep changes minimal and focused
+
+#### Phase 5 — Verification
+- [ ] Re-run the same baseline measurement
+- [ ] Confirm improvement with evidence
+
+#### Phase 6 — Finalisation
+- [ ] Record all evidence in WORKLOG.md
+- [ ] Update any relevant docs
+
+### Key observations from code review
+
+- `generateAutoTags()` metadata phase is **serial**: processes all SID files sequentially before any parallel tagging begins
+- `taggingConcurrency = baseConcurrency * 2 = 40` outer tasks compete for 20 render workers + 20 extraction workers
+- `intermediateFlushChain` serializes JSONL writes in deterministic order
+- `deleteWavAfterClassification=true` + `forceRebuild=true` means every song needs full render+extract+delete cycle
+- `needsWavRefresh()` does multiple file stat/read operations per song
+- `updateDirectoryPlaylist()` called for every song during tagging

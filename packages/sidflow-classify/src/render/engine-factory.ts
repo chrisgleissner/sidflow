@@ -135,10 +135,21 @@ export function setEngineFactoryOverride(
   engineFactoryOverride = override;
 }
 
+// Cache the compiled WASM module per thread.  The module is stateless compiled
+// code — only SidPlayerContext instances carry mutable emulation state, and
+// those are created fresh by SidAudioEngine.loadSidBuffer() on each render.
+let cachedWasmModulePromise: Promise<LibsidplayfpWasmModule> | null = null;
+
 export async function getWasmModule(): Promise<LibsidplayfpWasmModule> {
-  // NEVER cache - always load a fresh WASM module to ensure complete isolation
-  const module = await loadLibsidplayfp();
-  return module;
+  if (!cachedWasmModulePromise) {
+    cachedWasmModulePromise = loadLibsidplayfp();
+  }
+  return await cachedWasmModulePromise;
+}
+
+/** Reset the cached WASM module — used by tests. */
+export function resetWasmModuleCache(): void {
+  cachedWasmModulePromise = null;
 }
 
 export async function createEngine(): Promise<SidAudioEngine> {
@@ -147,7 +158,7 @@ export async function createEngine(): Promise<SidAudioEngine> {
   }
   const module = await getWasmModule();
   
-  // Create engine with explicit configuration and fresh module
+  // Create engine with explicit configuration and cached module
   const engine = new SidAudioEngine({ 
     module: Promise.resolve(module),
     sampleRate: 44100,

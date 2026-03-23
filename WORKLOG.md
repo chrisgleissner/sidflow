@@ -282,3 +282,22 @@ bun run tmp/bench-single-pass-20260323/build-similar-playlist.ts \
 ### Next step
 
 - Run the broader validation gate required by the repo (`bun run build`, then `bun run test` three consecutive times) before calling the branch fully complete.
+
+## 2026-03-23T18:30:00Z — Performance investigation: classification throughput regression
+
+### Context
+
+Classification throughput has regressed from ~9 songs/s to ~6.5 songs/s. CPU utilization oscillates between 50% and 10%, averaging ~30% on a 20-core machine. This section documents the measurement-driven investigation.
+
+### Environment
+
+- 20 logical CPUs, Linux 6.17.0-19-generic, Bun 1.3.10
+- 61,275 SID files in HVSC collection
+- Config: introSkipSec=15, maxClassifySec=15, maxRenderSec=30, WASM engine, threads=0 (auto)
+
+### Constant features finding (backlog)
+
+Analyzed 500 records from `data/classified/features_2026-03-23_18-13-03-454.jsonl`:
+- 8 SID features are always zero across all records (sidArpeggioActivity, sidFilterMotion, sidPwmActivity, sidRegisterMotion, sidRhythmicRegularity, sidSamplePlaybackActivity, sidSyncopation)
+- Many more are quantized to simple fractions (0, 1/3, 1/2, 2/3, 1)
+- Filed as backlog item in PLANS.md — separate from the throughput investigation

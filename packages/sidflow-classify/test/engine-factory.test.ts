@@ -3,6 +3,7 @@ import { describe, expect, test, afterEach } from "bun:test";
 import {
     createEngine,
     getWasmModule,
+    resetWasmModuleCache,
     setEngineFactoryOverride,
 } from "../src/render/engine-factory";
 import { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
@@ -11,6 +12,7 @@ describe("Engine Factory", () => {
     afterEach(() => {
         // Reset any override after each test
         setEngineFactoryOverride(null);
+        resetWasmModuleCache();
     });
 
     describe("getWasmModule", () => {
@@ -20,14 +22,23 @@ describe("Engine Factory", () => {
             expect(typeof module).toBe("object");
         });
 
-        test("returns a fresh module on each call (no caching)", async () => {
+        test("returns the cached module on subsequent calls", async () => {
             const module1 = await getWasmModule();
             const module2 = await getWasmModule();
 
-            // While they may have the same structure, the function guarantees
-            // they are loaded fresh each time (important for isolation)
+            // The compiled WASM module is stateless code and is cached per thread
+            expect(module1).toBe(module2);
+        });
+
+        test("returns a fresh module after cache reset", async () => {
+            const module1 = await getWasmModule();
+            resetWasmModuleCache();
+            const module2 = await getWasmModule();
+
             expect(module1).toBeDefined();
             expect(module2).toBeDefined();
+            // After reset, a new module is compiled
+            expect(module1).not.toBe(module2);
         });
     });
 

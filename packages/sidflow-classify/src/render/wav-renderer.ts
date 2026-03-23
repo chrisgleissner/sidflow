@@ -434,10 +434,11 @@ export async function renderWavWithEngine(
       break;
     }
 
-    // Copy the chunk immediately: some engines return views into a reused buffer.
-    // Keeping references would make earlier "chunks" mutate on later renderCycles calls.
+    // SidAudioEngine.renderCycles() already copies data out of the WASM
+    // typed_memory_view, so the returned chunk is JS-heap-owned and stable.
+    // We only need subarray() when truncating to the sample limit.
     const slice = allowed === chunk.length ? chunk : chunk.subarray(0, allowed);
-    chunks.push(slice.slice());
+    chunks.push(allowed === chunk.length ? chunk : slice.slice());
     collectedSamples += slice.length;
 
     // Call progress callback at specified intervals to support heartbeat
