@@ -43,7 +43,9 @@ import { getLogicalCpuCount } from "./system.js";
 import {
   WAV_HASH_EXTENSION,
   SID_TRACE_EXTENSION,
+  SID_TRACE_SIDECAR_VERSION,
   computeFileHash,
+  readSidTraceSidecar,
   renderWavWithEngine,
   type RenderWavOptions
 } from "./render/wav-renderer.js";
@@ -84,6 +86,23 @@ function resolveMaxClassifySec(config: SidflowConfig): number {
   return typeof config.maxClassifySec === "number" && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
     ? config.maxClassifySec
     : DEFAULT_ANALYSIS_WINDOW_SEC;
+}
+
+async function persistRenderedWavMetadata(
+  wavFile: string,
+  config: SidflowConfig,
+  maxRenderSec: number,
+): Promise<void> {
+  const traceSidecar = await readSidTraceSidecar(wavFile);
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: maxRenderSec,
+    introSkipSec: resolveIntroSkipSec(config),
+    maxClassifySec: resolveMaxClassifySec(config),
+    sourceOffsetSec: (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0,
+    renderEngine: ((config.render?.preferredEngines as RenderEngine[] | undefined) ?? ["wasm"])[0] ?? "wasm",
+    traceCaptureEnabled: traceSidecar !== null,
+    traceSidecarVersion: traceSidecar !== null ? SID_TRACE_SIDECAR_VERSION : null,
+  });
 }
 
 /**
@@ -498,12 +517,16 @@ export async function needsWavRefresh(
   // If these settings change, the cache is no longer comparable/reproducible.
   try {
     const config = configOverride ?? (await loadConfig(process.env.SIDFLOW_CONFIG));
+    const selectedEngine = ((config.render?.preferredEngines as RenderEngine[] | undefined) ?? ["wasm"])[0] ?? "wasm";
     const desired: WavRenderSettingsSidecar = {
-      v: 2,
+      v: 3,
       maxRenderSec: resolveEffectiveMaxRenderSec(config),
       introSkipSec: resolveIntroSkipSec(config),
       maxClassifySec: resolveMaxClassifySec(config),
       sourceOffsetSec: 0,
+      renderEngine: selectedEngine,
+      traceCaptureEnabled: selectedEngine === "wasm",
+      traceSidecarVersion: selectedEngine === "wasm" ? SID_TRACE_SIDECAR_VERSION : null,
     };
     const existing = await readWavRenderSettingsSidecar(wavFile);
     if (!existing) {
@@ -512,8 +535,15 @@ export async function needsWavRefresh(
     if (
       existing.maxRenderSec !== desired.maxRenderSec ||
       existing.introSkipSec !== desired.introSkipSec ||
-      existing.maxClassifySec !== desired.maxClassifySec
+      existing.maxClassifySec !== desired.maxClassifySec ||
+      existing.renderEngine !== desired.renderEngine ||
+      existing.traceCaptureEnabled !== desired.traceCaptureEnabled ||
+      existing.traceSidecarVersion !== desired.traceSidecarVersion
     ) {
+      return true;
+    }
+
+    if (selectedEngine === "wasm" && (await readSidTraceSidecar(wavFile)) === null) {
       return true;
     }
   } catch {
@@ -572,7 +602,8 @@ export const defaultRenderWav: RenderWav = async (options) => {
   const config = await loadConfig(process.env.SIDFLOW_CONFIG);
   const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const defaultFormats = (config.render?.defaultFormats ?? ['wav']) as RenderFormat[];
-  const useCli = preferredEngines[0] === 'sidplayfp-cli';
+  const selectedEngine = preferredEngines[0] ?? 'wasm';
+  const useCli = selectedEngine === 'sidplayfp-cli';
   const maxClassifySeconds =
     typeof config.maxClassifySec === 'number' && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
       ? config.maxClassifySec
@@ -640,6 +671,9 @@ export const defaultRenderWav: RenderWav = async (options) => {
       introSkipSec: introSkipSeconds,
       maxClassifySec: maxClassifySeconds,
       sourceOffsetSec: renderedSettings?.sourceOffsetSec ?? 0,
+      renderEngine: 'sidplayfp-cli',
+      traceCaptureEnabled: false,
+      traceSidecarVersion: null,
     });
   } else if (useCli) {
     // Use sidplayfp-cli via RenderOrchestrator for WAV-only
@@ -690,6 +724,9 @@ export const defaultRenderWav: RenderWav = async (options) => {
       introSkipSec: introSkipSeconds,
       maxClassifySec: maxClassifySeconds,
       sourceOffsetSec: renderedSettings?.sourceOffsetSec ?? 0,
+      renderEngine: 'sidplayfp-cli',
+      traceCaptureEnabled: false,
+      traceSidecarVersion: null,
     });
   } else {
     // Use the WASM engine directly for WAV-only (no multi-format support yet)
@@ -727,6 +764,9 @@ export const defaultRenderWav: RenderWav = async (options) => {
       introSkipSec: introSkipSeconds,
       maxClassifySec: maxClassifySeconds,
       sourceOffsetSec,
+      renderEngine: 'wasm',
+      traceCaptureEnabled: options.captureTrace === true,
+      traceSidecarVersion: options.captureTrace === true ? SID_TRACE_SIDECAR_VERSION : null,
     });
     
     // TODO: When WASM multi-format is implemented (render matrix status: mvp),
@@ -1041,12 +1081,7 @@ export async function buildAudioCache(
         if (renderSucceeded) {
           // Keep cache reproducible even for injected renderers: record the effective
           // representative-window settings used to produce the WAV.
-          await writeWavRenderSettingsSidecar(wavFile, {
-            maxRenderSec: effectiveMaxRenderSeconds,
-            introSkipSec: resolveIntroSkipSec(plan.config),
-            maxClassifySec: resolveMaxClassifySec(plan.config),
-            sourceOffsetSec: (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0,
-          });
+          await persistRenderedWavMetadata(wavFile, plan.config, effectiveMaxRenderSeconds);
         }
         
         if (renderSucceeded) {
@@ -1822,7 +1857,7 @@ export async function generateAutoTags(
 
     // Always ensure we have a WAV and extract features for every song.
     // Stations depend on objective features, not just ratings.
-    if (!(await pathExists(job.wavPath))) {
+    if (await needsWavRefresh(job.sidFile, job.wavPath, false, plan.config)) {
         // Emit "building" phase for inline rendering
         const buildStartedAt = Date.now();
         onThreadUpdate?.({
@@ -1876,6 +1911,7 @@ export async function generateAutoTags(
           } else {
             await render(renderOptions);
           }
+          await persistRenderedWavMetadata(job.wavPath, plan.config, effectiveMaxRenderSeconds);
           // Track the WAV file for potential cleanup after classification
           renderedWavFiles.push(job.wavPath);
           renderedFilesCount += 1;
@@ -1947,10 +1983,6 @@ export async function generateAutoTags(
     classifyLogger.debug(
       `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
     );
-
-    // Delete trace sidecar immediately after extraction — it was only needed for this step.
-    // This keeps peak disk usage near zero rather than accumulating for all songs.
-    void rm(`${job.wavPath}${SID_TRACE_EXTENSION}`, { force: true });
 
     const autoFilePath = resolveAutoTagFilePath(plan.tagsPath, job.relativePath, plan.classificationDepth);
     const baseKey = toPosixRelative(resolveAutoTagKey(job.relativePath, plan.classificationDepth));

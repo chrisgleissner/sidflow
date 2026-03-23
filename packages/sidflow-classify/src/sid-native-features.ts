@@ -1,4 +1,4 @@
-import { parseSidFile, pathExists, type SidClock } from "@sidflow/common";
+import { parseSidFile, type SidClock } from "@sidflow/common";
 import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
 import { readFile } from "node:fs/promises";
 
@@ -9,7 +9,7 @@ import {
   type CompactSidWriteTraceOptions,
   type SidTraceVideoStandard,
 } from "./sid-register-trace.js";
-import { RENDER_CYCLES_PER_CHUNK, SID_TRACE_EXTENSION, type SidTraceSidecar } from "./render/wav-renderer.js";
+import { readSidTraceSidecar, writeSidTraceSidecar } from "./render/wav-renderer.js";
 import type { ExtractFeaturesOptions, FeatureExtractor, FeatureVector } from "./index.js";
 
 const SID_MAX_FILTER_CUTOFF = 0x07ff;
@@ -86,45 +86,41 @@ export function createSidNativeFeatureExtractor(
   const traceProvider = options.traceProvider ?? defaultSidWriteTraceProvider;
 
   return async (extractOptions) => {
-    try {
-      const capture = await traceProvider(extractOptions);
-      return extractSidNativeFeaturesFromWriteTrace({
-        traces: capture.traces,
-        clock: capture.clock,
-        skipSeconds: capture.skipSeconds,
-        analysisSeconds: capture.analysisSeconds,
-      });
-    } catch {
-      return createEmptySidNativeFeatures("unavailable", undefined);
-    }
+    const capture = await traceProvider(extractOptions);
+    return extractSidNativeFeaturesFromWriteTrace({
+      traces: capture.traces,
+      clock: capture.clock,
+      skipSeconds: capture.skipSeconds,
+      analysisSeconds: capture.analysisSeconds,
+    });
   };
 }
 
 export async function defaultSidWriteTraceProvider(
   options: ExtractFeaturesOptions,
 ): Promise<SidWriteTraceCapture> {
-  // Fast path: reuse the trace sidecar written during WAV rendering.
-  // This avoids a second full WASM render pass (identical analysis window guaranteed
-  // because captureTrace uses the same introSkipSec / maxClassifySec config values).
   if (options.wavFile) {
-    const traceFile = `${options.wavFile}${SID_TRACE_EXTENSION}`;
-    try {
-      if (await pathExists(traceFile)) {
-        const raw = await readFile(traceFile, "utf8");
-        const sidecar = JSON.parse(raw) as SidTraceSidecar;
-        return {
-          traces: sidecar.traces,
-          clock: sidecar.clock as SidClock,
-          skipSeconds: sidecar.skipSeconds,
-          analysisSeconds: sidecar.analysisSeconds,
-        };
-      }
-    } catch {
-      // Sidecar is unreadable or corrupt — fall through to full re-render.
+    const sidecar = await readSidTraceSidecar(options.wavFile);
+    if (sidecar) {
+      return {
+        traces: sidecar.traces,
+        clock: sidecar.clock as SidClock,
+        skipSeconds: sidecar.skipSeconds,
+        analysisSeconds: sidecar.analysisSeconds,
+      };
     }
   }
 
-  // Slow path: render from scratch (no sidecar available, e.g. cached WAV from prior run).
+  throw new Error(
+    `Missing or invalid SID trace sidecar for ${options.wavFile ?? options.sidFile}; rerender through the trace-capable classify path.`
+  );
+}
+
+export async function captureSidWriteTraceSecondPass(
+  options: ExtractFeaturesOptions,
+  skipSeconds?: number,
+  analysisSeconds?: number,
+): Promise<SidWriteTraceCapture> {
   const metadata = await parseSidFile(options.sidFile);
   const sidBuffer = new Uint8Array(await readFile(options.sidFile));
   const { SidAudioEngine } = await import("@sidflow/libsidplayfp-wasm");
@@ -139,14 +135,31 @@ export async function defaultSidWriteTraceProvider(
       engine.setSidWriteTraceEnabled(true);
     }
 
-    const frameWindow = resolveSidTraceFrameWindow({ clock: metadata.clock });
+    const frameWindow = resolveSidTraceFrameWindow({
+      clock: metadata.clock,
+      skipSeconds,
+      analysisSeconds,
+    });
     const totalSeconds = frameWindow.totalFrames / frameWindow.frameRate;
-    await engine.renderSeconds(totalSeconds, RENDER_CYCLES_PER_CHUNK);
+    await engine.renderSeconds(totalSeconds);
 
-    return {
+    const capture: SidWriteTraceCapture = {
       traces: engine.getAndClearSidWriteTraces(),
       clock: metadata.clock,
+      skipSeconds,
+      analysisSeconds,
     };
+
+    if (options.wavFile) {
+      await writeSidTraceSidecar(options.wavFile, {
+        traces: capture.traces,
+        clock: capture.clock ?? "PAL",
+        skipSeconds: skipSeconds ?? 15,
+        analysisSeconds: analysisSeconds ?? 15,
+      });
+    }
+
+    return capture;
   } finally {
     engine.dispose();
   }

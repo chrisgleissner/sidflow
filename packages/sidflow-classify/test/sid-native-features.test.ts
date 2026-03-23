@@ -6,12 +6,15 @@ import path from "node:path";
 import {
   createHybridFeatureExtractor,
   createSidNativeFeatureExtractor,
+  defaultSidWriteTraceProvider,
   extractSidNativeFeaturesFromWriteTrace,
   generateAutoTags,
   resolveWavPath,
   type ClassificationPlan,
-  type SidWriteTrace,
 } from "@sidflow/classify";
+import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import { SID_TRACE_SIDECAR_VERSION, writeSidTraceSidecar } from "../src/render/wav-renderer.js";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-sid-native-");
 
@@ -19,13 +22,36 @@ const FRAME_CYCLES = 985_248 / 50;
 
 function createPlan(sidPath: string, audioCachePath: string, tagsPath: string): ClassificationPlan {
   return {
-    config: {} as ClassificationPlan["config"],
+    config: {
+      maxRenderSec: 45,
+      introSkipSec: 15,
+      maxClassifySec: 15,
+      render: { preferredEngines: ["wasm"] },
+    } as ClassificationPlan["config"],
     forceRebuild: false,
     classificationDepth: 3,
     sidPath,
     audioCachePath,
     tagsPath,
   } as unknown as ClassificationPlan;
+}
+
+async function seedWasmCacheArtifact(wavFile: string): Promise<void> {
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: 45,
+    introSkipSec: 15,
+    maxClassifySec: 15,
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: true,
+    traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
+  });
+  await writeSidTraceSidecar(wavFile, {
+    traces: [],
+    clock: "PAL",
+    skipSeconds: 15,
+    analysisSeconds: 15,
+  });
 }
 
 function makeTrace(frame: number, offset: number, address: number, value: number, sidNumber = 0): SidWriteTrace {
@@ -129,6 +155,56 @@ describe("extractSidNativeFeaturesFromWriteTrace", () => {
 });
 
 describe("hybrid SID-native classify integration", () => {
+  it("fails deterministically when a cached WAV lacks the trace sidecar", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const sidFile = path.join(root, "MissingTrace.sid");
+    const wavFile = path.join(root, "MissingTrace.wav");
+    await writeFile(sidFile, "not-a-real-sid");
+    await writeFile(wavFile, "cached-wav");
+    await writeWavRenderSettingsSidecar(wavFile, {
+      maxRenderSec: 45,
+      introSkipSec: 15,
+      maxClassifySec: 15,
+      sourceOffsetSec: 0,
+      renderEngine: "sidplayfp-cli",
+      traceCaptureEnabled: false,
+      traceSidecarVersion: null,
+    });
+
+    await expect(defaultSidWriteTraceProvider({ sidFile, wavFile })).rejects.toThrow(
+      `Missing or invalid SID trace sidecar for ${wavFile}; rerender through the trace-capable classify path.`,
+    );
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("writes SID trace sidecars deterministically", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const wavA = path.join(root, "A.wav");
+    const wavB = path.join(root, "B.wav");
+    const sidecar = {
+      traces: createRepresentativeTrace(),
+      clock: "PAL",
+      skipSeconds: 15,
+      analysisSeconds: 15,
+    } as const;
+
+    await writeSidTraceSidecar(wavA, sidecar);
+    await writeSidTraceSidecar(wavB, sidecar);
+
+    const [payloadA, payloadB] = await Promise.all([
+      readFile(`${wavA}.trace.jsonl`, "utf8"),
+      readFile(`${wavB}.trace.jsonl`, "utf8"),
+    ]);
+
+    expect(payloadA).toBe(payloadB);
+    expect(payloadA).toContain('"format":"sid-trace-jsonl"');
+    expect(payloadA).toContain('"kind":"header"');
+    expect(payloadA).toContain('"kind":"footer"');
+
+    await rm(root, { recursive: true, force: true });
+  });
+
   it("keeps WAV-derived values when SID-native features collide on a key", async () => {
     const featureExtractor = createHybridFeatureExtractor(
       async () => ({ energy: 0.75, featureVariant: "test-wav" }),
@@ -160,6 +236,7 @@ describe("hybrid SID-native classify integration", () => {
     const wavPath = resolveWavPath(plan, sidFile);
     await mkdir(path.dirname(wavPath), { recursive: true });
     await writeFile(wavPath, "cached-wav");
+    await seedWasmCacheArtifact(wavPath);
 
     const featureExtractor = createHybridFeatureExtractor(
       async () => ({ energy: 0.75, featureVariant: "test-wav" }),

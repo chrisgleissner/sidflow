@@ -18,12 +18,37 @@ import {
   resolveMetadataPath,
   stringifyDeterministic
 } from "@sidflow/common";
+import { SID_TRACE_SIDECAR_VERSION, writeSidTraceSidecar } from "../src/render/wav-renderer.js";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-auto-tags-");
 
+async function seedWasmCacheArtifact(wavFile: string): Promise<void> {
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: 45,
+    introSkipSec: 15,
+    maxClassifySec: 15,
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: true,
+    traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
+  });
+  await writeSidTraceSidecar(wavFile, {
+    traces: [],
+    clock: "PAL",
+    skipSeconds: 15,
+    analysisSeconds: 15,
+  });
+}
+
 function createPlan(sidPath: string, audioCachePath: string, tagsPath: string): ClassificationPlan {
   return {
-    config: {} as ClassificationPlan["config"],
+    config: {
+      maxRenderSec: 45,
+      introSkipSec: 15,
+      maxClassifySec: 15,
+      render: { preferredEngines: ["wasm"] },
+    } as ClassificationPlan["config"],
     forceRebuild: false,
     classificationDepth: 3,
     sidPath,
@@ -66,10 +91,12 @@ describe("generateAutoTags", () => {
     const autoWav = resolveWavPath(plan, autoSid);
     await ensureDir(path.dirname(autoWav));
     await writeFile(autoWav, "auto-wav");
+    await seedWasmCacheArtifact(autoWav);
 
     const manualWav = resolveWavPath(plan, manualSid);
     await ensureDir(path.dirname(manualWav));
     await writeFile(manualWav, "manual-wav");
+    await seedWasmCacheArtifact(manualWav);
 
     const metadataByFile: Record<string, SidMetadata> = {
       [manualSid]: { title: "Manual Song", author: "Composer", released: "1987" },
@@ -151,6 +178,7 @@ describe("generateAutoTags", () => {
     const wavPath = resolveWavPath(plan, sidFile);
     await ensureDir(path.dirname(wavPath));
     await writeFile(wavPath, "mixed-wav");
+    await seedWasmCacheArtifact(wavPath);
 
     const result = await generateAutoTags(plan, {
       extractMetadata: async (_options: ExtractMetadataOptions) => ({ title: "Mixed" }),

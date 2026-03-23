@@ -18,6 +18,8 @@ import { join } from "node:path";
 import { generateAutoTags, type ClassificationPlan } from "../src/index.js";
 import { FEATURE_SCHEMA_VERSION, type ClassificationRecord } from "@sidflow/common";
 import type { SidflowConfig } from "@sidflow/common";
+import { computeFileHash, SID_TRACE_SIDECAR_VERSION, writeSidTraceSidecar } from "../src/render/wav-renderer.js";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 async function getLatestJsonlFile(dir: string): Promise<string> {
   const { readdir, stat } = await import("node:fs/promises");
@@ -40,6 +42,25 @@ async function getLatestJsonlFile(dir: string): Promise<string> {
   // lexicographically newest filename (these include timestamps).
   withMtime.sort((a, b) => (b.mtimeMs - a.mtimeMs) || b.name.localeCompare(a.name));
   return join(dir, withMtime[0].name);
+}
+
+async function seedWasmCacheArtifact(wavFile: string, sidFile: string): Promise<void> {
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: 45,
+    introSkipSec: 15,
+    maxClassifySec: 15,
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: true,
+    traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
+  });
+  await writeSidTraceSidecar(wavFile, {
+    traces: [],
+    clock: "PAL",
+    skipSeconds: 15,
+    analysisSeconds: 15,
+  });
+  await writeFile(`${wavFile}.sha256`, await computeFileHash(sidFile), "utf8");
 }
 
 /**
@@ -146,6 +167,7 @@ describe("Fast Classification Pipeline E2E", () => {
       
       // Write pre-rendered WAV (short 1-second clip for speed)
       await writeFile(wavFile, generateTestWav(1, freq));
+      await seedWasmCacheArtifact(wavFile, sidFile);
     }
   });
 
@@ -165,6 +187,10 @@ describe("Fast Classification Pipeline E2E", () => {
         audioCachePath,
         tagsPath,
         classifiedPath,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["wasm"] },
         threads: 1,
         classificationDepth: 3,
       } as SidflowConfig,
@@ -272,6 +298,10 @@ describe("Fast Classification Pipeline E2E", () => {
         audioCachePath,
         tagsPath,
         classifiedPath: newClassifiedPath,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["wasm"] },
         threads: 1,
         classificationDepth: 3,
       } as SidflowConfig,

@@ -11,8 +11,29 @@ import {
   type ClassificationPlan
 } from "@sidflow/classify";
 import { ensureDir } from "@sidflow/common";
+import { computeFileHash, SID_TRACE_SIDECAR_VERSION, writeSidTraceSidecar } from "../src/render/wav-renderer.js";
+import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-integration-");
+
+async function seedWasmCacheArtifact(wavFile: string, sidFile: string): Promise<void> {
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: 45,
+    introSkipSec: 15,
+    maxClassifySec: 15,
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: true,
+    traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
+  });
+  await writeSidTraceSidecar(wavFile, {
+    traces: [],
+    clock: "PAL",
+    skipSeconds: 15,
+    analysisSeconds: 15,
+  });
+  await writeFile(`${wavFile}.sha256`, await computeFileHash(sidFile), "utf8");
+}
 
 /**
  * Generate a simple WAV file for testing.
@@ -77,6 +98,10 @@ describe("End-to-End SIDFlow Pipeline", () => {
         sidPath,
         audioCachePath,
         tagsPath,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["wasm"] },
         threads: 0,
         classificationDepth: 3
       } as ClassificationPlan["config"],
@@ -93,6 +118,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
       await ensureDir(path.dirname(wavFile));
       const wavData = generateTestWav(2, 440, 44100);
       await writeFile(wavFile, wavData);
+      await seedWasmCacheArtifact(wavFile, sidFile);
       console.log(`[TEST] WAV file written: ${wavFile}`);
     };
 
