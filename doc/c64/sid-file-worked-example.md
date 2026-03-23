@@ -2,19 +2,19 @@
 
 ## 1. Overview
 
-**File path:** `test-data/C64Music/MUSICIANS/N/Ninja/Ta-Boo.sid`
-**File type:** PSID, version 2
-**Total file size:** 185 bytes
-**Number of songs:** 1
-**Default song:** 1
-**Load address:** $0887 (embedded in data payload; header `loadAddress` = $0000)
-**Init address:** $08A0
-**Play address:** $08AD
-**Speed:** VBlank (PAL raster, 50 Hz)
-**SID model:** 8580 (from flags)
-**Video standard:** PAL (from flags)
-**Author:** Wolfram Sang (Ninja)
-**Copyright:** 2024 The Dreams
+- **File path:** `test-data/C64Music/MUSICIANS/N/Ninja/Ta-Boo.sid`
+- **File type:** PSID, version 2
+- **Total file size:** 185 bytes
+- **Number of songs:** 1
+- **Default song:** 1
+- **Load address:** $0887 (embedded in data payload; header `loadAddress` = $0000)
+- **Init address:** $08A0
+- **Play address:** $08AD
+- **Speed:** VBlank (PAL raster, 50 Hz)
+- **SID model:** 8580 (from flags)
+- **Video standard:** PAL (from flags)
+- **Author:** Wolfram Sang (Ninja)
+- **Copyright:** 2024 The Dreams
 
 **Memory layout summary:**
 

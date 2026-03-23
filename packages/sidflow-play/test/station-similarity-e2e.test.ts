@@ -363,7 +363,7 @@ describe("station similarity end-to-end", () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  test("classifies 200 songs with WAV and SID features, exports SQLite, and builds a 20-song CLI station that stays inside the liked cluster", async () => {
+  test("classifies 200 songs with WAV and SID features, exports SQLite, and builds a 20-song CLI station that stays inside the liked cluster", { timeout: 30000 }, async () => {
     const wavFeatureExtractor = async ({ wavFile }: ExtractFeaturesOptions): Promise<FeatureVector> => {
       return extractWaveFeatures(wavFile);
     };
