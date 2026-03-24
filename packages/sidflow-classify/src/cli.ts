@@ -480,6 +480,15 @@ export async function runClassifyCli(
       ...summariseAutoTags(autoTagsResult)
     ];
     runtime.stdout.write(`${summary.join("\n")}\n`);
+
+    // Emit machine-readable run summary
+    if (autoTagsResult.metrics.renderTimeouts > 0) {
+      runtime.stdout.write(`\nRender timeouts: ${autoTagsResult.metrics.renderTimeouts} SID file(s)\n`);
+      for (const sid of autoTagsResult.metrics.circuitBreakerSids) {
+        runtime.stdout.write(`  [TIMEOUT] ${sid}\n`);
+      }
+    }
+
     return 0;
   } catch (error) {
     runtime.stderr.write(`Classification failed: ${(error as Error).message}\n`);

@@ -243,6 +243,7 @@ async function runConcurrent<T>(
   }
   const limit = Math.max(1, Math.min(concurrency, items.length));
   let nextIndex = 0;
+  let failedItems = 0;
 
   // Helper to atomically get next index
   const getNextIndex = (): number | null => {
@@ -269,12 +270,24 @@ async function runConcurrent<T>(
         break;
       }
       itemsProcessed++;
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
+      } catch (error) {
+        failedItems++;
+        const msg = error instanceof Error ? error.message : String(error);
+        classifyLogger.error(
+          `[Thread ${threadId}] Item ${currentIndex} failed: ${msg} — continuing with next item`
+        );
+      }
     }
   });
 
   await Promise.all(runners);
+
+  if (failedItems > 0) {
+    classifyLogger.warn(`runConcurrent completed with ${failedItems}/${items.length} failed items`);
+  }
 }
 
 /**
@@ -957,6 +970,9 @@ export async function buildAudioCache(
   const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
   const rendererPool = shouldUsePool && songsToRender.length > 0 ? new WasmRendererPool(buildConcurrency) : null;
 
+  // Circuit breaker: skip remaining sub-songs of a SID file after render timeout.
+  const buildFailedSids = new Set<string>();
+
   try {
     classifyLogger.debug(
       `About to call runConcurrent for building with ${songsToRender.length} songs`
@@ -965,6 +981,14 @@ export async function buildAudioCache(
       songsToRender,
       buildConcurrency,
       async ({ sidFile, songIndex, wavFile, songCount }, context) => {
+        const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
+
+        // Check circuit breaker before starting work
+        if (buildFailedSids.has(sidFile)) {
+          classifyLogger.debug(`[Thread ${context.threadId}] Skipping ${songLabel} — SID file already failed render`);
+          return;
+        }
+
         const wavDir = path.dirname(wavFile);
         playlistDirs.add(wavDir);
         if (rendered.length < 3) {
@@ -972,7 +996,6 @@ export async function buildAudioCache(
             `Thread ${context.threadId} starting to render: ${wavFile}`
           );
         }
-        const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
         const phaseStartedAt = Date.now();
         onThreadUpdate?.({
           threadId: context.threadId,
@@ -1070,6 +1093,8 @@ export async function buildAudioCache(
           classifyLogger.warn(
             `Failed to render ${songLabel} after ${RETRY_CONFIG.building.maxRetries + 1} attempts: ${errorMessage}`
           );
+          // Trip circuit breaker so remaining sub-songs of this SID are skipped immediately
+          buildFailedSids.add(sidFile);
           // Don't add to rendered list, effectively skipping this file
         } finally {
           clearInterval(heartbeatInterval);
@@ -1500,6 +1525,10 @@ export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
   predictionsGenerated: number;
   /** Number of songs skipped because they were already classified */
   skippedAlreadyClassified: number;
+  /** Number of songs skipped due to render timeout */
+  renderTimeouts: number;
+  /** SID files that triggered render circuit breaker */
+  circuitBreakerSids: string[];
 }
 
 export interface GenerateAutoTagsResult {
@@ -1532,6 +1561,9 @@ export async function generateAutoTags(
   options: GenerateAutoTagsOptions = {}
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
+  // Circuit breaker: skip remaining sub-songs of a SID file if any sub-song render times out.
+  // Declared at function top level so it's accessible in metrics at the end.
+  const renderFailedSids = new Set<string>();
   
   // If force rebuild is requested, we typically clean the whole audio cache to
   // guarantee fresh renders. However, when running a filtered classification
@@ -1839,6 +1871,8 @@ export async function generateAutoTags(
         mixedCount: 0,
         predictionsGenerated: 0,
         skippedAlreadyClassified: skippedAlreadyClassifiedCount,
+        renderTimeouts: 0,
+        circuitBreakerSids: [],
       };
       return {
         autoTagged,
@@ -1854,6 +1888,14 @@ export async function generateAutoTags(
 
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
       const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
+
+      // Check circuit breaker before starting work
+      if (renderFailedSids.has(job.sidFile)) {
+        classifyLogger.debug(`[Thread ${context.threadId}] Skipping ${songLabel} — SID file already failed render`);
+        processedSongs += 1;
+        return;
+      }
+
       const wavDir = path.dirname(job.wavPath);
       const taggingStartedAt = Date.now();
       onThreadUpdate?.({
@@ -1910,6 +1952,7 @@ export async function generateAutoTags(
           traceIntroSkipSec: resolveIntroSkipSec(plan.config),
           traceAnalysisSec: resolveMaxClassifySec(plan.config),
         };
+        let inlineRenderFailed = false;
         try {
           // Lazily create worker pool only when a render is actually required.
           // Use baseConcurrency for pool workers; the outer pipeline depth is
@@ -1929,8 +1972,19 @@ export async function generateAutoTags(
           renderedWavFiles.push(job.wavPath);
           renderedFilesCount += 1;
           classifyLogger.debug(`[Thread ${context.threadId}] Rendered WAV for ${songLabel} in ${Date.now() - buildStartedAt}ms`);
+        } catch (renderError) {
+          const msg = renderError instanceof Error ? renderError.message : String(renderError);
+          classifyLogger.warn(`[Thread ${context.threadId}] Inline render failed for ${songLabel}: ${msg} — skipping song`);
+          inlineRenderFailed = true;
+          // Trip circuit breaker so remaining sub-songs of this SID are skipped immediately
+          renderFailedSids.add(job.sidFile);
         } finally {
           clearInterval(heartbeatInterval);
+        }
+
+        if (inlineRenderFailed) {
+          processedSongs += 1;
+          return; // Skip this song entirely — no WAV means no features to extract
         }
         
       // Switch back to tagging phase after rendering
@@ -2065,7 +2119,14 @@ export async function generateAutoTags(
     );
 
     // Phase 2: compute ratings (manual + deterministic auto) and emit canonical outputs.
-    const featuresContent = await readFile(featuresJsonlFile, "utf8");
+    // If all songs were skipped (e.g. render timeouts), the features file may not exist.
+    let featuresContent: string;
+    try {
+      featuresContent = await readFile(featuresJsonlFile, "utf8");
+    } catch {
+      classifyLogger.warn("No features file found — all songs may have been skipped");
+      featuresContent = "";
+    }
     const featureLines = featuresContent.split("\n").filter((l) => l.trim().length > 0);
     const nowIso = new Date().toISOString();
 
@@ -2216,7 +2277,9 @@ export async function generateAutoTags(
     manualOnlyCount: manualEntries.length,
     mixedCount: mixedEntries.length,
     predictionsGenerated,
-    skippedAlreadyClassified: skippedAlreadyClassifiedCount
+    skippedAlreadyClassified: skippedAlreadyClassifiedCount,
+    renderTimeouts: renderFailedSids.size,
+    circuitBreakerSids: [...renderFailedSids].map(s => toPosixRelative(path.relative(plan.sidPath, s))),
   };
 
   return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, jsonlFile, jsonlRecordCount, metrics };

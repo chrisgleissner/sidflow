@@ -27,7 +27,19 @@ interface WorkerState {
   busy: boolean;
   job: Job | null;
   exiting: boolean;
+  /** Timer that fires when the current job exceeds the render timeout */
+  timeoutTimer: ReturnType<typeof setTimeout> | null;
 }
+
+/**
+ * Per-job timeout safety margin multiplier.
+ * The actual timeout = maxRenderSeconds * TIMEOUT_SAFETY_MULTIPLIER + TIMEOUT_BASE_MARGIN_MS.
+ * This accounts for WASM startup, file I/O, and trace capture overhead.
+ */
+const TIMEOUT_SAFETY_MULTIPLIER = 1.5;
+const TIMEOUT_BASE_MARGIN_MS = 10_000;
+/** Absolute maximum per-job timeout regardless of render settings (2 minutes) */
+const TIMEOUT_ABSOLUTE_MAX_MS = 120_000;
 
 const workerScriptUrl = new URL("./wasm-render-worker.js", import.meta.url);
 const poolLogger = createLogger("wasmRenderPool");
@@ -37,6 +49,8 @@ export class WasmRendererPool {
   private readonly queue: Job[] = [];
   private nextJobId = 1;
   private destroyed = false;
+  /** SID files whose renders have timed out — reject new jobs for these immediately */
+  private readonly timedOutSids = new Set<string>();
 
   constructor(size: number) {
     if (!Number.isInteger(size) || size <= 0) {
@@ -52,6 +66,13 @@ export class WasmRendererPool {
   async render(options: RenderPoolOptions): Promise<void> {
     if (this.destroyed) {
       throw new Error("Renderer pool has been destroyed");
+    }
+    // Circuit breaker: reject immediately if this SID file already timed out
+    const sidFile = options.sidFile;
+    if (sidFile && this.timedOutSids.has(sidFile)) {
+      throw new Error(
+        `Render skipped: ${sidFile} previously timed out (circuit breaker)`
+      );
     }
     const jobId = this.nextJobId;
     if (jobId <= 3) {
@@ -86,6 +107,7 @@ export class WasmRendererPool {
     await Promise.all(
       this.workers.map(async (state) => {
         state.exiting = true;
+        this.clearJobTimeout(state);
         this.failJob(state, new Error("Renderer pool destroyed"));
         try {
           await state.worker.terminate();
@@ -106,7 +128,8 @@ export class WasmRendererPool {
       worker,
       busy: false,
       job: null,
-      exiting: false
+      exiting: false,
+      timeoutTimer: null
     };
 
     worker.on("message", (message: WorkerMessage) => {
@@ -164,6 +187,7 @@ export class WasmRendererPool {
     if (message.type === "result") {
       if (state.job && state.job.id === message.jobId) {
         const job = state.job;
+        this.clearJobTimeout(state);
         if (job.id <= 3) {
           poolLogger.debug(`Worker completed job ${job.id}`);
         }
@@ -189,7 +213,15 @@ export class WasmRendererPool {
     this.dispatch();
   }
 
+  private clearJobTimeout(state: WorkerState): void {
+    if (state.timeoutTimer !== null) {
+      clearTimeout(state.timeoutTimer);
+      state.timeoutTimer = null;
+    }
+  }
+
   private failJob(state: WorkerState, error: Error): void {
+    this.clearJobTimeout(state);
     if (state.job) {
       const job = state.job;
       state.job = null;
@@ -198,6 +230,43 @@ export class WasmRendererPool {
     } else {
       state.busy = false;
     }
+  }
+
+  /**
+   * Purge all queued (not yet dispatched) jobs for a SID file and reject them immediately.
+   * Also terminate workers currently rendering this SID.
+   */
+  private purgeQueuedJobsForSid(sidFile: string): void {
+    // Reject queued jobs
+    let purged = 0;
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      const qJob = this.queue[i];
+      if (qJob.options.sidFile === sidFile) {
+        this.queue.splice(i, 1);
+        qJob.reject(new Error(`Render skipped: ${sidFile} timed out (circuit breaker)`));
+        purged++;
+      }
+    }
+    // Terminate workers currently rendering this SID
+    for (const ws of this.workers) {
+      if (ws.job && ws.job.options.sidFile === sidFile && !ws.exiting) {
+        ws.exiting = true;
+        const error = new Error(`Render skipped: ${sidFile} timed out (circuit breaker)`);
+        this.failJob(ws, error);
+        void ws.worker.terminate().catch(() => {});
+        this.restartWorker(ws);
+        purged++;
+      }
+    }
+    if (purged > 0) {
+      poolLogger.warn(`[CIRCUIT-BREAKER] Purged ${purged} jobs for timed-out SID: ${sidFile}`);
+    }
+  }
+
+  private computeJobTimeoutMs(options: RenderPoolOptions): number {
+    const renderSec = options.maxRenderSeconds ?? 30;
+    const computed = renderSec * 1000 * TIMEOUT_SAFETY_MULTIPLIER + TIMEOUT_BASE_MARGIN_MS;
+    return Math.min(computed, TIMEOUT_ABSOLUTE_MAX_MS);
   }
 
   private dispatch(): void {
@@ -216,6 +285,33 @@ export class WasmRendererPool {
       }
       state.busy = true;
       state.job = job;
+
+      // Start per-job timeout watchdog
+      const timeoutMs = this.computeJobTimeoutMs(job.options);
+      state.timeoutTimer = setTimeout(() => {
+        if (state.job?.id !== job.id || state.exiting || this.destroyed) {
+          return;
+        }
+        const sidFile = job.options.sidFile ?? job.options.wavFile ?? `job-${job.id}`;
+        poolLogger.error(
+          `[TIMEOUT] Render job ${job.id} for ${sidFile} exceeded ${timeoutMs}ms — terminating worker`
+        );
+
+        // Trip circuit breaker: mark this SID as timed out and purge queued jobs for it
+        if (job.options.sidFile) {
+          this.timedOutSids.add(job.options.sidFile);
+          this.purgeQueuedJobsForSid(job.options.sidFile);
+        }
+
+        state.exiting = true;
+        const error = new Error(
+          `Render timeout: ${sidFile} exceeded ${(timeoutMs / 1000).toFixed(0)}s limit`
+        );
+        this.failJob(state, error);
+        void state.worker.terminate().catch(() => {});
+        this.restartWorker(state);
+      }, timeoutMs);
+
       state.worker.postMessage({ type: "render", jobId: job.id, options: job.options });
       dispatched++;
     }
