@@ -1030,7 +1030,13 @@ export async function buildAudioCache(
           wavFile,
           songIndex: songCount > 1 ? songIndex : undefined,
           maxRenderSeconds: effectiveMaxRenderSeconds,
-          targetDurationMs
+          targetDurationMs,
+          // Capture SID register-write trace during WAV rendering so the
+          // tagging phase can reuse it without a redundant second render pass.
+          captureTrace: true,
+          traceClock: sidMetadataCache.get(sidFile)?.clock,
+          traceIntroSkipSec: resolveIntroSkipSec(plan.config),
+          traceAnalysisSec: resolveMaxClassifySec(plan.config),
         };
         let renderSucceeded = false;
 
