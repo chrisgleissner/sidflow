@@ -1,6 +1,32 @@
 # Changelog
 
 
+## 0.5.4 (2026-03-24)
+
+- Merge pull request #87 from chrisgleissner/fix/direct-sid-classification
+- Add SID files for 2/3 SIDs to exercise edge conditions
+- test: improve buffer pool tests for SidAudioEngine and enhance synthetic tone verification
+- feat: enhance render timeout and circuit breaker handling in WasmRendererPool and related components
+- feat: implement render timeout handling and circuit breaker in WasmRendererPool
+- feat: enable SID register-write trace capture during WAV rendering
+- feat: implement OOM fix and data-retention cleanup in similarity export script
+- Refactor libsidplayfp loading mechanism to cache default module instances
+- fix: update fallback render cap to 30 seconds in tests
+- feat: implement WASM module compilation caching to improve rendering performance
+- feat: enhance performance instrumentation and caching for WASM module in rendering pipeline
+- feat: optimize SID trace sidecar writing for improved performance and reduced syscall overhead
+- feat: update rendering parameters and resource management for improved performance
+- feat: add system ROMs requirements and alternative locations to README
+- Merge pull request #86 from chrisgleissner/feat/improve-raw-sid-feature-extraction-performance
+- feat: enhance end-to-end tests and documentation for SID feature extraction and classification
+- feat: enhance documentation and examples for SID file handling and performance metrics
+- feat: enhance single-pass SID classification pipeline and documentation
+- feat: enhance SID trace sidecar handling and WAV rendering settings
+- feat: improve performance of raw SID feature extraction by integrating trace sidecar handling
+- feat: enhance dual-source classification audit and HVSC export process
+- chore: update CHANGES.md for 0.5.3
+
+
 ## 0.5.3 (2026-03-23)
 
 - Merge pull request #85 from chrisgleissner/feat/improve-classification-2
