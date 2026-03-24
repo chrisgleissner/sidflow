@@ -10,6 +10,7 @@
 
 import { describe, test, expect } from 'bun:test';
 import { SidAudioEngine } from '../src/player.js';
+import { loadLibsidplayfp } from '../src/index.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -148,13 +149,21 @@ function measureAmplitudeStability(pcm: Int16Array, sampleRate: number, channels
 
 describe('Synthetic C4 Tone Verification', () => {
     test('verify C4 tone has perfect continuity', async () => {
+        // Use a fresh (uncached) WASM module to isolate this test from C++ static state
+        // that may be modified by other tests sharing the cached module instance.
         // Tolerant thresholds: frequency within 6 Hz, amplitude variation < 30%
         // These thresholds account for timing/precision variations in CI environments
         console.log('\n╔════════════════════════════════════════╗');
         console.log('║   SYNTHETIC C4 TONE ANALYSIS          ║');
         console.log('╚════════════════════════════════════════╝\n');
 
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = new SidAudioEngine({
+            sampleRate: 44100,
+            stereo: true,
+            // locateFile: undefined bypasses the module cache (isCacheableDefaultLoad returns
+            // false when any key is present) while still using the default WASM binary path.
+            module: loadLibsidplayfp({ locateFile: undefined }),
+        });
         try {
             const sidBytes = loadSyntheticSid();
 

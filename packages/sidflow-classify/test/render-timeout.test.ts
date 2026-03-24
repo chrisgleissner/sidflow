@@ -1,10 +1,16 @@
 /**
- * Regression tests for render timeout classification and circuit-breaker handling.
+ * Regression tests for WasmRendererPool circuit breaker behavior and
+ * render-timeout error classification.
+ *
+ * These tests simulate a prior timeout by mutating the internal
+ * `timedOutSids` set rather than exercising the real per-job timeout
+ * watchdog in the WASM worker.
  *
  * Validates:
- * - Circuit breaker rejects jobs for previously timed-out SID files
- * - Other SID files are not rejected by the circuit breaker
- * - Timeout/circuit-breaker errors are classified as non-recoverable
+ * - Circuit breaker rejects jobs for SIDs marked as previously timed out
+ * - Jobs for other SIDs are not rejected with a circuit breaker error
+ * - Render timeout and circuit breaker errors are classified as non-recoverable
+ * - Regular IO errors remain classified as recoverable
  * - generateAutoTags reports timeout metrics consistently
  */
 

@@ -189,7 +189,7 @@ export async function createEngine(): Promise<SidAudioEngine> {
       successCallback: (instance: WebAssembly.Instance) => void
     ) {
       WebAssembly.instantiate(compiledModule, imports).then(
-        (instance) => successCallback(instance),
+        (result) => successCallback(result as unknown as WebAssembly.Instance),
         (error) => {
           logger.error("Failed to instantiate pre-compiled WASM module", { error });
           throw error;

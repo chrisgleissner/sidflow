@@ -204,6 +204,20 @@ async function prepareBatches() {
   return batches.filter((batch) => batch.files.length > 0);
 }
 
+// Retry rm because bun worker threads may still be flushing coverage files
+// after the test process exits, which can cause ENOTEMPTY on NFS/symlinked paths.
+async function rmWithRetry(dirPath, maxAttempts = 5) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      await rm(dirPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === maxAttempts - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+}
+
 async function main() {
   process.chdir(repoRoot);
   const mergedFiles = new Map();
@@ -214,14 +228,14 @@ async function main() {
     process.exit(1);
   }
 
-  await rm(coverageDir, { recursive: true, force: true });
+  await rmWithRetry(coverageDir);
 
   console.log(`[coverage-batches] Running ${batches.length} coverage batches...`);
 
   for (const [index, batch] of batches.entries()) {
     const startedAt = Date.now();
     console.log(`[coverage-batches] Batch ${index + 1}/${batches.length}: ${batch.name} (${batch.files.length} files)`);
-    await rm(coverageDir, { recursive: true, force: true });
+    await rmWithRetry(coverageDir);
     await spawnCommand("node", ["scripts/run-bun.mjs", "test", ...batch.files, ...coverageArgs]);
     const lcovContent = await waitForCoverageArtifact();
     mergeCoverage(mergedFiles, parseLcov(lcovContent));
