@@ -264,7 +264,11 @@ export class WasmRendererPool {
   }
 
   private computeJobTimeoutMs(options: RenderPoolOptions): number {
-    const renderSec = options.maxRenderSeconds ?? 30;
+    const requestedRenderSec = options.maxRenderSeconds;
+    const renderSec =
+      typeof requestedRenderSec === "number" && Number.isFinite(requestedRenderSec)
+        ? Math.max(0, requestedRenderSec)
+        : 30;
     const computed = renderSec * 1000 * TIMEOUT_SAFETY_MULTIPLIER + TIMEOUT_BASE_MARGIN_MS;
     return Math.min(computed, TIMEOUT_ABSOLUTE_MAX_MS);
   }

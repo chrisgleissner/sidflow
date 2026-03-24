@@ -481,7 +481,7 @@ export async function runClassifyCli(
     ];
     runtime.stdout.write(`${summary.join("\n")}\n`);
 
-    // Emit machine-readable run summary
+    // Emit an operator-facing timeout summary.
     if (autoTagsResult.metrics.renderTimeouts > 0) {
       runtime.stdout.write(`\nRender timeouts: ${autoTagsResult.metrics.renderTimeouts} SID file(s)\n`);
       for (const sid of autoTagsResult.metrics.circuitBreakerSids) {

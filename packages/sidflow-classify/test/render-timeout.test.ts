@@ -1,11 +1,11 @@
 /**
- * Regression test for WasmRendererPool per-job timeout and circuit breaker.
+ * Regression tests for render timeout classification and circuit-breaker handling.
  *
  * Validates:
- * - Jobs that exceed the timeout are terminated and rejected
- * - Circuit breaker trips after first timeout for a SID file
- * - Subsequent jobs for the same SID file are rejected immediately
- * - Other SID files continue to be processed normally
+ * - Circuit breaker rejects jobs for previously timed-out SID files
+ * - Other SID files are not rejected by the circuit breaker
+ * - Timeout/circuit-breaker errors are classified as non-recoverable
+ * - generateAutoTags reports timeout metrics consistently
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
@@ -27,8 +27,7 @@ describe("WasmRendererPool circuit breaker", () => {
   test("rejects jobs for previously timed-out SID files immediately", async () => {
     pool = new WasmRendererPool(1);
 
-    // Access private timedOutSids set to simulate a prior timeout
-    const poolAny = pool as any;
+    const poolAny = pool as unknown as { timedOutSids: Set<string> };
     poolAny.timedOutSids.add("/test/pathological.sid");
 
     // A job for the timed-out SID should be rejected immediately
@@ -41,27 +40,58 @@ describe("WasmRendererPool circuit breaker", () => {
     ).rejects.toThrow("circuit breaker");
   });
 
-  test("allows jobs for non-timed-out SID files", async () => {
+  test("does not reject other SID files with a circuit breaker error", async () => {
     pool = new WasmRendererPool(1);
 
-    // Simulate a prior timeout for one SID
-    const poolAny = pool as any;
+    const poolAny = pool as unknown as { timedOutSids: Set<string> };
     poolAny.timedOutSids.add("/test/pathological.sid");
 
-    // A job for a different SID should not be immediately rejected
-    // (it will fail for other reasons since we don't have a real SID,
-    //  but it should NOT throw "circuit breaker")
-    try {
-      await pool.render({
+    const renderResultPromise = pool
+      .render({
         sidFile: "/test/normal.sid",
         wavFile: "/test/normal-output.wav",
         maxRenderSeconds: 1,
-      });
-    } catch (error) {
-      const msg = (error as Error).message;
-      // Should NOT be a circuit breaker error
-      expect(msg).not.toContain("circuit breaker");
-    }
+      })
+      .then(
+        () => null,
+        (error: unknown) => error as Error
+      );
+
+    await Promise.resolve();
+    await pool.destroy();
+    pool = null;
+
+    const renderError = await renderResultPromise;
+    expect(renderError).toBeInstanceOf(Error);
+    expect(renderError?.message).not.toContain("circuit breaker");
+  });
+
+  test("clamps invalid timeout values to a safe watchdog window", () => {
+    pool = new WasmRendererPool(1);
+
+    const poolAny = pool as unknown as {
+      computeJobTimeoutMs: (options: {
+        sidFile: string;
+        wavFile: string;
+        maxRenderSeconds: number;
+      }) => number;
+    };
+
+    const negativeTimeoutMs = poolAny.computeJobTimeoutMs({
+      sidFile: "/test/negative.sid",
+      wavFile: "/test/negative.wav",
+      maxRenderSeconds: -5,
+    });
+    const nanTimeoutMs = poolAny.computeJobTimeoutMs({
+      sidFile: "/test/nan.sid",
+      wavFile: "/test/nan.wav",
+      maxRenderSeconds: Number.NaN,
+    });
+
+    expect(negativeTimeoutMs).toBeGreaterThan(0);
+    expect(nanTimeoutMs).toBeGreaterThan(0);
+    expect(Number.isFinite(negativeTimeoutMs)).toBe(true);
+    expect(Number.isFinite(nanTimeoutMs)).toBe(true);
   });
 
   test("pool can be destroyed without errors", async () => {
@@ -94,9 +124,8 @@ describe("generateAutoTags resilience", () => {
   test("metrics include renderTimeouts and circuitBreakerSids fields", async () => {
     const { mkdtemp, rm, mkdir, writeFile } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
+    const { dirname, join } = await import("node:path");
     const { generateAutoTags, heuristicFeatureExtractor, heuristicPredictRatings, fallbackMetadataFromPath, planClassification } = await import("../src/index.js");
-    const { stringifyDeterministic } = await import("@sidflow/common");
     const { ensureDir } = await import("@sidflow/common");
 
     const root = await mkdtemp(join(tmpdir(), "sidflow-timeout-test-"));
@@ -135,7 +164,7 @@ describe("generateAutoTags resilience", () => {
         featureExtractor: heuristicFeatureExtractor,
         predictRatings: heuristicPredictRatings,
         render: async ({ wavFile }) => {
-          await ensureDir(join(root, "audio-cache", "TEST"));
+          await ensureDir(dirname(wavFile));
           // Create a valid silent WAV
           const header = Buffer.alloc(44);
           header.write("RIFF", 0);

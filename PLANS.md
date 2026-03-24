@@ -75,3 +75,30 @@ Recover the SID classification pipeline by diagnosing and fixing the pathologica
 - [ ] Updated classification usage docs
 - [ ] Telemetry inspection guide
 - [ ] Final verification evidence in WORKLOG.md
+
+## Phase 10 - PR #87 Convergence
+
+### Objective
+
+Bring PR #87 to a merge-ready state by addressing inline review feedback, fixing the failing CI job, and re-running validation until the branch is stable.
+
+### Checklist
+- [ ] Review all inline PR comments and classify each as fix / no-op with rationale
+- [ ] Implement minimal code/test fixes for valid review findings
+- [ ] Re-run targeted classify tests and build locally
+- [ ] Re-run full `bun run test` until green
+- [ ] Re-run required validation 3x per repo policy and capture outputs
+- [ ] Respond to each inline review comment with technical resolution
+- [ ] Resolve all review threads/comments that are addressed
+- [ ] Push branch updates and verify all CI checks pass
+
+### Progress
+- 2026-03-24: Loaded repo guidance and PR state. `gh api graphql` reports no active review threads, but `gh api repos/.../pulls/87/comments` returned 11 inline Copilot comments that still need individual responses.
+- 2026-03-24: `gh pr status` shows PR #87 has 1/4 failing checks. The failing check is `Build and test / Build and Test` from Actions run `23484605584`.
+- 2026-03-24: Initial review triage identified likely-valid issues in `render-timeout.test.ts`, `wasm-render-pool.ts`, `index.ts`, and a wording issue in `cli.ts`. Work in progress.
+
+### Decision Log
+- 2026-03-24: Treat inline Copilot comments as authoritative review work even though GraphQL `reviewThreads` returned no active thread nodes for this PR.
+
+### Outcomes
+- Pending.

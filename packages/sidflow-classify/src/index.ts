@@ -219,6 +219,10 @@ interface ConcurrentContext {
   itemIndex: number;
 }
 
+interface RunConcurrentOptions {
+  continueOnError?: boolean;
+}
+
 function resolveThreadCount(requested?: number): number {
   if (typeof requested === "number" && requested > 0) {
     return Math.max(1, Math.floor(requested));
@@ -233,10 +237,19 @@ function resolveThreadCount(requested?: number): number {
   return Math.max(1, cores);
 }
 
+function isRenderTimeoutOrCircuitBreakerError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("render timeout") || message.includes("circuit breaker");
+}
+
 async function runConcurrent<T>(
   items: T[],
   concurrency: number,
-  worker: (item: T, context: ConcurrentContext) => Promise<void>
+  worker: (item: T, context: ConcurrentContext) => Promise<void>,
+  options: RunConcurrentOptions = {}
 ): Promise<void> {
   if (items.length === 0) {
     return;
@@ -244,9 +257,13 @@ async function runConcurrent<T>(
   const limit = Math.max(1, Math.min(concurrency, items.length));
   let nextIndex = 0;
   let failedItems = 0;
+  let firstFailure: Error | null = null;
 
   // Helper to atomically get next index
   const getNextIndex = (): number | null => {
+    if (firstFailure && !options.continueOnError) {
+      return null;
+    }
     if (nextIndex >= items.length) {
       return null;
     }
@@ -275,7 +292,17 @@ async function runConcurrent<T>(
         await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
       } catch (error) {
         failedItems++;
-        const msg = error instanceof Error ? error.message : String(error);
+        const resolvedError = error instanceof Error ? error : new Error(String(error));
+        const msg = resolvedError.message;
+        if (!options.continueOnError) {
+          if (firstFailure === null) {
+            firstFailure = resolvedError;
+          }
+          classifyLogger.error(
+            `[Thread ${threadId}] Item ${currentIndex} failed: ${msg} — stopping remaining work`
+          );
+          break;
+        }
         classifyLogger.error(
           `[Thread ${threadId}] Item ${currentIndex} failed: ${msg} — continuing with next item`
         );
@@ -284,6 +311,14 @@ async function runConcurrent<T>(
   });
 
   await Promise.all(runners);
+
+  if (firstFailure) {
+    const failure = firstFailure as Error;
+    throw new AggregateError(
+      [failure],
+      `runConcurrent aborted after ${failedItems}/${items.length} failed items: ${failure.message}`
+    );
+  }
 
   if (failedItems > 0) {
     classifyLogger.warn(`runConcurrent completed with ${failedItems}/${items.length} failed items`);
@@ -971,7 +1006,23 @@ export async function buildAudioCache(
   const rendererPool = shouldUsePool && songsToRender.length > 0 ? new WasmRendererPool(buildConcurrency) : null;
 
   // Circuit breaker: skip remaining sub-songs of a SID file after render timeout.
-  const buildFailedSids = new Set<string>();
+  const timedOutBuildSids = new Set<string>();
+  const emitBuildProgress = (currentFile?: string): void => {
+    if (!onProgress) {
+      return;
+    }
+    const processed = skipped.length + rendered.length;
+    onProgress({
+      phase: "building",
+      totalFiles,
+      processedFiles: processed,
+      renderedFiles: rendered.length,
+      skippedFiles: skipped.length,
+      percentComplete: totalFiles === 0 ? 100 : (processed / totalFiles) * 100,
+      elapsedMs: Date.now() - startTime,
+      currentFile,
+    });
+  };
 
   try {
     classifyLogger.debug(
@@ -984,8 +1035,17 @@ export async function buildAudioCache(
         const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
 
         // Check circuit breaker before starting work
-        if (buildFailedSids.has(sidFile)) {
-          classifyLogger.debug(`[Thread ${context.threadId}] Skipping ${songLabel} — SID file already failed render`);
+        if (timedOutBuildSids.has(sidFile)) {
+          classifyLogger.debug(
+            `[Thread ${context.threadId}] Skipping ${songLabel} — SID file already timed out`
+          );
+          skipped.push(wavFile);
+          emitBuildProgress(songLabel);
+          onThreadUpdate?.({
+            threadId: context.threadId,
+            phase: "building",
+            status: "idle"
+          });
           return;
         }
 
@@ -1093,9 +1153,9 @@ export async function buildAudioCache(
           classifyLogger.warn(
             `Failed to render ${songLabel} after ${RETRY_CONFIG.building.maxRetries + 1} attempts: ${errorMessage}`
           );
-          // Trip circuit breaker so remaining sub-songs of this SID are skipped immediately
-          buildFailedSids.add(sidFile);
-          // Don't add to rendered list, effectively skipping this file
+          if (isRenderTimeoutOrCircuitBreakerError(error)) {
+            timedOutBuildSids.add(sidFile);
+          }
         } finally {
           clearInterval(heartbeatInterval);
         }
@@ -1125,19 +1185,10 @@ export async function buildAudioCache(
 
           await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
 
-          if (onProgress) {
-            const processed = skipped.length + rendered.length;
-            onProgress({
-              phase: "building",
-              totalFiles,
-              processedFiles: processed,
-              renderedFiles: rendered.length,
-              skippedFiles: skipped.length,
-              percentComplete: totalFiles === 0 ? 100 : (processed / totalFiles) * 100,
-              elapsedMs: Date.now() - startTime,
-              currentFile: songLabel
-            });
-          }
+          emitBuildProgress(songLabel);
+        } else {
+          skipped.push(wavFile);
+          emitBuildProgress(songLabel);
         }
 
         onThreadUpdate?.({
@@ -1525,7 +1576,7 @@ export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
   predictionsGenerated: number;
   /** Number of songs skipped because they were already classified */
   skippedAlreadyClassified: number;
-  /** Number of songs skipped due to render timeout */
+  /** Number of SID files quarantined due to render timeout/circuit breaker */
   renderTimeouts: number;
   /** SID files that triggered render circuit breaker */
   circuitBreakerSids: string[];
@@ -1563,7 +1614,7 @@ export async function generateAutoTags(
   const startTime = Date.now();
   // Circuit breaker: skip remaining sub-songs of a SID file if any sub-song render times out.
   // Declared at function top level so it's accessible in metrics at the end.
-  const renderFailedSids = new Set<string>();
+  const timedOutRenderSids = new Set<string>();
   
   // If force rebuild is requested, we typically clean the whole audio cache to
   // guarantee fresh renders. However, when running a filtered classification
@@ -1818,6 +1869,22 @@ export async function generateAutoTags(
   const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
   let rendererPool: WasmRendererPool | null = null;
+  const emitTaggingProgress = (currentFile?: string): void => {
+    if (!onProgress) {
+      return;
+    }
+    onProgress({
+      phase: "tagging",
+      totalFiles,
+      processedFiles: processedSongs,
+      renderedFiles: renderedFilesCount,
+      cachedFiles: cachedFilesCount,
+      extractedFiles: extractedFilesCount,
+      percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
+      elapsedMs: Date.now() - startTime,
+      currentFile,
+    });
+  };
 
   try {
     type IntermediateRecord = {
@@ -1890,9 +1957,17 @@ export async function generateAutoTags(
       const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
 
       // Check circuit breaker before starting work
-      if (renderFailedSids.has(job.sidFile)) {
-        classifyLogger.debug(`[Thread ${context.threadId}] Skipping ${songLabel} — SID file already failed render`);
+      if (timedOutRenderSids.has(job.sidFile)) {
+        classifyLogger.debug(
+          `[Thread ${context.threadId}] Skipping ${songLabel} — SID file already timed out`
+        );
         processedSongs += 1;
+        emitTaggingProgress(songLabel);
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "tagging",
+          status: "idle"
+        });
         return;
       }
 
@@ -1961,12 +2036,28 @@ export async function generateAutoTags(
             rendererPool = new WasmRendererPool(baseConcurrency);
           }
 
-          // Use worker pool for non-blocking rendering if available
-          if (rendererPool) {
-            await rendererPool.render(renderOptions);
-          } else {
-            await render(renderOptions);
-          }
+          await withRetry(
+            "building",
+            async () => {
+              if (rendererPool) {
+                await rendererPool.render(renderOptions);
+              } else {
+                await render(renderOptions);
+              }
+            },
+            {
+              onRetry: (attempt, maxAttempts, error, delayMs) => {
+                classifyLogger.warn(
+                  `[RETRY] Attempt ${attempt}/${maxAttempts} failed for ${songLabel}: ${error.message}. Retrying in ${delayMs}ms...`
+                );
+              },
+              onFatalError: (classifyError) => {
+                classifyLogger.error(
+                  `[FATAL] Unrecoverable inline render error for ${songLabel}: ${classifyError.message}`
+                );
+              }
+            }
+          );
           await persistRenderedWavMetadata(job.wavPath, plan.config, effectiveMaxRenderSeconds);
           // Track the WAV file for potential cleanup after classification
           renderedWavFiles.push(job.wavPath);
@@ -1976,14 +2067,21 @@ export async function generateAutoTags(
           const msg = renderError instanceof Error ? renderError.message : String(renderError);
           classifyLogger.warn(`[Thread ${context.threadId}] Inline render failed for ${songLabel}: ${msg} — skipping song`);
           inlineRenderFailed = true;
-          // Trip circuit breaker so remaining sub-songs of this SID are skipped immediately
-          renderFailedSids.add(job.sidFile);
+          if (isRenderTimeoutOrCircuitBreakerError(renderError)) {
+            timedOutRenderSids.add(job.sidFile);
+          }
         } finally {
           clearInterval(heartbeatInterval);
         }
 
         if (inlineRenderFailed) {
           processedSongs += 1;
+          emitTaggingProgress(songLabel);
+          onThreadUpdate?.({
+            threadId: context.threadId,
+            phase: "tagging",
+            status: "idle"
+          });
           return; // Skip this song entirely — no WAV means no features to extract
         }
         
@@ -2076,17 +2174,7 @@ export async function generateAutoTags(
     processedSongs += 1;
 
     if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
-      onProgress({
-        phase: "tagging",
-        totalFiles,
-        processedFiles: processedSongs,
-        renderedFiles: renderedFilesCount,
-        cachedFiles: cachedFilesCount,
-        extractedFiles: extractedFilesCount,
-        percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
-        elapsedMs: Date.now() - startTime,
-        currentFile: songLabel
-      });
+      emitTaggingProgress(songLabel);
     }
     onThreadUpdate?.({
       threadId: context.threadId,
@@ -2255,7 +2343,8 @@ export async function generateAutoTags(
         } catch (error) {
           classifyLogger.warn(`Failed to delete ${wavFile}: ${(error as Error).message}`);
         }
-      }
+      },
+      { continueOnError: true }
     );
     
     deletedWavCount = successCount;
@@ -2278,8 +2367,8 @@ export async function generateAutoTags(
     mixedCount: mixedEntries.length,
     predictionsGenerated,
     skippedAlreadyClassified: skippedAlreadyClassifiedCount,
-    renderTimeouts: renderFailedSids.size,
-    circuitBreakerSids: [...renderFailedSids].map(s => toPosixRelative(path.relative(plan.sidPath, s))),
+    renderTimeouts: timedOutRenderSids.size,
+    circuitBreakerSids: [...timedOutRenderSids].map(s => toPosixRelative(path.relative(plan.sidPath, s))),
   };
 
   return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, jsonlFile, jsonlRecordCount, metrics };
