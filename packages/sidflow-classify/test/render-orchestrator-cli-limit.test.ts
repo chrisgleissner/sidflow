@@ -116,7 +116,8 @@ fs.writeFileSync(argsFile, args.join("\\n") + "\\n");
   it("applies a fallback render cap when no songlength is provided", async () => {
     const { args } = await renderAndReadArgs({});
     const timeArg = args.find((arg) => arg.startsWith("-t"));
-    expect(timeArg).toBe("-t600");
+    // MAX_RENDER_SECONDS = 30 (15s intro-skip + 15s analysis window)
+    expect(timeArg).toBe("-t30");
   });
 
   it("hard-truncates oversized sidplayfp-cli output to the requested cap", async () => {

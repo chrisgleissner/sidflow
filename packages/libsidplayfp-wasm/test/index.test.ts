@@ -9,6 +9,21 @@ describe("loadLibsidplayfp", () => {
         expect(typeof module.SidPlayerContext).toBe("function");
     });
 
+    it("reuses the default module runtime across repeated default loads", async () => {
+        const [first, second] = await Promise.all([
+            loadLibsidplayfp(),
+            loadLibsidplayfp(),
+        ]);
+
+        expect(first).toBe(second);
+
+        const firstContext = new first.SidPlayerContext();
+        const secondContext = new second.SidPlayerContext();
+
+        expect(firstContext.configure(44_100, true)).toBe(true);
+        expect(secondContext.configure(44_100, true)).toBe(true);
+    });
+
     it("loads with custom locateFile", async () => {
         const customPath = new URL("../dist/libsidplayfp.wasm", import.meta.url).href;
         const module = await loadLibsidplayfp({

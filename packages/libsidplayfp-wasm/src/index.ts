@@ -24,8 +24,10 @@ export interface LoadLibsidplayfpOptions extends SidPlayerContextOptions {
 
 const artifactBaseUrl = new URL("../dist/", import.meta.url);
 
-export async function loadLibsidplayfp(
-    options: LoadLibsidplayfpOptions = {}
+let cachedDefaultModulePromise: Promise<LibsidplayfpWasmModule> | null = null;
+
+function createModulePromise(
+    options: LoadLibsidplayfpOptions
 ): Promise<LibsidplayfpWasmModule> {
     const locate = options.locateFile ?? ((asset: string) => {
         if (isServerLikeEnvironment && wasmPathOverride) {
@@ -34,10 +36,30 @@ export async function loadLibsidplayfp(
         return new URL(asset, artifactBaseUrl).href;
     });
 
-    return await createLibsidplayfp({
+    return createLibsidplayfp({
         ...options,
         locateFile: locate
     });
+}
+
+function isCacheableDefaultLoad(options: LoadLibsidplayfpOptions): boolean {
+    return Object.keys(options).length === 0;
+}
+
+export async function loadLibsidplayfp(
+    options: LoadLibsidplayfpOptions = {}
+): Promise<LibsidplayfpWasmModule> {
+    if (isCacheableDefaultLoad(options)) {
+        if (!cachedDefaultModulePromise) {
+            cachedDefaultModulePromise = createModulePromise(options).catch((error) => {
+                cachedDefaultModulePromise = null;
+                throw error;
+            });
+        }
+        return await cachedDefaultModulePromise;
+    }
+
+    return await createModulePromise(options);
 }
 
 export type {

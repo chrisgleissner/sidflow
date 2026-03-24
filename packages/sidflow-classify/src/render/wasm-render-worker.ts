@@ -17,15 +17,17 @@ interface WorkerResponse {
   progress?: RenderProgress;
 }
 
-// DO NOT cache engine - create fresh instance for each render to ensure complete WASM isolation
+// Create a fresh engine per render job.  The WASM *module* (compiled code) is
+// cached inside engine-factory.ts, so we skip re-compilation.  However, the
+// SidAudioEngine (which holds a SidPlayerContext on the WASM heap) is created
+// fresh and disposed after each render to guarantee clean emulation state.
 async function getEngine() {
   return await createEngine();
 }
 
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {
+  const engine = await getEngine();
   try {
-    const engine = await getEngine();
-    
     // Add progress callback to send heartbeat messages back to main thread
     const optionsWithProgress: RenderWavOptions = {
       ...options,
@@ -35,7 +37,7 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
         parentPort!.postMessage(response);
       }
     };
-    
+
     await renderWavWithEngine(engine, optionsWithProgress);
     const response: WorkerResponse = { type: "result", jobId };
     parentPort!.postMessage(response);
@@ -50,6 +52,8 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
       }
     };
     parentPort!.postMessage(response);
+  } finally {
+    engine.dispose();
   }
 }
 

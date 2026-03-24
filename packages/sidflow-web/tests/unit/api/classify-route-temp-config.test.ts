@@ -11,13 +11,25 @@ let mockClassifyResult: { success: boolean; stdout: string; stderr: string; exit
   exitCode: 0,
 };
 
+let mockStdoutChunks: string[] = [];
+let mockStderrChunks: string[] = [];
+
 mock.module('@/lib/classify-runner', () => ({
   getClassificationRunnerPid: () => null,
   requestClassificationPause: () => false,
-  runClassificationProcess: async () => ({
-    result: mockClassifyResult,
-    reason: mockClassifyResult.success ? 'completed' : 'failed',
-  }),
+  runClassificationProcess: async (options: { onStdout?: (chunk: string) => void; onStderr?: (chunk: string) => void }) => {
+    for (const chunk of mockStdoutChunks) {
+      options.onStdout?.(chunk);
+    }
+    for (const chunk of mockStderrChunks) {
+      options.onStderr?.(chunk);
+    }
+
+    return {
+      result: mockClassifyResult,
+      reason: mockClassifyResult.success ? 'completed' : 'failed',
+    };
+  },
 }));
 
 const serverEnvModule = await import('@/lib/server-env');
@@ -43,6 +55,10 @@ describe('/api/classify temp config', () => {
   let originalPrefsPath: string | undefined;
 
   beforeEach(async () => {
+    mockClassifyResult = { success: true, stdout: 'ok', stderr: '', exitCode: 0 };
+    mockStdoutChunks = [];
+    mockStderrChunks = [];
+
     tempRoot = await mkdtemp(path.join(os.tmpdir(), 'sidflow-classify-route-'));
     await mkdir(path.join(tempRoot, 'data'), { recursive: true });
 
@@ -142,6 +158,28 @@ describe('/api/classify temp config', () => {
     } finally {
       mockClassifyResult = { success: true, stdout: 'ok', stderr: '', exitCode: 0 };
     }
+  });
+
+  test('returns 500 when classify output reports failure despite zero exit code', async () => {
+    mockStdoutChunks = [
+      'Starting classification (threads: 2)\n',
+      '[Extracting Features] 80/100 files (80.0%)\n',
+    ];
+    mockClassifyResult = {
+      success: true,
+      stdout: 'Starting classification\nClassification failed: Out of memory\n',
+      stderr: '',
+      exitCode: 0,
+    };
+
+    const response = await POST(buildPostRequest({}));
+    expect(response.status).toBe(500);
+    const body = await response.json() as any;
+    expect(body.success).toBe(false);
+    expect(body.details).toContain('Classification failed: Out of memory');
+    expect(body.progress.phase).toBe('error');
+    expect(body.progress.taggedFiles).toBe(80);
+    expect(body.progress.totalFiles).toBe(100);
   });
 
   test('passes limit, forceRebuild, skipAlreadyClassified, deleteWavAfterClassification flags', async () => {

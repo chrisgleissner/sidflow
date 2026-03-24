@@ -2,7 +2,8 @@
 import { describe, expect, test, afterEach } from "bun:test";
 import {
     createEngine,
-    getWasmModule,
+    getCompiledWasmModule,
+    resetWasmModuleCache,
     setEngineFactoryOverride,
 } from "../src/render/engine-factory";
 import { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
@@ -11,23 +12,33 @@ describe("Engine Factory", () => {
     afterEach(() => {
         // Reset any override after each test
         setEngineFactoryOverride(null);
+        resetWasmModuleCache();
     });
 
-    describe("getWasmModule", () => {
-        test("loads a WASM module", async () => {
-            const module = await getWasmModule();
+    describe("getCompiledWasmModule", () => {
+        test("compiles a WebAssembly.Module", async () => {
+            const module = await getCompiledWasmModule();
             expect(module).toBeDefined();
-            expect(typeof module).toBe("object");
+            expect(module).toBeInstanceOf(WebAssembly.Module);
         });
 
-        test("returns a fresh module on each call (no caching)", async () => {
-            const module1 = await getWasmModule();
-            const module2 = await getWasmModule();
+        test("returns the cached module on subsequent calls", async () => {
+            const module1 = await getCompiledWasmModule();
+            const module2 = await getCompiledWasmModule();
 
-            // While they may have the same structure, the function guarantees
-            // they are loaded fresh each time (important for isolation)
-            expect(module1).toBeDefined();
-            expect(module2).toBeDefined();
+            // The compiled WebAssembly.Module is stateless code and is cached
+            expect(module1).toBe(module2);
+        });
+
+        test("returns a fresh module after cache reset", async () => {
+            const module1 = await getCompiledWasmModule();
+            resetWasmModuleCache();
+            const module2 = await getCompiledWasmModule();
+
+            expect(module1).toBeInstanceOf(WebAssembly.Module);
+            expect(module2).toBeInstanceOf(WebAssembly.Module);
+            // After reset, a new module is compiled
+            expect(module1).not.toBe(module2);
         });
     });
 

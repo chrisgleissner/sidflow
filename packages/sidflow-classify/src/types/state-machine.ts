@@ -324,6 +324,10 @@ export function createGlobalCounters(): GlobalCounters {
 export function isRecoverableError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
+    // Render timeouts and circuit-breaker skips are NOT recoverable
+    if (message.includes("render timeout") || message.includes("circuit breaker")) {
+      return false;
+    }
     // Network/IO errors are recoverable
     if (message.includes("enoent") || message.includes("timeout") || message.includes("busy")) {
       return true;

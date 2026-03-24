@@ -35,6 +35,9 @@ data/model/model.json
 data/model/*.bin
 data/model/*.pb
 
+# Analysis
+data/high-cpu-use/
+
 # Build metadata (updated on each build, should not be committed)
 data/wasm-build.json
 

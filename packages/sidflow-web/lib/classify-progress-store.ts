@@ -153,9 +153,6 @@ export function completeClassifyProgress(message?: string) {
   setPhase('completed');
   snapshot.isActive = false;
   snapshot.isPaused = false;
-  if (snapshot.totalFiles > 0) {
-    snapshot.taggedFiles = Math.max(snapshot.taggedFiles, snapshot.totalFiles - snapshot.skippedFiles);
-  }
   if (message) {
     snapshot.message = message;
   }
