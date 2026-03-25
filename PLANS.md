@@ -132,3 +132,40 @@ Add deterministic, per-song classification lifecycle telemetry for the `bash scr
 
 ### Outcomes
 - Root cause identified: a real late serialized finalization pass existed, but the severe slowdown symptom was primarily caused by missing visibility into that pass.
+
+## Phase 12 - Enhanced Per-Song Lifecycle Logging (Strict JSONL)
+
+### Objective
+
+Implement a deterministic, structured, per-song classification logging system
+that captures the full lifecycle of each song with system metrics, stage
+durations, and stall detection — writing to `logs/classification-detailed.jsonl`.
+Use the collected evidence to further confirm/refine the root cause found in
+Phase 11.
+
+### Checklist
+- [ ] Add `SongLifecycleLogger` to `classification-telemetry.ts`
+  - [ ] Per-song JSONL format: ts, songIndex, totalSongs, songPath, songId, stage, event, durationMs, workerId, pid, threadId, memoryMB, cpuPercent, extra
+  - [ ] `resolveGitCommit()`, `captureMemoryMB()`, `captureCpuPercent()` helpers
+  - [ ] Stall detection watchdog (30-second scan, 10× median threshold)
+  - [ ] `run_start` event with gitCommit; `run_end` event with totalDurationMs
+- [ ] Instrument all 11 stages in `generateAutoTags` (index.ts)
+  - QUEUED, STARTED, RENDERING, RENDERED, EXTRACTING, EXTRACTED, ANALYZING, ANALYZED, TAGGING, TAGGED, COMPLETED
+  - Each stage emits start + end events with duration
+- [ ] Add `lifecycleLogPath?` option to `GenerateAutoTagsOptions` (defaults to `logs/classification-detailed.jsonl`)
+- [ ] Add `logs/` to `.gitignore`
+- [ ] Create `doc/research/classification-logging-audit.md` with full evidence-based analysis
+- [ ] Update WORKLOG.md
+- [ ] Run `bun run build:quick` + targeted tests; fix any regressions
+- [ ] Run `bun run test` three times consecutively with 100% pass rate
+
+### Progress
+- 2026-03-25: Phase started. Code exploration complete.
+
+### Decision Log
+- 2026-03-25: Keep PRIMARY log at `logs/classification-detailed.jsonl` (project root), separate from the existing `data/classified/classification_*.events.jsonl`. This avoids any schema-breaking changes.
+- 2026-03-25: `lifecycleLogPath` param added to `GenerateAutoTagsOptions` so tests can redirect to a temp dir.
+- 2026-03-25: `captureCpuPercent` measures delta from last sample — process-wide, not per-worker (sufficient for high-level analysis).
+
+### Outcomes
+- Pending.

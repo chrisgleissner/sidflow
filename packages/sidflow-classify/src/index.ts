@@ -67,7 +67,7 @@ import {
 } from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
-import { ClassificationTelemetryLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
+import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -1567,6 +1567,12 @@ export interface GenerateAutoTagsOptions {
   skipAlreadyClassified?: boolean;
   /** Delete WAV files after classification (for fly.io deployments with limited storage) */
   deleteWavAfterClassification?: boolean;
+  /**
+   * Override path for the detailed per-song lifecycle JSONL log.
+   * Defaults to `logs/classification-detailed.jsonl` under process.cwd().
+   * Pass a temp-dir path in tests to avoid writing to the project root.
+   */
+  lifecycleLogPath?: string;
 }
 
 export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
@@ -1704,6 +1710,12 @@ export async function generateAutoTags(
   const telemetry = new ClassificationTelemetryLogger(telemetryFile);
   const runContext = resolveClassificationRunContext();
   const songStartTimestamps = new Map<number, number>();
+
+  // Detailed per-song lifecycle log (spec-format JSONL, one event per stage start/end).
+  // Defaults to logs/classification-detailed.jsonl under process.cwd(); tests can redirect via lifecycleLogPath.
+  const lifecycleLogPath = options.lifecycleLogPath
+    ?? path.resolve(process.cwd(), "logs", "classification-detailed.jsonl");
+  await ensureDir(path.dirname(lifecycleLogPath));
   
   // Cache for auto-tags.json files to avoid repeated reads for songs in the same directory
   const autoTagsCache = new Map<string, Record<string, unknown> | null>();
@@ -1819,6 +1831,10 @@ export async function generateAutoTags(
     totalFiles,
     threads: taggingConcurrency,
   });
+
+  // Initialise the detailed lifecycle logger now that we know totalFiles.
+  const lifecycle = new SongLifecycleLogger(lifecycleLogPath, totalFiles);
+  lifecycle.emitRunStart(runContext);
   const jobs: AutoTagJob[] = [];
   let metadataProcessed = 0;
 
@@ -1916,6 +1932,20 @@ export async function generateAutoTags(
           targetDurationMs: cappedDuration,
         })
       );
+      // Lifecycle: QUEUED stage (instantaneous — marks entry into the work queue)
+      const songIdForQueue = songCount > 1 ? `${posixRelative}:${songIndex}` : posixRelative;
+      const queuedKey = lifecycle.stageStart({
+        songIndex: queueIndex,
+        songPath: posixRelative,
+        songId: songIdForQueue,
+        stage: "QUEUED",
+      });
+      lifecycle.stageEnd(queuedKey, {
+        songIndex: queueIndex,
+        songPath: posixRelative,
+        songId: songIdForQueue,
+        stage: "QUEUED",
+      });
       songsQueued += 1;
     }
 
@@ -2079,6 +2109,11 @@ export async function generateAutoTags(
       const taggingStartedAt = Date.now();
       songStartTimestamps.set(job.queueIndex, taggingStartedAt);
       emitSongEvent("song_start");
+
+      // Lifecycle: STARTED stage — covers the full concurrent processing for this song.
+      const songId = job.songCount > 1 ? `${job.posixRelative}:${job.songIndex}` : job.posixRelative;
+      const lifecycleBase = { songIndex: job.queueIndex, songPath: job.posixRelative, songId, workerId: context.threadId, threadId: String(context.threadId) };
+      const startedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "STARTED" });
       onThreadUpdate?.({
         threadId: context.threadId,
         phase: "tagging",
@@ -2097,6 +2132,8 @@ export async function generateAutoTags(
           targetDurationMs: job.targetDurationMs ?? 0,
           wavPath: job.wavPath,
         });
+        // Lifecycle: RENDERING stage
+        const renderingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "RENDERING", extra: { wavPath: job.wavPath, targetDurationMs: job.targetDurationMs ?? 0 } });
         // Emit "building" phase for inline rendering
         const buildStartedAt = Date.now();
         onThreadUpdate?.({
@@ -2177,6 +2214,8 @@ export async function generateAutoTags(
             wavPath: job.wavPath,
           });
           classifyLogger.debug(`[Thread ${context.threadId}] Rendered WAV for ${songLabel} in ${Date.now() - buildStartedAt}ms`);
+          // Lifecycle: RENDERING end
+          lifecycle.stageEnd(renderingKey, { ...lifecycleBase, stage: "RENDERING" });
         } catch (renderError) {
           const msg = renderError instanceof Error ? renderError.message : String(renderError);
           classifyLogger.warn(`[Thread ${context.threadId}] Inline render failed for ${songLabel}: ${msg} — skipping song`);
@@ -2185,6 +2224,8 @@ export async function generateAutoTags(
             error: msg,
             timedOut: isRenderTimeoutOrCircuitBreakerError(renderError),
           });
+          // Lifecycle: RENDERING error
+          lifecycle.stageError(renderingKey, { ...lifecycleBase, stage: "RENDERING", error: msg });
           if (isRenderTimeoutOrCircuitBreakerError(renderError)) {
             timedOutRenderSids.add(job.sidFile);
           }
@@ -2193,6 +2234,7 @@ export async function generateAutoTags(
         }
 
         if (inlineRenderFailed) {
+          lifecycle.stageEnd(startedKey, { ...lifecycleBase, stage: "STARTED", extra: { outcome: "render_failed" } });
           processedSongs += 1;
           emitTaggingProgress(songLabel);
           emitSongOutcome("song_failed", { reason: "render_failed" });
@@ -2203,6 +2245,9 @@ export async function generateAutoTags(
           });
           return; // Skip this song entirely — no WAV means no features to extract
         }
+        // Lifecycle: RENDERED (WAV freshly rendered and ready)
+        const renderedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "RENDERED" });
+        lifecycle.stageEnd(renderedKey, { ...lifecycleBase, stage: "RENDERED" });
         
         // Switch back to tagging phase after rendering
         const resumeTaggingAt = Date.now();
@@ -2216,6 +2261,9 @@ export async function generateAutoTags(
       } else {
         cachedFilesCount += 1;
         emitSongEvent("wav_cache_hit", { wavPath: job.wavPath });
+        // Lifecycle: RENDERED stage for cache-hit path (WAV already available)
+        const renderedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "RENDERED", extra: { cacheHit: true } });
+        lifecycle.stageEnd(renderedKey, { ...lifecycleBase, stage: "RENDERED", extra: { cacheHit: true } });
       }
 
       await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
@@ -2252,6 +2300,8 @@ export async function generateAutoTags(
 
       let extractedFeatures: FeatureVector;
       emitSongEvent("feature_extraction_start", { wavPath: job.wavPath });
+      // Lifecycle: EXTRACTING stage
+      const extractingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTING" });
       try {
         extractedFeatures = await featureExtractor({
           wavFile: job.wavPath,
@@ -2271,6 +2321,10 @@ export async function generateAutoTags(
         featureCount,
         featureVariant: extractedFeatures.featureVariant ?? (usedEssentia ? "essentia" : "unknown"),
       });
+      // Lifecycle: EXTRACTING end; EXTRACTED marker
+      lifecycle.stageEnd(extractingKey, { ...lifecycleBase, stage: "EXTRACTING", extra: { featureCount } });
+      const extractedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTED", extra: { featureCount } });
+      lifecycle.stageEnd(extractedKey, { ...lifecycleBase, stage: "EXTRACTED" });
       classifyLogger.debug(
         `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
       );
@@ -2295,8 +2349,15 @@ export async function generateAutoTags(
         intermediate.song_index = job.songIndex;
       }
 
+      // Lifecycle: ANALYZING stage — intermediate record placed in buffer for deferred flush
+      const analyzingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "ANALYZING" });
       intermediateBuffer.set(context.itemIndex, intermediate);
       intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
+      lifecycle.stageEnd(analyzingKey, { ...lifecycleBase, stage: "ANALYZING" });
+      // Lifecycle: ANALYZED marker; STARTED end (concurrent processing done for this song)
+      const analyzedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "ANALYZED" });
+      lifecycle.stageEnd(analyzedKey, { ...lifecycleBase, stage: "ANALYZED" });
+      lifecycle.stageEnd(startedKey, { ...lifecycleBase, stage: "STARTED" });
 
       processedSongs += 1;
 
@@ -2387,6 +2448,11 @@ export async function generateAutoTags(
       const manual = rec.manual_ratings;
       const needsAuto = !manual || hasMissingDimensions(manual);
 
+      // Lifecycle: TAGGING stage (deferred final-pass for this song)
+      const deferredSongId = rec.song_index ? `${rec.sid_path}:${rec.song_index}` : rec.sid_path;
+      const deferredBase = { songIndex: rec.queue_index, songPath: rec.sid_path, songId: deferredSongId, workerId: 0, threadId: null };
+      const taggingKey = lifecycle.stageStart({ ...deferredBase, stage: "TAGGING" });
+
       let auto: TagRatings | null = null;
       if (needsAuto) {
         if (predictRatingsOverride) {
@@ -2437,6 +2503,16 @@ export async function generateAutoTags(
         details: { phase: "classification" },
       });
       jsonlRecordCount += 1;
+      // Lifecycle: TAGGING end; TAGGED and COMPLETED markers
+      lifecycle.stageEnd(taggingKey, { ...deferredBase, stage: "TAGGING", extra: { source } });
+      const taggedKey = lifecycle.stageStart({ ...deferredBase, stage: "TAGGED" });
+      lifecycle.stageEnd(taggedKey, { ...deferredBase, stage: "TAGGED" });
+      const completedKey = lifecycle.stageStart({ ...deferredBase, stage: "COMPLETED" });
+      const totalDurationMs = typeof songStartTimestamps.get(rec.queue_index) === "number"
+        ? Date.now() - (songStartTimestamps.get(rec.queue_index) as number)
+        : null;
+      lifecycle.stageEnd(completedKey, { ...deferredBase, stage: "COMPLETED", extra: { source, totalDurationMs } });
+
       const completionRecord: Record<string, JsonValue> = {
         event: "song_complete",
         timestamp: new Date().toISOString(),
@@ -2456,6 +2532,8 @@ export async function generateAutoTags(
       }
       telemetry.emit(completionRecord);
     }
+    // Lifecycle: run_end
+    lifecycle.emitRunEnd();
     telemetry.emit({
       event: "run_complete",
       timestamp: new Date().toISOString(),
@@ -2476,6 +2554,7 @@ export async function generateAutoTags(
       await pool.destroy();
     }
     await telemetry.flush();
+    await lifecycle.flush();
   }
 
   if (onProgress && totalFiles > 0) {
@@ -2906,3 +2985,13 @@ export {
   type Gauge,
   type ClassificationMetrics,
 } from "./classify-metrics.js";
+
+// Re-export classification telemetry utilities
+export {
+  ClassificationTelemetryLogger,
+  SongLifecycleLogger,
+  resolveClassificationRunContext,
+  type ClassificationStage,
+  type StageEventType,
+  type StageEventParams,
+} from "./classification-telemetry.js";
