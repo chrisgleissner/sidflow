@@ -255,7 +255,7 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
-Classifying all 60,572 SID songs (as of HVSC version 84 in March 2026) takes about 3 hours on an Intel 14600K CPU using Kubuntu 24.04:
+Classifying all 60,572 SID songs (as of HVSC version 84 in March 2026) takes about 80 minutes on an Intel 14600K CPU using Kubuntu 24.04:
 
 ```bash
 bash scripts/run-similarity-export.sh --mode local --full-rerun true
@@ -263,18 +263,24 @@ bash scripts/run-similarity-export.sh --mode local --full-rerun true
 
 Expected logs:
 ```
-16:42 $ bash scripts/run-similarity-export.sh --mode local --full-rerun true
+✔ ~/dev/c64/sidflow [main|✔] 
+08:33 $ bash scripts/run-similarity-export.sh --mode local --full-rerun true
 [sidcorr] Mode is full rerun: existing classified data and export artifacts will be ignored and replaced
+[sidcorr] Full rerun: removing prior classified JSONL artifacts from /home/chris/dev/c64/sidflow/data/classified
 [sidcorr] Mode: local
 [sidcorr] Installing dependencies for local mode
 [sidcorr] Starting local web server on port 3000
 [sidcorr] Triggering classification with payload {"async":false,"skipAlreadyClassified":false,"deleteWavAfterClassification":true,"forceRebuild":true}
 [sidcorr] Classification request started
 [sidcorr] Waiting for classification to finish
-[sidcorr] progress update: completed=211 remaining=86863 total=87074 elapsed=40s eta=4h 35m 13s rate=5.26 songs/s percent=0.2 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=212, extracted=211, tagged=211]
-...
-[sidcorr] progress update: completed=3191 remaining=83883 total=87074 elapsed=6m 41s eta=2h 55m 31s rate=7.97 songs/s percent=3.7 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=3192, extracted=3191, tagged=3191]
-...
+[sidcorr] progress update: completed=2451 remaining=84623 total=87074 elapsed=55s eta=31m 46s rate=44.41 songs/s percent=2.8 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=2464, extracted=2451, tagged=2451]
+[sidcorr] progress update: completed=4398 remaining=82676 total=87074 elapsed=1m 25s eta=26m 42s rate=51.60 songs/s percent=5.1 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=4415, extracted=4398, tagged=4398]
+
+...snip...
+
+[sidcorr] progress update: completed=45898 remaining=41176 total=87074 elapsed=38m 2s eta=34m 7s rate=20.11 songs/s percent=52.7 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=45848, extracted=45845, tagged=45898]
+[sidcorr] progress update: completed=46778 remaining=40296 total=87074 elapsed=38m 32s eta=33m 12s rate=20.23 songs/s percent=53.7 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=46728, extracted=46725, tagged=46778]
+
 ```
 
 Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` and `sidcorr-hvsc-full-sidcorr-1.manifest.json`.
