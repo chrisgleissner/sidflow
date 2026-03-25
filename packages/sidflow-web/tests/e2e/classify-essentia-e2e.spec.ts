@@ -140,7 +140,9 @@ test.describe('Classification Output with Essentia.js Features', () => {
       expect(response.ok(), JSON.stringify(body)).toBe(true);
 
       const jsonlAfter = await fs.readdir(CLASSIFIED_DIR).catch(() => []);
-      const newFiles = jsonlAfter.filter((f) => f.endsWith('.jsonl') && !jsonlBefore.includes(f)).sort();
+      const isPrimaryClassificationJsonl = (name: string): boolean =>
+        /^classification_.*(?<!\\.events)\\.jsonl$/u.test(name);
+      const newFiles = jsonlAfter.filter((f) => isPrimaryClassificationJsonl(f) && !jsonlBefore.includes(f)).sort();
       expect(newFiles.length).toBeGreaterThan(0);
 
       const jsonlPath = path.join(CLASSIFIED_DIR, newFiles[newFiles.length - 1]!);

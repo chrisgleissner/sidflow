@@ -356,6 +356,12 @@ function processLine(line: string) {
     if (phase === 'tagging') {
       snapshot.taggedFiles = snapshot.processedFiles;
       snapshot.counters.essentiaTagged = snapshot.processedFiles;
+    } else if (phase === 'finalizing') {
+      // The finalizing phase (Building Rating Model / Writing Results) represents
+      // post-extraction work. Mark all concurrently-processed songs as tagged so
+      // isClassificationProgressComplete() returns true for small datasets where
+      // AUTOTAG_PROGRESS_INTERVAL never fires during runConcurrent.
+      snapshot.taggedFiles = snapshot.processedFiles;
     }
     snapshot.percentComplete = Number(tagMatch[4]);
     

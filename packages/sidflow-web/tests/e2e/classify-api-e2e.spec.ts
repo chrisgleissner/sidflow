@@ -405,7 +405,11 @@ test.describe.serial('Classification API E2E', () => {
 async function getJsonlFiles(): Promise<string[]> {
   try {
     const files = await fs.readdir(CLASSIFIED_DIR);
-    return files.filter(f => f.endsWith('.jsonl')).sort();
+    // Exclude telemetry event logs (*.events.jsonl) and intermediate feature files;
+    // return only the primary per-run classification JSONL outputs.
+    const isPrimaryClassificationJsonl = (name: string): boolean =>
+      /^classification_.*(?<!\.events)\.jsonl$/u.test(name);
+    return files.filter(isPrimaryClassificationJsonl).sort();
   } catch {
     return [];
   }
