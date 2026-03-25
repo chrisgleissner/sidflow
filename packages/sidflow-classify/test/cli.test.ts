@@ -61,6 +61,7 @@ interface TestGenerateAutoTagsResult {
   tagFiles: string[];
   jsonlFile: string;
   jsonlRecordCount: number;
+  telemetryFile: string;
   metrics: TestGenerateAutoTagsMetrics;
 }
 
@@ -216,6 +217,7 @@ describe("runClassifyCli", () => {
         tagFiles: [path.join(plan.tagsPath, "auto-tags.json")],
         jsonlFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00-000.jsonl"),
         jsonlRecordCount: 2,
+        telemetryFile: path.join(plan.tagsPath, "classified", "classification_2024-01-01_00-00-00-000.events.jsonl"),
         metrics: {
           startTime: 100,
           endTime: 200,
@@ -234,6 +236,7 @@ describe("runClassifyCli", () => {
     const output = captured.stdout.join("\n");
     expect(output).toContain("Classification complete.");
     expect(output).toContain("Auto-tagged: 1");
+    expect(output).toContain("Telemetry file:");
   });
 
   it("reports failures", async () => {

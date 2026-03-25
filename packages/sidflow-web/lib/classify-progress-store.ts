@@ -335,13 +335,15 @@ function processLine(line: string) {
   // Match new user-friendly progress labels with detailed counters
   // Format: [Phase] X/Y files, Z remaining (P%) [rendered=R cached=C extracted=E] - file - elapsed
   const tagMatch = line.match(
-    /\[(Reading Metadata|Extracting Features|Writing Features|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\])?(?:\s+-\s+(.*))?/i
+    /\[(Reading Metadata|Extracting Features|Writing Features|Building Rating Model|Writing Results|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\])?(?:\s+-\s+(.*))?/i
   );
   if (tagMatch) {
     const label = tagMatch[1].toLowerCase();
     let phase: ClassifyPhase;
     if (label === 'reading metadata' || label === 'metadata') {
       phase = 'metadata';
+    } else if (label === 'building rating model' || label === 'writing results') {
+      phase = 'finalizing';
     } else if (label === 'extracting features' || label === 'tagging') {
       phase = 'tagging';
     } else {

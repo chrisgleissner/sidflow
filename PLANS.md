@@ -102,3 +102,33 @@ Bring PR #87 to a merge-ready state by addressing inline review feedback, fixing
 
 ### Outcomes
 - Pending.
+
+## Phase 11 - Similarity Export Slowdown Telemetry
+
+### Objective
+
+Add deterministic, per-song classification lifecycle telemetry for the `bash scripts/run-similarity-export.sh --mode local --full-rerun true` workflow, then use that evidence to explain the reported slowdown around 70-75% completion.
+
+### Checklist
+- [x] Read repo guidance, docs, and classify/export entrypoints
+- [x] Establish baseline build/test state before code changes
+- [x] Add wrapper-run metadata capture for the exact similarity-export command
+- [x] Emit structured per-song classification telemetry without changing the main classification JSONL schema
+- [x] Surface the hidden post-extraction phases in CLI/web/script progress reporting
+- [x] Add focused tests for telemetry + phase reporting
+- [x] Run a bounded classify/export verification and inspect emitted telemetry
+- [x] Document the slowdown root cause and evidence in `doc/research/`
+- [ ] Re-run final validation (`bun run build`, targeted tests, `bun run test` x3)
+
+### Progress
+- 2026-03-25: Baseline `npm run build` succeeded. `npm run test` also exited successfully from a clean code baseline.
+- 2026-03-25: Code inspection shows `generateAutoTags()` does a concurrent feature-extraction pass, then a second serialized pass that builds the dataset-normalized rating model and writes final classification records. Existing progress/log parsing largely exposes the first phase, so late-run work can look like a slowdown.
+- 2026-03-25: Added `classification_*.events.jsonl` telemetry, wrapper-level `run-events.jsonl`, and explicit `Building Rating Model` / `Writing Results` progress phases.
+- 2026-03-25: Focused validation passed: `npm run build:quick` and `bun test packages/sidflow-classify/test/cli.test.ts packages/sidflow-classify/test/auto-tags.test.ts packages/sidflow-classify/test/index.test.ts`.
+- 2026-03-25: Bounded wrapper verification hit an environment blocker (`ffmpeg` missing), but still produced the wrapper `run_start` artifact. The classification lifecycle itself was verified end-to-end with the same run context against `test-data`.
+
+### Decision Log
+- 2026-03-25: Keep telemetry in a separate `classification_*.events.jsonl` stream to avoid breaking downstream consumers of the canonical `classification_*.jsonl` schema.
+
+### Outcomes
+- Root cause identified: a real late serialized finalization pass existed, but the severe slowdown symptom was primarily caused by missing visibility into that pass.

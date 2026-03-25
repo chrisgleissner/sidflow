@@ -817,7 +817,7 @@ describe("generateAutoTags", () => {
         }
       });
 
-      expect(new Set(progressPhases)).toEqual(new Set(["metadata", "tagging"]));
+      expect(new Set(progressPhases)).toEqual(new Set(["metadata", "tagging", "rating-model", "finalizing"]));
       const posixMulti = "MUSICIANS/Multi.sid";
       const posixManual = "MUSICIANS/Manual.sid";
       const posixPartial = "MUSICIANS/Partial.sid";
@@ -846,6 +846,7 @@ describe("generateAutoTags", () => {
       // Verify JSONL is written incrementally (one record per line)
       expect(result.jsonlFile).toBeDefined();
       expect(result.jsonlRecordCount).toBe(4); // 3 songs (2 from Multi.sid) + Manual.sid + Partial.sid
+      expect(result.telemetryFile).toContain(".events.jsonl");
       const jsonlContent = await readFile(result.jsonlFile, "utf8");
       const jsonlLines = jsonlContent.trim().split("\n");
       expect(jsonlLines.length).toBe(4);

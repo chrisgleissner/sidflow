@@ -289,6 +289,12 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
         case "tagging":
           phaseLabel = "Extracting Features";
           break;
+        case "rating-model":
+          phaseLabel = "Building Rating Model";
+          break;
+        case "finalizing":
+          phaseLabel = "Writing Results";
+          break;
         case "jsonl":
           phaseLabel = "Writing Features";
           break;
@@ -360,6 +366,7 @@ function summariseAutoTags(result: GenerateAutoTagsResult): string[] {
     `  Tag files: ${result.tagFiles.length}`,
     `  JSONL records: ${result.jsonlRecordCount}`,
     `  JSONL file: ${result.jsonlFile}`,
+    `  Telemetry file: ${result.telemetryFile}`,
     `  Duration: ${formatDuration(metrics.durationMs)}`
   ];
 }

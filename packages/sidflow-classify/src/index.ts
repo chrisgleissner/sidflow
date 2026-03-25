@@ -67,6 +67,7 @@ import {
 } from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
+import { ClassificationTelemetryLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
@@ -1532,7 +1533,7 @@ async function writeMetadataRecord(
 }
 
 export interface AutoTagProgress {
-  phase: "metadata" | "tagging" | "jsonl";
+  phase: "metadata" | "tagging" | "rating-model" | "finalizing" | "jsonl";
   totalFiles: number;
   processedFiles: number;
   /** Number of files that required WAV rendering (not cached) */
@@ -1592,6 +1593,8 @@ export interface GenerateAutoTagsResult {
   jsonlFile: string;
   /** Number of records written to JSONL file */
   jsonlRecordCount: number;
+  /** Path to structured per-song lifecycle telemetry */
+  telemetryFile: string;
   metrics: GenerateAutoTagsMetrics;
 }
 
@@ -1605,6 +1608,7 @@ interface AutoTagJob {
   manualRecord: ManualTagRecord | null;
   wavPath: string;
   targetDurationMs?: number;
+  queueIndex: number;
 }
 
 export async function generateAutoTags(
@@ -1688,6 +1692,7 @@ export async function generateAutoTags(
   await ensureDir(classifiedPath);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
   const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
+  const telemetryFile = path.join(classifiedPath, `classification_${timestamp}.events.jsonl`);
   let jsonlRecordCount = 0;
 
   // Intermediate file: extracted features + metadata in deterministic order.
@@ -1695,6 +1700,10 @@ export async function generateAutoTags(
   const featuresJsonlFile = path.join(classifiedPath, `features_${timestamp}.jsonl`);
   await rm(featuresJsonlFile, { force: true });
   await rm(jsonlFile, { force: true });
+  await rm(telemetryFile, { force: true });
+  const telemetry = new ClassificationTelemetryLogger(telemetryFile);
+  const runContext = resolveClassificationRunContext();
+  const songStartTimestamps = new Map<number, number>();
   
   // Cache for auto-tags.json files to avoid repeated reads for songs in the same directory
   const autoTagsCache = new Map<string, Record<string, unknown> | null>();
@@ -1763,12 +1772,53 @@ export async function generateAutoTags(
     return pending;
   };
 
+  const buildSongTelemetryRecord = (
+    event: string,
+    song: { posixRelative: string; songCount: number; queueIndex: number; songIndex?: number },
+    details: Record<string, JsonValue> = {}
+  ): Record<string, JsonValue> => {
+    const record: Record<string, JsonValue> = {
+      event,
+      timestamp: new Date().toISOString(),
+      sidPath: song.posixRelative,
+      songCount: song.songCount,
+      queueIndex: song.queueIndex,
+      ...details,
+    };
+    if (song.songCount > 1 && typeof song.songIndex === "number") {
+      record.songIndex = song.songIndex;
+    }
+    return record;
+  };
+
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const configuredLimit = options.limit;
   const totalFiles = typeof configuredLimit === "number"
     ? Math.min(totalSongs, Math.max(0, Math.floor(configuredLimit)))
     : totalSongs;
+  const baseConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
+  // Keep the outer pipeline depth aligned with the worker pools. Full-corpus
+  // reruns hold onto rendered audio, feature buffers, and worker state long
+  // enough that oversubscribing the outer queue materially increases peak
+  // memory without improving end-to-end throughput.
+  const taggingConcurrency = baseConcurrency;
+  telemetry.emit({
+    event: "run_start",
+    timestamp: new Date().toISOString(),
+    telemetryVersion: 1,
+    command: runContext.command,
+    cwd: runContext.cwd,
+    mode: runContext.mode ?? "unknown",
+    fullRerun: runContext.fullRerun ?? plan.forceRebuild,
+    sidPath: plan.sidPath,
+    classifiedPath,
+    classificationJsonlFile: jsonlFile,
+    featuresJsonlFile,
+    telemetryFile,
+    totalFiles,
+    threads: taggingConcurrency,
+  });
   const jobs: AutoTagJob[] = [];
   let metadataProcessed = 0;
 
@@ -1821,6 +1871,20 @@ export async function generateAutoTags(
         );
         if (alreadyClassified) {
           skippedAlreadyClassifiedCount += 1;
+          telemetry.emit(
+            buildSongTelemetryRecord(
+              "song_skipped",
+              {
+                posixRelative,
+                songCount,
+                songIndex: songCount > 1 ? songIndex : undefined,
+                queueIndex: jobs.length,
+              },
+              {
+                reason: "already_classified",
+              }
+            )
+          );
           classifyLogger.debug(`Skipping already classified: ${path.basename(sidFile)} [${songIndex}/${songCount}]`);
           continue;
         }
@@ -1833,7 +1897,8 @@ export async function generateAutoTags(
         typeof hvscDuration === "number" && Number.isFinite(hvscDuration) && hvscDuration > 0
           ? Math.min(hvscDuration, maxRenderMs)
           : maxRenderMs;
-      jobs.push({
+      const queueIndex = jobs.length;
+      const queuedJob: AutoTagJob = {
         sidFile,
         relativePath,
         posixRelative,
@@ -1843,7 +1908,14 @@ export async function generateAutoTags(
         manualRecord,
         wavPath,
         targetDurationMs: cappedDuration,
-      });
+        queueIndex,
+      };
+      jobs.push(queuedJob);
+      telemetry.emit(
+        buildSongTelemetryRecord("song_queued", queuedJob, {
+          targetDurationMs: cappedDuration,
+        })
+      );
       songsQueued += 1;
     }
 
@@ -1856,12 +1928,6 @@ export async function generateAutoTags(
     classifyLogger.info(`Skipped ${skippedAlreadyClassifiedCount} already classified songs`);
   }
 
-  const baseConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
-  // Keep the outer pipeline depth aligned with the worker pools. Full-corpus
-  // reruns hold onto rendered audio, feature buffers, and worker state long
-  // enough that oversubscribing the outer queue materially increases peak
-  // memory without improving end-to-end throughput.
-  const taggingConcurrency = baseConcurrency;
   let processedSongs = 0;
 
   // Renderer pool for inline WAV rendering during tagging phase.
@@ -1891,6 +1957,7 @@ export async function generateAutoTags(
       sid_path: string;
       song_index?: number;
       song_count: number;
+      queue_index: number;
       metadata: SidMetadata;
       manual_ratings: PartialTagRatings | null;
       features: FeatureVector;
@@ -1918,6 +1985,20 @@ export async function generateAutoTags(
         await appendCanonicalJsonLines(featuresJsonlFile, [rec as unknown as JsonValue], {
           details: { phase: "features", itemIndex: nextIntermediateIndex },
         });
+        telemetry.emit(
+          buildSongTelemetryRecord(
+            "features_persisted",
+            {
+              posixRelative: rec.sid_path,
+              songCount: rec.song_count,
+              songIndex: rec.song_index,
+              queueIndex: rec.queue_index,
+            },
+            {
+              itemIndex: nextIntermediateIndex,
+            }
+          )
+        );
         nextIntermediateIndex += 1;
       }
     };
@@ -1949,12 +2030,34 @@ export async function generateAutoTags(
         tagFiles,
         jsonlFile,
         jsonlRecordCount,
+        telemetryFile,
         metrics,
       };
     }
 
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
       const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
+      const emitSongEvent = (event: string, details: Record<string, JsonValue> = {}): void => {
+        telemetry.emit(
+          buildSongTelemetryRecord(event, job, {
+            threadId: context.threadId,
+            ...details,
+          })
+        );
+      };
+      const emitSongOutcome = (
+        event: "song_complete" | "song_failed" | "song_skipped",
+        details: Record<string, JsonValue> = {}
+      ): void => {
+        const startedAt = songStartTimestamps.get(job.queueIndex);
+        const { totalDurationMs, ...remainingDetails } = details;
+        void totalDurationMs;
+        const payload: Record<string, JsonValue> = { ...remainingDetails };
+        if (typeof startedAt === "number") {
+          payload.totalDurationMs = Date.now() - startedAt;
+        }
+        emitSongEvent(event, payload);
+      };
 
       // Check circuit breaker before starting work
       if (timedOutRenderSids.has(job.sidFile)) {
@@ -1963,6 +2066,7 @@ export async function generateAutoTags(
         );
         processedSongs += 1;
         emitTaggingProgress(songLabel);
+        emitSongOutcome("song_skipped", { reason: "sid_timeout_quarantine" });
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "tagging",
@@ -1973,6 +2077,8 @@ export async function generateAutoTags(
 
       const wavDir = path.dirname(job.wavPath);
       const taggingStartedAt = Date.now();
+      songStartTimestamps.set(job.queueIndex, taggingStartedAt);
+      emitSongEvent("song_start");
       onThreadUpdate?.({
         threadId: context.threadId,
         phase: "tagging",
@@ -1983,10 +2089,14 @@ export async function generateAutoTags(
       });
       const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
 
-    // Always ensure we have a WAV and extract features for every song.
-    // Stations depend on objective features, not just ratings.
-    const wavNeedsRefresh = await needsWavRefresh(job.sidFile, job.wavPath, false, plan.config);
-    if (wavNeedsRefresh) {
+      // Always ensure we have a WAV and extract features for every song.
+      // Stations depend on objective features, not just ratings.
+      const wavNeedsRefresh = await needsWavRefresh(job.sidFile, job.wavPath, false, plan.config);
+      if (wavNeedsRefresh) {
+        emitSongEvent("render_start", {
+          targetDurationMs: job.targetDurationMs ?? 0,
+          wavPath: job.wavPath,
+        });
         // Emit "building" phase for inline rendering
         const buildStartedAt = Date.now();
         onThreadUpdate?.({
@@ -2062,11 +2172,19 @@ export async function generateAutoTags(
           // Track the WAV file for potential cleanup after classification
           renderedWavFiles.push(job.wavPath);
           renderedFilesCount += 1;
+          emitSongEvent("render_complete", {
+            durationMs: Date.now() - buildStartedAt,
+            wavPath: job.wavPath,
+          });
           classifyLogger.debug(`[Thread ${context.threadId}] Rendered WAV for ${songLabel} in ${Date.now() - buildStartedAt}ms`);
         } catch (renderError) {
           const msg = renderError instanceof Error ? renderError.message : String(renderError);
           classifyLogger.warn(`[Thread ${context.threadId}] Inline render failed for ${songLabel}: ${msg} — skipping song`);
           inlineRenderFailed = true;
+          emitSongEvent("render_failed", {
+            error: msg,
+            timedOut: isRenderTimeoutOrCircuitBreakerError(renderError),
+          });
           if (isRenderTimeoutOrCircuitBreakerError(renderError)) {
             timedOutRenderSids.add(job.sidFile);
           }
@@ -2077,6 +2195,7 @@ export async function generateAutoTags(
         if (inlineRenderFailed) {
           processedSongs += 1;
           emitTaggingProgress(songLabel);
+          emitSongOutcome("song_failed", { reason: "render_failed" });
           onThreadUpdate?.({
             threadId: context.threadId,
             phase: "tagging",
@@ -2085,18 +2204,19 @@ export async function generateAutoTags(
           return; // Skip this song entirely — no WAV means no features to extract
         }
         
-      // Switch back to tagging phase after rendering
-      const resumeTaggingAt = Date.now();
-      onThreadUpdate?.({
-        threadId: context.threadId,
-        phase: "tagging",
-        status: "working",
-        file: songLabel,
-        timestamp: resumeTaggingAt,
-      });
-    } else {
-      cachedFilesCount += 1;
-    }
+        // Switch back to tagging phase after rendering
+        const resumeTaggingAt = Date.now();
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "tagging",
+          status: "working",
+          file: songLabel,
+          timestamp: resumeTaggingAt,
+        });
+      } else {
+        cachedFilesCount += 1;
+        emitSongEvent("wav_cache_hit", { wavPath: job.wavPath });
+      }
 
       await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
 
@@ -2114,81 +2234,113 @@ export async function generateAutoTags(
         });
       }
 
-    // Essentia feature extraction with structured logging
-    // Start heartbeat to prevent thread from appearing stale during long feature extractions
-    const extractionStartedAt = Date.now();
-    const extractionHeartbeatInterval = setInterval(() => {
-      const now = Date.now();
+      // Essentia feature extraction with structured logging
+      // Start heartbeat to prevent thread from appearing stale during long feature extractions
+      const extractionStartedAt = Date.now();
+      const extractionHeartbeatInterval = setInterval(() => {
+        const now = Date.now();
+        onThreadUpdate?.({
+          threadId: context.threadId,
+          phase: "tagging",
+          status: "working",
+          file: songLabel,
+          timestamp: now,
+          isHeartbeat: true,
+          phaseDurationMs: now - extractionStartedAt,
+        });
+      }, HEARTBEAT_INTERVAL_MS);
+
+      let extractedFeatures: FeatureVector;
+      emitSongEvent("feature_extraction_start", { wavPath: job.wavPath });
+      try {
+        extractedFeatures = await featureExtractor({
+          wavFile: job.wavPath,
+          sidFile: job.sidFile,
+          songIndex: job.songCount > 1 ? job.songIndex : undefined,
+          songCount: job.songCount,
+        });
+      } finally {
+        clearInterval(extractionHeartbeatInterval);
+      }
+      extractedFilesCount += 1;
+      const extractionDurationMs = Date.now() - extractionStartedAt;
+      const featureCount = Object.keys(extractedFeatures).length;
+      const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
+      emitSongEvent("feature_extraction_complete", {
+        durationMs: extractionDurationMs,
+        featureCount,
+        featureVariant: extractedFeatures.featureVariant ?? (usedEssentia ? "essentia" : "unknown"),
+      });
+      classifyLogger.debug(
+        `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
+      );
+
+      const autoFilePath = resolveAutoTagFilePath(plan.tagsPath, job.relativePath, plan.classificationDepth);
+      const baseKey = toPosixRelative(resolveAutoTagKey(job.relativePath, plan.classificationDepth));
+      const key = job.songCount > 1 ? `${baseKey}:${job.songIndex}` : baseKey;
+
+      const intermediate: IntermediateRecord = {
+        sid_path: job.posixRelative,
+        song_count: job.songCount,
+        queue_index: job.queueIndex,
+        metadata: job.metadata,
+        manual_ratings: manualRatings,
+        features: extractedFeatures,
+        render_engine: renderEngineForRecords,
+        classification_depth: plan.classificationDepth,
+        auto_file_path: autoFilePath,
+        auto_key: key,
+      };
+      if (job.songCount > 1) {
+        intermediate.song_index = job.songIndex;
+      }
+
+      intermediateBuffer.set(context.itemIndex, intermediate);
+      intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
+
+      processedSongs += 1;
+
+      if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
+        emitTaggingProgress(songLabel);
+      }
       onThreadUpdate?.({
         threadId: context.threadId,
         phase: "tagging",
-        status: "working",
-        file: songLabel,
-        timestamp: now,
-        isHeartbeat: true,
-        phaseDurationMs: now - extractionStartedAt,
+        status: "idle"
       });
-    }, HEARTBEAT_INTERVAL_MS);
-
-    let extractedFeatures: FeatureVector;
-    try {
-      extractedFeatures = await featureExtractor({
-        wavFile: job.wavPath,
-        sidFile: job.sidFile,
-        songIndex: job.songCount > 1 ? job.songIndex : undefined,
-        songCount: job.songCount,
-      });
-    } finally {
-      clearInterval(extractionHeartbeatInterval);
-    }
-    extractedFilesCount += 1;
-    const extractionDurationMs = Date.now() - extractionStartedAt;
-    const featureCount = Object.keys(extractedFeatures).length;
-    const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
-    classifyLogger.debug(
-      `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
-    );
-
-    const autoFilePath = resolveAutoTagFilePath(plan.tagsPath, job.relativePath, plan.classificationDepth);
-    const baseKey = toPosixRelative(resolveAutoTagKey(job.relativePath, plan.classificationDepth));
-    const key = job.songCount > 1 ? `${baseKey}:${job.songIndex}` : baseKey;
-
-    const intermediate: IntermediateRecord = {
-      sid_path: job.posixRelative,
-      song_count: job.songCount,
-      metadata: job.metadata,
-      manual_ratings: manualRatings,
-      features: extractedFeatures,
-      render_engine: renderEngineForRecords,
-      classification_depth: plan.classificationDepth,
-      auto_file_path: autoFilePath,
-      auto_key: key,
-    };
-    if (job.songCount > 1) {
-      intermediate.song_index = job.songIndex;
-    }
-
-    intermediateBuffer.set(context.itemIndex, intermediate);
-    intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
-
-    processedSongs += 1;
-
-    if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
-      emitTaggingProgress(songLabel);
-    }
-    onThreadUpdate?.({
-      threadId: context.threadId,
-      phase: "tagging",
-      status: "idle"
     });
-  });
 
     // Ensure all intermediate records are flushed in deterministic order.
     await intermediateFlushChain;
     await flushIntermediate();
+    onProgress?.({
+      phase: "rating-model",
+      totalFiles,
+      processedFiles: processedSongs,
+      renderedFiles: renderedFilesCount,
+      cachedFiles: cachedFilesCount,
+      extractedFiles: extractedFilesCount,
+      percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
+      elapsedMs: Date.now() - startTime,
+      currentFile: "building dataset-normalized rating model",
+    });
+    const ratingModelStartedAt = Date.now();
+    telemetry.emit({
+      event: "rating_model_build_start",
+      timestamp: new Date().toISOString(),
+      totalFiles,
+      extractedFiles: extractedFilesCount,
+    });
 
     // Build dataset-normalized rating model and persist it.
     const ratingModel: DeterministicRatingModel = builder.finalize(renderEngineForRecords);
+    telemetry.emit({
+      event: "rating_model_build_complete",
+      timestamp: new Date().toISOString(),
+      durationMs: Date.now() - ratingModelStartedAt,
+      normalizedFeatureCount: Object.keys(ratingModel.features).length,
+      totalFiles,
+    });
     const ratingModelPath = path.join(
       classifiedPath,
       "rating-models",
@@ -2217,6 +2369,18 @@ export async function generateAutoTags(
     }
     const featureLines = featuresContent.split("\n").filter((l) => l.trim().length > 0);
     const nowIso = new Date().toISOString();
+    onProgress?.({
+      phase: "finalizing",
+      totalFiles,
+      processedFiles: processedSongs,
+      renderedFiles: renderedFilesCount,
+      cachedFiles: cachedFilesCount,
+      extractedFiles: extractedFilesCount,
+      percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
+      elapsedMs: Date.now() - startTime,
+      currentFile: "writing final classification records",
+    });
+    const resultsWriteStartedAt = Date.now();
 
     for (const line of featureLines) {
       const rec = JSON.parse(line) as IntermediateRecord;
@@ -2273,25 +2437,58 @@ export async function generateAutoTags(
         details: { phase: "classification" },
       });
       jsonlRecordCount += 1;
+      const completionRecord: Record<string, JsonValue> = {
+        event: "song_complete",
+        timestamp: new Date().toISOString(),
+        sidPath: rec.sid_path,
+        songCount: rec.song_count,
+        queueIndex: rec.queue_index,
+        source,
+        degraded: classificationRecord.degraded ?? false,
+        vectorDimensions: classificationRecord.vector?.length ?? 0,
+      };
+      if (rec.song_index) {
+        completionRecord.songIndex = rec.song_index;
+      }
+      const startedAt = songStartTimestamps.get(rec.queue_index);
+      if (typeof startedAt === "number") {
+        completionRecord.totalDurationMs = Date.now() - startedAt;
+      }
+      telemetry.emit(completionRecord);
     }
+    telemetry.emit({
+      event: "run_complete",
+      timestamp: new Date().toISOString(),
+      durationMs: Date.now() - startTime,
+      resultsWriteDurationMs: Date.now() - resultsWriteStartedAt,
+      totalFiles,
+      renderedFiles: renderedFilesCount,
+      cachedFiles: cachedFilesCount,
+      extractedFiles: extractedFilesCount,
+      classifiedFiles: jsonlRecordCount,
+      skippedAlreadyClassified: skippedAlreadyClassifiedCount,
+      renderTimeouts: timedOutRenderSids.size,
+    });
   } finally {
     // Clean up renderer pool
     const pool = rendererPool as WasmRendererPool | null;
     if (pool) {
       await pool.destroy();
     }
+    await telemetry.flush();
   }
 
   if (onProgress && totalFiles > 0) {
     onProgress({
-      phase: "tagging",
+      phase: "finalizing",
       totalFiles,
       processedFiles: processedSongs,
       renderedFiles: renderedFilesCount,
       cachedFiles: cachedFilesCount,
       extractedFiles: extractedFilesCount,
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
-      elapsedMs: Date.now() - startTime
+      elapsedMs: Date.now() - startTime,
+      currentFile: "writing final classification records",
     });
   }
 
@@ -2371,7 +2568,17 @@ export async function generateAutoTags(
     circuitBreakerSids: [...timedOutRenderSids].map(s => toPosixRelative(path.relative(plan.sidPath, s))),
   };
 
-  return { autoTagged, manualEntries, mixedEntries, metadataFiles, tagFiles, jsonlFile, jsonlRecordCount, metrics };
+  return {
+    autoTagged,
+    manualEntries,
+    mixedEntries,
+    metadataFiles,
+    tagFiles,
+    jsonlFile,
+    jsonlRecordCount,
+    telemetryFile,
+    metrics,
+  };
 }
 
 /**

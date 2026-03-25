@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ORIGINAL_ARGS=("$@")
 
 MODE="local"
 WORKFLOW="full"
@@ -40,6 +41,7 @@ PROGRESS_LOG="${RUNTIME_DIR}/progress.log"
 REQUEST_LOG="${RUNTIME_DIR}/request.log"
 REQUEST_STATUS_FILE="${RUNTIME_DIR}/request.status"
 REPORT_STATE_FILE="${RUNTIME_DIR}/report-state.json"
+RUN_EVENTS_LOG="${RUNTIME_DIR}/run-events.jsonl"
 
 REPORT_EVERY_SONGS=100
 
@@ -53,6 +55,17 @@ EXPORT_OUTPUT_PATH=""
 RUN_LOCK_HELD="false"
 ARTIFACT_BUNDLE_DIR=""
 ARTIFACT_TARBALL_PATH=""
+
+build_run_command() {
+  local command="bash scripts/run-similarity-export.sh"
+  local arg
+  for arg in "${ORIGINAL_ARGS[@]}"; do
+    command+=" ${arg}"
+  done
+  printf '%s\n' "${command}"
+}
+
+RUN_COMMAND="$(build_run_command)"
 
 usage() {
   cat <<'EOF'
@@ -331,6 +344,7 @@ mkdir -p "${RUNTIME_DIR}"
 : > "${WORKER_LOG}"
 : > "${PROGRESS_LOG}"
 : > "${REQUEST_LOG}"
+: > "${RUN_EVENTS_LOG}"
 rm -f "${REQUEST_STATUS_FILE}"
 printf '{"lastReportedProcessed":0}\n' > "${REPORT_STATE_FILE}"
 
@@ -341,6 +355,22 @@ if [[ "${FULL_RERUN}" == "true" ]]; then
   SKIP_ALREADY_CLASSIFIED="false"
   FORCE_REBUILD="true"
 fi
+
+python3 - <<'PY' "${RUN_EVENTS_LOG}" "${RUN_COMMAND}" "${MODE}" "${FULL_RERUN}" "${REPO_ROOT}"
+import json, sys, time
+
+log_path, command, mode, full_rerun, cwd = sys.argv[1:6]
+record = {
+    "event": "run_start",
+    "command": command,
+    "mode": mode,
+    "fullRerun": full_rerun == "true",
+    "cwd": cwd,
+    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+}
+with open(log_path, "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(record, separators=(",", ":")) + "\n")
+PY
 
 if [[ "${MODE}" == "local" ]]; then
   require_command bun
@@ -465,7 +495,7 @@ prepare_run_state() {
   if [[ "${FULL_RERUN}" == "true" ]]; then
     if [[ -d "${CLASSIFIED_PATH}" ]]; then
       log "Full rerun: removing prior classified JSONL artifacts from ${CLASSIFIED_PATH}"
-      find "${CLASSIFIED_PATH}" -type f \( -name 'classification_*.jsonl' -o -name 'features_*.jsonl' \) -delete
+      find "${CLASSIFIED_PATH}" -type f \( -name 'classification_*.jsonl' -o -name 'classification_*.events.jsonl' -o -name 'features_*.jsonl' \) -delete
     fi
     rm -f "${EXPORT_OUTPUT_PATH}" "${EXPORT_OUTPUT_PATH%.sqlite}.manifest.json"
   fi
@@ -499,6 +529,10 @@ start_local_runtime() {
     SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
     SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
     JWT_SECRET="${JWT_SECRET}" \
+    SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
+    SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
+    SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
+    SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
     PORT="${PORT}" \
     bun run dev
   ) >> "${SERVER_LOG}" 2>&1 &
@@ -538,6 +572,10 @@ PY
     -e SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
     -e SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
     -e JWT_SECRET="${JWT_SECRET}" \
+    -e SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
+    -e SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
+    -e SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
+    -e SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
     -v "${HVSC_PATH}:/sidflow/workspace/hvsc" \
     -v "${STATE_DIR}/audio-cache:/sidflow/workspace/audio-cache" \
     -v "${STATE_DIR}/tags:/sidflow/workspace/tags" \
@@ -655,18 +693,19 @@ import json, re, sys, time
 
 log_path = sys.argv[1]
 started_at_ms = int(sys.argv[2]) if sys.argv[2] else int(time.time() * 1000)
-extracting = re.compile(r'\[Extracting Features\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\]')
+phase_progress = re.compile(r'\[(Extracting Features|Building Rating Model|Writing Results)\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\]')
 analyzing = re.compile(r'\[Analyzing\]\s+(\d+)/(\d+)\s+files.*\(([\d.]+)%\)')
 
 with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
   lines = fh.readlines()
 
 for line in reversed(lines):
-  match = extracting.search(line)
+  match = phase_progress.search(line)
   if match:
-    processed, total, _remaining, percent, rendered, _cached, extracted = match.groups()
+    label, processed, total, _remaining, percent, rendered, _cached, extracted = match.groups()
+    phase = 'tagging' if label == 'Extracting Features' else 'finalizing'
     print(json.dumps({
-      'phase': 'tagging',
+      'phase': phase,
       'processedFiles': int(processed),
       'totalFiles': int(total),
       'renderedFiles': int(rendered),
@@ -723,17 +762,18 @@ try:
   with open(state_path, 'r', encoding='utf-8') as fh:
     state = json.load(fh)
 except FileNotFoundError:
-  state = {'lastReportedProcessed': 0}
+  state = {'lastReportedProcessed': 0, 'lastReportedPhase': 'unknown'}
 
 processed = int(record.get('processedFiles') or 0)
 total = int(record.get('totalFiles') or 0)
 phase = record.get('phase') or 'unknown'
 last_reported = int(state.get('lastReportedProcessed') or 0)
+last_phase = str(state.get('lastReportedPhase') or 'unknown')
 
-if processed < report_every and phase != 'completed':
+if processed < report_every and phase != 'completed' and phase == last_phase:
   sys.exit(0)
 
-if processed < last_reported + report_every and phase != 'completed':
+if processed < last_reported + report_every and phase != 'completed' and phase == last_phase:
   sys.exit(0)
 
 remaining = max(total - processed, 0)
@@ -759,7 +799,7 @@ def fmt_duration(seconds: float | None) -> str:
     return f'{minutes}m {secs}s'
   return f'{secs}s'
 
-phase_order = ['analyzing', 'metadata', 'building', 'tagging', 'completed']
+phase_order = ['analyzing', 'metadata', 'building', 'tagging', 'finalizing', 'completed']
 phase_rank = {name: index for index, name in enumerate(phase_order)}
 current_rank = phase_rank.get(phase, -1)
 parts = []
@@ -784,6 +824,7 @@ print(
 )
 
 state['lastReportedProcessed'] = processed
+state['lastReportedPhase'] = phase
 with open(state_path, 'w', encoding='utf-8') as fh:
   json.dump(state, fh)
 PY
@@ -824,12 +865,12 @@ print(
   '[sidcorr] progress update: '
   f'completed={processed} remaining={remaining} total={total} '
   f'elapsed={fmt_duration(elapsed_seconds)} eta=0s rate={(processed / elapsed_seconds) if elapsed_seconds else 0.0:.2f} songs/s '
-  f'phase={phase} phases[analyzing=done, metadata=done, building=done, tagging=done, completed=done] '
+  f'phase={phase} phases[analyzing=done, metadata=done, building=done, tagging=done, finalizing=done, completed=done] '
   f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}]'
 )
 
 with open(state_path, 'w', encoding='utf-8') as fh:
-  json.dump({'lastReportedProcessed': processed}, fh)
+  json.dump({'lastReportedProcessed': processed, 'lastReportedPhase': phase}, fh)
 PY
       break
     fi

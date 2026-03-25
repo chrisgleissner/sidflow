@@ -23,7 +23,9 @@ import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 async function getLatestJsonlFile(dir: string): Promise<string> {
   const { readdir, stat } = await import("node:fs/promises");
-  const files = (await readdir(dir)).filter((f) => f.endsWith(".jsonl"));
+  const isPrimaryClassificationJsonl = (name: string): boolean =>
+    /^classification_.*(?<!\.events)\.jsonl$/u.test(name);
+  const files = (await readdir(dir)).filter(isPrimaryClassificationJsonl);
   expect(files.length).toBeGreaterThan(0);
 
   // Prefer mtime (robust across platforms). Fall back to lexicographic ordering.
