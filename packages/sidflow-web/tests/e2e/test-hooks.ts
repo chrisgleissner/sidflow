@@ -1,6 +1,11 @@
 import { test as base, expect, type Page, type BrowserContext, type Locator, type Request, type Route } from '@playwright/test';
 import { collectCoverage } from './helpers/collect-coverage';
-import { ADMIN_SESSION_COOKIE, encodeSessionPayload, getAdminConfig } from '@/lib/server/admin-auth-core';
+import {
+  ADMIN_SESSION_COOKIE,
+  ADMIN_SESSION_COOKIE_PATH,
+  encodeSessionPayload,
+  getAdminConfig,
+} from '@/lib/server/admin-auth-core';
 
 async function seedAdminSessionCookie(page: Page) {
   const serverMode = (process.env.SIDFLOW_E2E_SERVER_MODE ?? 'production').toLowerCase();
@@ -24,7 +29,7 @@ async function seedAdminSessionCookie(page: Page) {
       name: ADMIN_SESSION_COOKIE,
       value: token,
       domain: targetUrl.hostname,
-      path: '/admin',
+      path: ADMIN_SESSION_COOKIE_PATH,
       expires: Math.floor((now + config.sessionTtlMs) / 1000),
       httpOnly: true,
       secure: false,

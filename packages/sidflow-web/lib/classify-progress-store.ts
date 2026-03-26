@@ -335,13 +335,15 @@ function processLine(line: string) {
   // Match new user-friendly progress labels with detailed counters
   // Format: [Phase] X/Y files, Z remaining (P%) [rendered=R cached=C extracted=E] - file - elapsed
   const tagMatch = line.match(
-    /\[(Reading Metadata|Extracting Features|Writing Features|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\])?(?:\s+-\s+(.*))?/i
+    /\[(Reading Metadata|Extracting Features|Writing Features|Building Rating Model|Writing Results|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\])?(?:\s+-\s+(.*))?/i
   );
   if (tagMatch) {
     const label = tagMatch[1].toLowerCase();
     let phase: ClassifyPhase;
     if (label === 'reading metadata' || label === 'metadata') {
       phase = 'metadata';
+    } else if (label === 'building rating model' || label === 'writing results') {
+      phase = 'finalizing';
     } else if (label === 'extracting features' || label === 'tagging') {
       phase = 'tagging';
     } else {
@@ -354,6 +356,12 @@ function processLine(line: string) {
     if (phase === 'tagging') {
       snapshot.taggedFiles = snapshot.processedFiles;
       snapshot.counters.essentiaTagged = snapshot.processedFiles;
+    } else if (phase === 'finalizing') {
+      // The finalizing phase (Building Rating Model / Writing Results) represents
+      // post-extraction work. Mark all concurrently-processed songs as tagged so
+      // isClassificationProgressComplete() returns true for small datasets where
+      // AUTOTAG_PROGRESS_INTERVAL never fires during runConcurrent.
+      snapshot.taggedFiles = snapshot.processedFiles;
     }
     snapshot.percentComplete = Number(tagMatch[4]);
     

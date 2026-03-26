@@ -12,7 +12,7 @@ import type { APIRequestContext } from '@playwright/test';
 import { withClassificationLock } from './utils/classification-lock';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import crypto from 'node:crypto';
+import { seedClassificationCacheEntry } from './utils/classification-cache-fixture';
 
 interface ThreadStatus {
   id: number;
@@ -164,13 +164,11 @@ test('Classification Heartbeat - threads should not become stale during feature 
         await fs.writeFile(sidPath, sidBuffer);
 
         const wavPath = path.join(AUDIO_CACHE_DIR, TEST_DIR_REL, `${name}.wav`);
-        await fs.mkdir(path.dirname(wavPath), { recursive: true });
-        const wavBuffer = createWavFile(1, 220 + i * 30);
-        await fs.writeFile(wavPath, wavBuffer);
-        // Avoid expensive/async hash generation during classification by pre-writing the expected .sha256.
-        // Note: sidflow-classify hashes the *SID file* to decide whether a cached WAV is still valid.
-        const sha256 = crypto.createHash('sha256').update(sidBuffer).digest('hex');
-        await fs.writeFile(`${wavPath}.sha256`, sha256, 'utf8');
+        await seedClassificationCacheEntry({
+          sidBuffer,
+          wavFile: wavPath,
+          wavBuffer: createWavFile(1, 220 + i * 30),
+        });
       }
 
       console.log('[heartbeat] starting synchronous classification run in background');

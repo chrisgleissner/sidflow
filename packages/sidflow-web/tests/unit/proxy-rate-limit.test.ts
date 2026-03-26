@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { proxy } from '@/proxy';
 import { NextRequest } from 'next/server';
 import { adminRateLimiter, defaultRateLimiter } from '@/lib/server/rate-limiter';
+import { ADMIN_SESSION_COOKIE } from '@/lib/server/admin-auth-core';
 import { resetAdminAuthConfigCache } from '@/lib/server/admin-auth-core';
 import { resetSecurityRuntimeWarnings } from '@/lib/server/security-runtime';
 
@@ -236,6 +237,21 @@ describe('Proxy rate limiting', () => {
     });
     const response = await proxy(request);
     expect(response.status).toBe(429);
+  });
+
+  test('issues admin session cookies with a path that also covers admin APIs', async () => {
+    const response = await proxy(
+      new NextRequest('http://localhost/admin', {
+        headers: {
+          authorization: 'Basic ' + btoa('admin:password'),
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get('set-cookie') ?? '';
+    expect(cookie).toContain(`${ADMIN_SESSION_COOKIE}=`);
+    expect(cookie).toContain('Path=/');
   });
 });
 

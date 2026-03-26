@@ -4,6 +4,7 @@ export type ClassifyPhase =
   | 'building'
   | 'metadata'
   | 'tagging'
+  | 'finalizing'
   | 'paused'
   | 'completed'
   | 'error';

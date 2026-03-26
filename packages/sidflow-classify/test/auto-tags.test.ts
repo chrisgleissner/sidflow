@@ -202,4 +202,73 @@ describe("generateAutoTags", () => {
 
     await rm(root, { recursive: true, force: true });
   });
+
+  it("writes structured telemetry with run metadata and song lifecycle events", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const sidPath = path.join(root, "hvsc");
+    const audioCachePath = path.join(root, "wav");
+    const tagsPath = path.join(root, "tags");
+    await Promise.all([
+      mkdir(path.join(sidPath, "C64Music", "MUSICIANS", "D"), { recursive: true }),
+      mkdir(audioCachePath, { recursive: true }),
+      mkdir(tagsPath, { recursive: true }),
+    ]);
+
+    const plan = createPlan(sidPath, audioCachePath, tagsPath);
+    const sidFile = path.join(sidPath, "C64Music", "MUSICIANS", "D", "Telemetry.sid");
+    await writeFile(sidFile, "telemetry");
+
+    const wavPath = resolveWavPath(plan, sidFile);
+    await ensureDir(path.dirname(wavPath));
+    await writeFile(wavPath, "telemetry-wav");
+    await seedWasmCacheArtifact(wavPath);
+
+    const previousCommand = process.env.SIDFLOW_CLASSIFY_RUN_COMMAND;
+    const previousMode = process.env.SIDFLOW_CLASSIFY_RUN_MODE;
+    const previousFullRerun = process.env.SIDFLOW_CLASSIFY_RUN_FULL_RERUN;
+    const previousCwd = process.env.SIDFLOW_CLASSIFY_RUN_CWD;
+    process.env.SIDFLOW_CLASSIFY_RUN_COMMAND = "bash scripts/run-similarity-export.sh --mode local --full-rerun true";
+    process.env.SIDFLOW_CLASSIFY_RUN_MODE = "local";
+    process.env.SIDFLOW_CLASSIFY_RUN_FULL_RERUN = "true";
+    process.env.SIDFLOW_CLASSIFY_RUN_CWD = "/home/runner/work/sidflow/sidflow";
+
+    try {
+      const result = await generateAutoTags(plan, {
+        extractMetadata: async () => ({ title: "Telemetry Song" }),
+        featureExtractor: async () => ({ energy: 0.75, featureVariant: "test" }),
+        predictRatings: async () => ({ e: 4, m: 3, c: 5 }),
+      });
+
+      const telemetryContent = await readFile(result.telemetryFile, "utf8");
+      const telemetryEvents = telemetryContent
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+      expect(telemetryEvents[0]).toMatchObject({
+        event: "run_start",
+      });
+      const runStart = telemetryEvents.find((event) => event.event === "run_start");
+      expect(runStart).toMatchObject({
+        command: "bash scripts/run-similarity-export.sh --mode local --full-rerun true",
+        mode: "local",
+        fullRerun: true,
+        cwd: "/home/runner/work/sidflow/sidflow",
+      });
+      expect(telemetryEvents.some((event) => event.event === "wav_cache_hit")).toBeTrue();
+      expect(telemetryEvents.some((event) => event.event === "feature_extraction_complete")).toBeTrue();
+      expect(telemetryEvents.some((event) => event.event === "song_complete")).toBeTrue();
+      expect(telemetryEvents.at(-1)?.event).toBe("run_complete");
+    } finally {
+      if (previousCommand === undefined) delete process.env.SIDFLOW_CLASSIFY_RUN_COMMAND;
+      else process.env.SIDFLOW_CLASSIFY_RUN_COMMAND = previousCommand;
+      if (previousMode === undefined) delete process.env.SIDFLOW_CLASSIFY_RUN_MODE;
+      else process.env.SIDFLOW_CLASSIFY_RUN_MODE = previousMode;
+      if (previousFullRerun === undefined) delete process.env.SIDFLOW_CLASSIFY_RUN_FULL_RERUN;
+      else process.env.SIDFLOW_CLASSIFY_RUN_FULL_RERUN = previousFullRerun;
+      if (previousCwd === undefined) delete process.env.SIDFLOW_CLASSIFY_RUN_CWD;
+      else process.env.SIDFLOW_CLASSIFY_RUN_CWD = previousCwd;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

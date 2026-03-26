@@ -26,3 +26,117 @@ fix/...:  e06e301 feat: enable SID register-write trace capture during WAV rende
 
 ### Root cause hypothesis
 The most likely failure mode is: WASM render of `Super_Mario_Bros_64_2SID.sid` either runs forever (infinite loop in emulation) or takes pathologically long, and because there is NO per-song timeout, the worker Promise never resolves. As workers complete their other songs and try to grab the next item, they drain the queue — but the stuck worker(s) never finish. Eventually all workers are idle-waiting-for-queue-empty via `Promise.all(runners)` while the stuck worker holds the last item(s). This manifests as 100% CPU on the stuck worker thread(s) with no forward progress.
+
+---
+
+## 2026-03-25T00:00Z — Phase 12: Per-Song Classification Lifecycle Logging
+
+### Objective
+Implement a highly detailed, low-overhead, per-song lifecycle logging system to provide
+full observability into the classification pipeline and confirm/diagnose the previously
+reported 70-75% slowdown.
+
+### Files modified
+- `packages/sidflow-classify/src/classification-telemetry.ts` — Added `SongLifecycleLogger` class with 11-stage model, stall watchdog, memory/CPU sampling, and deterministic JSONL output
+- `packages/sidflow-classify/src/index.ts` — Instrumented all 11 stages in `generateAutoTags()`, added `lifecycleLogPath?` option to `GenerateAutoTagsOptions`, re-exported new types
+- `.gitignore` — Added `logs/` exclusion for per-run lifecycle log files
+- `PLANS.md` — Added Phase 12 checklist
+- `doc/research/classification-logging-audit.md` — Created; documents log format, stage model, stall detection, and diagnostic queries
+
+### Architecture decisions
+- Two independent telemetry streams: existing `ClassificationTelemetryLogger` (pipeline events) + new `SongLifecycleLogger` (per-song stages); both preserved with no cross-dependency
+- `SongLifecycleLogger` uses fire-and-forget write chaining (`writeChain`) to avoid blocking worker threads; `flush()` is called in the `finally` block to drain before process exit
+- Stall watchdog: 30-second `setInterval` comparing active stage age against `10× median(durationMs)` for that stage; emits `stage_stall` events inline in the JSONL stream
+- `cpuPercent` is process-wide (not per-worker) — intentional limitation; documented in Phase 12 Decision Log in PLANS.md
+- `workerId: 0` for the deferred pass (main-thread serial loop) to distinguish from concurrent worker IDs (1-based)
+
+### Stage model
+```
+QUEUED → STARTED → RENDERING → RENDERED → EXTRACTING → EXTRACTED
+        → ANALYZING → ANALYZED → TAGGING → TAGGED → COMPLETED
+```
+
+### Outcome
+- 11 stages fully instrumented in concurrent worker AND deferred pass
+- 0 TypeScript errors on both modified files
+- Existing `ClassificationTelemetryLogger` events (`wav_cache_hit`, `feature_extraction_complete`, `song_complete`, `run_complete`) remain unchanged
+- Log defaults to `logs/classification-detailed.jsonl` (gitignored; configurable via `lifecycleLogPath`)
+
+---
+
+## 2026-03-26T00:00Z — Phase 14: SID Classification Defect Analysis
+
+### Requested defect set
+- Bug 0: enforce WASM as the classification default and require explicit opt-in for degraded `sidplayfp-cli`
+- Bug 1: prevent missing SID trace sidecars from aborting feature extraction
+- Bug 2: exclude `waveform: "none"` frames from active-frame accounting
+- Bug 3: exclude unclassifiable `waveform: "none"` frames from waveform-ratio denominators
+
+### Analysis findings
+1. Classification renderer selection is currently implicit. Multiple paths in `packages/sidflow-classify/src/index.ts` derive the engine from `render.preferredEngines[0]` with a silent fallback to `"wasm"` only when the config key is absent.
+2. The checked-in repo config currently keeps `render.preferredEngines` as `["wasm", "sidplayfp-cli", "ultimate64"]`, so the checked-in default is correct. The defect is that any local config can switch classification to `sidplayfp-cli` without an explicit degraded-mode opt-in or warning.
+3. The standalone render CLI (`packages/sidflow-classify/src/render/cli.ts`) uses ordered engine fallback, but that path is separate from classification and is not the root cause of the classification defect.
+4. Missing trace sidecars currently hard-fail the merged extraction path in two places:
+        - `createHybridFeatureExtractor()` in `packages/sidflow-classify/src/sid-native-features.ts` uses `Promise.all`, so SID-native failure aborts otherwise-valid WAV extraction.
+        - `handleExtract()` in `packages/sidflow-classify/src/feature-extraction-worker.ts` also uses `Promise.all`, so worker-pool extraction aborts when SID-native extraction cannot read a trace sidecar.
+5. The SID-native active-frame bug is confirmed in `packages/sidflow-classify/src/sid-native-features.ts`: active frames are currently defined as `frame.gate || frame.frequencyWord > 0`, which admits silent `waveform: "none"` frames.
+6. The waveform-ratio bug is confirmed in the same file: `computeWaveformRatios()` divides by all `voiceFrames.length`, including `waveform: "none"` frames that cannot contribute to any numerator bucket.
+
+### Implementation direction
+- Add a small explicit config opt-in for degraded classification mode and centralize classification renderer resolution.
+- Keep SID-native extraction failures non-fatal by merging WAV features first and only adding SID-native keys when extraction succeeds.
+- Use render settings sidecars to distinguish expected degraded mode from unexpected missing-trace cases so logging severity matches the actual pipeline mode.
+
+### Correction after implementation review
+1. The first renderer-gating change was too aggressive because it stopped honoring explicit `render.preferredEngines` selections during classification.
+2. The corrected behavior is:
+         - `render.preferredEngines[0]` remains the authoritative explicit engine choice.
+         - If that explicit choice is non-WASM, classification emits a warning that SID trace sidecars and SID-native features will be unavailable and accuracy will be reduced.
+         - If the explicit choice is WASM and WASM rendering fails, classification hard-fails by default.
+         - Automatic fallback from failed WASM renders to `sidplayfp-cli` is only allowed when `render.allowDegradedSidplayfpCli=true` and `sidplayfp-cli` is present later in the preferred-engine list.
+3. This preserves user intent while preventing silent degradation.
+
+### Validation
+- 2026-03-26: Focused classify validation passed.
+        - Command: `bun test packages/sidflow-classify/test/index.test.ts packages/sidflow-classify/test/sid-native-features.test.ts`
+        - Result: 28 pass, 0 fail
+        - Coverage of new behavior:
+                - explicit non-WASM warning during classification
+                - hard break on failed WASM render without explicit fallback opt-in
+                - explicit degraded fallback to `sidplayfp-cli`
+                - graceful sidecar-missing degradation
+                - silent-frame and waveform-ratio fixes
+
+### Merge-readiness follow-up
+1. Reproduced the failing CI Playwright lane locally with `BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium`.
+2. The shared failure mode was not missing UI; admin pages were receiving `{"error":"unauthorized","reason":"missing-token"}`.
+3. Root cause: the admin session cookie was issued for `/admin` only, but middleware also required that same session for `/api/admin/*`, so admin page data fetches were unauthenticated.
+4. Fix direction: expand the admin session cookie scope to `/` and keep Playwright's seeded admin session aligned with the same path.
+
+## 2026-03-26T13:00Z — Classification E2E cache fixtures and five-profile station proof
+
+### Root cause
+1. The remaining classification Playwright failures were not caused by missing JSONL writes in the classifier.
+2. Telemetry showed the synthetic web E2E fixtures were being re-rendered through the WASM path because the seeded cache entries only contained `.wav` files.
+3. Current `needsWavRefresh()` semantics require cache-complete fixtures for reuse under WASM classification: the WAV, SID hash sidecar, render-settings sidecar, and trace sidecar must all be present and internally consistent.
+4. Because those sidecars were missing, the classifier retried synthetic PSID fixtures through the real WASM renderer, which correctly failed with `WASM renderer produced no audio`, leaving only telemetry JSONL and no canonical classification JSONL.
+
+### Actions
+1. Added `packages/sidflow-web/tests/e2e/utils/classification-cache-fixture.ts` to seed cache-complete synthetic WAV fixtures for web classification E2E coverage.
+2. Updated `classify-api-e2e.spec.ts`, `classify-essentia-e2e.spec.ts`, and `classify-heartbeat.spec.ts` to use the new cache-fixture helper.
+3. Fixed the malformed primary-JSONL regex in `classify-essentia-e2e.spec.ts` so it no longer filters out valid `classification_*.jsonl` files.
+4. Added `packages/sidflow-play/test/station-multi-profile-e2e.test.ts`, a synthetic end-to-end proof that one classified/exported corpus can drive five distinct 10-rating personas into five disjoint, cluster-pure stations.
+
+### Validation
+1. `E2E_COVERAGE=true bunx playwright test tests/e2e/classify-api-e2e.spec.ts tests/e2e/classify-essentia-e2e.spec.ts tests/e2e/classify-heartbeat.spec.ts --project=chromium --workers=1`
+        - Result: 5 passed, 0 failed.
+2. `bun test packages/sidflow-play/test/station-similarity-e2e.test.ts packages/sidflow-play/test/station-multi-profile-e2e.test.ts`
+        - Result: 2 passed, 0 failed.
+3. `bun test packages/sidflow-play/test/station-multi-profile-e2e.test.ts` x3 consecutive
+        - Run 1: 1 passed, 0 failed.
+        - Run 2: 1 passed, 0 failed.
+        - Run 3: 1 passed, 0 failed.
+
+### Residual state
+1. Full Chromium Playwright still has unrelated failures in `accessibility.spec.ts` and `advanced-search.spec.ts`.
+2. Those failures are outside the classification/station changes validated here.

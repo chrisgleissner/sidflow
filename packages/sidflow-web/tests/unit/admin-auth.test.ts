@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import {
   buildUnauthorizedResponseBody,
+  ADMIN_SESSION_COOKIE_PATH,
   decodeSessionToken,
   encodeSessionPayload,
   getAdminConfig,
@@ -170,5 +171,9 @@ describe('admin auth', () => {
 
     const body = buildUnauthorizedResponseBody('missing-token');
     expect(body).toEqual({ error: 'unauthorized', reason: 'missing-token' });
+  });
+
+  it('uses a session cookie path that covers both admin pages and admin APIs', () => {
+    expect(ADMIN_SESSION_COOKIE_PATH).toBe('/');
   });
 });

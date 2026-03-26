@@ -23,6 +23,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { withClassificationLock } from './utils/classification-lock';
+import { seedClassificationCacheEntry } from './utils/classification-cache-fixture';
 
 // Force serial execution for this file since tests share backend state
 test.describe.configure({ mode: 'serial' });
@@ -168,16 +169,20 @@ test.describe.serial('Classification API E2E', () => {
     // Create SID files and pre-rendered WAV files
     for (const song of TEST_SONGS) {
       const sidPath = path.join(sidDir, `${song.name}.sid`);
-      await fs.writeFile(sidPath, createSidFile(song.name, 'E2E API Test'));
+      const sidBuffer = createSidFile(song.name, 'E2E API Test');
+      await fs.writeFile(sidPath, sidBuffer);
       
       // Pre-render WAV to audio cache. The configured sid base path for classification is
       // <hvsc>/C64Music (see buildCliEnvOverrides), so cache paths are relative to C64Music/.
       const relativeSidPath = path.join(TEST_ARTIST_DIR_REL, `${song.name}.sid`);
       const wavCachePath = path.join(AUDIO_CACHE_DIR, relativeSidPath.replace('.sid', '.wav'));
-      await fs.mkdir(path.dirname(wavCachePath), { recursive: true });
-      await fs.writeFile(wavCachePath, createWavFile(song.duration, song.freq));
+      await seedClassificationCacheEntry({
+        sidBuffer,
+        wavFile: wavCachePath,
+        wavBuffer: createWavFile(song.duration, song.freq),
+      });
       
-      console.log(`   ✅ Created ${song.name}.sid + pre-rendered WAV`);
+      console.log(`   ✅ Created ${song.name}.sid + cache-complete WAV fixture`);
     }
   });
 
@@ -405,7 +410,11 @@ test.describe.serial('Classification API E2E', () => {
 async function getJsonlFiles(): Promise<string[]> {
   try {
     const files = await fs.readdir(CLASSIFIED_DIR);
-    return files.filter(f => f.endsWith('.jsonl')).sort();
+    // Exclude telemetry event logs (*.events.jsonl) and intermediate feature files;
+    // return only the primary per-run classification JSONL outputs.
+    const isPrimaryClassificationJsonl = (name: string): boolean =>
+      /^classification_.*(?<!\.events)\.jsonl$/u.test(name);
+    return files.filter(isPrimaryClassificationJsonl).sort();
   } catch {
     return [];
   }
@@ -439,15 +448,19 @@ test.describe.serial('JSONL Format Validation E2E', () => {
     // Create SID files and pre-rendered WAV files
     for (const song of INCREMENTAL_TEST_SONGS) {
       const sidPath = path.join(sidDir, `${song.name}.sid`);
-      await fs.writeFile(sidPath, createSidFile(song.name, 'Incremental Test'));
+      const sidBuffer = createSidFile(song.name, 'Incremental Test');
+      await fs.writeFile(sidPath, sidBuffer);
       
       // Pre-render WAV to audio cache
       const relativeSidPath = path.join(INCREMENTAL_TEST_DIR_REL, `${song.name}.sid`);
       const wavCachePath = path.join(AUDIO_CACHE_DIR, relativeSidPath.replace('.sid', '.wav'));
-      await fs.mkdir(path.dirname(wavCachePath), { recursive: true });
-      await fs.writeFile(wavCachePath, createWavFile(song.duration, song.freq));
+      await seedClassificationCacheEntry({
+        sidBuffer,
+        wavFile: wavCachePath,
+        wavBuffer: createWavFile(song.duration, song.freq),
+      });
     }
-    console.log(`   ✅ Created ${INCREMENTAL_TEST_SONGS.length} test SIDs with pre-rendered WAVs`);
+    console.log(`   ✅ Created ${INCREMENTAL_TEST_SONGS.length} test SIDs with cache-complete WAV fixtures`);
   });
 
   test.afterAll(async () => {

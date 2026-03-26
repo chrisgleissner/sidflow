@@ -10,6 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { withClassificationLock } from './utils/classification-lock';
+import { seedClassificationCacheEntry } from './utils/classification-cache-fixture';
 
 const REPO_ROOT = path.resolve(process.cwd(), '..', '..');
 const TEST_WORKSPACE = path.join(REPO_ROOT, 'test-workspace');
@@ -107,11 +108,15 @@ test.describe('Classification Output with Essentia.js Features', () => {
     await fs.mkdir(sidDir, { recursive: true });
 
     const sidPath = path.join(sidDir, `${TEST_SONG.name}.sid`);
-    await fs.writeFile(sidPath, createSidFile(TEST_SONG.name, 'Essentia E2E'));
+    const sidBuffer = createSidFile(TEST_SONG.name, 'Essentia E2E');
+    await fs.writeFile(sidPath, sidBuffer);
 
     const wavCachePath = path.join(AUDIO_CACHE_DIR, TEST_DIR_REL, `${TEST_SONG.name}.wav`);
-    await fs.mkdir(path.dirname(wavCachePath), { recursive: true });
-    await fs.writeFile(wavCachePath, createWavFile(TEST_SONG.duration, TEST_SONG.freq));
+    await seedClassificationCacheEntry({
+      sidBuffer,
+      wavFile: wavCachePath,
+      wavBuffer: createWavFile(TEST_SONG.duration, TEST_SONG.freq),
+    });
   });
 
   test.afterAll(async () => {
@@ -140,7 +145,9 @@ test.describe('Classification Output with Essentia.js Features', () => {
       expect(response.ok(), JSON.stringify(body)).toBe(true);
 
       const jsonlAfter = await fs.readdir(CLASSIFIED_DIR).catch(() => []);
-      const newFiles = jsonlAfter.filter((f) => f.endsWith('.jsonl') && !jsonlBefore.includes(f)).sort();
+      const isPrimaryClassificationJsonl = (name: string): boolean =>
+        /^classification_.*(?<!\.events)\.jsonl$/u.test(name);
+      const newFiles = jsonlAfter.filter((f) => isPrimaryClassificationJsonl(f) && !jsonlBefore.includes(f)).sort();
       expect(newFiles.length).toBeGreaterThan(0);
 
       const jsonlPath = path.join(CLASSIFIED_DIR, newFiles[newFiles.length - 1]!);

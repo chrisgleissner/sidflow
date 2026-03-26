@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import {
   ADMIN_SESSION_COOKIE,
+  ADMIN_SESSION_COOKIE_PATH,
   buildUnauthorizedResponseBody,
   getAdminConfig,
   issueSessionToken,
@@ -161,7 +162,7 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
         httpOnly: true,
         sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
-        path: '/admin',
+        path: ADMIN_SESSION_COOKIE_PATH,
         maxAge: Math.floor(config.sessionTtlMs / 1000),
       });
     }
@@ -178,7 +179,7 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
       httpOnly: true,
       sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production',
-      path: '/admin',
+      path: ADMIN_SESSION_COOKIE_PATH,
       maxAge: Math.floor(config.sessionTtlMs / 1000),
     });
     return response;
@@ -193,7 +194,7 @@ async function enforceAdminAuthentication(request: NextRequest): Promise<NextRes
     response.cookies.set({
       name: ADMIN_SESSION_COOKIE,
       value: '',
-      path: '/admin',
+      path: ADMIN_SESSION_COOKIE_PATH,
       maxAge: 0,
     });
   }

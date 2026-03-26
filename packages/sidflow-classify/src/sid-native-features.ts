@@ -1,4 +1,4 @@
-import { parseSidFile, type SidClock } from "@sidflow/common";
+import { createLogger, parseSidFile, type SidClock } from "@sidflow/common";
 import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
 import { readFile } from "node:fs/promises";
 
@@ -10,10 +10,12 @@ import {
   type SidTraceVideoStandard,
 } from "./sid-register-trace.js";
 import { readSidTraceSidecar, writeSidTraceSidecar } from "./render/wav-renderer.js";
+import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
 import type { ExtractFeaturesOptions, FeatureExtractor, FeatureVector } from "./index.js";
 
 const SID_MAX_FILTER_CUTOFF = 0x07ff;
 const SID_MAX_PULSE_WIDTH = 0x0fff;
+const sidNativeLogger = createLogger("sid-native-features");
 
 interface VoiceFrameSummary {
   sidNumber: number;
@@ -61,15 +63,25 @@ export function createHybridFeatureExtractor(
   sidNativeFeatureExtractor: FeatureExtractor,
 ): FeatureExtractor {
   return async (options) => {
-    const [wavFeatures, sidFeatures] = await Promise.all([
+    const [wavFeatures, sidFeatures] = await Promise.allSettled([
       wavFeatureExtractor(options),
       sidNativeFeatureExtractor(options),
     ]);
+
+    if (wavFeatures.status !== "fulfilled") {
+      throw wavFeatures.reason;
+    }
+
     const merged: FeatureVector = {
-      ...wavFeatures,
+      ...wavFeatures.value,
     };
 
-    for (const [key, value] of Object.entries(sidFeatures)) {
+    if (sidFeatures.status !== "fulfilled") {
+      await logSidNativeFeatureDegradation(options, sidFeatures.reason);
+      return merged;
+    }
+
+    for (const [key, value] of Object.entries(sidFeatures.value)) {
       if (Object.prototype.hasOwnProperty.call(merged, key)) {
         continue;
       }
@@ -78,6 +90,37 @@ export function createHybridFeatureExtractor(
 
     return merged;
   };
+}
+
+function formatSidNativeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+async function isSidTraceSidecarExpected(options: ExtractFeaturesOptions): Promise<boolean> {
+  const renderSettings = await readWavRenderSettingsSidecar(options.wavFile).catch(() => null);
+  if (!renderSettings) {
+    return true;
+  }
+  return renderSettings.traceCaptureEnabled === true || renderSettings.renderEngine === "wasm";
+}
+
+export async function logSidNativeFeatureDegradation(
+  options: ExtractFeaturesOptions,
+  error: unknown,
+): Promise<void> {
+  const message =
+    `SID-native feature extraction unavailable for ${options.wavFile}; continuing with WAV-only features: ` +
+    formatSidNativeError(error);
+
+  if (await isSidTraceSidecarExpected(options)) {
+    sidNativeLogger.warn(message);
+    return;
+  }
+
+  sidNativeLogger.debug(message);
 }
 
 export function createSidNativeFeatureExtractor(
@@ -181,7 +224,9 @@ export function extractSidNativeFeaturesFromWriteTrace(
   }
 
   const { voiceFrames, globalFrames } = summarizeCanonicalEvents(events);
-  const activeVoiceFrames = voiceFrames.filter((frame) => frame.gate || frame.frequencyWord > 0);
+  const activeVoiceFrames = voiceFrames.filter(
+    (frame) => (frame.gate || frame.frequencyWord > 0) && frame.waveform !== "none"
+  );
   const onsets = collectGateOnsets(voiceFrames, frameWindow.frameRate);
   const waveformRatios = computeWaveformRatios(activeVoiceFrames);
   const pwmActivity = computePulseWidthActivity(activeVoiceFrames);
@@ -441,14 +486,15 @@ function computeWaveformRatios(voiceFrames: VoiceFrameSummary[]): Record<"triang
     noise: 0,
     mixed: 0,
   };
+  const relevantFrames = voiceFrames.filter((frame) => frame.waveform !== "none");
 
-  for (const frame of voiceFrames) {
+  for (const frame of relevantFrames) {
     if (frame.waveform in counts) {
       counts[frame.waveform as keyof typeof counts] += 1;
     }
   }
 
-  const total = Math.max(1, voiceFrames.length);
+  const total = Math.max(1, relevantFrames.length);
   return {
     triangle: counts.triangle / total,
     saw: counts.saw / total,

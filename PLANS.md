@@ -102,3 +102,236 @@ Bring PR #87 to a merge-ready state by addressing inline review feedback, fixing
 
 ### Outcomes
 - Pending.
+
+---
+
+## Phase 14 - SID Classification Defect Convergence
+
+### Objective
+
+Fix the classification pipeline defects around renderer selection, missing SID
+trace sidecars, silent-frame activity leakage, and waveform ratio dilution while
+keeping changes minimal and localized.
+
+### Checklist
+- [ ] Record renderer-selection analysis and silent-fallback findings in `WORKLOG.md`
+- [ ] Enforce WASM as the classification default when no engine is specified
+- [ ] Require explicit degraded-mode opt-in before classification may use `sidplayfp-cli`
+- [ ] Fail fast with a clear error when classification selects `sidplayfp-cli` without opt-in
+- [ ] Emit an explicit degraded-mode warning when classification intentionally uses `sidplayfp-cli`
+- [ ] Make SID-native feature extraction degrade gracefully when the trace sidecar is missing
+- [ ] Keep WAV feature extraction successful even when SID-native extraction is unavailable
+- [ ] Exclude `waveform: "none"` frames from active voice detection
+- [ ] Exclude `waveform: "none"` frames from waveform-ratio denominators
+- [ ] Add regression tests for renderer gating, missing-sidecar degradation, and SID frame math
+- [ ] Run validation: `bun run build`
+- [ ] Run targeted classify tests
+- [ ] Run full `bun run test` three consecutive times
+
+### Progress
+- 2026-03-26: Analysis started. Confirmed classification code reads `render.preferredEngines[0]` directly in multiple places, so renderer choice is implicit and unvalidated.
+- 2026-03-26: Confirmed repo default config is already `wasm`-first; the defect is code-level acceptance of `sidplayfp-cli` without explicit opt-in, not the checked-in default config.
+- 2026-03-26: Confirmed missing trace sidecars currently abort merged feature extraction in both the main-thread hybrid extractor and the worker-thread extraction path because both use `Promise.all` semantics.
+- 2026-03-26: Confirmed active-frame and waveform-ratio defects live in `packages/sidflow-classify/src/sid-native-features.ts`.
+- 2026-03-26: Adjusted renderer enforcement approach after review: classification now preserves the user's configured preferred engine, warns once when a non-WASM engine is explicitly selected, and only allows automatic fallback from failed WASM renders to `sidplayfp-cli` when `render.allowDegradedSidplayfpCli=true`.
+- 2026-03-26: Focused validation passed: `bun test packages/sidflow-classify/test/index.test.ts packages/sidflow-classify/test/sid-native-features.test.ts` completed with 28 passing tests and 0 failures.
+- 2026-03-26: CI-equivalent Playwright reproduction exposed a separate merge blocker: admin E2E pages were loading unauthenticated because the admin session cookie was scoped to `/admin` while the same session was also required for `/api/admin/*`. Updated the cookie scope to `/` in middleware and Playwright test seeding.
+- 2026-03-26: Classification E2E failures were traced to stale synthetic-cache fixtures in the web Playwright suite. The classifier now requires cache-complete WAV fixtures (`.wav`, `.sha256`, `.render.json`, `.trace.jsonl`) for WASM reuse, so the E2E specs were updated to seed full cache entries instead of bare WAV files.
+- 2026-03-26: Added a new synthetic station regression at `packages/sidflow-play/test/station-multi-profile-e2e.test.ts` that classifies one five-cluster corpus, exports one similarity database, and verifies five distinct 10-rating personas each produce a cluster-pure 20-song station.
+- 2026-03-26: Stability validation passed for the new five-profile station regression: `bun test packages/sidflow-play/test/station-multi-profile-e2e.test.ts` completed successfully three consecutive times.
+
+### Decision Log
+- 2026-03-26: Scope renderer enforcement to the classification pipeline, not the standalone render CLI, because the reported defects are classification-specific and the render CLI intentionally supports multi-engine fallback for manual rendering.
+- 2026-03-26: Preserve `render.preferredEngines` as the authoritative explicit engine choice for classification. The new `render.allowDegradedSidplayfpCli` flag gates only automatic fallback after a failed WASM render; it does not gate an explicit user-selected `sidplayfp-cli` preference.
+
+### Outcomes
+- Pending.
+
+## Phase 11 - Similarity Export Slowdown Telemetry
+
+### Objective
+
+Add deterministic, per-song classification lifecycle telemetry for the `bash scripts/run-similarity-export.sh --mode local --full-rerun true` workflow, then use that evidence to explain the reported slowdown around 70-75% completion.
+
+### Checklist
+- [x] Read repo guidance, docs, and classify/export entrypoints
+- [x] Establish baseline build/test state before code changes
+- [x] Add wrapper-run metadata capture for the exact similarity-export command
+- [x] Emit structured per-song classification telemetry without changing the main classification JSONL schema
+- [x] Surface the hidden post-extraction phases in CLI/web/script progress reporting
+- [x] Add focused tests for telemetry + phase reporting
+- [x] Run a bounded classify/export verification and inspect emitted telemetry
+- [x] Document the slowdown root cause and evidence in `doc/research/`
+- [ ] Re-run final validation (`bun run build`, targeted tests, `bun run test` x3)
+
+### Progress
+- 2026-03-25: Baseline `npm run build` succeeded. `npm run test` also exited successfully from a clean code baseline.
+- 2026-03-25: Code inspection shows `generateAutoTags()` does a concurrent feature-extraction pass, then a second serialized pass that builds the dataset-normalized rating model and writes final classification records. Existing progress/log parsing largely exposes the first phase, so late-run work can look like a slowdown.
+- 2026-03-25: Added `classification_*.events.jsonl` telemetry, wrapper-level `run-events.jsonl`, and explicit `Building Rating Model` / `Writing Results` progress phases.
+- 2026-03-25: Focused validation passed: `npm run build:quick` and `bun test packages/sidflow-classify/test/cli.test.ts packages/sidflow-classify/test/auto-tags.test.ts packages/sidflow-classify/test/index.test.ts`.
+- 2026-03-25: Bounded wrapper verification hit an environment blocker (`ffmpeg` missing), but still produced the wrapper `run_start` artifact. The classification lifecycle itself was verified end-to-end with the same run context against `test-data`.
+
+### Decision Log
+- 2026-03-25: Keep telemetry in a separate `classification_*.events.jsonl` stream to avoid breaking downstream consumers of the canonical `classification_*.jsonl` schema.
+
+### Outcomes
+- Root cause identified: a real late serialized finalization pass existed, but the severe slowdown symptom was primarily caused by missing visibility into that pass.
+
+## Phase 12 - Enhanced Per-Song Lifecycle Logging (Strict JSONL)
+
+### Objective
+
+Implement a deterministic, structured, per-song classification logging system
+that captures the full lifecycle of each song with system metrics, stage
+durations, and stall detection — writing to `logs/classification-detailed.jsonl`.
+Use the collected evidence to further confirm/refine the root cause found in
+Phase 11.
+
+### Checklist
+- [ ] Add `SongLifecycleLogger` to `classification-telemetry.ts`
+  - [ ] Per-song JSONL format: ts, songIndex, totalSongs, songPath, songId, stage, event, durationMs, workerId, pid, threadId, memoryMB, cpuPercent, extra
+  - [ ] `resolveGitCommit()`, `captureMemoryMB()`, `captureCpuPercent()` helpers
+  - [ ] Stall detection watchdog (30-second scan, 10× median threshold)
+  - [ ] `run_start` event with gitCommit; `run_end` event with totalDurationMs
+- [ ] Instrument all 11 stages in `generateAutoTags` (index.ts)
+  - QUEUED, STARTED, RENDERING, RENDERED, EXTRACTING, EXTRACTED, ANALYZING, ANALYZED, TAGGING, TAGGED, COMPLETED
+  - Each stage emits start + end events with duration
+- [ ] Add `lifecycleLogPath?` option to `GenerateAutoTagsOptions` (defaults to `logs/classification-detailed.jsonl`)
+- [ ] Add `logs/` to `.gitignore`
+- [ ] Create `doc/research/classification-logging-audit.md` with full evidence-based analysis
+- [ ] Update WORKLOG.md
+- [ ] Run `bun run build:quick` + targeted tests; fix any regressions
+- [ ] Run `bun run test` three times consecutively with 100% pass rate
+
+### Progress
+- 2026-03-25: Phase started. Code exploration complete.
+
+### Decision Log
+- 2026-03-25: Keep PRIMARY log at `logs/classification-detailed.jsonl` (project root), separate from the existing `data/classified/classification_*.events.jsonl`. This avoids any schema-breaking changes.
+- 2026-03-25: `lifecycleLogPath` param added to `GenerateAutoTagsOptions` so tests can redirect to a temp dir.
+- 2026-03-25: `captureCpuPercent` measures delta from last sample — process-wide, not per-worker (sufficient for high-level analysis).
+
+### Outcomes
+- Pending.
+
+---
+
+## Phase 13 - Full HVSC Classification Validation and Release Publication
+
+### Objective
+
+Validate that a complete HVSC classification run produces correct artifacts
+(features JSONL, auto-tags, SQLite export) and publish the verified export to
+`chrisgleissner/sidflow-data` as a release.
+
+### Phase 13.0 — Pre-Run Context Audit (COMPLETE)
+
+**Evidence gathered before classification:**
+- HVSC: 60,572 SID files in `workspace/hvsc/C64Music/`
+- Prior interrupted run (01:48–01:52 UTC 2026-03-26): classified only 1,089 of 87,074+ total sub-songs (1.3%)
+- Cause of interruption: external (process killed; no `run_end` event; last event `render_start` at queueIndex 1112)
+- `data/exports/` is EMPTY — no SQLite export exists
+- Existing `data/classified/features_2026-03-26_01-48-27-584.jsonl`: 1,089 entries only (partial)
+- `workspace/audio-cache/`: 1,113 WAV files survive from interrupted run  
+- `workspace/tags/`: 12 `auto-tags.json` files (all from manual ratings, NOT from auto-classification)
+- `isAlreadyClassified` checks `auto-tags.json` → so `skipAlreadyClassified=true` will NOT skip the 1,089 partial songs (no auto-tags were written since the tagging phase never started)
+- Conclusion: functionally equivalent to a full fresh run; WAV files provide a small rendering cache benefit
+- Committed test SQLite (git HEAD) has only 7 tracks with 4 dimensions (schema 1.2.0, NOT a real export)
+- `.sidflow.json` uncommitted diff: `sidplayfp-cli` moved to first in `preferredEngines` (intentional for speed)
+- `classification-telemetry.ts` uncommitted diff: defensive try/catch around CPU/memory helpers (correctness improvement)
+
+### Phase 13.1 — Pre-Classification Build Verification
+- [ ] Run `bun run build` and confirm 0 errors
+- [ ] Run targeted classify tests: `bun test packages/sidflow-classify/test/`
+- [ ] Record pass/fail
+
+### Phase 13.2 — Full Classification Run
+**Method**: `bash scripts/run-similarity-export.sh --mode local`
+(Without `--full-rerun`; the script will naturally re-classify everything since no auto-tags exist.
+The 1,113 WAV files provide a minor rendering cache benefit.)
+
+- [ ] Confirm no web server is running on port 3000 before starting
+- [ ] Start classification run in background
+- [ ] Monitor progress every 10 minutes
+- [ ] Confirm completion: 87,074+ songs processed, `run_complete` event emitted
+- [ ] Verify artifacts post-run:
+  - [ ] `data/classified/features_*.jsonl` total line count ≥ 60,572
+  - [ ] `workspace/tags/` auto-tags.json files populated
+  - [ ] `data/exports/*.sqlite` exists and is non-empty
+  - [ ] `data/exports/*.manifest.json` exists
+
+### Phase 13.3 — Classification Completeness Verification
+- [ ] Count total SID files: `find workspace/hvsc -name "*.sid" | wc -l` → expect ~60,572
+- [ ] Count unique classified entries in features JSONL
+- [ ] Verify no duplicate `sid_path` entries in features JSONL
+- [ ] Check for truncated/malformed JSONL lines
+- [ ] Cross-check: rendered, extracted, tagged counts match expected total
+
+### Phase 13.4 — Export Validation (SQLite)
+- [ ] Verify SQLite schema integrity (tables: `meta`, `tracks`, `neighbors`)
+- [ ] Verify `tracks` row count ≥ 60,572
+- [ ] Verify all 24 similarity vector fields present per track
+- [ ] Check for NULL or empty vectors (expect 0)
+- [ ] Validate `meta` table: schema_version, generated_at, track_count
+- [ ] Cross-check manifest: track_count matches SQLite, checksums match
+- [ ] Spot validation: 50+ random sample tracks from JSONL vs SQLite
+
+### Phase 13.5 — Programmatic Quality Validation (replacing interactive SID station)
+**Context**: The `scripts/sid-station.sh` interactive audio questionnaire cannot be
+executed autonomously (requires human audio perception and TUI interaction).
+Equivalent programmatic validation will be performed:
+
+- [ ] Run 5 distinct similarity profile queries using the play CLI:
+  1. Seed: high-BPM song → verify returned songs have high BPM
+  2. Seed: low-energy ambient song → verify low energy in results
+  3. Seed: heavy-bass song → verify high bassPresenceFused in results
+  4. Seed: melodically clear song → verify high melodicClarityFused in results
+  5. Seed: high-noise/experimental song → verify high waveNoiseRatio in results
+- [ ] For each run: capture playlist output and compare feature vectors
+- [ ] Verify cosine similarity between seed and top-5 results is > 0.8
+- [ ] Document anomalies if any
+
+### Phase 13.6 — Release Publication
+**Precondition**: All phases 13.3–13.5 must PASS
+
+- [ ] Verify release artifact: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
+- [ ] Use command: `bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true`
+- [ ] Verify release exists on `chrisgleissner/sidflow-data`
+- [ ] Verify artifacts are downloadable
+- [ ] Verify checksums match manifest
+
+### Termination Criteria (ALL must be true before declaring Phase 13 complete)
+1. Classified song count ≥ 60,572 (all HVSC SID files)
+2. SQLite `tracks` row count = classified song count
+3. Manifest consistency checks pass
+4. 50+ random sample spot validations pass
+5. 5/5 programmatic similarity profile queries produce coherent results
+6. No unresolved anomalies
+7. Release successfully published and verified
+
+### Numeric Checkpoints
+- HVSC SID count: 60,572 (verified 2026-03-26)
+- Expected sub-song total: ~87,074 (per README run logs)
+- Expected SQLite rows: ≥ 60,572 (one per SID; multi-song SIDs counted per-SID)
+- Vector dimensions: 24 (per README classification vector reference)
+- Schema version: `sidcorr-1`
+- Feature schema version: `1.3.0`
+
+### Progress
+- 2026-03-26T07:30Z: Pre-run audit complete. All findings documented above.
+- 2026-03-26T07:30Z: Confirmed HVSC 60,572 SIDs, 1,089 partial features, 0 auto-tags from auto-classification, empty exports dir.
+- 2026-03-26T07:45Z: Build completed (bun run build) — 0 TypeScript errors. Wasm upstream check warning (expected, not blocking).
+- 2026-03-26T07:54Z: First classification attempt started — processes entered Tl (stopped) state when terminal was backgrounded. WAV count stuck at 1,133.
+- 2026-03-26T08:07Z: Second attempt using `setsid` — PID 45977 (bun classify CLI), PID 45743 (next-server), 20 threads running. Processes in Rl/Sl state (not stopped). A duplicate nohup invocation attempted at 08:10 but was blocked with HTTP 500 "already running" (lock protection working).
+- 2026-03-26T08:07Z-08:25Z: Classification actively progressing. Rate ~530-560 songs/min. Features at 08:25: ~7,900+ classified. ETA ~10:50 UTC (2.5 hours from start).
+- 2026-03-26T08:25Z: Original bash wrapper exited (after nohup duplicate confused the log). Created `tmp/post-classify-export.sh` — setsid-detached monitor (PID 776421, Ss state, no controlling terminal) waiting for PID 45977 to exit, then auto-triggers `bun run export:similarity -- --profile full --corpus-version hvsc`.
+- DISCOVERY: "272525 previously classified songs" message in run log is misleading — `count_classified_rows()` counts ALL lines in `classification_*.jsonl` event log files, not unique songs. Cosmetic bug, no functional impact.
+
+### Decision Log
+- 2026-03-26: Run with `--mode local` (no `--full-rerun`) — functionally identical to full re-run since no auto-tags exist; preserves 1,113 WAV files as minor render cache.
+- 2026-03-26: Interactive SID station not automatable; replaced with programmatic similarity profile validation using the play CLI.
+- 2026-03-26: Keep existing uncommitted `.sidflow.json` change (sidplayfp-cli first) — intentional optimization confirmed by partial run (1,089 songs successfully rendered at ~44 songs/s).
+- 2026-03-26: Export script will delete WAVs after classification (`DELETE_WAV_AFTER_CLASSIFICATION=true` default) — acceptable since export SQLite is the durable artifact.
+
+### Outcomes
+- Pending.

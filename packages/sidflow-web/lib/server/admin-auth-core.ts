@@ -1,5 +1,6 @@
 /* istanbul ignore file -- @preserve Edge runtime does not support new Function() */
 export const ADMIN_SESSION_COOKIE = 'sidflow_admin_session';
+export const ADMIN_SESSION_COOKIE_PATH = '/';
 
 import { assertProductionSecurityConfig, isProductionSecurityMode } from './security-runtime';
 

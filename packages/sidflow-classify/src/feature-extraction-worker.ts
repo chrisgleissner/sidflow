@@ -30,7 +30,7 @@ import { estimateBpmAutocorr } from "./bpm-estimator.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 import { readSidTraceSidecar } from "./render/wav-renderer.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
-import { extractSidNativeFeaturesFromWriteTrace } from "./sid-native-features.js";
+import { extractSidNativeFeaturesFromWriteTrace, logSidNativeFeatureDegradation } from "./sid-native-features.js";
 
 // Default target sample rate for SID music analysis.
 // SID output is ~4kHz effective bandwidth, so 11025 Hz captures all relevant content
@@ -527,17 +527,26 @@ async function handleExtract(
   try {
     // Ensure Essentia is initialized (once per worker)
     await initEssentia();
-    
-    const [wavFeatures, sidFeatures] = await Promise.all([
+
+    const [wavFeatures, sidFeatures] = await Promise.allSettled([
       extractFeatures(wavFile, sidFile, configPath),
       extractSidNativeFeaturesForWorker(wavFile, sidFile),
     ]);
+
+    if (wavFeatures.status !== "fulfilled") {
+      throw wavFeatures.reason;
+    }
+
     // Merge: WAV features take priority; SID-native keys only added where absent.
-    const features: FeatureVector = { ...wavFeatures };
-    for (const [key, value] of Object.entries(sidFeatures)) {
-      if (!Object.prototype.hasOwnProperty.call(features, key)) {
-        features[key] = value;
+    const features: FeatureVector = { ...wavFeatures.value };
+    if (sidFeatures.status === "fulfilled") {
+      for (const [key, value] of Object.entries(sidFeatures.value)) {
+        if (!Object.prototype.hasOwnProperty.call(features, key)) {
+          features[key] = value;
+        }
       }
+    } else {
+      await logSidNativeFeatureDegradation({ wavFile, sidFile }, sidFeatures.reason);
     }
     const response: WorkerResponse = { type: "result", jobId, features };
     parentPort!.postMessage(response);

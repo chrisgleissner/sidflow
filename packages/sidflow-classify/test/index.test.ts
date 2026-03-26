@@ -7,6 +7,7 @@ import path from "path";
 import {
   buildAudioCache,
   collectSidFiles,
+  defaultRenderWav,
   fallbackMetadataFromPath,
   generateAutoTags,
   generateJsonlOutput,
@@ -15,6 +16,8 @@ import {
   parseSidMetadataOutput,
   planClassification,
   resolveWavPath,
+  __setClassifyWarningHook,
+  __resetClassifyWarningState,
   __setClassifyTestOverrides,
   type ClassificationPlan
 } from "@sidflow/classify";
@@ -291,6 +294,184 @@ describe("classification helpers", () => {
     expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeFalse();
 
     await rm(root, { recursive: true, force: true });
+  });
+
+  it("warns when classification explicitly uses sidplayfp-cli as the preferred engine", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const sidPath = path.join(root, "hvsc");
+    const audioCachePath = path.join(root, "wav");
+    const tagsPath = path.join(root, "tags");
+    const sidFile = path.join(sidPath, "song.sid");
+    await mkdir(sidPath, { recursive: true });
+    await writeFile(sidFile, "content");
+
+    const plan = {
+      config: {
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["sidplayfp-cli", "wasm"] },
+      } as ClassificationPlan["config"],
+      forceRebuild: false,
+      classificationDepth: 3,
+      sidPath,
+      audioCachePath,
+      tagsPath,
+    } as unknown as ClassificationPlan;
+
+    const warnings: string[] = [];
+    __resetClassifyWarningState();
+    __setClassifyWarningHook((message) => {
+      warnings.push(message);
+    });
+
+    try {
+      await buildAudioCache(plan, {
+        render: async ({ wavFile }: { wavFile: string }) => {
+          await mkdir(path.dirname(wavFile), { recursive: true });
+          await writeFile(wavFile, "wav");
+        },
+      });
+    } finally {
+      __setClassifyWarningHook();
+      await rm(root, { recursive: true, force: true });
+    }
+
+    expect(warnings.some((warning) => warning.includes('Classification is using preferred engine "sidplayfp-cli"'))).toBeTrue();
+  });
+
+  it("hard-fails when WASM rendering fails and degraded sidplayfp-cli fallback is not enabled", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const configPath = path.join(root, ".sidflow.json");
+    const sidFile = path.join(root, "track.sid");
+    const wavFile = path.join(root, "track.wav");
+    const previousConfig = process.env.SIDFLOW_CONFIG;
+    await writeFile(sidFile, "fake-sid");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        sidPath: root,
+        audioCachePath: path.join(root, "wav-cache"),
+        tagsPath: path.join(root, "tags"),
+        threads: 1,
+        classificationDepth: 3,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: { preferredEngines: ["wasm", "sidplayfp-cli"] },
+      }),
+      "utf8"
+    );
+
+    process.env.SIDFLOW_CONFIG = configPath;
+    __resetClassifyWarningState();
+    __setClassifyTestOverrides({
+      createEngine: async () => {
+        throw new Error("wasm unavailable");
+      },
+    });
+
+    try {
+      await expect(
+        defaultRenderWav({ sidFile, wavFile, maxRenderSeconds: 1 })
+      ).rejects.toThrow("wasm unavailable");
+    } finally {
+      __setClassifyTestOverrides();
+      if (previousConfig === undefined) {
+        delete process.env.SIDFLOW_CONFIG;
+      } else {
+        process.env.SIDFLOW_CONFIG = previousConfig;
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to sidplayfp-cli when WASM fails and degraded fallback is explicitly enabled", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const configPath = path.join(root, ".sidflow.json");
+    const sidFile = path.join(root, "track.sid");
+    const wavFile = path.join(root, "track.wav");
+    const mockCliPath = path.join(root, "sidplayfp-mock.js");
+    const previousConfig = process.env.SIDFLOW_CONFIG;
+
+    const mockCli = `#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+let wavPath = "";
+for (const arg of process.argv.slice(2)) {
+  if (arg.startsWith("-w")) wavPath = arg.slice(2);
+}
+const sampleRate = 44100;
+const channels = 1;
+const bitsPerSample = 16;
+const numSamples = sampleRate / 10;
+const dataSize = numSamples * channels * (bitsPerSample / 8);
+const fileSize = 44 + dataSize;
+const buffer = Buffer.alloc(fileSize);
+buffer.write("RIFF", 0);
+buffer.writeUInt32LE(fileSize - 8, 4);
+buffer.write("WAVE", 8);
+buffer.write("fmt ", 12);
+buffer.writeUInt32LE(16, 16);
+buffer.writeUInt16LE(1, 20);
+buffer.writeUInt16LE(channels, 22);
+buffer.writeUInt32LE(sampleRate, 24);
+buffer.writeUInt32LE(sampleRate * channels * (bitsPerSample / 8), 28);
+buffer.writeUInt16LE(channels * (bitsPerSample / 8), 32);
+buffer.writeUInt16LE(bitsPerSample, 34);
+buffer.write("data", 36);
+buffer.writeUInt32LE(dataSize, 40);
+fs.mkdirSync(path.dirname(wavPath), { recursive: true });
+fs.writeFileSync(wavPath, buffer);
+`;
+
+    await writeFile(sidFile, "fake-sid");
+    await writeFile(mockCliPath, mockCli, { mode: 0o755 });
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        sidPath: root,
+        sidplayPath: mockCliPath,
+        audioCachePath: path.join(root, "wav-cache"),
+        tagsPath: path.join(root, "tags"),
+        threads: 1,
+        classificationDepth: 3,
+        maxRenderSec: 45,
+        introSkipSec: 15,
+        maxClassifySec: 15,
+        render: {
+          preferredEngines: ["wasm", "sidplayfp-cli"],
+          allowDegradedSidplayfpCli: true,
+        },
+      }),
+      "utf8"
+    );
+
+    process.env.SIDFLOW_CONFIG = configPath;
+    __resetClassifyWarningState();
+    __setClassifyTestOverrides({
+      createEngine: async () => {
+        throw new Error("wasm unavailable");
+      },
+    });
+
+    try {
+      await defaultRenderWav({ sidFile, wavFile, maxRenderSeconds: 1 });
+      const renderSettings = JSON.parse(await readFile(`${wavFile}.render.json`, "utf8")) as {
+        renderEngine: string | null;
+        traceCaptureEnabled: boolean;
+      };
+      expect(renderSettings.renderEngine).toBe("sidplayfp-cli");
+      expect(renderSettings.traceCaptureEnabled).toBeFalse();
+    } finally {
+      __setClassifyTestOverrides();
+      if (previousConfig === undefined) {
+        delete process.env.SIDFLOW_CONFIG;
+      } else {
+        process.env.SIDFLOW_CONFIG = previousConfig;
+      }
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("reports progress during WAV cache building", async () => {
@@ -817,7 +998,7 @@ describe("generateAutoTags", () => {
         }
       });
 
-      expect(new Set(progressPhases)).toEqual(new Set(["metadata", "tagging"]));
+      expect(new Set(progressPhases)).toEqual(new Set(["metadata", "tagging", "rating-model", "finalizing"]));
       const posixMulti = "MUSICIANS/Multi.sid";
       const posixManual = "MUSICIANS/Manual.sid";
       const posixPartial = "MUSICIANS/Partial.sid";
@@ -846,6 +1027,7 @@ describe("generateAutoTags", () => {
       // Verify JSONL is written incrementally (one record per line)
       expect(result.jsonlFile).toBeDefined();
       expect(result.jsonlRecordCount).toBe(4); // 3 songs (2 from Multi.sid) + Manual.sid + Partial.sid
+      expect(result.telemetryFile).toContain(".events.jsonl");
       const jsonlContent = await readFile(result.jsonlFile, "utf8");
       const jsonlLines = jsonlContent.trim().split("\n");
       expect(jsonlLines.length).toBe(4);
