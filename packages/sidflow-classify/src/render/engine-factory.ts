@@ -7,7 +7,12 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-let engineFactoryOverride: (() => Promise<SidAudioEngine>) | null = null;
+export interface CreateEngineOptions {
+  sampleRate?: number;
+  stereo?: boolean;
+}
+
+let engineFactoryOverride: ((options?: CreateEngineOptions) => Promise<SidAudioEngine>) | null = null;
 
 const logger = createLogger("wasm-engine-factory");
 
@@ -130,7 +135,7 @@ async function getCachedSystemRoms(): Promise<SystemRoms> {
 }
 
 export function setEngineFactoryOverride(
-  override: (() => Promise<SidAudioEngine>) | null
+  override: ((options?: CreateEngineOptions) => Promise<SidAudioEngine>) | null
 ): void {
   engineFactoryOverride = override;
 }
@@ -172,9 +177,9 @@ export function resetWasmModuleCache(): void {
   compiledWasmModulePromise = null;
 }
 
-export async function createEngine(): Promise<SidAudioEngine> {
+export async function createEngine(options: CreateEngineOptions = {}): Promise<SidAudioEngine> {
   if (engineFactoryOverride) {
-    return await engineFactoryOverride();
+    return await engineFactoryOverride(options);
   }
 
   const compiledModule = await getCompiledWasmModule();
@@ -201,8 +206,11 @@ export async function createEngine(): Promise<SidAudioEngine> {
 
   const engine = new SidAudioEngine({
     module: Promise.resolve(wasmModule),
-    sampleRate: 44100,
-    stereo: true,
+    sampleRate:
+      typeof options.sampleRate === "number" && Number.isFinite(options.sampleRate) && options.sampleRate > 0
+        ? Math.floor(options.sampleRate)
+        : 44100,
+    stereo: options.stereo ?? true,
   });
 
   const roms = await getCachedSystemRoms();

@@ -1,5 +1,45 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 15 - Full-Corpus Classification Stability Recovery
+
+### Objective
+
+Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` complete successfully on the full HVSC corpus with 100% classification coverage, bounded memory, bounded worker count, and no timeout-driven data loss.
+
+### Root Cause Hypotheses
+
+- [ ] The primary OOM driver is WASM trace capture buffering every SID write in memory until the end of a render (`pendingTraces` in `wav-renderer.ts`), which scales badly on complex tracks and across concurrent workers.
+- [ ] The primary data-loss path is the render-pool circuit breaker (`timedOutSids`) plus tagging/build skip branches in `index.ts`, which permanently drops later jobs for an SID after a timeout.
+- [ ] The primary oversubscription path is thread selection defaulting to logical-core count instead of a bounded fixed worker heuristic; the web `/api/classify` route also ignores a request-level thread override.
+- [ ] Worker instability is amplified by forceful `worker.terminate()` on timeout/error with immediate replacement, producing churn instead of bounded, cooperative recycling.
+- [ ] Memory telemetry is incomplete because it tracks heap only, not RSS, and does not persist worker-pool lifecycle or fallback-level metrics.
+
+### Fix Strategy By Failure Class
+
+- [ ] Render bounding: enforce wall-clock/CPU-style budgets inside the render loop itself so renders terminate cooperatively with partial output instead of parent-side kill/skip.
+- [ ] Worker pool: keep a fixed-size global queue and worker pool, cap default concurrency at `min(physical_cores / 2, 6)`, and recycle workers after a bounded job count.
+- [ ] Data loss: remove timeout circuit-breaker purging and replace it with an ordered fallback ladder that always produces either truncated audio or metadata-only output.
+- [ ] Memory discipline: stream SID trace sidecars in bounded batches, avoid whole-trace retention, reduce duplicate PCM buffering, and dispose engines after every attempt.
+- [ ] Telemetry: persist RSS, active/busy worker count, worker recycle count, fallback level, render truncation, and classification outcome summaries.
+- [ ] API / orchestration: make `/api/classify` honor thread overrides and use the same bounded worker heuristic as the CLI path used by the full similarity-export script.
+
+### Investigation / Validation Steps
+
+- [ ] Replace trace accumulation and timeout-purge code paths.
+- [ ] Add targeted tests for bounded rendering, worker recycling, no-skip fallback behavior, and concurrency heuristics.
+- [ ] Run focused classify tests and build.
+- [ ] Run targeted subset classifications, including the previously pathological 2SID repro and a bounded HVSC subset, while collecting RSS / fallback telemetry.
+- [ ] Run the full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` validation.
+- [ ] Record final metrics summary and reproducibility evidence in `WORKLOG.md`.
+
+### Measurable Success Criteria
+
+- [ ] Full command completes with `0` skipped songs and `0` fatal classification failures.
+- [ ] Peak RSS remains below 4 GB during the final run.
+- [ ] Worker pool never exceeds the configured fixed size and does not exhibit crash/restart loops.
+- [ ] Telemetry shows every SID reaches one of: full render, truncated render, degraded render, or metadata-only classification.
+- [ ] Re-running the full command yields identical classification counts.
+
 ## Objective
 
 Recover the SID classification pipeline by diagnosing and fixing the pathological behavior where `GAMES/S-Z/Super_Mario_Bros_64_2SID.sid` causes all workers to become stuck, pegging all cores at 100% with zero forward progress.

@@ -1,5 +1,28 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-26T14:30Z — Phase 15: Stability Recovery Investigation
+
+### Current findings
+1. The render pool still contains a hard timeout watchdog plus a permanent `timedOutSids` circuit breaker in `packages/sidflow-classify/src/render/wasm-render-pool.ts`. A single timeout causes queued and future jobs for the same SID to be rejected.
+2. Both `buildAudioCache()` and `generateAutoTags()` still convert render failure into `skipped` / `song_failed` outcomes in `packages/sidflow-classify/src/index.ts`, which violates the required 100% coverage guarantee.
+3. `renderWavWithEngine()` buffers the entire SID trace in memory (`pendingTraces`) before writing the sidecar. This is the strongest current hypothesis for the late-run RSS blow-up and worker instability.
+4. The default concurrency heuristic still resolves to logical CPU count, not `min(physical_cores / 2, 6)`. The web classify route also does not honor a request-level thread override in its temp config.
+5. Current lifecycle telemetry records heap MB only; it does not persist RSS, active worker count, worker recycle count, or fallback level.
+
+### Immediate implementation plan
+1. Replace whole-trace accumulation with bounded trace-sidecar streaming and reduce per-render PCM buffering.
+2. Move render bounding into the worker render loop so long renders truncate cooperatively instead of being killed externally.
+3. Remove timeout-driven SID purging/skipping and replace it with a fallback ladder ending in metadata-only classification.
+4. Bound worker concurrency with a physical-core heuristic and recycle workers after a fixed number of jobs.
+5. Extend telemetry/worklog output with RSS, worker lifecycle, fallback, and classification outcome summary metrics.
+
+### Metrics targets for the next validation pass
+- Peak RSS: < 4096 MB
+- Default worker count: `min(physical_cores / 2, 6)`
+- Worker recycle interval: 32 jobs
+- Full-run skipped songs: 0
+- Full-run failed songs: 0
+
 ## 2026-03-24T00:00Z — Phase 0: Branch Recovery
 
 ### Actions

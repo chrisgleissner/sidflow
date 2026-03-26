@@ -1,7 +1,7 @@
 import { createLogger, ensureDir, pathExists, stringifyDeterministic, type JsonValue } from "@sidflow/common";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { appendFile, open, readFile, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import readline from "node:readline";
 import path from "node:path";
@@ -13,8 +13,13 @@ export interface RenderWavOptions {
   songIndex?: number;
   maxRenderSeconds?: number;
   targetDurationMs?: number;
+  renderSampleRate?: number;
+  maxRenderWallTimeMs?: number;
+  renderProfile?: string;
   /** Optional progress callback - called periodically during rendering to support heartbeat */
   onProgress?: (progress: RenderProgress) => void;
+  /** Optional callback with the final render summary. */
+  onSummary?: (summary: RenderExecutionSummary) => void;
   /** Interval in ms between progress callbacks (default: 1000ms) */
   progressIntervalMs?: number;
   /**
@@ -38,6 +43,17 @@ export interface RenderProgress {
   elapsedMs: number;
 }
 
+export interface RenderExecutionSummary {
+  collectedSamples: number;
+  targetSamples: number;
+  percentComplete: number;
+  elapsedMs: number;
+  sampleRate: number;
+  channels: number;
+  truncated: boolean;
+  stopReason: "complete" | "wall_time" | "silent_limit" | "max_iterations" | "null_chunk";
+}
+
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
 /** Hard fallback render cap: 15s intro-skip + 15s analysis window = 30s. */
 export const MAX_RENDER_SECONDS = 30;
@@ -46,6 +62,7 @@ export const WAV_HASH_EXTENSION = ".sha256";
 /** Extension for the SID register-write trace sidecar captured during WAV rendering. */
 export const SID_TRACE_EXTENSION = ".trace.jsonl";
 export const SID_TRACE_SIDECAR_VERSION = 1;
+const TRACE_RECORD_BATCH_SIZE = 25_000;
 
 /**
  * SID register-write trace sidecar written alongside the WAV.
@@ -356,6 +373,10 @@ export async function renderWavWithEngine(
     options.targetDurationMs,
     options.maxRenderSeconds
   );
+  const maxRenderWallTimeMs =
+    typeof options.maxRenderWallTimeMs === "number" && Number.isFinite(options.maxRenderWallTimeMs) && options.maxRenderWallTimeMs > 0
+      ? Math.max(1000, Math.floor(options.maxRenderWallTimeMs))
+      : undefined;
 
   if (
     typeof options.targetDurationMs === "number" &&
@@ -385,10 +406,11 @@ export async function renderWavWithEngine(
   }
 
   const maxSamples = Math.max(1, Math.floor(sampleRate * channels * maxSeconds));
-  const chunks: Int16Array[] = [];
+  const pcm = new Int16Array(maxSamples);
   let collectedSamples = 0;
   let silentIterations = 0;
   let iterations = 0;
+  let stopReason: RenderExecutionSummary["stopReason"] = "complete";
   // Calculate max iterations based on expected samples per cycle
   // At PAL clock (~985kHz) and 44.1kHz sample rate, ~20,000 cycles produces ~1,800 samples
   // Use a conservative estimate: aim for 2x the iterations needed to ensure we don't stop early
@@ -399,11 +421,37 @@ export async function renderWavWithEngine(
   const progressIntervalMs = options.progressIntervalMs ?? 1000;
   const startTime = Date.now();
   let lastProgressTime = startTime;
-  // Accumulate SID register-write traces in memory during the render loop.
-  // Writing to disk on every chunk (~1 500 times per song) causes all worker
-  // threads to issue appendFile syscalls in lock-step, artificially creating
-  // a CPU sawtooth.  We write the entire sidecar in one shot after the loop.
-  const pendingTraces: SidWriteTrace[] = [];
+  const traceSidecarPath = getSidTraceSidecarPath(wavFile);
+  const traceHandle = options.captureTrace ? await open(traceSidecarPath, "w") : null;
+  let traceBatchBuffer: SidTraceTuple[] = [];
+  let traceEventCount = 0;
+  let traceBatchCount = 0;
+
+  const flushTraceBatch = async (): Promise<void> => {
+    if (!traceHandle || traceBatchBuffer.length === 0) {
+      return;
+    }
+    const payload: SidTraceSidecarBatch = {
+      kind: "batch",
+      records: traceBatchBuffer,
+    };
+    await traceHandle.writeFile(stringifySidTraceLine(payload as unknown as JsonValue), "utf8");
+    traceEventCount += traceBatchBuffer.length;
+    traceBatchCount += 1;
+    traceBatchBuffer = [];
+  };
+
+  if (traceHandle) {
+    const header: SidTraceSidecarHeader = {
+      kind: "header",
+      v: SID_TRACE_SIDECAR_VERSION,
+      format: "sid-trace-jsonl",
+      clock: options.traceClock ?? "PAL",
+      skipSeconds: options.traceIntroSkipSec ?? 15,
+      analysisSeconds: options.traceAnalysisSec ?? 15,
+    };
+    await traceHandle.writeFile(stringifySidTraceLine(header as unknown as JsonValue), "utf8");
+  }
 
   while (collectedSamples < maxSamples && iterations < maxIterations) {
     iterations += 1;
@@ -411,11 +459,17 @@ export async function renderWavWithEngine(
 
     if (options.captureTrace) {
       const traceBatch = engine.getAndClearSidWriteTraces();
-      for (const t of traceBatch) pendingTraces.push(t);
+      for (const trace of traceBatch) {
+        traceBatchBuffer.push(traceToTuple(trace));
+        if (traceBatchBuffer.length >= TRACE_RECORD_BATCH_SIZE) {
+          await flushTraceBatch();
+        }
+      }
     }
 
     if (chunk === null) {
       renderLogger.debug("Renderer returned null chunk; stopping early");
+      stopReason = "null_chunk";
       break;
     }
 
@@ -423,6 +477,7 @@ export async function renderWavWithEngine(
       silentIterations += 1;
       if (silentIterations >= MAX_SILENT_ITERATIONS) {
         renderLogger.debug("Silent iteration limit reached; stopping");
+        stopReason = "silent_limit";
         break;
       }
       continue;
@@ -438,7 +493,7 @@ export async function renderWavWithEngine(
     // typed_memory_view, so the returned chunk is JS-heap-owned and stable.
     // We only need subarray() when truncating to the sample limit.
     const slice = allowed === chunk.length ? chunk : chunk.subarray(0, allowed);
-    chunks.push(allowed === chunk.length ? chunk : slice.slice());
+    pcm.set(slice, collectedSamples);
     collectedSamples += slice.length;
 
     // Call progress callback at specified intervals to support heartbeat
@@ -452,22 +507,34 @@ export async function renderWavWithEngine(
         elapsedMs: now - startTime
       });
     }
+
+    if (maxRenderWallTimeMs !== undefined && now - startTime >= maxRenderWallTimeMs) {
+      stopReason = "wall_time";
+      break;
+    }
+  }
+
+  if (collectedSamples < maxSamples && stopReason === "complete") {
+    stopReason = "max_iterations";
   }
 
   if (collectedSamples === 0) {
+    if (traceHandle) {
+      try {
+        await traceHandle.close();
+      } catch {
+        // Ignore close errors on failure path.
+      }
+    }
     throw new Error(`WASM renderer produced no audio for ${sidFile}`);
   }
 
-  renderLogger.debug("Assembling PCM data");
-  const pcm = new Int16Array(collectedSamples);
-  let writeOffset = 0;
-  for (const chunk of chunks) {
-    pcm.set(chunk, writeOffset);
-    writeOffset += chunk.length;
-  }
-
   renderLogger.debug(`Encoding to WAV for ${path.basename(wavFile)}`);
-  const wavBuffer = encodePcmToWav(pcm, sampleRate, channels);
+  const wavBuffer = encodePcmToWav(
+    collectedSamples === pcm.length ? pcm : pcm.subarray(0, collectedSamples),
+    sampleRate,
+    channels
+  );
   renderLogger.debug(
     `Writing WAV file ${path.basename(wavFile)} (${wavBuffer.length} bytes)`
   );
@@ -486,20 +553,40 @@ export async function renderWavWithEngine(
 
   // Write trace sidecar so the SID-native feature extractor can reuse these traces
   // instead of performing a second full WASM render pass for the same song.
-  if (options.captureTrace) {
+  if (options.captureTrace && traceHandle) {
     try {
       // Drain any events buffered after the last chunk.
       const tailBatch = engine.getAndClearSidWriteTraces();
-      for (const t of tailBatch) pendingTraces.push(t);
-      // Single atomic write: header + one batch + footer in one writeFile call.
-      await writeSidTraceSidecar(wavFile, {
-        traces: pendingTraces,
-        clock: options.traceClock ?? "PAL",
-        skipSeconds: options.traceIntroSkipSec ?? 15,
-        analysisSeconds: options.traceAnalysisSec ?? 15,
-      });
+      for (const trace of tailBatch) {
+        traceBatchBuffer.push(traceToTuple(trace));
+      }
+      await flushTraceBatch();
+      const footer: SidTraceSidecarFooter = {
+        kind: "footer",
+        eventCount: traceEventCount,
+        batchCount: traceBatchCount,
+      };
+      await traceHandle.writeFile(stringifySidTraceLine(footer as unknown as JsonValue), "utf8");
     } catch (err) {
       renderLogger.warn(`Trace sidecar write failed for ${path.basename(wavFile)}`, err);
+    } finally {
+      try {
+        await traceHandle.close();
+      } catch {
+        // Ignore close errors.
+      }
     }
   }
+
+  const elapsedMs = Date.now() - startTime;
+  options.onSummary?.({
+    collectedSamples,
+    targetSamples: maxSamples,
+    percentComplete: Math.min(100, (collectedSamples / maxSamples) * 100),
+    elapsedMs,
+    sampleRate,
+    channels,
+    truncated: collectedSamples < maxSamples,
+    stopReason: collectedSamples >= maxSamples ? "complete" : stopReason,
+  });
 }
