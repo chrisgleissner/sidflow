@@ -112,3 +112,31 @@ QUEUED → STARTED → RENDERING → RENDERED → EXTRACTING → EXTRACTED
 2. The shared failure mode was not missing UI; admin pages were receiving `{"error":"unauthorized","reason":"missing-token"}`.
 3. Root cause: the admin session cookie was issued for `/admin` only, but middleware also required that same session for `/api/admin/*`, so admin page data fetches were unauthenticated.
 4. Fix direction: expand the admin session cookie scope to `/` and keep Playwright's seeded admin session aligned with the same path.
+
+## 2026-03-26T13:00Z — Classification E2E cache fixtures and five-profile station proof
+
+### Root cause
+1. The remaining classification Playwright failures were not caused by missing JSONL writes in the classifier.
+2. Telemetry showed the synthetic web E2E fixtures were being re-rendered through the WASM path because the seeded cache entries only contained `.wav` files.
+3. Current `needsWavRefresh()` semantics require cache-complete fixtures for reuse under WASM classification: the WAV, SID hash sidecar, render-settings sidecar, and trace sidecar must all be present and internally consistent.
+4. Because those sidecars were missing, the classifier retried synthetic PSID fixtures through the real WASM renderer, which correctly failed with `WASM renderer produced no audio`, leaving only telemetry JSONL and no canonical classification JSONL.
+
+### Actions
+1. Added `packages/sidflow-web/tests/e2e/utils/classification-cache-fixture.ts` to seed cache-complete synthetic WAV fixtures for web classification E2E coverage.
+2. Updated `classify-api-e2e.spec.ts`, `classify-essentia-e2e.spec.ts`, and `classify-heartbeat.spec.ts` to use the new cache-fixture helper.
+3. Fixed the malformed primary-JSONL regex in `classify-essentia-e2e.spec.ts` so it no longer filters out valid `classification_*.jsonl` files.
+4. Added `packages/sidflow-play/test/station-multi-profile-e2e.test.ts`, a synthetic end-to-end proof that one classified/exported corpus can drive five distinct 10-rating personas into five disjoint, cluster-pure stations.
+
+### Validation
+1. `E2E_COVERAGE=true bunx playwright test tests/e2e/classify-api-e2e.spec.ts tests/e2e/classify-essentia-e2e.spec.ts tests/e2e/classify-heartbeat.spec.ts --project=chromium --workers=1`
+        - Result: 5 passed, 0 failed.
+2. `bun test packages/sidflow-play/test/station-similarity-e2e.test.ts packages/sidflow-play/test/station-multi-profile-e2e.test.ts`
+        - Result: 2 passed, 0 failed.
+3. `bun test packages/sidflow-play/test/station-multi-profile-e2e.test.ts` x3 consecutive
+        - Run 1: 1 passed, 0 failed.
+        - Run 2: 1 passed, 0 failed.
+        - Run 3: 1 passed, 0 failed.
+
+### Residual state
+1. Full Chromium Playwright still has unrelated failures in `accessibility.spec.ts` and `advanced-search.spec.ts`.
+2. Those failures are outside the classification/station changes validated here.

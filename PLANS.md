@@ -136,6 +136,9 @@ keeping changes minimal and localized.
 - 2026-03-26: Adjusted renderer enforcement approach after review: classification now preserves the user's configured preferred engine, warns once when a non-WASM engine is explicitly selected, and only allows automatic fallback from failed WASM renders to `sidplayfp-cli` when `render.allowDegradedSidplayfpCli=true`.
 - 2026-03-26: Focused validation passed: `bun test packages/sidflow-classify/test/index.test.ts packages/sidflow-classify/test/sid-native-features.test.ts` completed with 28 passing tests and 0 failures.
 - 2026-03-26: CI-equivalent Playwright reproduction exposed a separate merge blocker: admin E2E pages were loading unauthenticated because the admin session cookie was scoped to `/admin` while the same session was also required for `/api/admin/*`. Updated the cookie scope to `/` in middleware and Playwright test seeding.
+- 2026-03-26: Classification E2E failures were traced to stale synthetic-cache fixtures in the web Playwright suite. The classifier now requires cache-complete WAV fixtures (`.wav`, `.sha256`, `.render.json`, `.trace.jsonl`) for WASM reuse, so the E2E specs were updated to seed full cache entries instead of bare WAV files.
+- 2026-03-26: Added a new synthetic station regression at `packages/sidflow-play/test/station-multi-profile-e2e.test.ts` that classifies one five-cluster corpus, exports one similarity database, and verifies five distinct 10-rating personas each produce a cluster-pure 20-song station.
+- 2026-03-26: Stability validation passed for the new five-profile station regression: `bun test packages/sidflow-play/test/station-multi-profile-e2e.test.ts` completed successfully three consecutive times.
 
 ### Decision Log
 - 2026-03-26: Scope renderer enforcement to the classification pipeline, not the standalone render CLI, because the reported defects are classification-specific and the render CLI intentionally supports multi-engine fallback for manual rendering.
