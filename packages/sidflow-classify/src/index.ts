@@ -45,8 +45,10 @@ import {
   SID_TRACE_EXTENSION,
   SID_TRACE_SIDECAR_VERSION,
   computeFileHash,
+  encodePcmToWav,
   readSidTraceSidecar,
   renderWavWithEngine,
+  type RenderExecutionSummary,
   type RenderWavOptions
 } from "./render/wav-renderer.js";
 import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./render/render-orchestrator.js";
@@ -68,12 +70,17 @@ import {
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
 import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
+import { getRecommendedWorkerCount } from "./system.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
 const classifyLogger = createLogger("classify");
 const DEFAULT_CLASSIFICATION_RENDER_ENGINE: RenderEngine = "wasm";
+const METADATA_ONLY_SAMPLE_RATE = 11_025;
+const FULL_RENDER_SAMPLE_RATE = 44_100;
+const LOW_RENDER_SAMPLE_RATE = 22_050;
+const MINIMAL_RENDER_SAMPLE_RATE = 11_025;
 let degradedSidplayfpCliWarningEmitted = false;
 let classifyWarningHook: ((message: string) => void) | null = null;
 
@@ -132,17 +139,23 @@ async function persistRenderedWavMetadata(
   wavFile: string,
   config: SidflowConfig,
   maxRenderSec: number,
+  overrides: Partial<Pick<WavRenderSettingsSidecar, "renderProfile" | "renderSampleRate" | "truncated" | "fallbackReason">> = {},
 ): Promise<void> {
   const traceSidecar = await readSidTraceSidecar(wavFile);
   const renderEngine = resolveClassificationPreferredEngine(config);
+  const existingSettings = await readWavRenderSettingsSidecar(wavFile);
   await writeWavRenderSettingsSidecar(wavFile, {
     maxRenderSec: maxRenderSec,
     introSkipSec: resolveIntroSkipSec(config),
     maxClassifySec: resolveMaxClassifySec(config),
-    sourceOffsetSec: (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0,
+    sourceOffsetSec: existingSettings?.sourceOffsetSec ?? 0,
     renderEngine,
     traceCaptureEnabled: traceSidecar !== null,
     traceSidecarVersion: traceSidecar !== null ? SID_TRACE_SIDECAR_VERSION : null,
+    renderProfile: overrides.renderProfile ?? existingSettings?.renderProfile ?? null,
+    renderSampleRate: overrides.renderSampleRate ?? existingSettings?.renderSampleRate ?? null,
+    truncated: overrides.truncated ?? existingSettings?.truncated ?? false,
+    fallbackReason: overrides.fallbackReason ?? existingSettings?.fallbackReason ?? null,
   });
 }
 
@@ -266,17 +279,191 @@ interface RunConcurrentOptions {
 }
 
 function resolveThreadCount(requested?: number): number {
-  if (typeof requested === "number" && requested > 0) {
-    return Math.max(1, Math.floor(requested));
-  }
-  const cores = getLogicalCpuCount();
+  return getRecommendedWorkerCount(requested);
+}
 
-  const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
-  if (Number.isInteger(envMax) && envMax > 0) {
-    return Math.max(1, Math.min(cores, envMax));
+type ClassificationRenderProfile = "full" | "reduced-duration" | "low-sample-rate" | "minimal-snippet" | "metadata-only";
+
+interface ClassificationRenderAttempt {
+  profile: Exclude<ClassificationRenderProfile, "metadata-only">;
+  maxRenderSeconds: number;
+  renderSampleRate: number;
+  maxRenderWallTimeMs: number;
+}
+
+interface ClassificationRenderResult {
+  profile: ClassificationRenderProfile;
+  summary: RenderExecutionSummary | null;
+  degraded: boolean;
+  metadataOnly: boolean;
+  errors: string[];
+  renderSampleRate: number;
+}
+
+function computeRenderWallTimeBudgetMs(maxRenderSeconds: number, renderSampleRate: number): number {
+  const boundedSeconds = Math.max(1, maxRenderSeconds);
+  const sampleRateScale = renderSampleRate / FULL_RENDER_SAMPLE_RATE;
+  return Math.max(
+    4_000,
+    Math.min(18_000, Math.round(3_000 + boundedSeconds * 450 * Math.max(0.5, sampleRateScale)))
+  );
+}
+
+function buildClassificationRenderAttempts(
+  maxRenderSeconds: number,
+  targetDurationMs?: number
+): ClassificationRenderAttempt[] {
+  const targetSeconds =
+    typeof targetDurationMs === "number" && Number.isFinite(targetDurationMs) && targetDurationMs > 0
+      ? Math.max(1, targetDurationMs / 1000)
+      : maxRenderSeconds;
+  const fullSeconds = Math.max(1, Math.min(maxRenderSeconds, targetSeconds));
+  const reducedSeconds = Math.max(10, Math.min(fullSeconds - 2, Math.ceil(fullSeconds * 0.67)));
+  const lowSampleSeconds = Math.max(8, Math.min(fullSeconds, 12));
+  const minimalSeconds = Math.max(5, Math.min(fullSeconds, 8));
+
+  const attempts: ClassificationRenderAttempt[] = [
+    {
+      profile: "full",
+      maxRenderSeconds: fullSeconds,
+      renderSampleRate: FULL_RENDER_SAMPLE_RATE,
+      maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(fullSeconds, FULL_RENDER_SAMPLE_RATE),
+    },
+  ];
+
+  if (reducedSeconds < fullSeconds) {
+    attempts.push({
+      profile: "reduced-duration",
+      maxRenderSeconds: reducedSeconds,
+      renderSampleRate: FULL_RENDER_SAMPLE_RATE,
+      maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(reducedSeconds, FULL_RENDER_SAMPLE_RATE),
+    });
   }
 
-  return Math.max(1, cores);
+  attempts.push({
+    profile: "low-sample-rate",
+    maxRenderSeconds: lowSampleSeconds,
+    renderSampleRate: LOW_RENDER_SAMPLE_RATE,
+    maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(lowSampleSeconds, LOW_RENDER_SAMPLE_RATE),
+  });
+  attempts.push({
+    profile: "minimal-snippet",
+    maxRenderSeconds: minimalSeconds,
+    renderSampleRate: MINIMAL_RENDER_SAMPLE_RATE,
+    maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(minimalSeconds, MINIMAL_RENDER_SAMPLE_RATE),
+  });
+
+  const seen = new Set<string>();
+  return attempts.filter((attempt) => {
+    const key = `${attempt.profile}:${attempt.maxRenderSeconds}:${attempt.renderSampleRate}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+async function clearRenderArtifacts(wavFile: string): Promise<void> {
+  await Promise.all([
+    rm(wavFile, { force: true }),
+    rm(`${wavFile}${WAV_HASH_EXTENSION}`, { force: true }),
+    rm(`${wavFile}${SID_TRACE_EXTENSION}`, { force: true }),
+    rm(`${wavFile}${WAV_RENDER_SETTINGS_EXTENSION}`, { force: true }),
+  ]);
+}
+
+async function writeMetadataOnlyPlaceholderWav(
+  sidFile: string,
+  wavFile: string,
+  config: SidflowConfig,
+  reason: string,
+): Promise<void> {
+  await ensureDir(path.dirname(wavFile));
+  const placeholder = encodePcmToWav(new Int16Array(METADATA_ONLY_SAMPLE_RATE), METADATA_ONLY_SAMPLE_RATE, 1);
+  await writeFile(wavFile, placeholder);
+
+  try {
+    const hash = await computeFileHash(sidFile);
+    await writeFile(`${wavFile}${WAV_HASH_EXTENSION}`, hash, "utf8");
+  } catch {
+    // Best-effort only.
+  }
+
+  await writeWavRenderSettingsSidecar(wavFile, {
+    maxRenderSec: resolveEffectiveMaxRenderSec(config),
+    introSkipSec: resolveIntroSkipSec(config),
+    maxClassifySec: resolveMaxClassifySec(config),
+    sourceOffsetSec: 0,
+    renderEngine: "wasm",
+    traceCaptureEnabled: false,
+    traceSidecarVersion: null,
+    renderProfile: "metadata-only",
+    renderSampleRate: METADATA_ONLY_SAMPLE_RATE,
+    truncated: true,
+    fallbackReason: reason,
+  });
+}
+
+async function renderSongWithFallbacks(
+  plan: ClassificationPlan,
+  baseOptions: Omit<RenderWavOptions, "maxRenderSeconds" | "renderSampleRate" | "maxRenderWallTimeMs" | "renderProfile">,
+  invokeRender: (options: RenderWavOptions) => Promise<RenderExecutionSummary | null | void>,
+): Promise<ClassificationRenderResult> {
+  const attempts = buildClassificationRenderAttempts(
+    resolveEffectiveMaxRenderSec(plan.config),
+    baseOptions.targetDurationMs,
+  );
+  const errors: string[] = [];
+
+  for (const attempt of attempts) {
+    await clearRenderArtifacts(baseOptions.wavFile);
+    try {
+      const summary = (await withRetry("building", async () => {
+        return await invokeRender({
+          ...baseOptions,
+          maxRenderSeconds: attempt.maxRenderSeconds,
+          renderSampleRate: attempt.renderSampleRate,
+          maxRenderWallTimeMs: attempt.maxRenderWallTimeMs,
+          renderProfile: attempt.profile,
+        });
+      })) ?? null;
+
+      await persistRenderedWavMetadata(baseOptions.wavFile, plan.config, attempt.maxRenderSeconds, {
+        renderProfile: attempt.profile,
+        renderSampleRate: attempt.renderSampleRate,
+        truncated: summary?.truncated ?? attempt.profile !== "full",
+        fallbackReason: errors.length > 0 ? errors.at(-1) ?? null : null,
+      });
+
+      return {
+        profile: attempt.profile,
+        summary,
+        degraded: attempt.profile !== "full" || (summary?.truncated ?? false),
+        metadataOnly: false,
+        errors,
+        renderSampleRate: attempt.renderSampleRate,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${attempt.profile}: ${message}`);
+      classifyLogger.warn(
+        `Render attempt ${attempt.profile} failed for ${path.basename(baseOptions.sidFile)}: ${message}`
+      );
+    }
+  }
+
+  const fallbackReason = errors.at(-1) ?? "render attempts exhausted";
+  await clearRenderArtifacts(baseOptions.wavFile);
+  await writeMetadataOnlyPlaceholderWav(baseOptions.sidFile, baseOptions.wavFile, plan.config, fallbackReason);
+  return {
+    profile: "metadata-only",
+    summary: null,
+    degraded: true,
+    metadataOnly: true,
+    errors,
+    renderSampleRate: METADATA_ONLY_SAMPLE_RATE,
+  };
 }
 
 function isRenderTimeoutOrCircuitBreakerError(error: unknown): boolean {
