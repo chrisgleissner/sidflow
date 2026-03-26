@@ -73,6 +73,9 @@ import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificati
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
 const classifyLogger = createLogger("classify");
+const DEFAULT_CLASSIFICATION_RENDER_ENGINE: RenderEngine = "wasm";
+let degradedSidplayfpCliWarningEmitted = false;
+let classifyWarningHook: ((message: string) => void) | null = null;
 
 /** Heartbeat interval for long-running operations (ms) */
 const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
@@ -89,18 +92,55 @@ function resolveMaxClassifySec(config: SidflowConfig): number {
     : DEFAULT_ANALYSIS_WINDOW_SEC;
 }
 
+function isDegradedSidplayfpCliClassificationAllowed(config: SidflowConfig): boolean {
+  return config.render?.allowDegradedSidplayfpCli === true;
+}
+
+function resolveClassificationPreferredEngine(
+  config: SidflowConfig,
+  options: { warnOnDegraded?: boolean } = {}
+): RenderEngine {
+  const preferredEngines = (config.render?.preferredEngines as RenderEngine[] | undefined) ?? [DEFAULT_CLASSIFICATION_RENDER_ENGINE];
+  const requestedEngine = preferredEngines[0] ?? DEFAULT_CLASSIFICATION_RENDER_ENGINE;
+
+  if (requestedEngine !== "wasm" && options.warnOnDegraded && !degradedSidplayfpCliWarningEmitted) {
+    const warningMessage = `Classification is using preferred engine "${requestedEngine}" instead of "wasm"; SID trace sidecars and SID-native features will be unavailable, so classification accuracy will be reduced.`;
+    classifyLogger.warn(warningMessage);
+    classifyWarningHook?.(warningMessage);
+    degradedSidplayfpCliWarningEmitted = true;
+  }
+
+  return requestedEngine;
+}
+
+function resolveClassificationFallbackEngine(config: SidflowConfig): RenderEngine | null {
+  if (!isDegradedSidplayfpCliClassificationAllowed(config)) {
+    return null;
+  }
+
+  const preferredEngines = (config.render?.preferredEngines as RenderEngine[] | undefined) ?? [DEFAULT_CLASSIFICATION_RENDER_ENGINE];
+  for (const engine of preferredEngines.slice(1)) {
+    if (engine === "sidplayfp-cli") {
+      return engine;
+    }
+  }
+
+  return null;
+}
+
 async function persistRenderedWavMetadata(
   wavFile: string,
   config: SidflowConfig,
   maxRenderSec: number,
 ): Promise<void> {
   const traceSidecar = await readSidTraceSidecar(wavFile);
+  const renderEngine = resolveClassificationPreferredEngine(config);
   await writeWavRenderSettingsSidecar(wavFile, {
     maxRenderSec: maxRenderSec,
     introSkipSec: resolveIntroSkipSec(config),
     maxClassifySec: resolveMaxClassifySec(config),
     sourceOffsetSec: (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0,
-    renderEngine: ((config.render?.preferredEngines as RenderEngine[] | undefined) ?? ["wasm"])[0] ?? "wasm",
+    renderEngine,
     traceCaptureEnabled: traceSidecar !== null,
     traceSidecarVersion: traceSidecar !== null ? SID_TRACE_SIDECAR_VERSION : null,
   });
@@ -172,7 +212,8 @@ function withFeatureExtractionPool(
   featureExtractor: FeatureExtractor
 ): FeatureExtractor {
   const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ["wasm"];
-  const hasWasm = preferredEngines.includes("wasm");
+  const selectedEngine = preferredEngines[0] ?? "wasm";
+  const hasWasm = selectedEngine === "wasm";
   const wantWorkers = plan.config.threads !== 1;
 
   if (!hasWasm || !wantWorkers) {
@@ -566,7 +607,7 @@ export async function needsWavRefresh(
   // If these settings change, the cache is no longer comparable/reproducible.
   try {
     const config = configOverride ?? (await loadConfig(process.env.SIDFLOW_CONFIG));
-    const selectedEngine = ((config.render?.preferredEngines as RenderEngine[] | undefined) ?? ["wasm"])[0] ?? "wasm";
+    const selectedEngine = resolveClassificationPreferredEngine(config);
     const desired: WavRenderSettingsSidecar = {
       v: 3,
       maxRenderSec: resolveEffectiveMaxRenderSec(config),
@@ -651,8 +692,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
   const config = await loadConfig(process.env.SIDFLOW_CONFIG);
   const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const defaultFormats = (config.render?.defaultFormats ?? ['wav']) as RenderFormat[];
-  const selectedEngine = preferredEngines[0] ?? 'wasm';
-  const useCli = selectedEngine === 'sidplayfp-cli';
+  const selectedEngine = resolveClassificationPreferredEngine(config, { warnOnDegraded: true });
   const maxClassifySeconds =
     typeof config.maxClassifySec === 'number' && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
       ? config.maxClassifySec
@@ -666,33 +706,51 @@ export const defaultRenderWav: RenderWav = async (options) => {
   const needsMultiFormat = defaultFormats.length > 1 || 
     (defaultFormats.length === 1 && defaultFormats[0] !== 'wav');
 
-  if (useCli && needsMultiFormat) {
-    // Use sidplayfp-cli via RenderOrchestrator for multi-format (fully implemented)
-    const audioEncoderConfig = config.render?.audioEncoder;
-    const orchestrator = new RenderOrchestrator({
-      sidplayfpCliPath: config.sidplayPath,
-      hvscRoot: config.sidPath,
-      m4aBitrate: config.render?.m4aBitrate,
-      flacCompressionLevel: config.render?.flacCompressionLevel,
-      audioEncoderImplementation: audioEncoderConfig?.implementation,
-      ffmpegWasmOptions: audioEncoderConfig?.wasm,
-    });
+  const renderWithSidplayfpCli = async (): Promise<void> => {
     const outputDir = path.dirname(options.wavFile);
     await ensureDir(outputDir);
-    
-    await orchestrator.render({
-      sidPath: options.sidFile,
-      outputDir,
-      engine: 'sidplayfp-cli',
-      formats: defaultFormats,
-      songIndex: options.songIndex,
-      maxRenderSeconds: options.maxRenderSeconds,
-      maxClassifySeconds,
-      introSkipSeconds,
-      targetDurationMs: options.targetDurationMs,
-    });
-    
-    // Rename WAV to expected location if needed
+
+    if (needsMultiFormat) {
+      const audioEncoderConfig = config.render?.audioEncoder;
+      const orchestrator = new RenderOrchestrator({
+        sidplayfpCliPath: config.sidplayPath,
+        hvscRoot: config.sidPath,
+        m4aBitrate: config.render?.m4aBitrate,
+        flacCompressionLevel: config.render?.flacCompressionLevel,
+        audioEncoderImplementation: audioEncoderConfig?.implementation,
+        ffmpegWasmOptions: audioEncoderConfig?.wasm,
+      });
+
+      await orchestrator.render({
+        sidPath: options.sidFile,
+        outputDir,
+        engine: 'sidplayfp-cli',
+        formats: defaultFormats,
+        songIndex: options.songIndex,
+        maxRenderSeconds: options.maxRenderSeconds,
+        maxClassifySeconds,
+        introSkipSeconds,
+        targetDurationMs: options.targetDurationMs,
+      });
+    } else {
+      const orchestrator = new RenderOrchestrator({
+        sidplayfpCliPath: config.sidplayPath,
+        hvscRoot: config.sidPath,
+      });
+
+      await orchestrator.render({
+        sidPath: options.sidFile,
+        outputDir,
+        engine: 'sidplayfp-cli',
+        formats: ['wav'],
+        songIndex: options.songIndex,
+        maxRenderSeconds: options.maxRenderSeconds,
+        maxClassifySeconds,
+        introSkipSeconds,
+        targetDurationMs: options.targetDurationMs,
+      });
+    }
+
     const baseName = path.basename(options.sidFile, '.sid');
     const trackSuffix = options.songIndex !== undefined ? `-${options.songIndex}` : '';
     const chip = config.render?.defaultChip ?? '6581';
@@ -703,18 +761,17 @@ export const defaultRenderWav: RenderWav = async (options) => {
       await fs.rename(renderedFile, options.wavFile);
     }
 
-    // Match WASM renderer behavior: write SID hash sidecar for cache validation.
     const hashFile = `${options.wavFile}${WAV_HASH_EXTENSION}`;
     try {
       const hash = await computeFileHash(options.sidFile);
-      await writeFile(hashFile, hash, "utf8");
+      await writeFile(hashFile, hash, 'utf8');
     } catch {
       // Best-effort only.
     }
 
     await writeWavRenderSettingsSidecar(options.wavFile, {
       maxRenderSec:
-        typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
+        typeof options.maxRenderSeconds === 'number' && Number.isFinite(options.maxRenderSeconds)
           ? options.maxRenderSeconds
           : resolveEffectiveMaxRenderSec(config),
       introSkipSec: introSkipSeconds,
@@ -724,102 +781,71 @@ export const defaultRenderWav: RenderWav = async (options) => {
       traceCaptureEnabled: false,
       traceSidecarVersion: null,
     });
-  } else if (useCli) {
-    // Use sidplayfp-cli via RenderOrchestrator for WAV-only
-    const orchestrator = new RenderOrchestrator({
-      sidplayfpCliPath: config.sidplayPath,
-      hvscRoot: config.sidPath,
-    });
-    const outputDir = path.dirname(options.wavFile);
-    await ensureDir(outputDir);
-    
-    await orchestrator.render({
-      sidPath: options.sidFile,
-      outputDir,
-      engine: 'sidplayfp-cli',
-      formats: ['wav'],
-      songIndex: options.songIndex,
-      maxRenderSeconds: options.maxRenderSeconds,
-      maxClassifySeconds,
-      introSkipSeconds,
-      targetDurationMs: options.targetDurationMs,
-    });
-    
-    // Rename to expected location
-    const baseName = path.basename(options.sidFile, '.sid');
-    const trackSuffix = options.songIndex !== undefined ? `-${options.songIndex}` : '';
-    const chip = config.render?.defaultChip ?? '6581';
-    const renderedFile = path.join(outputDir, `${baseName}${trackSuffix}-sidplayfp-cli-${chip}.wav`);
-    const renderedSettings = await readWavRenderSettingsSidecar(renderedFile);
-    if (renderedFile !== options.wavFile) {
-      const fs = await import('node:fs/promises');
-      await fs.rename(renderedFile, options.wavFile);
-    }
+  };
 
-    // Match WASM renderer behavior: write SID hash sidecar for cache validation.
-    const hashFile = `${options.wavFile}${WAV_HASH_EXTENSION}`;
-    try {
-      const hash = await computeFileHash(options.sidFile);
-      await writeFile(hashFile, hash, "utf8");
-    } catch {
-      // Best-effort only.
-    }
-
-    await writeWavRenderSettingsSidecar(options.wavFile, {
-      maxRenderSec:
-        typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
-          ? options.maxRenderSeconds
-          : resolveEffectiveMaxRenderSec(config),
-      introSkipSec: introSkipSeconds,
-      maxClassifySec: maxClassifySeconds,
-      sourceOffsetSec: renderedSettings?.sourceOffsetSec ?? 0,
-      renderEngine: 'sidplayfp-cli',
-      traceCaptureEnabled: false,
-      traceSidecarVersion: null,
-    });
+  if (selectedEngine === 'sidplayfp-cli') {
+    await renderWithSidplayfpCli();
   } else {
+    if (selectedEngine !== 'wasm') {
+      throw new Error(
+        `Classification render engine "${selectedEngine}" is not supported by defaultRenderWav. Use "wasm" or "sidplayfp-cli", or inject a custom render implementation.`
+      );
+    }
+
     // Use the WASM engine directly for WAV-only (no multi-format support yet)
     // Multi-format with WASM is marked as 'future' in render matrix
-    const engine = await createEngine();
-    await renderWavWithEngine(engine, options);
+    try {
+      const engine = await createEngine();
+      await renderWavWithEngine(engine, options);
 
-    // WASM can emit a short leading silent segment; trim a small prefix.
-    let sourceOffsetSec = 0;
-    const leadingTrim = await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
-    sourceOffsetSec += leadingTrim.startSec;
+      // WASM can emit a short leading silent segment; trim a small prefix.
+      let sourceOffsetSec = 0;
+      const leadingTrim = await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+      sourceOffsetSec += leadingTrim.startSec;
 
-    if (
-      typeof options.maxRenderSeconds === "number" &&
-      Number.isFinite(options.maxRenderSeconds) &&
-      options.maxRenderSeconds > 0 &&
-      typeof maxClassifySeconds === "number" &&
-      Number.isFinite(maxClassifySeconds) &&
-      maxClassifySeconds > 0
-    ) {
-      const representativeSlice = await sliceWavFileToRepresentativeStart(options.wavFile, {
-        maxWindowSeconds: maxClassifySeconds,
+      if (
+        typeof options.maxRenderSeconds === "number" &&
+        Number.isFinite(options.maxRenderSeconds) &&
+        options.maxRenderSeconds > 0 &&
+        typeof maxClassifySeconds === "number" &&
+        Number.isFinite(maxClassifySeconds) &&
+        maxClassifySeconds > 0
+      ) {
+        const representativeSlice = await sliceWavFileToRepresentativeStart(options.wavFile, {
+          maxWindowSeconds: maxClassifySeconds,
+          introSkipSec: introSkipSeconds,
+        });
+        sourceOffsetSec += representativeSlice.startSec;
+        const postSliceTrim = await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
+        sourceOffsetSec += postSliceTrim.startSec;
+      }
+
+      await writeWavRenderSettingsSidecar(options.wavFile, {
+        maxRenderSec:
+          typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
+            ? options.maxRenderSeconds
+            : resolveEffectiveMaxRenderSec(config),
         introSkipSec: introSkipSeconds,
+        maxClassifySec: maxClassifySeconds,
+        sourceOffsetSec,
+        renderEngine: 'wasm',
+        traceCaptureEnabled: options.captureTrace === true,
+        traceSidecarVersion: options.captureTrace === true ? SID_TRACE_SIDECAR_VERSION : null,
       });
-      sourceOffsetSec += representativeSlice.startSec;
-      const postSliceTrim = await trimLeadingSilenceWavFile(options.wavFile, { maxTrimSeconds: 2, threshold: 1e-4 });
-      sourceOffsetSec += postSliceTrim.startSec;
-    }
+      
+      // TODO: When WASM multi-format is implemented (render matrix status: mvp),
+      // add audio encoding here for defaultFormats containing flac/m4a
+    } catch (error) {
+      const fallbackEngine = resolveClassificationFallbackEngine(config);
+      if (fallbackEngine !== 'sidplayfp-cli') {
+        throw error;
+      }
 
-    await writeWavRenderSettingsSidecar(options.wavFile, {
-      maxRenderSec:
-        typeof options.maxRenderSeconds === "number" && Number.isFinite(options.maxRenderSeconds)
-          ? options.maxRenderSeconds
-          : resolveEffectiveMaxRenderSec(config),
-      introSkipSec: introSkipSeconds,
-      maxClassifySec: maxClassifySeconds,
-      sourceOffsetSec,
-      renderEngine: 'wasm',
-      traceCaptureEnabled: options.captureTrace === true,
-      traceSidecarVersion: options.captureTrace === true ? SID_TRACE_SIDECAR_VERSION : null,
-    });
-    
-    // TODO: When WASM multi-format is implemented (render matrix status: mvp),
-    // add audio encoding here for defaultFormats containing flac/m4a
+      classifyLogger.warn(
+        `WASM classification render failed for ${path.basename(options.sidFile)}; falling back to sidplayfp-cli because render.allowDegradedSidplayfpCli=true. SID trace sidecars and SID-native features will be unavailable.`
+      );
+      await renderWithSidplayfpCli();
+    }
   }
 };
 
@@ -868,6 +894,7 @@ export async function buildAudioCache(
   options: BuildAudioCacheOptions = {}
 ): Promise<BuildAudioCacheResult> {
   const startTime = Date.now();
+  resolveClassificationPreferredEngine(plan.config, { warnOnDegraded: true });
   const shouldForce = options.forceRebuild ?? plan.forceRebuild;
   
   // If force rebuild is requested, delete all existing audio files first
@@ -1002,8 +1029,7 @@ export async function buildAudioCache(
   // Only use WasmRendererPool if using default render AND first preferred engine is WASM,
   // and only when there is actual render work to do (workers are expensive and can fail fast
   // in non-rendering runs).
-  const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
-  const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
+  const shouldUsePool = render === defaultRenderWav && resolveClassificationPreferredEngine(plan.config) === 'wasm';
   const rendererPool = shouldUsePool && songsToRender.length > 0 ? new WasmRendererPool(buildConcurrency) : null;
 
   // Circuit breaker: skip remaining sub-songs of a SID file after render timeout.
@@ -1622,6 +1648,7 @@ export async function generateAutoTags(
   options: GenerateAutoTagsOptions = {}
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
+  const classificationRenderEngine = resolveClassificationPreferredEngine(plan.config, { warnOnDegraded: true });
   // Circuit breaker: skip remaining sub-songs of a SID file if any sub-song render times out.
   // Declared at function top level so it's accessible in metrics at the end.
   const timedOutRenderSids = new Set<string>();
@@ -1664,7 +1691,7 @@ export async function generateAutoTags(
   // work on the main thread. Without the pool (threads=1 / no WASM) we fall back
   // to the hybrid extractor which runs SID-native on the main thread.
   const poolIsActive = !options.featureExtractor
-    && ((plan.config.render?.preferredEngines as RenderEngine[] | undefined) ?? ["wasm"]).includes("wasm")
+    && classificationRenderEngine === "wasm"
     && plan.config.threads !== 1;
   const featureExtractor = options.featureExtractor
     ? wavFeatureExtractor
@@ -1962,8 +1989,7 @@ export async function generateAutoTags(
 
   // Renderer pool for inline WAV rendering during tagging phase.
   // Lazily instantiated only if a missing WAV forces rendering.
-  const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
-  const shouldUsePool = render === defaultRenderWav && preferredEngines[0] === 'wasm';
+  const shouldUsePool = render === defaultRenderWav && classificationRenderEngine === 'wasm';
   let rendererPool: WasmRendererPool | null = null;
   const emitTaggingProgress = (currentFile?: string): void => {
     if (!onProgress) {
@@ -1997,8 +2023,7 @@ export async function generateAutoTags(
       auto_key: string;
     };
 
-    const preferredEnginesForRecords = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ["wasm"];
-    const renderEngineForRecords = preferredEnginesForRecords[0] ?? "wasm";
+    const renderEngineForRecords = classificationRenderEngine;
 
     const builder = new DeterministicRatingModelBuilder();
     const intermediateBuffer = new Map<number, IntermediateRecord>();
@@ -2901,6 +2926,14 @@ export function __setClassifyTestOverrides(overrides?: {
 }): void {
   parseSidFileImpl = overrides?.parseSidFile ?? parseSidFile;
   setEngineFactoryOverride(overrides?.createEngine ?? null);
+}
+
+export function __resetClassifyWarningState(): void {
+  degradedSidplayfpCliWarningEmitted = false;
+}
+
+export function __setClassifyWarningHook(hook?: (message: string) => void): void {
+  classifyWarningHook = hook ?? null;
 }
 
 // Re-export Essentia.js and TensorFlow.js implementations

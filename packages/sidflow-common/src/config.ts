@@ -29,6 +29,7 @@ export interface RenderSettings {
   outputPath?: string;
   defaultFormats?: RenderFormat[];
   preferredEngines?: RenderEngine[];
+  allowDegradedSidplayfpCli?: boolean;
   defaultChip?: SidChipModel;
   m4aBitrate?: number;
   flacCompressionLevel?: number;
@@ -83,8 +84,6 @@ export const DEFAULT_CONFIG_FILENAME = ".sidflow.json";
 
 let cachedConfig: SidflowConfig | null = null;
 let cachedPath: string | null = null;
-// sidplayPath deprecation warning REMOVED - this config key is still required
-// for sidplayfp-cli renderer which is the preferred default engine.
 
 export class SidflowConfigError extends Error {
   declare cause?: unknown;
@@ -161,10 +160,6 @@ export async function loadConfig(configPath?: string): Promise<SidflowConfig> {
     const normalizedOverride = path.normalize(overrideSidBase);
     config.sidPath = normalizedOverride;
   }
-
-  // NOTE: sidplayPath is NOT deprecated - it's required for sidplayfp-cli renderer
-  // which is the preferred default engine for classification and multi-format rendering.
-  // The deprecation warning was incorrect and has been removed.
 
   // Update both legacy and enhanced caches
   cachedConfig = config;
@@ -327,6 +322,15 @@ function parseRenderSettings(value: unknown, configPath: string): RenderSettings
       }
       return entry as RenderEngine;
     });
+  }
+
+  if (record.allowDegradedSidplayfpCli !== undefined) {
+    if (typeof record.allowDegradedSidplayfpCli !== "boolean") {
+      throw new SidflowConfigError(
+        `Config key "render.allowDegradedSidplayfpCli" must be a boolean`
+      );
+    }
+    settings.allowDegradedSidplayfpCli = record.allowDegradedSidplayfpCli;
   }
 
   if (record.defaultChip !== undefined) {

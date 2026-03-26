@@ -84,9 +84,13 @@ function resolveGitCommit(): string {
   }
 }
 
-/** Current process heap usage in whole megabytes. */
+/** Current process heap usage in whole megabytes. Returns -1 if unavailable. */
 function captureMemoryMB(): number {
-  return Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  try {
+    return Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  } catch {
+    return -1;
+  }
 }
 
 let _lastCpuSnapshot: { user: number; system: number; time: number } | null = null;
@@ -97,18 +101,22 @@ let _lastCpuSnapshot: { user: number; system: number; time: number } | null = nu
  * This is a lightweight process.cpuUsage() delta — not per-worker.
  */
 export function captureCpuPercent(): number {
-  const now = Date.now();
-  const cpu = process.cpuUsage();
-  if (_lastCpuSnapshot === null) {
+  try {
+    const now = Date.now();
+    const cpu = process.cpuUsage();
+    if (_lastCpuSnapshot === null) {
+      _lastCpuSnapshot = { user: cpu.user, system: cpu.system, time: now };
+      return 0;
+    }
+    const elapsedUs = (now - _lastCpuSnapshot.time) * 1000; // ms → µs
+    if (elapsedUs <= 0) return 0;
+    const userDelta = cpu.user - _lastCpuSnapshot.user;
+    const systemDelta = cpu.system - _lastCpuSnapshot.system;
     _lastCpuSnapshot = { user: cpu.user, system: cpu.system, time: now };
-    return 0;
+    return Math.min(100, Math.round(((userDelta + systemDelta) / elapsedUs) * 100));
+  } catch {
+    return -1;
   }
-  const elapsedUs = (now - _lastCpuSnapshot.time) * 1000; // ms → µs
-  if (elapsedUs <= 0) return 0;
-  const userDelta = cpu.user - _lastCpuSnapshot.user;
-  const systemDelta = cpu.system - _lastCpuSnapshot.system;
-  _lastCpuSnapshot = { user: cpu.user, system: cpu.system, time: now };
-  return Math.min(100, Math.round(((userDelta + systemDelta) / elapsedUs) * 100));
 }
 
 function computeMedian(values: readonly number[]): number {

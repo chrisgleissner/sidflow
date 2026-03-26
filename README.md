@@ -255,7 +255,7 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
-Classifying all 60,572 SID songs (as of HVSC version 84 in March 2026) takes about 80 minutes on an Intel 14600K CPU using Kubuntu 24.04:
+Classifying all 60,572 SID songs (as of HVSC version 84 in March 2026) takes about 3 hours on an Intel 14600K CPU using Kubuntu 24.04:
 
 ```bash
 bash scripts/run-similarity-export.sh --mode local --full-rerun true
