@@ -135,6 +135,7 @@ keeping changes minimal and localized.
 - 2026-03-26: Confirmed active-frame and waveform-ratio defects live in `packages/sidflow-classify/src/sid-native-features.ts`.
 - 2026-03-26: Adjusted renderer enforcement approach after review: classification now preserves the user's configured preferred engine, warns once when a non-WASM engine is explicitly selected, and only allows automatic fallback from failed WASM renders to `sidplayfp-cli` when `render.allowDegradedSidplayfpCli=true`.
 - 2026-03-26: Focused validation passed: `bun test packages/sidflow-classify/test/index.test.ts packages/sidflow-classify/test/sid-native-features.test.ts` completed with 28 passing tests and 0 failures.
+- 2026-03-26: CI-equivalent Playwright reproduction exposed a separate merge blocker: admin E2E pages were loading unauthenticated because the admin session cookie was scoped to `/admin` while the same session was also required for `/api/admin/*`. Updated the cookie scope to `/` in middleware and Playwright test seeding.
 
 ### Decision Log
 - 2026-03-26: Scope renderer enforcement to the classification pipeline, not the standalone render CLI, because the reported defects are classification-specific and the render CLI intentionally supports multi-engine fallback for manual rendering.

@@ -106,3 +106,9 @@ QUEUED → STARTED → RENDERING → RENDERED → EXTRACTING → EXTRACTED
                 - explicit degraded fallback to `sidplayfp-cli`
                 - graceful sidecar-missing degradation
                 - silent-frame and waveform-ratio fixes
+
+### Merge-readiness follow-up
+1. Reproduced the failing CI Playwright lane locally with `BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium`.
+2. The shared failure mode was not missing UI; admin pages were receiving `{"error":"unauthorized","reason":"missing-token"}`.
+3. Root cause: the admin session cookie was issued for `/admin` only, but middleware also required that same session for `/api/admin/*`, so admin page data fetches were unauthenticated.
+4. Fix direction: expand the admin session cookie scope to `/` and keep Playwright's seeded admin session aligned with the same path.
