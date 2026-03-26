@@ -1,6 +1,22 @@
 # Changelog
 
 
+## 0.5.5 (2026-03-26)
+
+- Merge pull request #88 from chrisgleissner/copilot/implement-per-song-logging
+- feat: update classification E2E tests with cache-complete fixtures and add five-profile station regression
+- Refactor E2E tests to use seedClassificationCacheEntry utility
+- fix: update admin session cookie path to cover both admin pages and APIs
+- Add validation scripts for HVSC similarity export and quality
+- feat: enhance classification logging and filtering in E2E tests
+- feat: implement per-song lifecycle logging for classification pipeline
+- feat: add classification slowdown telemetry
+- chore: initialize slowdown investigation plan
+- Initial plan
+- Updated logs in README.md
+- chore: update CHANGES.md for 0.5.4
+
+
 ## 0.5.4 (2026-03-24)
 
 - Merge pull request #87 from chrisgleissner/fix/direct-sid-classification
