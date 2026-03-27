@@ -9,7 +9,6 @@ import { readdir, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { connect, type Table } from "vectordb";
 import type { ClassificationRecord, FeedbackRecord, FeedbackAction } from "./jsonl-schema.js";
 import { FEEDBACK_WEIGHTS } from "./jsonl-schema.js";
 import { DEFAULT_RATING } from "./ratings.js";
@@ -284,7 +283,9 @@ export async function buildDatabase(
     toDatabaseRecord(classification, feedbackAggregates.get(classification.sid_path))
   );
   
-  // Connect to LanceDB and create/replace table
+  // Connect to LanceDB and create/replace table (dynamic import avoids loading the
+  // NAPI module in every worker thread that imports @sidflow/common)
+  const { connect } = await import("vectordb");
   const db = await connect(dbPath);
   
   // Count unique classification files (approximate based on average records per file)
