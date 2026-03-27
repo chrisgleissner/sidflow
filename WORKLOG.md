@@ -1,5 +1,86 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-27T19:05Z — Phase 17 discovery: authoritative CLI contract and remaining acceptance gaps
+
+### Commands and entrypoints confirmed
+1. The README defines the authoritative full-corpus workflow as `bash scripts/run-similarity-export.sh --mode local --full-rerun true`.
+2. `scripts/run-similarity-export.sh` is the real operator wrapper. In local mode it boots the local web/server runtime, triggers `/api/classify`, waits for progress completion, then runs the similarity export builder.
+3. The actual classification CLI is `scripts/sidflow-classify`, which calls `packages/sidflow-classify/src/cli.ts`; the core orchestration lives in `packages/sidflow-classify/src/index.ts`.
+4. The export stage is `sidflow-play export-similarity`, implemented by `packages/sidflow-play/src/similarity-export-cli.ts` and the shared export builder in `@sidflow/common`.
+5. The station CLI wrapper is `./scripts/sid-station.sh`, which delegates to `scripts/sidflow-play station`; the station runtime lives under `packages/sidflow-play/src/station/`.
+
+### Classification success contract confirmed from code
+1. A successful classification item is subtune-level, not file-level, when a SID contains multiple songs. `collectSidMetadataAndSongCount()` in `packages/sidflow-classify/src/index.ts` computes `totalSongs`, and `generateAutoTags()` enqueues one job per subtune. This explains why README can cite about 60,572 SID files while progress totals can report about 87,074 classification items.
+2. A strict successful item currently requires:
+   - rendered WAV cache output (or a validated cache hit)
+   - WAV render settings sidecar
+   - SID trace sidecar when using the strict hybrid classify path
+   - merged WAV plus SID-native feature vector
+   - final classification record persisted to JSONL and auto-tags output
+3. SID trace sidecars are written and read in `packages/sidflow-classify/src/render/wav-renderer.ts` as `*.trace.jsonl` next to the WAV.
+4. SID-native features are extracted through `packages/sidflow-classify/src/sid-native-features.ts`; the strict path is `createStrictHybridFeatureExtractor()`, which requires both WAV-derived and SID-native extraction to succeed.
+5. Final classification persistence happens in the deferred second pass inside `generateAutoTags()` in `packages/sidflow-classify/src/index.ts`, which writes JSONL records and auto-tags files.
+
+### Fatal defect classes confirmed
+1. Exhausted render attempts are fatal inside `renderSongWithFallbacks()` in `packages/sidflow-classify/src/index.ts`; the call now throws an `AggregateError` instead of generating metadata-only placeholder output.
+2. Missing or invalid SID trace sidecars are fatal through `defaultSidWriteTraceProvider()` in `packages/sidflow-classify/src/sid-native-features.ts` when the strict hybrid path is used.
+3. Feature extraction failures are fatal in `generateAutoTags()` and `packages/sidflow-classify/src/feature-extraction-worker.ts`; the worker now uses `Promise.all()` instead of a degrade-open merge.
+4. The renderer pool no longer has a parent-side per-job timeout in `packages/sidflow-classify/src/render/wasm-render-pool.ts`; cooperative render bounds in the renderer own timeout/truncation so trace sidecars can flush completely.
+
+### Remaining acceptance gaps before completion
+1. `scripts/run-similarity-export.sh` still needs end-to-end proof that it exits non-zero on the first real classification defect through the web/API wrapper path, not just the lower-level classify CLI.
+2. Full-corpus evidence does not yet exist for zero timeout failures, zero trace-sidecar failures, and zero incomplete classifications across the entire HVSC run.
+3. Persona station validation has helper code in-tree, but it still needs to be executed sequentially against the final export and recorded as proof.
+
+## 2026-03-27T18:35Z — Fail-fast restoration for render/trace correctness
+
+### User-reported defect
+1. The current full run was producing normal-looking classification progress while silently degrading regular HVSC songs such as `Fate_II.sid`, `Competition_Entries.sid`, `Garfield.sid`, and `Hardcastle.sid`.
+2. The visible symptom was repeated `Render attempt ... timed out after 6800ms/7700ms` messages followed by `SID-native feature extraction unavailable ... Missing or invalid SID trace sidecar ... continuing with WAV-only features`.
+3. That behavior violated the stricter acceptance contract: if render attempts exhaust or the SID trace sidecar is missing/invalid, the run must fail immediately instead of emitting partial classification records.
+
+### Root cause
+1. `packages/sidflow-classify/src/index.ts` still converted exhausted render attempts into metadata-only placeholder WAVs and metadata-only feature vectors, so the run could continue after an actual render failure.
+2. `packages/sidflow-classify/src/sid-native-features.ts` and `packages/sidflow-classify/src/feature-extraction-worker.ts` still had hybrid merge paths that treated SID-native extraction failure as non-fatal and silently emitted WAV-only features.
+3. `packages/sidflow-classify/src/render/wasm-render-pool.ts` still had a second parent-side timeout layer. It could kill a worker before `renderWavWithEngine()` had finished flushing the trace sidecar footer, which directly explains the subsequent `Missing or invalid SID trace sidecar` errors.
+4. The internal wall-clock heuristic in `computeRenderWallTimeBudgetMs()` had been driven down to an unrealistic 4-18s range, which was far too aggressive for ordinary multi-song Baldwin_Neil files.
+
+### Code changes
+1. `packages/sidflow-classify/src/index.ts`
+   - Removed metadata-only placeholder WAV creation and metadata-only feature fallback from the classification path.
+   - `renderSongWithFallbacks()` now throws once all ordered render attempts are exhausted.
+   - `generateAutoTags()` now throws on feature extraction failure instead of emitting `feature_extraction_fallback`.
+   - Default classify flows now use a strict WAV+SID merge path, so SID-native extraction failure is fatal.
+   - Raised the internal cooperative wall-clock budget heuristic to a playback-scaled 15-60s window.
+2. `packages/sidflow-classify/src/sid-native-features.ts`
+   - Added `createStrictHybridFeatureExtractor()` for classification paths that require both WAV-derived and SID-native features to succeed.
+3. `packages/sidflow-classify/src/feature-extraction-worker.ts`
+   - Switched worker-thread extraction from `Promise.allSettled()` degrade-open behavior to `Promise.all()` fail-fast behavior.
+4. `packages/sidflow-classify/src/render/wasm-render-pool.ts`
+   - Removed the parent-side per-job timeout guard so the renderer's own cooperative bound owns truncation and trace flushing.
+5. Tests
+   - Updated `packages/sidflow-classify/test/render-timeout.test.ts` to require fail-fast behavior on render or extraction failure.
+   - Extended `packages/sidflow-classify/test/sid-native-features.test.ts` with a strict-hybrid missing-trace regression.
+
+### Validation
+1. `bun run build:quick` — PASS
+2. `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/sid-native-features.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts` — PASS (`18 pass`, `0 fail`)
+3. Real HVSC Baldwin_Neil repro under clean temp configs — PASS
+   - Command family: `bash scripts/sidflow-classify --config <temp-config> --force-rebuild --sid-path-prefix <exact-target>`
+   - Targets:
+     - `C64Music/MUSICIANS/B/Baldwin_Neil/Fate_II.sid`
+     - `C64Music/MUSICIANS/B/Baldwin_Neil/Competition_Entries.sid`
+     - `C64Music/MUSICIANS/B/Baldwin_Neil/Garfield.sid`
+     - `C64Music/MUSICIANS/B/Baldwin_Neil/Hardcastle.sid`
+   - Results:
+     - no `timed out`, `render_failed`, `feature_extraction_failed`, or missing-trace log lines
+     - every rendered WAV had a `.trace.jsonl` sidecar
+     - every emitted classification record had `features.sidFeatureVariant="sid-native"`
+     - no output record was marked degraded for these repro songs
+
+### Operational note
+1. The in-flight full `run-similarity-export.sh` session that had started before this contract change was no longer valid evidence and was stopped through `bash scripts/stop-similarity-export.sh`.
+
 ## 2026-03-27T10:30Z — Phase 15 takeover: audit and next validation gates
 
 ### Tree state at handoff
@@ -73,6 +154,30 @@
 ### Remaining gap
 1. The full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` acceptance run for all 60,582 target songs has not been completed yet in this session.
 2. The five-persona downstream station proof still needs to be re-run against the final full-corpus output.
+
+## 2026-03-27T17:25Z — Full-corpus run launched, persona CLI validator prepared
+
+### Full wrapper run status
+1. Launched `bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 4`.
+2. Early checkpoint:
+   - progress API: `processedFiles=5525`, `totalFiles=87074`, `skippedFiles=0`, `phase=tagging`
+   - live worker state shows all 4 threads active with no stale workers
+   - telemetry snapshot from `data/classified/classification_2026-03-27_17-20-12-961.events.jsonl` at that point:
+     - `song_start=5536`
+     - `render_complete=5534`
+     - `feature_extraction_complete=5532`
+     - `features_persisted=5524`
+     - `peakRssMb=1824`
+
+### Persona radio validation preparation
+1. Added `scripts/validate-persona-radio.ts`.
+2. The script is designed to run against the real exported SQLite bundle and the real station CLI/runtime:
+   - choose 5 distinct personas from disjoint rating/taste buckets in the export DB
+   - pick 10 seed songs per persona
+   - persist those 10 ratings into the station-selection state used by the CLI
+   - run `runStationCli()` five times with `playback=none`
+   - rebuild each station queue and reject any cross-persona contamination or shared station tracks
+3. `bun run build:quick` passed after adding the script.
 
 ## 2026-03-27T00:15Z — Phase 15: Fallback and Worker-Pool Refactor
 

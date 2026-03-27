@@ -174,24 +174,36 @@ describe("generateAutoTags resilience", () => {
     }
   });
 
-  test("completes classification with metadata-only fallback when rendering and extraction fail", async () => {
-    const { root, plan } = await createTestPlan("sidflow-metadata-fallback-");
+  test("fails fast when rendering fails", async () => {
+    const { root, plan } = await createTestPlan("sidflow-render-fail-fast-");
     try {
-      const result = await generateAutoTags(plan, {
+      await expect(generateAutoTags(plan, {
+        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+        featureExtractor: heuristicFeatureExtractor,
+        predictRatings: heuristicPredictRatings,
+        render: async () => {
+          throw new Error("forced render failure");
+        },
+      })).rejects.toThrow(/forced render failure/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails fast when feature extraction fails", async () => {
+    const { root, plan } = await createTestPlan("sidflow-extract-fail-fast-");
+    try {
+      await expect(generateAutoTags(plan, {
         extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
         featureExtractor: async () => {
           throw new Error("forced extraction failure");
         },
         predictRatings: heuristicPredictRatings,
-        render: async () => {
-          throw new Error("forced render failure");
+        render: async ({ wavFile }) => {
+          await ensureDir(dirname(wavFile));
+          await writeFile(wavFile, silentWavBuffer());
         },
-      });
-
-      expect(result.jsonlRecordCount).toBe(1);
-      expect(result.metrics.renderedFallbackCount).toBe(1);
-      expect(result.metrics.metadataOnlyCount).toBe(1);
-      expect(result.autoTagged.length + result.manualEntries.length + result.mixedEntries.length).toBe(1);
+      })).rejects.toThrow(/forced extraction failure/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -112,6 +112,51 @@ describe("buildAudioCache (cache-hit preserves WAV)", () => {
     const sidHash = await computeFileHash(sidFile);
     await writeFile(hashFile, sidHash, "utf8");
 
+    // needsWavRefresh now requires a matching render-settings sidecar.
+    // Values are computed to match what resolveEffectiveMaxRenderSec / resolveIntroSkipSec
+    // / resolveMaxClassifySec return for the test config:
+    //   introSkipSec = 15 (DEFAULT_ANALYSIS_SKIP_SEC, not set in config)
+    //   maxClassifySec = 10 (from test config)
+    //   maxRenderSec = Math.max(20, 15 + 10) = 25
+    //   renderEngine = "wasm" (default)
+    const renderSettingsFile = `${wavFile}.render.json`;
+    await writeFile(
+      renderSettingsFile,
+      JSON.stringify({
+        v: 3,
+        maxRenderSec: 25,
+        introSkipSec: 15,
+        maxClassifySec: 10,
+        sourceOffsetSec: 0,
+        renderEngine: "wasm",
+        traceCaptureEnabled: true,
+        traceSidecarVersion: 1,
+        renderProfile: null,
+        renderSampleRate: null,
+        truncated: false,
+        fallbackReason: null,
+      }) + "\n",
+      "utf8"
+    );
+
+    // needsWavRefresh also requires a trace sidecar when the engine is "wasm".
+    const traceFile = `${wavFile}.trace.jsonl`;
+    await writeFile(
+      traceFile,
+      [
+        JSON.stringify({
+          kind: "header",
+          v: 1,
+          format: "sid-trace-jsonl",
+          clock: "PAL",
+          skipSeconds: 15,
+          analysisSeconds: 10,
+        }),
+        JSON.stringify({ kind: "footer", eventCount: 0, batchCount: 0 }),
+      ].join("\n") + "\n",
+      "utf8"
+    );
+
     // Make SID older than WAV so mtime doesn't trigger a rebuild.
     const now = new Date();
     const sidTime = new Date(now.getTime() - 60_000);

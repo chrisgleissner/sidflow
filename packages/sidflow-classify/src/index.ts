@@ -45,7 +45,6 @@ import {
   SID_TRACE_EXTENSION,
   SID_TRACE_SIDECAR_VERSION,
   computeFileHash,
-  encodePcmToWav,
   readSidTraceSidecar,
   renderWavWithEngine,
   type RenderExecutionSummary,
@@ -60,7 +59,7 @@ import {
 } from "./audio-window.js";
 export * from "./sid-register-trace.js";
 export * from "./sid-native-features.js";
-import { createHybridFeatureExtractor, createSidNativeFeatureExtractor } from "./sid-native-features.js";
+import { createSidNativeFeatureExtractor, createStrictHybridFeatureExtractor } from "./sid-native-features.js";
 import {
   WAV_RENDER_SETTINGS_EXTENSION,
   readWavRenderSettingsSidecar,
@@ -77,7 +76,6 @@ const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
 const classifyLogger = createLogger("classify");
 const DEFAULT_CLASSIFICATION_RENDER_ENGINE: RenderEngine = "wasm";
-const METADATA_ONLY_SAMPLE_RATE = 11_025;
 const FULL_RENDER_SAMPLE_RATE = 44_100;
 const LOW_RENDER_SAMPLE_RATE = 22_050;
 const MINIMAL_RENDER_SAMPLE_RATE = 11_025;
@@ -293,10 +291,10 @@ function getProcessRssMb(): number {
   }
 }
 
-type ClassificationRenderProfile = "full" | "reduced-duration" | "low-sample-rate" | "minimal-snippet" | "metadata-only";
+type ClassificationRenderProfile = "full" | "reduced-duration" | "low-sample-rate" | "minimal-snippet";
 
 interface ClassificationRenderAttempt {
-  profile: Exclude<ClassificationRenderProfile, "metadata-only">;
+  profile: ClassificationRenderProfile;
   maxRenderSeconds: number;
   renderSampleRate: number;
   maxRenderWallTimeMs: number;
@@ -306,17 +304,18 @@ interface ClassificationRenderResult {
   profile: ClassificationRenderProfile;
   summary: RenderExecutionSummary | null;
   degraded: boolean;
-  metadataOnly: boolean;
   errors: string[];
   renderSampleRate: number;
 }
 
 function computeRenderWallTimeBudgetMs(maxRenderSeconds: number, renderSampleRate: number): number {
   const boundedSeconds = Math.max(1, maxRenderSeconds);
-  const sampleRateScale = renderSampleRate / FULL_RENDER_SAMPLE_RATE;
+  const sampleRateScale = Math.max(0.25, renderSampleRate / FULL_RENDER_SAMPLE_RATE);
+  const realtimeBudgetMs = boundedSeconds * 1000;
+  const scaledBudgetMs = realtimeBudgetMs * (1.25 + sampleRateScale);
   return Math.max(
-    4_000,
-    Math.min(18_000, Math.round(3_000 + boundedSeconds * 450 * Math.max(0.5, sampleRateScale)))
+    15_000,
+    Math.min(60_000, Math.round(8_000 + scaledBudgetMs))
   );
 }
 
@@ -384,38 +383,6 @@ async function clearRenderArtifacts(wavFile: string): Promise<void> {
   ]);
 }
 
-async function writeMetadataOnlyPlaceholderWav(
-  sidFile: string,
-  wavFile: string,
-  config: SidflowConfig,
-  reason: string,
-): Promise<void> {
-  await ensureDir(path.dirname(wavFile));
-  const placeholder = encodePcmToWav(new Int16Array(METADATA_ONLY_SAMPLE_RATE), METADATA_ONLY_SAMPLE_RATE, 1);
-  await writeFile(wavFile, placeholder);
-
-  try {
-    const hash = await computeFileHash(sidFile);
-    await writeFile(`${wavFile}${WAV_HASH_EXTENSION}`, hash, "utf8");
-  } catch {
-    // Best-effort only.
-  }
-
-  await writeWavRenderSettingsSidecar(wavFile, {
-    maxRenderSec: resolveEffectiveMaxRenderSec(config),
-    introSkipSec: resolveIntroSkipSec(config),
-    maxClassifySec: resolveMaxClassifySec(config),
-    sourceOffsetSec: 0,
-    renderEngine: resolveClassificationPreferredEngine(config),
-    traceCaptureEnabled: false,
-    traceSidecarVersion: null,
-    renderProfile: "metadata-only",
-    renderSampleRate: METADATA_ONLY_SAMPLE_RATE,
-    truncated: true,
-    fallbackReason: reason,
-  });
-}
-
 async function renderSongWithFallbacks(
   plan: ClassificationPlan,
   baseOptions: Omit<RenderWavOptions, "maxRenderSeconds" | "renderSampleRate" | "maxRenderWallTimeMs" | "renderProfile">,
@@ -451,7 +418,6 @@ async function renderSongWithFallbacks(
         profile: attempt.profile,
         summary,
         degraded: attempt.profile !== "full" || (summary?.truncated ?? false),
-        metadataOnly: false,
         errors,
         renderSampleRate: attempt.renderSampleRate,
       };
@@ -464,17 +430,11 @@ async function renderSongWithFallbacks(
     }
   }
 
-  const fallbackReason = errors.at(-1) ?? "render attempts exhausted";
   await clearRenderArtifacts(baseOptions.wavFile);
-  await writeMetadataOnlyPlaceholderWav(baseOptions.sidFile, baseOptions.wavFile, plan.config, fallbackReason);
-  return {
-    profile: "metadata-only",
-    summary: null,
-    degraded: true,
-    metadataOnly: true,
-    errors,
-    renderSampleRate: METADATA_ONLY_SAMPLE_RATE,
-  };
+  throw new AggregateError(
+    errors.map((message) => new Error(message)),
+    `Render attempts exhausted for ${baseOptions.sidFile}: ${errors.join(" | ")}`
+  );
 }
 
 async function runConcurrent<T>(
@@ -1382,7 +1342,6 @@ export async function buildAudioCache(
 
         if (
           renderResult &&
-          !renderResult.metadataOnly &&
           typeof targetDurationMs === "number" &&
           Number.isFinite(targetDurationMs) &&
           targetDurationMs > 0
@@ -1402,9 +1361,6 @@ export async function buildAudioCache(
         rendered.push(wavFile);
         if (renderResult.degraded) {
           degradedRendered += 1;
-        }
-        if (renderResult.metadataOnly) {
-          metadataOnlyRendered += 1;
         }
         if (rendered.length <= 3) {
           classifyLogger.debug(
@@ -1707,48 +1663,6 @@ export const defaultPredictRatings: PredictRatings = async (options) => {
   return heuristicPredictRatings(options);
 };
 
-function computeMetadataSeed(value: string): number {
-  let seed = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    seed = (seed * 31 + value.charCodeAt(index)) % 1_000_000;
-  }
-  return seed;
-}
-
-async function buildMetadataOnlyFeatureVector(job: AutoTagJob): Promise<FeatureVector> {
-  const sidStats = await stat(job.sidFile);
-  const settings = await readWavRenderSettingsSidecar(job.wavPath);
-  const basename = path.basename(job.sidFile);
-  const durationSec = Math.max(1, Math.min(8, Math.round((job.targetDurationMs ?? 5_000) / 1000)));
-
-  return {
-    energy: 0,
-    rms: 0,
-    zeroCrossingRate: 0,
-    bpm: 60,
-    confidence: 0.1,
-    spectralCentroid: 0,
-    spectralCentroidStd: 0,
-    spectralRolloff: 0,
-    spectralFluxMean: 0,
-    pitchSalience: 0,
-    inharmonicity: 0,
-    lowFrequencyEnergyRatio: 0,
-    sampleRate: settings?.renderSampleRate ?? METADATA_ONLY_SAMPLE_RATE,
-    analysisSampleRate: settings?.renderSampleRate ?? METADATA_ONLY_SAMPLE_RATE,
-    duration: durationSec,
-    analysisWindowSec: Math.min(durationSec, DEFAULT_ANALYSIS_WINDOW_SEC),
-    analysisStartSec: 0,
-    numSamples: (settings?.renderSampleRate ?? METADATA_ONLY_SAMPLE_RATE) * durationSec,
-    featureSetVersion: FEATURE_SCHEMA_VERSION,
-    featureVariant: "metadata-only",
-    wavBytes: 0,
-    sidBytes: sidStats.size,
-    nameSeed: computeMetadataSeed(basename),
-    sidFeatureVariant: "heuristic",
-  };
-}
-
 function metadataToJson(metadata: SidMetadata): Record<string, JsonValue> {
   const record: Record<string, JsonValue> = {};
   if (metadata.title) {
@@ -1941,7 +1855,7 @@ export async function generateAutoTags(
     ? wavFeatureExtractor
     : poolIsActive
       ? wavFeatureExtractor
-      : createHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
+      : createStrictHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
   const predictRatingsOverride = options.predictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
@@ -2451,16 +2365,12 @@ export async function generateAutoTags(
           if (renderResult.degraded) {
             renderedFallbackCount += 1;
           }
-          if (renderResult.metadataOnly) {
-            metadataOnlyCount += 1;
-          }
           peakRssMb = Math.max(peakRssMb, getProcessRssMb());
           emitSongEvent("render_complete", {
             durationMs: Date.now() - buildStartedAt,
             wavPath: job.wavPath,
             renderProfile: renderResult.profile,
             degraded: renderResult.degraded,
-            metadataOnly: renderResult.metadataOnly,
             rssMb: getProcessRssMb(),
           });
           classifyLogger.debug(
@@ -2473,7 +2383,6 @@ export async function generateAutoTags(
             extra: {
               renderProfile: renderResult.profile,
               degraded: renderResult.degraded,
-              metadataOnly: renderResult.metadataOnly,
             }
           });
         } catch (renderError) {
@@ -2496,7 +2405,6 @@ export async function generateAutoTags(
           extra: renderResult
             ? {
                 renderProfile: renderResult.profile,
-                metadataOnly: renderResult.metadataOnly,
                 degraded: renderResult.degraded,
               }
             : undefined,
@@ -2507,7 +2415,6 @@ export async function generateAutoTags(
           extra: renderResult
             ? {
                 renderProfile: renderResult.profile,
-                metadataOnly: renderResult.metadataOnly,
                 degraded: renderResult.degraded,
               }
             : undefined,
@@ -2576,17 +2483,14 @@ export async function generateAutoTags(
           });
         } catch (featureError) {
           const message = featureError instanceof Error ? featureError.message : String(featureError);
-          classifyLogger.warn(
-            `[Thread ${context.threadId}] Feature extraction failed for ${songLabel}; using metadata-only feature fallback: ${message}`
+          classifyLogger.error(
+            `[Thread ${context.threadId}] Feature extraction failed for ${songLabel}: ${message}`
           );
           emitSongEvent("feature_extraction_failed", {
             error: message,
             wavPath: job.wavPath,
           });
-          extractedFeatures = await buildMetadataOnlyFeatureVector(job);
-          emitSongEvent("feature_extraction_fallback", {
-            featureVariant: extractedFeatures.featureVariant ?? "metadata-only",
-          });
+          throw new Error(`Feature extraction failed for ${songLabel}: ${message}`);
         }
       } finally {
         clearInterval(extractionHeartbeatInterval);
@@ -2776,7 +2680,7 @@ export async function generateAutoTags(
       if (rec.song_index) {
         classificationRecord.song_index = rec.song_index;
       }
-      if (rec.features.featureVariant === "heuristic" || rec.features.featureVariant === "metadata-only") {
+      if (rec.features.featureVariant === "heuristic") {
         classificationRecord.degraded = true;
       }
 
@@ -2989,7 +2893,7 @@ export async function generateJsonlOutput(
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor
     ? options.featureExtractor
-    : createHybridFeatureExtractor(defaultFeatureExtractor, defaultSidNativeFeatureExtractor);
+    : createStrictHybridFeatureExtractor(defaultFeatureExtractor, defaultSidNativeFeatureExtractor);
   // Use defaultPredictRatings (heuristicPredictRatings) for rating prediction
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
   const onProgress = options.onProgress;

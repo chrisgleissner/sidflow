@@ -1,5 +1,52 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Problem Statement
+
+The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode local --full-rerun true` must classify the full HVSC corpus without render timeouts, missing SID-trace sidecars, WAV-only fallback success, or partial-record persistence. Any real defect must abort immediately with a non-zero exit. After classification/export succeeds, the CLI station flow must build and validate five clearly distinct persona stations with reproducible, evidence-backed results.
+
+## Phase 17 - Full HVSC Fail-Fast Completion
+
+1. [IN_PROGRESS] Confirm the authoritative CLI contract end to end.
+  Acceptance criteria:
+  - README, package READMEs, wrapper scripts, and source entrypoints agree on the real classify/export/station commands.
+  - WORKLOG.md contains a concise contract summary covering required artifacts, fatal error classes, persistence rules, and downstream station inputs.
+
+2. [TODO] Close any remaining fail-fast gaps in classification and wrapper orchestration.
+  Acceptance criteria:
+  - Missing or invalid `.trace.jsonl` sidecars are fatal in all strict classification paths.
+  - Exhausted render attempts are fatal and preserve SID path, subtune, and render-profile context.
+  - Incomplete feature vectors are never persisted as successful classification records.
+  - The wrapper path surfaces classification failure with a non-zero exit and precise error text.
+
+3. [TODO] Add and pass targeted regression coverage.
+  Acceptance criteria:
+  - Tests cover fatal render exhaustion, fatal missing-sidecar extraction, correct subtune/sidecar lookup, and prevention of incomplete-record persistence.
+  - Script-level or integration coverage exercises the documented CLI path, not just lower-level helpers.
+
+4. [TODO] Run validation gates on the repaired tree.
+  Acceptance criteria:
+  - `bun run build` passes.
+  - Relevant targeted tests pass.
+  - `bun run test` passes three consecutive times with zero failures.
+
+5. [TODO] Execute the full HVSC classify/export workflow.
+  Acceptance criteria:
+  - `bash scripts/run-similarity-export.sh --mode local --full-rerun true` completes successfully.
+  - Final evidence shows zero render-attempt exhaustion failures, zero missing-sidecar failures, zero WAV-only/metadata-only classification success paths, and internally consistent corpus counts.
+  - WORKLOG.md records the exact command, timestamps, counts, and output artifacts.
+
+6. [TODO] Build and validate five persona stations sequentially.
+  Acceptance criteria:
+  - Five explicit personas are defined using measurable ratings/features available in the export.
+  - Each persona station is built from the CLI path sequentially.
+  - Validation evidence proves each station matches its persona better than the alternatives and records any overlap/misfit analysis.
+
+7. [TODO] Synchronize docs and final evidence.
+  Acceptance criteria:
+  - README/docs reflect the actual fail-fast semantics and CLI usage where changed.
+  - PLANS.md tasks are all marked done.
+  - WORKLOG.md contains final proof for classification, export, tests, and persona validation.
+
 ## Phase 15 - Full-Corpus Classification Stability Recovery
 
 ### Objective
@@ -31,6 +78,7 @@ Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` comp
 - [x] Run focused classify tests and build.
 - [x] Review and reconcile the current dirty-tree render-pool follow-up changes before broader validation (`runConcurrent` per-SID serialization, worker-attempt timeout guard, worker dispose hardening).
 - [x] Run targeted subset classifications, including the previously pathological 2SID repro and a bounded HVSC subset, while collecting RSS / fallback telemetry.
+- [x] Rework classification to fail fast on any render exhaustion or SID-native trace extraction failure; remove metadata-only/WAV-only classification fallback.
 - [ ] Run the full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` validation.
 - [ ] Record final metrics summary and reproducibility evidence in `WORKLOG.md`.
 - [ ] Re-run repository validation gates required by repo policy (`bun run build`, relevant targeted tests, then `bun run test` x3 once the classification changes are stable).
@@ -50,13 +98,19 @@ Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` comp
 - 2026-03-27: Post-fix targeted validation passed: `bun run build:quick` plus `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts` completed with 10 passing tests and 0 failures.
 - 2026-03-27: Wrapper subset validation passed for `bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 4 --max-songs 200`. The run classified 200/200 songs, exported the SQLite bundle, used `full` render for all 200 songs, and recorded `peakRssMb=1110`.
 - 2026-03-27: Historical repro validation succeeded on the same wrapper path with `--max-songs 8200`. The run crossed the old 8,163/8,200 deadlock point, classified 8,200/8,200 songs, and emitted `run_complete` telemetry with `metadataOnlyCount=37`, `renderedFallbackCount=38`, and `peakRssMb=3834`. The remaining blocker is the full 60,582-song validation and downstream persona-station proof, not the old Mario deadlock.
+- 2026-03-27: Started the actual full-corpus wrapper run: `bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 4`. Early progress is healthy (`5525/87074` songs classified at 6.3%, no skips, `peakRssMb=1824` at that checkpoint).
+- 2026-03-27: Added `scripts/validate-persona-radio.ts`, a real station-runtime validator that will pick five disjoint taste personas from the export DB, seed 10 ratings per persona, run the station CLI five times with `playback=none`, and reject any station track that is closer to another persona centroid than its own.
+- 2026-03-27: Acceptance contract changed mid-run: metadata-only or WAV-only classification is no longer acceptable. Stopped the in-flight full wrapper run, removed classification fail-open branches, and made missing SID trace sidecars / exhausted render attempts fatal.
+- 2026-03-27: Removed the render-pool parent-side per-job timeout guard so the renderer's own cooperative wall-clock bound can finish writing WAV + `.trace.jsonl` before the worker is recycled. Increased the internal wall-clock budget heuristic from the broken 4-18s range to a 15-60s playback-scaled budget.
+- 2026-03-27: New focused validation passed: `bun run build:quick`; `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/sid-native-features.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts` (`18 pass`, `0 fail`).
+- 2026-03-27: Real HVSC repro validation passed against the previously failing Baldwin_Neil songs. `Fate_II.sid`, `Competition_Entries.sid`, `Garfield.sid`, and `Hardcastle.sid` all classified successfully under clean temp configs with no timeout/trace-failure log lines, `.trace.jsonl` sidecars present for every rendered WAV, and `sidFeatureVariant="sid-native"` on every output record.
 
 ### Measurable Success Criteria
 
 - [ ] Full command completes with `0` skipped songs and `0` fatal classification failures.
 - [ ] Peak RSS remains below 4 GB during the final run.
 - [ ] Worker pool never exceeds the configured fixed size and does not exhibit crash/restart loops.
-- [ ] Telemetry shows every SID reaches one of: full render, truncated render, degraded render, or metadata-only classification.
+- [ ] Telemetry shows `0` render-attempt exhaustion failures, `0` SID trace sidecar failures, and `0` metadata-only classifications during the final run.
 - [ ] Re-running the full command yields identical classification counts.
 
 ## Objective

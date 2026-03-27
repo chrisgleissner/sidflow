@@ -60,12 +60,10 @@ interface WorkerState {
   replaceOnExit: boolean;
   jobsCompleted: number;
   gracefulExitTimer: ReturnType<typeof setTimeout> | null;
-  jobTimeoutTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const DEFAULT_MAX_JOBS_PER_WORKER = 32;
 const GRACEFUL_RECYCLE_TIMEOUT_MS = 2_000;
-const JOB_TIMEOUT_GRACE_MS = 2_000;
 const FORCE_REPLACE_TIMEOUT_MS = 1_000;
 const workerScriptUrl = new URL("./wasm-render-worker.js", import.meta.url);
 const poolLogger = createLogger("wasmRenderPool");
@@ -131,7 +129,6 @@ export class WasmRendererPool {
         state.exiting = true;
         state.replaceOnExit = false;
         this.clearGracefulExitTimer(state);
-        this.clearJobTimeoutTimer(state);
         this.failJob(state, new Error("Renderer pool destroyed"));
         try {
           await state.worker.terminate();
@@ -156,7 +153,6 @@ export class WasmRendererPool {
       replaceOnExit: false,
       jobsCompleted: 0,
       gracefulExitTimer: null,
-      jobTimeoutTimer: null,
     };
 
     worker.on("message", (message: WorkerMessage) => {
@@ -193,7 +189,6 @@ export class WasmRendererPool {
       }
 
       this.clearGracefulExitTimer(state);
-      this.clearJobTimeoutTimer(state);
       state.busy = false;
       state.job = null;
 
@@ -244,13 +239,6 @@ export class WasmRendererPool {
     }
   }
 
-  private clearJobTimeoutTimer(state: WorkerState): void {
-    if (state.jobTimeoutTimer !== null) {
-      clearTimeout(state.jobTimeoutTimer);
-      state.jobTimeoutTimer = null;
-    }
-  }
-
   private terminateAndReplaceWorker(state: WorkerState, reason: string): void {
     if (this.destroyed) {
       return;
@@ -278,35 +266,6 @@ export class WasmRendererPool {
     }, FORCE_REPLACE_TIMEOUT_MS);
   }
 
-  private computeJobTimeoutMs(job: Job): number {
-    const attemptBudget =
-      typeof job.options.maxRenderWallTimeMs === "number" && Number.isFinite(job.options.maxRenderWallTimeMs) && job.options.maxRenderWallTimeMs > 0
-        ? Math.floor(job.options.maxRenderWallTimeMs)
-        : Math.max(2_000, Math.ceil((job.options.maxRenderSeconds ?? 5) * 1000));
-    return Math.max(3_000, attemptBudget + JOB_TIMEOUT_GRACE_MS);
-  }
-
-  private armJobTimeout(state: WorkerState, job: Job): void {
-    this.clearJobTimeoutTimer(state);
-    const timeoutMs = this.computeJobTimeoutMs(job);
-    state.jobTimeoutTimer = setTimeout(() => {
-      if (this.destroyed || state.exiting || state.job?.id !== job.id) {
-        return;
-      }
-
-      const error = new Error(`Render attempt timed out after ${timeoutMs}ms for ${job.options.sidFile}`);
-      poolLogger.warn(`Worker ${state.workerId} timed out on ${job.options.sidFile} after ${timeoutMs}ms`);
-      state.exiting = true;
-      state.replaceOnExit = true;
-      this.emitEvent("job_failed", state, {
-        sidFile: job.options.sidFile,
-        reason: error.message,
-      });
-      this.failJob(state, error);
-      this.terminateAndReplaceWorker(state, `job_timeout:${timeoutMs}`);
-    }, timeoutMs);
-  }
-
   private handleWorkerMessage(state: WorkerState, message: WorkerMessage): void {
     if (message.type === "progress") {
       if (state.job && state.job.id === message.jobId && state.job.options.onProgress && message.progress) {
@@ -319,7 +278,6 @@ export class WasmRendererPool {
       if (!state.exiting && !this.destroyed) {
         poolLogger.warn(`Worker ${state.workerId} received message for unexpected job ${message.jobId}`);
       }
-      this.clearJobTimeoutTimer(state);
       state.busy = false;
       state.job = null;
       this.dispatch();
@@ -329,7 +287,6 @@ export class WasmRendererPool {
     const job = state.job;
     state.job = null;
     state.busy = false;
-    this.clearJobTimeoutTimer(state);
     state.jobsCompleted += 1;
 
     if (message.type === "result") {
@@ -360,7 +317,6 @@ export class WasmRendererPool {
   }
 
   private failJob(state: WorkerState, error: Error): void {
-    this.clearJobTimeoutTimer(state);
     if (state.job) {
       const job = state.job;
       state.job = null;
@@ -387,7 +343,6 @@ export class WasmRendererPool {
 
       state.busy = true;
       state.job = job;
-      this.armJobTimeout(state, job);
       this.emitEvent("job_started", state, { sidFile: job.options.sidFile });
       state.worker.postMessage({ type: "render", jobId: job.id, options: job.options });
     }
