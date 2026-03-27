@@ -1,5 +1,25 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-27T10:30Z — Phase 15 takeover: audit and next validation gates
+
+### Tree state at handoff
+1. The repo is already mid-recovery, with local modifications in `PLANS.md`, `packages/sidflow-classify/src/index.ts`, `packages/sidflow-classify/src/render/wasm-render-pool.ts`, `packages/sidflow-classify/src/render/wasm-render-worker.ts`, `packages/sidflow-classify/test/multi-sid-classification.test.ts`, and the new `packages/sidflow-classify/test/super-mario-stress.test.ts`.
+2. Phase 15 implementation work appears largely present: bounded render attempts, metadata-only fallback, pooled workers, lifecycle telemetry, and the CI-safe Mario/fixture stress harness are all in-tree.
+3. There is a second wave of dirty-tree follow-up logic that has not yet been revalidated in this session:
+   - `runConcurrent()` now prevents concurrent processing of two songs from the same SID.
+   - `WasmRendererPool` now arms a per-job timeout guard and replaces timed-out workers.
+   - `wasm-render-worker.ts` now null-guards engine disposal after failed initialization.
+
+### Immediate findings from code audit
+1. The `runConcurrent()` SID-group serialization is aligned with the requirement that one worker processes exactly one SID at a time, but it needs targeted validation against throughput and deadlock risk.
+2. The new pool-level timeout guard reintroduces worker termination as a last-resort control path. That may be necessary for Bun/WASM hangs, but it must be proven not to recreate the old skip/churn behavior during fallback retries.
+3. The worker dispose hardening is correct on its face and should remove one obvious crash path when `createEngine()` throws before the `finally` block.
+
+### Next actions
+1. Re-run targeted build/tests on the current tree.
+2. If green, run the Mario stress harness plus focused multi-SID tests against the current pool/index changes.
+3. If still green, move to a bounded `run-similarity-export.sh` subset run with telemetry capture before attempting the full multi-hour validation.
+
 ## 2026-03-27T00:15Z — Phase 15: Fallback and Worker-Pool Refactor
 
 ### Implemented changes

@@ -24,9 +24,11 @@ interface WorkerResponse {
 }
 
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {
-  const engine = await createEngine({ sampleRate: options.renderSampleRate });
+  let engine: Awaited<ReturnType<typeof createEngine>> | null = null;
   let renderSummary: RenderExecutionSummary | undefined;
   try {
+    engine = await createEngine({ sampleRate: options.renderSampleRate });
+
     // Add progress callback to send heartbeat messages back to main thread
     const optionsWithProgress: RenderWavOptions = {
       ...options,
@@ -56,7 +58,7 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
     };
     parentPort!.postMessage(response);
   } finally {
-    engine.dispose();
+    engine?.dispose();
   }
 }
 

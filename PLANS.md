@@ -27,10 +27,13 @@ Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` comp
 
 - [x] Replace trace accumulation and timeout-purge code paths.
 - [x] Add targeted tests for bounded rendering, worker recycling, no-skip fallback behavior, and concurrency heuristics.
+- [x] Add CI-safe stability regressions that repeatedly classify the pathological Mario SID and the full checked-in SID fixture set while checking for RAM/thread/throughput drift.
 - [x] Run focused classify tests and build.
+- [ ] Review and reconcile the current dirty-tree render-pool follow-up changes before broader validation (`runConcurrent` per-SID serialization, worker-attempt timeout guard, worker dispose hardening).
 - [ ] Run targeted subset classifications, including the previously pathological 2SID repro and a bounded HVSC subset, while collecting RSS / fallback telemetry.
 - [ ] Run the full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` validation.
 - [ ] Record final metrics summary and reproducibility evidence in `WORKLOG.md`.
+- [ ] Re-run repository validation gates required by repo policy (`bun run build`, relevant targeted tests, then `bun run test` x3 once the classification changes are stable).
 
 ### Progress
 
@@ -39,6 +42,8 @@ Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` comp
 - 2026-03-27: Refactored `buildAudioCache()` and `generateAutoTags()` so render failures flow through a bounded fallback ladder and end in metadata-only classification instead of `skipped`/`song_failed` outcomes.
 - 2026-03-27: Bounded thread selection via the physical-core heuristic in classify orchestration, feature extraction pool sizing, and the web `/api/classify` path; request-level `threads` is now honored by the API schema and temp config.
 - 2026-03-27: Focused validation passed: `bun run build` succeeded, and `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts packages/sidflow-classify/test/cli.test.ts` completed with 26 passing tests and 0 failures.
+- 2026-03-27: Added `packages/sidflow-classify/test/super-mario-stress.test.ts` as a CI-safe stability harness. It now runs two automated regressions through the real classifier: 3 rounds of 24 runtime copies of `test-data/C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid`, and 2 rounds over every checked-in SID fixture. The assertions watch peak thread count, peak RSS, cross-round final RSS/thread drift, and completion-gap / per-record throughput slowdown. The file passed 3 consecutive runs in about 6.7s per run.
+- 2026-03-27: New unvalidated follow-up edits are present in the dirty tree: `runConcurrent()` now serializes work by SID path, the WASM render pool has a per-job timeout/replacement guard, and the worker now null-checks engine disposal. These changes still need build/test confirmation and real subset telemetry before the broader export run.
 
 ### Measurable Success Criteria
 
@@ -216,6 +221,21 @@ Add deterministic, per-song classification lifecycle telemetry for the `bash scr
 - 2026-03-25: Baseline `npm run build` succeeded. `npm run test` also exited successfully from a clean code baseline.
 - 2026-03-25: Code inspection shows `generateAutoTags()` does a concurrent feature-extraction pass, then a second serialized pass that builds the dataset-normalized rating model and writes final classification records. Existing progress/log parsing largely exposes the first phase, so late-run work can look like a slowdown.
 - 2026-03-25: Added `classification_*.events.jsonl` telemetry, wrapper-level `run-events.jsonl`, and explicit `Building Rating Model` / `Writing Results` progress phases.
+
+## Phase 16 - Takeover Prompt Handoff
+
+### Objective
+
+Capture the complete recovery brief as a reusable markdown prompt in `doc/` so a follow-on LLM can finish the full-corpus classification run and the downstream five-persona station validation.
+
+### Checklist
+- [x] Read repo guidance (`PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`)
+- [x] Write a raw markdown takeover prompt under `doc/`
+- [x] Include the exact full-corpus requirement for all 60,582 songs
+- [x] Include the five-persona, 10-vote station validation requirement
+
+### Progress
+- 2026-03-27: Added `doc/full-hvsc-classification-takeover-prompt.md` containing the handoff prompt for finishing the full HVSC classification/export run and validating five disjoint persona-driven stations.
 - 2026-03-25: Focused validation passed: `npm run build:quick` and `bun test packages/sidflow-classify/test/cli.test.ts packages/sidflow-classify/test/auto-tags.test.ts packages/sidflow-classify/test/index.test.ts`.
 - 2026-03-25: Bounded wrapper verification hit an environment blocker (`ffmpeg` missing), but still produced the wrapper `run_start` artifact. The classification lifecycle itself was verified end-to-end with the same run context against `test-data`.
 

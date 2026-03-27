@@ -278,6 +278,7 @@ interface ConcurrentContext {
 
 interface RunConcurrentOptions {
   continueOnError?: boolean;
+  getGroupKey?: (item: unknown) => string | null | undefined;
 }
 
 function resolveThreadCount(requested?: number): number {
@@ -285,7 +286,11 @@ function resolveThreadCount(requested?: number): number {
 }
 
 function getProcessRssMb(): number {
-  return Math.round(process.memoryUsage().rss / (1024 * 1024));
+  try {
+    return Math.round(process.memoryUsage().rss / (1024 * 1024));
+  } catch {
+    return -1;
+  }
 }
 
 type ClassificationRenderProfile = "full" | "reduced-duration" | "low-sample-rate" | "minimal-snippet" | "metadata-only";
@@ -482,21 +487,52 @@ async function runConcurrent<T>(
     return;
   }
   const limit = Math.max(1, Math.min(concurrency, items.length));
-  let nextIndex = 0;
+  const pendingIndices = items.map((_, index) => index);
+  const activeGroups = new Set<string>();
+  const waiters: Array<() => void> = [];
   let failedItems = 0;
   let firstFailure: Error | null = null;
 
-  // Helper to atomically get next index
-  const getNextIndex = (): number | null => {
-    if (firstFailure && !options.continueOnError) {
-      return null;
+  const resolveGroupKey = (item: T): string | null => {
+    const key = options.getGroupKey?.(item);
+    return typeof key === "string" && key.length > 0 ? key : null;
+  };
+
+  const notifyWaiters = (): void => {
+    while (waiters.length > 0) {
+      waiters.shift()?.();
     }
-    if (nextIndex >= items.length) {
-      return null;
+  };
+
+  const acquireNextIndex = async (): Promise<{ itemIndex: number; groupKey: string | null } | null> => {
+    while (true) {
+      if (firstFailure && !options.continueOnError) {
+        return null;
+      }
+
+      for (let cursor = 0; cursor < pendingIndices.length; cursor += 1) {
+        const itemIndex = pendingIndices[cursor];
+        const item = items[itemIndex];
+        const groupKey = resolveGroupKey(item as T);
+        if (groupKey && activeGroups.has(groupKey)) {
+          continue;
+        }
+
+        pendingIndices.splice(cursor, 1);
+        if (groupKey) {
+          activeGroups.add(groupKey);
+        }
+        return { itemIndex, groupKey };
+      }
+
+      if (pendingIndices.length === 0) {
+        return null;
+      }
+
+      await new Promise<void>((resolve) => {
+        waiters.push(resolve);
+      });
     }
-    const current = nextIndex;
-    nextIndex += 1;
-    return current;
   };
 
   const runners = Array.from({ length: limit }, async (_, workerIndex) => {
@@ -506,17 +542,17 @@ async function runConcurrent<T>(
 
     let itemsProcessed = 0;
     while (true) {
-      const currentIndex = getNextIndex();
-      if (currentIndex === null) {
+      const nextWork = await acquireNextIndex();
+      if (nextWork === null) {
         classifyLogger.debug(
           `Thread ${threadId} finished after processing ${itemsProcessed} items`
         );
         break;
       }
+      const { itemIndex, groupKey } = nextWork;
       itemsProcessed++;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
+        await worker(items[itemIndex]!, { threadId, itemIndex });
       } catch (error) {
         failedItems++;
         const resolvedError = error instanceof Error ? error : new Error(String(error));
@@ -526,13 +562,18 @@ async function runConcurrent<T>(
             firstFailure = resolvedError;
           }
           classifyLogger.error(
-            `[Thread ${threadId}] Item ${currentIndex} failed: ${msg} — stopping remaining work`
+            `[Thread ${threadId}] Item ${itemIndex} failed: ${msg} — stopping remaining work`
           );
           break;
         }
         classifyLogger.error(
-          `[Thread ${threadId}] Item ${currentIndex} failed: ${msg} — continuing with next item`
+          `[Thread ${threadId}] Item ${itemIndex} failed: ${msg} — continuing with next item`
         );
+      } finally {
+        if (groupKey) {
+          activeGroups.delete(groupKey);
+        }
+        notifyWaiters();
       }
     }
   });
@@ -1380,6 +1421,9 @@ export async function buildAudioCache(
           phase: "building",
           status: "idle"
         });
+      },
+      {
+        getGroupKey: (item) => (item as SongToRender).sidFile,
       }
     );
   } finally {
@@ -2605,6 +2649,8 @@ export async function generateAutoTags(
         phase: "tagging",
         status: "idle"
       });
+    }, {
+      getGroupKey: (item) => (item as AutoTagJob).sidFile,
     });
 
     // Ensure all intermediate records are flushed in deterministic order.
