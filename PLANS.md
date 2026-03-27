@@ -29,8 +29,8 @@ Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` comp
 - [x] Add targeted tests for bounded rendering, worker recycling, no-skip fallback behavior, and concurrency heuristics.
 - [x] Add CI-safe stability regressions that repeatedly classify the pathological Mario SID and the full checked-in SID fixture set while checking for RAM/thread/throughput drift.
 - [x] Run focused classify tests and build.
-- [ ] Review and reconcile the current dirty-tree render-pool follow-up changes before broader validation (`runConcurrent` per-SID serialization, worker-attempt timeout guard, worker dispose hardening).
-- [ ] Run targeted subset classifications, including the previously pathological 2SID repro and a bounded HVSC subset, while collecting RSS / fallback telemetry.
+- [x] Review and reconcile the current dirty-tree render-pool follow-up changes before broader validation (`runConcurrent` per-SID serialization, worker-attempt timeout guard, worker dispose hardening).
+- [x] Run targeted subset classifications, including the previously pathological 2SID repro and a bounded HVSC subset, while collecting RSS / fallback telemetry.
 - [ ] Run the full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` validation.
 - [ ] Record final metrics summary and reproducibility evidence in `WORKLOG.md`.
 - [ ] Re-run repository validation gates required by repo policy (`bun run build`, relevant targeted tests, then `bun run test` x3 once the classification changes are stable).
@@ -44,6 +44,12 @@ Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` comp
 - 2026-03-27: Focused validation passed: `bun run build` succeeded, and `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts packages/sidflow-classify/test/cli.test.ts` completed with 26 passing tests and 0 failures.
 - 2026-03-27: Added `packages/sidflow-classify/test/super-mario-stress.test.ts` as a CI-safe stability harness. It now runs two automated regressions through the real classifier: 3 rounds of 24 runtime copies of `test-data/C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid`, and 2 rounds over every checked-in SID fixture. The assertions watch peak thread count, peak RSS, cross-round final RSS/thread drift, and completion-gap / per-record throughput slowdown. The file passed 3 consecutive runs in about 6.7s per run.
 - 2026-03-27: New unvalidated follow-up edits are present in the dirty tree: `runConcurrent()` now serializes work by SID path, the WASM render pool has a per-job timeout/replacement guard, and the worker now null-checks engine disposal. These changes still need build/test confirmation and real subset telemetry before the broader export run.
+- 2026-03-27: The stale 8,200-song web/API repro exposed a specific pool bug: timeout-triggered `failJob()` rejected the render promise immediately, but worker replacement depended on Bun emitting a worker `exit` event. When hung WASM workers never emitted `exit`, the pool drained to zero usable workers and later fallback attempts waited forever.
+- 2026-03-27: Fixed the pool drain by forcing replacement after timeout/error-triggered `worker.terminate()`, restored worker recycling to 32 jobs, and tightened `isRecoverableError()` so `Render attempt timed out after ...` is treated as non-recoverable for a single render profile instead of being retried four times before the fallback ladder advances.
+- 2026-03-27: Added `scripts/stop-similarity-export.sh` so local `run-similarity-export.sh` sessions can be stopped through a repo maintenance script instead of ad-hoc process kills.
+- 2026-03-27: Post-fix targeted validation passed: `bun run build:quick` plus `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts` completed with 10 passing tests and 0 failures.
+- 2026-03-27: Wrapper subset validation passed for `bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 4 --max-songs 200`. The run classified 200/200 songs, exported the SQLite bundle, used `full` render for all 200 songs, and recorded `peakRssMb=1110`.
+- 2026-03-27: Historical repro validation succeeded on the same wrapper path with `--max-songs 8200`. The run crossed the old 8,163/8,200 deadlock point, classified 8,200/8,200 songs, and emitted `run_complete` telemetry with `metadataOnlyCount=37`, `renderedFallbackCount=38`, and `peakRssMb=3834`. The remaining blocker is the full 60,582-song validation and downstream persona-station proof, not the old Mario deadlock.
 
 ### Measurable Success Criteria
 

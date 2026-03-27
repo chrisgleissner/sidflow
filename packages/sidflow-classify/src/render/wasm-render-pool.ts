@@ -63,9 +63,10 @@ interface WorkerState {
   jobTimeoutTimer: ReturnType<typeof setTimeout> | null;
 }
 
-const DEFAULT_MAX_JOBS_PER_WORKER = 256;
+const DEFAULT_MAX_JOBS_PER_WORKER = 32;
 const GRACEFUL_RECYCLE_TIMEOUT_MS = 2_000;
 const JOB_TIMEOUT_GRACE_MS = 2_000;
+const FORCE_REPLACE_TIMEOUT_MS = 1_000;
 const workerScriptUrl = new URL("./wasm-render-worker.js", import.meta.url);
 const poolLogger = createLogger("wasmRenderPool");
 
@@ -173,7 +174,7 @@ export class WasmRendererPool {
       this.emitEvent("worker_fault", state, {
         reason: error instanceof Error ? error.message : String(error),
       });
-      void state.worker.terminate().catch(() => {});
+      this.terminateAndReplaceWorker(state, "worker_error");
     });
 
     worker.on("exit", (code) => {
@@ -192,7 +193,7 @@ export class WasmRendererPool {
       }
 
       this.clearGracefulExitTimer(state);
-  this.clearJobTimeoutTimer(state);
+      this.clearJobTimeoutTimer(state);
       state.busy = false;
       state.job = null;
 
@@ -250,6 +251,33 @@ export class WasmRendererPool {
     }
   }
 
+  private terminateAndReplaceWorker(state: WorkerState, reason: string): void {
+    if (this.destroyed) {
+      return;
+    }
+
+    let replacementRequested = false;
+    const requestReplacement = (): void => {
+      if (replacementRequested || this.destroyed) {
+        return;
+      }
+      replacementRequested = true;
+      this.replaceWorker(state, reason);
+    };
+
+    void state.worker.terminate()
+      .then(() => {
+        requestReplacement();
+      })
+      .catch(() => {
+        requestReplacement();
+      });
+
+    setTimeout(() => {
+      requestReplacement();
+    }, FORCE_REPLACE_TIMEOUT_MS);
+  }
+
   private computeJobTimeoutMs(job: Job): number {
     const attemptBudget =
       typeof job.options.maxRenderWallTimeMs === "number" && Number.isFinite(job.options.maxRenderWallTimeMs) && job.options.maxRenderWallTimeMs > 0
@@ -275,7 +303,7 @@ export class WasmRendererPool {
         reason: error.message,
       });
       this.failJob(state, error);
-      void state.worker.terminate().catch(() => {});
+      this.terminateAndReplaceWorker(state, `job_timeout:${timeoutMs}`);
     }, timeoutMs);
   }
 

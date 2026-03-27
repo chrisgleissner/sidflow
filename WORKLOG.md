@@ -20,6 +20,60 @@
 2. If green, run the Mario stress harness plus focused multi-SID tests against the current pool/index changes.
 3. If still green, move to a bounded `run-similarity-export.sh` subset run with telemetry capture before attempting the full multi-hour validation.
 
+## 2026-03-27T16:45Z — Phase 15: timeout replacement fix and wrapper repro validation
+
+### Root cause refined
+1. The old 8,200-song wrapper repro did not just hit a slow Mario render. The pool could reject a timed-out job immediately, but worker replacement still depended on Bun emitting the worker `exit` event.
+2. When a hung WASM worker timed out without delivering a clean `exit`, the pool entry stayed `exiting=true` forever. That slowly drained the pool to zero usable workers, so the next fallback attempt for the same song would queue and wait indefinitely.
+3. A second logic bug amplified the tail latency: `isRecoverableError()` treated `Render attempt timed out after ...` as recoverable, so `withRetry("building", ...)` retried the same render profile multiple times before advancing the ordered fallback ladder.
+
+### Code changes
+1. `packages/sidflow-classify/src/render/wasm-render-pool.ts`
+   - Restored `DEFAULT_MAX_JOBS_PER_WORKER` to `32`.
+   - Added forced replacement after timeout/error-driven `worker.terminate()` so replacement no longer depends solely on Bun’s `exit` event.
+2. `packages/sidflow-classify/src/types/state-machine.ts`
+   - Marked `Render attempt timed out after ...` and related timeout strings as non-recoverable so a render profile fails once and the fallback ladder advances immediately.
+3. `packages/sidflow-classify/test/render-timeout.test.ts`
+   - Added regression coverage for the tightened timeout classification and for pool replacement continuing to serve follow-up renders.
+4. `scripts/stop-similarity-export.sh`
+   - Added a repo-native stop helper for local similarity-export runs so service teardown follows repo maintenance-script rules.
+
+### Validation
+1. `bun run build:quick` — PASS
+2. `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts` — PASS (`10 pass`, `0 fail`)
+3. `bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 4 --max-songs 200` — PASS
+   - Wrapper classification: 200/200
+   - Export: PASS
+   - Telemetry summary:
+     - `renderProfiles={"full": 200}`
+     - `peakRssMb=1110`
+     - `metadataOnlyCount=0`
+4. `bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 4 --max-songs 8200` — historical repro crossed and classify phase completed
+   - Previous stale run froze at `8163/8200` on `Super_Mario_Bros_64_2SID.sid [1]`
+   - New run reached `run_complete` with:
+     - `classifiedFiles=8200`
+     - `renderedFiles=8200`
+     - `extractedFiles=8200`
+     - `metadataOnlyCount=37`
+     - `renderedFallbackCount=38`
+     - `peakRssMb=3834`
+     - `durationMs=989458`
+   - Event-stream summary at classify completion:
+     - `profiles={"full": 8163, "metadata-only": 37}`
+     - `skippedFiles=0`
+     - `fatal errors=0` at the classification API level
+
+### Behavioral evidence from the 8,200-song repro
+1. The run no longer deadlocked at the Mario boundary. It progressed from `8117/8200` to `8200/8200` while processing Mario songs sequentially.
+2. Mario songs now degrade instead of wedging the queue:
+   - earlier Mario songs hit `full` / `reduced-duration` / `low-sample-rate` timeouts and sometimes `minimal-snippet` WASM aborts
+   - the pipeline then produced metadata-only placeholder WAVs and continued with WAV-only feature extraction
+3. Peak RSS rose during the fallback-heavy Mario tail but stayed under the 4 GB target during the 8,200-song classify phase.
+
+### Remaining gap
+1. The full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` acceptance run for all 60,582 target songs has not been completed yet in this session.
+2. The five-persona downstream station proof still needs to be re-run against the final full-corpus output.
+
 ## 2026-03-27T00:15Z — Phase 15: Fallback and Worker-Pool Refactor
 
 ### Implemented changes

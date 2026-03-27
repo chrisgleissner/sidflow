@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { ensureDir } from "@sidflow/common";
 
@@ -79,6 +79,55 @@ describe("WasmRendererPool lifecycle", () => {
     await pool.destroy();
     pool = null;
   });
+
+  test(
+    "replaces an exited worker and still renders the next SID",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "sidflow-render-pool-timeout-"));
+      const fastSid = resolve("test-data/C64Music/DEMOS/0-9/10_Orbyte.sid");
+      const recycledWorkers = new Set<number>();
+
+      pool = new WasmRendererPool(1, {
+        onEvent: (event) => {
+          if (event.type === "worker_recycled") {
+            recycledWorkers.add(event.workerId);
+          }
+        },
+      });
+
+      try {
+        const internalPool = pool as unknown as {
+          workers: Array<{ exiting: boolean; replaceOnExit: boolean; worker: { terminate: () => Promise<number> } }>;
+          terminateAndReplaceWorker: (state: unknown, reason: string) => void;
+        };
+        const [state] = internalPool.workers;
+        expect(state).toBeDefined();
+        state.exiting = true;
+        state.replaceOnExit = true;
+        internalPool.terminateAndReplaceWorker(state, "test-forced-replacement");
+
+        await new Promise((resolvePromise) => {
+          setTimeout(resolvePromise, 1_500);
+        });
+
+        const followUpWav = join(root, "fast.wav");
+        const summary = await pool.render({
+          sidFile: fastSid,
+          wavFile: followUpWav,
+          maxRenderSeconds: 5,
+          maxRenderWallTimeMs: 4_000,
+          targetDurationMs: 5_000,
+          captureTrace: true,
+        });
+
+        expect(summary).not.toBeNull();
+        expect(recycledWorkers.size).toBeGreaterThan(0);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    30_000
+  );
 });
 
 describe("Render timeout error classification", () => {
@@ -87,6 +136,9 @@ describe("Render timeout error classification", () => {
 
     const timeoutError = new Error("Render timeout: /test/foo.sid exceeded 55s limit");
     expect(isRecoverableError(timeoutError)).toBe(false);
+
+    const timedOutAttempt = new Error("Render attempt timed out after 18500ms for /test/foo.sid");
+    expect(isRecoverableError(timedOutAttempt)).toBe(false);
 
     const circuitError = new Error("Render skipped: /test/foo.sid timed out (circuit breaker)");
     expect(isRecoverableError(circuitError)).toBe(false);
