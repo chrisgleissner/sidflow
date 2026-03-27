@@ -184,8 +184,9 @@ describe("Classification of all test-data SID files including 2SID and 3SID", ()
       expect(tagged2sid.length).toBeGreaterThan(0);
       expect(tagged3sid.length).toBeGreaterThan(0);
 
-      // No render errors; all songs should complete via the mock
-      expect(result.metrics.renderTimeouts).toBe(0);
+      // No render degradation; all songs should complete via the mock
+      expect(result.metrics.renderedFallbackCount).toBe(0);
+      expect(result.metrics.metadataOnlyCount).toBe(0);
     },
     60_000
   );

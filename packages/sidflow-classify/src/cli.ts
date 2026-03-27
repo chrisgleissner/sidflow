@@ -488,12 +488,11 @@ export async function runClassifyCli(
     ];
     runtime.stdout.write(`${summary.join("\n")}\n`);
 
-    // Emit an operator-facing timeout summary.
-    if (autoTagsResult.metrics.renderTimeouts > 0) {
-      runtime.stdout.write(`\nRender timeouts: ${autoTagsResult.metrics.renderTimeouts} SID file(s)\n`);
-      for (const sid of autoTagsResult.metrics.circuitBreakerSids) {
-        runtime.stdout.write(`  [TIMEOUT] ${sid}\n`);
-      }
+    if (autoTagsResult.metrics.renderedFallbackCount > 0) {
+      runtime.stdout.write(`\nFallback renders: ${autoTagsResult.metrics.renderedFallbackCount} song(s)\n`);
+    }
+    if (autoTagsResult.metrics.metadataOnlyCount > 0) {
+      runtime.stdout.write(`Metadata-only classifications: ${autoTagsResult.metrics.metadataOnlyCount} song(s)\n`);
     }
 
     return 0;

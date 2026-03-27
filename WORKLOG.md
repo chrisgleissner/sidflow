@@ -1,5 +1,22 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-27T00:15Z — Phase 15: Fallback and Worker-Pool Refactor
+
+### Implemented changes
+1. Replaced `packages/sidflow-classify/src/render/wasm-render-pool.ts` with a cooperative fixed-size pool: no timeout watchdog, no `timedOutSids` purge path, graceful recycle after 32 jobs, and lifecycle event emission for spawn/recycle/fault/job transitions.
+2. Reworked `packages/sidflow-classify/src/render/wav-renderer.ts` so renders stop cooperatively on a bounded wall-time budget, traces stream to sidecars in batches, and PCM is written into one preallocated buffer instead of chunk accumulation.
+3. Refactored `packages/sidflow-classify/src/index.ts` to route both cache-building and auto-tagging through a render fallback ladder: full render, reduced duration, low sample rate, minimal snippet, then metadata-only placeholder/classification. Songs no longer drop into `skipped` or `song_failed` solely because rendering failed.
+4. Added metadata-only feature fallback in `generateAutoTags()` so feature extraction failures still yield a deterministic record, and added RSS/fallback counters to `GenerateAutoTagsMetrics` plus CLI summary output.
+5. Bounded worker sizing with the physical-core heuristic in `system.ts`, `feature-extraction-pool.ts`, and the web `/api/classify` route; the classify API now accepts `threads` and writes it into the temporary config used by the full similarity-export path.
+
+### Focused validation
+- `bun run build` — PASS
+- `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts packages/sidflow-classify/test/cli.test.ts` — PASS (`26 pass`, `0 fail`)
+
+### Remaining validation work
+1. Run targeted subset classifications with telemetry capture to confirm fallback counts and peak RSS under real render load.
+2. Run the full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` workflow and verify 100% coverage, zero fatal classification failures, and acceptable memory/throughput.
+
 ## 2026-03-26T14:30Z — Phase 15: Stability Recovery Investigation
 
 ### Current findings

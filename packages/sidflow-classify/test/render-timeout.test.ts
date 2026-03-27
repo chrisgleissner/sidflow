@@ -1,26 +1,70 @@
-/**
- * Regression tests for WasmRendererPool circuit breaker behavior and
- * render-timeout error classification.
- *
- * These tests simulate a prior timeout by mutating the internal
- * `timedOutSids` set rather than exercising the real per-job timeout
- * watchdog in the WASM worker.
- *
- * Validates:
- * - Circuit breaker rejects jobs for SIDs marked as previously timed out
- * - Jobs for other SIDs are not rejected with a circuit breaker error
- * - Render timeout and circuit breaker errors are classified as non-recoverable
- * - Regular IO errors remain classified as recoverable
- * - generateAutoTags reports timeout metrics consistently
- */
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
-import { describe, test, expect, afterEach } from "bun:test";
+import { ensureDir } from "@sidflow/common";
+
 import { WasmRendererPool } from "../src/render/wasm-render-pool.js";
+import {
+  fallbackMetadataFromPath,
+  generateAutoTags,
+  heuristicFeatureExtractor,
+  heuristicPredictRatings,
+  planClassification,
+} from "../src/index.js";
 
-// Since we cannot easily mock the WASM worker, test the circuit breaker
-// at the pool level by checking that timedOutSids set is respected.
+function silentWavBuffer(): Buffer {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(44_100, 24);
+  header.writeUInt32LE(88_200, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(0, 40);
+  return header;
+}
 
-describe("WasmRendererPool circuit breaker", () => {
+async function createTestPlan(prefix: string) {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  const sidPath = join(root, "hvsc", "C64Music", "TEST");
+  const audioCachePath = join(root, "audio-cache");
+  const tagsPath = join(root, "tags");
+  const classifiedPath = join(root, "classified");
+
+  await mkdir(sidPath, { recursive: true });
+  await mkdir(audioCachePath, { recursive: true });
+  await mkdir(tagsPath, { recursive: true });
+  await mkdir(classifiedPath, { recursive: true });
+  await writeFile(join(sidPath, "test.sid"), "test-sid-content");
+
+  const configPath = join(root, "test.sidflow.json");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      sidPath: join(root, "hvsc"),
+      audioCachePath,
+      tagsPath,
+      classifiedPath,
+      threads: 1,
+      classificationDepth: 2,
+    })
+  );
+
+  return {
+    root,
+    plan: await planClassification({ configPath, forceRebuild: false }),
+  };
+}
+
+describe("WasmRendererPool lifecycle", () => {
   let pool: WasmRendererPool | null = null;
 
   afterEach(async () => {
@@ -28,76 +72,6 @@ describe("WasmRendererPool circuit breaker", () => {
       await pool.destroy();
       pool = null;
     }
-  });
-
-  test("rejects jobs for previously timed-out SID files immediately", async () => {
-    pool = new WasmRendererPool(1);
-
-    const poolAny = pool as unknown as { timedOutSids: Set<string> };
-    poolAny.timedOutSids.add("/test/pathological.sid");
-
-    // A job for the timed-out SID should be rejected immediately
-    await expect(
-      pool.render({
-        sidFile: "/test/pathological.sid",
-        wavFile: "/test/output.wav",
-        maxRenderSeconds: 10,
-      })
-    ).rejects.toThrow("circuit breaker");
-  });
-
-  test("does not reject other SID files with a circuit breaker error", async () => {
-    pool = new WasmRendererPool(1);
-
-    const poolAny = pool as unknown as { timedOutSids: Set<string> };
-    poolAny.timedOutSids.add("/test/pathological.sid");
-
-    const renderResultPromise = pool
-      .render({
-        sidFile: "/test/normal.sid",
-        wavFile: "/test/normal-output.wav",
-        maxRenderSeconds: 1,
-      })
-      .then(
-        () => null,
-        (error: unknown) => error as Error
-      );
-
-    await Promise.resolve();
-    await pool.destroy();
-    pool = null;
-
-    const renderError = await renderResultPromise;
-    expect(renderError).toBeInstanceOf(Error);
-    expect(renderError?.message).not.toContain("circuit breaker");
-  });
-
-  test("clamps invalid timeout values to a safe watchdog window", () => {
-    pool = new WasmRendererPool(1);
-
-    const poolAny = pool as unknown as {
-      computeJobTimeoutMs: (options: {
-        sidFile: string;
-        wavFile: string;
-        maxRenderSeconds: number;
-      }) => number;
-    };
-
-    const negativeTimeoutMs = poolAny.computeJobTimeoutMs({
-      sidFile: "/test/negative.sid",
-      wavFile: "/test/negative.wav",
-      maxRenderSeconds: -5,
-    });
-    const nanTimeoutMs = poolAny.computeJobTimeoutMs({
-      sidFile: "/test/nan.sid",
-      wavFile: "/test/nan.wav",
-      maxRenderSeconds: Number.NaN,
-    });
-
-    expect(negativeTimeoutMs).toBeGreaterThan(0);
-    expect(nanTimeoutMs).toBeGreaterThan(0);
-    expect(Number.isFinite(negativeTimeoutMs)).toBe(true);
-    expect(Number.isFinite(nanTimeoutMs)).toBe(true);
   });
 
   test("pool can be destroyed without errors", async () => {
@@ -127,74 +101,45 @@ describe("Render timeout error classification", () => {
 });
 
 describe("generateAutoTags resilience", () => {
-  test("metrics include renderTimeouts and circuitBreakerSids fields", async () => {
-    const { mkdtemp, rm, mkdir, writeFile } = await import("node:fs/promises");
-    const { tmpdir } = await import("node:os");
-    const { dirname, join } = await import("node:path");
-    const { generateAutoTags, heuristicFeatureExtractor, heuristicPredictRatings, fallbackMetadataFromPath, planClassification } = await import("../src/index.js");
-    const { ensureDir } = await import("@sidflow/common");
-
-    const root = await mkdtemp(join(tmpdir(), "sidflow-timeout-test-"));
+  test("reports fallback metrics on the happy path", async () => {
+    const { root, plan } = await createTestPlan("sidflow-fallback-metrics-");
     try {
-      // Create minimal test structure
-      const sidPath = join(root, "hvsc", "C64Music", "TEST");
-      const audioCachePath = join(root, "audio-cache");
-      const tagsPath = join(root, "tags");
-      const classifiedPath = join(root, "classified");
-
-      await mkdir(sidPath, { recursive: true });
-      await mkdir(audioCachePath, { recursive: true });
-      await mkdir(tagsPath, { recursive: true });
-      await mkdir(classifiedPath, { recursive: true });
-
-      // Create a test SID file
-      await writeFile(join(sidPath, "test.sid"), "test-sid-content");
-
-      const configPath = join(root, "test.sidflow.json");
-      await writeFile(
-        configPath,
-        JSON.stringify({
-          sidPath: join(root, "hvsc"),
-          audioCachePath,
-          tagsPath,
-          classifiedPath,
-          threads: 1,
-          classificationDepth: 2,
-        })
-      );
-
-      const plan = await planClassification({ configPath, forceRebuild: false });
-
       const result = await generateAutoTags(plan, {
         extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
         featureExtractor: heuristicFeatureExtractor,
         predictRatings: heuristicPredictRatings,
         render: async ({ wavFile }) => {
           await ensureDir(dirname(wavFile));
-          // Create a valid silent WAV
-          const header = Buffer.alloc(44);
-          header.write("RIFF", 0);
-          header.writeUInt32LE(36, 4);
-          header.write("WAVE", 8);
-          header.write("fmt ", 12);
-          header.writeUInt32LE(16, 16);
-          header.writeUInt16LE(1, 20); // PCM
-          header.writeUInt16LE(1, 22); // mono
-          header.writeUInt32LE(44100, 24);
-          header.writeUInt32LE(88200, 28);
-          header.writeUInt16LE(2, 32);
-          header.writeUInt16LE(16, 34);
-          header.write("data", 36);
-          header.writeUInt32LE(0, 40);
-          await writeFile(wavFile, header);
+          await writeFile(wavFile, silentWavBuffer());
         },
       });
 
-      // Verify metrics include new fields
-      expect(result.metrics).toHaveProperty("renderTimeouts");
-      expect(result.metrics).toHaveProperty("circuitBreakerSids");
-      expect(result.metrics.renderTimeouts).toBe(0);
-      expect(result.metrics.circuitBreakerSids).toEqual([]);
+      expect(result.metrics.renderedFallbackCount).toBe(0);
+      expect(result.metrics.metadataOnlyCount).toBe(0);
+      expect(result.metrics.peakRssMb).toBeGreaterThan(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("completes classification with metadata-only fallback when rendering and extraction fail", async () => {
+    const { root, plan } = await createTestPlan("sidflow-metadata-fallback-");
+    try {
+      const result = await generateAutoTags(plan, {
+        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+        featureExtractor: async () => {
+          throw new Error("forced extraction failure");
+        },
+        predictRatings: heuristicPredictRatings,
+        render: async () => {
+          throw new Error("forced render failure");
+        },
+      });
+
+      expect(result.jsonlRecordCount).toBe(1);
+      expect(result.metrics.renderedFallbackCount).toBe(1);
+      expect(result.metrics.metadataOnlyCount).toBe(1);
+      expect(result.autoTagged.length + result.manualEntries.length + result.mixedEntries.length).toBe(1);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

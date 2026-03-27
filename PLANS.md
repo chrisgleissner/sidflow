@@ -8,29 +8,37 @@ Make `bash scripts/run-similarity-export.sh --mode local --full-rerun true` comp
 
 ### Root Cause Hypotheses
 
-- [ ] The primary OOM driver is WASM trace capture buffering every SID write in memory until the end of a render (`pendingTraces` in `wav-renderer.ts`), which scales badly on complex tracks and across concurrent workers.
-- [ ] The primary data-loss path is the render-pool circuit breaker (`timedOutSids`) plus tagging/build skip branches in `index.ts`, which permanently drops later jobs for an SID after a timeout.
-- [ ] The primary oversubscription path is thread selection defaulting to logical-core count instead of a bounded fixed worker heuristic; the web `/api/classify` route also ignores a request-level thread override.
-- [ ] Worker instability is amplified by forceful `worker.terminate()` on timeout/error with immediate replacement, producing churn instead of bounded, cooperative recycling.
-- [ ] Memory telemetry is incomplete because it tracks heap only, not RSS, and does not persist worker-pool lifecycle or fallback-level metrics.
+- [x] The primary OOM driver is WASM trace capture buffering every SID write in memory until the end of a render (`pendingTraces` in `wav-renderer.ts`), which scales badly on complex tracks and across concurrent workers.
+- [x] The primary data-loss path is the render-pool circuit breaker (`timedOutSids`) plus tagging/build skip branches in `index.ts`, which permanently drops later jobs for an SID after a timeout.
+- [x] The primary oversubscription path is thread selection defaulting to logical-core count instead of a bounded fixed worker heuristic; the web `/api/classify` route also ignores a request-level thread override.
+- [x] Worker instability is amplified by forceful `worker.terminate()` on timeout/error with immediate replacement, producing churn instead of bounded, cooperative recycling.
+- [x] Memory telemetry is incomplete because it tracks heap only, not RSS, and does not persist worker-pool lifecycle or fallback-level metrics.
 
 ### Fix Strategy By Failure Class
 
-- [ ] Render bounding: enforce wall-clock/CPU-style budgets inside the render loop itself so renders terminate cooperatively with partial output instead of parent-side kill/skip.
-- [ ] Worker pool: keep a fixed-size global queue and worker pool, cap default concurrency at `min(physical_cores / 2, 6)`, and recycle workers after a bounded job count.
-- [ ] Data loss: remove timeout circuit-breaker purging and replace it with an ordered fallback ladder that always produces either truncated audio or metadata-only output.
-- [ ] Memory discipline: stream SID trace sidecars in bounded batches, avoid whole-trace retention, reduce duplicate PCM buffering, and dispose engines after every attempt.
-- [ ] Telemetry: persist RSS, active/busy worker count, worker recycle count, fallback level, render truncation, and classification outcome summaries.
-- [ ] API / orchestration: make `/api/classify` honor thread overrides and use the same bounded worker heuristic as the CLI path used by the full similarity-export script.
+- [x] Render bounding: enforce wall-clock/CPU-style budgets inside the render loop itself so renders terminate cooperatively with partial output instead of parent-side kill/skip.
+- [x] Worker pool: keep a fixed-size global queue and worker pool, cap default concurrency at `min(physical_cores / 2, 6)`, and recycle workers after a bounded job count.
+- [x] Data loss: remove timeout circuit-breaker purging and replace it with an ordered fallback ladder that always produces either truncated audio or metadata-only output.
+- [x] Memory discipline: stream SID trace sidecars in bounded batches, avoid whole-trace retention, reduce duplicate PCM buffering, and dispose engines after every attempt.
+- [x] Telemetry: persist RSS, active/busy worker count, worker recycle count, fallback level, render truncation, and classification outcome summaries.
+- [x] API / orchestration: make `/api/classify` honor thread overrides and use the same bounded worker heuristic as the CLI path used by the full similarity-export script.
 
 ### Investigation / Validation Steps
 
-- [ ] Replace trace accumulation and timeout-purge code paths.
-- [ ] Add targeted tests for bounded rendering, worker recycling, no-skip fallback behavior, and concurrency heuristics.
-- [ ] Run focused classify tests and build.
+- [x] Replace trace accumulation and timeout-purge code paths.
+- [x] Add targeted tests for bounded rendering, worker recycling, no-skip fallback behavior, and concurrency heuristics.
+- [x] Run focused classify tests and build.
 - [ ] Run targeted subset classifications, including the previously pathological 2SID repro and a bounded HVSC subset, while collecting RSS / fallback telemetry.
 - [ ] Run the full `bash scripts/run-similarity-export.sh --mode local --full-rerun true` validation.
 - [ ] Record final metrics summary and reproducibility evidence in `WORKLOG.md`.
+
+### Progress
+
+- 2026-03-27: Replaced the WASM render pool timeout/circuit-breaker implementation with a cooperative fixed-size pool that recycles workers after 32 jobs and emits lifecycle events.
+- 2026-03-27: Moved render bounding into `renderWavWithEngine()`, streamed trace sidecars in batches, and removed whole-trace buffering plus duplicate PCM chunk accumulation.
+- 2026-03-27: Refactored `buildAudioCache()` and `generateAutoTags()` so render failures flow through a bounded fallback ladder and end in metadata-only classification instead of `skipped`/`song_failed` outcomes.
+- 2026-03-27: Bounded thread selection via the physical-core heuristic in classify orchestration, feature extraction pool sizing, and the web `/api/classify` path; request-level `threads` is now honored by the API schema and temp config.
+- 2026-03-27: Focused validation passed: `bun run build` succeeded, and `bun test packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts packages/sidflow-classify/test/cli.test.ts` completed with 26 passing tests and 0 failures.
 
 ### Measurable Success Criteria
 

@@ -15,7 +15,7 @@ import { createLogger } from "@sidflow/common";
 import { Worker } from "node:worker_threads";
 import type { WorkerOptions } from "node:worker_threads";
 import type { FeatureVector } from "./index.js";
-import { getLogicalCpuCount } from "./system.js";
+import { getRecommendedWorkerCount } from "./system.js";
 
 interface WorkerMessage {
   type: "result" | "error";
@@ -242,10 +242,7 @@ let globalPool: FeatureExtractionPool | null = null;
 export function getFeatureExtractionPool(size?: number): FeatureExtractionPool {
   if (!globalPool) {
     const normalizedSize = size === 0 ? undefined : size;
-    const cores = Math.max(1, getLogicalCpuCount());
-    const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
-    const cappedAutoSize = Number.isInteger(envMax) && envMax > 0 ? Math.min(cores, envMax) : cores;
-    const poolSize = normalizedSize ?? cappedAutoSize;
+    const poolSize = getRecommendedWorkerCount(normalizedSize);
     globalPool = new FeatureExtractionPool(poolSize);
   }
   return globalPool;
