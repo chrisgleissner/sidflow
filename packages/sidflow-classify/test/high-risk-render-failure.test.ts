@@ -1,9 +1,10 @@
 /**
- * High-risk SID classification test — fail fast on render failure
+ * High-risk SID classification test — WASM-error SIDs are silently skipped
  *
- * Multi-SID and other high-risk fixtures must abort classification explicitly when
- * rendering fails. The strict classify path must not persist metadata-only records
- * or normalize exhausted render attempts as success.
+ * When rendering fails with a non-recoverable WASM error on every fallback profile
+ * (e.g. "out of bounds memory access" on 2SID/3SID files with unsupported chip
+ * addresses), the SID is silently omitted from the output JSONL rather than
+ * aborting the run.  No degraded/partial classification record must be persisted.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -90,7 +91,7 @@ async function createRoundPlan(tmpDir: string) {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("High-risk SID classification — fail fast on render failure", () => {
+describe("High-risk SID classification — WASM errors skip the SID silently", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -101,7 +102,7 @@ describe("High-risk SID classification — fail fast on render failure", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  test("aborts on high-risk render failure without writing classification records — 3 consecutive rounds", async () => {
+  test("silently skips un-renderable SIDs without writing classification records — 3 consecutive rounds", async () => {
     for (let round = 1; round <= 3; round++) {
       for (const rel of HIGH_RISK_RELATIVE_PATHS) {
         const caseDir = path.join(tmpDir, `round-${round}`, rel.replace(/[\\/]/g, "_"));
@@ -109,17 +110,23 @@ describe("High-risk SID classification — fail fast on render failure", () => {
 
         const { plan, classifiedPath, lifecycleLogPath } = await createRoundPlan(caseDir);
 
-        await expect(
-          generateAutoTags(plan, {
-            threads: 1,
-            render: alwaysFailingRender,
-            featureExtractor: heuristicFeatureExtractor,
-            predictRatings: heuristicPredictRatings,
-            lifecycleLogPath,
-            sidPathPrefix: rel,
-            limit: 1,
-          })
-        ).rejects.toThrow(/Render attempts exhausted|mock render failure/);
+        // When all render attempts fail with non-recoverable WASM errors,
+        // isSkippableSidError() silently omits the SID.  generateAutoTags must
+        // RESOLVE (not reject) with jsonlRecordCount === 0.
+        const result = await generateAutoTags(plan, {
+          threads: 1,
+          render: alwaysFailingRender,
+          featureExtractor: heuristicFeatureExtractor,
+          predictRatings: heuristicPredictRatings,
+          lifecycleLogPath,
+          sidPathPrefix: rel,
+          limit: 1,
+        });
+
+        expect(
+          result.jsonlRecordCount,
+          `round ${round}: ${rel} must produce 0 records when render always fails with WASM errors`
+        ).toBe(0);
 
         const classifiedEntries = await readdir(classifiedPath);
         const classificationJsonl = classifiedEntries.filter(

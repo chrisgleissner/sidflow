@@ -343,6 +343,11 @@ export function isRecoverableError(error: unknown): boolean {
     ) {
       return false;
     }
+    // "No audio" means the SID produces zero samples at ANY quality level —
+    // lower-quality fallback profiles won't help.
+    if (message.includes("produced no audio")) {
+      return false;
+    }
     // Network/IO errors are recoverable
     if (message.includes("enoent") || message.includes("timeout") || message.includes("busy")) {
       return true;
@@ -354,6 +359,26 @@ export function isRecoverableError(error: unknown): boolean {
   }
   // Default to recoverable for unknown errors
   return true;
+}
+
+/**
+ * Returns true when an error (typically an AggregateError from
+ * renderSongWithFallbacks) is due solely to known WASM engine limitations for
+ * this SID — e.g. the engine produces no audio output, or a memory abort
+ * occurs — meaning no fallback quality profile or retry will help.
+ *
+ * Such SIDs are silently omitted from the output JSONL rather than aborting
+ * the entire corpus run.  "Real" errors (IO failures, mis-configuration, etc.)
+ * still propagate so that the run fails fast.
+ */
+export function isSkippableSidError(error: unknown): boolean {
+  if (error instanceof AggregateError) {
+    return (
+      error.errors.length > 0 &&
+      (error.errors as unknown[]).every((e) => !isRecoverableError(e))
+    );
+  }
+  return !isRecoverableError(error);
 }
 
 /**

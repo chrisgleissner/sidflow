@@ -66,7 +66,7 @@ import {
   writeWavRenderSettingsSidecar,
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
-import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
+import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, isSkippableSidError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
 import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
 import { getRecommendedWorkerCount } from "./system.js";
@@ -2400,6 +2400,18 @@ export async function generateAutoTags(
             rssMb: getProcessRssMb(),
           });
           lifecycle.stageError(renderingKey, { ...lifecycleBase, stage: "RENDERING", error: msg });
+          // When ALL fallback attempts fail with non-recoverable WASM errors
+          // (e.g. the engine produces no audio, or a memory abort) the SID is
+          // intrinsically un-renderable at any quality level.  Omit it from the
+          // output and continue the corpus run — do NOT abort the whole run for
+          // a single broken SID.  "Real" errors (IO, config, etc.) still
+          // propagate so that the run still fails fast on genuine problems.
+          if (isSkippableSidError(renderError)) {
+            classifyLogger.warn(
+              `[Thread ${context.threadId}] Skipping un-renderable SID ${songLabel} (WASM limitation)`
+            );
+            return;
+          }
           throw renderError;
         } finally {
           clearInterval(heartbeatInterval);

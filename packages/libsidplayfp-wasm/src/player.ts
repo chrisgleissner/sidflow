@@ -68,7 +68,7 @@ type DisposableSidPlayerContext = SidPlayerContext & {
 };
 
 export class SidAudioEngine {
-  private readonly modulePromise: Promise<LibsidplayfpWasmModule>;
+  private modulePromise: Promise<LibsidplayfpWasmModule> | undefined;
   private module: LibsidplayfpWasmModule | undefined;
   private context: TraceCapableSidPlayerContext | undefined;
   private readonly sampleRate: number;
@@ -132,6 +132,9 @@ export class SidAudioEngine {
   private async ensureModule(): Promise<LibsidplayfpWasmModule> {
     if (this.module) {
       return this.module;
+    }
+    if (!this.modulePromise) {
+      throw new Error("SidAudioEngine has been disposed");
     }
     this.module = await this.modulePromise;
     return this.module;
@@ -667,5 +670,10 @@ export class SidAudioEngine {
     this.bufferPool.clear();
     this.resetCacheState();
     this.originalSidBuffer = null;
+    // Null module references so the WASM linear-memory ArrayBuffer (~64–128 MB)
+    // becomes GC-eligible immediately rather than being held until the engine
+    // wrapper object is eventually collected.
+    this.module = undefined;
+    this.modulePromise = undefined;
   }
 }

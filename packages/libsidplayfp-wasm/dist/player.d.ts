@@ -12,7 +12,7 @@ export interface SidWriteTrace {
     cyclePhi1: number;
 }
 export declare class SidAudioEngine {
-    private readonly modulePromise;
+    private modulePromise;
     private module;
     private context;
     private readonly sampleRate;

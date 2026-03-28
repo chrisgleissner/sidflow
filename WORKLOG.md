@@ -1,5 +1,73 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-29 — Phase 20: WASM OOM root-cause investigation and fix
+
+### Symptom recap
+Full HVSC run (87,074 items) crashed at ~54,649 songs with `RangeError: Out of memory` during WASM
+instantiation, followed by a Bun segfault (`panic: Segmentation fault at address 0x24`, peak RSS
+2.80 GB). All four worker threads OOMed, the pool kept spawning replacement workers that also
+immediately OOMed (death-spiral), and the run aborted.
+
+### Root cause identified
+
+**Primary: one fresh WASM linear-memory instance per render job**
+
+`wasm-render-worker.ts` calls `createEngine({ sampleRate })` for **every single render job**.
+`createEngine()` calls `loadLibsidplayfp({ instantiateWasm })` → `WebAssembly.instantiate()` →
+new Emscripten module instance + new WASM linear-memory `ArrayBuffer` (~64–128 MB each).
+
+`engine.dispose()` is called in the `finally` block, which correctly frees the C++
+`SidPlayerContext` (inner WASM heap object) but **does not null `this.module` or
+`this.modulePromise`**. Both fields still reference the full `LibsidplayfpWasmModule` object,
+which in turn holds the `WebAssembly.Instance` and its linear-memory `ArrayBuffer`. Those ~64–128
+MB stay live until JS GC collects the engine wrapper object.
+
+At ~40 renders/sec across 4 workers, GC cannot reclaim old instances fast enough. Thousands of
+live WASM instances × 64–128 MB = multiple GB of retained memory → OOM.
+
+**Secondary: OOM death-spiral in the pool**
+
+When a worker errored with OOM, `terminateAndReplaceWorker()` immediately spawned a new worker.
+That worker also tried to instantiate WASM on its first job and also OOMed. The process repeated
+until Bun segfaulted.
+
+### Code archaeology (files read, not yet changed)
+
+| File | Key finding |
+|---|---|
+| `packages/libsidplayfp-wasm/src/player.ts` line 663 | `dispose()` releases C++ context + clears pools + nulls `originalSidBuffer` — but `this.module` and `this.modulePromise` are never cleared |
+| `packages/sidflow-classify/src/render/wasm-render-worker.ts` line 30 | Fresh `createEngine()` per job; `engine.dispose()` in `finally` doesn't free WASM |
+| `packages/sidflow-classify/src/render/engine-factory.ts` line 181 | `compiledWasmModulePromise` cached per-worker (correct), but every `createEngine()` call calls `loadLibsidplayfp({ instantiateWasm })` → new `WebAssembly.Instance` |
+| `packages/sidflow-classify/src/render/wasm-render-pool.ts` | Worker error handler always calls `terminateAndReplaceWorker()` — no OOM guard |
+
+### Fix strategy
+
+1. **Tried: Persistent engine cache in the worker** (`wasm-render-worker.ts`): create engines once per
+   (worker × sample-rate) pair and reuse across all jobs for that worker.
+   
+   **REVERTED**: libsidplayfp has WASM-module-level global state (likely CIA timer / SID chip state)
+   that accumulates across renders. After the first render completes, the second call to
+   `ctx.reset()` within the **same WASM instance** stalls (hangs indefinitely in the SID init
+   routine, triggering the 120 s pool-level timeout). Observed in the super-mario-stress test:
+   copies 001–004 (fresh engines) completed; copies 005–024 (cached engines = same WASM) all
+   timed out.
+
+2. **Landed: Fix `dispose()` to null module references** (`player.ts`): change `modulePromise` from
+   `readonly` to mutable and null both `this.module` and `this.modulePromise` in `dispose()`,
+   making the WASM linear-memory `ArrayBuffer` immediately GC-eligible after each job, rather than
+   waiting for the engine wrapper object to be collected by a later GC cycle.  JavaScriptCore
+   (Bun's JS engine) tracks large external `ArrayBuffer` allocations and raises GC pressure
+   accordingly — nulling the reference at job-completion time gives JSC the earliest possible
+   signal to reclaim the ~128 MB allocation.
+
+### Validation plan (bottom-up)
+1. Build passes (`bun run build`)
+2. Seam tests (render-timeout, multi-sid, wav-renderer-duration-cap, super-mario-stress) pass
+3. Memory diagnostic: classify 200 songs with `--threads 1`, measure peak RSS before/after fix — expect < 500 MB vs old ~2+ GB
+4. Graduated HVSC runs: 500 → 2,000 → 10,000 → 50,000 → 87,074 (each must finish without OOM)
+5. Full test suite (`bun run test`) × 3 consecutive green runs
+
+
 ## 2026-03-28T11:39Z - Mario bounded repro refresh
 
 | ID | Hypothesis | Command | Timeout | Expected falsifier | Result | Artifacts | Next action |

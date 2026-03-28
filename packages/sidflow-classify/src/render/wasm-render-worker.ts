@@ -58,7 +58,11 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
     };
     parentPort!.postMessage(response);
   } finally {
+    // dispose() nulls this.module and this.modulePromise so the ~64-128 MB WASM
+    // linear-memory ArrayBuffer becomes GC-eligible immediately rather than
+    // waiting for the engine wrapper object to be collected.
     engine?.dispose();
+    engine = null;
   }
 }
 
@@ -73,3 +77,5 @@ parentPort.on("message", (message: WorkerMessage) => {
     process.exit(0);
   }
 });
+
+
