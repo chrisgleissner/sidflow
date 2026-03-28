@@ -333,6 +333,16 @@ export function isRecoverableError(error: unknown): boolean {
     ) {
       return false;
     }
+    // WASM runtime errors (memory access, table index) are NOT recoverable —
+    // the same chip address will fail on every retry.
+    if (
+      message.includes("out of bounds memory access")
+      || message.includes("wasm table entry")
+      || message.includes("getwasmtableentry")
+      || message.includes("unreachable wasm")
+    ) {
+      return false;
+    }
     // Network/IO errors are recoverable
     if (message.includes("enoent") || message.includes("timeout") || message.includes("busy")) {
       return true;

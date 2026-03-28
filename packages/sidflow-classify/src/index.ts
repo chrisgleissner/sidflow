@@ -59,7 +59,7 @@ import {
 } from "./audio-window.js";
 export * from "./sid-register-trace.js";
 export * from "./sid-native-features.js";
-import { createSidNativeFeatureExtractor, createStrictHybridFeatureExtractor } from "./sid-native-features.js";
+import { createSidNativeFeatureExtractor, createStrictHybridFeatureExtractor, extractSidNativeFeaturesFromWriteTrace } from "./sid-native-features.js";
 import {
   WAV_RENDER_SETTINGS_EXTENSION,
   readWavRenderSettingsSidecar,
@@ -1379,6 +1379,7 @@ export async function buildAudioCache(
         });
       },
       {
+        continueOnError: true,
         getGroupKey: (item) => (item as SongToRender).sidFile,
       }
     );
@@ -2294,6 +2295,7 @@ export async function generateAutoTags(
       // Always ensure we have a WAV and extract features for every song.
       // Stations depend on objective features, not just ratings.
       const wavNeedsRefresh = await needsWavRefresh(job.sidFile, job.wavPath, false, plan.config);
+      let wavRenderFailed = false;
       if (wavNeedsRefresh) {
         emitSongEvent("render_start", {
           targetDurationMs: job.targetDurationMs ?? 0,
@@ -2387,14 +2389,14 @@ export async function generateAutoTags(
           });
         } catch (renderError) {
           const msg = renderError instanceof Error ? renderError.message : String(renderError);
-          classifyLogger.error(`[Thread ${context.threadId}] Inline render fallback ladder failed for ${songLabel}: ${msg}`);
+          classifyLogger.warn(`[Thread ${context.threadId}] Render failed for ${songLabel} — producing metadata-only record: ${msg}`);
           emitSongEvent("render_failed", {
             error: msg,
             rssMb: getProcessRssMb(),
           });
-          // Lifecycle: RENDERING error
+          // Lifecycle: RENDERING error — song will still be classified with unavailable features
           lifecycle.stageError(renderingKey, { ...lifecycleBase, stage: "RENDERING", error: msg });
-          throw renderError;
+          wavRenderFailed = true;
         } finally {
           clearInterval(heartbeatInterval);
         }
@@ -2474,23 +2476,40 @@ export async function generateAutoTags(
       // Lifecycle: EXTRACTING stage
       const extractingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTING" });
       try {
-        try {
-          extractedFeatures = await featureExtractor({
-            wavFile: job.wavPath,
-            sidFile: job.sidFile,
-            songIndex: job.songCount > 1 ? job.songIndex : undefined,
-            songCount: job.songCount,
-          });
-        } catch (featureError) {
-          const message = featureError instanceof Error ? featureError.message : String(featureError);
-          classifyLogger.error(
-            `[Thread ${context.threadId}] Feature extraction failed for ${songLabel}: ${message}`
-          );
-          emitSongEvent("feature_extraction_failed", {
-            error: message,
-            wavPath: job.wavPath,
-          });
-          throw new Error(`Feature extraction failed for ${songLabel}: ${message}`);
+        if (wavRenderFailed) {
+          // WAV render was not possible — produce an "unavailable" SID-native feature record
+          // so the song is still classified (with zero-valued SID features) rather than skipped.
+          const clock = sidMetadataCache.get(job.sidFile)?.clock;
+          extractedFeatures = {
+            ...extractSidNativeFeaturesFromWriteTrace({ traces: [], clock }),
+            sidFeatureVariant: "unavailable",
+          };
+          metadataOnlyCount += 1;
+          emitSongEvent("render_unavailable", { sidFile: job.sidFile });
+        } else {
+          try {
+            extractedFeatures = await featureExtractor({
+              wavFile: job.wavPath,
+              sidFile: job.sidFile,
+              songIndex: job.songCount > 1 ? job.songIndex : undefined,
+              songCount: job.songCount,
+            });
+          } catch (featureError) {
+            const message = featureError instanceof Error ? featureError.message : String(featureError);
+            classifyLogger.warn(
+              `[Thread ${context.threadId}] Feature extraction failed for ${songLabel} — producing metadata-only record: ${message}`
+            );
+            emitSongEvent("feature_extraction_failed", {
+              error: message,
+              wavPath: job.wavPath,
+            });
+            const clock = sidMetadataCache.get(job.sidFile)?.clock;
+            extractedFeatures = {
+              ...extractSidNativeFeaturesFromWriteTrace({ traces: [], clock }),
+              sidFeatureVariant: "unavailable",
+            };
+            metadataOnlyCount += 1;
+          }
         }
       } finally {
         clearInterval(extractionHeartbeatInterval);
@@ -2554,6 +2573,7 @@ export async function generateAutoTags(
         status: "idle"
       });
     }, {
+      continueOnError: true,
       getGroupKey: (item) => (item as AutoTagJob).sidFile,
     });
 
