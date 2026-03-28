@@ -192,12 +192,10 @@ export async function captureSidWriteTraceSecondPass(
 
   try {
     engine.setSidWriteTraceEnabled(true);
-    await engine.loadSidBuffer(sidBuffer);
-
-    if (typeof options.songIndex === "number" && options.songIndex > 1) {
-      await engine.selectSong(Math.max(0, options.songIndex - 1));
-      engine.setSidWriteTraceEnabled(true);
-    }
+    await engine.loadSidBuffer(
+      sidBuffer,
+      typeof options.songIndex === "number" ? Math.max(0, options.songIndex - 1) : 0
+    );
 
     const frameWindow = resolveSidTraceFrameWindow({
       clock: metadata.clock,

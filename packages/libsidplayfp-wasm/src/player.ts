@@ -298,9 +298,9 @@ export class SidAudioEngine {
     }
   }
 
-  async loadSidBuffer(data: Uint8Array | ArrayBufferView): Promise<void> {
+  async loadSidBuffer(data: Uint8Array | ArrayBufferView, songIndex = 0): Promise<void> {
     this.originalSidBuffer = this.cloneInput(data);
-    this.currentSongIndex = 0;
+    this.currentSongIndex = Math.max(0, Math.trunc(songIndex));
     this.resetCacheState();
     this.resetPendingChunk();
     await this.reloadCurrentSong();

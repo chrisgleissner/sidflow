@@ -7,11 +7,16 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { renderWavWithEngine } from "../src/render/wav-renderer.js";
 
 interface FakeSidAudioEngine {
-  loadSidBuffer: (buffer: Uint8Array) => Promise<void>;
+  loadSidBuffer: (buffer: Uint8Array, songIndex?: number) => Promise<void>;
   selectSong: (index: number) => Promise<void>;
   getSampleRate: () => number;
   getChannels: () => number;
   renderCycles: (cycles: number) => Int16Array | null;
+
+interface FakeEngineSpies {
+  loadedSongIndices: number[];
+  selectedSongIndices: number[];
+}
 }
 
 function parseWavDurationMs(buffer: Buffer): { durationMs: number; sampleRate: number } {
@@ -58,14 +63,81 @@ function parseWavDurationMs(buffer: Buffer): { durationMs: number; sampleRate: n
 }
 
 function createFakeEngine(sampleRate: number): FakeSidAudioEngine {
+function createFakeEngine(sampleRate: number): { engine: FakeSidAudioEngine; spies: FakeEngineSpies } {
+  const spies: FakeEngineSpies = {
+    loadedSongIndices: [],
+    selectedSongIndices: [],
+  };
+
   return {
-    async loadSidBuffer() {},
-    async selectSong() {},
-    getSampleRate: () => sampleRate,
-    getChannels: () => 1,
-    renderCycles: () => new Int16Array(1),
+    engine: {
+      async loadSidBuffer(_buffer, songIndex = 0) {
+        spies.loadedSongIndices.push(songIndex);
+      },
+      async selectSong(index) {
+        spies.selectedSongIndices.push(index);
+      },
+      getSampleRate: () => sampleRate,
+      getChannels: () => 1,
+      renderCycles: () => new Int16Array(1),
+    },
+    spies,
   };
 }
+
+async function createTestSidFile(tempDir: string): Promise<string> {
+  const sidFile = path.join(tempDir, "test.sid");
+  await writeFile(sidFile, Buffer.from([0, 1, 2, 3]));
+  return sidFile;
+}
+
+async function createTestWavFile(tempDir: string): Promise<string> {
+  return path.join(tempDir, "out.wav");
+}
+
+describe("renderWavWithEngine subtune loading", () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "sidflow-wav-subtune-"));
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("loads the first subtune directly without calling selectSong", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const { engine, spies } = createFakeEngine(10);
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      songIndex: 1,
+      targetDurationMs: 1000,
+    });
+
+    expect(spies.loadedSongIndices).toEqual([0]);
+    expect(spies.selectedSongIndices).toEqual([]);
+  });
+
+  it("loads later subtunes directly without a second selectSong reload", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const { engine, spies } = createFakeEngine(10);
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      songIndex: 3,
+      targetDurationMs: 1000,
+    });
+
+    expect(spies.loadedSongIndices).toEqual([2]);
+    expect(spies.selectedSongIndices).toEqual([]);
+  });
+});
 
 describe("renderWavWithEngine duration caps", () => {
   let tempDir: string;
@@ -82,11 +154,10 @@ describe("renderWavWithEngine duration caps", () => {
     targetDurationMs?: number;
     maxRenderSeconds?: number;
   }): Promise<number> {
-    const sidFile = path.join(tempDir, "test.sid");
-    const wavFile = path.join(tempDir, "out.wav");
-    await writeFile(sidFile, Buffer.from([0, 1, 2, 3]));
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
 
-    const engine = createFakeEngine(10);
+    const { engine } = createFakeEngine(10);
     await renderWavWithEngine(engine as any, {
       sidFile,
       wavFile,
@@ -97,7 +168,14 @@ describe("renderWavWithEngine duration caps", () => {
     const wav = await readFile(wavFile);
     return parseWavDurationMs(wav).durationMs;
   }
+});
+    getSampleRate: () => sampleRate,
+    getChannels: () => 1,
+    renderCycles: () => new Int16Array(1),
+  };
+}
 
+describe("renderWavWithEngine duration caps", () => {
   it("does not exceed targetDurationMs when provided", async () => {
     const durationMs = await renderAndGetDurationMs({ targetDurationMs: 10_000 });
     expect(durationMs).toBeLessThanOrEqual(10_000);

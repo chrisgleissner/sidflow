@@ -104,6 +104,45 @@ interface SidTraceSidecarFooter {
 
 const renderLogger = createLogger("renderWav");
 
+interface RenderDebugEvent {
+  source: "wav-renderer";
+  event: string;
+  timestamp: string;
+  elapsedMs: number;
+  sidFile: string;
+  wavFile: string;
+  songIndex?: number;
+  renderProfile?: string;
+  captureTrace?: boolean;
+  iteration?: number;
+  collectedSamples?: number;
+  targetSamples?: number;
+  chunkSamples?: number | null;
+  traceEventCount?: number;
+  traceBatchCount?: number;
+  maxRenderSeconds?: number;
+  maxRenderWallTimeMs?: number;
+  targetDurationMs?: number;
+  error?: string;
+}
+
+function resolveRenderDebugLogPath(): string | null {
+  const configured = process.env.SIDFLOW_DEBUG_RENDER_LOG;
+  if (!configured || configured.trim().length === 0) {
+    return null;
+  }
+  return path.resolve(configured);
+}
+
+async function appendRenderDebugEvent(event: RenderDebugEvent): Promise<void> {
+  const debugLogPath = resolveRenderDebugLogPath();
+  if (!debugLogPath) {
+    return;
+  }
+  await ensureDir(path.dirname(debugLogPath));
+  await appendFile(debugLogPath, `${JSON.stringify(event)}\n`, "utf8");
+}
+
 export function getSidTraceSidecarPath(wavFile: string): string {
   return `${wavFile}${SID_TRACE_EXTENSION}`;
 }
@@ -346,24 +385,55 @@ export async function renderWavWithEngine(
   options: RenderWavOptions
 ): Promise<void> {
   const { sidFile, wavFile, songIndex } = options;
+  const debugStart = Date.now();
+  const emitDebugEvent = async (
+    event: string,
+    extra: Omit<RenderDebugEvent, "source" | "event" | "timestamp" | "elapsedMs" | "sidFile" | "wavFile" | "songIndex" | "renderProfile" | "captureTrace"> = {}
+  ): Promise<void> => {
+    await appendRenderDebugEvent({
+      source: "wav-renderer",
+      event,
+      timestamp: new Date().toISOString(),
+      elapsedMs: Date.now() - debugStart,
+      sidFile,
+      wavFile,
+      songIndex,
+      renderProfile: options.renderProfile,
+      captureTrace: options.captureTrace,
+      ...extra,
+    });
+  };
 
   await ensureDir(path.dirname(wavFile));
+  await emitDebugEvent("render_function_enter", {
+    maxRenderSeconds: options.maxRenderSeconds,
+    maxRenderWallTimeMs: options.maxRenderWallTimeMs,
+    targetDurationMs: options.targetDurationMs,
+  });
 
   // Enable trace capture BEFORE loading the buffer so the context is configured with
   // tracing on from the first cycle. getAndClearSidWriteTraces() is called after rendering.
   if (options.captureTrace) {
+    await emitDebugEvent("trace_enable_start");
     engine.setSidWriteTraceEnabled(true);
+    await emitDebugEvent("trace_enable_complete");
   }
 
+  const requestedSongIndex = typeof songIndex === "number" ? Math.max(0, songIndex - 1) : 0;
+
+  await emitDebugEvent("sid_file_read_start");
   const sidBuffer = new Uint8Array(await readFile(sidFile));
-  await engine.loadSidBuffer(sidBuffer);
+  await emitDebugEvent("sid_file_read_complete");
+
+  await emitDebugEvent("sid_load_start");
+  await engine.loadSidBuffer(sidBuffer, requestedSongIndex);
+  await emitDebugEvent("sid_load_complete");
 
   if (typeof songIndex === "number") {
-    const zeroBased = Math.max(0, songIndex - 1);
-    renderLogger.debug(
-      `Selecting song index ${zeroBased} for ${path.basename(sidFile)}`
-    );
-    await engine.selectSong(zeroBased);
+    await emitDebugEvent("song_select_inlined", {
+      collectedSamples: 0,
+      targetSamples: 0,
+    });
   }
 
   const sampleRate = engine.getSampleRate();
@@ -427,6 +497,13 @@ export async function renderWavWithEngine(
   let traceEventCount = 0;
   let traceBatchCount = 0;
 
+  await emitDebugEvent("render_loop_ready", {
+    collectedSamples,
+    targetSamples: maxSamples,
+    traceEventCount,
+    traceBatchCount,
+  });
+
   const flushTraceBatch = async (): Promise<void> => {
     if (!traceHandle || traceBatchBuffer.length === 0) {
       return;
@@ -455,7 +532,26 @@ export async function renderWavWithEngine(
 
   while (collectedSamples < maxSamples && iterations < maxIterations) {
     iterations += 1;
+    if (iterations <= 3) {
+      await emitDebugEvent("render_cycles_start", {
+        iteration: iterations,
+        collectedSamples,
+        targetSamples: maxSamples,
+        traceEventCount,
+        traceBatchCount,
+      });
+    }
     const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
+    if (iterations <= 3) {
+      await emitDebugEvent("render_cycles_complete", {
+        iteration: iterations,
+        collectedSamples,
+        targetSamples: maxSamples,
+        chunkSamples: chunk?.length ?? null,
+        traceEventCount,
+        traceBatchCount,
+      });
+    }
 
     if (options.captureTrace) {
       const traceBatch = engine.getAndClearSidWriteTraces();
@@ -550,6 +646,12 @@ export async function renderWavWithEngine(
   }
 
   renderLogger.debug(`✓ COMPLETE for ${path.basename(wavFile)}`);
+  await emitDebugEvent("wav_write_complete", {
+    collectedSamples,
+    targetSamples: maxSamples,
+    traceEventCount,
+    traceBatchCount,
+  });
 
   // Write trace sidecar so the SID-native feature extractor can reuse these traces
   // instead of performing a second full WASM render pass for the same song.
@@ -579,6 +681,12 @@ export async function renderWavWithEngine(
   }
 
   const elapsedMs = Date.now() - startTime;
+  await emitDebugEvent("render_function_complete", {
+    collectedSamples,
+    targetSamples: maxSamples,
+    traceEventCount,
+    traceBatchCount,
+  });
   options.onSummary?.({
     collectedSamples,
     targetSamples: maxSamples,

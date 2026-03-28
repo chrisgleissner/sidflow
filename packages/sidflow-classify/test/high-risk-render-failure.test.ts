@@ -1,26 +1,17 @@
 /**
- * High-risk SID classification test — graceful render failure handling
+ * High-risk SID classification test — fail fast on render failure
  *
- * Tests that multi-SID (2SID/3SID) and other high-risk SID files never crash
- * the classification pipeline and always produce a classification record.
- *
- * Strategy: inject a mock render function that always throws, simulating the
- * "Out of bounds memory access" WASM crash observed on Missile_Defence_2SID.sid
- * and similar files.  The fix in index.ts catches the exhausted fallback ladder,
- * sets wavRenderFailed=true, and produces an "unavailable" feature record so
- * every song is still classified.
- *
- * We run the whole test-data corpus (which includes Waterfall_3SID, Space_Oddity_2SID,
- * Super_Mario_Bros_64_2SID, Great_Giana_Sisters, and normal single-SID files) through
- * three identical rounds to satisfy the 3-consecutive-pass requirement.
+ * Multi-SID and other high-risk fixtures must abort classification explicitly when
+ * rendering fails. The strict classify path must not persist metadata-only records
+ * or normalize exhausted render attempts as success.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { type SidflowConfig, type ClassificationRecord } from "@sidflow/common";
+import { type SidflowConfig } from "@sidflow/common";
 import {
   generateAutoTags,
   heuristicFeatureExtractor,
@@ -37,8 +28,8 @@ const REPO_ROOT = path.join(import.meta.dir, "../../../");
 const TEST_SID_ROOT = path.join(REPO_ROOT, "test-data/C64Music");
 
 /**
- * High-risk files present in test-data — must all produce a classification record
- * regardless of whether the WASM renderer supports them.
+ * High-risk files present in test-data — strict classification must abort for these
+ * fixtures if rendering fails.
  */
 const HIGH_RISK_RELATIVE_PATHS = [
   "MUSICIANS/C/Chiummo_Gaetano/Waterfall_3SID.sid",  // 3SID v4 — chip addr $4244/$0010
@@ -63,38 +54,22 @@ const alwaysFailingRender: RenderWav = async (_options) => {
   throw new Error("Out of bounds memory access (evaluating 'getWasmTableEntry(index)(a1)'): mock render failure for high-risk SID");
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function readClassificationRecords(jsonlFile: string): Promise<ClassificationRecord[]> {
-  const content = await readFile(jsonlFile, "utf8");
-  return content
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as ClassificationRecord);
-}
-
-interface RoundResult {
-  jsonlRecordCount: number;
-  metadataOnlyCount: number;
-  records: ClassificationRecord[];
-}
-
-async function runOneRound(tmpDir: string): Promise<RoundResult> {
+async function createRoundPlan(tmpDir: string) {
   const configPath = path.join(tmpDir, ".sidflow.json");
   const audioCachePath = path.join(tmpDir, "wav");
   const tagsPath = path.join(tmpDir, "tags");
+  const classifiedPath = path.join(tmpDir, "classified");
   const lifecycleLogPath = path.join(tmpDir, "lifecycle.jsonl");
 
   await mkdir(audioCachePath, { recursive: true });
   await mkdir(tagsPath, { recursive: true });
+  await mkdir(classifiedPath, { recursive: true });
 
   const config: SidflowConfig = {
     sidPath: TEST_SID_ROOT,
     audioCachePath,
     tagsPath,
+    classifiedPath,
     threads: 1,
     classificationDepth: 3,
     maxRenderSec: 10,
@@ -104,22 +79,10 @@ async function runOneRound(tmpDir: string): Promise<RoundResult> {
   } as SidflowConfig;
   await writeFile(configPath, JSON.stringify(config, null, 2), "utf8");
 
-  const plan = await planClassification({ configPath, forceRebuild: true });
-
-  const result = await generateAutoTags(plan, {
-    threads: 1,
-    render: alwaysFailingRender,
-    featureExtractor: heuristicFeatureExtractor,
-    predictRatings: heuristicPredictRatings,
-    lifecycleLogPath,
-  });
-
-  const records = await readClassificationRecords(result.jsonlFile);
-
   return {
-    jsonlRecordCount: result.jsonlRecordCount,
-    metadataOnlyCount: result.metrics.metadataOnlyCount,
-    records,
+    plan: await planClassification({ configPath, forceRebuild: true }),
+    classifiedPath,
+    lifecycleLogPath,
   };
 }
 
@@ -127,7 +90,7 @@ async function runOneRound(tmpDir: string): Promise<RoundResult> {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("High-risk SID classification — graceful render failure", () => {
+describe("High-risk SID classification — fail fast on render failure", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -138,56 +101,35 @@ describe("High-risk SID classification — graceful render failure", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  // We run three independent rounds in one test to prove reproducibility.
-  // Each round creates its own prefix inside tmpDir to prevent WAV cache reuse.
-  test("classifies all test-data SID songs without crashing — 3 consecutive rounds", async () => {
-    let firstRoundCount: number | undefined;
-
+  test("aborts on high-risk render failure without writing classification records — 3 consecutive rounds", async () => {
     for (let round = 1; round <= 3; round++) {
-      const roundDir = path.join(tmpDir, `round-${round}`);
-      await mkdir(roundDir, { recursive: true });
-
-      const { jsonlRecordCount, metadataOnlyCount, records } = await runOneRound(roundDir);
-
-      // Every song across all SID files must produce exactly one record.
-      expect(jsonlRecordCount, `round ${round}: record count must be > 0`).toBeGreaterThan(0);
-      expect(
-        records.length,
-        `round ${round}: parsed record count must match jsonlRecordCount`
-      ).toBe(jsonlRecordCount);
-
-      // All renders failed → every record represents a metadata-only classification.
-      expect(
-        metadataOnlyCount,
-        `round ${round}: metadataOnlyCount must equal jsonlRecordCount`
-      ).toBe(jsonlRecordCount);
-
-      // Every record must carry "unavailable" as the SID feature variant.
-      for (const record of records) {
-        expect(
-          record.features?.sidFeatureVariant,
-          `round ${round}: ${record.sid_path} must have sidFeatureVariant="unavailable"`
-        ).toBe("unavailable");
-      }
-
-      // All high-risk files must be represented in the output.
-      const sidPaths = new Set(records.map((r) => r.sid_path));
       for (const rel of HIGH_RISK_RELATIVE_PATHS) {
-        const posix = rel.replace(/\\/g, "/");
-        // sid_path uses posix-relative path; find at least one record for this file.
-        const hasRecord = [...sidPaths].some((p) => p.endsWith(posix) || p === posix);
-        expect(hasRecord, `round ${round}: no record found for high-risk file ${posix}`).toBe(true);
-      }
+        const caseDir = path.join(tmpDir, `round-${round}`, rel.replace(/[\\/]/g, "_"));
+        await mkdir(caseDir, { recursive: true });
 
-      // Record count must be deterministic across rounds.
-      if (firstRoundCount === undefined) {
-        firstRoundCount = jsonlRecordCount;
-      } else {
+        const { plan, classifiedPath, lifecycleLogPath } = await createRoundPlan(caseDir);
+
+        await expect(
+          generateAutoTags(plan, {
+            threads: 1,
+            render: alwaysFailingRender,
+            featureExtractor: heuristicFeatureExtractor,
+            predictRatings: heuristicPredictRatings,
+            lifecycleLogPath,
+            sidPathPrefix: rel,
+            limit: 1,
+          })
+        ).rejects.toThrow(/Render attempts exhausted|mock render failure/);
+
+        const classifiedEntries = await readdir(classifiedPath);
+        const classificationJsonl = classifiedEntries.filter(
+          (entry) => /^classification_.*\.jsonl$/.test(entry) && !entry.endsWith(".events.jsonl")
+        );
         expect(
-          jsonlRecordCount,
-          `round ${round}: record count must match round 1 (${firstRoundCount})`
-        ).toBe(firstRoundCount);
+          classificationJsonl,
+          `round ${round}: ${rel} must not persist successful classification records after render failure`
+        ).toEqual([]);
       }
     }
-  }, 120_000); // 2-minute timeout: 3 rounds × classification of ~67 songs
+  }, 120_000);
 });

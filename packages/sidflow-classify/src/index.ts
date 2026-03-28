@@ -2295,7 +2295,6 @@ export async function generateAutoTags(
       // Always ensure we have a WAV and extract features for every song.
       // Stations depend on objective features, not just ratings.
       const wavNeedsRefresh = await needsWavRefresh(job.sidFile, job.wavPath, false, plan.config);
-      let wavRenderFailed = false;
       if (wavNeedsRefresh) {
         emitSongEvent("render_start", {
           targetDurationMs: job.targetDurationMs ?? 0,
@@ -2389,14 +2388,13 @@ export async function generateAutoTags(
           });
         } catch (renderError) {
           const msg = renderError instanceof Error ? renderError.message : String(renderError);
-          classifyLogger.warn(`[Thread ${context.threadId}] Render failed for ${songLabel} — producing metadata-only record: ${msg}`);
+          classifyLogger.error(`[Thread ${context.threadId}] Render failed for ${songLabel}: ${msg}`);
           emitSongEvent("render_failed", {
             error: msg,
             rssMb: getProcessRssMb(),
           });
-          // Lifecycle: RENDERING error — song will still be classified with unavailable features
           lifecycle.stageError(renderingKey, { ...lifecycleBase, stage: "RENDERING", error: msg });
-          wavRenderFailed = true;
+          throw renderError;
         } finally {
           clearInterval(heartbeatInterval);
         }
@@ -2476,41 +2474,23 @@ export async function generateAutoTags(
       // Lifecycle: EXTRACTING stage
       const extractingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTING" });
       try {
-        if (wavRenderFailed) {
-          // WAV render was not possible — produce an "unavailable" SID-native feature record
-          // so the song is still classified (with zero-valued SID features) rather than skipped.
-          const clock = sidMetadataCache.get(job.sidFile)?.clock;
-          extractedFeatures = {
-            ...extractSidNativeFeaturesFromWriteTrace({ traces: [], clock }),
-            sidFeatureVariant: "unavailable",
-          };
-          metadataOnlyCount += 1;
-          emitSongEvent("render_unavailable", { sidFile: job.sidFile });
-        } else {
-          try {
-            extractedFeatures = await featureExtractor({
-              wavFile: job.wavPath,
-              sidFile: job.sidFile,
-              songIndex: job.songCount > 1 ? job.songIndex : undefined,
-              songCount: job.songCount,
-            });
-          } catch (featureError) {
-            const message = featureError instanceof Error ? featureError.message : String(featureError);
-            classifyLogger.warn(
-              `[Thread ${context.threadId}] Feature extraction failed for ${songLabel} — producing metadata-only record: ${message}`
-            );
-            emitSongEvent("feature_extraction_failed", {
-              error: message,
-              wavPath: job.wavPath,
-            });
-            const clock = sidMetadataCache.get(job.sidFile)?.clock;
-            extractedFeatures = {
-              ...extractSidNativeFeaturesFromWriteTrace({ traces: [], clock }),
-              sidFeatureVariant: "unavailable",
-            };
-            metadataOnlyCount += 1;
-          }
-        }
+        extractedFeatures = await featureExtractor({
+          wavFile: job.wavPath,
+          sidFile: job.sidFile,
+          songIndex: job.songCount > 1 ? job.songIndex : undefined,
+          songCount: job.songCount,
+        });
+      } catch (featureError) {
+        const message = featureError instanceof Error ? featureError.message : String(featureError);
+        classifyLogger.error(
+          `[Thread ${context.threadId}] Feature extraction failed for ${songLabel}: ${message}`
+        );
+        emitSongEvent("feature_extraction_failed", {
+          error: message,
+          wavPath: job.wavPath,
+        });
+        lifecycle.stageError(extractingKey, { ...lifecycleBase, stage: "EXTRACTING", error: message });
+        throw featureError;
       } finally {
         clearInterval(extractionHeartbeatInterval);
       }
@@ -2573,7 +2553,7 @@ export async function generateAutoTags(
         status: "idle"
       });
     }, {
-      continueOnError: true,
+      continueOnError: false,
       getGroupKey: (item) => (item as AutoTagJob).sidFile,
     });
 

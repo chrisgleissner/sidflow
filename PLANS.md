@@ -4,6 +4,62 @@
 
 The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode local --full-rerun true` must classify the full HVSC corpus without render timeouts, missing SID-trace sidecars, WAV-only fallback success, or partial-record persistence. Any real defect must abort immediately with a non-zero exit. After classification/export succeeds, the CLI station flow must build and validate five clearly distinct persona stations with reproducible, evidence-backed results.
 
+## Phase 19 - Mario 2SID Stall Root-Cause Recovery
+
+1. [IN_PROGRESS] Reproduce the live Mario 2SID stall with repo-local artifacts and use it as the only starting point for diagnosis.
+  Acceptance criteria:
+  - The real classify CLI repro runs under `scripts/run-with-timeout.sh` with `/usr/bin/time -v` and stores all evidence under `tmp/classify-stall/<timestamp>/`.
+  - WORKLOG.md records the exact command, timeout result, last structured event, and partial artifact list.
+
+2. [TODO] Localize whether the stall is in direct rendering, trace capture/flush, or worker-pool orchestration.
+  Acceptance criteria:
+  - Controlled runs compare direct renderer vs pool behavior.
+  - Controlled runs compare `captureTrace: false` vs `captureTrace: true` without repeating the same symptom blindly.
+  - The work log records falsifiable hypotheses for each experiment.
+
+3. [TODO] Add the minimum structured instrumentation required to expose the stuck seam.
+  Acceptance criteria:
+  - Structured events cover SID load, subtune selection, first render-loop entry, periodic render progress, trace flush milestones, and worker send/receive or recycle reasons.
+  - Instrumentation is specific enough to explain the Mario stall without relying on interactive terminal output.
+
+4. [TODO] Implement the smallest fix that restores bounded forward progress and then remove the fail-open classification contract.
+  Acceptance criteria:
+  - Mario repro completes or fails explicitly with a precise error instead of stalling.
+  - Metadata-only / WAV-only fallback behavior is removed from strict classify paths and the tests that normalize it are updated.
+
+5. [TODO] Run the required validation ladder.
+  Acceptance criteria:
+  - Targeted seam tests pass.
+  - Mario repro, checked-in high-risk fixtures, `packages/sidflow-classify/test/super-mario-stress.test.ts`, bounded HVSC subset, and the authoritative wrapper flow all pass in order.
+  - `bun run build` passes and `bun run test` passes three consecutive times with zero failures.
+
+### Progress
+
+- 2026-03-28: Started a new repo-local repro session in `tmp/classify-stall/20260328T113648Z/` with isolated config/output paths and `threads=1`.
+- 2026-03-28: Fresh bounded Mario CLI repro still hangs on the current tree. `/usr/bin/time -v scripts/run-with-timeout.sh 45 -- ./scripts/sidflow-classify --config tmp/classify-stall/20260328T113648Z/sidflow-mario-repro.json --force-rebuild --sid-path-prefix GAMES/S-Z/Super_Mario_Bros_64_2SID.sid` exited `124` after 45.01s at 100% CPU with max RSS 275688 KB.
+- 2026-03-28: The console emitted repeated `Rendering: GAMES/S-Z/Super_Mario_Bros_64_2SID.sid [1]` heartbeats, but the structured telemetry in `tmp/classify-stall/20260328T113648Z/classified/classification_2026-03-28_11-39-14-732.events.jsonl` still stopped at `render_start` for `queueIndex=0`, `songIndex=1`. Partial artifacts remain limited to the metadata sidecar and telemetry file; the WAV cache directory stayed empty.
+- 2026-03-28: Added `scripts/debug-classify-render-module.ts` to bypass the WASM renderer pool via `--render-module` and emit structured JSONL render probe events.
+- 2026-03-28: Direct-render experiment with trace capture still enabled also timed out after 45.00s (`tmp/classify-stall/20260328T113648Z/direct-trace-on/`). The direct probe log emitted only `render_start`, which means the stall happens before the first `onProgress` or `onSummary` callback even without pool orchestration.
+- 2026-03-28: Direct-render experiment with `captureTrace=false` reproduced the same 45.00s timeout (`tmp/classify-stall/20260328T113648Z/direct-trace-off/`) and again emitted only `render_start`. That narrows the root cause away from pool scheduling and trace-sidecar capture/flush, and toward `renderWavWithEngine()` before or inside the first `engine.renderCycles(...)` call.
+
+## Phase 18 - Classification Stall Prompt Reset
+
+1. [done] Audit the current tree and capture a bounded real-world reproduction.
+  Acceptance criteria:
+  - Identify whether the current branch still contains fail-open render / SID-native fallback behavior.
+  - Reproduce the Mario 2SID hang through the real classify CLI with a hard timeout and preserved evidence.
+
+2. [done] Publish a replacement debugging prompt and roadmap in `doc/plans/`.
+  Acceptance criteria:
+  - The new prompt aligns with `AGENTS.md` instead of conflicting with it.
+  - The roadmap requires bounded experiments, explicit work logging, and escalation from single-song repro to full HVSC only after intermediate proof.
+
+### Progress
+
+- 2026-03-28: Confirmed the current tree still has metadata-only continuation in `packages/sidflow-classify/src/index.ts` and WAV-only degradation logging in `packages/sidflow-classify/src/sid-native-features.ts`; the live tests `packages/sidflow-classify/test/high-risk-render-failure.test.ts` and `packages/sidflow-classify/test/render-timeout.test.ts` still encode graceful degradation as success.
+- 2026-03-28: Reproduced the real hang with a hard-bounded CLI run on `GAMES/S-Z/Super_Mario_Bros_64_2SID.sid` using `threads=1`. `scripts/run-with-timeout.sh 45 -- ./scripts/sidflow-classify ...` timed out after 45s at 100% CPU with no forward progress beyond `render_start` for subtune 1; only the metadata sidecar and telemetry `.events.jsonl` were written.
+- 2026-03-28: Wrote the replacement prompt and roadmap in `doc/plans/hvsc-classification-stall-prompt.md`.
+
 ## Phase 17 - Full HVSC Fail-Fast Completion
 
 1. [IN_PROGRESS] Confirm the authoritative CLI contract end to end.

@@ -174,38 +174,40 @@ describe("generateAutoTags resilience", () => {
     }
   });
 
-  test("produces metadata-only record when rendering fails", async () => {
+  test("fails fast when rendering fails", async () => {
     const { root, plan } = await createTestPlan("sidflow-render-fail-fast-");
     try {
-      const result = await generateAutoTags(plan, {
-        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
-        featureExtractor: heuristicFeatureExtractor,
-        predictRatings: heuristicPredictRatings,
-        render: async () => {
-          throw new Error("forced render failure");
-        },
-      });
-      expect(result.metrics.metadataOnlyCount).toBe(1);
+      await expect(
+        generateAutoTags(plan, {
+          extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+          featureExtractor: heuristicFeatureExtractor,
+          predictRatings: heuristicPredictRatings,
+          render: async () => {
+            throw new Error("forced render failure");
+          },
+        })
+      ).rejects.toThrow(/forced render failure/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("produces metadata-only record when feature extraction fails", async () => {
+  test("fails fast when feature extraction fails", async () => {
     const { root, plan } = await createTestPlan("sidflow-extract-fail-fast-");
     try {
-      const result = await generateAutoTags(plan, {
-        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
-        featureExtractor: async () => {
-          throw new Error("forced extraction failure");
-        },
-        predictRatings: heuristicPredictRatings,
-        render: async ({ wavFile }) => {
-          await ensureDir(dirname(wavFile));
-          await writeFile(wavFile, silentWavBuffer());
-        },
-      });
-      expect(result.metrics.metadataOnlyCount).toBe(1);
+      await expect(
+        generateAutoTags(plan, {
+          extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+          featureExtractor: async () => {
+            throw new Error("forced extraction failure");
+          },
+          predictRatings: heuristicPredictRatings,
+          render: async ({ wavFile }) => {
+            await ensureDir(dirname(wavFile));
+            await writeFile(wavFile, silentWavBuffer());
+          },
+        })
+      ).rejects.toThrow(/forced extraction failure/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
