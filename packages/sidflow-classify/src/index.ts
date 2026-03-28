@@ -66,7 +66,7 @@ import {
   writeWavRenderSettingsSidecar,
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
-import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
+import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
 import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
 import { getRecommendedWorkerCount } from "./system.js";
@@ -427,6 +427,12 @@ async function renderSongWithFallbacks(
       classifyLogger.warn(
         `Render attempt ${attempt.profile} failed for ${path.basename(baseOptions.sidFile)}: ${message}`
       );
+      // Non-recoverable errors (e.g. pool-level job timeout for a hung WASM
+      // init routine) will repeat on every fallback profile — short-circuit
+      // immediately rather than waiting for each attempt's full timeout.
+      if (!isRecoverableError(error)) {
+        break;
+      }
     }
   }
 

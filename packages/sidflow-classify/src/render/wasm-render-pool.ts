@@ -41,6 +41,8 @@ export interface RenderPoolLifecycleEvent {
 
 export interface WasmRendererPoolOptions {
   maxJobsPerWorker?: number;
+  /** Override the per-job safety-net timeout in ms. Defaults to 120 s. */
+  jobTimeoutMs?: number;
   onEvent?: (event: RenderPoolLifecycleEvent) => void;
 }
 
@@ -60,11 +62,20 @@ interface WorkerState {
   replaceOnExit: boolean;
   jobsCompleted: number;
   gracefulExitTimer: ReturnType<typeof setTimeout> | null;
+  /** Safety-net timer that fires when a WASM call never returns. */
+  jobTimeoutTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const DEFAULT_MAX_JOBS_PER_WORKER = 32;
 const GRACEFUL_RECYCLE_TIMEOUT_MS = 2_000;
 const FORCE_REPLACE_TIMEOUT_MS = 1_000;
+/**
+ * Safety-net timeout for a single pool job. Cooperative render bounding
+ * (wall-clock budget in renderWavWithEngine) handles normal long renders.
+ * This timeout only fires when a WASM call never returns (e.g. a SID init
+ * routine that loops waiting for a hardware interrupt).
+ */
+const DEFAULT_JOB_TIMEOUT_MS = 120_000;
 const workerScriptUrl = new URL("./wasm-render-worker.js", import.meta.url);
 const poolLogger = createLogger("wasmRenderPool");
 
@@ -72,6 +83,7 @@ export class WasmRendererPool {
   private readonly workers: WorkerState[] = [];
   private readonly queue: Job[] = [];
   private readonly maxJobsPerWorker: number;
+  private readonly jobTimeoutMs: number;
   private readonly onEvent?: (event: RenderPoolLifecycleEvent) => void;
   private nextJobId = 1;
   private nextWorkerId = 1;
@@ -87,6 +99,10 @@ export class WasmRendererPool {
       typeof options.maxJobsPerWorker === "number" && Number.isFinite(options.maxJobsPerWorker) && options.maxJobsPerWorker > 0
         ? Math.floor(options.maxJobsPerWorker)
         : DEFAULT_MAX_JOBS_PER_WORKER;
+    this.jobTimeoutMs =
+      typeof options.jobTimeoutMs === "number" && Number.isFinite(options.jobTimeoutMs) && options.jobTimeoutMs > 0
+        ? Math.floor(options.jobTimeoutMs)
+        : DEFAULT_JOB_TIMEOUT_MS;
     this.onEvent = options.onEvent;
 
     poolLogger.debug(`Creating ${size} workers`);
@@ -153,6 +169,7 @@ export class WasmRendererPool {
       replaceOnExit: false,
       jobsCompleted: 0,
       gracefulExitTimer: null,
+      jobTimeoutTimer: null,
     };
 
     worker.on("message", (message: WorkerMessage) => {
@@ -287,8 +304,7 @@ export class WasmRendererPool {
     const job = state.job;
     state.job = null;
     state.busy = false;
-    state.jobsCompleted += 1;
-
+    state.jobsCompleted += 1;      this.clearJobTimeoutTimer(state);
     if (message.type === "result") {
       job.resolve(message.summary ?? null);
       this.emitEvent("job_completed", state, {
@@ -316,7 +332,44 @@ export class WasmRendererPool {
     this.dispatch();
   }
 
+  private clearJobTimeoutTimer(state: WorkerState): void {
+    if (state.jobTimeoutTimer !== null) {
+      clearTimeout(state.jobTimeoutTimer);
+      state.jobTimeoutTimer = null;
+    }
+  }
+
+  private startJobTimeoutTimer(state: WorkerState, job: Job): void {
+    this.clearJobTimeoutTimer(state);
+    const timeoutMs = this.jobTimeoutMs;
+    state.jobTimeoutTimer = setTimeout(() => {
+      state.jobTimeoutTimer = null;
+      if (this.destroyed || state.job?.id !== job.id) {
+        return;
+      }
+      const sidFile = job.options.sidFile ?? "unknown";
+      poolLogger.warn(
+        `Worker ${state.workerId} job timeout after ${timeoutMs}ms: ${sidFile} — terminating worker`
+      );
+      // Mark exiting before failJob and terminateAndReplaceWorker so the
+      // worker.on("exit") handler does not emit a spurious worker_fault event
+      // or attempt a second job failure.
+      state.exiting = true;
+      state.replaceOnExit = true;
+      this.failJob(
+        state,
+        new Error(`Render attempt timed out after ${timeoutMs}ms in WASM render pool (worker terminated): ${sidFile}`)
+      );
+      this.emitEvent("job_failed", state, {
+        sidFile: job.options.sidFile,
+        reason: `job_timeout:${timeoutMs}ms`,
+      });
+      this.terminateAndReplaceWorker(state, `job_timeout:${timeoutMs}ms`);
+    }, timeoutMs);
+  }
+
   private failJob(state: WorkerState, error: Error): void {
+    this.clearJobTimeoutTimer(state);
     if (state.job) {
       const job = state.job;
       state.job = null;
@@ -345,6 +398,7 @@ export class WasmRendererPool {
       state.job = job;
       this.emitEvent("job_started", state, { sidFile: job.options.sidFile });
       state.worker.postMessage({ type: "render", jobId: job.id, options: job.options });
+      this.startJobTimeoutTimer(state, job);
     }
   }
 
