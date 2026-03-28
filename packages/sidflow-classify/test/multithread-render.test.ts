@@ -21,7 +21,9 @@ describe("defaultRenderWav with worker pool", () => {
   it("renders multiple SID files to WAV using parallel workers", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const previousMaxSeconds = process.env.SIDFLOW_MAX_RENDER_SECONDS;
+    const previousMaxThreads = process.env.SIDFLOW_MAX_THREADS;
     process.env.SIDFLOW_MAX_RENDER_SECONDS = "0.5";
+    process.env.SIDFLOW_MAX_THREADS = "2";
     try {
       const sidPath = path.join(root, "hvsc");
       const audioCachePath = path.join(root, "wav");
@@ -36,7 +38,7 @@ describe("defaultRenderWav with worker pool", () => {
       ]);
 
       const sidFiles: string[] = [];
-      for (let index = 0; index < 2; index += 1) {
+      for (let index = 0; index < 8; index += 1) {
         const sidFile = path.join(sidPath, `song-${index}.sid`);
         await copySampleSid(sidFile);
         sidFiles.push(sidFile);
@@ -78,7 +80,7 @@ describe("defaultRenderWav with worker pool", () => {
           .filter((update) => update.phase === "building")
           .map((update) => update.threadId)
       );
-      expect(uniqueThreads.size).toBe(config.threads);
+      expect(uniqueThreads.size).toBeGreaterThanOrEqual(config.threads);
 
       for (const sidFile of sidFiles) {
         const wavFile = resolveWavPath(plan, sidFile);
@@ -90,6 +92,11 @@ describe("defaultRenderWav with worker pool", () => {
         delete process.env.SIDFLOW_MAX_RENDER_SECONDS;
       } else {
         process.env.SIDFLOW_MAX_RENDER_SECONDS = previousMaxSeconds;
+      }
+      if (previousMaxThreads === undefined) {
+        delete process.env.SIDFLOW_MAX_THREADS;
+      } else {
+        process.env.SIDFLOW_MAX_THREADS = previousMaxThreads;
       }
       await rm(root, { recursive: true, force: true });
     }

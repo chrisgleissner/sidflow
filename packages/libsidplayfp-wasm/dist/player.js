@@ -225,9 +225,9 @@ export class SidAudioEngine {
             await this.reloadCurrentSong();
         }
     }
-    async loadSidBuffer(data) {
+    async loadSidBuffer(data, songIndex = 0) {
         this.originalSidBuffer = this.cloneInput(data);
-        this.currentSongIndex = 0;
+        this.currentSongIndex = Math.max(0, Math.trunc(songIndex));
         this.resetCacheState();
         this.resetPendingChunk();
         await this.reloadCurrentSong();

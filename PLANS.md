@@ -6,28 +6,28 @@ The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode loc
 
 ## Phase 19 - Mario 2SID Stall Root-Cause Recovery
 
-1. [IN_PROGRESS] Reproduce the live Mario 2SID stall with repo-local artifacts and use it as the only starting point for diagnosis.
+1. [done] Reproduce the live Mario 2SID stall with repo-local artifacts and use it as the only starting point for diagnosis.
   Acceptance criteria:
   - The real classify CLI repro runs under `scripts/run-with-timeout.sh` with `/usr/bin/time -v` and stores all evidence under `tmp/classify-stall/<timestamp>/`.
   - WORKLOG.md records the exact command, timeout result, last structured event, and partial artifact list.
 
-2. [TODO] Localize whether the stall is in direct rendering, trace capture/flush, or worker-pool orchestration.
+2. [done] Localize whether the stall is in direct rendering, trace capture/flush, or worker-pool orchestration.
   Acceptance criteria:
   - Controlled runs compare direct renderer vs pool behavior.
   - Controlled runs compare `captureTrace: false` vs `captureTrace: true` without repeating the same symptom blindly.
   - The work log records falsifiable hypotheses for each experiment.
 
-3. [TODO] Add the minimum structured instrumentation required to expose the stuck seam.
+3. [done] Add the minimum structured instrumentation required to expose the stuck seam.
   Acceptance criteria:
   - Structured events cover SID load, subtune selection, first render-loop entry, periodic render progress, trace flush milestones, and worker send/receive or recycle reasons.
   - Instrumentation is specific enough to explain the Mario stall without relying on interactive terminal output.
 
-4. [TODO] Implement the smallest fix that restores bounded forward progress and then remove the fail-open classification contract.
+4. [done] Implement the smallest fix that restores bounded forward progress and then remove the fail-open classification contract.
   Acceptance criteria:
   - Mario repro completes or fails explicitly with a precise error instead of stalling.
   - Metadata-only / WAV-only fallback behavior is removed from strict classify paths and the tests that normalize it are updated.
 
-5. [TODO] Run the required validation ladder.
+5. [IN_PROGRESS] Run the required validation ladder.
   Acceptance criteria:
   - Targeted seam tests pass.
   - Mario repro, checked-in high-risk fixtures, `packages/sidflow-classify/test/super-mario-stress.test.ts`, bounded HVSC subset, and the authoritative wrapper flow all pass in order.
@@ -41,6 +41,13 @@ The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode loc
 - 2026-03-28: Added `scripts/debug-classify-render-module.ts` to bypass the WASM renderer pool via `--render-module` and emit structured JSONL render probe events.
 - 2026-03-28: Direct-render experiment with trace capture still enabled also timed out after 45.00s (`tmp/classify-stall/20260328T113648Z/direct-trace-on/`). The direct probe log emitted only `render_start`, which means the stall happens before the first `onProgress` or `onSummary` callback even without pool orchestration.
 - 2026-03-28: Direct-render experiment with `captureTrace=false` reproduced the same 45.00s timeout (`tmp/classify-stall/20260328T113648Z/direct-trace-off/`) and again emitted only `render_start`. That narrows the root cause away from pool scheduling and trace-sidecar capture/flush, and toward `renderWavWithEngine()` before or inside the first `engine.renderCycles(...)` call.
+- 2026-03-28: Added env-gated structured render events inside `packages/sidflow-classify/src/render/wav-renderer.ts`. The instrumented Mario direct-render repro (`tmp/classify-stall/20260328T113648Z/instrumented-direct-trace-off/`) advanced through `sid_load_complete` and then stopped at `song_select_start`, which localized the stall to `engine.selectSong(0)` for subtune 1.
+- 2026-03-28: Ran a known-good direct-render control on `MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid` with `captureTrace=false` and `--limit 1`. That control completed in 0.44s and emitted `song_select_complete`, `render_loop_ready`, and `render_cycles_complete`, proving the instrumentation itself was not masking progress.
+- 2026-03-28: Extended `scripts/debug-classify-render-module.ts` with `SIDFLOW_DEBUG_SUPPRESS_SONG_INDEX` and re-ran Mario song 1 with the explicit `selectSong()` step suppressed. That run completed in 0.43s, proving the Mario stall was caused by the redundant select/reload step rather than SID load or the render loop.
+- 2026-03-28: Fixed the root cause in `packages/libsidplayfp-wasm/src/player.ts` by letting `loadSidBuffer(data, songIndex)` load the requested zero-based subtune directly, then updated both `packages/sidflow-classify/src/render/wav-renderer.ts` and `packages/sidflow-classify/src/sid-native-features.ts` to use direct subtune loading instead of `loadSidBuffer()` plus `selectSong()`.
+- 2026-03-28: Removed the remaining fail-open classify behavior in `packages/sidflow-classify/src/index.ts`: render failures and feature-extraction failures now throw, and `runConcurrent()` runs with `continueOnError: false` so strict classify work aborts on the first fatal item.
+- 2026-03-28: The exact real Mario CLI repro now succeeds under the same 45s wrapper. `/usr/bin/time -v scripts/run-with-timeout.sh 45 -- ./scripts/sidflow-classify --config tmp/classify-stall/20260328T113648Z/post-fix-real-mario-v2/sidflow-post-fix-real-mario-v2.json --force-rebuild --sid-path-prefix GAMES/S-Z/Super_Mario_Bros_64_2SID.sid` exited `0` in 3.16s with max RSS 503776 KB and produced 37 rendered / 37 extracted / 37 JSONL records.
+- 2026-03-28: Targeted validation now passes for the repaired seam and strict-failure contract: `bun test packages/sidflow-classify/test/wav-renderer-duration-cap.test.ts packages/sidflow-classify/test/render-timeout.test.ts packages/sidflow-classify/test/high-risk-render-failure.test.ts packages/sidflow-classify/test/multi-sid-classification.test.ts packages/sidflow-classify/test/super-mario-stress.test.ts` completed with `19 pass`, `0 fail`.
 
 ## Phase 18 - Classification Stall Prompt Reset
 

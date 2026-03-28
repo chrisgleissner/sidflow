@@ -12,11 +12,11 @@ interface FakeSidAudioEngine {
   getSampleRate: () => number;
   getChannels: () => number;
   renderCycles: (cycles: number) => Int16Array | null;
+}
 
 interface FakeEngineSpies {
   loadedSongIndices: number[];
   selectedSongIndices: number[];
-}
 }
 
 function parseWavDurationMs(buffer: Buffer): { durationMs: number; sampleRate: number } {
@@ -62,7 +62,6 @@ function parseWavDurationMs(buffer: Buffer): { durationMs: number; sampleRate: n
   return { durationMs, sampleRate };
 }
 
-function createFakeEngine(sampleRate: number): FakeSidAudioEngine {
 function createFakeEngine(sampleRate: number): { engine: FakeSidAudioEngine; spies: FakeEngineSpies } {
   const spies: FakeEngineSpies = {
     loadedSongIndices: [],
@@ -168,14 +167,7 @@ describe("renderWavWithEngine duration caps", () => {
     const wav = await readFile(wavFile);
     return parseWavDurationMs(wav).durationMs;
   }
-});
-    getSampleRate: () => sampleRate,
-    getChannels: () => 1,
-    renderCycles: () => new Int16Array(1),
-  };
-}
 
-describe("renderWavWithEngine duration caps", () => {
   it("does not exceed targetDurationMs when provided", async () => {
     const durationMs = await renderAndGetDurationMs({ targetDurationMs: 10_000 });
     expect(durationMs).toBeLessThanOrEqual(10_000);
