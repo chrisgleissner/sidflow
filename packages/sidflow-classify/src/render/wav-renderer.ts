@@ -1,7 +1,7 @@
 import { createLogger, ensureDir, pathExists, stringifyDeterministic, type JsonValue } from "@sidflow/common";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { appendFile, open, readFile, writeFile } from "node:fs/promises";
+import { appendFile, open, readFile, rm, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import readline from "node:readline";
 import path from "node:path";
@@ -476,7 +476,11 @@ export async function renderWavWithEngine(
   }
 
   const maxSamples = Math.max(1, Math.floor(sampleRate * channels * maxSeconds));
-  const pcm = new Int16Array(maxSamples);
+  const initialSamples = Math.max(
+    1,
+    Math.min(maxSamples, Math.floor(sampleRate * channels * Math.min(maxSeconds, 10)))
+  );
+  let pcm = new Int16Array(initialSamples);
   let collectedSamples = 0;
   let silentIterations = 0;
   let iterations = 0;
@@ -492,10 +496,79 @@ export async function renderWavWithEngine(
   const startTime = Date.now();
   let lastProgressTime = startTime;
   const traceSidecarPath = getSidTraceSidecarPath(wavFile);
-  const traceHandle = options.captureTrace ? await open(traceSidecarPath, "w") : null;
+  let traceCaptureActive = options.captureTrace === true;
+  let traceHandle: Awaited<ReturnType<typeof open>> | null = null;
   let traceBatchBuffer: SidTraceTuple[] = [];
   let traceEventCount = 0;
   let traceBatchCount = 0;
+
+  const ensurePcmCapacity = (requiredSamples: number): void => {
+    if (requiredSamples <= pcm.length) {
+      return;
+    }
+
+    let nextCapacity = pcm.length;
+    while (nextCapacity < requiredSamples) {
+      const growthTarget = nextCapacity < 65_536 ? nextCapacity * 2 : Math.ceil(nextCapacity * 1.5);
+      nextCapacity = Math.min(maxSamples, Math.max(requiredSamples, growthTarget));
+      if (nextCapacity === pcm.length) {
+        break;
+      }
+    }
+
+    const expanded = new Int16Array(nextCapacity);
+    expanded.set(pcm.subarray(0, collectedSamples));
+    pcm = expanded;
+  };
+
+  const closeTraceHandle = async (): Promise<void> => {
+    if (!traceHandle) {
+      return;
+    }
+
+    const handle = traceHandle;
+    traceHandle = null;
+    try {
+      await handle.close();
+    } catch {
+      // Ignore close errors.
+    }
+  };
+
+  const disableTraceCapture = async (stage: string, error: unknown): Promise<void> => {
+    if (!traceCaptureActive && !traceHandle) {
+      return;
+    }
+
+    const reason = error instanceof Error ? error.message : String(error);
+    renderLogger.warn(
+      `Trace capture disabled for ${path.basename(wavFile)} during ${stage}: ${reason}`,
+      error instanceof Error ? error : undefined
+    );
+    traceCaptureActive = false;
+    traceBatchBuffer = [];
+    traceEventCount = 0;
+    traceBatchCount = 0;
+
+    try {
+      engine.setSidWriteTraceEnabled(false);
+    } catch {
+      // Ignore trace-disable failures and continue rendering the WAV.
+    }
+
+    try {
+      engine.getAndClearSidWriteTraces();
+    } catch {
+      // Ignore trace-drain failures once trace capture is being disabled.
+    }
+
+    await closeTraceHandle();
+    try {
+      await rm(traceSidecarPath, { force: true });
+    } catch {
+      // Ignore sidecar cleanup failures.
+    }
+  };
 
   await emitDebugEvent("render_loop_ready", {
     collectedSamples,
@@ -505,20 +578,24 @@ export async function renderWavWithEngine(
   });
 
   const flushTraceBatch = async (): Promise<void> => {
-    if (!traceHandle || traceBatchBuffer.length === 0) {
+    if (!traceCaptureActive || !traceHandle || traceBatchBuffer.length === 0) {
       return;
     }
     const payload: SidTraceSidecarBatch = {
       kind: "batch",
       records: traceBatchBuffer,
     };
-    await traceHandle.writeFile(stringifySidTraceLine(payload as unknown as JsonValue), "utf8");
-    traceEventCount += traceBatchBuffer.length;
-    traceBatchCount += 1;
-    traceBatchBuffer = [];
+    try {
+      await traceHandle.writeFile(stringifySidTraceLine(payload as unknown as JsonValue), "utf8");
+      traceEventCount += traceBatchBuffer.length;
+      traceBatchCount += 1;
+      traceBatchBuffer = [];
+    } catch (error) {
+      await disableTraceCapture("batch_write", error);
+    }
   };
 
-  if (traceHandle) {
+  if (traceCaptureActive) {
     const header: SidTraceSidecarHeader = {
       kind: "header",
       v: SID_TRACE_SIDECAR_VERSION,
@@ -527,174 +604,181 @@ export async function renderWavWithEngine(
       skipSeconds: options.traceIntroSkipSec ?? 15,
       analysisSeconds: options.traceAnalysisSec ?? 15,
     };
-    await traceHandle.writeFile(stringifySidTraceLine(header as unknown as JsonValue), "utf8");
+    try {
+      traceHandle = await open(traceSidecarPath, "w");
+      await traceHandle.writeFile(stringifySidTraceLine(header as unknown as JsonValue), "utf8");
+    } catch (error) {
+      await disableTraceCapture("initialization", error);
+    }
   }
+  let renderSucceeded = false;
+  try {
+    while (collectedSamples < maxSamples && iterations < maxIterations) {
+      iterations += 1;
+      if (iterations <= 3) {
+        await emitDebugEvent("render_cycles_start", {
+          iteration: iterations,
+          collectedSamples,
+          targetSamples: maxSamples,
+          traceEventCount,
+          traceBatchCount,
+        });
+      }
+      const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
+      if (iterations <= 3) {
+        await emitDebugEvent("render_cycles_complete", {
+          iteration: iterations,
+          collectedSamples,
+          targetSamples: maxSamples,
+          chunkSamples: chunk?.length ?? null,
+          traceEventCount,
+          traceBatchCount,
+        });
+      }
 
-  while (collectedSamples < maxSamples && iterations < maxIterations) {
-    iterations += 1;
-    if (iterations <= 3) {
-      await emitDebugEvent("render_cycles_start", {
-        iteration: iterations,
-        collectedSamples,
-        targetSamples: maxSamples,
-        traceEventCount,
-        traceBatchCount,
-      });
-    }
-    const chunk = engine.renderCycles(RENDER_CYCLES_PER_CHUNK);
-    if (iterations <= 3) {
-      await emitDebugEvent("render_cycles_complete", {
-        iteration: iterations,
-        collectedSamples,
-        targetSamples: maxSamples,
-        chunkSamples: chunk?.length ?? null,
-        traceEventCount,
-        traceBatchCount,
-      });
-    }
-
-    if (options.captureTrace) {
-      const traceBatch = engine.getAndClearSidWriteTraces();
-      for (const trace of traceBatch) {
-        traceBatchBuffer.push(traceToTuple(trace));
-        if (traceBatchBuffer.length >= TRACE_RECORD_BATCH_SIZE) {
-          await flushTraceBatch();
+      if (traceCaptureActive) {
+        const traceBatch = engine.getAndClearSidWriteTraces();
+        for (const trace of traceBatch) {
+          traceBatchBuffer.push(traceToTuple(trace));
+          if (traceCaptureActive && traceBatchBuffer.length >= TRACE_RECORD_BATCH_SIZE) {
+            await flushTraceBatch();
+          }
         }
       }
-    }
 
-    if (chunk === null) {
-      renderLogger.debug("Renderer returned null chunk; stopping early");
-      stopReason = "null_chunk";
-      break;
-    }
-
-    if (chunk.length === 0) {
-      silentIterations += 1;
-      if (silentIterations >= MAX_SILENT_ITERATIONS) {
-        renderLogger.debug("Silent iteration limit reached; stopping");
-        stopReason = "silent_limit";
+      if (chunk === null) {
+        renderLogger.debug("Renderer returned null chunk; stopping early");
+        stopReason = "null_chunk";
         break;
       }
-      continue;
-    }
 
-    silentIterations = 0;
-    const allowed = Math.min(chunk.length, maxSamples - collectedSamples);
-    if (allowed <= 0) {
-      break;
-    }
+      if (chunk.length === 0) {
+        silentIterations += 1;
+        if (silentIterations >= MAX_SILENT_ITERATIONS) {
+          renderLogger.debug("Silent iteration limit reached; stopping");
+          stopReason = "silent_limit";
+          break;
+        }
+        continue;
+      }
 
-    // SidAudioEngine.renderCycles() already copies data out of the WASM
-    // typed_memory_view, so the returned chunk is JS-heap-owned and stable.
-    // We only need subarray() when truncating to the sample limit.
-    const slice = allowed === chunk.length ? chunk : chunk.subarray(0, allowed);
-    pcm.set(slice, collectedSamples);
-    collectedSamples += slice.length;
+      silentIterations = 0;
+      const allowed = Math.min(chunk.length, maxSamples - collectedSamples);
+      if (allowed <= 0) {
+        break;
+      }
 
-    // Call progress callback at specified intervals to support heartbeat
-    const now = Date.now();
-    if (options.onProgress && (now - lastProgressTime >= progressIntervalMs)) {
-      lastProgressTime = now;
-      options.onProgress({
-        collectedSamples,
-        targetSamples: maxSamples,
-        percentComplete: Math.min(100, (collectedSamples / maxSamples) * 100),
-        elapsedMs: now - startTime
-      });
-    }
+      // SidAudioEngine.renderCycles() already copies data out of the WASM
+      // typed_memory_view, so the returned chunk is JS-heap-owned and stable.
+      // We only need subarray() when truncating to the sample limit.
+      const slice = allowed === chunk.length ? chunk : chunk.subarray(0, allowed);
+      ensurePcmCapacity(collectedSamples + slice.length);
+      pcm.set(slice, collectedSamples);
+      collectedSamples += slice.length;
 
-    if (maxRenderWallTimeMs !== undefined && now - startTime >= maxRenderWallTimeMs) {
-      stopReason = "wall_time";
-      break;
-    }
-  }
+      // Call progress callback at specified intervals to support heartbeat
+      const now = Date.now();
+      if (options.onProgress && (now - lastProgressTime >= progressIntervalMs)) {
+        lastProgressTime = now;
+        options.onProgress({
+          collectedSamples,
+          targetSamples: maxSamples,
+          percentComplete: Math.min(100, (collectedSamples / maxSamples) * 100),
+          elapsedMs: now - startTime
+        });
+      }
 
-  if (collectedSamples < maxSamples && stopReason === "complete") {
-    stopReason = "max_iterations";
-  }
-
-  if (collectedSamples === 0) {
-    if (traceHandle) {
-      try {
-        await traceHandle.close();
-      } catch {
-        // Ignore close errors on failure path.
+      if (maxRenderWallTimeMs !== undefined && now - startTime >= maxRenderWallTimeMs) {
+        stopReason = "wall_time";
+        break;
       }
     }
-    throw new Error(`WASM renderer produced no audio for ${sidFile}`);
-  }
 
-  renderLogger.debug(`Encoding to WAV for ${path.basename(wavFile)}`);
-  const wavBuffer = encodePcmToWav(
-    collectedSamples === pcm.length ? pcm : pcm.subarray(0, collectedSamples),
-    sampleRate,
-    channels
-  );
-  renderLogger.debug(
-    `Writing WAV file ${path.basename(wavFile)} (${wavBuffer.length} bytes)`
-  );
-  await writeFile(wavFile, wavBuffer);
+    if (collectedSamples < maxSamples && stopReason === "complete") {
+      stopReason = "max_iterations";
+    }
 
-  renderLogger.debug(`Computing hash for ${path.basename(wavFile)}`);
-  const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
-  try {
-    const hash = await computeFileHash(wavFile);
-    await writeFile(hashFile, hash, "utf8");
-  } catch (err) {
-    renderLogger.warn(`Hash write failed for ${path.basename(wavFile)}`, err);
-  }
+    if (collectedSamples === 0) {
+      throw new Error(`WASM renderer produced no audio for ${sidFile}`);
+    }
 
-  renderLogger.debug(`✓ COMPLETE for ${path.basename(wavFile)}`);
-  await emitDebugEvent("wav_write_complete", {
-    collectedSamples,
-    targetSamples: maxSamples,
-    traceEventCount,
-    traceBatchCount,
-  });
+    renderLogger.debug(`Encoding to WAV for ${path.basename(wavFile)}`);
+    const wavBuffer = encodePcmToWav(
+      collectedSamples === pcm.length ? pcm : pcm.subarray(0, collectedSamples),
+      sampleRate,
+      channels
+    );
+    renderLogger.debug(
+      `Writing WAV file ${path.basename(wavFile)} (${wavBuffer.length} bytes)`
+    );
+    await writeFile(wavFile, wavBuffer);
 
-  // Write trace sidecar so the SID-native feature extractor can reuse these traces
-  // instead of performing a second full WASM render pass for the same song.
-  if (options.captureTrace && traceHandle) {
+    renderLogger.debug(`Computing hash for ${path.basename(wavFile)}`);
+    const hashFile = `${wavFile}${WAV_HASH_EXTENSION}`;
     try {
-      // Drain any events buffered after the last chunk.
-      const tailBatch = engine.getAndClearSidWriteTraces();
-      for (const trace of tailBatch) {
-        traceBatchBuffer.push(traceToTuple(trace));
-      }
-      await flushTraceBatch();
-      const footer: SidTraceSidecarFooter = {
-        kind: "footer",
-        eventCount: traceEventCount,
-        batchCount: traceBatchCount,
-      };
-      await traceHandle.writeFile(stringifySidTraceLine(footer as unknown as JsonValue), "utf8");
+      const hash = await computeFileHash(wavFile);
+      await writeFile(hashFile, hash, "utf8");
     } catch (err) {
-      renderLogger.warn(`Trace sidecar write failed for ${path.basename(wavFile)}`, err);
-    } finally {
+      renderLogger.warn(`Hash write failed for ${path.basename(wavFile)}`, err);
+    }
+
+    renderLogger.debug(`✓ COMPLETE for ${path.basename(wavFile)}`);
+    await emitDebugEvent("wav_write_complete", {
+      collectedSamples,
+      targetSamples: maxSamples,
+      traceEventCount,
+      traceBatchCount,
+    });
+
+    // Write trace sidecar so the SID-native feature extractor can reuse these traces
+    // instead of performing a second full WASM render pass for the same song.
+    if (traceCaptureActive && traceHandle) {
       try {
-        await traceHandle.close();
+        // Drain any events buffered after the last chunk.
+        const tailBatch = engine.getAndClearSidWriteTraces();
+        for (const trace of tailBatch) {
+          traceBatchBuffer.push(traceToTuple(trace));
+        }
+        await flushTraceBatch();
+        if (traceCaptureActive && traceHandle) {
+          const footer: SidTraceSidecarFooter = {
+            kind: "footer",
+            eventCount: traceEventCount,
+            batchCount: traceBatchCount,
+          };
+          await traceHandle.writeFile(stringifySidTraceLine(footer as unknown as JsonValue), "utf8");
+        }
+      } catch (error) {
+        await disableTraceCapture("finalization", error);
+      }
+    }
+
+    const elapsedMs = Date.now() - startTime;
+    await emitDebugEvent("render_function_complete", {
+      collectedSamples,
+      targetSamples: maxSamples,
+      traceEventCount,
+      traceBatchCount,
+    });
+    options.onSummary?.({
+      collectedSamples,
+      targetSamples: maxSamples,
+      percentComplete: Math.min(100, (collectedSamples / maxSamples) * 100),
+      elapsedMs,
+      sampleRate,
+      channels,
+      truncated: collectedSamples < maxSamples,
+      stopReason: collectedSamples >= maxSamples ? "complete" : stopReason,
+    });
+    renderSucceeded = true;
+  } finally {
+    await closeTraceHandle();
+    if (!renderSucceeded && options.captureTrace) {
+      try {
+        await rm(traceSidecarPath, { force: true });
       } catch {
-        // Ignore close errors.
+        // Ignore sidecar cleanup failures on the error path.
       }
     }
   }
-
-  const elapsedMs = Date.now() - startTime;
-  await emitDebugEvent("render_function_complete", {
-    collectedSamples,
-    targetSamples: maxSamples,
-    traceEventCount,
-    traceBatchCount,
-  });
-  options.onSummary?.({
-    collectedSamples,
-    targetSamples: maxSamples,
-    percentComplete: Math.min(100, (collectedSamples / maxSamples) * 100),
-    elapsedMs,
-    sampleRate,
-    channels,
-    truncated: collectedSamples < maxSamples,
-    stopReason: collectedSamples >= maxSamples ? "complete" : stopReason,
-  });
 }

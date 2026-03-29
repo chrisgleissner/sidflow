@@ -128,6 +128,41 @@ describe("WasmRendererPool lifecycle", () => {
     },
     30_000
   );
+
+  test(
+    "emits worker_recycled only once when a recycle is scheduled",
+    async () => {
+      const recycleEvents: Array<{ workerId: number; reason?: string }> = [];
+
+      pool = new WasmRendererPool(1, {
+        onEvent: (event) => {
+          if (event.type === "worker_recycled") {
+            recycleEvents.push({ workerId: event.workerId, reason: event.reason });
+          }
+        },
+      });
+
+      const internalPool = pool as unknown as {
+        workers: Array<{ workerId: number }>;
+        scheduleRecycle: (state: unknown, reason: string) => void;
+      };
+
+      const [state] = internalPool.workers;
+      expect(state).toBeDefined();
+
+      internalPool.scheduleRecycle(state, "test-scheduled-recycle");
+      await new Promise((resolvePromise) => {
+        setTimeout(resolvePromise, 2_500);
+      });
+
+      expect(recycleEvents).toHaveLength(1);
+      expect(recycleEvents[0]).toEqual({
+        workerId: expect.any(Number),
+        reason: "test-scheduled-recycle",
+      });
+    },
+    30_000
+  );
 });
 
 describe("Render timeout error classification", () => {

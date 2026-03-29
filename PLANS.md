@@ -4,6 +4,40 @@
 
 The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode local --full-rerun true` must classify the full HVSC corpus without render timeouts, missing SID-trace sidecars, WAV-only fallback success, or partial-record persistence. Any real defect must abort immediately with a non-zero exit. After classification/export succeeds, the CLI station flow must build and validate five clearly distinct persona stations with reproducible, evidence-backed results.
 
+## Phase 21 - PR #89 Convergence
+
+1. [IN_PROGRESS] Re-audit all unresolved PR review threads and the failing CI job.
+  Acceptance criteria:
+  - Every unresolved thread is mapped to either a code change or a technical rationale for no change.
+  - The failing `Build and test / Build and Test` check is reproduced or superseded locally.
+
+2. [TODO] Land the minimum fixes required by valid review comments.
+  Acceptance criteria:
+  - Worker recycle telemetry is no longer ambiguous.
+  - Physical CPU detection handles missing trailing delimiters and missing `physical id`/`core id` data.
+  - WAV rendering no longer preallocates PCM solely from the configured render cap.
+  - Trace sidecar I/O failures are handled intentionally and do not leak file handles.
+
+3. [TODO] Add regression coverage for the repaired seams.
+  Acceptance criteria:
+  - Tests cover wall-time-bounded rendering with a valid WAV + summary.
+  - Tests cover recycle-event emission without duplicate `worker_recycled` events.
+  - Tests cover CPU info parsing edge cases.
+
+4. [TODO] Re-run validation and converge the PR.
+  Acceptance criteria:
+  - `bun run build` passes.
+  - Relevant targeted tests pass.
+  - `bun run test` passes three consecutive times with zero failures.
+  - All review threads are replied to and resolved.
+  - GitHub CI is green.
+
+### Progress
+
+- 2026-03-29: Retrieved all six unresolved Copilot review threads via `gh api graphql` and confirmed the branch is failing only `Build and test / Build and Test` on GitHub.
+- 2026-03-29: Verified four comments still correspond to live defects in the working tree: duplicate `worker_recycled` emission, fragile `/proc/cpuinfo` parsing, missing direct wall-time render regression coverage, and eager PCM preallocation before wall-time truncation can help.
+- 2026-03-29: Confirmed the WAV renderer still treats trace sidecar open/header/batch write failures as fatal at the render layer, while current strict classify flows consume trace sidecars later and can still fail explicitly if a best-effort trace capture is unavailable.
+
 ## Phase 19 - Mario 2SID Stall Root-Cause Recovery
 
 1. [done] Reproduce the live Mario 2SID stall with repo-local artifacts and use it as the only starting point for diagnosis.

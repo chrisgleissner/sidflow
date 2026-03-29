@@ -12,6 +12,8 @@ interface FakeSidAudioEngine {
   getSampleRate: () => number;
   getChannels: () => number;
   renderCycles: (cycles: number) => Int16Array | null;
+  setSidWriteTraceEnabled?: (enabled: boolean) => void;
+  getAndClearSidWriteTraces?: () => Array<{ sidNumber: number; address: number; value: number; cyclePhi1: number }>;
 }
 
 interface FakeEngineSpies {
@@ -79,8 +81,28 @@ function createFakeEngine(sampleRate: number): { engine: FakeSidAudioEngine; spi
       getSampleRate: () => sampleRate,
       getChannels: () => 1,
       renderCycles: () => new Int16Array(1),
+      setSidWriteTraceEnabled: () => {},
+      getAndClearSidWriteTraces: () => [],
     },
     spies,
+  };
+}
+
+function createWallTimeEngine(sampleRate: number): FakeSidAudioEngine {
+  return {
+    async loadSidBuffer() {},
+    async selectSong() {},
+    getSampleRate: () => sampleRate,
+    getChannels: () => 1,
+    renderCycles: () => {
+      const busyStart = Date.now();
+      while (Date.now() - busyStart < 350) {
+        // Busy wait so the wall-time budget expires in a deterministic unit test.
+      }
+      return new Int16Array([1]);
+    },
+    setSidWriteTraceEnabled: () => {},
+    getAndClearSidWriteTraces: () => [],
   };
 }
 
@@ -185,4 +207,43 @@ describe("renderWavWithEngine duration caps", () => {
     const durationMs = await renderAndGetDurationMs({ targetDurationMs: 18_193 });
     expect(durationMs).toBeLessThanOrEqual(18_193);
   });
+
+  it("stops on wall-time and still writes a valid WAV plus summary", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const engine = createWallTimeEngine(10);
+    let summary:
+      | {
+          collectedSamples: number;
+          targetSamples: number;
+          percentComplete: number;
+          elapsedMs: number;
+          sampleRate: number;
+          channels: number;
+          truncated: boolean;
+          stopReason: "complete" | "wall_time" | "silent_limit" | "max_iterations" | "null_chunk";
+        }
+      | undefined;
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      targetDurationMs: 10_000,
+      maxRenderWallTimeMs: 1_000,
+      captureTrace: true,
+      onSummary: (value) => {
+        summary = value;
+      },
+    });
+
+    expect(summary).toBeDefined();
+    expect(summary?.stopReason).toBe("wall_time");
+    expect(summary?.truncated).toBe(true);
+    expect(summary?.collectedSamples).toBeGreaterThan(0);
+
+    const wav = await readFile(wavFile);
+    const { durationMs } = parseWavDurationMs(wav);
+    expect(durationMs).toBeGreaterThan(0);
+    expect(durationMs).toBeLessThan(10_000);
+  }, 10_000);
 });

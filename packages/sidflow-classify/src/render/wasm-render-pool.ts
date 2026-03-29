@@ -60,6 +60,7 @@ interface WorkerState {
   job: Job | null;
   exiting: boolean;
   replaceOnExit: boolean;
+  recycleReason: string | null;
   jobsCompleted: number;
   gracefulExitTimer: ReturnType<typeof setTimeout> | null;
   /** Safety-net timer that fires when a WASM call never returns. */
@@ -167,6 +168,7 @@ export class WasmRendererPool {
       job: null,
       exiting: false,
       replaceOnExit: false,
+      recycleReason: null,
       jobsCompleted: 0,
       gracefulExitTimer: null,
       jobTimeoutTimer: null,
@@ -210,7 +212,11 @@ export class WasmRendererPool {
       state.job = null;
 
       if (shouldReplace) {
-        this.replaceWorker(state, code === 0 ? "recycle" : `exit:${code}`);
+        const recycleReason = state.recycleReason ?? (code === 0 ? "recycle" : `exit:${code}`);
+        state.recycleReason = null;
+        this.replaceWorker(state, recycleReason);
+      } else {
+        state.recycleReason = null;
       }
     });
 
@@ -240,13 +246,13 @@ export class WasmRendererPool {
     }
     state.exiting = true;
     state.replaceOnExit = true;
+    state.recycleReason = reason;
     state.gracefulExitTimer = setTimeout(() => {
       if (!this.destroyed && state.replaceOnExit) {
         void state.worker.terminate().catch(() => {});
       }
     }, GRACEFUL_RECYCLE_TIMEOUT_MS);
     state.worker.postMessage({ type: "terminate" });
-    this.emitEvent("worker_recycled", state, { reason });
   }
 
   private clearGracefulExitTimer(state: WorkerState): void {
@@ -260,6 +266,8 @@ export class WasmRendererPool {
     if (this.destroyed) {
       return;
     }
+
+    state.recycleReason = reason;
 
     let replacementRequested = false;
     const requestReplacement = (): void => {
