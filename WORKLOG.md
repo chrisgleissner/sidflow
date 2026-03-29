@@ -80,6 +80,17 @@ Adopt explicit capability-driven graceful degradation for classification:
 3. CI build fix:
    - patched `packages/sidflow-web/lib/classify-progress-store.ts` so `getClassifyProgressSnapshot()` returns the required `featureHealthCheckedFiles`, `completeFeatureFiles`, and `completeFeaturePercent` fields.
    - the previously failing CI command `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium` now gets past the Next.js compile/type-check failure and reaches runtime E2E failures instead.
+4. Root-cause repair for unhealthy classification records:
+   - exported `computeEnvelopeFeatures()` from `packages/sidflow-classify/src/essentia-features.ts` and applied it in `packages/sidflow-classify/src/feature-extraction-worker.ts`, which restores `onsetDensity`, `rhythmicRegularity`, and `dynamicRange` for the worker-pool classification path used in large corpus runs.
+   - added a worker-pool regression test in `packages/sidflow-classify/test/essentia-features.test.ts` and corrected the test fixture sidecar so the threaded extractor runs under a valid render-settings contract.
+5. Post-fix validation evidence:
+   - `bun test packages/sidflow-classify/test/deterministic-ratings.test.ts packages/sidflow-classify/test/essentia-features.test.ts` — PASS.
+   - `scripts/run-with-timeout.sh 3600 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 300` — PASS with `featureHealth completeRealistic=300/300 (100.0%)`, `Failed: 0`, `Retried: 0`, `Degraded: 0`, and no `feature-health-issue`, `Classification failed`, or `song_failed` matches in the log scan.
+   - `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test tests/e2e/classify-api-e2e.spec.ts tests/e2e/classify-progress-metrics.spec.ts --project=chromium` — PASS (`3 passed`).
+   - `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test tests/e2e/classify-essentia-e2e.spec.ts --project=chromium` — PASS (`2 passed`).
+   - `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium` — PASS (`87 passed`).
+6. Remaining note:
+   - the Chromium run still logs repeated `[hls-service] Failed to build HLS assets ... TypeError: i.resolve is not a function` warnings, but they are non-blocking for the current CI target because the full Chromium coverage suite now completes successfully.
 
 ### Export and persona station outputs
 1. Similarity export command:

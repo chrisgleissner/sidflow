@@ -27,6 +27,7 @@ import {
   resolveRepresentativeAnalysisWindow,
 } from "./audio-window.js";
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
+import { computeEnvelopeFeatures } from "./essentia-features.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 import { readSidTraceSidecar } from "./render/wav-renderer.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
@@ -401,6 +402,7 @@ async function extractFeatures(
     for (const [k, v] of Object.entries(frameSummaries)) {
       features[k] = v;
     }
+    Object.assign(features, computeEnvelopeFeatures(audioData, analysisSampleRate));
 
     const bpmEstimate = estimateBpmAutocorr(audioData, analysisSampleRate);
     if (bpmEstimate && bpmEstimate.confidence >= 0.15 && Number.isFinite(bpmEstimate.bpm)) {

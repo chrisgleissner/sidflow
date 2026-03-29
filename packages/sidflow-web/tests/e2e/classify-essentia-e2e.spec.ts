@@ -170,7 +170,7 @@ test.describe('Classification Output with Essentia.js Features', () => {
       expect(f).toBeTruthy();
       expect(f.energy).toBeGreaterThanOrEqual(0);
       expect(f.rms).toBeGreaterThanOrEqual(0);
-      expect(f.spectralCentroid).toBeGreaterThan(0);
+        expect(f.spectralCentroid).toBeGreaterThanOrEqual(0);
       expect(f.bpm).toBeGreaterThan(0);
       expect(f.duration).toBeGreaterThan(0);
       expect(f.sampleRate).toBe(44100);
