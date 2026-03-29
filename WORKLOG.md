@@ -1,5 +1,21 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-29T22:40Z - PR #90 convergence: WASM source-of-truth fix and stale CI import repair
+
+- timestamp: 2026-03-29T22:40Z
+- action taken: Re-audited the active PR review threads with `gh api graphql`, fixed the `SidAudioEngine.ensureModule()` dispose race in the `libsidplayfp-wasm` source, rebuilt and re-synced the generated browser `player.js`, then reproduced the failing GitHub `Build and test / Build and Test` job locally and repaired its stale `buildSimilarityExport` test imports.
+- evidence collected:
+   - Unresolved review thread ids were `PRRT_kwDOQN40Ts53g0WO` and `PRRT_kwDOQN40Ts53g0WU`; both targeted `packages/sidflow-web/public/wasm/player.js`.
+   - `packages/libsidplayfp-wasm/src/player.ts` now captures `modulePromise`, verifies it is still current after awaiting, and refuses to repopulate `this.module` after `dispose()` clears the instance state.
+   - `bun test packages/libsidplayfp-wasm/test/buffer-pool.test.ts` passed with the new dispose-during-await regression (`7 pass`, `0 fail`).
+   - `cd packages/libsidplayfp-wasm && bun run build` regenerated `dist/player.js`, and `cd packages/sidflow-web && node ../../scripts/run-bun.mjs run build:worklet` re-synced `packages/sidflow-web/public/wasm/player.js` from the compiled artifact.
+   - GitHub job `Build and test / Build and Test` failed on `SyntaxError: Export named 'buildSimilarityExport' not found in module '/__w/sidflow/sidflow/packages/sidflow-common/src/index.ts'`.
+   - `packages/sidflow-play/test/station-multi-profile-e2e.test.ts` and `packages/sidflow-play/test/station-similarity-e2e.test.ts` now import `buildSimilarityExport` from `../../sidflow-common/src/similarity-export.js`, matching the current package boundary.
+   - Targeted CI-surface validation passed: `bun test packages/sidflow-play/test/station-multi-profile-e2e.test.ts packages/sidflow-play/test/station-similarity-e2e.test.ts packages/libsidplayfp-wasm/test/buffer-pool.test.ts` => `9 pass`, `0 fail`.
+   - `bun run build` completed successfully after the test-import repair.
+- result: The active review comments now have code changes behind them, the generated browser artifact no longer drifts from its source-of-truth, and the previously failing CI job has a concrete local fix. Full test-suite revalidation and GitHub thread resolution still remain before the PR is converged.
+- next step: Finish the three required full `bun run test` passes, commit and push the fixes, then reply to and resolve both remaining review threads before waiting on GitHub CI.
+
 ## 2026-03-29T11:34Z - Phase 23 runtime split and bounded wrapper validation
 
 - timestamp: 2026-03-29T11:34Z

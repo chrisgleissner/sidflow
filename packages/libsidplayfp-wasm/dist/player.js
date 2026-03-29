@@ -87,10 +87,17 @@ export class SidAudioEngine {
         if (this.module) {
             return this.module;
         }
-        if (!this.modulePromise) {
+        const capturedPromise = this.modulePromise;
+        if (!capturedPromise) {
             throw new Error("SidAudioEngine has been disposed");
         }
-        this.module = await this.modulePromise;
+        const module = await capturedPromise;
+        if (this.modulePromise !== capturedPromise) {
+            throw new Error("SidAudioEngine has been disposed");
+        }
+        if (!this.module) {
+            this.module = module;
+        }
         return this.module;
     }
     async createConfiguredContext() {

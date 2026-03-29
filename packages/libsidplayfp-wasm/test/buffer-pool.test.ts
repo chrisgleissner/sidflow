@@ -15,6 +15,23 @@ beforeAll(() => {
 });
 
 describe('SidAudioEngine buffer pool', () => {
+    it('should not retain a module resolved after dispose while ensureModule is awaiting', async () => {
+        let resolveModule: ((module: unknown) => void) | undefined;
+        const module = new Promise((resolve) => {
+            resolveModule = resolve;
+        });
+        const engine = new SidAudioEngine({ module: module as Promise<any> });
+
+        const pendingModule = (engine as any).ensureModule();
+        engine.dispose();
+        resolveModule?.({
+            SidPlayerContext: class {},
+        });
+
+        await expect(pendingModule).rejects.toThrow('SidAudioEngine has been disposed');
+        expect((engine as any).module).toBeUndefined();
+    });
+
     it('should delete superseded and disposed WASM contexts', async () => {
         const deleteCalls: string[] = [];
 

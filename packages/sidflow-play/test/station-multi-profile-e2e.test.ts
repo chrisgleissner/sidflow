@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
 import type { SidFileMetadata, SidflowConfig } from "@sidflow/common";
-import { buildSimilarityExport } from "@sidflow/common";
 import {
   __setClassifyTestOverrides,
   buildAudioCache,
@@ -16,6 +15,7 @@ import {
   type ExtractFeaturesOptions,
   type FeatureVector,
 } from "../../sidflow-classify/src/index.js";
+import { buildSimilarityExport } from "../../sidflow-common/src/similarity-export.js";
 import {
   SID_TRACE_SIDECAR_VERSION,
   WAV_HASH_EXTENSION,

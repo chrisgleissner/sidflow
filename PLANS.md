@@ -130,27 +130,27 @@
 
 The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode local --full-rerun true` must classify the full HVSC corpus without render timeouts, missing SID-trace sidecars, WAV-only fallback success, or partial-record persistence. Any real defect must abort immediately with a non-zero exit. After classification/export succeeds, the CLI station flow must build and validate five clearly distinct persona stations with reproducible, evidence-backed results.
 
-## Phase 21 - PR #89 Convergence
+## Phase 21 - PR #90 Convergence
 
-1. [IN_PROGRESS] Re-audit all unresolved PR review threads and the failing CI job.
+1. [done] Re-audit all unresolved PR review threads and the failing CI job.
   Acceptance criteria:
   - Every unresolved thread is mapped to either a code change or a technical rationale for no change.
   - The failing `Build and test / Build and Test` check is reproduced or superseded locally.
 
-2. [TODO] Land the minimum fixes required by valid review comments.
+2. [IN_PROGRESS] Land the minimum fixes required by valid review comments.
   Acceptance criteria:
   - Worker recycle telemetry is no longer ambiguous.
   - Physical CPU detection handles missing trailing delimiters and missing `physical id`/`core id` data.
   - WAV rendering no longer preallocates PCM solely from the configured render cap.
   - Trace sidecar I/O failures are handled intentionally and do not leak file handles.
 
-3. [TODO] Add regression coverage for the repaired seams.
+3. [IN_PROGRESS] Add regression coverage for the repaired seams.
   Acceptance criteria:
   - Tests cover wall-time-bounded rendering with a valid WAV + summary.
   - Tests cover recycle-event emission without duplicate `worker_recycled` events.
   - Tests cover CPU info parsing edge cases.
 
-4. [TODO] Re-run validation and converge the PR.
+4. [IN_PROGRESS] Re-run validation and converge the PR.
   Acceptance criteria:
   - `bun run build` passes.
   - Relevant targeted tests pass.
@@ -163,6 +163,11 @@ The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode loc
 - 2026-03-29: Retrieved all six unresolved Copilot review threads via `gh api graphql` and confirmed the branch is failing only `Build and test / Build and Test` on GitHub.
 - 2026-03-29: Verified four comments still correspond to live defects in the working tree: duplicate `worker_recycled` emission, fragile `/proc/cpuinfo` parsing, missing direct wall-time render regression coverage, and eager PCM preallocation before wall-time truncation can help.
 - 2026-03-29: Confirmed the WAV renderer still treats trace sidecar open/header/batch write failures as fatal at the render layer, while current strict classify flows consume trace sidecars later and can still fail explicitly if a best-effort trace capture is unavailable.
+- 2026-03-29: Re-audited the currently unresolved PR #90 threads via `gh api graphql`; only two Copilot threads remain, both on `packages/sidflow-web/public/wasm/player.js`, covering source-of-truth drift and a missing `ensureModule()` disposal race guard.
+- 2026-03-29: Fixed the `SidAudioEngine.ensureModule()` race in `packages/libsidplayfp-wasm/src/player.ts`, rebuilt `packages/libsidplayfp-wasm/dist/player.js`, and re-synced `packages/sidflow-web/public/wasm/player.js` via `packages/sidflow-web/scripts/build-worklet.ts` so the generated copy matches the source-of-truth.
+- 2026-03-29: Added a focused regression in `packages/libsidplayfp-wasm/test/buffer-pool.test.ts` that proves `dispose()` during an in-flight `ensureModule()` await does not repopulate `this.module` after the engine is disposed.
+- 2026-03-29: Reproduced the failing GitHub `Build and test / Build and Test` job locally from its log output and confirmed the root cause was a stale runtime import in two `sidflow-play` tests (`buildSimilarityExport` imported from `@sidflow/common` after the runtime index stopped exporting it).
+- 2026-03-29: Repaired the stale test imports in `packages/sidflow-play/test/station-multi-profile-e2e.test.ts` and `packages/sidflow-play/test/station-similarity-e2e.test.ts`; targeted validation now passes for the repaired CI surface and `bun run build` also passes locally.
 
 ## Phase 19 - Mario 2SID Stall Root-Cause Recovery
 
