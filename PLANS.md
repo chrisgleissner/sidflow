@@ -62,6 +62,7 @@
 - 2026-03-29: Controlled classification run completed with exit `0` on the first 5,000 songs using `tmp/classify-5000-config.json`; telemetry recorded `classifiedFiles=5000`, `failedCount=0`, `retriedCount=0`, `degradedCount=1`, `renderedFallbackCount=1`, `durationMs=510022`, and `peakRssMb=841`.
 - 2026-03-29: Built `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite` and `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.manifest.json` from the 5,000-track dataset.
 - 2026-03-29: Repaired `scripts/validate-persona-radio.ts` so it runs from the repo root, resolves personas against the observed export distribution, and emits five deterministic, disjoint 100-track station artifacts in `tmp/classify-5000/persona-report.md`.
+- 2026-03-29: Extended classify progress reporting to emit every 50 songs and added a realistic-feature-health metric based on the deterministic rating feature set. A 55-song smoke run now surfaces `featureHealth completeRealistic=0/55 (0.0%)`, which means the current sampled records are missing at least one deterministic feature dimension and the observability hook is catching a real data-health gap rather than silently reporting 100%.
 
 ## Problem Statement
 

@@ -484,18 +484,30 @@ describe("runClassifyCli", () => {
             phase: "metadata",
             totalFiles: 2,
             processedFiles: 2,
+            renderedFiles: 0,
+            cachedFiles: 0,
+            extractedFiles: 0,
             percentComplete: 50,
             elapsedMs: 500,
-            currentFile: "metadata.sid"
+            currentFile: "metadata.sid",
+            featureHealthCheckedFiles: 0,
+            completeFeatureFiles: 0,
+            completeFeaturePercent: null,
           });
 
           params.onProgress?.({
             phase: "tagging",
             totalFiles: 2,
             processedFiles: 2,
+            renderedFiles: 1,
+            cachedFiles: 1,
+            extractedFiles: 2,
             percentComplete: 100,
             elapsedMs: 65000,
-            currentFile: "metadata.sid"
+            currentFile: "metadata.sid",
+            featureHealthCheckedFiles: 2,
+            completeFeatureFiles: 2,
+            completeFeaturePercent: 100,
           });
 
           return {
@@ -653,7 +665,13 @@ interface TestAutoProgressEvent {
   phase: "metadata" | "tagging";
   totalFiles: number;
   processedFiles: number;
+  renderedFiles: number;
+  cachedFiles: number;
+  extractedFiles: number;
   percentComplete: number;
   elapsedMs: number;
   currentFile?: string;
+  featureHealthCheckedFiles: number;
+  completeFeatureFiles: number;
+  completeFeaturePercent: number | null;
 }

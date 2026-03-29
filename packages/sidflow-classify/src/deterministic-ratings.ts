@@ -1,4 +1,4 @@
-import { clampRating, type TagRatings } from "@sidflow/common";
+import { FEATURE_SCHEMA_VERSION, clampRating, type TagRatings } from "@sidflow/common";
 import type { FeatureVector } from "./index.js";
 
 const FEATURE_KEYS = [
@@ -27,6 +27,8 @@ const FEATURE_KEYS = [
   "inharmonicity",
   "lowFrequencyEnergyRatio",
 ] as const;
+
+export const DETERMINISTIC_FEATURE_KEYS = FEATURE_KEYS;
 
 export type DeterministicFeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -60,6 +62,28 @@ function sigmoid(x: number): number {
 
 function isFiniteNumber(x: unknown): x is number {
   return typeof x === "number" && Number.isFinite(x);
+}
+
+export function hasRealisticCompleteFeatureVector(features: FeatureVector): boolean {
+  if (features.featureVariant === "heuristic") {
+    return false;
+  }
+
+  if (features.sidFeatureVariant === "unavailable") {
+    return false;
+  }
+
+  if (typeof features.featureSetVersion === "string" && features.featureSetVersion !== FEATURE_SCHEMA_VERSION) {
+    return false;
+  }
+
+  for (const key of FEATURE_KEYS) {
+    if (!isFiniteNumber(features[key])) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function addOnline(stats: OnlineStats, x: number): void {

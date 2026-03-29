@@ -60,6 +60,17 @@ Adopt explicit capability-driven graceful degradation for classification:
 4. Structured failure artifact status:
    - no `classification_*.failures.jsonl` file was emitted for this run because there were no permanent failures.
 
+### Progress observability update
+1. Extended periodic classify progress to emit every 50 songs instead of every 100.
+2. Added a realistic feature-health metric to classifier progress, the web progress snapshot, and `scripts/run-similarity-export.sh` wrapper updates:
+   - metric definition: a song only counts as complete when every deterministic rating feature key is present as a finite value and the record is not marked degraded via `featureVariant="heuristic"` or `sidFeatureVariant="unavailable"`.
+3. Validation evidence:
+   - `bun run build:quick` — PASS.
+   - `bash -n scripts/run-similarity-export.sh` — PASS.
+   - `bun test packages/sidflow-classify/test/cli.test.ts packages/sidflow-web/tests/unit/api-client.test.ts` — PASS (`59 pass`, `0 fail`).
+   - `scripts/run-with-timeout.sh 1800 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 55` — PASS for logging validation; emitted the new `featureHealth completeRealistic=...` field at the 50-song checkpoint.
+4. The 55-song smoke run reported `featureHealth completeRealistic=0/55 (0.0%)`. Inspection of the emitted feature JSONL confirmed the metric is flagging real missing deterministic dimensions in the sampled records rather than a formatting defect, so the new log signal is working as intended.
+
 ### Export and persona station outputs
 1. Similarity export command:
    - `node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity --config tmp/classify-5000-config.json --profile full --output tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite`

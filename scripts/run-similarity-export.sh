@@ -43,7 +43,7 @@ REQUEST_STATUS_FILE="${RUNTIME_DIR}/request.status"
 REPORT_STATE_FILE="${RUNTIME_DIR}/report-state.json"
 RUN_EVENTS_LOG="${RUNTIME_DIR}/run-events.jsonl"
 
-REPORT_EVERY_SONGS=100
+REPORT_EVERY_SONGS=50
 
 LOCAL_SERVER_PID=""
 LOCAL_WORKER_PID=""
@@ -693,7 +693,7 @@ import json, re, sys, time
 
 log_path = sys.argv[1]
 started_at_ms = int(sys.argv[2]) if sys.argv[2] else int(time.time() * 1000)
-phase_progress = re.compile(r'\[(Extracting Features|Building Rating Model|Writing Results)\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\]')
+phase_progress = re.compile(r'\[(Extracting Features|Building Rating Model|Writing Results)\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\](?:\s+\[featureHealth\s+completeRealistic=(\d+)/(\d+)\s+\((unknown|[\d.]+%)\)\])?')
 analyzing = re.compile(r'\[Analyzing\]\s+(\d+)/(\d+)\s+files.*\(([\d.]+)%\)')
 
 with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
@@ -702,7 +702,7 @@ with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
 for line in reversed(lines):
   match = phase_progress.search(line)
   if match:
-    label, processed, total, _remaining, percent, rendered, _cached, extracted = match.groups()
+    label, processed, total, _remaining, percent, rendered, _cached, extracted, complete, checked, complete_percent = match.groups()
     phase = 'tagging' if label == 'Extracting Features' else 'finalizing'
     print(json.dumps({
       'phase': phase,
@@ -711,6 +711,9 @@ for line in reversed(lines):
       'renderedFiles': int(rendered),
       'extractedFiles': int(extracted),
       'taggedFiles': int(processed),
+      'completeFeatureFiles': int(complete) if complete is not None else 0,
+      'featureHealthCheckedFiles': int(checked) if checked is not None else 0,
+      'completeFeaturePercent': None if complete_percent in (None, 'unknown') else float(complete_percent.rstrip('%')),
       'percentComplete': float(percent),
       'isActive': True,
       'updatedAt': int(time.time() * 1000),
@@ -802,6 +805,14 @@ def fmt_duration(seconds: float | None) -> str:
 phase_order = ['analyzing', 'metadata', 'building', 'tagging', 'finalizing', 'completed']
 phase_rank = {name: index for index, name in enumerate(phase_order)}
 current_rank = phase_rank.get(phase, -1)
+feature_checked = int(record.get('featureHealthCheckedFiles') or 0)
+feature_complete = int(record.get('completeFeatureFiles') or 0)
+feature_percent = record.get('completeFeaturePercent')
+feature_health = (
+  f'featureHealth[completeRealistic={feature_complete}/{feature_checked} (unknown)]'
+  if feature_percent is None
+  else f'featureHealth[completeRealistic={feature_complete}/{feature_checked} ({float(feature_percent):.1f}%)]'
+)
 parts = []
 for index, name in enumerate(phase_order):
   if phase == 'completed':
@@ -820,7 +831,7 @@ print(
   f'elapsed={fmt_duration(elapsed_seconds)} eta={fmt_duration(eta_seconds)} '
   f'rate={rate:.2f} songs/s percent={record.get("percentComplete")} '
   f'phase={phase} phases[' + ', '.join(parts) + '] '
-  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}]'
+  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}] {feature_health}'
 )
 
 state['lastReportedProcessed'] = processed
@@ -848,6 +859,14 @@ remaining = max(total - processed, 0)
 started_at_ms = record.get('startedAt')
 elapsed_seconds = max(time.time() - (started_at_ms / 1000.0), 1.0) if isinstance(started_at_ms, (int, float)) and started_at_ms else None
 phase = record.get('phase') or 'completed'
+feature_checked = int(record.get('featureHealthCheckedFiles') or 0)
+feature_complete = int(record.get('completeFeatureFiles') or 0)
+feature_percent = record.get('completeFeaturePercent')
+feature_health = (
+  f'featureHealth[completeRealistic={feature_complete}/{feature_checked} (unknown)]'
+  if feature_percent is None
+  else f'featureHealth[completeRealistic={feature_complete}/{feature_checked} ({float(feature_percent):.1f}%)]'
+)
 
 def fmt_duration(seconds):
   if seconds is None:
@@ -866,7 +885,7 @@ print(
   f'completed={processed} remaining={remaining} total={total} '
   f'elapsed={fmt_duration(elapsed_seconds)} eta=0s rate={(processed / elapsed_seconds) if elapsed_seconds else 0.0:.2f} songs/s '
   f'phase={phase} phases[analyzing=done, metadata=done, building=done, tagging=done, finalizing=done, completed=done] '
-  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}]'
+  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}] {feature_health}'
 )
 
 with open(state_path, 'w', encoding='utf-8') as fh:

@@ -6,6 +6,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
+import { loadLibsidplayfp } from '../src/index.js';
 import { SidAudioEngine } from '../src/player.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,9 +16,18 @@ function loadTestSid(): Uint8Array {
     return new Uint8Array(readFileSync(sidPath));
 }
 
+function createRealtimeEngine(options: ConstructorParameters<typeof SidAudioEngine>[0] = {}): SidAudioEngine {
+    return new SidAudioEngine({
+        ...options,
+        // Coverage-mode stress tests can poison shared WASM/C++ state; isolate each
+        // test with a fresh runtime instead of reusing the default cached module.
+        module: loadLibsidplayfp({ locateFile: undefined }),
+    });
+}
+
 describe('Real-Time Streaming Simulation', () => {
     test('simulate continuous 60-second playback at 44.1kHz', { timeout: 15000 }, async () => {
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = createRealtimeEngine({ sampleRate: 44100, stereo: true });
         try {
             const sidBuffer = loadTestSid();
             await engine.loadSidBuffer(sidBuffer);
@@ -100,7 +110,7 @@ describe('Real-Time Streaming Simulation', () => {
     });
 
     test('measure jitter in render times', async () => {
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = createRealtimeEngine({ sampleRate: 44100, stereo: true });
         try {
             const sidBuffer = loadTestSid();
             await engine.loadSidBuffer(sidBuffer);
@@ -159,7 +169,7 @@ describe('Real-Time Streaming Simulation', () => {
     });
 
     test('test concurrent rendering (background cache + foreground playback)', async () => {
-        const engine = new SidAudioEngine({
+        const engine = createRealtimeEngine({
             sampleRate: 44100,
             stereo: true,
             cacheSecondsLimit: 60
@@ -206,7 +216,7 @@ describe('Real-Time Streaming Simulation', () => {
     });
 
     test('stress test: rapid start/stop cycles', async () => {
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = createRealtimeEngine({ sampleRate: 44100, stereo: true });
         const sidBuffer = loadTestSid();
 
         console.log('\n=== Rapid Start/Stop Stress Test ===');
@@ -239,7 +249,7 @@ describe('Real-Time Streaming Simulation', () => {
     });
 
     test('validate no memory leaks during extended rendering', async () => {
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = createRealtimeEngine({ sampleRate: 44100, stereo: true });
         try {
             const sidBuffer = loadTestSid();
             await engine.loadSidBuffer(sidBuffer);
@@ -282,7 +292,7 @@ describe('Real-Time Streaming Simulation', () => {
 
 describe('Browser Audio API Simulation', () => {
     test('simulate AudioWorklet buffer consumption pattern', async () => {
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = createRealtimeEngine({ sampleRate: 44100, stereo: true });
         try {
             const sidBuffer = loadTestSid();
             await engine.loadSidBuffer(sidBuffer);

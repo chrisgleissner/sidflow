@@ -67,13 +67,19 @@ import {
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, isSkippableSidError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
-import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
+import {
+  DeterministicRatingModelBuilder,
+  buildPerceptualVector,
+  hasRealisticCompleteFeatureVector,
+  predictDeterministicRatings,
+  type DeterministicRatingModel,
+} from "./deterministic-ratings.js";
 import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
 import { getRecommendedWorkerCount } from "./system.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
-const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
+const AUTOTAG_PROGRESS_INTERVAL = 50; // Report every N files during auto-tagging
 const classifyLogger = createLogger("classify");
 const DEFAULT_CLASSIFICATION_RENDER_ENGINE: RenderEngine = "wasm";
 const FULL_RENDER_SAMPLE_RATE = 44_100;
@@ -1837,6 +1843,9 @@ export interface AutoTagProgress {
   percentComplete: number;
   elapsedMs: number;
   currentFile?: string;
+  featureHealthCheckedFiles: number;
+  completeFeatureFiles: number;
+  completeFeaturePercent: number | null;
 }
 
 export type AutoTagProgressCallback = (progress: AutoTagProgress) => void;
@@ -1931,6 +1940,8 @@ export async function generateAutoTags(
   let failedCount = 0;
   let retriedCount = 0;
   let degradedCount = 0;
+  let featureHealthCheckedFiles = 0;
+  let completeFeatureFiles = 0;
   let peakRssMb = getProcessRssMb();
   
   // If force rebuild is requested, we typically clean the whole audio cache to
@@ -2009,6 +2020,13 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+
+  const buildFeatureHealthProgress = () => ({
+    featureHealthCheckedFiles,
+    completeFeatureFiles,
+    completeFeaturePercent:
+      featureHealthCheckedFiles > 0 ? (completeFeatureFiles / featureHealthCheckedFiles) * 100 : null,
+  });
   
   // Set up JSONL file for incremental writes during classification
   const classifiedPath = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
@@ -2198,7 +2216,8 @@ export async function generateAutoTags(
           extractedFiles: extractedFilesCount,
           percentComplete: totalFiles === 0 ? 100 : (metadataProcessed / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
-          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
+          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`,
+          ...buildFeatureHealthProgress(),
         });
       }
       metadataProcessed += 1;
@@ -2302,6 +2321,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile,
+      ...buildFeatureHealthProgress(),
     });
   };
 
@@ -2625,18 +2645,8 @@ export async function generateAutoTags(
 
           await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
 
-          if (onProgress) {
-            onProgress({
-              phase: "tagging",
-              totalFiles,
-              processedFiles: processedSongs,
-              renderedFiles: renderedFilesCount,
-              cachedFiles: cachedFilesCount,
-              extractedFiles: extractedFilesCount,
-              percentComplete: totalFiles === 0 ? 0 : (processedSongs / totalFiles) * 100,
-              elapsedMs: Date.now() - startTime,
-              currentFile: songLabel,
-            });
+          if (onProgress && processedSongs === 0) {
+            emitTaggingProgress(songLabel);
           }
 
           const extractionStartedAt = Date.now();
@@ -2704,6 +2714,10 @@ export async function generateAutoTags(
           classifyLogger.debug(
             `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
           );
+          featureHealthCheckedFiles += 1;
+          if (hasRealisticCompleteFeatureVector(extractedFeatures)) {
+            completeFeatureFiles += 1;
+          }
           break;
         } catch (attemptError) {
           const failure = attemptError instanceof Error ? attemptError : new Error(String(attemptError));
@@ -2760,6 +2774,7 @@ export async function generateAutoTags(
           });
 
           processedSongs += 1;
+          featureHealthCheckedFiles += 1;
           if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
             emitTaggingProgress(songLabel);
           }
@@ -2837,6 +2852,10 @@ export async function generateAutoTags(
         const resumeRec = JSON.parse(resumeLine) as IntermediateRecord;
         builder.add(resumeRec.features);
         processedSongs += 1;
+        featureHealthCheckedFiles += 1;
+        if (hasRealisticCompleteFeatureVector(resumeRec.features)) {
+          completeFeatureFiles += 1;
+        }
       }
     }
     onProgress?.({
@@ -2849,6 +2868,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile: "building dataset-normalized rating model",
+      ...buildFeatureHealthProgress(),
     });
     const ratingModelStartedAt = Date.now();
     telemetry.emit({
@@ -2905,6 +2925,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
+      ...buildFeatureHealthProgress(),
     });
     const resultsWriteStartedAt = Date.now();
 
@@ -3073,6 +3094,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
+      ...buildFeatureHealthProgress(),
     });
   }
 
@@ -3274,7 +3296,10 @@ export async function generateJsonlOutput(
           extractedFiles: processedSongs,
           percentComplete: (processedSongs / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
-          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
+          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`,
+          featureHealthCheckedFiles: processedSongs,
+          completeFeatureFiles: 0,
+          completeFeaturePercent: null,
         });
       }
 

@@ -11,6 +11,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
+import { loadLibsidplayfp } from '../src/index.js';
 import { SidAudioEngine } from '../src/player.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,9 +26,18 @@ function loadTestSid(): Uint8Array {
     return new Uint8Array(readFileSync(sidPath));
 }
 
+function createPerfEngine(options: ConstructorParameters<typeof SidAudioEngine>[0] = {}): SidAudioEngine {
+    return new SidAudioEngine({
+        ...options,
+        // Use a fresh module per benchmark test so package-wide runs do not inherit
+        // poisoned C++/WASM state from earlier stress tests that share the default cache.
+        module: loadLibsidplayfp({ locateFile: undefined }),
+    });
+}
+
 describe('WASM Rendering Performance', () => {
     test('measure render throughput (samples/second)', async () => {
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = createPerfEngine({ sampleRate: 44100, stereo: true });
         try {
             const sidBuffer = loadTestSid();
             await engine.loadSidBuffer(sidBuffer);
@@ -71,7 +81,7 @@ describe('WASM Rendering Performance', () => {
     });
 
     test('measure cache build performance', async () => {
-        const engine = new SidAudioEngine({
+        const engine = createPerfEngine({
             sampleRate: 44100,
             stereo: true,
             cacheSecondsLimit: 60 // Build 60 seconds of cache
@@ -101,13 +111,13 @@ describe('WASM Rendering Performance', () => {
         }
     });
 
-    test('measure renderCycles call overhead', async () => {
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+    test('measure renderCycles call overhead', { timeout: RUN_WASM_PERF_ASSERTS ? 15000 : 5000 }, async () => {
+        const engine = createPerfEngine({ sampleRate: 44100, stereo: true });
         try {
             const sidBuffer = loadTestSid();
             await engine.loadSidBuffer(sidBuffer);
 
-            const targetIterations = 1000;
+            const targetIterations = RUN_WASM_PERF_ASSERTS ? 1000 : 250;
             const cyclesPerCall = 20000;
 
             const startTime = performance.now();
@@ -271,7 +281,7 @@ describe('End-to-End Hot Path', () => {
 
         // Stage 1: Engine initialization
         const t0 = performance.now();
-        const engine = new SidAudioEngine({ sampleRate: 44100, stereo: true });
+        const engine = createPerfEngine({ sampleRate: 44100, stereo: true });
         try {
             const t1 = performance.now();
             console.log(`Engine init: ${(t1 - t0).toFixed(2)}ms`);

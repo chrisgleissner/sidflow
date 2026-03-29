@@ -245,6 +245,7 @@ function formatDuration(ms: number): string {
 
 function createProgressLogger(stdout: NodeJS.WritableStream) {
   let lastLogTime = 0;
+  let lastAutoTagCheckpoint = -1;
 
   const writeThreadLine = (line: string) => {
     stdout.write(`\r\x1b[K${line}\n`);
@@ -276,10 +277,13 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
 
     logAutoTagProgress(progress: AutoTagProgress): void {
       const now = Date.now();
-      if (now - lastLogTime < PROGRESS_THROTTLE_MS && progress.processedFiles < progress.totalFiles) {
+      const checkpointChanged = progress.processedFiles !== lastAutoTagCheckpoint;
+      const atRequestedCadence = checkpointChanged && progress.processedFiles > 0 && progress.processedFiles % 50 === 0;
+      if (!atRequestedCadence && now - lastLogTime < PROGRESS_THROTTLE_MS && progress.processedFiles < progress.totalFiles) {
         return;
       }
       lastLogTime = now;
+      lastAutoTagCheckpoint = progress.processedFiles;
 
       const percent = progress.percentComplete.toFixed(1);
       const elapsed = formatDuration(progress.elapsedMs);
@@ -310,8 +314,11 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
 
       // Include detailed counters for parsing
       const counters = `rendered=${progress.renderedFiles} cached=${progress.cachedFiles} extracted=${progress.extractedFiles}`;
+      const featureHealth = progress.completeFeaturePercent === null
+        ? `completeRealistic=${progress.completeFeatureFiles}/${progress.featureHealthCheckedFiles} (unknown)`
+        : `completeRealistic=${progress.completeFeatureFiles}/${progress.featureHealthCheckedFiles} (${progress.completeFeaturePercent.toFixed(1)}%)`;
       stdout.write(
-        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}]${file} - ${elapsed}`
+        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}] [featureHealth ${featureHealth}]${file} - ${elapsed}`
       );
     },
 
