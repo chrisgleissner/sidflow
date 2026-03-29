@@ -1,5 +1,91 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-29 — Phase 22: engine capability mismatch and resilient batch recovery
+
+### Current defect state
+1. The classify pipeline still resolves render engines implicitly. `preferredEngines[0]` can be `sidplayfp-cli`, and WASM render failures can still fall back to `sidplayfp-cli` when `render.allowDegradedSidplayfpCli=true`.
+2. SID-native extraction still assumes trace sidecars are available through `defaultSidWriteTraceProvider()`. When the selected engine cannot emit traces, the later feature path throws `Missing or invalid SID trace sidecar ... rerender through the trace-capable classify path`.
+3. Batch behavior is inconsistent and unsafe for large runs: `generateAutoTags()` uses `continueOnError: false`, but also special-cases some render failures as skippable. That means the run may either abort early or silently omit songs, with no canonical failure JSONL artifact.
+
+### Root-cause conclusion
+The bug is not just an OOM symptom. The primary invariant is broken: the pipeline selects engines without resolving whether the downstream feature plan requires trace support. That creates an impossible runtime state where WAV rendering succeeds under a non-trace engine and feature extraction still expects hybrid WAV+SID-native inputs.
+
+### Execution decision
+Adopt explicit capability-driven graceful degradation for classification:
+1. Resolve engine capabilities up front.
+2. If the active engine does not support traces, disable SID-native extraction for that song attempt before rendering begins.
+3. Mark the resulting record degraded instead of failing later on a missing sidecar.
+4. If a song still fails, retry once with reduced capability / trace disabled, then record a structured permanent failure and continue the batch.
+
+### Next steps
+1. Patch the classify entrypoint with an `EngineCapabilities` / feature-mode resolution step.
+2. Replace abort-or-skip behavior in `generateAutoTags()` with deterministic per-song failure recording.
+3. Add regression coverage for degraded trace-unavailable classification and failure JSONL emission.
+
+### Implementation and validation results
+1. Landed the runtime-capability fix in `packages/sidflow-classify/src/index.ts`:
+   - classification now resolves concrete per-attempt runtime modes up front,
+   - `sidplayfp-cli`/`ultimate64` automatically force WAV-only classification instead of entering an impossible trace-required state,
+   - each song now retries at most once under reduced capability before being recorded as a structured failure.
+2. Landed feature-worker and render metadata fixes:
+   - `packages/sidflow-classify/src/feature-extraction-worker.ts` now treats missing trace sidecars as fatal only when trace capture was actually expected,
+   - `packages/sidflow-classify/src/render/wav-renderer.ts` and classify-sidecar persistence now record the actual engine/trace state used for that WAV.
+3. Landed failure accounting and CLI summary changes:
+   - `classification_*.failures.jsonl` is now the canonical permanent-failure artifact,
+   - telemetry and summaries now record failed / retried / degraded counts.
+4. Updated regression coverage to the resilient contract and validated the critical classify seams:
+   - `bun test packages/sidflow-classify/test/high-risk-render-failure.test.ts packages/sidflow-classify/test/render-timeout.test.ts` — PASS after updating expectations to structured failure emission.
+   - `bun test packages/sidflow-classify/test/multi-sid-classification.test.ts packages/sidflow-classify/test/super-mario-stress.test.ts` — PASS.
+   - `bun run build:quick` — PASS.
+   - `bun run build` — PASS.
+   - `bun run test` — still FAILS in pre-existing `packages/libsidplayfp-wasm/test/performance.test.ts` out-of-bounds-memory regressions outside the classify package changes.
+
+### Controlled 5,000-song classification evidence
+1. Command:
+   - `scripts/run-with-timeout.sh 7200 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 5000`
+2. Result:
+   - Exit `0`
+   - Duration `510022ms` (about 8m 30s)
+   - Telemetry file: `tmp/classify-5000/classified/classification_2026-03-29_14-27-31-245.events.jsonl`
+   - Classification file: `tmp/classify-5000/classified/classification_2026-03-29_14-27-31-245.jsonl`
+   - Feature file: `tmp/classify-5000/classified/features_2026-03-29_14-27-31-245.jsonl`
+3. Recorded metrics from `run_complete`:
+   - `classifiedFiles=5000/5000`
+   - `failedCount=0`
+   - `retriedCount=0`
+   - `degradedCount=1`
+   - `renderedFallbackCount=1`
+   - `resultsWriteDurationMs=11181`
+   - `peakRssMb=841`
+4. Structured failure artifact status:
+   - no `classification_*.failures.jsonl` file was emitted for this run because there were no permanent failures.
+
+### Export and persona station outputs
+1. Similarity export command:
+   - `node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity --config tmp/classify-5000-config.json --profile full --output tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite`
+   - Result: PASS in `24057ms`, `Tracks: 5000`
+   - Artifacts:
+     - `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite`
+     - `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.manifest.json`
+2. Persona station generation surfaced two distinct script defects:
+   - root-level Bun execution could not resolve `@sidflow/common` from `scripts/validate-persona-radio.ts`,
+   - the original hard-coded persona thresholds targeted 1-5 rating corners that do not exist in this 5,000-track slice (observed export ranges were only `2.0..4.0` for `e/m/c`).
+3. Repaired `scripts/validate-persona-radio.ts` to:
+   - use repo-relative imports,
+   - resolve each named persona to the nearest populated rating bucket in the current export,
+   - generate five deterministic, disjoint 100-track stations by centroid-ranked assignment,
+   - write unambiguous station entries as `track_id :: sid_path`.
+4. Persona report artifact:
+   - `tmp/classify-5000/persona-report.md`
+5. Persona coherence summary from the generated report:
+   - `Pulse Chaser` bucket `(4.0, 3.0, 3.0)`, contamination `0`, min margin `0.0269`
+   - `Dream Drifter` bucket `(2.0, 4.0, 2.0)`, contamination `22`, min margin `-0.0214`
+   - `Maze Architect` bucket `(2.0, 3.0, 3.0)`, contamination `87`, min margin `-0.0094`
+   - `Anthem Driver` bucket `(3.0, 4.0, 2.0)`, contamination `0`, min margin `0.0046`
+   - `Noir Cartographer` bucket `(2.0, 4.0, 3.0)`, contamination `73`, min margin `-0.0263`
+6. Station overlap summary:
+   - all ten persona-pair overlap checks reported `0 shared tracks`.
+
 ## 2026-03-29 — Phase 20: WASM OOM root-cause investigation and fix
 
 ### Symptom recap

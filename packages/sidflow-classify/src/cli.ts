@@ -373,6 +373,10 @@ function summariseAutoTags(result: GenerateAutoTagsResult): string[] {
     `  JSONL records: ${result.jsonlRecordCount}`,
     `  JSONL file: ${result.jsonlFile}`,
     `  Telemetry file: ${result.telemetryFile}`,
+    `  Failure file: ${result.failureFile}`,
+    `  Failed: ${metrics.failedCount}`,
+    `  Retried: ${metrics.retriedCount}`,
+    `  Degraded: ${metrics.degradedCount}`,
     `  Duration: ${formatDuration(metrics.durationMs)}`
   ];
 }

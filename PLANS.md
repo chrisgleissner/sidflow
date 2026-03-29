@@ -1,5 +1,68 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 22 - Engine Capability Contract And Batch Resilience
+
+1. [done] Replace the implicit trace contract with an explicit engine capability model.
+  Acceptance criteria:
+  - Classification resolves a concrete capability set before any song work starts.
+  - `sidplayfp-cli` can no longer be selected while SID-native features remain implicitly required.
+  - The chosen behavior is deterministic: trace-capable engines enable hybrid extraction; non-trace engines force WAV-only classification and mark records degraded.
+
+2. [done] Remove batch-abort semantics from per-song classification failures.
+  Acceptance criteria:
+  - A single render or feature failure never aborts the whole batch.
+  - Each song runs inside an isolated failure boundary.
+  - The pipeline retries exactly once with trace disabled / reduced capability before marking the song failed.
+
+3. [done] Persist structured failure artifacts for every permanently failed song.
+  Acceptance criteria:
+  - A deterministic JSONL failure log is written beside the classification JSONL.
+  - Each failure record includes SID path, song index, engine, capability mode, retry count, error message, and stack.
+  - Telemetry emits explicit retry / degraded / failed events.
+
+4. [done] Tighten worker and render safety guards.
+  Acceptance criteria:
+  - Pool watchdog timeouts remain in place for hung WASM/native jobs.
+  - Worker recycling after hangs continues to restore capacity instead of draining the pool.
+  - Per-song cleanup releases trace/WAV sidecars and engine state deterministically.
+
+5. [done] Extend regression coverage for problematic SID classes.
+  Acceptance criteria:
+  - Tests cover multi-SID, multi-track, high-risk WASM failures, and degraded trace-unavailable classification.
+  - Tests assert batch continuation, degraded record emission, and failure JSONL emission.
+
+6. [IN_PROGRESS] Run validation gates on the repaired tree.
+  Acceptance criteria:
+  - `bun run build:quick` passes.
+  - Relevant classify tests pass.
+  - `bun run build` passes.
+  - `bun run test` passes three consecutive times with zero failures.
+
+7. [done] Execute a controlled 5,000-song classification run.
+  Acceptance criteria:
+  - The first 5,000 songs complete without process crash.
+  - Completion rate is at least 99% with deterministic failure accounting.
+  - WORKLOG.md records processed, failures, retries, degraded count, throughput, and peak RSS evidence.
+
+8. [done] Generate and validate five persona-driven radio stations.
+  Acceptance criteria:
+  - Five deterministic persona scoring functions are defined and exercised against the classified dataset.
+  - Each persona rates a reproducible 10-song sample and produces a 100-song station artifact.
+  - WORKLOG.md records the output files and a concise coherence summary for each persona.
+
+### Progress
+
+- 2026-03-29: Confirmed the current tree still violates the engine/trace contract. `resolveClassificationPreferredEngine()` and `resolveClassificationFallbackEngine()` in `packages/sidflow-classify/src/index.ts` can select `sidplayfp-cli` even though `defaultSidWriteTraceProvider()` still treats a missing trace sidecar as fatal.
+- 2026-03-29: Confirmed `generateAutoTags()` currently uses `continueOnError: false` and still contains a special-case `isSkippableSidError()` branch, so the batch contract is inconsistent: some per-song failures abort the run, others are silently skipped, and neither path emits a structured failure JSONL artifact.
+- 2026-03-29: Confirmed the common JSONL schema already supports degraded classification records, which will allow a capability-driven WAV-only fallback without breaking downstream export consumers.
+- 2026-03-29: Landed the explicit classification runtime model in `packages/sidflow-classify/src/index.ts`, propagated the actual render engine through `packages/sidflow-classify/src/render/wav-renderer.ts`, and taught `packages/sidflow-classify/src/feature-extraction-worker.ts` to distinguish expected trace absence from a real sidecar defect.
+- 2026-03-29: Reworked `generateAutoTags()` to retry once with reduced capability, emit deterministic `classification_*.failures.jsonl` artifacts for permanent failures, and record degraded / retried / failed counters in both telemetry and CLI summaries.
+- 2026-03-29: Targeted validation passed: `bun run build:quick`, `bun run build`, and classify regressions covering high-risk render failure, render timeout, multi-SID, and Mario stress all completed successfully.
+- 2026-03-29: The full `bun run test` gate is still blocked by pre-existing failures in `packages/libsidplayfp-wasm/test/performance.test.ts`; this remains the only incomplete acceptance item under Phase 22.
+- 2026-03-29: Controlled classification run completed with exit `0` on the first 5,000 songs using `tmp/classify-5000-config.json`; telemetry recorded `classifiedFiles=5000`, `failedCount=0`, `retriedCount=0`, `degradedCount=1`, `renderedFallbackCount=1`, `durationMs=510022`, and `peakRssMb=841`.
+- 2026-03-29: Built `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite` and `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.manifest.json` from the 5,000-track dataset.
+- 2026-03-29: Repaired `scripts/validate-persona-radio.ts` so it runs from the repo root, resolves personas against the observed export distribution, and emits five deterministic, disjoint 100-track station artifacts in `tmp/classify-5000/persona-report.md`.
+
 ## Problem Statement
 
 The authoritative CLI workflow `bash scripts/run-similarity-export.sh --mode local --full-rerun true` must classify the full HVSC corpus without render timeouts, missing SID-trace sidecars, WAV-only fallback success, or partial-record persistence. Any real defect must abort immediately with a non-zero exit. After classification/export succeeds, the CLI station flow must build and validate five clearly distinct persona stations with reproducible, evidence-backed results.

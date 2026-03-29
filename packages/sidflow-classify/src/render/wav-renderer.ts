@@ -6,10 +6,12 @@ import { createReadStream } from "node:fs";
 import readline from "node:readline";
 import path from "node:path";
 import type { SidAudioEngine, SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { RenderEngine } from "./render-orchestrator.js";
 
 export interface RenderWavOptions {
   sidFile: string;
   wavFile: string;
+  renderEngine?: RenderEngine;
   songIndex?: number;
   maxRenderSeconds?: number;
   targetDurationMs?: number;
