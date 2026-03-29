@@ -13,7 +13,6 @@ export * from "./feedback.js";
 export * from "./feedback-aggregation.js";
 export * from "./lancedb-builder.js";
 export * from "./recommender.js";
-export * from "./similarity-export.js";
 export * from "./vector-similarity.js";
 export * from "./sid-parser.js";
 export * from "./playback-lock.js";

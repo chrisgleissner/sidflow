@@ -38,7 +38,7 @@ import {
 import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { WasmRendererPool } from "./render/wasm-render-pool.js";
+import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
 import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import {
   WAV_HASH_EXTENSION,
@@ -389,6 +389,65 @@ function getProcessRssMb(): number {
   } catch {
     return -1;
   }
+}
+
+function buildRendererPoolTelemetryRecord(event: RenderPoolLifecycleEvent): Record<string, JsonValue> {
+  const record: Record<string, JsonValue> = {
+    event: "renderer_pool_event",
+    timestamp: new Date().toISOString(),
+    type: event.type,
+    workerId: event.workerId,
+    activeWorkers: event.activeWorkers,
+    busyWorkers: event.busyWorkers,
+    queueDepth: event.queueDepth,
+    jobsCompleted: event.jobsCompleted,
+    totalRecycles: event.totalRecycles,
+  };
+
+  if (event.sidFile) {
+    record.sidFile = event.sidFile;
+  }
+  if (event.reason) {
+    record.reason = event.reason;
+  }
+  if (event.summary) {
+    record.summary = {
+      collectedSamples: event.summary.collectedSamples,
+      targetSamples: event.summary.targetSamples,
+      percentComplete: event.summary.percentComplete,
+      elapsedMs: event.summary.elapsedMs,
+      sampleRate: event.summary.sampleRate,
+      channels: event.summary.channels,
+      truncated: event.summary.truncated,
+      stopReason: event.summary.stopReason,
+    } as JsonValue;
+  }
+
+  return record;
+}
+
+function logRendererPoolEvent(event: RenderPoolLifecycleEvent): void {
+  const message = `renderer-pool type=${event.type} worker=${event.workerId} active=${event.activeWorkers} busy=${event.busyWorkers} queue=${event.queueDepth} completed=${event.jobsCompleted} recycles=${event.totalRecycles}`;
+  if (event.type === "worker_fault" || event.type === "job_failed") {
+    classifyLogger.warn(event.reason ? `${message} reason=${event.reason}` : message);
+    return;
+  }
+
+  if (event.type === "worker_spawned" || event.type === "worker_recycled") {
+    classifyLogger.info(event.reason ? `${message} reason=${event.reason}` : message);
+  }
+}
+
+function createObservedRendererPool(
+  size: number,
+  emitEvent?: (event: RenderPoolLifecycleEvent) => void,
+): WasmRendererPool {
+  return new WasmRendererPool(size, {
+    onEvent: (event) => {
+      logRendererPoolEvent(event);
+      emitEvent?.(event);
+    },
+  });
 }
 
 type ClassificationRenderProfile = "full" | "reduced-duration" | "low-sample-rate" | "minimal-snippet";
@@ -1333,7 +1392,7 @@ export async function buildAudioCache(
   // and only when there is actual render work to do (workers are expensive and can fail fast
   // in non-rendering runs).
   const shouldUsePool = render === defaultRenderWav && resolveClassificationPreferredEngine(plan.config) === 'wasm';
-  const rendererPool = shouldUsePool && songsToRender.length > 0 ? new WasmRendererPool(buildConcurrency) : null;
+  const rendererPool = shouldUsePool && songsToRender.length > 0 ? createObservedRendererPool(buildConcurrency) : null;
 
   const emitBuildProgress = (currentFile?: string): void => {
     if (!onProgress) {

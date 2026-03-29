@@ -1,5 +1,62 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 23 - Full HVSC Similarity Export Stabilization
+
+1. [done] Reconfirm the live failure surfaces in the authoritative wrapper path.
+  Acceptance criteria:
+  - Document the exact runtime path used by `bash scripts/run-similarity-export.sh --mode local --full-rerun true`.
+  - Confirm current worker-bound logic, queue ownership, and WASM engine lifecycle from the active source files.
+  - Capture whether Bun is still mandatory anywhere in the local workflow.
+
+2. [done] Make runtime selection explicit for the classify/export workflow.
+  Acceptance criteria:
+  - The wrapper supports explicit runtime selection for the local workflow.
+  - Classification and export CLIs can run under standard Node.js from built output.
+  - Bun remains optional rather than required for this workflow.
+
+3. [IN_PROGRESS] Eliminate any remaining uncontrolled concurrency or worker churn.
+  Acceptance criteria:
+  - Render and feature worker counts remain under a hard deterministic ceiling unless explicitly overridden.
+  - Queue depth and active/busy worker counts are observable in logs.
+  - No code path can silently fan out to dozens of concurrent workers from file count or nested dispatch.
+
+4. [TODO] Strengthen WASM lifecycle handling for long full-corpus runs.
+  Acceptance criteria:
+  - WASM instantiation/disposal behavior is bounded and observable.
+  - Repeated render jobs do not retain obsolete WASM module memory longer than necessary.
+  - Worker replacement logic does not enter an OOM respawn spiral.
+
+5. [IN_PROGRESS] Add targeted regression coverage for runtime selection and bounded execution.
+  Acceptance criteria:
+  - Tests cover runtime selection / command resolution.
+  - Tests cover worker-count bounding and queue/backpressure behavior.
+  - Tests cover the relevant WASM lifecycle seam where practical.
+
+6. [IN_PROGRESS] Revalidate Bun, then promote Node.js if Bun remains unstable.
+  Acceptance criteria:
+  - Targeted classify stress runs complete under Bun or produce fresh instability evidence.
+  - If Bun still crashes under bounded conditions, the wrapper defaults this workflow to Node.js.
+  - The chosen runtime is recorded in WORKLOG.md with justification.
+
+7. [IN_PROGRESS] Run the full HVSC classify/export workflow and validate the SQLite output.
+  Acceptance criteria:
+  - `bash scripts/run-similarity-export.sh --mode local --full-rerun true` completes successfully on the chosen runtime.
+  - Final evidence records processed totals, throughput, worker limits, runtime, failure count, and peak memory.
+  - SQLite schema, counts, modality coverage, and similarity integrity are verified with concrete queries.
+
+8. [TODO] Prove downstream usability with five differentiated persona stations and close the loop.
+  Acceptance criteria:
+  - Five explicit personas each produce a station with at least 20 tracks.
+  - Output evidence shows the station lists and meaningful differentiation between personas.
+  - PLANS.md and WORKLOG.md are fully updated with final outcomes and validation evidence.
+
+### Progress
+
+- 2026-03-29: Audited the wrapper/runtime path and confirmed the local workflow still hard-required Bun before the runtime split.
+- 2026-03-29: Added explicit local runtime selection in `scripts/run-similarity-export.sh`, `scripts/sidflow-classify`, and `scripts/run-node-cli.mjs`, while intentionally keeping the export step Bun-backed because it still depends on `bun:sqlite`.
+- 2026-03-29: Added targeted runtime-selection coverage in `packages/sidflow-classify/test/cli.test.ts` and worker-ceiling coverage in `packages/sidflow-classify/test/system.test.ts`; bounded Bun and Node wrapper runs both completed successfully for 200 songs.
+- 2026-03-29: Started the full-corpus wrapper validation under `--runtime node` for the classify/server path; final export and persona-proof steps remain open.
+
 ## Phase 22 - Engine Capability Contract And Batch Resilience
 
 1. [done] Replace the implicit trace contract with an explicit engine capability model.

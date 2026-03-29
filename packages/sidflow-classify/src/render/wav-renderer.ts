@@ -56,6 +56,10 @@ export interface RenderExecutionSummary {
   stopReason: "complete" | "wall_time" | "silent_limit" | "max_iterations" | "null_chunk";
 }
 
+function isNaturalRenderStopReason(stopReason: RenderExecutionSummary["stopReason"]): boolean {
+  return stopReason === "complete" || stopReason === "silent_limit" || stopReason === "null_chunk";
+}
+
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
 /** Hard fallback render cap: 15s intro-skip + 15s analysis window = 30s. */
 export const MAX_RENDER_SECONDS = 30;
@@ -757,6 +761,7 @@ export async function renderWavWithEngine(
     }
 
     const elapsedMs = Date.now() - startTime;
+    const finalStopReason = collectedSamples >= maxSamples ? "complete" : stopReason;
     await emitDebugEvent("render_function_complete", {
       collectedSamples,
       targetSamples: maxSamples,
@@ -770,8 +775,8 @@ export async function renderWavWithEngine(
       elapsedMs,
       sampleRate,
       channels,
-      truncated: collectedSamples < maxSamples,
-      stopReason: collectedSamples >= maxSamples ? "complete" : stopReason,
+      truncated: !isNaturalRenderStopReason(finalStopReason),
+      stopReason: finalStopReason,
     });
     renderSucceeded = true;
   } finally {

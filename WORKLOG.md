@@ -1,5 +1,31 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-29T11:34Z - Phase 23 runtime split and bounded wrapper validation
+
+- timestamp: 2026-03-29T11:34Z
+- action taken: Implemented explicit local runtime selection in `scripts/run-similarity-export.sh`, added a Node launcher for the built classify CLI, kept the export path Bun-backed, removed the Bun-only similarity-export module from the `@sidflow/common` runtime index, and wired renderer-pool lifecycle events into classify logging/telemetry.
+- evidence collected:
+   - `scripts/sidflow-classify` now honors `SIDFLOW_CLI_RUNTIME=node` and invokes `runClassifyCli()` through `scripts/run-node-cli.mjs` against `packages/sidflow-classify/dist/cli.js`.
+   - `scripts/run-similarity-export.sh --mode local --runtime bun --full-rerun true --max-songs 200` completed successfully in about 35s classify time plus export; final export contained 200 tracks.
+   - `scripts/run-similarity-export.sh --mode local --runtime node --full-rerun true --max-songs 200` completed successfully in about 35s classify time plus export; final export contained 200 tracks.
+   - Targeted regressions passed after the runtime split: `node scripts/run-bun.mjs test packages/sidflow-classify/test/system.test.ts packages/sidflow-classify/test/cli.test.ts packages/sidflow-classify/test/render-timeout.test.ts` => `31 pass`, `0 fail`.
+   - Node export remains intentionally unsupported for now because the similarity export and station query paths depend on `bun:sqlite`; the wrapper therefore uses Node for classify/server when requested and Bun for the export step.
+- result: The classify pipeline now has an explicit Node-supported execution path while preserving the existing Bun-backed SQLite export. Both bounded wrapper runs succeeded, so the full-corpus validation has been started under `--runtime node` for the classify/server path.
+- next step: Monitor the full run to completion, then validate the SQLite export and run persona-station proofs against the finished bundle.
+
+## 2026-03-29T00:35Z - Phase 23 kickoff: authoritative wrapper/runtime audit
+
+- timestamp: 2026-03-29T00:35Z
+- action taken: Audited the active wrapper, classify API runner, worker-bound helpers, WASM engine factory, and render worker lifecycle before making new code changes.
+- evidence collected:
+   - `scripts/run-similarity-export.sh` still hard-requires `bun` in local mode and starts the web runtime with `bun run dev`.
+   - `packages/sidflow-web/app/api/classify/route.ts` resolves classify threads with its own local heuristic and spawns `sidflow-classify` through `runClassificationProcess()`.
+   - `scripts/sidflow-classify` and `scripts/sidflow-play` are Bun-oriented shell wrappers that exec the TypeScript source entrypoints directly.
+   - `packages/sidflow-classify/src/render/wasm-render-worker.ts` still creates a fresh `SidAudioEngine` for every render job, while `packages/libsidplayfp-wasm/src/player.ts` now nulls `module` and `modulePromise` in `dispose()`.
+   - `packages/sidflow-classify/src/render/wasm-render-pool.ts` already has a fixed worker pool plus queue, but still force-replaces workers after faults/timeouts.
+- result: The current tree already contains partial concurrency bounding and one important WASM-disposal fix, but the authoritative workflow still hides runtime choice behind Bun-oriented wrappers and needs an explicit Node-capable execution path for full-corpus recovery.
+- next step: Implement explicit runtime selection in the wrapper/CLI launch path, then run targeted stress validation under both Bun and Node to decide the stable production runtime for the full export.
+
 ## 2026-03-29 — Phase 22: engine capability mismatch and resilient batch recovery
 
 ### Current defect state

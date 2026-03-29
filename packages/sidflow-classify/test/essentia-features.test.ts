@@ -130,6 +130,7 @@ describe("essentiaFeatureExtractor", () => {
       expect(typeof features.onsetDensity).toBe("number");
       expect(typeof features.rhythmicRegularity).toBe("number");
       expect(typeof features.dynamicRange).toBe("number");
+      expect(typeof features.spectralFluxMean).toBe("number");
       expect(features.onsetDensity).toBeGreaterThanOrEqual(0);
       expect(features.rhythmicRegularity).toBeGreaterThanOrEqual(0);
       expect(features.rhythmicRegularity).toBeLessThanOrEqual(1);

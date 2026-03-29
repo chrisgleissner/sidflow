@@ -209,7 +209,6 @@ describe("Skip-hole regression — songs after a WASM-skipped slot are still cla
       }
       await mkdir(path.dirname(options.wavFile), { recursive: true });
       await writeFile(options.wavFile, silentWav());
-      return null;
     };
 
     const caseDir = path.join(tmpDir, "skip-hole");

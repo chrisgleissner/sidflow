@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { rm, stat, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -101,28 +101,44 @@ async function renderWithSidplayfpCli(
     ];
 
     const watchdogMs = Math.max(10_000, targetDurationSeconds * 1000 + 4_000);
-    const result = spawnSync("sidplayfp", args, {
-      stdio: "ignore",
-      timeout: watchdogMs,
-      killSignal: "SIGKILL",
-      encoding: "utf8",
+    const result = await new Promise<{ status: number | null; signal: NodeJS.Signals | null; timedOut: boolean }>((resolve, reject) => {
+      const child = spawn("sidplayfp", args, {
+        stdio: "ignore",
+      });
+
+      let settled = false;
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGKILL");
+      }, watchdogMs);
+
+      child.once("error", (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      });
+
+      child.once("close", (status, signal) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve({ status, signal, timedOut });
+      });
     });
 
-    if (result.error) {
-      if (result.error.message.includes("ETIMEDOUT")) {
-        console.warn(`[render-integration] sidplayfp-cli timed out after ${watchdogMs}ms`);
-        return false;
-      }
-      throw result.error;
-    }
-
-    if (result.signal !== null) {
+    if (result.timedOut || result.signal === "SIGKILL") {
       console.warn(`[render-integration] sidplayfp-cli timed out after ${watchdogMs}ms`);
       return false;
     }
 
     if (result.status !== 0) {
-      console.warn("[render-integration] sidplayfp-cli failed:", result.stderr);
+      console.warn(`[render-integration] sidplayfp-cli failed with status ${result.status}`);
       return false;
     }
 

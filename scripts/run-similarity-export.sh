@@ -11,6 +11,7 @@ WORKFLOW="full"
 PORT="3000"
 PROFILE="full"
 CORPUS_VERSION="hvsc"
+RUNTIME="node"
 THREADS=""
 MAX_SONGS=""
 SKIP_ALREADY_CLASSIFIED="true"
@@ -86,6 +87,7 @@ Options:
   --port PORT                         Web port. Default: 3000
   --profile full|mobile               Export profile. Default: full
   --corpus-version LABEL              Manifest corpus label. Default: hvsc
+  --runtime bun|node                  Local classify runtime. Default: node
   --threads N                         Optional classify thread count override
   --max-songs N                       Stop each classification run after at most N songs
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
@@ -103,6 +105,7 @@ Options:
 Examples:
   bash scripts/run-similarity-export.sh --mode local
   bash scripts/run-similarity-export.sh --mode local --full-rerun true
+  bash scripts/run-similarity-export.sh --mode local --runtime node --full-rerun true
   bash scripts/run-similarity-export.sh --mode local --max-songs 200
   bash scripts/run-similarity-export.sh --mode local --threads 8 --skip-already-classified false
   bash scripts/run-similarity-export.sh --mode local --publish-release true
@@ -258,6 +261,10 @@ while [[ $# -gt 0 ]]; do
       CORPUS_VERSION="$2"
       shift 2
       ;;
+    --runtime)
+      RUNTIME="$2"
+      shift 2
+      ;;
     --threads)
       THREADS="$2"
       shift 2
@@ -323,6 +330,11 @@ case "${PROFILE}" in
   *) fail "--profile must be full or mobile" ;;
 esac
 
+case "${RUNTIME}" in
+  bun|node) ;;
+  *) fail "--runtime must be bun or node" ;;
+esac
+
 if [[ -n "${MAX_SONGS}" ]]; then
   [[ "${MAX_SONGS}" =~ ^[1-9][0-9]*$ ]] || fail "--max-songs must be a positive integer"
 fi
@@ -356,14 +368,15 @@ if [[ "${FULL_RERUN}" == "true" ]]; then
   FORCE_REBUILD="true"
 fi
 
-python3 - <<'PY' "${RUN_EVENTS_LOG}" "${RUN_COMMAND}" "${MODE}" "${FULL_RERUN}" "${REPO_ROOT}"
+python3 - <<'PY' "${RUN_EVENTS_LOG}" "${RUN_COMMAND}" "${MODE}" "${FULL_RERUN}" "${REPO_ROOT}" "${RUNTIME}"
 import json, sys, time
 
-log_path, command, mode, full_rerun, cwd = sys.argv[1:6]
+log_path, command, mode, full_rerun, cwd, runtime = sys.argv[1:7]
 record = {
     "event": "run_start",
     "command": command,
     "mode": mode,
+  "runtime": runtime,
     "fullRerun": full_rerun == "true",
     "cwd": cwd,
     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -374,11 +387,23 @@ PY
 
 if [[ "${MODE}" == "local" ]]; then
   require_command bun
+  if [[ "${RUNTIME}" == "node" ]]; then
+    require_command node
+    require_command npm
+  fi
   require_command sidplayfp
   require_command ffmpeg
 else
   require_command docker
 fi
+
+ensure_node_runtime_build() {
+  log "Building TypeScript artifacts for Node runtime"
+  (
+    cd "${REPO_ROOT}"
+    npm run build:quick
+  ) >> "${SERVER_LOG}" 2>&1
+}
 
 resolve_local_sid_path() {
   python3 - "$CONFIG_PATH" <<'PY'
@@ -518,24 +543,46 @@ start_local_runtime() {
   sid_path="$(resolve_local_sid_path)"
   [[ -d "${sid_path}" ]] || fail "Configured sidPath does not exist: ${sid_path}"
 
-  log "Installing dependencies for local mode"
-  (cd "${REPO_ROOT}" && bun install --frozen-lockfile) >> "${SERVER_LOG}" 2>&1
+  if [[ "${RUNTIME}" == "bun" ]]; then
+    log "Installing dependencies for Bun local mode"
+    (cd "${REPO_ROOT}" && bun install --frozen-lockfile) >> "${SERVER_LOG}" 2>&1
 
-  log "Starting local web server on port ${PORT}"
-  (
-    cd "${REPO_ROOT}/packages/sidflow-web"
-    SIDFLOW_CONFIG="${CONFIG_PATH}" \
-    SIDFLOW_ADMIN_USER="${ADMIN_USER}" \
-    SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
-    SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
-    JWT_SECRET="${JWT_SECRET}" \
-    SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
-    SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
-    SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
-    SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
-    PORT="${PORT}" \
-    bun run dev
-  ) >> "${SERVER_LOG}" 2>&1 &
+    log "Starting local web server under Bun on port ${PORT}"
+    (
+      cd "${REPO_ROOT}/packages/sidflow-web"
+      SIDFLOW_CONFIG="${CONFIG_PATH}" \
+      SIDFLOW_ADMIN_USER="${ADMIN_USER}" \
+      SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+      SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
+      JWT_SECRET="${JWT_SECRET}" \
+      SIDFLOW_CLI_RUNTIME="bun" \
+      SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
+      SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
+      SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
+      SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
+      PORT="${PORT}" \
+      bun run dev
+    ) >> "${SERVER_LOG}" 2>&1 &
+  else
+    ensure_node_runtime_build
+
+    log "Starting local web server under Node on port ${PORT}"
+    (
+      cd "${REPO_ROOT}/packages/sidflow-web"
+      SIDFLOW_CONFIG="${CONFIG_PATH}" \
+      SIDFLOW_ADMIN_USER="${ADMIN_USER}" \
+      SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+      SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
+      JWT_SECRET="${JWT_SECRET}" \
+      SIDFLOW_CLI_RUNTIME="node" \
+      SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
+      SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
+      SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
+      SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
+      PORT="${PORT}" \
+      node ./scripts/start-test-server.mjs --mode=development
+    ) >> "${SERVER_LOG}" 2>&1 &
+  fi
   LOCAL_SERVER_PID=$!
 
   wait_for_health
@@ -984,7 +1031,7 @@ PY
 run_export() {
   local output_path
   if [[ "${MODE}" == "local" ]]; then
-    log "Running local export"
+    log "Running local export with bun runtime"
     (
       cd "${REPO_ROOT}"
       bun run export:similarity -- --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}"
@@ -1001,6 +1048,7 @@ run_export() {
   [[ -f "${output_path%.sqlite}.manifest.json" ]] || fail "Expected manifest not found: ${output_path%.sqlite}.manifest.json"
 
   log "Export complete"
+  log "Export runtime: bun"
   log "SQLite: ${output_path}"
   log "Manifest: ${output_path%.sqlite}.manifest.json"
 }
@@ -1080,6 +1128,7 @@ main() {
   fi
 
   log "Mode: ${MODE}"
+  log "Runtime: ${RUNTIME}"
   if [[ "${MODE}" == "local" ]]; then
     start_local_runtime
   else
