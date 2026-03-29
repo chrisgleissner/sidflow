@@ -309,7 +309,8 @@ export async function readSidTraceSidecar(wavFile: string): Promise<SidTraceSide
       skipSeconds: header.skipSeconds,
       analysisSeconds: header.analysisSeconds,
     };
-  } catch {
+  } catch (error) {
+    renderLogger.debug(`Failed to read trace sidecar for ${sidecarPath}`, error instanceof Error ? error : undefined);
     return null;
   }
 }
@@ -530,8 +531,8 @@ export async function renderWavWithEngine(
     traceHandle = null;
     try {
       await handle.close();
-    } catch {
-      // Ignore close errors.
+    } catch (error) {
+      renderLogger.debug(`Failed to close trace handle for ${path.basename(wavFile)}`, error instanceof Error ? error : undefined);
     }
   };
 
@@ -552,21 +553,21 @@ export async function renderWavWithEngine(
 
     try {
       engine.setSidWriteTraceEnabled(false);
-    } catch {
-      // Ignore trace-disable failures and continue rendering the WAV.
+    } catch (error) {
+      renderLogger.debug(`Failed to disable trace engine for ${path.basename(wavFile)}`, error instanceof Error ? error : undefined);
     }
 
     try {
       engine.getAndClearSidWriteTraces();
-    } catch {
-      // Ignore trace-drain failures once trace capture is being disabled.
+    } catch (error) {
+      renderLogger.debug(`Failed to drain trace buffer for ${path.basename(wavFile)}`, error instanceof Error ? error : undefined);
     }
 
     await closeTraceHandle();
     try {
       await rm(traceSidecarPath, { force: true });
-    } catch {
-      // Ignore sidecar cleanup failures.
+    } catch (error) {
+      renderLogger.debug(`Failed to remove partial trace sidecar for ${path.basename(wavFile)}`, error instanceof Error ? error : undefined);
     }
   };
 
@@ -776,8 +777,8 @@ export async function renderWavWithEngine(
     if (!renderSucceeded && options.captureTrace) {
       try {
         await rm(traceSidecarPath, { force: true });
-      } catch {
-        // Ignore sidecar cleanup failures on the error path.
+      } catch (error) {
+        renderLogger.debug(`Failed to remove trace sidecar on error path for ${path.basename(wavFile)}`, error instanceof Error ? error : undefined);
       }
     }
   }

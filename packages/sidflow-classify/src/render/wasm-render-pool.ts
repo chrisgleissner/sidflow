@@ -149,8 +149,8 @@ export class WasmRendererPool {
         this.failJob(state, new Error("Renderer pool destroyed"));
         try {
           await state.worker.terminate();
-        } catch {
-          // Ignore termination errors during shutdown.
+        } catch (error) {
+          poolLogger.debug(`Failed to terminate worker ${state.workerId} during shutdown`, error instanceof Error ? error : undefined);
         }
       })
     );

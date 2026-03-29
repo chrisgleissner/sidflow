@@ -4,7 +4,8 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { renderWavWithEngine } from "../src/render/wav-renderer.js";
+import { renderWavWithEngine, getSidTraceSidecarPath } from "../src/render/wav-renderer.js";
+import { pathExists } from "@sidflow/common";
 
 interface FakeSidAudioEngine {
   loadSidBuffer: (buffer: Uint8Array, songIndex?: number) => Promise<void>;
@@ -246,4 +247,60 @@ describe("renderWavWithEngine duration caps", () => {
     expect(durationMs).toBeGreaterThan(0);
     expect(durationMs).toBeLessThan(10_000);
   }, 10_000);
+
+  it("closes trace handle after wall-time stop (no dangling file descriptor)", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const engine = createWallTimeEngine(10);
+    const traceSidecarPath = getSidTraceSidecarPath(wavFile);
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      targetDurationMs: 10_000,
+      maxRenderWallTimeMs: 1_000,
+      captureTrace: true,
+    });
+
+    // Trace sidecar should exist and be readable after a wall-time-bounded render.
+    expect(await pathExists(traceSidecarPath)).toBe(true);
+    const content = await readFile(traceSidecarPath, "utf8");
+    expect(content).toContain('"kind":"header"');
+    expect(content).toContain('"kind":"footer"');
+  }, 10_000);
+
+  it("cleans up trace sidecar when render fails (no orphaned sidecar)", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const traceSidecarPath = getSidTraceSidecarPath(wavFile);
+
+    let callCount = 0;
+    const failingEngine: FakeSidAudioEngine = {
+      async loadSidBuffer() {},
+      async selectSong() {},
+      getSampleRate: () => 10,
+      getChannels: () => 1,
+      renderCycles: () => {
+        callCount++;
+        if (callCount > 2) {
+          throw new Error("simulated engine crash");
+        }
+        return new Int16Array([1]);
+      },
+      setSidWriteTraceEnabled: () => {},
+      getAndClearSidWriteTraces: () => [],
+    };
+
+    await expect(
+      renderWavWithEngine(failingEngine as any, {
+        sidFile,
+        wavFile,
+        targetDurationMs: 10_000,
+        captureTrace: true,
+      })
+    ).rejects.toThrow(/simulated engine crash/);
+
+    // The partial trace sidecar must be removed on error so no orphaned file is left.
+    expect(await pathExists(traceSidecarPath)).toBe(false);
+  });
 });
