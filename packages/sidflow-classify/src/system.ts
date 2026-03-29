@@ -75,8 +75,11 @@ export function getRecommendedWorkerCount(requested?: number): number {
   const physical = getPhysicalCpuCount();
   const heuristicCeiling = Math.max(1, Math.min(6, Math.floor(physical / 2) || 1));
   const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
+  // When SIDFLOW_MAX_THREADS is set explicitly, treat it as a direct override of the
+  // heuristic ceiling so that test environments and operators can request more (or fewer)
+  // threads than the physical-core heuristic would allow.
   const effectiveCeiling = Number.isInteger(envMax) && envMax > 0
-    ? Math.max(1, Math.min(heuristicCeiling, envMax))
+    ? Math.max(1, envMax)
     : heuristicCeiling;
 
   if (typeof requested === "number" && Number.isFinite(requested) && requested > 0) {
