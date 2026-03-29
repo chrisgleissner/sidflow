@@ -12,6 +12,25 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+// Minimal silent WAV: 44-byte RIFF header, mono, 16-bit PCM, 44 100 Hz, 0 samples.
+function silentWav(): Buffer {
+  const buf = Buffer.alloc(44);
+  buf.write("RIFF", 0);
+  buf.writeUInt32LE(36, 4);
+  buf.write("WAVE", 8);
+  buf.write("fmt ", 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20); // PCM
+  buf.writeUInt16LE(1, 22); // mono
+  buf.writeUInt32LE(44100, 24);
+  buf.writeUInt32LE(88200, 28);
+  buf.writeUInt16LE(2, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write("data", 36);
+  buf.writeUInt32LE(0, 40);
+  return buf;
+}
+
 import { type SidflowConfig } from "@sidflow/common";
 import {
   generateAutoTags,
@@ -139,4 +158,65 @@ describe("High-risk SID classification — WASM errors skip the SID silently", (
       }
     }
   }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
+// Regression: skip-hole in flushIntermediate
+// ---------------------------------------------------------------------------
+// When the FIRST job in the queue fails with a WASM error, flushIntermediate
+// must still flush the results for all subsequent jobs.  Before the fix, a
+// missing slot at index 0 would permanently block all later indices from ever
+// being written, producing 0 records even though later songs were renderable.
+// ---------------------------------------------------------------------------
+
+describe("Skip-hole regression — songs after a WASM-skipped slot are still classified", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(path.join(tmpdir(), "sidflow-skip-hole-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test("songs after WASM-skipped index 0 produce classification records", async () => {
+    // MUSICIANS/G contains two SIDs, sorted alphabetically:
+    //   index 0: Garvalf/Lully_Marche_...  ← mock render throws (WASM error)
+    //   index 1+: Greenlee_Michael/Foreign_Carols.sid  ← mock render succeeds
+    //
+    // Without the skip-hole fix, index 0's missing slot blocks index 1+ forever
+    // → 0 records.  With the fix, the skipped slot is registered and
+    // flushIntermediate advances past it → Greenlee_Michael is classified.
+    const selectiveFailRender: RenderWav = async (options) => {
+      if (options.sidFile.includes("Garvalf")) {
+        // Simulate the WASM error text that isSkippableSidError() recognises.
+        throw new Error(
+          "Out of bounds memory access (evaluating 'getWasmTableEntry(index)(a1)'): skip-hole test"
+        );
+      }
+      await mkdir(path.dirname(options.wavFile), { recursive: true });
+      await writeFile(options.wavFile, silentWav());
+      return null;
+    };
+
+    const caseDir = path.join(tmpDir, "skip-hole");
+    await mkdir(caseDir, { recursive: true });
+    const { plan, lifecycleLogPath } = await createRoundPlan(caseDir);
+
+    const result = await generateAutoTags(plan, {
+      threads: 1,
+      render: selectiveFailRender,
+      featureExtractor: heuristicFeatureExtractor,
+      predictRatings: heuristicPredictRatings,
+      lifecycleLogPath,
+      sidPathPrefix: "MUSICIANS/G",
+    });
+
+    // At least Greenlee_Michael must produce a classification record.
+    expect(
+      result.jsonlRecordCount,
+      "songs following a WASM-skipped slot must not be silently dropped"
+    ).toBeGreaterThan(0);
+  }, 60_000);
 });

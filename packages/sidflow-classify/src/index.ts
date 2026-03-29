@@ -1765,6 +1765,12 @@ export interface GenerateAutoTagsOptions {
    * Pass a temp-dir path in tests to avoid writing to the project root.
    */
   lifecycleLogPath?: string;
+  /**
+   * Path to an existing features JSONL file to resume Phase 2 from.
+   * When set, Phase 1 (WAV rendering and feature extraction) is skipped entirely
+   * and ratings are computed directly from the provided file.
+   */
+  resumeFromFeaturesFile?: string;
 }
 
 export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
@@ -1895,8 +1901,13 @@ export async function generateAutoTags(
 
   // Intermediate file: extracted features + metadata in deterministic order.
   // This enables dataset-normalized deterministic ratings without holding the full dataset in memory.
-  const featuresJsonlFile = path.join(classifiedPath, `features_${timestamp}.jsonl`);
-  await rm(featuresJsonlFile, { force: true });
+  // If resumeFromFeaturesFile is provided, use that file directly (Phase 1 will be skipped).
+  const featuresJsonlFile = options.resumeFromFeaturesFile
+    ? path.resolve(options.resumeFromFeaturesFile)
+    : path.join(classifiedPath, `features_${timestamp}.jsonl`);
+  if (!options.resumeFromFeaturesFile) {
+    await rm(featuresJsonlFile, { force: true });
+  }
   await rm(jsonlFile, { force: true });
   await rm(telemetryFile, { force: true });
   const telemetry = new ClassificationTelemetryLogger(telemetryFile);
@@ -2191,11 +2202,21 @@ export async function generateAutoTags(
 
     const builder = new DeterministicRatingModelBuilder();
     const intermediateBuffer = new Map<number, IntermediateRecord>();
+    // Indices of jobs that were intentionally skipped (e.g. WASM-unrenderable SIDs).
+    // A skip at index N must not orphan all features at indices N+1, N+2, … in the
+    // intermediateBuffer — flushIntermediate advances past skipped slots.
+    const skippedIntermediateIndices = new Set<number>();
     let nextIntermediateIndex = 0;
     let intermediateFlushChain: Promise<void> = Promise.resolve();
 
     const flushIntermediate = async (): Promise<void> => {
       while (true) {
+        // Advance past intentionally-skipped slots so a WASM render failure at
+        // index N does not permanently block features for indices N+1, N+2, …
+        while (skippedIntermediateIndices.has(nextIntermediateIndex)) {
+          skippedIntermediateIndices.delete(nextIntermediateIndex);
+          nextIntermediateIndex += 1;
+        }
         const rec = intermediateBuffer.get(nextIntermediateIndex);
         if (!rec) return;
         intermediateBuffer.delete(nextIntermediateIndex);
@@ -2224,7 +2245,8 @@ export async function generateAutoTags(
 
     // Fast-path: empty dataset. Keep metrics/timing consistent and avoid reading
     // intermediate files that were never created.
-    if (jobs.length === 0) {
+    // In resume mode, skip this fast-path: Phase 2 must run to process the features file.
+    if (jobs.length === 0 && !options.resumeFromFeaturesFile) {
       await ensureDir(path.dirname(jsonlFile));
       await writeFile(jsonlFile, "", "utf8");
       const endTime = Date.now();
@@ -2255,6 +2277,7 @@ export async function generateAutoTags(
       };
     }
 
+    if (!options.resumeFromFeaturesFile) {
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
       const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
       const emitSongEvent = (event: string, details: Record<string, JsonValue> = {}): void => {
@@ -2410,6 +2433,11 @@ export async function generateAutoTags(
             classifyLogger.warn(
               `[Thread ${context.threadId}] Skipping un-renderable SID ${songLabel} (WASM limitation)`
             );
+            // Register this slot as intentionally skipped so flushIntermediate can
+            // advance past it — without this, a WASM failure at index 0 would orphan
+            // every feature at indices 1, 2, … in the intermediateBuffer.
+            skippedIntermediateIndices.add(context.itemIndex);
+            intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
             return;
           }
           throw renderError;
@@ -2578,6 +2606,16 @@ export async function generateAutoTags(
     // Ensure all intermediate records are flushed in deterministic order.
     await intermediateFlushChain;
     await flushIntermediate();
+    } else {
+      // Resume-only mode: skip Phase 1 and build the rating model from the provided features file.
+      const resumeContent = await readFile(featuresJsonlFile, "utf8").catch(() => "");
+      const resumeLines = resumeContent.split("\n").filter((l) => l.trim().length > 0);
+      for (const resumeLine of resumeLines) {
+        const resumeRec = JSON.parse(resumeLine) as IntermediateRecord;
+        builder.add(resumeRec.features);
+        processedSongs += 1;
+      }
+    }
     onProgress?.({
       phase: "rating-model",
       totalFiles,
@@ -2647,6 +2685,11 @@ export async function generateAutoTags(
     });
     const resultsWriteStartedAt = Date.now();
 
+    // Cache for existing auto-tags.json file content loaded from disk the first time each
+    // path is encountered. Subsequent flushes re-use the cached value (already up-to-date
+    // because we update it in place after each write).
+    const autoTagsFlushCache = new Map<string, Record<string, JsonValue>>();
+
     for (const line of featureLines) {
       const rec = JSON.parse(line) as IntermediateRecord;
       const manual = rec.manual_ratings;
@@ -2685,6 +2728,35 @@ export async function generateAutoTags(
       const existingEntries = grouped.get(rec.auto_file_path);
       if (existingEntries) existingEntries.set(rec.auto_key, entry);
       else grouped.set(rec.auto_file_path, new Map([[rec.auto_key, entry]]));
+
+      // Flush auto-tags.json immediately after each song so a crash anywhere in Phase 2
+      // preserves the work done so far. On restart with --skip-already-classified the
+      // flushed entries are detected and those songs are skipped.
+      {
+        let base = autoTagsFlushCache.get(rec.auto_file_path);
+        if (base === undefined) {
+          try {
+            base = JSON.parse(await readFile(rec.auto_file_path, "utf8")) as Record<string, JsonValue>;
+          } catch {
+            base = {};
+          }
+          autoTagsFlushCache.set(rec.auto_file_path, base);
+        }
+        // Apply all in-memory entries for this file path on top of the pre-loaded base.
+        const allEntriesForFile = grouped.get(rec.auto_file_path)!;
+        const flushRecord: Record<string, JsonValue> = { ...base };
+        for (const [k, v] of allEntriesForFile) {
+          const ed: Record<string, JsonValue> = { e: v.e, m: v.m, c: v.c, source: v.source };
+          if (v.p !== undefined) ed.p = v.p;
+          flushRecord[k] = ed;
+        }
+        const sortedFlush = Object.fromEntries(
+          Object.entries(flushRecord).sort((a, b) => a[0].localeCompare(b[0]))
+        );
+        await ensureDir(path.dirname(rec.auto_file_path));
+        await writeFile(rec.auto_file_path, stringifyDeterministic(sortedFlush));
+        autoTagsFlushCache.set(rec.auto_file_path, sortedFlush);
+      }
 
       const classificationRecord: ClassificationRecord = {
         sid_path: rec.sid_path,
@@ -2778,9 +2850,17 @@ export async function generateAutoTags(
   }
 
   for (const [autoFilePath, entries] of grouped) {
-    const sorted = [...entries.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    const record: Record<string, JsonValue> = {};
-    for (const [key, entry] of sorted) {
+    // Merge with any entries already on disk that came from previous runs with
+    // --skip-already-classified (those songs were omitted from this run's `grouped`
+    // map but must not be lost from auto-tags.json).
+    let existingOnDisk: Record<string, JsonValue>;
+    try {
+      existingOnDisk = JSON.parse(await readFile(autoFilePath, "utf8")) as Record<string, JsonValue>;
+    } catch {
+      existingOnDisk = {};
+    }
+    const merged: Record<string, JsonValue> = { ...existingOnDisk };
+    for (const [key, entry] of entries) {
       const entryData: Record<string, JsonValue> = {
         e: entry.e,
         m: entry.m,
@@ -2793,10 +2873,13 @@ export async function generateAutoTags(
         entryData.p = entry.p;
       }
 
-      record[key] = entryData;
+      merged[key] = entryData;
     }
+    const sortedMerged = Object.fromEntries(
+      Object.entries(merged).sort((a, b) => a[0].localeCompare(b[0]))
+    );
     await ensureDir(path.dirname(autoFilePath));
-    await writeFile(autoFilePath, stringifyDeterministic(record));
+    await writeFile(autoFilePath, stringifyDeterministic(sortedMerged));
     tagFiles.push(autoFilePath);
   }
 

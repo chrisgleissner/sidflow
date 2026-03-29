@@ -40,6 +40,7 @@ interface ClassifyCliOptions {
   predictorModule?: string;
   metadataModule?: string;
   renderModule?: string;
+  resumeFromFeaturesFile?: string;
 }
 
 interface ParseResult {
@@ -60,6 +61,7 @@ const KNOWN_FLAGS = new Set([
   "--predictor-module",
   "--metadata-module",
   "--render-module",
+  "--resume-from-features",
   "--help"
 ]);
 
@@ -97,7 +99,8 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
       case "--feature-module":
       case "--predictor-module":
       case "--metadata-module":
-      case "--render-module": {
+      case "--render-module":
+      case "--resume-from-features": {
         const next = argv[index + 1];
         if (!next || next.startsWith("--")) {
           errors.push(`${token} requires a value`);
@@ -119,6 +122,8 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
             options.predictorModule = next;
           } else if (token === "--metadata-module") {
             options.metadataModule = next;
+          } else if (token === "--resume-from-features") {
+            options.resumeFromFeaturesFile = next;
           } else {
             options.renderModule = next;
           }
@@ -164,6 +169,7 @@ function printHelp(): void {
     "  --predictor-module <path>         Module exporting a predictRatings override",
     "  --metadata-module <path>          Module exporting an extractMetadata override",
     "  --render-module <path>            Module exporting a render override for WAV cache",
+    "  --resume-from-features <path>     Skip Phase 1 (rendering/extraction); run Phase 2 from this features JSONL",
     "  --help                            Show this message and exit"
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
@@ -472,6 +478,7 @@ export async function runClassifyCli(
       deleteWavAfterClassification: options.deleteWavAfterClassification,
       limit: options.limit,
       sidPathPrefix: options.sidPathPrefix,
+      resumeFromFeaturesFile: options.resumeFromFeaturesFile,
       onThreadUpdate: threadLogger,
       onProgress: (progress) => progressLogger.logAutoTagProgress(progress)
     });
