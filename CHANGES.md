@@ -1,6 +1,28 @@
 # Changelog
 
 
+## 0.5.6 (2026-03-29)
+
+- Merge pull request #89 from chrisgleissner/fix/oome
+- fix: treat SIDFLOW_MAX_THREADS as a direct ceiling override, not a heuristic cap
+- fix: enforce error handling in WASM and WAV rendering to prevent silent failures
+- fix: enhance WASM renderer and CPU detection logic for improved stability and performance
+- fix: implement skip-hole fix in flushIntermediate to prevent data loss on WASM errors
+- Refactor WASM error handling in SidAudioEngine and classification process
+- fix: add job timeout configuration and handling in WASM render pool
+- Enhance multithread rendering tests and WAV renderer duration caps
+- Refactor SID classification and rendering logic for improved error handling and debugging
+- fix: enhance error handling for rendering failures and add tests for high-risk SID classification
+- fix: use dynamic import for LanceDB connection to optimize worker thread performance
+- Refactor feature extraction and rendering logic
+- fix: resolve worker timeout issues and enhance rendering stability in WASM pool
+- Enhance WASM Renderer Pool with Job Timeout Management and Stress Testing
+- feat: update feature schema version and manifest details
+- feat: enhance rendering capabilities with new classification render profiles and metadata handling
+- feat: enhance stability and performance of SID classification pipeline with new rendering strategies and telemetry improvements
+- chore: update CHANGES.md for 0.5.5
+
+
 ## 0.5.5 (2026-03-26)
 
 - Merge pull request #88 from chrisgleissner/copilot/implement-per-song-logging
