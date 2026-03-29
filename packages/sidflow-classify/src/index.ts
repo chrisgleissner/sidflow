@@ -71,6 +71,7 @@ import {
   DeterministicRatingModelBuilder,
   buildPerceptualVector,
   hasRealisticCompleteFeatureVector,
+  inspectFeatureVectorHealth,
   predictDeterministicRatings,
   type DeterministicRatingModel,
 } from "./deterministic-ratings.js";
@@ -1928,6 +1929,34 @@ interface AutoTagJob {
   queueIndex: number;
 }
 
+function formatFeatureHealthIssueLog(params: {
+  sidFile: string;
+  songIndex?: number;
+  songCount: number;
+  renderEngine: RenderEngine;
+  featureMode: ClassificationFeatureMode;
+  report: ReturnType<typeof inspectFeatureVectorHealth>;
+}): string {
+  const songSuffix = params.songCount > 1 && typeof params.songIndex === "number"
+    ? ` song=${params.songIndex}/${params.songCount}`
+    : "";
+  const metadata = [
+    `renderEngine=${params.renderEngine}`,
+    `featureMode=${params.featureMode}`,
+    `featureVariant=${params.report.featureVariant ?? "unknown"}`,
+    `sidFeatureVariant=${params.report.sidFeatureVariant ?? "unknown"}`,
+    `featureSetVersion=${params.report.featureSetVersion ?? "unknown"}`,
+  ].join(" ");
+
+  return [
+    "[feature-health-issue]",
+    `path=${params.sidFile}${songSuffix}`,
+    metadata,
+    `vector=${JSON.stringify(params.report.vector)}`,
+    `unhealthy=[${params.report.unhealthyElements.join(", ")}]`,
+  ].join(" ");
+}
+
 export async function generateAutoTags(
   plan: ClassificationPlan,
   options: GenerateAutoTagsOptions = {}
@@ -2715,7 +2744,20 @@ export async function generateAutoTags(
             `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
           );
           featureHealthCheckedFiles += 1;
-          if (hasRealisticCompleteFeatureVector(extractedFeatures)) {
+          const featureHealthReport = inspectFeatureVectorHealth(extractedFeatures);
+          if (!featureHealthReport.healthy) {
+            classifyLogger.info(
+              formatFeatureHealthIssueLog({
+                sidFile: job.sidFile,
+                songIndex: job.songCount > 1 ? job.songIndex : undefined,
+                songCount: job.songCount,
+                renderEngine: runtimeMode.renderEngine,
+                featureMode: runtimeMode.featureMode,
+                report: featureHealthReport,
+              })
+            );
+          }
+          if (featureHealthReport.healthy) {
             completeFeatureFiles += 1;
           }
           break;

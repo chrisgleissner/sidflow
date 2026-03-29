@@ -63,6 +63,8 @@
 - 2026-03-29: Built `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite` and `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.manifest.json` from the 5,000-track dataset.
 - 2026-03-29: Repaired `scripts/validate-persona-radio.ts` so it runs from the repo root, resolves personas against the observed export distribution, and emits five deterministic, disjoint 100-track station artifacts in `tmp/classify-5000/persona-report.md`.
 - 2026-03-29: Extended classify progress reporting to emit every 50 songs and added a realistic-feature-health metric based on the deterministic rating feature set. A 55-song smoke run now surfaces `featureHealth completeRealistic=0/55 (0.0%)`, which means the current sampled records are missing at least one deterministic feature dimension and the observability hook is catching a real data-health gap rather than silently reporting 100%.
+- 2026-03-29: Extended unhealthy-song diagnostics so each unhealthy record emits a structured line with the full SID path, render mode metadata, concise deterministic vector snapshot, and explicit unhealthy elements. A focused 2-song smoke run confirmed the current gap is `onsetDensity`, `rhythmicRegularity`, and `dynamicRange` missing from sampled records.
+- 2026-03-29: Fixed the `packages/sidflow-web/lib/classify-progress-store.ts` return-shape regression that broke the Playwright/Next.js CI build. The exact Chromium command now gets past the previous type-check failure and proceeds into existing E2E failures instead of failing at compile time.
 
 ## Problem Statement
 

@@ -71,6 +71,16 @@ Adopt explicit capability-driven graceful degradation for classification:
    - `scripts/run-with-timeout.sh 1800 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 55` — PASS for logging validation; emitted the new `featureHealth completeRealistic=...` field at the 50-song checkpoint.
 4. The 55-song smoke run reported `featureHealth completeRealistic=0/55 (0.0%)`. Inspection of the emitted feature JSONL confirmed the metric is flagging real missing deterministic dimensions in the sampled records rather than a formatting defect, so the new log signal is working as intended.
 
+### Unhealthy-song diagnostics and CI follow-up
+1. Added structured unhealthy-song diagnostics to classification output:
+   - each unhealthy song now emits one `[feature-health-issue]` line containing the full SID path, render engine, feature mode, feature variants, a concise deterministic vector snapshot, and the explicit unhealthy elements list.
+2. Validation evidence:
+   - `scripts/run-with-timeout.sh 900 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 2` — PASS for logging validation.
+   - emitted diagnostics identified the concrete missing dimensions for the sampled songs: `onsetDensity`, `rhythmicRegularity`, and `dynamicRange`.
+3. CI build fix:
+   - patched `packages/sidflow-web/lib/classify-progress-store.ts` so `getClassifyProgressSnapshot()` returns the required `featureHealthCheckedFiles`, `completeFeatureFiles`, and `completeFeaturePercent` fields.
+   - the previously failing CI command `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium` now gets past the Next.js compile/type-check failure and reaches runtime E2E failures instead.
+
 ### Export and persona station outputs
 1. Similarity export command:
    - `node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity --config tmp/classify-5000-config.json --profile full --output tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite`

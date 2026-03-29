@@ -346,7 +346,7 @@ mkdir -p "${RUNTIME_DIR}"
 : > "${REQUEST_LOG}"
 : > "${RUN_EVENTS_LOG}"
 rm -f "${REQUEST_STATUS_FILE}"
-printf '{"lastReportedProcessed":0}\n' > "${REPORT_STATE_FILE}"
+printf '{"lastReportedProcessed":0,"lastReportedPhase":"unknown","lastFeatureHealthLine":0}\n' > "${REPORT_STATE_FILE}"
 
 require_command python3
 require_command curl
@@ -688,6 +688,39 @@ PY
       ;;
     esac
   else
+      python3 - <<'PY' "${SERVER_LOG}" "${REPORT_STATE_FILE}"
+import json, re, sys
+
+log_path = sys.argv[1]
+state_path = sys.argv[2]
+
+try:
+  with open(state_path, 'r', encoding='utf-8') as fh:
+    state = json.load(fh)
+except FileNotFoundError:
+  state = {'lastReportedProcessed': 0, 'lastReportedPhase': 'unknown', 'lastFeatureHealthLine': 0}
+
+last_feature_health_line = int(state.get('lastFeatureHealthLine') or 0)
+feature_health_pattern = re.compile(r'\[classify-feature-health\]\s+(?:\[classify\]\s+)?(\[feature-health-issue\].*)')
+
+try:
+  with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
+    lines = fh.readlines()
+except FileNotFoundError:
+  lines = []
+
+for line_number, line in enumerate(lines, start=1):
+  if line_number <= last_feature_health_line:
+    continue
+  match = feature_health_pattern.search(line)
+  if match:
+    print(f'[sidcorr] {match.group(1).strip()}')
+
+state['lastFeatureHealthLine'] = len(lines)
+with open(state_path, 'w', encoding='utf-8') as fh:
+  json.dump(state, fh)
+PY
+
       if python3 - <<'PY' "${SERVER_LOG}" "${CLASSIFY_STARTED_AT_MS}" >> "${PROGRESS_LOG}"
 import json, re, sys, time
 

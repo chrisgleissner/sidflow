@@ -231,6 +231,11 @@ function processLine(line: string) {
     return;
   }
 
+  if (line.includes('[feature-health-issue]')) {
+    console.log(`[classify-feature-health] ${line}`);
+    return;
+  }
+
   // Log engine-related messages with structured tags
   if (line.match(/\b(Rendering|Extracting features|Writing Features|Writing Results|engine)\b/i)) {
     console.log(`[classify-engine] ${line}`);
@@ -444,6 +449,9 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     cachedFiles: snapshot.cachedFiles,
     skippedFiles: snapshot.skippedFiles,
     extractedFiles: snapshot.extractedFiles,
+    featureHealthCheckedFiles: snapshot.featureHealthCheckedFiles,
+    completeFeatureFiles: snapshot.completeFeatureFiles,
+    completeFeaturePercent: snapshot.completeFeaturePercent,
     percentComplete: snapshot.percentComplete,
     threads: snapshot.threads,
     perThread: snapshot.perThread.map((thread) => ({ ...thread })),
