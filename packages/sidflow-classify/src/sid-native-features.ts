@@ -58,6 +58,24 @@ export interface ExtractSidNativeFeaturesFromTraceOptions extends CompactSidWrit
   traces: readonly SidWriteTrace[];
 }
 
+function mergeFeatureVectors(
+  wavFeatures: FeatureVector,
+  sidFeatures: FeatureVector,
+): FeatureVector {
+  const merged: FeatureVector = {
+    ...wavFeatures,
+  };
+
+  for (const [key, value] of Object.entries(sidFeatures)) {
+    if (Object.prototype.hasOwnProperty.call(merged, key)) {
+      continue;
+    }
+    merged[key] = value;
+  }
+
+  return merged;
+}
+
 export function createHybridFeatureExtractor(
   wavFeatureExtractor: FeatureExtractor,
   sidNativeFeatureExtractor: FeatureExtractor,
@@ -72,23 +90,26 @@ export function createHybridFeatureExtractor(
       throw wavFeatures.reason;
     }
 
-    const merged: FeatureVector = {
-      ...wavFeatures.value,
-    };
-
     if (sidFeatures.status !== "fulfilled") {
       await logSidNativeFeatureDegradation(options, sidFeatures.reason);
-      return merged;
+      return wavFeatures.value;
     }
 
-    for (const [key, value] of Object.entries(sidFeatures.value)) {
-      if (Object.prototype.hasOwnProperty.call(merged, key)) {
-        continue;
-      }
-      merged[key] = value;
-    }
+    return mergeFeatureVectors(wavFeatures.value, sidFeatures.value);
+  };
+}
 
-    return merged;
+export function createStrictHybridFeatureExtractor(
+  wavFeatureExtractor: FeatureExtractor,
+  sidNativeFeatureExtractor: FeatureExtractor,
+): FeatureExtractor {
+  return async (options) => {
+    const [wavFeatures, sidFeatures] = await Promise.all([
+      wavFeatureExtractor(options),
+      sidNativeFeatureExtractor(options),
+    ]);
+
+    return mergeFeatureVectors(wavFeatures, sidFeatures);
   };
 }
 
@@ -171,12 +192,10 @@ export async function captureSidWriteTraceSecondPass(
 
   try {
     engine.setSidWriteTraceEnabled(true);
-    await engine.loadSidBuffer(sidBuffer);
-
-    if (typeof options.songIndex === "number" && options.songIndex > 1) {
-      await engine.selectSong(Math.max(0, options.songIndex - 1));
-      engine.setSidWriteTraceEnabled(true);
-    }
+    await engine.loadSidBuffer(
+      sidBuffer,
+      typeof options.songIndex === "number" ? Math.max(0, options.songIndex - 1) : 0
+    );
 
     const frameWindow = resolveSidTraceFrameWindow({
       clock: metadata.clock,

@@ -16,6 +16,7 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { parseSidFileFromBuffer } from "@sidflow/common";
 import {
   generateAutoTags,
@@ -184,8 +185,37 @@ describe("Classification of all test-data SID files including 2SID and 3SID", ()
       expect(tagged2sid.length).toBeGreaterThan(0);
       expect(tagged3sid.length).toBeGreaterThan(0);
 
-      // No render errors; all songs should complete via the mock
-      expect(result.metrics.renderTimeouts).toBe(0);
+      // No render degradation; all songs should complete via the mock
+      expect(result.metrics.renderedFallbackCount).toBe(0);
+      expect(result.metrics.metadataOnlyCount).toBe(0);
+    },
+    60_000
+  );
+
+  test(
+    "does not render more than one song from the same SID concurrently",
+    async () => {
+      const activeBySid = new Map<string, number>();
+      const maxActiveBySid = new Map<string, number>();
+
+      await generateAutoTags(plan, {
+        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+        featureExtractor: heuristicFeatureExtractor,
+        predictRatings: heuristicPredictRatings,
+        threads: 4,
+        sidPathPrefix: "MUSICIANS/C/C0zmo/Space_Oddity_2SID.sid",
+        render: async (opts) => {
+          const current = (activeBySid.get(opts.sidFile) ?? 0) + 1;
+          activeBySid.set(opts.sidFile, current);
+          maxActiveBySid.set(opts.sidFile, Math.max(maxActiveBySid.get(opts.sidFile) ?? 0, current));
+          await delay(25);
+          await mkdir(dirname(opts.wavFile), { recursive: true });
+          await writeFile(opts.wavFile, silentWav());
+          activeBySid.set(opts.sidFile, current - 1);
+        },
+      });
+
+      expect(maxActiveBySid.get(SID_2SID)).toBe(1);
     },
     60_000
   );

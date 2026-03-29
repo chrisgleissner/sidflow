@@ -113,6 +113,8 @@ Follow the existing conventions rather than inventing new ones:
 - Language and tooling:
   - TypeScript monorepo driven by Bun (`bun run build`, `bun run test`, `bun run test:e2e`).
   - Strict TypeScript settings from `tsconfig.base.json`; avoid `any` and keep types explicit.
+- Error handling:
+  - **Every `catch` block must either log the caught error or rethrow it.** Silent swallows — `catch { }` or `catch (e) { }` with no log and no rethrow — are forbidden. If the error is genuinely expected and non-actionable, log it at `debug` level with a brief explanation.
 - Shared utilities and config:
   - Keep cross‑cutting helpers in `@sidflow/common` and **reuse** them instead of re‑implementing (config loader, deterministic JSON, logger, retry, LanceDB builder, filesystem helpers).
   - Always load configuration through `loadConfig` and honor `--config` overrides; use `resetConfigCache` in long‑running tools.

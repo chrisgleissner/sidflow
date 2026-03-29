@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   createHybridFeatureExtractor,
   createSidNativeFeatureExtractor,
+  createStrictHybridFeatureExtractor,
   defaultSidWriteTraceProvider,
   extractSidNativeFeaturesFromWriteTrace,
   generateAutoTags,
@@ -216,6 +217,25 @@ describe("hybrid SID-native classify integration", () => {
     expect(features.energy).toBe(0.75);
     expect(features.featureVariant).toBe("test-wav");
     expect(features.sidFeatureVariant).toBe("sid-native");
+  });
+
+  it("fails fast when strict hybrid extraction cannot load the SID trace sidecar", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const sidFile = path.join(root, "MissingTrace.sid");
+    const wavFile = path.join(root, "MissingTrace.wav");
+    await writeFile(sidFile, "not-a-real-sid");
+    await writeFile(wavFile, "cached-wav");
+
+    const featureExtractor = createStrictHybridFeatureExtractor(
+      async () => ({ energy: 0.75, featureVariant: "test-wav" }),
+      createSidNativeFeatureExtractor(),
+    );
+
+    await expect(featureExtractor({ sidFile, wavFile })).rejects.toThrow(
+      `Missing or invalid SID trace sidecar for ${wavFile}; rerender through the trace-capable classify path.`,
+    );
+
+    await rm(root, { recursive: true, force: true });
   });
 
   it("writes merged WAV and SID-native features into classification JSONL", async () => {

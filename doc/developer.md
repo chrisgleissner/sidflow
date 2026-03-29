@@ -56,6 +56,12 @@ bun run export:similarity -- --profile full
 
 The default artifacts land in `data/exports/`. See [doc/similarity-export.md](doc/similarity-export.md) for the bundle schema and the c64commander-style favorite-to-playlist workflow.
 
+For long-running local wrapper runs, use the dedicated helper instead of killing processes manually:
+
+```bash
+bash scripts/stop-similarity-export.sh
+```
+
 ## Performance tests
 
 The repo has a journey-driven performance runner (k6 + optional Playwright) used by CI and for remote targets (Fly.io / Raspberry Pi):

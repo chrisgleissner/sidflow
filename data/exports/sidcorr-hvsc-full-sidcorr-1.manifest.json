@@ -1,11 +1,11 @@
 {
   "corpus_version": "hvsc",
   "export_profile": "full",
-  "feature_schema_version": "1.2.0",
+  "feature_schema_version": "1.3.0",
   "file_checksums": {
-    "sqlite_sha256": "2ade55b27f78a11f0cd7f712cec8aa59774e4a047abbbbfd56f6008e959d0e8f"
+    "sqlite_sha256": "efb8534ba7e0c517af96154445dd312af765e11a023490c13ad73711af197042"
   },
-  "generated_at": "2026-03-13T17:38:36.159Z",
+  "generated_at": "2026-03-28T14:26:55.347Z",
   "include_vectors": true,
   "neighbor_count_per_track": 0,
   "neighbor_row_count": 0,
@@ -15,7 +15,7 @@
   },
   "schema_version": "sidcorr-1",
   "source_checksums": {
-    "classified": "79ee1f23b909edf45f02a473741002f9156083efa8e2480683ad260838adfaa3",
+    "classified": "e71e5c12a941da7a605f7137b96a4f5e3bc57eab74d30b6aa5f82c8966b57689",
     "feedback": "empty"
   },
   "tables": [
@@ -23,7 +23,7 @@
     "tracks",
     "neighbors"
   ],
-  "track_count": 7,
+  "track_count": 200,
   "vector_dimensions": 4
 }
 

@@ -12,7 +12,7 @@ export interface SidWriteTrace {
     cyclePhi1: number;
 }
 export declare class SidAudioEngine {
-    private readonly modulePromise;
+    private modulePromise;
     private module;
     private context;
     private readonly sampleRate;
@@ -47,7 +47,7 @@ export declare class SidAudioEngine {
     private patchStartSong;
     private reloadCurrentSong;
     setSystemROMs(kernal?: Uint8Array | ArrayBufferView | null, basic?: Uint8Array | ArrayBufferView | null, chargen?: Uint8Array | ArrayBufferView | null): Promise<void>;
-    loadSidBuffer(data: Uint8Array | ArrayBufferView): Promise<void>;
+    loadSidBuffer(data: Uint8Array | ArrayBufferView, songIndex?: number): Promise<void>;
     selectSong(songIndex: number): Promise<number>;
     getChannels(): number;
     getSampleRate(): number;

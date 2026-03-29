@@ -12,6 +12,10 @@ export type WavRenderSettingsSidecar = {
   renderEngine: string | null;
   traceCaptureEnabled: boolean;
   traceSidecarVersion: number | null;
+  renderProfile?: string | null;
+  renderSampleRate?: number | null;
+  truncated?: boolean;
+  fallbackReason?: string | null;
 };
 
 export function getWavRenderSettingsSidecarPath(wavFile: string): string {
@@ -38,6 +42,17 @@ export async function writeWavRenderSettingsSidecar(
       typeof settings.traceSidecarVersion === "number" && Number.isFinite(settings.traceSidecarVersion)
         ? settings.traceSidecarVersion
         : null,
+    renderProfile: typeof settings.renderProfile === "string" && settings.renderProfile.length > 0
+      ? settings.renderProfile
+      : null,
+    renderSampleRate:
+      typeof settings.renderSampleRate === "number" && Number.isFinite(settings.renderSampleRate) && settings.renderSampleRate > 0
+        ? settings.renderSampleRate
+        : null,
+    truncated: settings.truncated === true,
+    fallbackReason: typeof settings.fallbackReason === "string" && settings.fallbackReason.length > 0
+      ? settings.fallbackReason
+      : null,
   };
 
   try {
@@ -83,6 +98,19 @@ export async function readWavRenderSettingsSidecar(wavFile: string): Promise<Wav
       traceSidecarVersion:
         parsed.v === 3 && typeof parsed.traceSidecarVersion === "number" && Number.isFinite(parsed.traceSidecarVersion)
           ? parsed.traceSidecarVersion
+          : null,
+      renderProfile:
+        parsed.v === 3 && typeof parsed.renderProfile === "string" && parsed.renderProfile.length > 0
+          ? parsed.renderProfile
+          : null,
+      renderSampleRate:
+        parsed.v === 3 && typeof parsed.renderSampleRate === "number" && Number.isFinite(parsed.renderSampleRate) && parsed.renderSampleRate > 0
+          ? parsed.renderSampleRate
+          : null,
+      truncated: parsed.v === 3 ? parsed.truncated === true : false,
+      fallbackReason:
+        parsed.v === 3 && typeof parsed.fallbackReason === "string" && parsed.fallbackReason.length > 0
+          ? parsed.fallbackReason
           : null,
     };
   } catch {

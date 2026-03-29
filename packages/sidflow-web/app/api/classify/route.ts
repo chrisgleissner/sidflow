@@ -25,6 +25,24 @@ import type { RenderTechnology } from '@sidflow/common';
 import { buildClassifyProgressSnapshot, findLatestJobByType, getJobOrchestrator } from '@/lib/server/jobs';
 import type { ClassifyProgressSnapshot } from '@/lib/types/classify-progress';
 
+function resolveRecommendedThreads(requested?: number, configured?: number): number {
+  const logicalCores = Math.max(1, os.cpus().length || 1);
+  const physicalApprox = Math.max(1, Math.floor(logicalCores / 2));
+  const heuristicCap = Math.max(1, Math.min(6, physicalApprox));
+  const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? '', 10);
+  const boundedCap = Number.isInteger(envMax) && envMax > 0
+    ? Math.max(1, Math.min(heuristicCap, envMax))
+    : heuristicCap;
+
+  if (typeof requested === 'number' && Number.isFinite(requested) && requested > 0) {
+    return Math.max(1, Math.min(Math.floor(requested), boundedCap));
+  }
+  if (typeof configured === 'number' && Number.isFinite(configured) && configured > 0) {
+    return Math.max(1, Math.min(Math.floor(configured), boundedCap));
+  }
+  return boundedCap;
+}
+
 function findClassificationFailureMarker(result: CliResult): string | null {
   const combinedOutput = [result.stderr, result.stdout].filter(Boolean).join('\n');
   const failureLine = combinedOutput
@@ -81,16 +99,7 @@ export async function POST(request: NextRequest) {
       await fs.stat(resolvedRequestedPath);
     }
     const limit = validatedData.limit;
-    const threads = config.threads && config.threads > 0
-      ? config.threads
-      : (() => {
-          const cores = os.cpus().length || 1;
-          const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
-          if (Number.isInteger(envMax) && envMax > 0) {
-            return Math.max(1, Math.min(cores, envMax));
-          }
-          return Math.max(1, cores);
-        })();
+    const threads = resolveRecommendedThreads(validatedData.threads, config.threads);
     
     // Resolve engine preferences
     const preferredEngines: RenderTechnology[] = [];
@@ -126,6 +135,7 @@ export async function POST(request: NextRequest) {
     const tempConfigPath = path.join(root, 'data', '.sidflow-classify-temp.json');
     const tempConfig = {
       ...config,
+      threads,
       render: {
         ...config.render,
         preferredEngines: effectiveEngineOrder,

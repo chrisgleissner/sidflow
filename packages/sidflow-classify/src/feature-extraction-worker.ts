@@ -528,25 +528,17 @@ async function handleExtract(
     // Ensure Essentia is initialized (once per worker)
     await initEssentia();
 
-    const [wavFeatures, sidFeatures] = await Promise.allSettled([
+    const [wavFeatures, sidFeatures] = await Promise.all([
       extractFeatures(wavFile, sidFile, configPath),
       extractSidNativeFeaturesForWorker(wavFile, sidFile),
     ]);
 
-    if (wavFeatures.status !== "fulfilled") {
-      throw wavFeatures.reason;
-    }
-
     // Merge: WAV features take priority; SID-native keys only added where absent.
-    const features: FeatureVector = { ...wavFeatures.value };
-    if (sidFeatures.status === "fulfilled") {
-      for (const [key, value] of Object.entries(sidFeatures.value)) {
-        if (!Object.prototype.hasOwnProperty.call(features, key)) {
-          features[key] = value;
-        }
+    const features: FeatureVector = { ...wavFeatures };
+    for (const [key, value] of Object.entries(sidFeatures)) {
+      if (!Object.prototype.hasOwnProperty.call(features, key)) {
+        features[key] = value;
       }
-    } else {
-      await logSidNativeFeatureDegradation({ wavFile, sidFile }, sidFeatures.reason);
     }
     const response: WorkerResponse = { type: "result", jobId, features };
     parentPort!.postMessage(response);

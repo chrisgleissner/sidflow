@@ -12,6 +12,9 @@ test-data/
     ├── DEMOS/
     │   └── 0-9/
     │       └── 10_Orbyte.sid
+   ├── GAMES/
+   │   └── S-Z/
+   │       └── Super_Mario_Bros_64_2SID.sid    ← 2-SID / 37-song stress fixture
     └── MUSICIANS/
         ├── C/
         │   ├── C0zmo/
@@ -56,24 +59,29 @@ These SID files were selected to avoid requiring external C64 ROM files in SIDFl
    - PSID v4 — uses **3 SID chips** (secondSIDAddress + thirdSIDAddress set)
    - Regression SID for multi-chip classification pipeline testing
 
-4. **Lully_Marche_Ceremonie_Turcs_Wip.sid** (MUSICIANS/G/Garvalf/)
+4. **Super_Mario_Bros_64_2SID.sid** (GAMES/S-Z/)
+   - Pathological multi-song regression SID used for render-pool stress testing
+   - 2-SID chip tune with 37 songs
+   - Used by the runtime stress test that copies it 100 times to verify bounded RAM and thread usage under repeated classification load
+
+5. **Lully_Marche_Ceremonie_Turcs_Wip.sid** (MUSICIANS/G/Garvalf/)
    - Artist: Eric F. (Garvalf)
    - Copyright: 2016 Garvalf
    - Size: ~1.1 KB
 
-5. **Foreign_Carols.sid** (MUSICIANS/G/Greenlee_Michael/)
+6. **Foreign_Carols.sid** (MUSICIANS/G/Greenlee_Michael/)
    - Artist: Michael Greenlee
    - Copyright: 198? Michael Greenlee
    - Size: ~8.8 KB
 
-6. **Great_Giana_Sisters.sid** (MUSICIANS/H/Huelsbeck_Chris/)
+7. **Great_Giana_Sisters.sid** (MUSICIANS/H/Huelsbeck_Chris/)
    - Artist: Chris Huelsbeck
    - Multi-song SID (classic C64 title)
 
-7. **Ta-Boo.sid** (MUSICIANS/N/Ninja/)
+8. **Ta-Boo.sid** (MUSICIANS/N/Ninja/)
    - Artist: Ninja
 
-8. **Superman_Pt02_Theme.sid** (MUSICIANS/S/Szepatowski_Brian/)
+9. **Superman_Pt02_Theme.sid** (MUSICIANS/S/Szepatowski_Brian/)
    - Artist: Brian M. Szepatowski
    - Copyright: 1985 Brian M. Szepatowski
    - Size: ~8.4 KB

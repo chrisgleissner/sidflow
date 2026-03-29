@@ -1,6 +1,11 @@
 import { parentPort } from "node:worker_threads";
 import { createEngine } from "./engine-factory.js";
-import { renderWavWithEngine, type RenderWavOptions, type RenderProgress } from "./wav-renderer.js";
+import {
+  renderWavWithEngine,
+  type RenderExecutionSummary,
+  type RenderProgress,
+  type RenderWavOptions,
+} from "./wav-renderer.js";
 
 if (!parentPort) {
   throw new Error("WASM renderer worker must be started as a worker thread");
@@ -13,25 +18,24 @@ type WorkerMessage =
 interface WorkerResponse {
   type: "result" | "error" | "progress";
   jobId: number;
+  summary?: RenderExecutionSummary;
   error?: { message: string; stack?: string };
   progress?: RenderProgress;
 }
 
-// Create a fresh engine per render job.  The WASM *module* (compiled code) is
-// cached inside engine-factory.ts, so we skip re-compilation.  However, the
-// SidAudioEngine (which holds a SidPlayerContext on the WASM heap) is created
-// fresh and disposed after each render to guarantee clean emulation state.
-async function getEngine() {
-  return await createEngine();
-}
-
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {
-  const engine = await getEngine();
+  let engine: Awaited<ReturnType<typeof createEngine>> | null = null;
+  let renderSummary: RenderExecutionSummary | undefined;
   try {
+    engine = await createEngine({ sampleRate: options.renderSampleRate });
+
     // Add progress callback to send heartbeat messages back to main thread
     const optionsWithProgress: RenderWavOptions = {
       ...options,
       progressIntervalMs: options.progressIntervalMs ?? 1000,
+      onSummary: (summary) => {
+        renderSummary = summary;
+      },
       onProgress: (progress: RenderProgress) => {
         const response: WorkerResponse = { type: "progress", jobId, progress };
         parentPort!.postMessage(response);
@@ -39,13 +43,14 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
     };
 
     await renderWavWithEngine(engine, optionsWithProgress);
-    const response: WorkerResponse = { type: "result", jobId };
+    const response: WorkerResponse = { type: "result", jobId, summary: renderSummary };
     parentPort!.postMessage(response);
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     const response: WorkerResponse = {
       type: "error",
       jobId,
+      summary: renderSummary,
       error: {
         message: err.message,
         stack: err.stack
@@ -53,7 +58,11 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
     };
     parentPort!.postMessage(response);
   } finally {
-    engine.dispose();
+    // dispose() nulls this.module and this.modulePromise so the ~64-128 MB WASM
+    // linear-memory ArrayBuffer becomes GC-eligible immediately rather than
+    // waiting for the engine wrapper object to be collected.
+    engine?.dispose();
+    engine = null;
   }
 }
 
@@ -68,3 +77,5 @@ parentPort.on("message", (message: WorkerMessage) => {
     process.exit(0);
   }
 });
+
+

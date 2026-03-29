@@ -4,14 +4,22 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { renderWavWithEngine } from "../src/render/wav-renderer.js";
+import { renderWavWithEngine, getSidTraceSidecarPath } from "../src/render/wav-renderer.js";
+import { pathExists } from "@sidflow/common";
 
 interface FakeSidAudioEngine {
-  loadSidBuffer: (buffer: Uint8Array) => Promise<void>;
+  loadSidBuffer: (buffer: Uint8Array, songIndex?: number) => Promise<void>;
   selectSong: (index: number) => Promise<void>;
   getSampleRate: () => number;
   getChannels: () => number;
   renderCycles: (cycles: number) => Int16Array | null;
+  setSidWriteTraceEnabled?: (enabled: boolean) => void;
+  getAndClearSidWriteTraces?: () => Array<{ sidNumber: number; address: number; value: number; cyclePhi1: number }>;
+}
+
+interface FakeEngineSpies {
+  loadedSongIndices: number[];
+  selectedSongIndices: number[];
 }
 
 function parseWavDurationMs(buffer: Buffer): { durationMs: number; sampleRate: number } {
@@ -57,15 +65,101 @@ function parseWavDurationMs(buffer: Buffer): { durationMs: number; sampleRate: n
   return { durationMs, sampleRate };
 }
 
-function createFakeEngine(sampleRate: number): FakeSidAudioEngine {
+function createFakeEngine(sampleRate: number): { engine: FakeSidAudioEngine; spies: FakeEngineSpies } {
+  const spies: FakeEngineSpies = {
+    loadedSongIndices: [],
+    selectedSongIndices: [],
+  };
+
+  return {
+    engine: {
+      async loadSidBuffer(_buffer, songIndex = 0) {
+        spies.loadedSongIndices.push(songIndex);
+      },
+      async selectSong(index) {
+        spies.selectedSongIndices.push(index);
+      },
+      getSampleRate: () => sampleRate,
+      getChannels: () => 1,
+      renderCycles: () => new Int16Array(1),
+      setSidWriteTraceEnabled: () => {},
+      getAndClearSidWriteTraces: () => [],
+    },
+    spies,
+  };
+}
+
+function createWallTimeEngine(sampleRate: number): FakeSidAudioEngine {
   return {
     async loadSidBuffer() {},
     async selectSong() {},
     getSampleRate: () => sampleRate,
     getChannels: () => 1,
-    renderCycles: () => new Int16Array(1),
+    renderCycles: () => {
+      const busyStart = Date.now();
+      while (Date.now() - busyStart < 350) {
+        // Busy wait so the wall-time budget expires in a deterministic unit test.
+      }
+      return new Int16Array([1]);
+    },
+    setSidWriteTraceEnabled: () => {},
+    getAndClearSidWriteTraces: () => [],
   };
 }
+
+async function createTestSidFile(tempDir: string): Promise<string> {
+  const sidFile = path.join(tempDir, "test.sid");
+  await writeFile(sidFile, Buffer.from([0, 1, 2, 3]));
+  return sidFile;
+}
+
+async function createTestWavFile(tempDir: string): Promise<string> {
+  return path.join(tempDir, "out.wav");
+}
+
+describe("renderWavWithEngine subtune loading", () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "sidflow-wav-subtune-"));
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it("loads the first subtune directly without calling selectSong", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const { engine, spies } = createFakeEngine(10);
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      songIndex: 1,
+      targetDurationMs: 1000,
+    });
+
+    expect(spies.loadedSongIndices).toEqual([0]);
+    expect(spies.selectedSongIndices).toEqual([]);
+  });
+
+  it("loads later subtunes directly without a second selectSong reload", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const { engine, spies } = createFakeEngine(10);
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      songIndex: 3,
+      targetDurationMs: 1000,
+    });
+
+    expect(spies.loadedSongIndices).toEqual([2]);
+    expect(spies.selectedSongIndices).toEqual([]);
+  });
+});
 
 describe("renderWavWithEngine duration caps", () => {
   let tempDir: string;
@@ -82,11 +176,10 @@ describe("renderWavWithEngine duration caps", () => {
     targetDurationMs?: number;
     maxRenderSeconds?: number;
   }): Promise<number> {
-    const sidFile = path.join(tempDir, "test.sid");
-    const wavFile = path.join(tempDir, "out.wav");
-    await writeFile(sidFile, Buffer.from([0, 1, 2, 3]));
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
 
-    const engine = createFakeEngine(10);
+    const { engine } = createFakeEngine(10);
     await renderWavWithEngine(engine as any, {
       sidFile,
       wavFile,
@@ -114,5 +207,100 @@ describe("renderWavWithEngine duration caps", () => {
   it("rounds down so sub-second targets never exceed the requested duration", async () => {
     const durationMs = await renderAndGetDurationMs({ targetDurationMs: 18_193 });
     expect(durationMs).toBeLessThanOrEqual(18_193);
+  });
+
+  it("stops on wall-time and still writes a valid WAV plus summary", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const engine = createWallTimeEngine(10);
+    let summary:
+      | {
+          collectedSamples: number;
+          targetSamples: number;
+          percentComplete: number;
+          elapsedMs: number;
+          sampleRate: number;
+          channels: number;
+          truncated: boolean;
+          stopReason: "complete" | "wall_time" | "silent_limit" | "max_iterations" | "null_chunk";
+        }
+      | undefined;
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      targetDurationMs: 10_000,
+      maxRenderWallTimeMs: 1_000,
+      captureTrace: true,
+      onSummary: (value) => {
+        summary = value;
+      },
+    });
+
+    expect(summary).toBeDefined();
+    expect(summary?.stopReason).toBe("wall_time");
+    expect(summary?.truncated).toBe(true);
+    expect(summary?.collectedSamples).toBeGreaterThan(0);
+
+    const wav = await readFile(wavFile);
+    const { durationMs } = parseWavDurationMs(wav);
+    expect(durationMs).toBeGreaterThan(0);
+    expect(durationMs).toBeLessThan(10_000);
+  }, 10_000);
+
+  it("closes trace handle after wall-time stop (no dangling file descriptor)", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const engine = createWallTimeEngine(10);
+    const traceSidecarPath = getSidTraceSidecarPath(wavFile);
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      targetDurationMs: 10_000,
+      maxRenderWallTimeMs: 1_000,
+      captureTrace: true,
+    });
+
+    // Trace sidecar should exist and be readable after a wall-time-bounded render.
+    expect(await pathExists(traceSidecarPath)).toBe(true);
+    const content = await readFile(traceSidecarPath, "utf8");
+    expect(content).toContain('"kind":"header"');
+    expect(content).toContain('"kind":"footer"');
+  }, 10_000);
+
+  it("cleans up trace sidecar when render fails (no orphaned sidecar)", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const traceSidecarPath = getSidTraceSidecarPath(wavFile);
+
+    let callCount = 0;
+    const failingEngine: FakeSidAudioEngine = {
+      async loadSidBuffer() {},
+      async selectSong() {},
+      getSampleRate: () => 10,
+      getChannels: () => 1,
+      renderCycles: () => {
+        callCount++;
+        if (callCount > 2) {
+          throw new Error("simulated engine crash");
+        }
+        return new Int16Array([1]);
+      },
+      setSidWriteTraceEnabled: () => {},
+      getAndClearSidWriteTraces: () => [],
+    };
+
+    await expect(
+      renderWavWithEngine(failingEngine as any, {
+        sidFile,
+        wavFile,
+        targetDurationMs: 10_000,
+        captureTrace: true,
+      })
+    ).rejects.toThrow(/simulated engine crash/);
+
+    // The partial trace sidecar must be removed on error so no orphaned file is left.
+    expect(await pathExists(traceSidecarPath)).toBe(false);
   });
 });

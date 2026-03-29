@@ -325,7 +325,27 @@ export function isRecoverableError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     // Render timeouts and circuit-breaker skips are NOT recoverable
-    if (message.includes("render timeout") || message.includes("circuit breaker")) {
+    if (
+      message.includes("render timeout")
+      || message.includes("render attempt timed out")
+      || message.includes("timed out after")
+      || message.includes("circuit breaker")
+    ) {
+      return false;
+    }
+    // WASM runtime errors (memory access, table index) are NOT recoverable —
+    // the same chip address will fail on every retry.
+    if (
+      message.includes("out of bounds memory access")
+      || message.includes("wasm table entry")
+      || message.includes("getwasmtableentry")
+      || message.includes("unreachable wasm")
+    ) {
+      return false;
+    }
+    // "No audio" means the SID produces zero samples at ANY quality level —
+    // lower-quality fallback profiles won't help.
+    if (message.includes("produced no audio")) {
       return false;
     }
     // Network/IO errors are recoverable
@@ -339,6 +359,26 @@ export function isRecoverableError(error: unknown): boolean {
   }
   // Default to recoverable for unknown errors
   return true;
+}
+
+/**
+ * Returns true when an error (typically an AggregateError from
+ * renderSongWithFallbacks) is due solely to known WASM engine limitations for
+ * this SID — e.g. the engine produces no audio output, or a memory abort
+ * occurs — meaning no fallback quality profile or retry will help.
+ *
+ * Such SIDs are silently omitted from the output JSONL rather than aborting
+ * the entire corpus run.  "Real" errors (IO failures, mis-configuration, etc.)
+ * still propagate so that the run fails fast.
+ */
+export function isSkippableSidError(error: unknown): boolean {
+  if (error instanceof AggregateError) {
+    return (
+      error.errors.length > 0 &&
+      (error.errors as unknown[]).every((e) => !isRecoverableError(e))
+    );
+  }
+  return !isRecoverableError(error);
 }
 
 /**

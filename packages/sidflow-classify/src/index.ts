@@ -20,6 +20,7 @@ import {
   updateDirectoryPlaylist,
   writeCanonicalJsonLines,
   writeCanonicalJsonFile,
+  FEATURE_SCHEMA_VERSION,
   type AudioFeatures,
   type ClassificationRecord,
   type JsonValue,
@@ -39,7 +40,6 @@ import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { WasmRendererPool } from "./render/wasm-render-pool.js";
 import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
-import { getLogicalCpuCount } from "./system.js";
 import {
   WAV_HASH_EXTENSION,
   SID_TRACE_EXTENSION,
@@ -47,6 +47,7 @@ import {
   computeFileHash,
   readSidTraceSidecar,
   renderWavWithEngine,
+  type RenderExecutionSummary,
   type RenderWavOptions
 } from "./render/wav-renderer.js";
 import { RenderOrchestrator, type RenderEngine, type RenderFormat } from "./render/render-orchestrator.js";
@@ -58,22 +59,26 @@ import {
 } from "./audio-window.js";
 export * from "./sid-register-trace.js";
 export * from "./sid-native-features.js";
-import { createHybridFeatureExtractor, createSidNativeFeatureExtractor } from "./sid-native-features.js";
+import { createSidNativeFeatureExtractor, createStrictHybridFeatureExtractor, extractSidNativeFeaturesFromWriteTrace } from "./sid-native-features.js";
 import {
   WAV_RENDER_SETTINGS_EXTENSION,
   readWavRenderSettingsSidecar,
   writeWavRenderSettingsSidecar,
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
-import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
+import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, isSkippableSidError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
 import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
+import { getRecommendedWorkerCount } from "./system.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
 const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
 const classifyLogger = createLogger("classify");
 const DEFAULT_CLASSIFICATION_RENDER_ENGINE: RenderEngine = "wasm";
+const FULL_RENDER_SAMPLE_RATE = 44_100;
+const LOW_RENDER_SAMPLE_RATE = 22_050;
+const MINIMAL_RENDER_SAMPLE_RATE = 11_025;
 let degradedSidplayfpCliWarningEmitted = false;
 let classifyWarningHook: ((message: string) => void) | null = null;
 
@@ -132,17 +137,23 @@ async function persistRenderedWavMetadata(
   wavFile: string,
   config: SidflowConfig,
   maxRenderSec: number,
+  overrides: Partial<Pick<WavRenderSettingsSidecar, "renderProfile" | "renderSampleRate" | "truncated" | "fallbackReason">> = {},
 ): Promise<void> {
   const traceSidecar = await readSidTraceSidecar(wavFile);
   const renderEngine = resolveClassificationPreferredEngine(config);
+  const existingSettings = await readWavRenderSettingsSidecar(wavFile);
   await writeWavRenderSettingsSidecar(wavFile, {
     maxRenderSec: maxRenderSec,
     introSkipSec: resolveIntroSkipSec(config),
     maxClassifySec: resolveMaxClassifySec(config),
-    sourceOffsetSec: (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0,
+    sourceOffsetSec: existingSettings?.sourceOffsetSec ?? 0,
     renderEngine,
     traceCaptureEnabled: traceSidecar !== null,
     traceSidecarVersion: traceSidecar !== null ? SID_TRACE_SIDECAR_VERSION : null,
+    renderProfile: overrides.renderProfile ?? existingSettings?.renderProfile ?? null,
+    renderSampleRate: overrides.renderSampleRate ?? existingSettings?.renderSampleRate ?? null,
+    truncated: overrides.truncated ?? existingSettings?.truncated ?? false,
+    fallbackReason: overrides.fallbackReason ?? existingSettings?.fallbackReason ?? null,
   });
 }
 
@@ -209,19 +220,21 @@ function getMaxClassificationRenderMs(config: SidflowConfig): number {
 
 function withFeatureExtractionPool(
   plan: ClassificationPlan,
-  featureExtractor: FeatureExtractor
+  featureExtractor: FeatureExtractor,
+  requestedThreads?: number,
 ): FeatureExtractor {
   const preferredEngines = (plan.config.render?.preferredEngines as RenderEngine[]) ?? ["wasm"];
   const selectedEngine = preferredEngines[0] ?? "wasm";
   const hasWasm = selectedEngine === "wasm";
-  const wantWorkers = plan.config.threads !== 1;
+  const resolvedThreads = resolveThreadCount(requestedThreads ?? plan.config.threads);
+  const wantWorkers = resolvedThreads > 1;
 
   if (!hasWasm || !wantWorkers) {
     return featureExtractor;
   }
 
   // Keep the main thread responsive: run CPU-bound extraction in worker threads.
-  const pool = getFeatureExtractionPool(plan.config.threads);
+  const pool = getFeatureExtractionPool(resolvedThreads);
   return async ({ wavFile, sidFile }) => {
     try {
       return await pool.extract(wavFile, sidFile);
@@ -263,28 +276,171 @@ interface ConcurrentContext {
 
 interface RunConcurrentOptions {
   continueOnError?: boolean;
+  getGroupKey?: (item: unknown) => string | null | undefined;
 }
 
 function resolveThreadCount(requested?: number): number {
-  if (typeof requested === "number" && requested > 0) {
-    return Math.max(1, Math.floor(requested));
-  }
-  const cores = getLogicalCpuCount();
-
-  const envMax = Number.parseInt(process.env.SIDFLOW_MAX_THREADS ?? "", 10);
-  if (Number.isInteger(envMax) && envMax > 0) {
-    return Math.max(1, Math.min(cores, envMax));
-  }
-
-  return Math.max(1, cores);
+  return getRecommendedWorkerCount(requested);
 }
 
-function isRenderTimeoutOrCircuitBreakerError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
+function getProcessRssMb(): number {
+  try {
+    return Math.round(process.memoryUsage().rss / (1024 * 1024));
+  } catch {
+    return -1;
   }
-  const message = error.message.toLowerCase();
-  return message.includes("render timeout") || message.includes("circuit breaker");
+}
+
+type ClassificationRenderProfile = "full" | "reduced-duration" | "low-sample-rate" | "minimal-snippet";
+
+interface ClassificationRenderAttempt {
+  profile: ClassificationRenderProfile;
+  maxRenderSeconds: number;
+  renderSampleRate: number;
+  maxRenderWallTimeMs: number;
+}
+
+interface ClassificationRenderResult {
+  profile: ClassificationRenderProfile;
+  summary: RenderExecutionSummary | null;
+  degraded: boolean;
+  errors: string[];
+  renderSampleRate: number;
+}
+
+function computeRenderWallTimeBudgetMs(maxRenderSeconds: number, renderSampleRate: number): number {
+  const boundedSeconds = Math.max(1, maxRenderSeconds);
+  const sampleRateScale = Math.max(0.25, renderSampleRate / FULL_RENDER_SAMPLE_RATE);
+  const realtimeBudgetMs = boundedSeconds * 1000;
+  const scaledBudgetMs = realtimeBudgetMs * (1.25 + sampleRateScale);
+  return Math.max(
+    15_000,
+    Math.min(60_000, Math.round(8_000 + scaledBudgetMs))
+  );
+}
+
+function buildClassificationRenderAttempts(
+  maxRenderSeconds: number,
+  targetDurationMs?: number
+): ClassificationRenderAttempt[] {
+  const targetSeconds =
+    typeof targetDurationMs === "number" && Number.isFinite(targetDurationMs) && targetDurationMs > 0
+      ? Math.max(1, targetDurationMs / 1000)
+      : maxRenderSeconds;
+  const fullSeconds = Math.max(1, Math.min(maxRenderSeconds, targetSeconds));
+  const reducedSeconds = Math.max(10, Math.min(fullSeconds - 2, Math.ceil(fullSeconds * 0.67)));
+  const lowSampleSeconds = Math.max(8, Math.min(fullSeconds, 12));
+  const minimalSeconds = Math.max(5, Math.min(fullSeconds, 8));
+
+  const attempts: ClassificationRenderAttempt[] = [
+    {
+      profile: "full",
+      maxRenderSeconds: fullSeconds,
+      renderSampleRate: FULL_RENDER_SAMPLE_RATE,
+      maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(fullSeconds, FULL_RENDER_SAMPLE_RATE),
+    },
+  ];
+
+  if (reducedSeconds < fullSeconds) {
+    attempts.push({
+      profile: "reduced-duration",
+      maxRenderSeconds: reducedSeconds,
+      renderSampleRate: FULL_RENDER_SAMPLE_RATE,
+      maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(reducedSeconds, FULL_RENDER_SAMPLE_RATE),
+    });
+  }
+
+  attempts.push({
+    profile: "low-sample-rate",
+    maxRenderSeconds: lowSampleSeconds,
+    renderSampleRate: LOW_RENDER_SAMPLE_RATE,
+    maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(lowSampleSeconds, LOW_RENDER_SAMPLE_RATE),
+  });
+  attempts.push({
+    profile: "minimal-snippet",
+    maxRenderSeconds: minimalSeconds,
+    renderSampleRate: MINIMAL_RENDER_SAMPLE_RATE,
+    maxRenderWallTimeMs: computeRenderWallTimeBudgetMs(minimalSeconds, MINIMAL_RENDER_SAMPLE_RATE),
+  });
+
+  const seen = new Set<string>();
+  return attempts.filter((attempt) => {
+    const key = `${attempt.profile}:${attempt.maxRenderSeconds}:${attempt.renderSampleRate}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+async function clearRenderArtifacts(wavFile: string): Promise<void> {
+  await Promise.all([
+    rm(wavFile, { force: true }),
+    rm(`${wavFile}${WAV_HASH_EXTENSION}`, { force: true }),
+    rm(`${wavFile}${SID_TRACE_EXTENSION}`, { force: true }),
+    rm(`${wavFile}${WAV_RENDER_SETTINGS_EXTENSION}`, { force: true }),
+  ]);
+}
+
+async function renderSongWithFallbacks(
+  plan: ClassificationPlan,
+  baseOptions: Omit<RenderWavOptions, "maxRenderSeconds" | "renderSampleRate" | "maxRenderWallTimeMs" | "renderProfile">,
+  invokeRender: (options: RenderWavOptions) => Promise<RenderExecutionSummary | null | void>,
+): Promise<ClassificationRenderResult> {
+  const attempts = buildClassificationRenderAttempts(
+    resolveEffectiveMaxRenderSec(plan.config),
+    baseOptions.targetDurationMs,
+  );
+  const errors: string[] = [];
+
+  for (const attempt of attempts) {
+    await clearRenderArtifacts(baseOptions.wavFile);
+    try {
+      const summary = (await withRetry("building", async () => {
+        return await invokeRender({
+          ...baseOptions,
+          maxRenderSeconds: attempt.maxRenderSeconds,
+          renderSampleRate: attempt.renderSampleRate,
+          maxRenderWallTimeMs: attempt.maxRenderWallTimeMs,
+          renderProfile: attempt.profile,
+        });
+      })) ?? null;
+
+      await persistRenderedWavMetadata(baseOptions.wavFile, plan.config, attempt.maxRenderSeconds, {
+        renderProfile: attempt.profile,
+        renderSampleRate: attempt.renderSampleRate,
+        truncated: summary?.truncated ?? attempt.profile !== "full",
+        fallbackReason: errors.length > 0 ? errors.at(-1) ?? null : null,
+      });
+
+      return {
+        profile: attempt.profile,
+        summary,
+        degraded: attempt.profile !== "full" || (summary?.truncated ?? false),
+        errors,
+        renderSampleRate: attempt.renderSampleRate,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${attempt.profile}: ${message}`);
+      classifyLogger.warn(
+        `Render attempt ${attempt.profile} failed for ${path.basename(baseOptions.sidFile)}: ${message}`
+      );
+      // Non-recoverable errors (e.g. pool-level job timeout for a hung WASM
+      // init routine) will repeat on every fallback profile — short-circuit
+      // immediately rather than waiting for each attempt's full timeout.
+      if (!isRecoverableError(error)) {
+        break;
+      }
+    }
+  }
+
+  await clearRenderArtifacts(baseOptions.wavFile);
+  throw new AggregateError(
+    errors.map((message) => new Error(message)),
+    `Render attempts exhausted for ${baseOptions.sidFile}: ${errors.join(" | ")}`
+  );
 }
 
 async function runConcurrent<T>(
@@ -297,21 +453,52 @@ async function runConcurrent<T>(
     return;
   }
   const limit = Math.max(1, Math.min(concurrency, items.length));
-  let nextIndex = 0;
+  const pendingIndices = items.map((_, index) => index);
+  const activeGroups = new Set<string>();
+  const waiters: Array<() => void> = [];
   let failedItems = 0;
   let firstFailure: Error | null = null;
 
-  // Helper to atomically get next index
-  const getNextIndex = (): number | null => {
-    if (firstFailure && !options.continueOnError) {
-      return null;
+  const resolveGroupKey = (item: T): string | null => {
+    const key = options.getGroupKey?.(item);
+    return typeof key === "string" && key.length > 0 ? key : null;
+  };
+
+  const notifyWaiters = (): void => {
+    while (waiters.length > 0) {
+      waiters.shift()?.();
     }
-    if (nextIndex >= items.length) {
-      return null;
+  };
+
+  const acquireNextIndex = async (): Promise<{ itemIndex: number; groupKey: string | null } | null> => {
+    while (true) {
+      if (firstFailure && !options.continueOnError) {
+        return null;
+      }
+
+      for (let cursor = 0; cursor < pendingIndices.length; cursor += 1) {
+        const itemIndex = pendingIndices[cursor];
+        const item = items[itemIndex];
+        const groupKey = resolveGroupKey(item as T);
+        if (groupKey && activeGroups.has(groupKey)) {
+          continue;
+        }
+
+        pendingIndices.splice(cursor, 1);
+        if (groupKey) {
+          activeGroups.add(groupKey);
+        }
+        return { itemIndex, groupKey };
+      }
+
+      if (pendingIndices.length === 0) {
+        return null;
+      }
+
+      await new Promise<void>((resolve) => {
+        waiters.push(resolve);
+      });
     }
-    const current = nextIndex;
-    nextIndex += 1;
-    return current;
   };
 
   const runners = Array.from({ length: limit }, async (_, workerIndex) => {
@@ -321,17 +508,17 @@ async function runConcurrent<T>(
 
     let itemsProcessed = 0;
     while (true) {
-      const currentIndex = getNextIndex();
-      if (currentIndex === null) {
+      const nextWork = await acquireNextIndex();
+      if (nextWork === null) {
         classifyLogger.debug(
           `Thread ${threadId} finished after processing ${itemsProcessed} items`
         );
         break;
       }
+      const { itemIndex, groupKey } = nextWork;
       itemsProcessed++;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        await worker(items[currentIndex]!, { threadId, itemIndex: currentIndex });
+        await worker(items[itemIndex]!, { threadId, itemIndex });
       } catch (error) {
         failedItems++;
         const resolvedError = error instanceof Error ? error : new Error(String(error));
@@ -341,13 +528,18 @@ async function runConcurrent<T>(
             firstFailure = resolvedError;
           }
           classifyLogger.error(
-            `[Thread ${threadId}] Item ${currentIndex} failed: ${msg} — stopping remaining work`
+            `[Thread ${threadId}] Item ${itemIndex} failed: ${msg} — stopping remaining work`
           );
           break;
         }
         classifyLogger.error(
-          `[Thread ${threadId}] Item ${currentIndex} failed: ${msg} — continuing with next item`
+          `[Thread ${threadId}] Item ${itemIndex} failed: ${msg} — continuing with next item`
         );
+      } finally {
+        if (groupKey) {
+          activeGroups.delete(groupKey);
+        }
+        notifyWaiters();
       }
     }
   });
@@ -880,6 +1072,8 @@ export interface BuildAudioCacheMetrics extends PerformanceMetrics {
   totalFiles: number;
   rendered: number;
   skipped: number;
+  degradedRendered: number;
+  metadataOnlyRendered: number;
   cacheHitRate: number;
 }
 
@@ -910,6 +1104,8 @@ export async function buildAudioCache(
   );
   const rendered: string[] = [];
   const skipped: string[] = [];
+  let degradedRendered = 0;
+  let metadataOnlyRendered = 0;
   const render = options.render ?? defaultRenderWav;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
@@ -1032,8 +1228,6 @@ export async function buildAudioCache(
   const shouldUsePool = render === defaultRenderWav && resolveClassificationPreferredEngine(plan.config) === 'wasm';
   const rendererPool = shouldUsePool && songsToRender.length > 0 ? new WasmRendererPool(buildConcurrency) : null;
 
-  // Circuit breaker: skip remaining sub-songs of a SID file after render timeout.
-  const timedOutBuildSids = new Set<string>();
   const emitBuildProgress = (currentFile?: string): void => {
     if (!onProgress) {
       return;
@@ -1060,21 +1254,6 @@ export async function buildAudioCache(
       buildConcurrency,
       async ({ sidFile, songIndex, wavFile, songCount }, context) => {
         const songLabel = formatSongLabel(plan, sidFile, songCount, songIndex);
-
-        // Check circuit breaker before starting work
-        if (timedOutBuildSids.has(sidFile)) {
-          classifyLogger.debug(
-            `[Thread ${context.threadId}] Skipping ${songLabel} — SID file already timed out`
-          );
-          skipped.push(wavFile);
-          emitBuildProgress(songLabel);
-          onThreadUpdate?.({
-            threadId: context.threadId,
-            phase: "building",
-            status: "idle"
-          });
-          return;
-        }
 
         const wavDir = path.dirname(wavFile);
         playlistDirs.add(wavDir);
@@ -1139,7 +1318,6 @@ export async function buildAudioCache(
           sidFile,
           wavFile,
           songIndex: songCount > 1 ? songIndex : undefined,
-          maxRenderSeconds: effectiveMaxRenderSeconds,
           targetDurationMs,
           // Capture SID register-write trace during WAV rendering so the
           // tagging phase can reuse it without a redundant second render pass.
@@ -1148,46 +1326,32 @@ export async function buildAudioCache(
           traceIntroSkipSec: resolveIntroSkipSec(plan.config),
           traceAnalysisSec: resolveMaxClassifySec(plan.config),
         };
-        let renderSucceeded = false;
+        let renderResult: ClassificationRenderResult | null = null;
 
         try {
-          // Use configured retry logic with exponential backoff
-          await withRetry(
-            'building',
-            async () => {
+          renderResult = await renderSongWithFallbacks(
+            plan,
+            renderOptions,
+            async (attemptOptions) => {
               if (rendererPool) {
-                await rendererPool.render(renderOptions);
-              } else {
-                await render(renderOptions);
+                return await rendererPool.render(attemptOptions);
               }
-            },
-            {
-              onRetry: (attempt, maxAttempts, error, delayMs) => {
-                classifyLogger.warn(
-                  `[RETRY] Attempt ${attempt}/${maxAttempts} failed for ${songLabel}: ${error.message}. Retrying in ${delayMs}ms...`
-                );
-              },
-              onFatalError: (classifyError) => {
-                classifyLogger.error(
-                  `[FATAL] Unrecoverable error for ${songLabel}: ${classifyError.message}`
-                );
-              }
+              return await render(attemptOptions);
             }
           );
-          renderSucceeded = true;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          classifyLogger.warn(
-            `Failed to render ${songLabel} after ${RETRY_CONFIG.building.maxRetries + 1} attempts: ${errorMessage}`
-          );
-          if (isRenderTimeoutOrCircuitBreakerError(error)) {
-            timedOutBuildSids.add(sidFile);
-          }
+          throw new Error(`Render fallback ladder failed for ${songLabel}: ${errorMessage}`);
         } finally {
           clearInterval(heartbeatInterval);
         }
 
-        if (renderSucceeded && typeof targetDurationMs === "number" && Number.isFinite(targetDurationMs) && targetDurationMs > 0) {
+        if (
+          renderResult &&
+          typeof targetDurationMs === "number" &&
+          Number.isFinite(targetDurationMs) &&
+          targetDurationMs > 0
+        ) {
           try {
             await truncateWavFileToDurationMs(wavFile, targetDurationMs);
           } catch (error) {
@@ -1196,33 +1360,33 @@ export async function buildAudioCache(
           }
         }
 
-        if (renderSucceeded) {
-          // Keep cache reproducible even for injected renderers: record the effective
-          // representative-window settings used to produce the WAV.
-          await persistRenderedWavMetadata(wavFile, plan.config, effectiveMaxRenderSeconds);
+        if (renderResult === null) {
+          throw new Error(`Render fallback ladder returned no result for ${songLabel}`);
         }
-        
-        if (renderSucceeded) {
-          rendered.push(wavFile);
-          if (rendered.length <= 3) {
-            classifyLogger.debug(
-              `Thread ${context.threadId} successfully rendered: ${wavFile}`
-            );
-          }
 
-          await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
-
-          emitBuildProgress(songLabel);
-        } else {
-          skipped.push(wavFile);
-          emitBuildProgress(songLabel);
+        rendered.push(wavFile);
+        if (renderResult.degraded) {
+          degradedRendered += 1;
         }
+        if (rendered.length <= 3) {
+          classifyLogger.debug(
+            `Thread ${context.threadId} rendered ${songLabel} with profile ${renderResult.profile}`
+          );
+        }
+
+        await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
+
+        emitBuildProgress(songLabel);
 
         onThreadUpdate?.({
           threadId: context.threadId,
           phase: "building",
           status: "idle"
         });
+      },
+      {
+        continueOnError: true,
+        getGroupKey: (item) => (item as SongToRender).sidFile,
       }
     );
   } finally {
@@ -1245,6 +1409,8 @@ export async function buildAudioCache(
     totalFiles,
     rendered: rendered.length,
     skipped: skipped.length,
+    degradedRendered,
+    metadataOnlyRendered,
     cacheHitRate
   };
 
@@ -1599,6 +1765,12 @@ export interface GenerateAutoTagsOptions {
    * Pass a temp-dir path in tests to avoid writing to the project root.
    */
   lifecycleLogPath?: string;
+  /**
+   * Path to an existing features JSONL file to resume Phase 2 from.
+   * When set, Phase 1 (WAV rendering and feature extraction) is skipped entirely
+   * and ratings are computed directly from the provided file.
+   */
+  resumeFromFeaturesFile?: string;
 }
 
 export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
@@ -1609,10 +1781,9 @@ export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
   predictionsGenerated: number;
   /** Number of songs skipped because they were already classified */
   skippedAlreadyClassified: number;
-  /** Number of SID files quarantined due to render timeout/circuit breaker */
-  renderTimeouts: number;
-  /** SID files that triggered render circuit breaker */
-  circuitBreakerSids: string[];
+  renderedFallbackCount: number;
+  metadataOnlyCount: number;
+  peakRssMb: number;
 }
 
 export interface GenerateAutoTagsResult {
@@ -1649,9 +1820,9 @@ export async function generateAutoTags(
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
   const classificationRenderEngine = resolveClassificationPreferredEngine(plan.config, { warnOnDegraded: true });
-  // Circuit breaker: skip remaining sub-songs of a SID file if any sub-song render times out.
-  // Declared at function top level so it's accessible in metrics at the end.
-  const timedOutRenderSids = new Set<string>();
+  let renderedFallbackCount = 0;
+  let metadataOnlyCount = 0;
+  let peakRssMb = getProcessRssMb();
   
   // If force rebuild is requested, we typically clean the whole audio cache to
   // guarantee fresh renders. However, when running a filtered classification
@@ -1684,7 +1855,7 @@ export async function generateAutoTags(
   });
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const wavFeatureExtractorBase = options.featureExtractor ?? defaultFeatureExtractor;
-  const wavFeatureExtractor = withFeatureExtractionPool(plan, wavFeatureExtractorBase);
+  const wavFeatureExtractor = withFeatureExtractionPool(plan, wavFeatureExtractorBase, options.threads);
   // When the WASM feature pool is active, SID-native extraction happens inside the
   // worker threads (reading the trace sidecar written by the WAV render workers).
   // In that case we use the pool result directly to avoid serialising the same
@@ -1692,12 +1863,12 @@ export async function generateAutoTags(
   // to the hybrid extractor which runs SID-native on the main thread.
   const poolIsActive = !options.featureExtractor
     && classificationRenderEngine === "wasm"
-    && plan.config.threads !== 1;
+    && resolveThreadCount(options.threads ?? plan.config.threads) > 1;
   const featureExtractor = options.featureExtractor
     ? wavFeatureExtractor
     : poolIsActive
       ? wavFeatureExtractor
-      : createHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
+      : createStrictHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
   const predictRatingsOverride = options.predictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
@@ -1730,8 +1901,13 @@ export async function generateAutoTags(
 
   // Intermediate file: extracted features + metadata in deterministic order.
   // This enables dataset-normalized deterministic ratings without holding the full dataset in memory.
-  const featuresJsonlFile = path.join(classifiedPath, `features_${timestamp}.jsonl`);
-  await rm(featuresJsonlFile, { force: true });
+  // If resumeFromFeaturesFile is provided, use that file directly (Phase 1 will be skipped).
+  const featuresJsonlFile = options.resumeFromFeaturesFile
+    ? path.resolve(options.resumeFromFeaturesFile)
+    : path.join(classifiedPath, `features_${timestamp}.jsonl`);
+  if (!options.resumeFromFeaturesFile) {
+    await rm(featuresJsonlFile, { force: true });
+  }
   await rm(jsonlFile, { force: true });
   await rm(telemetryFile, { force: true });
   const telemetry = new ClassificationTelemetryLogger(telemetryFile);
@@ -1866,7 +2042,6 @@ export async function generateAutoTags(
   let metadataProcessed = 0;
 
   const maxRenderMs = getMaxClassificationRenderMs(plan.config);
-  const effectiveMaxRenderSeconds = maxRenderMs / 1000;
 
   let songsQueued = 0;
 
@@ -2027,11 +2202,21 @@ export async function generateAutoTags(
 
     const builder = new DeterministicRatingModelBuilder();
     const intermediateBuffer = new Map<number, IntermediateRecord>();
+    // Indices of jobs that were intentionally skipped (e.g. WASM-unrenderable SIDs).
+    // A skip at index N must not orphan all features at indices N+1, N+2, … in the
+    // intermediateBuffer — flushIntermediate advances past skipped slots.
+    const skippedIntermediateIndices = new Set<number>();
     let nextIntermediateIndex = 0;
     let intermediateFlushChain: Promise<void> = Promise.resolve();
 
     const flushIntermediate = async (): Promise<void> => {
       while (true) {
+        // Advance past intentionally-skipped slots so a WASM render failure at
+        // index N does not permanently block features for indices N+1, N+2, …
+        while (skippedIntermediateIndices.has(nextIntermediateIndex)) {
+          skippedIntermediateIndices.delete(nextIntermediateIndex);
+          nextIntermediateIndex += 1;
+        }
         const rec = intermediateBuffer.get(nextIntermediateIndex);
         if (!rec) return;
         intermediateBuffer.delete(nextIntermediateIndex);
@@ -2060,7 +2245,8 @@ export async function generateAutoTags(
 
     // Fast-path: empty dataset. Keep metrics/timing consistent and avoid reading
     // intermediate files that were never created.
-    if (jobs.length === 0) {
+    // In resume mode, skip this fast-path: Phase 2 must run to process the features file.
+    if (jobs.length === 0 && !options.resumeFromFeaturesFile) {
       await ensureDir(path.dirname(jsonlFile));
       await writeFile(jsonlFile, "", "utf8");
       const endTime = Date.now();
@@ -2074,8 +2260,9 @@ export async function generateAutoTags(
         mixedCount: 0,
         predictionsGenerated: 0,
         skippedAlreadyClassified: skippedAlreadyClassifiedCount,
-        renderTimeouts: 0,
-        circuitBreakerSids: [],
+        renderedFallbackCount: 0,
+        metadataOnlyCount: 0,
+        peakRssMb,
       };
       return {
         autoTagged,
@@ -2090,6 +2277,7 @@ export async function generateAutoTags(
       };
     }
 
+    if (!options.resumeFromFeaturesFile) {
     await runConcurrent(jobs, taggingConcurrency, async (job, context) => {
       const songLabel = formatSongLabel(plan, job.sidFile, job.songCount, job.songIndex);
       const emitSongEvent = (event: string, details: Record<string, JsonValue> = {}): void => {
@@ -2113,22 +2301,6 @@ export async function generateAutoTags(
         }
         emitSongEvent(event, payload);
       };
-
-      // Check circuit breaker before starting work
-      if (timedOutRenderSids.has(job.sidFile)) {
-        classifyLogger.debug(
-          `[Thread ${context.threadId}] Skipping ${songLabel} — SID file already timed out`
-        );
-        processedSongs += 1;
-        emitTaggingProgress(songLabel);
-        emitSongOutcome("song_skipped", { reason: "sid_timeout_quarantine" });
-        onThreadUpdate?.({
-          threadId: context.threadId,
-          phase: "tagging",
-          status: "idle"
-        });
-        return;
-      }
 
       const wavDir = path.dirname(job.wavPath);
       const taggingStartedAt = Date.now();
@@ -2190,7 +2362,6 @@ export async function generateAutoTags(
           sidFile: job.sidFile,
           wavFile: job.wavPath,
           songIndex: job.songCount > 1 ? job.songIndex : undefined,
-          maxRenderSeconds: effectiveMaxRenderSeconds,
           targetDurationMs: job.targetDurationMs,
           // Capture SID register-write trace during WAV rendering so the
           // SID-native feature extractor can reuse it without a second render pass.
@@ -2199,7 +2370,7 @@ export async function generateAutoTags(
           traceIntroSkipSec: resolveIntroSkipSec(plan.config),
           traceAnalysisSec: resolveMaxClassifySec(plan.config),
         };
-        let inlineRenderFailed = false;
+        let renderResult: ClassificationRenderResult | null = null;
         try {
           // Lazily create worker pool only when a render is actually required.
           // Use baseConcurrency for pool workers; the outer pipeline depth is
@@ -2208,71 +2379,92 @@ export async function generateAutoTags(
             rendererPool = new WasmRendererPool(baseConcurrency);
           }
 
-          await withRetry(
-            "building",
-            async () => {
+          renderResult = await renderSongWithFallbacks(
+            plan,
+            renderOptions,
+            async (attemptOptions) => {
               if (rendererPool) {
-                await rendererPool.render(renderOptions);
-              } else {
-                await render(renderOptions);
+                return await rendererPool.render(attemptOptions);
               }
-            },
-            {
-              onRetry: (attempt, maxAttempts, error, delayMs) => {
-                classifyLogger.warn(
-                  `[RETRY] Attempt ${attempt}/${maxAttempts} failed for ${songLabel}: ${error.message}. Retrying in ${delayMs}ms...`
-                );
-              },
-              onFatalError: (classifyError) => {
-                classifyLogger.error(
-                  `[FATAL] Unrecoverable inline render error for ${songLabel}: ${classifyError.message}`
-                );
-              }
+              return await render(attemptOptions);
             }
           );
-          await persistRenderedWavMetadata(job.wavPath, plan.config, effectiveMaxRenderSeconds);
-          // Track the WAV file for potential cleanup after classification
+
           renderedWavFiles.push(job.wavPath);
           renderedFilesCount += 1;
+          if (renderResult.degraded) {
+            renderedFallbackCount += 1;
+          }
+          peakRssMb = Math.max(peakRssMb, getProcessRssMb());
           emitSongEvent("render_complete", {
             durationMs: Date.now() - buildStartedAt,
             wavPath: job.wavPath,
+            renderProfile: renderResult.profile,
+            degraded: renderResult.degraded,
+            rssMb: getProcessRssMb(),
           });
-          classifyLogger.debug(`[Thread ${context.threadId}] Rendered WAV for ${songLabel} in ${Date.now() - buildStartedAt}ms`);
+          classifyLogger.debug(
+            `[Thread ${context.threadId}] Rendered ${songLabel} with profile ${renderResult.profile} in ${Date.now() - buildStartedAt}ms`
+          );
           // Lifecycle: RENDERING end
-          lifecycle.stageEnd(renderingKey, { ...lifecycleBase, stage: "RENDERING" });
+          lifecycle.stageEnd(renderingKey, {
+            ...lifecycleBase,
+            stage: "RENDERING",
+            extra: {
+              renderProfile: renderResult.profile,
+              degraded: renderResult.degraded,
+            }
+          });
         } catch (renderError) {
           const msg = renderError instanceof Error ? renderError.message : String(renderError);
-          classifyLogger.warn(`[Thread ${context.threadId}] Inline render failed for ${songLabel}: ${msg} — skipping song`);
-          inlineRenderFailed = true;
+          classifyLogger.error(`[Thread ${context.threadId}] Render failed for ${songLabel}: ${msg}`);
           emitSongEvent("render_failed", {
             error: msg,
-            timedOut: isRenderTimeoutOrCircuitBreakerError(renderError),
+            rssMb: getProcessRssMb(),
           });
-          // Lifecycle: RENDERING error
           lifecycle.stageError(renderingKey, { ...lifecycleBase, stage: "RENDERING", error: msg });
-          if (isRenderTimeoutOrCircuitBreakerError(renderError)) {
-            timedOutRenderSids.add(job.sidFile);
+          // When ALL fallback attempts fail with non-recoverable WASM errors
+          // (e.g. the engine produces no audio, or a memory abort) the SID is
+          // intrinsically un-renderable at any quality level.  Omit it from the
+          // output and continue the corpus run — do NOT abort the whole run for
+          // a single broken SID.  "Real" errors (IO, config, etc.) still
+          // propagate so that the run still fails fast on genuine problems.
+          if (isSkippableSidError(renderError)) {
+            classifyLogger.warn(
+              `[Thread ${context.threadId}] Skipping un-renderable SID ${songLabel} (WASM limitation)`
+            );
+            // Register this slot as intentionally skipped so flushIntermediate can
+            // advance past it — without this, a WASM failure at index 0 would orphan
+            // every feature at indices 1, 2, … in the intermediateBuffer.
+            skippedIntermediateIndices.add(context.itemIndex);
+            intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
+            return;
           }
+          throw renderError;
         } finally {
           clearInterval(heartbeatInterval);
         }
-
-        if (inlineRenderFailed) {
-          lifecycle.stageEnd(startedKey, { ...lifecycleBase, stage: "STARTED", extra: { outcome: "render_failed" } });
-          processedSongs += 1;
-          emitTaggingProgress(songLabel);
-          emitSongOutcome("song_failed", { reason: "render_failed" });
-          onThreadUpdate?.({
-            threadId: context.threadId,
-            phase: "tagging",
-            status: "idle"
-          });
-          return; // Skip this song entirely — no WAV means no features to extract
-        }
         // Lifecycle: RENDERED (WAV freshly rendered and ready)
-        const renderedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "RENDERED" });
-        lifecycle.stageEnd(renderedKey, { ...lifecycleBase, stage: "RENDERED" });
+        const renderedKey = lifecycle.stageStart({
+          ...lifecycleBase,
+          stage: "RENDERED",
+          extra: renderResult
+            ? {
+                renderProfile: renderResult.profile,
+                degraded: renderResult.degraded,
+              }
+            : undefined,
+        });
+        lifecycle.stageEnd(renderedKey, {
+          ...lifecycleBase,
+          stage: "RENDERED",
+          extra: renderResult
+            ? {
+                renderProfile: renderResult.profile,
+                degraded: renderResult.degraded,
+              }
+            : undefined,
+        });
         
         // Switch back to tagging phase after rendering
         const resumeTaggingAt = Date.now();
@@ -2334,10 +2526,22 @@ export async function generateAutoTags(
           songIndex: job.songCount > 1 ? job.songIndex : undefined,
           songCount: job.songCount,
         });
+      } catch (featureError) {
+        const message = featureError instanceof Error ? featureError.message : String(featureError);
+        classifyLogger.error(
+          `[Thread ${context.threadId}] Feature extraction failed for ${songLabel}: ${message}`
+        );
+        emitSongEvent("feature_extraction_failed", {
+          error: message,
+          wavPath: job.wavPath,
+        });
+        lifecycle.stageError(extractingKey, { ...lifecycleBase, stage: "EXTRACTING", error: message });
+        throw featureError;
       } finally {
         clearInterval(extractionHeartbeatInterval);
       }
       extractedFilesCount += 1;
+      peakRssMb = Math.max(peakRssMb, getProcessRssMb());
       const extractionDurationMs = Date.now() - extractionStartedAt;
       const featureCount = Object.keys(extractedFeatures).length;
       const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
@@ -2394,11 +2598,24 @@ export async function generateAutoTags(
         phase: "tagging",
         status: "idle"
       });
+    }, {
+      continueOnError: false,
+      getGroupKey: (item) => (item as AutoTagJob).sidFile,
     });
 
     // Ensure all intermediate records are flushed in deterministic order.
     await intermediateFlushChain;
     await flushIntermediate();
+    } else {
+      // Resume-only mode: skip Phase 1 and build the rating model from the provided features file.
+      const resumeContent = await readFile(featuresJsonlFile, "utf8").catch(() => "");
+      const resumeLines = resumeContent.split("\n").filter((l) => l.trim().length > 0);
+      for (const resumeLine of resumeLines) {
+        const resumeRec = JSON.parse(resumeLine) as IntermediateRecord;
+        builder.add(resumeRec.features);
+        processedSongs += 1;
+      }
+    }
     onProgress?.({
       phase: "rating-model",
       totalFiles,
@@ -2468,6 +2685,11 @@ export async function generateAutoTags(
     });
     const resultsWriteStartedAt = Date.now();
 
+    // Cache for existing auto-tags.json file content loaded from disk the first time each
+    // path is encountered. Subsequent flushes re-use the cached value (already up-to-date
+    // because we update it in place after each write).
+    const autoTagsFlushCache = new Map<string, Record<string, JsonValue>>();
+
     for (const line of featureLines) {
       const rec = JSON.parse(line) as IntermediateRecord;
       const manual = rec.manual_ratings;
@@ -2506,6 +2728,35 @@ export async function generateAutoTags(
       const existingEntries = grouped.get(rec.auto_file_path);
       if (existingEntries) existingEntries.set(rec.auto_key, entry);
       else grouped.set(rec.auto_file_path, new Map([[rec.auto_key, entry]]));
+
+      // Flush auto-tags.json immediately after each song so a crash anywhere in Phase 2
+      // preserves the work done so far. On restart with --skip-already-classified the
+      // flushed entries are detected and those songs are skipped.
+      {
+        let base = autoTagsFlushCache.get(rec.auto_file_path);
+        if (base === undefined) {
+          try {
+            base = JSON.parse(await readFile(rec.auto_file_path, "utf8")) as Record<string, JsonValue>;
+          } catch {
+            base = {};
+          }
+          autoTagsFlushCache.set(rec.auto_file_path, base);
+        }
+        // Apply all in-memory entries for this file path on top of the pre-loaded base.
+        const allEntriesForFile = grouped.get(rec.auto_file_path)!;
+        const flushRecord: Record<string, JsonValue> = { ...base };
+        for (const [k, v] of allEntriesForFile) {
+          const ed: Record<string, JsonValue> = { e: v.e, m: v.m, c: v.c, source: v.source };
+          if (v.p !== undefined) ed.p = v.p;
+          flushRecord[k] = ed;
+        }
+        const sortedFlush = Object.fromEntries(
+          Object.entries(flushRecord).sort((a, b) => a[0].localeCompare(b[0]))
+        );
+        await ensureDir(path.dirname(rec.auto_file_path));
+        await writeFile(rec.auto_file_path, stringifyDeterministic(sortedFlush));
+        autoTagsFlushCache.set(rec.auto_file_path, sortedFlush);
+      }
 
       const classificationRecord: ClassificationRecord = {
         sid_path: rec.sid_path,
@@ -2570,7 +2821,9 @@ export async function generateAutoTags(
       extractedFiles: extractedFilesCount,
       classifiedFiles: jsonlRecordCount,
       skippedAlreadyClassified: skippedAlreadyClassifiedCount,
-      renderTimeouts: timedOutRenderSids.size,
+      renderedFallbackCount,
+      metadataOnlyCount,
+      peakRssMb,
     });
   } finally {
     // Clean up renderer pool
@@ -2597,9 +2850,17 @@ export async function generateAutoTags(
   }
 
   for (const [autoFilePath, entries] of grouped) {
-    const sorted = [...entries.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    const record: Record<string, JsonValue> = {};
-    for (const [key, entry] of sorted) {
+    // Merge with any entries already on disk that came from previous runs with
+    // --skip-already-classified (those songs were omitted from this run's `grouped`
+    // map but must not be lost from auto-tags.json).
+    let existingOnDisk: Record<string, JsonValue>;
+    try {
+      existingOnDisk = JSON.parse(await readFile(autoFilePath, "utf8")) as Record<string, JsonValue>;
+    } catch {
+      existingOnDisk = {};
+    }
+    const merged: Record<string, JsonValue> = { ...existingOnDisk };
+    for (const [key, entry] of entries) {
       const entryData: Record<string, JsonValue> = {
         e: entry.e,
         m: entry.m,
@@ -2612,10 +2873,13 @@ export async function generateAutoTags(
         entryData.p = entry.p;
       }
 
-      record[key] = entryData;
+      merged[key] = entryData;
     }
+    const sortedMerged = Object.fromEntries(
+      Object.entries(merged).sort((a, b) => a[0].localeCompare(b[0]))
+    );
     await ensureDir(path.dirname(autoFilePath));
-    await writeFile(autoFilePath, stringifyDeterministic(record));
+    await writeFile(autoFilePath, stringifyDeterministic(sortedMerged));
     tagFiles.push(autoFilePath);
   }
 
@@ -2640,6 +2904,7 @@ export async function generateAutoTags(
           await rm(hashFile, { force: true });
           // Trace sidecar is deleted per-song after extraction, but clean up any stragglers.
           await rm(`${wavFile}${SID_TRACE_EXTENSION}`, { force: true });
+          await rm(`${wavFile}${WAV_RENDER_SETTINGS_EXTENSION}`, { force: true });
           successCount += 1;
         } catch (error) {
           classifyLogger.warn(`Failed to delete ${wavFile}: ${(error as Error).message}`);
@@ -2668,8 +2933,9 @@ export async function generateAutoTags(
     mixedCount: mixedEntries.length,
     predictionsGenerated,
     skippedAlreadyClassified: skippedAlreadyClassifiedCount,
-    renderTimeouts: timedOutRenderSids.size,
-    circuitBreakerSids: [...timedOutRenderSids].map(s => toPosixRelative(path.relative(plan.sidPath, s))),
+    renderedFallbackCount,
+    metadataOnlyCount,
+    peakRssMb,
   };
 
   return {
@@ -2728,7 +2994,7 @@ export async function generateJsonlOutput(
   const extractMetadata = options.extractMetadata ?? defaultExtractMetadata;
   const featureExtractor = options.featureExtractor
     ? options.featureExtractor
-    : createHybridFeatureExtractor(defaultFeatureExtractor, defaultSidNativeFeatureExtractor);
+    : createStrictHybridFeatureExtractor(defaultFeatureExtractor, defaultSidNativeFeatureExtractor);
   // Use defaultPredictRatings (heuristicPredictRatings) for rating prediction
   const predictRatings = options.predictRatings ?? defaultPredictRatings;
   const onProgress = options.onProgress;
