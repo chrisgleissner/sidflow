@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { PERSONA_IDS } from '@sidflow/common';
 
-export const BROWSER_PREFERENCES_VERSION = 2 as const;
+export const BROWSER_PREFERENCES_VERSION = 3 as const;
 
 export const THEME_OPTIONS = ['system', 'c64-light', 'c64-dark', 'classic'] as const;
 export const FONT_OPTIONS = ['c64', 'mono', 'sans'] as const;
@@ -31,6 +32,19 @@ const localCacheSchema = z
   })
   .strict();
 
+const personaTasteModifierSchema = z.object({
+  skipRate: z.number().min(0).max(1).default(0),
+  trackCount: z.number().int().min(0).default(0),
+  lastUsed: z.string().nullable().default(null),
+});
+
+const personaPrefsSchema = z
+  .object({
+    activePersonaId: z.enum(PERSONA_IDS as unknown as [string, ...string[]]).nullable().default(null),
+    perPersona: z.record(z.string(), personaTasteModifierSchema).default({}),
+  })
+  .strict();
+
 export const BrowserPreferencesSchema = z
   .object({
     version: z.literal(BROWSER_PREFERENCES_VERSION),
@@ -43,6 +57,7 @@ export const BrowserPreferencesSchema = z
     training: trainingSchema.default(trainingSchema.parse({})),
     localCache: localCacheSchema.default(localCacheSchema.parse({})),
     lastSeenModelVersion: z.string().trim().min(1).nullable().default(null),
+    persona: personaPrefsSchema.default(personaPrefsSchema.parse({})),
   })
   .strict();
 
@@ -67,6 +82,10 @@ type LegacyPreferencesV1 = LegacyPreferencesV0 & {
   training?: Partial<z.infer<typeof trainingSchema>>;
   localCache?: Partial<z.infer<typeof localCacheSchema>>;
   lastSeenModelVersion?: string | null;
+};
+
+type LegacyPreferencesV2 = LegacyPreferencesV1 & {
+  version: 2;
 };
 
 function coerceTheme(value: unknown): BrowserPreferences['theme'] {
@@ -159,6 +178,7 @@ export function migratePreferences(raw: unknown): BrowserPreferences {
       ),
     },
     lastSeenModelVersion: coerceNullableString(candidate.lastSeenModelVersion ?? null),
+    persona: personaPrefsSchema.parse((candidate as Record<string, unknown>).persona ?? {}),
     migratedFrom: version,
   };
 

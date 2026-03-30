@@ -418,6 +418,25 @@ describe("CLI argument parsing", () => {
     const result = parsePlayArgs(["unexpected"]);
     expect(result.errors).toContain("Unexpected argument: unexpected");
   });
+
+  test("parses persona option with hyphenated name", () => {
+    const result = parsePlayArgs(["--persona", "fast-paced"]);
+    expect(result.options.persona).toBe("fast-paced");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("parses persona option with underscored name", () => {
+    const result = parsePlayArgs(["--persona", "slow_ambient"]);
+    expect(result.options.persona).toBe("slow_ambient");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("parses persona alongside other options", () => {
+    const result = parsePlayArgs(["--persona", "melodic", "--limit", "30"]);
+    expect(result.options.persona).toBe("melodic");
+    expect(result.options.limit).toBe(30);
+    expect(result.errors).toHaveLength(0);
+  });
 });
 
 describe("station demo CLI argument parsing", () => {
@@ -988,6 +1007,140 @@ describe("runPlayCli", () => {
 
     expect(exitCode).toBe(1);
     expect(errors.join("\n")).toContain("must be json, m3u, or m3u8");
+  });
+
+  it("reports unknown persona", async () => {
+    const errors: string[] = [];
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        errors.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runPlayCli(["--persona", "nonexistent"], {
+      stderr,
+      loadConfig: async () => ({
+        sidPath: "/music",
+        audioCachePath: "/wav",
+        tagsPath: "/tags",
+        threads: 2,
+        classificationDepth: 1
+      })
+    });
+
+    expect(exitCode).toBe(1);
+    expect(errors.join("\n")).toContain("Unknown persona");
+  });
+
+  it("rejects --mood and --persona together", async () => {
+    const errors: string[] = [];
+    const stderr = new Writable({
+      write(chunk, _encoding, callback) {
+        errors.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const exitCode = await runPlayCli(["--mood", "energetic", "--persona", "melodic"], {
+      stderr,
+      loadConfig: async () => ({
+        sidPath: "/music",
+        audioCachePath: "/wav",
+        tagsPath: "/tags",
+        threads: 2,
+        classificationDepth: 1
+      })
+    });
+
+    expect(exitCode).toBe(1);
+    expect(errors.join("\n")).toContain("cannot be used together");
+  });
+
+  it("runs persona-based playback with re-ranking", async () => {
+    const stdoutChunks: string[] = [];
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        stdoutChunks.push(chunk.toString());
+        callback();
+      }
+    });
+
+    const registeredHandlers: Array<() => void> = [];
+
+    const songs: Recommendation[] = [
+      { sid_path: "a.sid", score: 0.5, similarity: 0.5, songFeedback: 0, userAffinity: 0, ratings: { e: 5, m: 2, c: 3 }, feedback: { likes: 0, dislikes: 0, skips: 0, plays: 0 } },
+      { sid_path: "b.sid", score: 0.6, similarity: 0.6, songFeedback: 0, userAffinity: 0, ratings: { e: 2, m: 5, c: 5 }, feedback: { likes: 0, dislikes: 0, skips: 0, plays: 0 } },
+      { sid_path: "c.sid", score: 0.7, similarity: 0.7, songFeedback: 0, userAffinity: 0, ratings: { e: 3, m: 4, c: 4 }, feedback: { likes: 0, dislikes: 0, skips: 0, plays: 0 } },
+    ];
+
+    let builtConfig: PlaylistConfig | null = null;
+    let queuedSongs: Recommendation[] = [];
+
+    const exitCode = await runPlayCli(
+      ["--persona", "fast-paced", "--limit", "2"],
+      {
+        stdout,
+        loadConfig: async () => ({
+          sidPath: "/music",
+          audioCachePath: "/wav",
+          tagsPath: "/tags",
+          threads: 2,
+          classificationDepth: 1
+        }),
+        cwd: () => "/workspace",
+        stat: async () => ({}) as Stats,
+        parseFilters: () => ({}),
+        createPlaylistBuilder: () => ({
+          connect: async () => undefined,
+          build: async (config: PlaylistConfig) => {
+            builtConfig = config;
+            return {
+              metadata: { createdAt: new Date().toISOString(), seed: config.seed, count: songs.length },
+              songs: [...songs]
+            } satisfies Playlist;
+          },
+          disconnect: async () => undefined
+        }),
+        createSessionManager: () => ({
+          startSession: async () => undefined,
+          recordEvent: () => undefined,
+          endSession: async () => undefined
+        }),
+        createPlaybackController: (options: PlaybackOptions) => {
+          let state: PlaybackState = PlaybackState.IDLE;
+          return {
+            loadQueue: (s: Recommendation[]) => { queuedSongs = s; },
+            play: async () => {
+              state = PlaybackState.PLAYING;
+              options.onEvent?.({ type: "started", song: queuedSongs[0] } as PlaybackEvent);
+              options.onEvent?.({ type: "finished", song: queuedSongs[0] } as PlaybackEvent);
+              state = PlaybackState.IDLE;
+              for (const handler of registeredHandlers) handler();
+            },
+            stop: async () => { state = PlaybackState.IDLE; },
+            getState: () => state
+          };
+        },
+        exportPlaylist: async () => undefined,
+        onSignal: (_signal, handler) => { registeredHandlers.push(handler); },
+        offSignal: () => undefined,
+        sleep: async () => undefined
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    // Persona should use rating targets as seed (not a mood preset string)
+    expect(builtConfig).not.toBeNull();
+    expect(typeof builtConfig!.seed).toBe("object");
+    // Re-ranking should reduce to limit=2
+    expect(queuedSongs).toHaveLength(2);
+    // "a.sid" has high energy (e=5) → best match for fast_paced
+    expect(queuedSongs[0].sid_path).toBe("a.sid");
+    // Output should mention persona
+    const output = stdoutChunks.join("");
+    expect(output).toContain("Fast Paced");
+    expect(output).toContain("re-ranked");
   });
 
   it("runs the station demo against the exported sqlite without playback", async () => {

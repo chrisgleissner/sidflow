@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 import {
   createDefaultProfile,
   updateProfileFromFeedback,
   getEffectivePersona,
+  loadProfile,
+  saveProfile,
+  getProfilePath,
   DEFAULT_PERSONA_PROFILE,
   type PersonaProfile,
 } from "../src/persona-profile.js";
@@ -114,5 +120,54 @@ describe("getEffectivePersona", () => {
     const profile = createDefaultProfile();
     profile.lastPersonaId = "experimental";
     expect(getEffectivePersona(profile)).toBe("experimental");
+  });
+});
+
+describe("profile persistence", () => {
+  test("getProfilePath uses default dir", () => {
+    const p = getProfilePath();
+    expect(p).toContain("persona-profile.json");
+    expect(p).toContain(".sidflow");
+  });
+
+  test("getProfilePath uses custom dir", () => {
+    const p = getProfilePath("/tmp/custom");
+    expect(p).toBe("/tmp/custom/persona-profile.json");
+  });
+
+  test("loadProfile returns default for missing file", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "sidflow-profile-test-"));
+    try {
+      const profile = await loadProfile(tmpDir);
+      expect(profile.version).toBe(1);
+      expect(profile.lastPersonaId).toBe(DEFAULT_PERSONA);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("saveProfile and loadProfile round-trip", async () => {
+    const tmpDir = await mkdtemp(path.join(os.tmpdir(), "sidflow-profile-test-"));
+    try {
+      const profile = createDefaultProfile();
+      profile.lastPersonaId = "experimental";
+      profile.perPersona.experimental.skipRate = 0.2;
+      profile.perPersona.experimental.trackCount = 5;
+
+      await saveProfile(profile, tmpDir);
+
+      // Verify file exists and is valid JSON
+      const raw = await readFile(path.join(tmpDir, "persona-profile.json"), "utf8");
+      const parsed = JSON.parse(raw);
+      expect(parsed.lastPersonaId).toBe("experimental");
+
+      // Load it back
+      const loaded = await loadProfile(tmpDir);
+      expect(loaded.lastPersonaId).toBe("experimental");
+      expect(loaded.perPersona.experimental.skipRate).toBe(0.2);
+      expect(loaded.perPersona.experimental.trackCount).toBe(5);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

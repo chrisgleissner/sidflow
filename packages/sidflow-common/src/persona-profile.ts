@@ -2,6 +2,9 @@
 // Persona profile — user preferences persisted across sessions
 // ---------------------------------------------------------------------------
 
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 import {
   PERSONA_IDS,
   DEFAULT_PERSONA,
@@ -128,4 +131,52 @@ export function updateProfileFromFeedback(
 export function getEffectivePersona(profile: PersonaProfile | null): PersonaId {
   if (!profile) return DEFAULT_PERSONA;
   return profile.lastPersonaId;
+}
+
+// ---------------------------------------------------------------------------
+// File-based persistence for CLI usage
+// ---------------------------------------------------------------------------
+
+const PROFILE_DIR = path.join(os.homedir(), ".sidflow");
+const PROFILE_FILENAME = "persona-profile.json";
+
+/**
+ * Resolve the profile file path (default: ~/.sidflow/persona-profile.json).
+ */
+export function getProfilePath(customDir?: string): string {
+  return path.join(customDir ?? PROFILE_DIR, PROFILE_FILENAME);
+}
+
+/**
+ * Load profile from disk. Returns the default profile if the file doesn't exist
+ * or is invalid.
+ */
+export async function loadProfile(customDir?: string): Promise<PersonaProfile> {
+  const filePath = getProfilePath(customDir);
+  try {
+    const contents = await readFile(filePath, "utf8");
+    const parsed = JSON.parse(contents) as PersonaProfile;
+    if (parsed.version === 1 && parsed.perPersona && parsed.lastPersonaId) {
+      // Ensure all persona IDs exist (forward-compat for new personas)
+      for (const id of PERSONA_IDS) {
+        if (!parsed.perPersona[id]) {
+          parsed.perPersona[id] = { skipRate: 0, trackCount: 0, lastUsed: null };
+        }
+      }
+      return parsed;
+    }
+  } catch {
+    // File doesn't exist or is corrupt — will return default
+  }
+  return createDefaultProfile();
+}
+
+/**
+ * Save profile to disk.
+ */
+export async function saveProfile(profile: PersonaProfile, customDir?: string): Promise<void> {
+  const dir = customDir ?? PROFILE_DIR;
+  await mkdir(dir, { recursive: true });
+  const filePath = path.join(dir, PROFILE_FILENAME);
+  await writeFile(filePath, JSON.stringify(profile, null, 2), "utf8");
 }

@@ -54,6 +54,8 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { SaveQueueDialog } from '@/components/SaveQueueDialog';
 import { PlaylistBrowser } from '@/components/PlaylistBrowser';
+import PersonaBar from '@/components/PersonaBar';
+import type { PersonaId } from '@sidflow/common';
 import type { Playlist } from '@/lib/types/playlist';
 
 interface PlayTabProps {
@@ -144,6 +146,9 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const { isOnline } = useNetworkStatus();
   const c64uPreferences = preferences.ultimate64;
   const [preset, setPreset] = useState<MoodPreset>('energetic');
+  const [activePersona, setActivePersona] = useState<PersonaId | null>(
+    preferences.persona.activePersonaId ?? null
+  );
   const [currentTrack, setCurrentTrack] = useState<PlaylistTrack | null>(null);
   const [duration, setDuration] = useState(180);
   const [position, setPosition] = useState(0);
@@ -2092,6 +2097,14 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Persona listening mode selector */}
+          <ControlRow title="Persona" testId="persona-bar">
+            <PersonaBar
+              activePersona={activePersona}
+              onPersonaChange={setActivePersona}
+              disabled={isLoading || isAudioLoading}
+            />
+          </ControlRow>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
             <div className="flex items-center gap-2">
               <Button
