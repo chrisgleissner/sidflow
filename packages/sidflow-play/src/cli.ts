@@ -230,6 +230,11 @@ export async function runPlayCli(argv: string[], overrides?: Partial<PlayCliRunt
     return runStationDemoCli(argv.slice(1));
   }
 
+  if (argv[0] === "persona-station") {
+    const { runPersonaStationCli } = await import("./persona-station.js");
+    return runPersonaStationCli(argv.slice(1));
+  }
+
   const result = parsePlayArgs(argv);
   const runtime = mergeRuntime(overrides);
 

@@ -1,5 +1,49 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 24 - Deterministic 300-song HVSC Persona Station E2E
+
+1. [IN_PROGRESS] Define the deterministic corpus contract and materialization path.
+  Acceptance criteria:
+  - A fixed-seed selection algorithm is implemented and documented in code.
+  - The selector always returns exactly 300 SID paths after merging the random sample with the deduplicated problematic-song proof set.
+  - The workflow can materialize the selected corpus from local `workspace/hvsc` or fetch the same files directly from the HVSC mirror when the local corpus is absent.
+
+2. [TODO] Encode the problematic-song proof set explicitly.
+  Acceptance criteria:
+  - Every historically problematic SID discovered from tests, fixtures, PLANS, and WORKLOG is captured in one canonical list.
+  - The selector asserts those songs are present in the final 300-file subset.
+  - The proof set remains small, explicit, and deterministic.
+
+3. [TODO] Implement deterministic diversity-aware subset selection.
+  Acceptance criteria:
+  - Selection uses a fixed seed and stable ordering.
+  - No author contributes more than 5 files unless required by the problematic set.
+  - Selection intentionally spreads across composers, released years, SID chip topology, and path/style buckets, with deterministic tie-breaking.
+
+4. [TODO] Implement the sequential five-persona radio pipeline.
+  Acceptance criteria:
+  - Five personas with explicit deterministic scoring functions evaluate the same classified corpus in sequence.
+  - Each persona consumes the current candidate pool, scores every track, and applies a deterministic threshold/filter rule.
+  - The final playlist contains exactly 50 tracks liked by all five personas, with deterministic fallback threshold relaxation if the intersection is too small.
+
+5. [TODO] Add the mandatory end-to-end test entry point.
+  Acceptance criteria:
+  - The test performs subset selection, corpus materialization, classification, feature/vector validation, persona filtering, and final playlist validation in one run.
+  - The test fails on dataset-size mismatch, missing problematic songs, classification failures, incomplete feature vectors, nondeterministic persona output, or a final playlist size other than 50.
+  - The test file is discovered by the root `bun run test` coverage batches so it runs in CI on every build/test job.
+
+6. [TODO] Validate locally and record evidence.
+  Acceptance criteria:
+  - `bun run build` passes.
+  - The new E2E test passes locally.
+  - `bun run test` is re-run and the new test remains green inside the mandatory coverage batch path.
+
+### Progress
+
+- 2026-03-30: Audited the current repo state for this request. Confirmed `workspace/hvsc/C64Music` contains a full 60,572-file HVSC checkout locally, the root `bun run test` path only discovers `*.test.ts`, and the existing `integration-tests/e2e-suite.ts` is therefore not a mandatory test today.
+- 2026-03-30: Confirmed the strict classify pipeline already writes `features` plus a deterministic 24-dimensional `vector`, and the canonical completeness contract already exists in `hasRealisticCompleteFeatureVector()` / `inspectFeatureVectorHealth()`.
+- 2026-03-30: Confirmed direct raw SID downloads are available from `https://hvsc.brona.dk/HVSC/C64Music/...` and `https://hvsc.c64.org/download/C64Music/...`, which makes a CI-safe fallback materialization path viable without vendoring 300 binary SID files into the repo.
+
 ## Phase 23 - Full HVSC Similarity Export Stabilization
 
 1. [done] Reconfirm the live failure surfaces in the authoritative wrapper path.

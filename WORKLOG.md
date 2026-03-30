@@ -1,5 +1,18 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-30T09:05Z - Phase 24 kickoff: deterministic 300-song HVSC persona station E2E
+
+- timestamp: 2026-03-30T09:05Z
+- action taken: Audited the repo contract for the new 300-song HVSC request, verified the local HVSC corpus size, verified which test files are mandatory under the root coverage batches, and confirmed that direct raw SID downloads are available from the public HVSC mirror for CI fallback materialization.
+- evidence collected:
+   - `rg --files workspace/hvsc/C64Music -g '*.sid' | wc -l` => `60572`, confirming a full local HVSC corpus is available for deterministic subset generation.
+   - `scripts/run-unit-coverage-batches.mjs` only collects `*.test.ts`, and `integration-tests/e2e-suite.ts` is named `e2e-suite.ts`, so the current integration flow is not mandatory under `bun run test`.
+   - `packages/sidflow-classify/src/index.ts` writes `ClassificationRecord` objects with persisted `features` and `vector`, and `packages/sidflow-classify/src/deterministic-ratings.ts` already exposes `hasRealisticCompleteFeatureVector()` and `buildPerceptualVector()`.
+   - `curl -I -L https://hvsc.brona.dk/HVSC/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid` returned `200 OK`, proving the public mirror can serve raw SID paths directly.
+   - The explicit high-risk regression proof set currently encoded in tests is: `Waterfall_3SID.sid`, `Space_Oddity_2SID.sid`, `Super_Mario_Bros_64_2SID.sid`, and `Great_Giana_Sisters.sid`.
+- result: The implementation path is clear: add a deterministic selector plus corpus materializer, reuse the strict classifier/vector contracts, add a CLI persona-station builder, and land the flow in a new `*.test.ts` integration entry point so it becomes mandatory in the existing CI batch runner.
+- next step: Implement the selector/materializer helpers first so the E2E test can run against either local HVSC or mirror-fetched files with the same deterministic 300-file manifest.
+
 ## 2026-03-29T22:40Z - PR #90 convergence: WASM source-of-truth fix and stale CI import repair
 
 - timestamp: 2026-03-29T22:40Z
