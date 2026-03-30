@@ -1,45 +1,166 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 27 - Parallel Persona Station Redesign (Eliminate Convergence-to-Intersection)
+
+1. [DONE] Replace sequential intersection model with parallel independent model.
+  - Previous: 5 personas filtered sequentially, producing intersection (tracks accepted by ALL personas).
+  - New: each persona independently scores ALL tracks and selects top 50. No cross-persona filtering.
+  Evidence: `packages/sidflow-play/src/persona-station.ts` — `buildParallelPersonaStation()`.
+
+2. [DONE] Define 5 orthogonal personas with explicit directional scoring.
+  - Fast Paced (max rhythmicDensity), Slow/Ambient (min rhythmicDensity), Melodic (max melodicComplexity),
+    Experimental (max experimentalTolerance), Nostalgic (max nostalgiaBias).
+  - Each persona has explicit metricWeights (sum=1) and metricDirections (+1/-1/0).
+  Evidence: `PERSONAS` array in persona-station.ts.
+
+3. [DONE] Add overlap validation (all pairs ≤40%), distribution assertions, and anti-collapse rules.
+  - Overlap matrix computed for all C(5,2)=10 pairs.
+  - Distribution assertions: Fast Paced=highest rhythmicDensity, Slow=lowest, Experimental=highest experimentalTolerance,
+    Nostalgic=highest nostalgiaBias, Melodic=highest melodicComplexity.
+  - Anti-collapse: metric variance across stations > 0.0001, no two stations identical.
+  Evidence: test assertions in `integration-tests/hvsc-persona-station.test.ts` — 6652 expect() calls.
+
+4. [DONE] Generate station-analysis artifacts.
+  - persona-{1..5}-station.json, persona-{1..5}-distribution.json, persona-overlap-matrix.json, persona-divergence-report.md, determinism-proof.md.
+  Evidence: `station-analysis/` directory.
+
+5. [DONE] Verify deterministic output across runs.
+  - Two independent runs produce byte-identical JSON.
+  Evidence: determinism-proof.md.
+
+## Phase 26 - Metadata-Aware Classification and Persona-Driven Station Design
+
+1. [DONE] Audit the current classification and station-generation surfaces relevant to metadata-aware recommendations.
+  Acceptance criteria:
+  - The active analysis references the current 24D perceptual vector pipeline, the main station queue builder, the persona-station prototype, and web metadata surfaces already present in the repo.
+  - Current limitations are identified with file-backed evidence rather than generic recommendation-system claims.
+  Evidence target: `doc/research/listener-personas.md` cites current behavior in `packages/sidflow-classify`, `packages/sidflow-play`, and `packages/sidflow-web`.
+
+2. [DONE] Design a metadata-aware extension model that preserves backward compatibility with the existing vector/station workflow.
+  Acceptance criteria:
+  - The design distinguishes hard constraints, soft preferences, and explanation-only metadata.
+  - It specifies which metadata fields should become first-class recommendation signals and which should remain secondary.
+  - It explains how metadata should interact with audio similarity rather than replace it.
+  Evidence target: `doc/research/listener-personas.md` sections on metadata signals, hybrid scoring, and incremental integration.
+
+3. [DONE] Define a diverse persona system for station generation beyond simple like/dislike feedback.
+  Acceptance criteria:
+  - Personas are behaviorally distinct, not cosmetic variants of one another.
+  - Each persona states what it optimizes, when it overrides audio similarity, and what station-building behavior it changes.
+  - The document covers both obvious and non-obvious listener intents.
+  Evidence target: `doc/research/listener-personas.md` persona catalog and station-strategy sections.
+
+4. [DONE] Ship the research document and validate the tree.
+  Acceptance criteria:
+  - `doc/research/listener-personas.md` exists, is substantial, and includes recommendations, trade-offs, risks, and an implementation path.
+  - `PLANS.md` is updated with completion notes.
+  - Validation evidence is recorded after the required test runs.
+  Evidence target: committed doc plus PLANS progress notes and terminal validation output.
+
+## Phase 25 - Forensic Anti-Gaming Audit and Evidence Hardening
+
+1. [IN_PROGRESS] Audit Phase 24 implementation for semantic gaming risks.
+  Acceptance criteria:
+  - Every cardinality-forcing shortcut is identified and either removed or proven harmless.
+  - Per-song acceptance evidence (score, threshold, accepted/rejected, rejection reason, decisive features) is emitted at each persona stage.
+  - The final playlist entries carry full per-persona justification.
+  Evidence: persona-station.ts rewritten to emit `PersonaTrackDecision[]` per stage; top-N fallback removed; minimum threshold floor set at 0.10.
+
+2. [IN_PROGRESS] Remove top-N fallback and add minimum threshold floor.
+  Acceptance criteria:
+  - `ranked.slice(0, stageTarget)` fallback that bypasses persona approval is deleted.
+  - Threshold relaxation has a hard floor (≥ 0.10), never drops to 0.
+  - If even relaxed threshold cannot yield targetSize approved songs, the pipeline continues with the smaller set (no backfill).
+  - Threshold-relaxation events are flagged in the stage output (`thresholdRelaxed`, `actualThreshold`).
+  Evidence: `buildSequentialPersonaStation()` in persona-station.ts; new `PersonaTrackDecision[]` in `PersonaStageResult`.
+
+3. [IN_PROGRESS] Emit full per-song decision evidence at every persona stage.
+  Acceptance criteria:
+  - `PersonaStageResult.decisions[]` contains one entry per input track with: trackId, sidPath, score, baseThreshold, actualThreshold, accepted, usedThresholdRelaxation, rejectionReason (if rejected), decisiveFeatures.
+  - `finalPlaylist` entries include personaScores for all 5 personas and an `allAccepted` flag.
+  Evidence: TypeScript interfaces updated; stringifyDeterministic output includes all fields.
+
+4. [IN_PROGRESS] Harden E2E test for semantic correctness not just cardinality.
+  Acceptance criteria:
+  - Test asserts `decisions` array exists on every stage with correct length.
+  - Test asserts every final track has `accepted=true` for all 5 personas (no top-N backfill).
+  - Test asserts no stage used top-N fallback (`usedTopNFallback` flag absent or false).
+  - Test asserts threshold relaxation, if used, did not drop below 0.10.
+  - Test generates `station-analysis/` artifacts (JSON per stage + MD reports).
+  Evidence: integration-tests/hvsc-persona-station.test.ts; station-analysis/ directory.
+
+5. [TODO] Generate and verify station-analysis artifacts.
+  Acceptance criteria:
+  - `station-analysis/final-station.json` — 50 songs with full persona justification.
+  - `station-analysis/persona-stage-{1..5}.json` — per-stage decision data.
+  - `station-analysis/inclusion-proof.md` — 50-song list with why each belongs.
+  - `station-analysis/exclusion-proof.md` — excluded songs grouped by rejecting persona.
+  - `station-analysis/anti-gaming-audit.md` — answers all gaming questions explicitly.
+  - `station-analysis/determinism-proof.md` — byte-identical comparison of two runs.
+  Evidence: artifacts present in repo after test run.
+
+6. [TODO] Confirm strengthened E2E test passes twice identically.
+  Acceptance criteria:
+  - Hardened test passes with same expect() count ≥ previous count.
+  - Both JSON outputs byte-identical.
+  - WORKLOG.md and STATE.json updated with audit findings and corrective actions.
+  Evidence: bun test run ×2 terminal output; updated STATE.json auditFindings section.
+
 ## Phase 24 - Deterministic 300-song HVSC Persona Station E2E
 
-1. [IN_PROGRESS] Define the deterministic corpus contract and materialization path.
+1. [DONE] Define the deterministic corpus contract and materialization path.
   Acceptance criteria:
   - A fixed-seed selection algorithm is implemented and documented in code.
   - The selector always returns exactly 300 SID paths after merging the random sample with the deduplicated problematic-song proof set.
   - The workflow can materialize the selected corpus from local `workspace/hvsc` or fetch the same files directly from the HVSC mirror when the local corpus is absent.
+  Evidence: `packages/sidflow-common/src/hvsc-e2e-subset.ts` — `selectHvscE2eSubset()`, `materializeHvscE2eSubset()`. Manifest at `integration-tests/fixtures/hvsc-persona-300-manifest.json` (300 entries, seed=641729, authorCap=5).
 
-2. [TODO] Encode the problematic-song proof set explicitly.
+2. [DONE] Encode the problematic-song proof set explicitly.
   Acceptance criteria:
   - Every historically problematic SID discovered from tests, fixtures, PLANS, and WORKLOG is captured in one canonical list.
   - The selector asserts those songs are present in the final 300-file subset.
   - The proof set remains small, explicit, and deterministic.
+  Evidence: `HVSC_E2E_PROBLEMATIC_PATHS` in `hvsc-e2e-subset.ts` — 4 paths; all present in manifest; selector throws if any are absent from the catalog.
 
-3. [TODO] Implement deterministic diversity-aware subset selection.
+3. [DONE] Implement deterministic diversity-aware subset selection.
   Acceptance criteria:
   - Selection uses a fixed seed and stable ordering.
   - No author contributes more than 5 files unless required by the problematic set.
   - Selection intentionally spreads across composers, released years, SID chip topology, and path/style buckets, with deterministic tie-breaking.
+  Evidence: SHA-256 stable-hash tie-breaking; bucket key = `category|decadeBucket|chipN|sidModel|styleBucket`; author cap enforced in loop.
 
-4. [TODO] Implement the sequential five-persona radio pipeline.
+4. [DONE] Implement the sequential five-persona radio pipeline.
   Acceptance criteria:
   - Five personas with explicit deterministic scoring functions evaluate the same classified corpus in sequence.
   - Each persona consumes the current candidate pool, scores every track, and applies a deterministic threshold/filter rule.
   - The final playlist contains exactly 50 tracks liked by all five personas, with deterministic fallback threshold relaxation if the intersection is too small.
+  Evidence: `packages/sidflow-play/src/persona-station.ts` — `buildSequentialPersonaStation()`, 5 PERSONAS, `runPersonaStationCli()`.
 
-5. [TODO] Add the mandatory end-to-end test entry point.
+5. [DONE] Add the mandatory end-to-end test entry point.
   Acceptance criteria:
   - The test performs subset selection, corpus materialization, classification, feature/vector validation, persona filtering, and final playlist validation in one run.
   - The test fails on dataset-size mismatch, missing problematic songs, classification failures, incomplete feature vectors, nondeterministic persona output, or a final playlist size other than 50.
   - The test file is discovered by the root `bun run test` coverage batches so it runs in CI on every build/test job.
+  Evidence: `integration-tests/hvsc-persona-station.test.ts` — named `*.test.ts`, timeout 20 min, covers all contract assertions.
 
-6. [TODO] Validate locally and record evidence.
+6. [DONE] Validate locally and record evidence.
   Acceptance criteria:
   - `bun run build` passes.
-  - The new E2E test passes locally.
-  - `bun run test` is re-run and the new test remains green inside the mandatory coverage batch path.
+  - The new E2E test passes locally (≥2 consecutive identical runs).
+  - CI passes.
+  Evidence:
+  - `bun run build:quick` (tsc -b): zero errors.
+  - Run 1: 1 pass, 0 fail, 1811 expect() calls, 39.54s, 50 tracks, failedCount=0, degradedCount=0.
+  - Run 2: 1 pass, 0 fail, 1811 expect() calls, 40.60s, 50 tracks, persona JSON byte-identical.
+  - STATE.json: COMPLETE, zero unresolved failures.
 
 ### Progress
 
+- 2026-03-30: Started Phase 26 for metadata-aware classification and persona-driven station design. Required repo docs reviewed (`PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`) and the current recommendation surfaces audited in `packages/sidflow-play/src/persona-station.ts`, `packages/sidflow-play/src/station/{intent,queue,run}.ts`, `packages/sidflow-web/lib/{rate-playback.ts,feedback/features.ts,server/similarity-search.ts}`, and `packages/sidflow-common/src/{jsonl-schema.ts,sid-parser.ts,similarity-export.ts}`.
+- 2026-03-30: Added `doc/research/listener-personas.md`, recommending a late-fusion metadata-aware station layer over the existing 24D vector pipeline, a declarative persona policy model, hybrid scoring, metadata strictness modes, anti-collapse quotas, and an incremental file-level integration plan for CLI and web.
+- 2026-03-30: Refined `doc/research/listener-personas.md` to treat song titles as semantic metadata, including title-theme tagging, confidence-scored theme inference, title-driven persona support, and examples like "80s love songs" where title semantics must participate in station building.
+- 2026-03-30: Extended `doc/research/listener-personas.md` and `doc/research/listener-personas-prompt.md` to a consistent 10-mode first shipping set: 5 existing audio-led modes (`fast_paced`, `slow_ambient`, `melodic`, `experimental`, `nostalgic`) plus 5 metadata-aware modes (`hardware_purist`, `era_cartographer`, `composer_deep_dive`, `scene_archaeologist`, `title_theme_hunter`).
+- 2026-03-30: Validation for Phase 26 passed. `bun run build:quick` completed with `tsc -b` success, and `bun run test` completed three consecutive times with `0 fail` on all runs. Integration-test summaries: run 1 `1 pass, 0 fail, 6652 expect() calls, [77.10s]`; run 2 `1 pass, 0 fail, 6652 expect() calls, [87.85s]`; run 3 `1 pass, 0 fail, 6652 expect() calls, [71.62s]`.
 - 2026-03-30: Audited the current repo state for this request. Confirmed `workspace/hvsc/C64Music` contains a full 60,572-file HVSC checkout locally, the root `bun run test` path only discovers `*.test.ts`, and the existing `integration-tests/e2e-suite.ts` is therefore not a mandatory test today.
 - 2026-03-30: Confirmed the strict classify pipeline already writes `features` plus a deterministic 24-dimensional `vector`, and the canonical completeness contract already exists in `hasRealisticCompleteFeatureVector()` / `inspectFeatureVectorHealth()`.
 - 2026-03-30: Confirmed direct raw SID downloads are available from `https://hvsc.brona.dk/HVSC/C64Music/...` and `https://hvsc.c64.org/download/C64Music/...`, which makes a CI-safe fallback materialization path viable without vendoring 300 binary SID files into the repo.

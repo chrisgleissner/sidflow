@@ -9,6 +9,10 @@ import {
   type HvscE2eSubsetEntry,
 } from "@sidflow/common";
 
+// ---------------------------------------------------------------------------
+// Metric types
+// ---------------------------------------------------------------------------
+
 type PersonaMetricName =
   | "melodicComplexity"
   | "rhythmicDensity"
@@ -24,15 +28,82 @@ interface PersonaMetrics {
   experimentalTolerance: number;
 }
 
+// ---------------------------------------------------------------------------
+// Persona definition — explicit weights, no hidden logic
+// ---------------------------------------------------------------------------
+
 interface PersonaDefinition {
   id: string;
   label: string;
-  baseThreshold: number;
-  stageTargetSize: number;
-  metricTargets: PersonaMetrics;
-  ratingTargets: { e: number; m: number; c: number };
+  /** Weights applied to each metric dimension when scoring. Sum should be 1. */
   metricWeights: Record<PersonaMetricName, number>;
+  /** Direction per metric: +1 = higher is better, -1 = lower is better, 0 = ignore */
+  metricDirections: Record<PersonaMetricName, 1 | -1 | 0>;
+  /** Rating targets on the 1-5 scale (e, m, c) */
+  ratingTargets: { e: number; m: number; c: number };
 }
+
+// ---------------------------------------------------------------------------
+// Result types (exported for test consumption)
+// ---------------------------------------------------------------------------
+
+export interface PersonaTrackEntry {
+  rank: number;
+  trackId: string;
+  sidPath: string;
+  songIndex: number;
+  score: number;
+  metrics: PersonaMetrics;
+  ratings: ClassificationRecord["ratings"];
+  explanation: string;
+}
+
+export interface PersonaStationOutput {
+  personaId: string;
+  personaLabel: string;
+  trackCount: number;
+  tracks: PersonaTrackEntry[];
+  distribution: PersonaDistribution;
+}
+
+export interface PersonaDistribution {
+  avgRhythmicDensity: number;
+  avgMelodicComplexity: number;
+  avgTimbralRichness: number;
+  avgNostalgiaBias: number;
+  avgExperimentalTolerance: number;
+}
+
+export interface OverlapEntry {
+  personaA: string;
+  personaB: string;
+  sharedCount: number;
+  overlapPct: number;
+}
+
+export interface ParallelPersonaStationResult {
+  personas: Array<{ id: string; label: string }>;
+  stations: PersonaStationOutput[];
+  overlapMatrix: OverlapEntry[];
+  /** True when all overlap pairs are <= MAX_OVERLAP_PCT */
+  overlapValid: boolean;
+  /** True when distribution leader assertions pass */
+  distributionValid: boolean;
+  distributionAssertions: DistributionAssertion[];
+}
+
+export interface DistributionAssertion {
+  metric: PersonaMetricName;
+  direction: "highest" | "lowest";
+  expectedPersona: string;
+  actualPersona: string;
+  actualValue: number;
+  passed: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Internal context type
+// ---------------------------------------------------------------------------
 
 interface PersonaTrackContext {
   record: ClassificationRecord;
@@ -41,151 +112,123 @@ interface PersonaTrackContext {
   metrics: PersonaMetrics;
 }
 
-interface PersonaScoredTrack {
-  trackId: string;
-  sidPath: string;
-  songIndex: number;
-  score: number;
-  metrics: PersonaMetrics;
-  ratings: ClassificationRecord["ratings"];
-}
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-export interface PersonaStageResult {
-  personaId: string;
-  personaLabel: string;
-  inputCount: number;
-  threshold: number;
-  targetSize: number;
-  approvedCount: number;
-  approvedTrackIds: string[];
-}
+const STATION_SIZE = 50;
+const MAX_OVERLAP_PCT = 40;
 
-export interface SequentialPersonaStationResult {
-  personas: Array<{ id: string; label: string }>;
-  stages: PersonaStageResult[];
-  finalPlaylistTrackIds: string[];
-  finalPlaylist: Array<{
-    trackId: string;
-    sidPath: string;
-    songIndex: number;
-    score: number;
-  }>;
-}
-
-interface PersonaStationCliOptions {
-  classificationJsonl: string;
-  subsetManifest: string;
-  outputJson?: string;
-  outputM3u?: string;
-}
+// ---------------------------------------------------------------------------
+// 5 orthogonal personas — explicit weights and directions
+// ---------------------------------------------------------------------------
 
 const PERSONAS: PersonaDefinition[] = [
   {
-    id: "melodic_archivist",
-    label: "Melodic Archivist",
-    baseThreshold: 0.67,
-    stageTargetSize: 220,
-    metricTargets: {
-      melodicComplexity: 0.88,
-      rhythmicDensity: 0.48,
-      timbralRichness: 0.58,
-      nostalgiaBias: 0.82,
-      experimentalTolerance: 0.32,
-    },
-    ratingTargets: { e: 2, m: 4, c: 5 },
+    // Fast Paced: maximizes rhythmic density; opposes all other primary axes
+    id: "fast_paced",
+    label: "Fast Paced",
     metricWeights: {
-      melodicComplexity: 0.34,
-      rhythmicDensity: 0.12,
-      timbralRichness: 0.18,
-      nostalgiaBias: 0.24,
-      experimentalTolerance: 0.12,
+      rhythmicDensity: 0.60,
+      experimentalTolerance: 0.15,
+      melodicComplexity: 0.10,
+      timbralRichness: 0.10,
+      nostalgiaBias: 0.05,
     },
+    metricDirections: {
+      rhythmicDensity: 1,
+      experimentalTolerance: -1,
+      melodicComplexity: -1,
+      timbralRichness: -1,
+      nostalgiaBias: -1,
+    },
+    ratingTargets: { e: 5, m: 2, c: 3 },
   },
   {
-    id: "groove_cartographer",
-    label: "Groove Cartographer",
-    baseThreshold: 0.68,
-    stageTargetSize: 170,
-    metricTargets: {
-      melodicComplexity: 0.62,
-      rhythmicDensity: 0.88,
-      timbralRichness: 0.56,
-      nostalgiaBias: 0.46,
-      experimentalTolerance: 0.42,
-    },
-    ratingTargets: { e: 5, m: 3, c: 4 },
+    // Slow / Ambient: minimizes rhythmic density; penalizes nostalgia to separate from Nostalgic
+    id: "slow_ambient",
+    label: "Slow / Ambient",
     metricWeights: {
-      melodicComplexity: 0.16,
-      rhythmicDensity: 0.36,
-      timbralRichness: 0.16,
-      nostalgiaBias: 0.08,
-      experimentalTolerance: 0.24,
+      rhythmicDensity: 0.60,
+      melodicComplexity: 0.15,
+      experimentalTolerance: 0.10,
+      nostalgiaBias: 0.10,
+      timbralRichness: 0.05,
     },
+    metricDirections: {
+      rhythmicDensity: -1,
+      melodicComplexity: 1,
+      experimentalTolerance: -1,
+      nostalgiaBias: -1,
+      timbralRichness: 0,
+    },
+    ratingTargets: { e: 2, m: 4, c: 4 },
   },
   {
-    id: "chip_alchemist",
-    label: "Chip Alchemist",
-    baseThreshold: 0.69,
-    stageTargetSize: 120,
-    metricTargets: {
-      melodicComplexity: 0.66,
-      rhythmicDensity: 0.56,
-      timbralRichness: 0.94,
-      nostalgiaBias: 0.40,
-      experimentalTolerance: 0.74,
-    },
-    ratingTargets: { e: 4, m: 3, c: 5 },
+    // Melodic: maximizes melodic complexity; penalizes nostalgia and experimental
+    id: "melodic",
+    label: "Melodic",
     metricWeights: {
-      melodicComplexity: 0.12,
-      rhythmicDensity: 0.12,
-      timbralRichness: 0.42,
-      nostalgiaBias: 0.06,
-      experimentalTolerance: 0.28,
+      melodicComplexity: 0.60,
+      timbralRichness: 0.15,
+      rhythmicDensity: 0.10,
+      nostalgiaBias: 0.10,
+      experimentalTolerance: 0.05,
     },
+    metricDirections: {
+      melodicComplexity: 1,
+      timbralRichness: 1,
+      rhythmicDensity: 0,
+      nostalgiaBias: -1,
+      experimentalTolerance: -1,
+    },
+    ratingTargets: { e: 3, m: 5, c: 5 },
   },
   {
-    id: "memory_lane_dj",
-    label: "Memory Lane DJ",
-    baseThreshold: 0.70,
-    stageTargetSize: 80,
-    metricTargets: {
-      melodicComplexity: 0.70,
-      rhythmicDensity: 0.44,
-      timbralRichness: 0.52,
-      nostalgiaBias: 0.96,
-      experimentalTolerance: 0.18,
+    // Experimental: maximizes experimental tolerance; penalizes melody and nostalgia
+    id: "experimental",
+    label: "Experimental",
+    metricWeights: {
+      experimentalTolerance: 0.60,
+      timbralRichness: 0.15,
+      rhythmicDensity: 0.10,
+      nostalgiaBias: 0.10,
+      melodicComplexity: 0.05,
+    },
+    metricDirections: {
+      experimentalTolerance: 1,
+      timbralRichness: 1,
+      rhythmicDensity: 0,
+      nostalgiaBias: -1,
+      melodicComplexity: -1,
+    },
+    ratingTargets: { e: 5, m: 2, c: 5 },
+  },
+  {
+    // Nostalgic: maximizes nostalgia; penalizes experimental and timbral
+    id: "nostalgic",
+    label: "Nostalgic",
+    metricWeights: {
+      nostalgiaBias: 0.60,
+      melodicComplexity: 0.15,
+      rhythmicDensity: 0.10,
+      experimentalTolerance: 0.10,
+      timbralRichness: 0.05,
+    },
+    metricDirections: {
+      nostalgiaBias: 1,
+      melodicComplexity: 1,
+      rhythmicDensity: 1,
+      experimentalTolerance: -1,
+      timbralRichness: -1,
     },
     ratingTargets: { e: 3, m: 5, c: 3 },
-    metricWeights: {
-      melodicComplexity: 0.18,
-      rhythmicDensity: 0.08,
-      timbralRichness: 0.12,
-      nostalgiaBias: 0.52,
-      experimentalTolerance: 0.10,
-    },
-  },
-  {
-    id: "frontier_curator",
-    label: "Frontier Curator",
-    baseThreshold: 0.72,
-    stageTargetSize: 50,
-    metricTargets: {
-      melodicComplexity: 0.74,
-      rhythmicDensity: 0.72,
-      timbralRichness: 0.86,
-      nostalgiaBias: 0.50,
-      experimentalTolerance: 0.82,
-    },
-    ratingTargets: { e: 4, m: 3, c: 5 },
-    metricWeights: {
-      melodicComplexity: 0.18,
-      rhythmicDensity: 0.18,
-      timbralRichness: 0.24,
-      nostalgiaBias: 0.08,
-      experimentalTolerance: 0.32,
-    },
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function normalizeSubsetSidPath(sidPath: string): string {
   return sidPath.startsWith("C64Music/") ? sidPath.slice("C64Music/".length) : sidPath;
@@ -196,45 +239,37 @@ function clamp01(value: number): number {
 }
 
 function normalizeRating(value: number | undefined): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return 0.5;
-  }
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0.5;
   return clamp01((value - 1) / 4);
 }
 
 function normalizeSignedResidual(value: number | undefined): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return 0.5;
-  }
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0.5;
   return clamp01((value + 1) / 2);
 }
 
 function normalizedEntropy(values: number[]): number {
-  const positive = values.filter((value) => value > 0);
-  const total = positive.reduce((sum, value) => sum + value, 0);
-  if (total <= 0 || positive.length <= 1) {
-    return 0;
-  }
-
+  const positive = values.filter((v) => v > 0);
+  const total = positive.reduce((s, v) => s + v, 0);
+  if (total <= 0 || positive.length <= 1) return 0;
   let entropy = 0;
-  for (const value of positive) {
-    const probability = value / total;
-    entropy -= probability * Math.log2(probability);
+  for (const v of positive) {
+    const p = v / total;
+    entropy -= p * Math.log2(p);
   }
   return clamp01(entropy / Math.log2(positive.length));
 }
 
 function average(values: number[]): number {
-  if (values.length === 0) {
-    return 0.5;
-  }
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  if (values.length === 0) return 0.5;
+  return values.reduce((s, v) => s + v, 0) / values.length;
 }
 
 function resolveTrackId(record: ClassificationRecord): string {
-  const songIndex = typeof record.song_index === "number" && Number.isFinite(record.song_index)
-    ? record.song_index
-    : 1;
+  const songIndex =
+    typeof record.song_index === "number" && Number.isFinite(record.song_index)
+      ? record.song_index
+      : 1;
   return `${record.sid_path}:${songIndex}`;
 }
 
@@ -244,7 +279,14 @@ function resolveSongIndex(record: ClassificationRecord): number {
     : 1;
 }
 
-function buildPersonaMetrics(record: ClassificationRecord, subsetEntry: HvscE2eSubsetEntry): PersonaMetrics {
+// ---------------------------------------------------------------------------
+// Metric derivation (same formula as before — deterministic from vector + metadata)
+// ---------------------------------------------------------------------------
+
+function buildPersonaMetrics(
+  record: ClassificationRecord,
+  subsetEntry: HvscE2eSubsetEntry,
+): PersonaMetrics {
   const vector = Array.isArray(record.vector) ? record.vector : [];
   const waveEntropy = normalizedEntropy([
     vector[5] ?? 0,
@@ -252,23 +294,24 @@ function buildPersonaMetrics(record: ClassificationRecord, subsetEntry: HvscE2eS
     vector[7] ?? 0,
     vector[8] ?? 0,
   ]);
-  const olderYearBias = subsetEntry.year === null
-    ? 0.5
-    : clamp01((2026 - subsetEntry.year) / 44);
-  const categoryBias = subsetEntry.category === "GAMES"
-    ? 1
-    : subsetEntry.category === "DEMOS"
-      ? 0.82
-      : subsetEntry.category === "MUSICIANS"
-        ? 0.58
-        : 0.5;
-  const sidModelBias = subsetEntry.sidModel1 === "MOS6581"
-    ? 1
-    : subsetEntry.sidModel1 === "Both"
-      ? 0.78
-      : subsetEntry.sidModel1 === "MOS8580"
-        ? 0.52
-        : 0.5;
+  const olderYearBias =
+    subsetEntry.year === null ? 0.5 : clamp01((2026 - subsetEntry.year) / 44);
+  const categoryBias =
+    subsetEntry.category === "GAMES"
+      ? 1
+      : subsetEntry.category === "DEMOS"
+        ? 0.82
+        : subsetEntry.category === "MUSICIANS"
+          ? 0.58
+          : 0.5;
+  const sidModelBias =
+    subsetEntry.sidModel1 === "MOS6581"
+      ? 1
+      : subsetEntry.sidModel1 === "Both"
+        ? 0.78
+        : subsetEntry.sidModel1 === "MOS8580"
+          ? 0.52
+          : 0.5;
   const chipCountNorm = clamp01((subsetEntry.chipCount - 1) / 2);
   const residualEnergy = average([
     normalizeSignedResidual(vector[22]),
@@ -276,94 +319,224 @@ function buildPersonaMetrics(record: ClassificationRecord, subsetEntry: HvscE2eS
   ]);
 
   return {
-    melodicComplexity: clamp01(average([
-      normalizeRating(record.ratings.c),
-      vector[13] ?? 0.5,
-      vector[16] ?? 0.5,
-      vector[4] ?? 0,
-      1 - Math.abs(0.5 - residualEnergy),
-    ])),
-    rhythmicDensity: clamp01(average([
-      vector[0] ?? 0.5,
-      vector[1] ?? 0.5,
-      vector[3] ?? 0,
-      vector[19] ?? 0.5,
-      normalizeRating(record.ratings.e),
-    ])),
-    timbralRichness: clamp01(average([
-      waveEntropy,
-      vector[11] ?? 0.5,
-      vector[12] ?? 0,
-      vector[20] ?? 0.5,
-      vector[21] ?? 0.5,
-      residualEnergy,
-    ])),
-    nostalgiaBias: clamp01(average([
-      olderYearBias,
-      categoryBias,
-      sidModelBias,
-      subsetEntry.chipCount === 1 ? 0.82 : 0.46,
-      normalizeRating(record.ratings.m),
-    ])),
-    experimentalTolerance: clamp01(average([
-      chipCountNorm,
-      vector[3] ?? 0,
-      vector[12] ?? 0,
-      vector[21] ?? 0.5,
-      waveEntropy,
-      residualEnergy,
-    ])),
+    melodicComplexity: clamp01(
+      average([
+        normalizeRating(record.ratings.c),
+        vector[13] ?? 0.5,
+        vector[16] ?? 0.5,
+        vector[4] ?? 0,
+        1 - Math.abs(0.5 - residualEnergy),
+      ]),
+    ),
+    rhythmicDensity: clamp01(
+      average([
+        vector[0] ?? 0.5,
+        vector[1] ?? 0.5,
+        vector[3] ?? 0,
+        vector[19] ?? 0.5,
+        normalizeRating(record.ratings.e),
+      ]),
+    ),
+    timbralRichness: clamp01(
+      average([
+        waveEntropy,
+        vector[11] ?? 0.5,
+        vector[12] ?? 0,
+        vector[20] ?? 0.5,
+        vector[21] ?? 0.5,
+        residualEnergy,
+      ]),
+    ),
+    nostalgiaBias: clamp01(
+      average([
+        olderYearBias,
+        categoryBias,
+        sidModelBias,
+        subsetEntry.chipCount === 1 ? 0.82 : 0.46,
+        normalizeRating(record.ratings.m),
+      ]),
+    ),
+    experimentalTolerance: clamp01(
+      average([
+        chipCountNorm,
+        vector[3] ?? 0,
+        vector[12] ?? 0,
+        vector[21] ?? 0.5,
+        waveEntropy,
+        residualEnergy,
+      ]),
+    ),
   };
 }
 
-function scoreTrack(context: PersonaTrackContext, persona: PersonaDefinition): number {
-  let metricDistance = 0;
-  let metricWeight = 0;
+// ---------------------------------------------------------------------------
+// Scoring — directional weighted metric score
+// ---------------------------------------------------------------------------
 
-  for (const [metricName, weight] of Object.entries(persona.metricWeights) as Array<[PersonaMetricName, number]>) {
-    metricDistance += Math.abs(context.metrics[metricName] - persona.metricTargets[metricName]) * weight;
-    metricWeight += weight;
+/**
+ * Scores a track for a persona. Each metric contributes:
+ *   direction +1 → raw metric value (higher is better)
+ *   direction -1 → (1 - raw metric value) (lower is better)
+ *   direction  0 → 0.5 (neutral, no contribution)
+ * Weighted sum produces final score in [0, 1].
+ */
+function scoreTrack(
+  metrics: PersonaMetrics,
+  ratings: ClassificationRecord["ratings"],
+  persona: PersonaDefinition,
+): { score: number; breakdown: Record<PersonaMetricName, number> } {
+  const breakdown = {} as Record<PersonaMetricName, number>;
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  for (const metricName of Object.keys(persona.metricWeights) as PersonaMetricName[]) {
+    const weight = persona.metricWeights[metricName];
+    const direction = persona.metricDirections[metricName];
+    const raw = metrics[metricName];
+    let contribution: number;
+    if (direction === 1) {
+      contribution = raw;
+    } else if (direction === -1) {
+      contribution = 1 - raw;
+    } else {
+      contribution = 0.5;
+    }
+    breakdown[metricName] = contribution * weight;
+    weightedSum += contribution * weight;
+    totalWeight += weight;
   }
 
-  const normalizedMetricScore = metricWeight > 0 ? 1 - (metricDistance / metricWeight) : 0.5;
+  // Rating affinity (small bonus, 18% of total)
   const ratingDistance = average([
-    Math.abs(normalizeRating(context.record.ratings.e) - normalizeRating(persona.ratingTargets.e)),
-    Math.abs(normalizeRating(context.record.ratings.m) - normalizeRating(persona.ratingTargets.m)),
-    Math.abs(normalizeRating(context.record.ratings.c) - normalizeRating(persona.ratingTargets.c)),
+    Math.abs(normalizeRating(ratings.e) - normalizeRating(persona.ratingTargets.e)),
+    Math.abs(normalizeRating(ratings.m) - normalizeRating(persona.ratingTargets.m)),
+    Math.abs(normalizeRating(ratings.c) - normalizeRating(persona.ratingTargets.c)),
   ]);
 
-  return clamp01((normalizedMetricScore * 0.82) + ((1 - ratingDistance) * 0.18));
+  const metricScore = totalWeight > 0 ? weightedSum / totalWeight : 0.5;
+  const score = clamp01(metricScore * 0.82 + (1 - ratingDistance) * 0.18);
+  return { score, breakdown };
 }
 
-function rankTracks(pool: PersonaTrackContext[], persona: PersonaDefinition): PersonaScoredTrack[] {
-  return pool
-    .map((context) => ({
-      trackId: context.trackId,
-      sidPath: context.record.sid_path,
-      songIndex: resolveSongIndex(context.record),
-      score: scoreTrack(context, persona),
-      metrics: context.metrics,
-      ratings: context.record.ratings,
-    }))
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
+function buildExplanation(
+  metrics: PersonaMetrics,
+  breakdown: Record<PersonaMetricName, number>,
+  persona: PersonaDefinition,
+): string {
+  // Sort by contribution descending
+  const sorted = (Object.keys(breakdown) as PersonaMetricName[])
+    .filter((k) => persona.metricDirections[k] !== 0)
+    .sort((a, b) => breakdown[b] - breakdown[a]);
+
+  const top = sorted.slice(0, 2);
+  const parts = top.map((m) => {
+    const dir = persona.metricDirections[m];
+    const dirLabel = dir === 1 ? "high" : "low";
+    return `${m}=${metrics[m].toFixed(3)} (${dirLabel}, w=${persona.metricWeights[m].toFixed(2)})`;
+  });
+  return `Selected for ${persona.label}: ${parts.join("; ")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Distribution computation
+// ---------------------------------------------------------------------------
+
+function computeDistribution(tracks: PersonaTrackEntry[]): PersonaDistribution {
+  const n = tracks.length || 1;
+  return {
+    avgRhythmicDensity: tracks.reduce((s, t) => s + t.metrics.rhythmicDensity, 0) / n,
+    avgMelodicComplexity: tracks.reduce((s, t) => s + t.metrics.melodicComplexity, 0) / n,
+    avgTimbralRichness: tracks.reduce((s, t) => s + t.metrics.timbralRichness, 0) / n,
+    avgNostalgiaBias: tracks.reduce((s, t) => s + t.metrics.nostalgiaBias, 0) / n,
+    avgExperimentalTolerance: tracks.reduce((s, t) => s + t.metrics.experimentalTolerance, 0) / n,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Overlap computation
+// ---------------------------------------------------------------------------
+
+function computeOverlapMatrix(stations: PersonaStationOutput[]): OverlapEntry[] {
+  const entries: OverlapEntry[] = [];
+  for (let i = 0; i < stations.length; i++) {
+    const setA = new Set(stations[i].tracks.map((t) => t.trackId));
+    for (let j = i + 1; j < stations.length; j++) {
+      const setB = new Set(stations[j].tracks.map((t) => t.trackId));
+      let shared = 0;
+      for (const id of setA) {
+        if (setB.has(id)) shared++;
       }
-      return left.trackId.localeCompare(right.trackId);
-    });
+      const overlapPct = (shared / STATION_SIZE) * 100;
+      entries.push({
+        personaA: stations[i].personaId,
+        personaB: stations[j].personaId,
+        sharedCount: shared,
+        overlapPct: Number(overlapPct.toFixed(1)),
+      });
+    }
+  }
+  return entries;
 }
 
-export function buildSequentialPersonaStation(
+// ---------------------------------------------------------------------------
+// Distribution assertions
+// ---------------------------------------------------------------------------
+
+function validateDistributions(stations: PersonaStationOutput[]): DistributionAssertion[] {
+  const assertions: DistributionAssertion[] = [];
+
+  const rules: Array<{
+    metric: PersonaMetricName;
+    distKey: keyof PersonaDistribution;
+    direction: "highest" | "lowest";
+    expectedPersona: string;
+  }> = [
+    { metric: "rhythmicDensity", distKey: "avgRhythmicDensity", direction: "highest", expectedPersona: "fast_paced" },
+    { metric: "rhythmicDensity", distKey: "avgRhythmicDensity", direction: "lowest", expectedPersona: "slow_ambient" },
+    { metric: "experimentalTolerance", distKey: "avgExperimentalTolerance", direction: "highest", expectedPersona: "experimental" },
+    { metric: "nostalgiaBias", distKey: "avgNostalgiaBias", direction: "highest", expectedPersona: "nostalgic" },
+    { metric: "melodicComplexity", distKey: "avgMelodicComplexity", direction: "highest", expectedPersona: "melodic" },
+  ];
+
+  for (const rule of rules) {
+    let bestStation = stations[0];
+    for (const station of stations) {
+      const current = station.distribution[rule.distKey];
+      const best = bestStation.distribution[rule.distKey];
+      if (rule.direction === "highest" ? current > best : current < best) {
+        bestStation = station;
+      }
+    }
+    assertions.push({
+      metric: rule.metric,
+      direction: rule.direction,
+      expectedPersona: rule.expectedPersona,
+      actualPersona: bestStation.personaId,
+      actualValue: bestStation.distribution[rule.distKey],
+      passed: bestStation.personaId === rule.expectedPersona,
+    });
+  }
+
+  return assertions;
+}
+
+// ---------------------------------------------------------------------------
+// Core: build parallel persona stations
+// ---------------------------------------------------------------------------
+
+export function buildParallelPersonaStation(
   records: ClassificationRecord[],
   subsetEntries: HvscE2eSubsetEntry[],
-): SequentialPersonaStationResult {
-  const subsetByPath = new Map(subsetEntries.map((entry) => [normalizeSubsetSidPath(entry.sidPath), entry] as const));
-  let currentPool = records
+): ParallelPersonaStationResult {
+  const subsetByPath = new Map(
+    subsetEntries.map((entry) => [normalizeSubsetSidPath(entry.sidPath), entry] as const),
+  );
+
+  // Build full pool — every track is available to every persona
+  const pool: PersonaTrackContext[] = records
     .map((record) => {
       const subsetEntry = subsetByPath.get(normalizeSubsetSidPath(record.sid_path));
-      if (!subsetEntry) {
-        return null;
-      }
+      if (!subsetEntry) return null;
       return {
         record,
         subsetEntry,
@@ -371,57 +544,74 @@ export function buildSequentialPersonaStation(
         metrics: buildPersonaMetrics(record, subsetEntry),
       } satisfies PersonaTrackContext;
     })
-    .filter((value): value is PersonaTrackContext => value !== null)
-    .sort((left, right) => left.trackId.localeCompare(right.trackId));
+    .filter((v): v is PersonaTrackContext => v !== null)
+    .sort((a, b) => a.trackId.localeCompare(b.trackId));
 
-  const stages: PersonaStageResult[] = [];
+  // Each persona independently scores ALL tracks and takes top STATION_SIZE
+  const stations: PersonaStationOutput[] = PERSONAS.map((persona) => {
+    const scored = pool
+      .map((ctx) => {
+        const { score, breakdown } = scoreTrack(ctx.metrics, ctx.record.ratings, persona);
+        return { ctx, score, breakdown };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.ctx.trackId.localeCompare(b.ctx.trackId);
+      });
 
-  for (const persona of PERSONAS) {
-    const ranked = rankTracks(currentPool, persona);
-    const stageTarget = Math.min(persona.stageTargetSize, ranked.length);
-    let threshold = persona.baseThreshold;
-    let approved = ranked.filter((track) => track.score >= threshold);
+    const topN = scored.slice(0, STATION_SIZE);
 
-    while (approved.length < stageTarget && threshold > 0) {
-      threshold = Math.max(0, Number((threshold - 0.02).toFixed(2)));
-      approved = ranked.filter((track) => track.score >= threshold);
-    }
+    const tracks: PersonaTrackEntry[] = topN.map((entry, rank) => ({
+      rank: rank + 1,
+      trackId: entry.ctx.trackId,
+      sidPath: entry.ctx.record.sid_path,
+      songIndex: resolveSongIndex(entry.ctx.record),
+      score: Number(entry.score.toFixed(6)),
+      metrics: {
+        melodicComplexity: Number(entry.ctx.metrics.melodicComplexity.toFixed(6)),
+        rhythmicDensity: Number(entry.ctx.metrics.rhythmicDensity.toFixed(6)),
+        timbralRichness: Number(entry.ctx.metrics.timbralRichness.toFixed(6)),
+        nostalgiaBias: Number(entry.ctx.metrics.nostalgiaBias.toFixed(6)),
+        experimentalTolerance: Number(entry.ctx.metrics.experimentalTolerance.toFixed(6)),
+      },
+      ratings: entry.ctx.record.ratings,
+      explanation: buildExplanation(entry.ctx.metrics, entry.breakdown, persona),
+    }));
 
-    if (approved.length < stageTarget) {
-      approved = ranked.slice(0, stageTarget);
-    } else if (approved.length > stageTarget) {
-      approved = approved.slice(0, stageTarget);
-    }
-
-    const approvedTrackIds = approved.map((track) => track.trackId);
-    stages.push({
+    const distribution = computeDistribution(tracks);
+    return {
       personaId: persona.id,
       personaLabel: persona.label,
-      inputCount: currentPool.length,
-      threshold,
-      targetSize: stageTarget,
-      approvedCount: approved.length,
-      approvedTrackIds,
-    });
+      trackCount: tracks.length,
+      tracks,
+      distribution,
+    };
+  });
 
-    const approvedSet = new Set(approvedTrackIds);
-    currentPool = currentPool.filter((context) => approvedSet.has(context.trackId));
-  }
-
-  const finalRanked = rankTracks(currentPool, PERSONAS[PERSONAS.length - 1]);
-  const finalPlaylist = finalRanked.slice(0, 50).map((track) => ({
-    trackId: track.trackId,
-    sidPath: track.sidPath,
-    songIndex: track.songIndex,
-    score: Number(track.score.toFixed(6)),
-  }));
+  const overlapMatrix = computeOverlapMatrix(stations);
+  const overlapValid = overlapMatrix.every((e) => e.overlapPct <= MAX_OVERLAP_PCT);
+  const distributionAssertions = validateDistributions(stations);
+  const distributionValid = distributionAssertions.every((a) => a.passed);
 
   return {
-    personas: PERSONAS.map((persona) => ({ id: persona.id, label: persona.label })),
-    stages,
-    finalPlaylistTrackIds: finalPlaylist.map((track) => track.trackId),
-    finalPlaylist,
+    personas: PERSONAS.map((p) => ({ id: p.id, label: p.label })),
+    stations,
+    overlapMatrix,
+    overlapValid,
+    distributionValid,
+    distributionAssertions,
   };
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+interface PersonaStationCliOptions {
+  classificationJsonl: string;
+  subsetManifest: string;
+  outputJson?: string;
+  outputM3u?: string;
 }
 
 async function loadClassificationRecords(jsonlPath: string): Promise<ClassificationRecord[]> {
@@ -431,13 +621,6 @@ async function loadClassificationRecords(jsonlPath: string): Promise<Classificat
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line) as ClassificationRecord);
-}
-
-function buildM3uOutput(result: SequentialPersonaStationResult): string {
-  return [
-    "#EXTM3U",
-    ...result.finalPlaylist.map((track) => track.sidPath),
-  ].join("\n");
 }
 
 function parsePersonaStationArgs(argv: string[]): PersonaStationCliOptions {
@@ -467,7 +650,7 @@ function parsePersonaStationArgs(argv: string[]): PersonaStationCliOptions {
           [
             "Usage: sidflow-play persona-station --classification-jsonl <file> --subset-manifest <file> [--output-json <file>] [--output-m3u <file>]",
             "",
-            "Build a deterministic 5-persona sequential radio station from a classified HVSC subset.",
+            "Build 5 independent persona radio stations from a classified HVSC subset (parallel model).",
           ].join("\n"),
         );
       default:
@@ -498,21 +681,50 @@ export async function runPersonaStationCli(argv: string[]): Promise<number> {
     loadClassificationRecords(options.classificationJsonl),
     loadHvscE2eSubsetManifest(options.subsetManifest),
   ]);
-  const result = buildSequentialPersonaStation(records, subsetManifest.entries);
+  const result = buildParallelPersonaStation(records, subsetManifest.entries);
 
-  if (result.finalPlaylistTrackIds.length !== 50) {
-    throw new Error(`Persona station did not converge to exactly 50 tracks; produced ${result.finalPlaylistTrackIds.length}`);
+  // Validate: every station must have exactly STATION_SIZE tracks
+  for (const station of result.stations) {
+    if (station.trackCount !== STATION_SIZE) {
+      throw new Error(
+        `Persona "${station.personaLabel}" produced ${station.trackCount} tracks, expected ${STATION_SIZE}`,
+      );
+    }
+  }
+
+  // Validate: overlap constraint
+  if (!result.overlapValid) {
+    const violations = result.overlapMatrix.filter((e) => e.overlapPct > MAX_OVERLAP_PCT);
+    throw new Error(
+      `Overlap constraint violated (max ${MAX_OVERLAP_PCT}%): ${violations.map((v) => `${v.personaA}/${v.personaB}=${v.overlapPct}%`).join(", ")}`,
+    );
+  }
+
+  // Validate: distribution assertions
+  if (!result.distributionValid) {
+    const failures = result.distributionAssertions.filter((a) => !a.passed);
+    throw new Error(
+      `Distribution assertions failed: ${failures.map((f) => `${f.metric} ${f.direction} expected=${f.expectedPersona} actual=${f.actualPersona}`).join("; ")}`,
+    );
   }
 
   if (options.outputJson) {
     await ensureDir(path.dirname(options.outputJson));
-    await writeFile(options.outputJson, stringifyDeterministic(result), "utf8");
+    await writeFile(options.outputJson, stringifyDeterministic(JSON.parse(JSON.stringify(result))), "utf8");
   }
   if (options.outputM3u) {
+    // M3U uses the first persona station by default
     await ensureDir(path.dirname(options.outputM3u));
-    await writeFile(options.outputM3u, buildM3uOutput(result), "utf8");
+    const m3u = [
+      "#EXTM3U",
+      ...result.stations[0].tracks.map((t) => t.sidPath),
+    ].join("\n");
+    await writeFile(options.outputM3u, m3u, "utf8");
   }
 
-  process.stdout.write(`Built persona station with ${result.finalPlaylistTrackIds.length} final tracks\n`);
+  const stationSummary = result.stations
+    .map((s) => `${s.personaLabel}: ${s.trackCount}`)
+    .join(", ");
+  process.stdout.write(`Built ${result.stations.length} persona stations (${stationSummary})\n`);
   return 0;
 }

@@ -1,0 +1,11 @@
+{
+  "personaId": "fast_paced",
+  "personaLabel": "Fast Paced",
+  "distribution": {
+    "avgExperimentalTolerance": 0.1039386,
+    "avgMelodicComplexity": 0.44490381999999995,
+    "avgNostalgiaBias": 0.6043745399999999,
+    "avgRhythmicDensity": 0.28422495999999997,
+    "avgTimbralRichness": 0.26896401999999997
+  }
+}

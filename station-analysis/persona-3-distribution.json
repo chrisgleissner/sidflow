@@ -1,0 +1,11 @@
+{
+  "personaId": "melodic",
+  "personaLabel": "Melodic",
+  "distribution": {
+    "avgExperimentalTolerance": 0.24947862,
+    "avgMelodicComplexity": 0.6206466999999997,
+    "avgNostalgiaBias": 0.5732255199999998,
+    "avgRhythmicDensity": 0.27626384000000004,
+    "avgTimbralRichness": 0.40503368000000006
+  }
+}

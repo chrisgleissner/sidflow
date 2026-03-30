@@ -1,0 +1,1007 @@
+{
+  "personaId": "nostalgic",
+  "personaLabel": "Nostalgic",
+  "trackCount": 50,
+  "tracks": [
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.814 (high, w=0.60); melodicComplexity=0.623 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.098356,
+        "melodicComplexity": 0.62253,
+        "nostalgiaBias": 0.814,
+        "rhythmicDensity": 0.277448,
+        "timbralRichness": 0.25422
+      },
+      "rank": 1,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.754322,
+      "sidPath": "C64Music/GAMES/S-Z/Session_instructions.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/S-Z/Session_instructions.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.850 (high, w=0.60); experimentalTolerance=0.103 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.103166,
+        "melodicComplexity": 0.454669,
+        "nostalgiaBias": 0.850364,
+        "rhythmicDensity": 0.283086,
+        "timbralRichness": 0.290765
+      },
+      "rank": 2,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.750135,
+      "sidPath": "C64Music/GAMES/0-9/20_Tons.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/0-9/20_Tons.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.779 (high, w=0.60); melodicComplexity=0.607 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.122479,
+        "melodicComplexity": 0.606698,
+        "nostalgiaBias": 0.779455,
+        "rhythmicDensity": 0.289361,
+        "timbralRichness": 0.313448
+      },
+      "rank": 3,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.746948,
+      "sidPath": "C64Music/DEMOS/A-F/Cannon_Fodder.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/A-F/Cannon_Fodder.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.814 (high, w=0.60); melodicComplexity=0.619 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.254947,
+        "melodicComplexity": 0.619433,
+        "nostalgiaBias": 0.814,
+        "rhythmicDensity": 0.277433,
+        "timbralRichness": 0.418639
+      },
+      "rank": 4,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.734358,
+      "sidPath": "C64Music/GAMES/A-F/Brutally_Brainstorm.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/A-F/Brutally_Brainstorm.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.764 (high, w=0.60); melodicComplexity=0.633 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.105692,
+        "melodicComplexity": 0.632611,
+        "nostalgiaBias": 0.764,
+        "rhythmicDensity": 0.29624,
+        "timbralRichness": 0.230167
+      },
+      "rank": 5,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.732887,
+      "sidPath": "C64Music/GAMES/M-R/Miner.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/M-R/Miner.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.764 (high, w=0.60); melodicComplexity=0.623 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.120239,
+        "melodicComplexity": 0.623169,
+        "nostalgiaBias": 0.764,
+        "rhythmicDensity": 0.290869,
+        "timbralRichness": 0.247587
+      },
+      "rank": 6,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.729378,
+      "sidPath": "C64Music/GAMES/S-Z/Wielrennen.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/S-Z/Wielrennen.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.828 (high, w=0.60); experimentalTolerance=0.125 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.125054,
+        "melodicComplexity": 0.398049,
+        "nostalgiaBias": 0.827636,
+        "rhythmicDensity": 0.275293,
+        "timbralRichness": 0.30556
+      },
+      "rank": 7,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.728949,
+      "sidPath": "C64Music/GAMES/G-L/Lords_of_Doom.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/G-L/Lords_of_Doom.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.823 (high, w=0.60); experimentalTolerance=0.118 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.117542,
+        "melodicComplexity": 0.408352,
+        "nostalgiaBias": 0.823091,
+        "rhythmicDensity": 0.275708,
+        "timbralRichness": 0.305626
+      },
+      "rank": 8,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.728627,
+      "sidPath": "C64Music/GAMES/M-R/Outbreak.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/M-R/Outbreak.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); melodicComplexity=0.611 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.089375,
+        "melodicComplexity": 0.610903,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.283348,
+        "timbralRichness": 0.274953
+      },
+      "rank": 9,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.725352,
+      "sidPath": "C64Music/MUSICIANS/U/Ufo-Soft/Pressure_Points.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/U/Ufo-Soft/Pressure_Points.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); melodicComplexity=0.622 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.101972,
+        "melodicComplexity": 0.621738,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.281865,
+        "timbralRichness": 0.287385
+      },
+      "rank": 10,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.72502,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 5,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:5"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.792 (high, w=0.60); melodicComplexity=0.625 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.255047,
+        "melodicComplexity": 0.625452,
+        "nostalgiaBias": 0.791636,
+        "rhythmicDensity": 0.277995,
+        "timbralRichness": 0.399112
+      },
+      "rank": 11,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.724934,
+      "sidPath": "C64Music/DEMOS/0-9/1st_Sound.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/0-9/1st_Sound.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.731 (high, w=0.60); melodicComplexity=0.605 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.110955,
+        "melodicComplexity": 0.604517,
+        "nostalgiaBias": 0.731455,
+        "rhythmicDensity": 0.292448,
+        "timbralRichness": 0.299317
+      },
+      "rank": 12,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.724842,
+      "sidPath": "C64Music/MUSICIANS/P/Pajda/Technological_Death.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/P/Pajda/Technological_Death.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.782 (high, w=0.60); melodicComplexity=0.626 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.260027,
+        "melodicComplexity": 0.625551,
+        "nostalgiaBias": 0.782182,
+        "rhythmicDensity": 0.292612,
+        "timbralRichness": 0.449204
+      },
+      "rank": 13,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.719031,
+      "sidPath": "C64Music/GAMES/G-L/Gods_preview.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/G-L/Gods_preview.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.103 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.102807,
+        "melodicComplexity": 0.558312,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.286737,
+        "timbralRichness": 0.288066
+      },
+      "rank": 14,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.717522,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 6,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:6"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.103 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.102711,
+        "melodicComplexity": 0.558222,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.282075,
+        "timbralRichness": 0.287985
+      },
+      "rank": 15,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.71714,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 2,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:2"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.801 (high, w=0.60); experimentalTolerance=0.123 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.122808,
+        "melodicComplexity": 0.399738,
+        "nostalgiaBias": 0.800727,
+        "rhythmicDensity": 0.27057,
+        "timbralRichness": 0.28913
+      },
+      "rank": 16,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.716388,
+      "sidPath": "C64Music/DEMOS/0-9/12345.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/0-9/12345.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.073 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.072693,
+        "melodicComplexity": 0.525175,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.274175,
+        "timbralRichness": 0.254284
+      },
+      "rank": 17,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.716271,
+      "sidPath": "C64Music/MUSICIANS/X/Xeno_Micro_Soft/Cruncle.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/X/Xeno_Micro_Soft/Cruncle.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.105 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.104797,
+        "melodicComplexity": 0.530712,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.277411,
+        "timbralRichness": 0.290071
+      },
+      "rank": 18,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.713117,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 3,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:3"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.728 (high, w=0.60); experimentalTolerance=0.083 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.083276,
+        "melodicComplexity": 0.598337,
+        "nostalgiaBias": 0.728,
+        "rhythmicDensity": 0.281058,
+        "timbralRichness": 0.27037
+      },
+      "rank": 19,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.709904,
+      "sidPath": "C64Music/DEMOS/0-9/3-in-1_Demo.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/0-9/3-in-1_Demo.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 20,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 10,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:10"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 21,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 11,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:11"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 22,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 14,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:14"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 23,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 15,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:15"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 24,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 16,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:16"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 25,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 18,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:18"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 26,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 19,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:19"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 27,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 20,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:20"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 28,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 21,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:21"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 29,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 22,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:22"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 30,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 23,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:23"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.807 (high, w=0.60); experimentalTolerance=0.164 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.16365,
+        "melodicComplexity": 0.31288,
+        "nostalgiaBias": 0.807273,
+        "rhythmicDensity": 0.278035,
+        "timbralRichness": 0.29519
+      },
+      "rank": 31,
+      "ratings": {
+        "c": 2,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.705939,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 9,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:9"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); melodicComplexity=0.615 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.257831,
+        "melodicComplexity": 0.615448,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.277419,
+        "timbralRichness": 0.443089
+      },
+      "rank": 32,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.704718,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 4,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:4"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.714 (high, w=0.60); melodicComplexity=0.608 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.095125,
+        "melodicComplexity": 0.608299,
+        "nostalgiaBias": 0.713818,
+        "rhythmicDensity": 0.289746,
+        "timbralRichness": 0.28489
+      },
+      "rank": 33,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.703298,
+      "sidPath": "C64Music/DEMOS/A-F/Dark_One.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/A-F/Dark_One.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.723 (high, w=0.60); experimentalTolerance=0.110 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.109662,
+        "melodicComplexity": 0.567074,
+        "nostalgiaBias": 0.722545,
+        "rhythmicDensity": 0.290151,
+        "timbralRichness": 0.267078
+      },
+      "rank": 34,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.702092,
+      "sidPath": "C64Music/GAMES/0-9/5_mal_5.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/0-9/5_mal_5.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.744 (high, w=0.60); melodicComplexity=0.630 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.263398,
+        "melodicComplexity": 0.630387,
+        "nostalgiaBias": 0.743636,
+        "rhythmicDensity": 0.283543,
+        "timbralRichness": 0.403693
+      },
+      "rank": 35,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.701507,
+      "sidPath": "C64Music/MUSICIANS/U/Ulysses/Classical_Mix_II.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/U/Ulysses/Classical_Mix_II.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); melodicComplexity=0.571 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.243857,
+        "melodicComplexity": 0.570596,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.269993,
+        "timbralRichness": 0.427383
+      },
+      "rank": 36,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.700382,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 8,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:8"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.101 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.100755,
+        "melodicComplexity": 0.409688,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.273585,
+        "timbralRichness": 0.278673
+      },
+      "rank": 37,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.698716,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.118 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.118423,
+        "melodicComplexity": 0.406908,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.277467,
+        "timbralRichness": 0.255869
+      },
+      "rank": 38,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.698179,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 13,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:13"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.118 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.118423,
+        "melodicComplexity": 0.406908,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.277467,
+        "timbralRichness": 0.255869
+      },
+      "rank": 39,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.698179,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 17,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:17"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.128 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.128381,
+        "melodicComplexity": 0.399577,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.293178,
+        "timbralRichness": 0.248648
+      },
+      "rank": 40,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.698045,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 7,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:7"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.700 (high, w=0.60); melodicComplexity=0.620 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.119613,
+        "melodicComplexity": 0.619945,
+        "nostalgiaBias": 0.700182,
+        "rhythmicDensity": 0.277106,
+        "timbralRichness": 0.263027
+      },
+      "rank": 41,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.695873,
+      "sidPath": "C64Music/DEMOS/M-R/Night_at_Boss_1_tune_2.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/M-R/Night_at_Boss_1_tune_2.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.757 (high, w=0.60); experimentalTolerance=0.141 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.140512,
+        "melodicComplexity": 0.388937,
+        "nostalgiaBias": 0.757273,
+        "rhythmicDensity": 0.282508,
+        "timbralRichness": 0.263907
+      },
+      "rank": 42,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.694241,
+      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+      "songIndex": 12,
+      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:12"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.710 (high, w=0.60); experimentalTolerance=0.109 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.108954,
+        "melodicComplexity": 0.56879,
+        "nostalgiaBias": 0.709818,
+        "rhythmicDensity": 0.281394,
+        "timbralRichness": 0.296592
+      },
+      "rank": 43,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.694171,
+      "sidPath": "C64Music/DEMOS/M-R/Main.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/M-R/Main.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.709 (high, w=0.60); experimentalTolerance=0.090 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.090389,
+        "melodicComplexity": 0.540755,
+        "nostalgiaBias": 0.709455,
+        "rhythmicDensity": 0.280624,
+        "timbralRichness": 0.248512
+      },
+      "rank": 44,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.693975,
+      "sidPath": "C64Music/GAMES/0-9/2112.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/0-9/2112.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.691 (high, w=0.60); experimentalTolerance=0.095 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.095123,
+        "melodicComplexity": 0.593864,
+        "nostalgiaBias": 0.691273,
+        "rhythmicDensity": 0.290812,
+        "timbralRichness": 0.225718
+      },
+      "rank": 45,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.692943,
+      "sidPath": "C64Music/GAMES/A-F/AngiePuffy_Quest.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/A-F/AngiePuffy_Quest.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.746 (high, w=0.60); melodicComplexity=0.541 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.276187,
+        "melodicComplexity": 0.540923,
+        "nostalgiaBias": 0.745818,
+        "rhythmicDensity": 0.286628,
+        "timbralRichness": 0.396906
+      },
+      "rank": 46,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.691059,
+      "sidPath": "C64Music/GAMES/0-9/100_Mile_Race.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/0-9/100_Mile_Race.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.681 (high, w=0.60); melodicComplexity=0.630 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.106726,
+        "melodicComplexity": 0.630129,
+        "nostalgiaBias": 0.681455,
+        "rhythmicDensity": 0.28269,
+        "timbralRichness": 0.250672
+      },
+      "rank": 47,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.689933,
+      "sidPath": "C64Music/MUSICIANS/D/Dr_Zoom/Check_Sound.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/D/Dr_Zoom/Check_Sound.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.680 (high, w=0.60); melodicComplexity=0.616 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.093032,
+        "melodicComplexity": 0.616221,
+        "nostalgiaBias": 0.68,
+        "rhythmicDensity": 0.288473,
+        "timbralRichness": 0.239398
+      },
+      "rank": 48,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.689566,
+      "sidPath": "C64Music/MUSICIANS/0-9/2121/I_Just_Called.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/0-9/2121/I_Just_Called.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.680 (high, w=0.60); melodicComplexity=0.628 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.103756,
+        "melodicComplexity": 0.628097,
+        "nostalgiaBias": 0.68,
+        "rhythmicDensity": 0.282095,
+        "timbralRichness": 0.271301
+      },
+      "rank": 49,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.688316,
+      "sidPath": "C64Music/MUSICIANS/I/Ispace/Jingle_Bells.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/I/Ispace/Jingle_Bells.sid:1"
+    },
+    {
+      "explanation": "Selected for Nostalgic: nostalgiaBias=0.678 (high, w=0.60); melodicComplexity=0.632 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.106967,
+        "melodicComplexity": 0.631585,
+        "nostalgiaBias": 0.678,
+        "rhythmicDensity": 0.282213,
+        "timbralRichness": 0.270789
+      },
+      "rank": 50,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.687529,
+      "sidPath": "C64Music/DEMOS/0-9/2Pac_Intro.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/0-9/2Pac_Intro.sid:1"
+    }
+  ]
+}

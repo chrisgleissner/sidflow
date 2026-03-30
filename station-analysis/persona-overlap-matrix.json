@@ -1,0 +1,66 @@
+{
+  "maxAllowedOverlapPct": 40,
+  "overlapValid": true,
+  "pairs": [
+    {
+      "overlapPct": 0,
+      "personaA": "fast_paced",
+      "personaB": "slow_ambient",
+      "sharedCount": 0
+    },
+    {
+      "overlapPct": 0,
+      "personaA": "fast_paced",
+      "personaB": "melodic",
+      "sharedCount": 0
+    },
+    {
+      "overlapPct": 0,
+      "personaA": "fast_paced",
+      "personaB": "experimental",
+      "sharedCount": 0
+    },
+    {
+      "overlapPct": 2,
+      "personaA": "fast_paced",
+      "personaB": "nostalgic",
+      "sharedCount": 1
+    },
+    {
+      "overlapPct": 14,
+      "personaA": "slow_ambient",
+      "personaB": "melodic",
+      "sharedCount": 7
+    },
+    {
+      "overlapPct": 28,
+      "personaA": "slow_ambient",
+      "personaB": "experimental",
+      "sharedCount": 14
+    },
+    {
+      "overlapPct": 0,
+      "personaA": "slow_ambient",
+      "personaB": "nostalgic",
+      "sharedCount": 0
+    },
+    {
+      "overlapPct": 22,
+      "personaA": "melodic",
+      "personaB": "experimental",
+      "sharedCount": 11
+    },
+    {
+      "overlapPct": 0,
+      "personaA": "melodic",
+      "personaB": "nostalgic",
+      "sharedCount": 0
+    },
+    {
+      "overlapPct": 0,
+      "personaA": "experimental",
+      "personaB": "nostalgic",
+      "sharedCount": 0
+    }
+  ]
+}
