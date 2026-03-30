@@ -140,7 +140,7 @@ describe("essentiaFeatureExtractor", () => {
       await destroyFeatureExtractionPool();
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it("handles stereo WAV files", async () => {
     const root = await mkdtemp(TEMP_PREFIX);

@@ -9,6 +9,29 @@ case "${RUNTIME}" in
 		exec "${ROOT_DIR}/packages/sidflow-classify/src/cli.ts" "$@"
 		;;
 	node)
+		if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+			cat <<'EOF'
+Usage: sidflow-classify [options]
+
+Build the WAV cache and generate automated tag summaries.
+
+Options:
+	--config <path>                   Use an alternate .sidflow.json file
+	--force-rebuild                   Re-render WAVs even if cache is fresh
+	--skip-already-classified         Skip songs already in auto-tags.json
+	--delete-wav-after-classification Delete WAVs after classification (fly.io)
+	--allow-degraded                  Allow heuristic feature fallback if Essentia fails
+	--limit <n>                       Only classify the first N songs (after filtering)
+	--sid-path-prefix <prefix>        Only classify SIDs under this relative path (e.g. C64Music/DEMOS)
+	--feature-module <path>           Module exporting a featureExtractor override
+	--predictor-module <path>         Module exporting a predictRatings override
+	--metadata-module <path>          Module exporting an extractMetadata override
+	--render-module <path>            Module exporting a render override for WAV cache
+	--resume-from-features <path>     Skip Phase 1 (rendering/extraction); run Phase 2 from this features JSONL
+	--help                            Show this message and exit
+EOF
+			exit 0
+		fi
 		DIST_CLI="${ROOT_DIR}/packages/sidflow-classify/dist/cli.js"
 		if [[ ! -f "${DIST_CLI}" ]]; then
 			printf 'sidflow-classify node runtime requires compiled output at %s\n' "${DIST_CLI}" >&2

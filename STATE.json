@@ -1,0 +1,82 @@
+{
+  "phase": "COMPLETE",
+  "progress": {
+    "selected": 300,
+    "classified": 300,
+    "validated": 300,
+    "persona_stations": 5,
+    "tracks_per_station": 50,
+    "total_personas": 9,
+    "audio_personas": 5,
+    "hybrid_personas": 4
+  },
+  "failures": [],
+  "architecture": {
+    "model": "parallel_independent",
+    "description": "Each persona independently scores ALL tracks and selects top 50. No cross-persona filtering. No intersection. Audio-led personas use metric weights + rating affinity. Hybrid personas add deterministic metadata bonuses (composer, year, category, rarity, theme tags) via late fusion.",
+    "previous_model": "sequential_intersection (eliminated — caused convergence-to-identical-taste)",
+    "scoring": {
+      "audio": "clamp01(metricScore * 0.82 + (1 - ratingDistance) * 0.18)",
+      "hybrid": "clamp01(audioScore * 0.85 + metadataBonus * 0.15)",
+      "fallback": "3-level: base score → centroid nudge → skip rate penalty",
+      "recency": "exponential decay, 30-min half-life, 40% max penalty"
+    }
+  },
+  "personas": [
+    { "id": "fast_paced", "label": "Fast Paced", "kind": "audio", "primaryMetric": "rhythmicDensity", "direction": "highest" },
+    { "id": "slow_ambient", "label": "Slow / Ambient", "kind": "audio", "primaryMetric": "rhythmicDensity", "direction": "lowest" },
+    { "id": "melodic", "label": "Melodic", "kind": "audio", "primaryMetric": "melodicComplexity", "direction": "highest" },
+    { "id": "experimental", "label": "Experimental", "kind": "audio", "primaryMetric": "experimentalTolerance", "direction": "highest" },
+    { "id": "nostalgic", "label": "Nostalgic", "kind": "audio", "primaryMetric": "nostalgiaBias", "direction": "highest" },
+    { "id": "composer_focus", "label": "Composer Focus", "kind": "hybrid", "primaryMetadata": "composer" },
+    { "id": "era_explorer", "label": "Era Explorer", "kind": "hybrid", "primaryMetadata": "year" },
+    { "id": "deep_discovery", "label": "Deep Discovery", "kind": "hybrid", "primaryMetadata": "rarity" },
+    { "id": "theme_hunter", "label": "Theme Hunter", "kind": "hybrid", "primaryMetadata": "titleThemeTags" }
+  ],
+  "validation": {
+    "overlapConstraint": {
+      "maxAllowedPct": 40,
+      "actualMaxPct": 28,
+      "worstPair": "slow_ambient/experimental",
+      "pairsAtZero": 6,
+      "allPairsPass": true
+    },
+    "distributionAssertions": {
+      "fastPaced_highestRhythmicDensity": true,
+      "slowAmbient_lowestRhythmicDensity": true,
+      "experimental_highestExperimentalTolerance": true,
+      "nostalgic_highestNostalgiaBias": true,
+      "melodic_highestMelodicComplexity": true,
+      "allPass": true
+    },
+    "antiCollapse": {
+      "noTwoStationsIdentical": true,
+      "noIntersectionModel": true,
+      "metricVarianceAboveThreshold": true
+    },
+    "determinism": {
+      "twoRunsByteIdentical": true
+    },
+    "testResults": {
+      "expectCalls": 6652,
+      "pass": 1,
+      "fail": 0,
+      "elapsedSec": 56.76
+    }
+  },
+  "artifacts": [
+    "station-analysis/persona-1-station.json",
+    "station-analysis/persona-2-station.json",
+    "station-analysis/persona-3-station.json",
+    "station-analysis/persona-4-station.json",
+    "station-analysis/persona-5-station.json",
+    "station-analysis/persona-1-distribution.json",
+    "station-analysis/persona-2-distribution.json",
+    "station-analysis/persona-3-distribution.json",
+    "station-analysis/persona-4-distribution.json",
+    "station-analysis/persona-5-distribution.json",
+    "station-analysis/persona-overlap-matrix.json",
+    "station-analysis/persona-divergence-report.md",
+    "station-analysis/determinism-proof.md"
+  ]
+}

@@ -1,5 +1,145 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-30T13:01Z - Phase 27 complete: Parallel persona station redesign
+
+- timestamp: 2026-03-30T13:01Z
+- step: PHASE_27_PARALLEL_PERSONA_REDESIGN
+- action: Replaced sequential intersection persona model with parallel independent model; 5 orthogonal personas each independently select top 50 tracks.
+
+### Problem fixed
+
+The sequential model produced a single station of tracks accepted by ALL 5 personas (convergence-to-intersection). This collapsed diversity — all personas converged to identical taste.
+
+### Changes
+
+1. **Replaced sequential with parallel model** (`packages/sidflow-play/src/persona-station.ts`)
+   - `buildParallelPersonaStation()` replaces `buildSequentialPersonaStation()`
+   - Each persona independently scores ALL tracks and takes top 50
+   - No cross-persona filtering, no `allAccepted` requirement
+
+2. **5 orthogonal personas with directional scoring**
+   - Fast Paced: maximizes rhythmicDensity (+0.60), penalizes all others
+   - Slow/Ambient: minimizes rhythmicDensity (-0.60), penalizes nostalgia
+   - Melodic: maximizes melodicComplexity (+0.60), penalizes nostalgia/experimental
+   - Experimental: maximizes experimentalTolerance (+0.60), penalizes melody/nostalgia
+   - Nostalgic: maximizes nostalgiaBias (+0.60), penalizes experimental/timbral
+
+3. **Validation built into station builder**
+   - Overlap constraint: all C(5,2)=10 pairs must be ≤40% overlap
+   - Distribution assertions: each persona must lead on its primary metric
+   - CLI throws on any violation
+
+4. **Test rewritten** (`integration-tests/hvsc-persona-station.test.ts`)
+   - 6652 expect() calls (up from 4147)
+   - Asserts 5 independent stations, overlap constraints, distribution leader assertions
+   - Metric variance across stations > 0.0001 (anti-collapse)
+   - Deterministic output (byte-identical across two runs)
+
+### Observed results
+
+- Overlap: max 28% (slow_ambient/experimental), 6 pairs at 0%
+- All 5 distribution assertions PASS
+- Deterministic output confirmed
+
+## 2026-03-30T12:30Z - Phase 25 complete: Anti-gaming audit, evidence hardening, SID cache
+
+- timestamp: 2026-03-30T12:30Z
+- step: PHASE_25_ANTI_GAMING_AUDIT
+- action: Performed forensic validation of Phase 24 persona-station pipeline; identified and eliminated all gaming risks; hardened E2E test with semantic correctness assertions; added stable SID materialization cache.
+
+### Gaming risks identified and fixed
+
+1. **Top-N fallback removed** (`packages/sidflow-play/src/persona-station.ts:buildSequentialPersonaStation`)
+   - Previous code: `approved = ranked.slice(0, stageTarget)` when all threshold relaxation failed.
+   - Risk: songs that scored below even the floor threshold could be included, bypassing persona semantics.
+   - Fix: fallback deleted; pipeline continues with smaller pool if relaxation cannot reach target size.
+
+2. **Minimum threshold floor added** (`MIN_THRESHOLD = 0.10`)
+   - Previous code: `while (approved.length < stageTarget && threshold > 0)` — could relax to 0.
+   - Risk: threshold of 0 approves every song, making the persona meaningless.
+   - Fix: `while (...&& threshold > MIN_THRESHOLD)` with hard floor at 0.10.
+
+3. **Per-song decision evidence added** (`PersonaTrackDecision[]` in `PersonaStageResult`)
+   - Every stage now emits one decision record per input track: trackId, score, baseThreshold, actualThreshold, accepted, usedThresholdRelaxation, rejectionReason, decisiveFeatures.
+   - Final playlist entries include `personaScores[5]` and `allAccepted` flag.
+   - CLI throws if any final track has `allAccepted=false`.
+
+### E2E test hardening (4147 expect() calls, up from 1811)
+
+New assertions added to `integration-tests/hvsc-persona-station.test.ts`:
+- Every stage has `decisions.length === inputCount`.
+- `usedTopNFallback === false` on every stage.
+- `actualThreshold >= 0.10` on every stage.
+- Accepted decisions have `score >= actualThreshold`.
+- Rejected decisions have a non-empty `rejectionReason`.
+- `approvedCount + rejectedCount === inputCount`.
+- Every final track has `allAccepted === true`.
+- Every final track appears in stage 5 decisions with `accepted === true`.
+- Byte-identical JSON across two independent runs.
+- Writes `station-analysis/` artifacts automatically.
+
+### Caching fix
+
+- Previous: SID files materialized into `tempRoot/hvsc` (deleted after each run) → CI re-downloads 300 files every run.
+- Fix: stable cache dir `workspace/hvsc-e2e-subset-cache/` used as `hvscRoot`; `afterAll` deletes only temp output.
+- `materializeHvscE2eSubset` skips existing files → no-op on cache hit.
+- Added `actions/cache@v4` step to `.github/workflows/build-and-test.yaml` keyed on manifest hash.
+- 300 SIDs confirmed in `workspace/hvsc-e2e-subset-cache/` after first run.
+
+### Anti-gaming audit findings (station-analysis/anti-gaming-audit.md)
+
+- Top-N fallback used: **NO** ✅
+- Threshold relaxation used: YES on 3 stages (Groove Cartographer 0.68→0.66, Chip Alchemist 0.69→0.61, Frontier Curator 0.72→0.62) ⚠
+- All relaxed thresholds stayed ≥ 0.10: **YES** ✅
+- All final tracks allAccepted=true: **YES** ✅
+
+### Evidence
+
+- Run 1: 1 pass, 0 fail, 4147 expect() calls, 48.70s.
+- Run 2: 1 pass, 0 fail, 4147 expect() calls, 40.93s. JSON byte-identical.
+- Run 3 (cache hit test): 1 pass, 0 fail, 4147 expect() calls, 40.93s.
+- `bun run build:quick`: zero errors.
+- `station-analysis/` artifacts: 9 files, 1.56 MB total.
+  - `final-station.json`: 50 tracks with full per-persona justification.
+  - `persona-stage-{1..5}.json`: per-stage decision data (all 300→220→170→120→80→50 decisions).
+  - `inclusion-proof.md`, `exclusion-proof.md`, `anti-gaming-audit.md`, `determinism-proof.md`.
+- `STATE.json`: updated with auditFindings, stationEvidence, gamingRisks, fixesApplied.
+
+- anomaly: none — all audit checks passed.
+- decision: Phase 25 COMPLETE. All gaming risks eliminated. Evidence artifacts generated. Test hardened.
+- next step: CI validation (GitHub Actions).
+
+## 2026-03-30T12:12Z - Phase 24 complete: E2E test passes deterministically (×2)
+
+- timestamp: 2026-03-30T12:12Z
+- step: PHASE_6_E2E_TEST / PHASE_7_CI_VALIDATION
+- action: Executed `bun test integration-tests/hvsc-persona-station.test.ts` twice consecutively and recorded results.
+- result (run 1): 1 pass, 0 fail, 1811 expect() calls, elapsed 39.54s, 50 persona tracks confirmed.
+- result (run 2): 1 pass, 0 fail, 1811 expect() calls, elapsed 40.60s, 50 persona tracks confirmed. Persona JSON output identical between both runs.
+- evidence:
+  - Dataset: 300 SID files materialized from local `workspace/hvsc` (8 concurrent copy workers, ~0s).
+  - Classification: WASM-only engine (`preferredEngines=["wasm"]`), 4 threads, 15s classify window.
+  - Feature vectors: 300 records × 24-dimensional vector, all finite, no NaN/null, failedCount=0, degradedCount=0, metadataOnlyCount=0.
+  - Persona pipeline: 5-stage sequential filter → 220 → 170 → 120 → 80 → 50. Both JSON outputs byte-identical.
+  - `bun run build:quick` (tsc -b): zero errors.
+  - Problematic SIDs verified in manifest: Super_Mario_Bros_64_2SID, Space_Oddity_2SID, Waterfall_3SID, Great_Giana_Sisters.
+- failure: none
+- decision: STATE.json updated to COMPLETE phase with zero unresolved failures.
+- next step: CI validation (GitHub Actions). Phase 24 declared DONE locally.
+
+## 2026-03-30T09:05Z - Phase 24 kickoff: deterministic 300-song HVSC persona station E2E
+
+- timestamp: 2026-03-30T09:05Z
+- action taken: Audited the repo contract for the new 300-song HVSC request, verified the local HVSC corpus size, verified which test files are mandatory under the root coverage batches, and confirmed that direct raw SID downloads are available from the public HVSC mirror for CI fallback materialization.
+- evidence collected:
+   - `rg --files workspace/hvsc/C64Music -g '*.sid' | wc -l` => `60572`, confirming a full local HVSC corpus is available for deterministic subset generation.
+   - `scripts/run-unit-coverage-batches.mjs` only collects `*.test.ts`, and `integration-tests/e2e-suite.ts` is named `e2e-suite.ts`, so the current integration flow is not mandatory under `bun run test`.
+   - `packages/sidflow-classify/src/index.ts` writes `ClassificationRecord` objects with persisted `features` and `vector`, and `packages/sidflow-classify/src/deterministic-ratings.ts` already exposes `hasRealisticCompleteFeatureVector()` and `buildPerceptualVector()`.
+   - `curl -I -L https://hvsc.brona.dk/HVSC/C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid` returned `200 OK`, proving the public mirror can serve raw SID paths directly.
+   - The explicit high-risk regression proof set currently encoded in tests is: `Waterfall_3SID.sid`, `Space_Oddity_2SID.sid`, `Super_Mario_Bros_64_2SID.sid`, and `Great_Giana_Sisters.sid`.
+- result: The implementation path is clear: add a deterministic selector plus corpus materializer, reuse the strict classifier/vector contracts, add a CLI persona-station builder, and land the flow in a new `*.test.ts` integration entry point so it becomes mandatory in the existing CI batch runner.
+- next step: Implement the selector/materializer helpers first so the E2E test can run against either local HVSC or mirror-fetched files with the same deterministic 300-file manifest.
+
 ## 2026-03-29T22:40Z - PR #90 convergence: WASM source-of-truth fix and stale CI import repair
 
 - timestamp: 2026-03-29T22:40Z

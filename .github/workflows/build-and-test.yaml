@@ -43,6 +43,14 @@ jobs:
           restore-keys: |
             wasm-upstream-${{ runner.os }}-
 
+      - name: Restore HVSC E2E subset cache
+        uses: actions/cache@v4
+        with:
+          path: workspace/hvsc-e2e-subset-cache
+          key: hvsc-e2e-subset-${{ hashFiles('integration-tests/fixtures/hvsc-persona-300-manifest.json') }}
+          restore-keys: |
+            hvsc-e2e-subset-
+
       - name: Bun version
         run: bun --version
 

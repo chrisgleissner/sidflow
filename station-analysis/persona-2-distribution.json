@@ -1,0 +1,11 @@
+{
+  "personaId": "slow_ambient",
+  "personaLabel": "Slow / Ambient",
+  "distribution": {
+    "avgExperimentalTolerance": 0.23029872,
+    "avgMelodicComplexity": 0.57138148,
+    "avgNostalgiaBias": 0.4996253999999999,
+    "avgRhythmicDensity": 0.20788846,
+    "avgTimbralRichness": 0.30831178000000004
+  }
+}

@@ -13,3 +13,4 @@ export * from "./c64u-led-cli.js";
 export * from "./similarity-export-cli.js";
 export * from "./sid-station.js";
 export * from "./filters.js";
+export * from "./persona-station.js";
