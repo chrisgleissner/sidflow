@@ -11,6 +11,7 @@ WORKFLOW="full"
 PORT="3000"
 PROFILE="full"
 CORPUS_VERSION="hvsc"
+RUNTIME="node"
 THREADS=""
 MAX_SONGS=""
 SKIP_ALREADY_CLASSIFIED="true"
@@ -43,7 +44,7 @@ REQUEST_STATUS_FILE="${RUNTIME_DIR}/request.status"
 REPORT_STATE_FILE="${RUNTIME_DIR}/report-state.json"
 RUN_EVENTS_LOG="${RUNTIME_DIR}/run-events.jsonl"
 
-REPORT_EVERY_SONGS=100
+REPORT_EVERY_SONGS=50
 
 LOCAL_SERVER_PID=""
 LOCAL_WORKER_PID=""
@@ -86,6 +87,7 @@ Options:
   --port PORT                         Web port. Default: 3000
   --profile full|mobile               Export profile. Default: full
   --corpus-version LABEL              Manifest corpus label. Default: hvsc
+  --runtime bun|node                  Local classify runtime. Default: node
   --threads N                         Optional classify thread count override
   --max-songs N                       Stop each classification run after at most N songs
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
@@ -103,6 +105,7 @@ Options:
 Examples:
   bash scripts/run-similarity-export.sh --mode local
   bash scripts/run-similarity-export.sh --mode local --full-rerun true
+  bash scripts/run-similarity-export.sh --mode local --runtime node --full-rerun true
   bash scripts/run-similarity-export.sh --mode local --max-songs 200
   bash scripts/run-similarity-export.sh --mode local --threads 8 --skip-already-classified false
   bash scripts/run-similarity-export.sh --mode local --publish-release true
@@ -258,6 +261,10 @@ while [[ $# -gt 0 ]]; do
       CORPUS_VERSION="$2"
       shift 2
       ;;
+    --runtime)
+      RUNTIME="$2"
+      shift 2
+      ;;
     --threads)
       THREADS="$2"
       shift 2
@@ -323,6 +330,11 @@ case "${PROFILE}" in
   *) fail "--profile must be full or mobile" ;;
 esac
 
+case "${RUNTIME}" in
+  bun|node) ;;
+  *) fail "--runtime must be bun or node" ;;
+esac
+
 if [[ -n "${MAX_SONGS}" ]]; then
   [[ "${MAX_SONGS}" =~ ^[1-9][0-9]*$ ]] || fail "--max-songs must be a positive integer"
 fi
@@ -346,7 +358,7 @@ mkdir -p "${RUNTIME_DIR}"
 : > "${REQUEST_LOG}"
 : > "${RUN_EVENTS_LOG}"
 rm -f "${REQUEST_STATUS_FILE}"
-printf '{"lastReportedProcessed":0}\n' > "${REPORT_STATE_FILE}"
+printf '{"lastReportedProcessed":0,"lastReportedPhase":"unknown","lastFeatureHealthLine":0}\n' > "${REPORT_STATE_FILE}"
 
 require_command python3
 require_command curl
@@ -356,14 +368,15 @@ if [[ "${FULL_RERUN}" == "true" ]]; then
   FORCE_REBUILD="true"
 fi
 
-python3 - <<'PY' "${RUN_EVENTS_LOG}" "${RUN_COMMAND}" "${MODE}" "${FULL_RERUN}" "${REPO_ROOT}"
+python3 - <<'PY' "${RUN_EVENTS_LOG}" "${RUN_COMMAND}" "${MODE}" "${FULL_RERUN}" "${REPO_ROOT}" "${RUNTIME}"
 import json, sys, time
 
-log_path, command, mode, full_rerun, cwd = sys.argv[1:6]
+log_path, command, mode, full_rerun, cwd, runtime = sys.argv[1:7]
 record = {
     "event": "run_start",
     "command": command,
     "mode": mode,
+  "runtime": runtime,
     "fullRerun": full_rerun == "true",
     "cwd": cwd,
     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -374,11 +387,23 @@ PY
 
 if [[ "${MODE}" == "local" ]]; then
   require_command bun
+  if [[ "${RUNTIME}" == "node" ]]; then
+    require_command node
+    require_command npm
+  fi
   require_command sidplayfp
   require_command ffmpeg
 else
   require_command docker
 fi
+
+ensure_node_runtime_build() {
+  log "Building TypeScript artifacts for Node runtime"
+  (
+    cd "${REPO_ROOT}"
+    npm run build:quick
+  ) >> "${SERVER_LOG}" 2>&1
+}
 
 resolve_local_sid_path() {
   python3 - "$CONFIG_PATH" <<'PY'
@@ -518,24 +543,46 @@ start_local_runtime() {
   sid_path="$(resolve_local_sid_path)"
   [[ -d "${sid_path}" ]] || fail "Configured sidPath does not exist: ${sid_path}"
 
-  log "Installing dependencies for local mode"
-  (cd "${REPO_ROOT}" && bun install --frozen-lockfile) >> "${SERVER_LOG}" 2>&1
+  if [[ "${RUNTIME}" == "bun" ]]; then
+    log "Installing dependencies for Bun local mode"
+    (cd "${REPO_ROOT}" && bun install --frozen-lockfile) >> "${SERVER_LOG}" 2>&1
 
-  log "Starting local web server on port ${PORT}"
-  (
-    cd "${REPO_ROOT}/packages/sidflow-web"
-    SIDFLOW_CONFIG="${CONFIG_PATH}" \
-    SIDFLOW_ADMIN_USER="${ADMIN_USER}" \
-    SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
-    SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
-    JWT_SECRET="${JWT_SECRET}" \
-    SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
-    SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
-    SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
-    SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
-    PORT="${PORT}" \
-    bun run dev
-  ) >> "${SERVER_LOG}" 2>&1 &
+    log "Starting local web server under Bun on port ${PORT}"
+    (
+      cd "${REPO_ROOT}/packages/sidflow-web"
+      SIDFLOW_CONFIG="${CONFIG_PATH}" \
+      SIDFLOW_ADMIN_USER="${ADMIN_USER}" \
+      SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+      SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
+      JWT_SECRET="${JWT_SECRET}" \
+      SIDFLOW_CLI_RUNTIME="bun" \
+      SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
+      SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
+      SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
+      SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
+      PORT="${PORT}" \
+      bun run dev
+    ) >> "${SERVER_LOG}" 2>&1 &
+  else
+    ensure_node_runtime_build
+
+    log "Starting local web server under Node on port ${PORT}"
+    (
+      cd "${REPO_ROOT}/packages/sidflow-web"
+      SIDFLOW_CONFIG="${CONFIG_PATH}" \
+      SIDFLOW_ADMIN_USER="${ADMIN_USER}" \
+      SIDFLOW_ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+      SIDFLOW_ADMIN_SECRET="${ADMIN_SECRET}" \
+      JWT_SECRET="${JWT_SECRET}" \
+      SIDFLOW_CLI_RUNTIME="node" \
+      SIDFLOW_CLASSIFY_RUN_COMMAND="${RUN_COMMAND}" \
+      SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
+      SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
+      SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
+      PORT="${PORT}" \
+      node ./scripts/start-test-server.mjs --mode=development
+    ) >> "${SERVER_LOG}" 2>&1 &
+  fi
   LOCAL_SERVER_PID=$!
 
   wait_for_health
@@ -688,12 +735,45 @@ PY
       ;;
     esac
   else
+      python3 - <<'PY' "${SERVER_LOG}" "${REPORT_STATE_FILE}"
+import json, re, sys
+
+log_path = sys.argv[1]
+state_path = sys.argv[2]
+
+try:
+  with open(state_path, 'r', encoding='utf-8') as fh:
+    state = json.load(fh)
+except FileNotFoundError:
+  state = {'lastReportedProcessed': 0, 'lastReportedPhase': 'unknown', 'lastFeatureHealthLine': 0}
+
+last_feature_health_line = int(state.get('lastFeatureHealthLine') or 0)
+feature_health_pattern = re.compile(r'\[classify-feature-health\]\s+(?:\[classify\]\s+)?(\[feature-health-issue\].*)')
+
+try:
+  with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
+    lines = fh.readlines()
+except FileNotFoundError:
+  lines = []
+
+for line_number, line in enumerate(lines, start=1):
+  if line_number <= last_feature_health_line:
+    continue
+  match = feature_health_pattern.search(line)
+  if match:
+    print(f'[sidcorr] {match.group(1).strip()}')
+
+state['lastFeatureHealthLine'] = len(lines)
+with open(state_path, 'w', encoding='utf-8') as fh:
+  json.dump(state, fh)
+PY
+
       if python3 - <<'PY' "${SERVER_LOG}" "${CLASSIFY_STARTED_AT_MS}" >> "${PROGRESS_LOG}"
 import json, re, sys, time
 
 log_path = sys.argv[1]
 started_at_ms = int(sys.argv[2]) if sys.argv[2] else int(time.time() * 1000)
-phase_progress = re.compile(r'\[(Extracting Features|Building Rating Model|Writing Results)\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\]')
+phase_progress = re.compile(r'\[(Extracting Features|Building Rating Model|Writing Results)\]\s+(\d+)/(\d+)\s+files,\s+(\d+)\s+remaining\s+\(([\d.]+)%\)\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\](?:\s+\[featureHealth\s+completeRealistic=(\d+)/(\d+)\s+\((unknown|[\d.]+%)\)\])?')
 analyzing = re.compile(r'\[Analyzing\]\s+(\d+)/(\d+)\s+files.*\(([\d.]+)%\)')
 
 with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
@@ -702,7 +782,7 @@ with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
 for line in reversed(lines):
   match = phase_progress.search(line)
   if match:
-    label, processed, total, _remaining, percent, rendered, _cached, extracted = match.groups()
+    label, processed, total, _remaining, percent, rendered, _cached, extracted, complete, checked, complete_percent = match.groups()
     phase = 'tagging' if label == 'Extracting Features' else 'finalizing'
     print(json.dumps({
       'phase': phase,
@@ -711,6 +791,9 @@ for line in reversed(lines):
       'renderedFiles': int(rendered),
       'extractedFiles': int(extracted),
       'taggedFiles': int(processed),
+      'completeFeatureFiles': int(complete) if complete is not None else 0,
+      'featureHealthCheckedFiles': int(checked) if checked is not None else 0,
+      'completeFeaturePercent': None if complete_percent in (None, 'unknown') else float(complete_percent.rstrip('%')),
       'percentComplete': float(percent),
       'isActive': True,
       'updatedAt': int(time.time() * 1000),
@@ -802,6 +885,14 @@ def fmt_duration(seconds: float | None) -> str:
 phase_order = ['analyzing', 'metadata', 'building', 'tagging', 'finalizing', 'completed']
 phase_rank = {name: index for index, name in enumerate(phase_order)}
 current_rank = phase_rank.get(phase, -1)
+feature_checked = int(record.get('featureHealthCheckedFiles') or 0)
+feature_complete = int(record.get('completeFeatureFiles') or 0)
+feature_percent = record.get('completeFeaturePercent')
+feature_health = (
+  f'featureHealth[completeRealistic={feature_complete}/{feature_checked} (unknown)]'
+  if feature_percent is None
+  else f'featureHealth[completeRealistic={feature_complete}/{feature_checked} ({float(feature_percent):.1f}%)]'
+)
 parts = []
 for index, name in enumerate(phase_order):
   if phase == 'completed':
@@ -820,7 +911,7 @@ print(
   f'elapsed={fmt_duration(elapsed_seconds)} eta={fmt_duration(eta_seconds)} '
   f'rate={rate:.2f} songs/s percent={record.get("percentComplete")} '
   f'phase={phase} phases[' + ', '.join(parts) + '] '
-  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}]'
+  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}] {feature_health}'
 )
 
 state['lastReportedProcessed'] = processed
@@ -848,6 +939,14 @@ remaining = max(total - processed, 0)
 started_at_ms = record.get('startedAt')
 elapsed_seconds = max(time.time() - (started_at_ms / 1000.0), 1.0) if isinstance(started_at_ms, (int, float)) and started_at_ms else None
 phase = record.get('phase') or 'completed'
+feature_checked = int(record.get('featureHealthCheckedFiles') or 0)
+feature_complete = int(record.get('completeFeatureFiles') or 0)
+feature_percent = record.get('completeFeaturePercent')
+feature_health = (
+  f'featureHealth[completeRealistic={feature_complete}/{feature_checked} (unknown)]'
+  if feature_percent is None
+  else f'featureHealth[completeRealistic={feature_complete}/{feature_checked} ({float(feature_percent):.1f}%)]'
+)
 
 def fmt_duration(seconds):
   if seconds is None:
@@ -866,7 +965,7 @@ print(
   f'completed={processed} remaining={remaining} total={total} '
   f'elapsed={fmt_duration(elapsed_seconds)} eta=0s rate={(processed / elapsed_seconds) if elapsed_seconds else 0.0:.2f} songs/s '
   f'phase={phase} phases[analyzing=done, metadata=done, building=done, tagging=done, finalizing=done, completed=done] '
-  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}]'
+  f'stageCounts[rendered={record.get("renderedFiles")}, extracted={record.get("extractedFiles")}, tagged={record.get("taggedFiles")}] {feature_health}'
 )
 
 with open(state_path, 'w', encoding='utf-8') as fh:
@@ -932,7 +1031,7 @@ PY
 run_export() {
   local output_path
   if [[ "${MODE}" == "local" ]]; then
-    log "Running local export"
+    log "Running local export with bun runtime"
     (
       cd "${REPO_ROOT}"
       bun run export:similarity -- --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}"
@@ -949,6 +1048,7 @@ run_export() {
   [[ -f "${output_path%.sqlite}.manifest.json" ]] || fail "Expected manifest not found: ${output_path%.sqlite}.manifest.json"
 
   log "Export complete"
+  log "Export runtime: bun"
   log "SQLite: ${output_path}"
   log "Manifest: ${output_path%.sqlite}.manifest.json"
 }
@@ -1028,6 +1128,7 @@ main() {
   fi
 
   log "Mode: ${MODE}"
+  log "Runtime: ${RUNTIME}"
   if [[ "${MODE}" == "local" ]]; then
     start_local_runtime
   else

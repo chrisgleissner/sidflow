@@ -53,6 +53,12 @@ export interface ClassifyProgressSnapshot {
   skippedFiles: number;
   /** Number of files with audio features extracted */
   extractedFiles: number;
+  /** Number of completed songs included in realistic feature-health accounting */
+  featureHealthCheckedFiles: number;
+  /** Number of songs with a fully populated, non-degraded deterministic feature vector */
+  completeFeatureFiles: number;
+  /** Percentage of featureHealthCheckedFiles with a realistic complete feature vector */
+  completeFeaturePercent: number | null;
   percentComplete: number;
   threads: number;
   perThread: ClassifyThreadStatus[];

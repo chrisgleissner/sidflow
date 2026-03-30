@@ -55,7 +55,7 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function computeEnvelopeFeatures(audioData: Float32Array, sampleRate: number): Record<string, number> {
+export function computeEnvelopeFeatures(audioData: Float32Array, sampleRate: number): Record<string, number> {
   if (audioData.length <= 0) {
     return {
       onsetDensity: 0,

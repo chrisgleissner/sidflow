@@ -103,9 +103,9 @@ const serverNodeOptions = process.env.SIDFLOW_WEB_SERVER_NODE_OPTIONS;
 const adminUser = process.env.SIDFLOW_ADMIN_USER ?? 'ops';
 const adminPassword = process.env.SIDFLOW_ADMIN_PASSWORD ?? 'test-pass-123';
 const adminBasicAuth = `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString('base64')}`;
-// CI optimization: 4 workers provides good balance between parallelism and resource contention
-// GitHub Actions runners have 2 cores but can handle 4 workers efficiently for I/O-bound tests
-const defaultWorkers = process.env.CI ? 4 : 3;
+// Coverage-mode E2E runs exercise classification and Next.js on the same process tree.
+// Keep them serial to avoid server crashes and backend state contention under instrumentation.
+const defaultWorkers = process.env.E2E_COVERAGE === 'true' ? 1 : process.env.CI ? 4 : 3;
 const parsedWorkers = Number(process.env.SIDFLOW_E2E_WORKERS ?? defaultWorkers);
 const resolvedWorkers =
   Number.isFinite(parsedWorkers) && parsedWorkers > 0 ? parsedWorkers : defaultWorkers;

@@ -1,6 +1,7 @@
 /// <reference types="bun-types" />
 
 import { describe, expect, it } from "bun:test";
+import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
@@ -63,6 +64,32 @@ interface TestGenerateAutoTagsResult {
   jsonlRecordCount: number;
   telemetryFile: string;
   metrics: TestGenerateAutoTagsMetrics;
+}
+
+async function spawnAndCapture(command: string, args: string[], env?: NodeJS.ProcessEnv): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: path.join(import.meta.dir, "../../.."),
+      env: {
+        ...process.env,
+        ...env,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout?.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+    child.stderr?.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
+    child.once("error", reject);
+    child.once("close", (code) => {
+      resolve({
+        exitCode: code ?? -1,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+      });
+    });
+  });
 }
 
 function createPlan(): TestClassificationPlan {
@@ -484,18 +511,30 @@ describe("runClassifyCli", () => {
             phase: "metadata",
             totalFiles: 2,
             processedFiles: 2,
+            renderedFiles: 0,
+            cachedFiles: 0,
+            extractedFiles: 0,
             percentComplete: 50,
             elapsedMs: 500,
-            currentFile: "metadata.sid"
+            currentFile: "metadata.sid",
+            featureHealthCheckedFiles: 0,
+            completeFeatureFiles: 0,
+            completeFeaturePercent: null,
           });
 
           params.onProgress?.({
             phase: "tagging",
             totalFiles: 2,
             processedFiles: 2,
+            renderedFiles: 1,
+            cachedFiles: 1,
+            extractedFiles: 2,
             percentComplete: 100,
             elapsedMs: 65000,
-            currentFile: "metadata.sid"
+            currentFile: "metadata.sid",
+            featureHealthCheckedFiles: 2,
+            completeFeatureFiles: 2,
+            completeFeaturePercent: 100,
           });
 
           return {
@@ -636,6 +675,25 @@ describe("runClassifyCli", () => {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("bash wrapper can run the classify CLI under node", async () => {
+    const result = await spawnAndCapture("bash", ["scripts/sidflow-classify", "--help"], {
+      SIDFLOW_CLI_RUNTIME: "node",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Usage: sidflow-classify");
+    expect(result.stderr).not.toContain("Error:");
+  });
+
+  it("bash play wrapper rejects node runtime with a clear message", async () => {
+    const result = await spawnAndCapture("bash", ["scripts/sidflow-play", "export-similarity", "--help"], {
+      SIDFLOW_CLI_RUNTIME: "node",
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("sidflow-play currently requires Bun runtime");
+  });
 });
 
 interface TestProgressEvent {
@@ -653,7 +711,13 @@ interface TestAutoProgressEvent {
   phase: "metadata" | "tagging";
   totalFiles: number;
   processedFiles: number;
+  renderedFiles: number;
+  cachedFiles: number;
+  extractedFiles: number;
   percentComplete: number;
   elapsedMs: number;
   currentFile?: string;
+  featureHealthCheckedFiles: number;
+  completeFeatureFiles: number;
+  completeFeaturePercent: number | null;
 }

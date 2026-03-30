@@ -2,5 +2,18 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME="${SIDFLOW_CLI_RUNTIME:-bun}"
 
-exec "${ROOT_DIR}/packages/sidflow-play/src/cli.ts" "$@"
+case "${RUNTIME}" in
+	bun)
+		exec "${ROOT_DIR}/packages/sidflow-play/src/cli.ts" "$@"
+		;;
+	node)
+		printf 'sidflow-play currently requires Bun runtime because the similarity export and station database paths depend on bun:sqlite.\n' >&2
+		exit 1
+		;;
+	*)
+		printf 'Unsupported SIDFLOW_CLI_RUNTIME: %s\n' "${RUNTIME}" >&2
+		exit 1
+		;;
+esac

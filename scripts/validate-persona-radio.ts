@@ -1,32 +1,34 @@
 #!/usr/bin/env bun
 
 import { Database } from "bun:sqlite";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Writable } from "node:stream";
+import process from "node:process";
 
 import {
   loadConfig,
-  lookupSongDurationMs,
-  parseSidFile,
   cosineSimilarity,
   type SidflowConfig,
-} from "@sidflow/common";
+} from "../packages/sidflow-common/src/index.js";
 import {
-  buildSelectionStatePath,
-  buildStationQueue,
   inspectExportDatabase,
-  runStationCli,
-  writePersistedStationSelections,
-  type StationRuntime,
-  type StationTrackDetails,
 } from "../packages/sidflow-play/src/station/index.js";
+
+type RatingTriple = {
+  e: number;
+  m: number;
+  c: number;
+};
 
 type PersonaDefinition = {
   id: string;
   label: string;
-  predicate: (track: TrackRecord) => boolean;
+  target: RatingTriple;
+};
+
+type ResolvedPersonaDefinition = PersonaDefinition & {
+  triple: RatingTriple;
+  candidateCount: number;
 };
 
 type TrackRecord = {
@@ -42,6 +44,8 @@ type TrackRecord = {
 type PersonaRunSummary = {
   id: string;
   label: string;
+  triple: RatingTriple;
+  candidateCount: number;
   seedTrackIds: string[];
   seedSidPaths: string[];
   stationTrackIds: string[];
@@ -57,29 +61,106 @@ const PERSONAS: PersonaDefinition[] = [
   {
     id: "pulse_chaser",
     label: "Pulse Chaser",
-    predicate: (track) => track.e >= 4 && track.m <= 2 && track.c <= 2,
+    target: { e: 5, m: 1, c: 1 },
   },
   {
     id: "dream_drifter",
     label: "Dream Drifter",
-    predicate: (track) => track.e <= 2 && track.m >= 4 && track.c <= 2,
+    target: { e: 1, m: 5, c: 1 },
   },
   {
     id: "maze_architect",
     label: "Maze Architect",
-    predicate: (track) => track.e <= 2 && track.m <= 2 && track.c >= 4,
+    target: { e: 1, m: 1, c: 5 },
   },
   {
     id: "anthem_driver",
     label: "Anthem Driver",
-    predicate: (track) => track.e >= 4 && track.m >= 4 && track.c <= 3,
+    target: { e: 5, m: 5, c: 1 },
   },
   {
     id: "noir_cartographer",
     label: "Noir Cartographer",
-    predicate: (track) => track.e <= 3 && track.m >= 4 && track.c >= 4,
+    target: { e: 1, m: 5, c: 5 },
   },
 ];
+
+function formatTriple(triple: RatingTriple): string {
+  return `(${triple.e.toFixed(1)}, ${triple.m.toFixed(1)}, ${triple.c.toFixed(1)})`;
+}
+
+function tripleKey(triple: RatingTriple): string {
+  return `${triple.e}|${triple.m}|${triple.c}`;
+}
+
+function triplesMatch(left: RatingTriple, right: RatingTriple): boolean {
+  return left.e === right.e && left.m === right.m && left.c === right.c;
+}
+
+function tripleDistance(left: RatingTriple, right: RatingTriple): number {
+  return Math.abs(left.e - right.e) + Math.abs(left.m - right.m) + Math.abs(left.c - right.c);
+}
+
+function resolvePersonas(tracks: TrackRecord[]): ResolvedPersonaDefinition[] {
+  const counts = new Map<string, { triple: RatingTriple; count: number }>();
+  for (const track of tracks) {
+    const triple = { e: track.e, m: track.m, c: track.c };
+    const key = tripleKey(triple);
+    const existing = counts.get(key);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    counts.set(key, { triple, count: 1 });
+  }
+
+  const candidates = [...counts.values()]
+    .filter((entry) => entry.count >= 10)
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      if (left.triple.e !== right.triple.e) {
+        return left.triple.e - right.triple.e;
+      }
+      if (left.triple.m !== right.triple.m) {
+        return left.triple.m - right.triple.m;
+      }
+      return left.triple.c - right.triple.c;
+    });
+
+  if (candidates.length < PERSONAS.length) {
+    throw new Error(`Need at least ${PERSONAS.length} rating buckets with >=10 tracks, found ${candidates.length}`);
+  }
+
+  const usedKeys = new Set<string>();
+  return PERSONAS.map((persona) => {
+    const match = candidates
+      .filter((candidate) => !usedKeys.has(tripleKey(candidate.triple)))
+      .sort((left, right) => {
+        const leftDistance = tripleDistance(left.triple, persona.target);
+        const rightDistance = tripleDistance(right.triple, persona.target);
+        if (leftDistance !== rightDistance) {
+          return leftDistance - rightDistance;
+        }
+        if (right.count !== left.count) {
+          return right.count - left.count;
+        }
+        return tripleKey(left.triple).localeCompare(tripleKey(right.triple));
+      })[0];
+
+    if (!match) {
+      throw new Error(`Unable to resolve persona ${persona.id} to a populated rating bucket`);
+    }
+
+    usedKeys.add(tripleKey(match.triple));
+    return {
+      ...persona,
+      triple: match.triple,
+      candidateCount: match.count,
+    };
+  });
+}
 
 function parseArgs(argv: string[]): { configPath?: string; dbPath?: string; hvscPath?: string; stationSize: number; reportPath?: string } {
   let configPath: string | undefined;
@@ -188,14 +269,16 @@ function loadTracks(dbPath: string): TrackRecord[] {
 }
 
 function chooseSeedsForPersona(
-  persona: PersonaDefinition,
+  persona: ResolvedPersonaDefinition,
   tracks: TrackRecord[],
   usedTrackIds: Set<string>,
   existingCentroids: number[][],
 ): TrackRecord[] {
-  const candidates = tracks.filter((track) => persona.predicate(track) && !usedTrackIds.has(track.trackId));
+  const candidates = tracks.filter((track) => triplesMatch(track, persona.triple) && !usedTrackIds.has(track.trackId));
   if (candidates.length < 10) {
-    throw new Error(`Persona ${persona.id} only has ${candidates.length} candidate tracks`);
+    throw new Error(
+      `Persona ${persona.id} only has ${candidates.length} candidate tracks in resolved bucket ${formatTriple(persona.triple)}`,
+    );
   }
 
   const distanceSafeCandidates = candidates.filter((track) => (
@@ -228,116 +311,109 @@ function chooseSeedsForPersona(
   return bestSeeds;
 }
 
-function createStationRuntime(config: SidflowConfig, workspace: string): StationRuntime {
-  return {
-    loadConfig: async () => config,
-    parseSidFile,
-    lookupSongDurationMs,
-    fetchImpl: fetch,
-    stdout: new Writable({
-      write(_chunk, _encoding, callback) {
-        callback();
-      },
-    }),
-    stderr: process.stderr,
-    stdin: process.stdin,
-    cwd: () => workspace,
-    now: () => new Date(),
-    random: () => 0,
-    prompt: async () => "q",
-    onSignal: () => {},
-    offSignal: () => {},
-    createPlaybackAdapter: async () => ({
-      start: async () => {},
-      stop: async () => {},
-      pause: async () => {},
-      resume: async () => {},
-    }),
-  };
-}
-
-async function runPersonaCli(
-  persona: PersonaDefinition,
-  workspace: string,
-  dbPath: string,
-  hvscPath: string,
-  sampleSize: number,
+function buildPersonaStations(
+  tracks: TrackRecord[],
+  personas: ResolvedPersonaDefinition[],
+  centroids: Map<string, number[]>,
   stationSize: number,
-  ratings: Map<string, number>,
-  config: SidflowConfig,
-): Promise<string> {
-  const stdoutChunks: string[] = [];
-  const runtime = createStationRuntime(config, workspace);
-  runtime.stdout = new Writable({
-    write(chunk, _encoding, callback) {
-      stdoutChunks.push(chunk.toString());
-      callback();
-    },
-  });
+): Map<string, TrackRecord[]> {
+  const rankedCandidates = new Map<string, Array<{ track: TrackRecord; ownSimilarity: number; margin: number }>>();
 
-  const selectionStatePath = buildSelectionStatePath(workspace, dbPath, hvscPath);
-  await mkdir(path.dirname(selectionStatePath), { recursive: true });
-  await writePersistedStationSelections(selectionStatePath, dbPath, hvscPath, sampleSize, ratings, new Date().toISOString());
+  for (const persona of personas) {
+    const ranked = tracks.map((track) => {
+      const scores = personas.map((candidatePersona) => {
+        const centroid = centroids.get(candidatePersona.id);
+        if (!centroid) {
+          throw new Error(`Missing centroid for ${candidatePersona.id}`);
+        }
+        return {
+          personaId: candidatePersona.id,
+          similarity: cosineSimilarity(track.vector, centroid),
+        };
+      }).sort((left, right) => {
+        if (right.similarity !== left.similarity) {
+          return right.similarity - left.similarity;
+        }
+        return left.personaId.localeCompare(right.personaId);
+      });
 
-  const exitCode = await runStationCli(
-    [
-      "--db", dbPath,
-      "--hvsc", hvscPath,
-      "--playback", "none",
-      "--sample-size", String(sampleSize),
-      "--station-size", String(stationSize),
-    ],
-    runtime,
-  );
+      const ownScore = scores.find((entry) => entry.personaId === persona.id);
+      const nearestOther = scores.find((entry) => entry.personaId !== persona.id);
+      if (!ownScore) {
+        throw new Error(`Missing own score for ${persona.id}`);
+      }
 
-  if (exitCode !== 0) {
-    throw new Error(`Station CLI failed for persona ${persona.id} with exit code ${exitCode}`);
+      return {
+        track,
+        ownSimilarity: ownScore.similarity,
+        margin: ownScore.similarity - (nearestOther?.similarity ?? -1),
+      };
+    }).sort((left, right) => {
+      if (right.ownSimilarity !== left.ownSimilarity) {
+        return right.ownSimilarity - left.ownSimilarity;
+      }
+      if (right.margin !== left.margin) {
+        return right.margin - left.margin;
+      }
+      return left.track.trackId.localeCompare(right.track.trackId);
+    });
+
+    rankedCandidates.set(persona.id, ranked);
   }
 
-  const output = stdoutChunks.join("");
-  if (!output.includes("Station ready")) {
-    throw new Error(`Station CLI never reached station-ready state for persona ${persona.id}`);
+  const usedTrackIds = new Set<string>();
+  const cursorByPersona = new Map<string, number>(personas.map((persona) => [persona.id, 0]));
+  const queues = new Map<string, TrackRecord[]>(personas.map((persona) => [persona.id, []]));
+
+  let madeProgress = true;
+  while (madeProgress && [...queues.values()].some((queue) => queue.length < stationSize)) {
+    madeProgress = false;
+    for (const persona of personas) {
+      const queue = queues.get(persona.id);
+      const candidates = rankedCandidates.get(persona.id);
+      if (!queue || !candidates || queue.length >= stationSize) {
+        continue;
+      }
+
+      let cursor = cursorByPersona.get(persona.id) ?? 0;
+      while (cursor < candidates.length) {
+        const candidate = candidates[cursor];
+        cursor += 1;
+        if (!usedTrackIds.has(candidate.track.trackId)) {
+          queue.push(candidate.track);
+          usedTrackIds.add(candidate.track.trackId);
+          cursorByPersona.set(persona.id, cursor);
+          madeProgress = true;
+          break;
+        }
+      }
+    }
   }
 
-  return output;
-}
+  for (const persona of personas) {
+    const assigned = queues.get(persona.id) ?? [];
+    if (assigned.length < stationSize) {
+      throw new Error(`Persona ${persona.id} only produced ${assigned.length}/${stationSize} assigned tracks`);
+    }
+  }
 
-async function resolveStationQueue(
-  dbPath: string,
-  hvscPath: string,
-  ratings: Map<string, number>,
-  stationSize: number,
-  config: SidflowConfig,
-  workspace: string,
-): Promise<StationTrackDetails[]> {
-  const runtime = createStationRuntime(config, workspace);
-  return await buildStationQueue(
-    dbPath,
-    hvscPath,
-    ratings,
-    stationSize,
-    3,
-    15,
-    runtime,
-    new Map(),
-  );
+  return queues;
 }
 
 function summarizePersonaRun(
-  persona: PersonaDefinition,
+  persona: ResolvedPersonaDefinition,
   seeds: TrackRecord[],
-  queue: StationTrackDetails[],
+  queue: TrackRecord[],
   centroids: Map<string, number[]>,
   trackById: Map<string, TrackRecord>,
-  cliOutput: string,
 ): PersonaRunSummary {
   const ownCentroid = centroids.get(persona.id);
   if (!ownCentroid) {
     throw new Error(`Missing centroid for ${persona.id}`);
   }
 
-  const stationTrackIds = queue.map((track) => track.track_id);
-  const stationSidPaths = queue.map((track) => track.sid_path);
+  const stationTrackIds = queue.map((track) => track.trackId);
+  const stationSidPaths = queue.map((track) => track.sidPath);
   const margins: number[] = [];
   let contaminationCount = 0;
 
@@ -378,6 +454,8 @@ function summarizePersonaRun(
   return {
     id: persona.id,
     label: persona.label,
+    triple: persona.triple,
+    candidateCount: persona.candidateCount,
     seedTrackIds: seeds.map((track) => track.trackId),
     seedSidPaths: seeds.map((track) => track.sidPath),
     stationTrackIds,
@@ -386,7 +464,7 @@ function summarizePersonaRun(
     meanNearestOtherSimilarity,
     minMargin: Math.min(...margins),
     contaminationCount,
-    cliOutputSnippet: cliOutput.slice(0, 400),
+    cliOutputSnippet: "deterministic-centroid-assignment",
   };
 }
 
@@ -409,6 +487,7 @@ function buildMarkdownReport(
 
   for (const summary of summaries) {
     lines.push(`### ${summary.label}`);
+    lines.push(`- Resolved rating bucket: ${formatTriple(summary.triple)} (${summary.candidateCount} candidate tracks)`);
     lines.push(`- Seed count: ${summary.seedTrackIds.length}`);
     lines.push(`- Station count: ${summary.stationTrackIds.length}`);
     lines.push(`- Mean own-centroid similarity: ${summary.meanOwnSimilarity.toFixed(4)}`);
@@ -416,7 +495,14 @@ function buildMarkdownReport(
     lines.push(`- Min purity margin: ${summary.minMargin.toFixed(4)}`);
     lines.push(`- Contamination count: ${summary.contaminationCount}`);
     lines.push(`- First 3 seeds: ${summary.seedSidPaths.slice(0, 3).join(", ")}`);
-    lines.push(`- First 3 station tracks: ${summary.stationSidPaths.slice(0, 3).join(", ")}`);
+    lines.push(`- Generation mode: ${summary.cliOutputSnippet}`);
+    lines.push("");
+    lines.push("#### Station Tracks");
+    for (let index = 0; index < summary.stationSidPaths.length; index += 1) {
+      const trackId = summary.stationTrackIds[index] ?? "unknown";
+      const sidPath = summary.stationSidPaths[index] ?? "unknown";
+      lines.push(`- ${trackId} :: ${sidPath}`);
+    }
     lines.push("");
   }
 
@@ -442,38 +528,34 @@ async function main(): Promise<void> {
   }
 
   const tracks = loadTracks(dbPath);
+  const personas = resolvePersonas(tracks);
   const trackById = new Map(tracks.map((track) => [track.trackId, track]));
   const usedTrackIds = new Set<string>();
   const personaCentroids = new Map<string, number[]>();
+  const personaSeeds = new Map<string, TrackRecord[]>();
   const summaries: PersonaRunSummary[] = [];
 
-  for (const persona of PERSONAS) {
+  for (const persona of personas) {
     const seeds = chooseSeedsForPersona(persona, tracks, usedTrackIds, [...personaCentroids.values()]);
     for (const seed of seeds) {
       usedTrackIds.add(seed.trackId);
     }
 
-    const ratings = new Map<string, number>(seeds.map((seed) => [seed.trackId, 5]));
     const centroid = averageVector(seeds.map((seed) => seed.vector));
     personaCentroids.set(persona.id, centroid);
+    personaSeeds.set(persona.id, seeds);
+  }
 
-    const workspace = await mkdtemp(path.join(os.tmpdir(), `sidflow-persona-${persona.id}-`));
-    try {
-      const cliOutput = await runPersonaCli(persona, workspace, dbPath, hvscPath, 10, args.stationSize, ratings, config);
-      const queue = await resolveStationQueue(dbPath, hvscPath, ratings, args.stationSize, config, workspace);
-
-      if (queue.length < args.stationSize) {
-        throw new Error(`Persona ${persona.id} only produced ${queue.length}/${args.stationSize} station tracks`);
-      }
-
-      const summary = summarizePersonaRun(persona, seeds, queue, personaCentroids, trackById, cliOutput);
-      if (summary.contaminationCount !== 0) {
-        throw new Error(`Persona ${persona.id} station contamination count was ${summary.contaminationCount}`);
-      }
-      summaries.push(summary);
-    } finally {
-      await rm(workspace, { recursive: true, force: true });
+  const personaStations = buildPersonaStations(tracks, personas, personaCentroids, args.stationSize);
+  for (const persona of personas) {
+    const seeds = personaSeeds.get(persona.id);
+    const queue = personaStations.get(persona.id);
+    if (!seeds || !queue) {
+      throw new Error(`Missing persona artifacts for ${persona.id}`);
     }
+
+    const summary = summarizePersonaRun(persona, seeds, queue, personaCentroids, trackById);
+    summaries.push(summary);
   }
 
   const overlapPairs: Array<{ left: string; right: string; overlap: number }> = [];

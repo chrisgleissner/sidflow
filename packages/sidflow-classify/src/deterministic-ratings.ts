@@ -1,4 +1,4 @@
-import { clampRating, type TagRatings } from "@sidflow/common";
+import { FEATURE_SCHEMA_VERSION, clampRating, type TagRatings } from "@sidflow/common";
 import type { FeatureVector } from "./index.js";
 
 const FEATURE_KEYS = [
@@ -28,7 +28,18 @@ const FEATURE_KEYS = [
   "lowFrequencyEnergyRatio",
 ] as const;
 
+export const DETERMINISTIC_FEATURE_KEYS = FEATURE_KEYS;
+
 export type DeterministicFeatureKey = (typeof FEATURE_KEYS)[number];
+
+export interface FeatureVectorHealthReport {
+  healthy: boolean;
+  vector: Record<DeterministicFeatureKey, number | null>;
+  unhealthyElements: string[];
+  featureVariant: string | null;
+  sidFeatureVariant: string | null;
+  featureSetVersion: string | null;
+}
 
 export interface FeatureNormStats {
   mu: number;
@@ -60,6 +71,52 @@ function sigmoid(x: number): number {
 
 function isFiniteNumber(x: unknown): x is number {
   return typeof x === "number" && Number.isFinite(x);
+}
+
+export function hasRealisticCompleteFeatureVector(features: FeatureVector): boolean {
+  return inspectFeatureVectorHealth(features).healthy;
+}
+
+export function inspectFeatureVectorHealth(features: FeatureVector): FeatureVectorHealthReport {
+  const unhealthyElements: string[] = [];
+  const vector = Object.fromEntries(
+    FEATURE_KEYS.map((key) => {
+      const value = features[key];
+      return [key, isFiniteNumber(value) ? Number(value.toFixed(6)) : null];
+    })
+  ) as Record<DeterministicFeatureKey, number | null>;
+
+  if (features.featureVariant === "heuristic") {
+    unhealthyElements.push("featureVariant=heuristic");
+  }
+
+  if (features.sidFeatureVariant === "unavailable") {
+    unhealthyElements.push("sidFeatureVariant=unavailable");
+  }
+
+  if (typeof features.featureSetVersion === "string" && features.featureSetVersion !== FEATURE_SCHEMA_VERSION) {
+    unhealthyElements.push(`featureSetVersion=${features.featureSetVersion} (expected ${FEATURE_SCHEMA_VERSION})`);
+  }
+
+  for (const key of FEATURE_KEYS) {
+    const value = features[key];
+    if (value === undefined || value === null) {
+      unhealthyElements.push(`${key}=missing`);
+      continue;
+    }
+    if (!isFiniteNumber(value)) {
+      unhealthyElements.push(`${key}=non-finite(${String(value)})`);
+    }
+  }
+
+  return {
+    healthy: unhealthyElements.length === 0,
+    vector,
+    unhealthyElements,
+    featureVariant: typeof features.featureVariant === "string" ? features.featureVariant : null,
+    sidFeatureVariant: typeof features.sidFeatureVariant === "string" ? features.sidFeatureVariant : null,
+    featureSetVersion: typeof features.featureSetVersion === "string" ? features.featureSetVersion : null,
+  };
 }
 
 function addOnline(stats: OnlineStats, x: number): void {

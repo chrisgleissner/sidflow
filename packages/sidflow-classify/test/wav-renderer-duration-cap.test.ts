@@ -107,6 +107,44 @@ function createWallTimeEngine(sampleRate: number): FakeSidAudioEngine {
   };
 }
 
+function createSilentLimitEngine(sampleRate: number): FakeSidAudioEngine {
+  let callCount = 0;
+  return {
+    async loadSidBuffer() {},
+    async selectSong() {},
+    getSampleRate: () => sampleRate,
+    getChannels: () => 1,
+    renderCycles: () => {
+      callCount += 1;
+      if (callCount <= 3) {
+        return new Int16Array([1]);
+      }
+      return new Int16Array(0);
+    },
+    setSidWriteTraceEnabled: () => {},
+    getAndClearSidWriteTraces: () => [],
+  };
+}
+
+function createNullChunkEngine(sampleRate: number): FakeSidAudioEngine {
+  let callCount = 0;
+  return {
+    async loadSidBuffer() {},
+    async selectSong() {},
+    getSampleRate: () => sampleRate,
+    getChannels: () => 1,
+    renderCycles: () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Int16Array([1]);
+      }
+      return null;
+    },
+    setSidWriteTraceEnabled: () => {},
+    getAndClearSidWriteTraces: () => [],
+  };
+}
+
 async function createTestSidFile(tempDir: string): Promise<string> {
   const sidFile = path.join(tempDir, "test.sid");
   await writeFile(sidFile, Buffer.from([0, 1, 2, 3]));
@@ -247,6 +285,80 @@ describe("renderWavWithEngine duration caps", () => {
     expect(durationMs).toBeGreaterThan(0);
     expect(durationMs).toBeLessThan(10_000);
   }, 10_000);
+
+  it("does not mark silent-limit natural endings as truncated", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const engine = createSilentLimitEngine(10);
+    let summary:
+      | {
+          collectedSamples: number;
+          targetSamples: number;
+          percentComplete: number;
+          elapsedMs: number;
+          sampleRate: number;
+          channels: number;
+          truncated: boolean;
+          stopReason: "complete" | "wall_time" | "silent_limit" | "max_iterations" | "null_chunk";
+        }
+      | undefined;
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      targetDurationMs: 10_000,
+      onSummary: (value) => {
+        summary = value;
+      },
+    });
+
+    expect(summary).toBeDefined();
+    expect(summary?.stopReason).toBe("silent_limit");
+    expect(summary?.truncated).toBe(false);
+    expect(summary?.collectedSamples).toBeGreaterThan(0);
+
+    const wav = await readFile(wavFile);
+    const { durationMs } = parseWavDurationMs(wav);
+    expect(durationMs).toBeGreaterThan(0);
+    expect(durationMs).toBeLessThan(10_000);
+  });
+
+  it("does not mark null-chunk natural endings as truncated", async () => {
+    const sidFile = await createTestSidFile(tempDir);
+    const wavFile = await createTestWavFile(tempDir);
+    const engine = createNullChunkEngine(10);
+    let summary:
+      | {
+          collectedSamples: number;
+          targetSamples: number;
+          percentComplete: number;
+          elapsedMs: number;
+          sampleRate: number;
+          channels: number;
+          truncated: boolean;
+          stopReason: "complete" | "wall_time" | "silent_limit" | "max_iterations" | "null_chunk";
+        }
+      | undefined;
+
+    await renderWavWithEngine(engine as any, {
+      sidFile,
+      wavFile,
+      targetDurationMs: 10_000,
+      onSummary: (value) => {
+        summary = value;
+      },
+    });
+
+    expect(summary).toBeDefined();
+    expect(summary?.stopReason).toBe("null_chunk");
+    expect(summary?.truncated).toBe(false);
+    expect(summary?.collectedSamples).toBeGreaterThan(0);
+
+    const wav = await readFile(wavFile);
+    const { durationMs } = parseWavDurationMs(wav);
+    expect(durationMs).toBeGreaterThan(0);
+    expect(durationMs).toBeLessThan(10_000);
+  });
 
   it("closes trace handle after wall-time stop (no dangling file descriptor)", async () => {
     const sidFile = await createTestSidFile(tempDir);

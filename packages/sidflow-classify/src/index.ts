@@ -38,7 +38,7 @@ import {
 import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { WasmRendererPool } from "./render/wasm-render-pool.js";
+import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
 import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import {
   WAV_HASH_EXTENSION,
@@ -67,13 +67,20 @@ import {
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, isSkippableSidError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
-import { DeterministicRatingModelBuilder, buildPerceptualVector, predictDeterministicRatings, type DeterministicRatingModel } from "./deterministic-ratings.js";
+import {
+  DeterministicRatingModelBuilder,
+  buildPerceptualVector,
+  hasRealisticCompleteFeatureVector,
+  inspectFeatureVectorHealth,
+  predictDeterministicRatings,
+  type DeterministicRatingModel,
+} from "./deterministic-ratings.js";
 import { ClassificationTelemetryLogger, SongLifecycleLogger, resolveClassificationRunContext } from "./classification-telemetry.js";
 import { getRecommendedWorkerCount } from "./system.js";
 
 // Progress reporting configuration
 const ANALYSIS_PROGRESS_INTERVAL = 50; // Report every N files during analysis
-const AUTOTAG_PROGRESS_INTERVAL = 10; // Report every N files during auto-tagging
+const AUTOTAG_PROGRESS_INTERVAL = 50; // Report every N files during auto-tagging
 const classifyLogger = createLogger("classify");
 const DEFAULT_CLASSIFICATION_RENDER_ENGINE: RenderEngine = "wasm";
 const FULL_RENDER_SAMPLE_RATE = 44_100;
@@ -81,6 +88,22 @@ const LOW_RENDER_SAMPLE_RATE = 22_050;
 const MINIMAL_RENDER_SAMPLE_RATE = 11_025;
 let degradedSidplayfpCliWarningEmitted = false;
 let classifyWarningHook: ((message: string) => void) | null = null;
+
+interface EngineCapabilities {
+  supportsTrace: boolean;
+  supportsWav: boolean;
+}
+
+type ClassificationFeatureMode = "hybrid" | "wav-only";
+
+interface ClassificationRuntimeMode {
+  renderEngine: RenderEngine;
+  capabilities: EngineCapabilities;
+  featureMode: ClassificationFeatureMode;
+  captureTrace: boolean;
+  degraded: boolean;
+  degradedReason: string | null;
+}
 
 /** Heartbeat interval for long-running operations (ms) */
 const HEARTBEAT_INTERVAL_MS = HEARTBEAT_CONFIG.INTERVAL_MS;
@@ -133,14 +156,91 @@ function resolveClassificationFallbackEngine(config: SidflowConfig): RenderEngin
   return null;
 }
 
+function resolveEngineCapabilities(engine: RenderEngine): EngineCapabilities {
+  switch (engine) {
+    case "wasm":
+      return { supportsTrace: true, supportsWav: true };
+    case "sidplayfp-cli":
+    case "ultimate64":
+      return { supportsTrace: false, supportsWav: true };
+    default:
+      return { supportsTrace: false, supportsWav: false };
+  }
+}
+
+function buildClassificationRuntimeMode(
+  renderEngine: RenderEngine,
+  overrides: Partial<Pick<ClassificationRuntimeMode, "featureMode" | "degraded" | "degradedReason">> = {},
+): ClassificationRuntimeMode {
+  const capabilities = resolveEngineCapabilities(renderEngine);
+  const featureMode = overrides.featureMode ?? (capabilities.supportsTrace ? "hybrid" : "wav-only");
+  const degraded = overrides.degraded ?? featureMode !== "hybrid";
+
+  return {
+    renderEngine,
+    capabilities,
+    featureMode,
+    captureTrace: featureMode === "hybrid" && capabilities.supportsTrace,
+    degraded,
+    degradedReason: overrides.degradedReason ?? (degraded ? `engine:${renderEngine}:trace-unavailable` : null),
+  };
+}
+
+function resolveClassificationRuntimeModes(config: SidflowConfig): ClassificationRuntimeMode[] {
+  const primaryEngine = resolveClassificationPreferredEngine(config, { warnOnDegraded: true });
+  const modes: ClassificationRuntimeMode[] = [buildClassificationRuntimeMode(primaryEngine)];
+
+  if (modes[0].featureMode === "hybrid") {
+    const fallbackEngine = resolveClassificationFallbackEngine(config);
+    if (fallbackEngine && fallbackEngine !== primaryEngine) {
+      modes.push(
+        buildClassificationRuntimeMode(fallbackEngine, {
+          featureMode: "wav-only",
+          degraded: true,
+          degradedReason: `retry-fallback:${primaryEngine}->${fallbackEngine}`,
+        })
+      );
+    } else {
+      modes.push(
+        buildClassificationRuntimeMode(primaryEngine, {
+          featureMode: "wav-only",
+          degraded: true,
+          degradedReason: `retry-disable-trace:${primaryEngine}`,
+        })
+      );
+    }
+  }
+
+  return modes.filter((mode, index, allModes) => {
+    const key = `${mode.renderEngine}:${mode.featureMode}:${mode.captureTrace}`;
+    return allModes.findIndex((candidate) => `${candidate.renderEngine}:${candidate.featureMode}:${candidate.captureTrace}` === key) === index;
+  });
+}
+
+function applyRuntimeModeToFeatures(
+  features: FeatureVector,
+  runtimeMode: ClassificationRuntimeMode,
+): FeatureVector {
+  if (runtimeMode.featureMode !== "wav-only" || typeof features.sidFeatureVariant === "string") {
+    return features;
+  }
+
+  return {
+    ...features,
+    sidFeatureVariant: "unavailable",
+  };
+}
+
 async function persistRenderedWavMetadata(
   wavFile: string,
   config: SidflowConfig,
   maxRenderSec: number,
   overrides: Partial<Pick<WavRenderSettingsSidecar, "renderProfile" | "renderSampleRate" | "truncated" | "fallbackReason">> = {},
+  renderState?: { renderEngine: RenderEngine; traceCaptureEnabled: boolean },
 ): Promise<void> {
   const traceSidecar = await readSidTraceSidecar(wavFile);
-  const renderEngine = resolveClassificationPreferredEngine(config);
+  const renderEngine = renderState?.renderEngine ?? resolveClassificationPreferredEngine(config);
+  const traceCaptureEnabled = renderState?.traceCaptureEnabled ?? traceSidecar !== null;
   const existingSettings = await readWavRenderSettingsSidecar(wavFile);
   await writeWavRenderSettingsSidecar(wavFile, {
     maxRenderSec: maxRenderSec,
@@ -148,8 +248,8 @@ async function persistRenderedWavMetadata(
     maxClassifySec: resolveMaxClassifySec(config),
     sourceOffsetSec: existingSettings?.sourceOffsetSec ?? 0,
     renderEngine,
-    traceCaptureEnabled: traceSidecar !== null,
-    traceSidecarVersion: traceSidecar !== null ? SID_TRACE_SIDECAR_VERSION : null,
+    traceCaptureEnabled,
+    traceSidecarVersion: traceCaptureEnabled && traceSidecar !== null ? SID_TRACE_SIDECAR_VERSION : null,
     renderProfile: overrides.renderProfile ?? existingSettings?.renderProfile ?? null,
     renderSampleRate: overrides.renderSampleRate ?? existingSettings?.renderSampleRate ?? null,
     truncated: overrides.truncated ?? existingSettings?.truncated ?? false,
@@ -291,6 +391,65 @@ function getProcessRssMb(): number {
   }
 }
 
+function buildRendererPoolTelemetryRecord(event: RenderPoolLifecycleEvent): Record<string, JsonValue> {
+  const record: Record<string, JsonValue> = {
+    event: "renderer_pool_event",
+    timestamp: new Date().toISOString(),
+    type: event.type,
+    workerId: event.workerId,
+    activeWorkers: event.activeWorkers,
+    busyWorkers: event.busyWorkers,
+    queueDepth: event.queueDepth,
+    jobsCompleted: event.jobsCompleted,
+    totalRecycles: event.totalRecycles,
+  };
+
+  if (event.sidFile) {
+    record.sidFile = event.sidFile;
+  }
+  if (event.reason) {
+    record.reason = event.reason;
+  }
+  if (event.summary) {
+    record.summary = {
+      collectedSamples: event.summary.collectedSamples,
+      targetSamples: event.summary.targetSamples,
+      percentComplete: event.summary.percentComplete,
+      elapsedMs: event.summary.elapsedMs,
+      sampleRate: event.summary.sampleRate,
+      channels: event.summary.channels,
+      truncated: event.summary.truncated,
+      stopReason: event.summary.stopReason,
+    } as JsonValue;
+  }
+
+  return record;
+}
+
+function logRendererPoolEvent(event: RenderPoolLifecycleEvent): void {
+  const message = `renderer-pool type=${event.type} worker=${event.workerId} active=${event.activeWorkers} busy=${event.busyWorkers} queue=${event.queueDepth} completed=${event.jobsCompleted} recycles=${event.totalRecycles}`;
+  if (event.type === "worker_fault" || event.type === "job_failed") {
+    classifyLogger.warn(event.reason ? `${message} reason=${event.reason}` : message);
+    return;
+  }
+
+  if (event.type === "worker_spawned" || event.type === "worker_recycled") {
+    classifyLogger.info(event.reason ? `${message} reason=${event.reason}` : message);
+  }
+}
+
+function createObservedRendererPool(
+  size: number,
+  emitEvent?: (event: RenderPoolLifecycleEvent) => void,
+): WasmRendererPool {
+  return new WasmRendererPool(size, {
+    onEvent: (event) => {
+      logRendererPoolEvent(event);
+      emitEvent?.(event);
+    },
+  });
+}
+
 type ClassificationRenderProfile = "full" | "reduced-duration" | "low-sample-rate" | "minimal-snippet";
 
 interface ClassificationRenderAttempt {
@@ -412,6 +571,9 @@ async function renderSongWithFallbacks(
         renderSampleRate: attempt.renderSampleRate,
         truncated: summary?.truncated ?? attempt.profile !== "full",
         fallbackReason: errors.length > 0 ? errors.at(-1) ?? null : null,
+      }, {
+        renderEngine: baseOptions.renderEngine ?? resolveClassificationPreferredEngine(plan.config),
+        traceCaptureEnabled: baseOptions.captureTrace === true,
       });
 
       return {
@@ -884,7 +1046,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
   const config = await loadConfig(process.env.SIDFLOW_CONFIG);
   const preferredEngines = (config.render?.preferredEngines as RenderEngine[]) ?? ['wasm'];
   const defaultFormats = (config.render?.defaultFormats ?? ['wav']) as RenderFormat[];
-  const selectedEngine = resolveClassificationPreferredEngine(config, { warnOnDegraded: true });
+  const selectedEngine = options.renderEngine ?? resolveClassificationPreferredEngine(config, { warnOnDegraded: true });
   const maxClassifySeconds =
     typeof config.maxClassifySec === 'number' && Number.isFinite(config.maxClassifySec) && config.maxClassifySec > 0
       ? config.maxClassifySec
@@ -1028,6 +1190,10 @@ export const defaultRenderWav: RenderWav = async (options) => {
       // TODO: When WASM multi-format is implemented (render matrix status: mvp),
       // add audio encoding here for defaultFormats containing flac/m4a
     } catch (error) {
+      if (options.renderEngine) {
+        throw error;
+      }
+
       const fallbackEngine = resolveClassificationFallbackEngine(config);
       if (fallbackEngine !== 'sidplayfp-cli') {
         throw error;
@@ -1226,7 +1392,7 @@ export async function buildAudioCache(
   // and only when there is actual render work to do (workers are expensive and can fail fast
   // in non-rendering runs).
   const shouldUsePool = render === defaultRenderWav && resolveClassificationPreferredEngine(plan.config) === 'wasm';
-  const rendererPool = shouldUsePool && songsToRender.length > 0 ? new WasmRendererPool(buildConcurrency) : null;
+  const rendererPool = shouldUsePool && songsToRender.length > 0 ? createObservedRendererPool(buildConcurrency) : null;
 
   const emitBuildProgress = (currentFile?: string): void => {
     if (!onProgress) {
@@ -1737,6 +1903,9 @@ export interface AutoTagProgress {
   percentComplete: number;
   elapsedMs: number;
   currentFile?: string;
+  featureHealthCheckedFiles: number;
+  completeFeatureFiles: number;
+  completeFeaturePercent: number | null;
 }
 
 export type AutoTagProgressCallback = (progress: AutoTagProgress) => void;
@@ -1783,6 +1952,9 @@ export interface GenerateAutoTagsMetrics extends PerformanceMetrics {
   skippedAlreadyClassified: number;
   renderedFallbackCount: number;
   metadataOnlyCount: number;
+  failedCount: number;
+  retriedCount: number;
+  degradedCount: number;
   peakRssMb: number;
 }
 
@@ -1798,6 +1970,8 @@ export interface GenerateAutoTagsResult {
   jsonlRecordCount: number;
   /** Path to structured per-song lifecycle telemetry */
   telemetryFile: string;
+  /** Path to structured classification failures */
+  failureFile: string;
   metrics: GenerateAutoTagsMetrics;
 }
 
@@ -1814,14 +1988,48 @@ interface AutoTagJob {
   queueIndex: number;
 }
 
+function formatFeatureHealthIssueLog(params: {
+  sidFile: string;
+  songIndex?: number;
+  songCount: number;
+  renderEngine: RenderEngine;
+  featureMode: ClassificationFeatureMode;
+  report: ReturnType<typeof inspectFeatureVectorHealth>;
+}): string {
+  const songSuffix = params.songCount > 1 && typeof params.songIndex === "number"
+    ? ` song=${params.songIndex}/${params.songCount}`
+    : "";
+  const metadata = [
+    `renderEngine=${params.renderEngine}`,
+    `featureMode=${params.featureMode}`,
+    `featureVariant=${params.report.featureVariant ?? "unknown"}`,
+    `sidFeatureVariant=${params.report.sidFeatureVariant ?? "unknown"}`,
+    `featureSetVersion=${params.report.featureSetVersion ?? "unknown"}`,
+  ].join(" ");
+
+  return [
+    "[feature-health-issue]",
+    `path=${params.sidFile}${songSuffix}`,
+    metadata,
+    `vector=${JSON.stringify(params.report.vector)}`,
+    `unhealthy=[${params.report.unhealthyElements.join(", ")}]`,
+  ].join(" ");
+}
+
 export async function generateAutoTags(
   plan: ClassificationPlan,
   options: GenerateAutoTagsOptions = {}
 ): Promise<GenerateAutoTagsResult> {
   const startTime = Date.now();
-  const classificationRenderEngine = resolveClassificationPreferredEngine(plan.config, { warnOnDegraded: true });
+  const classificationRuntimeModes = resolveClassificationRuntimeModes(plan.config);
+  const classificationRenderEngine = classificationRuntimeModes[0]?.renderEngine ?? resolveClassificationPreferredEngine(plan.config, { warnOnDegraded: true });
   let renderedFallbackCount = 0;
   let metadataOnlyCount = 0;
+  let failedCount = 0;
+  let retriedCount = 0;
+  let degradedCount = 0;
+  let featureHealthCheckedFiles = 0;
+  let completeFeatureFiles = 0;
   let peakRssMb = getProcessRssMb();
   
   // If force rebuild is requested, we typically clean the whole audio cache to
@@ -1864,11 +2072,21 @@ export async function generateAutoTags(
   const poolIsActive = !options.featureExtractor
     && classificationRenderEngine === "wasm"
     && resolveThreadCount(options.threads ?? plan.config.threads) > 1;
-  const featureExtractor = options.featureExtractor
-    ? wavFeatureExtractor
-    : poolIsActive
+  const strictHybridFeatureExtractor = createStrictHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
+  const extractFeaturesForMode = async (
+    runtimeMode: ClassificationRuntimeMode,
+    extractOptions: ExtractFeaturesOptions,
+  ): Promise<FeatureVector> => {
+    const extractor = options.featureExtractor
       ? wavFeatureExtractor
-      : createStrictHybridFeatureExtractor(wavFeatureExtractor, defaultSidNativeFeatureExtractor);
+      : poolIsActive
+        ? wavFeatureExtractor
+        : runtimeMode.featureMode === "hybrid"
+          ? strictHybridFeatureExtractor
+          : wavFeatureExtractor;
+    const features = await extractor(extractOptions);
+    return applyRuntimeModeToFeatures(features, runtimeMode);
+  };
   const predictRatingsOverride = options.predictRatings;
   const onProgress = options.onProgress;
   const onThreadUpdate = options.onThreadUpdate;
@@ -1890,6 +2108,13 @@ export async function generateAutoTags(
 
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
+
+  const buildFeatureHealthProgress = () => ({
+    featureHealthCheckedFiles,
+    completeFeatureFiles,
+    completeFeaturePercent:
+      featureHealthCheckedFiles > 0 ? (completeFeatureFiles / featureHealthCheckedFiles) * 100 : null,
+  });
   
   // Set up JSONL file for incremental writes during classification
   const classifiedPath = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
@@ -1897,6 +2122,7 @@ export async function generateAutoTags(
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
   const jsonlFile = path.join(classifiedPath, `classification_${timestamp}.jsonl`);
   const telemetryFile = path.join(classifiedPath, `classification_${timestamp}.events.jsonl`);
+  const failureFile = path.join(classifiedPath, `classification_${timestamp}.failures.jsonl`);
   let jsonlRecordCount = 0;
 
   // Intermediate file: extracted features + metadata in deterministic order.
@@ -1910,6 +2136,7 @@ export async function generateAutoTags(
   }
   await rm(jsonlFile, { force: true });
   await rm(telemetryFile, { force: true });
+  await rm(failureFile, { force: true });
   const telemetry = new ClassificationTelemetryLogger(telemetryFile);
   const runContext = resolveClassificationRunContext();
   const songStartTimestamps = new Map<number, number>();
@@ -2029,6 +2256,7 @@ export async function generateAutoTags(
     sidPath: plan.sidPath,
     classifiedPath,
     classificationJsonlFile: jsonlFile,
+    failureFile,
     featuresJsonlFile,
     telemetryFile,
     totalFiles,
@@ -2076,7 +2304,8 @@ export async function generateAutoTags(
           extractedFiles: extractedFilesCount,
           percentComplete: totalFiles === 0 ? 100 : (metadataProcessed / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
-          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
+          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`,
+          ...buildFeatureHealthProgress(),
         });
       }
       metadataProcessed += 1;
@@ -2180,6 +2409,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile,
+      ...buildFeatureHealthProgress(),
     });
   };
 
@@ -2193,9 +2423,25 @@ export async function generateAutoTags(
       manual_ratings: PartialTagRatings | null;
       features: FeatureVector;
       render_engine: string;
+      degraded: boolean;
       classification_depth: number;
       auto_file_path: string;
       auto_key: string;
+    };
+
+    type ClassificationFailureRecord = {
+      sid_path: string;
+      song_index?: number;
+      song_count: number;
+      queue_index: number;
+      render_engine: string;
+      feature_mode: ClassificationFeatureMode;
+      retry_count: number;
+      degraded: boolean;
+      error: string;
+      stack?: string;
+      failed_at: string;
+      degraded_reason?: string;
     };
 
     const renderEngineForRecords = classificationRenderEngine;
@@ -2262,6 +2508,9 @@ export async function generateAutoTags(
         skippedAlreadyClassified: skippedAlreadyClassifiedCount,
         renderedFallbackCount: 0,
         metadataOnlyCount: 0,
+        failedCount: 0,
+        retriedCount: 0,
+        degradedCount: 0,
         peakRssMb,
       };
       return {
@@ -2273,6 +2522,7 @@ export async function generateAutoTags(
         jsonlFile,
         jsonlRecordCount,
         telemetryFile,
+        failureFile,
         metrics,
       };
     }
@@ -2320,243 +2570,327 @@ export async function generateAutoTags(
         songIndex: job.songCount > 1 ? job.songIndex : undefined,
       });
       const manualRatings: PartialTagRatings | null = job.manualRecord?.ratings ?? null;
+      let extractedFeatures: FeatureVector | null = null;
+      let finalRenderResult: ClassificationRenderResult | null = null;
+      let finalRuntimeMode: ClassificationRuntimeMode | null = null;
 
-      // Always ensure we have a WAV and extract features for every song.
-      // Stations depend on objective features, not just ratings.
-      const wavNeedsRefresh = await needsWavRefresh(job.sidFile, job.wavPath, false, plan.config);
-      if (wavNeedsRefresh) {
-        emitSongEvent("render_start", {
-          targetDurationMs: job.targetDurationMs ?? 0,
-          wavPath: job.wavPath,
-        });
-        // Lifecycle: RENDERING stage
-        const renderingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "RENDERING", extra: { wavPath: job.wavPath, targetDurationMs: job.targetDurationMs ?? 0 } });
-        // Emit "building" phase for inline rendering
-        const buildStartedAt = Date.now();
-        onThreadUpdate?.({
-          threadId: context.threadId,
-          phase: "building",
-          status: "working",
-          file: songLabel,
-          timestamp: buildStartedAt,
-          songIndex: job.songCount > 1 ? job.songIndex : undefined,
-        });
-        
-        // Start heartbeat to prevent thread from appearing stale during long renders
-        // When using rendererPool, the worker runs in a separate thread so the main event loop
-        // stays responsive and setInterval callbacks fire normally for heartbeat updates.
-        const heartbeatInterval = setInterval(() => {
-          const now = Date.now();
+      for (const [attemptIndex, runtimeMode] of classificationRuntimeModes.entries()) {
+        finalRuntimeMode = runtimeMode;
+        try {
+          // Always ensure we have a WAV and extract features for every song.
+          // Stations depend on objective features, not just ratings.
+          const wavNeedsRefresh = await needsWavRefresh(job.sidFile, job.wavPath, attemptIndex > 0, plan.config);
+          if (wavNeedsRefresh) {
+            emitSongEvent("render_start", {
+              attempt: attemptIndex + 1,
+              renderEngine: runtimeMode.renderEngine,
+              featureMode: runtimeMode.featureMode,
+              targetDurationMs: job.targetDurationMs ?? 0,
+              wavPath: job.wavPath,
+            });
+            const renderingKey = lifecycle.stageStart({
+              ...lifecycleBase,
+              stage: "RENDERING",
+              extra: {
+                wavPath: job.wavPath,
+                targetDurationMs: job.targetDurationMs ?? 0,
+                attempt: attemptIndex + 1,
+                renderEngine: runtimeMode.renderEngine,
+                featureMode: runtimeMode.featureMode,
+              },
+            });
+            const buildStartedAt = Date.now();
+            onThreadUpdate?.({
+              threadId: context.threadId,
+              phase: "building",
+              status: "working",
+              file: songLabel,
+              timestamp: buildStartedAt,
+              songIndex: job.songCount > 1 ? job.songIndex : undefined,
+            });
+
+            const heartbeatInterval = setInterval(() => {
+              const now = Date.now();
+              onThreadUpdate?.({
+                threadId: context.threadId,
+                phase: "building",
+                status: "working",
+                file: songLabel,
+                timestamp: now,
+                isHeartbeat: true,
+                phaseDurationMs: now - buildStartedAt,
+              });
+            }, HEARTBEAT_INTERVAL_MS);
+
+            const renderOptions = {
+              sidFile: job.sidFile,
+              wavFile: job.wavPath,
+              renderEngine: runtimeMode.renderEngine,
+              songIndex: job.songCount > 1 ? job.songIndex : undefined,
+              targetDurationMs: job.targetDurationMs,
+              captureTrace: runtimeMode.captureTrace,
+              traceClock: sidMetadataCache.get(job.sidFile)?.clock,
+              traceIntroSkipSec: resolveIntroSkipSec(plan.config),
+              traceAnalysisSec: resolveMaxClassifySec(plan.config),
+            } satisfies Omit<RenderWavOptions, "maxRenderSeconds" | "renderSampleRate" | "maxRenderWallTimeMs" | "renderProfile">;
+
+            try {
+              if (shouldUsePool && rendererPool === null) {
+                rendererPool = new WasmRendererPool(baseConcurrency);
+              }
+
+              finalRenderResult = await renderSongWithFallbacks(
+                plan,
+                renderOptions,
+                async (attemptOptions) => {
+                  if (rendererPool && attemptOptions.renderEngine === "wasm") {
+                    return await rendererPool.render(attemptOptions);
+                  }
+                  return await render(attemptOptions);
+                }
+              );
+
+              renderedWavFiles.push(job.wavPath);
+              renderedFilesCount += 1;
+              if (finalRenderResult.degraded) {
+                renderedFallbackCount += 1;
+              }
+              peakRssMb = Math.max(peakRssMb, getProcessRssMb());
+              emitSongEvent("render_complete", {
+                attempt: attemptIndex + 1,
+                durationMs: Date.now() - buildStartedAt,
+                wavPath: job.wavPath,
+                renderEngine: runtimeMode.renderEngine,
+                featureMode: runtimeMode.featureMode,
+                renderProfile: finalRenderResult.profile,
+                degraded: runtimeMode.degraded || finalRenderResult.degraded,
+                rssMb: getProcessRssMb(),
+              });
+              lifecycle.stageEnd(renderingKey, {
+                ...lifecycleBase,
+                stage: "RENDERING",
+                extra: {
+                  renderProfile: finalRenderResult.profile,
+                  degraded: runtimeMode.degraded || finalRenderResult.degraded,
+                },
+              });
+            } catch (renderError) {
+              const msg = renderError instanceof Error ? renderError.message : String(renderError);
+              classifyLogger.error(`[Thread ${context.threadId}] Render failed for ${songLabel}: ${msg}`);
+              emitSongEvent("render_failed", {
+                attempt: attemptIndex + 1,
+                renderEngine: runtimeMode.renderEngine,
+                featureMode: runtimeMode.featureMode,
+                error: msg,
+                rssMb: getProcessRssMb(),
+              });
+              lifecycle.stageError(renderingKey, { ...lifecycleBase, stage: "RENDERING", error: msg });
+              throw renderError;
+            } finally {
+              clearInterval(heartbeatInterval);
+            }
+
+            const renderedKey = lifecycle.stageStart({
+              ...lifecycleBase,
+              stage: "RENDERED",
+              extra: finalRenderResult
+                ? {
+                    renderProfile: finalRenderResult.profile,
+                    degraded: runtimeMode.degraded || finalRenderResult.degraded,
+                  }
+                : undefined,
+            });
+            lifecycle.stageEnd(renderedKey, {
+              ...lifecycleBase,
+              stage: "RENDERED",
+              extra: finalRenderResult
+                ? {
+                    renderProfile: finalRenderResult.profile,
+                    degraded: runtimeMode.degraded || finalRenderResult.degraded,
+                  }
+                : undefined,
+            });
+
+            const resumeTaggingAt = Date.now();
+            onThreadUpdate?.({
+              threadId: context.threadId,
+              phase: "tagging",
+              status: "working",
+              file: songLabel,
+              timestamp: resumeTaggingAt,
+            });
+          } else {
+            cachedFilesCount += 1;
+            emitSongEvent("wav_cache_hit", {
+              attempt: attemptIndex + 1,
+              renderEngine: runtimeMode.renderEngine,
+              featureMode: runtimeMode.featureMode,
+              wavPath: job.wavPath,
+            });
+            const renderedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "RENDERED", extra: { cacheHit: true } });
+            lifecycle.stageEnd(renderedKey, { ...lifecycleBase, stage: "RENDERED", extra: { cacheHit: true } });
+          }
+
+          await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
+
+          if (onProgress && processedSongs === 0) {
+            emitTaggingProgress(songLabel);
+          }
+
+          const extractionStartedAt = Date.now();
+          const extractionHeartbeatInterval = setInterval(() => {
+            const now = Date.now();
+            onThreadUpdate?.({
+              threadId: context.threadId,
+              phase: "tagging",
+              status: "working",
+              file: songLabel,
+              timestamp: now,
+              isHeartbeat: true,
+              phaseDurationMs: now - extractionStartedAt,
+            });
+          }, HEARTBEAT_INTERVAL_MS);
+
+          emitSongEvent("feature_extraction_start", {
+            attempt: attemptIndex + 1,
+            renderEngine: runtimeMode.renderEngine,
+            featureMode: runtimeMode.featureMode,
+            wavPath: job.wavPath,
+          });
+          const extractingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTING" });
+          try {
+            extractedFeatures = await extractFeaturesForMode(runtimeMode, {
+              wavFile: job.wavPath,
+              sidFile: job.sidFile,
+              songIndex: job.songCount > 1 ? job.songIndex : undefined,
+              songCount: job.songCount,
+            });
+          } catch (featureError) {
+            const message = featureError instanceof Error ? featureError.message : String(featureError);
+            classifyLogger.error(
+              `[Thread ${context.threadId}] Feature extraction failed for ${songLabel}: ${message}`
+            );
+            emitSongEvent("feature_extraction_failed", {
+              attempt: attemptIndex + 1,
+              renderEngine: runtimeMode.renderEngine,
+              featureMode: runtimeMode.featureMode,
+              error: message,
+              wavPath: job.wavPath,
+            });
+            lifecycle.stageError(extractingKey, { ...lifecycleBase, stage: "EXTRACTING", error: message });
+            throw featureError;
+          } finally {
+            clearInterval(extractionHeartbeatInterval);
+          }
+          extractedFilesCount += 1;
+          peakRssMb = Math.max(peakRssMb, getProcessRssMb());
+          const extractionDurationMs = Date.now() - extractionStartedAt;
+          const featureCount = Object.keys(extractedFeatures).length;
+          const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
+          emitSongEvent("feature_extraction_complete", {
+            attempt: attemptIndex + 1,
+            durationMs: extractionDurationMs,
+            renderEngine: runtimeMode.renderEngine,
+            featureMode: runtimeMode.featureMode,
+            featureCount,
+            featureVariant: extractedFeatures.featureVariant ?? (usedEssentia ? "essentia" : "unknown"),
+            sidFeatureVariant: extractedFeatures.sidFeatureVariant ?? "unknown",
+          });
+          lifecycle.stageEnd(extractingKey, { ...lifecycleBase, stage: "EXTRACTING", extra: { featureCount } });
+          const extractedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTED", extra: { featureCount } });
+          lifecycle.stageEnd(extractedKey, { ...lifecycleBase, stage: "EXTRACTED" });
+          classifyLogger.debug(
+            `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
+          );
+          featureHealthCheckedFiles += 1;
+          const featureHealthReport = inspectFeatureVectorHealth(extractedFeatures);
+          if (!featureHealthReport.healthy) {
+            classifyLogger.info(
+              formatFeatureHealthIssueLog({
+                sidFile: job.sidFile,
+                songIndex: job.songCount > 1 ? job.songIndex : undefined,
+                songCount: job.songCount,
+                renderEngine: runtimeMode.renderEngine,
+                featureMode: runtimeMode.featureMode,
+                report: featureHealthReport,
+              })
+            );
+          }
+          if (featureHealthReport.healthy) {
+            completeFeatureFiles += 1;
+          }
+          break;
+        } catch (attemptError) {
+          const failure = attemptError instanceof Error ? attemptError : new Error(String(attemptError));
+          const canRetry = attemptIndex + 1 < classificationRuntimeModes.length;
+          peakRssMb = Math.max(peakRssMb, getProcessRssMb());
+
+          if (canRetry) {
+            retriedCount += 1;
+            emitSongEvent("song_retry", {
+              attempt: attemptIndex + 1,
+              error: failure.message,
+              nextRenderEngine: classificationRuntimeModes[attemptIndex + 1]?.renderEngine ?? null,
+              nextFeatureMode: classificationRuntimeModes[attemptIndex + 1]?.featureMode ?? null,
+            });
+            continue;
+          }
+
+          failedCount += 1;
+          skippedIntermediateIndices.add(context.itemIndex);
+          intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
+          lifecycle.stageError(startedKey, { ...lifecycleBase, stage: "STARTED", error: failure.message });
+
+          const failureRecord: ClassificationFailureRecord = {
+            sid_path: job.posixRelative,
+            song_count: job.songCount,
+            queue_index: job.queueIndex,
+            render_engine: runtimeMode.renderEngine,
+            feature_mode: runtimeMode.featureMode,
+            retry_count: attemptIndex,
+            degraded: runtimeMode.degraded,
+            error: failure.message,
+            failed_at: new Date().toISOString(),
+          };
+          if (job.songCount > 1) {
+            failureRecord.song_index = job.songIndex;
+          }
+          if (failure.stack) {
+            failureRecord.stack = failure.stack;
+          }
+          if (runtimeMode.degradedReason) {
+            failureRecord.degraded_reason = runtimeMode.degradedReason;
+          }
+
+          await queueJsonlWrite(failureFile, [failureRecord as unknown as JsonValue], {
+            phase: "classification-failure",
+            itemIndex: context.itemIndex,
+          });
+          emitSongOutcome("song_failed", {
+            error: failure.message,
+            renderEngine: runtimeMode.renderEngine,
+            featureMode: runtimeMode.featureMode,
+            retryCount: attemptIndex,
+            degraded: runtimeMode.degraded,
+          });
+
+          processedSongs += 1;
+          featureHealthCheckedFiles += 1;
+          if (onProgress && processedSongs % AUTOTAG_PROGRESS_INTERVAL === 0) {
+            emitTaggingProgress(songLabel);
+          }
           onThreadUpdate?.({
             threadId: context.threadId,
-            phase: "building",
-            status: "working",
-            file: songLabel,
-            timestamp: now,
-            isHeartbeat: true,
-            phaseDurationMs: now - buildStartedAt,
+            phase: "tagging",
+            status: "idle",
           });
-        }, HEARTBEAT_INTERVAL_MS);
-        
-        const renderOptions = {
-          sidFile: job.sidFile,
-          wavFile: job.wavPath,
-          songIndex: job.songCount > 1 ? job.songIndex : undefined,
-          targetDurationMs: job.targetDurationMs,
-          // Capture SID register-write trace during WAV rendering so the
-          // SID-native feature extractor can reuse it without a second render pass.
-          captureTrace: true,
-          traceClock: sidMetadataCache.get(job.sidFile)?.clock,
-          traceIntroSkipSec: resolveIntroSkipSec(plan.config),
-          traceAnalysisSec: resolveMaxClassifySec(plan.config),
-        };
-        let renderResult: ClassificationRenderResult | null = null;
-        try {
-          // Lazily create worker pool only when a render is actually required.
-          // Use baseConcurrency for pool workers; the outer pipeline depth is
-          // intentionally kept at the same level to avoid memory oversubscribe.
-          if (shouldUsePool && rendererPool === null) {
-            rendererPool = new WasmRendererPool(baseConcurrency);
-          }
-
-          renderResult = await renderSongWithFallbacks(
-            plan,
-            renderOptions,
-            async (attemptOptions) => {
-              if (rendererPool) {
-                return await rendererPool.render(attemptOptions);
-              }
-              return await render(attemptOptions);
-            }
-          );
-
-          renderedWavFiles.push(job.wavPath);
-          renderedFilesCount += 1;
-          if (renderResult.degraded) {
-            renderedFallbackCount += 1;
-          }
-          peakRssMb = Math.max(peakRssMb, getProcessRssMb());
-          emitSongEvent("render_complete", {
-            durationMs: Date.now() - buildStartedAt,
-            wavPath: job.wavPath,
-            renderProfile: renderResult.profile,
-            degraded: renderResult.degraded,
-            rssMb: getProcessRssMb(),
-          });
-          classifyLogger.debug(
-            `[Thread ${context.threadId}] Rendered ${songLabel} with profile ${renderResult.profile} in ${Date.now() - buildStartedAt}ms`
-          );
-          // Lifecycle: RENDERING end
-          lifecycle.stageEnd(renderingKey, {
-            ...lifecycleBase,
-            stage: "RENDERING",
-            extra: {
-              renderProfile: renderResult.profile,
-              degraded: renderResult.degraded,
-            }
-          });
-        } catch (renderError) {
-          const msg = renderError instanceof Error ? renderError.message : String(renderError);
-          classifyLogger.error(`[Thread ${context.threadId}] Render failed for ${songLabel}: ${msg}`);
-          emitSongEvent("render_failed", {
-            error: msg,
-            rssMb: getProcessRssMb(),
-          });
-          lifecycle.stageError(renderingKey, { ...lifecycleBase, stage: "RENDERING", error: msg });
-          // When ALL fallback attempts fail with non-recoverable WASM errors
-          // (e.g. the engine produces no audio, or a memory abort) the SID is
-          // intrinsically un-renderable at any quality level.  Omit it from the
-          // output and continue the corpus run — do NOT abort the whole run for
-          // a single broken SID.  "Real" errors (IO, config, etc.) still
-          // propagate so that the run still fails fast on genuine problems.
-          if (isSkippableSidError(renderError)) {
-            classifyLogger.warn(
-              `[Thread ${context.threadId}] Skipping un-renderable SID ${songLabel} (WASM limitation)`
-            );
-            // Register this slot as intentionally skipped so flushIntermediate can
-            // advance past it — without this, a WASM failure at index 0 would orphan
-            // every feature at indices 1, 2, … in the intermediateBuffer.
-            skippedIntermediateIndices.add(context.itemIndex);
-            intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
-            return;
-          }
-          throw renderError;
-        } finally {
-          clearInterval(heartbeatInterval);
+          return;
         }
-        // Lifecycle: RENDERED (WAV freshly rendered and ready)
-        const renderedKey = lifecycle.stageStart({
-          ...lifecycleBase,
-          stage: "RENDERED",
-          extra: renderResult
-            ? {
-                renderProfile: renderResult.profile,
-                degraded: renderResult.degraded,
-              }
-            : undefined,
-        });
-        lifecycle.stageEnd(renderedKey, {
-          ...lifecycleBase,
-          stage: "RENDERED",
-          extra: renderResult
-            ? {
-                renderProfile: renderResult.profile,
-                degraded: renderResult.degraded,
-              }
-            : undefined,
-        });
-        
-        // Switch back to tagging phase after rendering
-        const resumeTaggingAt = Date.now();
-        onThreadUpdate?.({
-          threadId: context.threadId,
-          phase: "tagging",
-          status: "working",
-          file: songLabel,
-          timestamp: resumeTaggingAt,
-        });
-      } else {
-        cachedFilesCount += 1;
-        emitSongEvent("wav_cache_hit", { wavPath: job.wavPath });
-        // Lifecycle: RENDERED stage for cache-hit path (WAV already available)
-        const renderedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "RENDERED", extra: { cacheHit: true } });
-        lifecycle.stageEnd(renderedKey, { ...lifecycleBase, stage: "RENDERED", extra: { cacheHit: true } });
       }
 
-      await updateDirectoryPlaylist(wavDir, { playlistName: "playlist.m3u8" });
-
-      if (onProgress) {
-        onProgress({
-          phase: "tagging",
-          totalFiles,
-          processedFiles: processedSongs,
-          renderedFiles: renderedFilesCount,
-          cachedFiles: cachedFilesCount,
-          extractedFiles: extractedFilesCount,
-          percentComplete: totalFiles === 0 ? 0 : (processedSongs / totalFiles) * 100,
-          elapsedMs: Date.now() - startTime,
-          currentFile: songLabel
-        });
+      if (!extractedFeatures || !finalRuntimeMode) {
+        throw new Error(`Classification attempt exhausted without features for ${songLabel}`);
       }
-
-      // Essentia feature extraction with structured logging
-      // Start heartbeat to prevent thread from appearing stale during long feature extractions
-      const extractionStartedAt = Date.now();
-      const extractionHeartbeatInterval = setInterval(() => {
-        const now = Date.now();
-        onThreadUpdate?.({
-          threadId: context.threadId,
-          phase: "tagging",
-          status: "working",
-          file: songLabel,
-          timestamp: now,
-          isHeartbeat: true,
-          phaseDurationMs: now - extractionStartedAt,
-        });
-      }, HEARTBEAT_INTERVAL_MS);
-
-      let extractedFeatures: FeatureVector;
-      emitSongEvent("feature_extraction_start", { wavPath: job.wavPath });
-      // Lifecycle: EXTRACTING stage
-      const extractingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTING" });
-      try {
-        extractedFeatures = await featureExtractor({
-          wavFile: job.wavPath,
-          sidFile: job.sidFile,
-          songIndex: job.songCount > 1 ? job.songIndex : undefined,
-          songCount: job.songCount,
-        });
-      } catch (featureError) {
-        const message = featureError instanceof Error ? featureError.message : String(featureError);
-        classifyLogger.error(
-          `[Thread ${context.threadId}] Feature extraction failed for ${songLabel}: ${message}`
-        );
-        emitSongEvent("feature_extraction_failed", {
-          error: message,
-          wavPath: job.wavPath,
-        });
-        lifecycle.stageError(extractingKey, { ...lifecycleBase, stage: "EXTRACTING", error: message });
-        throw featureError;
-      } finally {
-        clearInterval(extractionHeartbeatInterval);
-      }
-      extractedFilesCount += 1;
-      peakRssMb = Math.max(peakRssMb, getProcessRssMb());
-      const extractionDurationMs = Date.now() - extractionStartedAt;
-      const featureCount = Object.keys(extractedFeatures).length;
-      const usedEssentia = extractedFeatures.spectralCentroid !== undefined || extractedFeatures.rms !== undefined;
-      emitSongEvent("feature_extraction_complete", {
-        durationMs: extractionDurationMs,
-        featureCount,
-        featureVariant: extractedFeatures.featureVariant ?? (usedEssentia ? "essentia" : "unknown"),
-      });
-      // Lifecycle: EXTRACTING end; EXTRACTED marker
-      lifecycle.stageEnd(extractingKey, { ...lifecycleBase, stage: "EXTRACTING", extra: { featureCount } });
-      const extractedKey = lifecycle.stageStart({ ...lifecycleBase, stage: "EXTRACTED", extra: { featureCount } });
-      lifecycle.stageEnd(extractedKey, { ...lifecycleBase, stage: "EXTRACTED" });
-      classifyLogger.debug(
-        `[Thread ${context.threadId}] Extracted ${featureCount} features for ${songLabel} in ${extractionDurationMs}ms (Essentia: ${usedEssentia})`
-      );
 
       const autoFilePath = resolveAutoTagFilePath(plan.tagsPath, job.relativePath, plan.classificationDepth);
       const baseKey = toPosixRelative(resolveAutoTagKey(job.relativePath, plan.classificationDepth));
@@ -2569,7 +2903,12 @@ export async function generateAutoTags(
         metadata: job.metadata,
         manual_ratings: manualRatings,
         features: extractedFeatures,
-        render_engine: renderEngineForRecords,
+        render_engine: finalRuntimeMode.renderEngine,
+        degraded:
+          finalRuntimeMode.degraded
+          || finalRenderResult?.degraded === true
+          || extractedFeatures.featureVariant === "heuristic"
+          || extractedFeatures.sidFeatureVariant === "unavailable",
         classification_depth: plan.classificationDepth,
         auto_file_path: autoFilePath,
         auto_key: key,
@@ -2614,6 +2953,10 @@ export async function generateAutoTags(
         const resumeRec = JSON.parse(resumeLine) as IntermediateRecord;
         builder.add(resumeRec.features);
         processedSongs += 1;
+        featureHealthCheckedFiles += 1;
+        if (hasRealisticCompleteFeatureVector(resumeRec.features)) {
+          completeFeatureFiles += 1;
+        }
       }
     }
     onProgress?.({
@@ -2626,6 +2969,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile: "building dataset-normalized rating model",
+      ...buildFeatureHealthProgress(),
     });
     const ratingModelStartedAt = Date.now();
     telemetry.emit({
@@ -2682,6 +3026,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
+      ...buildFeatureHealthProgress(),
     });
     const resultsWriteStartedAt = Date.now();
 
@@ -2770,8 +3115,9 @@ export async function generateAutoTags(
       if (rec.song_index) {
         classificationRecord.song_index = rec.song_index;
       }
-      if (rec.features.featureVariant === "heuristic") {
+      if (rec.degraded || rec.features.featureVariant === "heuristic") {
         classificationRecord.degraded = true;
+        degradedCount += 1;
       }
 
       logJsonlPathOnce(jsonlFile);
@@ -2823,6 +3169,9 @@ export async function generateAutoTags(
       skippedAlreadyClassified: skippedAlreadyClassifiedCount,
       renderedFallbackCount,
       metadataOnlyCount,
+      failedCount,
+      retriedCount,
+      degradedCount,
       peakRssMb,
     });
   } finally {
@@ -2846,6 +3195,7 @@ export async function generateAutoTags(
       percentComplete: totalFiles === 0 ? 100 : (processedSongs / totalFiles) * 100,
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
+      ...buildFeatureHealthProgress(),
     });
   }
 
@@ -2921,6 +3271,7 @@ export async function generateAutoTags(
   if (jsonlFile) {
     await flushWriterQueue(jsonlFile);
   }
+  await flushWriterQueue(failureFile);
 
   const endTime = Date.now();
   const metrics: GenerateAutoTagsMetrics = {
@@ -2935,6 +3286,9 @@ export async function generateAutoTags(
     skippedAlreadyClassified: skippedAlreadyClassifiedCount,
     renderedFallbackCount,
     metadataOnlyCount,
+    failedCount,
+    retriedCount,
+    degradedCount,
     peakRssMb,
   };
 
@@ -2947,6 +3301,7 @@ export async function generateAutoTags(
     jsonlFile,
     jsonlRecordCount,
     telemetryFile,
+    failureFile,
     metrics,
   };
 }
@@ -3042,7 +3397,10 @@ export async function generateJsonlOutput(
           extractedFiles: processedSongs,
           percentComplete: (processedSongs / totalFiles) * 100,
           elapsedMs: Date.now() - startTime,
-          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`
+          currentFile: `${path.basename(sidFile)} [${songIndex}/${songCount}]`,
+          featureHealthCheckedFiles: processedSongs,
+          completeFeatureFiles: 0,
+          completeFeaturePercent: null,
         });
       }
 

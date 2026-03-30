@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { essentiaFeatureExtractor } from "@sidflow/classify";
+import { destroyFeatureExtractionPool, getFeatureExtractionPool } from "../src/feature-extraction-pool.js";
 import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-essentia-");
@@ -103,6 +104,42 @@ describe("essentiaFeatureExtractor", () => {
     expect(features.numSamples).toBe(22050);
 
     await rm(root, { recursive: true, force: true });
+  });
+
+  it("extracts envelope-derived features through the worker pool path", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const wavFile = path.join(root, "worker.wav");
+    const sidFile = path.join(root, "worker.sid");
+
+    const wavData = generateTestWav(2, 440, 44100);
+    await writeFile(wavFile, wavData);
+    await writeFile(sidFile, Buffer.from("dummy sid data"));
+    await writeWavRenderSettingsSidecar(wavFile, {
+      maxRenderSec: 2,
+      introSkipSec: 0,
+      maxClassifySec: 2,
+      sourceOffsetSec: 0,
+      renderEngine: "sidplayfp-cli",
+      traceCaptureEnabled: false,
+    });
+
+    try {
+      const pool = getFeatureExtractionPool(1);
+      const features = await pool.extract(wavFile, sidFile);
+
+      expect(typeof features.onsetDensity).toBe("number");
+      expect(typeof features.rhythmicRegularity).toBe("number");
+      expect(typeof features.dynamicRange).toBe("number");
+      expect(typeof features.spectralFluxMean).toBe("number");
+      expect(features.onsetDensity).toBeGreaterThanOrEqual(0);
+      expect(features.rhythmicRegularity).toBeGreaterThanOrEqual(0);
+      expect(features.rhythmicRegularity).toBeLessThanOrEqual(1);
+      expect(features.dynamicRange).toBeGreaterThanOrEqual(0);
+      expect(features.dynamicRange).toBeLessThanOrEqual(1);
+    } finally {
+      await destroyFeatureExtractionPool();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("handles stereo WAV files", async () => {

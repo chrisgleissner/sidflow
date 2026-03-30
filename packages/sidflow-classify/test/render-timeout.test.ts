@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -209,40 +209,106 @@ describe("generateAutoTags resilience", () => {
     }
   });
 
-  test("fails fast when rendering fails", async () => {
+  test("records a permanent failure when rendering fails", async () => {
     const { root, plan } = await createTestPlan("sidflow-render-fail-fast-");
     try {
-      await expect(
-        generateAutoTags(plan, {
-          extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
-          featureExtractor: heuristicFeatureExtractor,
-          predictRatings: heuristicPredictRatings,
-          render: async () => {
-            throw new Error("forced render failure");
-          },
-        })
-      ).rejects.toThrow(/forced render failure/);
+      const result = await generateAutoTags(plan, {
+        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+        featureExtractor: heuristicFeatureExtractor,
+        predictRatings: heuristicPredictRatings,
+        render: async () => {
+          throw new Error("forced render failure");
+        },
+      });
+
+      expect(result.jsonlRecordCount).toBe(0);
+      expect(result.metrics.failedCount).toBe(1);
+      expect(result.metrics.retriedCount).toBe(1);
+
+      const failures = (await readFile(result.failureFile, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(failures).toHaveLength(1);
+      expect(failures[0]?.error).toEqual(expect.stringContaining("forced render failure"));
+      expect(failures[0]?.feature_mode).toBe("wav-only");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  test("records a permanent failure when feature extraction fails", async () => {
+    const { root, plan } = await createTestPlan("sidflow-extract-fail-fast-");
+    try {
+      const result = await generateAutoTags(plan, {
+        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+        featureExtractor: async () => {
+          throw new Error("forced extraction failure");
+        },
+        predictRatings: heuristicPredictRatings,
+        render: async ({ wavFile }) => {
+          await ensureDir(dirname(wavFile));
+          await writeFile(wavFile, silentWavBuffer());
+        },
+      });
+
+      expect(result.jsonlRecordCount).toBe(0);
+      expect(result.metrics.failedCount).toBe(1);
+      expect(result.metrics.retriedCount).toBe(1);
+
+      const failures = (await readFile(result.failureFile, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(failures).toHaveLength(1);
+      expect(failures[0]?.error).toEqual(expect.stringContaining("forced extraction failure"));
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("fails fast when feature extraction fails", async () => {
-    const { root, plan } = await createTestPlan("sidflow-extract-fail-fast-");
+  test("marks sidplayfp-cli classification as degraded wav-only output", async () => {
+    const { root, plan } = await createTestPlan("sidflow-sidplayfp-cli-degraded-");
     try {
-      await expect(
-        generateAutoTags(plan, {
-          extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
-          featureExtractor: async () => {
-            throw new Error("forced extraction failure");
+      const degradedPlan = {
+        ...plan,
+        config: {
+          ...plan.config,
+          render: {
+            preferredEngines: ["sidplayfp-cli"],
           },
-          predictRatings: heuristicPredictRatings,
-          render: async ({ wavFile }) => {
-            await ensureDir(dirname(wavFile));
-            await writeFile(wavFile, silentWavBuffer());
-          },
-        })
-      ).rejects.toThrow(/forced extraction failure/);
+        },
+      };
+
+      const result = await generateAutoTags(degradedPlan, {
+        extractMetadata: async ({ relativePath }) => fallbackMetadataFromPath(relativePath),
+        featureExtractor: async () => ({
+          featureVariant: "essentia",
+          bpm: 120,
+          rms: 0.1,
+        }),
+        predictRatings: heuristicPredictRatings,
+        render: async ({ wavFile }) => {
+          await ensureDir(dirname(wavFile));
+          await writeFile(wavFile, silentWavBuffer());
+        },
+      });
+
+      expect(result.jsonlRecordCount).toBe(1);
+      expect(result.metrics.failedCount).toBe(0);
+      expect(result.metrics.degradedCount).toBe(1);
+
+      const records = (await readFile(result.jsonlFile, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(records).toHaveLength(1);
+      expect(records[0]?.degraded).toBe(true);
+      expect(records[0]?.render_engine).toBe("sidplayfp-cli");
+      expect((records[0]?.features as Record<string, unknown>)?.sidFeatureVariant).toBe("unavailable");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

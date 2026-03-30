@@ -10,6 +10,7 @@ export interface ClassificationRunContext {
   cwd: string;
   mode?: string;
   fullRerun?: boolean;
+  runtime?: string;
 }
 
 function parseBooleanString(value: string | undefined): boolean | undefined {
@@ -24,11 +25,13 @@ function parseBooleanString(value: string | undefined): boolean | undefined {
 
 export function resolveClassificationRunContext(): ClassificationRunContext {
   const fallbackCommand = process.argv.join(" ").trim() || "sidflow-classify";
+  const runtime = (process.env.SIDFLOW_CLI_RUNTIME ?? process.release?.name ?? "unknown").trim();
   return {
     command: (process.env.SIDFLOW_CLASSIFY_RUN_COMMAND ?? fallbackCommand).trim(),
     cwd: (process.env.SIDFLOW_CLASSIFY_RUN_CWD ?? process.cwd()).trim(),
     mode: process.env.SIDFLOW_CLASSIFY_RUN_MODE?.trim() || undefined,
     fullRerun: parseBooleanString(process.env.SIDFLOW_CLASSIFY_RUN_FULL_RERUN),
+    runtime,
   };
 }
 
@@ -225,6 +228,7 @@ export class SongLifecycleLogger {
       event: "run_start",
       command: context.command,
       mode: context.mode ?? "unknown",
+      runtime: context.runtime ?? (process.release?.name ?? "unknown"),
       fullRerun: context.fullRerun ?? false,
       cwd: context.cwd,
       gitCommit: this.gitCommit,

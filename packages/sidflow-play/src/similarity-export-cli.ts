@@ -1,7 +1,7 @@
 import path from "node:path";
 import process from "node:process";
+import { buildSimilarityExport } from "../../sidflow-common/dist/similarity-export.js";
 import {
-  buildSimilarityExport,
   formatHelp,
   handleParseResult,
   loadConfig,

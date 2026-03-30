@@ -1,11 +1,13 @@
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import {
+  recommendFromFavorites,
+  type SimilarityExportRecommendation,
+} from "../../../sidflow-common/dist/similarity-export.js";
+import {
   cosineSimilarity,
   pathExists,
-  recommendFromFavorites,
   type SidFileMetadata,
-  type SimilarityExportRecommendation,
 } from "@sidflow/common";
 import type {
   ExportDatabaseInfo,

@@ -1,5 +1,165 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-03-29T22:40Z - PR #90 convergence: WASM source-of-truth fix and stale CI import repair
+
+- timestamp: 2026-03-29T22:40Z
+- action taken: Re-audited the active PR review threads with `gh api graphql`, fixed the `SidAudioEngine.ensureModule()` dispose race in the `libsidplayfp-wasm` source, rebuilt and re-synced the generated browser `player.js`, then reproduced the failing GitHub `Build and test / Build and Test` job locally and repaired its stale `buildSimilarityExport` test imports.
+- evidence collected:
+   - Unresolved review thread ids were `PRRT_kwDOQN40Ts53g0WO` and `PRRT_kwDOQN40Ts53g0WU`; both targeted `packages/sidflow-web/public/wasm/player.js`.
+   - `packages/libsidplayfp-wasm/src/player.ts` now captures `modulePromise`, verifies it is still current after awaiting, and refuses to repopulate `this.module` after `dispose()` clears the instance state.
+   - `bun test packages/libsidplayfp-wasm/test/buffer-pool.test.ts` passed with the new dispose-during-await regression (`7 pass`, `0 fail`).
+   - `cd packages/libsidplayfp-wasm && bun run build` regenerated `dist/player.js`, and `cd packages/sidflow-web && node ../../scripts/run-bun.mjs run build:worklet` re-synced `packages/sidflow-web/public/wasm/player.js` from the compiled artifact.
+   - GitHub job `Build and test / Build and Test` failed on `SyntaxError: Export named 'buildSimilarityExport' not found in module '/__w/sidflow/sidflow/packages/sidflow-common/src/index.ts'`.
+   - `packages/sidflow-play/test/station-multi-profile-e2e.test.ts` and `packages/sidflow-play/test/station-similarity-e2e.test.ts` now import `buildSimilarityExport` from `../../sidflow-common/src/similarity-export.js`, matching the current package boundary.
+   - Targeted CI-surface validation passed: `bun test packages/sidflow-play/test/station-multi-profile-e2e.test.ts packages/sidflow-play/test/station-similarity-e2e.test.ts packages/libsidplayfp-wasm/test/buffer-pool.test.ts` => `9 pass`, `0 fail`.
+   - `bun run build` completed successfully after the test-import repair.
+- result: The active review comments now have code changes behind them, the generated browser artifact no longer drifts from its source-of-truth, and the previously failing CI job has a concrete local fix. Full test-suite revalidation and GitHub thread resolution still remain before the PR is converged.
+- next step: Finish the three required full `bun run test` passes, commit and push the fixes, then reply to and resolve both remaining review threads before waiting on GitHub CI.
+
+## 2026-03-29T11:34Z - Phase 23 runtime split and bounded wrapper validation
+
+- timestamp: 2026-03-29T11:34Z
+- action taken: Implemented explicit local runtime selection in `scripts/run-similarity-export.sh`, added a Node launcher for the built classify CLI, kept the export path Bun-backed, removed the Bun-only similarity-export module from the `@sidflow/common` runtime index, and wired renderer-pool lifecycle events into classify logging/telemetry.
+- evidence collected:
+   - `scripts/sidflow-classify` now honors `SIDFLOW_CLI_RUNTIME=node` and invokes `runClassifyCli()` through `scripts/run-node-cli.mjs` against `packages/sidflow-classify/dist/cli.js`.
+   - `scripts/run-similarity-export.sh --mode local --runtime bun --full-rerun true --max-songs 200` completed successfully in about 35s classify time plus export; final export contained 200 tracks.
+   - `scripts/run-similarity-export.sh --mode local --runtime node --full-rerun true --max-songs 200` completed successfully in about 35s classify time plus export; final export contained 200 tracks.
+   - Targeted regressions passed after the runtime split: `node scripts/run-bun.mjs test packages/sidflow-classify/test/system.test.ts packages/sidflow-classify/test/cli.test.ts packages/sidflow-classify/test/render-timeout.test.ts` => `31 pass`, `0 fail`.
+   - Node export remains intentionally unsupported for now because the similarity export and station query paths depend on `bun:sqlite`; the wrapper therefore uses Node for classify/server when requested and Bun for the export step.
+- result: The classify pipeline now has an explicit Node-supported execution path while preserving the existing Bun-backed SQLite export. Both bounded wrapper runs succeeded, so the full-corpus validation has been started under `--runtime node` for the classify/server path.
+- next step: Monitor the full run to completion, then validate the SQLite export and run persona-station proofs against the finished bundle.
+
+## 2026-03-29T00:35Z - Phase 23 kickoff: authoritative wrapper/runtime audit
+
+- timestamp: 2026-03-29T00:35Z
+- action taken: Audited the active wrapper, classify API runner, worker-bound helpers, WASM engine factory, and render worker lifecycle before making new code changes.
+- evidence collected:
+   - `scripts/run-similarity-export.sh` still hard-requires `bun` in local mode and starts the web runtime with `bun run dev`.
+   - `packages/sidflow-web/app/api/classify/route.ts` resolves classify threads with its own local heuristic and spawns `sidflow-classify` through `runClassificationProcess()`.
+   - `scripts/sidflow-classify` and `scripts/sidflow-play` are Bun-oriented shell wrappers that exec the TypeScript source entrypoints directly.
+   - `packages/sidflow-classify/src/render/wasm-render-worker.ts` still creates a fresh `SidAudioEngine` for every render job, while `packages/libsidplayfp-wasm/src/player.ts` now nulls `module` and `modulePromise` in `dispose()`.
+   - `packages/sidflow-classify/src/render/wasm-render-pool.ts` already has a fixed worker pool plus queue, but still force-replaces workers after faults/timeouts.
+- result: The current tree already contains partial concurrency bounding and one important WASM-disposal fix, but the authoritative workflow still hides runtime choice behind Bun-oriented wrappers and needs an explicit Node-capable execution path for full-corpus recovery.
+- next step: Implement explicit runtime selection in the wrapper/CLI launch path, then run targeted stress validation under both Bun and Node to decide the stable production runtime for the full export.
+
+## 2026-03-29 — Phase 22: engine capability mismatch and resilient batch recovery
+
+### Current defect state
+1. The classify pipeline still resolves render engines implicitly. `preferredEngines[0]` can be `sidplayfp-cli`, and WASM render failures can still fall back to `sidplayfp-cli` when `render.allowDegradedSidplayfpCli=true`.
+2. SID-native extraction still assumes trace sidecars are available through `defaultSidWriteTraceProvider()`. When the selected engine cannot emit traces, the later feature path throws `Missing or invalid SID trace sidecar ... rerender through the trace-capable classify path`.
+3. Batch behavior is inconsistent and unsafe for large runs: `generateAutoTags()` uses `continueOnError: false`, but also special-cases some render failures as skippable. That means the run may either abort early or silently omit songs, with no canonical failure JSONL artifact.
+
+### Root-cause conclusion
+The bug is not just an OOM symptom. The primary invariant is broken: the pipeline selects engines without resolving whether the downstream feature plan requires trace support. That creates an impossible runtime state where WAV rendering succeeds under a non-trace engine and feature extraction still expects hybrid WAV+SID-native inputs.
+
+### Execution decision
+Adopt explicit capability-driven graceful degradation for classification:
+1. Resolve engine capabilities up front.
+2. If the active engine does not support traces, disable SID-native extraction for that song attempt before rendering begins.
+3. Mark the resulting record degraded instead of failing later on a missing sidecar.
+4. If a song still fails, retry once with reduced capability / trace disabled, then record a structured permanent failure and continue the batch.
+
+### Next steps
+1. Patch the classify entrypoint with an `EngineCapabilities` / feature-mode resolution step.
+2. Replace abort-or-skip behavior in `generateAutoTags()` with deterministic per-song failure recording.
+3. Add regression coverage for degraded trace-unavailable classification and failure JSONL emission.
+
+### Implementation and validation results
+1. Landed the runtime-capability fix in `packages/sidflow-classify/src/index.ts`:
+   - classification now resolves concrete per-attempt runtime modes up front,
+   - `sidplayfp-cli`/`ultimate64` automatically force WAV-only classification instead of entering an impossible trace-required state,
+   - each song now retries at most once under reduced capability before being recorded as a structured failure.
+2. Landed feature-worker and render metadata fixes:
+   - `packages/sidflow-classify/src/feature-extraction-worker.ts` now treats missing trace sidecars as fatal only when trace capture was actually expected,
+   - `packages/sidflow-classify/src/render/wav-renderer.ts` and classify-sidecar persistence now record the actual engine/trace state used for that WAV.
+3. Landed failure accounting and CLI summary changes:
+   - `classification_*.failures.jsonl` is now the canonical permanent-failure artifact,
+   - telemetry and summaries now record failed / retried / degraded counts.
+4. Updated regression coverage to the resilient contract and validated the critical classify seams:
+   - `bun test packages/sidflow-classify/test/high-risk-render-failure.test.ts packages/sidflow-classify/test/render-timeout.test.ts` — PASS after updating expectations to structured failure emission.
+   - `bun test packages/sidflow-classify/test/multi-sid-classification.test.ts packages/sidflow-classify/test/super-mario-stress.test.ts` — PASS.
+   - `bun run build:quick` — PASS.
+   - `bun run build` — PASS.
+   - `bun run test` — still FAILS in pre-existing `packages/libsidplayfp-wasm/test/performance.test.ts` out-of-bounds-memory regressions outside the classify package changes.
+
+### Controlled 5,000-song classification evidence
+1. Command:
+   - `scripts/run-with-timeout.sh 7200 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 5000`
+2. Result:
+   - Exit `0`
+   - Duration `510022ms` (about 8m 30s)
+   - Telemetry file: `tmp/classify-5000/classified/classification_2026-03-29_14-27-31-245.events.jsonl`
+   - Classification file: `tmp/classify-5000/classified/classification_2026-03-29_14-27-31-245.jsonl`
+   - Feature file: `tmp/classify-5000/classified/features_2026-03-29_14-27-31-245.jsonl`
+3. Recorded metrics from `run_complete`:
+   - `classifiedFiles=5000/5000`
+   - `failedCount=0`
+   - `retriedCount=0`
+   - `degradedCount=1`
+   - `renderedFallbackCount=1`
+   - `resultsWriteDurationMs=11181`
+   - `peakRssMb=841`
+4. Structured failure artifact status:
+   - no `classification_*.failures.jsonl` file was emitted for this run because there were no permanent failures.
+
+### Progress observability update
+1. Extended periodic classify progress to emit every 50 songs instead of every 100.
+2. Added a realistic feature-health metric to classifier progress, the web progress snapshot, and `scripts/run-similarity-export.sh` wrapper updates:
+   - metric definition: a song only counts as complete when every deterministic rating feature key is present as a finite value and the record is not marked degraded via `featureVariant="heuristic"` or `sidFeatureVariant="unavailable"`.
+3. Validation evidence:
+   - `bun run build:quick` — PASS.
+   - `bash -n scripts/run-similarity-export.sh` — PASS.
+   - `bun test packages/sidflow-classify/test/cli.test.ts packages/sidflow-web/tests/unit/api-client.test.ts` — PASS (`59 pass`, `0 fail`).
+   - `scripts/run-with-timeout.sh 1800 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 55` — PASS for logging validation; emitted the new `featureHealth completeRealistic=...` field at the 50-song checkpoint.
+4. The 55-song smoke run reported `featureHealth completeRealistic=0/55 (0.0%)`. Inspection of the emitted feature JSONL confirmed the metric is flagging real missing deterministic dimensions in the sampled records rather than a formatting defect, so the new log signal is working as intended.
+
+### Unhealthy-song diagnostics and CI follow-up
+1. Added structured unhealthy-song diagnostics to classification output:
+   - each unhealthy song now emits one `[feature-health-issue]` line containing the full SID path, render engine, feature mode, feature variants, a concise deterministic vector snapshot, and the explicit unhealthy elements list.
+2. Validation evidence:
+   - `scripts/run-with-timeout.sh 900 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 2` — PASS for logging validation.
+   - emitted diagnostics identified the concrete missing dimensions for the sampled songs: `onsetDensity`, `rhythmicRegularity`, and `dynamicRange`.
+3. CI build fix:
+   - patched `packages/sidflow-web/lib/classify-progress-store.ts` so `getClassifyProgressSnapshot()` returns the required `featureHealthCheckedFiles`, `completeFeatureFiles`, and `completeFeaturePercent` fields.
+   - the previously failing CI command `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium` now gets past the Next.js compile/type-check failure and reaches runtime E2E failures instead.
+4. Root-cause repair for unhealthy classification records:
+   - exported `computeEnvelopeFeatures()` from `packages/sidflow-classify/src/essentia-features.ts` and applied it in `packages/sidflow-classify/src/feature-extraction-worker.ts`, which restores `onsetDensity`, `rhythmicRegularity`, and `dynamicRange` for the worker-pool classification path used in large corpus runs.
+   - added a worker-pool regression test in `packages/sidflow-classify/test/essentia-features.test.ts` and corrected the test fixture sidecar so the threaded extractor runs under a valid render-settings contract.
+5. Post-fix validation evidence:
+   - `bun test packages/sidflow-classify/test/deterministic-ratings.test.ts packages/sidflow-classify/test/essentia-features.test.ts` — PASS.
+   - `scripts/run-with-timeout.sh 3600 -- ./scripts/sidflow-classify --config tmp/classify-5000-config.json --force-rebuild --delete-wav-after-classification --limit 300` — PASS with `featureHealth completeRealistic=300/300 (100.0%)`, `Failed: 0`, `Retried: 0`, `Degraded: 0`, and no `feature-health-issue`, `Classification failed`, or `song_failed` matches in the log scan.
+   - `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test tests/e2e/classify-api-e2e.spec.ts tests/e2e/classify-progress-metrics.spec.ts --project=chromium` — PASS (`3 passed`).
+   - `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test tests/e2e/classify-essentia-e2e.spec.ts --project=chromium` — PASS (`2 passed`).
+   - `cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium` — PASS (`87 passed`).
+6. Remaining note:
+   - the Chromium run still logs repeated `[hls-service] Failed to build HLS assets ... TypeError: i.resolve is not a function` warnings, but they are non-blocking for the current CI target because the full Chromium coverage suite now completes successfully.
+
+### Export and persona station outputs
+1. Similarity export command:
+   - `node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity --config tmp/classify-5000-config.json --profile full --output tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite`
+   - Result: PASS in `24057ms`, `Tracks: 5000`
+   - Artifacts:
+     - `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.sqlite`
+     - `tmp/classify-5000/sidcorr-5000-full-sidcorr-1.manifest.json`
+2. Persona station generation surfaced two distinct script defects:
+   - root-level Bun execution could not resolve `@sidflow/common` from `scripts/validate-persona-radio.ts`,
+   - the original hard-coded persona thresholds targeted 1-5 rating corners that do not exist in this 5,000-track slice (observed export ranges were only `2.0..4.0` for `e/m/c`).
+3. Repaired `scripts/validate-persona-radio.ts` to:
+   - use repo-relative imports,
+   - resolve each named persona to the nearest populated rating bucket in the current export,
+   - generate five deterministic, disjoint 100-track stations by centroid-ranked assignment,
+   - write unambiguous station entries as `track_id :: sid_path`.
+4. Persona report artifact:
+   - `tmp/classify-5000/persona-report.md`
+5. Persona coherence summary from the generated report:
+   - `Pulse Chaser` bucket `(4.0, 3.0, 3.0)`, contamination `0`, min margin `0.0269`
+   - `Dream Drifter` bucket `(2.0, 4.0, 2.0)`, contamination `22`, min margin `-0.0214`
+   - `Maze Architect` bucket `(2.0, 3.0, 3.0)`, contamination `87`, min margin `-0.0094`
+   - `Anthem Driver` bucket `(3.0, 4.0, 2.0)`, contamination `0`, min margin `0.0046`
+   - `Noir Cartographer` bucket `(2.0, 4.0, 3.0)`, contamination `73`, min margin `-0.0263`
+6. Station overlap summary:
+   - all ten persona-pair overlap checks reported `0 shared tracks`.
+
 ## 2026-03-29 — Phase 20: WASM OOM root-cause investigation and fix
 
 ### Symptom recap

@@ -47,6 +47,9 @@ function createInitialSnapshot(): ProgressState {
     cachedFiles: 0,
     skippedFiles: 0,
     extractedFiles: 0,
+    featureHealthCheckedFiles: 0,
+    completeFeatureFiles: 0,
+    completeFeaturePercent: null,
     percentComplete: 0,
     threads: 1,
     perThread: [{ id: 1, status: 'idle', phase: undefined, updatedAt: Date.now(), stale: false, phaseStartedAt: undefined, noAudioStreak: 0 }],
@@ -228,6 +231,11 @@ function processLine(line: string) {
     return;
   }
 
+  if (line.includes('[feature-health-issue]')) {
+    console.log(`[classify-feature-health] ${line}`);
+    return;
+  }
+
   // Log engine-related messages with structured tags
   if (line.match(/\b(Rendering|Extracting features|Writing Features|Writing Results|engine)\b/i)) {
     console.log(`[classify-engine] ${line}`);
@@ -333,9 +341,9 @@ function processLine(line: string) {
   }
 
   // Match new user-friendly progress labels with detailed counters
-  // Format: [Phase] X/Y files, Z remaining (P%) [rendered=R cached=C extracted=E] - file - elapsed
+  // Format: [Phase] X/Y files, Z remaining (P%) [rendered=R cached=C extracted=E] [featureHealth completeRealistic=A/B (P%|unknown)] - file - elapsed
   const tagMatch = line.match(
-    /\[(Reading Metadata|Extracting Features|Writing Features|Building Rating Model|Writing Results|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\])?(?:\s+-\s+(.*))?/i
+    /\[(Reading Metadata|Extracting Features|Writing Features|Building Rating Model|Writing Results|Metadata|Tagging)\]\s+(\d+)\/(\d+)\s+files.*\(([\d.]+)%\)(?:\s+\[rendered=(\d+)\s+cached=(\d+)\s+extracted=(\d+)\])?(?:\s+\[featureHealth\s+completeRealistic=(\d+)\/(\d+)\s+\((unknown|[\d.]+%)\)\])?(?:\s+-\s+(.*))?/i
   );
   if (tagMatch) {
     const label = tagMatch[1].toLowerCase();
@@ -374,6 +382,17 @@ function processLine(line: string) {
     }
     if (tagMatch[7] !== undefined) {
       snapshot.extractedFiles = Number(tagMatch[7]);
+    }
+    if (tagMatch[8] !== undefined) {
+      snapshot.completeFeatureFiles = Number(tagMatch[8]);
+    }
+    if (tagMatch[9] !== undefined) {
+      snapshot.featureHealthCheckedFiles = Number(tagMatch[9]);
+    }
+    if (tagMatch[10] !== undefined) {
+      snapshot.completeFeaturePercent = tagMatch[10] === 'unknown'
+        ? null
+        : Number(tagMatch[10].replace('%', ''));
     }
     
     snapshot.updatedAt = Date.now();
@@ -430,6 +449,9 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     cachedFiles: snapshot.cachedFiles,
     skippedFiles: snapshot.skippedFiles,
     extractedFiles: snapshot.extractedFiles,
+    featureHealthCheckedFiles: snapshot.featureHealthCheckedFiles,
+    completeFeatureFiles: snapshot.completeFeatureFiles,
+    completeFeaturePercent: snapshot.completeFeaturePercent,
     percentComplete: snapshot.percentComplete,
     threads: snapshot.threads,
     perThread: snapshot.perThread.map((thread) => ({ ...thread })),

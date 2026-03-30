@@ -6,10 +6,12 @@ import { createReadStream } from "node:fs";
 import readline from "node:readline";
 import path from "node:path";
 import type { SidAudioEngine, SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { RenderEngine } from "./render-orchestrator.js";
 
 export interface RenderWavOptions {
   sidFile: string;
   wavFile: string;
+  renderEngine?: RenderEngine;
   songIndex?: number;
   maxRenderSeconds?: number;
   targetDurationMs?: number;
@@ -52,6 +54,10 @@ export interface RenderExecutionSummary {
   channels: number;
   truncated: boolean;
   stopReason: "complete" | "wall_time" | "silent_limit" | "max_iterations" | "null_chunk";
+}
+
+function isNaturalRenderStopReason(stopReason: RenderExecutionSummary["stopReason"]): boolean {
+  return stopReason === "complete" || stopReason === "silent_limit" || stopReason === "null_chunk";
 }
 
 export const RENDER_CYCLES_PER_CHUNK = 20_000;
@@ -755,6 +761,7 @@ export async function renderWavWithEngine(
     }
 
     const elapsedMs = Date.now() - startTime;
+    const finalStopReason = collectedSamples >= maxSamples ? "complete" : stopReason;
     await emitDebugEvent("render_function_complete", {
       collectedSamples,
       targetSamples: maxSamples,
@@ -768,8 +775,8 @@ export async function renderWavWithEngine(
       elapsedMs,
       sampleRate,
       channels,
-      truncated: collectedSamples < maxSamples,
-      stopReason: collectedSamples >= maxSamples ? "complete" : stopReason,
+      truncated: !isNaturalRenderStopReason(finalStopReason),
+      stopReason: finalStopReason,
     });
     renderSucceeded = true;
   } finally {

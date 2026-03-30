@@ -1,14 +1,14 @@
 /**
- * High-risk SID classification test — WASM-error SIDs are silently skipped
+ * High-risk SID classification test — WASM-error SIDs are recorded as failures.
  *
  * When rendering fails with a non-recoverable WASM error on every fallback profile
  * (e.g. "out of bounds memory access" on 2SID/3SID files with unsupported chip
- * addresses), the SID is silently omitted from the output JSONL rather than
- * aborting the run.  No degraded/partial classification record must be persisted.
+ * addresses), the SID must not produce a successful classification record, but it
+ * must be written to the structured failure JSONL so the batch can continue.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -121,7 +121,7 @@ describe("High-risk SID classification — WASM errors skip the SID silently", (
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  test("silently skips un-renderable SIDs without writing classification records — 3 consecutive rounds", async () => {
+  test("records un-renderable SIDs as structured failures without writing classification records — 3 consecutive rounds", async () => {
     for (let round = 1; round <= 3; round++) {
       for (const rel of HIGH_RISK_RELATIVE_PATHS) {
         const caseDir = path.join(tmpDir, `round-${round}`, rel.replace(/[\\/]/g, "_"));
@@ -130,8 +130,8 @@ describe("High-risk SID classification — WASM errors skip the SID silently", (
         const { plan, classifiedPath, lifecycleLogPath } = await createRoundPlan(caseDir);
 
         // When all render attempts fail with non-recoverable WASM errors,
-        // isSkippableSidError() silently omits the SID.  generateAutoTags must
-        // RESOLVE (not reject) with jsonlRecordCount === 0.
+        // generateAutoTags must resolve, write zero successful classification
+        // records, and persist one structured failure record.
         const result = await generateAutoTags(plan, {
           threads: 1,
           render: alwaysFailingRender,
@@ -149,12 +149,24 @@ describe("High-risk SID classification — WASM errors skip the SID silently", (
 
         const classifiedEntries = await readdir(classifiedPath);
         const classificationJsonl = classifiedEntries.filter(
-          (entry) => /^classification_.*\.jsonl$/.test(entry) && !entry.endsWith(".events.jsonl")
+          (entry) => /^classification_.*\.jsonl$/.test(entry) && !entry.endsWith(".events.jsonl") && !entry.endsWith(".failures.jsonl")
         );
         expect(
           classificationJsonl,
           `round ${round}: ${rel} must not persist successful classification records after render failure`
         ).toEqual([]);
+
+        expect(result.metrics.failedCount).toBe(1);
+        expect(result.metrics.retriedCount).toBe(1);
+
+        const failureLines = (await readFile(result.failureFile, "utf8"))
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as Record<string, unknown>);
+        expect(failureLines).toHaveLength(1);
+        expect(failureLines[0]?.sid_path).toBe(rel);
+        expect(failureLines[0]?.error).toEqual(expect.stringContaining("Out of bounds memory access"));
       }
     }
   }, 120_000);
@@ -197,7 +209,6 @@ describe("Skip-hole regression — songs after a WASM-skipped slot are still cla
       }
       await mkdir(path.dirname(options.wavFile), { recursive: true });
       await writeFile(options.wavFile, silentWav());
-      return null;
     };
 
     const caseDir = path.join(tmpDir, "skip-hole");

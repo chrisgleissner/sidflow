@@ -27,6 +27,7 @@ import {
   resolveRepresentativeAnalysisWindow,
 } from "./audio-window.js";
 import { estimateBpmAutocorr } from "./bpm-estimator.js";
+import { computeEnvelopeFeatures } from "./essentia-features.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 import { readSidTraceSidecar } from "./render/wav-renderer.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
@@ -401,6 +402,7 @@ async function extractFeatures(
     for (const [k, v] of Object.entries(frameSummaries)) {
       features[k] = v;
     }
+    Object.assign(features, computeEnvelopeFeatures(audioData, analysisSampleRate));
 
     const bpmEstimate = estimateBpmAutocorr(audioData, analysisSampleRate);
     if (bpmEstimate && bpmEstimate.confidence >= 0.15 && Number.isFinite(bpmEstimate.bpm)) {
@@ -515,6 +517,15 @@ async function extractSidNativeFeaturesForWorker(wavFile: string, sidFile: strin
   throw new Error(`Missing or invalid SID trace sidecar for ${wavFile}`);
 }
 
+async function isSidTraceExpectedForWorker(wavFile: string): Promise<boolean> {
+  const renderSettings = await readWavRenderSettingsSidecar(wavFile).catch(() => null);
+  if (!renderSettings) {
+    return true;
+  }
+
+  return renderSettings.traceCaptureEnabled === true || renderSettings.renderEngine === "wasm";
+}
+
 /**
  * Handle incoming extraction requests
  */
@@ -528,10 +539,21 @@ async function handleExtract(
     // Ensure Essentia is initialized (once per worker)
     await initEssentia();
 
-    const [wavFeatures, sidFeatures] = await Promise.all([
-      extractFeatures(wavFile, sidFile, configPath),
-      extractSidNativeFeaturesForWorker(wavFile, sidFile),
-    ]);
+    const wavFeatures = await extractFeatures(wavFile, sidFile, configPath);
+    let sidFeatures: FeatureVector;
+
+    try {
+      sidFeatures = await extractSidNativeFeaturesForWorker(wavFile, sidFile);
+    } catch (error) {
+      if (await isSidTraceExpectedForWorker(wavFile)) {
+        throw error;
+      }
+
+      await logSidNativeFeatureDegradation({ wavFile, sidFile }, error);
+      sidFeatures = {
+        sidFeatureVariant: "unavailable",
+      };
+    }
 
     // Merge: WAV features take priority; SID-native keys only added where absent.
     const features: FeatureVector = { ...wavFeatures };

@@ -125,6 +125,7 @@ export function extractEssentiaFrameSummaries(
 
   const frame = buffers?.frame ?? new Float32Array(frameSize);
   let previousSpectrum: number[] | null = null;
+  let observedSpectrumFrame = false;
 
   for (const frameIndex of frameIndices) {
     const start = frameIndex * hopSize;
@@ -152,6 +153,7 @@ export function extractEssentiaFrameSummaries(
 
         const spectrumArray = toNumberArray(essentia, spectrum);
         if (spectrumArray) {
+          observedSpectrumFrame = true;
           const totalEnergy = spectrumArray.reduce((sum, value) => sum + Math.max(0, value), 0);
           const lowBandLimit = Math.max(1, Math.floor((250 / (sampleRate / 2)) * spectrumArray.length));
           const lowEnergy = spectrumArray.slice(0, lowBandLimit).reduce((sum, value) => sum + Math.max(0, value), 0);
@@ -277,7 +279,11 @@ export function extractEssentiaFrameSummaries(
   if (hfcMean !== undefined) result.spectralHfc = hfcMean;
 
   const fluxMean = mean(spectralFlux);
-  if (fluxMean !== undefined) result.spectralFluxMean = fluxMean;
+  if (fluxMean !== undefined) {
+    result.spectralFluxMean = fluxMean;
+  } else if (observedSpectrumFrame) {
+    result.spectralFluxMean = 0;
+  }
 
   const salienceMean = mean(pitchSalience);
   if (salienceMean !== undefined) result.pitchSalience = salienceMean;

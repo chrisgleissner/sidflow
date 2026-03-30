@@ -87,7 +87,17 @@ export class SidAudioEngine {
         if (this.module) {
             return this.module;
         }
-        this.module = await this.modulePromise;
+        const capturedPromise = this.modulePromise;
+        if (!capturedPromise) {
+            throw new Error("SidAudioEngine has been disposed");
+        }
+        const module = await capturedPromise;
+        if (this.modulePromise !== capturedPromise) {
+            throw new Error("SidAudioEngine has been disposed");
+        }
+        if (!this.module) {
+            this.module = module;
+        }
         return this.module;
     }
     async createConfiguredContext() {
@@ -552,6 +562,11 @@ export class SidAudioEngine {
         this.bufferPool.clear();
         this.resetCacheState();
         this.originalSidBuffer = null;
+        // Null module references so the WASM linear-memory ArrayBuffer (~64–128 MB)
+        // becomes GC-eligible immediately rather than being held until the engine
+        // wrapper object is eventually collected.
+        this.module = undefined;
+        this.modulePromise = undefined;
     }
 }
 //# sourceMappingURL=player.js.map
