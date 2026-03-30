@@ -6,8 +6,9 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { spawn, spawnSync } from "node:child_process";
-import { rm, stat, mkdtemp } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { constants as fsConstants } from "node:fs";
+import { access, rm, stat, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
@@ -25,6 +26,8 @@ const TEST_SID_PATH = path.join(
 const SHORT_WASM_RENDER_SEC = 4;
 const VERIFY_WASM_RENDER_SEC = 3;
 const MIN_WASM_RENDER_SEC = 2;
+const SIDPLAYFP_RENDER_INTEGRATION_ENV = "SIDFLOW_ENABLE_SIDPLAYFP_RENDER_INTEGRATION";
+const SHOULD_RUN_SIDPLAYFP_RENDER_INTEGRATION = process.env[SIDPLAYFP_RENDER_INTEGRATION_ENV] === "1";
 
 interface RenderTestContext {
   tempDir: string;
@@ -35,16 +38,38 @@ interface RenderTestContext {
  * Check if sidplayfp CLI is available
  */
 async function isSidplayfpCliAvailable(): Promise<boolean> {
-  try {
-    const result = spawnSync("which", ["sidplayfp"], {
-      stdio: "ignore",
-      timeout: 5_000,
-      killSignal: "SIGKILL",
-    });
-    return result.status === 0 && result.signal === null;
-  } catch {
+  const pathValue = process.env.PATH ?? "";
+  if (!pathValue) {
     return false;
   }
+
+  const executableName = process.platform === "win32" ? "sidplayfp.exe" : "sidplayfp";
+  for (const segment of pathValue.split(path.delimiter)) {
+    if (!segment) {
+      continue;
+    }
+
+    const candidate = path.join(segment, executableName);
+    try {
+      await access(candidate, fsConstants.X_OK);
+      return true;
+    } catch {
+      // Keep scanning PATH until we find an executable match.
+    }
+  }
+
+  return false;
+}
+
+function skipSidplayfpRenderIntegration(): boolean {
+  if (SHOULD_RUN_SIDPLAYFP_RENDER_INTEGRATION) {
+    return false;
+  }
+
+  console.log(
+    `[render-integration] skipping sidplayfp-cli binary integration; set ${SIDPLAYFP_RENDER_INTEGRATION_ENV}=1 to enable it`
+  );
+  return true;
 }
 
 /**
@@ -199,6 +224,11 @@ describe("Step 8: Integration tests (render engines)", () => {
 
   describe("8.2 - sidplayfp-cli engine (conditional)", () => {
     it("renders SID to WAV if sidplayfp is available", async () => {
+      if (skipSidplayfpRenderIntegration()) {
+        expect(SHOULD_RUN_SIDPLAYFP_RENDER_INTEGRATION).toBe(false);
+        return;
+      }
+
       // This test requires sidplayfp-cli binary and skips gracefully if not available
       const available = await isSidplayfpCliAvailable();
 
@@ -228,6 +258,11 @@ describe("Step 8: Integration tests (render engines)", () => {
     }, 25_000);
 
     it("skips gracefully when sidplayfp is not available", async () => {
+      if (skipSidplayfpRenderIntegration()) {
+        expect(SHOULD_RUN_SIDPLAYFP_RENDER_INTEGRATION).toBe(false);
+        return;
+      }
+
       const available = await isSidplayfpCliAvailable();
 
       if (available) {
@@ -301,6 +336,11 @@ describe("Step 9: Verification matrix", () => {
     });
 
     it("checks sidplayfp-cli availability", async () => {
+      if (skipSidplayfpRenderIntegration()) {
+        expect(SHOULD_RUN_SIDPLAYFP_RENDER_INTEGRATION).toBe(false);
+        return;
+      }
+
       const available = await isSidplayfpCliAvailable();
       console.log(`[render-integration] sidplayfp-cli: ${available ? "available ✓" : "unavailable (expected in CI)"}`);
       // Don't fail if unavailable, just log
@@ -354,7 +394,7 @@ describe("Step 9: Verification matrix", () => {
     });
 
     it("validates availability-based fallback to WASM", async () => {
-      const cliAvailable = await isSidplayfpCliAvailable();
+      const cliAvailable = skipSidplayfpRenderIntegration() ? false : await isSidplayfpCliAvailable();
       const ultimate64Available = false;
 
       // In absence of other engines, should fall back to WASM

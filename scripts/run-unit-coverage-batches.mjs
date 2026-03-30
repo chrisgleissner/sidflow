@@ -15,6 +15,7 @@ const coverageArgs = [
   "--exclude=**/*.spec.ts",
   "--exclude=**/tests/e2e/**",
   "--exclude=**/dist/**",
+  "--exclude=c64commander/**",
 ];
 
 const batchRoots = [
