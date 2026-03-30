@@ -62,7 +62,16 @@ export interface MaterializeHvscE2eSubsetOptions {
   localHvscRoot?: string;
   concurrency?: number;
   mirrorBaseUrls?: string[];
+  allowNetworkFetch?: boolean;
+  fetchTimeoutMs?: number;
+  fetchRetryCount?: number;
+  fetchRetryBackoffMs?: number;
+  fetchImpl?: typeof fetch;
 }
+
+const DEFAULT_FETCH_TIMEOUT_MS = 30_000;
+const DEFAULT_FETCH_RETRY_COUNT = 2;
+const DEFAULT_FETCH_RETRY_BACKOFF_MS = 1_000;
 
 function toPosix(value: string): string {
   return value.split(path.sep).join("/");
@@ -229,6 +238,7 @@ export function selectHvscE2eSubset(
   const selected: HvscE2eSubsetEntry[] = [];
   const selectedPaths = new Set<string>();
   const authorCounts = new Map<string, number>();
+  const problematicAuthorCounts = new Map<string, number>();
 
   const addEntry = (entry: HvscE2eCatalogEntry, source: HvscE2eSource): void => {
     const stableKey = stableHash(seed, entry.sidPath);
@@ -242,11 +252,14 @@ export function selectHvscE2eSubset(
     authorCounts.set(entry.author, (authorCounts.get(entry.author) ?? 0) + 1);
   };
 
+  const allowedAuthorTotal = (author: string): number => Math.max(authorCap, problematicAuthorCounts.get(author) ?? 0);
+
   for (const problematicPath of problematicPaths) {
     const entry = byPath.get(problematicPath);
     if (!entry) {
       throw new Error(`Problematic SID path is missing from the source catalog: ${problematicPath}`);
     }
+    problematicAuthorCounts.set(entry.author, (problematicAuthorCounts.get(entry.author) ?? 0) + 1);
     addEntry(entry, "problematic");
   }
 
@@ -284,7 +297,7 @@ export function selectHvscE2eSubset(
         if (selectedPaths.has(candidate.sidPath)) {
           continue;
         }
-        if ((authorCounts.get(candidate.author) ?? 0) >= authorCap) {
+        if ((authorCounts.get(candidate.author) ?? 0) >= allowedAuthorTotal(candidate.author)) {
           continue;
         }
 
@@ -309,9 +322,13 @@ export function selectHvscE2eSubset(
     throw new Error(`Unable to select ${targetCount} HVSC files with author cap ${authorCap}; selected ${selected.length}`);
   }
 
-  const maxAuthorCount = Math.max(...[...authorCounts.values(), 0]);
-  if (maxAuthorCount > authorCap) {
-    throw new Error(`Author cap violation: selected subset contains ${maxAuthorCount} files for one author (cap ${authorCap})`);
+  for (const [author, count] of authorCounts.entries()) {
+    const allowed = allowedAuthorTotal(author);
+    if (count > allowed) {
+      throw new Error(
+        `Author cap violation: selected subset contains ${count} files for ${author} (allowed ${allowed}, base cap ${authorCap})`,
+      );
+    }
   }
 
   selected.sort((left, right) => left.sidPath.localeCompare(right.sidPath));
@@ -346,27 +363,47 @@ export async function writeHvscE2eSubsetManifest(manifestPath: string, manifest:
   await writeFile(manifestPath, stringifyDeterministic(manifest as unknown as JsonValue), "utf8");
 }
 
-async function fetchSidFromMirror(relativeSidPath: string, destination: string, mirrorBaseUrls: string[]): Promise<void> {
+async function fetchSidFromMirrorWithOptions(
+  relativeSidPath: string,
+  destination: string,
+  mirrorBaseUrls: string[],
+  options: Required<Pick<MaterializeHvscE2eSubsetOptions, "fetchTimeoutMs" | "fetchRetryCount" | "fetchRetryBackoffMs" | "fetchImpl">>,
+): Promise<void> {
   const encodedPath = relativeSidPath
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
 
   let lastError: Error | null = null;
-  for (const mirrorBaseUrl of mirrorBaseUrls) {
-    const url = `${mirrorBaseUrl}/${encodedPath}`;
-    try {
-      const response = await fetch(url);
-      if (response.status !== HTTP_OK) {
-        throw new Error(`Unexpected HTTP status ${response.status}`);
+  for (let attempt = 0; attempt <= options.fetchRetryCount; attempt += 1) {
+    for (const mirrorBaseUrl of mirrorBaseUrls) {
+      const url = `${mirrorBaseUrl}/${encodedPath}`;
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => {
+        controller.abort(new Error(`Request timed out after ${options.fetchTimeoutMs}ms`));
+      }, options.fetchTimeoutMs);
+
+      try {
+        const response = await options.fetchImpl(url, { signal: controller.signal });
+        if (response.status !== HTTP_OK) {
+          throw new Error(`Unexpected HTTP status ${response.status}`);
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+        await ensureDir(path.dirname(destination));
+        await writeFile(destination, buffer);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        hvscSubsetLogger.warn(
+          `Failed to fetch ${relativeSidPath} from ${url} (attempt ${attempt + 1}/${options.fetchRetryCount + 1}): ${lastError.message}`,
+        );
+      } finally {
+        clearTimeout(timeoutHandle);
       }
-      const buffer = Buffer.from(await response.arrayBuffer());
-      await ensureDir(path.dirname(destination));
-      await writeFile(destination, buffer);
-      return;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      hvscSubsetLogger.warn(`Failed to fetch ${relativeSidPath} from ${url}: ${lastError.message}`);
+    }
+
+    if (attempt < options.fetchRetryCount) {
+      await new Promise((resolve) => setTimeout(resolve, options.fetchRetryBackoffMs * (attempt + 1)));
     }
   }
 
@@ -378,6 +415,7 @@ async function materializeOneSid(
   c64MusicTargetRoot: string,
   localC64MusicRoot: string | null,
   mirrorBaseUrls: string[],
+  options: Required<Pick<MaterializeHvscE2eSubsetOptions, "allowNetworkFetch" | "fetchTimeoutMs" | "fetchRetryCount" | "fetchRetryBackoffMs" | "fetchImpl">>,
 ): Promise<string> {
   const destination = path.join(c64MusicTargetRoot, entry.sidPath);
   if (await pathExists(destination)) {
@@ -393,7 +431,13 @@ async function materializeOneSid(
     }
   }
 
-  await fetchSidFromMirror(entry.sidPath, destination, mirrorBaseUrls);
+  if (!options.allowNetworkFetch) {
+    throw new Error(
+      `Missing ${entry.sidPath} in local HVSC sources and network fetch is disabled; set SIDFLOW_ENABLE_NETWORK_E2E_MATERIALIZATION=1 to allow mirror downloads`,
+    );
+  }
+
+  await fetchSidFromMirrorWithOptions(entry.sidPath, destination, mirrorBaseUrls, options);
   return destination;
 }
 
@@ -408,6 +452,13 @@ export async function materializeHvscE2eSubset(
     : null;
   const concurrency = Math.max(1, Math.floor(options.concurrency ?? 8));
   const mirrorBaseUrls = options.mirrorBaseUrls ?? [HVSC_PRIMARY_MIRROR, HVSC_FALLBACK_MIRROR];
+  const materializeOptions = {
+    allowNetworkFetch: options.allowNetworkFetch ?? true,
+    fetchTimeoutMs: options.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS,
+    fetchRetryCount: options.fetchRetryCount ?? DEFAULT_FETCH_RETRY_COUNT,
+    fetchRetryBackoffMs: options.fetchRetryBackoffMs ?? DEFAULT_FETCH_RETRY_BACKOFF_MS,
+    fetchImpl: options.fetchImpl ?? globalThis.fetch,
+  };
   const pending = [...manifest.entries];
   const materialized: string[] = [];
 
@@ -419,7 +470,13 @@ export async function materializeHvscE2eSubset(
       if (!entry) {
         continue;
       }
-      const destination = await materializeOneSid(entry, c64MusicTargetRoot, localC64MusicRoot, mirrorBaseUrls);
+      const destination = await materializeOneSid(
+        entry,
+        c64MusicTargetRoot,
+        localC64MusicRoot,
+        mirrorBaseUrls,
+        materializeOptions,
+      );
       materialized.push(destination);
     }
   });

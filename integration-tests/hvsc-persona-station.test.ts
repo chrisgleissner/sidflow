@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -28,9 +28,26 @@ const STATION_ANALYSIS_DIR = path.join(REPO_ROOT, "station-analysis");
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-hvsc-persona-e2e-");
 
 const HVSC_SUBSET_CACHE_DIR = path.join(REPO_ROOT, "workspace", "hvsc-e2e-subset-cache");
+const NETWORK_E2E_ENV = "SIDFLOW_ENABLE_NETWORK_E2E_MATERIALIZATION";
 
 const MAX_OVERLAP_PCT = 40;
 const STATION_SIZE = 50;
+
+function hasWarmSubsetCache(): boolean {
+  try {
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as { entries?: Array<{ sidPath: string }> };
+    const entries = manifest.entries ?? [];
+    return entries.length > 0
+      && entries.every((entry) => existsSync(path.join(HVSC_SUBSET_CACHE_DIR, "C64Music", normalizeSubsetSidPath(entry.sidPath))));
+  } catch {
+    return false;
+  }
+}
+
+const SHOULD_SKIP_NETWORK_MATERIALIZATION =
+  !existsSync(LOCAL_HVSC_ROOT)
+  && !hasWarmSubsetCache()
+  && process.env[NETWORK_E2E_ENV] !== "1";
 
 function normalizeSubsetSidPath(sidPath: string): string {
   return sidPath.startsWith("C64Music/") ? sidPath.slice("C64Music/".length) : sidPath;
@@ -218,7 +235,7 @@ describe("HVSC 300-file persona station E2E", () => {
     }
   });
 
-  test(
+  (SHOULD_SKIP_NETWORK_MATERIALIZATION ? test.skip : test)(
     "materializes the deterministic subset, classifies it, and builds 5 independent persona stations with verified divergence",
     async () => {
       // -----------------------------------------------------------------------
@@ -250,6 +267,7 @@ describe("HVSC 300-file persona station E2E", () => {
       await materializeHvscE2eSubset(manifest, hvscRoot, {
         localHvscRoot: existsSync(LOCAL_HVSC_ROOT) ? LOCAL_HVSC_ROOT : undefined,
         concurrency: 8,
+        allowNetworkFetch: process.env[NETWORK_E2E_ENV] === "1",
       });
 
       const config: SidflowConfig = {

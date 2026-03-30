@@ -22,6 +22,7 @@ import {
   mapStationToken,
   decodeTerminalInput,
 } from "../src/sid-station.js";
+import { runPersonaStationCli } from "../src/persona-station.js";
 import { PlaybackState, type PlaybackEvent } from "../src/index.js";
 import type { Recommendation } from "@sidflow/common";
 import type { SidFileMetadata } from "@sidflow/common";
@@ -479,6 +480,34 @@ describe("station demo CLI argument parsing", () => {
     const result = parseStationArgs(["--c64u-password", "secret-value"]);
     expect(result.options.c64uPassword).toBe("secret-value");
     expect(result.errors).toHaveLength(0);
+  });
+});
+
+describe("persona station CLI", () => {
+  test("prints help to stdout without treating it as an error", async () => {
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
+
+    const captureWrite = (chunks: string[]) => ((chunk: string | Uint8Array) => {
+      chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+      return true;
+    }) as typeof process.stdout.write;
+
+    try {
+      process.stdout.write = captureWrite(stdoutChunks);
+      process.stderr.write = captureWrite(stderrChunks) as typeof process.stderr.write;
+
+      const exitCode = await runPersonaStationCli(["--help"]);
+
+      expect(exitCode).toBe(0);
+      expect(stdoutChunks.join("")).toContain("Usage: sidflow-play persona-station");
+      expect(stderrChunks.join("")).toBe("");
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
   });
 });
 

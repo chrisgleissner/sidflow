@@ -478,7 +478,14 @@ interface PersonaStationCliOptions {
   subsetManifest: string;
   outputJson?: string;
   outputM3u?: string;
+  helpRequested?: boolean;
 }
+
+const PERSONA_STATION_USAGE = [
+  "Usage: sidflow-play persona-station --classification-jsonl <file> --subset-manifest <file> [--output-json <file>] [--output-m3u <file>]",
+  "",
+  "Build 5 independent persona radio stations from a classified HVSC subset (parallel model).",
+].join("\n");
 
 async function loadClassificationRecords(jsonlPath: string): Promise<ClassificationRecord[]> {
   const content = await readFile(jsonlPath, "utf8");
@@ -512,16 +519,15 @@ function parsePersonaStationArgs(argv: string[]): PersonaStationCliOptions {
         break;
       case "--help":
       case "-h":
-        throw new Error(
-          [
-            "Usage: sidflow-play persona-station --classification-jsonl <file> --subset-manifest <file> [--output-json <file>] [--output-m3u <file>]",
-            "",
-            "Build 5 independent persona radio stations from a classified HVSC subset (parallel model).",
-          ].join("\n"),
-        );
+        options.helpRequested = true;
+        return options;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (options.helpRequested) {
+    return options;
   }
 
   if (!options.classificationJsonl) {
@@ -540,7 +546,12 @@ export async function runPersonaStationCli(argv: string[]): Promise<number> {
     options = parsePersonaStationArgs(argv);
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\n`);
-    return (error as Error).message.startsWith("Usage:") ? 0 : 1;
+    return 1;
+  }
+
+  if (options.helpRequested) {
+    process.stdout.write(`${PERSONA_STATION_USAGE}\n`);
+    return 0;
   }
 
   const [records, subsetManifest] = await Promise.all([

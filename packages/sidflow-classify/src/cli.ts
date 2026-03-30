@@ -6,12 +6,6 @@ import { pathToFileURL } from "node:url";
 
 import { resetConfigCache } from "@sidflow/common";
 import {
-  buildAudioCache,
-  defaultExtractMetadata,
-  destroyFeatureExtractionPool,
-  disposeModel,
-  generateAutoTags,
-  planClassification,
   type AutoTagProgress,
   type BuildAudioCacheResult,
   type ClassificationPlan,
@@ -21,7 +15,13 @@ import {
   type PredictRatings,
   type RenderWav,
   type ThreadActivityUpdate,
-  type AudioCacheProgress
+  type AudioCacheProgress,
+  type buildAudioCache,
+  type defaultExtractMetadata,
+  type destroyFeatureExtractionPool,
+  type disposeModel,
+  type generateAutoTags,
+  type planClassification,
 } from "./index.js";
 import { getLogicalCpuCount } from "./system.js";
 
@@ -187,10 +187,19 @@ interface ClassifyCliRuntime {
   stderr: NodeJS.WritableStream;
 }
 
+let classifyIndexModulePromise: Promise<typeof import("./index.js")> | null = null;
+
+async function loadClassifyIndexModule(): Promise<typeof import("./index.js")> {
+  if (!classifyIndexModulePromise) {
+    classifyIndexModulePromise = import("./index.js");
+  }
+  return classifyIndexModulePromise;
+}
+
 const defaultRuntime: ClassifyCliRuntime = {
-  planClassification,
-  buildAudioCache,
-  generateAutoTags,
+  planClassification: async (...args) => (await loadClassifyIndexModule()).planClassification(...args),
+  buildAudioCache: async (...args) => (await loadClassifyIndexModule()).buildAudioCache(...args),
+  generateAutoTags: async (...args) => (await loadClassifyIndexModule()).generateAutoTags(...args),
   loadFeatureModule: (specifier) =>
     loadModule<FeatureExtractor>(specifier, ["default", "featureExtractor", "extractFeatures"]),
   loadPredictorModule: (specifier) =>
@@ -473,7 +482,7 @@ export async function runClassifyCli(
       predictRatings = await runtime.loadPredictorModule(options.predictorModule);
     }
 
-    let extractMetadata: ExtractMetadata = defaultExtractMetadata;
+    let extractMetadata: ExtractMetadata = (await loadClassifyIndexModule()).defaultExtractMetadata;
     if (options.metadataModule) {
       extractMetadata = await runtime.loadMetadataModule(options.metadataModule);
     }
@@ -521,15 +530,18 @@ export async function runClassifyCli(
     // Ensure worker threads and native resources are released so the CLI can exit cleanly.
     // Without this, feature-extraction workers can keep the event loop alive indefinitely,
     // which breaks async E2E flows waiting for the process to become idle.
-    try {
-      await destroyFeatureExtractionPool();
-    } catch {
-      // ignore cleanup errors
-    }
-    try {
-      disposeModel();
-    } catch {
-      // ignore cleanup errors
+    if (classifyIndexModulePromise) {
+      const classifyIndex = await loadClassifyIndexModule();
+      try {
+        await classifyIndex.destroyFeatureExtractionPool();
+      } catch {
+        // ignore cleanup errors
+      }
+      try {
+        classifyIndex.disposeModel();
+      } catch {
+        // ignore cleanup errors
+      }
     }
   }
 }

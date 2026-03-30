@@ -1,5 +1,43 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 28 - PR 91 Convergence To Merge-Ready
+
+1. [IN_PROGRESS] Audit the active pull request review threads and branch status.
+  Acceptance criteria:
+  - Every open review thread is enumerated with file-backed context.
+  - Branch status checks are inspected from GitHub.
+  - The convergence work records which comments need code changes versus technical replies.
+
+2. [TODO] Fix valid review findings with minimal, regression-safe changes.
+  Acceptance criteria:
+  - Network-dependent HVSC subset materialization is not part of the default CI path.
+  - Mirror downloads use bounded request timeouts and retry behavior.
+  - HVSC problematic proof-set selection no longer contradicts the documented author-cap rule.
+  - Persona CLI help follows normal stdout/exit-0 control flow.
+
+3. [TODO] Revalidate the affected tree and record evidence.
+  Acceptance criteria:
+  - Targeted tests cover each fixed behavior.
+  - `bun run build` passes.
+  - Required tests pass locally before push.
+
+4. [TODO] Push the fixes, respond to every review thread, and resolve them.
+  Acceptance criteria:
+  - Every open review thread has a technical reply.
+  - Threads are resolved only after code or reasoning is in place.
+  - The current branch contains the convergence fixes.
+
+5. [TODO] Wait for CI to return green and close the loop.
+  Acceptance criteria:
+  - All required CI checks for the PR are passing.
+  - No unresolved review comments remain.
+  - PLANS.md records final outcomes and validation evidence.
+
+### Progress
+
+- 2026-03-30: Reviewed the required repo docs (`PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`) and fetched live PR 91 metadata from GitHub.
+- 2026-03-30: Enumerated 4 open Copilot review threads: CI-network gating in `integration-tests/hvsc-persona-station.test.ts`, mirror timeout/retry handling and problematic-path author-cap semantics in `packages/sidflow-common/src/hvsc-e2e-subset.ts`, and help-path control flow in `packages/sidflow-play/src/persona-station.ts`.
+
 ## Phase 27 - Parallel Persona Station Redesign (Eliminate Convergence-to-Intersection)
 
 1. [DONE] Replace sequential intersection model with parallel independent model.
