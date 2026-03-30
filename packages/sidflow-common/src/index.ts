@@ -37,3 +37,6 @@ export * from "./audio-types.js";
 export * from "./chip-model.js";
 export * from "./cli-parser.js";
 export * from "./directory-playlist.js";
+export * from "./persona.js";
+export * from "./persona-scorer.js";
+export * from "./persona-profile.js";

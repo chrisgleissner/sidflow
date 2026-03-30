@@ -5,43 +5,13 @@ import {
   ensureDir,
   loadHvscE2eSubsetManifest,
   stringifyDeterministic,
+  PERSONA_LIST,
   type ClassificationRecord,
   type HvscE2eSubsetEntry,
+  type PersonaDefinition,
+  type PersonaMetricName,
+  type PersonaMetrics,
 } from "@sidflow/common";
-
-// ---------------------------------------------------------------------------
-// Metric types
-// ---------------------------------------------------------------------------
-
-type PersonaMetricName =
-  | "melodicComplexity"
-  | "rhythmicDensity"
-  | "timbralRichness"
-  | "nostalgiaBias"
-  | "experimentalTolerance";
-
-interface PersonaMetrics {
-  melodicComplexity: number;
-  rhythmicDensity: number;
-  timbralRichness: number;
-  nostalgiaBias: number;
-  experimentalTolerance: number;
-}
-
-// ---------------------------------------------------------------------------
-// Persona definition — explicit weights, no hidden logic
-// ---------------------------------------------------------------------------
-
-interface PersonaDefinition {
-  id: string;
-  label: string;
-  /** Weights applied to each metric dimension when scoring. Sum should be 1. */
-  metricWeights: Record<PersonaMetricName, number>;
-  /** Direction per metric: +1 = higher is better, -1 = lower is better, 0 = ignore */
-  metricDirections: Record<PersonaMetricName, 1 | -1 | 0>;
-  /** Rating targets on the 1-5 scale (e, m, c) */
-  ratingTargets: { e: number; m: number; c: number };
-}
 
 // ---------------------------------------------------------------------------
 // Result types (exported for test consumption)
@@ -119,112 +89,8 @@ interface PersonaTrackContext {
 const STATION_SIZE = 50;
 const MAX_OVERLAP_PCT = 40;
 
-// ---------------------------------------------------------------------------
-// 5 orthogonal personas — explicit weights and directions
-// ---------------------------------------------------------------------------
-
-const PERSONAS: PersonaDefinition[] = [
-  {
-    // Fast Paced: maximizes rhythmic density; opposes all other primary axes
-    id: "fast_paced",
-    label: "Fast Paced",
-    metricWeights: {
-      rhythmicDensity: 0.60,
-      experimentalTolerance: 0.15,
-      melodicComplexity: 0.10,
-      timbralRichness: 0.10,
-      nostalgiaBias: 0.05,
-    },
-    metricDirections: {
-      rhythmicDensity: 1,
-      experimentalTolerance: -1,
-      melodicComplexity: -1,
-      timbralRichness: -1,
-      nostalgiaBias: -1,
-    },
-    ratingTargets: { e: 5, m: 2, c: 3 },
-  },
-  {
-    // Slow / Ambient: minimizes rhythmic density; penalizes nostalgia to separate from Nostalgic
-    id: "slow_ambient",
-    label: "Slow / Ambient",
-    metricWeights: {
-      rhythmicDensity: 0.60,
-      melodicComplexity: 0.15,
-      experimentalTolerance: 0.10,
-      nostalgiaBias: 0.10,
-      timbralRichness: 0.05,
-    },
-    metricDirections: {
-      rhythmicDensity: -1,
-      melodicComplexity: 1,
-      experimentalTolerance: -1,
-      nostalgiaBias: -1,
-      timbralRichness: 0,
-    },
-    ratingTargets: { e: 2, m: 4, c: 4 },
-  },
-  {
-    // Melodic: maximizes melodic complexity; penalizes nostalgia and experimental
-    id: "melodic",
-    label: "Melodic",
-    metricWeights: {
-      melodicComplexity: 0.60,
-      timbralRichness: 0.15,
-      rhythmicDensity: 0.10,
-      nostalgiaBias: 0.10,
-      experimentalTolerance: 0.05,
-    },
-    metricDirections: {
-      melodicComplexity: 1,
-      timbralRichness: 1,
-      rhythmicDensity: 0,
-      nostalgiaBias: -1,
-      experimentalTolerance: -1,
-    },
-    ratingTargets: { e: 3, m: 5, c: 5 },
-  },
-  {
-    // Experimental: maximizes experimental tolerance; penalizes melody and nostalgia
-    id: "experimental",
-    label: "Experimental",
-    metricWeights: {
-      experimentalTolerance: 0.60,
-      timbralRichness: 0.15,
-      rhythmicDensity: 0.10,
-      nostalgiaBias: 0.10,
-      melodicComplexity: 0.05,
-    },
-    metricDirections: {
-      experimentalTolerance: 1,
-      timbralRichness: 1,
-      rhythmicDensity: 0,
-      nostalgiaBias: -1,
-      melodicComplexity: -1,
-    },
-    ratingTargets: { e: 5, m: 2, c: 5 },
-  },
-  {
-    // Nostalgic: maximizes nostalgia; penalizes experimental and timbral
-    id: "nostalgic",
-    label: "Nostalgic",
-    metricWeights: {
-      nostalgiaBias: 0.60,
-      melodicComplexity: 0.15,
-      rhythmicDensity: 0.10,
-      experimentalTolerance: 0.10,
-      timbralRichness: 0.05,
-    },
-    metricDirections: {
-      nostalgiaBias: 1,
-      melodicComplexity: 1,
-      rhythmicDensity: 1,
-      experimentalTolerance: -1,
-      timbralRichness: -1,
-    },
-    ratingTargets: { e: 3, m: 5, c: 3 },
-  },
-];
+// Use only the 5 audio-led personas from the shared definitions
+const AUDIO_PERSONAS: PersonaDefinition[] = PERSONA_LIST.filter((p) => p.kind === "audio");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -548,7 +414,7 @@ export function buildParallelPersonaStation(
     .sort((a, b) => a.trackId.localeCompare(b.trackId));
 
   // Each persona independently scores ALL tracks and takes top STATION_SIZE
-  const stations: PersonaStationOutput[] = PERSONAS.map((persona) => {
+  const stations: PersonaStationOutput[] = AUDIO_PERSONAS.map((persona) => {
     const scored = pool
       .map((ctx) => {
         const { score, breakdown } = scoreTrack(ctx.metrics, ctx.record.ratings, persona);
@@ -594,7 +460,7 @@ export function buildParallelPersonaStation(
   const distributionValid = distributionAssertions.every((a) => a.passed);
 
   return {
-    personas: PERSONAS.map((p) => ({ id: p.id, label: p.label })),
+    personas: AUDIO_PERSONAS.map((p) => ({ id: p.id, label: p.label })),
     stations,
     overlapMatrix,
     overlapValid,
