@@ -40,6 +40,8 @@
 - 2026-03-30: Replied to all 4 Copilot review threads on PR 91 with file-backed explanations and resolved each thread via `gh`.
 - 2026-03-30: Stabilized the default local coverage path by excluding the unrelated `c64commander/**` subtree from `scripts/run-unit-coverage-batches.mjs` and gating the real `sidplayfp-cli` binary integration checks in `packages/sidflow-classify/test/render-integration.test.ts` behind `SIDFLOW_ENABLE_SIDPLAYFP_RENDER_INTEGRATION=1`.
 - 2026-03-30: Local validation after the stabilization changes passed three consecutive times with `bun run test` (`tmp/pr91-converge/test-run-{1,2,3}.status` all `0`).
+- 2026-03-30: Post-push CI rerun failed only in the Playwright web-server build step because `packages/sidflow-web/components/PlayTab.tsx` initialized `activePersona` from `string | null` instead of the `PersonaId | null` union accepted by React state.
+- 2026-03-30: Fixed the PlayTab type mismatch by normalizing persisted persona IDs against `PERSONA_IDS`; targeted validation passed with `cd packages/sidflow-web && npm run build`.
 
 ## Phase 27 - Parallel Persona Station Redesign (Eliminate Convergence-to-Intersection)
 

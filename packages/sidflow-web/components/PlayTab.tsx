@@ -55,7 +55,7 @@ import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { SaveQueueDialog } from '@/components/SaveQueueDialog';
 import { PlaylistBrowser } from '@/components/PlaylistBrowser';
 import PersonaBar from '@/components/PersonaBar';
-import type { PersonaId } from '@sidflow/common';
+import { PERSONA_IDS, type PersonaId } from '@sidflow/common';
 import type { Playlist } from '@/lib/types/playlist';
 
 interface PlayTabProps {
@@ -104,6 +104,15 @@ const DEFAULT_C64U_LED_SETTINGS: C64ULedSnapshot['settings'] = {
   fixedColor: 'Indigo',
 };
 
+const PERSONA_ID_SET = new Set<string>(PERSONA_IDS);
+
+function normalizePersonaId(value: string | null | undefined): PersonaId | null {
+  if (!value || !PERSONA_ID_SET.has(value)) {
+    return null;
+  }
+  return value as PersonaId;
+}
+
 interface InfoProps {
   label: string;
   value: ReactNode;
@@ -147,7 +156,7 @@ export function PlayTab({ onStatusChange, onTrackPlayed }: PlayTabProps) {
   const c64uPreferences = preferences.ultimate64;
   const [preset, setPreset] = useState<MoodPreset>('energetic');
   const [activePersona, setActivePersona] = useState<PersonaId | null>(
-    preferences.persona.activePersonaId ?? null
+    normalizePersonaId(preferences.persona.activePersonaId)
   );
   const [currentTrack, setCurrentTrack] = useState<PlaylistTrack | null>(null);
   const [duration, setDuration] = useState(180);
