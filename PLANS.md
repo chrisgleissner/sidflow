@@ -1,5 +1,43 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 33 - PR 92 Convergence To Merge-Ready
+
+1. [IN_PROGRESS] Audit the active PR review threads and failing branch status.
+  Acceptance criteria:
+  - Every open review thread is enumerated with file-backed context.
+  - The failing CI job is reduced to concrete root causes.
+  - The convergence task distinguishes code fixes, doc alignment, and pure reply-only resolutions.
+
+2. [TODO] Fix valid review findings with minimal, regression-safe changes.
+  Acceptance criteria:
+  - Tiny export generation uses the documented backward-edge DAG and does not regress on large precomputed exports.
+  - Tiny loading avoids full HVSC rescans when Songlengths.md5 can provide the MD5-to-path index.
+  - Lite/tiny builders and station dataset resolution remove the flagged O(n²) and unsupported `.sqlite.gz` behaviors.
+
+3. [TODO] Repair the current branch CI failures and revalidate the changed surface.
+  Acceptance criteria:
+  - The station queue tests use the current dataset-handle API.
+  - Legacy sqlite schema detection reports the intended track-identity error.
+  - Targeted tests plus `bun run build` pass locally.
+
+4. [TODO] Push fixes, answer every unresolved review thread, and resolve them.
+  Acceptance criteria:
+  - Every unresolved thread gets a technical reply tied to code or reasoning.
+  - No thread is resolved without an explanation.
+  - The branch contains the convergence fixes.
+
+5. [TODO] Wait for CI to return green and close the loop.
+  Acceptance criteria:
+  - All required checks for PR 92 are passing.
+  - No unresolved review comments remain.
+  - PLANS.md records the final evidence and any residual risks.
+
+### Progress
+
+- 2026-04-07: Read the required repo docs, fetched live PR 92 review metadata from GitHub, and confirmed 10 unresolved Copilot threads plus one failing `Build and test / Build and Test` check on commit `feat/sidcorr-tiny`.
+- 2026-04-07: Reduced the open review feedback to concrete fixes in `packages/sidflow-common/src/similarity-export-tiny.ts`, `packages/sidflow-common/src/similarity-export-lite.ts`, `packages/sidflow-play/src/station/dataset.ts`, and `doc/similarity-export-tiny.md`. The comments are valid: the tiny export still wrote forward edges, the loader still performed an HVSC-wide MD5 scan and an O(trackCount * fileCount) file lookup, lite still carried an unused O(fileCount * trackCount) count pass, and station dataset resolution still inferred unsupported `.sqlite.gz` sqlite bundles.
+- 2026-04-07: Inspected the failing GitHub Actions log for run `24104059549` and found four concrete failures: three `station demo backend queue building` tests were still calling `buildStationQueue(...)` with a sqlite path instead of the new dataset handle, and one legacy-schema CLI test was blocked because `openSqliteSimilarityDataset(...)` always claimed `hasTrackIdentity: true` even when `track_id` / `song_index` columns were missing.
+
 ## Phase 32 - Multi-Format Similarity Convergence Audit And Proof
 
 Plan document:

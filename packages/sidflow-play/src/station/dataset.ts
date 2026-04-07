@@ -75,7 +75,7 @@ async function findFilesWithSuffix(rootPath: string, suffix: string): Promise<st
 function resolveSimilarityFormatFromPath(filePath: string): ResolvedStationSimilarityFormat | null {
   const lower = filePath.toLowerCase();
   const basename = path.basename(lower);
-  if (basename.endsWith(".sqlite") || basename.endsWith(".sqlite.gz")) {
+  if (basename.endsWith(".sqlite")) {
     return "sqlite";
   }
   if (
@@ -354,6 +354,9 @@ export async function resolveStationDataset(
 
   if (explicitLocalDb) {
     const resolvedDbPath = path.resolve(cwd, explicitLocalDb);
+    if (resolvedDbPath.toLowerCase().endsWith(".sqlite.gz")) {
+      throw new Error(`Compressed sqlite bundles are not supported: ${resolvedDbPath}. Decompress the file or use a portable .sidcorr bundle instead.`);
+    }
     const explicitFormat = requestedFormat === "auto"
       ? resolveSimilarityFormatFromPath(resolvedDbPath)
       : requestedFormat;

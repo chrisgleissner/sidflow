@@ -104,43 +104,19 @@ The stable cross-version key is:
 stable_track_key = (stable_file_identity, song_index)
 ```
 
-Where `stable_file_identity` is chosen per export as either:
-
-- first 6 bytes of the SID file MD5 digest (`md5_48`)
-- full HVSC-relative UTF-8 path
+Where `stable_file_identity` is the first 6 bytes of the SID file MD5 digest (`md5_48`).
 
 ## 4.1 File Identity Mode Selection
 
-The generator MUST choose the shorter correct representation for the current corpus:
+The current `sidcorr-tiny-1` generator MUST encode `stable_file_identity` as `md5_48`.
 
-- `md5_48` mode bytes = `6 * file_count`
-- `hvsc_path_utf8` mode bytes = `8 * file_count + sum(utf8_length(path))`
+Rules:
 
-`md5_48` mode MAY be used only if both are true:
+1. builders MUST compute the full SID-file MD5 digest and truncate it to the leading 6 bytes
+2. exports MUST reject duplicate 6-byte prefixes within the current corpus
+3. readers MUST interpret every file identity record as exactly 6 raw MD5 bytes
 
-1. the export corpus has no duplicate 6-byte MD5 prefixes
-2. the projected probability of at least one future prefix clash stays below 1% for the next 10 years assuming 1,000 new SID files per year
-
-Use:
-
-```text
-p_collision ~= 1 - exp(-(n * m + m * (m - 1) / 2) / 2^48)
-```
-
-Where:
-
-- `n` = current file count
-- `m` = future file additions in the budget window
-
-Current corpus evidence:
-
-- file_count = 60,571
-- current `md5_48` bytes = 363,426
-- current distinct path bytes = 2,289,954
-- current path record bytes = 484,568
-- projected `md5_48` collision probability for `m = 10,000` future files: about `0.000233%`
-
-Therefore current sidcorr-tiny-1 generation MUST select `md5_48` mode.
+Path-based identity encoding is not part of the current `sidcorr-tiny-1` format. Any future identity-mode expansion MUST ship under a new schema revision with its own layout and validation rules.
 
 ## 4.2 Track Ordering
 
@@ -192,7 +168,7 @@ Then resolve any track ordinal `t` to:
 | 16 | file_count | u32 | total SID files |
 | 20 | style_count | u16 | current max `16` |
 | 22 | neighbors_per_track | u16 | MUST be `3` |
-| 24 | file_id_kind | u8 | `1 = md5_48`, `2 = hvsc_path_utf8` |
+| 24 | file_id_kind | u8 | `1 = md5_48` |
 | 25 | neighbor_ref_width_bytes | u8 | MUST be `3` |
 | 26 | neighbor_ref_kind | u8 | `1 = absolute_track_ordinal` |
 | 27 | style_mask_width_bytes | u8 | MUST be `2` |
@@ -279,7 +255,7 @@ Consumers MUST treat `STYLE_TABLE` as authoritative for labels, ordering, kind, 
 | Field | Type | Notes |
 |--|--|--|
 | file_id_kind | u8 | matches header |
-| record_width_bytes | u8 | `6` for md5 mode, `8` for path mode |
+| record_width_bytes | u8 | MUST be `6` |
 | reserved | u16 | MUST be `0` |
 | payload_bytes | u32 | total bytes after this mini-header |
 
@@ -297,26 +273,7 @@ Builders MUST compute the full MD5 digest and truncate to the first 6 bytes.
 
 Consumers MAY widen these values to `u64` in RAM by zero-extending the high 16 bits.
 
-## 7.3 `hvsc_path_utf8` Mode
-
-Payload encoding:
-
-```text
-PathRecord[file_count]
-utf8_blob[variable]
-```
-
-`PathRecord` is 8 bytes:
-
-| Field | Type | Notes |
-|--|--|--|
-| pathOffset | u32 | offset into `utf8_blob` |
-| pathLength | u16 | UTF-8 byte length |
-| reserved | u16 | MUST be `0` |
-
-Path values MUST be HVSC-relative UTF-8 paths without a leading slash.
-
-## 7.4 Matching Rules
+## 7.3 Matching Rules
 
 Consumers resolving an export against a local HVSC installation MUST:
 
@@ -324,8 +281,6 @@ Consumers resolving an export against a local HVSC installation MUST:
 2. match file identities from `FILE_IDENTITY_TABLE`
 3. ignore local files not referenced by the export
 4. allow extra local files from newer HVSC revisions
-
-For `md5_48` mode:
 
 1. if exactly one local file matches an exported prefix, resolve it
 2. if multiple local files match an exported prefix, treat that export entry as unresolved
@@ -403,165 +358,46 @@ Consumers MAY widen neighbor entries to `u32` in RAM after loading.
 
 # 11. Deterministic Style Derivation
 
+The current tiny export reuses the shared `computeSimilarityStyleMask(...)` helper from `packages/sidflow-common/src/similarity-portable.ts`.
+
 ## 11.1 Required Track Context
 
-For each track, the generator MUST construct a deterministic style context with:
+For each track, the generator uses only compact ratings:
 
-- ratings: `e`, `m`, `c`
-- 24D perceptual vector
-- `sid_path`
-- `song_index`
-- normalized metadata:
-  - `composer`
-  - `year`
-  - `category`
-  - `sidModel1`
-  - `chipCount`
-  - `titleThemeTags` if available
-  - `rarity` if available
+- `e`
+- `m`
+- `c`
+- optional `p`
 
-## 11.2 Metadata Normalization Rules
+The current `sidcorr-tiny-1` generator does not read metadata fields, SID headers, or the stored 24D vector when computing style masks.
 
-The generator MUST normalize metadata as follows:
+## 11.2 Rating-Normalized Proxy Metrics
 
-1. `composer`
-   Use SID header `author`. If blank or `unknown`, fall back to the penultimate path segment. Else use `Unknown`.
-
-2. `year`
-   Parse the first 4-digit year in `released` within `[1978, 2026]`. Else `null`.
-
-3. `category`
-   First `sid_path` segment.
-
-4. `chipCount`
-   `1 + hasSecondSID + hasThirdSID` from SID header addresses.
-
-5. `titleThemeTags`
-   Deterministic upstream metadata only. If absent, use an empty list.
-
-6. `rarity`
-   Deterministic upstream normalized score in `[0,1]` if available. If absent, treat as missing.
-
-## 11.3 Audio Metric Derivation
-
-Use the current deterministic formulas from `packages/sidflow-play/src/persona-station.ts`.
-
-Definitions:
+The helper derives bounded proxy metrics from the compact ratings:
 
 ```text
-normalizeRating(r) = clamp01((r - 1) / 4)
-normalizeSignedResidual(x) = clamp01((x + 1) / 2)
-average(xs) = arithmetic mean
-normalizedEntropy(xs) = entropy(xs_positive) / log2(count(xs_positive))
+energy = clamp01((e - 1) / 4)
+mood = clamp01((m - 1) / 4)
+complexity = clamp01((c - 1) / 4)
+preference = p == null ? 0.5 : clamp01((p - 1) / 4)
+
+melodicComplexity = complexity
+rhythmicDensity = energy
+timbralRichness = (complexity + preference) / 2
+nostalgiaBias = mood
+experimentalTolerance = (complexity + (1 - mood) + preference) / 3
 ```
 
-Intermediate values:
+## 11.3 Persona Scoring And Bit Assignment
 
-```text
-waveEntropy = normalizedEntropy([vector[5], vector[6], vector[7], vector[8]])
-olderYearBias = year == null ? 0.5 : clamp01((2026 - year) / 44)
-categoryBias =
-  1.00 if category == "GAMES"
-  0.82 if category == "DEMOS"
-  0.58 if category == "MUSICIANS"
-  0.50 otherwise
-sidModelBias =
-  1.00 if sidModel1 == "MOS6581"
-  0.78 if sidModel1 == "Both"
-  0.52 if sidModel1 == "MOS8580"
-  0.50 otherwise
-chipCountNorm = clamp01((chipCount - 1) / 2)
-residualEnergy = average([normalizeSignedResidual(vector[22]), normalizeSignedResidual(vector[23])])
-```
+The generator passes those proxy metrics plus the original `e/m/c` ratings into the shared persona scorer (`scoreAllPersonas(...)`). It then:
 
-Metrics:
+1. computes a score for every persona in `PERSONA_IDS`
+2. sorts by score descending, then persona ID ascending
+3. keeps the top 3 personas
+4. sets one style-mask bit for each retained persona
 
-```text
-melodicComplexity = clamp01(average([
-  normalizeRating(c), vector[13], vector[16], vector[4], 1 - abs(0.5 - residualEnergy)
-]))
-
-rhythmicDensity = clamp01(average([
-  vector[0], vector[1], vector[3], vector[19], normalizeRating(e)
-]))
-
-timbralRichness = clamp01(average([
-  waveEntropy, vector[11], vector[12], vector[20], vector[21], residualEnergy
-]))
-
-nostalgiaBias = clamp01(average([
-  olderYearBias, categoryBias, sidModelBias,
-  (chipCount == 1 ? 0.82 : 0.46), normalizeRating(m)
-]))
-
-experimentalTolerance = clamp01(average([
-  chipCountNorm, vector[3], vector[12], vector[21], waveEntropy, residualEnergy
-]))
-```
-
-If a referenced vector position is missing or non-finite, use the same fallbacks as the current implementation.
-
-## 11.4 Style Score Formula
-
-After metric derivation, compute style scores with the shared rules from `packages/sidflow-common/src/persona-scorer.ts`.
-
-Audio-led score:
-
-```text
-metricContribution =
-  rawMetric       if direction == +1
-  1 - rawMetric   if direction == -1
-  0.5             if direction == 0
-
-metricScore = weighted_average(metricContribution, metricWeights)
-ratingDistance = average([
-  abs(normalizeRating(e) - normalizeRating(target_e)),
-  abs(normalizeRating(m) - normalizeRating(target_m)),
-  abs(normalizeRating(c) - normalizeRating(target_c))
-])
-
-audioScore = clamp01(metricScore * 0.82 + (1 - ratingDistance) * 0.18)
-```
-
-Hybrid metadata bonus:
-
-```text
-bonus += 0.05 if metadata field set includes composer and composer is present
-bonus += 0.04 if metadata field set includes year and year is present
-bonus += 0.02 if metadata field set includes category and category is present
-bonus += min(themeTagCount * 0.03, 0.10) if titleThemeTags are requested and present
-bonus += rarity * 0.10 if rarity is requested and present
-bonus = clamp01(bonus)
-
-hybridScore = clamp01(audioScore * 0.85 + bonus * 0.15)
-```
-
-## 11.5 Style Bit Assignment
-
-Algorithm:
-
-1. compute all continuous style scores
-2. stable-sort by score descending, then `styleId` ascending
-3. set the top style bit unconditionally
-4. for each remaining style, set its bit if:
-   - `score >= topScore - 0.08`
-   - `score >= 0.60`
-5. clear all other bits
-
-Pseudocode:
-
-```text
-scores = computeAllStyleScores(trackContext)
-ordered = stableSort(scores, by score desc then styleId asc)
-mask = bit(ordered[0].styleId)
-topScore = ordered[0].score
-
-for each candidate in ordered[1:]:
-  if candidate.score >= topScore - 0.08 and candidate.score >= 0.60:
-    mask |= bit(candidate.styleId)
-
-return mask
-```
+Bits outside the declared style table MUST remain unset.
 
 ---
 

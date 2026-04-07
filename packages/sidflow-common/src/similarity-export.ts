@@ -1313,6 +1313,7 @@ export function recommendFromFavorites(
 export function openSqliteSimilarityDataset(dbPath: string): SimilarityDataset {
   const database = openReadonlyDatabase(dbPath);
   try {
+    const columnSupport = getTrackColumnSupport(database);
     const trackCountRow = database.query("SELECT COUNT(*) AS count FROM tracks").get() as { count: number };
     const vectorCountRow = database
       .query("SELECT COUNT(*) AS count FROM tracks WHERE vector_json IS NOT NULL AND vector_json != ''")
@@ -1324,7 +1325,7 @@ export function openSqliteSimilarityDataset(dbPath: string): SimilarityDataset {
         schemaVersion: SIMILARITY_EXPORT_SCHEMA_VERSION,
         sourcePath: dbPath,
         trackCount: trackCountRow.count,
-        hasTrackIdentity: true,
+        hasTrackIdentity: columnSupport.hasTrackId && columnSupport.hasSongIndex,
         hasVectorData: vectorCountRow.count > 0,
       },
       readRandomTracksExcluding(limit, excludedTrackIds, random) {

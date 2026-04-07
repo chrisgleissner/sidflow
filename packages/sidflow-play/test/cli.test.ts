@@ -24,8 +24,7 @@ import {
 } from "../src/sid-station.js";
 import { runPersonaStationCli } from "../src/persona-station.js";
 import { PlaybackState, type PlaybackEvent } from "../src/index.js";
-import type { Recommendation } from "@sidflow/common";
-import type { SidFileMetadata } from "@sidflow/common";
+import { openSqliteSimilarityDataset, type Recommendation, type SidFileMetadata } from "@sidflow/common";
 import type { Playlist, PlaylistConfig } from "../src/playlist.js";
 import type { PlaybackOptions } from "../src/playback.js";
 
@@ -535,7 +534,7 @@ describe("station demo backend queue building", () => {
     const ratings = new Map(fixture.ratedTrackIds.map((trackId, index) => [trackId, (index % 6)]));
 
     const queue = await __stationDemoTestUtils.buildStationQueue(
-      fixture.dbPath,
+      openSqliteSimilarityDataset(fixture.dbPath),
       fixture.workspace,
       ratings,
       100,
@@ -559,7 +558,7 @@ describe("station demo backend queue building", () => {
     const ratings = new Map(fixture.ratedTrackIds.map((trackId, index) => [trackId, index % 2 === 0 ? 5 : 4]));
 
     const queue = await __stationDemoTestUtils.buildStationQueue(
-      fixture.dbPath,
+      openSqliteSimilarityDataset(fixture.dbPath),
       fixture.workspace,
       ratings,
       100,
@@ -582,7 +581,7 @@ describe("station demo backend queue building", () => {
     const fixture = await createPhaseAStationPolicyFixture();
 
     const queue = await __stationDemoTestUtils.buildStationQueue(
-      fixture.dbPath,
+      openSqliteSimilarityDataset(fixture.dbPath),
       fixture.workspace,
       fixture.ratings,
       4,

@@ -6,6 +6,7 @@ import { PERSONA_IDS, PERSONAS } from "./persona.js";
 import { writeCanonicalJsonFile } from "./canonical-writer.js";
 import { ensureDir } from "./fs.js";
 import type { JsonValue } from "./json.js";
+import { loadSonglengthsData } from "./songlengths.js";
 import {
   computePortableManifestPath,
   readPortableBundlePayload,
@@ -160,6 +161,20 @@ async function computeMd548(hvscRoot: string, sidPath: string): Promise<Buffer> 
 }
 
 async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>> {
+  const songlengths = await loadSonglengthsData(hvscRoot);
+  if (songlengths.sourcePath && songlengths.pathByMd5.size > 0) {
+    const prefix = path.relative(hvscRoot, songlengths.musicRoot);
+    const normalizedPrefix = prefix && !prefix.startsWith("..") && !path.isAbsolute(prefix)
+      ? prefix.replace(/\\/g, "/").replace(/\/+$/g, "")
+      : "";
+    const result = new Map<string, string>();
+    for (const [md5, relativePath] of songlengths.pathByMd5) {
+      const exportRelativePath = normalizedPrefix ? `${normalizedPrefix}/${relativePath}` : relativePath;
+      result.set(md5.slice(0, 12), exportRelativePath);
+    }
+    return result;
+  }
+
   const result = new Map<string, string>();
   const queue = [hvscRoot];
   while (queue.length > 0) {
@@ -230,7 +245,8 @@ function buildStyleTable(): Buffer {
 
 function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], database: Database): Array<Array<{ trackOrdinal: number; similarity: number }>> {
   const ordinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
-  const neighborsBySeed = new Map<number, Array<{ trackOrdinal: number; similarity: number }>>();
+  const neighborsBySeed = rows.map(() => [] as Array<{ trackOrdinal: number; similarity: number }>);
+  let hasPrecomputedNeighbors = false;
   try {
     const existingNeighbors = database.query(`
       SELECT seed_track_id, neighbor_track_id, rank, similarity
@@ -239,27 +255,30 @@ function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], databas
       ORDER BY seed_track_id ASC, rank ASC
     `).all() as Array<{ seed_track_id: string; neighbor_track_id: string; rank: number; similarity: number }>;
     if (existingNeighbors.length > 0) {
+      hasPrecomputedNeighbors = true;
       for (const neighbor of existingNeighbors) {
         const seedOrdinal = ordinalByTrackId.get(neighbor.seed_track_id);
         const targetOrdinal = ordinalByTrackId.get(neighbor.neighbor_track_id);
-        if (seedOrdinal === undefined || targetOrdinal === undefined || targetOrdinal <= seedOrdinal) {
+        if (seedOrdinal === undefined || targetOrdinal === undefined || targetOrdinal >= seedOrdinal) {
           continue;
         }
-        const arr = neighborsBySeed.get(seedOrdinal) ?? [];
+        const arr = neighborsBySeed[seedOrdinal]!;
         if (arr.length < NEIGHBORS_PER_TRACK) {
           arr.push({ trackOrdinal: targetOrdinal, similarity: neighbor.similarity });
         }
-        neighborsBySeed.set(seedOrdinal, arr);
       }
     }
   } catch (error) {
     if (!(error instanceof Error)) {
       throw error;
     }
+    if (!error.message.toLowerCase().includes("no such table")) {
+      throw error;
+    }
   }
 
-  if (neighborsBySeed.size === rows.length) {
-    return rows.map((_, index) => neighborsBySeed.get(index) ?? []);
+  if (hasPrecomputedNeighbors) {
+    return neighborsBySeed;
   }
 
   if (rows.length > 5000) {
@@ -270,7 +289,7 @@ function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], databas
 
   return rows.map((_, seedOrdinal) => {
     const scores: Array<{ trackOrdinal: number; similarity: number }> = [];
-    for (let candidateOrdinal = seedOrdinal + 1; candidateOrdinal < rows.length; candidateOrdinal += 1) {
+    for (let candidateOrdinal = 0; candidateOrdinal < seedOrdinal; candidateOrdinal += 1) {
       scores.push({
         trackOrdinal: candidateOrdinal,
         similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
@@ -298,6 +317,10 @@ export async function buildTinySimilarityExport(
     }
 
     const filePaths = [...new Set(rows.map((row) => row.sid_path))];
+    const filePathCounts = new Map<string, number>();
+    for (const row of rows) {
+      filePathCounts.set(row.sid_path, (filePathCounts.get(row.sid_path) ?? 0) + 1);
+    }
     const vectors = rows.map(parseVector);
     const styleTable = buildStyleTable();
     const fileIdentityTable = Buffer.alloc(filePaths.length * 6);
@@ -308,7 +331,7 @@ export async function buildTinySimilarityExport(
 
     const fileTrackCountTable = Buffer.alloc(filePaths.length);
     for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
-      const count = rows.filter((row) => row.sid_path === filePaths[fileIndex]).length;
+      const count = filePathCounts.get(filePaths[fileIndex]!) ?? 0;
       fileTrackCountTable.writeUInt8(Math.max(0, count - 1), fileIndex);
     }
 
@@ -488,13 +511,13 @@ export async function openTinySimilarityDataset(
   }
 
   const rows: TinyTrackRecord[] = [];
+  let fileOrdinal = 0;
   for (let trackOrdinal = 0; trackOrdinal < trackCount; trackOrdinal += 1) {
-    let fileOrdinal = fileTrackStarts.findIndex((start, index) => {
-      const nextStart = fileTrackStarts[index + 1] ?? Number.POSITIVE_INFINITY;
-      return trackOrdinal >= start && trackOrdinal < nextStart;
-    });
-    if (fileOrdinal < 0) {
-      fileOrdinal = Math.max(0, fileTrackStarts.length - 1);
+    while (
+      fileOrdinal + 1 < fileTrackStarts.length
+      && trackOrdinal >= (fileTrackStarts[fileOrdinal + 1] ?? Number.POSITIVE_INFINITY)
+    ) {
+      fileOrdinal += 1;
     }
     const start = fileTrackStarts[fileOrdinal] ?? 0;
     const songIndex = (trackOrdinal - start) + 1;
@@ -551,6 +574,7 @@ export async function openTinySimilarityDataset(
   }
 
   const rowsByTrackId = new Map(rows.map((row) => [row.track_id, row]));
+  const trackOrdinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
   return {
     info: {
       format: "tiny",
@@ -633,11 +657,20 @@ export async function openTinySimilarityDataset(
     getNeighbors(trackId, limit = 20, excludeTrackIds = []) {
       const exclude = new Set(excludeTrackIds);
       const row = rowsByTrackId.get(trackId);
-      if (!row) {
+      const trackOrdinal = trackOrdinalByTrackId.get(trackId);
+      if (!row || trackOrdinal === undefined) {
         return [];
       }
-      return row.neighbors
-        .filter((edge) => !exclude.has(rows[edge.trackOrdinal]!.track_id))
+      const neighborScores = new Map<number, number>();
+      for (const edge of row.neighbors) {
+        neighborScores.set(edge.trackOrdinal, Math.max(neighborScores.get(edge.trackOrdinal) ?? -1, edge.similarity));
+      }
+      for (const edge of reverseAdjacency.get(trackOrdinal) ?? []) {
+        neighborScores.set(edge.trackOrdinal, Math.max(neighborScores.get(edge.trackOrdinal) ?? -1, edge.similarity));
+      }
+      return [...neighborScores.entries()]
+        .filter(([neighborOrdinal]) => !exclude.has(rows[neighborOrdinal]!.track_id))
+        .map(([neighborOrdinal, similarity]) => ({ trackOrdinal: neighborOrdinal, similarity }))
         .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal)
         .slice(0, Math.max(1, limit))
         .map((edge, index) => {
@@ -680,7 +713,10 @@ export async function openTinySimilarityDataset(
           continue;
         }
         favoriteRows.push(favorite);
-        const favoriteOrdinal = rows.findIndex((row) => row.track_id === favoriteTrackId);
+        const favoriteOrdinal = trackOrdinalByTrackId.get(favoriteTrackId);
+        if (favoriteOrdinal === undefined) {
+          continue;
+        }
         const favoriteWeight = weightsByTrackId[favoriteTrackId] ?? 1;
         frontier.set(favoriteOrdinal, (frontier.get(favoriteOrdinal) ?? 0) + favoriteWeight);
       }

@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -250,6 +251,45 @@ describe("similarity-export", () => {
 
     expect(liteRecommendations.length).toBe(1);
     expect(tinyRecommendations.length).toBe(1);
+  });
+
+  test("resolves tiny track paths from Songlengths.md5 without rescanning the SID tree", async () => {
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 3,
+    });
+
+    const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr");
+    await buildTinySimilarityExport({
+      sourceSqlitePath: outputPath,
+      hvscRoot,
+      outputPath: tinyPath,
+      corpusVersion: "TEST-1",
+    });
+
+    const documentsDir = path.join(hvscRoot, "DOCUMENTS");
+    await mkdir(documentsDir, { recursive: true });
+    await writeFile(
+      path.join(documentsDir, "Songlengths.md5"),
+      [
+        "[Database]",
+        ...["A.sid", "B.sid", "C.sid", "D.sid"].flatMap((sidName) => [
+          `; /${sidName}`,
+          `${createHash("md5").update(Buffer.from(`PSID-${sidName}`, "utf8")).digest("hex")}=0:30`,
+        ]),
+      ].join("\n"),
+      "utf8",
+    );
+
+    for (const sidName of ["A.sid", "B.sid", "C.sid", "D.sid"]) {
+      await rm(path.join(hvscRoot, sidName), { force: true });
+    }
+
+    const tiny = await openTinySimilarityDataset(tinyPath, { hvscRoot });
+    expect(tiny.resolveTrack(buildSimilarityTrackId("A.sid", 1))?.sid_path).toBe("A.sid");
   });
 
   test("reads recommendation data from cached pre-decay sidcorr bundles", async () => {

@@ -6,6 +6,7 @@ import path from "node:path";
 
 import {
   clearSonglengthCaches,
+  loadSonglengthsData,
   lookupSongDurationsMs,
   lookupSongDurationMs,
   lookupSongLength,
@@ -62,6 +63,9 @@ describe("songlength helpers", () => {
 
       const md5OnlyDurations = await lookupSongDurationsMs(md5OnlySidPath, hvscRoot);
       expect(md5OnlyDurations).toEqual([135_000]);
+
+      const songlengths = await loadSonglengthsData(hvscRoot);
+      expect(songlengths.pathByMd5.get(catalogHash)).toBe("DEMOS/Catalog.sid");
     } finally {
       await rm(hvscRoot, { recursive: true, force: true });
     }

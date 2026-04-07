@@ -8,6 +8,7 @@ export interface SonglengthsData {
   map: Map<string, string>;
   paths: string[];
   lengthByPath: Map<string, string>;
+  pathByMd5: Map<string, string>;
   musicRoot: string;
   sourcePath: string | null;
 }
@@ -113,6 +114,7 @@ export async function loadSonglengthsData(sidPath: string): Promise<SonglengthsD
         map: new Map<string, string>(),
         paths: [],
         lengthByPath: new Map<string, string>(),
+        pathByMd5: new Map<string, string>(),
         musicRoot,
         sourcePath: null
       } satisfies SonglengthsData;
@@ -122,6 +124,7 @@ export async function loadSonglengthsData(sidPath: string): Promise<SonglengthsD
     const map = new Map<string, string>();
     const paths: string[] = [];
     const lengthByPath = new Map<string, string>();
+    const pathByMd5 = new Map<string, string>();
 
     let currentPath: string | null = null;
     const lines = contents.split(/\r?\n/);
@@ -151,11 +154,12 @@ export async function loadSonglengthsData(sidPath: string): Promise<SonglengthsD
       if (currentPath) {
         paths.push(currentPath);
         lengthByPath.set(currentPath, trimmedValue);
+        pathByMd5.set(normalisedHash, currentPath);
         currentPath = null;
       }
     }
 
-    return { map, paths, lengthByPath, musicRoot, sourcePath: filePath } satisfies SonglengthsData;
+    return { map, paths, lengthByPath, pathByMd5, musicRoot, sourcePath: filePath } satisfies SonglengthsData;
   })();
 
   songlengthsCache.set(sidPath, loader);

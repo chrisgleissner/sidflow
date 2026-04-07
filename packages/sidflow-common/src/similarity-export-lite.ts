@@ -69,7 +69,6 @@ interface LiteHeader {
   clusterCount: number;
   modelFlags: number;
   codebookOffset: number;
-  clusterOffset: number;
   firstEpochOffset: number;
 }
 
@@ -386,7 +385,6 @@ export async function buildLiteSimilarityExport(
 
     const orderedFilePaths = [...new Set(rows.map((row) => row.sid_path))].sort((left, right) => left.localeCompare(right));
     const fileIdByPath = new Map(orderedFilePaths.map((sidPath, index) => [sidPath, index]));
-    const fileTrackCounts = orderedFilePaths.map((sidPath) => rows.filter((row) => row.sid_path === sidPath).length);
     const fileIdWidth = orderedFilePaths.length <= 0xffff ? 2 : 3;
     const songIndexWidth = rows.every((row) => row.song_index >= 0 && row.song_index <= 0xff) ? 1 : 2;
     const trackRowBytes = fileIdWidth + songIndexWidth + 2 + vectorDimensions;
@@ -572,7 +570,6 @@ function parseHeader(payload: Buffer): LiteHeader {
     clusterCount: payload.readUInt16LE(20),
     modelFlags: payload.readUInt16LE(22),
     codebookOffset: payload.readUInt32LE(24),
-    clusterOffset: payload.readUInt32LE(28),
     firstEpochOffset: payload.readUInt32LE(28),
   };
 }
