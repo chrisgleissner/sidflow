@@ -16,10 +16,14 @@ import {
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
 import { cosineSimilarity } from "./vector-similarity.js";
-import type {
-  PortableRecommendFromFavoritesOptions,
-  PortableSimilarityDataset,
-  PortableSimilarityTrackRow,
+import {
+  computeSimilarityStyleMask,
+  packCompactRatings,
+  pickRandomRows,
+  unpackCompactRatings,
+  type PortableRecommendFromFavoritesOptions,
+  type SimilarityDataset,
+  type SimilarityTrackRow,
 } from "./similarity-portable.js";
 
 export const LITE_SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-lite-1";
@@ -52,7 +56,7 @@ interface SourceTrackRow {
   last_played: string | null;
 }
 
-interface LiteTrackRecord extends PortableSimilarityTrackRow {
+interface LiteTrackRecord extends SimilarityTrackRow {
   vector: number[];
 }
 
@@ -267,7 +271,28 @@ function scoreRows(
     }));
 }
 
-function buildDataset(sourcePath: string, rows: LiteTrackRecord[]): PortableSimilarityDataset {
+function cloneTrackRow(row: LiteTrackRecord): SimilarityTrackRow {
+  return {
+    track_id: row.track_id,
+    sid_path: row.sid_path,
+    song_index: row.song_index,
+    e: row.e,
+    m: row.m,
+    c: row.c,
+    p: row.p,
+    likes: row.likes,
+    dislikes: row.dislikes,
+    skips: row.skips,
+    plays: row.plays,
+    decayed_likes: row.decayed_likes,
+    decayed_dislikes: row.decayed_dislikes,
+    decayed_skips: row.decayed_skips,
+    decayed_plays: row.decayed_plays,
+    last_played: row.last_played,
+  };
+}
+
+function buildDataset(sourcePath: string, rows: LiteTrackRecord[]): SimilarityDataset {
   const rowsByTrackId = new Map(rows.map((row) => [row.track_id, row]));
   return {
     info: {
@@ -278,25 +303,31 @@ function buildDataset(sourcePath: string, rows: LiteTrackRecord[]): PortableSimi
       hasTrackIdentity: true,
       hasVectorData: true,
     },
-    readRandomTracksExcluding(limit, excludedTrackIds) {
-      const excluded = new Set(excludedTrackIds);
-      return rows.filter((row) => !excluded.has(row.track_id)).slice(0, limit).map((row) => ({ ...row }));
+    readRandomTracksExcluding(limit, excludedTrackIds, random) {
+      return pickRandomRows(rows, limit, excludedTrackIds, random).map(cloneTrackRow);
     },
-    readTrackRowsByIds(trackIds) {
+    resolveTracks(trackIds) {
       return new Map(trackIds.flatMap((trackId) => {
         const row = rowsByTrackId.get(trackId);
-        return row ? [[trackId, { ...row } satisfies PortableSimilarityTrackRow]] : [];
+        return row ? [[trackId, cloneTrackRow(row)]] : [];
       }));
     },
-    readTrackRowById(trackId) {
+    resolveTrack(trackId) {
       const row = rowsByTrackId.get(trackId);
-      return row ? { ...row } : null;
+      return row ? cloneTrackRow(row) : null;
     },
-    readTrackVectorsByIds(trackIds) {
+    getTrackVectors(trackIds) {
       return new Map(trackIds.flatMap((trackId) => {
         const row = rowsByTrackId.get(trackId);
         return row ? [[trackId, [...row.vector]]] : [];
       }));
+    },
+    getNeighbors(trackId, limit = 20, excludeTrackIds = []) {
+      return scoreRows(rows, [trackId], {}, new Set(excludeTrackIds), Math.max(1, limit));
+    },
+    getStyleMask(trackId) {
+      const row = rowsByTrackId.get(trackId);
+      return row ? computeSimilarityStyleMask(row) : null;
     },
     recommendFromFavorites(options) {
       return scoreRows(
@@ -424,7 +455,7 @@ export async function buildLiteSimilarityExport(
         trackTable.writeUInt16LE(row.song_index, cursor);
       }
       cursor += songIndexWidth;
-      trackTable.writeUInt16LE(0, cursor);
+      trackTable.writeUInt16LE(packCompactRatings(row), cursor);
       cursor += 2;
       const codes = quantizeVector(vectors[index]!, codebooks);
       Buffer.from(codes).copy(trackTable, cursor);
@@ -557,7 +588,7 @@ function parseFooter(payload: Buffer): LiteFooter {
   };
 }
 
-export async function openLiteSimilarityDataset(filePath: string): Promise<PortableSimilarityDataset> {
+export async function openLiteSimilarityDataset(filePath: string): Promise<SimilarityDataset> {
   const { payload } = await readPortableBundlePayload(filePath);
   const header = parseHeader(payload);
   const footer = parseFooter(payload);
@@ -605,6 +636,7 @@ export async function openLiteSimilarityDataset(filePath: string): Promise<Porta
     cursor += header.fileIdWidth;
     const songIndex = header.songIndexWidth === 1 ? payload.readUInt8(cursor) : payload.readUInt16LE(cursor);
     cursor += header.songIndexWidth;
+    const ratings = unpackCompactRatings(payload.readUInt16LE(cursor));
     cursor += 2;
     const codes = [...payload.subarray(cursor, cursor + header.vectorDimensions)];
     cursor += header.vectorDimensions;
@@ -613,10 +645,10 @@ export async function openLiteSimilarityDataset(filePath: string): Promise<Porta
       track_id: buildSimilarityTrackId(filePaths[fileId] ?? `missing-${fileId}`, songIndex),
       sid_path: filePaths[fileId] ?? `missing-${fileId}`,
       song_index: songIndex,
-      e: vector[0] ?? 0,
-      m: vector[1] ?? 0,
-      c: vector[2] ?? 0,
-      p: header.vectorDimensions >= 4 ? (vector[3] ?? 0) : null,
+      e: ratings.e,
+      m: ratings.m,
+      c: ratings.c,
+      p: ratings.p,
       likes: 0,
       dislikes: 0,
       skips: 0,

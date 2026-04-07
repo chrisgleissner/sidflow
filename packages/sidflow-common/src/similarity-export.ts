@@ -12,6 +12,12 @@ import {
 } from "./jsonl-schema.js";
 import { DEFAULT_RATING, DEFAULT_RATINGS, clampRating, type TagRatings } from "./ratings.js";
 import { aggregateFeedbackRecordsByKey, type AggregatedFeedback } from "./feedback-aggregation.js";
+import {
+  computeSimilarityStyleMask,
+  pickRandomRows,
+  type SimilarityDataset,
+  type SimilarityTrackRow,
+} from "./similarity-portable.js";
 import { cosineSimilarity } from "./vector-similarity.js";
 
 export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
@@ -833,6 +839,27 @@ function trackRowToRecommendation(row: PersistedTrackRow, score: number, rank: n
   };
 }
 
+function persistedTrackRowToSimilarityRow(row: PersistedTrackRow): SimilarityTrackRow {
+  return {
+    track_id: row.track_id,
+    sid_path: row.sid_path,
+    song_index: row.song_index,
+    e: row.e,
+    m: row.m,
+    c: row.c,
+    p: row.p,
+    likes: row.likes,
+    dislikes: row.dislikes,
+    skips: row.skips,
+    plays: row.plays,
+    decayed_likes: row.decayed_likes,
+    decayed_dislikes: row.decayed_dislikes,
+    decayed_skips: row.decayed_skips,
+    decayed_plays: row.decayed_plays,
+    last_played: row.last_played,
+  };
+}
+
 function getTrackColumnSupport(database: Database): TrackColumnSupport {
   const columns = database.query("PRAGMA table_info(tracks)").all() as Array<{ name: string }>;
   const names = new Set(columns.map((column) => column.name));
@@ -1278,6 +1305,94 @@ export function recommendFromFavorites(
       .sort((left, right) => right.score - left.score)
       .slice(0, limit)
       .map((entry, index) => trackRowToRecommendation(entry.row, entry.score, index + 1));
+  } finally {
+    database.close();
+  }
+}
+
+export function openSqliteSimilarityDataset(dbPath: string): SimilarityDataset {
+  const database = openReadonlyDatabase(dbPath);
+  try {
+    const trackCountRow = database.query("SELECT COUNT(*) AS count FROM tracks").get() as { count: number };
+    const vectorCountRow = database
+      .query("SELECT COUNT(*) AS count FROM tracks WHERE vector_json IS NOT NULL AND vector_json != ''")
+      .get() as { count: number };
+
+    return {
+      info: {
+        format: "sqlite",
+        schemaVersion: SIMILARITY_EXPORT_SCHEMA_VERSION,
+        sourcePath: dbPath,
+        trackCount: trackCountRow.count,
+        hasTrackIdentity: true,
+        hasVectorData: vectorCountRow.count > 0,
+      },
+      readRandomTracksExcluding(limit, excludedTrackIds, random) {
+        const readonlyDatabase = openReadonlyDatabase(dbPath);
+        try {
+          const columnSupport = getTrackColumnSupport(readonlyDatabase);
+          const rows = readonlyDatabase
+            .query(`SELECT ${buildTrackSelectList(columnSupport)} FROM tracks ORDER BY sid_path ASC, song_index ASC`)
+            .all() as PersistedTrackRow[];
+          return pickRandomRows(rows, limit, excludedTrackIds, random).map((row) => persistedTrackRowToSimilarityRow(row));
+        } finally {
+          readonlyDatabase.close();
+        }
+      },
+      resolveTracks(trackIds) {
+        if (trackIds.length === 0) {
+          return new Map();
+        }
+
+        const readonlyDatabase = openReadonlyDatabase(dbPath);
+        try {
+          const columnSupport = getTrackColumnSupport(readonlyDatabase);
+          const identity = buildTrackIdentityWhereClause(columnSupport, trackIds);
+          const rows = readonlyDatabase
+            .query(`SELECT ${buildTrackSelectList(columnSupport)} FROM tracks WHERE ${identity.clause}`)
+            .all(...identity.params) as PersistedTrackRow[];
+          return new Map(rows.map((row) => [row.track_id, persistedTrackRowToSimilarityRow(row)]));
+        } finally {
+          readonlyDatabase.close();
+        }
+      },
+      resolveTrack(trackId) {
+        const rows = this.resolveTracks([trackId]);
+        return rows.get(trackId) ?? null;
+      },
+      getTrackVectors(trackIds) {
+        if (trackIds.length === 0) {
+          return new Map();
+        }
+
+        const readonlyDatabase = openReadonlyDatabase(dbPath);
+        try {
+          const columnSupport = getTrackColumnSupport(readonlyDatabase);
+          const identity = buildTrackIdentityWhereClause(columnSupport, trackIds);
+          const rows = readonlyDatabase
+            .query(`SELECT ${buildTrackIdExpression(columnSupport)} AS track_id, vector_json FROM tracks WHERE ${identity.clause}`)
+            .all(...identity.params) as Array<{ track_id: string; vector_json: string | null }>;
+
+          return new Map(rows.flatMap((row) => row.vector_json ? [[row.track_id, JSON.parse(row.vector_json) as number[]]] : []));
+        } finally {
+          readonlyDatabase.close();
+        }
+      },
+      getNeighbors(trackId, limit = 20, excludeTrackIds = []) {
+        return recommendFromSeedTrack(dbPath, {
+          seedTrackId: trackId,
+          limit,
+          excludeTrackIds: [...excludeTrackIds],
+        });
+      },
+      getStyleMask(trackId) {
+        const row = this.resolveTrack(trackId);
+        return row ? computeSimilarityStyleMask(row) : null;
+      },
+      recommendFromFavorites(options) {
+        return recommendFromFavorites(dbPath, options);
+      },
+    };
   } finally {
     database.close();
   }

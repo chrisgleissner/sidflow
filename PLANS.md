@@ -1,5 +1,58 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 32 - Multi-Format Similarity Convergence Audit And Proof
+
+Plan document:
+
+- `docs/research/similarity-export-audit.md`
+
+1. [DONE] Complete a fresh capability audit against the live code, specs, and README.
+  Acceptance criteria:
+  - A capability matrix covers export generation, CLI loading, station generation, runtime switching, determinism, and test coverage for sqlite/lite/tiny.
+  - README claims are marked CORRECT, PARTIAL, BROKEN, or MISSING against the current tree.
+  - Findings are written to `docs/research/similarity-export-audit.md` before implementation changes are declared done.
+
+2. [DONE] Converge all runtime formats behind one dataset interface.
+  Acceptance criteria:
+  - The station pipeline depends on a single dataset abstraction instead of mixed sqlite-vs-portable branches.
+  - The abstraction exposes `resolveTrack(...)`, `getNeighbors(...)`, `getStyleMask(...)`, and `recommendFromFavorites(...)` for sqlite, lite, and tiny.
+  - Format-specific logic is confined to dataset backends and export/load helpers.
+
+3. [DONE] Repair tiny fidelity and portable runtime parity.
+  Acceptance criteria:
+  - Tiny no longer reconstructs placeholder ratings or fabricated recommendation scores at load time.
+  - Tiny preserves the track data needed for the shared station pipeline and style filtering.
+  - Portable datasets preserve random seed sampling semantics instead of returning deterministic first rows.
+
+4. [DONE] Add permanent equivalence and fidelity enforcement.
+  Acceptance criteria:
+  - Tests compute top-50 overlap, top-100 overlap, Jaccard similarity, rank correlation, and style-distribution comparisons across sqlite/lite/tiny using the real station builder path.
+  - Tiny-focused tests cover graph reachability, neighbor stability, and style-filter parity.
+  - The tests live under existing `*.test.ts` coverage-batch roots so CI enforces them automatically.
+
+5. [DONE] Reconcile operator workflow, wrapper output, and publication behavior.
+  Acceptance criteria:
+  - The authoritative export workflow can derive lite and tiny from the authoritative sqlite bundle in one validated path.
+  - Release/publication steps support the portable formats needed by the README and audit conclusions.
+  - README and operator docs only claim behavior that the script and CLI actually implement.
+
+6. [IN_PROGRESS] Execute full validation and record evidence.
+  Acceptance criteria:
+  - Build passes.
+  - Required tests pass locally.
+  - Real local execution covers sqlite -> lite/tiny generation plus non-interactive station runs.
+  - PLANS.md and WORKLOG.md capture final evidence and residual risks, if any.
+
+### Progress
+
+- 2026-04-07: Re-read the required repo docs plus the current similarity export specs and runtime code. The fresh audit found that Phase 31 was overstated: the tiny loader currently reconstructs placeholder `e/m/c/p` ratings, invents neighbor scores from ordinal rank instead of loading persisted values, exposes no vector data, and the existing equivalence tests only check weak overlap on a tiny synthetic corpus.
+- 2026-04-07: Confirmed additional convergence gaps in the live tree. Portable datasets currently do not randomize seed sampling (`readRandomTracksExcluding(...)` returns the first rows after filtering), the station runtime still mixes sqlite-specific access paths with the portable abstraction instead of relying on one shared interface, and `scripts/run-similarity-export.sh` still only drives/publishes the authoritative sqlite artifact even though `doc/similarity-export.md` claims all three default outputs are produced.
+- 2026-04-07: Landed the shared `SimilarityDataset` runtime contract, repaired lite/tiny row fidelity, removed the remaining format-specific station queue branching, and strengthened the proof surface with cross-format dataset and station-equivalence tests.
+- 2026-04-07: Fixed the final tiny ranking drift by preserving full-precision centroid recommendation scores, which brought `packages/sidflow-play/test/station-portable-equivalence.test.ts` to green (`15 pass, 0 fail` across the targeted similarity proof set).
+- 2026-04-07: Updated the authoritative wrapper to derive sqlite, lite, and tiny together and to publish all three artifacts plus their manifests, checksums, and tarball. Added the formal audit at `docs/research/similarity-export-audit.md` and aligned the README/operator docs with the real workflow.
+- 2026-04-07: Validation evidence so far: `bash -n scripts/run-similarity-export.sh` passed; file-level diagnostics for the edited sources were clean; `bun run build` passed; a real local smoke flow built sqlite, lite, and tiny exports from real local SID files and produced non-interactive sqlite/lite/tiny stations with matching first picks.
+- 2026-04-07: Full-suite validation remains blocked outside the changed surface. `bun run test` exited with status `137` during the shared coverage-batch runner after progressing into `scripts/run-unit-coverage-batches.mjs` batch 37/64 (`packages/sidflow-classify/test/super-mario-stress.test.ts`), so the tree does not yet have a clean full-suite pass to record.
+
 ## Phase 31 - Multi-Format Similarity Export Runtime Implementation
 
 Plan document:

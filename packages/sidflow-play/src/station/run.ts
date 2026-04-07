@@ -240,10 +240,6 @@ export async function runStationCli(
     runtime.stderr.write("Build or point to a newer Phase 5 similarity export before running SID CLI Station.\n");
     return 1;
   }
-  if (dataset.format === "sqlite" && !exportInfo.hasVectorData) {
-    runtime.stderr.write(`Error: ${dbPath} does not contain vector_json data, so station recommendations cannot be rebuilt.\n`);
-    return 1;
-  }
   if (exportInfo.trackCount === 0) {
     runtime.stderr.write("Error: export database does not contain any tracks\n");
     return 1;
@@ -315,7 +311,7 @@ export async function runStationCli(
     while (!interrupted && ratings.size < ratedTarget) {
       if (seedIndex >= seeds.length) {
         const batchSize = Math.max(12, (ratedTarget - ratings.size) * 3);
-        const nextRows = readRandomTracksExcluding(datasetHandle, batchSize, seenTrackIds);
+        const nextRows = readRandomTracksExcluding(datasetHandle, batchSize, seenTrackIds, runtime.random);
         if (nextRows.length === 0) {
           break;
         }

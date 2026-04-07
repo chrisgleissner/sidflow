@@ -296,9 +296,9 @@ Manifest: data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
 [sidcorr] Manifest: /home/chris/dev/c64/sidflow/data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
 ```
 
-Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` and `sidcorr-hvsc-full-sidcorr-1.manifest.json`.
+Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`, `sidcorr-hvsc-full-sidcorr-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr`, and `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json`.
 
-**1a. Convert the full export into lite or tiny bundles:**
+**1a. Convert the full export into lite or tiny bundles explicitly (optional):**
 
 ```bash
 ./scripts/sidflow-play export-similarity \
@@ -346,7 +346,7 @@ The following command requires permissions to create new releases on `chrisgleis
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
 
-This uploads four assets to the release: the `.sqlite` export, the `.manifest.json` sidecar, `SHA256SUMS`, and a `.tar.gz` bundle containing those same three files.
+This uploads the sqlite export, sqlite manifest, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a `.tar.gz` bundle containing those same files.
 
 Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-export.md).
 

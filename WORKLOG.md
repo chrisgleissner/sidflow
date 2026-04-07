@@ -1,5 +1,101 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-04-07T15:05Z - Phase 32 kickoff: multi-format similarity convergence audit
+
+- timestamp: 2026-04-07T15:05Z
+- step: PHASE_32_SIMILARITY_CONVERGENCE_AUDIT
+- action: Re-audited the live sqlite/lite/tiny implementation, README claims, wrapper workflow, and current tests before making any new code changes.
+
+### Findings captured before implementation
+
+1. **Tiny runtime fidelity is materially incomplete**
+   - `packages/sidflow-common/src/similarity-export-tiny.ts` currently loads synthetic `e/m/c/p` values (`3/3/3/null`) instead of real exported ratings.
+   - The tiny loader also fabricates edge weights from neighbor rank (`0.8`, `0.75`, `0.70`) instead of reading persisted similarity weights.
+   - Result: the station pipeline can run, but the current tiny path is not a faithful backend for proving equivalence with sqlite.
+
+2. **The shared runtime abstraction is still partial**
+   - `packages/sidflow-play/src/station/queue.ts` still carries sqlite-vs-portable branching and depends on low-level row/vector helpers instead of one dataset contract.
+   - `packages/sidflow-common/src/similarity-portable.ts` exposes a read-oriented portable interface, but it does not yet provide the stricter dataset API required for uniform station/runtime proofs.
+
+3. **Portable seed sampling is not actually random**
+   - Both lite and tiny dataset loaders currently implement `readRandomTracksExcluding(...)` by filtering then slicing the first rows.
+   - This diverges from sqlite's `ORDER BY RANDOM()` behavior and means seed selection semantics differ by format.
+
+4. **The current proof tests are too weak for convergence sign-off**
+   - `packages/sidflow-play/test/station-portable-equivalence.test.ts` only checks a small synthetic corpus and minimal overlap assertions.
+   - The existing tests do not enforce the requested top-50/top-100 overlap, Jaccard similarity, rank correlation, style-distribution checks, or tiny reachability guarantees.
+
+5. **The authoritative wrapper and docs are not yet aligned**
+   - `scripts/run-similarity-export.sh` still only drives the authoritative sqlite export/publication path.
+   - `doc/similarity-export.md` currently claims default output includes sqlite, lite, and tiny artifacts, which does not match the script's live behavior.
+
+- decision: Treat the current branch as partially implemented, not converged. Fix the tiny/backend abstraction and strengthen the enforcement path before any completion claim.
+- next step: Write the formal audit document, then refactor the runtime around one dataset interface and correct the tiny export/load semantics.
+
+## 2026-04-07T19:40Z - Phase 32 progress: shared runtime converged and wrapper aligned
+
+- timestamp: 2026-04-07T19:40Z
+- step: PHASE_32_SIMILARITY_CONVERGENCE_IMPLEMENTATION
+- action: Completed the dataset/runtime convergence work, repaired the tiny ranking drift in the strengthened station proof, updated the authoritative wrapper to emit/publish all three formats, and wrote the formal audit document.
+
+### Changes landed
+
+1. **Shared dataset contract is now the station runtime boundary**
+   - `packages/sidflow-common/src/similarity-portable.ts` now defines the shared `SimilarityDataset` API used by sqlite, lite, and tiny.
+   - `packages/sidflow-play/src/station/queue.ts` now depends on that contract instead of mixing sqlite-specific and portable-specific code paths.
+
+2. **Portable fidelity is repaired end to end**
+   - Lite preserves real compact ratings and supports the same dataset operations as sqlite.
+   - Tiny now preserves ratings, style masks, and persisted edge weights, exposes vectors for flow ordering, and keeps full-precision centroid scores for favorite-based recommendation ranking.
+
+3. **The strengthened convergence proof is now green**
+   - Targeted proof set: `packages/sidflow-common/test/similarity-dataset.test.ts`, `packages/sidflow-common/test/similarity-export.test.ts`, `packages/sidflow-play/test/station-portable-equivalence.test.ts`.
+   - Result: `15 pass, 0 fail`.
+
+4. **The authoritative wrapper now matches the docs**
+   - `scripts/run-similarity-export.sh` now builds sqlite first, then derives lite and tiny from it in the same unattended workflow.
+   - Publish-only validation and release staging now require and include sqlite, lite, tiny, their manifests, `SHA256SUMS`, and the tarball.
+
+5. **Audit artifact written**
+   - Added `docs/research/similarity-export-audit.md` with the capability matrix, README/doc reality check, discovered gaps, and proof summary.
+
+- decision: Phase 32 implementation work is substantially complete; remaining work is broader validation evidence, especially the required build/full-suite runs.
+- next step: Run wrapper/script validation plus the broader required build/test commands and capture the outcomes in `PLANS.md`.
+
+## 2026-04-07T20:08Z - Phase 32 validation update: build green, smoke green, full suite blocked
+
+- timestamp: 2026-04-07T20:08Z
+- step: PHASE_32_SIMILARITY_CONVERGENCE_VALIDATION
+- action: Ran post-change validation on the wrapper, targeted proof surface, build, a real local conversion/station smoke flow, and the full shared test suite.
+
+### Validation results
+
+1. **Wrapper/script validation**
+   - `bash -n scripts/run-similarity-export.sh` passed.
+   - File-level diagnostics on the edited code/docs reported no errors.
+
+2. **Targeted convergence proof**
+   - `packages/sidflow-common/test/similarity-dataset.test.ts`
+   - `packages/sidflow-common/test/similarity-export.test.ts`
+   - `packages/sidflow-play/test/station-portable-equivalence.test.ts`
+   - Result: `15 pass, 0 fail`.
+
+3. **Build**
+   - `bun run build` passed.
+   - The existing WASM upstream check still prints the known informational warning that upstream changed and a rebuild may be required, but the build exit status was `0`.
+
+4. **Real local smoke execution**
+   - Converting the existing large local sqlite export to lite succeeded, but converting it to tiny failed because the configured `sidPath` did not contain one of the source SID files from that export (`DEMOS/0-9/10_Orbyte.sid`).
+   - To validate the real code path with locally available files, I ran a focused smoke flow against actual SIDs under `test-data/`, built sqlite/lite/tiny exports, and then built non-interactive stations from all three formats.
+   - Result: sqlite/lite/tiny each built a 2-track station and all three selected the same first track (`C64Music/MUSICIANS/G/Greenlee_Michael/Foreign_Carols.sid#1`).
+
+5. **Full suite**
+   - `bun run test` did not complete. The shared coverage-batch runner exited with status `137` while progressing through batch `37/64`, after reaching `packages/sidflow-classify/test/super-mario-stress.test.ts`.
+   - This is a suite-level blocker outside the specific similarity changes landed in Phase 32.
+
+- decision: The changed similarity/export/station surface is validated, but the repo still lacks a clean full-suite pass because the shared coverage runner is being terminated.
+- next step: Surface the full-suite blocker clearly in the completion summary and avoid overstating validation beyond the evidence above.
+
 ## 2026-03-30T13:01Z - Phase 27 complete: Parallel persona station redesign
 
 - timestamp: 2026-03-30T13:01Z

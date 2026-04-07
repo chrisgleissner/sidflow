@@ -3,7 +3,6 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { PERSONA_IDS, PERSONAS } from "./persona.js";
-import { scoreAllPersonas } from "./persona-scorer.js";
 import { writeCanonicalJsonFile } from "./canonical-writer.js";
 import { ensureDir } from "./fs.js";
 import type { JsonValue } from "./json.js";
@@ -17,9 +16,13 @@ import {
   buildSimilarityTrackId,
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
-import type {
-  PortableSimilarityDataset,
-  PortableSimilarityTrackRow,
+import {
+  computeSimilarityStyleMask,
+  packCompactRatings,
+  pickRandomRows,
+  unpackCompactRatings,
+  type SimilarityDataset,
+  type SimilarityTrackRow,
 } from "./similarity-portable.js";
 
 export const TINY_SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-tiny-1";
@@ -28,7 +31,9 @@ const MAGIC = "SIDTINY1";
 const HEADER_BYTES = 64;
 const EMPTY_NEIGHBOR = 0xffffff;
 const STYLE_MASK_WIDTH_BYTES = 2;
+const COMPACT_RATING_BYTES = 2;
 const NEIGHBORS_PER_TRACK = 3;
+const NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY = 4;
 const STYLE_TABLE_VERSION = 1;
 
 interface SourceTrackRow {
@@ -42,12 +47,14 @@ interface SourceTrackRow {
   p: number | null;
 }
 
-interface TinyTrackRecord extends PortableSimilarityTrackRow {
+interface TinyTrackRecord extends SimilarityTrackRow {
   neighbors: Array<{ trackOrdinal: number; similarity: number }>;
+  styleMask: number;
 }
 
 export interface TinySimilarityExportManifest {
   schema_version: typeof TINY_SIMILARITY_EXPORT_SCHEMA_VERSION;
+  binary_format_version: number;
   generated_at: string;
   corpus_version: string;
   track_count: number;
@@ -173,31 +180,6 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
     }
   }
   return result;
-}
-
-function buildStyleMask(row: SourceTrackRow): number {
-  const scores = scoreAllPersonas({
-    metrics: {
-      melodicComplexity: 0.5,
-      rhythmicDensity: 0.5,
-      timbralRichness: 0.5,
-      nostalgiaBias: 0.5,
-      experimentalTolerance: 0.5,
-    },
-    ratings: { e: row.e, m: row.m, c: row.c },
-  });
-  const ranked = PERSONA_IDS
-    .map((personaId) => ({ personaId, score: scores[personaId] }))
-    .sort((left, right) => right.score - left.score || left.personaId.localeCompare(right.personaId))
-    .slice(0, 3);
-  let mask = 0;
-  for (const entry of ranked) {
-    const bit = PERSONA_IDS.indexOf(entry.personaId);
-    if (bit >= 0) {
-      mask |= (1 << bit);
-    }
-  }
-  return mask;
 }
 
 function encodeSimilarity(similarity: number): number {
@@ -332,16 +314,24 @@ export async function buildTinySimilarityExport(
 
     const styleMaskTable = Buffer.alloc(rows.length * STYLE_MASK_WIDTH_BYTES);
     for (let index = 0; index < rows.length; index += 1) {
-      styleMaskTable.writeUInt16LE(buildStyleMask(rows[index]!), index * STYLE_MASK_WIDTH_BYTES);
+      styleMaskTable.writeUInt16LE(computeSimilarityStyleMask(rows[index]!), index * STYLE_MASK_WIDTH_BYTES);
+    }
+
+    const ratingTable = Buffer.alloc(rows.length * COMPACT_RATING_BYTES);
+    for (let index = 0; index < rows.length; index += 1) {
+      ratingTable.writeUInt16LE(packCompactRatings(rows[index]!), index * COMPACT_RATING_BYTES);
     }
 
     const neighbors = buildNeighborGraph(rows, vectors, database);
-    const neighborTable = Buffer.alloc(rows.length * NEIGHBORS_PER_TRACK * 3);
+    const neighborTable = Buffer.alloc(rows.length * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
     for (let index = 0; index < rows.length; index += 1) {
       const rowNeighbors = neighbors[index] ?? [];
       for (let neighborIndex = 0; neighborIndex < NEIGHBORS_PER_TRACK; neighborIndex += 1) {
         const encoded = rowNeighbors[neighborIndex]?.trackOrdinal ?? EMPTY_NEIGHBOR;
-        writeUInt24LE(neighborTable, encoded, (index * NEIGHBORS_PER_TRACK * 3) + (neighborIndex * 3));
+        const recordOffset = (index * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY)
+          + (neighborIndex * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
+        writeUInt24LE(neighborTable, encoded, recordOffset);
+        neighborTable.writeUInt8(encodeSimilarity(rowNeighbors[neighborIndex]?.similarity ?? -1), recordOffset + 3);
       }
     }
 
@@ -349,11 +339,11 @@ export async function buildTinySimilarityExport(
     const fileIdentityOffset = styleTableOffset + styleTable.length;
     const fileTrackCountOffset = fileIdentityOffset + fileIdentityTable.length;
     const styleMaskOffset = fileTrackCountOffset + fileTrackCountTable.length;
-    const neighborsOffset = styleMaskOffset + styleMaskTable.length;
+    const neighborsOffset = styleMaskOffset + styleMaskTable.length + ratingTable.length;
 
     const header = Buffer.alloc(HEADER_BYTES);
     header.write(MAGIC, 0, "ascii");
-    header.writeUInt16LE(1, 8);
+    header.writeUInt16LE(2, 8);
     header.writeUInt16LE(HEADER_BYTES, 10);
     header.writeUInt32LE(rows.length, 12);
     header.writeUInt32LE(filePaths.length, 16);
@@ -364,7 +354,7 @@ export async function buildTinySimilarityExport(
     header.writeUInt8(1, 26);
     header.writeUInt8(STYLE_MASK_WIDTH_BYTES, 27);
     header.writeUInt16LE(STYLE_TABLE_VERSION, 28);
-    header.writeUInt16LE(1, 30);
+    header.writeUInt16LE(0b111, 30);
     header.writeUInt32LE(styleTableOffset, 32);
     header.writeUInt32LE(fileIdentityOffset, 36);
     header.writeUInt32LE(fileTrackCountOffset, 40);
@@ -380,6 +370,7 @@ export async function buildTinySimilarityExport(
       fileIdentityTable,
       fileTrackCountTable,
       styleMaskTable,
+      ratingTable,
       neighborTable,
     ]);
     const writeResult = await writePortableBundlePayload(options.outputPath, rawPayload);
@@ -389,6 +380,7 @@ export async function buildTinySimilarityExport(
     const bundleChecksum = await computeFileChecksum(options.outputPath);
     const manifest: TinySimilarityExportManifest = {
       schema_version: TINY_SIMILARITY_EXPORT_SCHEMA_VERSION,
+      binary_format_version: 2,
       generated_at: new Date().toISOString(),
       corpus_version: options.corpusVersion ?? path.basename(options.sourceSqlitePath, path.extname(options.sourceSqlitePath)),
       track_count: rows.length,
@@ -432,10 +424,15 @@ export async function buildTinySimilarityExport(
 export async function openTinySimilarityDataset(
   filePath: string,
   options: OpenTinySimilarityDatasetOptions = {},
-): Promise<PortableSimilarityDataset> {
+): Promise<SimilarityDataset> {
   const { payload } = await readPortableBundlePayload(filePath);
   if (payload.subarray(0, 8).toString("ascii") !== MAGIC) {
     throw new Error("Bundle is not a sidcorr-tiny-1 export.");
+  }
+
+  const version = payload.readUInt16LE(8);
+  if (version !== 1 && version !== 2) {
+    throw new Error(`Unsupported sidcorr-tiny-1 binary version ${version}.`);
   }
 
   const trackCount = payload.readUInt32LE(12);
@@ -450,6 +447,7 @@ export async function openTinySimilarityDataset(
   const neighborsBytes = payload.readUInt32LE(60);
   const fileTrackCountBytes = fileCount;
   const styleMaskBytes = trackCount * STYLE_MASK_WIDTH_BYTES;
+  const packedRatingBytes = trackCount * COMPACT_RATING_BYTES;
   const styleTableLength = fileIdentityOffset - styleTableOffset;
   const styleTable = payload.subarray(styleTableOffset, styleTableOffset + styleTableLength);
   const styleRecordBytes = styleTable.readUInt16LE(4);
@@ -469,9 +467,12 @@ export async function openTinySimilarityDataset(
   const fileIdentities = payload.subarray(fileIdentityOffset, fileIdentityOffset + fileIdentityBytes);
   const fileTrackCountTable = payload.subarray(fileTrackCountOffset, fileTrackCountOffset + fileTrackCountBytes);
   const styleMaskTable = payload.subarray(styleMaskOffset, styleMaskOffset + styleMaskBytes);
+  const hasPackedRatings = version >= 2 && neighborsOffset === styleMaskOffset + styleMaskBytes + packedRatingBytes;
+  const ratingTable = hasPackedRatings
+    ? payload.subarray(styleMaskOffset + styleMaskBytes, styleMaskOffset + styleMaskBytes + packedRatingBytes)
+    : null;
   const neighborTable = payload.subarray(neighborsOffset, neighborsOffset + neighborsBytes);
-  void fileIdentities;
-  void styleMaskTable;
+  const hasNeighborSimilarity = version >= 2 && neighborsBytes === trackCount * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY;
 
   const md548ByFileOrdinal: string[] = [];
   for (let index = 0; index < fileCount; index += 1) {
@@ -499,22 +500,33 @@ export async function openTinySimilarityDataset(
     const songIndex = (trackOrdinal - start) + 1;
     const sidPath = pathByMd548.get(md548ByFileOrdinal[fileOrdinal] ?? "")
       ?? `md5_48:${md548ByFileOrdinal[fileOrdinal] ?? fileOrdinal.toString(16)}`;
+    const ratings = ratingTable
+      ? unpackCompactRatings(ratingTable.readUInt16LE(trackOrdinal * COMPACT_RATING_BYTES))
+      : { e: 3, m: 3, c: 3, p: null };
+    const styleMask = styleMaskTable.readUInt16LE(trackOrdinal * STYLE_MASK_WIDTH_BYTES);
     const neighbors: Array<{ trackOrdinal: number; similarity: number }> = [];
     for (let neighborIndex = 0; neighborIndex < NEIGHBORS_PER_TRACK; neighborIndex += 1) {
-      const value = readUInt24LE(neighborTable, (trackOrdinal * NEIGHBORS_PER_TRACK * 3) + (neighborIndex * 3));
+      const recordOffset = hasNeighborSimilarity
+        ? (trackOrdinal * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY)
+          + (neighborIndex * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY)
+        : (trackOrdinal * NEIGHBORS_PER_TRACK * 3) + (neighborIndex * 3);
+      const value = readUInt24LE(neighborTable, recordOffset);
       if (value === EMPTY_NEIGHBOR || value >= trackCount) {
         continue;
       }
-      neighbors.push({ trackOrdinal: value, similarity: 0.8 - (neighborIndex * 0.05) });
+      const similarity = hasNeighborSimilarity
+        ? decodeSimilarity(neighborTable.readUInt8(recordOffset + 3))
+        : 0.8 - (neighborIndex * 0.05);
+      neighbors.push({ trackOrdinal: value, similarity });
     }
     rows.push({
       track_id: buildSimilarityTrackId(sidPath, songIndex),
       sid_path: sidPath,
       song_index: songIndex,
-      e: 3,
-      m: 3,
-      c: 3,
-      p: null,
+      e: ratings.e,
+      m: ratings.m,
+      c: ratings.c,
+      p: ratings.p,
       likes: 0,
       dislikes: 0,
       skips: 0,
@@ -525,6 +537,7 @@ export async function openTinySimilarityDataset(
       decayed_plays: 0,
       last_played: null,
       neighbors,
+      styleMask,
     });
   }
 
@@ -545,48 +558,183 @@ export async function openTinySimilarityDataset(
       sourcePath: filePath,
       trackCount,
       hasTrackIdentity: true,
-      hasVectorData: false,
+      hasVectorData: true,
     },
-    readRandomTracksExcluding(limit, excludedTrackIds) {
-      const excluded = new Set(excludedTrackIds);
-      return rows.filter((row) => !excluded.has(row.track_id)).slice(0, limit).map((row) => ({ ...row }));
-    },
-    readTrackRowsByIds(trackIds) {
-      return new Map(trackIds.flatMap((trackId) => {
-        const row = rowsByTrackId.get(trackId);
-        return row ? [[trackId, { ...row } satisfies PortableSimilarityTrackRow]] : [];
+    readRandomTracksExcluding(limit, excludedTrackIds, random) {
+      return pickRandomRows(rows, limit, excludedTrackIds, random).map((row) => ({
+        track_id: row.track_id,
+        sid_path: row.sid_path,
+        song_index: row.song_index,
+        e: row.e,
+        m: row.m,
+        c: row.c,
+        p: row.p,
+        likes: row.likes,
+        dislikes: row.dislikes,
+        skips: row.skips,
+        plays: row.plays,
+        decayed_likes: row.decayed_likes,
+        decayed_dislikes: row.decayed_dislikes,
+        decayed_skips: row.decayed_skips,
+        decayed_plays: row.decayed_plays,
+        last_played: row.last_played,
       }));
     },
-    readTrackRowById(trackId) {
-      const row = rowsByTrackId.get(trackId);
-      return row ? { ...row } : null;
+    resolveTracks(trackIds) {
+      return new Map(trackIds.flatMap((trackId) => {
+        const row = rowsByTrackId.get(trackId);
+        return row ? [[trackId, {
+          track_id: row.track_id,
+          sid_path: row.sid_path,
+          song_index: row.song_index,
+          e: row.e,
+          m: row.m,
+          c: row.c,
+          p: row.p,
+          likes: row.likes,
+          dislikes: row.dislikes,
+          skips: row.skips,
+          plays: row.plays,
+          decayed_likes: row.decayed_likes,
+          decayed_dislikes: row.decayed_dislikes,
+          decayed_skips: row.decayed_skips,
+          decayed_plays: row.decayed_plays,
+          last_played: row.last_played,
+        } satisfies SimilarityTrackRow]] : [];
+      }));
     },
-    readTrackVectorsByIds() {
-      return new Map();
+    resolveTrack(trackId) {
+      const row = rowsByTrackId.get(trackId);
+      return row ? {
+        track_id: row.track_id,
+        sid_path: row.sid_path,
+        song_index: row.song_index,
+        e: row.e,
+        m: row.m,
+        c: row.c,
+        p: row.p,
+        likes: row.likes,
+        dislikes: row.dislikes,
+        skips: row.skips,
+        plays: row.plays,
+        decayed_likes: row.decayed_likes,
+        decayed_dislikes: row.decayed_dislikes,
+        decayed_skips: row.decayed_skips,
+        decayed_plays: row.decayed_plays,
+        last_played: row.last_played,
+      } : null;
+    },
+    getTrackVectors(trackIds) {
+      return new Map(trackIds.flatMap((trackId) => {
+        const row = rowsByTrackId.get(trackId);
+        return row ? [[trackId, [row.e, row.m, row.c, row.p ?? 3]]] : [];
+      }));
+    },
+    getNeighbors(trackId, limit = 20, excludeTrackIds = []) {
+      const exclude = new Set(excludeTrackIds);
+      const row = rowsByTrackId.get(trackId);
+      if (!row) {
+        return [];
+      }
+      return row.neighbors
+        .filter((edge) => !exclude.has(rows[edge.trackOrdinal]!.track_id))
+        .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal)
+        .slice(0, Math.max(1, limit))
+        .map((edge, index) => {
+          const neighbor = rows[edge.trackOrdinal]!;
+          return {
+            track_id: neighbor.track_id,
+            sid_path: neighbor.sid_path,
+            song_index: neighbor.song_index,
+            score: edge.similarity,
+            rank: index + 1,
+            e: neighbor.e,
+            m: neighbor.m,
+            c: neighbor.c,
+            p: neighbor.p ?? undefined,
+            likes: neighbor.likes,
+            dislikes: neighbor.dislikes,
+            skips: neighbor.skips,
+            plays: neighbor.plays,
+            decayed_likes: neighbor.decayed_likes,
+            decayed_dislikes: neighbor.decayed_dislikes,
+            decayed_skips: neighbor.decayed_skips,
+            decayed_plays: neighbor.decayed_plays,
+            last_played: neighbor.last_played ?? undefined,
+          } satisfies SimilarityExportRecommendation;
+        });
+    },
+    getStyleMask(trackId) {
+      const row = rowsByTrackId.get(trackId);
+      return row ? row.styleMask : null;
     },
     recommendFromFavorites(options) {
       const weightsByTrackId = options.weightsByTrackId ?? {};
       const excludeTrackIds = new Set(options.excludeTrackIds ?? []);
       const scores = new Map<number, number>();
+      let frontier = new Map<number, number>();
+      const favoriteRows: TinyTrackRecord[] = [];
       for (const favoriteTrackId of options.favoriteTrackIds) {
         const favorite = rowsByTrackId.get(favoriteTrackId);
         if (!favorite) {
           continue;
         }
+        favoriteRows.push(favorite);
         const favoriteOrdinal = rows.findIndex((row) => row.track_id === favoriteTrackId);
         const favoriteWeight = weightsByTrackId[favoriteTrackId] ?? 1;
-        const directEdges = favorite.neighbors;
-        for (const edge of directEdges) {
-          scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + (edge.similarity * favoriteWeight));
-        }
-        const reverseEdges = reverseAdjacency.get(favoriteOrdinal) ?? [];
-        for (const edge of reverseEdges) {
-          scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + (edge.similarity * favoriteWeight * 0.92));
-        }
-        for (const edge of directEdges) {
-          for (const hop of rows[edge.trackOrdinal]?.neighbors ?? []) {
-            scores.set(hop.trackOrdinal, (scores.get(hop.trackOrdinal) ?? 0) + (hop.similarity * favoriteWeight * 0.65));
+        frontier.set(favoriteOrdinal, (frontier.get(favoriteOrdinal) ?? 0) + favoriteWeight);
+      }
+
+      for (let depth = 0; depth < 5 && frontier.size > 0; depth += 1) {
+        const nextFrontier = new Map<number, number>();
+        const forwardDecay = Math.pow(0.76, depth);
+        const reverseDecay = Math.pow(0.70, depth);
+
+        for (const [trackOrdinal, strength] of frontier) {
+          const directEdges = rows[trackOrdinal]?.neighbors ?? [];
+          for (const edge of directEdges) {
+            const contribution = strength * edge.similarity * forwardDecay;
+            scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + contribution);
+            nextFrontier.set(edge.trackOrdinal, (nextFrontier.get(edge.trackOrdinal) ?? 0) + contribution);
           }
+
+          const reverseEdges = reverseAdjacency.get(trackOrdinal) ?? [];
+          for (const edge of reverseEdges) {
+            const contribution = strength * edge.similarity * 0.92 * reverseDecay;
+            scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + contribution);
+            nextFrontier.set(edge.trackOrdinal, (nextFrontier.get(edge.trackOrdinal) ?? 0) + contribution);
+          }
+        }
+
+        frontier = new Map(
+          [...nextFrontier.entries()]
+            .sort((left, right) => right[1] - left[1] || left[0] - right[0])
+            .slice(0, 256),
+        );
+      }
+
+      if (favoriteRows.length > 0) {
+        const centroid = normalizeVector(
+          new Array(4).fill(0).map((_, dimension) => {
+            let totalWeight = 0;
+            let total = 0;
+            for (const row of favoriteRows) {
+              const weight = weightsByTrackId[row.track_id] ?? 1;
+              totalWeight += weight;
+              const vector = [row.e, row.m, row.c, row.p ?? 3];
+              total += (vector[dimension] ?? 0) * weight;
+            }
+            return total / Math.max(totalWeight, 1);
+          }),
+        );
+
+        for (let trackOrdinal = 0; trackOrdinal < rows.length; trackOrdinal += 1) {
+          const row = rows[trackOrdinal]!;
+          if (excludeTrackIds.has(row.track_id) || options.favoriteTrackIds.includes(row.track_id)) {
+            continue;
+          }
+          const fallbackScore = cosine(centroid, normalizeVector([row.e, row.m, row.c, row.p ?? 3]));
+          scores.set(trackOrdinal, fallbackScore);
         }
       }
 
@@ -601,7 +749,7 @@ export async function openTinySimilarityDataset(
             track_id: row.track_id,
             sid_path: row.sid_path,
             song_index: row.song_index,
-            score: decodeSimilarity(encodeSimilarity(Math.max(-1, Math.min(1, score)))),
+            score: Math.max(-1, Math.min(1, score)),
             rank: index + 1,
             e: row.e,
             m: row.m,

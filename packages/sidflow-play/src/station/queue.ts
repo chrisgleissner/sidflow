@@ -1,13 +1,12 @@
 import path from "node:path";
-import { Database } from "bun:sqlite";
 import {
   cosineSimilarity,
+  openSqliteSimilarityDataset,
   openLiteSimilarityDataset,
   openTinySimilarityDataset,
   pathExists,
-  recommendFromFavorites as recommendFromFavoritesFromSqlite,
   type SidFileMetadata,
-  type PortableSimilarityDataset,
+  type SimilarityDataset,
   type SimilarityExportRecommendation,
 } from "@sidflow/common";
 import type {
@@ -16,7 +15,6 @@ import type {
   ResolvedStationSimilarityFormat,
   StationTrackDetails,
   StationTrackRow,
-  StationTrackVectorRow,
   StationRuntime,
 } from "./types.js";
 import { extractYear, isTrackLongEnough, resolveTrackDurationMs } from "./formatting.js";
@@ -63,23 +61,7 @@ function dedupeQueueBySongKey<T extends Pick<StationTrackRow, "sid_path" | "song
   return deduped;
 }
 
-function openReadonlyDatabase(dbPath: string): Database {
-  return new Database(dbPath, { readonly: true, strict: true });
-}
-
-export type StationSimilarityDatasetHandle =
-  | { format: "sqlite"; dbPath: string }
-  | { format: "lite" | "tiny"; dbPath: string; dataset: PortableSimilarityDataset };
-
-type StationSimilarityDatasetInput = StationSimilarityDatasetHandle | string;
-
-function normalizeDatasetHandle(input: StationSimilarityDatasetInput): StationSimilarityDatasetHandle {
-  return typeof input === "string" ? { format: "sqlite", dbPath: input } : input;
-}
-
-function isPortableHandle(handle: StationSimilarityDatasetHandle): handle is Extract<StationSimilarityDatasetHandle, { dataset: PortableSimilarityDataset }> {
-  return "dataset" in handle;
-}
+export type StationSimilarityDatasetHandle = SimilarityDataset;
 
 export async function openStationSimilarityDataset(
   dbPath: string,
@@ -87,164 +69,49 @@ export async function openStationSimilarityDataset(
   hvscRoot: string,
 ): Promise<StationSimilarityDatasetHandle> {
   if (format === "sqlite") {
-    return { format, dbPath };
+    return openSqliteSimilarityDataset(dbPath);
   }
   if (format === "lite") {
-    return { format, dbPath, dataset: await openLiteSimilarityDataset(dbPath) };
+    return await openLiteSimilarityDataset(dbPath);
   }
-  return { format, dbPath, dataset: await openTinySimilarityDataset(dbPath, { hvscRoot }) };
+  return await openTinySimilarityDataset(dbPath, { hvscRoot });
 }
 
-export function inspectExportDatabase(datasetHandle: StationSimilarityDatasetInput): ExportDatabaseInfo {
-  const resolvedHandle = normalizeDatasetHandle(datasetHandle);
-  if (isPortableHandle(resolvedHandle)) {
-    return {
-      trackCount: resolvedHandle.dataset.info.trackCount,
-      hasTrackIdentity: true,
-      hasVectorData: resolvedHandle.dataset.info.hasVectorData,
-    };
-  }
-  const dbPath = resolvedHandle.dbPath;
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    const columns = database.query("PRAGMA table_info(tracks)").all() as Array<{ name: string }>;
-    const columnNames = new Set(columns.map((column) => column.name));
-    const trackCountRow = database.query("SELECT COUNT(*) AS count FROM tracks").get() as { count: number };
-    const vectorCountRow = database
-      .query("SELECT COUNT(*) AS count FROM tracks WHERE vector_json IS NOT NULL AND vector_json != ''")
-      .get() as { count: number };
-
-    return {
-      trackCount: trackCountRow.count,
-      hasTrackIdentity: columnNames.has("track_id") && columnNames.has("song_index"),
-      hasVectorData: vectorCountRow.count > 0,
-    };
-  } finally {
-    database.close();
-  }
+export function inspectExportDatabase(datasetHandle: StationSimilarityDatasetHandle): ExportDatabaseInfo {
+  return {
+    trackCount: datasetHandle.info.trackCount,
+    hasTrackIdentity: datasetHandle.info.hasTrackIdentity,
+    hasVectorData: datasetHandle.info.hasVectorData,
+  };
 }
 
 export function readRandomTracksExcluding(
-  datasetHandle: StationSimilarityDatasetInput,
+  datasetHandle: StationSimilarityDatasetHandle,
   limit: number,
   excludedTrackIds: Iterable<string>,
+  random?: () => number,
 ): StationTrackRow[] {
-  const resolvedHandle = normalizeDatasetHandle(datasetHandle);
-  if (isPortableHandle(resolvedHandle)) {
-    return resolvedHandle.dataset.readRandomTracksExcluding(limit, excludedTrackIds) as StationTrackRow[];
-  }
-  const dbPath = resolvedHandle.dbPath;
-  const excluded = [...excludedTrackIds];
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    if (excluded.length === 0) {
-      return database
-        .query(
-          `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-           FROM tracks
-           ORDER BY RANDOM()
-           LIMIT ?`,
-        )
-        .all(limit) as StationTrackRow[];
-    }
-
-    const placeholders = excluded.map(() => "?").join(", ");
-    return database
-      .query(
-        `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-         FROM tracks
-         WHERE track_id NOT IN (${placeholders})
-         ORDER BY RANDOM()
-         LIMIT ?`,
-      )
-      .all(...excluded, limit) as StationTrackRow[];
-  } finally {
-    database.close();
-  }
+  return datasetHandle.readRandomTracksExcluding(limit, excludedTrackIds, random) as StationTrackRow[];
 }
 
-export function readTrackRowsByIds(datasetHandle: StationSimilarityDatasetInput, trackIds: string[]): Map<string, StationTrackRow> {
+export function readTrackRowsByIds(datasetHandle: StationSimilarityDatasetHandle, trackIds: string[]): Map<string, StationTrackRow> {
   if (trackIds.length === 0) {
     return new Map();
   }
 
-  const resolvedHandle = normalizeDatasetHandle(datasetHandle);
-  if (isPortableHandle(resolvedHandle)) {
-    return resolvedHandle.dataset.readTrackRowsByIds(trackIds) as Map<string, StationTrackRow>;
-  }
-
-  const dbPath = resolvedHandle.dbPath;
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    const placeholders = trackIds.map(() => "?").join(", ");
-    const rows = database
-      .query(
-        `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-         FROM tracks
-         WHERE track_id IN (${placeholders})`,
-      )
-      .all(...trackIds) as StationTrackRow[];
-    return new Map(rows.map((row) => [row.track_id, row]));
-  } finally {
-    database.close();
-  }
+  return datasetHandle.resolveTracks(trackIds) as Map<string, StationTrackRow>;
 }
 
-function readTrackRowById(datasetHandle: StationSimilarityDatasetInput, trackId: string): StationTrackRow | null {
-  const resolvedHandle = normalizeDatasetHandle(datasetHandle);
-  if (isPortableHandle(resolvedHandle)) {
-    return resolvedHandle.dataset.readTrackRowById(trackId) as StationTrackRow | null;
-  }
-  const dbPath = resolvedHandle.dbPath;
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    return (
-      (database
-        .query(
-          `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-           FROM tracks
-           WHERE track_id = ?`,
-        )
-        .get(trackId) as StationTrackRow | null) ?? null
-    );
-  } finally {
-    database.close();
-  }
+function readTrackRowById(datasetHandle: StationSimilarityDatasetHandle, trackId: string): StationTrackRow | null {
+  return datasetHandle.resolveTrack(trackId) as StationTrackRow | null;
 }
 
-function readTrackVectorsByIds(datasetHandle: StationSimilarityDatasetInput, trackIds: string[]): Map<string, number[]> {
+function readTrackVectorsByIds(datasetHandle: StationSimilarityDatasetHandle, trackIds: string[]): Map<string, number[]> {
   if (trackIds.length === 0) {
     return new Map();
   }
 
-  const resolvedHandle = normalizeDatasetHandle(datasetHandle);
-  if (isPortableHandle(resolvedHandle)) {
-    return resolvedHandle.dataset.readTrackVectorsByIds(trackIds);
-  }
-
-  const dbPath = resolvedHandle.dbPath;
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    const placeholders = trackIds.map(() => "?").join(", ");
-    const rows = database
-      .query(
-        `SELECT track_id, vector_json
-         FROM tracks
-         WHERE track_id IN (${placeholders})`,
-      )
-      .all(...trackIds) as StationTrackVectorRow[];
-
-    const result = new Map<string, number[]>();
-    for (const row of rows) {
-      if (!row.vector_json) {
-        continue;
-      }
-      result.set(row.track_id, JSON.parse(row.vector_json) as number[]);
-    }
-    return result;
-  } finally {
-    database.close();
-  }
+  return datasetHandle.getTrackVectors(trackIds);
 }
 
 export function buildWeightsByTrackId(ratings: Map<string, number>): Record<string, number> {
@@ -570,7 +437,7 @@ export async function resolveTrackDetails(
 }
 
 export async function buildStationQueue(
-  datasetHandle: StationSimilarityDatasetInput,
+  datasetHandle: StationSimilarityDatasetHandle,
   hvscRoot: string,
   ratings: Map<string, number>,
   stationSize: number,
@@ -579,14 +446,13 @@ export async function buildStationQueue(
   runtime: StationRuntime,
   metadataCache: Map<string, Promise<{ metadata?: SidFileMetadata; durationMs?: number }>>,
 ): Promise<StationTrackDetails[]> {
-  const resolvedHandle = normalizeDatasetHandle(datasetHandle);
   const favoriteTrackIds = pickFavoriteTrackIds(ratings);
   if (favoriteTrackIds.length === 0) {
     return [];
   }
 
   const weightsByTrackId = buildWeightsByTrackId(ratings);
-  const favoriteRows = [...readTrackRowsByIds(resolvedHandle, favoriteTrackIds).values()];
+  const favoriteRows = [...readTrackRowsByIds(datasetHandle, favoriteTrackIds).values()];
   const ratingCentroid = buildWeightedRatingCentroid(favoriteRows, weightsByTrackId);
 
   // C3: Use adventure-radius-expansion min_sim
@@ -595,7 +461,7 @@ export async function buildStationQueue(
   const excludeTrackIds = [...ratings.entries()].filter(([, rating]) => rating <= 2).map(([trackId]) => trackId);
 
   // C1: Build intent model to detect multi-cluster preferences
-  const favoriteVectors = readTrackVectorsByIds(resolvedHandle, favoriteTrackIds);
+  const favoriteVectors = readTrackVectorsByIds(datasetHandle, favoriteTrackIds);
   const weightsMap = new Map<string, number>(Object.entries(weightsByTrackId));
   const intentModel: IntentModel = buildIntentModel(favoriteTrackIds, favoriteVectors, weightsMap);
 
@@ -610,27 +476,13 @@ export async function buildStationQueue(
     if (intentModel.multiCluster) {
       // C1: Multi-centroid — fetch per cluster then interleave
       const halfLimit = Math.max(1, Math.floor(recommendationLimit / 2));
-      const clusterCandidatesA = isPortableHandle(resolvedHandle)
-        ? resolvedHandle.dataset.recommendFromFavorites({
-          favoriteTrackIds: intentModel.clusters[0]!.trackIds,
-          excludeTrackIds,
-          weightsByTrackId: Object.fromEntries(intentModel.clusters[0]!.trackIds.map((id, i) => [id, intentModel.clusters[0]!.weights[i] ?? 1])),
-          limit: halfLimit,
-        })
-        : recommendFromFavoritesFromSqlite(resolvedHandle.dbPath, {
+      const clusterCandidatesA = datasetHandle.recommendFromFavorites({
         favoriteTrackIds: intentModel.clusters[0]!.trackIds,
         excludeTrackIds,
         weightsByTrackId: Object.fromEntries(intentModel.clusters[0]!.trackIds.map((id, i) => [id, intentModel.clusters[0]!.weights[i] ?? 1])),
         limit: halfLimit,
       });
-      const clusterCandidatesB = isPortableHandle(resolvedHandle)
-        ? resolvedHandle.dataset.recommendFromFavorites({
-          favoriteTrackIds: intentModel.clusters[1]!.trackIds,
-          excludeTrackIds,
-          weightsByTrackId: Object.fromEntries(intentModel.clusters[1]!.trackIds.map((id, i) => [id, intentModel.clusters[1]!.weights[i] ?? 1])),
-          limit: halfLimit,
-        })
-        : recommendFromFavoritesFromSqlite(resolvedHandle.dbPath, {
+      const clusterCandidatesB = datasetHandle.recommendFromFavorites({
         favoriteTrackIds: intentModel.clusters[1]!.trackIds,
         excludeTrackIds,
         weightsByTrackId: Object.fromEntries(intentModel.clusters[1]!.trackIds.map((id, i) => [id, intentModel.clusters[1]!.weights[i] ?? 1])),
@@ -647,14 +499,7 @@ export async function buildStationQueue(
         }
       }
     } else {
-      candidates = isPortableHandle(resolvedHandle)
-        ? resolvedHandle.dataset.recommendFromFavorites({
-          favoriteTrackIds,
-          excludeTrackIds,
-          weightsByTrackId,
-          limit: recommendationLimit,
-        })
-        : recommendFromFavoritesFromSqlite(resolvedHandle.dbPath, {
+      candidates = datasetHandle.recommendFromFavorites({
         favoriteTrackIds,
         excludeTrackIds,
         weightsByTrackId,
@@ -673,7 +518,7 @@ export async function buildStationQueue(
       if (recommendation.score < minSimilarity) {
         continue;
       }
-      const row = readTrackRowById(resolvedHandle, recommendation.track_id);
+      const row = readTrackRowById(datasetHandle, recommendation.track_id);
       if (!row) {
         continue;
       }
@@ -691,7 +536,7 @@ export async function buildStationQueue(
     const chosen = chooseStationTracks(dedupeQueueBySongKey(filteredCandidates), stationSize, adventure, runtime.random);
     const orderedChosen = orderStationTracksByFlow(
       chosen,
-      readTrackVectorsByIds(resolvedHandle, chosen.map((recommendation) => recommendation.track_id)),
+      readTrackVectorsByIds(datasetHandle, chosen.map((recommendation) => recommendation.track_id)),
       adventure,
       runtime.random,
     );

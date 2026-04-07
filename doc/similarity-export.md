@@ -23,7 +23,7 @@ Use the unattended helper script:
 - Publish the generated bundle and raw release assets to `chrisgleissner/sidflow-data`: `scripts/run-similarity-export.sh --mode local --publish-release true`
 - Publish an already-built bundle without rerunning classification/export: `scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true`
 
-The script is the authoritative workflow. It starts the required runtime, triggers classification, waits for completion, runs the SQLite export, and prints the final file locations.
+The script is the authoritative workflow. It starts the required runtime, triggers classification, waits for completion, builds the authoritative SQLite export, derives the lite and tiny bundles from that SQLite artifact, and prints the final file locations.
 
 By default the script resumes from prior classified output. Use `--full-rerun true` only when you want to ignore existing classified data and rebuild everything from scratch.
 
@@ -103,8 +103,8 @@ What the helper script does:
 1. Starts the required web runtime for the selected mode.
 2. Triggers classification through `POST /api/classify`.
 3. Waits for that classify request to complete while deriving progress updates from the server log.
-4. Runs `bun run export:similarity`.
-5. Prints the final SQLite and manifest paths.
+4. Runs `bun run export:similarity` for sqlite, then derives the lite and tiny bundles from the authoritative SQLite export.
+5. Prints the final sqlite, lite, and tiny artifact paths.
 
 By default the helper uses these classify settings:
 
@@ -142,7 +142,7 @@ Useful flags:
 - `--dims 3|4` exports either `e/m/c` or `e/m/c/p` vectors
 - `--include-vectors` keeps vectors in SQLite for centroid queries
 - `--neighbors <k>` optionally precomputes the top `k` neighbors per track
-- `--publish-release true` stages and publishes the `.sqlite`, `.manifest.json`, `SHA256SUMS`, and a tar.gz bundle to GitHub releases via `gh`
+- `--publish-release true` stages and publishes the `.sqlite`, `.manifest.json`, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a tar.gz bundle to GitHub releases via `gh`
 - `--publish-repo <owner/repo>` overrides the release target and defaults to `chrisgleissner/sidflow-data`
 - `--publish-timestamp <YYYYMMDDTHHMMSSZ>` pins the UTC release timestamp instead of generating one automatically
 
@@ -179,10 +179,10 @@ That keeps source history small while still giving downstream consumers a stable
 The helper can now automate the same flow end to end. When `--publish-release true` is supplied, it:
 
 1. Leaves the default local export behavior unchanged unless the flag is explicitly enabled.
-2. Stages the current `.sqlite` and `.manifest.json` into `workspace/artifacts/similarity-export/<corpus>-<profile>-<schema>-<timestamp>/`.
+2. Stages the current `.sqlite`, `.manifest.json`, lite bundle, lite manifest, tiny bundle, and tiny manifest into `workspace/artifacts/similarity-export/<corpus>-<profile>-<schema>-<timestamp>/`.
 3. Generates and verifies `SHA256SUMS` locally.
-4. Creates a tarball that contains exactly the SQLite export, manifest, and `SHA256SUMS`.
-5. Publishes the SQLite export, manifest, `SHA256SUMS`, and the tarball as release assets under tag `sidcorr-hvsc-<profile>-<timestamp>` to `chrisgleissner/sidflow-data` using `gh`.
+4. Creates a tarball that contains exactly the sqlite, lite, and tiny artifacts, their manifests, and `SHA256SUMS`.
+5. Publishes those raw artifacts plus `SHA256SUMS` and the tarball as release assets under tag `sidcorr-hvsc-<profile>-<timestamp>` to `chrisgleissner/sidflow-data` using `gh`.
 
 Example:
 
