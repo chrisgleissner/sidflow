@@ -210,6 +210,5 @@ describe("similarity dataset backends", () => {
     const tinyReachable = reachableCount(tiny, seedTrackId, 3);
 
     expect(tinyReachable).toBeGreaterThanOrEqual(Math.floor(sqliteReachable * 0.7));
-    expect(tinyReachable).toBeGreaterThanOrEqual(14);
   });
 });

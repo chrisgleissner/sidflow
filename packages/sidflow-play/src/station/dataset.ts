@@ -291,7 +291,7 @@ async function materializeReleaseBundle(
 async function resolveRemoteStationDataset(
   runtime: StationRuntime,
   cwd: string,
-): Promise<StationDatasetResolution> {
+): Promise<{ dataSource: string; dbPath: string }> {
   const cacheRoot = path.resolve(cwd, STATION_CACHE_DIR);
   const statePath = path.join(cacheRoot, STATION_CACHE_STATE);
   const cached = await resolveCachedReleaseState(statePath);

@@ -3,7 +3,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
-import { stringifyDeterministic } from "@sidflow/common";
+import { stringifyDeterministic, type JsonValue } from "@sidflow/common";
 import type { Playlist } from "./playlist.js";
 
 /**
@@ -13,7 +13,7 @@ export async function exportPlaylistJSON(
   playlist: Playlist,
   outputPath: string
 ): Promise<void> {
-  const content = stringifyDeterministic(playlist);
+  const content = stringifyDeterministic(playlist as unknown as JsonValue);
   await writeFile(outputPath, content, "utf-8");
 }
 

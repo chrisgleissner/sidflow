@@ -29,7 +29,7 @@ export interface SimilarityDatasetInfo {
   schemaVersion: string;
   sourcePath: string;
   trackCount: number;
-  hasTrackIdentity: true;
+  hasTrackIdentity: boolean;
   hasVectorData: boolean;
 }
 
