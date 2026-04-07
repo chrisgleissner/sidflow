@@ -2,6 +2,8 @@
 
 SIDFlow can export a portable offline similarity bundle for downstream consumers such as c64commander.
 
+Filename rule: every exported artifact filename MUST include its schema ID directly in the basename so the format is obvious from a directory listing alone.
+
 The primary artifact is a single SQLite file. A deterministic JSON sidecar manifest is written next to it so consumers and operators can inspect compatibility, counts, and checksums without opening SQLite.
 
 Do not commit the full SQLite export into the Git repository. It is a generated binary artifact, large enough to bloat clone/fetch history, and should be published outside normal source control.
@@ -18,7 +20,7 @@ Use the unattended helper script:
 
 - Local checkout: `scripts/run-similarity-export.sh --mode local`
 - GHCR Docker image: `scripts/run-similarity-export.sh --mode docker --hvsc /absolute/path/to/hvsc --state-dir /absolute/path/to/sidflow-state`
-- Publish the generated bundle to `chrisgleissner/sidflow-data`: `scripts/run-similarity-export.sh --mode local --publish-release true`
+- Publish the generated bundle and raw release assets to `chrisgleissner/sidflow-data`: `scripts/run-similarity-export.sh --mode local --publish-release true`
 - Publish an already-built bundle without rerunning classification/export: `scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true`
 
 The script is the authoritative workflow. It starts the required runtime, triggers classification, waits for completion, runs the SQLite export, and prints the final file locations.
@@ -64,8 +66,14 @@ When you run the export with the repo's default `.sidflow.json`, SIDFlow reads t
 
 - `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`
 - `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
+- `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr`
+- `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.manifest.json`
+- `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr`
+- `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json`
 
 If you pass `--profile mobile`, the default SQLite filename becomes `data/exports/sidcorr-hvsc-mobile-sidcorr-1.sqlite`.
+
+Optional compressed transport variants keep the same basename and append `.gz`, for example `sidcorr-hvsc-full-sidcorr-lite-1.sidcorr.gz`.
 
 ## Minimal commands
 
@@ -134,7 +142,7 @@ Useful flags:
 - `--dims 3|4` exports either `e/m/c` or `e/m/c/p` vectors
 - `--include-vectors` keeps vectors in SQLite for centroid queries
 - `--neighbors <k>` optionally precomputes the top `k` neighbors per track
-- `--publish-release true` stages and publishes a tar.gz bundle to GitHub releases via `gh`
+- `--publish-release true` stages and publishes the `.sqlite`, `.manifest.json`, `SHA256SUMS`, and a tar.gz bundle to GitHub releases via `gh`
 - `--publish-repo <owner/repo>` overrides the release target and defaults to `chrisgleissner/sidflow-data`
 - `--publish-timestamp <YYYYMMDDTHHMMSSZ>` pins the UTC release timestamp instead of generating one automatically
 
@@ -174,7 +182,7 @@ The helper can now automate the same flow end to end. When `--publish-release tr
 2. Stages the current `.sqlite` and `.manifest.json` into `workspace/artifacts/similarity-export/<corpus>-<profile>-<schema>-<timestamp>/`.
 3. Generates and verifies `SHA256SUMS` locally.
 4. Creates a tarball that contains exactly the SQLite export, manifest, and `SHA256SUMS`.
-5. Publishes that tarball as release tag `sidcorr-hvsc-<profile>-<timestamp>` to `chrisgleissner/sidflow-data` using `gh`.
+5. Publishes the SQLite export, manifest, `SHA256SUMS`, and the tarball as release assets under tag `sidcorr-hvsc-<profile>-<timestamp>` to `chrisgleissner/sidflow-data` using `gh`.
 
 Example:
 

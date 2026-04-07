@@ -40,3 +40,7 @@ export * from "./directory-playlist.js";
 export * from "./persona.js";
 export * from "./persona-scorer.js";
 export * from "./persona-profile.js";
+export * from "./similarity-export.js";
+export * from "./similarity-portable.js";
+export * from "./similarity-export-lite.js";
+export * from "./similarity-export-tiny.js";

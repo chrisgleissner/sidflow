@@ -41,6 +41,7 @@ import {
   buildStationQueue,
   inspectExportDatabase,
   mergeQueueKeepingCurrent,
+  openStationSimilarityDataset,
   readRandomTracksExcluding,
   readTrackRowsByIds,
   resolvePlaylistPositionMs,
@@ -48,6 +49,7 @@ import {
   shuffleQueueKeepingCurrent,
   summarizeRatingAnchors,
   sumPlaylistDurationMs,
+  type StationSimilarityDatasetHandle,
 } from "./queue.js";
 import {
   buildPlaylistStatePath,
@@ -153,6 +155,7 @@ function clampPlaylistDialogIndex(dialog: StationDialogState | undefined): numbe
 
 async function resolveSavedPlaylistQueue(
   statePath: string,
+  datasetHandle: StationSimilarityDatasetHandle,
   dbPath: string,
   hvscRoot: string,
   runtime: StationRuntime,
@@ -163,7 +166,7 @@ async function resolveSavedPlaylistQueue(
     return null;
   }
 
-  const rowsByTrackId = readTrackRowsByIds(dbPath, persisted.trackIds);
+  const rowsByTrackId = readTrackRowsByIds(datasetHandle, persisted.trackIds);
   const queue: StationTrackDetails[] = [];
   const seenSongs = new Set<string>();
   for (const trackId of persisted.trackIds) {
@@ -228,7 +231,8 @@ export async function runStationCli(
     return 1;
   }
 
-  const exportInfo = inspectExportDatabase(dbPath);
+  const datasetHandle = await openStationSimilarityDataset(dbPath, dataset.format, hvscRoot);
+  const exportInfo = inspectExportDatabase(datasetHandle);
   if (!exportInfo.hasTrackIdentity) {
     runtime.stderr.write(
       `Error: ${dbPath} is an older similarity export schema without track-level identity columns (track_id, song_index).\n`,
@@ -236,7 +240,7 @@ export async function runStationCli(
     runtime.stderr.write("Build or point to a newer Phase 5 similarity export before running SID CLI Station.\n");
     return 1;
   }
-  if (!exportInfo.hasVectorData) {
+  if (dataset.format === "sqlite" && !exportInfo.hasVectorData) {
     runtime.stderr.write(`Error: ${dbPath} does not contain vector_json data, so station recommendations cannot be rebuilt.\n`);
     return 1;
   }
@@ -311,7 +315,7 @@ export async function runStationCli(
     while (!interrupted && ratings.size < ratedTarget) {
       if (seedIndex >= seeds.length) {
         const batchSize = Math.max(12, (ratedTarget - ratings.size) * 3);
-        const nextRows = readRandomTracksExcluding(dbPath, batchSize, seenTrackIds);
+        const nextRows = readRandomTracksExcluding(datasetHandle, batchSize, seenTrackIds);
         if (nextRows.length === 0) {
           break;
         }
@@ -421,7 +425,7 @@ export async function runStationCli(
     }
 
     let stationQueue = await buildStationQueue(
-      dbPath,
+      datasetHandle,
       hvscRoot,
       ratings,
       stationTarget,
@@ -627,6 +631,7 @@ export async function runStationCli(
             }
             const resolved = await resolveSavedPlaylistQueue(
               playlists[selected - 1]!.statePath,
+              datasetHandle,
               dbPath,
               hvscRoot,
               runtime,
@@ -679,7 +684,7 @@ export async function runStationCli(
             continue;
           }
           const selected = dialogState.playlists[clampPlaylistDialogIndex(dialogState)]!;
-          const resolved = await resolveSavedPlaylistQueue(selected.statePath, dbPath, hvscRoot, runtime, metadataCache);
+          const resolved = await resolveSavedPlaylistQueue(selected.statePath, datasetHandle, dbPath, hvscRoot, runtime, metadataCache);
           dialogState = undefined;
           if (!resolved) {
             stationStatus = `Saved playlist "${selected.name}" could not be loaded.`;
@@ -954,7 +959,7 @@ export async function runStationCli(
         }
 
         const rebuilt = await buildStationQueue(
-          dbPath,
+          datasetHandle,
           hvscRoot,
           ratings,
           stationTarget,

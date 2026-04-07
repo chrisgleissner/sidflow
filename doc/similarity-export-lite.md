@@ -269,8 +269,8 @@ A delta bundle is applied by appending one additional epoch plus a new trailing 
 
 Recommended:
 
-- uncompressed on-device file: `.sidcorr`
-- transport bundle file: `.sidcorr.zst` or `.sidcorr.gz`
+- uncompressed file: `sidcorr-<corpus>-<profile>-sidcorr-lite-1.sidcorr`
+- optional compressed variant: `sidcorr-<corpus>-<profile>-sidcorr-lite-1.sidcorr.gz`
 
 ## 9.3 Header (Fixed Size)
 
@@ -443,8 +443,8 @@ The "active" view of the file is always the one described by the *last* footer i
 A distribution release consists of:
 
 - `manifest.json` (UTF-8 JSON)
-- `base.sidcorr.zst` (or `.gz`) - compressed base `.sidcorr` file
-- zero or more `delta-<n>.sidcorr.append.zst` files (or `.gz`), each containing bytes to append to an existing `.sidcorr` file
+- `base.sidcorr.gz` - optional compressed base `.sidcorr` file
+- zero or more `delta-<n>.sidcorr.append.gz` files, each containing bytes to append to an existing `.sidcorr` file
 
 ## 10.2 Manifest JSON
 
@@ -470,12 +470,12 @@ A distribution release consists of:
 - `base` (object):
   - `path` (string)
   - `sha256` (string, lowercase hex)
-  - `content_encoding` (string): `zstd` or `gzip`
+  - `content_encoding` (string): `identity` or `gzip`
   - `bytes_uncompressed` (number)
 - `deltas` (array of objects), ordered by application order:
   - `path` (string)
   - `sha256` (string)
-  - `content_encoding` (string): `zstd` or `gzip`
+  - `content_encoding` (string): `gzip`
   - `bytes_append_uncompressed` (number)
   - `from_revision` (number)
   - `to_revision` (number)
@@ -532,7 +532,7 @@ Given a prior `.sidcorr` file for the same `model_version`:
 4. Assign new `fileId` and `trackId` values by appending.
 5. Quantise using the existing cluster prototypes and PQ codebooks.
 6. Write a single new epoch plus a new index and footer.
-7. Publish the append bytes as `*.sidcorr.append.(zst|gz)`.
+7. Publish the append bytes as `*.sidcorr.append.gz`.
 
 Invalid updates:
 

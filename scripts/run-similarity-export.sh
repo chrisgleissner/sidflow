@@ -1056,12 +1056,19 @@ run_export() {
 stage_release_bundle() {
   local output_path="$1"
   local manifest_path="${output_path%.sqlite}.manifest.json"
+  local output_name
+  local manifest_name
+  local checksum_name="SHA256SUMS"
+  local checksum_path
   local timestamp="$2"
   local bundle_name="${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}-${timestamp}"
   local artifact_root="${REPO_ROOT}/workspace/artifacts/similarity-export"
 
+  output_name="$(basename "${output_path}")"
+  manifest_name="$(basename "${manifest_path}")"
   ARTIFACT_BUNDLE_DIR="${artifact_root}/${bundle_name}"
   ARTIFACT_TARBALL_PATH="${artifact_root}/${bundle_name}.tar.gz"
+  checksum_path="${ARTIFACT_BUNDLE_DIR}/${checksum_name}"
 
   mkdir -p "${ARTIFACT_BUNDLE_DIR}"
   rm -f "${ARTIFACT_BUNDLE_DIR}"/* "${ARTIFACT_TARBALL_PATH}"
@@ -1071,23 +1078,29 @@ stage_release_bundle() {
 
   (
     cd "${ARTIFACT_BUNDLE_DIR}"
-    sha256sum "$(basename "${output_path}")" "$(basename "${manifest_path}")" > SHA256SUMS
-    sha256sum -c SHA256SUMS >/dev/null
+    sha256sum "${output_name}" "${manifest_name}" > "${checksum_name}"
+    sha256sum -c "${checksum_name}" >/dev/null
   )
 
-  tar -czf "${ARTIFACT_TARBALL_PATH}" -C "${ARTIFACT_BUNDLE_DIR}" .
+  tar -czf "${ARTIFACT_TARBALL_PATH}" \
+    -C "${ARTIFACT_BUNDLE_DIR}" \
+    "${output_name}" \
+    "${manifest_name}" \
+    "${checksum_name}"
 
   local tar_listing
   tar_listing="$(tar -tzf "${ARTIFACT_TARBALL_PATH}")"
-  grep -q "$(basename "${output_path}")" <<<"${tar_listing}" || fail "Release tarball is missing the SQLite export"
-  grep -q "$(basename "${manifest_path}")" <<<"${tar_listing}" || fail "Release tarball is missing the manifest"
-  grep -q '^SHA256SUMS$' <<<"${tar_listing}" || fail "Release tarball is missing SHA256SUMS"
+  grep -qx "${output_name}" <<<"${tar_listing}" || fail "Release tarball is missing the SQLite export"
+  grep -qx "${manifest_name}" <<<"${tar_listing}" || fail "Release tarball is missing the manifest"
+  grep -qx "${checksum_name}" <<<"${tar_listing}" || fail "Release tarball is missing SHA256SUMS"
+  [[ -f "${checksum_path}" ]] || fail "Release bundle is missing SHA256SUMS"
 
   log "Prepared release bundle: ${ARTIFACT_TARBALL_PATH}"
 }
 
 publish_release_if_requested() {
   local output_path="$1"
+  local manifest_path="${output_path%.sqlite}.manifest.json"
   [[ "${PUBLISH_RELEASE}" == "true" ]] || return 0
 
   gh auth status >/dev/null 2>&1 || fail "gh is not authenticated; run 'gh auth login' before using --publish-release true"
@@ -1107,7 +1120,11 @@ publish_release_if_requested() {
   notes_file="${RUNTIME_DIR}/release-notes-${timestamp}.md"
   release_notes "${tag}" > "${notes_file}"
 
-  gh release create "${tag}" "${ARTIFACT_TARBALL_PATH}" \
+  gh release create "${tag}" \
+    "${output_path}" \
+    "${manifest_path}" \
+    "${ARTIFACT_BUNDLE_DIR}/SHA256SUMS" \
+    "${ARTIFACT_TARBALL_PATH}" \
     --repo "${PUBLISH_REPO}" \
     --title "$(release_title "${timestamp}")" \
     --notes-file "${notes_file}"

@@ -1,9 +1,11 @@
 import path from "node:path";
 import process from "node:process";
-import { buildSimilarityExport } from "../../sidflow-common/dist/similarity-export.js";
 import {
+  buildLiteSimilarityExport,
   formatHelp,
   handleParseResult,
+  buildSimilarityExport,
+  buildTinySimilarityExport,
   loadConfig,
   parseArgs,
   type ArgDef,
@@ -18,6 +20,7 @@ interface SimilarityExportCliOptions {
   dims?: number;
   includeVectors?: boolean;
   format?: string;
+  sourceSqlite?: string;
 }
 
 const ARG_DEFS: ArgDef[] = [
@@ -29,7 +32,7 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--output",
     type: "string",
-    description: "SQLite output path (default: data/exports/sidcorr-<corpus>-<profile>-sidcorr-1.sqlite)",
+    description: "Output path (default depends on --format)",
   },
   {
     name: "--profile",
@@ -64,8 +67,13 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--format",
     type: "string",
-    description: "Export format (currently sqlite only)",
+    description: "Export format: sqlite, lite, tiny",
     defaultValue: "sqlite",
+  },
+  {
+    name: "--source-sqlite",
+    type: "string",
+    description: "Convert an existing sidcorr-1 SQLite export into lite or tiny format",
   },
 ];
 
@@ -76,6 +84,8 @@ const HELP_TEXT = formatHelp(
   [
     "sidflow-play export-similarity",
     "sidflow-play export-similarity --profile full --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
+    "sidflow-play export-similarity --format lite --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
+    "sidflow-play export-similarity --format tiny --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --neighbors 25 --corpus-version HVSC-82",
   ],
 );
@@ -88,8 +98,15 @@ function inferCorpusLabel(sidPath: string): string {
   return path.basename(normalized) || "custom";
 }
 
-function defaultOutputPath(corpusLabel: string, profile: "full" | "mobile"): string {
-  return path.join("data", "exports", `sidcorr-${corpusLabel}-${profile}-sidcorr-1.sqlite`);
+function defaultOutputPath(corpusLabel: string, profile: "full" | "mobile", format: "sqlite" | "lite" | "tiny"): string {
+  const base = `sidcorr-${corpusLabel}-${profile}`;
+  if (format === "sqlite") {
+    return path.join("data", "exports", `${base}-sidcorr-1.sqlite`);
+  }
+  if (format === "tiny") {
+    return path.join("data", "exports", `${base}-sidcorr-tiny-1.sidcorr`);
+  }
+  return path.join("data", "exports", `${base}-sidcorr-lite-1.sidcorr`);
 }
 
 export async function runSimilarityExportCli(argv: string[]): Promise<number> {
@@ -100,8 +117,8 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   }
 
   const { options } = result;
-  if (options.format !== "sqlite") {
-    process.stderr.write("Error: only --format sqlite is currently supported\n");
+  if (options.format !== "sqlite" && options.format !== "lite" && options.format !== "tiny") {
+    process.stderr.write("Error: --format must be sqlite, lite, or tiny\n");
     return 1;
   }
   if (options.profile !== "full" && options.profile !== "mobile") {
@@ -115,9 +132,48 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
 
   const config = await loadConfig(options.config);
   const corpusLabel = options.corpusVersion ?? inferCorpusLabel(config.sidPath);
-  const outputPath = options.output ?? defaultOutputPath(corpusLabel, options.profile);
+  const outputPath = options.output ?? defaultOutputPath(corpusLabel, options.profile, options.format);
   const classifiedPath = config.classifiedPath ?? "./data/classified";
   const feedbackPath = "./data/feedback";
+
+  if (options.sourceSqlite && options.format === "sqlite") {
+    process.stderr.write("Error: --source-sqlite is only used with --format lite or --format tiny\n");
+    return 1;
+  }
+
+  if ((options.format === "lite" || options.format === "tiny") && !options.sourceSqlite) {
+    process.stderr.write("Error: --source-sqlite is required for --format lite and --format tiny\n");
+    return 1;
+  }
+
+  if (options.format === "lite") {
+    process.stdout.write(`Converting ${options.sourceSqlite} into sidcorr-lite-1\n`);
+    process.stdout.write(`Writing lite bundle to ${outputPath}\n`);
+    const resultBundle = await buildLiteSimilarityExport({
+      sourceSqlitePath: path.resolve(process.cwd(), options.sourceSqlite!),
+      outputPath,
+      corpusVersion: corpusLabel,
+    });
+    process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);
+    process.stdout.write(`Tracks: ${resultBundle.manifest.track_count}\n`);
+    process.stdout.write(`Manifest: ${resultBundle.manifestPath}\n`);
+    return 0;
+  }
+
+  if (options.format === "tiny") {
+    process.stdout.write(`Converting ${options.sourceSqlite} into sidcorr-tiny-1\n`);
+    process.stdout.write(`Writing tiny bundle to ${outputPath}\n`);
+    const resultBundle = await buildTinySimilarityExport({
+      sourceSqlitePath: path.resolve(process.cwd(), options.sourceSqlite!),
+      hvscRoot: path.resolve(process.cwd(), config.sidPath),
+      outputPath,
+      corpusVersion: corpusLabel,
+    });
+    process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);
+    process.stdout.write(`Tracks: ${resultBundle.manifest.track_count}\n`);
+    process.stdout.write(`Manifest: ${resultBundle.manifestPath}\n`);
+    return 0;
+  }
 
   process.stdout.write(`Building similarity export from ${classifiedPath}\n`);
   process.stdout.write(`Writing SQLite bundle to ${outputPath}\n`);
