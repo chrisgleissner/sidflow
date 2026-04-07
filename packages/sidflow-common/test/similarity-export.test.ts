@@ -1,21 +1,28 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  buildLiteSimilarityExport,
   buildSimilarityTrackId,
   buildSimilarityExport,
+  buildTinySimilarityExport,
+  openLiteSimilarityDataset,
+  openTinySimilarityDataset,
+  recommendFromFavorites as recommendFromFavoritesFromSqlite,
   readSimilarityExportManifest,
   readSimilarityExportManifestFromDatabase,
   recommendFromFavorites,
   recommendFromSeedTrack,
-} from "../src/similarity-export.js";
+} from "../src/index.js";
 
 describe("similarity-export", () => {
   let tempRoot: string;
   let classifiedPath: string;
   let feedbackPath: string;
+  let hvscRoot: string;
   let outputPath: string;
   let manifestPath: string;
 
@@ -23,11 +30,13 @@ describe("similarity-export", () => {
     tempRoot = await mkdtemp(path.join(os.tmpdir(), "sidflow-similarity-export-"));
     classifiedPath = path.join(tempRoot, "classified");
     feedbackPath = path.join(tempRoot, "feedback", "2026", "03", "13");
+    hvscRoot = path.join(tempRoot, "hvsc");
     outputPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-1.sqlite");
     manifestPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-1.manifest.json");
 
     await mkdir(classifiedPath, { recursive: true });
     await mkdir(feedbackPath, { recursive: true });
+    await mkdir(hvscRoot, { recursive: true });
 
     await writeFile(
       path.join(classifiedPath, "classification_tracks.jsonl"),
@@ -51,6 +60,10 @@ describe("similarity-export", () => {
       ].join("\n") + "\n",
       "utf8",
     );
+
+    for (const sidName of ["A.sid", "B.sid", "C.sid", "D.sid"]) {
+      await writeFile(path.join(hvscRoot, sidName), Buffer.from(`PSID-${sidName}`, "utf8"));
+    }
   });
 
   afterEach(async () => {
@@ -143,6 +156,140 @@ describe("similarity-export", () => {
       buildSimilarityTrackId("A.sid", 1),
     ]);
     expect(recommendations[0].rank).toBe(1);
+  });
+
+  test("converts a full sqlite export into a lite bundle with matching top recommendations", async () => {
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 2,
+    });
+
+    const litePath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-lite-1.sidcorr");
+    await buildLiteSimilarityExport({
+      sourceSqlitePath: outputPath,
+      outputPath: litePath,
+      corpusVersion: "TEST-1",
+    });
+
+    const sqliteRecommendations = recommendFromFavoritesFromSqlite(outputPath, {
+      favoriteTrackIds: [buildSimilarityTrackId("A.sid", 2)],
+      limit: 2,
+    }).map((entry) => entry.track_id);
+    const liteRecommendations = (await openLiteSimilarityDataset(litePath)).recommendFromFavorites({
+      favoriteTrackIds: [buildSimilarityTrackId("A.sid", 2)],
+      limit: 2,
+    }).map((entry) => entry.track_id);
+
+    expect(liteRecommendations[0]).toBe(sqliteRecommendations[0]);
+    expect(new Set(liteRecommendations)).toEqual(new Set(sqliteRecommendations));
+  });
+
+  test("derives a tiny bundle whose graph recommendations overlap the source sqlite export", async () => {
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 3,
+    });
+
+    const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr");
+    await buildTinySimilarityExport({
+      sourceSqlitePath: outputPath,
+      hvscRoot,
+      outputPath: tinyPath,
+      corpusVersion: "TEST-1",
+    });
+
+    const sqliteTop = recommendFromFavoritesFromSqlite(outputPath, {
+      favoriteTrackIds: [buildSimilarityTrackId("A.sid", 1)],
+      limit: 3,
+    }).map((entry) => entry.track_id);
+    const tinyTop = (await openTinySimilarityDataset(tinyPath, { hvscRoot })).recommendFromFavorites({
+      favoriteTrackIds: [buildSimilarityTrackId("A.sid", 1)],
+      limit: 3,
+    }).map((entry) => entry.track_id);
+
+    const overlap = tinyTop.filter((trackId) => sqliteTop.includes(trackId));
+    expect(overlap.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("opens optional gzip-compressed lite and tiny bundles", async () => {
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 3,
+    });
+
+    const litePath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-lite-1.sidcorr.gz");
+    const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr.gz");
+    await buildLiteSimilarityExport({
+      sourceSqlitePath: outputPath,
+      outputPath: litePath,
+      corpusVersion: "TEST-1",
+    });
+    await buildTinySimilarityExport({
+      sourceSqlitePath: outputPath,
+      hvscRoot,
+      outputPath: tinyPath,
+      corpusVersion: "TEST-1",
+    });
+
+    const liteRecommendations = (await openLiteSimilarityDataset(litePath)).recommendFromFavorites({
+      favoriteTrackIds: [buildSimilarityTrackId("A.sid", 2)],
+      limit: 1,
+    });
+    const tinyRecommendations = (await openTinySimilarityDataset(tinyPath, { hvscRoot })).recommendFromFavorites({
+      favoriteTrackIds: [buildSimilarityTrackId("A.sid", 1)],
+      limit: 1,
+    });
+
+    expect(liteRecommendations.length).toBe(1);
+    expect(tinyRecommendations.length).toBe(1);
+  });
+
+  test("resolves tiny track paths from Songlengths.md5 without rescanning the SID tree", async () => {
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 3,
+    });
+
+    const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr");
+    await buildTinySimilarityExport({
+      sourceSqlitePath: outputPath,
+      hvscRoot,
+      outputPath: tinyPath,
+      corpusVersion: "TEST-1",
+    });
+
+    const documentsDir = path.join(hvscRoot, "DOCUMENTS");
+    await mkdir(documentsDir, { recursive: true });
+    await writeFile(
+      path.join(documentsDir, "Songlengths.md5"),
+      [
+        "[Database]",
+        ...["A.sid", "B.sid", "C.sid", "D.sid"].flatMap((sidName) => [
+          `; /${sidName}`,
+          `${createHash("md5").update(Buffer.from(`PSID-${sidName}`, "utf8")).digest("hex")}=0:30`,
+        ]),
+      ].join("\n"),
+      "utf8",
+    );
+
+    for (const sidName of ["A.sid", "B.sid", "C.sid", "D.sid"]) {
+      await rm(path.join(hvscRoot, sidName), { force: true });
+    }
+
+    const tiny = await openTinySimilarityDataset(tinyPath, { hvscRoot });
+    expect(tiny.resolveTrack(buildSimilarityTrackId("A.sid", 1))?.sid_path).toBe("A.sid");
   });
 
   test("reads recommendation data from cached pre-decay sidcorr bundles", async () => {

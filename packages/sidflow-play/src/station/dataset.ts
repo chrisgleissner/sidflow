@@ -12,6 +12,7 @@ import {
 import type {
   CachedStationDatasetState,
   GitHubRelease,
+  ResolvedStationSimilarityFormat,
   StationCliOptions,
   StationDatasetResolution,
   StationRuntime,
@@ -71,7 +72,47 @@ async function findFilesWithSuffix(rootPath: string, suffix: string): Promise<st
   return results;
 }
 
-async function resolveLatestLocalExportDb(exportsDir: string): Promise<string | undefined> {
+function resolveSimilarityFormatFromPath(filePath: string): ResolvedStationSimilarityFormat | null {
+  const lower = filePath.toLowerCase();
+  const basename = path.basename(lower);
+  if (basename.endsWith(".sqlite")) {
+    return "sqlite";
+  }
+  if (
+    (basename.endsWith(".sidcorr") || basename.endsWith(".sidcorr.gz"))
+    && basename.includes("sidcorr-tiny-1")
+  ) {
+    return "tiny";
+  }
+  if (
+    (basename.endsWith(".sidcorr") || basename.endsWith(".sidcorr.gz"))
+    && basename.includes("sidcorr-lite-1")
+  ) {
+    return "lite";
+  }
+  if (basename.endsWith(".tiny.sidcorr") || basename.endsWith(".tiny.sidcorr.gz")) {
+    return "tiny";
+  }
+  if (basename.endsWith(".sidcorr") || basename.endsWith(".sidcorr.gz")) {
+    return "lite";
+  }
+  return null;
+}
+
+function resolveRequestedFormat(value: string | undefined): ResolvedStationSimilarityFormat | "auto" {
+  if (!value || value === "auto") {
+    return "auto";
+  }
+  if (value === "sqlite" || value === "lite" || value === "tiny") {
+    return value;
+  }
+  throw new Error(`Unsupported similarity format ${value}. Expected auto, sqlite, lite, or tiny.`);
+}
+
+async function resolveLatestLocalExportDb(
+  exportsDir: string,
+  requestedFormat: ResolvedStationSimilarityFormat | "auto",
+): Promise<{ dbPath: string; format: ResolvedStationSimilarityFormat } | undefined> {
   if (!(await pathExists(exportsDir))) {
     return undefined;
   }
@@ -80,19 +121,23 @@ async function resolveLatestLocalExportDb(exportsDir: string): Promise<string | 
   const entries = await readdir(exportsDir, { withFileTypes: true });
   const candidates = await Promise.all(
     entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".sqlite"))
+      .filter((entry) => entry.isFile())
+      .map((entry) => ({ entry, format: resolveSimilarityFormatFromPath(entry.name) }))
+      .filter((candidate): candidate is { entry: (typeof entries)[number]; format: ResolvedStationSimilarityFormat } => candidate.format !== null)
+      .filter((candidate) => requestedFormat === "auto" || candidate.format === requestedFormat)
       .map(async (entry) => {
-        const filePath = path.join(exportsDir, entry.name);
+        const filePath = path.join(exportsDir, entry.entry.name);
         const fileStat = await stat(filePath);
         return {
           filePath,
           mtimeMs: fileStat.mtimeMs,
+          format: entry.format,
         };
       }),
   );
 
   candidates.sort((left, right) => right.mtimeMs - left.mtimeMs || right.filePath.localeCompare(left.filePath));
-  return candidates[0]?.filePath;
+  return candidates[0] ? { dbPath: candidates[0].filePath, format: candidates[0].format } : undefined;
 }
 
 export async function resolveLatestFeaturesJsonl(classifiedPath: string): Promise<string | undefined> {
@@ -246,7 +291,7 @@ async function materializeReleaseBundle(
 async function resolveRemoteStationDataset(
   runtime: StationRuntime,
   cwd: string,
-): Promise<StationDatasetResolution> {
+): Promise<{ dataSource: string; dbPath: string }> {
   const cacheRoot = path.resolve(cwd, STATION_CACHE_DIR);
   const statePath = path.join(cacheRoot, STATION_CACHE_STATE);
   const cached = await resolveCachedReleaseState(statePath);
@@ -305,24 +350,37 @@ export async function resolveStationDataset(
   const cwd = runtime.cwd();
   const classifiedPath = path.resolve(cwd, config.classifiedPath ?? "data/classified");
   const explicitLocalDb = options.localDb ?? options.db;
+  const requestedFormat = resolveRequestedFormat(options.similarityFormat);
 
   if (explicitLocalDb) {
+    const resolvedDbPath = path.resolve(cwd, explicitLocalDb);
+    if (resolvedDbPath.toLowerCase().endsWith(".sqlite.gz")) {
+      throw new Error(`Compressed sqlite bundles are not supported: ${resolvedDbPath}. Decompress the file or use a portable .sidcorr bundle instead.`);
+    }
+    const explicitFormat = requestedFormat === "auto"
+      ? resolveSimilarityFormatFromPath(resolvedDbPath)
+      : requestedFormat;
+    if (!explicitFormat) {
+      throw new Error(`Could not infer similarity format from ${resolvedDbPath}. Use --similarity-format.`);
+    }
     return {
-      dataSource: `local SQLite override ${renderRelativePath(cwd, path.resolve(cwd, explicitLocalDb))}`,
-      dbPath: path.resolve(cwd, explicitLocalDb),
+      dataSource: `local ${explicitFormat} override ${renderRelativePath(cwd, resolvedDbPath)}`,
+      dbPath: resolvedDbPath,
+      format: explicitFormat,
       featuresJsonl: options.featuresJsonl ? path.resolve(cwd, options.featuresJsonl) : undefined,
     };
   }
 
   if (options.forceLocalDb) {
     const exportsDir = path.resolve(cwd, "data/exports");
-    const latestLocalDb = await resolveLatestLocalExportDb(exportsDir);
+    const latestLocalDb = await resolveLatestLocalExportDb(exportsDir, requestedFormat);
     if (!latestLocalDb) {
-      throw new Error(`No local similarity export .sqlite files were found under ${exportsDir}`);
+      throw new Error(`No local similarity export bundles matching ${requestedFormat} were found under ${exportsDir}`);
     }
     return {
-      dataSource: `latest local export ${renderRelativePath(cwd, latestLocalDb)}`,
-      dbPath: latestLocalDb,
+      dataSource: `latest local ${latestLocalDb.format} export ${renderRelativePath(cwd, latestLocalDb.dbPath)}`,
+      dbPath: latestLocalDb.dbPath,
+      format: latestLocalDb.format,
       featuresJsonl: options.featuresJsonl
         ? path.resolve(cwd, options.featuresJsonl)
         : await resolveLatestFeaturesJsonl(classifiedPath),
@@ -332,6 +390,7 @@ export async function resolveStationDataset(
   const remote = await resolveRemoteStationDataset(runtime, cwd);
   return {
     ...remote,
+    format: "sqlite",
     featuresJsonl: options.featuresJsonl ? path.resolve(cwd, options.featuresJsonl) : undefined,
   };
 }

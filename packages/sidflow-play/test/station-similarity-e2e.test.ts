@@ -25,7 +25,7 @@ import {
 import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
 import { PAL_CYCLES_PER_SECOND } from "../../sidflow-classify/src/sid-register-trace.js";
 import { writeWavRenderSettingsSidecar } from "../../sidflow-classify/src/wav-render-settings.js";
-import { buildSelectionStatePath, buildStationQueue, readPersistedStationSelections, runStationCli } from "../src/sid-station.js";
+import { buildSelectionStatePath, buildStationQueue, openStationSimilarityDataset, readPersistedStationSelections, runStationCli } from "../src/sid-station.js";
 import type { PlaybackAdapter, StationRuntime, StationTrackDetails } from "../src/station/index.js";
 
 const TOTAL_TRACKS = 200;
@@ -536,8 +536,9 @@ describe("station similarity end-to-end", () => {
     expect(summary.liked).toBe(LIKED_TARGET);
     expect(summary.rejected).toBe(REJECTED_TARGET);
 
+    const datasetHandle = await openStationSimilarityDataset(outputPath, "sqlite");
     const rebuiltQueue = await buildStationQueue(
-      outputPath,
+      datasetHandle,
       sidRoot,
       persistedRatings,
       STATION_SIZE,

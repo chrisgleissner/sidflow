@@ -9,11 +9,14 @@ import type {
 
 export type PlaybackMode = "local" | "c64u" | "none";
 export type Phase = "rating" | "station";
+export type StationSimilarityFormat = "auto" | "sqlite" | "lite" | "tiny";
+export type ResolvedStationSimilarityFormat = Exclude<StationSimilarityFormat, "auto">;
 
 export interface StationCliOptions {
   config?: string;
   db?: string;
   localDb?: string;
+  similarityFormat?: StationSimilarityFormat;
   forceLocalDb?: boolean;
   resetSelections?: boolean;
   hvsc?: string;
@@ -224,5 +227,6 @@ export interface GitHubRelease {
 export interface StationDatasetResolution {
   dataSource: string;
   dbPath: string;
+  format: ResolvedStationSimilarityFormat;
   featuresJsonl?: string;
 }

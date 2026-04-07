@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     BUN_INSTALL=/usr/local \
-    BUN_VERSION=1.3.1 \
+    BUN_VERSION=1.3.11 \
     K6_VERSION=0.52.0
 
 # Copy apt packages list

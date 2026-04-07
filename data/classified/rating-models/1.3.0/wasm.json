@@ -1,11 +1,17 @@
 {
-  "createdAt": "2026-03-29T11:26:25.695Z",
+  "createdAt": "2026-04-07T10:51:24.071Z",
   "features": {
     "bpm": {
       "count": 87073,
       "mu": 74.48984743328975,
       "nonZeroCount": 87073,
       "sigma": 13.574781449608858
+    },
+    "dynamicRange": {
+      "count": 87073,
+      "mu": 0.845047069394903,
+      "nonZeroCount": 87046,
+      "sigma": 0.14323006788111786
     },
     "energy": {
       "count": 87073,
@@ -55,11 +61,23 @@
       "nonZeroCount": 87073,
       "sigma": 0.7397640771285515
     },
+    "onsetDensity": {
+      "count": 87073,
+      "mu": 1.8132102663411342,
+      "nonZeroCount": 86750,
+      "sigma": 0.16602157951168942
+    },
     "pitchSalience": {
       "count": 87073,
       "mu": 0.8193044564352977,
       "nonZeroCount": 87073,
       "sigma": 0.0414406482769153
+    },
+    "rhythmicRegularity": {
+      "count": 87073,
+      "mu": 0.6099009376319385,
+      "nonZeroCount": 82397,
+      "sigma": 0.14981038795556403
     },
     "rms": {
       "count": 87073,
@@ -104,10 +122,10 @@
       "sigma": 0.0017915932092384846
     },
     "spectralFluxMean": {
-      "count": 86826,
-      "mu": 0.31988199523097316,
+      "count": 87073,
+      "mu": 0.3189745858983254,
       "nonZeroCount": 86826,
-      "sigma": 0.008584297052786112
+      "sigma": 0.019050502227780437
     },
     "spectralHfc": {
       "count": 87073,

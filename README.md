@@ -255,7 +255,7 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
-Classifying all 60,572 SID songs (as of HVSC version 84 in March 2026) takes about 3 hours on an Intel 14600K CPU using Kubuntu 24.04:
+Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in March 2026) takes about 30 mins on an Intel 14600K CPU using Kubuntu 24.04:
 
 ```bash
 bash scripts/run-similarity-export.sh --mode local --full-rerun true
@@ -263,27 +263,74 @@ bash scripts/run-similarity-export.sh --mode local --full-rerun true
 
 Expected logs:
 ```
-✔ ~/dev/c64/sidflow [main|✔] 
-08:33 $ bash scripts/run-similarity-export.sh --mode local --full-rerun true
+11:25 $ bash scripts/run-similarity-export.sh --mode local --full-rerun true
 [sidcorr] Mode is full rerun: existing classified data and export artifacts will be ignored and replaced
 [sidcorr] Full rerun: removing prior classified JSONL artifacts from /home/chris/dev/c64/sidflow/data/classified
 [sidcorr] Mode: local
-[sidcorr] Installing dependencies for local mode
-[sidcorr] Starting local web server on port 3000
+[sidcorr] Runtime: node
+[sidcorr] Building TypeScript artifacts for Node runtime
+[sidcorr] Starting local web server under Node on port 3000
 [sidcorr] Triggering classification with payload {"async":false,"skipAlreadyClassified":false,"deleteWavAfterClassification":true,"forceRebuild":true}
 [sidcorr] Classification request started
 [sidcorr] Waiting for classification to finish
-[sidcorr] progress update: completed=2451 remaining=84623 total=87074 elapsed=55s eta=31m 46s rate=44.41 songs/s percent=2.8 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=2464, extracted=2451, tagged=2451]
-[sidcorr] progress update: completed=4398 remaining=82676 total=87074 elapsed=1m 25s eta=26m 42s rate=51.60 songs/s percent=5.1 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=4415, extracted=4398, tagged=4398]
+[sidcorr] progress update: completed=150 remaining=86924 total=87074 elapsed=20s eta=3h 15m 5s rate=7.43 songs/s percent=0.2 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, finalizing=todo, completed=todo] stageCounts[rendered=153, extracted=150, tagged=150] featureHealth[completeRealistic=150/150 (100.0%)]
+[sidcorr] progress update: completed=2200 remaining=84874 total=87074 elapsed=50s eta=32m 19s rate=43.78 songs/s percent=2.5 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, finalizing=todo, completed=todo] stageCounts[rendered=2202, extracted=2200, tagged=2200] featureHealth[completeRealistic=2200/2200 (100.0%)]
+[sidcorr] progress update: completed=4150 remaining=82924 total=87074 elapsed=1m 20s eta=26m 45s rate=51.67 songs/s percent=4.8 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, finalizing=todo, completed=todo] stageCounts[rendered=4153, extracted=4150, tagged=4150] featureHealth[completeRealistic=4150/4150 (100.0%)]
+[sidcorr] progress update: completed=5600 remaining=81474 total=87074 elapsed=1m 50s eta=26m 46s rate=50.74 songs/s percent=6.4 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, finalizing=todo, completed=todo] stageCounts[rendered=5602, extracted=5600, tagged=5600] featureHealth[completeRealistic=5600/5600 (100.0%)]
 
 ...snip...
 
-[sidcorr] progress update: completed=45898 remaining=41176 total=87074 elapsed=38m 2s eta=34m 7s rate=20.11 songs/s percent=52.7 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=45848, extracted=45845, tagged=45898]
-[sidcorr] progress update: completed=46778 remaining=40296 total=87074 elapsed=38m 32s eta=33m 12s rate=20.23 songs/s percent=53.7 phase=tagging phases[analyzing=done, metadata=done, building=done, tagging=now, completed=todo] stageCounts[rendered=46728, extracted=46725, tagged=46778]
-
+[sidcorr] progress update: completed=87074 remaining=0 total=87074 elapsed=26m 28s eta=0s rate=54.84 songs/s percent=100.0 phase=finalizing phases[analyzing=done, metadata=done, building=done, tagging=done, finalizing=now, completed=todo] stageCounts[rendered=87073, extracted=87073, tagged=87074] featureHealth[completeRealistic=87066/87074 (100.0%)]
+[sidcorr] progress update: completed=87074 remaining=0 total=87074 elapsed=27m 58s eta=0s rate=51.89 songs/s phase=completed phases[analyzing=done, metadata=done, building=done, tagging=done, finalizing=done, completed=done] stageCounts[rendered=87074, extracted=0, tagged=87074] featureHealth[completeRealistic=0/0 (unknown)]
+[sidcorr] Classification completed
+[sidcorr] Running local export with bun runtime
+$ node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity --profile full --corpus-version hvsc
+Building similarity export from data/classified
+Writing SQLite bundle to data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+Export complete in 1488643ms
+Tracks: 87073
+Manifest: data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
+[sidcorr] Export complete
+[sidcorr] Export runtime: bun
+[sidcorr] SQLite: /home/chris/dev/c64/sidflow/data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+[sidcorr] Manifest: /home/chris/dev/c64/sidflow/data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
 ```
 
-Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` and `sidcorr-hvsc-full-sidcorr-1.manifest.json`.
+Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`, `sidcorr-hvsc-full-sidcorr-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr`, and `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json`.
+
+**1a. Convert the full export into lite or tiny bundles explicitly (optional):**
+
+```bash
+./scripts/sidflow-play export-similarity \
+  --format lite \
+  --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
+  --output data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr
+
+./scripts/sidflow-play export-similarity \
+  --format tiny \
+  --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
+  --output data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr
+```
+
+Portable bundle filenames should always carry the schema ID directly in the basename. Optional gzip-compressed transport variants append `.gz` without changing the basename, for example `sidcorr-hvsc-full-sidcorr-lite-1.sidcorr.gz`.
+
+The station runtime accepts all three local formats through the same CLI path:
+
+```bash
+./scripts/sid-station.sh \
+  --local-db data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
+  --similarity-format sqlite
+
+./scripts/sid-station.sh \
+  --local-db data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr \
+  --similarity-format lite
+
+./scripts/sid-station.sh \
+  --local-db data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr \
+  --similarity-format tiny
+```
+
+`--similarity-format auto` remains the default and infers the format from the selected local bundle path.
 
 **2. Regenerate the export from existing classified data (skip reclassification):**
 
@@ -291,13 +338,15 @@ Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` and `sidcorr-hvsc-full
 bun run export:similarity -- --profile full
 ```
 
-**3. Publish the export as a release to `chrisgleissner/sidflow-data`:**
+**3. Publish the export as release assets to `chrisgleissner/sidflow-data`:**
 
 The following command requires permissions to create new releases on `chrisgleissner/sidflow-data` and is only intended for the repo maintainers:
 
 ```bash
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
+
+This uploads the sqlite export, sqlite manifest, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a `.tar.gz` bundle containing those same files.
 
 Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-export.md).
 

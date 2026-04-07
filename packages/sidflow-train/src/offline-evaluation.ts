@@ -425,7 +425,7 @@ function computeEarlySkipAuc(
   const examples = scoreTracksAgainstSeeds(embeddings, seedTrackIds, trackRatings)
     .map((entry) => ({
       score: 1 - entry.score,
-      label: entry.skipEarlyCount > entry.positiveCount ? 1 : 0,
+      label: (entry.skipEarlyCount > entry.positiveCount ? 1 : 0) as 0 | 1,
     }));
 
   return computeRocAuc(examples);

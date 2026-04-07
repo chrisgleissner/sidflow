@@ -1,5 +1,195 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 33 - PR 92 Convergence To Merge-Ready
+
+1. [IN_PROGRESS] Audit the active PR review threads and failing branch status.
+  Acceptance criteria:
+  - Every open review thread is enumerated with file-backed context.
+  - The failing CI job is reduced to concrete root causes.
+  - The convergence task distinguishes code fixes, doc alignment, and pure reply-only resolutions.
+
+2. [TODO] Fix valid review findings with minimal, regression-safe changes.
+  Acceptance criteria:
+  - Tiny export generation uses the documented backward-edge DAG and does not regress on large precomputed exports.
+  - Tiny loading avoids full HVSC rescans when Songlengths.md5 can provide the MD5-to-path index.
+  - Lite/tiny builders and station dataset resolution remove the flagged O(n²) and unsupported `.sqlite.gz` behaviors.
+
+3. [TODO] Repair the current branch CI failures and revalidate the changed surface.
+  Acceptance criteria:
+  - The station queue tests use the current dataset-handle API.
+  - Legacy sqlite schema detection reports the intended track-identity error.
+  - Targeted tests plus `bun run build` pass locally.
+
+4. [TODO] Push fixes, answer every unresolved review thread, and resolve them.
+  Acceptance criteria:
+  - Every unresolved thread gets a technical reply tied to code or reasoning.
+  - No thread is resolved without an explanation.
+  - The branch contains the convergence fixes.
+
+5. [TODO] Wait for CI to return green and close the loop.
+  Acceptance criteria:
+  - All required checks for PR 92 are passing.
+  - No unresolved review comments remain.
+  - PLANS.md records the final evidence and any residual risks.
+
+### Progress
+
+- 2026-04-07: Read the required repo docs, fetched live PR 92 review metadata from GitHub, and confirmed 10 unresolved Copilot threads plus one failing `Build and test / Build and Test` check on commit `feat/sidcorr-tiny`.
+- 2026-04-07: Reduced the open review feedback to concrete fixes in `packages/sidflow-common/src/similarity-export-tiny.ts`, `packages/sidflow-common/src/similarity-export-lite.ts`, `packages/sidflow-play/src/station/dataset.ts`, and `doc/similarity-export-tiny.md`. The comments are valid: the tiny export still wrote forward edges, the loader still performed an HVSC-wide MD5 scan and an O(trackCount * fileCount) file lookup, lite still carried an unused O(fileCount * trackCount) count pass, and station dataset resolution still inferred unsupported `.sqlite.gz` sqlite bundles.
+- 2026-04-07: Inspected the failing GitHub Actions log for run `24104059549` and found four concrete failures: three `station demo backend queue building` tests were still calling `buildStationQueue(...)` with a sqlite path instead of the new dataset handle, and one legacy-schema CLI test was blocked because `openSqliteSimilarityDataset(...)` always claimed `hasTrackIdentity: true` even when `track_id` / `song_index` columns were missing.
+
+## Phase 32 - Multi-Format Similarity Convergence Audit And Proof
+
+Plan document:
+
+- `docs/research/similarity-export-audit.md`
+
+1. [DONE] Complete a fresh capability audit against the live code, specs, and README.
+  Acceptance criteria:
+  - A capability matrix covers export generation, CLI loading, station generation, runtime switching, determinism, and test coverage for sqlite/lite/tiny.
+  - README claims are marked CORRECT, PARTIAL, BROKEN, or MISSING against the current tree.
+  - Findings are written to `docs/research/similarity-export-audit.md` before implementation changes are declared done.
+
+2. [DONE] Converge all runtime formats behind one dataset interface.
+  Acceptance criteria:
+  - The station pipeline depends on a single dataset abstraction instead of mixed sqlite-vs-portable branches.
+  - The abstraction exposes `resolveTrack(...)`, `getNeighbors(...)`, `getStyleMask(...)`, and `recommendFromFavorites(...)` for sqlite, lite, and tiny.
+  - Format-specific logic is confined to dataset backends and export/load helpers.
+
+3. [DONE] Repair tiny fidelity and portable runtime parity.
+  Acceptance criteria:
+  - Tiny no longer reconstructs placeholder ratings or fabricated recommendation scores at load time.
+  - Tiny preserves the track data needed for the shared station pipeline and style filtering.
+  - Portable datasets preserve random seed sampling semantics instead of returning deterministic first rows.
+
+4. [DONE] Add permanent equivalence and fidelity enforcement.
+  Acceptance criteria:
+  - Tests compute top-50 overlap, top-100 overlap, Jaccard similarity, rank correlation, and style-distribution comparisons across sqlite/lite/tiny using the real station builder path.
+  - Tiny-focused tests cover graph reachability, neighbor stability, and style-filter parity.
+  - The tests live under existing `*.test.ts` coverage-batch roots so CI enforces them automatically.
+
+5. [DONE] Reconcile operator workflow, wrapper output, and publication behavior.
+  Acceptance criteria:
+  - The authoritative export workflow can derive lite and tiny from the authoritative sqlite bundle in one validated path.
+  - Release/publication steps support the portable formats needed by the README and audit conclusions.
+  - README and operator docs only claim behavior that the script and CLI actually implement.
+
+6. [IN_PROGRESS] Execute full validation and record evidence.
+  Acceptance criteria:
+  - Build passes.
+  - Required tests pass locally.
+  - Real local execution covers sqlite -> lite/tiny generation plus non-interactive station runs.
+  - PLANS.md and WORKLOG.md capture final evidence and residual risks, if any.
+
+### Progress
+
+- 2026-04-07: Re-read the required repo docs plus the current similarity export specs and runtime code. The fresh audit found that Phase 31 was overstated: the tiny loader currently reconstructs placeholder `e/m/c/p` ratings, invents neighbor scores from ordinal rank instead of loading persisted values, exposes no vector data, and the existing equivalence tests only check weak overlap on a tiny synthetic corpus.
+- 2026-04-07: Confirmed additional convergence gaps in the live tree. Portable datasets currently do not randomize seed sampling (`readRandomTracksExcluding(...)` returns the first rows after filtering), the station runtime still mixes sqlite-specific access paths with the portable abstraction instead of relying on one shared interface, and `scripts/run-similarity-export.sh` still only drives/publishes the authoritative sqlite artifact even though `doc/similarity-export.md` claims all three default outputs are produced.
+- 2026-04-07: Landed the shared `SimilarityDataset` runtime contract, repaired lite/tiny row fidelity, removed the remaining format-specific station queue branching, and strengthened the proof surface with cross-format dataset and station-equivalence tests.
+- 2026-04-07: Fixed the final tiny ranking drift by preserving full-precision centroid recommendation scores, which brought `packages/sidflow-play/test/station-portable-equivalence.test.ts` to green (`15 pass, 0 fail` across the targeted similarity proof set).
+- 2026-04-07: Updated the authoritative wrapper to derive sqlite, lite, and tiny together and to publish all three artifacts plus their manifests, checksums, and tarball. Added the formal audit at `docs/research/similarity-export-audit.md` and aligned the README/operator docs with the real workflow.
+- 2026-04-07: Validation evidence so far: `bash -n scripts/run-similarity-export.sh` passed; file-level diagnostics for the edited sources were clean; `bun run build` passed; a real local smoke flow built sqlite, lite, and tiny exports from real local SID files and produced non-interactive sqlite/lite/tiny stations with matching first picks.
+- 2026-04-07: Full-suite validation remains blocked outside the changed surface. `bun run test` exited with status `137` during the shared coverage-batch runner after progressing into `scripts/run-unit-coverage-batches.mjs` batch 37/64 (`packages/sidflow-classify/test/super-mario-stress.test.ts`), so the tree does not yet have a clean full-suite pass to record.
+
+## Phase 31 - Multi-Format Similarity Export Runtime Implementation
+
+Plan document:
+
+- `doc/plans/similarity-export-multiformat-implementation.md`
+
+1. [DONE] Implement full/lite/tiny export generation and runtime loading through the CLI station path.
+  Acceptance criteria:
+  - Lite and tiny exports can be generated from the authoritative full SQLite export.
+  - The CLI station/player can switch between all three formats at runtime.
+  - The README documents the workflow directly below the current full export instructions.
+
+2. [DONE] Prove cross-format user-facing equivalence in an automated way.
+  Acceptance criteria:
+  - The proof uses the same station builder path used by the CLI station tool.
+  - No user interaction is required.
+  - Tests fail on material divergence between full, lite, and tiny station outputs.
+
+3. [DONE] Add tiny-vs-full fidelity tests.
+  Acceptance criteria:
+  - Unit tests prove tiny export generation preserves the information needed for station building closely enough relative to the full export.
+  - File identity mapping and recommendation behavior are both covered.
+
+4. [DONE] Perform real local validation.
+  Acceptance criteria:
+  - `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` is converted into a lite export locally.
+  - The CLI SID player builds a station from that lite export successfully.
+  - Validation evidence is recorded.
+
+### Progress
+
+- 2026-04-07: Created `doc/plans/similarity-export-multiformat-implementation.md` as the execution plan for this work. Confirmed the current station path is SQLite-only and the current export CLI only supports `--format sqlite`, so the work requires both new generators and a runtime recommendation backend abstraction.
+- 2026-04-07: Implemented `sidcorr-lite-1` and `sidcorr-tiny-1` builders/loaders in `@sidflow/common`, added portable-dataset support to the station queue/runtime, and extended `sidflow-play export-similarity` plus `sidflow-play station` to switch among sqlite/lite/tiny at runtime via `--format` and `--similarity-format`.
+- 2026-04-07: Added automated coverage for the new paths with targeted tests: `packages/sidflow-common/test/similarity-export.test.ts`, `packages/sidflow-play/test/station-dataset.test.ts`, and `packages/sidflow-play/test/station-portable-equivalence.test.ts` all passed together (`30 pass, 0 fail`).
+- 2026-04-07: Real local validation completed. Converted `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite` into `data/exports/sidcorr-hvsc-full-sidcorr-1.sidcorr` with `./scripts/sidflow-play export-similarity --format lite --source-sqlite ...`, then ran `runStationCli(...)` non-interactively against that lite bundle and reached a built 100-track station with exit code `0`.
+
+## Phase 30 - Similarity Export Tiny Mobile Compression Review
+
+1. [IN_PROGRESS] Re-audit `doc/similarity-export-tiny.md` against the actual mobile-bundle goal.
+  Acceptance criteria:
+  - The specification is reviewed end to end for needless duplication, weak-device parsing cost, and bundle-size pressure.
+  - Any retained complexity has an explicit size or runtime justification.
+
+2. [IN_PROGRESS] Re-evaluate file identity storage for future HVSC growth.
+  Acceptance criteria:
+  - The document records whether full MD5s are still required or whether a shorter prefix is sufficient.
+  - The chosen prefix length stays below a 1% collision probability over the next 10 years assuming 1,000 added songs per year.
+  - The resulting file-identity section is updated with current-corpus evidence.
+
+3. [IN_PROGRESS] Rework the neighbor-table design for smaller mobile exports.
+  Acceptance criteria:
+  - The document explicitly checks whether `u32` neighbor references are truly required.
+  - The design reduces stored neighbor count from 5 to 3 if that remains compatible with weak-device station building.
+  - The revised graph avoids cycles in exported neighbor edges and documents the low-CPU runtime strategy for reverse traversal.
+
+4. [TODO] Rewrite the tiny specification with the approved storage model.
+  Acceptance criteria:
+  - Repeated rationale is compressed without dropping any actual research findings.
+  - The binary layout, validation rules, size analysis, and rejected-approach sections all match the new decisions.
+
+5. [TODO] Run lightweight validation and record the result.
+  Acceptance criteria:
+  - Modified markdown files are sanity-checked.
+  - PLANS.md records what was and was not validated.
+
+### Progress
+
+- 2026-04-07: Reviewed the required repo docs (`PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`) and read the full `doc/similarity-export-tiny.md` draft plus adjacent similarity-export docs and code references.
+- 2026-04-07: Recomputed MD5-prefix risk against `/home/chris/c64/data/test-data/SID/HVSC/C64Music/DOCUMENTS/Songlengths.md5`. Current corpus has zero collisions at 4, 5, or 6 bytes, but the 10-year growth model (`+10,000` files) gives an estimated collision probability of about 14.16% at 4 bytes, 0.0596% at 5 bytes, and 0.000233% at 6 bytes. This makes 5 bytes the smallest prefix that satisfies the user-specified `<1%` budget.
+- 2026-04-07: Quantified the dominant storage pressure in the current draft neighbor table and evaluated a smaller mobile-friendly alternative. Replacing `5 x u32` absolute neighbor ordinals with `3 x u24` acyclic references reduces the neighbor section from 1,741,460 bytes to 783,657 bytes, and combining that with `md5_40` file identities reduces the full artifact from 2,945,855 bytes to 1,321,771 bytes (about 55.13% smaller) while still permitting a one-time reverse-index build at load time.
+- 2026-04-07: Rebalanced the final spec toward weak-device parsing simplicity. The accepted design keeps the 3-edge acyclic graph but replaces odd-width `md5_40` and `u24` fields with fixed-width `md5_64` file identities and `u32` absolute neighbor ordinals. That raises the artifact to 1,764,703 bytes (about 1.683 MiB), which is 442,932 bytes larger than the aggressively packed variant but still 1,181,152 bytes smaller than the older `md5_128 + 5 x u32` draft while being substantially easier to parse with native-width reads.
+- 2026-04-07: Tightened the spec again to the final compact layout requested by the user. The accepted format now uses `md5_48` file identities and `3 x u24` on-disk neighbor entries, both widened in RAM only if useful to the runtime. The rewritten `doc/similarity-export-tiny.md` also removes most historical narration and retains only the format definition plus the few measured tradeoff notes needed to justify `md5_48` and `u24`.
+
+## Phase 29 - Similarity Export Publish-Only Release Repair
+
+1. [DONE] Reproduce and isolate the release publication failure in the authoritative wrapper.
+  Acceptance criteria:
+  - The exact `publish-only` failure is tied to a concrete code path in `scripts/run-similarity-export.sh`.
+  - Existing export and staged artifact state are inspected so the fix targets the real release flow.
+
+2. [DONE] Fix the release staging/upload path and update operator docs if behavior changes.
+  Acceptance criteria:
+  - `scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true` no longer aborts on a valid staged bundle.
+  - The published release includes the SQLite export, manifest, checksums, and any documented bundle artifact.
+  - `README.md` and/or `doc/similarity-export.md` match the actual supported publication flow.
+
+3. [IN_PROGRESS] Revalidate the tree and complete the real upload.
+  Acceptance criteria:
+  - Required local validation passes.
+  - The publish-only workflow completes against `chrisgleissner/sidflow-data`.
+  - PLANS.md records the final release evidence and any follow-up notes.
+
+### Progress
+
+- 2026-04-07: Reviewed the required repo docs (`PLANS.md`, `README.md`, `doc/developer.md`, `doc/technical-reference.md`) plus `doc/plans/README.md`, traced the authoritative publish path in `scripts/run-similarity-export.sh`, and confirmed the current `publish-only` failure is caused by tarball validation rejecting `./SHA256SUMS` even though the staged tarball contains the checksum file.
+- 2026-04-07: Patched `scripts/run-similarity-export.sh` so release tarballs are created with explicit root entries, validated correctly, and published alongside the raw `.sqlite`, `.manifest.json`, and `SHA256SUMS` assets. Updated `README.md` and `doc/similarity-export.md` to match the release asset behavior.
+- 2026-04-07: `bash -n scripts/run-similarity-export.sh` passed and `bun run build` passed. A full `bun run test` revalidation attempt became a repo-level blocker in the shared coverage runner: it advanced through the early 30+ coverage batches, then spent more than 25 minutes CPU-bound inside the large `sidflow-common` coverage batch without producing further output, so the run was terminated before completion and requires separate investigation.
+- 2026-04-07: Completed the patched publish flow with `bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true --publish-timestamp 20260407T115218Z`. Verified the release `sidcorr-hvsc-full-20260407T115218Z` at `https://github.com/chrisgleissner/sidflow-data/releases/tag/sidcorr-hvsc-full-20260407T115218Z` contains four uploaded assets: `sidcorr-hvsc-full-sidcorr-1.sqlite` (416,112,640 bytes), `sidcorr-hvsc-full-sidcorr-1.manifest.json` (784 bytes), `SHA256SUMS` (209 bytes), and `hvsc-full-sidcorr-1-20260407T115218Z.tar.gz` (40,009,906 bytes). Verified the staged tarball lists exactly `sidcorr-hvsc-full-sidcorr-1.sqlite`, `sidcorr-hvsc-full-sidcorr-1.manifest.json`, and `SHA256SUMS`.
+
 ## Phase 28 - PR 91 Convergence To Merge-Ready
 
 1. [IN_PROGRESS] Audit the active pull request review threads and branch status.

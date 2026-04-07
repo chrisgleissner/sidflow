@@ -144,7 +144,8 @@ describe("resolveStationDataset — explicit local DB", () => {
       baseConfig,
     );
     expect(result.dbPath).toBe(path.resolve(dir, "my-local.sqlite"));
-    expect(result.dataSource).toContain("local SQLite override");
+    expect(result.dataSource).toContain("local sqlite override");
+    expect(result.format).toBe("sqlite");
     expect(result.featuresJsonl).toBeUndefined();
   });
 
@@ -157,7 +158,7 @@ describe("resolveStationDataset — explicit local DB", () => {
       baseConfig,
     );
     expect(result.dbPath).toBe(path.resolve(dir, "other.sqlite"));
-    expect(result.dataSource).toContain("local SQLite override");
+    expect(result.dataSource).toContain("local sqlite override");
   });
 
   it("includes featuresJsonl when options.featuresJsonl is set alongside localDb", async () => {
@@ -182,6 +183,16 @@ describe("resolveStationDataset — explicit local DB", () => {
     );
     expect(result.dbPath).toBe(absPath);
   });
+
+  it("rejects explicit compressed sqlite bundles with a clear error", async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeStubRuntime(dir);
+    await writeFile(path.join(dir, "compressed.sqlite.gz"), "not really gzipped");
+
+    await expect(
+      resolveStationDataset(runtime, { localDb: "compressed.sqlite.gz", similarityFormat: "sqlite" }, baseConfig),
+    ).rejects.toThrow("Compressed sqlite bundles are not supported");
+  });
 });
 
 describe("resolveStationDataset — forceLocalDb", () => {
@@ -190,7 +201,7 @@ describe("resolveStationDataset — forceLocalDb", () => {
     const runtime = makeStubRuntime(dir);
     await expect(
       resolveStationDataset(runtime, { forceLocalDb: true }, baseConfig)
-    ).rejects.toThrow("No local similarity export .sqlite files");
+      ).rejects.toThrow("No local similarity export bundles matching auto");
   });
 
   it("returns the sqlite file when forceLocalDb is true and file exists", async () => {
@@ -206,7 +217,8 @@ describe("resolveStationDataset — forceLocalDb", () => {
       baseConfig,
     );
     expect(result.dbPath).toBe(sqliteFile);
-    expect(result.dataSource).toContain("latest local export");
+    expect(result.format).toBe("sqlite");
+    expect(result.dataSource).toContain("latest local sqlite export");
   });
 
   it("picks the most recently modified sqlite when multiple exist", async () => {
@@ -224,6 +236,25 @@ describe("resolveStationDataset — forceLocalDb", () => {
     const runtime = makeStubRuntime(dir);
     const result = await resolveStationDataset(runtime, { forceLocalDb: true }, baseConfig);
     expect(result.dbPath).toBe(newer);
+  });
+
+  it("ignores newer .sqlite.gz files when selecting the latest local sqlite export", async () => {
+    const dir = await makeTmpDir();
+    const exportsDir = path.join(dir, "data", "exports");
+    await mkdir(exportsDir, { recursive: true });
+    const sqliteFile = path.join(exportsDir, "usable.sqlite");
+    const compressedSqlite = path.join(exportsDir, "newer.sqlite.gz");
+    const now = new Date();
+    await writeFile(sqliteFile, "sqlite header");
+    await writeFile(compressedSqlite, "compressed sqlite");
+    await utimes(sqliteFile, new Date(now.getTime() - 60_000), new Date(now.getTime() - 60_000));
+    await utimes(compressedSqlite, now, now);
+
+    const runtime = makeStubRuntime(dir);
+    const result = await resolveStationDataset(runtime, { forceLocalDb: true }, baseConfig);
+
+    expect(result.dbPath).toBe(sqliteFile);
+    expect(result.format).toBe("sqlite");
   });
 
   it("uses explicit featuresJsonl when forceLocalDb is true and featuresJsonl is set", async () => {

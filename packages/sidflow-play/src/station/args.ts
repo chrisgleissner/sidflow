@@ -19,12 +19,18 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--local-db",
     type: "string",
-    description: "Path to a specific local similarity SQLite database",
+    description: "Path to a specific local similarity export bundle (.sqlite, .sidcorr, or optional .gz variant)",
+  },
+  {
+    name: "--similarity-format",
+    type: "string",
+    description: "Similarity export format: auto, sqlite, lite, tiny",
+    defaultValue: "auto",
   },
   {
     name: "--force-local-db",
     type: "boolean",
-    description: "Use the latest local similarity export under data/exports",
+    description: "Use the latest local similarity export under data/exports for the selected format",
   },
   {
     name: "--reset-selections",
@@ -98,9 +104,9 @@ const ARG_DEFS: ArgDef[] = [
 
 export const HELP_TEXT = formatHelp(
   "sidflow-play station [options]",
-  `Interactive SID CLI Station proving the exported similarity SQLite DB is self-contained.
+  `Interactive SID CLI Station proving the exported similarity bundle is self-contained.
 By default the station uses the latest cached sidflow-data release bundle and checks GitHub for a newer bundle at most once per week.
-Use --force-local-db for the latest local export or --local-db to point at a specific local SQLite bundle.
+Use --force-local-db for the latest local export or --local-db to point at a specific local bundle.
 Persisted station ratings are reused automatically for the same dataset unless --reset-selections is supplied.
 The optional features JSONL is only shown as companion provenance for local data.
 
@@ -118,6 +124,7 @@ Commands:
   [
     "sidflow-play station",
     "sidflow-play station --playback none --sample-size 5 --station-size 100 --min-duration 20",
+    "sidflow-play station --local-db data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr --similarity-format lite",
     "sidflow-play station --c64u-host 192.168.1.13 --adventure 5",
   ],
 );

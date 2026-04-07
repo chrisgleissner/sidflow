@@ -4,7 +4,7 @@
 
 import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { stringifyDeterministic } from "@sidflow/common";
+import { stringifyDeterministic, type JsonValue } from "@sidflow/common";
 import type { PlaybackEvent } from "./playback.js";
 
 /**
@@ -150,7 +150,7 @@ export class SessionManager {
     await mkdir(dirname(path), { recursive: true });
     
     // Write deterministic JSON
-    const content = stringifyDeterministic(session);
+    const content = stringifyDeterministic(session as unknown as JsonValue);
     await writeFile(path, content, "utf-8");
   }
 

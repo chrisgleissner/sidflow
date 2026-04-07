@@ -1,20 +1,20 @@
 import path from "node:path";
-import { Database } from "bun:sqlite";
-import {
-  recommendFromFavorites,
-  type SimilarityExportRecommendation,
-} from "../../../sidflow-common/dist/similarity-export.js";
 import {
   cosineSimilarity,
+  openSqliteSimilarityDataset,
+  openLiteSimilarityDataset,
+  openTinySimilarityDataset,
   pathExists,
   type SidFileMetadata,
+  type SimilarityDataset,
+  type SimilarityExportRecommendation,
 } from "@sidflow/common";
 import type {
   ExportDatabaseInfo,
   MetadataResolver,
+  ResolvedStationSimilarityFormat,
   StationTrackDetails,
   StationTrackRow,
-  StationTrackVectorRow,
   StationRuntime,
 } from "./types.js";
 import { extractYear, isTrackLongEnough, resolveTrackDurationMs } from "./formatting.js";
@@ -61,125 +61,57 @@ function dedupeQueueBySongKey<T extends Pick<StationTrackRow, "sid_path" | "song
   return deduped;
 }
 
-function openReadonlyDatabase(dbPath: string): Database {
-  return new Database(dbPath, { readonly: true, strict: true });
-}
+export type StationSimilarityDatasetHandle = SimilarityDataset;
 
-export function inspectExportDatabase(dbPath: string): ExportDatabaseInfo {
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    const columns = database.query("PRAGMA table_info(tracks)").all() as Array<{ name: string }>;
-    const columnNames = new Set(columns.map((column) => column.name));
-    const trackCountRow = database.query("SELECT COUNT(*) AS count FROM tracks").get() as { count: number };
-    const vectorCountRow = database
-      .query("SELECT COUNT(*) AS count FROM tracks WHERE vector_json IS NOT NULL AND vector_json != ''")
-      .get() as { count: number };
-
-    return {
-      trackCount: trackCountRow.count,
-      hasTrackIdentity: columnNames.has("track_id") && columnNames.has("song_index"),
-      hasVectorData: vectorCountRow.count > 0,
-    };
-  } finally {
-    database.close();
+export async function openStationSimilarityDataset(
+  dbPath: string,
+  format: ResolvedStationSimilarityFormat,
+  hvscRoot: string,
+): Promise<StationSimilarityDatasetHandle> {
+  if (format === "sqlite") {
+    return openSqliteSimilarityDataset(dbPath);
   }
-}
-
-export function readRandomTracksExcluding(dbPath: string, limit: number, excludedTrackIds: Iterable<string>): StationTrackRow[] {
-  const excluded = [...excludedTrackIds];
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    if (excluded.length === 0) {
-      return database
-        .query(
-          `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-           FROM tracks
-           ORDER BY RANDOM()
-           LIMIT ?`,
-        )
-        .all(limit) as StationTrackRow[];
-    }
-
-    const placeholders = excluded.map(() => "?").join(", ");
-    return database
-      .query(
-        `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-         FROM tracks
-         WHERE track_id NOT IN (${placeholders})
-         ORDER BY RANDOM()
-         LIMIT ?`,
-      )
-      .all(...excluded, limit) as StationTrackRow[];
-  } finally {
-    database.close();
+  if (format === "lite") {
+    return await openLiteSimilarityDataset(dbPath);
   }
+  return await openTinySimilarityDataset(dbPath, { hvscRoot });
 }
 
-export function readTrackRowsByIds(dbPath: string, trackIds: string[]): Map<string, StationTrackRow> {
+export function inspectExportDatabase(datasetHandle: StationSimilarityDatasetHandle): ExportDatabaseInfo {
+  return {
+    trackCount: datasetHandle.info.trackCount,
+    hasTrackIdentity: datasetHandle.info.hasTrackIdentity,
+    hasVectorData: datasetHandle.info.hasVectorData,
+  };
+}
+
+export function readRandomTracksExcluding(
+  datasetHandle: StationSimilarityDatasetHandle,
+  limit: number,
+  excludedTrackIds: Iterable<string>,
+  random?: () => number,
+): StationTrackRow[] {
+  return datasetHandle.readRandomTracksExcluding(limit, excludedTrackIds, random) as StationTrackRow[];
+}
+
+export function readTrackRowsByIds(datasetHandle: StationSimilarityDatasetHandle, trackIds: string[]): Map<string, StationTrackRow> {
   if (trackIds.length === 0) {
     return new Map();
   }
 
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    const placeholders = trackIds.map(() => "?").join(", ");
-    const rows = database
-      .query(
-        `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-         FROM tracks
-         WHERE track_id IN (${placeholders})`,
-      )
-      .all(...trackIds) as StationTrackRow[];
-    return new Map(rows.map((row) => [row.track_id, row]));
-  } finally {
-    database.close();
-  }
+  return datasetHandle.resolveTracks(trackIds) as Map<string, StationTrackRow>;
 }
 
-function readTrackRowById(dbPath: string, trackId: string): StationTrackRow | null {
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    return (
-      (database
-        .query(
-          `SELECT track_id, sid_path, song_index, e, m, c, p, likes, dislikes, skips, plays, last_played
-           FROM tracks
-           WHERE track_id = ?`,
-        )
-        .get(trackId) as StationTrackRow | null) ?? null
-    );
-  } finally {
-    database.close();
-  }
+function readTrackRowById(datasetHandle: StationSimilarityDatasetHandle, trackId: string): StationTrackRow | null {
+  return datasetHandle.resolveTrack(trackId) as StationTrackRow | null;
 }
 
-function readTrackVectorsByIds(dbPath: string, trackIds: string[]): Map<string, number[]> {
+function readTrackVectorsByIds(datasetHandle: StationSimilarityDatasetHandle, trackIds: string[]): Map<string, number[]> {
   if (trackIds.length === 0) {
     return new Map();
   }
 
-  const database = openReadonlyDatabase(dbPath);
-  try {
-    const placeholders = trackIds.map(() => "?").join(", ");
-    const rows = database
-      .query(
-        `SELECT track_id, vector_json
-         FROM tracks
-         WHERE track_id IN (${placeholders})`,
-      )
-      .all(...trackIds) as StationTrackVectorRow[];
-
-    const result = new Map<string, number[]>();
-    for (const row of rows) {
-      if (!row.vector_json) {
-        continue;
-      }
-      result.set(row.track_id, JSON.parse(row.vector_json) as number[]);
-    }
-    return result;
-  } finally {
-    database.close();
-  }
+  return datasetHandle.getTrackVectors(trackIds);
 }
 
 export function buildWeightsByTrackId(ratings: Map<string, number>): Record<string, number> {
@@ -505,7 +437,7 @@ export async function resolveTrackDetails(
 }
 
 export async function buildStationQueue(
-  dbPath: string,
+  datasetHandle: StationSimilarityDatasetHandle,
   hvscRoot: string,
   ratings: Map<string, number>,
   stationSize: number,
@@ -520,7 +452,7 @@ export async function buildStationQueue(
   }
 
   const weightsByTrackId = buildWeightsByTrackId(ratings);
-  const favoriteRows = [...readTrackRowsByIds(dbPath, favoriteTrackIds).values()];
+  const favoriteRows = [...readTrackRowsByIds(datasetHandle, favoriteTrackIds).values()];
   const ratingCentroid = buildWeightedRatingCentroid(favoriteRows, weightsByTrackId);
 
   // C3: Use adventure-radius-expansion min_sim
@@ -529,7 +461,7 @@ export async function buildStationQueue(
   const excludeTrackIds = [...ratings.entries()].filter(([, rating]) => rating <= 2).map(([trackId]) => trackId);
 
   // C1: Build intent model to detect multi-cluster preferences
-  const favoriteVectors = readTrackVectorsByIds(dbPath, favoriteTrackIds);
+  const favoriteVectors = readTrackVectorsByIds(datasetHandle, favoriteTrackIds);
   const weightsMap = new Map<string, number>(Object.entries(weightsByTrackId));
   const intentModel: IntentModel = buildIntentModel(favoriteTrackIds, favoriteVectors, weightsMap);
 
@@ -544,13 +476,13 @@ export async function buildStationQueue(
     if (intentModel.multiCluster) {
       // C1: Multi-centroid — fetch per cluster then interleave
       const halfLimit = Math.max(1, Math.floor(recommendationLimit / 2));
-      const clusterCandidatesA = recommendFromFavorites(dbPath, {
+      const clusterCandidatesA = datasetHandle.recommendFromFavorites({
         favoriteTrackIds: intentModel.clusters[0]!.trackIds,
         excludeTrackIds,
         weightsByTrackId: Object.fromEntries(intentModel.clusters[0]!.trackIds.map((id, i) => [id, intentModel.clusters[0]!.weights[i] ?? 1])),
         limit: halfLimit,
       });
-      const clusterCandidatesB = recommendFromFavorites(dbPath, {
+      const clusterCandidatesB = datasetHandle.recommendFromFavorites({
         favoriteTrackIds: intentModel.clusters[1]!.trackIds,
         excludeTrackIds,
         weightsByTrackId: Object.fromEntries(intentModel.clusters[1]!.trackIds.map((id, i) => [id, intentModel.clusters[1]!.weights[i] ?? 1])),
@@ -567,7 +499,7 @@ export async function buildStationQueue(
         }
       }
     } else {
-      candidates = recommendFromFavorites(dbPath, {
+      candidates = datasetHandle.recommendFromFavorites({
         favoriteTrackIds,
         excludeTrackIds,
         weightsByTrackId,
@@ -586,7 +518,7 @@ export async function buildStationQueue(
       if (recommendation.score < minSimilarity) {
         continue;
       }
-      const row = readTrackRowById(dbPath, recommendation.track_id);
+      const row = readTrackRowById(datasetHandle, recommendation.track_id);
       if (!row) {
         continue;
       }
@@ -604,7 +536,7 @@ export async function buildStationQueue(
     const chosen = chooseStationTracks(dedupeQueueBySongKey(filteredCandidates), stationSize, adventure, runtime.random);
     const orderedChosen = orderStationTracksByFlow(
       chosen,
-      readTrackVectorsByIds(dbPath, chosen.map((recommendation) => recommendation.track_id)),
+      readTrackVectorsByIds(datasetHandle, chosen.map((recommendation) => recommendation.track_id)),
       adventure,
       runtime.random,
     );
