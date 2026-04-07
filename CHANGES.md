@@ -1,6 +1,18 @@
 # Changelog
 
 
+## 0.5.7 (2026-04-07)
+
+- Merge pull request #92 from chrisgleissner/feat/sidcorr-tiny
+- Implement code changes to enhance functionality and improve performance
+- fix: update Bun to 1.3.11 in CI Docker image to fix SIGILL crash
+- fix: update E2E tests to pass dataset handle instead of sqlite path
+- fix: resolve TypeScript errors and test threshold blocking CI
+- feat: enhance tiny similarity export with songlengths integration and CI improvements
+- Refactor similarity export process and enhance dataset fidelity
+- feat: add tiny similarity export functionality and portable dataset interfaces
+
+
 ## 0.5.6 (2026-03-29)
 
 - Merge pull request #89 from chrisgleissner/fix/oome
