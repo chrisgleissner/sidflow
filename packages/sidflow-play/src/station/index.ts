@@ -96,6 +96,7 @@ export {
 } from "./dataset.js";
 
 export {
+  openStationSimilarityDataset,
   inspectExportDatabase,
   readRandomTracksExcluding,
   readTrackRowsByIds,
