@@ -34,6 +34,8 @@ const ADVENTURE_STEP = 0.03;
 const EXPLOIT_FRACTION = 0.70;
 /** C3: Width of the exploration band above min_sim. */
 const EXPLORE_BAND_WIDTH = 0.10;
+const RECOMMENDATION_SCORE_PRECISION = 1_000_000_000_000;
+const MIN_RECOMMENDATION_MULTIPLIER = 40;
 
 /**
  * C3: Compute the adventure-adjusted minimum similarity threshold.
@@ -216,6 +218,19 @@ export function deriveStationBucketKey(sidPath: string): string {
   return first;
 }
 
+function compareRecommendationByScoreThenTrackId(
+  left: Pick<SimilarityExportRecommendation, "score" | "track_id" | "rank">,
+  right: Pick<SimilarityExportRecommendation, "score" | "track_id" | "rank">,
+): number {
+  return stableRecommendationScore(right.score) - stableRecommendationScore(left.score)
+    || left.track_id.localeCompare(right.track_id)
+    || left.rank - right.rank;
+}
+
+function stableRecommendationScore(score: number): number {
+  return Math.round(score * RECOMMENDATION_SCORE_PRECISION) / RECOMMENDATION_SCORE_PRECISION;
+}
+
 export function chooseStationTracks(
   recommendations: SimilarityExportRecommendation[],
   stationSize: number,
@@ -231,7 +246,7 @@ export function chooseStationTracks(
   const exploitCount = Math.max(1, Math.round(stationSize * EXPLOIT_FRACTION));
   const exploreCount = stationSize - exploitCount;
 
-  const sorted = [...recommendations].sort((left, right) => right.score - left.score || left.rank - right.rank);
+  const sorted = [...recommendations].sort(compareRecommendationByScoreThenTrackId);
 
   // Exploitation pool: all candidates above min_sim + explore_band_width (top similarity)
   const exploitPool = sorted.filter((r) => r.score > minSim + EXPLORE_BAND_WIDTH);
@@ -255,8 +270,8 @@ export function chooseStationTracks(
       candidatesByBucket.set(key, arr);
     }
 
-    const bestScore = pool[0]?.score ?? 0;
-    const worstScore = pool[pool.length - 1]?.score ?? bestScore;
+    const bestScore = stableRecommendationScore(pool[0]?.score ?? 0);
+    const worstScore = stableRecommendationScore(pool[pool.length - 1]?.score ?? bestScore);
 
     for (let index = 0; index < targetCount; index++) {
       const bucketEntries = [...candidatesByBucket.entries()].filter(([, cands]) => cands.some((e) => !used.has(e.track_id)));
@@ -271,7 +286,10 @@ export function chooseStationTracks(
         if (!weighted || !next || bestScore === worstScore) {
           w = 1;
         } else {
-          const norm = Math.max(0, Math.min(1, (next.score - worstScore) / (bestScore - worstScore)));
+          const norm = Math.max(
+            0,
+            Math.min(1, (stableRecommendationScore(next.score) - worstScore) / (bestScore - worstScore)),
+          );
           w = Math.max(0.0001, Math.pow(0.05 + norm * 0.95, 2));
         }
         return { key, cands, w };
@@ -293,11 +311,13 @@ export function chooseStationTracks(
       if (!weighted) {
         pick = available[Math.floor(random() * available.length)]!;
       } else {
-        const totalScore = available.reduce((s, e) => s + Math.max(0.0001, e.score), 0);
+        const totalScore = available.reduce((sum, entry) => {
+          return sum + Math.max(0.0001, stableRecommendationScore(entry.score));
+        }, 0);
         let sc = random() * totalScore;
         pick = available[available.length - 1]!;
         for (const e of available) {
-          sc -= Math.max(0.0001, e.score);
+          sc -= Math.max(0.0001, stableRecommendationScore(e.score));
           if (sc <= 0) { pick = e; break; }
         }
       }
@@ -332,9 +352,8 @@ export function orderStationTracksByFlow(
     return [...recommendations];
   }
 
-  const originalOrder = new Map(recommendations.map((recommendation, index) => [recommendation.track_id, index]));
   const remaining = [...recommendations].sort(
-    (left, right) => right.score - left.score || (originalOrder.get(left.track_id)! - originalOrder.get(right.track_id)!),
+    compareRecommendationByScoreThenTrackId,
   );
   const ordered = [remaining.shift()!];
   const shortlistSize = Math.max(1, Math.min(remaining.length, 1 + Math.floor(adventure / 2)));
@@ -348,13 +367,14 @@ export function orderStationTracksByFlow(
         const continuity = previousVector && candidateVector
           ? cosineSimilarity(previousVector, candidateVector)
           : candidate.score;
-        const blended = (continuity * 0.72) + (candidate.score * 0.28);
+        const blended = (continuity * 0.72) + (stableRecommendationScore(candidate.score) * 0.28);
         return { blended, candidate };
       })
       .sort(
-        (left, right) => right.blended - left.blended
-          || right.candidate.score - left.candidate.score
-          || (originalOrder.get(left.candidate.track_id)! - originalOrder.get(right.candidate.track_id)!),
+        (left, right) => stableRecommendationScore(right.blended) - stableRecommendationScore(left.blended)
+          || stableRecommendationScore(right.candidate.score) - stableRecommendationScore(left.candidate.score)
+          || left.candidate.track_id.localeCompare(right.candidate.track_id)
+          || left.candidate.rank - right.candidate.rank,
       );
 
     const picked = scored[Math.min(scored.length - 1, Math.floor(random() * Math.min(scored.length, shortlistSize)))]!.candidate;
@@ -465,7 +485,11 @@ export async function buildStationQueue(
   const weightsMap = new Map<string, number>(Object.entries(weightsByTrackId));
   const intentModel: IntentModel = buildIntentModel(favoriteTrackIds, favoriteVectors, weightsMap);
 
-  const recommendationLimitFloor = Math.max(stationSize * (3 + adventure), stationSize + 128);
+  const recommendationLimitFloor = Math.max(
+    stationSize * (3 + adventure),
+    stationSize + 128,
+    stationSize * MIN_RECOMMENDATION_MULTIPLIER,
+  );
   let recommendationLimit = recommendationLimitFloor;
   let details: StationTrackDetails[] = [];
   let previousCandidateCount = -1;

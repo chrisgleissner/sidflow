@@ -1,5 +1,23 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-04-08T09:05Z - Phase 34 follow-up: dedicated tiny-export equivalence audit kickoff
+
+- timestamp: 2026-04-08T09:05Z
+- step: P34_T05_T06_TINY_EXPORT_EQUIVALENCE_AUDIT
+- action: Audited the requested proof contract in `doc/research/lite-export-check/tiny-export-equivalence-prompt.md`, mapped it to the live runtime/export APIs, and started implementing a dedicated deterministic audit harness.
+
+### Why a new harness is required
+
+1. `scripts/run-similarity-convergence.ts` already proves some full-vs-tiny persona overlap, but it does not emit the richer artifact tree, direct seed-song comparisons, cross-persona collapse analysis, or determinism rerun evidence required by the prompt.
+2. The existing interactive station wrapper is explicitly unsuitable because it depends on live rating input. The audit must instead call `openStationSimilarityDataset(...)`, `buildStationQueue(...)`, `recommendFromFavorites(...)`, and `recommendFromSeedTrack(...)` directly under fixed seeds and fixed output paths.
+3. The repo already has local full/lite/tiny artifacts in `data/exports/`, so the new harness can stay local-first and avoid entangling this proof with the broader release-download responsibilities of the older convergence script.
+
+### Planned implementation shape
+
+1. Add a dedicated Bun script with explicit flags for full export, tiny export, output root, station size, persona run count, seed-song count, strict mode, and CI mode.
+2. Persist deterministic station inputs per persona/run, then run matched full/tiny station builds through the shared dataset runtime and compute overlap, Jaccard, Spearman, coherence, style-distribution, composer-diversity, year-spread, and duplicate-rate metrics.
+3. Run a separate deterministic seed-song audit using the authoritative sqlite `recommendFromSeedTrack(...)` path against tiny `getNeighbors(...)`, emit per-seed JSON, and summarize pass/fail thresholds plus rerun determinism proof in a single Markdown report.
+
 ## 2026-04-08T08:20Z - Phase 34 progress: wrapper convergence unblocked, report-mode workflow green
 
 - timestamp: 2026-04-08T08:20Z
