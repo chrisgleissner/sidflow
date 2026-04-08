@@ -17,7 +17,7 @@
   },
   "schema_version": "sidcorr-tiny-1",
   "source": {
-    "hvsc_root": "/home/chris/dev/c64/sidflow/workspace/hvsc",
+    "hvsc_root": "hvsc",
     "lite": "sidcorr-hvsc-full-sidcorr-lite-1.sidcorr",
     "sqlite_neighbor_hint": "sidcorr-hvsc-full-sidcorr-1.sqlite"
   },
@@ -28,4 +28,3 @@
   "style_count": 9,
   "track_count": 796
 }
-

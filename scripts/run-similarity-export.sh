@@ -102,6 +102,7 @@ Options:
   --publish-release true|false        Create and publish a tar.gz release bundle. Default: false
   --publish-repo OWNER/REPO           Release target. Default: chrisgleissner/sidflow-data
   --publish-timestamp UTCSTAMP        Override UTC timestamp in YYYYMMDDTHHMMSSZ format
+  --sqlite-neighbors-for-tiny N       Full-export precomputed neighbors kept for tiny derivation. Default: 3
   --keep-runtime true|false           Keep started server/container running after success. Default: false
   --help                              Show this help
 
@@ -326,6 +327,10 @@ while [[ $# -gt 0 ]]; do
       PUBLISH_TIMESTAMP="$2"
       shift 2
       ;;
+    --sqlite-neighbors-for-tiny)
+      SQLITE_NEIGHBORS_FOR_TINY="$2"
+      shift 2
+      ;;
     --keep-runtime)
       KEEP_RUNTIME="$(parse_bool "$2")"
       shift 2
@@ -363,6 +368,8 @@ esac
 if [[ -n "${MAX_SONGS}" ]]; then
   [[ "${MAX_SONGS}" =~ ^[1-9][0-9]*$ ]] || fail "--max-songs must be a positive integer"
 fi
+
+[[ "${SQLITE_NEIGHBORS_FOR_TINY}" =~ ^[0-9]+$ ]] || fail "--sqlite-neighbors-for-tiny must be a non-negative integer"
 
 if [[ "${PUBLISH_RELEASE}" == "true" ]]; then
   require_command gh

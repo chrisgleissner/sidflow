@@ -204,13 +204,14 @@ describe("similarity-export", () => {
     });
 
     const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr");
-    await buildTinySimilarityExport({
+    const tinyResult = await buildTinySimilarityExport({
       sourceLitePath: litePath,
       hvscRoot,
       outputPath: tinyPath,
       corpusVersion: "TEST-1",
       neighborSqlitePath: outputPath,
     });
+    expect(tinyResult.manifest.source.hvsc_root).toBe("hvsc");
 
     const sqliteTop = recommendFromFavoritesFromSqlite(outputPath, {
       favoriteTrackIds: [buildSimilarityTrackId("A.sid", 1)],
@@ -341,13 +342,14 @@ describe("similarity-export", () => {
       outputPath: nestedLitePath,
       corpusVersion: "TEST-NESTED",
     });
-    await buildTinySimilarityExport({
+    const tinyResult = await buildTinySimilarityExport({
       sourceLitePath: nestedLitePath,
       hvscRoot: nestedHvscRoot,
       outputPath: nestedTinyPath,
       corpusVersion: "TEST-NESTED",
       neighborSqlitePath: nestedSqlitePath,
     });
+    expect(tinyResult.manifest.source.hvsc_root).toBe("hvsc-nested");
 
     const tiny = await openTinySimilarityDataset(nestedTinyPath, { hvscRoot: nestedHvscRoot });
     expect(tiny.resolveTrack(buildSimilarityTrackId("DEMOS/A-F/Track_A.sid", 1))?.sid_path).toBe("DEMOS/A-F/Track_A.sid");

@@ -352,8 +352,11 @@ export function orderStationTracksByFlow(
     return [...recommendations];
   }
 
+  const inputOrderByTrackId = new Map(recommendations.map((recommendation, index) => [recommendation.track_id, index]));
   const remaining = [...recommendations].sort(
-    compareRecommendationByScoreThenTrackId,
+    (left, right) => stableRecommendationScore(right.score) - stableRecommendationScore(left.score)
+      || (inputOrderByTrackId.get(left.track_id) ?? Number.MAX_SAFE_INTEGER)
+        - (inputOrderByTrackId.get(right.track_id) ?? Number.MAX_SAFE_INTEGER),
   );
   const ordered = [remaining.shift()!];
   const shortlistSize = Math.max(1, Math.min(remaining.length, 1 + Math.floor(adventure / 2)));
@@ -373,8 +376,8 @@ export function orderStationTracksByFlow(
       .sort(
         (left, right) => stableRecommendationScore(right.blended) - stableRecommendationScore(left.blended)
           || stableRecommendationScore(right.candidate.score) - stableRecommendationScore(left.candidate.score)
-          || left.candidate.track_id.localeCompare(right.candidate.track_id)
-          || left.candidate.rank - right.candidate.rank,
+          || (inputOrderByTrackId.get(left.candidate.track_id) ?? Number.MAX_SAFE_INTEGER)
+            - (inputOrderByTrackId.get(right.candidate.track_id) ?? Number.MAX_SAFE_INTEGER),
       );
 
     const picked = scored[Math.min(scored.length - 1, Math.floor(random() * Math.min(scored.length, shortlistSize)))]!.candidate;

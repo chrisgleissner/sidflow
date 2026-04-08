@@ -72,7 +72,7 @@
 - 2026-04-08: Closed the remote publication gap. Added a large-corpus approximate tiny-neighbor fallback in `packages/sidflow-common/src/similarity-export-tiny.ts`, built `sidcorr-hvsc-full-sidcorr-lite-1.sidcorr` and `sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr` directly from the released full sqlite (`Tracks: 87073`), added `scripts/upload-existing-release-assets.sh`, and uploaded the lite/tiny bundles, their manifests, a refreshed `SHA256SUMS`, and a replacement `hvsc-full-sidcorr-1-20260407T115218Z.tar.gz` to `https://github.com/chrisgleissner/sidflow-data/releases/tag/sidcorr-hvsc-full-20260407T115218Z`. GitHub release verification now shows the new remote assets and updated release notes.
 - 2026-04-08: Resolved the tiny-vs-full hosted audit gap by aligning the equivalence harness with the shipped station default (`adventure=3`) and stabilizing score-plateau handling in `packages/sidflow-play/src/station/queue.ts`. The final hosted artifact set under `tmp/lite-export-check/release-final-validated` now records PASS for persona-station equivalence, PASS for seed-song similarity, deterministic reruns, and cross-persona divergence parity, while preserving baseline persona-collapse findings as warnings when they already exist in the authoritative full runtime.
 
-## Phase 33 - PR 92 Convergence To Merge-Ready
+## Phase 33 - PR 93 Convergence To Merge-Ready
 
 1. [IN_PROGRESS] Audit the active PR review threads and failing branch status.
   Acceptance criteria:
@@ -100,7 +100,7 @@
 
 5. [TODO] Wait for CI to return green and close the loop.
   Acceptance criteria:
-  - All required checks for PR 92 are passing.
+  - All required checks for PR 93 are passing.
   - No unresolved review comments remain.
   - PLANS.md records the final evidence and any residual risks.
 
@@ -109,6 +109,9 @@
 - 2026-04-07: Read the required repo docs, fetched live PR 92 review metadata from GitHub, and confirmed 10 unresolved Copilot threads plus one failing `Build and test / Build and Test` check on commit `feat/sidcorr-tiny`.
 - 2026-04-07: Reduced the open review feedback to concrete fixes in `packages/sidflow-common/src/similarity-export-tiny.ts`, `packages/sidflow-common/src/similarity-export-lite.ts`, `packages/sidflow-play/src/station/dataset.ts`, and `doc/similarity-export-tiny.md`. The comments are valid: the tiny export still wrote forward edges, the loader still performed an HVSC-wide MD5 scan and an O(trackCount * fileCount) file lookup, lite still carried an unused O(fileCount * trackCount) count pass, and station dataset resolution still inferred unsupported `.sqlite.gz` sqlite bundles.
 - 2026-04-07: Inspected the failing GitHub Actions log for run `24104059549` and found four concrete failures: three `station demo backend queue building` tests were still calling `buildStationQueue(...)` with a sqlite path instead of the new dataset handle, and one legacy-schema CLI test was blocked because `openSqliteSimilarityDataset(...)` always claimed `hasTrackIdentity: true` even when `track_id` / `song_index` columns were missing.
+- 2026-04-08: Re-opened the required docs for a new `pr-converge` pass, identified the live branch PR as `#93` (`fix/sidcorr-tiny-release`), and fetched nine unresolved Copilot review threads against the current head. The live review set is concrete and mostly valid: `scripts/run-similarity-convergence.ts` needs bounded-memory hashing/downloads plus safe child-process settlement, `packages/sidflow-play/src/similarity-export-cli.ts` needs stricter tiny-only flag validation, `packages/sidflow-common/src/similarity-export-tiny.ts` needs cached HVSC root resolution plus dead helper cleanup, `scripts/run-similarity-export.sh` should expose the forced SQLite neighbor count explicitly, and the checked-in tiny manifest should not embed an absolute local `hvsc_root`.
+- 2026-04-08: Implemented the PR 93 review fixes and validated the touched surface locally: `bash -n scripts/run-similarity-export.sh`, `bun run build:quick`, and targeted tests for `similarity-export`, `similarity-export-cli`, and the station queue all passed. The first required full `bun run test` loop then failed on `packages/sidflow-play/test/cli.test.ts` (`builds a random-rating station across collection buckets instead of collapsing into early alphabetical paths`), which exposed a real repo-gate regression unrelated to the review threads: `orderStationTracksByFlow(...)` was re-sorting score plateaus alphabetically and destroying the diversified selection from `chooseStationTracks(...)`. Fixed that by preserving the diversified input order as the tie-break inside flow ordering, and re-ran the queue-specific tests to green before restarting the full 3x suite.
+- 2026-04-09: Full repo validation is now green after the queue plateau fix. `bun run build` passed, and `for i in 1 2 3; do bun run test; done` completed with exit code `0` across all three consecutive runs, including the historical `packages/sidflow-play/test/cli.test.ts` queue regression and the long `HVSC 300-file persona station E2E` integration batch. Next step is purely PR-convergence work: commit/push this fix set, reply to each open review thread with the concrete technical change, resolve the threads, and wait for refreshed CI on PR 93.
 
 ## Phase 32 - Multi-Format Similarity Convergence Audit And Proof
 

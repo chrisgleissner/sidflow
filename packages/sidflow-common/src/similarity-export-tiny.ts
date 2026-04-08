@@ -55,6 +55,12 @@ interface TinyTrackRecord extends SimilarityTrackRow {
   styleMask: number;
 }
 
+interface Md548Context {
+  hvscRoot: string;
+  musicRoot: string;
+  musicRootPrefix: string;
+}
+
 export interface TinySimilarityExportManifest {
   schema_version: typeof TINY_SIMILARITY_EXPORT_SCHEMA_VERSION;
   binary_format_version: number;
@@ -127,6 +133,16 @@ async function computeFileChecksum(filePath: string): Promise<string> {
   return createHash("sha256").update(payload).digest("hex");
 }
 
+async function resolveMd548Context(hvscRoot: string): Promise<Md548Context> {
+  const nestedMusicRoot = path.join(hvscRoot, "C64Music");
+  const musicRoot = await pathExists(nestedMusicRoot) ? nestedMusicRoot : hvscRoot;
+  return {
+    hvscRoot,
+    musicRoot,
+    musicRootPrefix: `${path.basename(musicRoot).toLowerCase()}/`,
+  };
+}
+
 function computeManifestPath(outputPath: string, explicitPath?: string): string {
   return computePortableManifestPath(outputPath, explicitPath);
 }
@@ -159,19 +175,15 @@ function parseVector(row: SourceTrackRow): number[] {
   return normalizeVector(values);
 }
 
-async function computeMd548(hvscRoot: string, sidPath: string): Promise<Buffer> {
+async function computeMd548(context: Md548Context, sidPath: string): Promise<Buffer> {
   const normalizedSidPath = sidPath.replace(/\\/g, "/").replace(/^\/+/, "");
-  const nestedMusicRoot = path.join(hvscRoot, "C64Music");
-  const hasNestedMusicRoot = await pathExists(nestedMusicRoot);
-  const musicRoot = hasNestedMusicRoot ? nestedMusicRoot : hvscRoot;
-  const musicRootPrefix = `${path.basename(musicRoot).toLowerCase()}/`;
   const candidatePaths = [
-    path.resolve(musicRoot, normalizedSidPath),
-    path.resolve(hvscRoot, normalizedSidPath),
+    path.resolve(context.musicRoot, normalizedSidPath),
+    path.resolve(context.hvscRoot, normalizedSidPath),
   ];
 
-  if (normalizedSidPath.toLowerCase().startsWith(musicRootPrefix)) {
-    candidatePaths.push(path.resolve(musicRoot, normalizedSidPath.slice(musicRootPrefix.length)));
+  if (normalizedSidPath.toLowerCase().startsWith(context.musicRootPrefix)) {
+    candidatePaths.push(path.resolve(context.musicRoot, normalizedSidPath.slice(context.musicRootPrefix.length)));
   }
 
   let absolutePath: string | null = null;
@@ -183,7 +195,7 @@ async function computeMd548(hvscRoot: string, sidPath: string): Promise<Buffer> 
   }
 
   if (!absolutePath) {
-    throw new Error(`Unable to resolve SID path ${sidPath} within ${hvscRoot}`);
+    throw new Error(`Unable to resolve SID path ${sidPath} within ${context.hvscRoot}`);
   }
 
   const payload = await readFile(absolutePath);
@@ -191,6 +203,7 @@ async function computeMd548(hvscRoot: string, sidPath: string): Promise<Buffer> 
 }
 
 async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>> {
+  const md548Context = await resolveMd548Context(hvscRoot);
   const songlengths = await loadSonglengthsData(hvscRoot);
   if (songlengths.sourcePath && songlengths.pathByMd5.size > 0) {
     const result = new Map<string, string>();
@@ -215,7 +228,7 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
         continue;
       }
       const relativePath = path.relative(songlengths.musicRoot, absolutePath).replace(/\\/g, "/");
-      const md548 = await computeMd548(hvscRoot, relativePath);
+      const md548 = await computeMd548(md548Context, relativePath);
       result.set(md548.toString("hex"), relativePath);
     }
   }
@@ -266,62 +279,6 @@ function buildStyleTable(): Buffer {
   sectionHeader.writeUInt16LE(0, 6);
   sectionHeader.writeUInt32LE(payloadOffset, 8);
   return Buffer.concat([sectionHeader, ...records, ...payloads]);
-}
-
-function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], database: Database): Array<Array<{ trackOrdinal: number; similarity: number }>> {
-  const ordinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
-  const neighborsBySeed = rows.map(() => [] as Array<{ trackOrdinal: number; similarity: number }>);
-  let hasPrecomputedNeighbors = false;
-  try {
-    const existingNeighbors = database.query(`
-      SELECT seed_track_id, neighbor_track_id, rank, similarity
-      FROM neighbors
-      WHERE profile = 'full'
-      ORDER BY seed_track_id ASC, rank ASC
-    `).all() as Array<{ seed_track_id: string; neighbor_track_id: string; rank: number; similarity: number }>;
-    if (existingNeighbors.length > 0) {
-      hasPrecomputedNeighbors = true;
-      for (const neighbor of existingNeighbors) {
-        const seedOrdinal = ordinalByTrackId.get(neighbor.seed_track_id);
-        const targetOrdinal = ordinalByTrackId.get(neighbor.neighbor_track_id);
-        if (seedOrdinal === undefined || targetOrdinal === undefined || targetOrdinal >= seedOrdinal) {
-          continue;
-        }
-        const arr = neighborsBySeed[seedOrdinal]!;
-        if (arr.length < NEIGHBORS_PER_TRACK) {
-          arr.push({ trackOrdinal: targetOrdinal, similarity: neighbor.similarity });
-        }
-      }
-    }
-  } catch (error) {
-    if (!(error instanceof Error)) {
-      throw error;
-    }
-    if (!error.message.toLowerCase().includes("no such table")) {
-      throw error;
-    }
-  }
-
-  if (hasPrecomputedNeighbors) {
-    return neighborsBySeed;
-  }
-
-  if (rows.length > 5000) {
-    return computeApproximateNeighborGraph(rows, vectors);
-  }
-
-  return rows.map((_, seedOrdinal) => {
-    const scores: Array<{ trackOrdinal: number; similarity: number }> = [];
-    for (let candidateOrdinal = 0; candidateOrdinal < seedOrdinal; candidateOrdinal += 1) {
-      scores.push({
-        trackOrdinal: candidateOrdinal,
-        similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
-      });
-    }
-    return scores
-      .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal)
-      .slice(0, NEIGHBORS_PER_TRACK);
-  });
 }
 
 function buildCompactRatingSignature(row: Pick<SourceTrackRow, "e" | "m" | "c" | "p">): string {
@@ -425,6 +382,17 @@ function computeFallbackNeighborGraph(
   });
 }
 
+function describeHvscRootForManifest(hvscRoot: string): string {
+  const normalized = hvscRoot.replace(/\\/g, "/").replace(/\/+$/g, "");
+  if (!normalized) {
+    return "hvsc";
+  }
+  if (normalized.toLowerCase().endsWith("/c64music")) {
+    return path.basename(path.dirname(normalized)) || "hvsc";
+  }
+  return path.basename(normalized) || "hvsc";
+}
+
 function buildNeighborGraphFromSqliteHint(
   rows: SourceTrackRow[],
   database: Database,
@@ -495,9 +463,10 @@ export async function buildTinySimilarityExport(
   }
   const vectors = rows.map(parseVector);
   const styleTable = buildStyleTable();
+  const md548Context = await resolveMd548Context(options.hvscRoot);
   const fileIdentityTable = Buffer.alloc(filePaths.length * 6);
   for (let index = 0; index < filePaths.length; index += 1) {
-    const md548 = await computeMd548(options.hvscRoot, filePaths[index]!);
+    const md548 = await computeMd548(md548Context, filePaths[index]!);
     writeUInt48LE(fileIdentityTable, md548, index * 6);
   }
 
@@ -605,7 +574,7 @@ export async function buildTinySimilarityExport(
     },
     source: {
       lite: path.basename(options.sourceLitePath),
-      hvsc_root: options.hvscRoot,
+      hvsc_root: describeHvscRootForManifest(options.hvscRoot),
       sqlite_neighbor_hint: options.neighborSqlitePath ? path.basename(options.neighborSqlitePath) : undefined,
     },
     source_checksums: {

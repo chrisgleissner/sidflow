@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { Database } from "bun:sqlite";
 
 import {
@@ -172,12 +175,15 @@ function buildRuntime(seed: number, cwd: string): StationRuntime {
   };
 }
 
-function sha256Buffer(payload: Uint8Array): string {
-  return createHash("sha256").update(payload).digest("hex");
-}
-
 async function sha256File(filePath: string): Promise<string> {
-  return sha256Buffer(await readFile(filePath));
+  const hash = createHash("sha256");
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", resolve);
+  });
+  return hash.digest("hex");
 }
 
 async function ensureDir(dirPath: string): Promise<void> {
@@ -194,17 +200,36 @@ async function runLoggedCommand(
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, { cwd, env: process.env });
     const chunks: Buffer[] = [];
-    child.stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    child.stderr.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    child.on("error", reject);
-    child.on("exit", async (code) => {
-      const payload = Buffer.concat(chunks);
-      await writeFile(logPath, payload);
-      if (code === 0) {
-        resolve();
+    let settled = false;
+    const resolveOnce = () => {
+      if (settled) {
         return;
       }
-      reject(new Error(`${command} ${args.join(" ")} failed with exit ${code ?? "unknown"}. See ${logPath}`));
+      settled = true;
+      resolve();
+    };
+    const rejectOnce = (error: unknown) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error);
+    };
+
+    child.stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    child.on("error", rejectOnce);
+    child.on("exit", (code) => {
+      const payload = Buffer.concat(chunks);
+      writeFile(logPath, payload)
+        .then(() => {
+          if (code === 0) {
+            resolveOnce();
+            return;
+          }
+          rejectOnce(new Error(`${command} ${args.join(" ")} failed with exit ${code ?? "unknown"}. See ${logPath}`));
+        })
+        .catch(rejectOnce);
     });
   });
 }
@@ -245,8 +270,14 @@ async function downloadAsset(url: string, destinationPath: string): Promise<void
   if (!response.ok) {
     throw new Error(`Failed to download ${url}: HTTP ${response.status}`);
   }
+  if (!response.body) {
+    throw new Error(`Failed to download ${url}: response body was empty.`);
+  }
   await ensureDir(path.dirname(destinationPath));
-  await writeFile(destinationPath, Buffer.from(await response.arrayBuffer()));
+  await pipeline(
+    Readable.fromWeb(response.body as globalThis.ReadableStream<Uint8Array>),
+    createWriteStream(destinationPath),
+  );
 }
 
 function readTracksFromSqlite(dbPath: string): ExportTrackRow[] {

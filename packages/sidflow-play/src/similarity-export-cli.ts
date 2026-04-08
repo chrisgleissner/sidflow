@@ -148,13 +148,18 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   const classifiedPath = config.classifiedPath ?? "./data/classified";
   const feedbackPath = "./data/feedback";
 
-  if (options.sourceSqlite && options.format === "sqlite") {
+  if (options.sourceSqlite && options.format !== "lite") {
     process.stderr.write("Error: --source-sqlite is only used with --format lite\n");
     return 1;
   }
 
   if (options.sourceLite && options.format !== "tiny") {
     process.stderr.write("Error: --source-lite is only used with --format tiny\n");
+    return 1;
+  }
+
+  if (options.neighborSourceSqlite && options.format !== "tiny") {
+    process.stderr.write("Error: --neighbor-source-sqlite is only used with --format tiny\n");
     return 1;
   }
 
