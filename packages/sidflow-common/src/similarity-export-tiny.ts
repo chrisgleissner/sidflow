@@ -37,6 +37,7 @@ const COMPACT_RATING_BYTES = 2;
 const NEIGHBORS_PER_TRACK = 3;
 const NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY = 4;
 const STYLE_TABLE_VERSION = 1;
+const APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT = 256;
 
 interface SourceTrackRow {
   track_id: string;
@@ -306,9 +307,7 @@ function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], databas
   }
 
   if (rows.length > 5000) {
-    throw new Error(
-      "sidcorr-tiny-1 generation needs a full export with precomputed neighbors when converting large corpora.",
-    );
+    return computeApproximateNeighborGraph(rows, vectors);
   }
 
   return rows.map((_, seedOrdinal) => {
@@ -325,14 +324,91 @@ function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], databas
   });
 }
 
+function buildCompactRatingSignature(row: Pick<SourceTrackRow, "e" | "m" | "c" | "p">): string {
+  return `${row.e}|${row.m}|${row.c}|${row.p ?? 3}`;
+}
+
+function compactRatingDistance(
+  left: Pick<SourceTrackRow, "e" | "m" | "c" | "p">,
+  right: Pick<SourceTrackRow, "e" | "m" | "c" | "p">,
+): number {
+  return Math.abs(left.e - right.e)
+    + Math.abs(left.m - right.m)
+    + Math.abs(left.c - right.c)
+    + Math.abs((left.p ?? 3) - (right.p ?? 3));
+}
+
+function computeApproximateNeighborGraph(
+  rows: SourceTrackRow[],
+  vectors: number[][],
+): Array<Array<{ trackOrdinal: number; similarity: number }>> {
+  const ordinalsBySignature = new Map<string, number[]>();
+  const rowsBySignature = new Map<string, SourceTrackRow>();
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index]!;
+    const signature = buildCompactRatingSignature(row);
+    const ordinals = ordinalsBySignature.get(signature);
+    if (ordinals) {
+      ordinals.push(index);
+    } else {
+      ordinalsBySignature.set(signature, [index]);
+      rowsBySignature.set(signature, row);
+    }
+  }
+
+  const signatures = [...ordinalsBySignature.keys()];
+  const orderedSignaturesBySignature = new Map<string, string[]>();
+  for (const signature of signatures) {
+    const seedRow = rowsBySignature.get(signature)!;
+    orderedSignaturesBySignature.set(
+      signature,
+      [...signatures].sort((left, right) => {
+        const leftDistance = compactRatingDistance(seedRow, rowsBySignature.get(left)!);
+        const rightDistance = compactRatingDistance(seedRow, rowsBySignature.get(right)!);
+        return leftDistance - rightDistance || left.localeCompare(right);
+      }),
+    );
+  }
+
+  return rows.map((row, seedOrdinal) => {
+    const candidateOrdinals: number[] = [];
+    const seedSignature = buildCompactRatingSignature(row);
+    const orderedSignatures = orderedSignaturesBySignature.get(seedSignature) ?? signatures;
+
+    for (const signature of orderedSignatures) {
+      const ordinals = ordinalsBySignature.get(signature) ?? [];
+      for (let index = ordinals.length - 1; index >= 0; index -= 1) {
+        const candidateOrdinal = ordinals[index]!;
+        if (candidateOrdinal >= seedOrdinal) {
+          continue;
+        }
+        candidateOrdinals.push(candidateOrdinal);
+        if (candidateOrdinals.length >= APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT) {
+          break;
+        }
+      }
+      if (candidateOrdinals.length >= APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT) {
+        break;
+      }
+    }
+
+    const scored = candidateOrdinals
+      .map((candidateOrdinal) => ({
+        trackOrdinal: candidateOrdinal,
+        similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
+      }))
+      .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal);
+
+    return scored.slice(0, NEIGHBORS_PER_TRACK);
+  });
+}
+
 function computeFallbackNeighborGraph(
   rows: SourceTrackRow[],
   vectors: number[][],
 ): Array<Array<{ trackOrdinal: number; similarity: number }>> {
   if (rows.length > 5000) {
-    throw new Error(
-      "sidcorr-tiny-1 generation needs a precomputed SQLite neighbor hint when converting large sidcorr-lite-1 corpora.",
-    );
+    return computeApproximateNeighborGraph(rows, vectors);
   }
 
   return rows.map((_, seedOrdinal) => {
@@ -387,9 +463,7 @@ function buildNeighborGraphFromSqliteHint(
   }
 
   if (!hasPrecomputedNeighbors) {
-    throw new Error(
-      `SQLite neighbor hint ${database.filename} does not contain precomputed full-profile neighbors required for large sidcorr-tiny-1 generation.`,
-    );
+    return computeApproximateNeighborGraph(rows, rows.map(parseVector));
   }
 
   return neighborsBySeed;
