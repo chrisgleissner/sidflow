@@ -1,6 +1,16 @@
 # Changelog
 
 
+## 0.5.8 (2026-04-08)
+
+- Merge pull request #93 from chrisgleissner/fix/sidcorr-tiny-release
+- feat: implement fixes and enhancements for sidcorr-tiny export, including CLI validation and manifest updates
+- Automated full vs tiny export comparison
+- feat: add support for sidcorr-tiny export and update release asset upload script
+- Add similarity export audit documentation and convergence validation script
+- chore: update CHANGES.md for 0.5.7
+
+
 ## 0.5.7 (2026-04-07)
 
 - Merge pull request #92 from chrisgleissner/feat/sidcorr-tiny
