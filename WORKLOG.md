@@ -1,5 +1,29 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-04-08T07:09Z - Phase 34 kickoff: sidcorr-lite/tiny convergence audit
+
+- timestamp: 2026-04-08T07:09Z
+- step: P34-T01_PIPELINE_AUDIT
+- action: Read `doc/similarity-export.md`, `doc/similarity-export-tiny.md`, the current station CLI/runtime code, the lite/tiny builders, `PLANS.md`, and `WORKLOG.md`; then traced the live export and release code paths before making any code changes.
+
+### Pipeline map
+
+1. Full export generation already exists through `packages/sidflow-play/src/similarity-export-cli.ts` and `scripts/run-similarity-export.sh`, producing `sidcorr-1` SQLite plus manifests.
+2. Lite generation already exists as `buildLiteSimilarityExport(...)`, but it currently only consumes a local SQLite export path.
+3. Tiny generation already exists as `buildTinySimilarityExport(...)`, but it currently consumes SQLite directly instead of a lite bundle.
+4. Release publication already stages and uploads full/lite/tiny assets to the same `sidflow-data` release tag via `scripts/run-similarity-export.sh`.
+5. Radio/station generation already supports sqlite, lite, and tiny through the shared dataset handle used by `sidflow-play station`.
+
+### Gaps found
+
+1. There is no dedicated release-based lite workflow that downloads the latest published full export and then runs the same lite transform path used for local SQLite input.
+2. Tiny generation contradicts the requested convergence flow because it is still wired as `sqlite -> tiny`, not `lite -> tiny`.
+3. The existing `scripts/validate-persona-radio.ts` is not the required equivalence validator: it only reads SQLite, defines a separate custom persona set, and enforces zero overlap rather than full-vs-tiny equivalence thresholds.
+4. There is no single command today that performs the end-to-end convergence run and stores all artifacts, checksums, generated stations, and a machine-readable report in one place.
+
+- decision: Reuse the existing export/runtime primitives and add a convergence layer around them instead of replacing the current station/export implementation.
+- next step: Update the builders and CLI/scripts so lite can be produced from local or downloaded full exports through one path, then switch tiny generation to consume lite.
+
 ## 2026-04-07T15:05Z - Phase 32 kickoff: multi-format similarity convergence audit
 
 - timestamp: 2026-04-07T15:05Z

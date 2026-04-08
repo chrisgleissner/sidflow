@@ -20,6 +20,7 @@ FORCE_REBUILD="false"
 FULL_RERUN="false"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
+SQLITE_NEIGHBORS_FOR_TINY="3"
 PUBLISH_RELEASE="false"
 PUBLISH_REPO="chrisgleissner/sidflow-data"
 PUBLISH_TIMESTAMP=""
@@ -1068,19 +1069,19 @@ run_export() {
     log "Running local export with bun runtime"
     (
       cd "${REPO_ROOT}"
-      bun run export:similarity -- --config "${CONFIG_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
+      bun run export:similarity -- --config "${CONFIG_PATH}" --profile "${PROFILE}" --neighbors "${SQLITE_NEIGHBORS_FOR_TINY}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
       bun run export:similarity -- --config "${CONFIG_PATH}" --format lite --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${LITE_OUTPUT_PATH}"
-      bun run export:similarity -- --config "${CONFIG_PATH}" --format tiny --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
+      bun run export:similarity -- --config "${CONFIG_PATH}" --format tiny --source-lite "${LITE_OUTPUT_PATH}" --neighbor-source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
     )
     output_path="${REPO_ROOT}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   else
     log "Running export inside docker container"
     docker exec -w /sidflow/app "${DOCKER_CONTAINER_NAME}" \
-      bun run export:similarity -- --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
+      bun run export:similarity -- --profile "${PROFILE}" --neighbors "${SQLITE_NEIGHBORS_FOR_TINY}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
     docker exec -w /sidflow/app "${DOCKER_CONTAINER_NAME}" \
       bun run export:similarity -- --format lite --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${LITE_OUTPUT_PATH}"
     docker exec -w /sidflow/app "${DOCKER_CONTAINER_NAME}" \
-      bun run export:similarity -- --format tiny --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
+      bun run export:similarity -- --format tiny --source-lite "${LITE_OUTPUT_PATH}" --neighbor-source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
     output_path="${STATE_DIR}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   fi
 

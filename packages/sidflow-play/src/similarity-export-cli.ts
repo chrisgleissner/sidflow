@@ -21,6 +21,8 @@ interface SimilarityExportCliOptions {
   includeVectors?: boolean;
   format?: string;
   sourceSqlite?: string;
+  sourceLite?: string;
+  neighborSourceSqlite?: string;
 }
 
 const ARG_DEFS: ArgDef[] = [
@@ -73,7 +75,17 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--source-sqlite",
     type: "string",
-    description: "Convert an existing sidcorr-1 SQLite export into lite or tiny format",
+    description: "Convert an existing sidcorr-1 SQLite export into lite format",
+  },
+  {
+    name: "--source-lite",
+    type: "string",
+    description: "Convert an existing sidcorr-lite-1 bundle into tiny format",
+  },
+  {
+    name: "--neighbor-source-sqlite",
+    type: "string",
+    description: "Optional sidcorr-1 SQLite export used only as a precomputed neighbor hint when building tiny from lite",
   },
 ];
 
@@ -85,7 +97,7 @@ const HELP_TEXT = formatHelp(
     "sidflow-play export-similarity",
     "sidflow-play export-similarity --profile full --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --format lite --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
-    "sidflow-play export-similarity --format tiny --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
+    "sidflow-play export-similarity --format tiny --source-lite data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr --neighbor-source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --neighbors 25 --corpus-version HVSC-82",
   ],
 );
@@ -137,12 +149,22 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   const feedbackPath = "./data/feedback";
 
   if (options.sourceSqlite && options.format === "sqlite") {
-    process.stderr.write("Error: --source-sqlite is only used with --format lite or --format tiny\n");
+    process.stderr.write("Error: --source-sqlite is only used with --format lite\n");
     return 1;
   }
 
-  if ((options.format === "lite" || options.format === "tiny") && !options.sourceSqlite) {
-    process.stderr.write("Error: --source-sqlite is required for --format lite and --format tiny\n");
+  if (options.sourceLite && options.format !== "tiny") {
+    process.stderr.write("Error: --source-lite is only used with --format tiny\n");
+    return 1;
+  }
+
+  if (options.format === "lite" && !options.sourceSqlite) {
+    process.stderr.write("Error: --source-sqlite is required for --format lite\n");
+    return 1;
+  }
+
+  if (options.format === "tiny" && !options.sourceLite) {
+    process.stderr.write("Error: --source-lite is required for --format tiny\n");
     return 1;
   }
 
@@ -161,13 +183,16 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   }
 
   if (options.format === "tiny") {
-    process.stdout.write(`Converting ${options.sourceSqlite} into sidcorr-tiny-1\n`);
+    process.stdout.write(`Converting ${options.sourceLite} into sidcorr-tiny-1\n`);
     process.stdout.write(`Writing tiny bundle to ${outputPath}\n`);
     const resultBundle = await buildTinySimilarityExport({
-      sourceSqlitePath: path.resolve(process.cwd(), options.sourceSqlite!),
+      sourceLitePath: path.resolve(process.cwd(), options.sourceLite!),
       hvscRoot: path.resolve(process.cwd(), config.sidPath),
       outputPath,
       corpusVersion: corpusLabel,
+      neighborSqlitePath: options.neighborSourceSqlite
+        ? path.resolve(process.cwd(), options.neighborSourceSqlite)
+        : undefined,
     });
     process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);
     process.stdout.write(`Tracks: ${resultBundle.manifest.track_count}\n`);

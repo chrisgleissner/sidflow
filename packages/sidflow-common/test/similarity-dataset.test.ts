@@ -109,10 +109,11 @@ async function buildFixture(): Promise<FixturePaths> {
     corpusVersion: "TEST-1",
   });
   await buildTinySimilarityExport({
-    sourceSqlitePath: sqlitePath,
+    sourceLitePath: litePath,
     hvscRoot,
     outputPath: tinyPath,
     corpusVersion: "TEST-1",
+    neighborSqlitePath: sqlitePath,
   });
 
   return {

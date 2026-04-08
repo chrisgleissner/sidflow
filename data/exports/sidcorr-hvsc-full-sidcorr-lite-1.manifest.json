@@ -1,0 +1,28 @@
+{
+  "bundle_bytes": 34245,
+  "bundle_bytes_uncompressed": 34245,
+  "cluster_count": 1,
+  "content_encoding": "identity",
+  "corpus_version": "hvsc",
+  "file_checksums": {
+    "bundle_sha256": "ed1e0d83ebe62db16dd7cfdec5dc7623d11b244e9e18ee870fff2c7f80f8ed02"
+  },
+  "file_count": 751,
+  "generated_at": "2026-04-08T07:56:57.158Z",
+  "paths": {
+    "bundle": "sidcorr-hvsc-full-sidcorr-lite-1.sidcorr",
+    "manifest": "sidcorr-hvsc-full-sidcorr-lite-1.manifest.json"
+  },
+  "pq_centroids_per_subspace": 256,
+  "pq_subspaces": 4,
+  "schema_version": "sidcorr-lite-1",
+  "source": {
+    "sqlite": "sidcorr-hvsc-full-sidcorr-1.sqlite"
+  },
+  "source_checksums": {
+    "sqlite_sha256": "53c4cdf477a3a7e95413af4c47d531ef46f93275c39b6282820581306aa7ec6e"
+  },
+  "track_count": 796,
+  "vector_dimensions": 4
+}
+

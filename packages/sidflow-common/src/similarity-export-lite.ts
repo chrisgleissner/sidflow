@@ -60,6 +60,10 @@ interface LiteTrackRecord extends SimilarityTrackRow {
   vector: number[];
 }
 
+export interface DecodedLiteSimilarityExport {
+  rows: LiteTrackRecord[];
+}
+
 interface LiteHeader {
   vectorDimensions: number;
   fileIdWidth: number;
@@ -585,7 +589,7 @@ function parseFooter(payload: Buffer): LiteFooter {
   };
 }
 
-export async function openLiteSimilarityDataset(filePath: string): Promise<SimilarityDataset> {
+export async function decodeLiteSimilarityExport(filePath: string): Promise<DecodedLiteSimilarityExport> {
   const { payload } = await readPortableBundlePayload(filePath);
   const header = parseHeader(payload);
   const footer = parseFooter(payload);
@@ -663,5 +667,11 @@ export async function openLiteSimilarityDataset(filePath: string): Promise<Simil
     throw new Error("sidcorr-lite-1 footer metadata does not match decoded content.");
   }
 
-  return buildDataset(filePath, rows);
+  return { rows };
+}
+
+export async function openLiteSimilarityDataset(filePath: string): Promise<SimilarityDataset> {
+  const decoded = await decodeLiteSimilarityExport(filePath);
+
+  return buildDataset(filePath, decoded.rows);
 }

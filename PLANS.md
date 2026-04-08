@@ -1,5 +1,69 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 34 - sidcorr-lite/tiny Export Convergence And Radio Equivalence
+
+1. [IN_PROGRESS] P34-T01 Audit the live export, release, and radio-generation pipeline.
+  Acceptance criteria:
+  - `doc/similarity-export.md`, `doc/similarity-export-tiny.md`, the current station/runtime code, and the existing lite/tiny builders are cross-checked against the requested convergence target.
+  - The audit identifies which pieces already exist, which are incomplete, and which contradict the required workflow.
+  - `WORKLOG.md` records the pipeline map, concrete gaps, and the evidence files inspected.
+  Artifact requirements:
+  - `WORKLOG.md` audit entry with file-backed findings.
+
+2. [TODO] P34-T02 Implement a single deterministic lite-transform path that works for both local and release-based full exports.
+  Acceptance criteria:
+  - Local path supports `full sqlite -> lite` with partial dataset mode for validation.
+  - Release-based path downloads the latest full export from `chrisgleissner/sidflow-data`, materializes the SQLite asset, and runs the same transform code path.
+  - Deterministic checksums and/or manifest validation prove equivalent lite output semantics for both inputs.
+  Artifact requirements:
+  - Generated lite bundles, manifests, and checksums under a deterministic artifact directory.
+
+3. [TODO] P34-T03 Switch tiny generation to a strict `sidcorr-lite -> sidcorr-tiny` flow.
+  Acceptance criteria:
+  - Tiny generation consumes the lite bundle as its direct logical source.
+  - Styles/personas and neighbor relationships remain available and validated against `doc/similarity-export-tiny.md`.
+  - Output is deterministic for identical lite input.
+  Artifact requirements:
+  - Generated tiny bundle, manifest, and checksum.
+
+4. [TODO] P34-T04 Converge release publication so full, lite, and tiny ship together with explicit linkage.
+  Acceptance criteria:
+  - The release workflow stages the authoritative full export, the derived lite export, and the derived tiny export for the same release tag.
+  - No manual release-side steps are required.
+  - Automation proves the expected asset set is produced for publication.
+  Artifact requirements:
+  - Release staging directory with raw assets, manifests, tarball, and `SHA256SUMS`.
+
+5. [TODO] P34-T05 Implement deterministic persona-based radio equivalence validation across full and tiny.
+  Acceptance criteria:
+  - Code defines explicit metrics for overlap ratio, rank correlation, and style-distribution similarity.
+  - Validation runs across all shared personas/styles using the same seeds and station size for both formats.
+  - Every persona meets the overlap threshold of at least 80%, or the generated report explains the deviation.
+  Artifact requirements:
+  - Machine-readable comparison report plus saved station outputs for each persona and format.
+
+6. [TODO] P34-T06 Create one-command convergence automation and document the workflow.
+  Acceptance criteria:
+  - A single script/command runs export generation, lite transform, tiny transform, radio generation, and comparison.
+  - The script supports partial validation mode and release-based lite generation.
+  - Docs describe the commands, artifacts, and reproducibility expectations.
+  Artifact requirements:
+  - Reproducible artifact tree under `tmp/` or `workspace/artifacts/` plus updated docs.
+
+7. [TODO] P34-T07 Validate the changed surface and repo gates.
+  Acceptance criteria:
+  - Targeted build/tests for the changed similarity/runtime surface pass.
+  - `bun run build` passes.
+  - `bun run test` is attempted three times and the literal outputs are recorded if the suite reaches `0 fail`; otherwise the blocker is recorded explicitly.
+  Artifact requirements:
+  - Validation logs and test outputs referenced from `WORKLOG.md`.
+
+### Progress
+
+- 2026-04-08: Read the required docs and live code paths in the requested order. Confirmed the repo already has local sqlite->lite conversion, direct sqlite->tiny conversion, release publication for sqlite/lite/tiny, and runtime loading for sqlite/lite/tiny, but it does not yet provide the requested convergence workflow.
+- 2026-04-08: Identified the concrete remaining gaps. The current tiny builder still consumes SQLite directly instead of lite, there is no dedicated CLI/script that downloads the latest full export release and runs the lite transform through the same code path, and the existing persona validation script is SQLite-only and models different personas instead of validating full-vs-tiny equivalence across the shared styles.
+- 2026-04-08: Confirmed the station CLI already supports local sqlite/lite/tiny bundles and the release-cache path already downloads the latest `sidflow-data` tarball, so the convergence work can build on existing runtime code instead of adding a parallel radio stack.
+
 ## Phase 33 - PR 92 Convergence To Merge-Ready
 
 1. [IN_PROGRESS] Audit the active PR review threads and failing branch status.
