@@ -92,3 +92,7 @@ hvsc
 .next/
 data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
 data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
+data/exports/sidcorr-hvsc-full-sidcorr-lite-1.manifest.json
+data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr
+data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json
+data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr

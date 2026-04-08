@@ -4,9 +4,10 @@ import path from "node:path";
 import { Database } from "bun:sqlite";
 import { PERSONA_IDS, PERSONAS } from "./persona.js";
 import { writeCanonicalJsonFile } from "./canonical-writer.js";
-import { ensureDir } from "./fs.js";
+import { ensureDir, pathExists } from "./fs.js";
 import type { JsonValue } from "./json.js";
 import { loadSonglengthsData } from "./songlengths.js";
+import { decodeLiteSimilarityExport } from "./similarity-export-lite.js";
 import {
   computePortableManifestPath,
   readPortableBundlePayload,
@@ -36,6 +37,7 @@ const COMPACT_RATING_BYTES = 2;
 const NEIGHBORS_PER_TRACK = 3;
 const NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY = 4;
 const STYLE_TABLE_VERSION = 1;
+const APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT = 256;
 
 interface SourceTrackRow {
   track_id: string;
@@ -51,6 +53,12 @@ interface SourceTrackRow {
 interface TinyTrackRecord extends SimilarityTrackRow {
   neighbors: Array<{ trackOrdinal: number; similarity: number }>;
   styleMask: number;
+}
+
+interface Md548Context {
+  hvscRoot: string;
+  musicRoot: string;
+  musicRootPrefix: string;
 }
 
 export interface TinySimilarityExportManifest {
@@ -71,11 +79,13 @@ export interface TinySimilarityExportManifest {
     manifest: string;
   };
   source: {
-    sqlite: string;
+    lite: string;
     hvsc_root: string;
+    sqlite_neighbor_hint?: string;
   };
   source_checksums: {
-    sqlite_sha256: string;
+    lite_sha256: string;
+    sqlite_neighbor_hint_sha256?: string;
   };
   file_checksums: {
     bundle_sha256: string;
@@ -83,11 +93,12 @@ export interface TinySimilarityExportManifest {
 }
 
 export interface BuildTinySimilarityExportOptions {
-  sourceSqlitePath: string;
+  sourceLitePath: string;
   hvscRoot: string;
   outputPath: string;
   manifestPath?: string;
   corpusVersion?: string;
+  neighborSqlitePath?: string;
 }
 
 export interface BuildTinySimilarityExportResult {
@@ -122,6 +133,16 @@ async function computeFileChecksum(filePath: string): Promise<string> {
   return createHash("sha256").update(payload).digest("hex");
 }
 
+async function resolveMd548Context(hvscRoot: string): Promise<Md548Context> {
+  const nestedMusicRoot = path.join(hvscRoot, "C64Music");
+  const musicRoot = await pathExists(nestedMusicRoot) ? nestedMusicRoot : hvscRoot;
+  return {
+    hvscRoot,
+    musicRoot,
+    musicRootPrefix: `${path.basename(musicRoot).toLowerCase()}/`,
+  };
+}
+
 function computeManifestPath(outputPath: string, explicitPath?: string): string {
   return computePortableManifestPath(outputPath, explicitPath);
 }
@@ -154,29 +175,46 @@ function parseVector(row: SourceTrackRow): number[] {
   return normalizeVector(values);
 }
 
-async function computeMd548(hvscRoot: string, sidPath: string): Promise<Buffer> {
-  const absolutePath = path.resolve(hvscRoot, sidPath);
+async function computeMd548(context: Md548Context, sidPath: string): Promise<Buffer> {
+  const normalizedSidPath = sidPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const candidatePaths = [
+    path.resolve(context.musicRoot, normalizedSidPath),
+    path.resolve(context.hvscRoot, normalizedSidPath),
+  ];
+
+  if (normalizedSidPath.toLowerCase().startsWith(context.musicRootPrefix)) {
+    candidatePaths.push(path.resolve(context.musicRoot, normalizedSidPath.slice(context.musicRootPrefix.length)));
+  }
+
+  let absolutePath: string | null = null;
+  for (const candidatePath of candidatePaths) {
+    if (await pathExists(candidatePath)) {
+      absolutePath = candidatePath;
+      break;
+    }
+  }
+
+  if (!absolutePath) {
+    throw new Error(`Unable to resolve SID path ${sidPath} within ${context.hvscRoot}`);
+  }
+
   const payload = await readFile(absolutePath);
   return createHash("md5").update(payload).digest().subarray(0, 6);
 }
 
 async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>> {
+  const md548Context = await resolveMd548Context(hvscRoot);
   const songlengths = await loadSonglengthsData(hvscRoot);
   if (songlengths.sourcePath && songlengths.pathByMd5.size > 0) {
-    const prefix = path.relative(hvscRoot, songlengths.musicRoot);
-    const normalizedPrefix = prefix && !prefix.startsWith("..") && !path.isAbsolute(prefix)
-      ? prefix.replace(/\\/g, "/").replace(/\/+$/g, "")
-      : "";
     const result = new Map<string, string>();
     for (const [md5, relativePath] of songlengths.pathByMd5) {
-      const exportRelativePath = normalizedPrefix ? `${normalizedPrefix}/${relativePath}` : relativePath;
-      result.set(md5.slice(0, 12), exportRelativePath);
+      result.set(md5.slice(0, 12), relativePath);
     }
     return result;
   }
 
   const result = new Map<string, string>();
-  const queue = [hvscRoot];
+  const queue = [songlengths.musicRoot];
   while (queue.length > 0) {
     const current = queue.shift()!;
     const entries = await readdir(current, { withFileTypes: true });
@@ -189,8 +227,8 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
       if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".sid")) {
         continue;
       }
-      const relativePath = path.relative(hvscRoot, absolutePath).replace(/\\/g, "/");
-      const md548 = await computeMd548(hvscRoot, relativePath);
+      const relativePath = path.relative(songlengths.musicRoot, absolutePath).replace(/\\/g, "/");
+      const md548 = await computeMd548(md548Context, relativePath);
       result.set(md548.toString("hex"), relativePath);
     }
   }
@@ -243,7 +281,122 @@ function buildStyleTable(): Buffer {
   return Buffer.concat([sectionHeader, ...records, ...payloads]);
 }
 
-function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], database: Database): Array<Array<{ trackOrdinal: number; similarity: number }>> {
+function buildCompactRatingSignature(row: Pick<SourceTrackRow, "e" | "m" | "c" | "p">): string {
+  return `${row.e}|${row.m}|${row.c}|${row.p ?? 3}`;
+}
+
+function compactRatingDistance(
+  left: Pick<SourceTrackRow, "e" | "m" | "c" | "p">,
+  right: Pick<SourceTrackRow, "e" | "m" | "c" | "p">,
+): number {
+  return Math.abs(left.e - right.e)
+    + Math.abs(left.m - right.m)
+    + Math.abs(left.c - right.c)
+    + Math.abs((left.p ?? 3) - (right.p ?? 3));
+}
+
+function computeApproximateNeighborGraph(
+  rows: SourceTrackRow[],
+  vectors: number[][],
+): Array<Array<{ trackOrdinal: number; similarity: number }>> {
+  const ordinalsBySignature = new Map<string, number[]>();
+  const rowsBySignature = new Map<string, SourceTrackRow>();
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index]!;
+    const signature = buildCompactRatingSignature(row);
+    const ordinals = ordinalsBySignature.get(signature);
+    if (ordinals) {
+      ordinals.push(index);
+    } else {
+      ordinalsBySignature.set(signature, [index]);
+      rowsBySignature.set(signature, row);
+    }
+  }
+
+  const signatures = [...ordinalsBySignature.keys()];
+  const orderedSignaturesBySignature = new Map<string, string[]>();
+  for (const signature of signatures) {
+    const seedRow = rowsBySignature.get(signature)!;
+    orderedSignaturesBySignature.set(
+      signature,
+      [...signatures].sort((left, right) => {
+        const leftDistance = compactRatingDistance(seedRow, rowsBySignature.get(left)!);
+        const rightDistance = compactRatingDistance(seedRow, rowsBySignature.get(right)!);
+        return leftDistance - rightDistance || left.localeCompare(right);
+      }),
+    );
+  }
+
+  return rows.map((row, seedOrdinal) => {
+    const candidateOrdinals: number[] = [];
+    const seedSignature = buildCompactRatingSignature(row);
+    const orderedSignatures = orderedSignaturesBySignature.get(seedSignature) ?? signatures;
+
+    for (const signature of orderedSignatures) {
+      const ordinals = ordinalsBySignature.get(signature) ?? [];
+      for (let index = ordinals.length - 1; index >= 0; index -= 1) {
+        const candidateOrdinal = ordinals[index]!;
+        if (candidateOrdinal >= seedOrdinal) {
+          continue;
+        }
+        candidateOrdinals.push(candidateOrdinal);
+        if (candidateOrdinals.length >= APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT) {
+          break;
+        }
+      }
+      if (candidateOrdinals.length >= APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT) {
+        break;
+      }
+    }
+
+    const scored = candidateOrdinals
+      .map((candidateOrdinal) => ({
+        trackOrdinal: candidateOrdinal,
+        similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
+      }))
+      .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal);
+
+    return scored.slice(0, NEIGHBORS_PER_TRACK);
+  });
+}
+
+function computeFallbackNeighborGraph(
+  rows: SourceTrackRow[],
+  vectors: number[][],
+): Array<Array<{ trackOrdinal: number; similarity: number }>> {
+  if (rows.length > 5000) {
+    return computeApproximateNeighborGraph(rows, vectors);
+  }
+
+  return rows.map((_, seedOrdinal) => {
+    const scores: Array<{ trackOrdinal: number; similarity: number }> = [];
+    for (let candidateOrdinal = 0; candidateOrdinal < seedOrdinal; candidateOrdinal += 1) {
+      scores.push({
+        trackOrdinal: candidateOrdinal,
+        similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
+      });
+    }
+    return scores
+      .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal)
+      .slice(0, NEIGHBORS_PER_TRACK);
+  });
+}
+
+function describeHvscRootForManifest(hvscRoot: string): string {
+  const normalized = hvscRoot.replace(/\\/g, "/").replace(/\/+$/g, "");
+  if (!normalized) {
+    return "hvsc";
+  }
+  if (normalized.toLowerCase().endsWith("/c64music")) {
+    return path.basename(path.dirname(normalized)) || "hvsc";
+  }
+  return path.basename(normalized) || "hvsc";
+}
+
+function buildNeighborGraphFromSqliteHint(
+  rows: SourceTrackRow[],
+  database: Database,
+): Array<Array<{ trackOrdinal: number; similarity: number }>> {
   const ordinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
   const neighborsBySeed = rows.map(() => [] as Array<{ trackOrdinal: number; similarity: number }>);
   let hasPrecomputedNeighbors = false;
@@ -277,171 +430,171 @@ function buildNeighborGraph(rows: SourceTrackRow[], vectors: number[][], databas
     }
   }
 
-  if (hasPrecomputedNeighbors) {
-    return neighborsBySeed;
+  if (!hasPrecomputedNeighbors) {
+    return computeApproximateNeighborGraph(rows, rows.map(parseVector));
   }
 
-  if (rows.length > 5000) {
-    throw new Error(
-      "sidcorr-tiny-1 generation needs a full export with precomputed neighbors when converting large corpora.",
-    );
-  }
-
-  return rows.map((_, seedOrdinal) => {
-    const scores: Array<{ trackOrdinal: number; similarity: number }> = [];
-    for (let candidateOrdinal = 0; candidateOrdinal < seedOrdinal; candidateOrdinal += 1) {
-      scores.push({
-        trackOrdinal: candidateOrdinal,
-        similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
-      });
-    }
-    return scores
-      .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal)
-      .slice(0, NEIGHBORS_PER_TRACK);
-  });
+  return neighborsBySeed;
 }
 
 export async function buildTinySimilarityExport(
   options: BuildTinySimilarityExportOptions,
 ): Promise<BuildTinySimilarityExportResult> {
   const startedAt = Date.now();
-  const database = new Database(options.sourceSqlitePath, { readonly: true, strict: true });
-  try {
-    const rows = database.query(`
-      SELECT track_id, sid_path, song_index, vector_json, e, m, c, p
-      FROM tracks
-      ORDER BY sid_path ASC, song_index ASC
-    `).all() as SourceTrackRow[];
-    if (rows.length === 0) {
-      throw new Error("Cannot build sidcorr-tiny-1 export from an empty SQLite similarity export.");
-    }
-
-    const filePaths = [...new Set(rows.map((row) => row.sid_path))];
-    const filePathCounts = new Map<string, number>();
-    for (const row of rows) {
-      filePathCounts.set(row.sid_path, (filePathCounts.get(row.sid_path) ?? 0) + 1);
-    }
-    const vectors = rows.map(parseVector);
-    const styleTable = buildStyleTable();
-    const fileIdentityTable = Buffer.alloc(filePaths.length * 6);
-    for (let index = 0; index < filePaths.length; index += 1) {
-      const md548 = await computeMd548(options.hvscRoot, filePaths[index]!);
-      writeUInt48LE(fileIdentityTable, md548, index * 6);
-    }
-
-    const fileTrackCountTable = Buffer.alloc(filePaths.length);
-    for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
-      const count = filePathCounts.get(filePaths[fileIndex]!) ?? 0;
-      fileTrackCountTable.writeUInt8(Math.max(0, count - 1), fileIndex);
-    }
-
-    const styleMaskTable = Buffer.alloc(rows.length * STYLE_MASK_WIDTH_BYTES);
-    for (let index = 0; index < rows.length; index += 1) {
-      styleMaskTable.writeUInt16LE(computeSimilarityStyleMask(rows[index]!), index * STYLE_MASK_WIDTH_BYTES);
-    }
-
-    const ratingTable = Buffer.alloc(rows.length * COMPACT_RATING_BYTES);
-    for (let index = 0; index < rows.length; index += 1) {
-      ratingTable.writeUInt16LE(packCompactRatings(rows[index]!), index * COMPACT_RATING_BYTES);
-    }
-
-    const neighbors = buildNeighborGraph(rows, vectors, database);
-    const neighborTable = Buffer.alloc(rows.length * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
-    for (let index = 0; index < rows.length; index += 1) {
-      const rowNeighbors = neighbors[index] ?? [];
-      for (let neighborIndex = 0; neighborIndex < NEIGHBORS_PER_TRACK; neighborIndex += 1) {
-        const encoded = rowNeighbors[neighborIndex]?.trackOrdinal ?? EMPTY_NEIGHBOR;
-        const recordOffset = (index * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY)
-          + (neighborIndex * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
-        writeUInt24LE(neighborTable, encoded, recordOffset);
-        neighborTable.writeUInt8(encodeSimilarity(rowNeighbors[neighborIndex]?.similarity ?? -1), recordOffset + 3);
-      }
-    }
-
-    const styleTableOffset = HEADER_BYTES;
-    const fileIdentityOffset = styleTableOffset + styleTable.length;
-    const fileTrackCountOffset = fileIdentityOffset + fileIdentityTable.length;
-    const styleMaskOffset = fileTrackCountOffset + fileTrackCountTable.length;
-    const neighborsOffset = styleMaskOffset + styleMaskTable.length + ratingTable.length;
-
-    const header = Buffer.alloc(HEADER_BYTES);
-    header.write(MAGIC, 0, "ascii");
-    header.writeUInt16LE(2, 8);
-    header.writeUInt16LE(HEADER_BYTES, 10);
-    header.writeUInt32LE(rows.length, 12);
-    header.writeUInt32LE(filePaths.length, 16);
-    header.writeUInt16LE(PERSONA_IDS.length, 20);
-    header.writeUInt16LE(NEIGHBORS_PER_TRACK, 22);
-    header.writeUInt8(1, 24);
-    header.writeUInt8(3, 25);
-    header.writeUInt8(1, 26);
-    header.writeUInt8(STYLE_MASK_WIDTH_BYTES, 27);
-    header.writeUInt16LE(STYLE_TABLE_VERSION, 28);
-    header.writeUInt16LE(0b111, 30);
-    header.writeUInt32LE(styleTableOffset, 32);
-    header.writeUInt32LE(fileIdentityOffset, 36);
-    header.writeUInt32LE(fileTrackCountOffset, 40);
-    header.writeUInt32LE(styleMaskOffset, 44);
-    header.writeUInt32LE(neighborsOffset, 48);
-    header.writeUInt32LE(styleTable.length, 52);
-    header.writeUInt32LE(fileIdentityTable.length, 56);
-    header.writeUInt32LE(neighborTable.length, 60);
-
-    const rawPayload = Buffer.concat([
-      header,
-      styleTable,
-      fileIdentityTable,
-      fileTrackCountTable,
-      styleMaskTable,
-      ratingTable,
-      neighborTable,
-    ]);
-    const writeResult = await writePortableBundlePayload(options.outputPath, rawPayload);
-
-    const manifestPath = computeManifestPath(options.outputPath, options.manifestPath);
-    const sourceChecksum = await computeFileChecksum(options.sourceSqlitePath);
-    const bundleChecksum = await computeFileChecksum(options.outputPath);
-    const manifest: TinySimilarityExportManifest = {
-      schema_version: TINY_SIMILARITY_EXPORT_SCHEMA_VERSION,
-      binary_format_version: 2,
-      generated_at: new Date().toISOString(),
-      corpus_version: options.corpusVersion ?? path.basename(options.sourceSqlitePath, path.extname(options.sourceSqlitePath)),
-      track_count: rows.length,
-      file_count: filePaths.length,
-      style_count: PERSONA_IDS.length,
-      file_id_kind: "md5_48",
-      neighbors_per_track: 3,
-      content_encoding: writeResult.contentEncoding,
-      bundle_bytes: writeResult.bytesWritten,
-      bundle_bytes_uncompressed: writeResult.bytesUncompressed,
-      paths: {
-        bundle: path.basename(options.outputPath),
-        manifest: path.basename(manifestPath),
-      },
-      source: {
-        sqlite: path.basename(options.sourceSqlitePath),
-        hvsc_root: options.hvscRoot,
-      },
-      source_checksums: {
-        sqlite_sha256: sourceChecksum,
-      },
-      file_checksums: {
-        bundle_sha256: bundleChecksum,
-      },
-    };
-    await writeCanonicalJsonFile(manifestPath, manifest as unknown as JsonValue, {
-      action: "data:modify",
-    });
-
-    return {
-      durationMs: Date.now() - startedAt,
-      outputPath: options.outputPath,
-      manifestPath,
-      manifest,
-    };
-  } finally {
-    database.close();
+  const decodedLite = await decodeLiteSimilarityExport(options.sourceLitePath);
+  const rows = decodedLite.rows.map((row) => ({
+    track_id: row.track_id,
+    sid_path: row.sid_path,
+    song_index: row.song_index,
+    vector_json: JSON.stringify(row.vector),
+    e: row.e,
+    m: row.m,
+    c: row.c,
+    p: row.p,
+  } satisfies SourceTrackRow));
+  if (rows.length === 0) {
+    throw new Error("Cannot build sidcorr-tiny-1 export from an empty sidcorr-lite-1 export.");
   }
+
+  const filePaths = [...new Set(rows.map((row) => row.sid_path))];
+  const filePathCounts = new Map<string, number>();
+  for (const row of rows) {
+    filePathCounts.set(row.sid_path, (filePathCounts.get(row.sid_path) ?? 0) + 1);
+  }
+  const vectors = rows.map(parseVector);
+  const styleTable = buildStyleTable();
+  const md548Context = await resolveMd548Context(options.hvscRoot);
+  const fileIdentityTable = Buffer.alloc(filePaths.length * 6);
+  for (let index = 0; index < filePaths.length; index += 1) {
+    const md548 = await computeMd548(md548Context, filePaths[index]!);
+    writeUInt48LE(fileIdentityTable, md548, index * 6);
+  }
+
+  const fileTrackCountTable = Buffer.alloc(filePaths.length);
+  for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
+    const count = filePathCounts.get(filePaths[fileIndex]!) ?? 0;
+    fileTrackCountTable.writeUInt8(Math.max(0, count - 1), fileIndex);
+  }
+
+  const styleMaskTable = Buffer.alloc(rows.length * STYLE_MASK_WIDTH_BYTES);
+  for (let index = 0; index < rows.length; index += 1) {
+    styleMaskTable.writeUInt16LE(computeSimilarityStyleMask(rows[index]!), index * STYLE_MASK_WIDTH_BYTES);
+  }
+
+  const ratingTable = Buffer.alloc(rows.length * COMPACT_RATING_BYTES);
+  for (let index = 0; index < rows.length; index += 1) {
+    ratingTable.writeUInt16LE(packCompactRatings(rows[index]!), index * COMPACT_RATING_BYTES);
+  }
+
+  let neighbors: Array<Array<{ trackOrdinal: number; similarity: number }>>;
+  if (options.neighborSqlitePath) {
+    const neighborDatabase = new Database(options.neighborSqlitePath, { readonly: true, strict: true });
+    try {
+      neighbors = buildNeighborGraphFromSqliteHint(rows, neighborDatabase);
+    } finally {
+      neighborDatabase.close();
+    }
+  } else {
+    neighbors = computeFallbackNeighborGraph(rows, vectors);
+  }
+  const neighborTable = Buffer.alloc(rows.length * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
+  for (let index = 0; index < rows.length; index += 1) {
+    const rowNeighbors = neighbors[index] ?? [];
+    for (let neighborIndex = 0; neighborIndex < NEIGHBORS_PER_TRACK; neighborIndex += 1) {
+      const encoded = rowNeighbors[neighborIndex]?.trackOrdinal ?? EMPTY_NEIGHBOR;
+      const recordOffset = (index * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY)
+        + (neighborIndex * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
+      writeUInt24LE(neighborTable, encoded, recordOffset);
+      neighborTable.writeUInt8(encodeSimilarity(rowNeighbors[neighborIndex]?.similarity ?? -1), recordOffset + 3);
+    }
+  }
+
+  const styleTableOffset = HEADER_BYTES;
+  const fileIdentityOffset = styleTableOffset + styleTable.length;
+  const fileTrackCountOffset = fileIdentityOffset + fileIdentityTable.length;
+  const styleMaskOffset = fileTrackCountOffset + fileTrackCountTable.length;
+  const neighborsOffset = styleMaskOffset + styleMaskTable.length + ratingTable.length;
+
+  const header = Buffer.alloc(HEADER_BYTES);
+  header.write(MAGIC, 0, "ascii");
+  header.writeUInt16LE(2, 8);
+  header.writeUInt16LE(HEADER_BYTES, 10);
+  header.writeUInt32LE(rows.length, 12);
+  header.writeUInt32LE(filePaths.length, 16);
+  header.writeUInt16LE(PERSONA_IDS.length, 20);
+  header.writeUInt16LE(NEIGHBORS_PER_TRACK, 22);
+  header.writeUInt8(1, 24);
+  header.writeUInt8(3, 25);
+  header.writeUInt8(1, 26);
+  header.writeUInt8(STYLE_MASK_WIDTH_BYTES, 27);
+  header.writeUInt16LE(STYLE_TABLE_VERSION, 28);
+  header.writeUInt16LE(0b111, 30);
+  header.writeUInt32LE(styleTableOffset, 32);
+  header.writeUInt32LE(fileIdentityOffset, 36);
+  header.writeUInt32LE(fileTrackCountOffset, 40);
+  header.writeUInt32LE(styleMaskOffset, 44);
+  header.writeUInt32LE(neighborsOffset, 48);
+  header.writeUInt32LE(styleTable.length, 52);
+  header.writeUInt32LE(fileIdentityTable.length, 56);
+  header.writeUInt32LE(neighborTable.length, 60);
+
+  const rawPayload = Buffer.concat([
+    header,
+    styleTable,
+    fileIdentityTable,
+    fileTrackCountTable,
+    styleMaskTable,
+    ratingTable,
+    neighborTable,
+  ]);
+  const writeResult = await writePortableBundlePayload(options.outputPath, rawPayload);
+
+  const manifestPath = computeManifestPath(options.outputPath, options.manifestPath);
+  const sourceChecksum = await computeFileChecksum(options.sourceLitePath);
+  const neighborChecksum = options.neighborSqlitePath
+    ? await computeFileChecksum(options.neighborSqlitePath)
+    : undefined;
+  const bundleChecksum = await computeFileChecksum(options.outputPath);
+  const manifest: TinySimilarityExportManifest = {
+    schema_version: TINY_SIMILARITY_EXPORT_SCHEMA_VERSION,
+    binary_format_version: 2,
+    generated_at: new Date().toISOString(),
+    corpus_version: options.corpusVersion ?? path.basename(options.sourceLitePath, path.extname(options.sourceLitePath)),
+    track_count: rows.length,
+    file_count: filePaths.length,
+    style_count: PERSONA_IDS.length,
+    file_id_kind: "md5_48",
+    neighbors_per_track: 3,
+    content_encoding: writeResult.contentEncoding,
+    bundle_bytes: writeResult.bytesWritten,
+    bundle_bytes_uncompressed: writeResult.bytesUncompressed,
+    paths: {
+      bundle: path.basename(options.outputPath),
+      manifest: path.basename(manifestPath),
+    },
+    source: {
+      lite: path.basename(options.sourceLitePath),
+      hvsc_root: describeHvscRootForManifest(options.hvscRoot),
+      sqlite_neighbor_hint: options.neighborSqlitePath ? path.basename(options.neighborSqlitePath) : undefined,
+    },
+    source_checksums: {
+      lite_sha256: sourceChecksum,
+      sqlite_neighbor_hint_sha256: neighborChecksum,
+    },
+    file_checksums: {
+      bundle_sha256: bundleChecksum,
+    },
+  };
+  await writeCanonicalJsonFile(manifestPath, manifest as unknown as JsonValue, {
+    action: "data:modify",
+  });
+
+  return {
+    durationMs: Date.now() - startedAt,
+    outputPath: options.outputPath,
+    manifestPath,
+    manifest,
+  };
 }
 
 export async function openTinySimilarityDataset(

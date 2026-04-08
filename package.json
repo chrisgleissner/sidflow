@@ -27,6 +27,8 @@
     "format:json": "node scripts/run-bun.mjs run scripts/format-json.ts",
     "build:db": "node scripts/run-bun.mjs run scripts/build-db.ts",
     "export:similarity": "node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity",
+    "validate:similarity-convergence": "node scripts/run-bun.mjs run scripts/run-similarity-convergence.ts --",
+    "validate:tiny-export-equivalence": "node scripts/run-bun.mjs run scripts/run-tiny-export-equivalence-audit.ts --",
     "start:release": "bash scripts/start-release-server.sh",
     "release:prepare": "node scripts/run-bun.mjs run scripts/ci/release-prepare.ts --",
     "changes:entry": "node scripts/run-bun.mjs run scripts/ci/extract-changes-entry.ts",

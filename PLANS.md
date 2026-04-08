@@ -1,6 +1,78 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
-## Phase 33 - PR 92 Convergence To Merge-Ready
+## Phase 34 - sidcorr-lite/tiny Export Convergence And Radio Equivalence
+
+1. [IN_PROGRESS] P34-T01 Audit the live export, release, and radio-generation pipeline.
+  Acceptance criteria:
+  - `doc/similarity-export.md`, `doc/similarity-export-tiny.md`, the current station/runtime code, and the existing lite/tiny builders are cross-checked against the requested convergence target.
+  - The audit identifies which pieces already exist, which are incomplete, and which contradict the required workflow.
+  - `WORKLOG.md` records the pipeline map, concrete gaps, and the evidence files inspected.
+  Artifact requirements:
+  - `WORKLOG.md` audit entry with file-backed findings.
+
+2. [IN_PROGRESS] P34-T02 Implement a single deterministic lite-transform path that works for both local and release-based full exports.
+  Acceptance criteria:
+  - Local path supports `full sqlite -> lite` with partial dataset mode for validation.
+  - Release-based path downloads the latest full export from `chrisgleissner/sidflow-data`, materializes the SQLite asset, and runs the same transform code path.
+  - Deterministic checksums and/or manifest validation prove equivalent lite output semantics for both inputs.
+  Artifact requirements:
+  - Generated lite bundles, manifests, and checksums under a deterministic artifact directory.
+
+3. [IN_PROGRESS] P34-T03 Switch tiny generation to a strict `sidcorr-lite -> sidcorr-tiny` flow.
+  Acceptance criteria:
+  - Tiny generation consumes the lite bundle as its direct logical source.
+  - Styles/personas and neighbor relationships remain available and validated against `doc/similarity-export-tiny.md`.
+  - Output is deterministic for identical lite input.
+  Artifact requirements:
+  - Generated tiny bundle, manifest, and checksum.
+
+4. [TODO] P34-T04 Converge release publication so full, lite, and tiny ship together with explicit linkage.
+  Acceptance criteria:
+  - The release workflow stages the authoritative full export, the derived lite export, and the derived tiny export for the same release tag.
+  - No manual release-side steps are required.
+  - Automation proves the expected asset set is produced for publication.
+  Artifact requirements:
+  - Release staging directory with raw assets, manifests, tarball, and `SHA256SUMS`.
+
+5. [IN_PROGRESS] P34-T05 Implement deterministic persona-based radio equivalence validation across full and tiny.
+  Acceptance criteria:
+  - Code defines explicit metrics for overlap ratio, rank correlation, and style-distribution similarity.
+  - Validation runs across all shared personas/styles using the same seeds and station size for both formats.
+  - Every persona meets the overlap threshold of at least 80%, or the generated report explains the deviation.
+  Artifact requirements:
+  - Machine-readable comparison report plus saved station outputs for each persona and format.
+
+6. [IN_PROGRESS] P34-T06 Create one-command convergence automation and document the workflow.
+  Acceptance criteria:
+  - A single script/command runs export generation, lite transform, tiny transform, radio generation, and comparison.
+  - The script supports partial validation mode and release-based lite generation.
+  - Docs describe the commands, artifacts, and reproducibility expectations.
+  Artifact requirements:
+  - Reproducible artifact tree under `tmp/` or `workspace/artifacts/` plus updated docs.
+
+7. [TODO] P34-T07 Validate the changed surface and repo gates.
+  Acceptance criteria:
+  - Targeted build/tests for the changed similarity/runtime surface pass.
+  - `bun run build` passes.
+  - `bun run test` is attempted three times and the literal outputs are recorded if the suite reaches `0 fail`; otherwise the blocker is recorded explicitly.
+  Artifact requirements:
+  - Validation logs and test outputs referenced from `WORKLOG.md`.
+
+### Progress
+
+- 2026-04-08: Read the required docs and live code paths in the requested order. Confirmed the repo already has local sqlite->lite conversion, direct sqlite->tiny conversion, release publication for sqlite/lite/tiny, and runtime loading for sqlite/lite/tiny, but it does not yet provide the requested convergence workflow.
+- 2026-04-08: Identified the concrete remaining gaps. The current tiny builder still consumes SQLite directly instead of lite, there is no dedicated CLI/script that downloads the latest full export release and runs the lite transform through the same code path, and the existing persona validation script is SQLite-only and models different personas instead of validating full-vs-tiny equivalence across the shared styles.
+- 2026-04-08: Confirmed the station CLI already supports local sqlite/lite/tiny bundles and the release-cache path already downloads the latest `sidflow-data` tarball, so the convergence work can build on existing runtime code instead of adding a parallel radio stack.
+- 2026-04-08: Audited the current repeatability constraints for the requested tiny-vs-full QA prompt. The interactive `scripts/sid-station.sh` / `sidflow-play station` flow is not CI-safe because it requires live seed rating input, so the research prompt must require automation through the same station-builder stack non-interactively: `openStationSimilarityDataset(...)`, `buildStationQueue(...)`, `recommendFromFavorites(...)`, and `recommendFromSeedTrack(...)` with fixed seeds, fixed output roots, deterministic sampling, and machine-readable plus Markdown artifacts suitable for local Linux runs and optional CI execution.
+- 2026-04-08: Started implementing the dedicated local-first tiny-export equivalence audit requested in `doc/research/lite-export-check/tiny-export-equivalence-prompt.md`. The current convergence script is too narrow for that prompt because it only reports persona-station overlap; the new work adds a separate audit CLI with explicit artifact layout, seed-song similarity checks, cross-persona divergence checks, deterministic rerun proof, and a report ordered exactly to the prompt contract.
+- 2026-04-08: Fixed `scripts/run-similarity-export.sh` so the authoritative sqlite export always precomputes the 3-neighbor hint required for large tiny generation. The unattended sqlite -> lite -> tiny export chain now succeeds in both direct CLI validation and the full wrapper path.
+- 2026-04-08: Updated `scripts/run-similarity-convergence.ts` so the release branch derives lite from the downloaded full sqlite through the same CLI path, reports stale public-release gaps instead of aborting when the latest `sidflow-data` release lacks lite/tiny assets or precomputed full neighbors, and adds `--strict-overlap` for fail-fast enforcement when needed.
+- 2026-04-08: Validation evidence: `bash -n scripts/run-similarity-export.sh` passed; direct sqlite/lite/tiny rebuild succeeded with `bun run export:similarity` (`Tracks: 596` in each format); targeted similarity/runtime proof tests passed (`17 pass, 0 fail` across `packages/sidflow-common/test/similarity-export.test.ts`, `packages/sidflow-common/test/similarity-dataset.test.ts`, and `packages/sidflow-play/test/station-portable-equivalence.test.ts`); `bun run validate:similarity-convergence -- --skip-local-export --max-songs 200 --output-root tmp/similarity-convergence-20260408` passed; and the full end-to-end command `bun run validate:similarity-convergence -- --max-songs 200 --output-root tmp/similarity-convergence-20260408` passed, writing artifacts under `tmp/similarity-convergence-20260408`.
+- 2026-04-08: Residual gaps are now explicit artifacts instead of wrapper failures. The latest public `sidflow-data` release (`sidcorr-hvsc-full-20260407T115218Z`) still lacks published lite/tiny assets and lacks precomputed full-profile neighbors, so release-side tiny derivation is reported as skipped. The persona radio report records two overlap exceptions (`melodic`, `composer_focus`) below the 0.80 target while the workflow remains green in report mode; `--strict-overlap` preserves the nonzero exit path for future enforcement once those deviations are resolved.
+- 2026-04-08: Closed the remote publication gap. Added a large-corpus approximate tiny-neighbor fallback in `packages/sidflow-common/src/similarity-export-tiny.ts`, built `sidcorr-hvsc-full-sidcorr-lite-1.sidcorr` and `sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr` directly from the released full sqlite (`Tracks: 87073`), added `scripts/upload-existing-release-assets.sh`, and uploaded the lite/tiny bundles, their manifests, a refreshed `SHA256SUMS`, and a replacement `hvsc-full-sidcorr-1-20260407T115218Z.tar.gz` to `https://github.com/chrisgleissner/sidflow-data/releases/tag/sidcorr-hvsc-full-20260407T115218Z`. GitHub release verification now shows the new remote assets and updated release notes.
+- 2026-04-08: Resolved the tiny-vs-full hosted audit gap by aligning the equivalence harness with the shipped station default (`adventure=3`) and stabilizing score-plateau handling in `packages/sidflow-play/src/station/queue.ts`. The final hosted artifact set under `tmp/lite-export-check/release-final-validated` now records PASS for persona-station equivalence, PASS for seed-song similarity, deterministic reruns, and cross-persona divergence parity, while preserving baseline persona-collapse findings as warnings when they already exist in the authoritative full runtime.
+
+## Phase 33 - PR 93 Convergence To Merge-Ready
 
 1. [IN_PROGRESS] Audit the active PR review threads and failing branch status.
   Acceptance criteria:
@@ -28,7 +100,7 @@
 
 5. [TODO] Wait for CI to return green and close the loop.
   Acceptance criteria:
-  - All required checks for PR 92 are passing.
+  - All required checks for PR 93 are passing.
   - No unresolved review comments remain.
   - PLANS.md records the final evidence and any residual risks.
 
@@ -37,6 +109,9 @@
 - 2026-04-07: Read the required repo docs, fetched live PR 92 review metadata from GitHub, and confirmed 10 unresolved Copilot threads plus one failing `Build and test / Build and Test` check on commit `feat/sidcorr-tiny`.
 - 2026-04-07: Reduced the open review feedback to concrete fixes in `packages/sidflow-common/src/similarity-export-tiny.ts`, `packages/sidflow-common/src/similarity-export-lite.ts`, `packages/sidflow-play/src/station/dataset.ts`, and `doc/similarity-export-tiny.md`. The comments are valid: the tiny export still wrote forward edges, the loader still performed an HVSC-wide MD5 scan and an O(trackCount * fileCount) file lookup, lite still carried an unused O(fileCount * trackCount) count pass, and station dataset resolution still inferred unsupported `.sqlite.gz` sqlite bundles.
 - 2026-04-07: Inspected the failing GitHub Actions log for run `24104059549` and found four concrete failures: three `station demo backend queue building` tests were still calling `buildStationQueue(...)` with a sqlite path instead of the new dataset handle, and one legacy-schema CLI test was blocked because `openSqliteSimilarityDataset(...)` always claimed `hasTrackIdentity: true` even when `track_id` / `song_index` columns were missing.
+- 2026-04-08: Re-opened the required docs for a new `pr-converge` pass, identified the live branch PR as `#93` (`fix/sidcorr-tiny-release`), and fetched nine unresolved Copilot review threads against the current head. The live review set is concrete and mostly valid: `scripts/run-similarity-convergence.ts` needs bounded-memory hashing/downloads plus safe child-process settlement, `packages/sidflow-play/src/similarity-export-cli.ts` needs stricter tiny-only flag validation, `packages/sidflow-common/src/similarity-export-tiny.ts` needs cached HVSC root resolution plus dead helper cleanup, `scripts/run-similarity-export.sh` should expose the forced SQLite neighbor count explicitly, and the checked-in tiny manifest should not embed an absolute local `hvsc_root`.
+- 2026-04-08: Implemented the PR 93 review fixes and validated the touched surface locally: `bash -n scripts/run-similarity-export.sh`, `bun run build:quick`, and targeted tests for `similarity-export`, `similarity-export-cli`, and the station queue all passed. The first required full `bun run test` loop then failed on `packages/sidflow-play/test/cli.test.ts` (`builds a random-rating station across collection buckets instead of collapsing into early alphabetical paths`), which exposed a real repo-gate regression unrelated to the review threads: `orderStationTracksByFlow(...)` was re-sorting score plateaus alphabetically and destroying the diversified selection from `chooseStationTracks(...)`. Fixed that by preserving the diversified input order as the tie-break inside flow ordering, and re-ran the queue-specific tests to green before restarting the full 3x suite.
+- 2026-04-09: Full repo validation is now green after the queue plateau fix. `bun run build` passed, and `for i in 1 2 3; do bun run test; done` completed with exit code `0` across all three consecutive runs, including the historical `packages/sidflow-play/test/cli.test.ts` queue regression and the long `HVSC 300-file persona station E2E` integration batch. Next step is purely PR-convergence work: commit/push this fix set, reply to each open review thread with the concrete technical change, resolve the threads, and wait for refreshed CI on PR 93.
 
 ## Phase 32 - Multi-Format Similarity Convergence Audit And Proof
 

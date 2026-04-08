@@ -20,6 +20,7 @@ FORCE_REBUILD="false"
 FULL_RERUN="false"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
+SQLITE_NEIGHBORS_FOR_TINY="3"
 PUBLISH_RELEASE="false"
 PUBLISH_REPO="chrisgleissner/sidflow-data"
 PUBLISH_TIMESTAMP=""
@@ -101,6 +102,7 @@ Options:
   --publish-release true|false        Create and publish a tar.gz release bundle. Default: false
   --publish-repo OWNER/REPO           Release target. Default: chrisgleissner/sidflow-data
   --publish-timestamp UTCSTAMP        Override UTC timestamp in YYYYMMDDTHHMMSSZ format
+  --sqlite-neighbors-for-tiny N       Full-export precomputed neighbors kept for tiny derivation. Default: 3
   --keep-runtime true|false           Keep started server/container running after success. Default: false
   --help                              Show this help
 
@@ -325,6 +327,10 @@ while [[ $# -gt 0 ]]; do
       PUBLISH_TIMESTAMP="$2"
       shift 2
       ;;
+    --sqlite-neighbors-for-tiny)
+      SQLITE_NEIGHBORS_FOR_TINY="$2"
+      shift 2
+      ;;
     --keep-runtime)
       KEEP_RUNTIME="$(parse_bool "$2")"
       shift 2
@@ -362,6 +368,8 @@ esac
 if [[ -n "${MAX_SONGS}" ]]; then
   [[ "${MAX_SONGS}" =~ ^[1-9][0-9]*$ ]] || fail "--max-songs must be a positive integer"
 fi
+
+[[ "${SQLITE_NEIGHBORS_FOR_TINY}" =~ ^[0-9]+$ ]] || fail "--sqlite-neighbors-for-tiny must be a non-negative integer"
 
 if [[ "${PUBLISH_RELEASE}" == "true" ]]; then
   require_command gh
@@ -1068,19 +1076,19 @@ run_export() {
     log "Running local export with bun runtime"
     (
       cd "${REPO_ROOT}"
-      bun run export:similarity -- --config "${CONFIG_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
+      bun run export:similarity -- --config "${CONFIG_PATH}" --profile "${PROFILE}" --neighbors "${SQLITE_NEIGHBORS_FOR_TINY}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
       bun run export:similarity -- --config "${CONFIG_PATH}" --format lite --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${LITE_OUTPUT_PATH}"
-      bun run export:similarity -- --config "${CONFIG_PATH}" --format tiny --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
+      bun run export:similarity -- --config "${CONFIG_PATH}" --format tiny --source-lite "${LITE_OUTPUT_PATH}" --neighbor-source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
     )
     output_path="${REPO_ROOT}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   else
     log "Running export inside docker container"
     docker exec -w /sidflow/app "${DOCKER_CONTAINER_NAME}" \
-      bun run export:similarity -- --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
+      bun run export:similarity -- --profile "${PROFILE}" --neighbors "${SQLITE_NEIGHBORS_FOR_TINY}" --corpus-version "${CORPUS_VERSION}" --output "${EXPORT_OUTPUT_PATH}"
     docker exec -w /sidflow/app "${DOCKER_CONTAINER_NAME}" \
       bun run export:similarity -- --format lite --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${LITE_OUTPUT_PATH}"
     docker exec -w /sidflow/app "${DOCKER_CONTAINER_NAME}" \
-      bun run export:similarity -- --format tiny --source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
+      bun run export:similarity -- --format tiny --source-lite "${LITE_OUTPUT_PATH}" --neighbor-source-sqlite "${EXPORT_OUTPUT_PATH}" --profile "${PROFILE}" --corpus-version "${CORPUS_VERSION}" --output "${TINY_OUTPUT_PATH}"
     output_path="${STATE_DIR}/data/exports/sidcorr-${CORPUS_VERSION}-${PROFILE}-${SCHEMA_VERSION}.sqlite"
   fi
 

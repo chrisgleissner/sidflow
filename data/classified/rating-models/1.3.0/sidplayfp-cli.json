@@ -1,0 +1,152 @@
+{
+  "createdAt": "2026-04-08T08:22:27.278Z",
+  "features": {
+    "bpm": {
+      "count": 200,
+      "mu": 125.6166040027319,
+      "nonZeroCount": 200,
+      "sigma": 53.55193038364656
+    },
+    "dynamicRange": {
+      "count": 200,
+      "mu": 0.7964624615688833,
+      "nonZeroCount": 200,
+      "sigma": 0.18503373323279743
+    },
+    "energy": {
+      "count": 200,
+      "mu": 0.010110903091473321,
+      "nonZeroCount": 200,
+      "sigma": 0.006476960788552044
+    },
+    "inharmonicity": {
+      "count": 200,
+      "mu": 0.04811962726436064,
+      "nonZeroCount": 87,
+      "sigma": 0.08201494034844774
+    },
+    "lowFrequencyEnergyRatio": {
+      "count": 200,
+      "mu": 0.2651795493396236,
+      "nonZeroCount": 200,
+      "sigma": 0.09656283193438633
+    },
+    "mfccMean1": {
+      "count": 200,
+      "mu": 81.75172471512109,
+      "nonZeroCount": 200,
+      "sigma": 26.809011589790842
+    },
+    "mfccMean2": {
+      "count": 200,
+      "mu": 15.41655765618818,
+      "nonZeroCount": 200,
+      "sigma": 13.588213140314423
+    },
+    "mfccMean3": {
+      "count": 200,
+      "mu": 11.65682852116724,
+      "nonZeroCount": 200,
+      "sigma": 10.77380974305787
+    },
+    "mfccMean4": {
+      "count": 200,
+      "mu": 3.9462339899363013,
+      "nonZeroCount": 200,
+      "sigma": 9.326427502886101
+    },
+    "mfccMean5": {
+      "count": 200,
+      "mu": 3.6209670467007316,
+      "nonZeroCount": 200,
+      "sigma": 7.705347711903883
+    },
+    "onsetDensity": {
+      "count": 200,
+      "mu": 2.789622971652544,
+      "nonZeroCount": 200,
+      "sigma": 1.0612326086423445
+    },
+    "pitchSalience": {
+      "count": 200,
+      "mu": 0.9518803727356394,
+      "nonZeroCount": 200,
+      "sigma": 0.08201494034844774
+    },
+    "rhythmicRegularity": {
+      "count": 200,
+      "mu": 0.4991162405156967,
+      "nonZeroCount": 190,
+      "sigma": 0.18220152382553434
+    },
+    "rms": {
+      "count": 200,
+      "mu": 0.09547178461873934,
+      "nonZeroCount": 200,
+      "sigma": 0.03156012409966678
+    },
+    "spectralCentroid": {
+      "count": 200,
+      "mu": 0.2562594858421713,
+      "nonZeroCount": 200,
+      "sigma": 0.059431506477048035
+    },
+    "spectralCentroidStd": {
+      "count": 200,
+      "mu": 0.054787273514218776,
+      "nonZeroCount": 200,
+      "sigma": 0.03556215087312163
+    },
+    "spectralContrastMean": {
+      "count": 200,
+      "mu": -22.036923147554834,
+      "nonZeroCount": 200,
+      "sigma": 14.000173483402175
+    },
+    "spectralCrest": {
+      "count": 200,
+      "mu": 52.26697612365086,
+      "nonZeroCount": 200,
+      "sigma": 53.31368002648457
+    },
+    "spectralEntropy": {
+      "count": 200,
+      "mu": 8.082160412694021,
+      "nonZeroCount": 200,
+      "sigma": 1.1181526929421526
+    },
+    "spectralFlatnessDb": {
+      "count": 200,
+      "mu": 0.1051011037935192,
+      "nonZeroCount": 200,
+      "sigma": 0.09991283100457796
+    },
+    "spectralFluxMean": {
+      "count": 200,
+      "mu": 0.4229167658633482,
+      "nonZeroCount": 200,
+      "sigma": 0.08650607423706423
+    },
+    "spectralHfc": {
+      "count": 200,
+      "mu": 3457403.6540931887,
+      "nonZeroCount": 200,
+      "sigma": 3046569.4570678943
+    },
+    "spectralRolloff": {
+      "count": 200,
+      "mu": 3017.3311157226567,
+      "nonZeroCount": 200,
+      "sigma": 1993.4402892478029
+    },
+    "zeroCrossingRate": {
+      "count": 200,
+      "mu": 0.07566547728325573,
+      "nonZeroCount": 200,
+      "sigma": 0.04354932286033651
+    }
+  },
+  "featureSetVersion": "1.3.0",
+  "renderEngine": "sidplayfp-cli"
+}
+

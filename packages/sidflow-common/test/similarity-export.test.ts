@@ -196,13 +196,22 @@ describe("similarity-export", () => {
       neighbors: 3,
     });
 
-    const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr");
-    await buildTinySimilarityExport({
+    const litePath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-lite-1.sidcorr");
+    await buildLiteSimilarityExport({
       sourceSqlitePath: outputPath,
+      outputPath: litePath,
+      corpusVersion: "TEST-1",
+    });
+
+    const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr");
+    const tinyResult = await buildTinySimilarityExport({
+      sourceLitePath: litePath,
       hvscRoot,
       outputPath: tinyPath,
       corpusVersion: "TEST-1",
+      neighborSqlitePath: outputPath,
     });
+    expect(tinyResult.manifest.source.hvsc_root).toBe("hvsc");
 
     const sqliteTop = recommendFromFavoritesFromSqlite(outputPath, {
       favoriteTrackIds: [buildSimilarityTrackId("A.sid", 1)],
@@ -234,10 +243,11 @@ describe("similarity-export", () => {
       corpusVersion: "TEST-1",
     });
     await buildTinySimilarityExport({
-      sourceSqlitePath: outputPath,
+      sourceLitePath: litePath,
       hvscRoot,
       outputPath: tinyPath,
       corpusVersion: "TEST-1",
+      neighborSqlitePath: outputPath,
     });
 
     const liteRecommendations = (await openLiteSimilarityDataset(litePath)).recommendFromFavorites({
@@ -262,12 +272,20 @@ describe("similarity-export", () => {
       neighbors: 3,
     });
 
+    const litePath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-lite-1.sidcorr");
+    await buildLiteSimilarityExport({
+      sourceSqlitePath: outputPath,
+      outputPath: litePath,
+      corpusVersion: "TEST-1",
+    });
+
     const tinyPath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-tiny-1.sidcorr");
     await buildTinySimilarityExport({
-      sourceSqlitePath: outputPath,
+      sourceLitePath: litePath,
       hvscRoot,
       outputPath: tinyPath,
       corpusVersion: "TEST-1",
+      neighborSqlitePath: outputPath,
     });
 
     const documentsDir = path.join(hvscRoot, "DOCUMENTS");
@@ -290,6 +308,51 @@ describe("similarity-export", () => {
 
     const tiny = await openTinySimilarityDataset(tinyPath, { hvscRoot });
     expect(tiny.resolveTrack(buildSimilarityTrackId("A.sid", 1))?.sid_path).toBe("A.sid");
+  });
+
+  test("builds tiny bundles when HVSC music files live under C64Music", async () => {
+    const nestedHvscRoot = path.join(tempRoot, "hvsc-nested");
+    const nestedMusicRoot = path.join(nestedHvscRoot, "C64Music", "DEMOS", "A-F");
+    const nestedClassifiedPath = path.join(tempRoot, "classified-nested");
+    const nestedSqlitePath = path.join(tempRoot, "exports", "sidcorr-nested-full-sidcorr-1.sqlite");
+    const nestedLitePath = path.join(tempRoot, "exports", "sidcorr-nested-full-sidcorr-lite-1.sidcorr");
+    const nestedTinyPath = path.join(tempRoot, "exports", "sidcorr-nested-full-sidcorr-tiny-1.sidcorr");
+
+    await mkdir(nestedMusicRoot, { recursive: true });
+    await mkdir(nestedClassifiedPath, { recursive: true });
+    await writeFile(path.join(nestedMusicRoot, "Track_A.sid"), Buffer.from("PSID-Track-A", "utf8"));
+    await writeFile(path.join(nestedMusicRoot, "Track_B.sid"), Buffer.from("PSID-Track-B", "utf8"));
+    await writeFile(
+      path.join(nestedClassifiedPath, "classification_tracks.jsonl"),
+      [
+        JSON.stringify({ sid_path: "DEMOS/A-F/Track_A.sid", song_index: 1, ratings: { e: 1, m: 2, c: 3, p: 3 }, features: { bpm: 90 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm" }),
+        JSON.stringify({ sid_path: "DEMOS/A-F/Track_B.sid", song_index: 1, ratings: { e: 5, m: 4, c: 4, p: 3 }, features: { bpm: 140 }, classified_at: "2026-03-13T10:00:30.000Z", source: "auto", render_engine: "wasm" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await buildSimilarityExport({
+      classifiedPath: nestedClassifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath: nestedSqlitePath,
+      neighbors: 1,
+    });
+    await buildLiteSimilarityExport({
+      sourceSqlitePath: nestedSqlitePath,
+      outputPath: nestedLitePath,
+      corpusVersion: "TEST-NESTED",
+    });
+    const tinyResult = await buildTinySimilarityExport({
+      sourceLitePath: nestedLitePath,
+      hvscRoot: nestedHvscRoot,
+      outputPath: nestedTinyPath,
+      corpusVersion: "TEST-NESTED",
+      neighborSqlitePath: nestedSqlitePath,
+    });
+    expect(tinyResult.manifest.source.hvsc_root).toBe("hvsc-nested");
+
+    const tiny = await openTinySimilarityDataset(nestedTinyPath, { hvscRoot: nestedHvscRoot });
+    expect(tiny.resolveTrack(buildSimilarityTrackId("DEMOS/A-F/Track_A.sid", 1))?.sid_path).toBe("DEMOS/A-F/Track_A.sid");
   });
 
   test("reads recommendation data from cached pre-decay sidcorr bundles", async () => {

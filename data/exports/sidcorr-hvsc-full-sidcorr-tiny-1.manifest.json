@@ -1,0 +1,30 @@
+{
+  "binary_format_version": 2,
+  "bundle_bytes": 18999,
+  "bundle_bytes_uncompressed": 18999,
+  "content_encoding": "identity",
+  "corpus_version": "hvsc",
+  "file_checksums": {
+    "bundle_sha256": "9c093eb64aa491598b5b457e51fd8a19662cfafe992d7d2d7779f52bb1a6b967"
+  },
+  "file_count": 751,
+  "file_id_kind": "md5_48",
+  "generated_at": "2026-04-08T07:56:58.392Z",
+  "neighbors_per_track": 3,
+  "paths": {
+    "bundle": "sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr",
+    "manifest": "sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json"
+  },
+  "schema_version": "sidcorr-tiny-1",
+  "source": {
+    "hvsc_root": "hvsc",
+    "lite": "sidcorr-hvsc-full-sidcorr-lite-1.sidcorr",
+    "sqlite_neighbor_hint": "sidcorr-hvsc-full-sidcorr-1.sqlite"
+  },
+  "source_checksums": {
+    "lite_sha256": "ed1e0d83ebe62db16dd7cfdec5dc7623d11b244e9e18ee870fff2c7f80f8ed02",
+    "sqlite_neighbor_hint_sha256": "53c4cdf477a3a7e95413af4c47d531ef46f93275c39b6282820581306aa7ec6e"
+  },
+  "style_count": 9,
+  "track_count": 796
+}
