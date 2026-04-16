@@ -1,5 +1,28 @@
 # WORKLOG.md - SID Classification Pipeline Recovery
 
+## 2026-04-16T10:17Z - Audit 2 kickoff: release-backed full/lite/tiny parity proof
+
+- timestamp: 2026-04-16T10:17Z
+- step: P34_T08_AUDIT2_RELEASE_PARITY
+- action: Re-opened the required repo docs, existing Phase 34 plan state, similarity-export specs, prior audit writeups, and the new prompt at `doc/audits/audit2/prompt.md` before changing code.
+
+### Initial findings
+
+1. The repo already has the right audit and regression surfaces to reuse: `scripts/run-tiny-export-equivalence-audit.ts`, `scripts/run-similarity-convergence.ts`, `packages/sidflow-play/test/station-portable-equivalence.test.ts`, and `packages/sidflow-common/test/similarity-export.test.ts`.
+2. The current task is narrower and stricter than the earlier convergence pass: it must explicitly justify the authoritative artifact source, cover both favorite-seeded station building and direct seed-song similarity, and produce deterministic release-readiness artifacts under `tmp/`.
+3. The current working tree has no conflicting tracked edits beyond the newly added prompt file, so the audit can proceed without first reconciling unrelated local code changes.
+
+### Decision
+
+1. Treat the latest published `sidflow-data` release as the provisional baseline to verify first, because the prompt and prior Phase 34 notes both indicate the checked-in local lite/tiny bundles are partial validation artifacts rather than a corpus-complete parity basis.
+2. Reuse the existing harnesses and only edit code if they demonstrate a real remaining divergence on the shipped runtime surfaces.
+
+### Next steps
+
+1. Compare the local and release manifests by schema, counts, and checksums/lineage and record the authoritative trio used for the audit.
+2. Run the existing tiny-equivalence harness and focused portable-equivalence tests against that trio.
+3. If anything fails, localize the first divergence before touching runtime or export code.
+
 ## 2026-04-08T09:05Z - Phase 34 follow-up: dedicated tiny-export equivalence audit kickoff
 
 - timestamp: 2026-04-08T09:05Z

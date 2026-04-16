@@ -21,6 +21,7 @@ import {
 import { cosineSimilarity } from "./vector-similarity.js";
 
 export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
+const SIMILARITY_SCORE_PRECISION = 1_000_000_000_000;
 
 export type SimilarityExportProfile = "full" | "mobile";
 
@@ -750,6 +751,18 @@ function buildCentroid(vectors: number[][], weights?: number[]): number[] {
   return centroid.map((value) => value / Math.max(totalWeight, 1));
 }
 
+export function stableSimilarityScore(score: number): number {
+  return Math.round(score * SIMILARITY_SCORE_PRECISION) / SIMILARITY_SCORE_PRECISION;
+}
+
+function compareScoredTrackRows(
+  left: { row: Pick<PersistedTrackRow, "track_id">; score: number },
+  right: { row: Pick<PersistedTrackRow, "track_id">; score: number },
+): number {
+  return stableSimilarityScore(right.score) - stableSimilarityScore(left.score)
+    || left.row.track_id.localeCompare(right.row.track_id);
+}
+
 function computeDefaultManifestPath(outputPath: string): string {
   const parsed = path.parse(outputPath);
   return path.join(parsed.dir, `${parsed.name}.manifest.json`);
@@ -1255,7 +1268,7 @@ export function recommendFromSeedTrack(
     return candidates
       .filter((row) => row.vector_json && !excluded.has(row.track_id))
       .map((row) => ({ row, score: cosineSimilarity(seedVector, JSON.parse(row.vector_json as string) as number[]) }))
-      .sort((left, right) => right.score - left.score)
+      .sort(compareScoredTrackRows)
       .slice(0, limit)
       .map((entry, index) => trackRowToRecommendation(entry.row, entry.score, index + 1));
   } finally {
@@ -1302,7 +1315,7 @@ export function recommendFromFavorites(
     return candidates
       .filter((row) => row.vector_json && !excluded.has(row.track_id))
       .map((row) => ({ row, score: cosineSimilarity(centroid, JSON.parse(row.vector_json as string) as number[]) }))
-      .sort((left, right) => right.score - left.score)
+      .sort(compareScoredTrackRows)
       .slice(0, limit)
       .map((entry, index) => trackRowToRecommendation(entry.row, entry.score, index + 1));
   } finally {

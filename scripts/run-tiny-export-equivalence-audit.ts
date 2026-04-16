@@ -36,6 +36,7 @@ import {
 } from "../packages/sidflow-play/src/station/index.js";
 
 type ExportSource = "local" | "release";
+type PortableFormat = "lite" | "tiny";
 
 type AuditCliOptions = {
   config?: string;
@@ -105,11 +106,12 @@ type SeedFavorite = {
 };
 
 type StationRunMetrics = {
+  comparisonFormat: PortableFormat;
   personaId: PersonaId;
   runSeed: number;
   favoriteSeedPath: string;
   fullStationPath: string;
-  tinyStationPath: string;
+  portableStationPath: string;
   stationSize: number;
   overlapRatio: number;
   sharedTrackCount: number;
@@ -117,23 +119,24 @@ type StationRunMetrics = {
   jaccard: number;
   spearman: number;
   coherenceFull: number;
-  coherenceTiny: number;
+  coherencePortable: number;
   coherenceDelta: number;
   styleSimilarity: number;
   styleMaxDelta: number;
   composerDiversityFull: number;
-  composerDiversityTiny: number;
+  composerDiversityPortable: number;
   composerDiversityDelta: number;
   yearSpreadFull: number | null;
-  yearSpreadTiny: number | null;
+  yearSpreadPortable: number | null;
   yearSpreadDelta: number | null;
   duplicateSidRateFull: number;
-  duplicateSidRateTiny: number;
+  duplicateSidRatePortable: number;
   duplicateSidRateDelta: number;
   pass: boolean;
 };
 
 type StationPersonaSummary = {
+  comparisonFormat: PortableFormat;
   personaId: PersonaId;
   runs: number;
   medianOverlap: number;
@@ -146,7 +149,7 @@ type StationPersonaSummary = {
 };
 
 type DivergenceRunMetrics = {
-  exportFormat: "full" | "tiny";
+  exportFormat: "full" | PortableFormat;
   runSeed: number;
   personaA: PersonaId;
   personaB: PersonaId;
@@ -160,7 +163,7 @@ type DivergenceRunMetrics = {
 };
 
 type DivergencePairSummary = {
-  exportFormat: "full" | "tiny";
+  exportFormat: "full" | PortableFormat;
   personaA: PersonaId;
   personaB: PersonaId;
   runs: number;
@@ -174,11 +177,12 @@ type DivergencePairSummary = {
 };
 
 type SeedSongMetrics = {
+  comparisonFormat: PortableFormat;
   seedTrackId: string;
   seedSidPath: string;
   fullResultsPath: string;
-  tinyResultsPath: string;
-  tinyMode: string;
+  portableResultsPath: string;
+  portableMode: string;
   top10Overlap: number;
   top20Overlap: number;
   top50Overlap: number;
@@ -186,14 +190,15 @@ type SeedSongMetrics = {
   top20Jaccard: number;
   top50Jaccard: number;
   rankCorrelation: number;
-  missingFromTinyTop10: string[];
+  missingFromPortableTop10: string[];
   missingFromFullTop10: string[];
-  missingFromTinyTop20: string[];
+  missingFromPortableTop20: string[];
   missingFromFullTop20: string[];
   pass: boolean;
 };
 
 type SeedSongSummary = {
+  comparisonFormat: PortableFormat;
   seedCount: number;
   medianTop10Overlap: number;
   worstTop10Overlap: number;
@@ -204,6 +209,21 @@ type SeedSongSummary = {
   pass: boolean;
 };
 
+type ComparisonThresholds = {
+  stationMedianOverlapMin: number;
+  stationWorstOverlapMin: number;
+  stationMedianJaccardMin: number;
+  stationMedianSpearmanMin: number;
+  stationMedianCoherenceDeltaMax: number;
+  stationMedianStyleSimilarityMin: number;
+  stationRunOverlapMin: number;
+  stationRunJaccardMin: number;
+  stationRunSpearmanMin: number;
+  stationRunStyleSimilarityMin: number;
+  seedTop10OverlapMin: number;
+  seedTop20OverlapMin: number;
+};
+
 type DeterminismProof = {
   stationInputsIdentical: boolean;
   stationOutputsIdentical: boolean;
@@ -212,14 +232,6 @@ type DeterminismProof = {
 };
 
 type AuditThresholds = {
-  stationMedianOverlapMin: number;
-  stationWorstOverlapMin: number;
-  stationMedianJaccardMin: number;
-  stationMedianSpearmanMin: number;
-  stationMedianCoherenceDeltaMax: number;
-  stationMedianStyleSimilarityMin: number;
-  seedTop10OverlapMin: number;
-  seedTop20OverlapMin: number;
   divergenceMedianOverlapMax: number;
   divergenceWorstOverlapMax: number;
   divergenceParityMedianOverlapDeltaMax: number;
@@ -255,15 +267,38 @@ const PERSONA_RUN_SEEDS = [1001, 1002, 1003, 1004, 1005] as const;
 const FAVORITE_RATINGS = [5, 5, 4, 4, 3] as const;
 const FAVORITE_CANDIDATE_POOL = 256;
 
+const COMPARISON_THRESHOLDS: Record<PortableFormat, ComparisonThresholds> = {
+  lite: {
+    stationMedianOverlapMin: 0.95,
+    stationWorstOverlapMin: 0.95,
+    stationMedianJaccardMin: 0.9,
+    stationMedianSpearmanMin: 0.9,
+    stationMedianCoherenceDeltaMax: 0.2,
+    stationMedianStyleSimilarityMin: 0.95,
+    stationRunOverlapMin: 0.95,
+    stationRunJaccardMin: 0.9,
+    stationRunSpearmanMin: 0.9,
+    stationRunStyleSimilarityMin: 0.95,
+    seedTop10OverlapMin: 0.35,
+    seedTop20OverlapMin: 0.3,
+  },
+  tiny: {
+    stationMedianOverlapMin: 0.8,
+    stationWorstOverlapMin: 0.7,
+    stationMedianJaccardMin: 0.65,
+    stationMedianSpearmanMin: 0.55,
+    stationMedianCoherenceDeltaMax: 0.2,
+    stationMedianStyleSimilarityMin: 0.8,
+    stationRunOverlapMin: 0.8,
+    stationRunJaccardMin: 0.7,
+    stationRunSpearmanMin: 0.65,
+    stationRunStyleSimilarityMin: 0.82,
+    seedTop10OverlapMin: 0.35,
+    seedTop20OverlapMin: 0.3,
+  },
+};
+
 const THRESHOLDS: AuditThresholds = {
-  stationMedianOverlapMin: 0.8,
-  stationWorstOverlapMin: 0.7,
-  stationMedianJaccardMin: 0.65,
-  stationMedianSpearmanMin: 0.55,
-  stationMedianCoherenceDeltaMax: 0.2,
-  stationMedianStyleSimilarityMin: 0.8,
-  seedTop10OverlapMin: 0.35,
-  seedTop20OverlapMin: 0.3,
   divergenceMedianOverlapMax: 0.75,
   divergenceWorstOverlapMax: 0.9,
   divergenceParityMedianOverlapDeltaMax: 0.1,
@@ -292,7 +327,7 @@ const ARG_DEFS: ArgDef[] = [
 
 const HELP_TEXT = formatHelp(
   "bun run validate:tiny-export-equivalence -- [options]",
-  "Audit sidcorr-tiny-1 against the authoritative sidcorr-1 export using deterministic station-building and seed-song similarity checks.",
+  "Audit sidcorr-lite-1 and sidcorr-tiny-1 against the authoritative sidcorr-1 export using deterministic station-building and seed-song similarity checks.",
   ARG_DEFS,
   [
     "bun run validate:tiny-export-equivalence -- --export-source local",
@@ -895,47 +930,55 @@ function buildSeedTrackList(rows: ExportTrackRow[], count: number): ExportTrackR
   return seeds;
 }
 
-function summarizeSeedSongResults(results: SeedSongMetrics[]): SeedSongSummary {
-  return {
-    seedCount: results.length,
-    medianTop10Overlap: round(median(results.map((result) => result.top10Overlap))),
-    worstTop10Overlap: round(Math.min(...results.map((result) => result.top10Overlap))),
-    medianTop20Overlap: round(median(results.map((result) => result.top20Overlap))),
-    worstTop20Overlap: round(Math.min(...results.map((result) => result.top20Overlap))),
-    medianTop50Overlap: round(median(results.map((result) => result.top50Overlap))),
-    medianRankCorrelation: round(median(results.map((result) => result.rankCorrelation))),
-    pass: results.every((result) => result.pass),
-  };
+function summarizeSeedSongResults(results: SeedSongMetrics[]): SeedSongSummary[] {
+  return (["lite", "tiny"] as const).map((comparisonFormat) => {
+    const formatResults = results.filter((result) => result.comparisonFormat === comparisonFormat);
+    return {
+      comparisonFormat,
+      seedCount: formatResults.length,
+      medianTop10Overlap: round(median(formatResults.map((result) => result.top10Overlap))),
+      worstTop10Overlap: round(Math.min(...formatResults.map((result) => result.top10Overlap))),
+      medianTop20Overlap: round(median(formatResults.map((result) => result.top20Overlap))),
+      worstTop20Overlap: round(Math.min(...formatResults.map((result) => result.top20Overlap))),
+      medianTop50Overlap: round(median(formatResults.map((result) => result.top50Overlap))),
+      medianRankCorrelation: round(median(formatResults.map((result) => result.rankCorrelation))),
+      pass: formatResults.every((result) => result.pass),
+    };
+  });
 }
 
 function buildStationPersonaSummary(results: StationRunMetrics[]): StationPersonaSummary[] {
-  return PERSONA_IDS.map((personaId) => {
-    const personaResults = results.filter((result) => result.personaId === personaId);
-    const summary: StationPersonaSummary = {
-      personaId,
-      runs: personaResults.length,
-      medianOverlap: round(median(personaResults.map((result) => result.overlapRatio))),
-      worstOverlap: round(Math.min(...personaResults.map((result) => result.overlapRatio))),
-      medianJaccard: round(median(personaResults.map((result) => result.jaccard))),
-      medianSpearman: round(median(personaResults.map((result) => result.spearman))),
-      medianCoherenceDelta: round(median(personaResults.map((result) => result.coherenceDelta))),
-      medianStyleSimilarity: round(median(personaResults.map((result) => result.styleSimilarity))),
-      pass: false,
-    };
-    summary.pass = summary.medianOverlap >= THRESHOLDS.stationMedianOverlapMin
-      && summary.worstOverlap >= THRESHOLDS.stationWorstOverlapMin
-      && summary.medianJaccard >= THRESHOLDS.stationMedianJaccardMin
-      && summary.medianSpearman >= THRESHOLDS.stationMedianSpearmanMin
-      && summary.medianCoherenceDelta <= THRESHOLDS.stationMedianCoherenceDeltaMax
-      && summary.medianStyleSimilarity >= THRESHOLDS.stationMedianStyleSimilarityMin;
-    return summary;
+  return (["lite", "tiny"] as const).flatMap((comparisonFormat) => {
+    const thresholds = COMPARISON_THRESHOLDS[comparisonFormat];
+    return PERSONA_IDS.map((personaId) => {
+      const personaResults = results.filter((result) => result.comparisonFormat === comparisonFormat && result.personaId === personaId);
+      const summary: StationPersonaSummary = {
+        comparisonFormat,
+        personaId,
+        runs: personaResults.length,
+        medianOverlap: round(median(personaResults.map((result) => result.overlapRatio))),
+        worstOverlap: round(Math.min(...personaResults.map((result) => result.overlapRatio))),
+        medianJaccard: round(median(personaResults.map((result) => result.jaccard))),
+        medianSpearman: round(median(personaResults.map((result) => result.spearman))),
+        medianCoherenceDelta: round(median(personaResults.map((result) => result.coherenceDelta))),
+        medianStyleSimilarity: round(median(personaResults.map((result) => result.styleSimilarity))),
+        pass: false,
+      };
+      summary.pass = summary.medianOverlap >= thresholds.stationMedianOverlapMin
+        && summary.worstOverlap >= thresholds.stationWorstOverlapMin
+        && summary.medianJaccard >= thresholds.stationMedianJaccardMin
+        && summary.medianSpearman >= thresholds.stationMedianSpearmanMin
+        && summary.medianCoherenceDelta <= thresholds.stationMedianCoherenceDeltaMax
+        && summary.medianStyleSimilarity >= thresholds.stationMedianStyleSimilarityMin;
+      return summary;
+    });
   });
 }
 
 function buildDivergencePairSummaries(results: DivergenceRunMetrics[]): DivergencePairSummary[] {
   const summaries: DivergencePairSummary[] = [];
   const summariesByKey = new Map<string, DivergencePairSummary>();
-  for (const exportFormat of ["full", "tiny"] as const) {
+  for (const exportFormat of ["full", "lite", "tiny"] as const) {
     for (let leftIndex = 0; leftIndex < PERSONA_IDS.length; leftIndex += 1) {
       for (let rightIndex = leftIndex + 1; rightIndex < PERSONA_IDS.length; rightIndex += 1) {
         const personaA = PERSONA_IDS[leftIndex]!;
@@ -955,7 +998,7 @@ function buildDivergencePairSummaries(results: DivergenceRunMetrics[]): Divergen
           pass: false,
         };
         summary.collapseRisk = summary.medianOverlap > THRESHOLDS.divergenceMedianOverlapMax || summary.worstOverlap > THRESHOLDS.divergenceWorstOverlapMax;
-        summary.pass = true;
+        summary.pass = exportFormat === "full";
         summaries.push(summary);
         summariesByKey.set(`${exportFormat}:${personaA}:${personaB}`, summary);
       }
@@ -967,16 +1010,19 @@ function buildDivergencePairSummaries(results: DivergenceRunMetrics[]): Divergen
       const personaA = PERSONA_IDS[leftIndex]!;
       const personaB = PERSONA_IDS[rightIndex]!;
       const fullSummary = summariesByKey.get(`full:${personaA}:${personaB}`);
-      const tinySummary = summariesByKey.get(`tiny:${personaA}:${personaB}`);
-      if (!fullSummary || !tinySummary) {
+      if (!fullSummary) {
         continue;
       }
-      const parityPass = Math.abs(fullSummary.medianOverlap - tinySummary.medianOverlap) <= THRESHOLDS.divergenceParityMedianOverlapDeltaMax
-        && Math.abs(fullSummary.worstOverlap - tinySummary.worstOverlap) <= THRESHOLDS.divergenceParityWorstOverlapDeltaMax
-        && Math.abs(fullSummary.medianSpearman - tinySummary.medianSpearman) <= THRESHOLDS.divergenceParitySpearmanDeltaMax
-        && Math.abs(fullSummary.medianStyleSimilarity - tinySummary.medianStyleSimilarity) <= THRESHOLDS.divergenceParityStyleSimilarityDeltaMax;
-      fullSummary.pass = parityPass;
-      tinySummary.pass = parityPass;
+      for (const exportFormat of ["lite", "tiny"] as const) {
+        const portableSummary = summariesByKey.get(`${exportFormat}:${personaA}:${personaB}`);
+        if (!portableSummary) {
+          continue;
+        }
+        portableSummary.pass = Math.abs(fullSummary.medianOverlap - portableSummary.medianOverlap) <= THRESHOLDS.divergenceParityMedianOverlapDeltaMax
+          && Math.abs(fullSummary.worstOverlap - portableSummary.worstOverlap) <= THRESHOLDS.divergenceParityWorstOverlapDeltaMax
+          && Math.abs(fullSummary.medianSpearman - portableSummary.medianSpearman) <= THRESHOLDS.divergenceParitySpearmanDeltaMax
+          && Math.abs(fullSummary.medianStyleSimilarity - portableSummary.medianStyleSimilarity) <= THRESHOLDS.divergenceParityStyleSimilarityDeltaMax;
+      }
     }
   }
 
@@ -991,20 +1037,20 @@ async function buildReport(
   stationSummaries: StationPersonaSummary[],
   stationRuns: StationRunMetrics[],
   divergenceSummaries: DivergencePairSummary[],
-  seedSummary: SeedSongSummary,
+  seedSummaries: SeedSongSummary[],
   seedMetrics: SeedSongMetrics[],
   determinism: DeterminismProof,
 ): Promise<string> {
   const generatedAt = new Date().toISOString();
   const reportLines: string[] = [];
-  reportLines.push("# Tiny Export Equivalence Audit");
+  reportLines.push("# Portable Export Equivalence Audit");
   reportLines.push("");
   reportLines.push("## Scope");
   reportLines.push("");
   reportLines.push(`- Export source: ${resolvedInputs.exportSource}`);
   reportLines.push(`- Full export: ${resolvedInputs.fullExportPath}`);
+  reportLines.push(`- Lite export: ${resolvedInputs.liteExportPath ?? "missing"}`);
   reportLines.push(`- Tiny export: ${resolvedInputs.tinyExportPath}`);
-  reportLines.push(`- Optional lite export: ${resolvedInputs.liteExportPath ?? "not used"}`);
   reportLines.push(`- Host OS: Linux`);
   reportLines.push(`- Audit mode: ${options.ci ? "CI reduced / machine-focused" : "local Linux full"}`);
   reportLines.push(`- Generated at: ${generatedAt}`);
@@ -1015,8 +1061,8 @@ async function buildReport(
   reportLines.push("| Input | Path | SHA256 | Notes |");
   reportLines.push("| --- | --- | --- | --- |");
   reportLines.push(`| Full export | ${resolvedInputs.fullExportPath} | ${await sha256File(resolvedInputs.fullExportPath)} | ${resolvedInputs.release ? `${resolvedInputs.release.repo}@${resolvedInputs.release.tag}` : "local file"} |`);
+  reportLines.push(`| Lite export | ${resolvedInputs.liteExportPath ?? "n/a"} | ${resolvedInputs.liteExportPath ? await sha256File(resolvedInputs.liteExportPath) : "n/a"} | ${resolvedInputs.release ? `${resolvedInputs.release.repo}@${resolvedInputs.release.tag}` : "local file"} |`);
   reportLines.push(`| Tiny export | ${resolvedInputs.tinyExportPath} | ${await sha256File(resolvedInputs.tinyExportPath)} | ${resolvedInputs.release ? `${resolvedInputs.release.repo}@${resolvedInputs.release.tag}` : "local file"} |`);
-  reportLines.push(`| Optional lite export | ${resolvedInputs.liteExportPath ?? "n/a"} | ${resolvedInputs.liteExportPath ? await sha256File(resolvedInputs.liteExportPath) : "n/a"} | optional reference only |`);
   reportLines.push(`| Persona definitions | packages/sidflow-common/src/persona.ts | n/a | exact PERSONA_IDS set |`);
   reportLines.push("");
   reportLines.push("## Commands Run");
@@ -1044,31 +1090,35 @@ async function buildReport(
   reportLines.push("");
   reportLines.push("## Persona Station Equivalence Summary");
   reportLines.push("");
-  reportLines.push("| Persona | Runs | Median overlap | Worst overlap | Median Jaccard | Median rank corr | Median coherence delta | Median style similarity | Pass/Fail |");
-  reportLines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+  reportLines.push("| Export pair | Persona | Runs | Median overlap | Worst overlap | Median Jaccard | Median rank corr | Median coherence delta | Median style similarity | Pass/Fail |");
+  reportLines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const summary of stationSummaries) {
-    reportLines.push(`| ${summary.personaId} | ${summary.runs} | ${summary.medianOverlap.toFixed(4)} | ${summary.worstOverlap.toFixed(4)} | ${summary.medianJaccard.toFixed(4)} | ${summary.medianSpearman.toFixed(4)} | ${summary.medianCoherenceDelta.toFixed(4)} | ${summary.medianStyleSimilarity.toFixed(4)} | ${summary.pass ? "PASS" : "FAIL"} |`);
+    reportLines.push(`| full vs ${summary.comparisonFormat} | ${summary.personaId} | ${summary.runs} | ${summary.medianOverlap.toFixed(4)} | ${summary.worstOverlap.toFixed(4)} | ${summary.medianJaccard.toFixed(4)} | ${summary.medianSpearman.toFixed(4)} | ${summary.medianCoherenceDelta.toFixed(4)} | ${summary.medianStyleSimilarity.toFixed(4)} | ${summary.pass ? "PASS" : "FAIL"} |`);
   }
   reportLines.push("");
   reportLines.push("## Persona Station Detailed Results");
   reportLines.push("");
   reportLines.push("### Thresholds");
   reportLines.push("");
-  reportLines.push("| Metric | Threshold |");
+  reportLines.push("| Export pair | Metric | Threshold |");
   reportLines.push("| --- | --- |");
-  reportLines.push(`| Median station overlap | >= ${THRESHOLDS.stationMedianOverlapMin.toFixed(2)} |`);
-  reportLines.push(`| Worst-case station overlap | >= ${THRESHOLDS.stationWorstOverlapMin.toFixed(2)} |`);
-  reportLines.push(`| Median station Jaccard | >= ${THRESHOLDS.stationMedianJaccardMin.toFixed(2)} |`);
-  reportLines.push(`| Median rank correlation | >= ${THRESHOLDS.stationMedianSpearmanMin.toFixed(2)} |`);
-  reportLines.push(`| Median coherence delta | <= ${THRESHOLDS.stationMedianCoherenceDeltaMax.toFixed(2)} |`);
-  reportLines.push(`| Median style distribution similarity | >= ${THRESHOLDS.stationMedianStyleSimilarityMin.toFixed(2)} |`);
+  reportLines.push("| --- | --- | --- |");
+  for (const comparisonFormat of ["lite", "tiny"] as const) {
+    const thresholds = COMPARISON_THRESHOLDS[comparisonFormat];
+    reportLines.push(`| full vs ${comparisonFormat} | Median station overlap | >= ${thresholds.stationMedianOverlapMin.toFixed(2)} |`);
+    reportLines.push(`| full vs ${comparisonFormat} | Worst-case station overlap | >= ${thresholds.stationWorstOverlapMin.toFixed(2)} |`);
+    reportLines.push(`| full vs ${comparisonFormat} | Median station Jaccard | >= ${thresholds.stationMedianJaccardMin.toFixed(2)} |`);
+    reportLines.push(`| full vs ${comparisonFormat} | Median rank correlation | >= ${thresholds.stationMedianSpearmanMin.toFixed(2)} |`);
+    reportLines.push(`| full vs ${comparisonFormat} | Median coherence delta | <= ${thresholds.stationMedianCoherenceDeltaMax.toFixed(2)} |`);
+    reportLines.push(`| full vs ${comparisonFormat} | Median style distribution similarity | >= ${thresholds.stationMedianStyleSimilarityMin.toFixed(2)} |`);
+  }
   reportLines.push("");
   reportLines.push("### Per-Run Results");
   reportLines.push("");
-  reportLines.push("| Persona | Run seed | Export pair | Favorite seeds file | Full station file | Tiny station file | Overlap | Jaccard | Rank corr | Coherence full | Coherence tiny | Coherence delta | Style similarity | Pass/Fail |");
+  reportLines.push("| Persona | Run seed | Export pair | Favorite seeds file | Full station file | Portable station file | Overlap | Jaccard | Rank corr | Coherence full | Coherence portable | Coherence delta | Style similarity | Pass/Fail |");
   reportLines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const result of stationRuns) {
-    reportLines.push(`| ${result.personaId} | ${result.runSeed} | full vs tiny | ${path.relative(outputRoot, result.favoriteSeedPath)} | ${path.relative(outputRoot, result.fullStationPath)} | ${path.relative(outputRoot, result.tinyStationPath)} | ${result.overlapRatio.toFixed(4)} | ${result.jaccard.toFixed(4)} | ${result.spearman.toFixed(4)} | ${result.coherenceFull.toFixed(4)} | ${result.coherenceTiny.toFixed(4)} | ${result.coherenceDelta.toFixed(4)} | ${result.styleSimilarity.toFixed(4)} | ${result.pass ? "PASS" : "FAIL"} |`);
+    reportLines.push(`| ${result.personaId} | ${result.runSeed} | full vs ${result.comparisonFormat} | ${path.relative(outputRoot, result.favoriteSeedPath)} | ${path.relative(outputRoot, result.fullStationPath)} | ${path.relative(outputRoot, result.portableStationPath)} | ${result.overlapRatio.toFixed(4)} | ${result.jaccard.toFixed(4)} | ${result.spearman.toFixed(4)} | ${result.coherenceFull.toFixed(4)} | ${result.coherencePortable.toFixed(4)} | ${result.coherenceDelta.toFixed(4)} | ${result.styleSimilarity.toFixed(4)} | ${result.pass ? "PASS" : "FAIL"} |`);
   }
   reportLines.push("");
   reportLines.push("### Material Divergences");
@@ -1076,7 +1126,7 @@ async function buildReport(
   reportLines.push("| Persona | Run seed | Divergence type | Evidence |");
   reportLines.push("| --- | --- | --- | --- |");
   for (const result of stationRuns.filter((entry) => !entry.pass)) {
-    reportLines.push(`| ${result.personaId} | ${result.runSeed} | station equivalence below threshold | overlap=${result.overlapRatio.toFixed(4)}, jaccard=${result.jaccard.toFixed(4)}, style=${result.styleSimilarity.toFixed(4)} |`);
+    reportLines.push(`| ${result.personaId} | ${result.runSeed} | full vs ${result.comparisonFormat} station equivalence below threshold | overlap=${result.overlapRatio.toFixed(4)}, jaccard=${result.jaccard.toFixed(4)}, style=${result.styleSimilarity.toFixed(4)} |`);
   }
   if (stationRuns.every((entry) => entry.pass)) {
     reportLines.push("| n/a | n/a | none | all per-run station checks passed |\n");
@@ -1086,20 +1136,15 @@ async function buildReport(
   reportLines.push("");
   reportLines.push("Cross-persona rows pass when tiny stays within the configured divergence delta of the authoritative full baseline. Baseline persona-collapse risks are surfaced below as material warnings and do not fail export-equivalence on their own.");
   reportLines.push("");
-  reportLines.push("### Full Export");
-  reportLines.push("");
-  reportLines.push("| Persona A | Persona B | Median overlap | Worst overlap | Median rank corr | Pass/Fail |");
-  reportLines.push("| --- | --- | --- | --- | --- | --- |");
-  for (const summary of divergenceSummaries.filter((entry) => entry.exportFormat === "full")) {
-    reportLines.push(`| ${summary.personaA} | ${summary.personaB} | ${summary.medianOverlap.toFixed(4)} | ${summary.worstOverlap.toFixed(4)} | ${summary.medianSpearman.toFixed(4)} | ${summary.pass ? "PASS" : "FAIL"} |`);
-  }
-  reportLines.push("");
-  reportLines.push("### Tiny Export");
-  reportLines.push("");
-  reportLines.push("| Persona A | Persona B | Median overlap | Worst overlap | Median rank corr | Pass/Fail |");
-  reportLines.push("| --- | --- | --- | --- | --- | --- |");
-  for (const summary of divergenceSummaries.filter((entry) => entry.exportFormat === "tiny")) {
-    reportLines.push(`| ${summary.personaA} | ${summary.personaB} | ${summary.medianOverlap.toFixed(4)} | ${summary.worstOverlap.toFixed(4)} | ${summary.medianSpearman.toFixed(4)} | ${summary.pass ? "PASS" : "FAIL"} |`);
+  for (const exportFormat of ["full", "lite", "tiny"] as const) {
+    reportLines.push(`### ${exportFormat[0]!.toUpperCase()}${exportFormat.slice(1)} Export`);
+    reportLines.push("");
+    reportLines.push("| Persona A | Persona B | Median overlap | Worst overlap | Median rank corr | Pass/Fail |");
+    reportLines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const summary of divergenceSummaries.filter((entry) => entry.exportFormat === exportFormat)) {
+      reportLines.push(`| ${summary.personaA} | ${summary.personaB} | ${summary.medianOverlap.toFixed(4)} | ${summary.worstOverlap.toFixed(4)} | ${summary.medianSpearman.toFixed(4)} | ${summary.pass ? "PASS" : "FAIL"} |`);
+    }
+    reportLines.push("");
   }
   reportLines.push("");
   reportLines.push("### Collapse Risks");
@@ -1119,14 +1164,16 @@ async function buildReport(
   reportLines.push("");
   reportLines.push("| Cohort | Seed count | Median top-10 overlap | Worst top-10 overlap | Median top-20 overlap | Worst top-20 overlap | Median top-50 overlap | Median rank corr | Pass/Fail |");
   reportLines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
-  reportLines.push(`| full vs tiny | ${seedSummary.seedCount} | ${seedSummary.medianTop10Overlap.toFixed(4)} | ${seedSummary.worstTop10Overlap.toFixed(4)} | ${seedSummary.medianTop20Overlap.toFixed(4)} | ${seedSummary.worstTop20Overlap.toFixed(4)} | ${seedSummary.medianTop50Overlap.toFixed(4)} | ${seedSummary.medianRankCorrelation.toFixed(4)} | ${seedSummary.pass ? "PASS" : "FAIL"} |`);
+  for (const summary of seedSummaries) {
+    reportLines.push(`| full vs ${summary.comparisonFormat} | ${summary.seedCount} | ${summary.medianTop10Overlap.toFixed(4)} | ${summary.worstTop10Overlap.toFixed(4)} | ${summary.medianTop20Overlap.toFixed(4)} | ${summary.worstTop20Overlap.toFixed(4)} | ${summary.medianTop50Overlap.toFixed(4)} | ${summary.medianRankCorrelation.toFixed(4)} | ${summary.pass ? "PASS" : "FAIL"} |`);
+  }
   reportLines.push("");
   reportLines.push("## Seed-Song Detailed Results");
   reportLines.push("");
-  reportLines.push("| Seed track | Full results file | Tiny results file | Top-10 overlap | Top-20 overlap | Top-50 overlap | Top-10 Jaccard | Top-20 Jaccard | Rank corr | Missing from tiny | Missing from full | Pass/Fail |");
+  reportLines.push("| Seed track | Export pair | Full results file | Portable results file | Top-10 overlap | Top-20 overlap | Top-50 overlap | Top-10 Jaccard | Top-20 Jaccard | Rank corr | Missing from portable | Missing from full | Pass/Fail |");
   reportLines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const result of seedMetrics) {
-    reportLines.push(`| ${result.seedTrackId} | ${path.relative(outputRoot, result.fullResultsPath)} | ${path.relative(outputRoot, result.tinyResultsPath)} | ${result.top10Overlap.toFixed(4)} | ${result.top20Overlap.toFixed(4)} | ${result.top50Overlap.toFixed(4)} | ${result.top10Jaccard.toFixed(4)} | ${result.top20Jaccard.toFixed(4)} | ${result.rankCorrelation.toFixed(4)} | ${result.missingFromTinyTop20.slice(0, 5).join(", ")} | ${result.missingFromFullTop20.slice(0, 5).join(", ")} | ${result.pass ? "PASS" : "FAIL"} |`);
+    reportLines.push(`| ${result.seedTrackId} | full vs ${result.comparisonFormat} | ${path.relative(outputRoot, result.fullResultsPath)} | ${path.relative(outputRoot, result.portableResultsPath)} | ${result.top10Overlap.toFixed(4)} | ${result.top20Overlap.toFixed(4)} | ${result.top50Overlap.toFixed(4)} | ${result.top10Jaccard.toFixed(4)} | ${result.top20Jaccard.toFixed(4)} | ${result.rankCorrelation.toFixed(4)} | ${result.missingFromPortableTop20.slice(0, 5).join(", ")} | ${result.missingFromFullTop20.slice(0, 5).join(", ")} | ${result.pass ? "PASS" : "FAIL"} |`);
   }
   reportLines.push("");
   reportLines.push("## Determinism Proof");
@@ -1134,8 +1181,8 @@ async function buildReport(
   reportLines.push("| Check | First run artifact | Second run artifact | Identical? | Notes |");
   reportLines.push("| --- | --- | --- | --- | --- |");
   reportLines.push(`| Station subset rerun | station-inputs/${PERSONA_IDS[0]}-${PERSONA_RUN_SEEDS[0]}.json | determinism/station-inputs-rerun.json | ${determinism.stationInputsIdentical ? "YES" : "NO"} | deterministic seed favorite selection |`);
-  reportLines.push(`| Station outputs rerun | station-runs/full/${PERSONA_IDS[0]}-${PERSONA_RUN_SEEDS[0]}.json + station-runs/tiny/${PERSONA_IDS[0]}-${PERSONA_RUN_SEEDS[0]}.json | determinism/station-output-rerun.json | ${determinism.stationOutputsIdentical ? "YES" : "NO"} | shared queue builder produced identical ordered stations |`);
-  reportLines.push(`| Seed-song subset rerun | seed-checks/full/seed-001.json + seed-checks/tiny/seed-001.json | determinism/seed-rerun.json | ${determinism.seedSongOutputsIdentical ? "YES" : "NO"} | same seed-song recommendation ordering |`);
+  reportLines.push(`| Station outputs rerun | station-runs/full/${PERSONA_IDS[0]}-${PERSONA_RUN_SEEDS[0]}.json + station-runs/lite/${PERSONA_IDS[0]}-${PERSONA_RUN_SEEDS[0]}.json + station-runs/tiny/${PERSONA_IDS[0]}-${PERSONA_RUN_SEEDS[0]}.json | determinism/station-output-rerun.json | ${determinism.stationOutputsIdentical ? "YES" : "NO"} | shared queue builder produced identical ordered stations for all audited formats |`);
+  reportLines.push(`| Seed-song subset rerun | seed-checks/full/seed-001.json + seed-checks/lite/seed-001.json + seed-checks/tiny/seed-001.json | determinism/seed-rerun.json | ${determinism.seedSongOutputsIdentical ? "YES" : "NO"} | same seed-song recommendation ordering for all audited formats |`);
   reportLines.push(`| Final verdict stability | report.md verdict | determinism/verdict-rerun.json | ${determinism.verdictStable ? "YES" : "NO"} | same pass/fail outcomes on rerun subset |`);
   reportLines.push("");
   reportLines.push("## CI/Local Run Guidance");
@@ -1155,7 +1202,7 @@ async function buildReport(
   reportLines.push("### Environment Notes");
   reportLines.push("");
   reportLines.push("- Bun version: 1.3.1+");
-  reportLines.push(`- Expected runtime: local full audit is heavier because it runs ${stationRuns.length} station builds plus ${seedMetrics.length} seed-song checks`);
+  reportLines.push(`- Expected runtime: local full audit is heavier because it runs ${stationRuns.length + PERSONA_IDS.length * (options.personaRuns ?? DEFAULT_PERSONA_RUNS)} station builds plus ${seedMetrics.length} seed-song checks`);
   reportLines.push("- Artifact size expectations: hosted sqlite is hundreds of MB, lite/tiny artifacts are much smaller, report artifacts remain in tmp/");
   reportLines.push(`- Prebuilt exports required?: no, but release mode assumes downloadable prebuilt exports from ${options.releaseRepo ?? DEFAULT_RELEASE_REPO}`);
   reportLines.push("- Reduced CI mode differences: use explicit smaller persona-run and seed-song-count values while keeping identical logic and deterministic seeding");
@@ -1163,11 +1210,11 @@ async function buildReport(
   reportLines.push("## Verdict");
   reportLines.push("");
   reportLines.push(`- Persona station equivalence: ${stationSummaries.every((summary) => summary.pass) ? "PASS" : "FAIL"}`);
-  reportLines.push(`- Seed-song similarity equivalence: ${seedSummary.pass ? "PASS" : "FAIL"}`);
-  reportLines.push(`- Material persona divergences: ${stationRuns.filter((result) => !result.pass).map((result) => `${result.personaId}@${result.runSeed}`).join(", ") || "none"}`);
-  reportLines.push(`- Material seed-song divergences: ${seedMetrics.filter((result) => !result.pass).slice(0, 8).map((result) => result.seedTrackId).join(", ") || "none"}`);
+  reportLines.push(`- Seed-song similarity equivalence: ${seedSummaries.every((summary) => summary.pass) ? "PASS" : "FAIL"}`);
+  reportLines.push(`- Material persona divergences: ${stationRuns.filter((result) => !result.pass).map((result) => `${result.comparisonFormat}:${result.personaId}@${result.runSeed}`).join(", ") || "none"}`);
+  reportLines.push(`- Material seed-song divergences: ${seedMetrics.filter((result) => !result.pass).slice(0, 8).map((result) => `${result.comparisonFormat}:${result.seedTrackId}`).join(", ") || "none"}`);
   reportLines.push(`- Repeatable enough for CI enforcement: ${determinism.stationInputsIdentical && determinism.stationOutputsIdentical && determinism.seedSongOutputsIdentical ? "YES" : "NO"}`);
-  reportLines.push(`- Final recommendation: ${(stationSummaries.every((summary) => summary.pass) && seedSummary.pass) ? "tiny is equivalent enough for the audited surfaces" : "tiny is not yet equivalent enough for all audited surfaces; use the report JSON to inspect the failing personas and seed cohorts"}`);
+  reportLines.push(`- Final recommendation: ${(stationSummaries.every((summary) => summary.pass) && seedSummaries.every((summary) => summary.pass)) ? "lite and tiny are equivalent enough to the authoritative full export for the audited surfaces" : "one or more portable formats are not yet equivalent enough for all audited surfaces; use the report JSON to inspect the failing personas and seed cohorts"}`);
   reportLines.push("");
   return reportLines.join("\n");
 }
@@ -1185,8 +1232,10 @@ async function main(): Promise<void> {
   const outputRoot = path.resolve(repoRoot, options.outputRoot ?? DEFAULT_OUTPUT_ROOT);
   const stationInputsDir = path.join(outputRoot, "station-inputs");
   const stationRunsFullDir = path.join(outputRoot, "station-runs", "full");
+  const stationRunsLiteDir = path.join(outputRoot, "station-runs", "lite");
   const stationRunsTinyDir = path.join(outputRoot, "station-runs", "tiny");
   const seedChecksFullDir = path.join(outputRoot, "seed-checks", "full");
+  const seedChecksLiteDir = path.join(outputRoot, "seed-checks", "lite");
   const seedChecksTinyDir = path.join(outputRoot, "seed-checks", "tiny");
   const comparisonsDir = path.join(outputRoot, "comparisons");
   const determinismDir = path.join(outputRoot, "determinism");
@@ -1194,8 +1243,10 @@ async function main(): Promise<void> {
     ensureDir(outputRoot),
     ensureDir(stationInputsDir),
     ensureDir(stationRunsFullDir),
+    ensureDir(stationRunsLiteDir),
     ensureDir(stationRunsTinyDir),
     ensureDir(seedChecksFullDir),
+    ensureDir(seedChecksLiteDir),
     ensureDir(seedChecksTinyDir),
     ensureDir(comparisonsDir),
     ensureDir(determinismDir),
@@ -1211,6 +1262,9 @@ async function main(): Promise<void> {
   }
 
   const resolvedInputs = await resolveInputs(options, repoRoot, outputRoot);
+  if (!resolvedInputs.liteExportPath) {
+    throw new Error(`Three-format parity audit requires a sidcorr-lite-1 export. Resolve lite export input before running this audit.`);
+  }
   const stationSize = options.stationSize ?? DEFAULT_STATION_SIZE;
   const minDurationSeconds = options.minDurationSeconds ?? DEFAULT_MIN_DURATION_SECONDS;
   const adventure = options.adventure ?? DEFAULT_ADVENTURE;
@@ -1219,13 +1273,34 @@ async function main(): Promise<void> {
   const corpusStats = buildCorpusStats(fullRows);
   const metadataResolver = await buildMetadataResolver(hvscRoot);
   const fullHandle = await openStationSimilarityDataset(resolvedInputs.fullExportPath, "sqlite", hvscRoot);
+  const liteHandle = await openStationSimilarityDataset(resolvedInputs.liteExportPath, "lite", hvscRoot);
   const tinyHandle = await openStationSimilarityDataset(resolvedInputs.tinyExportPath, "tiny", hvscRoot);
+  const portableDatasets: Array<{
+    format: PortableFormat;
+    handle: Awaited<ReturnType<typeof openStationSimilarityDataset>>;
+    seedChecksDir: string;
+    stationRunsDir: string;
+  }> = [
+    {
+      format: "lite",
+      handle: liteHandle,
+      seedChecksDir: seedChecksLiteDir,
+      stationRunsDir: stationRunsLiteDir,
+    },
+    {
+      format: "tiny",
+      handle: tinyHandle,
+      seedChecksDir: seedChecksTinyDir,
+      stationRunsDir: stationRunsTinyDir,
+    },
+  ];
   const sharedMetadataCache = new Map<string, Promise<{ metadata?: SidFileMetadata; durationMs?: number }>>();
   const stationRunSeeds = Array.from({ length: personaRuns }, (_, index) => PERSONA_RUN_SEEDS[index] ?? (1001 + index));
   const stationRunMetrics: StationRunMetrics[] = [];
   const divergenceRunMetrics: DivergenceRunMetrics[] = [];
-  const stationQueuesByFormat = {
+  const stationQueuesByFormat: Record<"full" | PortableFormat, Map<string, StationTrackDetails[]>> = {
     full: new Map<string, StationTrackDetails[]>(),
+    lite: new Map<string, StationTrackDetails[]>(),
     tiny: new Map<string, StationTrackDetails[]>(),
   };
 
@@ -1253,72 +1328,82 @@ async function main(): Promise<void> {
         buildRuntime(config, repoRoot, runSeed),
         sharedMetadataCache,
       );
-      const tinyQueue = await buildStationQueue(
-        tinyHandle,
-        hvscRoot,
-        ratings,
-        stationSize,
-        adventure,
-        minDurationSeconds,
-        buildRuntime(config, repoRoot, runSeed),
-        sharedMetadataCache,
-      );
 
       const fullStationPath = path.join(stationRunsFullDir, `${personaId}-${runSeed}.json`);
-      const tinyStationPath = path.join(stationRunsTinyDir, `${personaId}-${runSeed}.json`);
       await writeCanonicalJsonFile(fullStationPath, serializeStation(fullQueue), { action: "data:modify" });
-      await writeCanonicalJsonFile(tinyStationPath, serializeStation(tinyQueue), { action: "data:modify" });
 
       stationQueuesByFormat.full.set(`${personaId}:${runSeed}`, fullQueue);
-      stationQueuesByFormat.tiny.set(`${personaId}:${runSeed}`, tinyQueue);
-
       const fullIds = fullQueue.map((track) => track.track_id);
-      const tinyIds = tinyQueue.map((track) => track.track_id);
-      const overlap = overlapAt(fullIds, tinyIds, Math.min(fullIds.length, tinyIds.length, stationSize));
       const fullVectors = [...fullHandle.getTrackVectors(fullIds).values()];
-      const tinyVectors = [...tinyHandle.getTrackVectors(tinyIds).values()];
-      const style = styleSimilarity(styleDistribution(fullHandle, fullIds), styleDistribution(tinyHandle, tinyIds));
-      const yearSpreadFull = yearSpread(fullQueue);
-      const yearSpreadTiny = yearSpread(tinyQueue);
+      const fullStyleDistribution = styleDistribution(fullHandle, fullIds);
+      const fullComposerDiversity = composerDiversity(fullQueue);
+      const fullYearSpread = yearSpread(fullQueue);
+      const fullDuplicateSidRate = duplicateSidRate(fullQueue);
 
-      const metric: StationRunMetrics = {
-        personaId,
-        runSeed,
-        favoriteSeedPath,
-        fullStationPath,
-        tinyStationPath,
-        stationSize: Math.min(fullQueue.length, tinyQueue.length),
-        overlapRatio: round(overlap.ratio),
-        sharedTrackCount: overlap.shared,
-        comparedTrackCount: overlap.compared,
-        jaccard: round(jaccardAt(fullIds, tinyIds, Math.min(fullIds.length, tinyIds.length, stationSize))),
-        spearman: round(spearmanAt(fullIds, tinyIds, Math.min(fullIds.length, tinyIds.length, stationSize))),
-        coherenceFull: round(meanPairwiseSimilarity(fullVectors)),
-        coherenceTiny: round(meanPairwiseSimilarity(tinyVectors)),
-        coherenceDelta: round(Math.abs(meanPairwiseSimilarity(fullVectors) - meanPairwiseSimilarity(tinyVectors))),
-        styleSimilarity: round(style.similarity),
-        styleMaxDelta: round(style.maxDelta),
-        composerDiversityFull: round(composerDiversity(fullQueue)),
-        composerDiversityTiny: round(composerDiversity(tinyQueue)),
-        composerDiversityDelta: round(Math.abs(composerDiversity(fullQueue) - composerDiversity(tinyQueue))),
-        yearSpreadFull: yearSpreadFull == null ? null : round(yearSpreadFull),
-        yearSpreadTiny: yearSpreadTiny == null ? null : round(yearSpreadTiny),
-        yearSpreadDelta: yearSpreadFull == null || yearSpreadTiny == null ? null : round(Math.abs(yearSpreadFull - yearSpreadTiny)),
-        duplicateSidRateFull: round(duplicateSidRate(fullQueue)),
-        duplicateSidRateTiny: round(duplicateSidRate(tinyQueue)),
-        duplicateSidRateDelta: round(Math.abs(duplicateSidRate(fullQueue) - duplicateSidRate(tinyQueue))),
-        pass: false,
-      };
+      for (const portableDataset of portableDatasets) {
+        const portableQueue = await buildStationQueue(
+          portableDataset.handle,
+          hvscRoot,
+          ratings,
+          stationSize,
+          adventure,
+          minDurationSeconds,
+          buildRuntime(config, repoRoot, runSeed),
+          sharedMetadataCache,
+        );
+        const portableStationPath = path.join(portableDataset.stationRunsDir, `${personaId}-${runSeed}.json`);
+        await writeCanonicalJsonFile(portableStationPath, serializeStation(portableQueue), { action: "data:modify" });
+        stationQueuesByFormat[portableDataset.format].set(`${personaId}:${runSeed}`, portableQueue);
 
-      metric.pass = metric.overlapRatio >= THRESHOLDS.stationWorstOverlapMin
-        && metric.jaccard >= 0.5
-        && metric.spearman >= 0.3
-        && metric.styleSimilarity >= 0.65;
-      stationRunMetrics.push(metric);
+        const portableIds = portableQueue.map((track) => track.track_id);
+        const overlap = overlapAt(fullIds, portableIds, Math.min(fullIds.length, portableIds.length, stationSize));
+        const portableVectors = [...portableDataset.handle.getTrackVectors(portableIds).values()];
+        const style = styleSimilarity(fullStyleDistribution, styleDistribution(portableDataset.handle, portableIds));
+        const portableYearSpread = yearSpread(portableQueue);
+        const portableComposerDiversity = composerDiversity(portableQueue);
+        const portableDuplicateSidRate = duplicateSidRate(portableQueue);
+        const thresholds = COMPARISON_THRESHOLDS[portableDataset.format];
+
+        const metric: StationRunMetrics = {
+          comparisonFormat: portableDataset.format,
+          personaId,
+          runSeed,
+          favoriteSeedPath,
+          fullStationPath,
+          portableStationPath,
+          stationSize: Math.min(fullQueue.length, portableQueue.length),
+          overlapRatio: round(overlap.ratio),
+          sharedTrackCount: overlap.shared,
+          comparedTrackCount: overlap.compared,
+          jaccard: round(jaccardAt(fullIds, portableIds, Math.min(fullIds.length, portableIds.length, stationSize))),
+          spearman: round(spearmanAt(fullIds, portableIds, Math.min(fullIds.length, portableIds.length, stationSize))),
+          coherenceFull: round(meanPairwiseSimilarity(fullVectors)),
+          coherencePortable: round(meanPairwiseSimilarity(portableVectors)),
+          coherenceDelta: round(Math.abs(meanPairwiseSimilarity(fullVectors) - meanPairwiseSimilarity(portableVectors))),
+          styleSimilarity: round(style.similarity),
+          styleMaxDelta: round(style.maxDelta),
+          composerDiversityFull: round(fullComposerDiversity),
+          composerDiversityPortable: round(portableComposerDiversity),
+          composerDiversityDelta: round(Math.abs(fullComposerDiversity - portableComposerDiversity)),
+          yearSpreadFull: fullYearSpread == null ? null : round(fullYearSpread),
+          yearSpreadPortable: portableYearSpread == null ? null : round(portableYearSpread),
+          yearSpreadDelta: fullYearSpread == null || portableYearSpread == null ? null : round(Math.abs(fullYearSpread - portableYearSpread)),
+          duplicateSidRateFull: round(fullDuplicateSidRate),
+          duplicateSidRatePortable: round(portableDuplicateSidRate),
+          duplicateSidRateDelta: round(Math.abs(fullDuplicateSidRate - portableDuplicateSidRate)),
+          pass: false,
+        };
+
+        metric.pass = metric.overlapRatio >= thresholds.stationRunOverlapMin
+          && metric.jaccard >= thresholds.stationRunJaccardMin
+          && metric.spearman >= thresholds.stationRunSpearmanMin
+          && metric.styleSimilarity >= thresholds.stationRunStyleSimilarityMin;
+        stationRunMetrics.push(metric);
+      }
     }
   }
 
-  for (const exportFormat of ["full", "tiny"] as const) {
+  for (const exportFormat of ["full", "lite", "tiny"] as const) {
     for (const runSeed of stationRunSeeds) {
       for (let leftIndex = 0; leftIndex < PERSONA_IDS.length; leftIndex += 1) {
         for (let rightIndex = leftIndex + 1; rightIndex < PERSONA_IDS.length; rightIndex += 1) {
@@ -1359,60 +1444,66 @@ async function main(): Promise<void> {
       seedTrackId: seedRow.track_id,
       limit: 50,
     });
-    const tinyRecommendations = tinyHandle.recommendFromFavorites({
-      favoriteTrackIds: [seedRow.track_id],
-      limit: 50,
-    });
-    const directTinyNeighbors = tinyHandle.getNeighbors(seedRow.track_id, 10);
 
     const fullResultsPath = path.join(seedChecksFullDir, `seed-${String(seedIndex).padStart(3, "0")}.json`);
-    const tinyResultsPath = path.join(seedChecksTinyDir, `seed-${String(seedIndex).padStart(3, "0")}.json`);
     await writeCanonicalJsonFile(fullResultsPath, {
       mode: "recommendFromSeedTrack",
       results: fullRecommendations,
       seedTrackId: seedRow.track_id,
     } satisfies JsonValue, { action: "data:modify" });
-    await writeCanonicalJsonFile(tinyResultsPath, {
-      directNeighborsPreview: directTinyNeighbors,
-      mode: "recommendFromFavorites(single-seed)",
-      note: "Tiny getNeighbors(...) exposes the compact local graph only; recommendFromFavorites(single-seed) is the strongest shipped comparable path for top-50 ordering.",
-      results: tinyRecommendations,
-      seedTrackId: seedRow.track_id,
-    } satisfies JsonValue, { action: "data:modify" });
 
     const fullIds = fullRecommendations.map((result) => result.track_id);
-    const tinyIds = tinyRecommendations.map((result) => result.track_id);
     const top10Full = fullIds.slice(0, 10);
     const top20Full = fullIds.slice(0, 20);
-    const top10Tiny = tinyIds.slice(0, 10);
-    const top20Tiny = tinyIds.slice(0, 20);
-    const result: SeedSongMetrics = {
-      seedTrackId: seedRow.track_id,
-      seedSidPath: seedRow.sid_path,
-      fullResultsPath,
-      tinyResultsPath,
-      tinyMode: "recommendFromFavorites(single-seed)",
-      top10Overlap: round(overlapAt(fullIds, tinyIds, 10).ratio),
-      top20Overlap: round(overlapAt(fullIds, tinyIds, 20).ratio),
-      top50Overlap: round(overlapAt(fullIds, tinyIds, 50).ratio),
-      top10Jaccard: round(jaccardAt(fullIds, tinyIds, 10)),
-      top20Jaccard: round(jaccardAt(fullIds, tinyIds, 20)),
-      top50Jaccard: round(jaccardAt(fullIds, tinyIds, 50)),
-      rankCorrelation: round(spearmanAt(fullIds, tinyIds, 50)),
-      missingFromTinyTop10: top10Full.filter((trackId) => !top10Tiny.includes(trackId)),
-      missingFromFullTop10: top10Tiny.filter((trackId) => !top10Full.includes(trackId)),
-      missingFromTinyTop20: top20Full.filter((trackId) => !top20Tiny.includes(trackId)),
-      missingFromFullTop20: top20Tiny.filter((trackId) => !top20Full.includes(trackId)),
-      pass: false,
-    };
-    result.pass = result.top10Overlap >= THRESHOLDS.seedTop10OverlapMin
-      && result.top20Overlap >= THRESHOLDS.seedTop20OverlapMin;
-    seedSongMetrics.push(result);
+
+    for (const portableDataset of portableDatasets) {
+      const portableRecommendations = portableDataset.handle.recommendFromFavorites({
+        favoriteTrackIds: [seedRow.track_id],
+        limit: 50,
+      });
+      const directPortableNeighbors = portableDataset.handle.getNeighbors(seedRow.track_id, 10);
+      const portableResultsPath = path.join(portableDataset.seedChecksDir, `seed-${String(seedIndex).padStart(3, "0")}.json`);
+      await writeCanonicalJsonFile(portableResultsPath, {
+        directNeighborsPreview: directPortableNeighbors,
+        mode: "recommendFromFavorites(single-seed)",
+        note: `${portableDataset.format} getNeighbors(...) exposes the shipped local graph only; recommendFromFavorites(single-seed) is the strongest shipped comparable path for top-50 ordering.`,
+        results: portableRecommendations,
+        seedTrackId: seedRow.track_id,
+      } satisfies JsonValue, { action: "data:modify" });
+
+      const portableIds = portableRecommendations.map((result) => result.track_id);
+      const top10Portable = portableIds.slice(0, 10);
+      const top20Portable = portableIds.slice(0, 20);
+      const thresholds = COMPARISON_THRESHOLDS[portableDataset.format];
+      const result: SeedSongMetrics = {
+        comparisonFormat: portableDataset.format,
+        seedTrackId: seedRow.track_id,
+        seedSidPath: seedRow.sid_path,
+        fullResultsPath,
+        portableResultsPath,
+        portableMode: "recommendFromFavorites(single-seed)",
+        top10Overlap: round(overlapAt(fullIds, portableIds, 10).ratio),
+        top20Overlap: round(overlapAt(fullIds, portableIds, 20).ratio),
+        top50Overlap: round(overlapAt(fullIds, portableIds, 50).ratio),
+        top10Jaccard: round(jaccardAt(fullIds, portableIds, 10)),
+        top20Jaccard: round(jaccardAt(fullIds, portableIds, 20)),
+        top50Jaccard: round(jaccardAt(fullIds, portableIds, 50)),
+        rankCorrelation: round(spearmanAt(fullIds, portableIds, 50)),
+        missingFromPortableTop10: top10Full.filter((trackId) => !top10Portable.includes(trackId)),
+        missingFromFullTop10: top10Portable.filter((trackId) => !top10Full.includes(trackId)),
+        missingFromPortableTop20: top20Full.filter((trackId) => !top20Portable.includes(trackId)),
+        missingFromFullTop20: top20Portable.filter((trackId) => !top20Full.includes(trackId)),
+        pass: false,
+      };
+      result.pass = result.top10Overlap >= thresholds.seedTop10OverlapMin
+        && result.top20Overlap >= thresholds.seedTop20OverlapMin;
+      seedSongMetrics.push(result);
+    }
   }
 
   const stationSummaries = buildStationPersonaSummary(stationRunMetrics);
   const divergenceSummaries = buildDivergencePairSummaries(divergenceRunMetrics);
-  const seedSummary = summarizeSeedSongResults(seedSongMetrics);
+  const seedSummaries = summarizeSeedSongResults(seedSongMetrics);
 
   const determinismFavorites = await selectSeedFavorites(fullRows, PERSONA_IDS[0]!, stationRunSeeds[0]!, corpusStats, metadataResolver);
   const determinismInputRecord = {
@@ -1433,35 +1524,43 @@ async function main(): Promise<void> {
     buildRuntime(config, repoRoot, stationRunSeeds[0]!),
     sharedMetadataCache,
   );
-  const rerunTinyQueue = await buildStationQueue(
-    tinyHandle,
-    hvscRoot,
-    rerunRatings,
-    stationSize,
-    adventure,
-    minDurationSeconds,
-    buildRuntime(config, repoRoot, stationRunSeeds[0]!),
-    sharedMetadataCache,
-  );
+  const rerunPortableQueues = Object.fromEntries(await Promise.all(portableDatasets.map(async (portableDataset) => {
+    const rerunQueue = await buildStationQueue(
+      portableDataset.handle,
+      hvscRoot,
+      rerunRatings,
+      stationSize,
+      adventure,
+      minDurationSeconds,
+      buildRuntime(config, repoRoot, stationRunSeeds[0]!),
+      sharedMetadataCache,
+    );
+    return [portableDataset.format, rerunQueue];
+  }))) as Record<PortableFormat, StationTrackDetails[]>;
   await writeCanonicalJsonFile(path.join(determinismDir, "station-output-rerun.json"), {
     full: serializeStation(rerunFullQueue),
-    tiny: serializeStation(rerunTinyQueue),
+    lite: serializeStation(rerunPortableQueues.lite),
+    tiny: serializeStation(rerunPortableQueues.tiny),
   } satisfies JsonValue, { action: "data:modify" });
   const firstSeed = seedTrackRows[0]!;
   const rerunFullSeed = recommendFromSeedTrack(resolvedInputs.fullExportPath, { seedTrackId: firstSeed.track_id, limit: 50 });
-  const rerunTinySeed = tinyHandle.recommendFromFavorites({ favoriteTrackIds: [firstSeed.track_id], limit: 50 });
+  const rerunPortableSeeds = Object.fromEntries(portableDatasets.map((portableDataset) => [
+    portableDataset.format,
+    portableDataset.handle.recommendFromFavorites({ favoriteTrackIds: [firstSeed.track_id], limit: 50 }),
+  ])) as Record<PortableFormat, ReturnType<typeof liteHandle.recommendFromFavorites>>;
   await writeCanonicalJsonFile(path.join(determinismDir, "seed-rerun.json"), {
     full: rerunFullSeed,
-    tiny: rerunTinySeed,
+    lite: rerunPortableSeeds.lite,
+    tiny: rerunPortableSeeds.tiny,
   } satisfies JsonValue, { action: "data:modify" });
 
   const determinism: DeterminismProof = {
     stationInputsIdentical: JSON.stringify(JSON.parse(await readFile(path.join(stationInputsDir, `${PERSONA_IDS[0]}-${stationRunSeeds[0]}.json`), "utf8")))
       === JSON.stringify(JSON.parse(stringifyDeterministic(determinismInputRecord, 2))),
     stationOutputsIdentical: JSON.stringify(serializeStation(rerunFullQueue)) === JSON.stringify(serializeStation(stationQueuesByFormat.full.get(`${PERSONA_IDS[0]}:${stationRunSeeds[0]}`) ?? []))
-      && JSON.stringify(serializeStation(rerunTinyQueue)) === JSON.stringify(serializeStation(stationQueuesByFormat.tiny.get(`${PERSONA_IDS[0]}:${stationRunSeeds[0]}`) ?? [])),
+      && portableDatasets.every((portableDataset) => JSON.stringify(serializeStation(rerunPortableQueues[portableDataset.format])) === JSON.stringify(serializeStation(stationQueuesByFormat[portableDataset.format].get(`${PERSONA_IDS[0]}:${stationRunSeeds[0]}`) ?? []))),
     seedSongOutputsIdentical: JSON.stringify(rerunFullSeed) === JSON.stringify(recommendFromSeedTrack(resolvedInputs.fullExportPath, { seedTrackId: firstSeed.track_id, limit: 50 }))
-      && JSON.stringify(rerunTinySeed) === JSON.stringify(tinyHandle.recommendFromFavorites({ favoriteTrackIds: [firstSeed.track_id], limit: 50 })),
+      && portableDatasets.every((portableDataset) => JSON.stringify(rerunPortableSeeds[portableDataset.format]) === JSON.stringify(portableDataset.handle.recommendFromFavorites({ favoriteTrackIds: [firstSeed.track_id], limit: 50 }))),
     verdictStable: false,
   };
 
@@ -1474,12 +1573,12 @@ async function main(): Promise<void> {
   await writeCanonicalJsonFile(path.join(comparisonsDir, "station-equivalence.json"), {
     personaSummaries: stationSummaries,
     runs: stationRunMetrics,
-    thresholds: THRESHOLDS,
+    thresholds: COMPARISON_THRESHOLDS,
   } satisfies JsonValue, { action: "data:modify" });
   await writeCanonicalJsonFile(path.join(comparisonsDir, "seed-song-equivalence.json"), {
-    summary: seedSummary,
+    summaries: seedSummaries,
     seeds: seedSongMetrics,
-    thresholds: THRESHOLDS,
+    thresholds: COMPARISON_THRESHOLDS,
   } satisfies JsonValue, { action: "data:modify" });
   await writeCanonicalJsonFile(path.join(comparisonsDir, "persona-divergence.json"), {
     pairSummaries: divergenceSummaries,
@@ -1498,14 +1597,17 @@ async function main(): Promise<void> {
     exportSource: resolvedInputs.exportSource,
     fullExportPath: resolvedInputs.fullExportPath,
     hvscRoot,
-    liteExportPath: resolvedInputs.liteExportPath ?? null,
+    liteExportPath: resolvedInputs.liteExportPath,
     minDurationSeconds,
     outputRoot,
     personaRuns,
     release: resolvedInputs.release ?? null,
     seedSongCount,
     stationSize,
-    thresholds: THRESHOLDS,
+    thresholds: {
+      comparison: COMPARISON_THRESHOLDS,
+      divergence: THRESHOLDS,
+    },
     tinyExportPath: resolvedInputs.tinyExportPath,
   } satisfies JsonValue, { action: "data:modify" });
 
@@ -1517,7 +1619,7 @@ async function main(): Promise<void> {
     stationSummaries,
     stationRunMetrics,
     divergenceSummaries,
-    seedSummary,
+    seedSummaries,
     seedSongMetrics,
     determinism,
   );
@@ -1530,15 +1632,15 @@ async function main(): Promise<void> {
     path.join(comparisonsDir, "seed-song-equivalence.json"),
     path.join(comparisonsDir, "persona-divergence.json"),
     path.join(outputRoot, "report.md"),
-    ...stationRunMetrics.flatMap((result) => [result.favoriteSeedPath, result.fullStationPath, result.tinyStationPath]),
-    ...seedSongMetrics.flatMap((result) => [result.fullResultsPath, result.tinyResultsPath]),
+    ...stationRunMetrics.flatMap((result) => [result.favoriteSeedPath, result.fullStationPath, result.portableStationPath]),
+    ...seedSongMetrics.flatMap((result) => [result.fullResultsPath, result.portableResultsPath]),
   ];
   await writeChecksums(checksumTargets, path.join(outputRoot, "SHA256SUMS"));
 
   if (!options.ci) {
     process.stdout.write(`${outputRoot}\n`);
   }
-  if (options.strict && (!stationSummaries.every((summary) => summary.pass) || !seedSummary.pass || divergenceSummaries.some((summary) => !summary.pass))) {
+  if (options.strict && (!stationSummaries.every((summary) => summary.pass) || !seedSummaries.every((summary) => summary.pass) || divergenceSummaries.some((summary) => !summary.pass))) {
     throw new Error(`Equivalence thresholds failed. See ${path.join(outputRoot, "report.md")}`);
   }
 }

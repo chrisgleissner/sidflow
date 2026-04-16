@@ -58,8 +58,19 @@
   Artifact requirements:
   - Validation logs and test outputs referenced from `WORKLOG.md`.
 
+8. [IN_PROGRESS] P34-T08 Audit 2: prove or repair full/lite/tiny recommendation parity on the release-complete artifact set.
+  Acceptance criteria:
+  - Local and published manifests are compared by schema, counts, and lineage, and the authoritative audit trio is recorded before parity conclusions are drawn.
+  - The existing parity harnesses and focused tests are run against the real station-building and seed-song recommendation surfaces used by the runtime.
+  - Any material divergence is localized to the first failing step with file-backed evidence before code changes are made.
+  - If a bug exists, the smallest correct fix lands with deterministic regression coverage and updated docs/report artifacts under `tmp/`.
+  Artifact requirements:
+  - Deterministic audit artifacts and a Markdown release-readiness summary under `tmp/lite-export-check/`.
+
 ### Progress
 
+- 2026-04-16: Re-opened the repo instructions, current Phase 34 state, the similarity-export specs, the existing audit prompt, and the shared runtime/test surfaces for a new release-backed parity pass driven by `doc/audits/audit2/prompt.md`. The prompt's core constraint is valid against the current tree: local `data/exports/` lite/tiny artifacts are partial validation bundles, so the next audit pass should prove or disprove parity against one coherent full/lite/tiny trio from the published `sidflow-data` release unless fresh local artifacts with matching counts are produced later for focused debugging.
+- 2026-04-16: Confirmed the repo already has the right proof surfaces to reuse rather than replace: `scripts/run-tiny-export-equivalence-audit.ts`, `scripts/run-similarity-convergence.ts`, `packages/sidflow-play/test/station-portable-equivalence.test.ts`, and `packages/sidflow-common/test/similarity-export.test.ts`. Next step is to verify the actual manifest lineage and run those surfaces against the selected release-backed assets to determine whether any real full/lite/tiny divergence remains.
 - 2026-04-08: Read the required docs and live code paths in the requested order. Confirmed the repo already has local sqlite->lite conversion, direct sqlite->tiny conversion, release publication for sqlite/lite/tiny, and runtime loading for sqlite/lite/tiny, but it does not yet provide the requested convergence workflow.
 - 2026-04-08: Identified the concrete remaining gaps. The current tiny builder still consumes SQLite directly instead of lite, there is no dedicated CLI/script that downloads the latest full export release and runs the lite transform through the same code path, and the existing persona validation script is SQLite-only and models different personas instead of validating full-vs-tiny equivalence across the shared styles.
 - 2026-04-08: Confirmed the station CLI already supports local sqlite/lite/tiny bundles and the release-cache path already downloads the latest `sidflow-data` tarball, so the convergence work can build on existing runtime code instead of adding a parallel radio stack.
