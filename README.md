@@ -414,6 +414,7 @@ Journeys live in `performance/journeys/`; outputs in `performance/results/<times
 
 ## Developer Documentation
 
+- **[DeepWiki](https://deepwiki.com/chrisgleissner/sidflow)** - architecture and design
 - **[Technical Reference](doc/technical-reference.md)** - architecture, CLI tools, APIs
 - **[Developer Guide](doc/developer.md)** - setup, testing, contributions
 
