@@ -1,5 +1,18 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 36 - SIDFlow And SIDFlow-Data Repository Orientation
+
+1. [DONE] Make the two repository home pages complementary and prominently cross-linked.
+  Acceptance criteria:
+  - SIDFlow clearly distinguishes its tooling/runtime role from the published HVSC data role of `sidflow-data`.
+  - `sidflow-data` clearly routes generation/runtime work to SIDFlow and external data consumers to its release assets.
+  - The data README explains full, lite, and tiny selection and links to the formal specifications without duplicating generation instructions.
+
+### Progress
+
+- 2026-07-24: Inspected both `main` README files and the live sidflow-data release asset names. Drafted complementary home-page documentation: SIDFlow is the generator/runtime and sidflow-data releases are the verified precomputed HVSC results; format details live in sidflow-data while the normative specs remain in SIDFlow.
+- 2026-07-24: Published the sidflow-data README on `main` with release-asset selection, external-consumer guidance, and formal specification links. Updated the SIDFlow README to route readers between local tooling and published HVSC results without duplicating the data-repository guidance. Documentation-only validation uses `git diff --check` and live link/asset inspection under the explicit documentation-only test exception.
+
 ## Phase 35 - PR 94 Merge Readiness And Deployment Removal
 
 1. [DONE] P35-T01 Stabilize the PR 94 coverage test gate and verify the Bun WASM failure isolation.

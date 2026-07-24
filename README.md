@@ -13,6 +13,20 @@ A seamless stream of similar Commodore 64 SID songs.
 
 SIDFlow analyses your Commodore 64 SID music collection. It extracts audio features, learns your taste, and generates a continuous stream of similar tracks.
 
+## SIDFlow tooling and published HVSC analysis data
+
+SIDFlow is the **tooling and runtime**: use it to analyse your own SID collection, build similarity exports, run a station, or integrate playback and recommendations into an application.
+
+For ready-to-use analysis of the public High Voltage SID Collection (HVSC), download the release assets from **[sidflow-data](https://github.com/chrisgleissner/sidflow-data)**. That companion repository is the distribution point for checked manifests and checksums, so another project can consume SIDFlow's HVSC similarity results without first rendering and classifying the collection.
+
+The [sidflow-data README](https://github.com/chrisgleissner/sidflow-data#readme) explains which published bundle to choose and how an external consumer should obtain and verify it. The formal formats are specified here:
+
+- [full SQLite export](doc/similarity-export.md)
+- [lite portable export](doc/similarity-export-lite.md)
+- [tiny portable export](doc/similarity-export-tiny.md)
+
+> Use this repository when you need to **generate, inspect, or serve** similarity data. Use [sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases) when you need the **published HVSC results** in another project.
+
 > [!NOTE]
 > This project is under active development. Some documented features may not yet be fully functional. 
 

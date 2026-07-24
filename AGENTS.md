@@ -39,6 +39,7 @@ If you are an LLM agent working in this repo:
    - Verify 100% pass rate on ALL three runs
    - If ANY test fails on ANY run: STOP and fix it
    - Only commit when you have 3 consecutive clean runs
+   - **Documentation-only exception:** for changes limited to Markdown/text documentation (including `README.md`, `PLANS.md`, and changelogs) that do not alter code, scripts, configuration, workflows, generated artefacts, or test fixtures, run `git diff --check` and verify the edited links/content instead. Do not run the full test suite solely for those changes.
 
 5. **WHEN IN DOUBT, RUN THE TESTS**:
    - After every code change: run tests
@@ -51,6 +52,7 @@ If you are an LLM agent working in this repo:
    - The pasted output must show `0 fail` on all 3 runs
    - If you cannot paste this output, YOU ARE NOT DONE
    - Do not summarize or paraphrase - paste the actual terminal output
+   - This attestation does not apply to the documentation-only exception above; report the documentation validation performed instead.
 
 ### 🚨 COMMON RATIONALIZATION TRAPS — DO NOT FALL FOR THESE 🚨
 
@@ -196,4 +198,3 @@ When you are unsure how to proceed, prefer this sequence:
 3. Implement the smallest coherent slice that moves the task forward.
 4. Run targeted validation (build/tests/scripts) and record results in `PLANS.md`.
 5. Summarize changes, decisions, and remaining work in `PLANS.md` and in your final user‑facing summary.
-
