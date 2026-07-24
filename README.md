@@ -10,22 +10,7 @@ A seamless stream of similar Commodore 64 SID songs.
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-forestgreen)](doc/developer.md)
 
-
 SIDFlow analyses your Commodore 64 SID music collection. It extracts audio features, learns your taste, and generates a continuous stream of similar tracks.
-
-## HVSC Analysis Data
-
-SIDFlow is the **tooling and runtime**: use it to analyse your own SID collection, build similarity exports, run a station, or integrate playback and recommendations into an application.
-
-For ready-to-use analysis of the public High Voltage SID Collection (HVSC), download the release assets from **[sidflow-data](https://github.com/chrisgleissner/sidflow-data)**. That companion repository is the distribution point for checked manifests and checksums, so another project can consume SIDFlow's HVSC similarity results without first rendering and classifying the collection.
-
-The [sidflow-data README](https://github.com/chrisgleissner/sidflow-data#readme) explains which published bundle to choose and how an external consumer should obtain and verify it. The formal formats are specified here:
-
-- [full SQLite export](doc/similarity-export.md)
-- [lite portable export](doc/similarity-export-lite.md)
-- [tiny portable export](doc/similarity-export-tiny.md)
-
-> Use this repository when you need to **generate, inspect, or serve** similarity data. Use [sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases) when you need the **published HVSC results** in another project.
 
 > [!NOTE]
 > This project is under active development. Some documented features may not yet be fully functional. 
@@ -80,6 +65,22 @@ Alternative locations (checked in order):
 2. `$SIDFLOW_ROOT/workspace/roms`
 3. `workspace/roms/` ← **recommended default**
 4. `public/roms/`
+
+---
+
+## HVSC Analysis Data
+
+SIDFlow is the **tooling and runtime**: use it to analyse your own SID collection, build similarity exports, run a station, or integrate playback and recommendations into an application.
+
+For ready-to-use analysis of the public High Voltage SID Collection (HVSC), download the release assets from **[sidflow-data](https://github.com/chrisgleissner/sidflow-data)**. That companion repository is the distribution point for checked manifests and checksums, so another project can consume SIDFlow's HVSC similarity results without first rendering and classifying the collection.
+
+The [sidflow-data README](https://github.com/chrisgleissner/sidflow-data#readme) explains which published bundle to choose and how an external consumer should obtain and verify it. The formal formats are specified here:
+
+- [full SQLite export](doc/similarity-export.md)
+- [lite portable export](doc/similarity-export-lite.md)
+- [tiny portable export](doc/similarity-export-tiny.md)
+
+> Use this repository when you need to **generate, inspect, or serve** similarity data. Use [sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases) when you need the **published HVSC results** in another project.
 
 ---
 
