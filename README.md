@@ -13,7 +13,7 @@ A seamless stream of similar Commodore 64 SID songs.
 
 SIDFlow analyses your Commodore 64 SID music collection. It extracts audio features, learns your taste, and generates a continuous stream of similar tracks.
 
-## SIDFlow tooling and published HVSC analysis data
+## HVSC Analysis Data
 
 SIDFlow is the **tooling and runtime**: use it to analyse your own SID collection, build similarity exports, run a station, or integrate playback and recommendations into an application.
 
