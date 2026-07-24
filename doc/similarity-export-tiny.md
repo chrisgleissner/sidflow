@@ -1,7 +1,8 @@
 # Similarity Export Tiny Specification
 
 Schema ID: sidcorr-tiny-1
-Status: Draft (normative)
+Status: Normative
+Current binary_format_version: 2 (readers MUST also accept version 1; see §5.4)
 
 ---
 
@@ -29,10 +30,12 @@ Recommended filenames:
 - uncompressed file: `sidcorr-<corpus>-<profile>-sidcorr-tiny-1.sidcorr`
 - optional compressed variant: `sidcorr-<corpus>-<profile>-sidcorr-tiny-1.sidcorr.gz`
 
-The on-disk format is byte-aligned. The only compact fields are:
+The on-disk format is byte-aligned. The compact fields are:
 
 - 48-bit file identities
-- 24-bit neighbor entries
+- 24-bit neighbor target ordinals
+- an 8-bit quantized similarity byte per neighbor edge (binary_format_version 2)
+- a 16-bit packed compact-rating word per track (binary_format_version 2)
 
 Consumers MAY widen those fields in RAM after loading.
 
@@ -162,7 +165,7 @@ Then resolve any track ordinal `t` to:
 | Offset | Field | Type | Notes |
 |--|--|--|--|
 | 0 | magic | 8 bytes | ASCII `SIDTINY1` |
-| 8 | version | u16 | MUST be `1` |
+| 8 | binary_format_version | u16 | current value `2`; readers MUST accept `1` and `2` (see §5.4) |
 | 10 | header_bytes | u16 | MUST be `64` |
 | 12 | track_count | u32 | total subsongs |
 | 16 | file_count | u32 | total SID files |
@@ -173,7 +176,7 @@ Then resolve any track ordinal `t` to:
 | 26 | neighbor_ref_kind | u8 | `1 = absolute_track_ordinal` |
 | 27 | style_mask_width_bytes | u8 | MUST be `2` |
 | 28 | style_table_version | u16 | current value `1` |
-| 30 | graph_flags | u16 | bit `0` MUST be `1` for acyclic exported edges; other bits MUST be `0` |
+| 30 | graph_flags | u16 | bit `0` = acyclic exported edges (always `1`). The current generator writes `0x0007`; consumers MUST ignore bits they do not recognize |
 | 32 | style_table_offset | u32 | byte offset |
 | 36 | file_identity_offset | u32 | byte offset |
 | 40 | file_track_count_offset | u32 | byte offset |
@@ -183,12 +186,15 @@ Then resolve any track ordinal `t` to:
 | 56 | file_identity_bytes | u32 | section length |
 | 60 | neighbors_bytes | u32 | section length |
 
-Derived lengths:
+The section-length fields at offsets 52/56/60 are authoritative. Remaining
+section lengths are derived:
 
 ```text
 file_track_count_bytes = file_count * 1
-style_mask_bytes = track_count * 2
-neighbors_bytes = track_count * 3 * 3
+style_mask_bytes       = track_count * 2
+rating_table_bytes     = track_count * 2      # binary_format_version 2 only (see §5.4, §9.1)
+neighbors_bytes        = track_count * 3 * 3  # binary_format_version 1 (u24 target only)
+neighbors_bytes        = track_count * 3 * 4  # binary_format_version 2 (u24 target + u8 similarity)
 ```
 
 ## 5.3 Section Order
@@ -199,9 +205,38 @@ Sections MUST appear in this order:
 2. `FILE_IDENTITY_TABLE`
 3. `FILE_TRACK_COUNT_TABLE`
 4. `STYLE_MASK_TABLE`
-5. `NEIGHBOR_TABLE`
+5. `RATING_TABLE` (binary_format_version 2 only, §9.1)
+6. `NEIGHBOR_TABLE`
 
-Sections MUST be tightly packed.
+Sections MUST be tightly packed. In binary_format_version 1 the `RATING_TABLE`
+is absent and `NEIGHBOR_TABLE` follows `STYLE_MASK_TABLE` directly.
+
+## 5.4 Binary Format Versions
+
+`binary_format_version` (header offset 8) selects the neighbor-record width and
+whether the optional RATING_TABLE is present. Both versions share the header,
+`STYLE_TABLE`, `FILE_IDENTITY_TABLE`, `FILE_TRACK_COUNT_TABLE`, and
+`STYLE_MASK_TABLE` layouts.
+
+| Aspect | version 1 | version 2 (current) |
+|--|--|--|
+| Neighbor record | `u24` target only (3 bytes) | `u24` target + `u8` quantized similarity (4 bytes) |
+| `neighbors_bytes` | `track_count * 3 * 3` | `track_count * 3 * 4` |
+| RATING_TABLE (§9.1) | absent | present, immediately before `NEIGHBOR_TABLE` |
+
+Because the header stores every section offset and the three section-length
+fields, a reader determines the encoding without a separate feature flag:
+
+```text
+style_mask_bytes   = track_count * 2
+rating_present      = (version >= 2) AND
+                      (neighbors_offset == style_mask_offset + style_mask_bytes + track_count * 2)
+neighbor_similarity = (version >= 2) AND
+                      (neighbors_bytes == track_count * 3 * 4)
+```
+
+Version 1 exports remain valid; version 2 is a strict superset that adds the
+per-edge similarity byte and the per-track compact-rating word.
 
 ---
 
@@ -250,14 +285,17 @@ Consumers MUST treat `STYLE_TABLE` as authoritative for labels, ordering, kind, 
 
 # 7. FILE_IDENTITY_TABLE
 
-## 7.1 Section Header
+## 7.1 No Section Mini-Header
 
-| Field | Type | Notes |
-|--|--|--|
-| file_id_kind | u8 | matches header |
-| record_width_bytes | u8 | MUST be `6` |
-| reserved | u16 | MUST be `0` |
-| payload_bytes | u32 | total bytes after this mini-header |
+The current format stores `FILE_IDENTITY_TABLE` as a bare record array with no
+per-section mini-header. `file_id_kind` comes from the file header (offset 24)
+and, in `md5_48` mode, the record width is fixed at 6 bytes. The section spans
+exactly `file_identity_bytes` (header offset 56) `= file_count * 6` bytes,
+starting at `file_identity_offset` (header offset 36).
+
+`FILE_TRACK_COUNT_TABLE`, `STYLE_MASK_TABLE`, `RATING_TABLE`, and
+`NEIGHBOR_TABLE` are likewise bare arrays with no mini-header; only
+`STYLE_TABLE` carries an internal section header (§6.1).
 
 ## 7.2 `md5_48` Mode
 
@@ -318,9 +356,46 @@ Rules:
 - bits `>= style_count` MUST be `0`
 - sidcorr-tiny-1 supports at most 16 styles
 
+## 9.1 RATING_TABLE (binary_format_version 2)
+
+binary_format_version 2 stores one packed compact-rating word per track,
+immediately after `STYLE_MASK_TABLE` and before `NEIGHBOR_TABLE`. It is absent
+in binary_format_version 1.
+
+Encoding:
+
+```text
+compactRating[track_count] : u16[]
+```
+
+Each `u16` packs four 4-bit rating nibbles (little-endian bit order):
+
+```text
+energy     = value        & 0x0F
+mood       = (value >> 4)  & 0x0F
+complexity = (value >> 8)  & 0x0F
+preference = (value >> 12) & 0x0F   # 0 means "no preference" (null)
+```
+
+Rules:
+
+- each nibble is clamped to `0..15`
+- a stored `preference` nibble of `0` decodes to `null` (absent), not to rating `0`
+- these are the same compact ratings used to derive the style mask (§11); they are
+  stored so consumers can re-rank or re-derive styles without the SQLite/lite source
+
+## 9.2 Section Detection
+
+A reader locates `RATING_TABLE` purely from header offsets, as described in §5.4:
+when `binary_format_version >= 2` and
+`neighbors_offset == style_mask_offset + track_count * 2 + track_count * 2`,
+the `track_count * 2` bytes preceding `NEIGHBOR_TABLE` are the `RATING_TABLE`.
+
 ---
 
 # 10. NEIGHBOR_TABLE
+
+## 10.1 binary_format_version 1
 
 Encoding:
 
@@ -329,6 +404,29 @@ neighborTarget[track_count][3] : packed u24 triplets
 ```
 
 Each row is exactly 9 bytes.
+
+## 10.2 binary_format_version 2 (current)
+
+Each of the 3 neighbor slots is a 4-byte record — a `u24` target ordinal
+followed by a `u8` quantized similarity — so each row is exactly 12 bytes:
+
+```text
+neighborRecord[track_count][3] : { targetOrdinal: u24, similarityQ8: u8 }
+```
+
+The similarity byte quantizes the cosine similarity in `[-1, 1]`:
+
+```text
+encode(similarity) = clamp(round(((similarity + 1) / 2) * 255), 0, 255)
+decode(byte)       = (byte / 255) * 2 - 1
+```
+
+A reader distinguishes the two layouts from `neighbors_bytes` (§5.4):
+`track_count * 3 * 3` is version-1 (target only); `track_count * 3 * 4` is
+version-2 (target + similarity). The `u24` target and sentinel semantics below
+are identical in both versions.
+
+## 10.3 Shared Rules
 
 Rules:
 
@@ -482,19 +580,24 @@ Current measured corpus:
 - max `song_index`: 256
 - styles: 9
 
-Current sidcorr-tiny-1 size in `md5_48` mode:
+Current sidcorr-tiny-1 size in `md5_48` mode (binary_format_version 2, the
+published full-HVSC bundle):
 
 | Section | Bytes |
 |--|--:|
 | Header | 64 |
-| STYLE_TABLE | 470 |
-| FILE_IDENTITY_TABLE (`md5_48`) | 363,434 |
+| STYLE_TABLE | 942 |
+| FILE_IDENTITY_TABLE (`md5_48`) | 363,426 |
 | FILE_TRACK_COUNT_TABLE | 60,571 |
 | STYLE_MASK_TABLE | 174,146 |
-| NEIGHBOR_TABLE (`3 x u24`) | 783,657 |
-| Total | 1,382,342 |
+| RATING_TABLE | 174,146 |
+| NEIGHBOR_TABLE (`3 x (u24 + u8)`) | 1,044,876 |
+| Total | 1,818,171 |
 
-Total current size: about 1.318 MiB.
+Total current size: about 1.734 MiB. This equals the published bundle's
+`bundle_bytes`. A binary_format_version 1 export of the same corpus omits the
+`RATING_TABLE` and uses 9-byte neighbor rows (`NEIGHBOR_TABLE = 783,657`),
+totalling 1,382,806 bytes.
 
 Comparison:
 
@@ -541,7 +644,8 @@ sidcorr-tiny-1:
 - stores style membership as a deterministic bitmask projection
 - matches files across HVSC revisions by 6-byte MD5 prefix or full path
 - maps tracks through per-file subsong counts rather than per-track identity arrays
-- stores 3 acyclic similarity edges per track as absolute `u24` parent ordinals on disk
+- stores 3 acyclic similarity edges per track as absolute `u24` parent ordinals on disk, each carrying a quantized `u8` similarity byte in binary_format_version 2
+- stores one packed `u16` compact-rating word per track in binary_format_version 2
 - rebuilds reverse reachability once at load time for runtime traversal
 
 This is the authoritative tiny-format specification for the current SIDFlow codebase.
