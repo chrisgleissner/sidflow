@@ -1,5 +1,19 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 37 - CI Fixture Timeout Stability
+
+1. [DONE] P37-T01 Make the similarity-dataset export fixture reliable under the CI Bun version.
+  Acceptance criteria:
+  - Fixture creation avoids Bun's default lifecycle-hook timeout while preserving all export assertions.
+  - Cleanup runs only after fixture creation has completed, so it cannot dereference a missing fixture.
+  - The affected test, build, and three consecutive full unit suites pass before publication.
+  - The pushed `main` workflow completes with all required checks passing.
+
+### Progress
+
+- 2026-07-24: Investigated failed main workflow `30091288032`. Under CI's Bun 1.3.11, two similarity-dataset hooks exceeded Bun's default hook timeout while building the export fixture; the following cleanup then dereferenced the unassigned fixture. Bun 1.3.1's runtime does not support the timeout-overload present in its installed type declarations, so the fixture will be created once at module initialization instead of in a timed lifecycle hook; all three assertions are read-only and retain full coverage.
+- 2026-07-24: Moved fixture creation to module initialization and retained cleanup in `afterAll`, eliminating the timed per-test hook while making the test three times faster. `bun run build` passed and three consecutive full `bun run test` runs passed with `0 fail` in every batch and merged LCOV output. Publication verification is pending the GitHub Actions run triggered by this commit.
+
 ## Phase 36 - SIDFlow And SIDFlow-Data Repository Orientation
 
 1. [DONE] Make the two repository home pages complementary and prominently cross-linked.

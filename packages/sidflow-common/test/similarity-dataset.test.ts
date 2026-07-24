@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -147,17 +147,13 @@ function reachableCount(dataset: SimilarityDataset, seedTrackId: string, depth: 
   return visited.size;
 }
 
+const fixture = await buildFixture();
+
+afterAll(async () => {
+  await rm(fixture.tempRoot, { recursive: true, force: true });
+});
+
 describe("similarity dataset backends", () => {
-  let fixture: FixturePaths;
-
-  beforeEach(async () => {
-    fixture = await buildFixture();
-  });
-
-  afterEach(async () => {
-    await rm(fixture.tempRoot, { recursive: true, force: true });
-  });
-
   test("preserves track identity and ratings across sqlite, lite, and tiny datasets", async () => {
     const sqlite = openSqliteSimilarityDataset(fixture.sqlitePath);
     const lite = await openLiteSimilarityDataset(fixture.litePath);
