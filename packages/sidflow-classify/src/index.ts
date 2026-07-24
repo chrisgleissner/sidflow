@@ -1926,7 +1926,7 @@ export interface GenerateAutoTagsOptions {
   /** Skip songs that are already classified (based on auto-tags.json, not WAV files).
    * This option is ignored if forceRebuild is true. */
   skipAlreadyClassified?: boolean;
-  /** Delete WAV files after classification (for fly.io deployments with limited storage) */
+  /** Delete WAV files after classification to conserve storage. */
   deleteWavAfterClassification?: boolean;
   /**
    * Override path for the detailed per-song lifecycle JSONL log.
@@ -3233,7 +3233,7 @@ export async function generateAutoTags(
     tagFiles.push(autoFilePath);
   }
 
-  // Delete WAV files if requested (for fly.io deployments with limited storage)
+  // Delete WAV files if requested to conserve storage.
   // Uses parallel deletion with concurrency limit for better performance
   let deletedWavCount = 0;
   if (deleteWavAfterClassification && renderedWavFiles.length > 0) {

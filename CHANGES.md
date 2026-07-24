@@ -472,7 +472,7 @@ This changelog is a lightweight summary of releases; it may include some mechani
 ## 0.3.43 (2025-12-02)
 - Refined classify progress counters and data-testid coverage for thread metrics.
 - Clarified feature extraction output visibility and terminology in docs/UI.
-- Updated Fly.io production configuration and admin credential handling.
+- Updated managed-hosting production configuration and admin credential handling.
 - Cleaned README terminology (HVSC → SID Browser) and deployment notes.
 
 ## 0.3.42 (2025-11-30)
@@ -485,7 +485,7 @@ This changelog is a lightweight summary of releases; it may include some mechani
 - Large test-speed improvements (phase transitions, accessibility waits, higher worker counts).
 - Pause/resume playback sync fixes; inline rendering heartbeat and phase visibility.
 - HVSC extraction reliability: p7zip-full support and richer error logging.
-- Fly.io deployment hardening: health checks, dynamic app selection, admin password workflow.
+- Managed-hosting deployment hardening: health checks, dynamic app selection, admin password workflow.
 
 ## 0.3.39–0.3.35 (2025-11-27–28)
 - Classification pipeline tightening: inline render per song, Essentia-first defaults, thread state verification.

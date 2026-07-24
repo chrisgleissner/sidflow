@@ -162,7 +162,7 @@ RUN set -eux; \
 
 # Use the node user (1000:1000) from the base image for security
 # This is the standard approach for Node.js containers and works across all platforms
-# (Fly.io, Railway, Kubernetes, Docker Compose) without permission issues
+# (Railway, Kubernetes, Docker Compose) without permission issues
 
 WORKDIR /sidflow/app
 
@@ -183,7 +183,7 @@ COPY --from=builder --chown=node:node /build/node_modules /sidflow/app/node_modu
 
 # Security hardening and directory setup (consolidated for layer efficiency)
 # Pre-create writable workspace/data directories for node so health checks pass without mounts
-# Fly.io replaces them with symlinks at runtime when /mnt/data is present
+# An external volume can be linked at runtime when /mnt/data is present
 RUN set -eux; \
     echo "[security] Starting hardening and setup..."; \
     test -f /sidflow/app/packages/sidflow-web/server.js || { echo "[security] ERROR: server.js not found"; exit 1; }; \

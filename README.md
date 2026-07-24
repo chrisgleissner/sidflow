@@ -221,18 +221,6 @@ Web UI at **<http://localhost:3000>**, admin at `/admin`.
 
 Production startup rejects default credentials, derived secrets, or a missing `JWT_SECRET`. Full Docker instructions, health checks, and smoke-testing are in [doc/deployment.md](doc/deployment.md).
 
-### Fly.io
-
-Fly deployment is supported as a single stateful machine:
-
-```bash
-curl -L https://fly.io/install.sh | sh          # install flyctl
-./scripts/deploy/fly-deploy.sh -e stg            # staging
-./scripts/deploy/fly-deploy.sh -e prd -t <tag>   # production
-```
-
-See [Deployment Guide](doc/deployment.md) for details.
-
 ---
 
 ## Portable Similarity Export
@@ -406,7 +394,7 @@ bun run perf:run -- --env local --base-url http://localhost:3000 --results perfo
 |--------|-------|
 | `--profile smoke\|reduced\|standard\|scale` | Defaults: local→smoke, CI→reduced |
 | `--profile scale` | Hundreds-of-users load; remote-only guard |
-| `--env remote --enable-remote` | Fly.io / Raspberry Pi targets |
+| `--env remote --enable-remote` | Explicitly enabled remote targets |
 
 Journeys live in `performance/journeys/`; outputs in `performance/results/<timestamp>/`. CI uses `--profile reduced` with k6-only for stability.
 

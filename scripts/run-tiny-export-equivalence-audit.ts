@@ -383,6 +383,13 @@ function round(value: number, digits = 6): number {
   return Number(value.toFixed(digits));
 }
 
+function minSafe(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  return Math.min(...values);
+}
+
 function sha256Buffer(buffer: Uint8Array): string {
   return createHash("sha256").update(buffer).digest("hex");
 }
@@ -937,9 +944,9 @@ function summarizeSeedSongResults(results: SeedSongMetrics[]): SeedSongSummary[]
       comparisonFormat,
       seedCount: formatResults.length,
       medianTop10Overlap: round(median(formatResults.map((result) => result.top10Overlap))),
-      worstTop10Overlap: round(Math.min(...formatResults.map((result) => result.top10Overlap))),
+      worstTop10Overlap: round(minSafe(formatResults.map((result) => result.top10Overlap))),
       medianTop20Overlap: round(median(formatResults.map((result) => result.top20Overlap))),
-      worstTop20Overlap: round(Math.min(...formatResults.map((result) => result.top20Overlap))),
+      worstTop20Overlap: round(minSafe(formatResults.map((result) => result.top20Overlap))),
       medianTop50Overlap: round(median(formatResults.map((result) => result.top50Overlap))),
       medianRankCorrelation: round(median(formatResults.map((result) => result.rankCorrelation))),
       pass: formatResults.every((result) => result.pass),
@@ -957,7 +964,7 @@ function buildStationPersonaSummary(results: StationRunMetrics[]): StationPerson
         personaId,
         runs: personaResults.length,
         medianOverlap: round(median(personaResults.map((result) => result.overlapRatio))),
-        worstOverlap: round(Math.min(...personaResults.map((result) => result.overlapRatio))),
+        worstOverlap: round(minSafe(personaResults.map((result) => result.overlapRatio))),
         medianJaccard: round(median(personaResults.map((result) => result.jaccard))),
         medianSpearman: round(median(personaResults.map((result) => result.spearman))),
         medianCoherenceDelta: round(median(personaResults.map((result) => result.coherenceDelta))),
@@ -1049,7 +1056,7 @@ async function buildReport(
   reportLines.push("");
   reportLines.push(`- Export source: ${resolvedInputs.exportSource}`);
   reportLines.push(`- Full export: ${resolvedInputs.fullExportPath}`);
-  reportLines.push(`- Lite export: ${resolvedInputs.liteExportPath ?? "missing"}`);
+  reportLines.push(`- Lite export: ${resolvedInputs.liteExportPath}`);
   reportLines.push(`- Tiny export: ${resolvedInputs.tinyExportPath}`);
   reportLines.push(`- Host OS: Linux`);
   reportLines.push(`- Audit mode: ${options.ci ? "CI reduced / machine-focused" : "local Linux full"}`);
@@ -1061,7 +1068,7 @@ async function buildReport(
   reportLines.push("| Input | Path | SHA256 | Notes |");
   reportLines.push("| --- | --- | --- | --- |");
   reportLines.push(`| Full export | ${resolvedInputs.fullExportPath} | ${await sha256File(resolvedInputs.fullExportPath)} | ${resolvedInputs.release ? `${resolvedInputs.release.repo}@${resolvedInputs.release.tag}` : "local file"} |`);
-  reportLines.push(`| Lite export | ${resolvedInputs.liteExportPath ?? "n/a"} | ${resolvedInputs.liteExportPath ? await sha256File(resolvedInputs.liteExportPath) : "n/a"} | ${resolvedInputs.release ? `${resolvedInputs.release.repo}@${resolvedInputs.release.tag}` : "local file"} |`);
+  reportLines.push(`| Lite export | ${resolvedInputs.liteExportPath} | ${await sha256File(resolvedInputs.liteExportPath!)} | ${resolvedInputs.release ? `${resolvedInputs.release.repo}@${resolvedInputs.release.tag}` : "local file"} |`);
   reportLines.push(`| Tiny export | ${resolvedInputs.tinyExportPath} | ${await sha256File(resolvedInputs.tinyExportPath)} | ${resolvedInputs.release ? `${resolvedInputs.release.repo}@${resolvedInputs.release.tag}` : "local file"} |`);
   reportLines.push(`| Persona definitions | packages/sidflow-common/src/persona.ts | n/a | exact PERSONA_IDS set |`);
   reportLines.push("");
@@ -1101,7 +1108,6 @@ async function buildReport(
   reportLines.push("### Thresholds");
   reportLines.push("");
   reportLines.push("| Export pair | Metric | Threshold |");
-  reportLines.push("| --- | --- |");
   reportLines.push("| --- | --- | --- |");
   for (const comparisonFormat of ["lite", "tiny"] as const) {
     const thresholds = COMPARISON_THRESHOLDS[comparisonFormat];
@@ -1254,6 +1260,12 @@ async function main(): Promise<void> {
 
   const personaRuns = options.personaRuns ?? DEFAULT_PERSONA_RUNS;
   const seedSongCount = options.seedSongCount ?? DEFAULT_SEED_SONG_COUNT;
+  if (personaRuns < 1) {
+    throw new Error(`--persona-runs must be at least 1 (received ${personaRuns}).`);
+  }
+  if (seedSongCount < 1) {
+    throw new Error(`--seed-song-count must be at least 1 (received ${seedSongCount}).`);
+  }
   if (!options.ci && personaRuns < DEFAULT_PERSONA_RUNS) {
     throw new Error(`Local full audit requires at least ${DEFAULT_PERSONA_RUNS} persona runs.`);
   }

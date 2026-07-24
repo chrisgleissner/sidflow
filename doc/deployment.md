@@ -17,20 +17,6 @@ docker run -p 3000:3000 \
 
 Access at `http://localhost:3000` (admin at `/admin`).
 
-## Fly.io
-
-Current supported topology: one stateful machine. Do not scale out or use rolling deploys until the shared-state and worker separation roadmap phases are complete.
-
-```bash
-# Install flyctl
-curl -L https://fly.io/install.sh | sh
-flyctl auth login
-
-# Deploy
-./scripts/deploy/fly-deploy.sh -e stg   # Staging
-./scripts/deploy/fly-deploy.sh -e prd   # Production
-```
-
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -56,7 +42,7 @@ Use the full health report for diagnostics:
 curl http://localhost:3000/api/health
 ```
 
-Use readiness for traffic gating and deploy verification:
+Use readiness for traffic gating and service verification:
 
 ```bash
 curl -f http://localhost:3000/api/health?scope=readiness
@@ -82,19 +68,9 @@ Start or restart the worker with:
 bun run jobs:run
 ```
 
-Recovery checklist after a restart or deploy:
+Recovery checklist after a restart:
 
 1. Check readiness: `curl -f http://localhost:3000/api/health?scope=readiness`
 2. Verify admin metrics: `curl -u "$SIDFLOW_ADMIN_USER:$SIDFLOW_ADMIN_PASSWORD" http://localhost:3000/api/admin/metrics`
 3. Confirm the job manifest exists and queued jobs are visible under `data/jobs/manifest.json`
 4. Restart the worker if pending jobs are not advancing
-
-## Rollback
-
-For Fly.io rollbacks, switch back to the previous image tag with the deploy script rather than using ad-hoc `flyctl` commands:
-
-```bash
-./scripts/deploy/fly-deploy.sh -e prd -t <previous-tag>
-```
-
-After rollback, repeat the readiness and job-worker recovery checks above before re-opening traffic.
