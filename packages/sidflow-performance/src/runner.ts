@@ -241,7 +241,7 @@ function resolveProfile(env: RunnerEnvironment): RunnerProfile {
   if (env.profile) return env.profile;
   if (env.kind === "local") return "smoke";
   if (env.kind === "ci") return "reduced";
-  // Remote can be Fly.io / Raspberry Pi / staging. Default to reduced to avoid accidental load.
+  // Remote targets default to reduced load to avoid accidental pressure.
   return "reduced";
 }
 

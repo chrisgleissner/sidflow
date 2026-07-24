@@ -32,8 +32,10 @@ The distribution generator MUST treat the following SQLite `tracks` columns as t
 
 The distribution generator MUST treat the following SQLite `tracks` columns as the canonical embedding components:
 
-- `e`, `m`, `c` (required)
-- `p` (optional, only when `vector_dimensions = 4`)
+- the stored `vector_json` payload when it is present and valid
+- otherwise the fallback compact ratings projection `[e, m, c]` or `[e, m, c, p]`
+
+Current SIDFlow builds preserve the full upstream stored vector dimensionality in the lite bundle so favorite-seeded recommendation stays aligned with the authoritative SQLite runtime. The 3D/4D ratings projection remains the fallback only when richer vectors are unavailable upstream.
 
 If the SQLite export includes a `neighbors` table, it MAY be used as an input hint for neighbour generation, but the generator MUST document (in the distribution manifest) how the neighbour semantics were interpreted.
 
@@ -129,9 +131,9 @@ Semantics:
 
 `vector_dimensions` is the number of embedding components per track.
 
-- Allowed values in this schema: `3` or `4`.
-- `3` means `[e, m, c]`.
-- `4` means `[e, m, c, p]`.
+- Allowed values in this schema: any positive integer representable by the file header.
+- The current generator preserves the upstream SQLite vector dimensionality when `vector_json` is present.
+- When the upstream export lacks `vector_json`, fallback values are `[e, m, c]` or `[e, m, c, p]`.
 
 ## 5.2 Normalisation
 
@@ -164,7 +166,7 @@ This schema supports a compact code per track:
 Constraints:
 
 - `vector_dimensions` MUST be divisible by `pq_subspaces`.
-- For `vector_dimensions ∈ {3,4}`, the recommended default is:
+- For the current SIDFlow generator, the recommended default is:
   - `pq_subspaces = vector_dimensions`
   - subspace dimension = 1
 
@@ -280,7 +282,7 @@ Recommended:
 - `format_version` (`u16`): MUST be `1`
 - `header_bytes` (`u16`): MUST be `32`
 - `flags` (`u32`): reserved, MUST be 0 in version 1
-- `vector_dimensions` (`u8`): 3 or 4
+- `vector_dimensions` (`u16`): preserved upstream vector dimensionality or fallback compact-rating dimensionality
 - `pq_subspaces` (`u8`)
 - `pq_centroids` (`u16`): typically 256
 - `cluster_count` (`u16`): typically 256..512
@@ -456,7 +458,7 @@ A distribution release consists of:
 - `generated_at` (string): ISO 8601 timestamp (UTC recommended)
 - `source_export` (object):
   - `schema_version` (string): MUST be `sidcorr-1`
-  - `vector_dimensions` (number): 3 or 4
+  - `vector_dimensions` (number): upstream stored vector dimensionality
   - `include_vectors` (boolean)
   - `neighbor_count_per_track` (number)
   - `track_count` (number)

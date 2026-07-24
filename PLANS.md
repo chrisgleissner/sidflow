@@ -1,5 +1,37 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 35 - PR 94 Merge Readiness And Deployment Removal
+
+1. [DONE] P35-T01 Stabilize the PR 94 coverage test gate and verify the Bun WASM failure isolation.
+  Acceptance criteria:
+  - WASM worker tests that trigger Bun coverage crashes still run and must pass, but outside coverage instrumentation.
+  - The remaining unit suite retains merged LCOV output for CI.
+  - The targeted regression and the full test gate are demonstrated locally.
+
+2. [DONE] P35-T02 Resolve all PR 94 review feedback with guarded audit inputs and accurate reporting.
+  Acceptance criteria:
+  - Empty audit cohorts cannot create non-finite metrics.
+  - Required lite input is represented as required throughout the report.
+  - Every review thread receives a concrete explanation before resolution.
+
+3. [DONE] P35-T03 Remove retired hosting automation and former deployment configuration.
+  Acceptance criteria:
+  - Default release/CI workflows contain no deploy jobs or retired-environment references.
+  - Retired hosting configuration and obsolete deployment helpers are removed, and current documentation has no associated operational instructions.
+  - The two obsolete GitHub environments are deleted after their source references are removed.
+
+4. [IN_PROGRESS] P35-T04 Validate, publish, and converge the PR.
+  Acceptance criteria:
+  - `bun run build` passes.
+  - `bun run test` passes three consecutive times with zero failures, with literal output recorded below.
+  - The branch is pushed, every review thread is resolved, and PR/main CI are green after merge.
+
+### Progress
+
+- 2026-07-24: Re-opened the required repository guidance and plans, inspected PR #94, and confirmed four actionable Copilot comments in `scripts/run-tiny-export-equivalence-audit.ts`. The only failing PR check was `Build and test / Build and Test`, specifically `Run unit tests with coverage`; the job log has expired, but CI metadata confirms the failure occurred before E2E and coverage merging. The active branch already contains the smallest planned mitigation: run the two WASM-worker-heavy classify tests without coverage while keeping them mandatory, then emit merged LCOV from all other unit batches.
+- 2026-07-24: Fixed the coverage runner's test-root discovery so ignored local runtime trees cannot cause Bun `EMFILE` errors, and kept `phase-transitions.test.ts` plus `render-timeout.test.ts` mandatory in a separate no-coverage WASM phase. Removed the retired hosted deployment jobs/configuration/docs and deleted both obsolete GitHub environments. Replied to and resolved all four PR review threads. `bun run build` passed, followed by three consecutive `bun run test` passes; each ended with the literal summary `11 pass`, `0 fail`, `38 expect() calls`, `Ran 11 tests across 2 files`, and merged LCOV written by the no-coverage final phase. Remaining work is to commit, push, and verify the refreshed GitHub checks.
+- 2026-07-24: The first refreshed GitHub job exposed two additional Bun-runner defects: coverage crashed natively in the full `libsidplayfp-wasm` group, and `metadata-cache.test.ts` left Bun's mocked system clock frozen, causing the next `perf-utils.test.ts` busy-wait to hang. The runner now executes the full WASM test root plus the two WASM-worker classify tests without instrumentation while keeping all of them mandatory; the metadata test resets real time with `setSystemTime()`. Three new consecutive full `bun run test` runs passed (`0 fail` in every terminal batch), with each run writing merged LCOV for the remaining coverage batches. Remaining work is to publish this repair and verify PR and main CI.
+
 ## Phase 34 - sidcorr-lite/tiny Export Convergence And Radio Equivalence
 
 1. [IN_PROGRESS] P34-T01 Audit the live export, release, and radio-generation pipeline.
@@ -58,8 +90,19 @@
   Artifact requirements:
   - Validation logs and test outputs referenced from `WORKLOG.md`.
 
+8. [IN_PROGRESS] P34-T08 Audit 2: prove or repair full/lite/tiny recommendation parity on the release-complete artifact set.
+  Acceptance criteria:
+  - Local and published manifests are compared by schema, counts, and lineage, and the authoritative audit trio is recorded before parity conclusions are drawn.
+  - The existing parity harnesses and focused tests are run against the real station-building and seed-song recommendation surfaces used by the runtime.
+  - Any material divergence is localized to the first failing step with file-backed evidence before code changes are made.
+  - If a bug exists, the smallest correct fix lands with deterministic regression coverage and updated docs/report artifacts under `tmp/`.
+  Artifact requirements:
+  - Deterministic audit artifacts and a Markdown release-readiness summary under `tmp/lite-export-check/`.
+
 ### Progress
 
+- 2026-04-16: Re-opened the repo instructions, current Phase 34 state, the similarity-export specs, the existing audit prompt, and the shared runtime/test surfaces for a new release-backed parity pass driven by `doc/audits/audit2/prompt.md`. The prompt's core constraint is valid against the current tree: local `data/exports/` lite/tiny artifacts are partial validation bundles, so the next audit pass should prove or disprove parity against one coherent full/lite/tiny trio from the published `sidflow-data` release unless fresh local artifacts with matching counts are produced later for focused debugging.
+- 2026-04-16: Confirmed the repo already has the right proof surfaces to reuse rather than replace: `scripts/run-tiny-export-equivalence-audit.ts`, `scripts/run-similarity-convergence.ts`, `packages/sidflow-play/test/station-portable-equivalence.test.ts`, and `packages/sidflow-common/test/similarity-export.test.ts`. Next step is to verify the actual manifest lineage and run those surfaces against the selected release-backed assets to determine whether any real full/lite/tiny divergence remains.
 - 2026-04-08: Read the required docs and live code paths in the requested order. Confirmed the repo already has local sqlite->lite conversion, direct sqlite->tiny conversion, release publication for sqlite/lite/tiny, and runtime loading for sqlite/lite/tiny, but it does not yet provide the requested convergence workflow.
 - 2026-04-08: Identified the concrete remaining gaps. The current tiny builder still consumes SQLite directly instead of lite, there is no dedicated CLI/script that downloads the latest full export release and runs the lite transform through the same code path, and the existing persona validation script is SQLite-only and models different personas instead of validating full-vs-tiny equivalence across the shared styles.
 - 2026-04-08: Confirmed the station CLI already supports local sqlite/lite/tiny bundles and the release-cache path already downloads the latest `sidflow-data` tarball, so the convergence work can build on existing runtime code instead of adding a parallel radio stack.

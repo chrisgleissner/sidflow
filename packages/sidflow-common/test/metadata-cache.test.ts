@@ -400,7 +400,9 @@ describe("Metadata Cache", () => {
             const stats = getMetadataCacheStats();
             expect(stats.invalidations).toBeGreaterThan(0);
         } finally {
-            setSystemTime(new Date()); // Restore real time
+            // Passing a Date here reads the mocked clock and leaves it frozen.
+            // Reset without an argument so later tests can use the real clock.
+            setSystemTime();
         }
     });
 

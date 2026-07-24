@@ -161,7 +161,7 @@ function printHelp(): void {
     "  --config <path>                   Use an alternate .sidflow.json file",
     "  --force-rebuild                   Re-render WAVs even if cache is fresh",
     "  --skip-already-classified         Skip songs already in auto-tags.json",
-    "  --delete-wav-after-classification Delete WAVs after classification (fly.io)",
+    "  --delete-wav-after-classification Delete WAVs after classification to conserve storage",
     "  --allow-degraded                  Allow heuristic feature fallback if Essentia fails",
     "  --limit <n>                       Only classify the first N songs (after filtering)",
     "  --sid-path-prefix <prefix>        Only classify SIDs under this relative path (e.g. C64Music/DEMOS)",

@@ -12,7 +12,7 @@ async function main() {
     process.exit(1);
   }
 
-  const isBunTest = args[0] === "test";
+  const isBunTest = args.includes("test");
 
   const bunPath = await ensureBun();
   const bunDir = path.dirname(bunPath);

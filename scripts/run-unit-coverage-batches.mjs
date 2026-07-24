@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { tmpdir } from "node:os";
 
 const repoRoot = path.resolve(new URL("../", import.meta.url).pathname);
 const coverageDir = path.join(repoRoot, "coverage");
@@ -17,6 +18,36 @@ const coverageArgs = [
   "--exclude=**/dist/**",
   "--exclude=c64commander/**",
 ];
+
+const bunTestConfig = [
+  "[test]",
+  "exclude = [",
+  '  "packages/sidflow-web/tests/e2e/**/*",',
+  '  "**/*.e2e.ts",',
+  '  "**/*.spec.ts",',
+  '  "**/tests/e2e/**",',
+  "]",
+  "timeout = 120000",
+].join("\n");
+
+// WASM-heavy test roots and worker-heavy test files crash Bun (SIGSEGV/SIGILL)
+// when combined with coverage instrumentation. These still run and must pass,
+// but are executed in a dedicated phase WITHOUT --coverage to avoid the Bun
+// runtime crash.
+// See: https://github.com/oven-sh/bun/issues (coverage + worker_threads/WASM segfault)
+const noCoverageDirectories = [
+  "packages/libsidplayfp-wasm/test/",
+];
+
+const noCoverageGlobs = [
+  "packages/sidflow-classify/test/render-timeout.test.ts",
+  "packages/sidflow-classify/test/phase-transitions.test.ts",
+];
+
+function matchesNoCoverage(relativeFile) {
+  return noCoverageDirectories.some((directory) => relativeFile.startsWith(directory)) ||
+    noCoverageGlobs.some((glob) => relativeFile === glob || relativeFile.endsWith("/" + glob));
+}
 
 const batchRoots = [
   { name: "libsidplayfp-wasm", dir: "packages/libsidplayfp-wasm/test", chunkSize: 10 },
@@ -190,19 +221,52 @@ function generateLcov(files) {
 
 async function prepareBatches() {
   const batches = [];
+  const noCoverageBatches = [];
 
   for (const root of batchRoots) {
     const files = await collectTestFiles(root.dir);
-    const chunks = splitIntoChunks(files, root.chunkSize);
+    const coverageFiles = [];
+    const noCoverageFiles = [];
+    for (const file of files) {
+      if (matchesNoCoverage(file)) {
+        noCoverageFiles.push(file);
+      } else {
+        coverageFiles.push(file);
+      }
+    }
+    const chunks = splitIntoChunks(coverageFiles, root.chunkSize);
     chunks.forEach((chunk, chunkIndex) => {
       batches.push({
         name: chunks.length === 1 ? root.name : `${root.name}-${chunkIndex + 1}`,
         files: chunk,
+        testRoot: root.dir,
       });
     });
+    if (noCoverageFiles.length > 0) {
+      noCoverageBatches.push({
+        name: `${root.name}-no-coverage`,
+        files: noCoverageFiles.sort((left, right) => left.localeCompare(right)),
+        testRoot: root.dir,
+      });
+    }
   }
 
-  return batches.filter((batch) => batch.files.length > 0);
+  return {
+    batches: batches.filter((batch) => batch.files.length > 0),
+    noCoverageBatches,
+  };
+}
+
+async function withTestConfig(testRoot, run) {
+  const configDir = await mkdtemp(path.join(tmpdir(), "sidflow-bun-test-"));
+  const configPath = path.join(configDir, "bunfig.toml");
+  const absoluteRoot = path.join(repoRoot, testRoot);
+  await writeFile(configPath, `${bunTestConfig}\nroot = ${JSON.stringify(absoluteRoot)}\n`, "utf8");
+  try {
+    return await run(configPath);
+  } finally {
+    await rm(configDir, { recursive: true, force: true });
+  }
 }
 
 // Retry rm because bun worker threads may still be flushing coverage files
@@ -222,9 +286,9 @@ async function rmWithRetry(dirPath, maxAttempts = 5) {
 async function main() {
   process.chdir(repoRoot);
   const mergedFiles = new Map();
-  const batches = await prepareBatches();
+  const { batches, noCoverageBatches } = await prepareBatches();
 
-  if (batches.length === 0) {
+  if (batches.length === 0 && noCoverageBatches.length === 0) {
     console.error("[coverage-batches] No test files found.");
     process.exit(1);
   }
@@ -237,9 +301,22 @@ async function main() {
     const startedAt = Date.now();
     console.log(`[coverage-batches] Batch ${index + 1}/${batches.length}: ${batch.name} (${batch.files.length} files)`);
     await rmWithRetry(coverageDir);
-    await spawnCommand("node", ["scripts/run-bun.mjs", "test", ...batch.files, ...coverageArgs]);
+    await withTestConfig(batch.testRoot, async (configPath) => {
+      await spawnCommand("node", ["scripts/run-bun.mjs", `--config=${configPath}`, "test", ...batch.files, ...coverageArgs]);
+    });
     const lcovContent = await waitForCoverageArtifact();
     mergeCoverage(mergedFiles, parseLcov(lcovContent));
+    console.log(`[coverage-batches] Completed ${batch.name} in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+  }
+
+  // WASM-worker tests run WITHOUT coverage to avoid the Bun coverage segfault.
+  // They must still pass (non-zero exit fails the run).
+  for (const batch of noCoverageBatches) {
+    const startedAt = Date.now();
+    console.log(`[coverage-batches] Running ${batch.files.length} no-coverage test file(s) (WASM-worker safe): ${batch.files.join(", ")}`);
+    await withTestConfig(batch.testRoot, async (configPath) => {
+      await spawnCommand("node", ["scripts/run-bun.mjs", `--config=${configPath}`, "test", ...batch.files]);
+    });
     console.log(`[coverage-batches] Completed ${batch.name} in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
   }
 

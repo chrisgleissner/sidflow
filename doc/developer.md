@@ -64,13 +64,13 @@ bash scripts/stop-similarity-export.sh
 
 ## Performance tests
 
-The repo has a journey-driven performance runner (k6 + optional Playwright) used by CI and for remote targets (Fly.io / Raspberry Pi):
+The repo has a journey-driven performance runner (k6 + optional Playwright) used by CI and explicitly enabled remote targets:
 
 ```bash
 # Run against a local server you already started (recommended for dev)
 bun run perf:run -- --env local --base-url http://localhost:3000 --profile smoke --execute
 
-# Run against a remote instance (Fly.io / Raspberry Pi) — requires explicit opt-in
+# Run against a remote instance — requires explicit opt-in
 bun run perf:run -- --env remote --enable-remote --executor k6 --base-url https://your-app.example --profile reduced --execute
 ```
 

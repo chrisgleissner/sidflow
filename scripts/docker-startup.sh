@@ -120,11 +120,12 @@ echo "=== Volume Mount Setup ==="
 #   /sidflow/workspace/ - HVSC collection, WAV cache, tags (persistent volume)
 #   /sidflow/data/      - Classified data, renders, feedback (persistent volume)
 # 
-# Fly.io: Volume mounts at /mnt/data, we create symlinks to avoid shadowing /sidflow/app
-# Pi/K8s: Direct bind mounts at /sidflow/workspace and /sidflow/data
+# Volume mounts: when /mnt/data is present (e.g. external volume), we create symlinks
+# to avoid shadowing /sidflow/app. Direct bind mounts at /sidflow/workspace and
+# /sidflow/data are also supported.
 #
 if [ -d "/mnt/data" ]; then
-    echo "Fly.io deployment detected (/mnt/data volume exists)"
+    echo "External volume detected (/mnt/data exists)"
     
     # Create workspace and data subdirectories in the volume
     mkdir -p /mnt/data/workspace /mnt/data/data

@@ -13,6 +13,7 @@ import {
 } from "./similarity-bundle-file.js";
 import {
   buildSimilarityTrackId,
+  stableSimilarityScore,
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
 import { cosineSimilarity } from "./vector-similarity.js";
@@ -25,6 +26,7 @@ import {
   type SimilarityDataset,
   type SimilarityTrackRow,
 } from "./similarity-portable.js";
+import { DEFAULT_RATING } from "./ratings.js";
 
 export const LITE_SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-lite-1";
 
@@ -152,7 +154,7 @@ function parseSourceVector(row: SourceTrackRow): number[] {
   if (row.vector_json) {
     const parsed = JSON.parse(row.vector_json) as number[];
     if (Array.isArray(parsed) && parsed.length >= 3) {
-      return normalizeVector(parsed.slice(0, parsed.length >= 4 ? 4 : 3));
+      return normalizeVector(parsed);
     }
   }
   const values = [row.e, row.m, row.c];
@@ -212,6 +214,17 @@ function reconstructVector(codes: Uint8Array | number[], codebooks: number[][]):
   return normalizeVector(codebooks.map((centroids, index) => centroids[codes[index] ?? 0] ?? 0));
 }
 
+function buildCompactRatingVector(
+  ratings: { e: number; m: number; c: number; p?: number | null },
+  vectorDimensions: number,
+): number[] {
+  const values = [ratings.e, ratings.m, ratings.c];
+  if (vectorDimensions >= 4) {
+    values.push(ratings.p ?? DEFAULT_RATING);
+  }
+  return values.slice(0, vectorDimensions);
+}
+
 function writeUInt24LE(target: Buffer, value: number, offset: number): void {
   target[offset] = value & 0xff;
   target[offset + 1] = (value >>> 8) & 0xff;
@@ -250,7 +263,10 @@ function scoreRows(
   return rows
     .filter((row) => !favoriteTrackIds.includes(row.track_id) && !excludeTrackIds.has(row.track_id))
     .map((row) => ({ row, score: cosineSimilarity(normalizedCentroid, row.vector) }))
-    .sort((left, right) => right.score - left.score || left.row.track_id.localeCompare(right.row.track_id))
+    .sort(
+      (left, right) => stableSimilarityScore(right.score) - stableSimilarityScore(left.score)
+        || left.row.track_id.localeCompare(right.row.track_id),
+    )
     .slice(0, limit)
     .map(({ row, score }, index) => ({
       track_id: row.track_id,
@@ -641,7 +657,9 @@ export async function decodeLiteSimilarityExport(filePath: string): Promise<Deco
     cursor += 2;
     const codes = [...payload.subarray(cursor, cursor + header.vectorDimensions)];
     cursor += header.vectorDimensions;
-    const vector = reconstructVector(codes, codebooks);
+    const vector = header.vectorDimensions <= 4
+      ? buildCompactRatingVector(ratings, header.vectorDimensions)
+      : reconstructVector(codes, codebooks);
     rows.push({
       track_id: buildSimilarityTrackId(filePaths[fileId] ?? `missing-${fileId}`, songIndex),
       sid_path: filePaths[fileId] ?? `missing-${fileId}`,

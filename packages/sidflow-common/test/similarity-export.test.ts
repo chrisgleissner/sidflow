@@ -16,6 +16,7 @@ import {
   readSimilarityExportManifestFromDatabase,
   recommendFromFavorites,
   recommendFromSeedTrack,
+  stableSimilarityScore,
 } from "../src/index.js";
 
 describe("similarity-export", () => {
@@ -174,17 +175,119 @@ describe("similarity-export", () => {
       corpusVersion: "TEST-1",
     });
 
+    const liteDataset = await openLiteSimilarityDataset(litePath);
+
     const sqliteRecommendations = recommendFromFavoritesFromSqlite(outputPath, {
       favoriteTrackIds: [buildSimilarityTrackId("A.sid", 2)],
       limit: 2,
     }).map((entry) => entry.track_id);
-    const liteRecommendations = (await openLiteSimilarityDataset(litePath)).recommendFromFavorites({
+    const liteRecommendations = liteDataset.recommendFromFavorites({
       favoriteTrackIds: [buildSimilarityTrackId("A.sid", 2)],
       limit: 2,
     }).map((entry) => entry.track_id);
 
+    const liteVector = liteDataset.getTrackVectors([buildSimilarityTrackId("A.sid", 2)]).get(buildSimilarityTrackId("A.sid", 2));
+
     expect(liteRecommendations[0]).toBe(sqliteRecommendations[0]);
     expect(new Set(liteRecommendations)).toEqual(new Set(sqliteRecommendations));
+    expect(liteVector).toEqual([5, 5, 5, 4]);
+  });
+
+  test("uses deterministic track_id tie-breaks for equal-score sqlite recommendations", async () => {
+    const manualPath = path.join(tempRoot, "exports", "sidcorr-manual.sqlite");
+    await mkdir(path.dirname(manualPath), { recursive: true });
+    const manualDatabase = new Database(manualPath, { strict: true });
+    try {
+      manualDatabase.exec(`
+        CREATE TABLE tracks (
+          track_id TEXT PRIMARY KEY,
+          sid_path TEXT NOT NULL,
+          song_index INTEGER NOT NULL,
+          vector_json TEXT,
+          e REAL NOT NULL,
+          m REAL NOT NULL,
+          c REAL NOT NULL,
+          p REAL,
+          likes INTEGER NOT NULL DEFAULT 0,
+          dislikes INTEGER NOT NULL DEFAULT 0,
+          skips INTEGER NOT NULL DEFAULT 0,
+          plays INTEGER NOT NULL DEFAULT 0,
+          decayed_likes REAL NOT NULL DEFAULT 0,
+          decayed_dislikes REAL NOT NULL DEFAULT 0,
+          decayed_skips REAL NOT NULL DEFAULT 0,
+          decayed_plays REAL NOT NULL DEFAULT 0,
+          last_played TEXT
+        );
+
+        CREATE TABLE neighbors (
+          profile TEXT NOT NULL,
+          seed_track_id TEXT NOT NULL,
+          neighbor_track_id TEXT NOT NULL,
+          rank INTEGER NOT NULL,
+          similarity REAL NOT NULL,
+          PRIMARY KEY (profile, seed_track_id, rank)
+        );
+      `);
+
+      const insert = manualDatabase.query(`
+        INSERT INTO tracks (
+          track_id, sid_path, song_index, vector_json, e, m, c, p,
+          likes, dislikes, skips, plays,
+          decayed_likes, decayed_dislikes, decayed_skips, decayed_plays, last_played
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, NULL)
+      `);
+      const sharedVector = JSON.stringify([4, 3, 3, 3]);
+      const rows: Array<[string, string, number]> = [
+        [buildSimilarityTrackId("Seed.sid", 1), "Seed.sid", 1],
+        [buildSimilarityTrackId("C.sid", 1), "C.sid", 1],
+        [buildSimilarityTrackId("A.sid", 1), "A.sid", 1],
+        [buildSimilarityTrackId("D.sid", 1), "D.sid", 1],
+        [buildSimilarityTrackId("B.sid", 1), "B.sid", 1],
+      ];
+      for (const [trackId, sidPath, songIndex] of rows) {
+        insert.run(trackId, sidPath, songIndex, sharedVector, 4, 3, 3, 3);
+      }
+    } finally {
+      manualDatabase.close();
+    }
+
+    const expected = [
+      buildSimilarityTrackId("A.sid", 1),
+      buildSimilarityTrackId("B.sid", 1),
+      buildSimilarityTrackId("C.sid", 1),
+    ];
+
+    const sqliteFavoriteRecommendations = recommendFromFavorites(manualPath, {
+      favoriteTrackIds: [buildSimilarityTrackId("Seed.sid", 1)],
+      limit: 3,
+    }).map((entry) => entry.track_id);
+    const sqliteSeedRecommendations = recommendFromSeedTrack(manualPath, {
+      seedTrackId: buildSimilarityTrackId("Seed.sid", 1),
+      limit: 3,
+    }).map((entry) => entry.track_id);
+
+    const litePath = path.join(tempRoot, "exports", "sidcorr-manual-lite.sidcorr");
+    await buildLiteSimilarityExport({
+      sourceSqlitePath: manualPath,
+      outputPath: litePath,
+      corpusVersion: "TEST-TIEBREAK",
+    });
+    const liteRecommendations = (await openLiteSimilarityDataset(litePath)).recommendFromFavorites({
+      favoriteTrackIds: [buildSimilarityTrackId("Seed.sid", 1)],
+      limit: 3,
+    }).map((entry) => entry.track_id);
+
+    expect(sqliteFavoriteRecommendations).toEqual(expected);
+    expect(sqliteSeedRecommendations).toEqual(expected);
+    expect(liteRecommendations).toEqual(expected);
+  });
+
+  test("rounds microscopic score drift onto the same recommendation frontier", () => {
+    const base = 0.9470198675496688;
+
+    expect(stableSimilarityScore(base)).toBe(stableSimilarityScore(base + Number.EPSILON));
+    expect(stableSimilarityScore(base)).toBe(stableSimilarityScore(base - Number.EPSILON));
+    expect(stableSimilarityScore(base)).not.toBe(stableSimilarityScore(base + 1e-9));
   });
 
   test("derives a tiny bundle whose graph recommendations overlap the source sqlite export", async () => {
@@ -563,6 +666,22 @@ describe("similarity-export", () => {
     });
 
     expect(recommendations[0]?.track_id).toBe(buildSimilarityTrackId("P24/near.sid", 1));
+
+    const litePath = path.join(tempRoot, "exports", "sidcorr-test-full-sidcorr-lite-1.sidcorr");
+    const liteResult = await buildLiteSimilarityExport({
+      sourceSqlitePath: outputPath,
+      outputPath: litePath,
+      corpusVersion: "TEST-1",
+    });
+
+    expect(liteResult.manifest.vector_dimensions).toBe(24);
+
+    const liteRecommendations = (await openLiteSimilarityDataset(litePath)).recommendFromFavorites({
+      favoriteTrackIds: [buildSimilarityTrackId("P24/seed.sid", 1)],
+      limit: 2,
+    });
+
+    expect(liteRecommendations[0]?.track_id).toBe(buildSimilarityTrackId("P24/near.sid", 1));
 
     const database = new Database(outputPath, { readonly: true, strict: true });
     try {
