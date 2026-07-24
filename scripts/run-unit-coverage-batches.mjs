@@ -30,17 +30,23 @@ const bunTestConfig = [
   "timeout = 120000",
 ].join("\n");
 
-// WASM-worker-heavy test files crash Bun (SIGSEGV/SIGILL) when combined with
-// coverage instrumentation. These still run and must pass, but are executed in a
-// dedicated phase WITHOUT --coverage to avoid the Bun runtime crash.
+// WASM-heavy test roots and worker-heavy test files crash Bun (SIGSEGV/SIGILL)
+// when combined with coverage instrumentation. These still run and must pass,
+// but are executed in a dedicated phase WITHOUT --coverage to avoid the Bun
+// runtime crash.
 // See: https://github.com/oven-sh/bun/issues (coverage + worker_threads/WASM segfault)
+const noCoverageDirectories = [
+  "packages/libsidplayfp-wasm/test/",
+];
+
 const noCoverageGlobs = [
   "packages/sidflow-classify/test/render-timeout.test.ts",
   "packages/sidflow-classify/test/phase-transitions.test.ts",
 ];
 
 function matchesNoCoverage(relativeFile) {
-  return noCoverageGlobs.some((glob) => relativeFile === glob || relativeFile.endsWith("/" + glob));
+  return noCoverageDirectories.some((directory) => relativeFile.startsWith(directory)) ||
+    noCoverageGlobs.some((glob) => relativeFile === glob || relativeFile.endsWith("/" + glob));
 }
 
 const batchRoots = [
