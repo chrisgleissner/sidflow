@@ -15,7 +15,19 @@ SIDFlow analyses your Commodore 64 SID music collection. It extracts audio featu
 > [!NOTE]
 > This project is under active development. Some documented features may not yet be fully functional. 
 
-## Quick Start
+## Choose your path
+
+Start with the outcome you need; each path is independent at first and leads to the relevant detailed reference.
+
+| I want to… | Start here | What SIDFlow provides |
+|---|---|---|
+| **Reuse the published HVSC analysis** in another project | [Download a verified release bundle](#reuse-published-hvsc-analysis-data) | Ready-made similarity data, manifests, checksums, and formal format specifications—no rendering or classification required. |
+| **Classify my own SID collection** | [Understand the analysis pipeline](#analyse-and-publish-a-sid-collection) | Fetch, classification, ratings, similarity exports, and optional publication to `sidflow-data`. |
+| **Listen to SID music** through a browser or terminal | [Run a player](#play-sid-music) | A local web player, a guided admin UI, and a terminal station with optional C64 Ultimate playback. |
+
+If you need to run SIDFlow locally, continue with the installation below. Consumers of the published HVSC data can skip directly to the first path.
+
+## Install and start SIDFlow
 
 Three commands to a running local player:
 
@@ -68,7 +80,7 @@ Alternative locations (checked in order):
 
 ---
 
-## HVSC Analysis Data
+## Reuse published HVSC analysis data
 
 SIDFlow is the **tooling and runtime**: use it to analyse your own SID collection, build similarity exports, run a station, or integrate playback and recommendations into an application.
 
@@ -80,11 +92,21 @@ The [sidflow-data README](https://github.com/chrisgleissner/sidflow-data#readme)
 - [lite portable export](doc/similarity-export-lite.md)
 - [tiny portable export](doc/similarity-export-tiny.md)
 
+Choose a published flavour by runtime need; the companion repository remains the authoritative source for release-specific asset names, checksums, and download instructions.
+
+| Flavour | Use it when | Formal specification |
+|---|---|---|
+| **Full** (`sidcorr-1`, SQLite) | You want the authoritative, complete offline dataset and SQL-backed querying in a desktop, service, or other capable runtime. | [Full SQLite export](doc/similarity-export.md) |
+| **Lite** (`sidcorr-lite-1`) | You need a compact portable representation while retaining the richer similarity-vector data. | [Lite portable export](doc/similarity-export-lite.md) |
+| **Tiny** (`sidcorr-tiny-1`) | You need the smallest, deterministic weak-device/runtime bundle for style filtering and neighbor expansion; it is intentionally lossy. | [Tiny portable export](doc/similarity-export-tiny.md) |
+
 > Use this repository when you need to **generate, inspect, or serve** similarity data. Use [sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases) when you need the **published HVSC results** in another project.
 
 ---
 
-## Web UI
+## Play SID music
+
+### Web player and admin UI
 
 SIDFlow ships a **Next.js + React** interface with two access points:
 
@@ -142,7 +164,9 @@ For more details on routes and the REST API, see [packages/sidflow-web/README.md
 
 ---
 
-## How It Works
+## Analyse and publish a SID collection
+
+### How the pipeline works
 
 SIDFlow is a CLI-first pipeline. Each stage reads and writes JSONL under `data/` and is configured via `.sidflow.json`:
 
@@ -161,7 +185,7 @@ The web UI, Docker image, and CLI tools are all thin wrappers over these same pi
 
 ---
 
-## CLI Tools
+### CLI tools
 
 All pipeline stages are available as standalone CLIs for automation and scripting:
 
@@ -175,7 +199,7 @@ All pipeline stages are available as standalone CLIs for automation and scriptin
 
 Full CLI reference: [Technical Reference](./doc/technical-reference.md).
 
-### SID Station - command line radio
+### SID Station — command-line radio
 
 Launch a self-contained radio station in a Bash terminal that selects and streams similar SID tracks:
 
@@ -195,7 +219,7 @@ If `workspace/hvsc` is missing or empty, the script bootstraps HVSC automaticall
 
 ---
 
-## Config
+### Configuration
 
 `.sidflow.json` controls all runtime paths. The defaults work out of the box:
 
@@ -213,7 +237,7 @@ Pass `--config /path/to/custom.json` to any CLI or set `SIDFLOW_CONFIG` for the 
 
 ---
 
-## Deployment
+### Deploy SIDFlow (optional)
 
 ### Docker
 
@@ -238,11 +262,13 @@ Production startup rejects default credentials, derived secrets, or a missing `J
 
 ---
 
-## Portable Similarity Export
+### Build and publish portable similarity data
 
 Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 24-dimensional perceptual vectors (WAV + SID-native hybrid) for offline and downstream consumers.
 
-Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish). Many SID songs also rqeuire [C64 system ROMs](#system-roms) in `workspace/roms/`.
+Use this workflow when you need to create new data from a collection you control. If you only need the public HVSC results, use [published `sidflow-data` releases](#reuse-published-hvsc-analysis-data) instead.
+
+Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish). Many SID songs also require [C64 system ROMs](#system-roms) in `workspace/roms/`.
 
 **0. Download HVSC:**
 
@@ -353,7 +379,7 @@ This uploads the sqlite export, sqlite manifest, lite bundle, lite manifest, tin
 
 Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-export.md).
 
-### Classification Vector Reference
+#### Classification vector reference
 
 Each exported song also gets a 24-number similarity vector. It mixes what SIDFlow hears in the rendered WAV with what it reads from the SID chip write trace. The raw per-song feature dump is larger, but these 24 fields are the compact fingerprint used for similarity search and station building.
 
@@ -396,7 +422,9 @@ Sample record: [doc/examples/classification-vector-sample.json](doc/examples/cla
 
 ---
 
-## Performance Tests
+## Operate and validate SIDFlow
+
+### Performance tests
 
 Journey-driven performance suite (k6 + optional Playwright):
 
@@ -415,7 +443,7 @@ Journeys live in `performance/journeys/`; outputs in `performance/results/<times
 
 ---
 
-## Developer Documentation
+## Developer documentation
 
 - **[DeepWiki](https://deepwiki.com/chrisgleissner/sidflow)** - architecture and design
 - **[Technical Reference](doc/technical-reference.md)** - architecture, CLI tools, APIs

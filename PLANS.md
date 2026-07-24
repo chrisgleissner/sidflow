@@ -1,5 +1,19 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 38 - README Persona-First Information Architecture
+
+1. [DONE] P38-T01 Reorganize the project README without losing operational detail.
+  Acceptance criteria:
+  - The opening lets readers immediately choose between consuming published HVSC data, classifying a collection, or using a player.
+  - Each path gives an appropriate first action and links to its authoritative detailed documentation.
+  - Existing setup, ROM, configuration, export, deployment, performance, vector-reference, and acknowledgement content remains available in a more logical chapter sequence.
+  - Documentation-only validation uses `git diff --check` and Markdown/link inspection; no test suite is required.
+
+### Progress
+
+- 2026-07-24: Read the current README, developer guide, and technical reference after CI repair workflow `30092593429` passed. Reorganizing the README around the three requested reader personas while preserving existing commands and reference details.
+- 2026-07-24: Added a decision-first reader-path table, expanded the published-data guidance with full/lite/tiny selection and specification links, and grouped playback plus analysis/export operations under clear chapters. Preserved existing commands, examples, vector reference, deployment, performance, and acknowledgement material. Documentation-only validation passed: `git diff --check` and 29 local Markdown link targets resolved.
+
 ## Phase 37 - CI Fixture Timeout Stability
 
 1. [DONE] P37-T01 Make the similarity-dataset export fixture reliable under the CI Bun version.
@@ -12,7 +26,7 @@
 ### Progress
 
 - 2026-07-24: Investigated failed main workflow `30091288032`. Under CI's Bun 1.3.11, two similarity-dataset hooks exceeded Bun's default hook timeout while building the export fixture; the following cleanup then dereferenced the unassigned fixture. Bun 1.3.1's runtime does not support the timeout-overload present in its installed type declarations, so the fixture will be created once at module initialization instead of in a timed lifecycle hook; all three assertions are read-only and retain full coverage.
-- 2026-07-24: Moved fixture creation to module initialization and retained cleanup in `afterAll`, eliminating the timed per-test hook while making the test three times faster. `bun run build` passed and three consecutive full `bun run test` runs passed with `0 fail` in every batch and merged LCOV output. Publication verification is pending the GitHub Actions run triggered by this commit.
+- 2026-07-24: Moved fixture creation to module initialization and retained cleanup in `afterAll`, eliminating the timed per-test hook while making the test three times faster. `bun run build` passed and three consecutive full `bun run test` runs passed with `0 fail` in every batch and merged LCOV output. GitHub Actions workflow `30092593429` passed every job on `main`, including the originally failing unit-coverage stage on Bun 1.3.11.
 
 ## Phase 36 - SIDFlow And SIDFlow-Data Repository Orientation
 
