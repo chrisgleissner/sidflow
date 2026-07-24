@@ -20,7 +20,7 @@
   - Retired hosting configuration and obsolete deployment helpers are removed, and current documentation has no associated operational instructions.
   - The two obsolete GitHub environments are deleted after their source references are removed.
 
-4. [IN_PROGRESS] P35-T04 Validate, publish, and converge the PR.
+4. [DONE] P35-T04 Validate, publish, and converge the PR.
   Acceptance criteria:
   - `bun run build` passes.
   - `bun run test` passes three consecutive times with zero failures, with literal output recorded below.
@@ -31,6 +31,7 @@
 - 2026-07-24: Re-opened the required repository guidance and plans, inspected PR #94, and confirmed four actionable Copilot comments in `scripts/run-tiny-export-equivalence-audit.ts`. The only failing PR check was `Build and test / Build and Test`, specifically `Run unit tests with coverage`; the job log has expired, but CI metadata confirms the failure occurred before E2E and coverage merging. The active branch already contains the smallest planned mitigation: run the two WASM-worker-heavy classify tests without coverage while keeping them mandatory, then emit merged LCOV from all other unit batches.
 - 2026-07-24: Fixed the coverage runner's test-root discovery so ignored local runtime trees cannot cause Bun `EMFILE` errors, and kept `phase-transitions.test.ts` plus `render-timeout.test.ts` mandatory in a separate no-coverage WASM phase. Removed the retired hosted deployment jobs/configuration/docs and deleted both obsolete GitHub environments. Replied to and resolved all four PR review threads. `bun run build` passed, followed by three consecutive `bun run test` passes; each ended with the literal summary `11 pass`, `0 fail`, `38 expect() calls`, `Ran 11 tests across 2 files`, and merged LCOV written by the no-coverage final phase. Remaining work is to commit, push, and verify the refreshed GitHub checks.
 - 2026-07-24: The first refreshed GitHub job exposed two additional Bun-runner defects: coverage crashed natively in the full `libsidplayfp-wasm` group, and `metadata-cache.test.ts` left Bun's mocked system clock frozen, causing the next `perf-utils.test.ts` busy-wait to hang. The runner now executes the full WASM test root plus the two WASM-worker classify tests without instrumentation while keeping all of them mandatory; the metadata test resets real time with `setSystemTime()`. Three new consecutive full `bun run test` runs passed (`0 fail` in every terminal batch), with each run writing merged LCOV for the remaining coverage batches. Remaining work is to publish this repair and verify PR and main CI.
+- 2026-07-24: Merged PR #94 as squash commit `b14dfa0a8499bf4b3d52a852a1b2f80a3251471e`. Its `main` CI run `30087861427` completed successfully: Build and Test, Package check, and Docker-change detection passed (the Docker image job was correctly skipped). GitHub environments now list only `copilot`, `github-pages`, `Preview`, and `Production`; the obsolete hosted environments are absent.
 
 ## Phase 34 - sidcorr-lite/tiny Export Convergence And Radio Equivalence
 
