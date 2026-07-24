@@ -1,6 +1,14 @@
 # Changelog
 
 
+## 0.6.0 (2026-07-24)
+
+- docs: record PR 94 completion
+- Verify correctness of tiny export via radio station creation and comparison with full/lite export (#94)
+- Add DeepWiki link to developer documentation
+- chore: update CHANGES.md for 0.5.8
+
+
 ## 0.5.8 (2026-04-08)
 
 - Merge pull request #93 from chrisgleissner/fix/sidcorr-tiny-release
