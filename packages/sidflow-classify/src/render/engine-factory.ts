@@ -107,27 +107,43 @@ async function loadSystemRoms(): Promise<SystemRoms> {
     return found;
   }
 
-  // Nothing on disk. Rather than silently render every tune with the built-in
-  // ROMs — which produces audio that looks fine and is wrong — try to fetch the
-  // real ones, then scan again.
-  const target = getSystemRomDirCandidates()[0];
-  if (target) {
-    const result = await ensureSystemRoms(target);
-    if (result.status === "downloaded") {
-      const afterFetch = await scanForSystemRoms();
-      if (afterFetch) {
-        return afterFetch;
-      }
-    } else if (result.status === "failed" || result.status === "skipped") {
-      logger.warn("System ROMs are unavailable", { reason: result.reason, dir: result.dir });
-    }
-  }
-
+  // Deliberately no download here. This runs inside every render worker, so
+  // fetching from here would mean N threads racing to write the same three
+  // files, and would put a network call in the path of any unit test that
+  // happens to build an engine. The classify CLI does it once up front instead
+  // — see ensureSystemRomsForRun().
   logger.warn(
     "No system ROMs found for WASM renderer (looked in SIDFLOW_ROMS_DIR/SIDFLOW_ROM_DIR, SIDFLOW_ROOT/workspace/roms, workspace/roms, public/roms); continuing with built-in ROMs. " +
       "Tunes that need them will render as silence or a held frame and still classify, so treat this as a reason to stop."
   );
   return { kernal: null, basic: null, chargen: null };
+}
+
+/**
+ * Make sure the C64 system ROMs are on disk before a classification run starts.
+ *
+ * Called once from the CLI, deliberately not from createEngine(): engines are
+ * built inside parallel render workers, so downloading from there would race,
+ * and would drag a network call into unit tests.
+ */
+export async function ensureSystemRomsForRun(): Promise<void> {
+  if (process.env.SIDFLOW_WASM_DISABLE_ROMS === "1") {
+    return;
+  }
+  if (await scanForSystemRoms()) {
+    return;
+  }
+  const target = getSystemRomDirCandidates()[0];
+  if (!target) {
+    return;
+  }
+  const result = await ensureSystemRoms(target);
+  if (result.status === "failed" || result.status === "skipped") {
+    logger.warn("System ROMs are unavailable; rendering will be degraded", {
+      reason: result.reason,
+      dir: result.dir,
+    });
+  }
 }
 
 async function scanForSystemRoms(): Promise<SystemRoms | null> {

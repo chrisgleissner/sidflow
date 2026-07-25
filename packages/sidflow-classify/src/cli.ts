@@ -449,6 +449,12 @@ export async function runClassifyCli(
       process.env.SIDFLOW_SID_ENGINE = options.sidEngine;
     }
 
+    // Once, before any render worker starts. Without the ROMs libsidplayfp
+    // initialises a tune but never advances it, and the run would still produce
+    // features — from silence.
+    const { ensureSystemRomsForRun } = await import("./render/engine-factory.js");
+    await ensureSystemRomsForRun();
+
     // By default, Essentia feature extraction is required.
     // Users must explicitly opt into degraded heuristic fallback.
     if (options.allowDegraded) {
