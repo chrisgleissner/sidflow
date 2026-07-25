@@ -27,6 +27,9 @@ RUN emcc --version
 COPY src/bindings/bindings.cpp /opt/libsidplayfp-wasm/src/bindings/bindings.cpp
 COPY docker/entrypoint.sh /opt/libsidplayfp-wasm/entrypoint.sh
 COPY scripts/apply-thread-guards.py /opt/libsidplayfp-wasm/scripts/apply-thread-guards.py
+COPY scripts/apply-sid-write-hook.py /opt/libsidplayfp-wasm/scripts/apply-sid-write-hook.py
+COPY scripts/smoke-render.mjs /opt/libsidplayfp-wasm/scripts/smoke-render.mjs
+COPY test-tone-c4.sid /opt/libsidplayfp-wasm/test-tone-c4.sid
 
 RUN chmod +x /opt/libsidplayfp-wasm/entrypoint.sh
 

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -17,6 +18,21 @@
 #include <sidplayfp/sidbuilder.h>
 
 #include <sidemu.h>
+
+// The engine must be reSIDfp. Since libsidplayfp v3.x reSIDfp lives in an
+// external library (configure.ac: PKG_CHECK_MODULES([RESIDFP], [libresidfp])),
+// and HAVE_RESIDFP is defined only when pkg-config finds it. For a long time
+// this build never provided libresidfp, so it silently fell back to SIDLite —
+// a fast approximation that measurably does not sound like a C64 (see
+// c64commander docs/plans/sid-station/AUDIO-FIDELITY-TEST.md).
+//
+// Fail the build rather than ship that fallback by accident. Comparison
+// artifacts can still be produced deliberately with -DSIDFLOW_ALLOW_SIDLITE.
+#if !defined(HAVE_RESIDFP) && !defined(SIDFLOW_ALLOW_SIDLITE)
+#error "libresidfp not found: this build would silently fall back to SIDLite. \
+Build libresidfp into the emscripten sysroot so pkg-config defines HAVE_RESIDFP, \
+or set SIDFLOW_ALLOW_SIDLITE=1 to deliberately build a SIDLite comparison artifact."
+#endif
 
 #ifdef HAVE_RESIDFP
 #include <residfp.h>
@@ -73,161 +89,148 @@ namespace
     }
 }
 
-class TracingSidEmu final : public libsidplayfp::sidemu
+// SID register write tracing.
+//
+// This used to be a `TracingSidEmu`: a libsidplayfp::sidemu subclass that
+// wrapped a real emulation and mirrored its buffer state. That was broken.
+// `sidemu::bufferpos()` is not virtual, and player.cpp drives the consume cycle
+// through it (`sampleCount = s->bufferpos(); s->bufferpos(0);`), so the reset
+// landed on the wrapper while samples were produced into the inner emulation's
+// buffer. The inner cursor was never reset, grew without bound, walked off the
+// end of its buffer, and fed the mixer an ever-growing stale sample count.
+//
+// There is no wrapper any more. The builder hands out upstream's own emulation
+// object untouched — the audio path is byte-for-byte libsidplayfp's — and
+// tracing is a nullable function pointer consulted inside the patched
+// `sidemu::writeReg` (see scripts/apply-sid-write-hook.py), the single funnel
+// every CPU SID register write already passes through. Observation only: with
+// the hook unset, which is the default and the only mode the C64 Commander app
+// uses, the emulation is exactly upstream's.
+extern "C" void (*sidflow_sid_write_hook)(const void *emu, unsigned int addr,
+                                          unsigned int data, long long cyclePhi1) = nullptr;
+
+class SidWriteTraceBuilder final : public DefaultSidBuilder
 {
 public:
-    TracingSidEmu(
-        sidbuilder *builder,
-        std::unique_ptr<libsidplayfp::sidemu> inner,
-        uint32_t sidNumber,
-        std::vector<SidWriteTraceRecord> *traceSink,
-        bool *traceEnabled)
-        : libsidplayfp::sidemu(builder),
-          inner(std::move(inner)),
-          sidNumber(sidNumber),
-          traceSink(traceSink),
-          traceEnabled(traceEnabled)
-    {
-        syncBufferState();
-    }
-
-    bool lock(libsidplayfp::EventScheduler *scheduler) override
-    {
-        if (!libsidplayfp::sidemu::lock(scheduler))
-        {
-            return false;
-        }
-        if (!inner->lock(scheduler))
-        {
-            libsidplayfp::sidemu::unlock();
-            m_error = inner->error();
-            return false;
-        }
-        syncBufferState();
-        return true;
-    }
-
-    void unlock() override
-    {
-        inner->unlock();
-        libsidplayfp::sidemu::unlock();
-        syncBufferState();
-    }
-
-    void clock() override
-    {
-        inner->clock();
-        syncBufferState();
-    }
-
-    void model(SidConfig::sid_model_t model, bool digiboost) override
-    {
-        inner->model(model, digiboost);
-        m_error = inner->error();
-        syncBufferState();
-    }
-
-    void sampling(float systemfreq, float outputfreq, SidConfig::sampling_method_t method) override
-    {
-        inner->sampling(systemfreq, outputfreq, method);
-        m_error = inner->error();
-        syncBufferState();
-    }
-
-protected:
-    uint8_t read(uint_least8_t addr) override
-    {
-        const uint8_t value = inner->peek(addr);
-        syncBufferState();
-        return value;
-    }
-
-    void write(uint_least8_t addr, uint8_t data) override
-    {
-        if (traceEnabled != nullptr && *traceEnabled && traceSink != nullptr)
-        {
-            const libsidplayfp::event_clock_t cycle = eventScheduler != nullptr
-                ? eventScheduler->getTime(libsidplayfp::EVENT_CLOCK_PHI1)
-                : 0;
-            traceSink->push_back(SidWriteTraceRecord{
-                sidNumber,
-                static_cast<uint32_t>(addr & 0x1f),
-                static_cast<uint32_t>(data),
-                static_cast<uint32_t>(cycle),
-            });
-        }
-
-        inner->poke(addr, data);
-        syncBufferState();
-    }
-
-    void reset(uint8_t volume) override
-    {
-        inner->reset();
-        if (volume != 0x0f)
-        {
-            inner->poke(0x18, volume);
-        }
-        syncBufferState();
-    }
-
-private:
-    void syncBufferState()
-    {
-        m_buffer = inner->buffer();
-        bufferpos(inner->bufferpos());
-        m_error = inner->error();
-    }
-
-    std::unique_ptr<libsidplayfp::sidemu> inner;
-    uint32_t sidNumber;
-    std::vector<SidWriteTraceRecord> *traceSink;
-    bool *traceEnabled;
-};
-
-class TracingSidBuilder final : public DefaultSidBuilder
-{
-public:
-    TracingSidBuilder(const char *name, std::vector<SidWriteTraceRecord> *traceSink, bool *traceEnabled)
+    SidWriteTraceBuilder(const char *name, std::vector<SidWriteTraceRecord> *traceSink, bool *traceEnabled)
         : DefaultSidBuilder(name),
           traceSink(traceSink),
           traceEnabled(traceEnabled)
     {
     }
 
-    void resetTraceState()
+    ~SidWriteTraceBuilder() override
     {
-        nextSidNumber = 0;
+        for (const auto &entry : sidNumbers)
+        {
+            registry().erase(entry.first);
+        }
+    }
+
+    // SID numbers are assigned when the emulation is created and stay stable for
+    // its lifetime, so they survive libsidplayfp reusing a chip from its pool
+    // across reconfigurations. Nothing to reset beyond the trace buffer itself,
+    // which the caller clears.
+    void resetTraceState() {}
+
+    void record(const void *emu, unsigned int addr, unsigned int data, long long cyclePhi1)
+    {
+        if (traceEnabled == nullptr || !*traceEnabled || traceSink == nullptr)
+        {
+            return;
+        }
+
+        const auto known = sidNumbers.find(emu);
+        traceSink->push_back(SidWriteTraceRecord{
+            known != sidNumbers.end() ? known->second : 0u,
+            static_cast<uint32_t>(addr & 0x1f),
+            static_cast<uint32_t>(data),
+            static_cast<uint32_t>(cyclePhi1),
+        });
+    }
+
+    // Maps an emulation instance back to the builder that created it, so the
+    // hook can attribute a write without the emulation knowing about tracing.
+    static std::map<const void *, SidWriteTraceBuilder *> &registry()
+    {
+        static std::map<const void *, SidWriteTraceBuilder *> instance;
+        return instance;
     }
 
 protected:
     libsidplayfp::sidemu *create() override
     {
-        std::unique_ptr<libsidplayfp::sidemu> inner(DefaultSidBuilder::create());
-        if (!inner)
+        libsidplayfp::sidemu *emu = DefaultSidBuilder::create();
+        if (emu != nullptr)
         {
-            return nullptr;
+            // Assigning over any previous entry keeps this correct when the
+            // allocator reuses the address of a removed emulation.
+            sidNumbers[emu] = nextSidNumber++;
+            registry()[emu] = this;
         }
-
-        return new TracingSidEmu(this, std::move(inner), nextSidNumber++, traceSink, traceEnabled);
+        return emu;
     }
 
 private:
     std::vector<SidWriteTraceRecord> *traceSink;
     bool *traceEnabled;
     uint32_t nextSidNumber = 0;
+    std::map<const void *, uint32_t> sidNumbers;
 };
+
+namespace
+{
+    void sidflowSidWriteHook(const void *emu, unsigned int addr, unsigned int data, long long cyclePhi1)
+    {
+        auto &registry = SidWriteTraceBuilder::registry();
+        const auto owner = registry.find(emu);
+        if (owner != registry.end())
+        {
+            owner->second->record(emu, addr, data, cyclePhi1);
+        }
+    }
+
+    // The hook is installed only while something is actually tracing, so a
+    // player that never asks for traces runs with the pointer null.
+    unsigned int traceConsumers = 0;
+
+    void retainWriteHook()
+    {
+        if (traceConsumers++ == 0)
+        {
+            sidflow_sid_write_hook = &sidflowSidWriteHook;
+        }
+    }
+
+    void releaseWriteHook()
+    {
+        if (traceConsumers > 0 && --traceConsumers == 0)
+        {
+            sidflow_sid_write_hook = nullptr;
+        }
+    }
+}
 
 class SidPlayerContext
 {
 public:
     SidPlayerContext()
-                : builder(std::make_unique<TracingSidBuilder>(kDefaultBuilderName, &sidWriteTrace, &traceEnabled)),
+                : builder(std::make_unique<SidWriteTraceBuilder>(kDefaultBuilderName, &sidWriteTrace, &traceEnabled)),
           stereo(kDefaultStereo),
           channels(kDefaultStereo ? 2u : 1u),
           sampleRate(kDefaultSampleRate),
           configured(false)
     {
+    }
+
+    ~SidPlayerContext()
+    {
+        // Balance the hook refcount so a context destroyed while tracing does
+        // not leave the hook installed for players that never asked for it.
+        if (traceEnabled)
+        {
+            releaseWriteHook();
+        }
     }
 
     bool configure(uint32_t frequency, bool stereoPlayback)
@@ -244,7 +247,8 @@ public:
 
         SidConfig cfg;
         cfg.frequency = sampleRate;
-        cfg.playback = stereo ? SidConfig::STEREO : SidConfig::MONO;
+        // Since v3.0.0 stereo is purely a mixer concern (SidConfig::playback and
+        // MONO/STEREO were removed); initMixer(stereo) below selects it.
         cfg.sidEmulation = builder.get();
         cfg.samplingMethod = SidConfig::RESAMPLE_INTERPOLATE;
         cfg.digiBoost = true;
@@ -380,9 +384,19 @@ public:
 
     void setSidWriteTraceEnabled(bool enabled)
     {
-        traceEnabled = enabled;
-        if (!traceEnabled)
+        if (enabled == traceEnabled)
         {
+            return;
+        }
+
+        traceEnabled = enabled;
+        if (traceEnabled)
+        {
+            retainWriteHook();
+        }
+        else
+        {
+            releaseWriteHook();
             clearSidWriteTrace();
         }
     }
@@ -481,7 +495,9 @@ public:
         emscripten::val obj = emscripten::val::object();
         obj.set("name", info.name() ? info.name() : "");
         obj.set("version", info.version() ? info.version() : "");
-        obj.set("channels", info.channels());
+        // SidInfo::channels() was removed in v3.0.0; the channel count is now
+        // decided by the mixer, which we configure from `stereo`.
+        obj.set("channels", channels);
         obj.set("driverAddress", info.driverAddr());
         obj.set("driverLength", info.driverLength());
         obj.set("powerOnDelay", info.powerOnDelay());
@@ -607,7 +623,7 @@ private:
     }
 
     sidplayfp player;
-    std::unique_ptr<TracingSidBuilder> builder;
+    std::unique_ptr<SidWriteTraceBuilder> builder;
     std::unique_ptr<SidTune> tune;
     std::vector<uint8_t> tuneBuffer;
     std::vector<int16_t> mixBuffer;
@@ -643,8 +659,4 @@ EMSCRIPTEN_BINDINGS(libsidplayfp_wasm)
         .function("getTuneInfo", &SidPlayerContext::getTuneInfo)
         .function("getEngineInfo", &SidPlayerContext::getEngineInfo)
         .function("setSystemROMs", &SidPlayerContext::setSystemROMs);
-
-    emscripten::enum_<SidConfig::playback_t>("PlaybackMode")
-        .value("MONO", SidConfig::MONO)
-        .value("STEREO", SidConfig::STEREO);
 }

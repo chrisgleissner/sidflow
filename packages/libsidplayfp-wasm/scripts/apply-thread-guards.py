@@ -1,17 +1,33 @@
 #!/usr/bin/env python3
-"""Insert __EMSCRIPTEN__ thread guards into FilterModelConfig sources.
+"""Make FilterModelConfig's helper threads run inline under emscripten.
 
-The upstream libsidplayfp sources spawn helper threads while building
-filter lookup tables. Emscripten's single-threaded runtime cannot
-satisfy those pthread calls, so we wrap the section with a
-`#if defined(__EMSCRIPTEN__)` branch that executes the builder lambdas
-sequentially.
+reSIDfp builds its filter lookup tables in parallel:
 
-This script is designed to be idempotent: running it multiple times
-leaves the files unchanged after the first pass. It searches for the
-`sidThread` declarations in each FilterModelConfig file and derives the
-list of lambdas to invoke sequentially, so it will continue to work if
-upstream reorders the declarations or adds new ones.
+    #ifdef HAVE_JTHREADS
+        using sidThread = std::jthread;
+    #else
+        using sidThread = std::thread;
+    #endif
+
+        sidThread thdSummer(filterSummer);
+        ... one per table ...
+
+Emscripten's runtime here is single-threaded, so constructing those throws
+`std::system_error: thread constructor failed: Not supported` the first time a
+tune is loaded — the engine never produces a sample.
+
+Rather than rewrite each construction site, this retargets the `sidThread`
+alias itself at a shim that runs the callable inline. Construction and join
+sites stay exactly as upstream wrote them, so the patch survives upstream
+adding, removing or reordering table builders.
+
+Note the moving target: these sources used to live in libsidplayfp under
+src/builders/, and the guard marker used to be
+`#if defined(HAVE_CXX20) && defined(__cpp_lib_jthread)`. As of libsidplayfp
+v3.x reSIDfp is the external libresidfp library and the marker is
+`HAVE_JTHREADS`. This script therefore searches the whole tree and, crucially,
+**fails when it finds thread usage it could not neutralise** instead of
+reporting success — a silent skip is what let a threaded build ship.
 """
 
 from __future__ import annotations
@@ -20,113 +36,132 @@ import argparse
 import pathlib
 import re
 import sys
-from typing import Iterable, List
+from typing import List
 
-THREAD_MARKER = "#if defined(HAVE_CXX20) && defined(__cpp_lib_jthread)"
-SEQUENTIAL_COMMENT = (
-    "// Execute sequentially when pthreads are unavailable in the WASM build."
+# Declared at namespace scope: the alias site is inside a function body, and a
+# local class may not have member templates.
+SHIM_DECLARATION = """
+#if defined(__EMSCRIPTEN__)
+// sidflow: emscripten's runtime here is single-threaded, so constructing a
+// std::thread throws "thread constructor failed: Not supported" and the filter
+// tables are never built. Running each builder inline on construction keeps
+// upstream's construction and join sites untouched.
+namespace
+{
+    struct SidflowInlineThread
+    {
+        template <typename Callable>
+        explicit SidflowInlineThread(Callable &&callable) { callable(); }
+        void join() const {}
+    };
+}
+#endif
+"""
+
+SHIM_ALIAS = """#if defined(__EMSCRIPTEN__)
+    using sidThread = SidflowInlineThread;
+#el"""
+
+INCLUDE_LINE = re.compile(r"^\s*#\s*include\s*[<\"][^>\"]+[>\"].*$", re.MULTILINE)
+
+# The alias-selection block: an #if/#ifdef whose body picks `using sidThread`,
+# through to its closing #endif. Matched non-greedily so a later block in the
+# same file is not swallowed.
+SELECTION_BLOCK = re.compile(
+    r"^[ \t]*#(?:if|ifdef)\b[^\n]*\n"  # opening conditional
+    r"(?:(?!^[ \t]*#endif)[\s\S])*?"  # body, no #endif yet
+    r"using\s+sidThread\s*=[^\n]*\n"  # ... which defines the alias
+    r"(?:(?!^[ \t]*#endif)[\s\S])*?"  # rest of body
+    r"^[ \t]*#endif[^\n]*\n",  # closing
+    re.MULTILINE,
 )
 
-THREAD_CALL_REGEX = re.compile(r"sidThread\s+\w+\(\s*(\w+)\s*\)")
-TAIL_REGEX = re.compile(r"(#endif\s*\n)(\s*})", re.MULTILINE)
+UNGUARDED_THREAD = re.compile(r"\bstd::j?thread\b")
 
 
-def discover_thread_calls(contents: str) -> List[str]:
-    """Return the unique lambda names used to spawn worker threads."""
-
-    calls: List[str] = []
-    for match in THREAD_CALL_REGEX.finditer(contents):
-        name = match.group(1)
-        if name not in calls:
-            calls.append(name)
-    return calls
-
-
-def inject_guard(contents: str, calls: Iterable[str]) -> str:
-    """Inject the __EMSCRIPTEN__ guard block before the thread marker."""
-
-    if "#if defined(__EMSCRIPTEN__)" in contents:
-        # Already patched.
-        return contents
-
-    try:
-        marker_index = contents.index(THREAD_MARKER)
-    except ValueError:
-        return contents  # Marker missing; leave file untouched.
-
-    line_start = contents.rfind("\n", 0, marker_index) + 1
-    line_end = contents.find("\n", marker_index)
-    if line_end == -1:
-        line_end = len(contents)
-    else:
-        line_end += 1  # include newline
-
-    original_line = contents[line_start:line_end]
-    indent = original_line[: original_line.index("#")]
-
-    sequential_lines = "\n".join(f"{indent}    {call}();" for call in calls)
-    guard_block = (
-        f"{indent}#if defined(__EMSCRIPTEN__)\n"
-        f"{indent}    {SEQUENTIAL_COMMENT}\n"
-        f"{sequential_lines}\n"
-        f"{indent}#else"
-    )
-
-    with_guard = contents[:line_start] + guard_block + "\n" + original_line + contents[line_end:]
-
-    # Ensure we close the new #if guard before the function ends.
-    if not re.search(r"#endif\s*\n#endif\s*\n", with_guard):
-        def _append_guard(match: re.Match[str]) -> str:
-            return match.group(1) + "#endif\n" + match.group(2)
-
-        with_guard, count = TAIL_REGEX.subn(_append_guard, with_guard, count=1)
-        if count == 0:
-            raise RuntimeError("Unable to append closing #endif for __EMSCRIPTEN__ guard")
-
-    return with_guard
-
-
-def process_file(path: pathlib.Path) -> bool:
+def patch_file(path: pathlib.Path) -> bool:
     contents = path.read_text()
-    calls = discover_thread_calls(contents)
-    if not calls:
+
+    if "SidflowInlineThread" in contents:
+        return False  # already patched; idempotent
+
+    if "sidThread" not in contents:
         return False
 
-    updated = inject_guard(contents, calls)
-    if updated == contents:
-        return False
+    match = SELECTION_BLOCK.search(contents)
+    if not match:
+        raise RuntimeError(
+            "found `sidThread` but not the #if/#endif block that defines it; "
+            "upstream restructured the alias — re-derive this patch"
+        )
 
-    path.write_text(updated)
+    block = match.group(0)
+    # Turn the existing conditional into the `#elif` arm of the new guard.
+    # `#elifdef` would be shorter but is C++23-only, and this has to keep
+    # compiling if the standard level is ever lowered.
+    first_line, rest = block.lstrip().split("\n", 1)
+    directive = first_line.strip()
+    if directive.startswith("#ifdef"):
+        condition = f"defined({directive[len('#ifdef'):].strip()})"
+    elif directive.startswith("#ifndef"):
+        condition = f"!defined({directive[len('#ifndef'):].strip()})"
+    else:
+        condition = directive[len("#if") :].strip()
+
+    contents = contents[: match.start()] + SHIM_ALIAS + f"if {condition}\n" + rest + contents[match.end() :]
+
+    includes = list(INCLUDE_LINE.finditer(contents))
+    if not includes:
+        raise RuntimeError("no #include found to anchor the inline-thread shim")
+    anchor = includes[-1].end()
+    contents = contents[:anchor] + "\n" + SHIM_DECLARATION + contents[anchor:]
+
+    path.write_text(contents)
     return True
 
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "root", type=pathlib.Path, help="Path to the cloned libsidplayfp repository"
-    )
+    parser.add_argument("root", type=pathlib.Path, help="Path to the source tree to patch")
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
-    targets = sorted(root.glob("src/builders/**/FilterModelConfig*.cpp"))
-    if not targets:
-        print("No FilterModelConfig sources found; assuming upstream no longer needs thread guards.")
-        return 0
+    targets = sorted(root.glob("**/FilterModelConfig*.cpp"))
 
-    modified_any = False
+    patched = []
     for path in targets:
         try:
-            modified = process_file(path)
-        except Exception as exc:  # pragma: no cover - propagated as build failure
-            print(f"Failed to update {path.relative_to(root)}: {exc}", file=sys.stderr)
+            if patch_file(path):
+                patched.append(path)
+        except Exception as exc:
+            print(f"thread-guards: failed to update {path.relative_to(root)}: {exc}", file=sys.stderr)
             return 1
-        if modified:
-            modified_any = True
-            rel = path.relative_to(root)
-            print(f"Applied __EMSCRIPTEN__ guard to {rel}")
 
-    if not modified_any:
-        print("Thread guards already present; no changes applied.")
+    for path in patched:
+        print(f"thread-guards: sidThread runs inline in {path.relative_to(root)}")
+
+    # A silent "nothing to do" is exactly how a threaded artifact shipped once
+    # already, so verify the result instead of trusting the search.
+    leftovers = []
+    for path in root.glob("**/*.cpp"):
+        text = path.read_text(errors="ignore")
+        if not UNGUARDED_THREAD.search(text):
+            continue
+        if "__EMSCRIPTEN__" in text:
+            continue
+        leftovers.append(path.relative_to(root))
+
+    if leftovers:
+        print(
+            "thread-guards: these sources still construct std::thread with no "
+            "__EMSCRIPTEN__ guard, which fails at runtime in a single-threaded "
+            "wasm runtime:\n  " + "\n  ".join(str(p) for p in leftovers),
+            file=sys.stderr,
+        )
+        return 1
+
+    if not patched:
+        print("thread-guards: no thread usage needing guards in this tree")
     return 0
 
 

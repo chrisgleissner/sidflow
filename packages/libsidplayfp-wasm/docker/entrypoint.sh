@@ -13,29 +13,86 @@ else
 fi
 
 BUILD_ROOT=/tmp/libsidplayfp
+RESIDFP_BUILD_ROOT=/tmp/libresidfp
 OUTPUT_ROOT=/dist
 CACHE_ROOT=/opt/libsidplayfp-cache
 CACHE_REPO="${CACHE_ROOT}/repo"
+RESIDFP_CACHE_REPO="${CACHE_ROOT}/residfp"
 
-rm -rf "${BUILD_ROOT}"
-mkdir -p "${BUILD_ROOT}" "${OUTPUT_ROOT}" "${CACHE_ROOT}"
+# Where the cross-compiled libresidfp is installed so that libsidplayfp's
+# `PKG_CHECK_MODULES([RESIDFP], ...)` can find it during emconfigure.
+SYSROOT_PREFIX=/opt/wasm-sysroot
+
+rm -rf "${BUILD_ROOT}" "${RESIDFP_BUILD_ROOT}"
+mkdir -p "${BUILD_ROOT}" "${RESIDFP_BUILD_ROOT}" "${OUTPUT_ROOT}" "${CACHE_ROOT}" "${SYSROOT_PREFIX}"
 
 GIT_URL="https://github.com/libsidplayfp/libsidplayfp"
+RESIDFP_GIT_URL="https://github.com/libsidplayfp/libresidfp"
+
 # Pin upstream. This used to track master and `reset --hard origin/master` on
 # every run, so the artifact silently changed with upstream and was not
-# reproducible — and once upstream dropped SidConfig::playback / SidInfo::channels
-# the bindings stopped compiling against it altogether. v3.0.0a2 is the revision
-# these bindings target (it matches the "SIDLiteEmu V3.0.0a2" string in the
-# previously published artifact). Override with LIBSIDPLAYFP_REF to try another.
-LIBSIDPLAYFP_REF="${LIBSIDPLAYFP_REF:-v3.0.0a2}"
+# reproducible. v3.0.2 is the current stable release (2026-06-21); the build was
+# previously stuck on the v3.0.0a2 *pre-release alpha*. Override with
+# LIBSIDPLAYFP_REF to try another — and update bindings.cpp if the API moved.
+LIBSIDPLAYFP_REF="${LIBSIDPLAYFP_REF:-v3.0.2}"
 
-if [[ ! -d "${CACHE_REPO}/.git" ]]; then
-  git clone --recurse-submodules "${GIT_URL}" "${CACHE_REPO}"
-else
-  git -C "${CACHE_REPO}" fetch --tags origin
+# Since libsidplayfp v3.x the reSIDfp engine lives in this separate library.
+# libsidplayfp v3.0.2 requires >= 1.0.0.
+LIBRESIDFP_REF="${LIBRESIDFP_REF:-v1.1.2}"
+
+sync_repo() {
+    local url="$1" dest="$2" ref="$3"
+    if [[ ! -d "${dest}/.git" ]]; then
+        git clone --recurse-submodules "${url}" "${dest}"
+    else
+        git -C "${dest}" fetch --tags origin
+    fi
+    git -C "${dest}" checkout --force "${ref}"
+    git -C "${dest}" submodule update --init --recursive
+}
+
+# ---------------------------------------------------------------------------
+# 1. Cross-compile libresidfp, the actual SID emulation.
+#
+# Without this, libsidplayfp's configure leaves HAVE_RESIDFP undefined and the
+# bindings silently fall back to SIDLite — a fast approximation that measurably
+# does not sound like a C64. bindings.cpp now #errors in that case, so this step
+# is load-bearing rather than an optimisation.
+# ---------------------------------------------------------------------------
+sync_repo "${RESIDFP_GIT_URL}" "${RESIDFP_CACHE_REPO}" "${LIBRESIDFP_REF}"
+echo "libresidfp pinned at ${LIBRESIDFP_REF} ($(git -C "${RESIDFP_CACHE_REPO}" rev-parse --short HEAD))"
+
+rsync -a --delete "${RESIDFP_CACHE_REPO}/" "${RESIDFP_BUILD_ROOT}/"
+cd "${RESIDFP_BUILD_ROOT}"
+
+# reSIDfp builds its filter tables on helper threads. These sources used to live
+# in libsidplayfp; since v3.x they are here, which is why the guard has to be
+# applied to this tree too.
+python3 /opt/libsidplayfp-wasm/scripts/apply-thread-guards.py "${RESIDFP_BUILD_ROOT}"
+
+autoreconf -vfi
+emconfigure ./configure \
+    --prefix="${SYSROOT_PREFIX}" \
+    --disable-shared \
+    --enable-static \
+    --disable-dependency-tracking \
+    CFLAGS="-O3" \
+    CXXFLAGS="-O3"
+emmake make -j"$(nproc)"
+emmake make install
+
+export PKG_CONFIG_PATH="${SYSROOT_PREFIX}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+
+if ! pkg-config --exists libresidfp; then
+    echo "libresidfp was built but pkg-config cannot see it in ${PKG_CONFIG_PATH}" >&2
+    exit 1
 fi
-git -C "${CACHE_REPO}" checkout --force "${LIBSIDPLAYFP_REF}"
-git -C "${CACHE_REPO}" submodule update --init --recursive
+echo "pkg-config sees libresidfp $(pkg-config --modversion libresidfp)"
+
+# ---------------------------------------------------------------------------
+# 2. Cross-compile libsidplayfp against it.
+# ---------------------------------------------------------------------------
+sync_repo "${GIT_URL}" "${CACHE_REPO}" "${LIBSIDPLAYFP_REF}"
 echo "libsidplayfp upstream pinned at ${LIBSIDPLAYFP_REF} ($(git -C "${CACHE_REPO}" rev-parse --short HEAD))"
 
 rsync -a --delete "${CACHE_REPO}/" "${BUILD_ROOT}/"
@@ -45,6 +102,7 @@ cd "${BUILD_ROOT}"
 git submodule update --init --recursive
 
 python3 /opt/libsidplayfp-wasm/scripts/apply-thread-guards.py "${BUILD_ROOT}"
+python3 /opt/libsidplayfp-wasm/scripts/apply-sid-write-hook.py "${BUILD_ROOT}"
 
 if grep -q 'AC_MSG_ERROR("pthreads not found")' configure.ac; then
     sed -i 's/AX_PTHREAD(\[\], \[AC_MSG_ERROR("pthreads not found")\])/AX_PTHREAD([], [])/' configure.ac
@@ -60,36 +118,31 @@ emconfigure ./configure \
     --without-usbsid \
     --disable-dependency-tracking \
     CFLAGS="-O3" \
-    CXXFLAGS="-O3"
+    CXXFLAGS="-O3" \
+    RESIDFP_CFLAGS="$(pkg-config --cflags libresidfp)" \
+    RESIDFP_LIBS="$(pkg-config --libs libresidfp)"
+
+# configure only warns when libresidfp is missing, so assert the result rather
+# than discovering it later in `strings` output.
+if ! grep -q '^#define HAVE_RESIDFP 1' src/config.h 2>/dev/null && \
+   ! grep -q '^#define HAVE_RESIDFP 1' config.h 2>/dev/null; then
+    echo "configure did not define HAVE_RESIDFP — libsidplayfp would build without reSIDfp" >&2
+    exit 1
+fi
+echo "HAVE_RESIDFP is defined; libsidplayfp will build the reSIDfp builder"
 
 emmake make -j"$(nproc)"
 
 cp /opt/libsidplayfp-wasm/src/bindings/bindings.cpp "${BUILD_ROOT}/"
 
-# KNOWN LIMITATION — this artifact uses SIDLite, not reSIDfp.
-#
-# bindings.cpp picks ReSIDfpBuilder under `#ifdef HAVE_RESIDFP` and otherwise
-# falls back to SIDLiteBuilder. As of libsidplayfp v3.x reSIDfp is an *external*
-# dependency (configure.ac: PKG_CHECK_MODULES([RESIDFP], [libresidfp >= 0.9.2]))
-# and defines HAVE_RESIDFP only when pkg-config finds it. This build never
-# provides libresidfp, so every published artifact has silently been SIDLite.
-#
-# That is audible. Measured on a Pixel 4 against a real C64 Ultimate and against
-# native sidplayfp (see c64commander docs/plans/sid-station/AUDIO-FIDELITY-TEST.md):
-# SIDLite carries a ~0.17 full-scale DC offset the hardware does not have, runs
-# ~8 dB quieter, and its output does not track the real machine (envelope
-# correlation 0.07, where native sidplayfp reaches 0.48 on the same tune).
-#
-# Fixing it means cross-compiling libsidplayfp/libresidfp with emscripten,
-# installing it where pkg-config can see it, and linking -lresidfp here. Simply
-# adding -DHAVE_RESIDFP is NOT enough — it compiles but fails to link
-# (undefined symbol: ReSIDfpBuilder::~ReSIDfpBuilder).
 em++ bindings.cpp src/.libs/libsidplayfp.a \
     -I./src \
     -I./src/sidplayfp \
     -I./src/sidtune \
-  -I./src/builders/sidlite-builder \
+    -I./src/builders/sidlite-builder \
     -I./src/builders/residfp-builder \
+    $(pkg-config --cflags libresidfp) \
+    $(pkg-config --libs libresidfp) \
     --bind -O3 \
     -sMODULARIZE=1 \
     -sEXPORT_NAME="createLibsidplayfp" \
@@ -102,6 +155,34 @@ em++ bindings.cpp src/.libs/libsidplayfp.a \
     -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE='[$ccall,$cwrap]' \
     -sEXPORTED_RUNTIME_METHODS='[FS,PATH,cwrap,ccall]' \
     -o "${OUTPUT_ROOT}/libsidplayfp.js"
+
+# ---------------------------------------------------------------------------
+# 3. Assert the artifact really is what we think it is.
+#
+# For a long time every published artifact was silently SIDLite because
+# HAVE_RESIDFP was never defined. Check the built binary, not the build inputs,
+# so this cannot regress unnoticed again.
+# ---------------------------------------------------------------------------
+# Materialise the symbol dump first: piping `strings` into `grep -q` makes grep
+# exit on the first match, which SIGPIPEs strings, which under `set -o pipefail`
+# reports the pipeline as failed even though the match succeeded.
+ARTIFACT_SYMBOLS=$(strings "${OUTPUT_ROOT}/libsidplayfp.wasm")
+
+if ! grep -q 'WasmReSIDfp' <<<"${ARTIFACT_SYMBOLS}"; then
+    echo "ARTIFACT CHECK FAILED: libsidplayfp.wasm does not contain the reSIDfp builder name" >&2
+    exit 1
+fi
+if grep -q 'WasmSIDLite' <<<"${ARTIFACT_SYMBOLS}"; then
+    echo "ARTIFACT CHECK FAILED: libsidplayfp.wasm still contains the SIDLite builder name" >&2
+    exit 1
+fi
+echo "artifact check: reSIDfp confirmed ($(grep -o 'reSIDfpEmu V[^ ]*' <<<"${ARTIFACT_SYMBOLS}" | head -1)), SIDLite absent"
+
+# ...and that it actually renders. A strings check proves what was linked, not
+# that it works: reSIDfp's filter-table threads threw at load time in exactly
+# this configuration, producing an artifact that passed every static check and
+# emitted no samples at all.
+node /opt/libsidplayfp-wasm/scripts/smoke-render.mjs "${OUTPUT_ROOT}" /opt/libsidplayfp-wasm/test-tone-c4.sid
 
 cp COPYING "${OUTPUT_ROOT}/LICENSE"
 
