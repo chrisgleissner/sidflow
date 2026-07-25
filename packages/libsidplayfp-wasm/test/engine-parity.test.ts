@@ -80,6 +80,19 @@ const STABILITY = {
   errorRmsDbfs: -60,
 };
 
+/**
+ * These tests render real audio synchronously — RENDER_SECONDS per render, and
+ * reSIDfp with three SID chips costs roughly three times a single-chip tune.
+ * That is comfortably past Bun's 5 s default per-test timeout: Waterfall_3SID
+ * needs ~7-8 s here for the two-render stability check, and a CI runner is
+ * slower still. The old SIDLite artifact was cheap enough to hide this.
+ *
+ * This is CPU cost, not a hang, so the limit only has to sit well clear of it —
+ * it is a guard against a wedged engine, not a performance assertion. Render
+ * speed is covered by performance.test.ts.
+ */
+const RENDER_TEST_TIMEOUT_MS = 60_000;
+
 let wasmModule: Awaited<ReturnType<typeof loadLibsidplayfp>>;
 
 beforeAll(async () => {
@@ -117,7 +130,7 @@ describe.each(FIXTURES)("engine non-degradation: $name", ({ name, file }) => {
     // No C64 audio path emits DC. The SIDLite artifact measured +0.17 full scale,
     // wasting headroom and clicking on start/stop.
     expect(Math.abs(stats.dc), `${name} carries a DC offset of ${stats.dc.toFixed(4)}`).toBeLessThan(0.02);
-  });
+  }, RENDER_TEST_TIMEOUT_MS);
 
   it("is stable across repeated renders", () => {
     // NOT byte-equality. Measured: successive renders of the same tune in one
@@ -140,7 +153,7 @@ describe.each(FIXTURES)("engine non-degradation: $name", ({ name, file }) => {
       `${name}: run-to-run difference is ${diff.rmsDbfs.toFixed(1)} dBFS (expected below ` +
         `${STABILITY.errorRmsDbfs} dBFS).`,
     ).toBeLessThan(STABILITY.errorRmsDbfs);
-  });
+  }, RENDER_TEST_TIMEOUT_MS);
 
   it("matches the recorded golden within tolerance", () => {
     const golden = goldens.fixtures[name];
@@ -184,7 +197,7 @@ describe.each(FIXTURES)("engine non-degradation: $name", ({ name, file }) => {
       `${name}: loudness envelope correlates only ${envCorr.toFixed(5)} with the golden — the tune is ` +
         `no longer progressing the same way${hint}`,
     ).toBeGreaterThan(TOLERANCE.envelopeCorrelation);
-  });
+  }, RENDER_TEST_TIMEOUT_MS);
 });
 
 describe("golden provenance", () => {
