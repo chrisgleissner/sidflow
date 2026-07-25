@@ -1,9 +1,10 @@
 import type {
   LibsidplayfpWasmModule,
+  SidEngine,
   SidPlayerContext,
   SidPlayerContextOptions,
 } from './index.js';
-import { loadLibsidplayfp } from './index.js';
+import { loadLibsidplayfp, resolveSidEngine } from './index.js';
 
 const DEFAULT_CACHE_SECONDS = 600;
 const BUFFER_POOL_SIZE = 8;
@@ -48,6 +49,12 @@ export interface SidAudioEngineOptions extends SidPlayerContextOptions {
   stereo?: boolean;
   module?: Promise<LibsidplayfpWasmModule>;
   cacheSecondsLimit?: number;
+  /**
+   * SID emulation to render with. Defaults to DEFAULT_SID_ENGINE (SIDLite);
+   * pass `residfp` for the cycle-accurate reference. Ignored when `module` is
+   * supplied, since that module has already picked an engine.
+   */
+  engine?: SidEngine;
 }
 
 export interface SidWriteTrace {
@@ -93,6 +100,7 @@ export class SidAudioEngine {
   private romSupportDisabled = false;
   private romFailureLogged = false;
   private readonly bufferPool: BufferPool;
+  private readonly engine: SidEngine | null;
 
   private releaseContext(context: TraceCapableSidPlayerContext | undefined): void {
     const disposableContext = context as DisposableSidPlayerContext | undefined;
@@ -121,6 +129,9 @@ export class SidAudioEngine {
     this.sampleRate = sampleRate ?? 44100;
     this.stereo = stereo ?? true;
     this.maxCacheSeconds = cacheSecondsLimit ?? DEFAULT_CACHE_SECONDS;
+    // A caller-supplied module has already chosen an engine; reporting the
+    // resolved default in that case would be a guess, so record null instead.
+    this.engine = moduleOverride ? null : resolveSidEngine(options.engine);
     this.modulePromise = moduleOverride ?? loadLibsidplayfp(loaderOptions);
 
     // Initialize buffer pool with size appropriate for sample rate and stereo
@@ -254,6 +265,34 @@ export class SidAudioEngine {
     return applied;
   }
 
+  /**
+   * Which engine this instance requested, or null when the caller supplied
+   * their own module. For what the loaded artifact actually is, see
+   * `getEngineName()`.
+   */
+  getEngine(): SidEngine | null {
+    return this.engine;
+  }
+
+  /** The builder name baked into the loaded artifact, e.g. "WasmSIDLite". */
+  async getEngineName(): Promise<string> {
+    const module = await this.ensureModule();
+    return typeof module.getSidEngineName === "function"
+      ? module.getSidEngineName()
+      : "unknown";
+  }
+
+  /**
+   * Supply the C64 system ROMs.
+   *
+   * Strongly recommended: without them libsidplayfp initialises a tune but
+   * never advances it, so many tunes render as silence or as a single held
+   * frame. Sizes are exact — KERNAL 8192, BASIC 8192, CHARGEN 4096 bytes.
+   *
+   * The ROMs are copyrighted and are not shipped with this package. Dump them
+   * from a real Commodore 64, and see the repository README ("System ROMs")
+   * for the file names and search paths SIDFlow itself uses.
+   */
   async setSystemROMs(
     kernal?: Uint8Array | ArrayBufferView | null,
     basic?: Uint8Array | ArrayBufferView | null,

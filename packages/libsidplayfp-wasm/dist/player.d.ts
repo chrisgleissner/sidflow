@@ -1,9 +1,15 @@
-import type { LibsidplayfpWasmModule, SidPlayerContextOptions } from './index.js';
+import type { LibsidplayfpWasmModule, SidEngine, SidPlayerContextOptions } from './index.js';
 export interface SidAudioEngineOptions extends SidPlayerContextOptions {
     sampleRate?: number;
     stereo?: boolean;
     module?: Promise<LibsidplayfpWasmModule>;
     cacheSecondsLimit?: number;
+    /**
+     * SID emulation to render with. Defaults to DEFAULT_SID_ENGINE (SIDLite);
+     * pass `residfp` for the cycle-accurate reference. Ignored when `module` is
+     * supplied, since that module has already picked an engine.
+     */
+    engine?: SidEngine;
 }
 export interface SidWriteTrace {
     sidNumber: number;
@@ -37,6 +43,7 @@ export declare class SidAudioEngine {
     private romSupportDisabled;
     private romFailureLogged;
     private readonly bufferPool;
+    private readonly engine;
     private releaseContext;
     constructor(options?: SidAudioEngineOptions);
     private ensureModule;
@@ -46,6 +53,25 @@ export declare class SidAudioEngine {
     private applySystemROMs;
     private patchStartSong;
     private reloadCurrentSong;
+    /**
+     * Which engine this instance requested, or null when the caller supplied
+     * their own module. For what the loaded artifact actually is, see
+     * `getEngineName()`.
+     */
+    getEngine(): SidEngine | null;
+    /** The builder name baked into the loaded artifact, e.g. "WasmSIDLite". */
+    getEngineName(): Promise<string>;
+    /**
+     * Supply the C64 system ROMs.
+     *
+     * Strongly recommended: without them libsidplayfp initialises a tune but
+     * never advances it, so many tunes render as silence or as a single held
+     * frame. Sizes are exact — KERNAL 8192, BASIC 8192, CHARGEN 4096 bytes.
+     *
+     * The ROMs are copyrighted and are not shipped with this package. Dump them
+     * from a real Commodore 64, and see the repository README ("System ROMs")
+     * for the file names and search paths SIDFlow itself uses.
+     */
     setSystemROMs(kernal?: Uint8Array | ArrayBufferView | null, basic?: Uint8Array | ArrayBufferView | null, chargen?: Uint8Array | ArrayBufferView | null): Promise<void>;
     loadSidBuffer(data: Uint8Array | ArrayBufferView, songIndex?: number): Promise<void>;
     selectSong(songIndex: number): Promise<number>;

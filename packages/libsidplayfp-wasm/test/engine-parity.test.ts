@@ -96,7 +96,10 @@ const RENDER_TEST_TIMEOUT_MS = 60_000;
 let wasmModule: Awaited<ReturnType<typeof loadLibsidplayfp>>;
 
 beforeAll(async () => {
-  wasmModule = await loadLibsidplayfp();
+  // Pinned, not defaulted: this suite exists to assert reSIDfp specifically, and
+  // SIDFLOW_SID_ENGINE=sidlite in the environment would otherwise quietly point
+  // it at the other artifact and turn every assertion here into a lie.
+  wasmModule = await loadLibsidplayfp({ engine: "residfp" });
 });
 
 const render = (file: string) => renderWith(wasmModule, file, CHUNK_CYCLES, RENDER_SECONDS);

@@ -22,12 +22,13 @@
 // The engine must be reSIDfp. Since libsidplayfp v3.x reSIDfp lives in an
 // external library (configure.ac: PKG_CHECK_MODULES([RESIDFP], [libresidfp])),
 // and HAVE_RESIDFP is defined only when pkg-config finds it. For a long time
-// this build never provided libresidfp, so it silently fell back to SIDLite —
-// a fast approximation that measurably does not sound like a C64 (see
-// c64commander docs/plans/sid-station/AUDIO-FIDELITY-TEST.md).
+// this build never provided libresidfp, so a build that believed it was
+// producing reSIDfp silently produced SIDLite instead.
 //
-// Fail the build rather than ship that fallback by accident. Comparison
-// artifacts can still be produced deliberately with -DSIDFLOW_ALLOW_SIDLITE.
+// The problem was never which emulation ran — SIDLite is a perfectly good
+// default — but that the artifact was not the engine it claimed to be, and
+// nothing checked. Fail the build rather than ship that confusion by accident;
+// select SIDLite deliberately with -DSIDFLOW_SID_ENGINE_SIDLITE instead.
 #if !defined(HAVE_RESIDFP) && !defined(SIDFLOW_ALLOW_SIDLITE)
 #error "libresidfp not found: this build would silently fall back to SIDLite. \
 Build libresidfp into the emscripten sysroot so pkg-config defines HAVE_RESIDFP, \

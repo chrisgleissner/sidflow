@@ -70,13 +70,24 @@ Many SID songs require the Commodore 64 system ROM files in **`workspace/roms/`*
 | `basic.901226-01.bin` (or `basic.bin`) | C64 BASIC | 8 KB |
 | `characters.901225-01.bin` (or `chargen.bin`) | Character generator | 4 KB |
 
-Obtain these files from a physical Commodore 64 or a BIOS dump. The `workspace/roms/` directory is git-ignored so the ROM files are never committed.
+The three files go **directly in the directory, not in subfolders**, and the sizes must be exact — 8192, 8192, and 4096 bytes. Either the preferred name or the short alias is recognised:
+
+```
+workspace/roms/
+├── kernal.901227-03.bin      (or kernal.bin)
+├── basic.901226-01.bin       (or basic.bin)
+└── characters.901225-01.bin  (or chargen.bin)
+```
+
+Obtain these files from a physical Commodore 64 or a BIOS dump. They are copyrighted, so SIDFlow does not ship them. The `workspace/roms/` directory is git-ignored so the ROM files are never committed.
 
 Alternative locations (checked in order):
 1. `$SIDFLOW_ROMS_DIR` or `$SIDFLOW_ROM_DIR` environment variable
 2. `$SIDFLOW_ROOT/workspace/roms`
 3. `workspace/roms/` ← **recommended default**
 4. `public/roms/`
+
+**What happens without them:** rendering does not fail loudly. libsidplayfp initialises a tune but never advances it, so affected songs come out as silence or a single held frame — and they still classify, producing plausible-looking features from audio that is wrong. If all three are not found, SIDFlow logs a warning and continues with built-in ROMs; treat that warning as a reason to stop, not a detail. Set `SIDFLOW_WASM_DISABLE_ROMS=1` only when you deliberately want ROM-free rendering.
 
 ---
 
@@ -310,7 +321,7 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in March 2026):
 
-> **The ~30 min figure below is stale and optimistic.** It was measured when the WASM build had silently fallen back to SIDLite, a cheap approximation, instead of reSIDfp. On the same machine the corrected engine renders roughly 60x slower per second of audio (13 ms -> 825 ms for a 5 s render), and rendering dominates the run. Budget hours, not minutes, and measure your own hardware with `--max-songs 200` before committing to a full pass.
+> **Timings depend on the engine.** The ~30 min figure below is a SIDLite run, which is the default. `SIDFLOW_SID_ENGINE=residfp` renders roughly an order of magnitude slower and rendering dominates the run, so budget hours rather than minutes for a reference-fidelity pass. Measure your own hardware with `--max-songs 200` before committing to a full run either way.
 
 ```bash
 bash scripts/run-similarity-export.sh --mode local --full-rerun true
@@ -353,23 +364,56 @@ Manifest: data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
 
 Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`, `sidcorr-hvsc-full-sidcorr-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr`, and `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json`.
 
-**1a. Verify the run used the engine you think it did:**
+**1a. Choose the SID emulation (optional):**
 
-A silently wrong engine is the failure mode this pipeline has actually suffered: the published exports were rendered by a SIDLite build that loaded, rendered, and returned plausible sample counts while producing materially wrong audio. Both checks below are cheap, and both are worth running before you publish anything.
+Classification renders with **SIDLite** by default. It sounds good — clean, unclipped, multi-SID included, verified against reSIDfp on real tunes — and most listeners will not hear the difference. It is also roughly an order of magnitude faster, which is the difference between a corpus pass measured in hours and one measured in most of a day.
+
+`reSIDfp` is the cycle-accurate reference. Choose it when you want the last few percent of fidelity and are willing to pay for it in time; the audible gap is small enough that it mostly matters to audiophiles and to A/B comparison work.
 
 ```bash
-# The artifact must be reSIDfp, not the SIDLite approximation.
-grep -ac residfp packages/libsidplayfp-wasm/dist/libsidplayfp.wasm   # expect > 0
-grep -ac SIDLite packages/libsidplayfp-wasm/dist/libsidplayfp.wasm   # expect 0
+# Default — fast, good enough to classify from
+bash scripts/run-similarity-export.sh --mode local --full-rerun true
+
+# Reference fidelity instead, roughly 10x slower
+SIDFLOW_SID_ENGINE=residfp bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+The classify CLI takes the same choice as a flag:
+
+```bash
+./scripts/sidflow-classify --sid-engine residfp
+```
+
+Precedence is `--sid-engine`, then `SIDFLOW_SID_ENGINE`, then the SIDLite default.
+
+| Engine | Speed | DC offset (Commando) | Use for |
+|--------|-------|----------------------|---------|
+| `sidlite` (default) | ~30-40x realtime | 0.10 | Everyday use, and classifying a corpus |
+| `residfp` | ~2-6x realtime | 0.003 | Cycle-accurate reference, A/B comparison |
+
+Do not mix engines within one corpus. The features are derived from the rendered audio, so tracks rendered by different emulations are not directly comparable, and the export records only a single `render_engine` value.
+
+**1b. Verify the run used the engine you think it did:**
+
+Getting a *different* engine than you asked for is the failure mode this pipeline has actually suffered — and the damage was not the emulation but a broken build of it, which loaded, rendered, and returned plausible sample counts while producing materially wrong audio. Both checks below are cheap, and both are worth running before you publish anything.
+
+```bash
+# Each artifact must contain its own builder and not the other one.
+grep -ac WasmSIDLite  packages/libsidplayfp-wasm/dist/sidlite/libsidplayfp.wasm  # expect > 0
+grep -ac WasmReSIDfp  packages/libsidplayfp-wasm/dist/libsidplayfp.wasm          # expect > 0
 
 # The export records which engine rendered every track.
 sqlite3 data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
   'select render_engine, count(*) from tracks group by 1'
 ```
 
-The same identity check runs automatically in `packages/libsidplayfp-wasm/test/engine-parity.test.ts`, and `.github/workflows/engine-parity.yaml` compares the WASM build against a native libsidplayfp built from the same pinned refs.
+These are enforced automatically too:
 
-**1b. Convert the full export into lite or tiny bundles explicitly (optional):**
+- `test/engine-health.test.ts` runs the same signal checks against **both** engines — audible, unclipped, DC-bounded, multi-SID, repeatable. It is what would have caught the broken artifact.
+- `test/engine-parity.test.ts` pins reSIDfp and compares it against recorded goldens.
+- `.github/workflows/engine-parity.yaml` builds a native libsidplayfp from the same pinned refs and requires the WASM build to agree.
+
+**1c. Convert the full export into lite or tiny bundles explicitly (optional):**
 
 ```bash
 ./scripts/sidflow-play export-similarity \

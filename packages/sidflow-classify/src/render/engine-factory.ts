@@ -1,5 +1,6 @@
 import loadLibsidplayfp, {
   SidAudioEngine,
+  type SidEngine,
 } from "@sidflow/libsidplayfp-wasm";
 
 import { createLogger, pathExists } from "@sidflow/common";
@@ -10,6 +11,37 @@ import { fileURLToPath } from "node:url";
 export interface CreateEngineOptions {
   sampleRate?: number;
   stereo?: boolean;
+  /** Defaults to CLASSIFY_DEFAULT_SID_ENGINE, or SIDFLOW_SID_ENGINE when set. */
+  engine?: SidEngine;
+}
+
+/**
+ * Classification defaults to SIDLite, not reSIDfp.
+ *
+ * reSIDfp is the reference and remains available, but it renders roughly an
+ * order of magnitude slower, which is the difference between a corpus pass
+ * measured in hours and one measured in most of a day. SIDLite was verified
+ * against reSIDfp on real tunes once the mixer defects were fixed: clean,
+ * unclipped, multi-SID included. Override per run with --sid-engine, or
+ * globally with SIDFLOW_SID_ENGINE.
+ */
+export const CLASSIFY_DEFAULT_SID_ENGINE: SidEngine = "sidlite";
+
+/**
+ * Precedence: explicit argument, then SIDFLOW_SID_ENGINE, then SIDLite.
+ *
+ * Deliberately not resolveSidEngine() from the wasm package — that one falls
+ * back to reSIDfp, which is right for a library consumer and wrong here.
+ */
+export function resolveClassifyEngine(engine?: SidEngine): SidEngine {
+  if (engine) {
+    return engine;
+  }
+  const fromEnv = process.env.SIDFLOW_SID_ENGINE?.trim().toLowerCase();
+  if (fromEnv === "residfp" || fromEnv === "sidlite") {
+    return fromEnv;
+  }
+  return CLASSIFY_DEFAULT_SID_ENGINE;
 }
 
 let engineFactoryOverride: ((options?: CreateEngineOptions) => Promise<SidAudioEngine>) | null = null;
@@ -145,16 +177,18 @@ export function setEngineFactoryOverride(
 // instantiate() from it gets a fresh WebAssembly.Instance with independent
 // linear memory.  This skips both file I/O and WASM compilation on subsequent
 // engine creations while keeping full memory isolation between engines.
-let compiledWasmModulePromise: Promise<WebAssembly.Module> | null = null;
+const compiledWasmModulePromises = new Map<SidEngine, Promise<WebAssembly.Module>>();
 
-async function compileWasmModule(): Promise<WebAssembly.Module> {
+async function compileWasmModule(engine: SidEngine): Promise<WebAssembly.Module> {
   const pkgEntry = import.meta.resolve("@sidflow/libsidplayfp-wasm");
   const entryDir = path.dirname(fileURLToPath(pkgEntry));
+  // SIDLite ships alongside the reference engine in dist/sidlite/.
+  const suffix = engine === "sidlite" ? path.join("sidlite", "libsidplayfp.wasm") : "libsidplayfp.wasm";
   // import.meta.resolve may point to src/ (source) or dist/ depending on
   // whether we're running from TypeScript source or compiled output.
   const candidates = [
-    path.join(entryDir, "libsidplayfp.wasm"),
-    path.join(entryDir, "..", "dist", "libsidplayfp.wasm"),
+    path.join(entryDir, suffix),
+    path.join(entryDir, "..", "dist", suffix),
   ];
   for (const wasmPath of candidates) {
     if (await pathExists(wasmPath)) {
@@ -162,19 +196,24 @@ async function compileWasmModule(): Promise<WebAssembly.Module> {
       return WebAssembly.compile(bytes);
     }
   }
-  throw new Error(`Could not find libsidplayfp.wasm; looked in: ${candidates.join(", ")}`);
+  throw new Error(
+    `Could not find the ${engine} libsidplayfp.wasm; looked in: ${candidates.join(", ")}. ` +
+      `Build it with \`SIDFLOW_SID_ENGINE=${engine} bun run build:wasm\`.`,
+  );
 }
 
-export function getCompiledWasmModule(): Promise<WebAssembly.Module> {
-  if (!compiledWasmModulePromise) {
-    compiledWasmModulePromise = compileWasmModule();
+export function getCompiledWasmModule(engine: SidEngine = CLASSIFY_DEFAULT_SID_ENGINE): Promise<WebAssembly.Module> {
+  let cached = compiledWasmModulePromises.get(engine);
+  if (!cached) {
+    cached = compileWasmModule(engine);
+    compiledWasmModulePromises.set(engine, cached);
   }
-  return compiledWasmModulePromise;
+  return cached;
 }
 
-/** Reset the cached compiled WASM module — used by tests. */
+/** Reset the cached compiled WASM modules — used by tests. */
 export function resetWasmModuleCache(): void {
-  compiledWasmModulePromise = null;
+  compiledWasmModulePromises.clear();
 }
 
 export async function createEngine(options: CreateEngineOptions = {}): Promise<SidAudioEngine> {
@@ -182,13 +221,15 @@ export async function createEngine(options: CreateEngineOptions = {}): Promise<S
     return await engineFactoryOverride(options);
   }
 
-  const compiledModule = await getCompiledWasmModule();
+  const sidEngine = resolveClassifyEngine(options.engine);
+  const compiledModule = await getCompiledWasmModule(sidEngine);
 
   // Load a fresh Emscripten module using instantiateWasm to inject the
   // pre-compiled WebAssembly.Module.  Each call creates a new Emscripten
   // instance with its own WebAssembly.Instance and linear memory, but
   // skips the expensive WASM compilation and file I/O.
   const wasmModule = await loadLibsidplayfp({
+    engine: sidEngine,
     instantiateWasm(
       imports: WebAssembly.Imports,
       successCallback: (instance: WebAssembly.Instance) => void

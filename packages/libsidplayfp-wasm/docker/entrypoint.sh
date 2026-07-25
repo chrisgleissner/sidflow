@@ -42,8 +42,9 @@ LIBRESIDFP_REF="${LIBRESIDFP_REF:-v1.1.2}"
 
 # Which SID emulation the artifact is built with.
 #
-#   residfp  (default) cycle-accurate, what a C64 actually sounds like
-#   sidlite            a fast approximation, ~2 orders of magnitude cheaper
+#   residfp  cycle-accurate, what a C64 actually sounds like — the reference
+#   sidlite  sounds good and renders ~an order of magnitude faster; the default
+#            engine callers get unless they ask for reSIDfp
 #
 # libresidfp is cross-compiled either way: SIDLite lives inside libsidplayfp
 # itself, and building both keeps the two artifacts identical apart from the
@@ -72,10 +73,11 @@ sync_repo() {
 # ---------------------------------------------------------------------------
 # 1. Cross-compile libresidfp, the actual SID emulation.
 #
-# Without this, libsidplayfp's configure leaves HAVE_RESIDFP undefined and the
-# bindings silently fall back to SIDLite — a fast approximation that measurably
-# does not sound like a C64. bindings.cpp now #errors in that case, so this step
-# is load-bearing rather than an optimisation.
+# Without this, libsidplayfp's configure leaves HAVE_RESIDFP undefined and a
+# residfp build would silently come out as SIDLite instead — the wrong engine,
+# regardless of how either one sounds. bindings.cpp now #errors in that case, so
+# this step is load-bearing rather than an optimisation. It runs for both
+# engines so the two artifacts differ only in the emulation.
 # ---------------------------------------------------------------------------
 sync_repo "${RESIDFP_GIT_URL}" "${RESIDFP_CACHE_REPO}" "${LIBRESIDFP_REF}"
 echo "libresidfp pinned at ${LIBRESIDFP_REF} ($(git -C "${RESIDFP_CACHE_REPO}" rev-parse --short HEAD))"
@@ -275,17 +277,34 @@ export class SidPlayerContext {
   getTuneInfo(): SidTuneInfo;
   getEngineInfo(): EngineInfo;
   getLastError(): string;
+  /**
+   * Supply the C64 system ROMs. Without them libsidplayfp initialises a tune
+   * but never advances it. Sizes are exact: KERNAL 8192, BASIC 8192,
+   * CHARGEN 4096 bytes. Pass nulls to clear.
+   */
   setSystemROMs(
     kernal?: Uint8Array | ArrayBufferView | null,
     basic?: Uint8Array | ArrayBufferView | null,
     chargen?: Uint8Array | ArrayBufferView | null
   ): boolean;
+  /** Record every SID register write during render(). */
+  setSidWriteTraceEnabled(enabled: boolean): void;
+  getAndClearSidWriteTraces(): Array<{
+    sidNumber: number;
+    address: number;
+    value: number;
+    cyclePhi1: number;
+  }>;
+  /** Release the C++ object. Embind handles are not garbage collected. */
+  delete(): void;
 }
 
 export interface LibsidplayfpWasmModule {
   FS: any;
   PATH: any;
   SidPlayerContext: typeof SidPlayerContext;
+  /** Builder baked into this artifact: "WasmReSIDfp" or "WasmSIDLite". */
+  getSidEngineName(): string;
 }
 
 export default function createLibsidplayfp(moduleConfig?: SidPlayerContextOptions): Promise<LibsidplayfpWasmModule>;
