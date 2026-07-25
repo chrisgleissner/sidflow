@@ -4,6 +4,7 @@ import loadLibsidplayfp, {
 } from "@sidflow/libsidplayfp-wasm";
 
 import { createLogger, pathExists } from "@sidflow/common";
+import { ensureSystemRoms } from "./system-roms-fetch.js";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,6 +102,35 @@ async function loadSystemRoms(): Promise<SystemRoms> {
     return { kernal: null, basic: null, chargen: null };
   }
 
+  const found = await scanForSystemRoms();
+  if (found) {
+    return found;
+  }
+
+  // Nothing on disk. Rather than silently render every tune with the built-in
+  // ROMs — which produces audio that looks fine and is wrong — try to fetch the
+  // real ones, then scan again.
+  const target = getSystemRomDirCandidates()[0];
+  if (target) {
+    const result = await ensureSystemRoms(target);
+    if (result.status === "downloaded") {
+      const afterFetch = await scanForSystemRoms();
+      if (afterFetch) {
+        return afterFetch;
+      }
+    } else if (result.status === "failed" || result.status === "skipped") {
+      logger.warn("System ROMs are unavailable", { reason: result.reason, dir: result.dir });
+    }
+  }
+
+  logger.warn(
+    "No system ROMs found for WASM renderer (looked in SIDFLOW_ROMS_DIR/SIDFLOW_ROM_DIR, SIDFLOW_ROOT/workspace/roms, workspace/roms, public/roms); continuing with built-in ROMs. " +
+      "Tunes that need them will render as silence or a held frame and still classify, so treat this as a reason to stop."
+  );
+  return { kernal: null, basic: null, chargen: null };
+}
+
+async function scanForSystemRoms(): Promise<SystemRoms | null> {
   for (const dir of getSystemRomDirCandidates()) {
     if (!(await pathExists(dir))) {
       continue;
@@ -153,10 +183,7 @@ async function loadSystemRoms(): Promise<SystemRoms> {
     };
   }
 
-  logger.warn(
-    "No system ROMs found for WASM renderer (looked in SIDFLOW_ROMS_DIR/SIDFLOW_ROM_DIR, SIDFLOW_ROOT/workspace/roms, workspace/roms, public/roms); continuing with built-in ROMs"
-  );
-  return { kernal: null, basic: null, chargen: null };
+  return null;
 }
 
 async function getCachedSystemRoms(): Promise<SystemRoms> {

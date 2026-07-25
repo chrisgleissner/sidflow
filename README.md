@@ -79,7 +79,16 @@ workspace/roms/
 └── characters.901225-01.bin  (or chargen.bin)
 ```
 
-Obtain these files from a physical Commodore 64 or a BIOS dump. They are copyrighted, so SIDFlow does not ship them. The `workspace/roms/` directory is git-ignored so the ROM files are never committed.
+**You normally do not have to do anything.** When classification starts and the ROMs are missing, SIDFlow downloads them from [VICE's C64 data directory](https://github.com/libretro/vice-libretro/tree/master/vice/data/C64) into the first search path below, and verifies each against a pinned SHA-256 before use — a ROM that is not the one we pinned is a different machine, so a mismatch is refused rather than accepted.
+
+Fetch them up front, or into a specific directory:
+
+```bash
+bun run roms:fetch
+bun run roms:fetch -- /path/to/roms
+```
+
+Set `SIDFLOW_ROMS_AUTO_FETCH=0` to disable the download and supply the files yourself. They are copyrighted Commodore code that SIDFlow does not vendor; you can equally dump them from a physical Commodore 64. The `workspace/roms/` directory is git-ignored so the ROM files are never committed.
 
 Alternative locations (checked in order):
 1. `$SIDFLOW_ROMS_DIR` or `$SIDFLOW_ROM_DIR` environment variable

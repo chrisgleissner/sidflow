@@ -10,6 +10,7 @@
   "scripts": {
     "bun": "node scripts/run-bun.mjs",
     "build:quick": "tsc -b",
+    "roms:fetch": "node scripts/run-bun.mjs run scripts/fetch-roms.ts",
     "build": "node scripts/run-bun.mjs install --frozen-lockfile && node scripts/run-bun.mjs run wasm:check-upstream && tsc -b",
     "wasm:check-upstream": "node scripts/run-bun.mjs run scripts/check-libsidplayfp-upstream.ts",
     "wasm:build": "node scripts/run-bun.mjs run scripts/build-libsidplayfp-wasm.ts",
