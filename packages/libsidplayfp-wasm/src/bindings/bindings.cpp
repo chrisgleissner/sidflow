@@ -266,10 +266,7 @@ public:
             return false;
         }
 
-        if (player.installedSIDs() > 0U)
-        {
-            player.initMixer(stereo);
-        }
+        refreshMixer();
         configured = true;
         return true;
     }
@@ -330,6 +327,9 @@ public:
         {
             lastError = player.error();
         }
+
+        // MUST come after load(). See refreshMixer().
+        refreshMixer();
 
         clearSidWriteTrace();
 
@@ -577,13 +577,41 @@ public:
                 return false;
             }
 
-            player.initMixer(stereo);
+            refreshMixer();
         }
 
         return true;
     }
 
 private:
+    /**
+     * Re-point the mixer at the SID chips' sample buffers.
+     *
+     * This must be called after *every* player.config() or player.load(), and
+     * getting it wrong is silent and destructive. sidplayfp::initMixer() caches
+     * each chip's raw `short*` (player.cpp: `buffers[i] = m_chips[i]->buffer()`),
+     * while player.load() re-runs config() ("Must re-configure on fly for stereo
+     * support!"), which reaches reSIDfpEmu::sampling() and does
+     * `delete[] m_buffer; m_buffer = new short[...]`. Any mixer initialised
+     * before that point is left holding freed pointers, and every subsequent
+     * mix() reads freed memory.
+     *
+     * That is not theoretical: AddressSanitizer caught it as a heap-use-after-free
+     * reading a 1920-byte region — exactly `new short[960]`, the 20 ms buffer for
+     * 48 kHz. selectSong() used to call load() without re-initialising the mixer,
+     * so the app hit it on every tune. The audible result was an engine that
+     * played the right notes at the right time but with ~10 dB of excess high
+     * frequency, and whose output changed with the render chunk size because the
+     * contents of the freed region depend on allocator activity.
+     */
+    void refreshMixer()
+    {
+        if (player.installedSIDs() > 0U)
+        {
+            player.initMixer(stereo);
+        }
+    }
+
     void clearSidWriteTrace()
     {
         sidWriteTrace.clear();
@@ -614,10 +642,7 @@ private:
             return false;
         }
 
-        if (player.installedSIDs() > 0U)
-        {
-            player.initMixer(stereo);
-        }
+        refreshMixer();
 
         return true;
     }

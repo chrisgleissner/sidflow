@@ -70,14 +70,33 @@ cd "${RESIDFP_BUILD_ROOT}"
 # applied to this tree too.
 python3 /opt/libsidplayfp-wasm/scripts/apply-thread-guards.py "${RESIDFP_BUILD_ROOT}"
 
+# Diagnostic knob: e.g. SIDFLOW_EXTRA_FLAGS="-fsanitize=address" instruments the
+# whole stack so an out-of-bounds access inside the emulation is reported with a
+# stack trace instead of showing up as mysteriously wrong audio.
+EXTRA_FLAGS="${SIDFLOW_EXTRA_FLAGS:-}"
+if [[ -n "${EXTRA_FLAGS}" ]]; then
+    echo "extra build flags: ${EXTRA_FLAGS}"
+fi
+
 autoreconf -vfi
 emconfigure ./configure \
     --prefix="${SYSROOT_PREFIX}" \
     --disable-shared \
     --enable-static \
     --disable-dependency-tracking \
-    CFLAGS="-O3" \
-    CXXFLAGS="-O3"
+    CFLAGS="-O3 ${EXTRA_FLAGS}" \
+    CXXFLAGS="-O3 ${EXTRA_FLAGS}"
+# libresidfp's configure hard-codes `-ffast-math -fno-unsafe-math-optimizations`
+# into RESIDFP_CXXFLAGS (configure.ac), and appends them after any value passed
+# in, so they cannot be overridden on the configure line. Rewriting the
+# generated Makefile is the only way to vary them — which matters because the
+# wasm artifact measures ~10 dB brighter above 3 kHz than a native build of the
+# identical source, and the fast-math family is the leading suspect.
+if [[ -n "${SIDFLOW_RESIDFP_MATH_FLAGS:-}" ]]; then
+    echo "overriding libresidfp math flags: ${SIDFLOW_RESIDFP_MATH_FLAGS}"
+    find . -name Makefile -exec sed -i "s|^RESIDFP_CXXFLAGS = .*|RESIDFP_CXXFLAGS = ${SIDFLOW_RESIDFP_MATH_FLAGS}|" {} +
+fi
+
 emmake make -j"$(nproc)"
 emmake make install
 
@@ -117,8 +136,8 @@ emconfigure ./configure \
     --without-exsid \
     --without-usbsid \
     --disable-dependency-tracking \
-    CFLAGS="-O3" \
-    CXXFLAGS="-O3" \
+    CFLAGS="-O3 ${EXTRA_FLAGS}" \
+    CXXFLAGS="-O3 ${EXTRA_FLAGS}" \
     RESIDFP_CFLAGS="$(pkg-config --cflags libresidfp)" \
     RESIDFP_LIBS="$(pkg-config --libs libresidfp)"
 
@@ -143,6 +162,7 @@ em++ bindings.cpp src/.libs/libsidplayfp.a \
     -I./src/builders/residfp-builder \
     $(pkg-config --cflags libresidfp) \
     $(pkg-config --libs libresidfp) \
+    ${EXTRA_FLAGS} \
     --bind -O3 \
     -sMODULARIZE=1 \
     -sEXPORT_NAME="createLibsidplayfp" \

@@ -15,8 +15,18 @@ IMAGE_NAME="sidflow-libsidplayfp-wasm:latest"
 mkdir -p "${DIST_DIR}" "${CACHE_DIR}"
 
 docker build -f "${PACKAGE_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${PACKAGE_ROOT}"
+# Forward the build knobs the entrypoint understands, so upstream refs and the
+# libresidfp math flags can be varied without editing the image.
+DOCKER_ENV=()
+for var in LIBSIDPLAYFP_REF LIBRESIDFP_REF SIDFLOW_RESIDFP_MATH_FLAGS SIDFLOW_EXTRA_FLAGS; do
+    if [[ -n "${!var:-}" ]]; then
+        DOCKER_ENV+=(-e "${var}=${!var}")
+    fi
+done
+
 docker run \
     --rm \
+    "${DOCKER_ENV[@]}" \
     -v "${DIST_DIR}:/dist" \
     -v "${CACHE_DIR}:/opt/libsidplayfp-cache" \
     "${IMAGE_NAME}"
