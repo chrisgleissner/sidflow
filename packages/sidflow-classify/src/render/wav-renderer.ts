@@ -359,6 +359,51 @@ export async function computeFileHash(filePath: string): Promise<string> {
   return createHash("sha256").update(content).digest("hex");
 }
 
+/**
+ * Corner frequency of the DC blocker, in Hz. Well below the SID's musical range
+ * (the lowest playable note is around 16 Hz) so nothing audible is touched.
+ */
+const DC_BLOCK_HZ = 5;
+
+/**
+ * Remove any DC offset, per channel, in place.
+ *
+ * Rendered SID audio can carry a large DC component: measured across a 237-tune
+ * sample, reSIDfp sits at 0.001-0.005 full scale but SIDLite reaches 0.11-0.27
+ * on roughly 4% of tunes (BASIC-driven and digi tunes especially). DC is
+ * inaudible on any DC-coupled-free playback chain, but it is not harmless here
+ * — it inflates RMS, drags the low spectral bands, and wastes headroom, so the
+ * same tune would classify differently depending only on which engine rendered
+ * it.
+ *
+ * A one-pole high-pass is the standard fix and keeps features engine-agnostic.
+ */
+export function removeDcOffset(samples: Int16Array, sampleRate: number, channels: number): void {
+  if (samples.length === 0 || channels <= 0) {
+    return;
+  }
+  const r = 1 - (2 * Math.PI * DC_BLOCK_HZ) / sampleRate;
+  for (let channel = 0; channel < channels; channel++) {
+    let previousInput = 0;
+    let previousOutput = 0;
+    let first = true;
+    for (let index = channel; index < samples.length; index += channels) {
+      const input = samples[index]!;
+      if (first) {
+        // Seed the filter with the first sample so it does not spend its
+        // settling time chasing a step from zero.
+        previousInput = input;
+        previousOutput = 0;
+        first = false;
+      }
+      const output = input - previousInput + r * previousOutput;
+      previousInput = input;
+      previousOutput = output;
+      samples[index] = output > 32767 ? 32767 : output < -32768 ? -32768 : Math.round(output);
+    }
+  }
+}
+
 export function encodePcmToWav(samples: Int16Array, sampleRate: number, channels: number): Buffer {
   const bitsPerSample = 16;
   const byteRate = sampleRate * channels * (bitsPerSample / 8);
@@ -709,12 +754,13 @@ export async function renderWavWithEngine(
       throw new Error(`WASM renderer produced no audio for ${sidFile}`);
     }
 
+    const rendered = collectedSamples === pcm.length ? pcm : pcm.subarray(0, collectedSamples);
+    // Before encoding, so the stored WAV and every feature derived from it see
+    // the same DC-free signal regardless of which engine rendered it.
+    removeDcOffset(rendered, sampleRate, channels);
+
     renderLogger.debug(`Encoding to WAV for ${path.basename(wavFile)}`);
-    const wavBuffer = encodePcmToWav(
-      collectedSamples === pcm.length ? pcm : pcm.subarray(0, collectedSamples),
-      sampleRate,
-      channels
-    );
+    const wavBuffer = encodePcmToWav(rendered, sampleRate, channels);
     renderLogger.debug(
       `Writing WAV file ${path.basename(wavFile)} (${wavBuffer.length} bytes)`
     );
