@@ -213,6 +213,19 @@ The lesson worth keeping is narrower than "SIDLite is bad": **an artifact that i
 claims to be is the bug**, whichever engine that is. The build now asserts the requested builder in
 both directions, and `getSidEngineName()` reports it at runtime.
 
+Both engines were then swept across the 998 HVSC tunes most likely to break a player — every 3‑SID
+(25) and 2‑SID (313), every RSID+BASIC (587), every tune with ≥32 subsongs (76), plus 400 RSID and
+400 with `playAddress=0`:
+
+```
+crashes: 0    render failures: 0
+residfp: ok=998  silent=0  clipping=0  |dc|>0.12=0
+sidlite: ok=998  silent=0  clipping=0  |dc|>0.12=34
+```
+
+The only asymmetry is DC, which is why `removeDcOffset()` now runs before every WAV is encoded —
+without it the same tune would classify differently depending only on which engine rendered it.
+
 ### The three gates
 
 - **Engine‑agnostic health, every CI run** — `packages/libsidplayfp-wasm/test/engine-health.test.ts`
