@@ -77,7 +77,10 @@ const nativeBinary = execFileSync("bash", [path.join(HERE, "build-native-referen
 
 console.log(`native reference: ${nativeBinary}\n`);
 
-const wasmModule = await loadLibsidplayfp();
+// Pinned, not defaulted. The native reference is reSIDfp, so the WASM side must
+// be reSIDfp too — the package default is SIDLite, and letting it apply here
+// would compare two different engines and report the difference as a defect.
+const wasmModule = await loadLibsidplayfp({ engine: "residfp" });
 const scratch = mkdtempSync(path.join(tmpdir(), "sidflow-parity-"));
 
 const rows = [];
