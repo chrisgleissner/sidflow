@@ -15,32 +15,22 @@ const isServerLikeEnvironment = typeof globalThis === "object"
     : false;
 
 /**
- * Which SID emulation to load.
- *
- * - `sidlite` is the default. It sounds good and renders roughly an order of
- *   magnitude faster. It carries more DC than reSIDfp (measured 0.10 vs 0.003
- *   on Commando) but is otherwise clean, and most listeners will not hear the
- *   difference.
- * - `residfp` is cycle-accurate and is what a C64 actually sounds like. It is
- *   the reference, and the right choice when the last few percent of fidelity
- *   is the point.
- *
- * Both are built from the same bindings and shipped side by side; see
- * SIDFLOW_SID_ENGINE in docker/entrypoint.sh.
+ * Which SID emulation to load. Both are built from the same bindings and
+ * shipped side by side — `dist/` is reSIDfp, `dist/sidlite/` is SIDLite. See
+ * SIDFLOW_SID_ENGINE in docker/entrypoint.sh for how they are produced.
  */
 export type SidEngine = "residfp" | "sidlite";
 
 /**
- * SIDLite is the default.
+ * SIDLite is the default: it sounds good and renders roughly an order of
+ * magnitude faster, which is what bulk work such as classifying a corpus needs.
+ * Once the mixer defects were fixed it was verified against reSIDfp on real
+ * tunes — clean, unclipped, multi-SID included — and most listeners will not
+ * hear the difference.
  *
- * It renders roughly an order of magnitude faster than reSIDfp and, once the
- * mixer defects were fixed, was verified against reSIDfp on real tunes: clean,
- * unclipped, multi-SID included. That makes it the right default for bulk work
- * such as classifying a corpus, which is what this package is mostly used for.
- *
- * Ask for `residfp` explicitly when fidelity is the point — it is the
- * cycle-accurate reference, and the remaining measurable gap is DC offset
- * (0.003 vs 0.10 on Commando).
+ * Ask for `residfp` explicitly when the last few percent of fidelity is the
+ * point. It is the cycle-accurate reference, and the remaining measurable gap
+ * is DC offset: 0.003 against SIDLite's 0.10 on Commando.
  */
 export const DEFAULT_SID_ENGINE: SidEngine = "sidlite";
 
@@ -51,7 +41,7 @@ export interface LoadLibsidplayfpOptions extends SidPlayerContextOptions {
      */
     locateFile?: SidPlayerContextOptions["locateFile"];
 
-    /** Defaults to `residfp`, or SIDFLOW_SID_ENGINE when set. */
+    /** Precedence: this value, then SIDFLOW_SID_ENGINE, then DEFAULT_SID_ENGINE. */
     engine?: SidEngine;
 }
 

@@ -8,16 +8,15 @@ const isServerLikeEnvironment = typeof globalThis === "object"
     ? (typeof globalThis.window === "undefined" && typeof process !== "undefined")
     : false;
 /**
- * SIDLite is the default.
+ * SIDLite is the default: it sounds good and renders roughly an order of
+ * magnitude faster, which is what bulk work such as classifying a corpus needs.
+ * Once the mixer defects were fixed it was verified against reSIDfp on real
+ * tunes — clean, unclipped, multi-SID included — and most listeners will not
+ * hear the difference.
  *
- * It renders roughly an order of magnitude faster than reSIDfp and, once the
- * mixer defects were fixed, was verified against reSIDfp on real tunes: clean,
- * unclipped, multi-SID included. That makes it the right default for bulk work
- * such as classifying a corpus, which is what this package is mostly used for.
- *
- * Ask for `residfp` explicitly when fidelity is the point — it is the
- * cycle-accurate reference, and the remaining measurable gap is DC offset
- * (0.003 vs 0.10 on Commando).
+ * Ask for `residfp` explicitly when the last few percent of fidelity is the
+ * point. It is the cycle-accurate reference, and the remaining measurable gap
+ * is DC offset: 0.003 against SIDLite's 0.10 on Commando.
  */
 export const DEFAULT_SID_ENGINE = "sidlite";
 const artifactBaseUrl = new URL("../dist/", import.meta.url);
