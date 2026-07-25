@@ -1,4 +1,4 @@
-import createLibsidplayfp from "../dist/libsidplayfp.js";
+import createLibsidplayfp from "./libsidplayfp.js";
 // Only check environment variables in Node.js/server contexts, not in browsers/workers
 const wasmPathOverride = (typeof process !== "undefined" && typeof process.env === "object")
     ? (process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH ?? process.env.LIBSIDPLAYFP_WASM_PATH)?.trim() || undefined
@@ -19,7 +19,7 @@ const isServerLikeEnvironment = typeof globalThis === "object"
  * is DC offset: 0.003 against SIDLite's 0.10 on Commando.
  */
 export const DEFAULT_SID_ENGINE = "sidlite";
-const artifactBaseUrl = new URL("../dist/", import.meta.url);
+const artifactBaseUrl = new URL("./", import.meta.url);
 const sidliteArtifactBaseUrl = new URL("../dist/sidlite/", import.meta.url);
 function envEngine() {
     if (typeof process === "undefined" || typeof process.env !== "object") {

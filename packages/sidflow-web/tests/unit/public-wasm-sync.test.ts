@@ -24,12 +24,23 @@ const WEB_ROOT = path.resolve(HERE, "..", "..");
 const PUBLIC_WASM = path.join(WEB_ROOT, "public", "wasm");
 const DIST = path.resolve(WEB_ROOT, "..", "libsidplayfp-wasm", "dist");
 
-const DEPLOYED_FILES = ["index.js", "libsidplayfp.js", "libsidplayfp.wasm", "player.js"] as const;
+/**
+ * The Emscripten pair must match dist/ byte-for-byte: the glue and the binary
+ * are generated together and pairing them across builds aborts the module.
+ */
+const PAIRED_FILES = ["libsidplayfp.js", "libsidplayfp.wasm"] as const;
+
+/**
+ * The TypeScript wrappers are path-adapted copies, not byte copies — dist/index.js
+ * imports "../dist/libsidplayfp.js", which does not resolve when the file is
+ * served from /wasm/. So they get a served-path check rather than a checksum.
+ */
+const WRAPPER_FILES = ["index.js", "player.js"] as const;
 
 const sha256 = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
 describe("public/wasm deployment", () => {
-  for (const file of DEPLOYED_FILES) {
+  for (const file of PAIRED_FILES) {
     it(`${file} is byte-identical to dist/`, () => {
       const deployed = path.join(PUBLIC_WASM, file);
       const built = path.join(DIST, file);
@@ -38,6 +49,17 @@ describe("public/wasm deployment", () => {
         `public/wasm/${file} is stale. Refresh it after rebuilding the WASM artifact:\n` +
           `    cp packages/libsidplayfp-wasm/dist/${file} packages/sidflow-web/public/wasm/${file}`,
       ).toBe(sha256(built));
+    });
+  }
+
+  for (const file of WRAPPER_FILES) {
+    it(`${file} resolves its imports inside the served directory`, () => {
+      const source = readFileSync(path.join(PUBLIC_WASM, file), "utf8");
+      expect(
+        source.includes("../dist/"),
+        `public/wasm/${file} imports from ../dist/, which does not exist under the served /wasm/ path. ` +
+          `Copying dist/${file} verbatim breaks it; rewrite the specifier to "./".`,
+      ).toBe(false);
     });
   }
 
