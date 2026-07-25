@@ -20,7 +20,7 @@ const isServerLikeEnvironment = typeof globalThis === "object"
  */
 export const DEFAULT_SID_ENGINE = "sidlite";
 const artifactBaseUrl = new URL("./", import.meta.url);
-const sidliteArtifactBaseUrl = new URL("../dist/sidlite/", import.meta.url);
+const sidliteArtifactBaseUrl = new URL("./sidlite/", import.meta.url);
 function envEngine() {
     if (typeof process === "undefined" || typeof process.env !== "object") {
         return undefined;
@@ -47,7 +47,7 @@ async function createModulePromise(options) {
     // dynamically: it is the secondary artifact and must not become a hard
     // dependency of every bundle that only ever wants the reference engine.
     const factory = engine === "sidlite"
-        ? (await import("../dist/sidlite/libsidplayfp.js")).default
+        ? (await import("./sidlite/libsidplayfp.js")).default
         : createLibsidplayfp;
     const { engine: _engine, ...moduleOptions } = options;
     return await factory({

@@ -28,10 +28,27 @@ async function copyWasmArtifacts(): Promise<void> {
   const wasmJs = await Bun.file(path.join(wasmDistDir, 'libsidplayfp.js')).text();
   await Bun.write(path.join(wasmPublicDir, 'libsidplayfp.js'), wasmJs);
 
+  // Both engines are deployed: reSIDfp at the root, SIDLite in sidlite/, mirroring
+  // dist/. The browser player asks for reSIDfp explicitly, but shipping both means
+  // a caller can pass { engine: 'sidlite' } without the loader reaching outside
+  // the served directory.
+  const sidliteDistDir = path.join(wasmDistDir, 'sidlite');
+  const sidlitePublicDir = path.join(wasmPublicDir, 'sidlite');
+  for (const file of ['libsidplayfp.wasm', 'libsidplayfp.js']) {
+    const source = Bun.file(path.join(sidliteDistDir, file));
+    if (await source.exists()) {
+      await Bun.write(path.join(sidlitePublicDir, file), await source.arrayBuffer());
+    }
+  }
+
   const indexSource = await Bun.file(path.join(wasmDistDir, 'index.js')).text();
-  const indexRewritten = indexSource
-    .replace('../dist/libsidplayfp.js', './libsidplayfp.js')
-    .replace('new URL("../dist/', 'new URL("./');
+  // Global, not first-match: index.js references ../dist/ several times (the
+  // default artifact, the SIDLite base URL, and the dynamic SIDLite import), and
+  // any left behind escapes the served /wasm/ directory at runtime.
+  const indexRewritten = indexSource.replaceAll('../dist/', './');
+  if (indexRewritten.includes('../dist/')) {
+    throw new Error('index.js still references ../dist/ after rewriting; it would not resolve under /wasm/');
+  }
   await Bun.write(path.join(wasmPublicDir, 'index.js'), indexRewritten);
 
   const playerSource = await Bun.file(path.join(wasmDistDir, 'player.js')).text();

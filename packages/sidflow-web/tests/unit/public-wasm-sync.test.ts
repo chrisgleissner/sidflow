@@ -63,7 +63,25 @@ describe("public/wasm deployment", () => {
     });
   }
 
-  it("deploys reSIDfp, and only reSIDfp", () => {
+  for (const file of PAIRED_FILES) {
+    it(`sidlite/${file} is byte-identical to dist/sidlite/`, () => {
+      const deployed = path.join(PUBLIC_WASM, "sidlite", file);
+      const built = path.join(DIST, "sidlite", file);
+      expect(
+        sha256(deployed),
+        `public/wasm/sidlite/${file} is stale. Re-run the worklet build to resync:\n` +
+          `    cd packages/sidflow-web && bun run scripts/build-worklet.ts`,
+      ).toBe(sha256(built));
+    });
+  }
+
+  it("deploys SIDLite as the SIDLite build", () => {
+    const binary = readFileSync(path.join(PUBLIC_WASM, "sidlite", "libsidplayfp.wasm")).toString("latin1");
+    expect(binary.includes("WasmSIDLite"), "public/wasm/sidlite/libsidplayfp.wasm is not a SIDLite build").toBe(true);
+    expect(binary.includes("WasmReSIDfp"), "public/wasm/sidlite/libsidplayfp.wasm contains reSIDfp").toBe(false);
+  });
+
+  it("deploys reSIDfp at the root, and only reSIDfp", () => {
     // The browser player asks for `engine: "residfp"` explicitly, so the glue it
     // loads expects the reSIDfp binary. Deploying the other one aborts the
     // module at init with "Engine not initialized" — which is exactly how this
