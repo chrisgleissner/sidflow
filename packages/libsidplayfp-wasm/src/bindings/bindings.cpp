@@ -34,19 +34,35 @@ Build libresidfp into the emscripten sysroot so pkg-config defines HAVE_RESIDFP,
 or set SIDFLOW_ALLOW_SIDLITE=1 to deliberately build a SIDLite comparison artifact."
 #endif
 
-#ifdef HAVE_RESIDFP
-#include <residfp.h>
+// Engine selection is explicit, not merely a fallback.
+//
+// SIDFLOW_ALLOW_SIDLITE only ever meant "tolerate the absence of reSIDfp", so
+// once libresidfp was present there was no way to ask for SIDLite at all. That
+// made the two engines impossible to compare on equal terms: any SIDLite
+// artifact necessarily came from an older, differently-built tree. Define
+// SIDFLOW_SID_ENGINE_SIDLITE to select SIDLite even when reSIDfp is available.
+#if defined(SIDFLOW_SID_ENGINE_SIDLITE)
+#define SIDFLOW_USE_SIDLITE 1
+#elif defined(HAVE_RESIDFP)
+#define SIDFLOW_USE_SIDLITE 0
 #else
-#include <sidlite.h>
+#define SIDFLOW_USE_SIDLITE 1
 #endif
 
-#ifdef HAVE_RESIDFP
-using DefaultSidBuilder = ReSIDfpBuilder;
-static constexpr const char *kDefaultBuilderName = "WasmReSIDfp";
-#else
+#if SIDFLOW_USE_SIDLITE
+#include <sidlite.h>
 using DefaultSidBuilder = SIDLiteBuilder;
 static constexpr const char *kDefaultBuilderName = "WasmSIDLite";
+#else
+#include <residfp.h>
+using DefaultSidBuilder = ReSIDfpBuilder;
+static constexpr const char *kDefaultBuilderName = "WasmReSIDfp";
 #endif
+
+static std::string sidEngineName()
+{
+    return kDefaultBuilderName;
+}
 
 namespace
 {
@@ -666,6 +682,11 @@ private:
 
 EMSCRIPTEN_BINDINGS(libsidplayfp_wasm)
 {
+    // Free function so a caller can ask which engine this artifact was built
+    // with before constructing anything. Grepping the .wasm for the builder
+    // name also works, but only from a filesystem that has the artifact.
+    emscripten::function("getSidEngineName", &sidEngineName);
+
     emscripten::class_<SidPlayerContext>("SidPlayerContext")
         .constructor<>()
         .function("configure", &SidPlayerContext::configure)

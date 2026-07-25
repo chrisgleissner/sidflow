@@ -40,6 +40,24 @@ LIBSIDPLAYFP_REF="${LIBSIDPLAYFP_REF:-v3.0.2}"
 # libsidplayfp v3.0.2 requires >= 1.0.0.
 LIBRESIDFP_REF="${LIBRESIDFP_REF:-v1.1.2}"
 
+# Which SID emulation the artifact is built with.
+#
+#   residfp  (default) cycle-accurate, what a C64 actually sounds like
+#   sidlite            a fast approximation, ~2 orders of magnitude cheaper
+#
+# libresidfp is cross-compiled either way: SIDLite lives inside libsidplayfp
+# itself, and building both keeps the two artifacts identical apart from the
+# emulation, which is the whole point of being able to compare them.
+SIDFLOW_SID_ENGINE="${SIDFLOW_SID_ENGINE:-residfp}"
+case "${SIDFLOW_SID_ENGINE}" in
+    residfp | sidlite) ;;
+    *)
+        echo "SIDFLOW_SID_ENGINE must be residfp or sidlite, got: ${SIDFLOW_SID_ENGINE}" >&2
+        exit 1
+        ;;
+esac
+echo "SID engine: ${SIDFLOW_SID_ENGINE}"
+
 sync_repo() {
     local url="$1" dest="$2" ref="$3"
     if [[ ! -d "${dest}/.git" ]]; then
@@ -154,7 +172,13 @@ emmake make -j"$(nproc)"
 
 cp /opt/libsidplayfp-wasm/src/bindings/bindings.cpp "${BUILD_ROOT}/"
 
+ENGINE_FLAGS=""
+if [[ "${SIDFLOW_SID_ENGINE}" == "sidlite" ]]; then
+    ENGINE_FLAGS="-DSIDFLOW_SID_ENGINE_SIDLITE=1"
+fi
+
 em++ bindings.cpp src/.libs/libsidplayfp.a \
+    ${ENGINE_FLAGS} \
     -I./src \
     -I./src/sidplayfp \
     -I./src/sidtune \
@@ -188,15 +212,23 @@ em++ bindings.cpp src/.libs/libsidplayfp.a \
 # reports the pipeline as failed even though the match succeeded.
 ARTIFACT_SYMBOLS=$(strings "${OUTPUT_ROOT}/libsidplayfp.wasm")
 
-if ! grep -q 'WasmReSIDfp' <<<"${ARTIFACT_SYMBOLS}"; then
-    echo "ARTIFACT CHECK FAILED: libsidplayfp.wasm does not contain the reSIDfp builder name" >&2
+if [[ "${SIDFLOW_SID_ENGINE}" == "residfp" ]]; then
+    WANT_BUILDER="WasmReSIDfp"
+    UNWANTED_BUILDER="WasmSIDLite"
+else
+    WANT_BUILDER="WasmSIDLite"
+    UNWANTED_BUILDER="WasmReSIDfp"
+fi
+
+if ! grep -q "${WANT_BUILDER}" <<<"${ARTIFACT_SYMBOLS}"; then
+    echo "ARTIFACT CHECK FAILED: libsidplayfp.wasm does not contain ${WANT_BUILDER}" >&2
     exit 1
 fi
-if grep -q 'WasmSIDLite' <<<"${ARTIFACT_SYMBOLS}"; then
-    echo "ARTIFACT CHECK FAILED: libsidplayfp.wasm still contains the SIDLite builder name" >&2
+if grep -q "${UNWANTED_BUILDER}" <<<"${ARTIFACT_SYMBOLS}"; then
+    echo "ARTIFACT CHECK FAILED: libsidplayfp.wasm also contains ${UNWANTED_BUILDER}; the artifact is not a pure ${SIDFLOW_SID_ENGINE} build" >&2
     exit 1
 fi
-echo "artifact check: reSIDfp confirmed ($(grep -o 'reSIDfpEmu V[^ ]*' <<<"${ARTIFACT_SYMBOLS}" | head -1)), SIDLite absent"
+echo "artifact check: ${SIDFLOW_SID_ENGINE} confirmed (${WANT_BUILDER}), ${UNWANTED_BUILDER} absent"
 
 # ...and that it actually renders. A strings check proves what was linked, not
 # that it works: reSIDfp's filter-table threads threw at load time in exactly

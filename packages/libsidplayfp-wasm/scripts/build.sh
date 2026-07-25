@@ -8,7 +8,9 @@ fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PACKAGE_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
-DIST_DIR="${PACKAGE_ROOT}/dist"
+# SIDFLOW_DIST_DIR lets a comparison build land somewhere other than dist/, so a
+# sidlite artifact can be produced without overwriting the shipped residfp one.
+DIST_DIR="${SIDFLOW_DIST_DIR:-${PACKAGE_ROOT}/dist}"
 CACHE_DIR="${PACKAGE_ROOT}/.cache/upstream"
 IMAGE_NAME="sidflow-libsidplayfp-wasm:latest"
 
@@ -18,7 +20,7 @@ docker build -f "${PACKAGE_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${PACKAG
 # Forward the build knobs the entrypoint understands, so upstream refs and the
 # libresidfp math flags can be varied without editing the image.
 DOCKER_ENV=()
-for var in LIBSIDPLAYFP_REF LIBRESIDFP_REF SIDFLOW_RESIDFP_MATH_FLAGS SIDFLOW_EXTRA_FLAGS; do
+for var in LIBSIDPLAYFP_REF LIBRESIDFP_REF SIDFLOW_RESIDFP_MATH_FLAGS SIDFLOW_EXTRA_FLAGS SIDFLOW_SID_ENGINE; do
     if [[ -n "${!var:-}" ]]; then
         DOCKER_ENV+=(-e "${var}=${!var}")
     fi
