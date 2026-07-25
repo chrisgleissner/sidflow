@@ -270,6 +270,30 @@ Use this workflow when you need to create new data from a collection you control
 
 Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish). Many SID songs also require [C64 system ROMs](#system-roms) in `workspace/roms/`.
 
+#### Regenerate and publish in one command
+
+`run-similarity-export.sh` is the whole workflow, not just the classify step: it reclassifies the corpus, writes the full, lite, and tiny bundles with their manifests, and creates the `sidflow-data` release. To do all of that on a machine that has never seen this repository:
+
+```bash
+# Ubuntu/Debian prerequisites
+sudo apt-get update && sudo apt-get install -y ffmpeg sidplayfp curl python3 git sqlite3
+curl -fsSL https://bun.sh/install | bash && source ~/.bashrc
+
+# Clone, fetch HVSC, reclassify everything, export all three formats, publish the release
+git clone https://github.com/chrisgleissner/sidflow && cd sidflow \
+  && bun install --frozen-lockfile \
+  && ./scripts/sidflow-fetch \
+  && bash scripts/run-similarity-export.sh --mode local --full-rerun true --publish-release true
+```
+
+Drop `--publish-release true` to stop after the export and inspect the bundles before releasing anything. Add `--max-songs 200` for a quick end-to-end rehearsal against a corpus subset.
+
+Before you start:
+
+- **Copy [C64 system ROMs](#system-roms) into `workspace/roms/` first.** They are git-ignored, so a fresh clone never has them, and many tunes need them to render correctly.
+- **`--publish-release true` needs `gh auth login`** with permission to create releases on `chrisgleissner/sidflow-data`. The script checks this before classifying, so it fails fast rather than after a long run.
+- **Use `--mode local`, not `--mode docker`, unless you know the image is current.** Docker mode pulls `ghcr.io/chrisgleissner/sidflow:latest`, which bakes in `packages/libsidplayfp-wasm/dist/libsidplayfp.wasm` at image build time. If that image predates a WASM engine fix, the run will happily regenerate data with the old engine. Local mode uses the artifact in your checkout.
+
 **0. Download HVSC:**
 
 Download the latest High Voltage SID Collection:
@@ -284,7 +308,9 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
-Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in March 2026) takes about 30 mins on an Intel 14600K CPU using Kubuntu 24.04:
+Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in March 2026):
+
+> **The ~30 min figure below is stale and optimistic.** It was measured when the WASM build had silently fallen back to SIDLite, a cheap approximation, instead of reSIDfp. On the same machine the corrected engine renders roughly 60x slower per second of audio (13 ms -> 825 ms for a 5 s render), and rendering dominates the run. Budget hours, not minutes, and measure your own hardware with `--max-songs 200` before committing to a full pass.
 
 ```bash
 bash scripts/run-similarity-export.sh --mode local --full-rerun true
@@ -327,7 +353,23 @@ Manifest: data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
 
 Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`, `sidcorr-hvsc-full-sidcorr-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr`, and `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json`.
 
-**1a. Convert the full export into lite or tiny bundles explicitly (optional):**
+**1a. Verify the run used the engine you think it did:**
+
+A silently wrong engine is the failure mode this pipeline has actually suffered: the published exports were rendered by a SIDLite build that loaded, rendered, and returned plausible sample counts while producing materially wrong audio. Both checks below are cheap, and both are worth running before you publish anything.
+
+```bash
+# The artifact must be reSIDfp, not the SIDLite approximation.
+grep -ac residfp packages/libsidplayfp-wasm/dist/libsidplayfp.wasm   # expect > 0
+grep -ac SIDLite packages/libsidplayfp-wasm/dist/libsidplayfp.wasm   # expect 0
+
+# The export records which engine rendered every track.
+sqlite3 data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
+  'select render_engine, count(*) from tracks group by 1'
+```
+
+The same identity check runs automatically in `packages/libsidplayfp-wasm/test/engine-parity.test.ts`, and `.github/workflows/engine-parity.yaml` compares the WASM build against a native libsidplayfp built from the same pinned refs.
+
+**1b. Convert the full export into lite or tiny bundles explicitly (optional):**
 
 ```bash
 ./scripts/sidflow-play export-similarity \
@@ -375,7 +417,11 @@ The following command requires permissions to create new releases on `chrisgleis
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
 
-This uploads the sqlite export, sqlite manifest, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a `.tar.gz` bundle containing those same files.
+This uploads the sqlite export, sqlite manifest, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a `.tar.gz` bundle containing those same files — that is, all three formats in one release.
+
+Use `--workflow publish-only` when the export already exists and you only want to release it. If you are regenerating anyway, pass `--publish-release true` to the full run instead and skip this step; both paths produce an identical release.
+
+The release is tagged `sidcorr-<corpus>-<profile>-<UTC timestamp>`, for example `sidcorr-hvsc-full-20260407T115218Z`. Pass `--publish-timestamp YYYYMMDDTHHMMSSZ` to pin it. Publishing refuses to overwrite an existing tag, so a re-run needs a new timestamp.
 
 Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-export.md).
 

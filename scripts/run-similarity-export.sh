@@ -377,6 +377,9 @@ if [[ "${PUBLISH_RELEASE}" == "true" ]]; then
   if [[ -n "${PUBLISH_TIMESTAMP}" ]]; then
     validate_publish_timestamp "${PUBLISH_TIMESTAMP}"
   fi
+  # Authentication is re-checked at publish time, but that is hours into a full
+  # rerun. Fail here instead of after the whole corpus has been classified.
+  gh auth status >/dev/null 2>&1 || fail "gh is not authenticated; run 'gh auth login' before using --publish-release true"
 fi
 
 if [[ "${WORKFLOW}" == "publish-only" && "${PUBLISH_RELEASE}" != "true" ]]; then

@@ -102,6 +102,15 @@ async function createStationDemoFixture(): Promise<{ dbPath: string; workspace: 
   return { dbPath, workspace };
 }
 
+/**
+ * Bun defaults to 5 s per test. The station-queue tests build a 1 200-track
+ * fixture — 1 200 sqlite inserts plus 1 200 mkdir+writeFile pairs — and then
+ * rank the whole set, which measured 5.0-7.3 s on a loaded CI runner against
+ * that 5 s default. The work is filesystem-bound setup, not the behaviour under
+ * test, so give it room rather than let runner load decide whether CI is green.
+ */
+const STATION_FIXTURE_TIMEOUT_MS = 60_000;
+
 async function createLargeStationQueueFixture(
   mode: "uniform" | "clustered",
 ): Promise<{ dbPath: string; workspace: string; ratedTrackIds: string[]; preferredBucketPrefixes: string[] }> {
@@ -551,7 +560,7 @@ describe("station demo backend queue building", () => {
     expect(queue.map((track) => track.sid_path)).not.toEqual(sortedPaths);
     const topLevelRoots = new Set(queue.map((track) => track.sid_path.split("/")[0]));
     expect(topLevelRoots.size).toBeGreaterThanOrEqual(2);
-  });
+  }, STATION_FIXTURE_TIMEOUT_MS);
 
   it("keeps recommendations aligned with the preferred classification cluster without reverting to alphabetical order", async () => {
     const fixture = await createLargeStationQueueFixture("clustered");
@@ -575,7 +584,7 @@ describe("station demo backend queue building", () => {
     expect(preferredBuckets.size).toBeGreaterThanOrEqual(3);
     const sortedPreferredPaths = [...preferredTracks].map((track) => track.sid_path).sort();
     expect(preferredTracks.map((track) => track.sid_path)).not.toEqual(sortedPreferredPaths);
-  });
+  }, STATION_FIXTURE_TIMEOUT_MS);
 
   it("enforces cold-start similarity and deviation filters once five songs are rated", async () => {
     const fixture = await createPhaseAStationPolicyFixture();
@@ -1243,7 +1252,7 @@ describe("runPlayCli", () => {
     expect(output).toContain("Browse    PgUp/PgDn page   ↑/↓ step   Enter on live track = no-op");
     expect(output).toContain("Flow is sequenced by simila");
     expect(output).not.toContain("song8.sid");
-  });
+  }, STATION_FIXTURE_TIMEOUT_MS);
 
   it("sizes the playlist window to the available terminal height", async () => {
     const fixture = await createStationDemoFixture();
