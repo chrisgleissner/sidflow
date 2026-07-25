@@ -21,15 +21,22 @@ rm -rf "${BUILD_ROOT}"
 mkdir -p "${BUILD_ROOT}" "${OUTPUT_ROOT}" "${CACHE_ROOT}"
 
 GIT_URL="https://github.com/libsidplayfp/libsidplayfp"
+# Pin upstream. This used to track master and `reset --hard origin/master` on
+# every run, so the artifact silently changed with upstream and was not
+# reproducible — and once upstream dropped SidConfig::playback / SidInfo::channels
+# the bindings stopped compiling against it altogether. v3.0.0a2 is the revision
+# these bindings target (it matches the "SIDLiteEmu V3.0.0a2" string in the
+# previously published artifact). Override with LIBSIDPLAYFP_REF to try another.
+LIBSIDPLAYFP_REF="${LIBSIDPLAYFP_REF:-v3.0.0a2}"
 
 if [[ ! -d "${CACHE_REPO}/.git" ]]; then
-  git clone --depth 1 --recurse-submodules "${GIT_URL}" "${CACHE_REPO}"
+  git clone --recurse-submodules "${GIT_URL}" "${CACHE_REPO}"
 else
-  git -C "${CACHE_REPO}" fetch --depth 1 origin
-  DEFAULT_BRANCH=$(git -C "${CACHE_REPO}" symbolic-ref --quiet --short HEAD || git -C "${CACHE_REPO}" rev-parse --abbrev-ref HEAD || echo "master")
-  git -C "${CACHE_REPO}" reset --hard "origin/${DEFAULT_BRANCH}"
-  git -C "${CACHE_REPO}" submodule update --init --recursive
+  git -C "${CACHE_REPO}" fetch --tags origin
 fi
+git -C "${CACHE_REPO}" checkout --force "${LIBSIDPLAYFP_REF}"
+git -C "${CACHE_REPO}" submodule update --init --recursive
+echo "libsidplayfp upstream pinned at ${LIBSIDPLAYFP_REF} ($(git -C "${CACHE_REPO}" rev-parse --short HEAD))"
 
 rsync -a --delete "${CACHE_REPO}/" "${BUILD_ROOT}/"
 
@@ -59,6 +66,24 @@ emmake make -j"$(nproc)"
 
 cp /opt/libsidplayfp-wasm/src/bindings/bindings.cpp "${BUILD_ROOT}/"
 
+# KNOWN LIMITATION — this artifact uses SIDLite, not reSIDfp.
+#
+# bindings.cpp picks ReSIDfpBuilder under `#ifdef HAVE_RESIDFP` and otherwise
+# falls back to SIDLiteBuilder. As of libsidplayfp v3.x reSIDfp is an *external*
+# dependency (configure.ac: PKG_CHECK_MODULES([RESIDFP], [libresidfp >= 0.9.2]))
+# and defines HAVE_RESIDFP only when pkg-config finds it. This build never
+# provides libresidfp, so every published artifact has silently been SIDLite.
+#
+# That is audible. Measured on a Pixel 4 against a real C64 Ultimate and against
+# native sidplayfp (see c64commander docs/plans/sid-station/AUDIO-FIDELITY-TEST.md):
+# SIDLite carries a ~0.17 full-scale DC offset the hardware does not have, runs
+# ~8 dB quieter, and its output does not track the real machine (envelope
+# correlation 0.07, where native sidplayfp reaches 0.48 on the same tune).
+#
+# Fixing it means cross-compiling libsidplayfp/libresidfp with emscripten,
+# installing it where pkg-config can see it, and linking -lresidfp here. Simply
+# adding -DHAVE_RESIDFP is NOT enough — it compiles but fails to link
+# (undefined symbol: ReSIDfpBuilder::~ReSIDfpBuilder).
 em++ bindings.cpp src/.libs/libsidplayfp.a \
     -I./src \
     -I./src/sidplayfp \
