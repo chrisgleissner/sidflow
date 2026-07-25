@@ -44,6 +44,21 @@ if [[ -x "${PREFIX}/bin/sidflow-native-render" && -f "${STAMP_FILE}" && "$(cat "
 fi
 
 echo "building native reference: libsidplayfp ${LIBSIDPLAYFP_REF} + libresidfp ${LIBRESIDFP_REF}"
+
+# libsidplayfp's configure only probes for `xa` (AC_CHECK_PROGS) and does not
+# fail without it, so a missing assembler surfaces minutes later as an opaque
+# `make: *** [src/psiddrv.bin] Error 1`. Name the missing tool up front instead.
+missing=()
+for tool in git autoreconf automake libtoolize pkg-config g++ make xa; do
+    command -v "${tool}" >/dev/null 2>&1 || missing+=("${tool}")
+done
+if ((${#missing[@]})); then
+    echo "missing build tools: ${missing[*]}" >&2
+    echo "on Debian/Ubuntu: apt-get install build-essential autoconf automake libtool pkg-config git xa65" >&2
+    echo "(the xa65 package installs the 6502 assembler as 'xa')" >&2
+    exit 1
+fi
+
 rm -rf "${WORK}"
 mkdir -p "${WORK}" "${PREFIX}/bin"
 
