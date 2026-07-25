@@ -183,7 +183,7 @@ silently wrong for months, and every test in the repo passed the whole time.
 
 | # | defect | how it presented |
 | --- | --- | --- |
-| 1 | Built **SIDLite**, not reSIDfp. Since libsidplayfp v3.x reSIDfp is the external `libresidfp`, and `configure` defines `HAVE_RESIDFP` only when pkg‑config finds it. The build never provided it, so `bindings.cpp` fell through to `SIDLiteBuilder` — while passing `-I.../residfp-builder` as if it had not. | Plausible audio. Wrong timbre, +0.17 full‑scale DC, ~8 dB quiet. |
+| 1 | Built **SIDLite when it believed it was building reSIDfp**. Since libsidplayfp v3.x reSIDfp is the external `libresidfp`, and `configure` defines `HAVE_RESIDFP` only when pkg‑config finds it. The build never provided it, so `bindings.cpp` fell through to `SIDLiteBuilder` — while passing `-I.../residfp-builder` as if it had not. | Plausible audio, wrong engine. The defect was the mislabelling, not SIDLite: see below. |
 | 2 | A `sidemu` **wrapper corrupted the mixer's buffer contract** — `bufferpos()` is non‑virtual, so `player.cpp`'s reset never reached the inner emulation. | Plausible audio. Decorrelated from the real machine. |
 | 3 | **Heap‑use‑after‑free**: `initMixer()` caches each chip's raw `short*`; `player.load()` re‑runs `config()` which reallocates it; `selectSong()` called `load()` without re‑running `initMixer()`. | Plausible audio. ~10 dB too bright above 3 kHz. |
 | 4 | reSIDfp's filter‑table threads aborted under emscripten, and the guard script silently matched nothing **and reported success**. | No audio at all. |
@@ -191,9 +191,37 @@ silently wrong for months, and every test in the repo passed the whole time.
 Every one of these loaded, rendered, returned sensible sample counts and never threw. **Do not treat
 "it produces audio" as evidence that the engine is correct.**
 
-### The two gates
+### SIDLite was not the problem — and is now the default
 
-- **Fast, every CI run** — `packages/libsidplayfp-wasm/test/engine-parity.test.ts`, part of the normal
+Defects 2 and 3 lived in `bindings.cpp`, shared by both engines, so they damaged whichever emulation
+was compiled in. That was easy to misread as "SIDLite sounds bad", because for months the only
+SIDLite artifact anyone had was also the broken one. Rebuilt from fixed bindings, on the same tunes:
+
+| artifact | peak | DC | 3‑SID |
+| --- | --- | --- | --- |
+| SIDLite, old bindings | 0.976–0.996 (clipping) | 0.12–0.15 | out‑of‑bounds in `selectSong` |
+| SIDLite, current bindings | 0.17–0.41 | −0.005–0.10 | renders |
+| reSIDfp, current bindings | 0.13–0.48 | 0.0005–0.004 | renders |
+
+SIDLite is therefore the **default** engine, including for classification: it is roughly an order of
+magnitude faster and the remaining difference is small enough that it mostly matters to audiophiles
+and to comparison work. reSIDfp stays the cycle‑accurate reference, one flag away
+(`--sid-engine residfp`, `SIDFLOW_SID_ENGINE=residfp`). Build either with
+`SIDFLOW_SID_ENGINE=sidlite bun run build:wasm`; both artifacts ship, from identical bindings.
+
+The lesson worth keeping is narrower than "SIDLite is bad": **an artifact that is not the engine it
+claims to be is the bug**, whichever engine that is. The build now asserts the requested builder in
+both directions, and `getSidEngineName()` reports it at runtime.
+
+### The three gates
+
+- **Engine‑agnostic health, every CI run** — `packages/libsidplayfp-wasm/test/engine-health.test.ts`
+  asserts, for **every** shipped engine, the properties the broken artifact violated: audible and
+  unclipped, DC within bounds, multi‑SID renders, several tunes from one module instance, repeatable
+  output. Because the defects lived in shared bindings, this is the gate that generalises; it was
+  verified to produce 9 failures against the artifact that shipped for months. It skips an engine
+  whose artifact is absent, so a checkout that only built the default does not report a false defect.
+- **Fidelity, every CI run** — `packages/libsidplayfp-wasm/test/engine-parity.test.ts`, part of the normal
   unit suite. Renders committed SID fixtures (single‑, 2‑ and 3‑SID; the multi‑SID ones matter,
   because every buffer defect above lived in per‑chip buffer bookkeeping) and checks engine identity,
   signal sanity, run‑to‑run stability and a **golden comparison** of level, DC, peak, seven spectral
@@ -246,7 +274,9 @@ bun run scripts/native-parity.mjs --update-goldens # verify, then re‑record go
    generation, and `SIDFLOW_RESIDFP_MATH_FLAGS="-fno-fast-math -ffp-contract=off"` (libresidfp's
    `configure` appends `-ffast-math` *after* any value you pass, so rewriting the generated Makefile
    is the only way to vary it).
-3. **Check what was actually linked**: `strings dist/libsidplayfp.wasm | grep -E 'WasmReSIDfp|WasmSIDLite'`.
+3. **Check what was actually linked**: `strings dist/libsidplayfp.wasm | grep -E 'WasmReSIDfp|WasmSIDLite'`,
+   or ask the module at runtime with `getSidEngineName()`. Each artifact must contain its own builder
+   and not the other one — `dist/` is reSIDfp, `dist/sidlite/` is SIDLite.
 
 ### Hardware ground truth
 

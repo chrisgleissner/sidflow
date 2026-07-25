@@ -58,6 +58,18 @@ SIDFLOW_DIST_DIR=/tmp/compare bun run build:wasm  # ...or somewhere else
 
 The build asserts, in both directions, that the artifact contains the builder you asked for and not the other one, so neither engine can silently become the other.
 
+## Getting the artifacts without cloning
+
+Every SIDFlow release attaches `libsidplayfp-wasm-<tag>.tar.gz` plus a `SHA256SUMS`:
+
+```bash
+gh release download <tag> --repo chrisgleissner/sidflow -p 'libsidplayfp-wasm-*.tar.gz' -p SHA256SUMS
+tar -xzf libsidplayfp-wasm-<tag>.tar.gz
+cd libsidplayfp-wasm-<tag> && sha256sum -c SHA256SUMS
+```
+
+The tarball holds reSIDfp in the root and SIDLite in `sidlite/`, each with its loader, `.wasm`, and typings. The release job verifies, in both directions, that each binary contains its own builder and not the other before uploading.
+
 ## Using this package from another program
 
 The package is a normal ES module with no runtime dependencies. It works in Node, Bun, and browsers.
