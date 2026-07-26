@@ -342,9 +342,28 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
       const featureHealth = progress.completeFeaturePercent === null
         ? `completeRealistic=${progress.completeFeatureFiles}/${progress.featureHealthCheckedFiles} (unknown)`
         : `completeRealistic=${progress.completeFeatureFiles}/${progress.featureHealthCheckedFiles} (${progress.completeFeaturePercent.toFixed(1)}%)`;
+      // Memory and engine counters, so a run heading for exhaustion is visible while it
+      // develops rather than only in a post-mortem crash report.
+      const mib = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))}Mi`;
+      const resources = progress.resources
+        ? ` [res rss=${mib(progress.resources.rssBytes)}`
+          + ` ext=${mib(progress.resources.externalBytes)}`
+          + (progress.resources.renderEnginesCreated === undefined
+            ? ""
+            : ` engines=${progress.resources.renderEnginesCreated}`
+              + `/live=${progress.resources.renderEnginesLive}`
+              + ` wExt=${mib(progress.resources.renderWorkerExternalBytes ?? 0)}`)
+          + (progress.resources.rssGrowthBytesPerThousandSongs === null
+            ? ""
+            : ` growth=${mib(progress.resources.rssGrowthBytesPerThousandSongs)}/1k`)
+          + `]`
+        : "";
       stdout.write(
-        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}] [featureHealth ${featureHealth}]${file} - ${elapsed}`
+        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}] [featureHealth ${featureHealth}]${resources}${file} - ${elapsed}`
       );
+      for (const warning of progress.resources?.warnings ?? []) {
+        stdout.write(`\n[classify-resources] WARNING: ${warning}\n`);
+      }
     },
 
     logThread(update: ThreadActivityUpdate): void {

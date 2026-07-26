@@ -42,6 +42,11 @@ import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-r
 import { createEngine, resolveClassifyEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import { indexExtractedSongs, resumeKeyFor } from "./resume-index.js";
 import {
+  beginResourceTracking,
+  resourceWarnings,
+  snapshotResourceMetrics,
+} from "./classify-resource-metrics.js";
+import {
   WAV_HASH_EXTENSION,
   SID_TRACE_EXTENSION,
   SID_TRACE_SIDECAR_VERSION,
@@ -1911,6 +1916,32 @@ export interface AutoTagProgress {
   featureHealthCheckedFiles: number;
   completeFeatureFiles: number;
   completeFeaturePercent: number | null;
+  /**
+   * Memory and engine counters sampled live.
+   *
+   * A full corpus pass has died with "Out of memory" during WASM instantiation at three
+   * different points, and everything known about it came from a post-mortem crash report
+   * -- one number, no history, no way to distinguish a leak from a spike. Reported on
+   * every progress tick so exhaustion is visible while it develops.
+   */
+  resources?: ClassifyResourceProgress;
+}
+
+export interface ClassifyResourceProgress {
+  rssBytes: number;
+  heapUsedBytes: number;
+  externalBytes: number;
+  arrayBuffersBytes: number;
+  rssGrowthBytes: number;
+  rssGrowthBytesPerThousandSongs: number | null;
+  /** Render-pool totals. Absent before any render worker has completed a job. */
+  renderWorkers?: number;
+  renderEnginesCreated?: number;
+  renderEnginesLive?: number;
+  /** Summed across render-worker isolates. Where WASM linear memory shows up. */
+  renderWorkerExternalBytes?: number;
+  renderWorkerArrayBuffersBytes?: number;
+  warnings: string[];
 }
 
 export type AutoTagProgressCallback = (progress: AutoTagProgress) => void;
@@ -2120,6 +2151,46 @@ export async function generateAutoTags(
     completeFeaturePercent:
       featureHealthCheckedFiles > 0 ? (completeFeatureFiles / featureHealthCheckedFiles) * 100 : null,
   });
+
+  /**
+   * Sampled on every progress tick. The render-pool half matters most: engines are
+   * created and disposed PER JOB inside worker threads, so the main process cannot
+   * observe the allocation that actually fails.
+   */
+  const buildResourceProgress = (songsSoFar: number): { resources: ClassifyResourceProgress } => {
+    const snapshot = snapshotResourceMetrics(songsSoFar);
+    const pool = rendererPool?.resourceSummary();
+    const warnings = resourceWarnings(snapshot);
+    if (pool && pool.enginesLive > pool.workers + 2) {
+      warnings.push(
+        `${pool.enginesLive} render engines live across ${pool.workers} workers;`
+        + " one per busy worker is expected, so engines are outliving their jobs",
+      );
+    }
+    return {
+      resources: {
+        rssBytes: snapshot.rssBytes,
+        heapUsedBytes: snapshot.heapUsedBytes,
+        externalBytes: snapshot.externalBytes,
+        arrayBuffersBytes: snapshot.arrayBuffersBytes,
+        rssGrowthBytes: snapshot.rssGrowthBytes,
+        // Withheld below 500 songs: one-off startup allocation dominates and extrapolating
+        // it produced figures like "23,533Mi per 1000 songs" from a 40-song run.
+        rssGrowthBytesPerThousandSongs:
+          snapshot.songsProcessed >= 500 ? snapshot.rssGrowthBytesPerThousandSongs : null,
+        ...(pool
+          ? {
+            renderWorkers: pool.workers,
+            renderEnginesCreated: pool.enginesCreated,
+            renderEnginesLive: pool.enginesLive,
+            renderWorkerExternalBytes: pool.totalWorkerExternalBytes,
+            renderWorkerArrayBuffersBytes: pool.totalWorkerArrayBuffersBytes,
+          }
+          : {}),
+        warnings,
+      },
+    };
+  };
   
   // Set up JSONL file for incremental writes during classification
   const classifiedPath = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
@@ -2286,6 +2357,8 @@ export async function generateAutoTags(
   // Initialise the detailed lifecycle logger now that we know totalFiles.
   const lifecycle = new SongLifecycleLogger(lifecycleLogPath, totalFiles);
   lifecycle.emitRunStart(runContext);
+  beginResourceTracking();
+
   if (skipAlreadyClassified && !plan.forceRebuild) {
     await loadPreviouslyExtracted();
   }
@@ -2434,6 +2507,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile,
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
   };
 
@@ -3009,6 +3083,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile: "building dataset-normalized rating model",
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
     const ratingModelStartedAt = Date.now();
     telemetry.emit({
@@ -3117,6 +3192,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
     const resultsWriteStartedAt = Date.now();
 
@@ -3289,6 +3365,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
   }
 

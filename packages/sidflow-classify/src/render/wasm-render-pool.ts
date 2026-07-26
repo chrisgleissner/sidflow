@@ -14,6 +14,41 @@ interface WorkerMessage {
   summary?: RenderExecutionSummary;
   error?: { message?: string; stack?: string };
   progress?: RenderProgress;
+  resources?: WorkerResourceReport;
+}
+
+interface WorkerResourceReport {
+  enginesCreated: number;
+  enginesDisposed: number;
+  processRssBytes: number;
+  externalBytes: number;
+  arrayBuffersBytes: number;
+}
+
+/**
+ * What the render workers are consuming, aggregated across them.
+ *
+ * The main process cannot see any of this, and it is where the corpus-scale failure
+ * happens: a fresh engine is created and disposed per job, each instantiating a WASM
+ * linear memory of roughly 64-128 MB, so a full HVSC pass performs about 88,000
+ * instantiations across these workers before one of them fails with "Out of memory".
+ */
+export interface RenderPoolResourceSummary {
+  workers: number;
+  /** Total engines instantiated across all workers this run. */
+  enginesCreated: number;
+  enginesDisposed: number;
+  /** Engines created but not disposed. Should be at most one per busy worker. */
+  enginesLive: number;
+  /**
+   * Summed across worker isolates. This is the WASM-memory signal: linear memory is
+   * allocated outside the JS heap, so it appears here and not in heapUsed. RSS is
+   * deliberately absent — worker threads share an address space, so every worker reports
+   * the same process RSS and a per-worker maximum of it would be meaningless.
+   */
+  totalWorkerExternalBytes: number;
+  totalWorkerArrayBuffersBytes: number;
+  maxWorkerExternalBytes: number;
 }
 
 export interface RenderPoolOptions extends RenderWavOptions {
@@ -65,6 +100,8 @@ interface WorkerState {
   gracefulExitTimer: ReturnType<typeof setTimeout> | null;
   /** Safety-net timer that fires when a WASM call never returns. */
   jobTimeoutTimer: ReturnType<typeof setTimeout> | null;
+  /** Last resource report this worker sent, or null before its first completed job. */
+  resources: WorkerResourceReport | null;
 }
 
 const DEFAULT_MAX_JOBS_PER_WORKER = 32;
@@ -169,6 +206,7 @@ export class WasmRendererPool {
       exiting: false,
       replaceOnExit: false,
       recycleReason: null,
+      resources: null,
       jobsCompleted: 0,
       gracefulExitTimer: null,
       jobTimeoutTimer: null,
@@ -224,7 +262,14 @@ export class WasmRendererPool {
     return state;
   }
 
+  private retiredEnginesCreated = 0;
+  private retiredEnginesDisposed = 0;
+
   private replaceWorker(state: WorkerState, reason: string): void {
+    if (state.resources) {
+      this.retiredEnginesCreated += state.resources.enginesCreated;
+      this.retiredEnginesDisposed += state.resources.enginesDisposed;
+    }
     if (this.destroyed) {
       return;
     }
@@ -291,6 +336,40 @@ export class WasmRendererPool {
     }, FORCE_REPLACE_TIMEOUT_MS);
   }
 
+  /**
+   * Aggregated resource use across the render workers.
+   *
+   * Cumulative engine counts survive worker replacement: a replaced worker's totals are
+   * folded into `retiredEngines` before its state is dropped, so the figure reported is
+   * for the RUN rather than for whichever workers happen to be alive. Without that, the
+   * number most worth watching would reset every 32 jobs.
+   */
+  resourceSummary(): RenderPoolResourceSummary {
+    let enginesCreated = this.retiredEnginesCreated;
+    let enginesDisposed = this.retiredEnginesDisposed;
+    let maxExternal = 0;
+    let totalExternal = 0;
+    let totalArrayBuffers = 0;
+    for (const state of this.workers) {
+      const report = state.resources;
+      if (!report) continue;
+      enginesCreated += report.enginesCreated;
+      enginesDisposed += report.enginesDisposed;
+      maxExternal = Math.max(maxExternal, report.externalBytes);
+      totalExternal += report.externalBytes;
+      totalArrayBuffers += report.arrayBuffersBytes;
+    }
+    return {
+      workers: this.workers.length,
+      enginesCreated,
+      enginesDisposed,
+      enginesLive: enginesCreated - enginesDisposed,
+      totalWorkerExternalBytes: totalExternal,
+      totalWorkerArrayBuffersBytes: totalArrayBuffers,
+      maxWorkerExternalBytes: maxExternal,
+    };
+  }
+
   private handleWorkerMessage(state: WorkerState, message: WorkerMessage): void {
     if (message.type === "progress") {
       if (state.job && state.job.id === message.jobId && state.job.options.onProgress && message.progress) {
@@ -307,6 +386,10 @@ export class WasmRendererPool {
       state.job = null;
       this.dispatch();
       return;
+    }
+
+    if (message.resources) {
+      state.resources = message.resources;
     }
 
     const job = state.job;
