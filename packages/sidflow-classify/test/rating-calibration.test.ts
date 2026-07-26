@@ -141,3 +141,26 @@ describe("buildRatingQuantiles", () => {
     expect(quantiles.e[3]!).toBeLessThan(1);
   });
 });
+
+describe("degenerate corpora", () => {
+  test("a corpus with no spread falls back instead of collapsing to level 1", () => {
+    // Every raw score identical: the four percentiles coincide, so every
+    // comparison "raw > breakpoint" is false and naive calibration would rate the
+    // whole collection 1. Falling back yields the neutral 3, which is at least
+    // honest about there being nothing to distinguish.
+    const flat = makeRaw(Array.from({ length: 200 }, () => 0.5));
+    const quantiles = buildRatingQuantiles(flat)!;
+    expect(quantiles.e).toEqual([]);
+    expect(quantiles.m).toEqual([]);
+    expect(quantiles.c).toEqual([]);
+  });
+
+  test("a dimension with spread still calibrates when another is flat", () => {
+    const scores = Array.from({ length: 300 }, (_, i) => ({ c: 0.5, e: i / 300, m: 0.5 }));
+    const quantiles = buildRatingQuantiles(scores)!;
+    expect(quantiles.c).toEqual([]);
+    expect(quantiles.e.length).toBe(4);
+    const levels = scores.map((s) => calibratedRatingFromRaw(s.e, quantiles.e));
+    expect(new Set(levels).size).toBe(5);
+  });
+});

@@ -420,7 +420,13 @@ export function buildRatingQuantiles(rawScores: Array<{ c: number; e: number; m:
   const fractions = [0.2, 0.4, 0.6, 0.8];
   const breakpointsFor = (pick: (score: { c: number; e: number; m: number }) => number): number[] => {
     const sorted = rawScores.map(pick).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
-    return fractions.map((fraction) => percentile(sorted, fraction));
+    const breakpoints = fractions.map((fraction) => percentile(sorted, fraction));
+    // A dimension with no spread at all cannot be split into fifths, and forcing
+    // it through the comparison would drop every track to level 1 -- strictly
+    // worse than the neutral 3 the uncalibrated mapping gives. Returning no
+    // breakpoints makes that dimension fall back instead.
+    if (breakpoints[0] === breakpoints[breakpoints.length - 1]) return [];
+    return breakpoints;
   };
   return {
     c: breakpointsFor((s) => s.c),
