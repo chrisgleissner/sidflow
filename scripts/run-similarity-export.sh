@@ -19,6 +19,7 @@ DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
 RESUME_ATTEMPTS="40"
+CHUNK_SONGS="1000"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
 SQLITE_NEIGHBORS_FOR_TINY="25"
@@ -45,6 +46,10 @@ REQUEST_LOG="${RUNTIME_DIR}/request.log"
 REQUEST_STATUS_FILE="${RUNTIME_DIR}/request.status"
 REPORT_STATE_FILE="${RUNTIME_DIR}/report-state.json"
 RUN_EVENTS_LOG="${RUNTIME_DIR}/run-events.jsonl"
+MEMORY_LOG="${RUNTIME_DIR}/memory-samples.jsonl"
+CRASH_REPORT_DIR="${REPO_ROOT}/logs/crash-reports"
+MEMORY_SAMPLER_PID=""
+CURRENT_CHUNK="0"
 
 REPORT_EVERY_SONGS=50
 
@@ -97,6 +102,8 @@ Options:
   --max-songs N                       Stop each classification run after at most N songs
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
   --resume-attempts N                 Times to resume classification after a crash. Default: 40
+  --chunk-songs N                     Classify in chunks of N songs, restarting the whole runtime
+                                      between chunks. 0 disables chunking. Default: 1000
   --skip-already-classified true|false
                                       Default: true
   --delete-wav-after-classification true|false
@@ -268,6 +275,10 @@ require_export_artifacts() {
 cleanup() {
   local exit_code=$?
 
+  if [[ -n "${MEMORY_SAMPLER_PID}" ]] && kill -0 "${MEMORY_SAMPLER_PID}" >/dev/null 2>&1; then
+    kill "${MEMORY_SAMPLER_PID}" >/dev/null 2>&1 || true
+  fi
+
   if [[ "${MODE}" == "local" && "${KEEP_RUNTIME}" != "true" ]]; then
     if [[ -n "${CLASSIFY_REQUEST_PID}" ]] && kill -0 "${CLASSIFY_REQUEST_PID}" >/dev/null 2>&1; then
       kill "${CLASSIFY_REQUEST_PID}" >/dev/null 2>&1 || true
@@ -386,6 +397,10 @@ while [[ $# -gt 0 ]]; do
       RESUME_ATTEMPTS="$2"
       shift 2
       ;;
+    --chunk-songs)
+      CHUNK_SONGS="$2"
+      shift 2
+      ;;
     --sqlite-neighbors-for-tiny)
       SQLITE_NEIGHBORS_FOR_TINY="$2"
       shift 2
@@ -429,6 +444,7 @@ if [[ -n "${MAX_SONGS}" ]]; then
 fi
 
 [[ "${SQLITE_NEIGHBORS_FOR_TINY}" =~ ^[0-9]+$ ]] || fail "--sqlite-neighbors-for-tiny must be a non-negative integer"
+[[ "${CHUNK_SONGS}" =~ ^[0-9]+$ ]] || fail "--chunk-songs must be a non-negative integer"
 
 if [[ "${PUBLISH_RELEASE}" == "true" ]]; then
   require_command gh
@@ -1248,6 +1264,238 @@ classify_with_resume() {
 # So once phase 1 has covered the corpus, the per-attempt files are merged and phase 2 is
 # run ONCE over the union. Its records carry the newest classified_at, and the export
 # resolves duplicates by newest, so the single consistent model is what ships.
+# Bring the whole local stack down. Not just the classify child: the web server accrues
+# state across a long run too, and the point of chunking is that nothing survives a chunk.
+stop_local_runtime() {
+  if [[ "${MODE}" != "local" ]]; then
+    return 0
+  fi
+  local pid
+  for pid in "${CLASSIFY_REQUEST_PID}" "${LOCAL_WORKER_PID}" "${LOCAL_SERVER_PID}"; do
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+      kill "${pid}" >/dev/null 2>&1 || true
+    fi
+  done
+  CLASSIFY_REQUEST_PID=""
+  LOCAL_WORKER_PID=""
+  LOCAL_SERVER_PID=""
+
+  # Anything still holding the port would make the next chunk talk to a stale server.
+  local lingering
+  lingering="$(pgrep -f "sidflow-web" 2>/dev/null || true)"
+  if [[ -n "${lingering}" ]]; then
+    kill ${lingering} >/dev/null 2>&1 || true
+  fi
+  lingering="$(pgrep -f "packages/sidflow-classify/src/cli.ts" 2>/dev/null || true)"
+  if [[ -n "${lingering}" ]]; then
+    kill ${lingering} >/dev/null 2>&1 || true
+  fi
+
+  # Wait for the port to actually close rather than assuming it has.
+  local waited=0
+  while ss -ltn 2>/dev/null | grep -q ":${PORT} " && (( waited < 30 )); do
+    sleep 1
+    waited=$(( waited + 1 ))
+  done
+  rm -f "${REQUEST_STATUS_FILE}" "${REQUEST_LOG}"
+}
+
+# A continuous memory trace, so degradation is visible while it develops rather than
+# reconstructed from a post-mortem crash report.
+#
+# Samples every process in the stack, because the interesting number moved between them as
+# the investigation went on: first the main process RSS, then per-isolate external memory in
+# the render workers. VmHWM is included because it is the high-water mark -- a run can be
+# well under its peak at the moment you look at it, which made earlier spot checks
+# misleading.
+start_memory_sampler() {
+  mkdir -p "$(dirname "${MEMORY_LOG}")"
+  (
+    while :; do
+      python3 - "${MEMORY_LOG}" "${CURRENT_CHUNK}" <<'SAMPLER'
+import glob, json, os, re, sys, time
+
+log_path, chunk = sys.argv[1], sys.argv[2]
+
+def field(status: str, key: str) -> int:
+    match = re.search(rf'^{key}:\s+(\d+) kB', status, re.M)
+    return int(match.group(1)) * 1024 if match else 0
+
+procs = []
+for status_path in glob.glob('/proc/[0-9]*/status'):
+    try:
+        with open(status_path, 'r') as handle:
+            status = handle.read()
+        pid = status_path.split('/')[2]
+        with open(f'/proc/{pid}/cmdline', 'rb') as handle:
+            cmdline = handle.read().replace(b'\x00', b' ').decode('utf-8', 'replace')
+    except (OSError, IndexError):
+        continue
+    # Only the processes that do the work. Matching on 'sidflow' alone pulled in every
+    # shell and python helper whose command line happened to mention the repo, which buried
+    # the two numbers that matter under thirty lines of 2 MiB noise.
+    if 'packages/sidflow-classify/src/cli.ts' in cmdline or 'sidflow-classify' in cmdline:
+        kind = 'classify'
+    elif 'sidflow-web' in cmdline or ('next' in cmdline and 'node' in cmdline):
+        kind = 'web'
+    else:
+        continue
+    procs.append({
+        'pid': int(pid),
+        'kind': kind,
+        'threads': int(re.search(r'^Threads:\s+(\d+)', status, re.M).group(1)) if re.search(r'^Threads:\s+(\d+)', status, re.M) else 0,
+        'rss': field(status, 'VmRSS'),
+        # High-water mark: a process can sit well below its peak, which made spot checks
+        # of RSS misleading earlier in this investigation.
+        'rssPeak': field(status, 'VmHWM'),
+        'vsize': field(status, 'VmSize'),
+        'vsizePeak': field(status, 'VmPeak'),
+        'swap': field(status, 'VmSwap'),
+    })
+
+meminfo = {}
+try:
+    with open('/proc/meminfo') as handle:
+        for line in handle:
+            key, _, rest = line.partition(':')
+            digits = rest.strip().split(' ')[0]
+            if digits.isdigit():
+                meminfo[key] = int(digits) * 1024
+except OSError:
+    pass
+
+sample = {
+    'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    'chunk': int(chunk),
+    'processes': procs,
+    'totalRss': sum(p['rss'] for p in procs),
+    'maxRssPeak': max((p['rssPeak'] for p in procs), default=0),
+    'totalVsize': sum(p['vsize'] for p in procs),
+    'systemAvailable': meminfo.get('MemAvailable', 0),
+}
+with open(log_path, 'a') as handle:
+    handle.write(json.dumps(sample) + '\n')
+SAMPLER
+      sleep 10
+    done
+  ) >/dev/null 2>&1 &
+  MEMORY_SAMPLER_PID=$!
+}
+
+stop_memory_sampler() {
+  if [[ -n "${MEMORY_SAMPLER_PID}" ]] && kill -0 "${MEMORY_SAMPLER_PID}" >/dev/null 2>&1; then
+    kill "${MEMORY_SAMPLER_PID}" >/dev/null 2>&1 || true
+  fi
+  MEMORY_SAMPLER_PID=""
+}
+
+# The whole crash, kept. A truncated log line was all that survived the earlier failures,
+# which is why the mechanism took so long to characterise.
+capture_crash_report() {
+  local chunk="$1"
+  mkdir -p "${CRASH_REPORT_DIR}"
+  local stamp
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  local report="${CRASH_REPORT_DIR}/chunk-${chunk}-${stamp}.log"
+  {
+    printf '=== chunk %s crashed at %s ===\n' "${chunk}" "${stamp}"
+    printf '\n--- feature records on disk ---\n%s\n' "$(count_feature_rows "${CLASSIFIED_PATH}")"
+    printf '\n--- last memory sample ---\n'
+    tail -n 1 "${MEMORY_LOG}" 2>/dev/null || printf '(none)\n'
+    printf '\n--- request response ---\n'
+    cat "${REQUEST_LOG}" 2>/dev/null || printf '(none)\n'
+    printf '\n--- server log tail (2000 lines) ---\n'
+    tail -n 2000 "${SERVER_LOG}" 2>/dev/null || printf '(none)\n'
+  } > "${report}" 2>&1
+  log "Crash report written to ${report}"
+}
+
+# Classify in bounded chunks, tearing the whole stack down between them.
+#
+# The alternative -- one long-lived run -- exhausts memory at a predictable point and dies:
+# measured repeatedly at 3.5 GiB RSS after roughly 88,000 WASM instantiations. Waiting for
+# that and then resuming works, but it means every corpus pass includes several crashes, each
+# costing a restart and leaving a segfault in the log.
+#
+# Restarting deliberately every N songs keeps the process far from the limit instead. The
+# limit counts QUEUED songs, and songs already classified are skipped before they are queued,
+# so each chunk does N *new* songs and progress accumulates. A chunk that makes no progress
+# and succeeded means the corpus is complete; one that makes no progress and failed is a
+# genuine fault rather than exhaustion, so it stops rather than looping.
+classify_in_chunks() {
+  local chunk=1
+  local failures=0
+  local before after
+  local previous_total=-1
+
+  while :; do
+    CURRENT_CHUNK="${chunk}"
+    before="$(count_feature_rows "${CLASSIFIED_PATH}")"
+
+    stop_local_runtime
+    start_local_runtime
+    start_memory_sampler
+
+    # After the first chunk everything already done must be skipped rather than rebuilt.
+    if (( chunk > 1 )); then
+      SKIP_ALREADY_CLASSIFIED="true"
+      FORCE_REBUILD="false"
+    fi
+    MAX_SONGS="${CHUNK_SONGS}"
+
+    local ok=1
+    if ( trigger_classification; wait_for_classification ); then
+      ok=1
+    else
+      ok=0
+    fi
+
+    stop_memory_sampler
+    after="$(count_feature_rows "${CLASSIFIED_PATH}")"
+
+    if (( ok == 0 )); then
+      failures=$(( failures + 1 ))
+      capture_crash_report "${chunk}"
+    fi
+
+    local peak
+    peak="$(python3 - "${MEMORY_LOG}" <<'PEAK'
+import json, sys
+peak = 0
+try:
+    with open(sys.argv[1]) as handle:
+        for line in handle:
+            try:
+                peak = max(peak, json.loads(line).get('maxRssPeak', 0))
+            except Exception:
+                pass
+except OSError:
+    pass
+print(round(peak / (1024 * 1024)))
+PEAK
+)"
+    log "Chunk ${chunk}: ${before} -> ${after} records (+$(( after - before ))), peak RSS ${peak}Mi, failures so far ${failures}"
+
+    if (( after <= before )); then
+      if (( ok == 1 )); then
+        log "Chunk ${chunk} classified nothing new and succeeded: the corpus is complete at ${after} records"
+        return 0
+      fi
+      fail "Chunk ${chunk} failed without classifying anything new (${after} records). Not retrying: this is a fault rather than resource exhaustion. See ${CRASH_REPORT_DIR}."
+    fi
+
+    if (( after == previous_total )); then
+      fail "Chunk ${chunk} made no net progress twice in a row at ${after} records; stopping rather than looping."
+    fi
+    previous_total="${after}"
+
+    if (( chunk >= RESUME_ATTEMPTS * 100 )); then
+      fail "Reached the chunk ceiling at ${after} records."
+    fi
+    chunk=$(( chunk + 1 ))
+  done
+}
+
 consolidate_features_if_resumed() {
   local file_count
   file_count="$(find "${CLASSIFIED_PATH}" -maxdepth 1 -type f -name 'features_*.jsonl' | wc -l | tr -d ' ')"
@@ -1472,13 +1720,24 @@ main() {
 
   log "Mode: ${MODE}"
   log "Runtime: ${RUNTIME}"
-  if [[ "${MODE}" == "local" ]]; then
+
+  # Chunked mode owns the runtime lifecycle, because tearing it down between chunks is the
+  # whole point: a long-lived stack exhausts memory at a predictable ~3.5 GiB and dies.
+  if [[ "${MODE}" == "local" && "${CHUNK_SONGS}" != "0" ]]; then
+    log "Classifying in chunks of ${CHUNK_SONGS} songs, restarting the runtime between each"
+    : > "${MEMORY_LOG}"
+    classify_in_chunks
+    stop_local_runtime
     start_local_runtime
   else
-    start_docker_runtime
+    if [[ "${MODE}" == "local" ]]; then
+      start_local_runtime
+    else
+      start_docker_runtime
+    fi
+    classify_with_resume
   fi
 
-  classify_with_resume
   consolidate_features_if_resumed
   run_export
   publish_release_if_requested "${EXPORT_OUTPUT_PATH}"
