@@ -40,6 +40,7 @@ import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
 import { createEngine, resolveClassifyEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
+import { indexExtractedSongs, resumeKeyFor } from "./resume-index.js";
 import {
   WAV_HASH_EXTENSION,
   SID_TRACE_EXTENSION,
@@ -2155,51 +2156,23 @@ export async function generateAutoTags(
   const autoTagsCache = new Map<string, Record<string, unknown> | null>();
 
   /**
-   * Songs already extracted in a previous, unfinished run of this corpus.
+   * Songs already extracted by a previous, unfinished run of this corpus.
    *
-   * The auto-tags are written when a run FINISHES, so a run that dies partway leaves
-   * none — and `skipAlreadyClassified` consults only those tags, which made resuming a
-   * crashed corpus pass impossible. Measured: a full HVSC pass died at 31,626 of 87,868
-   * tracks having written 144 MB of feature records and zero tag files, so the obvious
-   * resume re-rendered everything from the start.
-   *
-   * The features JSONL is the artifact that IS written incrementally, so it is what a
-   * resume has to read. Parsed by pattern rather than JSON.parse: each record carries
-   * all 131 features and the file reaches several hundred megabytes over a full corpus,
-   * and only two fields out of it are needed.
+   * See resume-index.ts for why the auto-tags cannot answer this and the features JSONL
+   * has to. Empty unless a resume was requested.
    */
-  const alreadyExtractedKeys = new Set<string>();
+  let alreadyExtractedKeys = new Set<string>();
   const loadPreviouslyExtracted = async (): Promise<void> => {
-    const directory = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
-    if (!(await pathExists(directory))) {
-      return;
-    }
-    const entries = await readdir(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.startsWith("features_") || !entry.name.endsWith(".jsonl")) {
-        continue;
-      }
-      const contents = await readFile(path.join(directory, entry.name), "utf8");
-      for (const line of contents.split("\n")) {
-        if (!line) continue;
-        const pathMatch = /"sid_path":"((?:[^"\\]|\\.)*)"/.exec(line);
-        if (!pathMatch) continue;
-        const songMatch = /"song_index":(\d+)/.exec(line);
-        alreadyExtractedKeys.add(`${pathMatch[1]}#${songMatch ? songMatch[1] : "1"}`);
-      }
-    }
+    alreadyExtractedKeys = await indexExtractedSongs(
+      plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified"),
+    );
     if (alreadyExtractedKeys.size > 0) {
       classifyLogger.info(
         `Resume: ${alreadyExtractedKeys.size} songs already extracted in a previous run of this corpus`,
       );
     }
   };
-  
-  /**
-   * Check if a song is already classified using cached auto-tags data.
-   * This is more efficient than calling isAlreadyClassified repeatedly
-   * because many songs share the same auto-tags.json file.
-   */
+
   const checkAlreadyClassified = async (
     sidFile: string,
     songIndex?: number
@@ -2243,7 +2216,7 @@ export async function generateAutoTags(
 
     // Falls through to the features JSONL, which is the only record a crashed run
     // leaves behind. Without this a resume re-renders everything it had already done.
-    return alreadyExtractedKeys.has(`${toPosixRelative(relativePath)}#${songIndex ?? 1}`);
+    return alreadyExtractedKeys.has(resumeKeyFor(toPosixRelative(relativePath), songIndex));
   };
 
   const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
