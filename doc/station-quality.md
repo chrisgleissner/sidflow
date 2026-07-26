@@ -567,7 +567,62 @@ this document could not bound. The full-corpus pass provides an independent hold
 and is the right place to settle it. Until then the test-confirmed 35-dimension
 configuration is what ships.
 
-### 8.8 Is there headroom left?
+### 8.8 Do the gains compose?
+
+Forward selection and the supervised corrections work by suppressing dimensions
+that carry no authorship signal, so it was possible the second would have nothing
+left to do. Measured on validation, they compose sub-additively:
+
+| configuration | nDCG@10 | vs today | cold-start |
+|---|---|---|---|
+| baseline (ships today) | 0.2586 | — | 0.0852 |
+| univariate 35d, rank-uniform | 0.2972 | +14.9% | 0.0901 |
+| univariate 35d + WCCN | 0.3203 | +23.9% | 0.1290 |
+| forward 21d, rank-uniform | 0.3102 | +20.0% | 0.1581 |
+| forward 21d + WCCN | 0.3274 | +26.6% | 0.1536 |
+| **forward 21d + learned weights** | **0.3511** | **+35.8%** | **0.2089** |
+| forward 21d + WCCN + learned weights | 0.3594 | +39.0% | 0.2136 |
+| all 55d + WCCN | 0.2940 | +13.7% | 0.0692 |
+
+Two readings matter more than the headline.
+
+**Cold-start retrieval improves by 145%** (0.0852 → 0.2089). On a corpus where 68%
+of composers have exactly one tune, the headline average is dominated by the
+prolific minority; cold start is what decides whether stations work for the rest.
+
+**"All 55 dimensions plus a supervised metric" (+13.7%) is WORSE than 21
+forward-selected dimensions with no supervision at all (+20.0%).** A full covariance
+fitted on the labels cannot undo dimensional dilution. Choosing the right features
+matters more than the metric applied over them — the opposite of where this campaign
+started looking.
+
+### 8.9 What is deployable among these
+
+Retrieval quality is not the only constraint. The station applies an absolute
+minimum-similarity threshold, so a configuration also has to leave enough
+candidates above it — and not so many that the adventure control stops selecting.
+
+| configuration | threshold reach (med / p05 / min) | negative similarities |
+|---|---|---|
+| baseline (ships today) | 80.7% / 9.5% / 4.8% | — |
+| 21d rank-uniform | 80.9% / 10.9% / 1.2% | 0.0% |
+| **21d rank-uniform + learned weights** | 79.8% / **14.1%** / 1.6% | 0.0% |
+| 21d rank-uniform + WCCN | 49.5% / 9.0% / 0.6% | 0.0% |
+| 35d rank-gaussian | **0.0% / 0.0% / 0.0%** | — |
+
+Learned diagonal weights are the ideal case: they are per-dimension multipliers,
+which is exactly what the product's weights table already is, so there is no new
+serving machinery and no matrix to ship. They also *improve* the worst-case pool
+(p05 reach 14.1% against today's 9.5%).
+
+Within-class whitening halves threshold reach. That is not a breakage — on the full
+corpus 0.6% of 87k tracks is still above the 100-candidate minimum — but it
+materially changes what the adventure setting means, and the honest fix is to
+re-express that setting as a percentile of the observed similarity distribution
+rather than an absolute cosine value. That is real remaining work, and its +3.2
+points are left on the table for now.
+
+### 8.10 Is there headroom left?
 
 Separability — the probability that two tracks by one composer are closer than a
 random cross-composer pair — is a property of the features rather than of any
@@ -595,9 +650,11 @@ separability, is monotone and still rising at the last dimension:
 
 No dimension in the 24 is harmful, and the curve has flattened but not turned
 over. **The feature space has not plateaued**, which is the honest answer to
-whether more work would pay. Two concrete leads are already measured and
-unconfirmed: the supervised metric at +28.2% and forward-selected features at
-+20.0%, both on validation. Further significant improvement is available and has
+whether more work would pay. Concrete leads are already measured and unconfirmed:
+forward-selected features with learned weights at +35.8% on validation (deployable
+as-is), a further +3.2 points from within-class whitening (needs the adventure
+threshold re-expressed as a percentile), and a learning curve that has not turned
+over. Further significant improvement is available and has
 NOT been exhausted — this campaign stopped at a defensible shipping point, not at a
 ceiling.
 

@@ -96,7 +96,7 @@ const shippedSet = new Set<string>(SHIPPED_DIMENSION_NAMES);
 const forwardShipped = FORWARD_SELECTED.filter((n) => shippedSet.has(n));
 const forwardTonal = FORWARD_SELECTED.filter((n) => !shippedSet.has(n));
 
-const CANDIDATES: Array<{ name: string; tracks: Track[]; supervised: "none" | "wccn" | "weights" }> = [
+const CANDIDATES: Array<{ name: string; tracks: Track[]; supervised: "none" | "wccn" | "weights" | "both" }> = [
   { name: "baseline: shipped 24d, raw + weighted cosine", tracks: tracksForNames(SHIPPED_DIMENSION_NAMES, []), supervised: "none" },
   { name: "univariate 35d, rank-uniform", tracks: tracksForNames(SHIPPED_DIMENSION_NAMES, SIMILARITY_TONAL_DIMENSIONS), supervised: "none" },
   { name: "univariate 35d, rank-uniform + WCCN", tracks: tracksForNames(SHIPPED_DIMENSION_NAMES, SIMILARITY_TONAL_DIMENSIONS), supervised: "wccn" },
@@ -104,6 +104,10 @@ const CANDIDATES: Array<{ name: string; tracks: Track[]; supervised: "none" | "w
   { name: "forward 21d, rank-uniform + WCCN", tracks: tracksForNames(forwardShipped, forwardTonal), supervised: "wccn" },
   { name: "forward 21d, rank-uniform + learned weights", tracks: tracksForNames(forwardShipped, forwardTonal), supervised: "weights" },
   { name: "all 55d, rank-uniform + WCCN", tracks: tracksForNames(SHIPPED_DIMENSION_NAMES, TONAL_DIMENSION_NAMES), supervised: "wccn" },
+  // Both supervised corrections stacked. They optimise overlapping things -- one
+  // rescales axes, the other reshapes the whole space -- so this asks whether
+  // anything is left after the cheaper of the two has run.
+  { name: "forward 21d, rank-uniform + WCCN + learned weights", tracks: tracksForNames(forwardShipped, forwardTonal), supervised: "both" },
 ];
 
 const results: Array<{ name: string; ndcg: number; rareNdcg: number; perSeed: number[] }> = [];
@@ -115,11 +119,17 @@ for (const candidate of CANDIDATES) {
   // Anything supervised is fitted on TRAIN and applied unchanged to validation.
   let map: number[][] | null = null;
   let weights: number[] | null = null;
-  if (candidate.supervised === "wccn") {
+  if (candidate.supervised === "wccn" || candidate.supervised === "both") {
     const trainVectors = rankUniform(split.train);
     map = fitWithinClassWhitening(trainVectors, split.train.map((t) => groupOf(t.sidPath) ?? t.sidPath), 0.1);
-  } else if (candidate.supervised === "weights") {
+  }
+  if (candidate.supervised === "weights") {
     weights = learnWeights(split.train, rankUniform, K, [0.5, 0.25, 0.125]);
+  } else if (candidate.supervised === "both") {
+    // Weights are learned in the ALREADY-whitened space, so the two are composed
+    // rather than each fitted against the raw representation.
+    const whitenedMap = map!;
+    weights = learnWeights(split.train, (t) => applyLinearMap(rankUniform(t), whitenedMap), K, [0.5, 0.25, 0.125]);
   }
 
   let vectors = isBaseline ? weighted(split.validation) : rankUniform(split.validation);
