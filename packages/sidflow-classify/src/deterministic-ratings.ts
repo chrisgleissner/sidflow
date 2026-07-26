@@ -444,17 +444,71 @@ export function computeRawRatingScores(
   return raw;
 }
 
+/**
+ * Musical terms available only once pitch is extracted from the register trace.
+ *
+ * doc/feature-tag-rating-mapping.md section F named the features needed to improve
+ * these ratings -- "chroma + key + mode (major/minor)", "predominant melody
+ * confidence", "onset rate" -- and deferred the improvement until they existed.
+ * They now exist, so the deferral is over.
+ */
+interface TonalTerms {
+  /** Notes per unit time: the density `c` claims to measure but did not. */
+  noteDensity: number | undefined;
+  /** Simultaneous voices, the other half of textural density. */
+  polyphony: number | undefined;
+  /** Spread of note lengths: a proxy for rhythmic vocabulary. */
+  rhythmicVocabulary: number | undefined;
+  /**
+   * Major-vs-minor, scaled by how confidently a key was found at all.
+   *
+   * 0.5 is neutral, above is major, below is minor. Weighting by key confidence
+   * matters: an atonal or percussion-only track has no valence to report, and
+   * asserting one from a meaningless key estimate would be worse than abstaining.
+   */
+  valence: number | undefined;
+}
+
+function computeTonalTerms(features: FeatureVector): TonalTerms {
+  const available = features.sidTonalVariant === "tonal";
+  if (!available) {
+    return { noteDensity: undefined, polyphony: undefined, rhythmicVocabulary: undefined, valence: undefined };
+  }
+  const minorness = direct01(features.sidKeyMinorness, 0.5);
+  const keyStrength = direct01(features.sidKeyStrength, 0.5);
+  // keyStrength maps a correlation onto [0,1] with 0.5 meaning "no tonal centre",
+  // so confidence is how far above that it sits.
+  const confidence = clamp01((keyStrength - 0.5) * 2);
+  return {
+    noteDensity: direct01(features.sidNoteRate),
+    polyphony: direct01(features.sidPolyphonyMean),
+    rhythmicVocabulary: direct01(features.sidNoteDurationEntropy),
+    valence: clamp01(0.5 + (0.5 - minorness) * confidence),
+  };
+}
+
 export function predictDeterministicRatings(
   model: DeterministicRatingModel,
   features: FeatureVector
 ): { ratings: TagRatings; tags: DeterministicTags; raw: { c: number; e: number; m: number } } {
   const tags = computeDeterministicTags(model, features);
+  const tonal = computeTonalTerms(features);
 
+  // Complexity is documented as a "textural/rhythmic density proxy", but measured
+  // against the corpus it had a Spearman rho of -0.016 against note rate and -0.019
+  // against onset density -- no relationship at all with how many notes a tune
+  // actually contains. It was measuring spectral brightness instead (rho 0.64
+  // against both centroid and zero-crossing rate). Actual density terms restore the
+  // claim; the spectral terms keep their share of the weight because timbral
+  // busyness is a real part of perceived complexity.
   const cAvg = weightedAverageTerms([
-    { w: 0.35, x: tags.percussive.present ? tags.percussive.value : undefined },
-    { w: 0.25, x: tags.tempo_fast.present ? tags.tempo_fast.value : undefined },
-    { w: 0.25, x: tags.bright.present ? tags.bright.value : undefined },
-    { w: 0.15, x: tags.noisy.present ? tags.noisy.value : undefined },
+    { w: 0.22, x: tags.percussive.present ? tags.percussive.value : undefined },
+    { w: 0.16, x: tags.tempo_fast.present ? tags.tempo_fast.value : undefined },
+    { w: 0.16, x: tags.bright.present ? tags.bright.value : undefined },
+    { w: 0.10, x: tags.noisy.present ? tags.noisy.value : undefined },
+    { w: 0.20, x: tonal.noteDensity },
+    { w: 0.10, x: tonal.polyphony },
+    { w: 0.06, x: tonal.rhythmicVocabulary },
   ]);
 
   const eAvg = weightedAverageTerms([
@@ -463,11 +517,19 @@ export function predictDeterministicRatings(
     { w: 0.25, x: tags.percussive.present ? tags.percussive.value : undefined },
   ]);
 
+  // Mood carried an explicit RESTRICTED CLAIM: with only spectral features it could
+  // offer a "smooth/clear vs tense/harsh" axis and deliberately not valence, because
+  // major/minor was not observable. It is observable now, so a valence term is added
+  // -- weighted by key confidence, so an atonal or percussion-only track abstains
+  // rather than being assigned a mood from a meaningless key estimate. The smoothness
+  // terms are retained rather than replaced: both contribute to what a listener means
+  // by mood, and dropping them would discard a working signal to chase a new one.
   const mAvg = weightedAverageTerms([
-    { w: 0.45, x: tags.tonal_clarity.present ? tags.tonal_clarity.value : undefined },
-    { w: 0.25, x: tags.percussive.present ? 1 - tags.percussive.value : undefined },
-    { w: 0.15, x: tags.bright.present ? 1 - tags.bright.value : undefined },
-    { w: 0.15, x: tags.dynamic_loud.present ? 1 - tags.dynamic_loud.value : undefined },
+    { w: 0.34, x: tags.tonal_clarity.present ? tags.tonal_clarity.value : undefined },
+    { w: 0.19, x: tags.percussive.present ? 1 - tags.percussive.value : undefined },
+    { w: 0.11, x: tags.bright.present ? 1 - tags.bright.value : undefined },
+    { w: 0.11, x: tags.dynamic_loud.present ? 1 - tags.dynamic_loud.value : undefined },
+    { w: 0.25, x: tonal.valence },
   ]);
 
   const cRaw = clamp01(cAvg.present ? cAvg.value : 0.5);
