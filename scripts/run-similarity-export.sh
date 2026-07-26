@@ -1516,6 +1516,12 @@ classify_in_chunks() {
     local chunk_started_at
     chunk_started_at="$(date +%s)"
 
+    # Clear the previous chunk's request state. trigger_classification writes the status file
+    # only when curl finishes, and wait_for_classification acts on the file as soon as it is
+    # non-empty -- so a leftover status from the previous chunk is read as this chunk's result
+    # and the chunk "fails" in one second having done nothing.
+    rm -f "${REQUEST_STATUS_FILE}" "${REQUEST_LOG}"
+
     start_memory_sampler
 
     # After the first chunk everything already done must be skipped rather than rebuilt.
