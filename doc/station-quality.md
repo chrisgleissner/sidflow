@@ -530,7 +530,44 @@ Learned diagonal weights agree, independently: the largest weights went to filte
 cutoff, sample playback, voice-role entropy, loudness and **polyphony mean**, with
 most of the harmonic dimensions pushed to the floor of the search range.
 
-### 8.7 Is there headroom left?
+### 8.7 A better feature set, found by optimising the objective directly
+
+The shipped selection ranks each dimension's UNIVARIATE separability and keeps
+those above a threshold. That criterion cannot see that two dimensions are
+near-duplicates, nor that a dimension useless alone becomes useful beside another.
+Greedy forward selection optimises the objective instead: start empty, repeatedly
+add whichever dimension most improves nDCG@10, stop when nothing does. Selection on
+TRAIN only, reported on validation, evaluated under the deployable configuration.
+
+| configuration | validation nDCG@10 | vs shipped baseline |
+|---|---|---|
+| shipped 24d, raw + weighted cosine | 0.2586 | — |
+| shipped 24d, rank-uniform | 0.2777 | +7.4% |
+| shipped 35d (univariate selection), rank-uniform | 0.2972 | +14.9% |
+| **forward-selected 21d, rank-uniform** | **0.3102** | **+20.0%** |
+
+Better *and* smaller: 21 dimensions rather than 35, beating the univariate selection
+by +0.0130 with 95% CI [0.0067, 0.0194], p=0.0002. It keeps 15 of the 24 perceptual
+dimensions and 6 of the 31 tonal ones, so **nine of the dimensions the product has
+always shipped do not earn their place either**.
+
+The selection order makes the case against marginal statistics vividly:
+`adsrPadRatioSid` is chosen FIRST despite having the worst univariate separability
+of all 24 perceptual dimensions (AUC 0.5035, essentially chance). A criterion that
+scores dimensions in isolation cannot represent that.
+
+The six tonal dimensions that survive are, again, all texture: polyphony, note
+duration mean and entropy, pitch-class entropy, note rate, and whether the tune has
+pitched content at all. Every explicitly harmonic dimension — key, mode, chord
+colour, melodic interval shape — is dropped.
+
+**This is not shipped yet.** +20.0% is a validation figure and the test set had
+already been consulted twice; confirming it there would carry selection optimism
+this document could not bound. The full-corpus pass provides an independent holdout
+and is the right place to settle it. Until then the test-confirmed 35-dimension
+configuration is what ships.
+
+### 8.8 Is there headroom left?
 
 Separability — the probability that two tracks by one composer are closer than a
 random cross-composer pair — is a property of the features rather than of any
@@ -558,10 +595,11 @@ separability, is monotone and still rising at the last dimension:
 
 No dimension in the 24 is harmful, and the curve has flattened but not turned
 over. **The feature space has not plateaued**, which is the honest answer to
-whether more work would pay: more features of this kind should still help, and the
-supervised metric identified 28% on validation that this deliverable did not
-confirm on test. Further significant improvement is available; it has not been
-exhausted.
+whether more work would pay. Two concrete leads are already measured and
+unconfirmed: the supervised metric at +28.2% and forward-selected features at
++20.0%, both on validation. Further significant improvement is available and has
+NOT been exhausted — this campaign stopped at a defensible shipping point, not at a
+ceiling.
 
 ---
 
