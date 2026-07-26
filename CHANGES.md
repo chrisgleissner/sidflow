@@ -1,6 +1,76 @@
 # Changelog
 
 
+## 0.7.0 (2026-07-26)
+
+Rebuilds how SIDFlow decides two SID tunes are alike, and regenerates the published
+`sidflow-data` corpus from it.
+
+### Station quality
+
+- Similarity retrieval improves **63.7x** over the vectors in the currently published
+  export (nDCG@10 0.0089 -> 0.5672) and **+69.1%** over the best configuration
+  previously in the repository (0.3354 -> 0.5672), both p=0.0002. Measured on 21,451
+  composer-grouped tracks that were never used to fit anything.
+- The stored similarity vector grows from 4 dimensions in the published export to
+  **58**: 24 perceptual, 11 pitch/texture, and 23 describing how a tune's playroutine
+  drives the SID chip. The manifest's `vector_dimensions` declares the width; consumers
+  must not assume it.
+- Most of the gain comes from describing the **playroutine** rather than the sound.
+  Composers reuse their player code, and its register-write pattern is that tooling's
+  signature. One such dimension separates composers better than all 24 original
+  dimensions together (0.7713 against 0.7229).
+- Category stations fixed: the 1-5 energy/mood/complexity scales used 3 of 5 levels with
+  up to 94% of the corpus on one value. Quantile calibration puts 20.00% in each level,
+  raising mood entropy from 0.397 bits to the 2.3219-bit maximum.
+- Complexity now measures note density, polyphony and rhythmic vocabulary rather than
+  loudness. Mood now sees harmony.
+- Stations no longer repeat themselves: 54.7% of generated stations replayed a tune,
+  now 6.0%.
+
+### The published export
+
+- Regenerated end to end through the documented `run-similarity-export.sh` workflow.
+- Renders with **SIDLite**, chosen by a pre-registered paired comparison on 23,817
+  identical tracks (`doc/sid-engine-comparison.md`). reSIDfp is +1.49% on the 24
+  WAV-derived dimensions but fails Holm correction, reverses on cold start, and shrinks
+  to +0.40% on the shipped vector because 34 of 58 dimensions read the register trace and
+  are engine-identical.
+- New `sid_engine` field records which SID emulation rendered the corpus, in both the
+  classified records and the export manifest. The export now **refuses** a corpus that
+  mixes emulations.
+- Precomputed neighbours per track raised from 3 to 25.
+
+### Fixes
+
+- `recommendFromSeedTrack` served the precomputed neighbour cache whenever it held even
+  one row, so with the previous default of 3 stored neighbours, a request for 100
+  candidates returned 3. It now falls back to a vector scan unless the cache can serve
+  the whole request.
+- The documented default classify runtime could not run at all: `--runtime node` failed
+  with `ERR_UNSUPPORTED_ESM_URL_SCHEME` because `@sidflow/common` re-exports modules
+  importing `bun:sqlite`. Default is now `bun`.
+- The tiny profile's 48-bit file identity had no collision check, so two files sharing
+  one silently reported the loser's tracks under the winner's path. Collisions are now
+  detected at build time and at open time, and both files named.
+- Weighted cosine switched itself off for any vector not exactly 24 wide.
+- The tiny profile returned zero recommendations against a real nested HVSC layout.
+- Neighbour insertion took over 40 minutes for 11,284 tracks; now 48 seconds.
+- Release notes no longer publish the builder's local filesystem path, and now state the
+  vector width and SID emulation, read from the manifest at publish time.
+
+### Documentation
+
+- `doc/station-quality.md` reports the full optimisation campaign including failures,
+  the four measurement defects that fabricated signal, a configuration scoring +136.9%
+  that was rejected for regressing cold start by 33%, and a representation that scored
+  higher but is unshippable because zero candidates clear the station's similarity
+  threshold.
+- `doc/sid-engine-comparison.md` pre-registers and reports the engine comparison.
+- README corrected: engine default now carries its measurement, thread optimum (12)
+  documented with the measured curve, and the broken Node runtime path replaced.
+
+
 ## 0.6.0 (2026-07-24)
 
 - docs: record PR 94 completion
