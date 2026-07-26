@@ -221,11 +221,24 @@ are engine-identical** (ρ ≈ 1.0), because they depend only on what the playro
 wrote to the chip, not on the SID audio model. The 11 WAV-derived dimensions
 differ, worst being inharmonicity at ρ = 0.70.
 
-**Decision: reSIDfp**, for a narrower reason than "maximum quality". At
-development-corpus scale it costs about 1.3 h, it is the reference for the 11
-WAV-derived dimensions, and using one engine throughout prevents paired
-"old features vs new features" comparisons from being confounded by engine.
+**Decision for the development corpus: reSIDfp**, for a narrower reason than
+"maximum quality". At development-corpus scale it costs about 1.3 h, it is the
+reference for the 11 WAV-derived dimensions, and using one engine throughout prevents
+paired "old features vs new features" comparisons from being confounded by engine.
 SIDLite is a *validated* fallback: 2.0 h instead of 9.5 h for a full pass.
+
+**This section does not decide the engine for the PUBLISHED corpus**, and one number
+above shows why it cannot. Neighbour recall@5 of 67.9% means roughly one in three of
+the top five neighbours differs between engines — a large disagreement, and the
+quantity a station is actually built from. But recall *against reSIDfp* presupposes
+that reSIDfp's answer is the correct one, so it measures agreement, not quality. It
+cannot say which set of neighbours is better.
+
+Answering that needs a task-level endpoint with an external label, not an
+agreement statistic. [sid-engine-comparison.md](sid-engine-comparison.md) pre-registers
+one: composer-grouped nDCG@10 measured separately on the 24 WAV-derived dimensions
+(where the engine can act at all) and on the full 58, paired on identical tracks with
+the decision rule fixed before any result existed.
 
 An aside worth recording: the classification pipeline does not scale past ~12
 threads, and gets *slower* beyond it.
