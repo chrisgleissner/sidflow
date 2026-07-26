@@ -18,7 +18,7 @@ SKIP_ALREADY_CLASSIFIED="true"
 DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
-RESUME_ATTEMPTS="8"
+RESUME_ATTEMPTS="40"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
 SQLITE_NEIGHBORS_FOR_TINY="25"
@@ -96,7 +96,7 @@ Options:
   --threads N                         Optional classify thread count override
   --max-songs N                       Stop each classification run after at most N songs
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
-  --resume-attempts N                 Times to resume classification after a crash. Default: 8
+  --resume-attempts N                 Times to resume classification after a crash. Default: 40
   --skip-already-classified true|false
                                       Default: true
   --delete-wav-after-classification true|false
