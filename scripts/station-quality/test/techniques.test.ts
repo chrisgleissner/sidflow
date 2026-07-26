@@ -16,7 +16,10 @@ import { describe, expect, test } from "bun:test";
 import { distanceMatrix, euclidean, splitByGroup } from "../harness.js";
 import { groupOf, type Track } from "../metrics.js";
 import {
+  applyLinearMap,
   applyWeights,
+  fitWithinClassWhitening,
+  jacobiEigen,
   kReciprocal,
   queryExpansion,
   rankGaussian,
@@ -444,5 +447,182 @@ describe("subsampleByGroup", () => {
     const a = subsampleByGroup(corpus, 1500).map((t) => t.trackId);
     const b = subsampleByGroup(corpus, 1500).map((t) => t.trackId);
     expect(b).toEqual(a);
+  });
+});
+
+// --------------------------------------------------------- supervised metric
+
+describe("jacobiEigen", () => {
+  test("returns the diagonal of a diagonal matrix", () => {
+    const { values } = jacobiEigen([
+      [3, 0, 0],
+      [0, 1, 0],
+      [0, 0, 7],
+    ]);
+    expect([...values].sort((a, b) => a - b)).toEqual([1, 3, 7]);
+  });
+
+  test("reconstructs the input as V diag(lambda) V^T", () => {
+    const rand = makeRandom(0xe1);
+    const d = 8;
+    // A symmetric positive definite matrix: M = B B^T + I.
+    const b: number[][] = Array.from({ length: d }, () => Array.from({ length: d }, () => rand() - 0.5));
+    const input: number[][] = Array.from({ length: d }, (_, i) =>
+      Array.from({ length: d }, (_, j) => {
+        let sum = i === j ? 1 : 0;
+        for (let k = 0; k < d; k++) sum += b[i]![k]! * b[j]![k]!;
+        return sum;
+      }),
+    );
+
+    const { values, vectors } = jacobiEigen(input);
+    for (let i = 0; i < d; i++) {
+      for (let j = 0; j < d; j++) {
+        let sum = 0;
+        for (let k = 0; k < d; k++) sum += vectors[i]![k]! * values[k]! * vectors[j]![k]!;
+        expect(sum).toBeCloseTo(input[i]![j]!, 8);
+      }
+    }
+  });
+
+  test("produces an orthonormal eigenvector basis", () => {
+    const rand = makeRandom(0xe2);
+    const d = 6;
+    const input: number[][] = Array.from({ length: d }, () => new Array<number>(d).fill(0));
+    for (let i = 0; i < d; i++) {
+      for (let j = i; j < d; j++) {
+        const value = rand() - 0.5;
+        input[i]![j] = value;
+        input[j]![i] = value;
+      }
+    }
+    const { vectors } = jacobiEigen(input);
+    for (let p = 0; p < d; p++) {
+      for (let q = 0; q < d; q++) {
+        let dot = 0;
+        for (let k = 0; k < d; k++) dot += vectors[k]![p]! * vectors[k]![q]!;
+        expect(dot).toBeCloseTo(p === q ? 1 : 0, 8);
+      }
+    }
+  });
+});
+
+describe("fitWithinClassWhitening", () => {
+  test("shrinks the direction along which a group varies internally", () => {
+    // Groups are separated equally on both axes, but each group's own tunes are
+    // spread widely on axis 0 and tightly on axis 1. Axis 0 is therefore a poor
+    // witness of shared authorship, and WCCN must down-weight it.
+    const rand = makeRandom(0xe3);
+    const vectors: Float64Array[] = [];
+    const groups: string[] = [];
+    for (let g = 0; g < 40; g++) {
+      for (let member = 0; member < 6; member++) {
+        vectors.push(Float64Array.from([g + (rand() - 0.5) * 10, g + (rand() - 0.5) * 0.1]));
+        groups.push(`g${g}`);
+      }
+    }
+
+    const withinSpread = (source: Float64Array[], axis: number): number => {
+      let total = 0;
+      for (let g = 0; g < 40; g++) {
+        const members = source.slice(g * 6, g * 6 + 6).map((v) => v[axis]!);
+        const mean = members.reduce((s, v) => s + v, 0) / members.length;
+        total += members.reduce((s, v) => s + (v - mean) ** 2, 0) / members.length;
+      }
+      return total / 40;
+    };
+    const anisotropy = (source: Float64Array[]): number => {
+      const a = withinSpread(source, 0);
+      const b = withinSpread(source, 1);
+      return Math.max(a, b) / Math.min(a, b);
+    };
+
+    // Before: axis 0 varies ~10,000x more within a group than axis 1.
+    expect(anisotropy(vectors)).toBeGreaterThan(1000);
+
+    // Essentially unregularised, the transform is exact: within-group variation
+    // becomes isotropic, which is the whole point of the technique.
+    expect(anisotropy(applyLinearMap(vectors, fitWithinClassWhitening(vectors, groups, 1e-9)))).toBeLessThan(4);
+
+    // With real shrinkage it deliberately stops short of exact. A single scalar
+    // ridge cannot be small relative to both a variance of 8 and one of 0.0008,
+    // so the tiny axis stays partly regularised. That is the bias accepted in
+    // exchange for not inverting a direction estimated from a handful of tunes,
+    // and it must still be a large improvement on the raw anisotropy.
+    const shrunk = anisotropy(applyLinearMap(vectors, fitWithinClassWhitening(vectors, groups, 0.05)));
+    expect(shrunk).toBeLessThan(anisotropy(vectors) / 10);
+  });
+
+  test("the fitted map is an inverse square root of the within-class covariance", () => {
+    // The pure linear-algebra contract, checked without shrinkage confusing it:
+    // M W M must be the identity, where M is the returned map.
+    const rand = makeRandom(0xe7);
+    const d = 5;
+    const vectors: Float64Array[] = [];
+    const groups: string[] = [];
+    for (let g = 0; g < 30; g++) {
+      for (let member = 0; member < 8; member++) {
+        vectors.push(Float64Array.from(Array.from({ length: d }, (_, k) => g * 3 + (rand() - 0.5) * (k + 1))));
+        groups.push(`g${g}`);
+      }
+    }
+    const shrinkage = 1e-9;
+    const map = fitWithinClassWhitening(vectors, groups, shrinkage);
+
+    // Recompute the (shrunk) within-class covariance the same way the fit does.
+    const within: number[][] = Array.from({ length: d }, () => new Array<number>(d).fill(0));
+    for (let g = 0; g < 30; g++) {
+      const members = vectors.slice(g * 8, g * 8 + 8);
+      const mean = Array.from({ length: d }, (_, k) => members.reduce((s, v) => s + v[k]!, 0) / members.length);
+      for (const v of members) {
+        for (let p = 0; p < d; p++) {
+          for (let q = 0; q < d; q++) within[p]![q]! += ((v[p]! - mean[p]!) * (v[q]! - mean[q]!)) / members.length / 30;
+        }
+      }
+    }
+    let trace = 0;
+    for (let i = 0; i < d; i++) trace += within[i]![i]!;
+    const target = trace / d;
+    for (let p = 0; p < d; p++) {
+      for (let q = 0; q < d; q++) {
+        within[p]![q] = (1 - shrinkage) * within[p]![q]! + (p === q ? shrinkage * target : 0);
+      }
+    }
+
+    for (let i = 0; i < d; i++) {
+      for (let j = 0; j < d; j++) {
+        let sum = 0;
+        for (let a = 0; a < d; a++) {
+          for (let b = 0; b < d; b++) sum += map[i]![a]! * within[a]![b]! * map[b]![j]!;
+        }
+        expect(sum).toBeCloseTo(i === j ? 1 : 0, 6);
+      }
+    }
+  });
+
+  test("returns identity when no group has two members to learn from", () => {
+    const vectors = [Float64Array.from([1, 2]), Float64Array.from([3, 4])];
+    const map = fitWithinClassWhitening(vectors, ["a", "b"]);
+    expect(map).toEqual([
+      [1, 0],
+      [0, 1],
+    ]);
+  });
+
+  test("stays finite on a degenerate, perfectly collinear group structure", () => {
+    const vectors: Float64Array[] = [];
+    const groups: string[] = [];
+    for (let g = 0; g < 20; g++) {
+      for (let member = 0; member < 4; member++) {
+        // Second axis is an exact copy of the first: within-class covariance is singular.
+        const value = g + member;
+        vectors.push(Float64Array.from([value, value]));
+        groups.push(`g${g}`);
+      }
+    }
+    const map = fitWithinClassWhitening(vectors, groups);
+    for (const row of map) for (const value of row) expect(Number.isFinite(value)).toBe(true);
+    const transformed = applyLinearMap(vectors, map);
+    for (const vector of transformed) for (const value of vector) expect(Number.isFinite(value)).toBe(true);
   });
 });

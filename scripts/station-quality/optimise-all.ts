@@ -45,7 +45,9 @@ import {
   splitByGroup,
 } from "./harness.js";
 import {
+  applyLinearMap,
   applyWeights,
+  fitWithinClassWhitening,
   kReciprocal,
   learnWeights,
   mutualProximity,
@@ -161,13 +163,35 @@ interface Combination {
   representation: Representation;
   reranker: Reranker;
   weights?: number[];
+  /** A supervised linear map, fitted on TRAIN only. */
+  supervised?: { name: string; map: number[][] };
 }
 
 function describe(combination: Combination): string {
   const parts = [combination.spec.name, combination.representation.name];
-  if (combination.reranker.name !== "none") parts.push(combination.reranker.name);
+  if (combination.supervised) parts.push(combination.supervised.name);
   if (combination.weights) parts.push("learned weights");
+  if (combination.reranker.name !== "none") parts.push(combination.reranker.name);
   return parts.join(" | ");
+}
+
+/**
+ * Fit within-class whitening on the TRAIN slice of a spec.
+ *
+ * Fitted once and reused, so the transform applied to validation and to test is
+ * literally the same matrix and carries no information from either.
+ *
+ * One wrinkle worth naming: the base representation (rank-Gaussian, z-score) is
+ * fitted per slice, so train's representation space and validation's are not
+ * numerically identical. Both map each dimension to standard-normal marginals, so
+ * a map fitted in one is meaningful in the other, but it is an approximation
+ * rather than an identity.
+ */
+function fitSupervisedMap(spec: VectorSpec, representation: Representation, shrinkage: number): number[][] {
+  const split = splitOf(tracksBySpec.get(spec.name)!);
+  const vectors = representation.build(split.train);
+  const groups = split.train.map((t) => groupOf(t.sidPath) ?? t.sidPath);
+  return fitWithinClassWhitening(vectors, groups, shrinkage);
 }
 
 interface Evaluation {
@@ -182,6 +206,7 @@ interface Evaluation {
 
 function evaluate(tracks: Track[], combination: Combination): Evaluation {
   let vectors = combination.representation.build(tracks);
+  if (combination.supervised) vectors = applyLinearMap(vectors, combination.supervised.map);
   if (combination.weights) vectors = applyWeights(vectors, combination.weights);
   const base = distanceMatrix(vectors, combination.representation.metric);
   const distances = combination.reranker.apply(base, vectors);
@@ -305,6 +330,40 @@ if (bestReranker && bestReranker.evaluation.ndcg > phaseB.evaluation.ndcg) {
     representation: phaseB.combination.representation,
     reranker: bestReranker.combination.reranker,
     weights: learned,
+  });
+}
+
+process.stdout.write(`\n=== phase E: supervised metric, fitted on TRAIN only ===\n`);
+/**
+ * Within-class covariance normalisation.
+ *
+ * Every representation above is unsupervised, and learned diagonal weights are
+ * supervised but can only rescale existing axes. This is the full-covariance
+ * version: it measures how a composer's own tunes vary and shrinks exactly those
+ * directions, on the principle that a direction along which one composer already
+ * varies wildly is a poor witness that two tunes share a composer.
+ *
+ * Two shrinkage levels, because the right amount is not knowable in advance: most
+ * HVSC groups contribute only a handful of tunes, so the within-class covariance
+ * is estimated from few observations per direction and an under-regularised
+ * inverse would amplify whichever directions are underdetermined.
+ */
+for (const shrinkage of [0.2, 0.5]) {
+  const map = fitSupervisedMap(phaseB.combination.spec, phaseB.combination.representation, shrinkage);
+  attempt("E", `shrink within-composer variation (shrinkage ${shrinkage})`, {
+    spec: phaseB.combination.spec,
+    representation: phaseB.combination.representation,
+    reranker: RERANKERS[0]!,
+    supervised: { name: `within-class whitening (${shrinkage})`, map },
+  });
+}
+const phaseE = attempts.filter((a) => a.phase === "E").sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0]!;
+if (phaseE.evaluation.ndcg > phaseB.evaluation.ndcg && bestReranker) {
+  attempt("E", "supervised metric plus the best re-ranking", {
+    spec: phaseB.combination.spec,
+    representation: phaseB.combination.representation,
+    reranker: bestReranker.combination.reranker,
+    supervised: phaseE.combination.supervised,
   });
 }
 

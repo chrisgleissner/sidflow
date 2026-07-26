@@ -452,3 +452,167 @@ export function learnWeights(
   }
   return weights;
 }
+
+// ------------------------------------------------------- supervised metric
+
+/**
+ * Symmetric eigendecomposition by cyclic Jacobi rotations.
+ *
+ * Chosen over anything cleverer because d is a few dozen, Jacobi is
+ * unconditionally stable for symmetric input, and it returns a genuinely
+ * orthogonal eigenvector basis — which matters here, since the result is used to
+ * form an inverse square root and any loss of orthogonality would show up as an
+ * asymmetric distance.
+ */
+export function jacobiEigen(
+  input: readonly number[][],
+  sweeps = 100,
+): { values: number[]; vectors: number[][] } {
+  const d = input.length;
+  const a = input.map((row) => [...row]);
+  const v: number[][] = Array.from({ length: d }, (_, i) =>
+    Array.from({ length: d }, (_, j) => (i === j ? 1 : 0)),
+  );
+
+  for (let sweep = 0; sweep < sweeps; sweep++) {
+    let off = 0;
+    for (let p = 0; p < d; p++) for (let q = p + 1; q < d; q++) off += a[p]![q]! ** 2;
+    if (off < 1e-22) break;
+
+    for (let p = 0; p < d; p++) {
+      for (let q = p + 1; q < d; q++) {
+        const apq = a[p]![q]!;
+        if (Math.abs(apq) < 1e-18) continue;
+        const theta = (a[q]![q]! - a[p]![p]!) / (2 * apq);
+        const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+        const c = 1 / Math.sqrt(t * t + 1);
+        const s = t * c;
+        for (let k = 0; k < d; k++) {
+          const akp = a[k]![p]!;
+          const akq = a[k]![q]!;
+          a[k]![p] = c * akp - s * akq;
+          a[k]![q] = s * akp + c * akq;
+        }
+        for (let k = 0; k < d; k++) {
+          const apk = a[p]![k]!;
+          const aqk = a[q]![k]!;
+          a[p]![k] = c * apk - s * aqk;
+          a[q]![k] = s * apk + c * aqk;
+        }
+        for (let k = 0; k < d; k++) {
+          const vkp = v[k]![p]!;
+          const vkq = v[k]![q]!;
+          v[k]![p] = c * vkp - s * vkq;
+          v[k]![q] = s * vkp + c * vkq;
+        }
+      }
+    }
+  }
+
+  return { values: Array.from({ length: d }, (_, i) => a[i]![i]!), vectors: v };
+}
+
+/**
+ * Within-class covariance normalisation, fitted on labelled TRAIN data.
+ *
+ * Every other representation here is unsupervised: it can equalise scales, remove
+ * skew or decorrelate, but it has no idea which directions distinguish one
+ * composer from another. Learned diagonal weights are the first supervised step,
+ * and they can only rescale the existing axes. WCCN is the full-covariance
+ * version: it estimates how tracks vary WITHIN a group and shrinks exactly those
+ * directions, so what survives is the between-group structure. A direction along
+ * which one composer's own tunes already differ wildly is, by construction, a
+ * poor witness that two tunes share a composer.
+ *
+ * Fitted on train only, then applied unchanged to validation and test, so no
+ * label information from the evaluated slice can leak into the transform.
+ *
+ * Shrinkage toward a scaled identity is not optional. With d dimensions the
+ * within-class covariance needs many more than d observations per direction to be
+ * estimated stably, and most HVSC groups contribute only a handful of tunes; an
+ * unregularised inverse would amplify whichever directions happen to be
+ * underdetermined, which is the same failure whitening had.
+ */
+export function fitWithinClassWhitening(
+  trainVectors: Float64Array[],
+  groups: readonly string[],
+  shrinkage = 0.2,
+): number[][] {
+  const d = trainVectors[0]!.length;
+  const byGroup = new Map<string, number[]>();
+  for (let i = 0; i < trainVectors.length; i++) {
+    const key = groups[i]!;
+    const list = byGroup.get(key);
+    if (list) list.push(i);
+    else byGroup.set(key, [i]);
+  }
+
+  const within: number[][] = Array.from({ length: d }, () => new Array<number>(d).fill(0));
+  let contributing = 0;
+  for (const indices of byGroup.values()) {
+    // A group of one has no within-group variation to observe.
+    if (indices.length < 2) continue;
+    const mean = new Float64Array(d);
+    for (const i of indices) for (let k = 0; k < d; k++) mean[k]! += trainVectors[i]![k]! / indices.length;
+    for (const i of indices) {
+      const vector = trainVectors[i]!;
+      for (let p = 0; p < d; p++) {
+        const dp = vector[p]! - mean[p]!;
+        for (let q = p; q < d; q++) within[p]![q]! += (dp * (vector[q]! - mean[q]!)) / indices.length;
+      }
+    }
+    contributing++;
+  }
+  if (contributing === 0) {
+    return Array.from({ length: d }, (_, i) => Array.from({ length: d }, (_, j) => (i === j ? 1 : 0)));
+  }
+  for (let p = 0; p < d; p++) {
+    for (let q = p; q < d; q++) {
+      const value = within[p]![q]! / contributing;
+      within[p]![q] = value;
+      within[q]![p] = value;
+    }
+  }
+
+  // Shrink toward a scaled identity of the same total variance.
+  let trace = 0;
+  for (let i = 0; i < d; i++) trace += within[i]![i]!;
+  const target = trace / d || 1;
+  for (let p = 0; p < d; p++) {
+    for (let q = 0; q < d; q++) {
+      within[p]![q] = (1 - shrinkage) * within[p]![q]! + (p === q ? shrinkage * target : 0);
+    }
+  }
+
+  const { values, vectors } = jacobiEigen(within);
+  // Floor eigenvalues relative to the largest, for the same reason whitening
+  // truncates: dividing by a near-zero variance amplifies noise without bound.
+  const largest = Math.max(...values.map((v) => Math.abs(v)));
+  const floor = Math.max(largest * 1e-6, 1e-12);
+  const scale = values.map((v) => 1 / Math.sqrt(Math.max(v, floor)));
+
+  // W^(-1/2) = V diag(scale) V^T
+  const out: number[][] = Array.from({ length: d }, () => new Array<number>(d).fill(0));
+  for (let i = 0; i < d; i++) {
+    for (let j = 0; j < d; j++) {
+      let sum = 0;
+      for (let k = 0; k < d; k++) sum += vectors[i]![k]! * scale[k]! * vectors[j]![k]!;
+      out[i]![j] = sum;
+    }
+  }
+  return out;
+}
+
+/** Apply a d x d linear map to every vector. */
+export function applyLinearMap(vectors: Float64Array[], matrix: readonly number[][]): Float64Array[] {
+  const d = matrix.length;
+  return vectors.map((vector) => {
+    const out = new Float64Array(d);
+    for (let i = 0; i < d; i++) {
+      let sum = 0;
+      for (let j = 0; j < d; j++) sum += matrix[i]![j]! * vector[j]!;
+      out[i] = sum;
+    }
+    return out;
+  });
+}
