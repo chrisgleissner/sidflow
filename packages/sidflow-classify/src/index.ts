@@ -2355,7 +2355,11 @@ export async function generateAutoTags(
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const configuredLimit = options.limit;
-  const totalFiles = typeof configuredLimit === "number"
+  // Starts as the song count so queue-phase percentages mean something, then is corrected
+  // to the queued work once exclusions are known. Songs excluded for being too short are
+  // not work to be done, and leaving them in the total would make a complete run report
+  // 73,690 of 87,868 and be rejected as having stopped early.
+  let totalFiles = typeof configuredLimit === "number"
     ? Math.min(totalSongs, Math.max(0, Math.floor(configuredLimit)))
     : totalSongs;
   const baseConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
@@ -2543,6 +2547,10 @@ export async function generateAutoTags(
       `Excluded ${tooShortCount} songs shorter than ${MIN_ANALYSABLE_SECONDS}s: too few frames to`
       + " describe rates, regularities or entropies",
     );
+    // The queued jobs are the real total. Reported so completeness is measured against the
+    // work that exists rather than against the corpus before exclusions.
+    totalFiles = Math.max(jobs.length + skippedAlreadyClassifiedCount, 0);
+    classifyLogger.info(`Total songs to classify after exclusions: ${totalFiles}`);
   }
 
   let processedSongs = 0;
