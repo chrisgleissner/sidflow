@@ -64,12 +64,55 @@ function resourceReport(): WorkerResourceReport {
   };
 }
 
+/**
+ * The engine is kept between jobs instead of built for each one.
+ *
+ * Building one per job costs about 22.8 KiB of retained process memory per instantiation --
+ * measured over 34,002 instantiations, RSS rose 739 MiB with engine live-count pinned at
+ * zero and worker WASM memory flat, so the linear memory IS released and something small
+ * and per-instantiation is not. A full HVSC pass performs roughly 88,000 instantiations,
+ * which extrapolates from a ~1,500 MiB baseline to ~3,500 MiB: exactly the peak RSS at
+ * which the run died with "RangeError: Out of memory" while instantiating another one.
+ *
+ * Reuse cuts instantiations by the worker's job budget (32), which removes the growth
+ * rather than merely slowing it. It is safe because `loadSidBuffer` re-initialises the
+ * tune and resets the cache and pending-chunk state, and because the pool already replaces
+ * each worker after a fixed number of jobs, giving a hard reset boundary regardless.
+ *
+ * SIDFLOW_RENDER_ENGINE_PER_JOB=1 restores the old behaviour, which is how the A/B check
+ * that the features are byte-identical was run.
+ */
+const REUSE_ENGINE = process.env.SIDFLOW_RENDER_ENGINE_PER_JOB !== "1";
+let pooledEngine: Awaited<ReturnType<typeof createEngine>> | null = null;
+let pooledSampleRate: number | undefined;
+
+async function acquireEngine(sampleRate: number | undefined): Promise<Awaited<ReturnType<typeof createEngine>>> {
+  // A sample-rate change means a differently configured engine; rebuild rather than reuse.
+  if (REUSE_ENGINE && pooledEngine && pooledSampleRate === sampleRate) {
+    // Reset so no register or filter state carries from the previous tune. loadSidBuffer
+    // re-initialises as well; this is the belt to that brace, and it is cheap.
+    pooledEngine.reset();
+    return pooledEngine;
+  }
+  if (pooledEngine) {
+    pooledEngine.dispose();
+    enginesDisposed += 1;
+    pooledEngine = null;
+  }
+  const engine = await createEngine({ sampleRate });
+  enginesCreated += 1;
+  if (REUSE_ENGINE) {
+    pooledEngine = engine;
+    pooledSampleRate = sampleRate;
+  }
+  return engine;
+}
+
 async function handleRender(jobId: number, options: RenderWavOptions): Promise<void> {
   let engine: Awaited<ReturnType<typeof createEngine>> | null = null;
   let renderSummary: RenderExecutionSummary | undefined;
   try {
-    engine = await createEngine({ sampleRate: options.renderSampleRate });
-    enginesCreated += 1;
+    engine = await acquireEngine(options.renderSampleRate);
 
     // Add progress callback to send heartbeat messages back to main thread
     const optionsWithProgress: RenderWavOptions = {
@@ -90,8 +133,10 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
     // engine is released. Reporting first made enginesDisposed permanently one behind per
     // worker, which showed up as "6 engines live" on a 6-worker pool that was leaking
     // nothing -- and would have hidden a real leak behind an expected-looking number.
-    engine.dispose();
-    enginesDisposed += 1;
+    if (!REUSE_ENGINE) {
+      engine.dispose();
+      enginesDisposed += 1;
+    }
     engine = null;
 
     const response: WorkerResponse = { type: "result", jobId, summary: renderSummary, resources: resourceReport() };
@@ -113,9 +158,14 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
     // dispose() nulls this.module and this.modulePromise so the ~64-128 MB WASM
     // linear-memory ArrayBuffer becomes GC-eligible immediately rather than
     // waiting for the engine wrapper object to be collected.
+    // On the error path the engine is always discarded, reuse or not: a tune that failed
+    // mid-render may have left the chip in a state the next tune would inherit.
     if (engine) {
       engine.dispose();
       enginesDisposed += 1;
+      if (pooledEngine === engine) {
+        pooledEngine = null;
+      }
     }
     engine = null;
   }

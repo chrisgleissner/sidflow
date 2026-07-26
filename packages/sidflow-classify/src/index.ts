@@ -41,6 +41,7 @@ import path from "node:path";
 import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
 import { createEngine, resolveClassifyEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import { indexExtractedSongs, resumeKeyFor } from "./resume-index.js";
+import { MIN_ANALYSABLE_SECONDS, resolveAnalysisWindow } from "./analysis-window.js";
 import {
   createFeatureIntegrityTally,
   featureIntegrityBreach,
@@ -1505,8 +1506,18 @@ export async function buildAudioCache(
           // tagging phase can reuse it without a redundant second render pass.
           captureTrace: true,
           traceClock: sidMetadataCache.get(sidFile)?.clock,
-          traceIntroSkipSec: resolveIntroSkipSec(plan.config),
-          traceAnalysisSec: resolveMaxClassifySec(plan.config),
+          // Window scaled to the tune. A fixed 15s skip lands past the end of a short
+          // subsong, which is how 18.66% of the corpus came to be described by a window
+          // containing no music. Recorded in the sidecar so the consumer uses the same
+          // window the renderer did rather than re-deriving it.
+          ...(() => {
+            const window = resolveAnalysisWindow(
+              typeof targetDurationMs === "number" && targetDurationMs > 0 ? targetDurationMs / 1000 : undefined,
+              resolveIntroSkipSec(plan.config),
+              resolveMaxClassifySec(plan.config),
+            );
+            return { traceIntroSkipSec: window.skipSeconds, traceAnalysisSec: window.analysisSeconds };
+          })(),
         };
         let renderResult: ClassificationRenderResult | null = null;
 
@@ -2381,6 +2392,7 @@ export async function generateAutoTags(
   }
 
   const jobs: AutoTagJob[] = [];
+  let tooShortCount = 0;
   let metadataProcessed = 0;
 
   const maxRenderMs = getMaxClassificationRenderMs(plan.config);
@@ -2454,6 +2466,30 @@ export async function generateAutoTags(
       const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
       const index = Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1);
       const hvscDuration = durations?.[index];
+
+      // A tune under ten seconds is dropped rather than analysed on a shorter window.
+      // Fifteen of the dimensions describe rates, regularities and entropies over frames,
+      // and below ten seconds there are too few frames for those to mean anything: the
+      // values would be real numbers computed from too little evidence, which is worse
+      // than an absent track because it is indistinguishable from a measurement.
+      const analysisWindow = resolveAnalysisWindow(
+        typeof hvscDuration === "number" && Number.isFinite(hvscDuration) && hvscDuration > 0
+          ? hvscDuration / 1000
+          : undefined,
+        resolveIntroSkipSec(plan.config),
+        resolveMaxClassifySec(plan.config),
+      );
+      if (analysisWindow.excluded) {
+        tooShortCount += 1;
+        telemetry.emit(
+          buildSongTelemetryRecord(
+            "song_skipped",
+            { posixRelative, songCount, songIndex: songCount > 1 ? songIndex : undefined, queueIndex: jobs.length },
+            { reason: "too_short", durationMs: hvscDuration ?? null },
+          ),
+        );
+        continue;
+      }
       const cappedDuration =
         typeof hvscDuration === "number" && Number.isFinite(hvscDuration) && hvscDuration > 0
           ? Math.min(hvscDuration, maxRenderMs)
@@ -2501,6 +2537,12 @@ export async function generateAutoTags(
   
   if (skipAlreadyClassified && skippedAlreadyClassifiedCount > 0) {
     classifyLogger.info(`Skipped ${skippedAlreadyClassifiedCount} already classified songs`);
+  }
+  if (tooShortCount > 0) {
+    classifyLogger.info(
+      `Excluded ${tooShortCount} songs shorter than ${MIN_ANALYSABLE_SECONDS}s: too few frames to`
+      + " describe rates, regularities or entropies",
+    );
   }
 
   let processedSongs = 0;
@@ -2783,8 +2825,17 @@ export async function generateAutoTags(
               targetDurationMs: job.targetDurationMs,
               captureTrace: runtimeMode.captureTrace,
               traceClock: sidMetadataCache.get(job.sidFile)?.clock,
-              traceIntroSkipSec: resolveIntroSkipSec(plan.config),
-              traceAnalysisSec: resolveMaxClassifySec(plan.config),
+              // See the note at the other render site: the window is scaled to the tune.
+              ...(() => {
+                const window = resolveAnalysisWindow(
+                  typeof job.targetDurationMs === "number" && job.targetDurationMs > 0
+                    ? job.targetDurationMs / 1000
+                    : undefined,
+                  resolveIntroSkipSec(plan.config),
+                  resolveMaxClassifySec(plan.config),
+                );
+                return { traceIntroSkipSec: window.skipSeconds, traceAnalysisSec: window.analysisSeconds };
+              })(),
             } satisfies Omit<RenderWavOptions, "maxRenderSeconds" | "renderSampleRate" | "maxRenderWallTimeMs" | "renderProfile">;
 
             try {

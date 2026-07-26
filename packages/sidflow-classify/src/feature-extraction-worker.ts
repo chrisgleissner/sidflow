@@ -31,6 +31,7 @@ import { computeEnvelopeFeatures } from "./essentia-features.js";
 import { ESSENTIA_FRAME_SIZE, extractEssentiaFrameSummaries } from "./essentia-frame-features.js";
 import { readSidTraceSidecar } from "./render/wav-renderer.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
+import { resolveAnalysisWindow } from "./analysis-window.js";
 import { extractSidNativeFeaturesFromWriteTrace, logSidNativeFeatureDegradation } from "./sid-native-features.js";
 
 // Default target sample rate for SID music analysis.
@@ -311,9 +312,18 @@ async function extractAndDownsampleAudio(
     throw new Error("Invalid WAV file: invalid data chunk length");
   }
 
-  const maxExtractSec = config.maxClassifySec ?? DEFAULT_ANALYSIS_WINDOW_SEC;
-  const introSkipSec = config.introSkipSec ?? DEFAULT_ANALYSIS_SKIP_SEC;
+  const configuredExtractSec = config.maxClassifySec ?? DEFAULT_ANALYSIS_WINDOW_SEC;
+  const configuredSkipSec = config.introSkipSec ?? DEFAULT_ANALYSIS_SKIP_SEC;
   const sourceOffsetSec = (await readWavRenderSettingsSidecar(wavFile))?.sourceOffsetSec ?? 0;
+
+  // Scale the window to the rendered length, using the same rule as the register-trace
+  // side so both halves of the vector describe the same interval. A fixed skip lands past
+  // the end of a short tune, and the rendered duration is the most reliable length
+  // available at this point -- more so than Songlengths, which can disagree with what the
+  // renderer actually produced.
+  const scaled = resolveAnalysisWindow(wavDurationSec, configuredSkipSec, configuredExtractSec);
+  const maxExtractSec = scaled.analysisSeconds;
+  const introSkipSec = scaled.skipSeconds;
 
   const window = resolveRepresentativeAnalysisWindow(buffer, header, maxExtractSec, introSkipSec);
 
