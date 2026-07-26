@@ -331,10 +331,12 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in March 2026):
 
-> **Timings depend on the engine.** The ~30 min figure below is a SIDLite run, which is the default. `SIDFLOW_SID_ENGINE=residfp` renders roughly an order of magnitude slower and rendering dominates the run, so budget hours rather than minutes for a reference-fidelity pass. Measure your own hardware with `--max-songs 200` before committing to a full run either way.
+> **Timings depend on the engine and the thread count.** The log below is a SIDLite run, which is the default; `SIDFLOW_SID_ENGINE=residfp` renders roughly 7x slower and rendering dominates, so budget most of a day for a reference-fidelity pass. Measure your own hardware with `--max-songs 200` before committing either way.
+
+> **Pass `--threads 12`.** The pipeline does not scale past about 12 and gets *slower* beyond it, because `buildConcurrency` sizes the WASM renderer pool at N *and* `getFeatureExtractionPool` sizes the extraction pool at N, both live at once — so `--threads 20` puts 40 worker threads on 20 cores. Measured on a 20-thread machine: 6 threads 10.01 tracks/s, **12 threads 12.26**, 16 threads 10.97, 20 threads 9.59. The automatic default resolves conservatively, so the explicit flag is worth setting.
 
 ```bash
-bash scripts/run-similarity-export.sh --mode local --full-rerun true
+bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 12
 ```
 
 Expected logs:
@@ -376,9 +378,18 @@ Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`, `sidcorr-hvsc-full-si
 
 **1a. Choose the SID emulation (optional):**
 
-Classification renders with **SIDLite** by default. It sounds good — clean, unclipped, multi-SID included, verified against reSIDfp on real tunes — and most listeners will not hear the difference. It is also roughly an order of magnitude faster, which is the difference between a corpus pass measured in hours and one measured in most of a day.
+Classification renders with **SIDLite** by default, and that default is measured rather than assumed. A pre-registered paired comparison on **23,817 identical tracks** ([doc/sid-engine-comparison.md](doc/sid-engine-comparison.md)) found:
 
-`reSIDfp` is the cycle-accurate reference. Choose it when you want the last few percent of fidelity and are willing to pay for it in time; the audible gap is small enough that it mostly matters to audiophiles and to A/B comparison work.
+| Endpoint | reSIDfp | SIDLite | Relative | Holm p |
+|---|---|---|---|---|
+| nDCG@10, 24 WAV-derived dimensions | 0.3221 | 0.3173 | +1.49% | 0.0848 |
+| nDCG@10, full 58-dimension vector | 0.5442 | 0.5421 | +0.40% | 0.1224 |
+| Cold-start nDCG@10, 24 dimensions | 0.0615 | 0.0766 | **−19.71%** | — |
+| Rating agreement, quadratic-weighted κ | — | — | 0.82–0.89 | — |
+
+reSIDfp is very slightly better in the WAV-derived subspace — the only place an audio model can act — but the effect fails multiplicity correction, reverses on cold start, and shrinks to +0.40% in the vector that ships, because 34 of the 58 dimensions read the SID register write trace and are identical under both engines by construction. Against roughly 7x the wall clock, it does not pay.
+
+`reSIDfp` remains the cycle-accurate reference. Choose it for audio fidelity — listening, A/B work, anything where you want the reference rendering itself. For *classification*, the measurement above is the reason not to.
 
 ```bash
 # Default — fast, good enough to classify from
