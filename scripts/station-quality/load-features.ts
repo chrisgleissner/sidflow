@@ -30,6 +30,8 @@ import { readFileSync } from "node:fs";
 import {
   DeterministicRatingModelBuilder,
   buildPerceptualVector,
+  buildRatingQuantiles,
+  computeRawRatingScores,
   type DeterministicRatingModel,
 } from "../../packages/sidflow-classify/src/deterministic-ratings.js";
 import type { FeatureVector } from "../../packages/sidflow-classify/src/index.js";
@@ -100,7 +102,15 @@ export function buildModel(records: FeatureRecord[]): DeterministicRatingModel {
     if (record.renderEngine && record.renderEngine !== "unknown") renderEngine = record.renderEngine;
     builder.add(record.features);
   }
-  return builder.finalize(renderEngine);
+  const model = builder.finalize(renderEngine);
+
+  // Second pass for the rating-scale calibration, exactly as the classify
+  // pipeline does it. Without this an offline report would show the UNCALIBRATED
+  // rating spread and understate the shipped behaviour -- the quantiles need the
+  // finalized mu/sigma, so they cannot be accumulated in the first pass.
+  const quantiles = buildRatingQuantiles(records.map((record) => computeRawRatingScores(model, record.features)));
+  if (quantiles) model.ratingQuantiles = quantiles;
+  return model;
 }
 
 /** The vector the product builds today, recomputed from raw features. */

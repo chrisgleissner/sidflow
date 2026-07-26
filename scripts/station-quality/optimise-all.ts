@@ -33,7 +33,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import process from "node:process";
 
-import { groupOf, ratingSpread, stationQuality, type Track } from "./metrics.js";
+import { assembleStationMMR, groupOf, ratingSpread, stationQuality, type Track } from "./metrics.js";
 import {
   cosineDistance,
   distanceMatrix,
@@ -202,6 +202,9 @@ interface Evaluation {
   rareNdcg: number;
   rareSeeds: number;
   seeds: number;
+  /** Diversity and coherence of the station once MMR has assembled it. */
+  mmrDiversity: number;
+  mmrCoherence: number;
 }
 
 function evaluate(tracks: Track[], combination: Combination): Evaluation {
@@ -236,6 +239,22 @@ function evaluate(tracks: Track[], combination: Combination): Evaluation {
   }
   const rare = rareSeedIndices.length === 0 ? { mean: 0, perSeed: [] } : ndcgAtK(tracks, ranker, K, rareSeedIndices);
 
+  // The same stations, assembled with MMR from a wider candidate pool. Reported
+  // alongside the raw-ranking figure because the pre-registered guardrail
+  // measures neighbour lists, while what a listener hears is an assembled
+  // station -- and the two answer differently once ranking improves.
+  const POOL = 60;
+  const between = (a: number, b: number) => distances[a]![b]!;
+  const mmrStations: Array<{ seed: Track; tracks: Track[] }> = [];
+  for (let i = 0; i < tracks.length && mmrStations.length < STATION_SEEDS; i += stride) {
+    const pool = ranker(i, POOL);
+    mmrStations.push({
+      seed: tracks[i]!,
+      tracks: assembleStationMMR(i, pool, between, 20).map((j) => tracks[j]!),
+    });
+  }
+  const mmrStation = stationQuality(mmrStations, chance);
+
   return {
     ndcg: nd.mean,
     perSeed: nd.perSeed,
@@ -244,6 +263,8 @@ function evaluate(tracks: Track[], combination: Combination): Evaluation {
     rareNdcg: rare.mean,
     rareSeeds: rare.perSeed.length,
     seeds: nd.perSeed.length,
+    mmrDiversity: mmrStation.diversity,
+    mmrCoherence: mmrStation.coherence,
   };
 }
 
@@ -265,7 +286,8 @@ function attempt(phase: string, rationale: string, combination: Combination): At
   const record: Attempt = { phase, name: describe(combination), rationale, combination, evaluation };
   attempts.push(record);
   process.stdout.write(
-    `  ${record.name.padEnd(62)} nDCG@${K} ${evaluation.ndcg.toFixed(4)}  div ${evaluation.diversity.toFixed(3)}  rare ${evaluation.rareNdcg.toFixed(4)} (${evaluation.rareSeeds})\n`,
+    `  ${record.name.padEnd(62)} nDCG@${K} ${evaluation.ndcg.toFixed(4)}  div ${evaluation.diversity.toFixed(3)}` +
+      `  mmr-div ${evaluation.mmrDiversity.toFixed(3)}  rare ${evaluation.rareNdcg.toFixed(4)} (${evaluation.rareSeeds})\n`,
   );
   return record;
 }
@@ -464,6 +486,44 @@ process.stdout.write(
     : `  no candidate beat the baseline significantly with guardrails intact\n`,
 );
 
+/**
+ * A SECOND selection, reported separately and never relabelled as the
+ * pre-registered one.
+ *
+ * The pre-registered diversity guardrail compares raw neighbour lists. That was a
+ * design error, and the data shows why: improving composer retrieval necessarily
+ * puts more of the seed's composer near the top, so "distinct groups / station
+ * length" falls whenever the primary metric rises. The guardrail is
+ * anti-correlated with the objective by construction and can therefore never
+ * approve a genuine improvement.
+ *
+ * Diversity belongs to station assembly, which is where MMR was always intended
+ * to sit. This selection applies the identical rule to the post-assembly figure.
+ * It is a DIFFERENT analysis with a different guardrail, decided after seeing the
+ * first result, and is presented as such -- the pre-registered outcome above
+ * stands on its own.
+ */
+const eligibleMMR = comparisons.filter((comparison) => {
+  const entry = holm.find((h) => h.name === comparison.attempt.name)!;
+  if (!entry.significant || comparison.diff <= 0) return false;
+  const diversityOk = comparison.attempt.evaluation.mmrDiversity >= baselineAttempt.evaluation.mmrDiversity * 0.95;
+  const rareOk = comparison.attempt.evaluation.rareNdcg >= baselineAttempt.evaluation.rareNdcg * 0.95;
+  return diversityOk && rareOk;
+});
+eligibleMMR.sort((a, b) => b.attempt.evaluation.ndcg - a.attempt.evaluation.ndcg);
+const winnerMMR = eligibleMMR[0]?.attempt ?? null;
+
+process.stdout.write(`\n=== selection with MMR station assembly (separate analysis, not pre-registered) ===\n`);
+process.stdout.write(
+  `  baseline: raw-ranking diversity ${baselineAttempt.evaluation.diversity.toFixed(3)} -> after MMR ${baselineAttempt.evaluation.mmrDiversity.toFixed(3)}\n`,
+);
+process.stdout.write(
+  winnerMMR
+    ? `  winner: ${winnerMMR.name}\n     diversity ${winnerMMR.evaluation.diversity.toFixed(3)} -> after MMR ${winnerMMR.evaluation.mmrDiversity.toFixed(3)}` +
+        ` (guardrail needs >= ${(baselineAttempt.evaluation.mmrDiversity * 0.95).toFixed(3)})\n`
+    : `  no candidate passes even with MMR assembly\n`,
+);
+
 // -------------------------------------------------------- TEST, touched once
 
 process.stdout.write(`\n=== test (touched once) ===\n`);
@@ -555,6 +615,8 @@ writeFileSync(
         rationale: a.rationale,
         ndcg: a.evaluation.ndcg,
         diversity: a.evaluation.diversity,
+        mmrDiversity: a.evaluation.mmrDiversity,
+        mmrCoherence: a.evaluation.mmrCoherence,
         rareNdcg: a.evaluation.rareNdcg,
         seeds: a.evaluation.seeds,
       })),
@@ -564,6 +626,7 @@ writeFileSync(
       ),
       dimensionDiagnostics,
       winner: winner?.name ?? null,
+      winnerWithMMRAssembly: winnerMMR?.name ?? null,
       test: {
         baseline: { ndcg: testBaseline.ndcg, diversity: testBaseline.diversity, rare: testBaseline.rareNdcg, seeds: testBaseline.seeds },
         winner: testWinner

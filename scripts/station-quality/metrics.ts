@@ -196,3 +196,61 @@ export function ratingSpread(tracks: Track[]): Record<string, { levels: number; 
   }
   return out;
 }
+
+/**
+ * Maximal Marginal Relevance station assembly.
+ *
+ * Coherence and diversity pull against each other, and the pre-registered
+ * guardrail exposed that as a hard conflict: any candidate that retrieves the
+ * seed's composer better puts MORE of that composer in the top of the list, which
+ * mechanically lowers "distinct groups / station length". Measured on the
+ * development corpus, every statistically significant ranking improvement failed
+ * the diversity guardrail — not because it made worse stations, but because the
+ * guardrail measured raw neighbour lists rather than assembled stations.
+ *
+ * The resolution is architectural rather than statistical. Ranking should be
+ * optimised for relevance; diversity belongs to the step that BUILDS the station
+ * from the ranking. MMR does exactly that: it walks a candidate pool and
+ * repeatedly picks the track that is close to the seed but far from what has
+ * already been queued.
+ *
+ * `lambda` is the trade-off: 1.0 reproduces the plain ranking, 0.0 ignores the
+ * seed entirely. Selection uses only DISTANCES, never the group labels, so this
+ * is deployable rather than an evaluation trick — a station cannot consult a
+ * ground truth it does not have at serving time.
+ */
+export function assembleStationMMR(
+  seedIndex: number,
+  candidates: readonly number[],
+  distance: (a: number, b: number) => number,
+  size: number,
+  lambda = 0.7,
+): number[] {
+  const pool = [...candidates];
+  const chosen: number[] = [];
+
+  while (chosen.length < size && pool.length > 0) {
+    let bestAt = 0;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < pool.length; i++) {
+      const candidate = pool[i]!;
+      let nearestChosen = Number.POSITIVE_INFINITY;
+      for (const already of chosen) {
+        const d = distance(candidate, already);
+        if (d < nearestChosen) nearestChosen = d;
+      }
+      // With nothing chosen yet the novelty term is undefined; fall back to pure
+      // relevance so the first pick is always the nearest neighbour.
+      const novelty = chosen.length === 0 ? 0 : nearestChosen;
+      const score = -lambda * distance(seedIndex, candidate) + (1 - lambda) * novelty;
+      if (score > bestScore) {
+        bestScore = score;
+        bestAt = i;
+      }
+    }
+    chosen.push(pool[bestAt]!);
+    pool.splice(bestAt, 1);
+  }
+
+  return chosen;
+}
