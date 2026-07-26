@@ -1024,3 +1024,81 @@ effect seen from the other side: a queue-order prefix contains a large number of
 composers represented once or twice, and there is genuinely little to retrieve for them.
 It is a caution about reading any single cold-start number as a property of the method,
 including the favourable one.
+
+---
+
+## 13. A defect that invalidates the numbers above, and what it means for them
+
+Found after §12 was written, while auditing feature distributions on the full corpus.
+
+**16,398 of 87,868 tracks (18.66%) had every playroutine and driver dimension at exactly
+zero** — the "no trace available" default — so 34 of the 58 similarity dimensions were a
+shared constant across a fifth of HVSC.
+
+### The cause
+
+`introSkipSec` skips the first 15 seconds of a tune before analysis, on the reasoning that
+a tune's opening is its least characteristic part. That is right for a full-length tune and
+lands past the end of a jingle, and HVSC is full of short subsongs. The failure rate tracks
+subsong index exactly as that explanation predicts:
+
+| song index | empty-trace rate |
+|---|---|
+| 1 | 3.0% |
+| 2 | 31.9% |
+| 3 | 43.2% |
+| 4 | 50.5% |
+| 5 | 52.3% |
+| 6+ | **66.8%** |
+
+Measured on `Games_Winter_Edition.sid`, which declares 82 subsongs:
+
+| song | register writes | trace spans (cycles) | writes stop at | inside the 15–30s window |
+|---|---|---|---|---|
+| 1 | 14,663 | 315,485 – 30,994,553 | 30.3s | 7,871 |
+| 7 | 5,424 | 315,485 – 11,557,510 | **11.3s** | **0** |
+| 38 | 86 | 315,485 – 1,163,797 | **1.14s** | **0** |
+
+### Why it was invisible
+
+Every record was well-formed. Counts matched. The export built. The affected tracks are
+*audible* in the analysis window — residual oscillator ringing at RMS up to 0.0885, higher
+than many healthy tracks — so nothing looked like silence. And `sidSilentFrameRatio` is set
+to 1 by the empty default, so a naive "are all trace dimensions zero?" check finds one
+non-zero value and passes. That mistake was made once during this investigation before
+being caught.
+
+**It is not a libsidplayfp or WASM defect.** Both captured every write correctly: the trace
+sidecars existed and were populated for all 82 subsongs, up to 362 KB each. The WAV side
+already clamps its window to a short render, which is why spectral features still appeared.
+Only the trace window failed to clamp.
+
+### What it means for §§1–12
+
+**Every retrieval figure above was measured on corpora carrying this defect** — the
+11,284-track development corpus, both arms of the engine comparison, and the 21,451-track
+transfer check. Roughly a fifth of the tracks in each were missing the 34 dimensions that
+produced most of the reported gain.
+
+The direction of the error is knowable even before re-measurement: those tracks were
+*handicapped*, so the true figures should be **better**, not worse. But "should be" is not a
+measurement, and the honest position is that §§1–12 are a lower bound taken on damaged data
+rather than a description of the shipped system. They are re-measured on the corrected
+corpus in §14.
+
+### The fix, and the check that would have caught it
+
+The trace window now slides back to cover the end of the traced activity when a tune stops
+before the skip elapses. Full-length tunes are unaffected.
+
+More importantly, `feature-integrity.ts` now asserts as records are produced that a record
+does not contradict itself: a trace holding events cannot yield an all-zero playroutine
+vector, a record claiming pitch content must carry some, and a NaN must not pass as a
+missing feature. Above 1% violating records the run aborts. The resume index treats an
+unsound record as not-done, so a rerun repairs rather than preserves it — without that, a
+resume would have carried these 16,398 records forward indefinitely.
+
+Verified on a stratified 1,030-song sample spanning all three trees, subsong indices 1
+through 6+, and 2SID/3SID files: **0.00% empty against 18.66%**, including 0.0% at song
+index 6 and beyond. Median 21 of 22 playroutine dimensions non-zero, no record below 5, no
+NaN, tonal coverage up from 78.5% to 81.5%.
