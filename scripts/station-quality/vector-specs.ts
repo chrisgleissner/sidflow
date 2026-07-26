@@ -68,6 +68,7 @@ export const SHIPPED_DIMENSION_NAMES = [
  *   sidNoteCount    unbounded, and sidNoteRate is its bounded form.
  */
 export const TONAL_DIMENSION_NAMES = [
+  "sidTonalPresent",
   "sidKeyStrength",
   "sidKeyMinorness",
   "sidKeyStability",
@@ -109,6 +110,7 @@ export const TONAL_DIMENSION_NAMES = [
  * asked why two tunes sound alike.
  */
 export const TONAL_CORE_NAMES = [
+  "sidTonalPresent",
   "sidKeyStrength",
   "sidKeyMinorness",
   "sidKeyStability",
@@ -128,7 +130,30 @@ export const TONAL_CORE_NAMES = [
 
 const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
+/**
+ * Indicator for "this track has analysable pitch content at all".
+ *
+ * Derived rather than stored, so it costs no re-classification.
+ *
+ * Needed because 30% of HVSC has no pitched oscillator activity in the analysis
+ * window — digi tunes that play samples through the volume register, BASIC
+ * listings, and tunes whose window is silent. For those, every tonal dimension is
+ * zero, and without an indicator the metric cannot tell "no notes" from "notes,
+ * but very few of them in the scale". Those are completely different tracks that
+ * would otherwise sit on top of each other, and a third of the corpus collapsing
+ * into one point is exactly the kind of spurious cluster that ruins a station.
+ *
+ * This is the standard missing-indicator treatment: keep the zeros, and add one
+ * dimension saying whether they mean anything.
+ */
+function tonalPresent(features: FeatureVector): number {
+  return features.sidTonalVariant === "tonal" ? 1 : 0;
+}
+
+export const TONAL_PRESENT_DIMENSION = "sidTonalPresent";
+
 function tonalValue(features: FeatureVector, name: string): number {
+  if (name === TONAL_PRESENT_DIMENSION) return tonalPresent(features);
   const value = features[name];
   return typeof value === "number" && Number.isFinite(value) ? clamp01(value) : 0;
 }

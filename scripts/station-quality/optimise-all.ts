@@ -300,18 +300,45 @@ const phaseBCandidates = attempts.filter((a) => a.phase === "A" || a.phase === "
 const phaseB = [...phaseBCandidates].sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0]!;
 process.stdout.write(`  -> best feature set: ${phaseB.combination.spec.name}\n\n`);
 
-process.stdout.write(`=== phase C: re-ranking, with the phase-B feature set ===\n`);
+/**
+ * Revisit the representation now that the feature set has changed.
+ *
+ * Pure greedy would keep phase A's choice forever, but that choice was made over
+ * 24 dimensions and the winning feature set may have twice as many. Whitening in
+ * particular behaves differently as rank and collinearity change. Re-testing the
+ * runner-up is one extra candidate and removes the most likely place for the
+ * greedy order to have cost something.
+ */
+if (phaseB.combination.spec.name !== SPECS[0]!.name) {
+  const runnerUp = attempts
+    .filter((a) => a.phase === "A" && a.combination.representation.name !== phaseA.combination.representation.name)
+    .sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0];
+  if (runnerUp) {
+    process.stdout.write(`\n=== phase B2: recheck the runner-up representation on the winning feature set ===\n`);
+    attempt("B2", "the best representation for 24 dimensions need not be best for more", {
+      spec: phaseB.combination.spec,
+      representation: runnerUp.combination.representation,
+      reranker: RERANKERS[0]!,
+    });
+  }
+}
+const phaseBest = [...attempts]
+  .filter((a) => ["A", "B", "B2"].includes(a.phase))
+  .sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0]!;
+process.stdout.write(`  -> carrying forward: ${phaseBest.name}\n`);
+
+process.stdout.write(`\n=== phase C: re-ranking, with the phase-B feature set ===\n`);
 for (const reranker of RERANKERS.slice(1)) {
   attempt("C", "hubness and neighbourhood-consistency corrections", {
-    spec: phaseB.combination.spec,
-    representation: phaseB.combination.representation,
+    spec: phaseBest.combination.spec,
+    representation: phaseBest.combination.representation,
     reranker,
   });
 }
 
 process.stdout.write(`\n=== phase D: learned diagonal weights (fitted on TRAIN only) ===\n`);
-const winnerSplit = splitOf(tracksBySpec.get(phaseB.combination.spec.name)!);
-const learned = learnWeights(winnerSplit.train, phaseB.combination.representation.build, K);
+const winnerSplit = splitOf(tracksBySpec.get(phaseBest.combination.spec.name)!);
+const learned = learnWeights(winnerSplit.train, phaseBest.combination.representation.build, K);
 process.stdout.write(
   `  fitted ${learned.length} weights on ${winnerSplit.train.length} train tracks, range ${Math.min(...learned).toFixed(2)}..${Math.max(...learned).toFixed(2)}\n`,
 );
@@ -319,15 +346,15 @@ const bestReranker = attempts
   .filter((a) => a.phase === "C")
   .sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0];
 attempt("D", "let the labels choose feature importance", {
-  spec: phaseB.combination.spec,
-  representation: phaseB.combination.representation,
+  spec: phaseBest.combination.spec,
+  representation: phaseBest.combination.representation,
   reranker: RERANKERS[0]!,
   weights: learned,
 });
-if (bestReranker && bestReranker.evaluation.ndcg > phaseB.evaluation.ndcg) {
+if (bestReranker && bestReranker.evaluation.ndcg > phaseBest.evaluation.ndcg) {
   attempt("D", "learned weights plus the best re-ranking", {
-    spec: phaseB.combination.spec,
-    representation: phaseB.combination.representation,
+    spec: phaseBest.combination.spec,
+    representation: phaseBest.combination.representation,
     reranker: bestReranker.combination.reranker,
     weights: learned,
   });
@@ -349,19 +376,19 @@ process.stdout.write(`\n=== phase E: supervised metric, fitted on TRAIN only ===
  * inverse would amplify whichever directions are underdetermined.
  */
 for (const shrinkage of [0.2, 0.5]) {
-  const map = fitSupervisedMap(phaseB.combination.spec, phaseB.combination.representation, shrinkage);
+  const map = fitSupervisedMap(phaseBest.combination.spec, phaseBest.combination.representation, shrinkage);
   attempt("E", `shrink within-composer variation (shrinkage ${shrinkage})`, {
-    spec: phaseB.combination.spec,
-    representation: phaseB.combination.representation,
+    spec: phaseBest.combination.spec,
+    representation: phaseBest.combination.representation,
     reranker: RERANKERS[0]!,
     supervised: { name: `within-class whitening (${shrinkage})`, map },
   });
 }
 const phaseE = attempts.filter((a) => a.phase === "E").sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0]!;
-if (phaseE.evaluation.ndcg > phaseB.evaluation.ndcg && bestReranker) {
+if (phaseE.evaluation.ndcg > phaseBest.evaluation.ndcg && bestReranker) {
   attempt("E", "supervised metric plus the best re-ranking", {
-    spec: phaseB.combination.spec,
-    representation: phaseB.combination.representation,
+    spec: phaseBest.combination.spec,
+    representation: phaseBest.combination.representation,
     reranker: bestReranker.combination.reranker,
     supervised: phaseE.combination.supervised,
   });
@@ -448,7 +475,7 @@ if (winner) {
  * contribute to any distance, and the learned weight says what the labels think
  * of the ones that do vary.
  */
-const diagnosticSpec = winner?.combination.spec ?? phaseB.combination.spec;
+const diagnosticSpec = winner?.combination.spec ?? phaseBest.combination.spec;
 const diagnosticTracks = tracksBySpec.get(diagnosticSpec.name)!;
 const dimensionDiagnostics = diagnosticSpec.dimensionNames.map((name, index) => {
   const column = diagnosticTracks.map((t) => t.vector[index] ?? 0);
@@ -500,7 +527,7 @@ writeFileSync(
       })),
       holm,
       learnedWeights: Object.fromEntries(
-        (winner?.combination.spec ?? phaseB.combination.spec).dimensionNames.map((n, i) => [n, learned[i] ?? null]),
+        (winner?.combination.spec ?? phaseBest.combination.spec).dimensionNames.map((n, i) => [n, learned[i] ?? null]),
       ),
       dimensionDiagnostics,
       winner: winner?.name ?? null,
