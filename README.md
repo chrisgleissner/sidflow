@@ -333,10 +333,10 @@ Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in Ma
 
 > **Timings depend on the engine and the thread count.** The log below is a SIDLite run, which is the default; `SIDFLOW_SID_ENGINE=residfp` renders roughly 7x slower and rendering dominates, so budget most of a day for a reference-fidelity pass. Measure your own hardware with `--max-songs 200` before committing either way.
 
-> **Pass `--threads 12`.** The pipeline does not scale past about 12 and gets *slower* beyond it, because `buildConcurrency` sizes the WASM renderer pool at N *and* `getFeatureExtractionPool` sizes the extraction pool at N, both live at once — so `--threads 20` puts 40 worker threads on 20 cores. Measured on a 20-thread machine: 6 threads 10.01 tracks/s, **12 threads 12.26**, 16 threads 10.97, 20 threads 9.59. The automatic default resolves conservatively, so the explicit flag is worth setting.
+> **Thread count is a stability choice, not just a speed one.** Two pools are sized at N simultaneously — `buildConcurrency` for the WASM renderer and `getFeatureExtractionPool` for extraction — so `--threads 20` puts 40 worker threads on 20 cores. On a short 710-track benchmark throughput peaks at 12 (6 threads 10.01 tracks/s, 12 threads 12.26, 16 threads 10.97, 20 threads 9.59), but **that benchmark is too short to show what matters at corpus scale**: a full HVSC pass at `--threads 12` died after 15,902 tracks with `RangeError: Out of memory` while instantiating WASM, then segfaulted. Peak RSS was 3.5 GB on a 62 GB machine, so this is address-space exhaustion inside the runtime, not the host. Prefer **`--threads 6`** for a full corpus; it is roughly 20% slower per track and got substantially further before any failure.
 
 ```bash
-bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 12
+bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 6
 ```
 
 Expected logs:
