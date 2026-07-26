@@ -8,8 +8,8 @@ where the protocol itself turned out to be wrong.
 The short version:
 
 - **Station quality more than doubled.** nDCG@10 on held-out, composer-grouped data
-  goes 0.2340 → 0.5109, **+118.4%** (p=0.0002), and cold-start retrieval doubles too
-  (0.1108 → 0.2324). The pre-registered success criterion asked for ≥20%.
+  goes 0.2340 → 0.5392, **+130.4%** (p=0.0002), and cold-start retrieval more than
+  doubles (0.1108 → 0.2453). The pre-registered success criterion asked for ≥20%.
 - **Almost all of it came from one idea nobody had tried**: describing the
   PLAYROUTINE rather than the sound. Composers reuse their player code, and its
   register-write pattern is effectively that tooling's signature. A single such
@@ -388,9 +388,39 @@ that happened; the weakest of them beats the median dimension of every other gro
 | + 11 tonal, rank-normalised | 0.2686 | +14.8% | 0.1912 |
 | **playroutine dimensions ALONE (15d)** | **0.4517** | **+93.0%** | 0.1592 |
 | all 50 dimensions | 0.4112 | +75.7% | 0.2019 |
-| **all 50 with learned weights (SHIPPED)** | **0.5109** | **+118.4%** | **0.2324** |
+| all 50 with learned weights | 0.5109 | +118.4% | 0.2324 |
+| all 50, wider weight search | 0.5390 | +130.3% | — |
+| **all 58 with learned weights (SHIPPED)** | **0.5392** | **+130.4%** | **0.2453** |
 
-95% CI on the final difference [0.2623, 0.2917], p=0.0002.
+95% CI on the difference [0.2623, 0.2917] at 50 dimensions, p=0.0002 throughout.
+
+### A second round of driver detail
+
+Because the first playroutine group paid so well, eight finer descriptors of the
+driver's *shape* were added: where in the video frame it runs and how tightly it
+holds that position, whether it rewrites unchanged values, how much of the register
+file it touches, the order it walks registers in, and how it divides attention
+between the three voices. Worth a further **+5.5%** on held-out retrieval
+(0.5109 → 0.5392) and +5.6% on cold start, both at p=0.0002.
+
+A fixed-raster interrupt driver and a main-loop driver look identical in the
+spectrum and produce very different values here. So do a driver that blindly
+restates its whole register set every frame and one that writes only what changed.
+These are decisions made by a programmer, not by a composer, which is precisely why
+they identify who wrote the tune.
+
+### The weight search was itself a limit
+
+The learned weights were fitted by coordinate ascent over a schedule that could not
+reach beyond 2.11x. Ten of the fifty weights sat exactly at that ceiling, which is
+the optimiser saying it wanted to go further. Widening the schedule and running two
+passes cost nothing — no re-classification, no new features — and was worth
+**another 12 percentage points** (+118.4% → +130.3%), leaving only one weight at the
+ceiling and a range spanning 0 to 17.8. Some dimensions get weighted to zero, so the
+search performs selection and weighting in one pass.
+
+Worth noting as a general lesson: a hyperparameter search hitting its own bounds is a
+finding, not a result. It was visible in the output the whole time.
 
 Note that playroutine features alone (+93%) involve no selection against the test
 set whatsoever — all 15 were kept by a train-only criterion — so this is not

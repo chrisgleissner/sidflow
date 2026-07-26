@@ -188,3 +188,86 @@ describe("computeSidPlayroutineFeatures", () => {
     expect(Object.keys(emptySidPlayroutineFeatures()).sort()).toEqual(Object.keys(computed).sort());
   });
 });
+
+describe("driver-shape features", () => {
+  test("locates where in the frame the routine runs, and how tightly", () => {
+    // A raster-interrupt driver fires at a fixed line every frame; a main-loop
+    // driver wanders. Both are properties of the code, not of the music.
+    const fixed: Write[] = [];
+    const wandering: Write[] = [];
+    for (let frame = 0; frame < FRAMES; frame += 1) {
+      fixed.push({ frame, address: 0x00, offset: 0.2 });
+      wandering.push({ frame, address: 0x00, offset: (frame % 10) / 10 });
+    }
+    const fixedFeatures = computeSidPlayroutineFeatures({ ...OPTIONS, traces: trace(fixed) });
+    const wanderingFeatures = computeSidPlayroutineFeatures({ ...OPTIONS, traces: trace(wandering) });
+
+    expect(fixedFeatures.sidWriteFramePositionMean).toBeCloseTo(0.2, 2);
+    expect(fixedFeatures.sidWriteFramePositionSpread).toBeCloseTo(0, 2);
+    expect(wanderingFeatures.sidWriteFramePositionSpread).toBeGreaterThan(0.5);
+  });
+
+  test("separates a routine that rewrites unchanged values from one that does not", () => {
+    // Some drivers blindly restate their whole register set each frame; others only
+    // write what changed. Invisible in the sound, characteristic of the code.
+    const blind: Write[] = [];
+    const sparing: Write[] = [];
+    for (let frame = 0; frame < FRAMES; frame += 1) {
+      blind.push({ frame, address: 0x00, value: 42 });
+      sparing.push({ frame, address: 0x00, value: frame % 251 });
+    }
+    expect(
+      computeSidPlayroutineFeatures({ ...OPTIONS, traces: trace(blind) }).sidWriteRedundantRatio,
+    ).toBeGreaterThan(0.9);
+    expect(
+      computeSidPlayroutineFeatures({ ...OPTIONS, traces: trace(sparing) }).sidWriteRedundantRatio,
+    ).toBeLessThan(0.1);
+  });
+
+  test("measures how much of the register file is touched", () => {
+    const narrow = computeSidPlayroutineFeatures({ ...OPTIONS, traces: trace(steadyDriver([0x00, 0x01])) });
+    const everything = computeSidPlayroutineFeatures({
+      ...OPTIONS,
+      traces: trace(steadyDriver(Array.from({ length: 0x19 }, (_, i) => i))),
+    });
+    expect(everything.sidWriteRegisterCoverage).toBeCloseTo(1, 6);
+    expect(narrow.sidWriteRegisterCoverage).toBeCloseTo(2 / 0x19, 4);
+  });
+
+  test("write-order entropy separates a fixed walk from a varied one", () => {
+    // A driver that always walks freq -> control produces one transition; one that
+    // interleaves families produces many.
+    const single = computeSidPlayroutineFeatures({ ...OPTIONS, traces: trace(steadyDriver([0x00, 0x01])) });
+    const varied = computeSidPlayroutineFeatures({
+      ...OPTIONS,
+      traces: trace(steadyDriver([0x00, 0x04, 0x02, 0x05, 0x15, 0x18, 0x01])),
+    });
+    expect(varied.sidWriteOrderEntropy).toBeGreaterThan(single.sidWriteOrderEntropy);
+  });
+
+  test("attributes voice writes to the right voice and sums to one", () => {
+    const voice2Only = computeSidPlayroutineFeatures({
+      ...OPTIONS,
+      traces: trace(steadyDriver([0x07, 0x08, 0x0b])),
+    });
+    expect(voice2Only.sidWriteVoice2Share).toBeCloseTo(1, 6);
+    expect(voice2Only.sidWriteVoice1Share).toBe(0);
+    expect(voice2Only.sidWriteVoice3Share).toBe(0);
+
+    const balanced = computeSidPlayroutineFeatures({
+      ...OPTIONS,
+      traces: trace(steadyDriver([0x00, 0x07, 0x0e])),
+    });
+    const total =
+      balanced.sidWriteVoice1Share + balanced.sidWriteVoice2Share + balanced.sidWriteVoice3Share;
+    expect(total).toBeCloseTo(1, 6);
+    expect(balanced.sidWriteVoice1Share).toBeCloseTo(1 / 3, 4);
+  });
+
+  test("filter and volume writes are not attributed to any voice", () => {
+    const globalOnly = computeSidPlayroutineFeatures({ ...OPTIONS, traces: trace(steadyDriver([0x15, 0x18])) });
+    expect(globalOnly.sidWriteVoice1Share).toBe(0);
+    expect(globalOnly.sidWriteVoice2Share).toBe(0);
+    expect(globalOnly.sidWriteVoice3Share).toBe(0);
+  });
+});

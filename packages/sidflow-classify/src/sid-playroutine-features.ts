@@ -93,6 +93,38 @@ export interface SidPlayroutineFeatures {
    * polyphony figure averages away.
    */
   sidVoiceCountVariation: number;
+
+  /**
+   * Where in the video frame the routine does its work, as a mean position in
+   * 0..1, and how tightly it holds that position.
+   *
+   * A playroutine is called from a raster interrupt at a fixed line, so the mean is
+   * close to a constant of the routine rather than of the tune. The spread
+   * distinguishes a fixed-raster call from one running in the main loop, and both
+   * are properties of the driver, not of the music.
+   */
+  sidWriteFramePositionMean: number;
+  sidWriteFramePositionSpread: number;
+  /**
+   * Share of writes that store the value already in that register.
+   *
+   * Some routines blindly rewrite their whole state every frame; others only write
+   * what changed. That is a design decision of the driver and is invisible in the
+   * resulting sound.
+   */
+  sidWriteRedundantRatio: number;
+  /** How many of the 25 registers the routine ever touches, normalised. */
+  sidWriteRegisterCoverage: number;
+  /**
+   * Entropy over transitions between register groups on consecutive writes,
+   * normalised. Captures the routine's write ORDER — whether it walks voice by
+   * voice or register-type by register-type — which the per-group shares cannot see.
+   */
+  sidWriteOrderEntropy: number;
+  /** Share of voice-register writes going to each of the three voices. */
+  sidWriteVoice1Share: number;
+  sidWriteVoice2Share: number;
+  sidWriteVoice3Share: number;
 }
 
 export function emptySidPlayroutineFeatures(): SidPlayroutineFeatures {
@@ -112,6 +144,14 @@ export function emptySidPlayroutineFeatures(): SidPlayroutineFeatures {
     sidVoiceCount2Ratio: 0,
     sidVoiceCount3Ratio: 0,
     sidVoiceCountVariation: 0,
+    sidWriteFramePositionMean: 0,
+    sidWriteFramePositionSpread: 0,
+    sidWriteRedundantRatio: 0,
+    sidWriteRegisterCoverage: 0,
+    sidWriteOrderEntropy: 0,
+    sidWriteVoice1Share: 0,
+    sidWriteVoice2Share: 0,
+    sidWriteVoice3Share: 0,
   };
 }
 
@@ -127,6 +167,14 @@ function registerGroup(address: number): keyof Omit<
   | "sidVoiceCount2Ratio"
   | "sidVoiceCount3Ratio"
   | "sidVoiceCountVariation"
+  | "sidWriteFramePositionMean"
+  | "sidWriteFramePositionSpread"
+  | "sidWriteRedundantRatio"
+  | "sidWriteRegisterCoverage"
+  | "sidWriteOrderEntropy"
+  | "sidWriteVoice1Share"
+  | "sidWriteVoice2Share"
+  | "sidWriteVoice3Share"
 > | null {
   if (address >= FILTER_FIRST && address <= FILTER_LAST) return "sidWriteShareFilter";
   if (address === MODE_VOLUME) return "sidWriteShareVolume";
@@ -189,6 +237,15 @@ export function computeSidPlayroutineFeatures(
   const gateOn = new Map<string, boolean>();
   const voicesPerFrame = new Int32Array(analysisFrames);
 
+  // Driver-shape accumulators.
+  let positionSum = 0;
+  let positionSquareSum = 0;
+  let redundantWrites = 0;
+  const lastValue = new Map<number, number>();
+  const groupTransitions = new Map<string, number>();
+  let previousGroup: string | null = null;
+  const voiceWrites = [0, 0, 0];
+
   const sorted = [...options.traces].sort((left, right) => left.cyclePhi1 - right.cyclePhi1);
   for (const trace of sorted) {
     if (trace.cyclePhi1 < firstCycle || trace.cyclePhi1 >= lastCycle) continue;
@@ -207,6 +264,23 @@ export function computeSidPlayroutineFeatures(
     // writes in one quarter; a 4x routine spreads them across all four.
     const withinFrame = (trace.cyclePhi1 - firstCycle) / cyclesPerFrame - frame;
     subFrameBuckets[Math.min(3, Math.max(0, Math.floor(withinFrame * 4)))]! += 1;
+    positionSum += withinFrame;
+    positionSquareSum += withinFrame * withinFrame;
+
+    const value = trace.value & 0xff;
+    if (lastValue.get(address) === value) redundantWrites += 1;
+    lastValue.set(address, value);
+
+    if (group) {
+      if (previousGroup !== null) {
+        const key = `${previousGroup}>${group}`;
+        groupTransitions.set(key, (groupTransitions.get(key) ?? 0) + 1);
+      }
+      previousGroup = group;
+    }
+    if (address < VOICE_COUNT * VOICE_BLOCK) {
+      voiceWrites[Math.floor(address / VOICE_BLOCK)]! += 1;
+    }
 
     if (address < VOICE_COUNT * VOICE_BLOCK && address % VOICE_BLOCK === 4) {
       gateOn.set(`${trace.sidNumber}:${Math.floor(address / VOICE_BLOCK)}`, (trace.value & 0x01) === 1);
@@ -248,6 +322,12 @@ export function computeSidPlayroutineFeatures(
   voiceVariance /= analysisFrames;
 
   const share = (group: string): number => clamp01((groupCounts.get(group) ?? 0) / totalWrites);
+  const meanPosition = positionSum / totalWrites;
+  const positionVariance = Math.max(0, positionSquareSum / totalWrites - meanPosition * meanPosition);
+  const touchedRegisters = perRegisterCounts.filter((count) => count > 0).length;
+  const totalVoiceWrites = voiceWrites.reduce((sum, value) => sum + value, 0);
+  const voiceShare = (index: number): number =>
+    totalVoiceWrites > 0 ? clamp01(voiceWrites[index]! / totalVoiceWrites) : 0;
 
   return {
     sidWritesPerFrame: clamp01(meanWrites / 96),
@@ -266,5 +346,14 @@ export function computeSidPlayroutineFeatures(
     sidVoiceCount3Ratio: clamp01(voiceHistogram[3]! / analysisFrames),
     // Standard deviation of a value in 0..3, so 1.5 is the practical ceiling.
     sidVoiceCountVariation: clamp01(Math.sqrt(voiceVariance) / 1.5),
+    sidWriteFramePositionMean: clamp01(meanPosition),
+    // A uniform spread over the frame has sd ~0.289, so that is the practical max.
+    sidWriteFramePositionSpread: clamp01(Math.sqrt(positionVariance) / 0.289),
+    sidWriteRedundantRatio: clamp01(redundantWrites / totalWrites),
+    sidWriteRegisterCoverage: clamp01(touchedRegisters / 0x19),
+    sidWriteOrderEntropy: normalisedEntropy([...groupTransitions.values()]),
+    sidWriteVoice1Share: voiceShare(0),
+    sidWriteVoice2Share: voiceShare(1),
+    sidWriteVoice3Share: voiceShare(2),
   };
 }

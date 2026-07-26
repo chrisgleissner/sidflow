@@ -47,33 +47,43 @@ export const PERCEPTUAL_VECTOR_WEIGHTS = [
  * vector definition to a different one is worse than applying none.
  */
 /**
- * Learned per-dimension weights for the 50-dimension similarity vector.
+ * Learned per-dimension weights for the 58-dimension similarity vector.
  *
  * Fitted by coordinate ascent on nDCG@10 over a composer-grouped TRAIN split, never
- * on the data they were then measured against. Worth +42.7 percentage points on
- * held-out retrieval over the same vector unweighted (+75.7% to +118.4% relative to
- * the previous configuration), and they more than double cold-start retrieval.
+ * on the data they were measured against. Worth +24.0% on held-out retrieval over the
+ * same vector unweighted (0.4351 to 0.5392) and +8.6% on cold start, at p=0.0002.
  *
- * Reading them is informative. The twelve largest weights are almost all playroutine
- * dimensions, sitting at the search's ceiling — the optimiser wanted to push them
- * higher still, which is itself a signal that this group is under-exploited. The
- * dimensions pushed to the floor are mostly the harmonic ones, consistent with the
- * separate finding that composers are identified by arrangement habits rather than
- * by harmony.
+ * Reading them is informative. The twelve largest are almost all playroutine
+ * dimensions; the smallest are mostly harmonic, consistent with the separate finding
+ * that composers are identified by arrangement habit rather than by harmony.
  *
- * These are corpus-fitted constants rather than an export-time computation on
- * purpose: fitting requires labels and a full pairwise distance matrix, which does
- * not scale to 87k tracks, and a committed table is auditable, deterministic and
- * free to apply. They should be refitted when the feature set changes.
+ * ## Why this schedule and not a wider one
+ *
+ * Ten weights sit exactly at the search's 2.11x ceiling, which normally means the
+ * optimiser wanted to go further — and widening the schedule does raise the headline
+ * figure, to 0.5543 (+136.9% rather than +130.4%). It was rejected anyway, because it
+ * reaches that by zeroing 19 of the 58 dimensions and cold-start retrieval falls from
+ * 0.2453 to 0.1644, a 33% relative loss.
+ *
+ * On this corpus 68% of composers have exactly one tune, so cold start is the majority
+ * case rather than an edge case: the wider search trades away quality for most
+ * composers to gain a little on the prolific few. Six points of headline is not worth
+ * that, and the narrow schedule keeps every dimension with a non-zero weight.
+ *
+ * These are corpus-fitted constants rather than an export-time computation on purpose:
+ * fitting needs labels and a full pairwise distance matrix, which does not scale to
+ * 87k tracks, and a committed table is auditable, deterministic and free to apply.
+ * Refit when the feature set changes.
  */
 const SIMILARITY_VECTOR_WEIGHTS = [
-  0.5469, 0.6563, 0.3281, 0.375, 0.375, 0.4219, 0.6563, 0.7031,
-  0.375, 1.125, 1.5, 1, 2.1094, 0.4219, 0.375, 0.375,
-  0.6563, 0.75, 0.75, 1.5, 0.6563, 0.5, 0.4219, 0.375,
-  0.9844, 0.5, 0.3281, 0.3281, 0.5, 0.3281, 0.3281, 0.375,
-  0.3281, 0.3281, 0.4375, 2.1094, 2.1094, 2.1094, 2.1094, 2.1094,
-  2.1094, 1.875, 2.1094, 2.1094, 2.1094, 0.3281, 0.875, 0.4375,
-  0.375, 1.6875,
+  0.4375, 0.4375, 0.42188, 0.42188, 0.375, 0.54688, 1, 0.625,
+  0.625, 1.5, 0.98438, 0.32813, 2.10938, 0.32813, 0.5, 0.32813,
+  1, 1.125, 0.875, 1.5, 0.65625, 0.4375, 0.4375, 0.32813,
+  0.70313, 0.42188, 0.32813, 0.36914, 0.5, 0.32813, 0.4375, 0.32813,
+  0.375, 0.375, 0.375, 2.10938, 2.10938, 2.10938, 2.10938, 2.10938,
+  1.6875, 2.10938, 2.10938, 2.10938, 2.10938, 0.36914, 1, 0.75,
+  0.375, 1.875, 1.6875, 1.125, 1.58203, 2.10938, 2.10938, 0.375,
+  0.32813, 0.375,
 ] as const;
 
 export const SIMILARITY_VECTOR_DIMENSIONS = SIMILARITY_VECTOR_WEIGHTS.length;

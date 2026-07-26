@@ -97,10 +97,37 @@ export const SIMILARITY_PLAYROUTINE_DIMENSIONS = [
   "sidMultiSpeedRatio",
 ] as const;
 
+/**
+ * Finer descriptors of the driver's shape, added after the first playroutine group
+ * proved how much signal lives here.
+ *
+ * Worth a further +5.5% on held-out retrieval over the 50-dimension vector
+ * (0.5109 to 0.5392 with learned weights, p=0.0002) and +5.6% on cold start. Where
+ * the group above describes how MUCH the routine writes and to which register
+ * families, these describe its shape: when in the frame it runs and how tightly it
+ * holds that position, whether it rewrites unchanged values, how much of the register
+ * file it touches, the order it walks registers in, and how it divides attention
+ * between the three voices.
+ *
+ * All of these are properties of the code rather than of the music, which is exactly
+ * why they identify an author.
+ */
+export const SIMILARITY_DRIVER_SHAPE_DIMENSIONS = [
+  "sidWriteFramePositionMean",
+  "sidWriteFramePositionSpread",
+  "sidWriteRedundantRatio",
+  "sidWriteRegisterCoverage",
+  "sidWriteOrderEntropy",
+  "sidWriteVoice1Share",
+  "sidWriteVoice2Share",
+  "sidWriteVoice3Share",
+] as const;
+
 /** Every dimension appended to the perceptual vector, in stored order. */
 export const SIMILARITY_APPENDED_DIMENSIONS = [
   ...SIMILARITY_TONAL_DIMENSIONS,
   ...SIMILARITY_PLAYROUTINE_DIMENSIONS,
+  ...SIMILARITY_DRIVER_SHAPE_DIMENSIONS,
 ] as const;
 
 export const SIMILARITY_VECTOR_DIMENSIONS = 24 + SIMILARITY_APPENDED_DIMENSIONS.length;
