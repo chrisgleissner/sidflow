@@ -336,27 +336,57 @@ for (const reranker of RERANKERS.slice(1)) {
   });
 }
 
-process.stdout.write(`\n=== phase D: learned diagonal weights (fitted on TRAIN only) ===\n`);
-const winnerSplit = splitOf(tracksBySpec.get(phaseBest.combination.spec.name)!);
-const learned = learnWeights(winnerSplit.train, phaseBest.combination.representation.build, K);
-process.stdout.write(
-  `  fitted ${learned.length} weights on ${winnerSplit.train.length} train tracks, range ${Math.min(...learned).toFixed(2)}..${Math.max(...learned).toFixed(2)}\n`,
-);
 const bestReranker = attempts
   .filter((a) => a.phase === "C")
   .sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0];
-attempt("D", "let the labels choose feature importance", {
-  spec: phaseBest.combination.spec,
-  representation: phaseBest.combination.representation,
-  reranker: RERANKERS[0]!,
-  weights: learned,
-});
+
+/**
+ * Which feature sets get a supervised metric applied to them.
+ *
+ * NOT just the greedy winner, and this is the most important structural decision
+ * in the search. Measured on the development corpus, adding tonal dimensions
+ * REDUCES nDCG under plain Euclidean (0.314 -> 0.299 -> 0.291) even though those
+ * dimensions carry real authorship signal on their own (AUC 0.679, well above
+ * chance). That is textbook unweighted-concatenation dilution: Euclidean weights
+ * every dimension equally, so thirty-one individually-weaker dimensions drown out
+ * twenty-four stronger ones.
+ *
+ * A purely greedy search would therefore discard the tonal features at phase B
+ * and never test them under a metric capable of using them, and would conclude
+ * "pitch does not help" when what it had actually shown is "equal weighting does
+ * not help". The hypothesis has to be tested against a weighting that can express
+ * it, so the best TONAL spec is carried forward alongside the overall best.
+ */
+const tonalBest = [...attempts]
+  .filter((a) => ["A", "B", "B2"].includes(a.phase) && a.combination.spec.name.includes("tonal"))
+  .sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0];
+const supervisedTargets = [phaseBest, ...(tonalBest && tonalBest !== phaseBest ? [tonalBest] : [])];
+
+process.stdout.write(`\n=== phase D: learned diagonal weights (fitted on TRAIN only) ===\n`);
+const learnedBySpec = new Map<string, number[]>();
+for (const target of supervisedTargets) {
+  const split = splitOf(tracksBySpec.get(target.combination.spec.name)!);
+  const weights = learnWeights(split.train, target.combination.representation.build, K);
+  learnedBySpec.set(target.combination.spec.name, weights);
+  process.stdout.write(
+    `  ${target.combination.spec.name}: fitted ${weights.length} weights on ${split.train.length} train tracks, ` +
+      `range ${Math.min(...weights).toFixed(2)}..${Math.max(...weights).toFixed(2)}\n`,
+  );
+  attempt("D", "let the labels choose feature importance", {
+    spec: target.combination.spec,
+    representation: target.combination.representation,
+    reranker: RERANKERS[0]!,
+    weights,
+  });
+}
+const learned = learnedBySpec.get(phaseBest.combination.spec.name) ?? [];
+const phaseD = attempts.filter((a) => a.phase === "D").sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0]!;
 if (bestReranker && bestReranker.evaluation.ndcg > phaseBest.evaluation.ndcg) {
   attempt("D", "learned weights plus the best re-ranking", {
-    spec: phaseBest.combination.spec,
-    representation: phaseBest.combination.representation,
+    spec: phaseD.combination.spec,
+    representation: phaseD.combination.representation,
     reranker: bestReranker.combination.reranker,
-    weights: learned,
+    weights: phaseD.combination.weights,
   });
 }
 
@@ -375,20 +405,22 @@ process.stdout.write(`\n=== phase E: supervised metric, fitted on TRAIN only ===
  * is estimated from few observations per direction and an under-regularised
  * inverse would amplify whichever directions are underdetermined.
  */
-for (const shrinkage of [0.2, 0.5]) {
-  const map = fitSupervisedMap(phaseBest.combination.spec, phaseBest.combination.representation, shrinkage);
-  attempt("E", `shrink within-composer variation (shrinkage ${shrinkage})`, {
-    spec: phaseBest.combination.spec,
-    representation: phaseBest.combination.representation,
-    reranker: RERANKERS[0]!,
-    supervised: { name: `within-class whitening (${shrinkage})`, map },
-  });
+for (const target of supervisedTargets) {
+  for (const shrinkage of [0.2, 0.5]) {
+    const map = fitSupervisedMap(target.combination.spec, target.combination.representation, shrinkage);
+    attempt("E", `shrink within-composer variation (shrinkage ${shrinkage})`, {
+      spec: target.combination.spec,
+      representation: target.combination.representation,
+      reranker: RERANKERS[0]!,
+      supervised: { name: `within-class whitening (${shrinkage})`, map },
+    });
+  }
 }
 const phaseE = attempts.filter((a) => a.phase === "E").sort((x, y) => y.evaluation.ndcg - x.evaluation.ndcg)[0]!;
 if (phaseE.evaluation.ndcg > phaseBest.evaluation.ndcg && bestReranker) {
   attempt("E", "supervised metric plus the best re-ranking", {
-    spec: phaseBest.combination.spec,
-    representation: phaseBest.combination.representation,
+    spec: phaseE.combination.spec,
+    representation: phaseE.combination.representation,
     reranker: bestReranker.combination.reranker,
     supervised: phaseE.combination.supervised,
   });
@@ -477,12 +509,13 @@ if (winner) {
  */
 const diagnosticSpec = winner?.combination.spec ?? phaseBest.combination.spec;
 const diagnosticTracks = tracksBySpec.get(diagnosticSpec.name)!;
+const diagnosticWeights = learnedBySpec.get(diagnosticSpec.name) ?? learned;
 const dimensionDiagnostics = diagnosticSpec.dimensionNames.map((name, index) => {
   const column = diagnosticTracks.map((t) => t.vector[index] ?? 0);
   const mean = column.reduce((sum, v) => sum + v, 0) / column.length;
   const sd = Math.sqrt(column.reduce((sum, v) => sum + (v - mean) ** 2, 0) / column.length);
   const zeros = column.filter((v) => v === 0).length / column.length;
-  return { name, mean, sd, zeroFraction: zeros, learnedWeight: learned[index] ?? null };
+  return { name, mean, sd, zeroFraction: zeros, learnedWeight: diagnosticWeights[index] ?? null };
 });
 
 process.stdout.write(`\n=== dimension diagnostics (${diagnosticSpec.name}) ===\n`);
@@ -527,7 +560,7 @@ writeFileSync(
       })),
       holm,
       learnedWeights: Object.fromEntries(
-        (winner?.combination.spec ?? phaseBest.combination.spec).dimensionNames.map((n, i) => [n, learned[i] ?? null]),
+        diagnosticSpec.dimensionNames.map((n, i) => [n, diagnosticWeights[i] ?? null]),
       ),
       dimensionDiagnostics,
       winner: winner?.name ?? null,
