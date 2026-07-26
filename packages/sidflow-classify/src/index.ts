@@ -2153,6 +2153,47 @@ export async function generateAutoTags(
   
   // Cache for auto-tags.json files to avoid repeated reads for songs in the same directory
   const autoTagsCache = new Map<string, Record<string, unknown> | null>();
+
+  /**
+   * Songs already extracted in a previous, unfinished run of this corpus.
+   *
+   * The auto-tags are written when a run FINISHES, so a run that dies partway leaves
+   * none — and `skipAlreadyClassified` consults only those tags, which made resuming a
+   * crashed corpus pass impossible. Measured: a full HVSC pass died at 31,626 of 87,868
+   * tracks having written 144 MB of feature records and zero tag files, so the obvious
+   * resume re-rendered everything from the start.
+   *
+   * The features JSONL is the artifact that IS written incrementally, so it is what a
+   * resume has to read. Parsed by pattern rather than JSON.parse: each record carries
+   * all 131 features and the file reaches several hundred megabytes over a full corpus,
+   * and only two fields out of it are needed.
+   */
+  const alreadyExtractedKeys = new Set<string>();
+  const loadPreviouslyExtracted = async (): Promise<void> => {
+    const directory = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
+    if (!(await pathExists(directory))) {
+      return;
+    }
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.startsWith("features_") || !entry.name.endsWith(".jsonl")) {
+        continue;
+      }
+      const contents = await readFile(path.join(directory, entry.name), "utf8");
+      for (const line of contents.split("\n")) {
+        if (!line) continue;
+        const pathMatch = /"sid_path":"((?:[^"\\]|\\.)*)"/.exec(line);
+        if (!pathMatch) continue;
+        const songMatch = /"song_index":(\d+)/.exec(line);
+        alreadyExtractedKeys.add(`${pathMatch[1]}#${songMatch ? songMatch[1] : "1"}`);
+      }
+    }
+    if (alreadyExtractedKeys.size > 0) {
+      classifyLogger.info(
+        `Resume: ${alreadyExtractedKeys.size} songs already extracted in a previous run of this corpus`,
+      );
+    }
+  };
   
   /**
    * Check if a song is already classified using cached auto-tags data.
@@ -2188,19 +2229,21 @@ export async function generateAutoTags(
       autoTagsCache.set(autoTagsFile, tags);
     }
     
-    if (!tags) {
-      return false;
+    if (tags) {
+      const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
+      const key = songIndex !== undefined ? `${baseKey}:${songIndex}` : baseKey;
+
+      if (key in tags) {
+        const entry = tags[key] as Record<string, unknown>;
+        if (entry && (typeof entry.e === "number" || typeof entry.m === "number" || typeof entry.c === "number")) {
+          return true;
+        }
+      }
     }
-    
-    const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
-    const key = songIndex !== undefined ? `${baseKey}:${songIndex}` : baseKey;
-    
-    if (key in tags) {
-      const entry = tags[key] as Record<string, unknown>;
-      return entry && (typeof entry.e === "number" || typeof entry.m === "number" || typeof entry.c === "number");
-    }
-    
-    return false;
+
+    // Falls through to the features JSONL, which is the only record a crashed run
+    // leaves behind. Without this a resume re-renders everything it had already done.
+    return alreadyExtractedKeys.has(`${toPosixRelative(relativePath)}#${songIndex ?? 1}`);
   };
 
   const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
@@ -2270,6 +2313,10 @@ export async function generateAutoTags(
   // Initialise the detailed lifecycle logger now that we know totalFiles.
   const lifecycle = new SongLifecycleLogger(lifecycleLogPath, totalFiles);
   lifecycle.emitRunStart(runContext);
+  if (skipAlreadyClassified && !plan.forceRebuild) {
+    await loadPreviouslyExtracted();
+  }
+
   const jobs: AutoTagJob[] = [];
   let metadataProcessed = 0;
 

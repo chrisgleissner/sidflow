@@ -1202,6 +1202,24 @@ classify_with_resume() {
     if (( after <= before )); then
       fail "Classification failed on attempt ${attempt} without classifying anything new (${after} records). Not retrying: a resume would fail identically."
     fi
+
+    # The classifier crashing takes the server down with it -- observed as
+    # "curl: (52) Empty reply from server" and a closed port on the very next attempt,
+    # which then looked like a resume that made no progress. Restart the runtime before
+    # retrying, or every retry after a hard crash fails instantly for the wrong reason.
+    if [[ "${MODE}" == "local" ]]; then
+      if [[ -n "${LOCAL_SERVER_PID}" ]] && kill -0 "${LOCAL_SERVER_PID}" >/dev/null 2>&1; then
+        kill "${LOCAL_SERVER_PID}" >/dev/null 2>&1 || true
+      fi
+      if [[ -n "${LOCAL_WORKER_PID}" ]] && kill -0 "${LOCAL_WORKER_PID}" >/dev/null 2>&1; then
+        kill "${LOCAL_WORKER_PID}" >/dev/null 2>&1 || true
+      fi
+      LOCAL_SERVER_PID=""
+      LOCAL_WORKER_PID=""
+      rm -f "${REQUEST_STATUS_FILE}" "${REQUEST_LOG}"
+      log "Restarting the local runtime before resuming"
+      start_local_runtime
+    fi
     if (( attempt >= RESUME_ATTEMPTS )); then
       fail "Classification crashed ${attempt} times, the limit set by --resume-attempts. ${after} records were classified; re-run with --full-rerun false to continue from them."
     fi
