@@ -1231,6 +1231,80 @@ classify_with_resume() {
   done
 }
 
+# A resumed corpus has its feature records spread across one file per attempt, and phase 2
+# fits the deterministic rating model PER FEATURES FILE. The 1-5 energy/mood/complexity
+# levels are quantile-calibrated against the corpus distribution, so several files means
+# several different scales stitched into one export -- which is the exact failure the
+# calibration exists to prevent, and it would be invisible in the output.
+#
+# So once phase 1 has covered the corpus, the per-attempt files are merged and phase 2 is
+# run ONCE over the union. Its records carry the newest classified_at, and the export
+# resolves duplicates by newest, so the single consistent model is what ships.
+consolidate_features_if_resumed() {
+  local file_count
+  file_count="$(find "${CLASSIFIED_PATH}" -maxdepth 1 -type f -name 'features_*.jsonl' | wc -l | tr -d ' ')"
+  if (( file_count <= 1 )); then
+    return 0
+  fi
+  if [[ "${MODE}" != "local" ]]; then
+    log "WARNING: ${file_count} features files present but mode is ${MODE}; skipping consolidation. Ratings may be calibrated per file."
+    return 0
+  fi
+
+  log "Resumed corpus: merging ${file_count} features files so the rating model is fitted once over the whole corpus"
+
+  local combined="${CLASSIFIED_PATH}/features_combined.jsonl"
+  local archive="${CLASSIFIED_PATH}/features-attempts"
+  local merged
+  merged="$(python3 - "${CLASSIFIED_PATH}" "${combined}" <<'PYCONSOLIDATE'
+import glob, os, re, sys
+
+classified, combined = sys.argv[1], sys.argv[2]
+path_pattern = re.compile(r'"sid_path":"((?:[^"\\]|\\.)*)"')
+song_pattern = re.compile(r'"song_index":(\d+)')
+
+# Newest file last, so a later attempt's record for a song wins over an earlier one.
+files = sorted(
+    (f for f in glob.glob(os.path.join(classified, "features_*.jsonl"))
+     if os.path.basename(f) != os.path.basename(combined)),
+    key=os.path.getmtime,
+)
+records = {}
+order = []
+for path in files:
+    with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            m = path_pattern.search(line)
+            if not m:
+                continue
+            s = song_pattern.search(line)
+            key = f"{m.group(1)}#{s.group(1) if s else '1'}"
+            if key not in records:
+                order.append(key)
+            records[key] = line
+
+with open(combined, "w", encoding="utf-8") as out:
+    for key in order:
+        out.write(records[key])
+        out.write("\n")
+
+print(len(order))
+PYCONSOLIDATE
+)" || fail "Merging the features files failed"
+  log "Merged ${file_count} files into ${combined}: ${merged} unique songs"
+
+  mkdir -p "${archive}"
+  find "${CLASSIFIED_PATH}" -maxdepth 1 -type f -name 'features_*.jsonl' ! -name 'features_combined.jsonl' -exec mv {} "${archive}/" \;
+
+  log "Running phase 2 once over the merged corpus"
+  ( cd "${REPO_ROOT}" && bun packages/sidflow-classify/src/cli.ts --config "${CONFIG_PATH}" --resume-from-features "${combined}" ) \
+    || fail "Phase 2 over the merged features file failed"
+  log "Phase 2 complete"
+}
+
 run_export() {
   local output_path
   if [[ "${MODE}" == "local" ]]; then
@@ -1397,6 +1471,7 @@ main() {
   fi
 
   classify_with_resume
+  consolidate_features_if_resumed
   run_export
   publish_release_if_requested "${EXPORT_OUTPUT_PATH}"
 }
