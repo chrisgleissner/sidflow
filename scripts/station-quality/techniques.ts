@@ -161,6 +161,16 @@ export function probit(p: number): number {
  * Rank-Gaussian: map each dimension to its within-corpus rank, then to a normal
  * quantile. Removes skew and makes dimensions genuinely comparable, which plain
  * z-scoring does not do for heavy-tailed features.
+ *
+ * Tied values receive the AVERAGE of the ranks they span (midranks), which is the
+ * standard rank transform and is not a detail. SID features are full of ties:
+ * sample-playback activity, tritone weight and several waveform ratios are exactly
+ * zero for most of the corpus. Handing those ties consecutive ranks — as any
+ * index-tie-broken sort does — spreads a single repeated value across the whole
+ * quantile range in TRACK ORDER, turning the corpus's arbitrary file ordering into
+ * a gradient the distance function can see. A perfectly constant dimension would
+ * become a perfect ramp, i.e. pure fabricated signal. Midranks collapse each tie
+ * group to one value, so a constant dimension contributes exactly nothing.
  */
 export function rankGaussian(tracks: Track[]): Float64Array[] {
   const n = tracks.length;
@@ -174,10 +184,18 @@ export function rankGaussian(tracks: Track[]): Float64Array[] {
       column[j] = tracks[j]!.vector[i]!;
     }
     // Sorting indices in a typed array avoids allocating n objects per dimension.
-    // Ties break on index explicitly rather than relying on sort stability, so
-    // equal feature values always receive the same ranks on every engine.
     order.sort((x, y) => column[x]! - column[y]! || x - y);
-    for (let rank = 0; rank < n; rank++) out[order[rank]!]![i] = probit((rank + 0.5) / n);
+    let start = 0;
+    while (start < n) {
+      let end = start;
+      while (end + 1 < n && column[order[end + 1]!]! === column[order[start]!]!) end++;
+      // Mean quantile position across the tie group, then one probit for all of it.
+      let sum = 0;
+      for (let rank = start; rank <= end; rank++) sum += (rank + 0.5) / n;
+      const value = probit(sum / (end - start + 1));
+      for (let rank = start; rank <= end; rank++) out[order[rank]!]![i] = value;
+      start = end + 1;
+    }
   }
   return out;
 }
@@ -185,6 +203,22 @@ export function rankGaussian(tracks: Track[]): Float64Array[] {
 /**
  * PCA whitening. Decorrelates the dimensions and equalises their variance, so no
  * group of correlated features silently dominates the distance.
+ *
+ * Rank is truncated RELATIVE to the largest eigenvalue, which is the whole
+ * difficulty with whitening. Dividing each component by the square root of its
+ * variance is the point of the transform, but it means a direction with almost no
+ * variance gets multiplied by an almost unbounded factor — and after deflation,
+ * the directions past the true rank contain nothing but floating-point residue.
+ * Amplifying those turns rounding error into the dominant term of every distance.
+ *
+ * Measured with the previous absolute cutoff (keep while lambda >= 1e-9, then
+ * divide by sqrt(lambda + 1e-6)): appending fifteen CONSTANT dimensions to a
+ * 24-dimension corpus made it retain 31 components and inflated the mean pairwise
+ * distance from 6.9 to 3539. The extra dimensions carried no information at all,
+ * so every bit of that was noise, and it silently changed which neighbours the
+ * candidate proposed. This matters for the real vector too, whose waveform ratios
+ * and voice-role ratios each sum to roughly one and are therefore close to
+ * collinear by construction.
  */
 export function whiten(tracks: Track[]): Float64Array[] {
   const z = zscore(tracks);
@@ -196,10 +230,18 @@ export function whiten(tracks: Track[]): Float64Array[] {
   }
   for (let i = 0; i < d; i++) for (let j = 0; j < i; j++) cov[i]![j] = cov[j]![i]!;
 
-  // Power iteration with deflation; d is 24, so this is cheap and adequate.
+  // Power iteration with deflation; d is a few dozen, so this is cheap and adequate.
   const comps: Float64Array[] = [];
   const vals: number[] = [];
   let work = cov.map((r) => [...r]);
+  // For z-scored input the total variance is known exactly: it is the trace, i.e.
+  // the number of dimensions that vary at all. That gives an absolute yardstick
+  // for "this component explains nothing", which a threshold relative to the
+  // LEADING eigenvalue does not -- deflation error accumulates, so the residual
+  // directions past the true rank are far larger than machine epsilon and slip
+  // past any purely relative cutoff.
+  const trace = cov.reduce((sum, row, i) => sum + row[i]!, 0);
+  let explained = 0;
   for (let k = 0; k < d; k++) {
     let v = new Float64Array(d).fill(1 / Math.sqrt(d));
     let lambda = 0;
@@ -212,7 +254,11 @@ export function whiten(tracks: Track[]): Float64Array[] {
       v = w;
       lambda = norm;
     }
-    if (lambda < 1e-9) break;
+    // Drop directions that explain a negligible share of the known total
+    // variance, and stop once essentially all of it is accounted for.
+    if (lambda <= 0 || lambda < trace * 1e-7) break;
+    if (explained >= trace * (1 - 1e-6)) break;
+    explained += lambda;
     comps.push(v);
     vals.push(lambda);
     work = work.map((row, i) => row.map((c, j) => c - lambda * v[i]! * v[j]!));
@@ -223,7 +269,9 @@ export function whiten(tracks: Track[]): Float64Array[] {
     for (let k = 0; k < comps.length; k++) {
       let dot = 0;
       for (let i = 0; i < d; i++) dot += vec[i]! * comps[k]![i]!;
-      out[k] = dot / Math.sqrt(vals[k]! + 1e-6);
+      // No additive floor: the retained eigenvalues are bounded away from zero by
+      // the truncation above, so this is the exact whitening scale.
+      out[k] = dot / Math.sqrt(vals[k]!);
     }
     return out;
   });

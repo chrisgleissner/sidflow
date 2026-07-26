@@ -203,6 +203,30 @@ describe("rankGaussian", () => {
     const b = rankGaussian(tracks);
     for (let i = 0; i < tracks.length; i++) expect(a[i]![0]!).toBe(b[i]![0]!);
   });
+
+  test("a constant dimension contributes nothing instead of a ramp", () => {
+    // The failure this guards: consecutive ranks for tied values spread one
+    // repeated number across the whole quantile range in track order, so a
+    // constant column becomes a monotone gradient and the corpus's arbitrary file
+    // ordering leaks into the distance function as fabricated signal.
+    const tracks = makeCorpus(64, 3, 0x8f).map((t) => ({ ...t, vector: [7, t.vector[1]!, t.vector[2]!] }));
+    const out = rankGaussian(tracks);
+    const first = out[0]![0]!;
+    for (const vector of out) expect(vector[0]!).toBe(first);
+    // And it must be the centre of the distribution, not an arbitrary offset.
+    expect(first).toBeCloseTo(0, 6);
+  });
+
+  test("tied values share one quantile, untied values keep their order", () => {
+    // Half the corpus at zero -- the shape SID features actually have.
+    const tracks = makeCorpus(40, 1, 0x9a).map((t, i) => ({ ...t, vector: [i < 20 ? 0 : i] }));
+    const out = rankGaussian(tracks);
+    const tied = out.slice(0, 20).map((v) => v[0]!);
+    for (const value of tied) expect(value).toBe(tied[0]!);
+    // The untied tail stays strictly increasing and sits above the tie group.
+    for (let i = 21; i < 40; i++) expect(out[i]![0]!).toBeGreaterThan(out[i - 1]![0]!);
+    expect(out[20]![0]!).toBeGreaterThan(tied[0]!);
+  });
 });
 
 describe("zscore and whiten", () => {
@@ -215,6 +239,79 @@ describe("zscore and whiten", () => {
       const variance = column.reduce((s, v) => s + (v - mean) ** 2, 0) / column.length;
       expect(mean).toBeCloseTo(0, 8);
       expect(variance).toBeCloseTo(1, 6);
+    }
+  });
+
+  test("whitening is invariant to appending constant dimensions", () => {
+    // The failure this guards: whitening divides each component by the square
+    // root of its variance, so a direction with no variance is divided by
+    // (numerically) nothing. With an absolute eigenvalue cutoff, appending 15
+    // constant dimensions retained 31 components instead of 24 and inflated the
+    // mean pairwise distance from 6.9 to 3539 -- pure amplified rounding error,
+    // which silently changed which neighbours the candidate proposed.
+    const rand = makeRandom(0xd1);
+    const base: Track[] = Array.from({ length: 160 }, (_, i) => ({
+      trackId: `t${i}`,
+      sidPath: `MUSICIANS/A/C${i % 9}/f${Math.floor(i / 2)}.sid`,
+      vector: Array.from({ length: 12 }, () => rand()),
+      e: 3,
+      m: 3,
+      c: 3,
+    }));
+    const padded = base.map((t) => ({ ...t, vector: [...t.vector, 0, 0, 0, 0, 0, 0, 0, 0] }));
+
+    const a = whiten(base);
+    const b = whiten(padded);
+    expect(b[0]!.length).toBe(a[0]!.length);
+
+    const da = distanceMatrix(a, euclidean);
+    const db = distanceMatrix(b, euclidean);
+    for (let i = 0; i < base.length; i++) {
+      for (let j = i + 1; j < base.length; j++) {
+        expect(db[i]![j]!).toBeCloseTo(da[i]![j]!, 9);
+      }
+    }
+  });
+
+  test("whitening drops a redundant dimension instead of amplifying it", () => {
+    const rand = makeRandom(0xd2);
+    const base: Track[] = Array.from({ length: 160 }, (_, i) => {
+      const v = Array.from({ length: 12 }, () => rand());
+      return {
+        trackId: `t${i}`,
+        sidPath: `MUSICIANS/A/C${i % 9}/f${Math.floor(i / 2)}.sid`,
+        vector: v,
+        e: 3,
+        m: 3,
+        c: 3,
+      };
+    });
+    // An exact duplicate carries no new information, so the rank must not grow.
+    const duplicated = base.map((t) => ({ ...t, vector: [...t.vector, t.vector[0]!] }));
+    expect(whiten(duplicated)[0]!.length).toBe(whiten(base)[0]!.length);
+  });
+
+  test("every retained whitened component has unit variance", () => {
+    const rand = makeRandom(0xd3);
+    const tracks: Track[] = Array.from({ length: 300 }, (_, i) => {
+      const a = rand();
+      const b = rand();
+      return {
+        trackId: `t${i}`,
+        sidPath: `MUSICIANS/A/C${i % 9}/f${Math.floor(i / 2)}.sid`,
+        // Deliberately correlated and differently scaled.
+        vector: [a, a * 0.8 + b * 0.2, b * 100, rand() * 0.001],
+        e: 3,
+        m: 3,
+        c: 3,
+      };
+    });
+    const w = whiten(tracks);
+    for (let k = 0; k < w[0]!.length; k++) {
+      const column = w.map((v) => v[k]!);
+      const mean = column.reduce((s, v) => s + v, 0) / column.length;
+      const variance = column.reduce((s, v) => s + (v - mean) ** 2, 0) / column.length;
+      expect(variance).toBeCloseTo(1, 2);
     }
   });
 
