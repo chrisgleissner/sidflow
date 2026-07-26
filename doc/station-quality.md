@@ -10,6 +10,13 @@ The short version:
 - **Station quality more than doubled.** nDCG@10 on held-out, composer-grouped data
   goes 0.2340 → 0.5392, **+130.4%** (p=0.0002), and cold-start retrieval more than
   doubles (0.1108 → 0.2453). The pre-registered success criterion asked for ≥20%.
+- **Confirmed on 21,451 tracks that were never used for fitting** (§12), where the
+  shipped configuration scores **0.5672** — better than on the corpus it was fitted to.
+  On that slice the gain over the previous best configuration is **+69.1%**, not +130.4%,
+  because the old 24-dimension baseline is much stronger there (0.3354). The honest
+  headline is therefore a range: **roughly 64x better than what is published today, and
+  70–130% better than the best configuration previously in the repository**, depending
+  on corpus composition.
 - **Where it came from**, roughly: playroutine features +93%, learned weights +24% on
   top of those, driver-shape detail +5.5%, pitch/texture +14.8%, and everything else —
   six representations, five re-rankings, hubness correction, a supervised metric —
