@@ -18,6 +18,7 @@ SKIP_ALREADY_CLASSIFIED="true"
 DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
+RESUME_ATTEMPTS="8"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
 SQLITE_NEIGHBORS_FOR_TINY="25"
@@ -95,6 +96,7 @@ Options:
   --threads N                         Optional classify thread count override
   --max-songs N                       Stop each classification run after at most N songs
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
+  --resume-attempts N                 Times to resume classification after a crash. Default: 8
   --skip-already-classified true|false
                                       Default: true
   --delete-wav-after-classification true|false
@@ -380,6 +382,10 @@ while [[ $# -gt 0 ]]; do
       PUBLISH_TIMESTAMP="$2"
       shift 2
       ;;
+    --resume-attempts)
+      RESUME_ATTEMPTS="$2"
+      shift 2
+      ;;
     --sqlite-neighbors-for-tiny)
       SQLITE_NEIGHBORS_FOR_TINY="$2"
       shift 2
@@ -508,6 +514,19 @@ print(sid_path)
 PY
 }
 
+resolve_local_tags_path() {
+  python3 - "$CONFIG_PATH" <<'PY'
+import json, os, sys
+config_path = os.path.abspath(sys.argv[1])
+with open(config_path, 'r', encoding='utf-8') as fh:
+    config = json.load(fh)
+tags_path = config.get('tagsPath') or './workspace/tags'
+if not os.path.isabs(tags_path):
+    tags_path = os.path.abspath(os.path.join(os.path.dirname(config_path), tags_path))
+print(tags_path)
+PY
+}
+
 resolve_local_classified_path() {
   python3 - "$CONFIG_PATH" <<'PY'
 import json, os, sys
@@ -613,6 +632,28 @@ prepare_run_state() {
     if [[ -d "${CLASSIFIED_PATH}" ]]; then
       log "Full rerun: removing prior classified JSONL artifacts from ${CLASSIFIED_PATH}"
       find "${CLASSIFIED_PATH}" -type f \( -name 'classification_*.jsonl' -o -name 'classification_*.events.jsonl' -o -name 'features_*.jsonl' \) -delete
+    fi
+
+    # The auto-tags are the SAME derived data as the classified JSONL, indexed by song
+    # instead of by run, and they are what skipAlreadyClassified consults. Deleting one
+    # without the other leaves the pipeline believing the corpus is already classified.
+    #
+    # This is not hypothetical. A full rerun removed the JSONL and left 176,284 tag
+    # entries from earlier runs -- a different HVSC version and an older feature schema --
+    # and the next run reported "Skipped 86867 already classified", classified 1,001
+    # songs, and would have exported a 17k-track corpus in place of an 87,868-track one.
+    # Nothing failed. The export would simply have been quietly wrong.
+    local tags_path=""
+    if [[ "${MODE}" == "local" ]]; then
+      tags_path="$(resolve_local_tags_path)"
+    else
+      tags_path="${STATE_DIR}/workspace/tags"
+    fi
+    if [[ -n "${tags_path}" && -d "${tags_path}" ]]; then
+      local tag_files
+      tag_files="$(find "${tags_path}" -type f -name 'auto-tags.json' | wc -l | tr -d ' ')"
+      log "Full rerun: removing ${tag_files} auto-tags files from ${tags_path} so skipAlreadyClassified cannot see a previous corpus"
+      find "${tags_path}" -type f -name 'auto-tags.json' -delete
     fi
     rm -f \
       "${EXPORT_OUTPUT_PATH}" \
@@ -1126,6 +1167,52 @@ PY
   esac
 }
 
+# Classification over a full corpus does not reliably survive to the end.
+#
+# The renderer's safety net terminates and replaces a worker whenever a single tune
+# fails to return within the job timeout, and HVSC contains enough of those that a full
+# pass replaces workers hundreds of times. Each replacement instantiates a fresh WASM
+# module, the terminated worker's linear memory is not always reclaimed, and eventually
+# instantiation fails with "Out of memory" -- observed at 15,902 of 87,868 tracks, with
+# 3.5 GB peak RSS on a 62 GB machine, so this is address-space exhaustion inside the
+# runtime rather than the host running out.
+#
+# Rendering that many tracks a second time to recover from one crash is hours of wasted
+# work, and a workflow that cannot finish a full corpus is not a workflow. Retrying with
+# skipAlreadyClassified keeps everything already done.
+#
+# Retrying only makes sense while it is making progress: a crash that classified nothing
+# new will crash the same way again, so that case stops immediately rather than burning
+# through the attempt budget.
+classify_with_resume() {
+  local attempt=1
+  local before after
+
+  while :; do
+    before="$(count_feature_rows "${CLASSIFIED_PATH}")"
+
+    # A subshell so that `fail` inside the classification helpers ends the ATTEMPT
+    # rather than the run.
+    if ( trigger_classification; wait_for_classification ); then
+      return 0
+    fi
+
+    after="$(count_feature_rows "${CLASSIFIED_PATH}")"
+
+    if (( after <= before )); then
+      fail "Classification failed on attempt ${attempt} without classifying anything new (${after} records). Not retrying: a resume would fail identically."
+    fi
+    if (( attempt >= RESUME_ATTEMPTS )); then
+      fail "Classification crashed ${attempt} times, the limit set by --resume-attempts. ${after} records were classified; re-run with --full-rerun false to continue from them."
+    fi
+
+    log "Classification crashed after reaching ${after} records (attempt ${attempt} of ${RESUME_ATTEMPTS}); resuming from what is already classified"
+    SKIP_ALREADY_CLASSIFIED="true"
+    FORCE_REBUILD="false"
+    attempt=$(( attempt + 1 ))
+  done
+}
+
 run_export() {
   local output_path
   if [[ "${MODE}" == "local" ]]; then
@@ -1291,8 +1378,7 @@ main() {
     start_docker_runtime
   fi
 
-  trigger_classification
-  wait_for_classification
+  classify_with_resume
   run_export
   publish_release_if_requested "${EXPORT_OUTPUT_PATH}"
 }
