@@ -10,6 +10,11 @@ The short version:
 - **Station quality more than doubled.** nDCG@10 on held-out, composer-grouped data
   goes 0.2340 → 0.5392, **+130.4%** (p=0.0002), and cold-start retrieval more than
   doubles (0.1108 → 0.2453). The pre-registered success criterion asked for ≥20%.
+- **Where it came from**, roughly: playroutine features +93%, learned weights +24% on
+  top of those, driver-shape detail +5.5%, pitch/texture +14.8%, and everything else —
+  six representations, five re-rankings, hubness correction, a supervised metric —
+  about +10% combined. The biggest lever was information nobody had extracted, not a
+  better metric over information already present.
 - **Almost all of it came from one idea nobody had tried**: describing the
   PLAYROUTINE rather than the sound. Composers reuse their player code, and its
   register-write pattern is effectively that tooling's signature. A single such
@@ -872,6 +877,19 @@ ceiling.
   data.** Section 8 reports the pre-registered outcome and the MMR analysis
   separately for exactly this reason.
 - **One corpus, one machine.** Timing figures are single measurements.
+- **The learned weights are fitted on an 11k-track subsample**, not on the full 87k
+  corpus, because fitting needs a full pairwise distance matrix. They should transfer —
+  the subsample is a uniform sample of whole composer groups from the same collection —
+  but this is an assumption rather than a measurement.
+- **A higher headline number was available and rejected.** Widening the weight search
+  reaches +136.9% instead of +130.4%, by zeroing 19 of 58 dimensions, and costs 33% of
+  cold-start retrieval. On a corpus where 68% of composers have one tune that is the
+  wrong trade, but it is a judgement call rather than a fact, and someone optimising
+  purely for the headline metric would choose differently.
+- **Identifying tooling is not identifying sound.** The playroutine features work
+  partly by recognising which player a composer used (§6). Two composers sharing a
+  player look artificially close; one who changed tools mid-career looks artificially
+  distant. The composer label cannot separate those cases from genuine similarity.
 
 ---
 
