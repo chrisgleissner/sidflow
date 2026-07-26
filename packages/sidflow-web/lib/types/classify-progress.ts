@@ -51,6 +51,17 @@ export interface ClassifyProgressSnapshot {
   cachedFiles: number;
   /** Number of files skipped due to existing cached WAV files (used by "[Converting]" phase) */
   skippedFiles: number;
+  /**
+   * Songs skipped because they were already classified, as distinct from `skippedFiles`,
+   * which counts WAV-cache hits.
+   *
+   * Kept separate rather than folded in because completeness has to be able to tell "this
+   * corpus is already done" from "these renders were cached". Without it, re-running a
+   * fully classified corpus reported "stopped early after 0/87868 songs" and failed --
+   * which made it impossible to run any later stage of the workflow against a finished
+   * corpus.
+   */
+  skippedAlreadyClassifiedFiles: number;
   /** Number of files with audio features extracted */
   extractedFiles: number;
   /** Number of completed songs included in realistic feature-health accounting */

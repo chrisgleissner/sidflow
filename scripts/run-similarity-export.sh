@@ -854,7 +854,11 @@ combined_output = '\n'.join(
 )
 
 total = int(progress.get('totalFiles') or 0)
-completed = int(progress.get('taggedFiles') or 0) + int(progress.get('skippedFiles') or 0)
+# Songs skipped because they were already classified count as done. Without them a
+# re-run over a finished corpus reports 0/87868 and the workflow cannot proceed.
+completed = (int(progress.get('taggedFiles') or 0)
+  + int(progress.get('skippedFiles') or 0)
+  + int(progress.get('skippedAlreadyClassifiedFiles') or 0))
 is_complete = total <= 0 or completed >= total
 has_failure = 'Classification failed:' in combined_output or 'Out of memory' in combined_output
 
@@ -1149,7 +1153,11 @@ combined_output = '\n'.join(
   if value
 )
 total = int(progress.get('totalFiles') or 0)
-completed = int(progress.get('taggedFiles') or 0) + int(progress.get('skippedFiles') or 0)
+# Songs skipped because they were already classified count as done. Without them a
+# re-run over a finished corpus reports 0/87868 and the workflow cannot proceed.
+completed = (int(progress.get('taggedFiles') or 0)
+  + int(progress.get('skippedFiles') or 0)
+  + int(progress.get('skippedAlreadyClassifiedFiles') or 0))
 if payload.get('success') is not True:
   raise SystemExit(1)
 if total > 0 and completed < total:

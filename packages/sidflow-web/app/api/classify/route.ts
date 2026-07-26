@@ -63,7 +63,10 @@ function isClassificationProgressComplete(progress: ClassifyProgressSnapshot): b
   if (progress.totalFiles <= 0) {
     return true;
   }
-  return progress.taggedFiles + progress.skippedFiles >= progress.totalFiles;
+  // Already-classified skips count toward completeness: a corpus that is entirely
+  // classified is finished, not stopped early.
+  return progress.taggedFiles + progress.skippedFiles + progress.skippedAlreadyClassifiedFiles
+    >= progress.totalFiles;
 }
 
 function describeIncompleteClassification(progress: ClassifyProgressSnapshot): string {
@@ -71,7 +74,7 @@ function describeIncompleteClassification(progress: ClassifyProgressSnapshot): s
     return 'Classification exited without reporting final progress';
   }
 
-  const completed = progress.taggedFiles + progress.skippedFiles;
+  const completed = progress.taggedFiles + progress.skippedFiles + progress.skippedAlreadyClassifiedFiles;
   return `Classification stopped early after ${completed}/${progress.totalFiles} songs`;
 }
 

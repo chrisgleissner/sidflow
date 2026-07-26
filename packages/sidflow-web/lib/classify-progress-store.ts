@@ -46,6 +46,7 @@ function createInitialSnapshot(): ProgressState {
     taggedFiles: 0,
     cachedFiles: 0,
     skippedFiles: 0,
+    skippedAlreadyClassifiedFiles: 0,
     extractedFiles: 0,
     featureHealthCheckedFiles: 0,
     completeFeatureFiles: 0,
@@ -321,6 +322,15 @@ function processLine(line: string) {
     return;
   }
 
+  // "Skipped N already classified songs" is the classifier telling us the corpus is
+  // already done. Nothing parsed it, so completeness could not see it.
+  const alreadyClassifiedMatch = line.match(/Skipped\s+(\d+)\s+already classified songs/i);
+  if (alreadyClassifiedMatch) {
+    snapshot.skippedAlreadyClassifiedFiles = Number(alreadyClassifiedMatch[1]);
+    snapshot.updatedAt = Date.now();
+    return;
+  }
+
   const convertingMatch = line.match(
     /\[Converting\].*?(\d+)\s+rendered.*?(\d+)\s+cached.*?(\d+)\s+remaining.*\(([\d.]+)%\)(?:\s+-\s+(.*))?/i
   );
@@ -448,6 +458,7 @@ export function getClassifyProgressSnapshot(): ClassifyProgressSnapshot {
     taggedFiles: snapshot.taggedFiles,
     cachedFiles: snapshot.cachedFiles,
     skippedFiles: snapshot.skippedFiles,
+    skippedAlreadyClassifiedFiles: snapshot.skippedAlreadyClassifiedFiles,
     extractedFiles: snapshot.extractedFiles,
     featureHealthCheckedFiles: snapshot.featureHealthCheckedFiles,
     completeFeatureFiles: snapshot.completeFeatureFiles,
