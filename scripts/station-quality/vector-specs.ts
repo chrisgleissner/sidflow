@@ -184,6 +184,26 @@ export const SHIPPED_SPEC: VectorSpec = makeSpec(
   [],
 );
 
+/**
+ * The vector users are actually served today.
+ *
+ * The published export carries `vector_dimensions: 4` -- the legacy
+ * [e, m, c, p] ratings vector -- because the exports have not been regenerated
+ * since the 24-dimension vector was restored. So the shipped 24-dimension
+ * baseline the sweep measures against is already better than what reaches a
+ * listener. Measuring this reference separately keeps that distinction visible
+ * instead of quietly crediting the improvement to something else.
+ *
+ * Deliberately NOT a sweep candidate: it is not a proposal, and adding it to the
+ * Holm family would cost power to test a hypothesis nobody holds.
+ */
+export const LEGACY_RATINGS_SPEC: VectorSpec = {
+  name: "legacy 4-dim ratings (what is published today)",
+  rationale: "reference point: the width the published export actually carries",
+  dimensionNames: ["e", "m", "c", "p"],
+  build: () => [0, 0, 0, 0],
+};
+
 export function buildVectorSpecs(): VectorSpec[] {
   return [
     SHIPPED_SPEC,

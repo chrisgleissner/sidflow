@@ -44,7 +44,8 @@ import { groupOf, type Track } from "./metrics.js";
 import { distanceMatrix, euclidean, makeRanker, ndcgAtK, splitByGroup } from "./harness.js";
 import { rankGaussian, subsampleByGroup } from "./techniques.js";
 import { buildModel, loadFeatureRecords, type FeatureRecord } from "./load-features.js";
-import { buildVectorSpecs, type VectorSpec } from "./vector-specs.js";
+import { predictDeterministicRatings } from "../../packages/sidflow-classify/src/deterministic-ratings.js";
+import { LEGACY_RATINGS_SPEC, buildVectorSpecs, type VectorSpec } from "./vector-specs.js";
 
 const arg = (flag: string): string | undefined => {
   const index = process.argv.indexOf(flag);
@@ -176,7 +177,19 @@ function tracksFor(spec: VectorSpec, source: FeatureRecord[]): Track[] {
     .filter((t) => t.vector.every((v) => Number.isFinite(v)));
 }
 
-const SPECS = buildVectorSpecs();
+/**
+ * The legacy ratings vector is built from the predicted ratings rather than from
+ * the vector spec machinery, since its "dimensions" ARE the ratings.
+ */
+const legacySpec: VectorSpec = {
+  ...LEGACY_RATINGS_SPEC,
+  build: (m, features) => {
+    const { ratings } = predictDeterministicRatings(m, features);
+    return [ratings.e, ratings.m, ratings.c, ratings.p ?? 3];
+  },
+};
+
+const SPECS = [legacySpec, ...buildVectorSpecs()];
 process.stdout.write(`ceiling analysis over ${kept.length} tracks (train + validation only)\n\n`);
 
 /** Rank-Gaussian first, so no dimension dominates purely through its scale. */
