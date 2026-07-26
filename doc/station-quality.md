@@ -891,9 +891,9 @@ ceiling.
   separately for exactly this reason.
 - **One corpus, one machine.** Timing figures are single measurements.
 - **The learned weights are fitted on an 11k-track subsample**, not on the full 87k
-  corpus, because fitting needs a full pairwise distance matrix. They should transfer —
-  the subsample is a uniform sample of whole composer groups from the same collection —
-  but this is an assumption rather than a measurement.
+  corpus, because fitting needs a full pairwise distance matrix. This was previously
+  recorded as an assumption; it has since been **measured** (§12), and it holds — but the
+  same measurement shows the *relative* gain is corpus-dependent and smaller elsewhere.
 - **A higher headline number was available and rejected.** Widening the weight search
   reaches +136.9% instead of +130.4%, by zeroing 19 of 58 dimensions, and costs 33% of
   cold-start retrieval. On a corpus where 68% of composers have one tune that is the
@@ -938,3 +938,63 @@ feature sets are evaluated in seconds instead of a two-hour re-classification.
 It is verified to reproduce an export's stored vectors with a maximum absolute
 difference of **exactly 0** over 710 tracks, which is why offline results here can
 be believed.
+
+---
+
+## 12. Does any of this transfer? Measured on 21,451 unseen tracks
+
+Every number above §12 was measured on a held-out split **of the development corpus**.
+Held out *within* a corpus is not held out *from* it: the rank normalisation, the rating
+quantiles and the learned weights were all fitted against one collection's feature
+distribution, so a reported gain could in part be a fit to that distribution rather than
+a property of the method.
+
+`scripts/station-quality/verify-transfer.ts` measures the shipped configuration on a
+different slice of HVSC with **every track appearing in the development corpus removed**
+— 2,796 of 24,247 dropped, leaving 21,451 that were not seen during fitting in any
+capacity.
+
+| Configuration | nDCG@10 (unseen) | nDCG@10 (dev corpus) |
+|---|---|---|
+| Published today: 4-dimension ratings vector | 0.0089 | 0.0048 |
+| Previous best in repo: 24-dim raw + weighted | **0.3354** | 0.2340 |
+| Shipped: 58-dim rank-uniform + learned weights | **0.5672** | 0.5392 |
+
+### The weights transfer
+
+0.5672 on unseen tracks against 0.5392 on the corpus they were fitted to. The shipped
+configuration is *not* worse away from its training distribution, which is the thing
+that needed checking. Rating calibration transfers exactly as designed too: all three
+scales use 5 levels at 20.00% each, 2.3219 bits, on a corpus whose quantiles were
+recomputed from scratch.
+
+### But the headline improvement is corpus-dependent, and smaller here
+
+| Comparison | Development corpus | Unseen tracks |
+|---|---|---|
+| vs the published 4-dim vector | ~110x | **63.7x** (+6265%, p=0.0002) |
+| vs the previous best 24-dim config | +130.4% | **+69.1%** (p=0.0002) |
+
+Both are large and both are significant, but +130.4% is **specific to the development
+corpus** and should not be quoted as the general figure. The reason is not that the new
+vector got worse — it got better, 0.5392 to 0.5672 — but that the 24-dimension baseline
+is much stronger on this slice, 0.2340 to 0.3354.
+
+That difference is a property of group structure. The development corpus was
+deliberately built group-uniform, sampling whole composer groups so that many composers
+have several tracks. This slice is a queue-order prefix in which composer directories
+arrive in contiguous alphabetical blocks, and the old spectral vector does relatively
+better at that. Neither corpus is wrong; they are different retrieval problems, and the
+honest summary is a range rather than a point.
+
+**The defensible claim is therefore: roughly 64x better than what is published today,
+and roughly 70-130% better than the best configuration previously in the repository,
+depending on corpus composition.**
+
+### Cold start is much worse on this slice
+
+0.0215 here against 0.2453 on the development corpus. This is the same group-structure
+effect seen from the other side: a queue-order prefix contains a large number of
+composers represented once or twice, and there is genuinely little to retrieve for them.
+It is a caution about reading any single cold-start number as a property of the method,
+including the favourable one.
