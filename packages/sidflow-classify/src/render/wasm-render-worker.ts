@@ -79,10 +79,23 @@ function resourceReport(): WorkerResourceReport {
  * tune and resets the cache and pending-chunk state, and because the pool already replaces
  * each worker after a fixed number of jobs, giving a hard reset boundary regardless.
  *
- * SIDFLOW_RENDER_ENGINE_PER_JOB=1 restores the old behaviour, which is how the A/B check
- * that the features are byte-identical was run.
+ * DISABLED BY DEFAULT, because it did not survive the full corpus. Reuse cut RSS from
+ * ~2,900 MiB to ~1,700 MiB and instantiations 32-fold, and features came out byte-identical
+ * (21/21 on an extremes probe, 704/704 on a stratified sample). But at 27,206 records the
+ * run died with "Segmentation fault at address 0x300000033" and no out-of-memory message --
+ * a bogus pointer, so a memory-safety fault rather than exhaustion. That is a worse failure
+ * than the one it fixes: an out-of-memory abort cannot corrupt what was already written,
+ * and a wild pointer can.
+ *
+ * The per-job path's failure is understood, bounded and cleanly recoverable -- it exhausts
+ * memory at a predictable ~3.5 GiB and the classifier resumes from what it has -- so that
+ * is what ships. Reuse remains available for anyone continuing the investigation, most
+ * likely by finding why an engine cannot be safely re-loaded, or by disposing the pooled
+ * engine on worker terminate (done below) and re-testing.
+ *
+ * SIDFLOW_RENDER_ENGINE_REUSE=1 opts in.
  */
-const REUSE_ENGINE = process.env.SIDFLOW_RENDER_ENGINE_PER_JOB !== "1";
+const REUSE_ENGINE = process.env.SIDFLOW_RENDER_ENGINE_REUSE === "1";
 let pooledEngine: Awaited<ReturnType<typeof createEngine>> | null = null;
 let pooledSampleRate: number | undefined;
 
@@ -171,6 +184,17 @@ async function handleRender(jobId: number, options: RenderWavOptions): Promise<v
   }
 }
 
+function disposePooledEngine(): void {
+  if (pooledEngine) {
+    // The pool replaces a worker every 32 jobs. Without this the thread is torn down with
+    // a live 64-128 MB WASM linear memory attached, which is a far larger thing to leak
+    // than the ~22.8 KiB per instantiation that reuse was meant to avoid.
+    pooledEngine.dispose();
+    enginesDisposed += 1;
+    pooledEngine = null;
+  }
+}
+
 parentPort.on("message", (message: WorkerMessage) => {
   if (!message || typeof message !== "object") {
     return;
@@ -178,6 +202,9 @@ parentPort.on("message", (message: WorkerMessage) => {
   if (message.type === "render") {
     void handleRender(message.jobId, message.options);
   } else if (message.type === "terminate") {
+    // Release the pooled engine before exiting, so the thread is not torn down with a live
+    // WASM linear memory attached.
+    disposePooledEngine();
     // Gracefully exit when instructed; Node will terminate the worker.
     process.exit(0);
   }
