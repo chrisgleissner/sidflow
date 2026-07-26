@@ -1310,8 +1310,16 @@ stop_local_runtime() {
 # misleading.
 start_memory_sampler() {
   mkdir -p "$(dirname "${MEMORY_LOG}")"
+  local owner=$$
   (
     while :; do
+      # Exit if the run that started this sampler is gone. Without the check a sampler
+      # outlives a killed run and keeps appending to the shared log, which silently
+      # contaminates the next run's peak-RSS figure with the previous run's numbers --
+      # observed once, reporting a 2,078 MiB peak on a chunk that never exceeded 1,726.
+      if ! kill -0 "${owner}" >/dev/null 2>&1; then
+        exit 0
+      fi
       python3 - "${MEMORY_LOG}" "${CURRENT_CHUNK}" <<'SAMPLER'
 import glob, json, os, re, sys, time
 
