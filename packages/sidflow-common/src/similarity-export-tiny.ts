@@ -202,14 +202,60 @@ async function computeMd548(context: Md548Context, sidPath: string): Promise<Buf
   return createHash("md5").update(payload).digest().subarray(0, 6);
 }
 
+/**
+ * Two different SID files sharing a truncated hash resolve to one path.
+ *
+ * The tiny profile identifies files by the first 48 bits of their MD5 to keep the
+ * bundle small. Across HVSC's ~62,000 files the birthday probability of at least one
+ * collision is around 0.7% -- unlikely per release, but this is a published artifact
+ * and the failure is silent: the later file overwrites the earlier one in the map, and
+ * every track of the loser is then reported under the winner's path. A listener would
+ * see a station entry naming a tune that is not the one playing.
+ *
+ * Cheap to detect, so detect it. Reported rather than thrown because the collision is
+ * a property of the collection, not of a bug in this code, and refusing to build any
+ * bundle at all would be a worse outcome than a loud warning naming both files.
+ */
+function recordMd548(
+  result: Map<string, string>,
+  collisions: Array<[string, string, string]>,
+  key: string,
+  relativePath: string,
+): void {
+  const existing = result.get(key);
+  if (existing !== undefined && existing !== relativePath) {
+    collisions.push([key, existing, relativePath]);
+    return;
+  }
+  result.set(key, relativePath);
+}
+
+function warnAboutMd548Collisions(collisions: Array<[string, string, string]>): void {
+  if (collisions.length === 0) {
+    return;
+  }
+  const detail = collisions
+    .slice(0, 5)
+    .map(([key, first, second]) => `  ${key}: ${first} <-> ${second}`)
+    .join("\n");
+  process.stderr.write(
+    `[similarity-export-tiny] WARNING: ${collisions.length} md5_48 collision(s). `
+    + "Tracks of the second file in each pair will be reported under the first file's "
+    + `path in the tiny bundle:\n${detail}\n`,
+  );
+}
+
 async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>> {
   const md548Context = await resolveMd548Context(hvscRoot);
   const songlengths = await loadSonglengthsData(hvscRoot);
+  const collisions: Array<[string, string, string]> = [];
+
   if (songlengths.sourcePath && songlengths.pathByMd5.size > 0) {
     const result = new Map<string, string>();
     for (const [md5, relativePath] of songlengths.pathByMd5) {
-      result.set(md5.slice(0, 12), relativePath);
+      recordMd548(result, collisions, md5.slice(0, 12), relativePath);
     }
+    warnAboutMd548Collisions(collisions);
     return result;
   }
 
@@ -229,9 +275,10 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
       }
       const relativePath = path.relative(songlengths.musicRoot, absolutePath).replace(/\\/g, "/");
       const md548 = await computeMd548(md548Context, relativePath);
-      result.set(md548.toString("hex"), relativePath);
+      recordMd548(result, collisions, md548.toString("hex"), relativePath);
     }
   }
+  warnAboutMd548Collisions(collisions);
   return result;
 }
 
@@ -465,10 +512,24 @@ export async function buildTinySimilarityExport(
   const styleTable = buildStyleTable();
   const md548Context = await resolveMd548Context(options.hvscRoot);
   const fileIdentityTable = Buffer.alloc(filePaths.length * 6);
+  // Detected HERE, at build time, rather than only when a consumer opens the bundle.
+  // These are the identities that actually get published, and a collision among them
+  // means two files are indistinguishable to every consumer forever -- something to
+  // learn before the release, not after.
+  const identitySeen = new Map<string, string>();
+  const identityCollisions: Array<[string, string, string]> = [];
   for (let index = 0; index < filePaths.length; index += 1) {
     const md548 = await computeMd548(md548Context, filePaths[index]!);
+    const key = md548.toString("hex");
+    const previous = identitySeen.get(key);
+    if (previous !== undefined && previous !== filePaths[index]) {
+      identityCollisions.push([key, previous, filePaths[index]!]);
+    } else {
+      identitySeen.set(key, filePaths[index]!);
+    }
     writeUInt48LE(fileIdentityTable, md548, index * 6);
   }
+  warnAboutMd548Collisions(identityCollisions);
 
   const fileTrackCountTable = Buffer.alloc(filePaths.length);
   for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
