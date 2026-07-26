@@ -13,13 +13,14 @@ PROFILE="full"
 CORPUS_VERSION="hvsc"
 RUNTIME="bun"
 THREADS=""
+DEFAULT_THREADS="12"
 MAX_SONGS=""
 SKIP_ALREADY_CLASSIFIED="true"
 DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
 RESUME_ATTEMPTS="40"
-CHUNK_SONGS="1000"
+CHUNK_SONGS="5000"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
 SQLITE_NEIGHBORS_FOR_TINY="25"
@@ -50,6 +51,8 @@ MEMORY_LOG="${RUNTIME_DIR}/memory-samples.jsonl"
 CRASH_REPORT_DIR="${REPO_ROOT}/logs/crash-reports"
 MEMORY_SAMPLER_PID=""
 CURRENT_CHUNK="0"
+SPAWNED_SERVER_PID=""
+DEPS_INSTALLED="false"
 
 REPORT_EVERY_SONGS=50
 
@@ -103,7 +106,7 @@ Options:
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
   --resume-attempts N                 Times to resume classification after a crash. Default: 40
   --chunk-songs N                     Classify in chunks of N songs, restarting the whole runtime
-                                      between chunks. 0 disables chunking. Default: 1000
+                                      between chunks. 0 disables chunking. Default: 5000
   --skip-already-classified true|false
                                       Default: true
   --delete-wav-after-classification true|false
@@ -445,6 +448,14 @@ fi
 
 [[ "${SQLITE_NEIGHBORS_FOR_TINY}" =~ ^[0-9]+$ ]] || fail "--sqlite-neighbors-for-tiny must be a non-negative integer"
 [[ "${CHUNK_SONGS}" =~ ^[0-9]+$ ]] || fail "--chunk-songs must be a non-negative integer"
+# 12 is the measured throughput peak on a 20-thread machine (6:10.01, 12:12.26, 16:10.97,
+# 20:9.59 tracks/s). It used to be unsafe -- at 12 threads a long-lived run exhausted memory
+# sooner, dying at 15,902 tracks against 31,626 at 6 -- but chunked mode restarts the stack
+# long before that point, so the stability objection no longer applies and the fast setting
+# can simply be the default.
+if [[ -z "${THREADS}" && "${CHUNK_SONGS}" != "0" ]]; then
+  THREADS="${DEFAULT_THREADS}"
+fi
 
 if [[ "${PUBLISH_RELEASE}" == "true" ]]; then
   require_command gh
@@ -682,7 +693,8 @@ prepare_run_state() {
 }
 
 wait_for_health() {
-  local url="http://127.0.0.1:${PORT}/api/health?scope=readiness"
+  local port="${1:-${PORT}}"
+  local url="http://127.0.0.1:${port}/api/health?scope=readiness"
   local attempts=0
   until curl -fsS "${url}" >/dev/null 2>&1; do
     attempts=$((attempts + 1))
@@ -693,16 +705,24 @@ wait_for_health() {
   done
 }
 
-start_local_runtime() {
+# Starts a runtime and returns immediately, so a chunk can prewarm its successor while it
+# is still working. SPAWNED_SERVER_PID carries the pid out.
+spawn_local_runtime() {
+  local port="${1:-${PORT}}"
   local sid_path
   sid_path="$(resolve_local_sid_path)"
   [[ -d "${sid_path}" ]] || fail "Configured sidPath does not exist: ${sid_path}"
 
   if [[ "${RUNTIME}" == "bun" ]]; then
-    log "Installing dependencies for Bun local mode"
-    (cd "${REPO_ROOT}" && bun install --frozen-lockfile) >> "${SERVER_LOG}" 2>&1
+    # Once per run, not once per chunk: with a warm lockfile this is pure latency in the
+    # critical path of every handover.
+    if [[ "${DEPS_INSTALLED}" != "true" ]]; then
+      log "Installing dependencies for Bun local mode"
+      (cd "${REPO_ROOT}" && bun install --frozen-lockfile) >> "${SERVER_LOG}" 2>&1
+      DEPS_INSTALLED="true"
+    fi
 
-    log "Starting local web server under Bun on port ${PORT}"
+    log "Starting local web server under Bun on port ${port}"
     (
       cd "${REPO_ROOT}/packages/sidflow-web"
       SIDFLOW_CONFIG="${CONFIG_PATH}" \
@@ -715,13 +735,13 @@ start_local_runtime() {
       SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
       SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
       SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
-      PORT="${PORT}" \
+      PORT="${port}" \
       bun run dev
     ) >> "${SERVER_LOG}" 2>&1 &
   else
     ensure_node_runtime_build
 
-    log "Starting local web server under Node on port ${PORT}"
+    log "Starting local web server under Node on port ${port}"
     (
       cd "${REPO_ROOT}/packages/sidflow-web"
       SIDFLOW_CONFIG="${CONFIG_PATH}" \
@@ -734,13 +754,43 @@ start_local_runtime() {
       SIDFLOW_CLASSIFY_RUN_MODE="${MODE}" \
       SIDFLOW_CLASSIFY_RUN_FULL_RERUN="${FULL_RERUN}" \
       SIDFLOW_CLASSIFY_RUN_CWD="${REPO_ROOT}" \
-      PORT="${PORT}" \
+      PORT="${port}" \
       node ./scripts/start-test-server.mjs --mode=development
     ) >> "${SERVER_LOG}" 2>&1 &
   fi
-  LOCAL_SERVER_PID=$!
+  SPAWNED_SERVER_PID=$!
+}
 
-  wait_for_health
+# Spawn and wait. Used by the non-chunked path and for the very first chunk, where there is
+# nothing to overlap with.
+start_local_runtime() {
+  local port="${1:-${PORT}}"
+  spawn_local_runtime "${port}"
+  LOCAL_SERVER_PID="${SPAWNED_SERVER_PID}"
+  wait_for_health "${port}"
+}
+
+# Retire one runtime without touching the other. stop_local_runtime kills by pattern, which
+# would take down the standby as well, so a double-buffered handover needs this instead.
+retire_runtime() {
+  local pid="$1"
+  local port="$2"
+  if [[ -z "${pid}" ]]; then
+    return 0
+  fi
+  # Children first: a crashed chunk can leave a classify process attached to this server.
+  local child
+  for child in $(pgrep -P "${pid}" 2>/dev/null || true); do
+    kill "${child}" >/dev/null 2>&1 || true
+  done
+  if kill -0 "${pid}" >/dev/null 2>&1; then
+    kill "${pid}" >/dev/null 2>&1 || true
+  fi
+  local waited=0
+  while ss -ltn 2>/dev/null | grep -q ":${port} " && (( waited < 30 )); do
+    sleep 1
+    waited=$(( waited + 1 ))
+  done
 }
 
 start_docker_runtime() {
@@ -1436,12 +1486,32 @@ classify_in_chunks() {
   local before after
   local previous_total=-1
 
+  # Double-buffered runtimes. The restart that keeps memory bounded costs about 35 seconds,
+  # and measured on a 1,000-song chunk that was 15.6% of wall clock spent with no classify
+  # process running at all. Overlapping it with the work removes that: while a chunk
+  # renders, its successor's server is already starting on the other port.
+  local active_port="${PORT}"
+  local standby_port=$(( PORT + 1 ))
+  local active_pid=""
+  local standby_pid=""
+
+  log "Double-buffered runtimes on ports ${active_port} and ${standby_port}"
+  start_local_runtime "${active_port}"
+  active_pid="${LOCAL_SERVER_PID}"
+
   while :; do
     CURRENT_CHUNK="${chunk}"
     before="$(count_feature_rows "${CLASSIFIED_PATH}")"
+    local chunk_started_at
+    chunk_started_at="$(date +%s)"
 
-    stop_local_runtime
-    start_local_runtime
+    # Prewarm the successor now, so its startup runs concurrently with this chunk's work
+    # rather than after it.
+    spawn_local_runtime "${standby_port}"
+    standby_pid="${SPAWNED_SERVER_PID}"
+
+    PORT="${active_port}"
+    LOCAL_SERVER_PID="${active_pid}"
     start_memory_sampler
 
     # After the first chunk everything already done must be skipped rather than rebuilt.
@@ -1460,6 +1530,7 @@ classify_in_chunks() {
 
     stop_memory_sampler
     after="$(count_feature_rows "${CLASSIFIED_PATH}")"
+    local chunk_elapsed=$(( $(date +%s) - chunk_started_at ))
 
     if (( ok == 0 )); then
       failures=$(( failures + 1 ))
@@ -1482,11 +1553,29 @@ except OSError:
 print(round(peak / (1024 * 1024)))
 PEAK
 )"
-    log "Chunk ${chunk}: ${before} -> ${after} records (+$(( after - before ))), peak RSS ${peak}Mi, failures so far ${failures}"
+    local added=$(( after - before ))
+    local rate="n/a"
+    if (( chunk_elapsed > 0 )); then
+      rate="$(python3 -c "print(f'{${added}/${chunk_elapsed}:.2f}')")"
+    fi
+    log "Chunk ${chunk}: ${before} -> ${after} records (+${added}) in ${chunk_elapsed}s = ${rate} songs/s, threads ${THREADS:-auto}, peak RSS ${peak}Mi, failures ${failures}"
+
+    # Hand over to the prewarmed runtime, then retire the one that just worked. Waiting for
+    # health here costs nothing when the prewarm had a whole chunk to finish in.
+    wait_for_health "${standby_port}"
+    retire_runtime "${active_pid}" "${active_port}"
+    local swap_port="${active_port}"
+    active_port="${standby_port}"
+    standby_port="${swap_port}"
+    active_pid="${standby_pid}"
+    standby_pid=""
+    PORT="${active_port}"
+    LOCAL_SERVER_PID="${active_pid}"
 
     if (( after <= before )); then
       if (( ok == 1 )); then
         log "Chunk ${chunk} classified nothing new and succeeded: the corpus is complete at ${after} records"
+        retire_runtime "${standby_pid}" "${standby_port}"
         return 0
       fi
       fail "Chunk ${chunk} failed without classifying anything new (${after} records). Not retrying: this is a fault rather than resource exhaustion. See ${CRASH_REPORT_DIR}."
@@ -1735,8 +1824,6 @@ main() {
     log "Classifying in chunks of ${CHUNK_SONGS} songs, restarting the runtime between each"
     : > "${MEMORY_LOG}"
     classify_in_chunks
-    stop_local_runtime
-    start_local_runtime
   else
     if [[ "${MODE}" == "local" ]]; then
       start_local_runtime
