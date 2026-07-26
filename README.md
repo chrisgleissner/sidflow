@@ -284,7 +284,7 @@ Production startup rejects default credentials, derived secrets, or a missing `J
 
 ### Build and publish portable similarity data
 
-Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 24-dimensional perceptual vectors (WAV + SID-native hybrid) for offline and downstream consumers.
+Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 58-dimensional similarity vectors (WAV spectral + SID register-trace hybrid) for offline and downstream consumers.
 
 Use this workflow when you need to create new data from a collection you control. If you only need the public HVSC results, use [published `sidflow-data` releases](#reuse-published-hvsc-analysis-data) instead.
 
@@ -313,6 +313,7 @@ Before you start:
 - **Copy [C64 system ROMs](#system-roms) into `workspace/roms/` first.** They are git-ignored, so a fresh clone never has them, and many tunes need them to render correctly.
 - **`--publish-release true` needs `gh auth login`** with permission to create releases on `chrisgleissner/sidflow-data`. The script checks this before classifying, so it fails fast rather than after a long run.
 - **Use `--mode local`, not `--mode docker`, unless you know the image is current.** Docker mode pulls `ghcr.io/chrisgleissner/sidflow:latest`, which bakes in `packages/libsidplayfp-wasm/dist/libsidplayfp.wasm` at image build time. If that image predates a WASM engine fix, the run will happily regenerate data with the old engine. Local mode uses the artifact in your checkout.
+- **Classification runs under Bun, not Node.** `@sidflow/common` re-exports three SQLite-backed modules that import `bun:sqlite`, and Node's ESM loader rejects the `bun:` scheme, so every classify module that imports the package barrel is unloadable under Node. `--runtime node` therefore fails immediately with `ERR_UNSUPPORTED_ESM_URL_SCHEME`. Bun is already a prerequisite and the export step always ran under it.
 
 **0. Download HVSC:**
 
@@ -342,9 +343,9 @@ Expected logs:
 [sidcorr] Mode is full rerun: existing classified data and export artifacts will be ignored and replaced
 [sidcorr] Full rerun: removing prior classified JSONL artifacts from /home/chris/dev/c64/sidflow/data/classified
 [sidcorr] Mode: local
-[sidcorr] Runtime: node
-[sidcorr] Building TypeScript artifacts for Node runtime
-[sidcorr] Starting local web server under Node on port 3000
+[sidcorr] Runtime: bun
+[sidcorr] Installing dependencies for Bun local mode
+[sidcorr] Starting local web server under Bun on port 3000
 [sidcorr] Triggering classification with payload {"async":false,"skipAlreadyClassified":false,"deleteWavAfterClassification":true,"forceRebuild":true}
 [sidcorr] Classification request started
 [sidcorr] Waiting for classification to finish
@@ -359,7 +360,7 @@ Expected logs:
 [sidcorr] progress update: completed=87074 remaining=0 total=87074 elapsed=27m 58s eta=0s rate=51.89 songs/s phase=completed phases[analyzing=done, metadata=done, building=done, tagging=done, finalizing=done, completed=done] stageCounts[rendered=87074, extracted=0, tagged=87074] featureHealth[completeRealistic=0/0 (unknown)]
 [sidcorr] Classification completed
 [sidcorr] Running local export with bun runtime
-$ node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity --profile full --corpus-version hvsc
+$ bun run packages/sidflow-play/src/cli.ts export-similarity --profile full --neighbors 25 --corpus-version hvsc
 Building similarity export from data/classified
 Writing SQLite bundle to data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
 Export complete in 1488643ms
@@ -400,18 +401,25 @@ Precedence is `--sid-engine`, then `SIDFLOW_SID_ENGINE`, then the SIDLite defaul
 | `sidlite` (default) | ~30-40x realtime | 0.10 | Everyday use, and classifying a corpus |
 | `residfp` | ~2-6x realtime | 0.003 | Cycle-accurate reference, A/B comparison |
 
-Do not mix engines within one corpus. The features are derived from the rendered audio, so tracks rendered by different emulations are not directly comparable, and the export records only a single `render_engine` value.
+Do not mix engines within one corpus. Features are derived from the rendered audio, so tracks rendered by different emulations are not comparable, and cosine over a mixture measures the emulation as much as the music. **The export now refuses a mixed corpus** rather than producing one quietly: every classified record carries a `sid_engine` field, and `buildSimilarityExport` fails if more than one value appears.
+
+Which engine to use for a corpus you intend to publish is a measurement question, not a taste one, and it is answered in [doc/sid-engine-comparison.md](doc/sid-engine-comparison.md) — a pre-registered paired comparison of the two engines on identical tracks.
 
 **1b. Verify the run used the engine you think it did:**
 
-Getting a *different* engine than you asked for is the failure mode this pipeline has actually suffered — and the damage was not the emulation but a broken build of it, which loaded, rendered, and returned plausible sample counts while producing materially wrong audio. Both checks below are cheap, and both are worth running before you publish anything.
+Getting a *different* engine than you asked for is the failure mode this pipeline has actually suffered — and the damage was not the emulation but a broken build of it, which loaded, rendered, and returned plausible sample counts while producing materially wrong audio. All three checks below are cheap, and all three are worth running before you publish anything.
 
 ```bash
 # Each artifact must contain its own builder and not the other one.
 grep -ac WasmSIDLite  packages/libsidplayfp-wasm/dist/sidlite/libsidplayfp.wasm  # expect > 0
 grep -ac WasmReSIDfp  packages/libsidplayfp-wasm/dist/libsidplayfp.wasm          # expect > 0
 
-# The export records which engine rendered every track.
+# Which SID emulation actually rendered the corpus.
+jq -r '.sid_engine' data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
+
+# Which renderer backend was used. Note this is NOT the emulation: it reports "wasm"
+# for both sidlite and residfp, because both run inside the WASM renderer. Use the
+# manifest field above to tell them apart.
 sqlite3 data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
   'select render_engine, count(*) from tracks group by 1'
 ```
@@ -480,7 +488,18 @@ Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-exp
 
 #### Classification vector reference
 
-Each exported song also gets a 24-number similarity vector. It mixes what SIDFlow hears in the rendered WAV with what it reads from the SID chip write trace. The raw per-song feature dump is larger, but these 24 fields are the compact fingerprint used for similarity search and station building.
+Each exported song also gets a **58-number** similarity vector — the compact fingerprint used for similarity search and station building. It has three parts:
+
+| Part | Count | Read from | Documented in |
+|---|---|---|---|
+| Perceptual | 24 | The rendered WAV, plus SID register-state summaries | The table below |
+| Tonal | 11 | Note-level analysis of the SID register write trace | [station-quality.md](doc/station-quality.md) |
+| Playroutine and driver shape | 23 | How the driver code drives the chip | [station-quality.md](doc/station-quality.md) |
+
+The 34 trace-derived dimensions were added after measurement showed the 24 perceptual
+ones had stopped improving: on a held-out, composer-grouped split they take retrieval
+from nDCG@10 0.2340 to 0.5392. Only the 24 below depend on the SID emulation; the other
+34 read the register write trace, which the audio model never touches.
 
 Sample record: [doc/examples/classification-vector-sample.json](doc/examples/classification-vector-sample.json)
 

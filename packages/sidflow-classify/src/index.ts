@@ -39,7 +39,7 @@ import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
-import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
+import { createEngine, resolveClassifyEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import {
   WAV_HASH_EXTENSION,
   SID_TRACE_EXTENSION,
@@ -2427,6 +2427,20 @@ export async function generateAutoTags(
       manual_ratings: PartialTagRatings | null;
       features: FeatureVector;
       render_engine: string;
+      /**
+       * Which SID emulation produced the audio, when the renderer was the WASM one.
+       *
+       * `render_engine` cannot carry this: it holds "wasm" and three separate call
+       * sites branch on that exact value to decide whether a register trace is
+       * available, and 34 of the 58 similarity dimensions are derived from that
+       * trace. Making it more specific would silently switch them off.
+       *
+       * Recorded because mixing emulations within a corpus produces features that
+       * are not comparable, and until now nothing downstream could tell which
+       * emulation a track came from -- so a corpus half-rendered by each was
+       * indistinguishable from a clean one.
+       */
+      sid_engine: string | null;
       degraded: boolean;
       classification_depth: number;
       auto_file_path: string;
@@ -2908,6 +2922,7 @@ export async function generateAutoTags(
         manual_ratings: manualRatings,
         features: extractedFeatures,
         render_engine: finalRuntimeMode.renderEngine,
+        sid_engine: finalRuntimeMode.renderEngine === "wasm" ? resolveClassifyEngine() : null,
         degraded:
           finalRuntimeMode.degraded
           || finalRenderResult?.degraded === true
@@ -3167,6 +3182,9 @@ export async function generateAutoTags(
         features: rec.features as unknown as AudioFeatures,
         vector: buildSimilarityVector(ratingModel, rec.features),
       };
+      if (rec.sid_engine) {
+        classificationRecord.sid_engine = rec.sid_engine;
+      }
       if (rec.song_index) {
         classificationRecord.song_index = rec.song_index;
       }

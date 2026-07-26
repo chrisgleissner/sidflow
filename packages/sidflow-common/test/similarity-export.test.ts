@@ -135,6 +135,129 @@ describe("similarity-export", () => {
     expect(recommendations[0].score).toBeGreaterThan(recommendations[1].score);
   });
 
+  test("records which SID emulation rendered the corpus", async () => {
+    // render_engine cannot carry this: it holds "wasm" for both emulations, and three
+    // call sites branch on that exact value to decide whether a register trace exists.
+    // Without a separate field a consumer cannot tell the cycle-accurate reference
+    // from the fast approximation.
+    await writeFile(
+      path.join(classifiedPath, "classification_engine.jsonl"),
+      [
+        JSON.stringify({ sid_path: "E.sid", song_index: 1, ratings: { e: 3, m: 3, c: 3, p: 3 }, features: { bpm: 100 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm", sid_engine: "residfp" }),
+        JSON.stringify({ sid_path: "F.sid", song_index: 1, ratings: { e: 3, m: 3, c: 3, p: 3 }, features: { bpm: 110 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm", sid_engine: "residfp" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const result = await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 0,
+    });
+    expect(result.manifest.sid_engine).toBe("residfp");
+  });
+
+  test("refuses to export a corpus that mixes SID emulations", async () => {
+    // Features come from rendered audio, so tracks emulated differently are not on a
+    // comparable scale and cosine over the mixture measures the emulation as much as
+    // the music. Interrupting a long run and resuming it with a different engine is
+    // the obvious way to produce one of these by accident, and until this check
+    // existed the result was indistinguishable from a clean corpus.
+    await writeFile(
+      path.join(classifiedPath, "classification_engine.jsonl"),
+      [
+        JSON.stringify({ sid_path: "E.sid", song_index: 1, ratings: { e: 3, m: 3, c: 3, p: 3 }, features: { bpm: 100 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm", sid_engine: "residfp" }),
+        JSON.stringify({ sid_path: "F.sid", song_index: 1, ratings: { e: 3, m: 3, c: 3, p: 3 }, features: { bpm: 110 }, classified_at: "2026-03-13T10:00:00.000Z", source: "auto", render_engine: "wasm", sid_engine: "sidlite" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await expect(buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 0,
+    })).rejects.toThrow(/mixes SID emulations \(residfp, sidlite\)/);
+  });
+
+  test("still exports a corpus classified before the engine was recorded", async () => {
+    // Every published dataset so far predates the field. Treating "no engine
+    // recorded" as a conflict would make those corpora unexportable.
+    const result = await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 0,
+    });
+    expect(result.manifest.sid_engine).toBeUndefined();
+    expect(result.manifest.track_count).toBeGreaterThan(0);
+  });
+
+  test("does not truncate a request to however many neighbours the export happened to store", async () => {
+    // The precomputed neighbour table is a CACHE of the vector scan, so a partial
+    // cache must not become a smaller answer. Serving it whenever it held even one
+    // row capped every caller at the export's stored neighbour count -- and the
+    // export script's default was three, so a station asking the full SQLite bundle
+    // for a hundred candidates got three and had nothing to build from.
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 1,
+    });
+
+    const database = new Database(outputPath, { readonly: true });
+    const stored = (database.query("select count(*) as n from neighbors where seed_track_id = ?")
+      .get(buildSimilarityTrackId("A.sid", 1)) as { n: number }).n;
+    database.close();
+    expect(stored).toBe(1);
+
+    const recommendations = recommendFromSeedTrack(outputPath, {
+      seedTrackId: buildSimilarityTrackId("A.sid", 1),
+      limit: 4,
+    });
+
+    // Four other tracks exist, so four must come back despite one cached neighbour.
+    expect(recommendations).toHaveLength(4);
+    expect(recommendations.map((entry) => entry.track_id)).not.toContain(
+      buildSimilarityTrackId("A.sid", 1),
+    );
+    for (let index = 1; index < recommendations.length; index += 1) {
+      expect(recommendations[index]!.score).toBeLessThanOrEqual(recommendations[index - 1]!.score);
+    }
+  });
+
+  test("still serves from the neighbour cache when it can satisfy the request", async () => {
+    // The fallback must not cost the fast path: when enough neighbours are stored,
+    // the cached ranking is what gets returned.
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath: path.join(tempRoot, "feedback"),
+      outputPath,
+      manifestPath,
+      neighbors: 4,
+    });
+
+    const database = new Database(outputPath, { readonly: true });
+    const cached = database.query(
+      "select neighbor_track_id from neighbors where seed_track_id = ? and profile = 'full' order by rank asc limit 2",
+    ).all(buildSimilarityTrackId("A.sid", 1)) as Array<{ neighbor_track_id: string }>;
+    database.close();
+
+    const recommendations = recommendFromSeedTrack(outputPath, {
+      seedTrackId: buildSimilarityTrackId("A.sid", 1),
+      limit: 2,
+    });
+    expect(recommendations.map((entry) => entry.track_id)).toEqual(
+      cached.map((row) => row.neighbor_track_id),
+    );
+  });
+
   test("recommends a centroid-based playlist from favorite track ids", async () => {
     await buildSimilarityExport({
       classifiedPath,

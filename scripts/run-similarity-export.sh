@@ -11,7 +11,7 @@ WORKFLOW="full"
 PORT="3000"
 PROFILE="full"
 CORPUS_VERSION="hvsc"
-RUNTIME="node"
+RUNTIME="bun"
 THREADS=""
 MAX_SONGS=""
 SKIP_ALREADY_CLASSIFIED="true"
@@ -20,7 +20,7 @@ FORCE_REBUILD="false"
 FULL_RERUN="false"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
-SQLITE_NEIGHBORS_FOR_TINY="3"
+SQLITE_NEIGHBORS_FOR_TINY="25"
 PUBLISH_RELEASE="false"
 PUBLISH_REPO="chrisgleissner/sidflow-data"
 PUBLISH_TIMESTAMP=""
@@ -90,7 +90,8 @@ Options:
   --port PORT                         Web port. Default: 3000
   --profile full|mobile               Export profile. Default: full
   --corpus-version LABEL              Manifest corpus label. Default: hvsc
-  --runtime bun|node                  Local classify runtime. Default: node
+  --runtime bun|node                  Local classify runtime. Default: bun (node cannot load the
+                                      Bun-only SQLite bindings @sidflow/common re-exports)
   --threads N                         Optional classify thread count override
   --max-songs N                       Stop each classification run after at most N songs
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
@@ -102,7 +103,7 @@ Options:
   --publish-release true|false        Create and publish a tar.gz release bundle. Default: false
   --publish-repo OWNER/REPO           Release target. Default: chrisgleissner/sidflow-data
   --publish-timestamp UTCSTAMP        Override UTC timestamp in YYYYMMDDTHHMMSSZ format
-  --sqlite-neighbors-for-tiny N       Full-export precomputed neighbors kept for tiny derivation. Default: 3
+  --sqlite-neighbors-for-tiny N       Precomputed neighbors stored per track in the full export. Default: 25
   --keep-runtime true|false           Keep started server/container running after success. Default: false
   --help                              Show this help
 

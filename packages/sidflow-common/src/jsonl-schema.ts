@@ -91,7 +91,11 @@ export interface ClassificationRecord {
   ratings: TagRatings;
   /** All extracted audio features from classifier (optional, classifier output only) */
   features?: AudioFeatures;
-  /** Deterministic perceptual vector for similarity/export (4D legacy or 24D enhanced) */
+  /**
+   * Deterministic similarity vector. Width is declared by the export manifest rather
+   * than fixed here: 4 in legacy records, 24 for the perceptual-only vector, and 58
+   * once the tonal and playroutine dimensions are included.
+   */
   vector?: number[];
   /** Classification timestamp (ISO 8601) */
   classified_at?: string;
@@ -101,6 +105,17 @@ export interface ClassificationRecord {
   degraded?: boolean;
   /** Render engine used: 'wasm' | 'sidplayfp-cli' */
   render_engine?: string;
+  /**
+   * Which SID emulation produced the audio: 'sidlite' | 'residfp'. Absent when the
+   * renderer was not the WASM one, and absent in records written before this was
+   * captured.
+   *
+   * Separate from `render_engine` because that field holds 'wasm' and code branches
+   * on that exact value to decide whether a register trace exists. Features from
+   * different emulations are not comparable, so a corpus must not mix them -- and
+   * without this field a mixed corpus was undetectable after the fact.
+   */
+  sid_engine?: string;
 }
 
 /**

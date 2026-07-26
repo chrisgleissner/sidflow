@@ -63,6 +63,17 @@ export interface SimilarityExportManifest {
    * the numbers live in rather than having to infer it.
    */
   vector_normalisation?: "rank-uniform" | "none";
+  /**
+   * Which SID emulation rendered the corpus: "sidlite" or "residfp". Absent when no
+   * track recorded one, which is the case for corpora classified before the field
+   * existed.
+   *
+   * This is the provenance `render_engine` cannot give: that field says "wasm",
+   * meaning the WASM renderer, and both emulations run inside it. Published so a
+   * consumer can tell whether a dataset came from the cycle-accurate reference or
+   * the fast approximation without having to trust a release note.
+   */
+  sid_engine?: string;
   include_vectors: boolean;
   neighbor_count_per_track: number;
   track_count: number;
@@ -171,6 +182,7 @@ interface FeaturePhaseRecord {
   manual_ratings?: PartialRatings | null;
   features: AudioFeatures;
   render_engine?: string;
+  sid_engine?: string;
 }
 
 interface FeatureNormStats {
@@ -508,11 +520,48 @@ function recoverClassificationsFromFeatureFile(
     if (record.song_index !== undefined) {
       classification.song_index = record.song_index;
     }
+    if (typeof record.sid_engine === "string" && record.sid_engine) {
+      classification.sid_engine = record.sid_engine;
+    }
     if (record.features.featureVariant === "heuristic") {
       classification.degraded = true;
     }
     return classification;
   });
+}
+
+/**
+ * Which SID emulation rendered this corpus, refusing a corpus that mixes two.
+ *
+ * Features are derived from rendered audio, so tracks emulated differently are not
+ * on a comparable scale, and cosine over a mixture measures the emulation as much as
+ * the music. The README has always said not to mix them; nothing enforced it, and
+ * nothing recorded enough to notice afterwards. Interrupting a long run and resuming
+ * it with a different engine is the obvious way to produce one by accident.
+ *
+ * Records predating the field contribute nothing rather than counting as a conflict,
+ * so an older corpus still exports -- just without the provenance.
+ */
+function resolveCorpusSidEngine(records: ClassificationRecord[]): string | undefined {
+  const engines = new Set<string>();
+  for (const record of records) {
+    if (typeof record.sid_engine === "string" && record.sid_engine) {
+      engines.add(record.sid_engine);
+    }
+  }
+  if (engines.size === 0) {
+    return undefined;
+  }
+  if (engines.size > 1) {
+    const listed = [...engines].sort().join(", ");
+    throw new Error(
+      `Similarity export refused: corpus mixes SID emulations (${listed}). `
+      + "Features derived from different emulations are not comparable, so the export "
+      + "would measure the emulation as much as the music. Reclassify the corpus with a "
+      + "single engine.",
+    );
+  }
+  return [...engines][0];
 }
 
 async function readClassificationsForExport(dirPath: string): Promise<ClassificationRecord[]> {
@@ -1128,6 +1177,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
   ]);
 
   const dedupedClassifications = dedupeClassifications(classifications);
+  const sidEngine = resolveCorpusSidEngine(dedupedClassifications);
   const dims = resolveTargetVectorDimensions(dedupedClassifications, options.dims);
   const feedbackByTrackId = aggregateFeedbackRecordsByKey(
     feedbackEvents,
@@ -1267,6 +1317,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       feature_schema_version: FEATURE_SCHEMA_VERSION,
       vector_dimensions: dims,
       vector_normalisation: vectorNormalisation,
+      ...(sidEngine ? { sid_engine: sidEngine } : {}),
       include_vectors: includeVectors,
       neighbor_count_per_track: neighborCount,
       track_count: tracks.length,
@@ -1301,6 +1352,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
     feature_schema_version: FEATURE_SCHEMA_VERSION,
     vector_dimensions: dims,
     vector_normalisation: vectorNormalisation,
+    ...(sidEngine ? { sid_engine: sidEngine } : {}),
     include_vectors: includeVectors,
     neighbor_count_per_track: neighborCount,
     track_count: tracks.length,
@@ -1386,9 +1438,15 @@ export function recommendFromSeedTrack(
       ).all(profile, options.seedTrackId, limit + excluded.size) as Array<PersistedTrackRow & { similarity: number; rank: number }>
       : [];
 
-    if (rows.length > 0) {
-      return rows
-        .filter((row) => !excluded.has(row.track_id))
+    // The precomputed table is a CACHE of the vector scan below, not a different
+    // answer, so it may only be used when it can serve the whole request. Taking it
+    // whenever it held even one row silently truncated every caller to however many
+    // neighbours the export happened to store -- and the export default was three, so
+    // a station asking the full SQLite bundle for a hundred candidates received three
+    // and then had nothing to build from. Falling back is slower and correct.
+    const usable = rows.filter((row) => !excluded.has(row.track_id));
+    if (usable.length >= limit) {
+      return usable
         .slice(0, limit)
         .map((row, index) => trackRowToRecommendation(row, row.similarity, index + 1));
     }
