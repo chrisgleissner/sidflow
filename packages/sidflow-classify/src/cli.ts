@@ -358,8 +358,9 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
             : ` growth=${mib(progress.resources.rssGrowthBytesPerThousandSongs)}/1k`)
           + `]`
         : "";
+      const integrity = progress.integrity ? ` [${progress.integrity}]` : "";
       stdout.write(
-        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}] [featureHealth ${featureHealth}]${resources}${file} - ${elapsed}`
+        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}] [featureHealth ${featureHealth}]${integrity}${resources}${file} - ${elapsed}`
       );
       for (const warning of progress.resources?.warnings ?? []) {
         stdout.write(`\n[classify-resources] WARNING: ${warning}\n`);

@@ -27,6 +27,9 @@ import path from "node:path";
 
 import { pathExists } from "@sidflow/common";
 
+import { isFeatureRecordSound } from "./feature-integrity.js";
+import type { FeatureVector } from "./index.js";
+
 /**
  * Read by pattern rather than `JSON.parse`.
  *
@@ -53,6 +56,7 @@ export function resumeKeyFor(sidPath: string, songIndex?: number): string {
 /** Songs present in any `features_*.jsonl` under `classifiedPath`. */
 export async function indexExtractedSongs(classifiedPath: string): Promise<Set<string>> {
   const keys = new Set<string>();
+  let unsound = 0;
   if (!(await pathExists(classifiedPath))) {
     return keys;
   }
@@ -76,8 +80,38 @@ export async function indexExtractedSongs(classifiedPath: string): Promise<Set<s
         continue;
       }
       const songMatch = SONG_INDEX_PATTERN.exec(line);
+
+      // Self-healing: an unsound record is treated as NOT done, so a rerun reclassifies
+      // it rather than preserving it forever. Without this, a resume would faithfully
+      // carry forward the very records a bug produced -- which is how 16,398 records with
+      // an empty playroutine vector would have survived every subsequent run.
+      //
+      // Parsed rather than pattern-matched, because soundness depends on the relationship
+      // between fields and cannot be read off one of them.
+      let sound = true;
+      try {
+        const record = JSON.parse(line) as { features?: FeatureVector };
+        if (record.features) {
+          sound = isFeatureRecordSound(record.features);
+        }
+      } catch {
+        // A truncated final line is what a crash leaves behind; treat it as not done.
+        sound = false;
+      }
+      if (!sound) {
+        unsound += 1;
+        continue;
+      }
+
       keys.add(resumeKeyFor(pathMatch[1]!, songMatch ? Number.parseInt(songMatch[1]!, 10) : undefined));
     }
+  }
+
+  if (unsound > 0) {
+    process.stderr.write(
+      `[classify-resume] ${unsound} previously classified record(s) failed the integrity`
+      + " check and will be reclassified\n",
+    );
   }
 
   return keys;

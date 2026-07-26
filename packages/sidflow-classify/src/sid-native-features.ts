@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import {
   PAL_FRAME_RATE,
   compactSidWriteTraceToFrames,
+  resolveEffectiveTraceSkipSeconds,
   resolveSidTraceFrameWindow,
   type CompactSidWriteTraceOptions,
   type SidTraceVideoStandard,
@@ -230,8 +231,18 @@ export async function captureSidWriteTraceSecondPass(
 }
 
 export function extractSidNativeFeaturesFromWriteTrace(
-  options: ExtractSidNativeFeaturesFromTraceOptions,
+  rawOptions: ExtractSidNativeFeaturesFromTraceOptions,
 ): FeatureVector {
+  // Clamp the intro skip to the tune before anything reads the window. A 15-second skip
+  // is right for a full-length tune and lands past the end of a jingle, and HVSC is full
+  // of short subsongs: 18.66% of the corpus previously came out with all 22 playroutine
+  // and driver dimensions at exactly zero because the window opened after the music had
+  // stopped. Applied here, once, so the tonal and playroutine paths cannot disagree
+  // about which window they are describing.
+  const options: ExtractSidNativeFeaturesFromTraceOptions = {
+    ...rawOptions,
+    skipSeconds: resolveEffectiveTraceSkipSeconds(rawOptions.traces, rawOptions),
+  };
   const frameWindow = resolveSidTraceFrameWindow(options);
   const clock = frameWindow.clock;
 

@@ -42,6 +42,12 @@ import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-r
 import { createEngine, resolveClassifyEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import { indexExtractedSongs, resumeKeyFor } from "./resume-index.js";
 import {
+  createFeatureIntegrityTally,
+  featureIntegrityBreach,
+  formatFeatureIntegrity,
+  recordFeatureIntegrity,
+} from "./feature-integrity.js";
+import {
   beginResourceTracking,
   resourceWarnings,
   snapshotResourceMetrics,
@@ -1925,6 +1931,12 @@ export interface AutoTagProgress {
    * every progress tick so exhaustion is visible while it develops.
    */
   resources?: ClassifyResourceProgress;
+  /**
+   * Live result of the feature-integrity assertion, e.g. "integrity=ok(12000)". Surfaced
+   * on every tick so a systematically wrong corpus is visible in the first minute rather
+   * than discovered by auditing feature distributions afterwards.
+   */
+  integrity?: string;
 }
 
 export interface ClassifyResourceProgress {
@@ -2145,6 +2157,8 @@ export async function generateAutoTags(
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
 
+  const integrityTally = createFeatureIntegrityTally();
+
   const buildFeatureHealthProgress = () => ({
     featureHealthCheckedFiles,
     completeFeatureFiles,
@@ -2157,7 +2171,9 @@ export async function generateAutoTags(
    * created and disposed PER JOB inside worker threads, so the main process cannot
    * observe the allocation that actually fails.
    */
-  const buildResourceProgress = (songsSoFar: number): { resources: ClassifyResourceProgress } => {
+  const buildResourceProgress = (
+    songsSoFar: number,
+  ): { resources: ClassifyResourceProgress; integrity: string } => {
     const snapshot = snapshotResourceMetrics(songsSoFar);
     const pool = rendererPool?.resourceSummary();
     const warnings = resourceWarnings(snapshot);
@@ -2168,6 +2184,7 @@ export async function generateAutoTags(
       );
     }
     return {
+      integrity: formatFeatureIntegrity(integrityTally),
       resources: {
         rssBytes: snapshot.rssBytes,
         heapUsedBytes: snapshot.heapUsedBytes,
@@ -2578,6 +2595,30 @@ export async function generateAutoTags(
         const rec = intermediateBuffer.get(nextIntermediateIndex);
         if (!rec) return;
         intermediateBuffer.delete(nextIntermediateIndex);
+
+        // Asserted as records are produced, not after the run. A systematically wrong
+        // corpus is caught in the first minute instead of after hours of rendering, and
+        // the wrong data never reaches an export.
+        const integrityViolations = recordFeatureIntegrity(
+          integrityTally,
+          `${rec.sid_path}#${rec.song_index ?? 1}`,
+          rec.features,
+        );
+        if (integrityViolations.length > 0) {
+          classifyLogger.warn(
+            `[feature-integrity] ${rec.sid_path}#${rec.song_index ?? 1}: `
+            + integrityViolations.map((violation) => violation.detail).join("; "),
+          );
+        }
+        const integrityBreach = featureIntegrityBreach(integrityTally);
+        if (integrityBreach) {
+          throw new Error(
+            `Classification aborted by the feature-integrity check: ${integrityBreach}. `
+            + "This indicates a defect producing internally inconsistent records rather than "
+            + "difficult individual tunes; continuing would spend hours producing a corpus "
+            + "that has to be discarded.",
+          );
+        }
 
         builder.add(rec.features);
         await appendCanonicalJsonLines(featuresJsonlFile, [rec as unknown as JsonValue], {
