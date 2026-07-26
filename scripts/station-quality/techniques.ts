@@ -201,6 +201,53 @@ export function rankGaussian(tracks: Track[]): Float64Array[] {
 }
 
 /**
+ * Rank-UNIFORM: the same rank transform, mapped to [0, 1] instead of to a normal
+ * quantile.
+ *
+ * Exists for a blunt engineering reason. Rank-Gaussian centres every dimension on
+ * zero, so cosine similarity over the result spans [-1, 1] with unrelated tracks
+ * near 0. The rest of the product is calibrated for cosine over NON-NEGATIVE
+ * vectors, where "similar" means roughly 0.9 and up: the adventure-radius model
+ * applies an absolute minimum-similarity threshold, and the tiny profile quantises
+ * each edge similarity into one byte. Centring the vectors silently invalidates
+ * every one of those absolute numbers — measured effect, a station asked for 20
+ * tracks returned 14, because most candidates no longer cleared the threshold.
+ *
+ * Keeping the values in [0, 1] preserves the similarity scale the downstream
+ * thresholds were tuned against, so the representation can change without
+ * re-deriving the entire station model. Whether it costs retrieval quality is a
+ * question for measurement, not for taste.
+ *
+ * Ties take the mean of their quantile positions, for the same reason as
+ * rankGaussian: consecutive ranks for tied values would leak corpus order.
+ */
+export function rankUniform(tracks: Track[]): Float64Array[] {
+  const n = tracks.length;
+  const d = tracks[0]!.vector.length;
+  const out = tracks.map(() => new Float64Array(d));
+  const order = new Int32Array(n);
+  const column = new Float64Array(n);
+  for (let i = 0; i < d; i++) {
+    for (let j = 0; j < n; j++) {
+      order[j] = j;
+      column[j] = tracks[j]!.vector[i]!;
+    }
+    order.sort((x, y) => column[x]! - column[y]! || x - y);
+    let start = 0;
+    while (start < n) {
+      let end = start;
+      while (end + 1 < n && column[order[end + 1]!]! === column[order[start]!]!) end++;
+      let sum = 0;
+      for (let rank = start; rank <= end; rank++) sum += (rank + 0.5) / n;
+      const value = sum / (end - start + 1);
+      for (let rank = start; rank <= end; rank++) out[order[rank]!]![i] = value;
+      start = end + 1;
+    }
+  }
+  return out;
+}
+
+/**
  * PCA whitening. Decorrelates the dimensions and equalises their variance, so no
  * group of correlated features silently dominates the distance.
  *

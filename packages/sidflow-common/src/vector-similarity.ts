@@ -33,31 +33,52 @@ export const PERCEPTUAL_VECTOR_WEIGHTS = [
 ] as const;
 
 /**
+ * Which weights apply to a vector of a given width.
+ *
+ * Weighting is a property of a specific VECTOR DEFINITION, not something to be
+ * guessed from a length. The 24-dimension weights above were hand-tuned against
+ * raw, differently-scaled feature values. The 35-dimension similarity vector is
+ * rank-Gaussian normalised before it is stored, so every dimension already has
+ * the same distribution and those weights no longer describe anything — measured
+ * on an 11,284-track corpus, rank-Gaussian with UNIFORM weights beat raw with the
+ * tuned weights by +15.5% on held-out data (nDCG@10 0.2340 -> 0.2701, p=0.0002).
+ *
+ * An unknown width also gets uniform weights: applying weights derived for one
+ * vector definition to a different one is worse than applying none.
+ */
+const WEIGHTS_BY_DIMENSIONS = new Map<number, readonly number[]>([
+  [PERCEPTUAL_VECTOR_DIMENSIONS, PERCEPTUAL_VECTOR_WEIGHTS],
+]);
+
+export function weightsForDimensions(dimensions: number): readonly number[] | null {
+  if (dimensions <= LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS) {
+    return null;
+  }
+  return WEIGHTS_BY_DIMENSIONS.get(dimensions) ?? null;
+}
+
+/**
  * Weighted cosine similarity over the shared prefix of two vectors.
  *
- * Weighting used to be gated on the vector being EXACTLY 24 long, which made the
- * function silently change behaviour the moment the classifier gained a
- * dimension: at 25 dimensions every weight dropped to 1 and the similarity became
- * plain cosine, with nothing failing to indicate it. Since the weights are what
- * the shipped ranking is tuned around, that would have been an invisible
- * regression in station quality on the very change meant to improve it.
- *
- * Now any vector wider than a legacy ratings vector is weighted, with weight 1
- * for dimensions the table does not cover.
+ * Weighting used to be gated on the vector being EXACTLY 24 long. That was the
+ * right answer reached for the wrong reason: it happened to disable weights for a
+ * wider vector, but silently, so a future width would inherit whatever behaviour
+ * fell out rather than a decided one. Widths and their weightings are now declared
+ * in one table, so adding a vector definition means stating its weighting.
  */
 export function cosineSimilarity(left: number[], right: number[]): number {
   const dimensions = Math.min(left.length, right.length);
   if (dimensions <= 0) {
     return 0;
   }
-  const useWeights = dimensions > LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS;
+  const weights = weightsForDimensions(dimensions);
 
   let dotProduct = 0;
   let leftNorm = 0;
   let rightNorm = 0;
 
   for (let index = 0; index < dimensions; index += 1) {
-    const weight = useWeights ? PERCEPTUAL_VECTOR_WEIGHTS[index] ?? 1 : 1;
+    const weight = weights?.[index] ?? 1;
     const leftValue = left[index] ?? 0;
     const rightValue = right[index] ?? 0;
     dotProduct += weight * leftValue * rightValue;

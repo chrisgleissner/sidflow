@@ -130,8 +130,36 @@ describe("similarity export vector dimensionality", () => {
         for (const row of rows) {
           const stored = JSON.parse(row.vector_json) as number[];
           expect(stored.length).toBe(dimensions);
-          // Not merely the right length -- the right values, untruncated.
-          expect(stored).toEqual(built.vectors.get(row.sid_path)!);
+          for (const value of stored) expect(Number.isFinite(value)).toBe(true);
+        }
+
+        // The export rank-Gaussian normalises before storing, so the values are
+        // not the input values -- but the transform is per-dimension monotone, so
+        // the ORDER of tracks along every dimension must be untouched. That is
+        // the property a similarity metric actually depends on, and checking it
+        // catches a transform applied across the wrong axis, which comparing
+        // lengths alone would not.
+        expect(built.full.manifest.vector_normalisation).toBe("rank-uniform");
+        // Non-negative, so cosine stays in [0,1] and the product's absolute
+        // similarity thresholds keep the meaning they were tuned with.
+        for (const row of rows) {
+          for (const value of JSON.parse(row.vector_json) as number[]) {
+            expect(value).toBeGreaterThanOrEqual(0);
+            expect(value).toBeLessThanOrEqual(1);
+          }
+        }
+        for (let dimension = 0; dimension < dimensions; dimension += 1) {
+          const byInput = [...built.vectors.entries()]
+            .sort((left, right) => left[1][dimension]! - right[1][dimension]!)
+            .map(([sidPath]) => sidPath);
+          const storedByPath = new Map(
+            rows.map((row) => [row.sid_path, JSON.parse(row.vector_json) as number[]]),
+          );
+          for (let i = 1; i < byInput.length; i += 1) {
+            const previous = storedByPath.get(byInput[i - 1]!)![dimension]!;
+            const current = storedByPath.get(byInput[i]!)![dimension]!;
+            expect(current).toBeGreaterThanOrEqual(previous);
+          }
         }
       } finally {
         database.close();

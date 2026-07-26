@@ -14,6 +14,7 @@ import {
   LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS,
   PERCEPTUAL_VECTOR_WEIGHTS,
   cosineSimilarity,
+  weightsForDimensions,
 } from "../src/index.js";
 
 /** Weighted cosine written straight from the definition, for cross-checking. */
@@ -54,28 +55,26 @@ describe("cosineSimilarity", () => {
     expect(cosineSimilarity(a, b)).toBeCloseTo(reference(a, b, [...PERCEPTUAL_VECTOR_WEIGHTS]), 12);
   });
 
-  test("keeps weighting a wider vector instead of falling back to plain cosine", () => {
-    // The actual regression: at 25+ dimensions the old gate silently disabled
-    // every weight.
-    for (const width of [25, 40, 54]) {
+  test("weights a width with no declared weighting uniformly", () => {
+    // Applying weights derived for one vector definition to a different one is
+    // worse than applying none: the 35-dimension vector is rank-Gaussian
+    // normalised before storage, so weights tuned for raw values describe nothing.
+    for (const width of [25, 35, 40, 54]) {
+      expect(weightsForDimensions(width)).toBeNull();
       const a = makeVector(width, 11);
       const b = makeVector(width, 12);
-      const weighted = cosineSimilarity(a, b);
-      expect(weighted).toBeCloseTo(reference(a, b, [...PERCEPTUAL_VECTOR_WEIGHTS]), 12);
+      expect(cosineSimilarity(a, b)).toBeCloseTo(reference(a, b, []), 12);
 
-      // And it must genuinely differ from unweighted cosine, or the assertion
-      // above would be vacuous.
-      const unweighted = reference(a, b, []);
-      expect(Math.abs(weighted - unweighted)).toBeGreaterThan(1e-9);
+      // And that must genuinely differ from the 24-dimension weighting, or the
+      // assertion above would be vacuous.
+      expect(Math.abs(cosineSimilarity(a, b) - reference(a, b, [...PERCEPTUAL_VECTOR_WEIGHTS]))).toBeGreaterThan(1e-9);
     }
   });
 
-  test("dimensions past the weight table are weighted 1", () => {
-    const width = PERCEPTUAL_VECTOR_WEIGHTS.length + 6;
-    const a = makeVector(width, 21);
-    const b = makeVector(width, 22);
-    const explicit = [...PERCEPTUAL_VECTOR_WEIGHTS, 1, 1, 1, 1, 1, 1];
-    expect(cosineSimilarity(a, b)).toBeCloseTo(reference(a, b, explicit), 12);
+  test("declares weighting per width in one table", () => {
+    expect(weightsForDimensions(24)).toEqual(PERCEPTUAL_VECTOR_WEIGHTS);
+    expect(weightsForDimensions(4)).toBeNull();
+    expect(weightsForDimensions(0)).toBeNull();
   });
 
   test("leaves the legacy ratings vector unweighted", () => {
@@ -89,8 +88,9 @@ describe("cosineSimilarity", () => {
 
   test("compares only the shared prefix when widths differ", () => {
     const a = makeVector(30, 31);
-    const b = a.slice(0, 12);
-    expect(cosineSimilarity(a, b)).toBeCloseTo(reference(a.slice(0, 12), b, [...PERCEPTUAL_VECTOR_WEIGHTS]), 12);
+    const b = a.slice(0, 24);
+    // The shared prefix is 24 wide, so the 24-dimension weighting applies.
+    expect(cosineSimilarity(a, b)).toBeCloseTo(reference(a.slice(0, 24), b, [...PERCEPTUAL_VECTOR_WEIGHTS]), 12);
   });
 
   test("returns 0 rather than NaN for empty or zero vectors", () => {

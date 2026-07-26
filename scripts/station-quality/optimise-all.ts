@@ -53,6 +53,7 @@ import {
   mutualProximity,
   queryExpansion,
   rankGaussian,
+  rankUniform,
   raw,
   subsampleByGroup,
   treeComposition,
@@ -148,6 +149,11 @@ const REPRESENTATIONS: Representation[] = [
   { name: "rank-gaussian + euclidean", build: rankGaussian, metric: euclidean },
   { name: "whitened + euclidean", build: whiten, metric: euclidean },
   { name: "rank-gaussian + cosine", build: rankGaussian, metric: cosineDistance },
+  // Keeps values in [0,1], so the product's absolute similarity thresholds stay
+  // meaningful. Included because a representation that cannot be deployed without
+  // re-deriving the station model is not obviously the better choice.
+  { name: "rank-uniform + cosine", build: rankUniform, metric: cosineDistance },
+  { name: "rank-uniform + euclidean", build: rankUniform, metric: euclidean },
 ];
 
 const RERANKERS: Reranker[] = [
@@ -388,7 +394,7 @@ process.stdout.write(`\n=== phase D: learned diagonal weights (fitted on TRAIN o
 const learnedBySpec = new Map<string, number[]>();
 for (const target of supervisedTargets) {
   const split = splitOf(tracksBySpec.get(target.combination.spec.name)!);
-  const weights = learnWeights(split.train, target.combination.representation.build, K);
+  const weights = learnWeights(split.train, target.combination.representation.build, K, [0.5, 0.25, 0.125]);
   learnedBySpec.set(target.combination.spec.name, weights);
   process.stdout.write(
     `  ${target.combination.spec.name}: fitted ${weights.length} weights on ${split.train.length} train tracks, ` +
@@ -428,7 +434,7 @@ process.stdout.write(`\n=== phase E: supervised metric, fitted on TRAIN only ===
  * inverse would amplify whichever directions are underdetermined.
  */
 for (const target of supervisedTargets) {
-  for (const shrinkage of [0.2, 0.5]) {
+  for (const shrinkage of [0.1, 0.2, 0.5]) {
     const map = fitSupervisedMap(target.combination.spec, target.combination.representation, shrinkage);
     attempt("E", `shrink within-composer variation (shrinkage ${shrinkage})`, {
       spec: target.combination.spec,

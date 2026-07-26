@@ -18,6 +18,7 @@ import {
   type DeterministicRatingModel,
 } from "../../packages/sidflow-classify/src/deterministic-ratings.js";
 import type { FeatureVector } from "../../packages/sidflow-classify/src/index.js";
+import { SIMILARITY_TONAL_DIMENSIONS } from "../../packages/sidflow-classify/src/similarity-vector.js";
 
 /**
  * Names for the 24 dimensions buildPerceptualVector emits, in its own order.
@@ -128,6 +129,29 @@ export const TONAL_CORE_NAMES = [
   "sidPolyphonyMean",
 ] as const;
 
+/**
+ * The tonal dimensions that individually separate composers, selected by
+ * univariate AUC on TRAIN ONLY at a 0.57 threshold — 11 of 31.
+ *
+ * Selected rather than hand-curated, because the hand-curated set was wrong. It
+ * omitted sidNoteDurationMean (AUC 0.634, third strongest of all) and included
+ * sidKeyMinorness, which scores 0.507 — indistinguishable from chance.
+ *
+ * That last point is the most interesting musical finding here: major-versus-minor
+ * mode carries essentially NO information about who wrote a tune. Neither do the
+ * specific chord-colour weights (major third 0.515, minor third 0.521, tritone
+ * 0.514). What does identify a composer is TEXTURE — how many voices sound at once
+ * (0.643), how long notes are held (0.634), how fast they arrive (0.623) — and
+ * whether there is pitched content at all (0.607). Composers are recognisable by
+ * their arrangement habits far more than by their harmonic palette.
+ */
+/**
+ * Imported from the product rather than duplicated here. The experiment and the
+ * shipped vector must be the same list, or a future edit to one silently
+ * invalidates every measurement made against the other.
+ */
+export const TONAL_SELECTED_NAMES = SIMILARITY_TONAL_DIMENSIONS;
+
 const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
 
 /**
@@ -237,6 +261,12 @@ export function buildVectorSpecs(): VectorSpec[] {
       "does key, mode and melodic shape add anything the spectral/register vector lacks?",
       SHIPPED_DIMENSION_NAMES,
       TONAL_CORE_NAMES,
+    ),
+    makeSpec(
+      "shipped + tonal selected",
+      "only the tonal dimensions that individually separate composers on train (11 of 31)",
+      SHIPPED_DIMENSION_NAMES,
+      TONAL_SELECTED_NAMES,
     ),
     makeSpec(
       "shipped + tonal all",

@@ -67,6 +67,7 @@ import {
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, isSkippableSidError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
+import { buildSimilarityVector } from "./similarity-vector.js";
 import {
   DeterministicRatingModelBuilder,
   MIN_RECORDS_FOR_RATING_QUANTILES,
@@ -3164,7 +3165,7 @@ export async function generateAutoTags(
         classified_at: nowIso,
         render_engine: rec.render_engine,
         features: rec.features as unknown as AudioFeatures,
-        vector: buildPerceptualVector(ratingModel, rec.features),
+        vector: buildSimilarityVector(ratingModel, rec.features),
       };
       if (rec.song_index) {
         classificationRecord.song_index = rec.song_index;

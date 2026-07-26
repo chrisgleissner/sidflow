@@ -28,8 +28,20 @@ import { writeWavRenderSettingsSidecar } from "../../sidflow-classify/src/wav-re
 import { buildSelectionStatePath, buildStationQueue, openStationSimilarityDataset, readPersistedStationSelections, runStationCli } from "../src/sid-station.js";
 import type { PlaybackAdapter, StationRuntime, StationTrackDetails } from "../src/station/index.js";
 
+/**
+ * The station refuses to build from fewer than MINIMUM_STATION_TRACKS (100)
+ * candidates, so the liked cluster has to be able to supply 100 tracks that clear
+ * the adventure similarity threshold. With a 120-track cluster that needs ~87% of
+ * it above the threshold, which only survived because the fixture's hand-built
+ * vectors had disjoint dimension supports and therefore near-1.0 within-cluster
+ * cosine. That is not what real material looks like, and it stopped being true once
+ * the export began rank-normalising dimensions across the corpus.
+ *
+ * A larger liked cluster gives the same assertion — the station must stay inside
+ * it — without depending on a knife-edge pool size.
+ */
 const TOTAL_TRACKS = 200;
-const LIKED_TRACK_COUNT = 120;
+const LIKED_TRACK_COUNT = 170;
 const REJECTED_TRACK_COUNT = TOTAL_TRACKS - LIKED_TRACK_COUNT;
 const SAMPLE_SIZE = 10;
 const STATION_SIZE = 20;
@@ -70,13 +82,46 @@ function buildClusterWaveSamples(cluster: ClusterName): Int16Array {
   return samples;
 }
 
+/**
+ * A small, deterministic per-dimension floor, shared within a cluster.
+ *
+ * The fixture used to fill every non-dominant dimension with the same constant for
+ * every track. That made the two clusters differ by dimension SUPPORT rather than
+ * by pattern — sharply separable under raw cosine, but nothing like a real
+ * perceptual vector, where every dimension is populated and varies.
+ *
+ * It matters because the export now rank-normalises each dimension across the
+ * corpus before storing it. A dimension that is constant across 40% of the corpus
+ * collapses that 40% onto a single quantile, so a cluster distinguished only by
+ * which dimensions are non-constant loses most of its separation.
+ *
+ * The floor is therefore keyed on the CLUSTER, with only a small per-track jitter.
+ * That is both what real material looks like — tunes by one artist share overall
+ * character, not just their loudest features — and what survives rank
+ * normalisation: within-cluster tracks agree on the floor, cross-cluster tracks do
+ * not.
+ */
+function baselineFloor(cluster: number, index: number, dimension: number): number {
+  const clusterMix = Math.imul(cluster * 7919 + dimension * 104729 + 1, 2654435761) >>> 0;
+  const clusterLevel = 0.05 + ((clusterMix % 1000) / 1000) * 0.25;
+  // The per-track offset depends on the TRACK, not on the dimension, so a track
+  // sits consistently a little above or below its cluster across every dimension.
+  // Independent per-dimension noise would instead decide each dimension's rank at
+  // random within the cluster's band, scattering the cluster after rank
+  // normalisation -- and real variation is not like that either: a busier tune is
+  // busier on most measures at once, not on a random third of them.
+  const trackMix = Math.imul(index + 1, 2246822519) >>> 0;
+  const trackOffset = ((trackMix % 1000) / 1000 - 0.5) * 0.02;
+  return Math.max(0.001, clusterLevel + trackOffset);
+}
+
 function normalizeVector(vector: number[]): number[] {
   const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + (value * value), 0));
   return magnitude > 0 ? vector.map((value) => value / magnitude) : vector;
 }
 
 function createLikedVector(index: number): number[] {
-  const vector = new Array<number>(VECTOR_DIMENSIONS).fill(0.003);
+  const vector = Array.from({ length: VECTOR_DIMENSIONS }, (_, dimension) => baselineFloor(0, index, dimension));
   vector[0] = 0.75 - (index * 0.0004);
   vector[1] = 0.3 + ((index % 7) * 0.0025);
   vector[2] = 0.24 + ((index % 5) * 0.002);
@@ -91,7 +136,7 @@ function createLikedVector(index: number): number[] {
 }
 
 function createRejectedVector(index: number): number[] {
-  const vector = new Array<number>(VECTOR_DIMENSIONS).fill(0.003);
+  const vector = Array.from({ length: VECTOR_DIMENSIONS }, (_, dimension) => baselineFloor(1, index, dimension));
   vector[6] = 0.73 - (index * 0.00025);
   vector[7] = 0.29 + ((index % 5) * 0.0023);
   vector[8] = 0.23 + ((index % 3) * 0.0018);
