@@ -1,12 +1,20 @@
 /**
  * Which songs a previous, unfinished run of this corpus already extracted.
  *
- * Classification over a full corpus does not reliably reach the end: the renderer
- * replaces a worker whenever a tune fails to return inside the job timeout, each
- * replacement instantiates a fresh WASM module, and eventually instantiation fails with
- * "Out of memory" — observed at 31,626 of 87,868 HVSC tracks. Re-rendering everything to
- * recover from that is hours of wasted work, so a resume has to know what is already
- * done.
+ * Classification over a full corpus does not reliably reach the end. Observed three
+ * times on one HVSC pass, at 31,626, 50,221 and 55,625 of 87,868 tracks: a fresh WASM
+ * instantiation fails with `RangeError: Out of memory`, then Bun segfaults. Peak RSS was
+ * 3.5 GB on a 62 GB machine, so the host is not short of memory.
+ *
+ * The mechanism is NOT established. The obvious suspect — the render pool's job-timeout
+ * safety net terminating and replacing workers, each replacement instantiating another
+ * module — is ruled out by the logs: zero job timeouts and zero worker exits were
+ * recorded across a pass that crashed three times. What is established is that it
+ * happens, that it happens sooner with more threads, and that it happens later in a pass
+ * rather than at a fixed track count.
+ *
+ * Whatever the cause, re-rendering 87,868 tracks to recover from it is hours of wasted
+ * work, so a resume has to know what is already done.
  *
  * The auto-tags cannot answer that. They are written when a run FINISHES, so a run that
  * dies partway leaves none at all: the pass above had written 144 MB of feature records
