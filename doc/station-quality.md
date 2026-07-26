@@ -34,13 +34,15 @@ The short version:
   used 3 of its 5 levels with up to 94% of the collection on one level. It now
   uses all five at 20% each. This is a construction, not a tuning result.
 - **The biggest similarity win is not an algorithm change.** The published export
-  carries 4-dimensional vectors and scores nDCG@10 0.0048; the 24-dimensional
-  vector already in the code scores 0.1803, roughly **38x higher**. Regenerating
-  the exports dwarfs everything else in this document.
+  carries 4-dimensional vectors, which score nDCG@10 **0.0089** on unseen tracks against
+  **0.5672** for the shipped configuration — roughly **64x**. A defect had been
+  discarding the richer vector on the way into the export, so regenerating the exports
+  dwarfs everything else in this document.
 - **The pre-registered diversity guardrail was self-defeating** and is reported as
   such rather than quietly replaced.
-- **Seven measurement and deployment defects were fixed** before any result was believed. Several
-  fabricated signal from nothing.
+- **Eleven measurement, product and pipeline defects were fixed** before any result was
+  believed. Several fabricated signal from nothing; three were in the README's own
+  documented workflow, found by running it rather than trusting it.
 
 ---
 
