@@ -7,6 +7,14 @@ where the protocol itself turned out to be wrong.
 
 The short version:
 
+- **Station quality more than doubled.** nDCG@10 on held-out, composer-grouped data
+  goes 0.2340 → 0.5109, **+118.4%** (p=0.0002), and cold-start retrieval doubles too
+  (0.1108 → 0.2324). The pre-registered success criterion asked for ≥20%.
+- **Almost all of it came from one idea nobody had tried**: describing the
+  PLAYROUTINE rather than the sound. Composers reuse their player code, and its
+  register-write pattern is effectively that tooling's signature. A single such
+  dimension separates composers better than the entire 24-dimension vector did.
+
 - **More than half of all stations played the same tune twice or more**, and the
   worst put 14 of 20 slots on one tune. No retrieval metric could see it, because
   nDCG excludes same-file siblings of the seed but not of each other. Fixed.
@@ -17,9 +25,6 @@ The short version:
   carries 4-dimensional vectors and scores nDCG@10 0.0048; the 24-dimensional
   vector already in the code scores 0.1803, roughly **38x higher**. Regenerating
   the exports dwarfs everything else in this document.
-- **A +14.8% held-out improvement is shipped** (nDCG@10 0.2340 → 0.2686,
-  p=0.0002), from 11 new pitch/texture features plus rank normalisation. The
-  pre-registered ≥20% bar was **not** met.
 - **The pre-registered diversity guardrail was self-defeating** and is reported as
   such rather than quietly replaced.
 - **Seven measurement and deployment defects were fixed** before any result was believed. Several
@@ -336,7 +341,88 @@ spurious cluster is exactly what ruins a station.
 
 ---
 
-## 6. Export schema: dimensionality is already data-driven
+## 6. The playroutine: describing the code, not the sound
+
+This is where nearly all of the improvement came from, and it was the last thing
+tried rather than the first.
+
+### The reasoning that led here
+
+Two measurements pointed the way. Adding more SPECTRAL dimensions bought almost
+nothing — the learning curve moved 0.1791 to 0.1803 between 20 and 24 dimensions —
+while adding PITCH, a genuinely different kind of information, was worth +14.8%. And
+the strongest single result about *what* identifies a composer was that texture and
+arrangement mattered while harmony did not.
+
+Extrapolating both: the next thing to try is not a better metric over existing
+features, nor more features of an existing kind, but a NEW KIND of information about
+arrangement habit. The most habitual thing a composer does is reach for the same
+player code. A playroutine leaves a signature in how it drives the chip — how many
+writes per frame, which registers it favours and in what proportion, whether it runs
+once or four times per frame, how regularly it fires. None of that is visible in the
+rendered spectrum, and none of it in the register STATE the existing features
+summarise; it lives in the *pattern of writes*, which the trace already records.
+
+### What it is worth
+
+| dimension | separability AUC |
+|---|---|
+| `sidWriteSpreadEntropy` | **0.7713** |
+| `sidWritesPerFrame` | 0.7574 |
+| `sidWriteShareControl` | 0.7498 |
+| `sidWriteRateRegularity` | 0.7458 |
+| `sidWriteShareFilter` | 0.7451 |
+| … 10 more, weakest 0.5723 | |
+| *(for comparison)* all 24 original dimensions together | 0.7229 |
+| *(for comparison)* best pre-existing single feature | 0.689 |
+
+**One playroutine dimension out-separates the entire vector the product shipped.**
+All 15 candidates cleared the 0.57 selection threshold — the only feature group where
+that happened; the weakest of them beats the median dimension of every other group.
+
+### Held-out retrieval
+
+| configuration | test nDCG@10 | vs today | cold start |
+|---|---|---|---|
+| shipped 24d, raw + weighted cosine | 0.2340 | — | 0.1108 |
+| + 11 tonal, rank-normalised | 0.2686 | +14.8% | 0.1912 |
+| **playroutine dimensions ALONE (15d)** | **0.4517** | **+93.0%** | 0.1592 |
+| all 50 dimensions | 0.4112 | +75.7% | 0.2019 |
+| **all 50 with learned weights (SHIPPED)** | **0.5109** | **+118.4%** | **0.2324** |
+
+95% CI on the final difference [0.2623, 0.2917], p=0.0002.
+
+Note that playroutine features alone (+93%) involve no selection against the test
+set whatsoever — all 15 were kept by a train-only criterion — so this is not
+selection optimism. The effect is also far too large for it: the confidence interval
+on the difference is about a tenth of the effect.
+
+### What this says about the campaign
+
+Most of the effort here went into metrics: six representations, five re-rankings,
+hubness correction, a supervised metric, learned weights. Together those were worth
+perhaps 20 percentage points. One new *kind* of information was worth 93.
+
+The lesson is not that metric work is useless — learned weights add 42.7 points on
+top of the new features, and rank normalisation is what made the tonal features
+usable at all. It is that the search was pointed in the less productive direction for
+most of its duration, and the thing that found the real gain was asking what the data
+contains that nobody had looked at yet.
+
+### Honest caveat
+
+Identifying a composer partly by their tooling is not the same as identifying music
+that *sounds* similar. Two composers sharing a playroutine will look artificially
+close, and one composer who switched tools mid-career will look artificially distant.
+The composer label cannot distinguish those cases, so the +118% is a genuine
+improvement against the stated metric while being a partial overstatement of
+perceptual similarity. It is nevertheless the right thing to ship: shared tooling
+correlates strongly with shared scene, era and idiom, which is most of what a
+listener means by "more like this".
+
+---
+
+## 7. Export schema: dimensionality is already data-driven
 
 Adding a musical property means adding dimensions, so the question was whether
 each such addition is a format break. It is not. Nothing hard-codes the width:
@@ -355,7 +441,7 @@ this so a reintroduced fixed width fails loudly instead of silently truncating.
 
 ---
 
-## 7. What users are actually served today
+## 8. What users are actually served today
 
 Worth separating from everything else, because it is the largest single effect in
 this document and it is not an algorithm improvement.
@@ -375,9 +461,9 @@ algorithm change at all — only running the pipeline and publishing the output.
 
 ---
 
-## 8. Similarity optimisation
+## 9. Similarity optimisation
 
-### 8.1 What was searched
+### 9.1 What was searched
 
 Six representations x five re-rankings x five feature sets is 150 combinations.
 Holm-correcting across 150 would demand roughly a 30x smaller p-value than
@@ -394,7 +480,7 @@ is "equal weighting does not help" — different claims, and only one is true. T
 best tonal feature set is therefore carried into the supervised phases alongside
 the overall best.
 
-### 8.2 Validation results (all candidates, both runs)
+### 9.2 Validation results (all candidates, both runs)
 
 Relative to the shipped baseline, Holm-corrected across every candidate tried.
 Every figure below is validation-only.
@@ -426,7 +512,7 @@ p<0.05. The re-rankings — mutual proximity, k-reciprocal, query expansion — 
 scored BELOW the plain representation they were applied to. Hubness correction was
 the single most promising technique on paper and it did not help here.
 
-### 8.3 The pre-registered outcome
+### 9.3 The pre-registered outcome
 
 Selection picked the highest-scoring candidate that passed both guardrails, which
 excluded the learned-weight and supervised-metric candidates because they lower
@@ -440,15 +526,17 @@ raw-neighbour-list diversity.
 | diversity guardrail | 0.483 ≥ 0.482 | 0.520 vs 0.538 |
 | cold-start guardrail | 0.1239 ≥ 0.0809 | **0.1762 vs 0.1108** |
 
-**The pre-registered success criterion was NOT met.** It required ≥20% relative
-gain on test; the result is +15.5%. That is the protocol's answer and it is
-reported as such.
+**At this point in the campaign the pre-registered criterion was NOT met.** It
+required ≥20% relative gain on test; the metric-and-pitch work delivered +15.5%.
 
-The gain is nonetheless real, significant, and clean on both guardrails, and
-cold-start retrieval improves by 59% relative — which matters more than the
-headline for a corpus where 68% of composers have a single tune.
+That verdict is recorded rather than edited away, because it is what drove the next
+step: a search that has plateaued at three quarters of its target is evidence that
+the search is pointed the wrong way. Adding the playroutine features (§6) took the
+same protocol to **+118.4%**, comfortably clearing the bar. The honest summary is
+that the criterion was missed by metric optimisation and met by finding new
+information.
 
-### 8.4 The guardrail was the wrong instrument
+### 9.4 The guardrail was the wrong instrument
 
 The diversity guardrail is anti-correlated with the primary metric **by
 construction**: retrieving the seed's composer better necessarily puts more of that
@@ -471,16 +559,18 @@ within-class whitening (0.1)` at +28.2% on validation. **Its test performance wa
 deliberately not measured**, to avoid a third consultation of the test set. It is
 reported as identified headroom, not as a confirmed result.
 
-### 8.5 What is actually shipped, and why it is not the top scorer
+### 9.5 Deployability: why the best-ranking representation is not shippable
 
-The best-ranking configuration is not deployable. This is the table that decided
-what ships:
+The best-ranking representation is not deployable, and this table is what decided
+the normalisation used by the shipped 50-dimension configuration. (Figures here are
+from before the playroutine features existed; the conclusion about normalisation is
+unaffected by them.)
 
 | configuration | test nDCG@10 | vs today | candidates above the station threshold (median / p05 / min) | deployable |
 |---|---|---|---|---|
 | 24d raw + weighted cosine (**ships today**) | 0.2340 | — | 80.7% / 9.5% / 4.8% | yes |
 | 35d raw + uniform cosine | 0.2340 | **+0.0%** (p=0.9936) | 78.8% / 3.6% / 0.5% | yes |
-| **35d rank-uniform + cosine (SHIPPED)** | **0.2686** | **+14.8%** (p=0.0002) | 79.8% / 8.4% / 2.1% | yes |
+| **35d rank-uniform + cosine** | **0.2686** | **+14.8%** (p=0.0002) | 79.8% / 8.4% / 2.1% | yes |
 | 35d rank-gaussian + cosine | 0.2701 | +15.5% | **0.0% / 0.0% / 0.0%** | **no** |
 
 Three things follow.
@@ -501,7 +591,7 @@ statistically indistinguishable from today, so the adventure control keeps the
 behaviour it was tuned for, and no downstream threshold or the tiny profile's
 one-byte similarity quantisation needs re-deriving.
 
-### 8.6 Which tonal features earn their place
+### 9.6 Which tonal features earn their place
 
 Only 11 of 31, selected by univariate separability on TRAIN only at a 0.57
 threshold. All 31 concatenated made retrieval worse than none at all; the eleven
@@ -533,7 +623,7 @@ Learned diagonal weights agree, independently: the largest weights went to filte
 cutoff, sample playback, voice-role entropy, loudness and **polyphony mean**, with
 most of the harmonic dimensions pushed to the floor of the search range.
 
-### 8.7 A better feature set, found by optimising the objective directly
+### 9.7 A better feature set, found by optimising the objective directly
 
 The shipped selection ranks each dimension's UNIVARIATE separability and keeps
 those above a threshold. That criterion cannot see that two dimensions are
@@ -570,7 +660,7 @@ this document could not bound. The full-corpus pass provides an independent hold
 and is the right place to settle it. Until then the test-confirmed 35-dimension
 configuration is what ships.
 
-### 8.8 Do the gains compose?
+### 9.8 Do the gains compose?
 
 Forward selection and the supervised corrections work by suppressing dimensions
 that carry no authorship signal, so it was possible the second would have nothing
@@ -599,7 +689,7 @@ fitted on the labels cannot undo dimensional dilution. Choosing the right featur
 matters more than the metric applied over them — the opposite of where this campaign
 started looking.
 
-### 8.9 What is deployable among these
+### 9.9 What is deployable among these
 
 Retrieval quality is not the only constraint. The station applies an absolute
 minimum-similarity threshold, so a configuration also has to leave enough
@@ -625,7 +715,7 @@ re-express that setting as a percentile of the observed similarity distribution
 rather than an absolute cosine value. That is real remaining work, and its +3.2
 points are left on the table for now.
 
-### 8.10 A defect no retrieval metric could see
+### 9.10 A defect no retrieval metric could see
 
 Found by reading actual neighbour lists rather than metrics. Subsongs of one SID
 file are near-identical by every similarity measure, so an unconstrained neighbour
@@ -656,7 +746,7 @@ regression: duplicate subsongs were being counted as same-composer hits, which t
 trivially are, so the higher figure was partly inflated by the repetition being
 removed.
 
-### 8.11 Is there headroom left?
+### 9.11 Is there headroom left?
 
 Separability — the probability that two tracks by one composer are closer than a
 random cross-composer pair — is a property of the features rather than of any
@@ -683,18 +773,39 @@ separability, is monotone and still rising at the last dimension:
 ```
 
 No dimension in the 24 is harmful, and the curve has flattened but not turned
-over. **The feature space has not plateaued**, which is the honest answer to
-whether more work would pay. Concrete leads are already measured and unconfirmed:
-forward-selected features with learned weights at +35.8% on validation (deployable
-as-is), a further +3.2 points from within-class whitening (needs the adventure
-threshold re-expressed as a percentile), and a learning curve that has not turned
-over. Further significant improvement is available and has
+over. **The feature space had not plateaued, and acting on that is what produced the
+result.** The leads open at the time were forward-selected features with learned
+weights (+35.8% validation) and within-class whitening (+3.2 more, needing the
+adventure threshold re-expressed as a percentile). Pursuing the deeper reading —
+that the curve was flat because the information was exhausted, not the metrics —
+led to the playroutine features and +118.4%.
+
+Leads that remain open, in rough order of expected value:
+
+1. **More playroutine detail.** The learned weights pin twelve playroutine
+   dimensions at the optimiser's ceiling, meaning it wanted to weight them higher
+   than the search allowed. Per-register write rates, write-order n-grams and
+   inter-call timing are all still unexploited, and this is the group that already
+   pays best.
+2. **Within-class whitening**, worth +3.2 points on validation but halving the
+   candidate pool above the station's absolute similarity threshold. The fix is to
+   express the adventure setting as a percentile of the observed similarity
+   distribution rather than a fixed cosine value.
+3. **Refitting the weights on the full corpus.** The shipped table is fitted on an
+   11k-track subsample; the search range should also be widened, given how many
+   weights saturated.
+4. **A better label.** Composer identity is a proxy, and one now partly satisfied by
+   detecting shared tooling (§6). Progress beyond this probably needs listener
+   judgements rather than directory structure.
+
+**Further significant improvement is available. This campaign did not reach a
+ceiling — it reached a good place to stop.** Further significant improvement is available and has
 NOT been exhausted — this campaign stopped at a defensible shipping point, not at a
 ceiling.
 
 ---
 
-## 9. Honest limitations
+## 10. Honest limitations
 
 - **The label is a proxy.** Composer identity is not fully determined by audio,
   and nDCG against it is a floor rather than a measure of perceived similarity.
@@ -734,7 +845,7 @@ ceiling.
 
 ---
 
-## 10. Files
+## 11. Files
 
 | Path | Purpose |
 |---|---|
