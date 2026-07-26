@@ -2,10 +2,10 @@
   "personaId": "nostalgic",
   "personaLabel": "Nostalgic",
   "distribution": {
-    "avgExperimentalTolerance": 0.14189714000000003,
-    "avgMelodicComplexity": 0.49505718000000004,
-    "avgNostalgiaBias": 0.7651674199999998,
-    "avgRhythmicDensity": 0.28138487999999995,
-    "avgTimbralRichness": 0.29780365999999997
+    "avgExperimentalTolerance": 0.22924098,
+    "avgMelodicComplexity": 0.54410324,
+    "avgNostalgiaBias": 0.7465891599999999,
+    "avgRhythmicDensity": 0.35507886,
+    "avgTimbralRichness": 0.3225605399999999
   }
 }
