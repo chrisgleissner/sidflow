@@ -20,7 +20,7 @@ DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
 RESUME_ATTEMPTS="40"
-CHUNK_SONGS="5000"
+CHUNK_SONGS="3000"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
 SQLITE_NEIGHBORS_FOR_TINY="25"
@@ -106,7 +106,7 @@ Options:
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
   --resume-attempts N                 Times to resume classification after a crash. Default: 40
   --chunk-songs N                     Classify in chunks of N songs, restarting the whole runtime
-                                      between chunks. 0 disables chunking. Default: 5000
+                                      between chunks. 0 disables chunking. Default: 3000
   --skip-already-classified true|false
                                       Default: true
   --delete-wav-after-classification true|false
@@ -1486,18 +1486,21 @@ classify_in_chunks() {
   local before after
   local previous_total=-1
 
-  # Double-buffered runtimes. The restart that keeps memory bounded costs about 35 seconds,
-  # and measured on a 1,000-song chunk that was 15.6% of wall clock spent with no classify
-  # process running at all. Overlapping it with the work removes that: while a chunk
-  # renders, its successor's server is already starting on the other port.
-  local active_port="${PORT}"
-  local standby_port=$(( PORT + 1 ))
-  local active_pid=""
-  local standby_pid=""
-
-  log "Double-buffered runtimes on ports ${active_port} and ${standby_port}"
-  start_local_runtime "${active_port}"
-  active_pid="${LOCAL_SERVER_PID}"
+  # One server for the whole run, and a fresh classify process per chunk.
+  #
+  # This started as a full stack restart between chunks, then as two servers double-buffered
+  # across ports so the restart could overlap the work. Both were solving a problem that does
+  # not exist. Measured over a 5,000-song chunk: the web server held 474-828 MiB and ended
+  # lower than it started, while the classify child climbed to 2,365 MiB and then died with
+  # "Out of memory". Only the child grows -- and POST /api/classify already spawns a new one
+  # for every request, so a chunk boundary is *already* a clean process.
+  #
+  # So the server is left alone. That removes the 35-second restart entirely rather than
+  # hiding it, and it removes the reason the double-buffered version broke: two Next dev
+  # servers cannot run from one directory because they share .next, so the standby never
+  # became healthy and the run died waiting for it.
+  log "Single runtime on port ${PORT}; each chunk gets a fresh classify process"
+  start_local_runtime "${PORT}"
 
   while :; do
     CURRENT_CHUNK="${chunk}"
@@ -1505,13 +1508,6 @@ classify_in_chunks() {
     local chunk_started_at
     chunk_started_at="$(date +%s)"
 
-    # Prewarm the successor now, so its startup runs concurrently with this chunk's work
-    # rather than after it.
-    spawn_local_runtime "${standby_port}"
-    standby_pid="${SPAWNED_SERVER_PID}"
-
-    PORT="${active_port}"
-    LOCAL_SERVER_PID="${active_pid}"
     start_memory_sampler
 
     # After the first chunk everything already done must be skipped rather than rebuilt.
@@ -1560,22 +1556,17 @@ PEAK
     fi
     log "Chunk ${chunk}: ${before} -> ${after} records (+${added}) in ${chunk_elapsed}s = ${rate} songs/s, threads ${THREADS:-auto}, peak RSS ${peak}Mi, failures ${failures}"
 
-    # Hand over to the prewarmed runtime, then retire the one that just worked. Waiting for
-    # health here costs nothing when the prewarm had a whole chunk to finish in.
-    wait_for_health "${standby_port}"
-    retire_runtime "${active_pid}" "${active_port}"
-    local swap_port="${active_port}"
-    active_port="${standby_port}"
-    standby_port="${swap_port}"
-    active_pid="${standby_pid}"
-    standby_pid=""
-    PORT="${active_port}"
-    LOCAL_SERVER_PID="${active_pid}"
+    # The server stays up. If the chunk killed it -- the classify child dying can take it
+    # with it -- bring it back before the next chunk rather than failing.
+    if ! curl -fsS "http://127.0.0.1:${PORT}/api/health?scope=readiness" >/dev/null 2>&1; then
+      log "Runtime did not survive chunk ${chunk}; restarting it"
+      retire_runtime "${LOCAL_SERVER_PID}" "${PORT}"
+      start_local_runtime "${PORT}"
+    fi
 
     if (( after <= before )); then
       if (( ok == 1 )); then
         log "Chunk ${chunk} classified nothing new and succeeded: the corpus is complete at ${after} records"
-        retire_runtime "${standby_pid}" "${standby_port}"
         return 0
       fi
       fail "Chunk ${chunk} failed without classifying anything new (${after} records). Not retrying: this is a fault rather than resource exhaustion. See ${CRASH_REPORT_DIR}."
