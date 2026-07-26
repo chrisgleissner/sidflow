@@ -8,10 +8,18 @@ Rebuilds how SIDFlow decides two SID tunes are alike, and regenerates the publis
 
 ### Station quality
 
-- Similarity retrieval improves **63.7x** over the vectors in the currently published
-  export (nDCG@10 0.0089 -> 0.5672) and **+69.1%** over the best configuration
-  previously in the repository (0.3354 -> 0.5672), both p=0.0002. Measured on 21,451
-  composer-grouped tracks that were never used to fit anything.
+- Similarity retrieval improves **243x** over the vectors in the currently published export
+  (nDCG@10 0.0016 -> 0.3915) and **+156.4%** over the best configuration previously in the
+  repository (0.1527 -> 0.3915), both p=0.0002. Measured on the full 87,868-track corpus with
+  all 11,284 development-corpus tracks excluded, so nothing measured was used for fitting.
+  (Absolute nDCG falls as a corpus grows, because each seed competes against more candidates
+  for the same ten slots; the relative figure is the one that transfers across corpus sizes.)
+- **A defect was suppressing that result by roughly half.** A fixed 15-second intro skip landed
+  past the end of short subsongs, so 16,398 of 87,868 tracks (18.66%) had all 22 playroutine
+  dimensions at the "no trace" default and 34 of the 58 similarity dimensions were a shared
+  constant across a fifth of HVSC. Nothing failed and every record was well-formed. The
+  analysis window now scales with song length. Corrected, the gain over the previous best rose
+  from +69.1% to +156.4%.
 - The stored similarity vector grows from 4 dimensions in the published export to
   **58**: 24 perceptual, 11 pitch/texture, and 23 describing how a tune's playroutine
   drives the SID chip. The manifest's `vector_dimensions` declares the width; consumers
@@ -40,6 +48,22 @@ Rebuilds how SIDFlow decides two SID tunes are alike, and regenerates the publis
   classified records and the export manifest. The export now **refuses** a corpus that
   mixes emulations.
 - Precomputed neighbours per track raised from 3 to 25.
+
+### Reliability of the classification pipeline
+
+- Classification now runs in bounded chunks (default 2,500 songs) rather than one long-lived
+  process. A single process exhausts memory at a predictable ~3.5 GiB after tens of thousands
+  of WASM instantiations and dies; chunking holds peak RSS to ~2,000 MiB and the final corpus
+  pass completed with **zero crashes**, against three to fourteen per pass before.
+- A resume that works: the index of already-classified songs is built by streaming the feature
+  records, so it costs 948 ms and 400 MB at 87,868 records. It also validates each record and
+  treats an unsound one as not-done, so a rerun repairs rather than preserves it.
+- A live integrity assertion aborts a run whose records contradict themselves — a trace holding
+  events cannot yield an all-zero playroutine vector — above 1% over a 500-record sample.
+- Continuous memory sampling to `memory-samples.jsonl` and full crash reports under
+  `logs/crash-reports/`, which is how the failure above was finally characterised.
+- Thread count measured on real chunks rather than a microbenchmark: throughput is flat from 6
+  to 14 threads (9.43–9.90 songs/s), so the default is 6, which leaves the most memory headroom.
 
 ### Fixes
 
