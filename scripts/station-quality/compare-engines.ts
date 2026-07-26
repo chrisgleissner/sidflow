@@ -197,14 +197,21 @@ function spearman(a: number[], b: number[]): number {
 }
 
 process.stdout.write("\n=== per-dimension agreement, 24 WAV-derived dimensions ===\n");
+// Compared on the BUILT vector columns, not on raw feature lookups. The 24 perceptual
+// dimensions are COMPUTED by buildPerceptualVector -- fused, normalised combinations of
+// several raw features -- so no key of that name exists in the feature record. Reading
+// features[name] returned undefined for all 24 and this whole section silently reported
+// NaN, which is exactly the kind of vacuous "agreement" the campaign kept catching.
+const residfpWav = tracksFor(residfpRecords, residfpModel, WAV_ONLY).map((track) => track.vector);
+const sidliteWav = tracksFor(sidliteRecords, sidliteModel, WAV_ONLY).map((track) => track.vector);
 const perDimension: Array<{ name: string; rho: number }> = [];
-for (const name of SHIPPED_DIMENSION_NAMES) {
+for (const [dimension, name] of SHIPPED_DIMENSION_NAMES.entries()) {
   const a: number[] = [];
   const b: number[] = [];
-  for (const entry of paired) {
-    const x = entry.residfp.features[name];
-    const y = entry.sidlite.features[name];
-    if (typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)) {
+  for (let index = 0; index < residfpWav.length; index += 1) {
+    const x = residfpWav[index]![dimension]!;
+    const y = sidliteWav[index]![dimension]!;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
       a.push(x);
       b.push(y);
     }
