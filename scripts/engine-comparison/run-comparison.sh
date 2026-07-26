@@ -28,16 +28,32 @@ echo "==> Materialising corpus"
 CORPUS_DIR="${WORK}/corpus"
 rm -rf "${CORPUS_DIR}"
 mkdir -p "${CORPUS_DIR}/C64Music"
+# A missing file is tolerated but reported, never silently dropped. HVSC updates
+# rename and retire tunes, so a selection committed against one release will
+# always drift against a later one; crashing on the first absence makes the whole
+# comparison unrunnable over a single moved file. Erosion past 2% aborts instead,
+# because by then the corpus is no longer the one the published numbers describe.
 python3 - "${CORPUS_MANIFEST}" "${HVSC_ROOT}" "${CORPUS_DIR}/C64Music" <<'PY'
 import json, os, shutil, sys
 manifest, hvsc, dest = sys.argv[1:4]
 files = json.load(open(manifest))["files"]
+copied, missing = 0, []
 for rel in files:
     src = os.path.join(hvsc, rel)
+    if not os.path.exists(src):
+        missing.append(rel)
+        continue
     dst = os.path.join(dest, rel)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     shutil.copy2(src, dst)
-print(f"copied {len(files)} SID files")
+    copied += 1
+print(f"copied {copied} SID files")
+if missing:
+    print(f"WARNING: {len(missing)} of {len(files)} selected files are absent from this HVSC:")
+    for rel in missing:
+        print(f"  missing: {rel}")
+    if len(missing) > 0.02 * len(files):
+        sys.exit(f"aborting: {len(missing)/len(files):.1%} of the corpus is missing; re-select with select-corpus.ts")
 PY
 
 run_engine() {

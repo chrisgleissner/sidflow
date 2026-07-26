@@ -126,24 +126,37 @@ export function distanceMatrix(vectors: Float64Array[], metric = euclidean): Flo
  * a station starts. Binary gain, log2 discount, ideal DCG computed from the
  * number of same-group tracks actually available to retrieve, so a seed whose
  * composer has only two other tunes is not penalised for failing to find ten.
+ *
+ * `seedIndices` restricts which tracks are used as seeds WITHOUT changing the
+ * retrievable population or the label arrays. That distinction matters: the
+ * cold-start guardrail scores a rare-group subset of seeds, but those seeds are
+ * still ranked against — and scored against — the whole slice. Passing a
+ * pre-filtered `tracks` array instead would silently misalign the ranker's index
+ * space with the label arrays and produce a meaningless number.
  */
 export function ndcgAtK(
   tracks: Track[],
   rank: (seedIndex: number, k: number) => number[],
   k: number,
+  seedIndices?: readonly number[],
 ): { mean: number; perSeed: number[] } {
   const groups = tracks.map((t) => groupOf(t.sidPath));
   const files = tracks.map((t) => t.sidPath);
   const available = new Map<string, number>();
   for (const g of groups) if (g) available.set(g, (available.get(g) ?? 0) + 1);
+  // Sibling counts once, not per seed: the naive per-seed filter is O(n^2) and
+  // dominates every candidate at corpus scale.
+  const siblings = new Map<string, number>();
+  for (const f of files) siblings.set(f, (siblings.get(f) ?? 0) + 1);
 
   const perSeed: number[] = [];
-  for (let i = 0; i < tracks.length; i++) {
+  const seeds = seedIndices ?? tracks.map((_, i) => i);
+  for (const i of seeds) {
     const seedGroup = groups[i];
     if (!seedGroup) continue;
     // Same-file siblings are excluded from both the ranking and the ideal, so
     // subsong-heavy tunes cannot inflate the score.
-    const sameFile = tracks.filter((t, j) => j !== i && files[j] === files[i]).length;
+    const sameFile = (siblings.get(files[i]!) ?? 1) - 1;
     const relevant = (available.get(seedGroup) ?? 1) - 1 - sameFile;
     if (relevant <= 0) continue;
 
@@ -161,19 +174,96 @@ export function ndcgAtK(
   return { mean, perSeed };
 }
 
-/** Builds a ranker that excludes the seed and its same-file siblings. */
+/**
+ * Builds a ranker that excludes the seed and its same-file siblings.
+ *
+ * Bounded selection rather than a full sort. The obvious implementation — push
+ * every candidate into an array of `{j, d}` objects and sort — costs one object
+ * allocation per candidate per seed, which at 20k tracks is 4e8 allocations for a
+ * single evaluation and does not complete in useful time. Since only the top k
+ * (10-25) are ever read, an insertion into a k-sized typed buffer is both O(n)
+ * per seed in practice and allocation-free in the hot loop.
+ *
+ * Ties break toward the lower index, matching the stable sort this replaced, so
+ * rankings are byte-identical to the previous implementation.
+ */
 export function makeRanker(tracks: Track[], distances: Float64Array[]) {
-  const files = tracks.map((t) => t.sidPath);
+  // Intern paths so the sibling test is an integer compare, not a string compare.
+  const fileIds = new Int32Array(tracks.length);
+  const seen = new Map<string, number>();
+  for (let i = 0; i < tracks.length; i++) {
+    const path = tracks[i]!.sidPath;
+    let id = seen.get(path);
+    if (id === undefined) {
+      id = seen.size;
+      seen.set(path, id);
+    }
+    fileIds[i] = id;
+  }
+
   return (seedIndex: number, k: number): number[] => {
     const row = distances[seedIndex]!;
-    const candidates: Array<{ j: number; d: number }> = [];
+    const seedFile = fileIds[seedIndex]!;
+    const bestIdx = new Int32Array(k);
+    const bestDist = new Float64Array(k);
+    let size = 0;
+    let worst = Number.POSITIVE_INFINITY;
+
     for (let j = 0; j < row.length; j++) {
-      if (j === seedIndex || files[j] === files[seedIndex]) continue;
-      candidates.push({ j, d: row[j]! });
+      if (j === seedIndex || fileIds[j] === seedFile) continue;
+      const d = row[j]!;
+      if (size === k && d >= worst) continue;
+      let p = size < k ? size : k - 1;
+      while (p > 0 && bestDist[p - 1]! > d) {
+        bestDist[p] = bestDist[p - 1]!;
+        bestIdx[p] = bestIdx[p - 1]!;
+        p--;
+      }
+      bestDist[p] = d;
+      bestIdx[p] = j;
+      if (size < k) size++;
+      worst = bestDist[size - 1]!;
     }
-    candidates.sort((a, b) => a.d - b.d);
-    return candidates.slice(0, k).map((c) => c.j);
+
+    const out = new Array<number>(size);
+    for (let i = 0; i < size; i++) out[i] = bestIdx[i]!;
+    return out;
   };
+}
+
+/**
+ * Top-k nearest indices for every row, excluding the diagonal.
+ *
+ * Shared by the re-ranking techniques, which each need a k-nearest list per
+ * track and would otherwise full-sort n candidates per row.
+ */
+export function topKPerRow(distances: Float64Array[], k: number): Int32Array[] {
+  const n = distances.length;
+  const out: Int32Array[] = [];
+  for (let i = 0; i < n; i++) {
+    const row = distances[i]!;
+    const idx = new Int32Array(k);
+    const dist = new Float64Array(k);
+    let size = 0;
+    let worst = Number.POSITIVE_INFINITY;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const d = row[j]!;
+      if (size === k && d >= worst) continue;
+      let p = size < k ? size : k - 1;
+      while (p > 0 && dist[p - 1]! > d) {
+        dist[p] = dist[p - 1]!;
+        idx[p] = idx[p - 1]!;
+        p--;
+      }
+      dist[p] = d;
+      idx[p] = j;
+      if (size < k) size++;
+      worst = dist[size - 1]!;
+    }
+    out.push(size === k ? idx : idx.slice(0, size));
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- statistics

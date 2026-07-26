@@ -60,6 +60,7 @@ const batchRoots = [
   { name: "sidflow-train", dir: "packages/sidflow-train/test", chunkSize: 12 },
   { name: "sidflow-web", dir: "packages/sidflow-web/tests/unit", chunkSize: 10 },
   { name: "integration-tests", dir: "integration-tests", chunkSize: 10 },
+  { name: "station-quality", dir: "scripts/station-quality/test", chunkSize: 10 },
 ];
 
 function splitIntoChunks(items, chunkSize) {
