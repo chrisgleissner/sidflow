@@ -191,6 +191,20 @@ This retires the argument that first motivated reSIDfp. The earlier Cohen's κ o
 one bucket, where κ deflates badly. Measured on the calibrated 5-level scale that now
 ships, agreement is 0.82–0.89 — substantial by any conventional reading.
 
+### The original argument for reSIDfp does not survive either
+
+reSIDfp was first adopted because SIDLite was believed to drop `spectralContrastMean`,
+one of the 24 raw inputs to the perceptual vector. Measured on these same paired tracks:
+
+| | reSIDfp | SIDLite |
+|---|---|---|
+| `spectralContrastMean` missing | 54 (0.227%) | 51 (0.214%) |
+| Affected under **both** engines | 21 | 21 |
+
+reSIDfp drops it slightly more often. And because only 21 of ~54 affected tracks overlap,
+the dropout follows marginal audio conditions in particular tunes rather than the
+emulation. Missing values are imputed to the corpus mean, so no NaN reaches a vector.
+
 ### Limitations
 
 - **The corpus is a queue-order prefix, not a random sample** of HVSC, as stated in §3.

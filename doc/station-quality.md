@@ -208,8 +208,25 @@ distance 0.5903 (reSIDfp) vs 0.5875 (SIDLite), difference **−0.0028 with 95% C
 indistinguishable. This replicates the earlier finding (−0.0031 [−0.0092,
 +0.0034]) almost exactly.
 
-**The `spectralContrastMean` dropout that motivated reSIDfp did not occur.**
-Feature completeness is 100% for both engines on this corpus.
+**The `spectralContrastMean` dropout that motivated reSIDfp did not occur** on this
+500-file sample: completeness is 100% for both engines.
+
+It does occur at full-corpus scale, and the reason it was attributed to SIDLite turns
+out to be wrong. Measured across the 23,817 paired tracks of the engine comparison:
+
+| | reSIDfp | SIDLite |
+|---|---|---|
+| `spectralContrastMean` missing | 54 (0.227%) | 51 (0.214%) |
+| `spectralContrastStd` missing | 54 (0.227%) | 51 (0.214%) |
+| Affected under **both** engines | 21 | 21 |
+
+reSIDfp drops it marginally *more* often, and only 21 of roughly 54 affected tracks are
+affected under both engines — so the dropout tracks marginal audio conditions in
+individual tunes rather than the emulation. The feature is one of the 24 raw inputs to
+the perceptual vector, so a missing value does slightly distort those tracks' vectors;
+it is imputed to the corpus mean rather than propagated as NaN, and every stored vector
+is finite. At 0.2% of the corpus this is a rounding error, but the *reason* matters: it
+removes the original argument for reSIDfp rather than merely failing to confirm it.
 
 The low rating κ initially looked like a reason to prefer reSIDfp, since ratings
 are the category-station product. That argument was **withdrawn** after measuring
