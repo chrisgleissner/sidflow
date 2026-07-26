@@ -329,7 +329,22 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
-Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in March 2026):
+Classifying all 61,787 SID files of HVSC 85, which declare 87,868 songs. **73,690 are classified**; the other 14,178 (16.1%) are songs shorter than 10 seconds and are excluded — see the analysis window below.
+
+### Which part of a tune is analysed
+
+The first seconds of a tune are its least characteristic part — a fade-in, a bare bass line, a title jingle — so analysis skips them. A *fixed* skip is wrong for short tunes, and HVSC is full of them: with a flat 15-second skip, 16,398 of 87,868 songs (18.66%) were described by a window that opened after the music had already stopped, leaving 34 of the 58 similarity dimensions at a shared default. The skip therefore scales with the tune:
+
+| Song length | Skipped | Analysed |
+|---|---|---|
+| under 10s | — | **excluded from the corpus** |
+| 10s | 0s | all 10s |
+| 20s | 7.5s | 12.5s |
+| 30s or more | 15s | 15s |
+
+Linear between 10s and 30s, so a one-second difference in length cannot produce a wholly different description of the same tune. The same window is applied to both the rendered audio and the SID register trace, so the two halves of the vector always describe the same interval.
+
+Songs under ten seconds are dropped rather than analysed on a shorter window: fifteen of the dimensions describe rates, regularities and entropies over frames, and below ten seconds there are too few frames for those to mean anything. A real number computed from too little evidence is worse than an absent track, because it is indistinguishable from a measurement.
 
 > **Timings depend on the engine and the thread count.** The log below is a SIDLite run, which is the default; `SIDFLOW_SID_ENGINE=residfp` renders roughly 7x slower and rendering dominates, so budget most of a day for a reference-fidelity pass. Measure your own hardware with `--max-songs 200` before committing either way.
 
