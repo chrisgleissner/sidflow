@@ -1102,3 +1102,59 @@ Verified on a stratified 1,030-song sample spanning all three trees, subsong ind
 through 6+, and 2SID/3SID files: **0.00% empty against 18.66%**, including 0.0% at song
 index 6 and beyond. Median 21 of 22 playroutine dimensions non-zero, no record below 5, no
 NaN, tonal coverage up from 78.5% to 81.5%.
+
+---
+
+## 14. Re-measured on the corrected corpus
+
+§13 left §§1–12 standing as a lower bound taken on damaged data. This is the measurement that
+replaces them, on the full 87,868-track corpus classified with the analysis window fixed, and
+with all 11,284 development-corpus tracks excluded so nothing here was seen during fitting.
+
+| Configuration | nDCG@10 | Cold start |
+|---|---|---|
+| Published today: 4-dimension ratings vector | 0.0016 | 0.0000 |
+| Previous best in repo: 24-dim raw + weighted | 0.1527 | 0.0050 |
+| **Shipped: 58-dim rank-uniform + learned weights** | **0.3915** | **0.0433** |
+
+| Comparison | Relative | 95% CI on difference | p |
+|---|---|---|---|
+| vs the published 4-dim vector | **243.3x** | [0.3847, 0.3951] | 0.0002 |
+| vs the previous best 24-dim config | **+156.4%** | [0.2345, 0.2432] | 0.0002 |
+
+Rating calibration is exact on this corpus: all three scales use 5 levels at 20.00% each,
+2.3219 bits, from quantiles recomputed over the whole 87,868 tracks.
+
+### The defect was suppressing the result, as predicted
+
+| | damaged corpus | corrected corpus |
+|---|---|---|
+| Gain over the previous best | +69.1% | **+156.4%** |
+| Gain over what is published | 63.7x | **243.3x** |
+
+§13 predicted the corrected figures would be better, because the 18.66% of tracks with an
+empty playroutine vector were handicapped rather than helped by the bug. They are, by roughly
+a factor of two. That prediction is now a measurement.
+
+### Why the absolute numbers are lower than §12's
+
+§12 measured 0.5672 on a 21,451-track slice; this measures 0.3915 on 87,868. **These are not
+comparable, and neither is wrong.** nDCG@10 falls as a corpus grows because every seed competes
+against four times as many candidates for the same ten slots. The relative comparison is the
+one that transfers across corpus sizes, which is why the table above leads with it.
+
+The corollary matters for anyone reading a single number out of this document: an absolute
+nDCG figure is only meaningful alongside the size of the corpus it was measured on.
+
+### A defect in this measurement, found and fixed before the numbers were accepted
+
+The first run of it reported "excluded 0 seen during fitting" and measured on the whole corpus
+including the fitting set. Track ids are built from `sidPath`, and the two corpora were
+classified with `sidPath` pointing at different levels, so one records
+`C64Music/DEMOS/x.sid` and the other `DEMOS/x.sid`. Compared literally the overlap was zero.
+
+Nothing errored. It reported a clean holdout while measuring partly on the corpus the weights
+were fitted to — 11,284 dev keys against 87,868 corpus keys, overlap 0. The comparison now
+strips the music-root prefix before matching. This is the third time in this campaign that a
+path-form mismatch has produced a silent wrong answer; the other two were the tiny profile
+resolving nothing and the exclusion set in the tiny export.

@@ -47,11 +47,23 @@ if (!FEATURES || !existsSync(FEATURES)) {
   process.exit(1);
 }
 
+/**
+ * Track ids are compared with any leading music-root prefix stripped.
+ *
+ * The two corpora were classified with `sidPath` pointing at different levels, so one records
+ * "C64Music/DEMOS/x.sid" and the other "DEMOS/x.sid". Compared literally the overlap is zero,
+ * which does not error -- it silently reports a clean holdout while measuring on the fitting
+ * corpus. Observed exactly that: 11,284 dev keys against 87,868 corpus keys, overlap 0.
+ */
+function canonicalTrackId(trackId: string): string {
+  return trackId.replace(/^C64Music\//, "");
+}
+
 const all = loadFeatureRecords(FEATURES);
 const excluded = EXCLUDE && existsSync(EXCLUDE)
-  ? new Set(loadFeatureRecords(EXCLUDE).map((record) => record.trackId))
+  ? new Set(loadFeatureRecords(EXCLUDE).map((record) => canonicalTrackId(record.trackId)))
   : new Set<string>();
-const records = all.filter((record) => !excluded.has(record.trackId));
+const records = all.filter((record) => !excluded.has(canonicalTrackId(record.trackId)));
 
 process.stdout.write(
   `corpus ${all.length}, excluded ${all.length - records.length} seen during fitting, measuring on ${records.length}\n\n`,
