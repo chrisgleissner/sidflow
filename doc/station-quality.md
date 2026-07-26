@@ -886,6 +886,15 @@ ceiling.
   cold-start retrieval. On a corpus where 68% of composers have one tune that is the
   wrong trade, but it is a judgement call rather than a fact, and someone optimising
   purely for the headline metric would choose differently.
+- **Sharper discrimination narrows the candidate pool.** Measured against the
+  station's absolute 0.73 similarity threshold, the 58-dimension weighted vector gives
+  median reach 78.7% against today's 80.7% — but the 5th percentile falls from 9.5% to
+  5.1% and the worst seed from 4.8% to 3.0%. That is the intended effect of
+  discriminating better, and on the 87k published corpus even 3.0% is ~2,600
+  candidates against a 100-track station minimum. On a small subset it would bind, and
+  the soft per-file cap plus the threshold relaxation are what keep such a case
+  building rather than erroring. Similarity stays non-negative (range 0.305–1.000), so
+  no downstream assumption is violated.
 - **Identifying tooling is not identifying sound.** The playroutine features work
   partly by recognising which player a composer used (§6). Two composers sharing a
   player look artificially close; one who changed tools mid-career looks artificially
