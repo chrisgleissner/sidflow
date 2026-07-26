@@ -20,7 +20,7 @@ DELETE_WAV_AFTER_CLASSIFICATION="true"
 FORCE_REBUILD="false"
 FULL_RERUN="false"
 RESUME_ATTEMPTS="40"
-CHUNK_SONGS="5000"
+CHUNK_SONGS="2500"
 KEEP_RUNTIME="false"
 SCHEMA_VERSION="sidcorr-1"
 SQLITE_NEIGHBORS_FOR_TINY="25"
@@ -106,7 +106,7 @@ Options:
   --full-rerun true|false             Force a complete reclassification and replace prior export. Default: false
   --resume-attempts N                 Times to resume classification after a crash. Default: 40
   --chunk-songs N                     Classify in chunks of N songs, restarting the whole runtime
-                                      between chunks. 0 disables chunking. Default: 5000
+                                      between chunks. 0 disables chunking. Default: 2500
   --skip-already-classified true|false
                                       Default: true
   --delete-wav-after-classification true|false
@@ -457,9 +457,10 @@ fi
 # throughput falls as threads rise while the total holds flat, so something shared is
 # saturated and adding threads only adds concurrent WASM instances.
 #
-# Since speed is flat, the choice is decided by memory: fewer threads consume slower, which
-# allows larger chunks and so fewer restarts. At 12 threads a 5,000-song chunk hit the memory
-# limit at 99%; at 6 a long-lived run reached 31,626 records before it did.
+# Since speed is flat, the choice is decided by memory: fewer threads consume slower. Even at
+# 6 threads a 5,000-song chunk does not fit -- measured, it died at 3,933 songs with a 2,956
+# MiB peak -- so the chunk default is 2,500, which leaves clear headroom under the ~3.5 GiB
+# limit. With the chunk boundary costing nothing, a smaller chunk is free.
 if [[ -z "${THREADS}" && "${CHUNK_SONGS}" != "0" ]]; then
   THREADS="${DEFAULT_THREADS}"
 fi
