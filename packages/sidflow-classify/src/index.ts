@@ -69,6 +69,9 @@ import {
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, isSkippableSidError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
 import {
   DeterministicRatingModelBuilder,
+  MIN_RECORDS_FOR_RATING_QUANTILES,
+  buildRatingQuantiles,
+  computeRawRatingScores,
   buildPerceptualVector,
   hasRealisticCompleteFeatureVector,
   inspectFeatureVectorHealth,
@@ -2981,6 +2984,54 @@ export async function generateAutoTags(
 
     // Build dataset-normalized rating model and persist it.
     const ratingModel: DeterministicRatingModel = builder.finalize(renderEngineForRecords);
+
+    // Calibrate the 1-5 rating scale against this corpus's own distribution.
+    //
+    // The uncalibrated mapping spreads a raw score linearly over five levels, and
+    // on a real corpus that collapses: each raw score is a weighted average of
+    // sigmoids of clamped z-scores, so levels 1 and 5 require several sigmoids at
+    // a joint ~2.4-sigma extreme at once. Measured on HVSC, 3 of 5 levels were
+    // ever used and up to 94% of tracks landed on a single level, leaving mood
+    // with 0.397 of the 2.322 bits a five-level scale can carry. Quantile
+    // breakpoints populate all five levels by construction while preserving the
+    // ordering exactly, since the mapping is monotone.
+    //
+    // This needs the finalized mu/sigma, so it cannot run during the streaming
+    // pass -- but the features file is about to be read in full for phase 2
+    // anyway, so the extra pass is cheap relative to rendering.
+    try {
+      const calibrationContent = await readFile(featuresJsonlFile, "utf8");
+      const rawScores: Array<{ c: number; e: number; m: number }> = [];
+      for (const line of calibrationContent.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line) as { features?: FeatureVector };
+          if (!parsed.features) continue;
+          rawScores.push(computeRawRatingScores(ratingModel, parsed.features));
+        } catch {
+          continue;
+        }
+      }
+      const quantiles = buildRatingQuantiles(rawScores);
+      if (quantiles) {
+        ratingModel.ratingQuantiles = quantiles;
+        classifyLogger.info(
+          `Calibrated rating scale on ${rawScores.length} tracks ` +
+            `(e breakpoints ${quantiles.e.map((v) => v.toFixed(4)).join("/")})`
+        );
+      } else {
+        classifyLogger.warn(
+          `Only ${rawScores.length} tracks available; need ${MIN_RECORDS_FOR_RATING_QUANTILES} ` +
+            `to calibrate the rating scale. Falling back to the uncalibrated mapping, which ` +
+            `concentrates most tracks on level 3.`
+        );
+      }
+    } catch (error) {
+      classifyLogger.warn(
+        `Rating-scale calibration skipped: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
     telemetry.emit({
       event: "rating_model_build_complete",
       timestamp: new Date().toISOString(),
@@ -3001,6 +3052,9 @@ export async function generateAutoTags(
         featureSetVersion: ratingModel.featureSetVersion,
         renderEngine: ratingModel.renderEngine,
         features: ratingModel.features,
+        // Persisted so the discretisation is inspectable and reproducible: the
+        // levels are corpus-relative percentiles, and these are the cut points.
+        ratingQuantiles: ratingModel.ratingQuantiles ?? null,
       } as unknown as JsonValue,
       { details: { phase: "rating-model" } }
     );
