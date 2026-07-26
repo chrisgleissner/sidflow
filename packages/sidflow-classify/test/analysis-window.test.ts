@@ -6,9 +6,9 @@
  * (18.66%) were described by a window that opened after the music had stopped, and 34 of
  * the 58 similarity dimensions became a shared constant across a fifth of the corpus.
  *
- *   under 10s   excluded — too few frames for rates, regularities and entropies to mean
- *               anything, and a real number computed from too little evidence is worse than
- *               an absent track because it is indistinguishable from a measurement
+ *   under 10s   skip 0, analyse the whole tune — every song is classified, and
+ *               sidTraceFrameCount tells a consumer how much evidence each was measured
+ *               over so it can filter on that itself
  *   10s         skip 0,    analyse all 10s
  *   20s         skip 7.5s, analyse 12.5s
  *   30s and up  skip 15s,  analyse 15s   (unchanged)
@@ -27,15 +27,18 @@ const ANALYSIS = 15;
 const resolve = (duration: number | undefined) => resolveAnalysisWindow(duration, SKIP, ANALYSIS);
 
 describe("analysis window", () => {
-  test("excludes a tune shorter than ten seconds", () => {
-    expect(resolve(9.9).excluded).toBe(true);
-    expect(resolve(1.14).excluded).toBe(true);
-    expect(resolve(0.5).excluded).toBe(true);
+  test("analyses the whole of a tune shorter than ten seconds, rather than dropping it", () => {
+    // Every song is classified; a consumer that wants to skip thin evidence can read
+    // sidTraceFrameCount. What must NOT happen is a window that opens past the end.
+    for (const duration of [9.9, 5, 1.14, 0.5]) {
+      const window = resolve(duration);
+      expect(window.skipSeconds).toBe(0);
+      expect(window.analysisSeconds).toBeCloseTo(duration, 6);
+    }
   });
 
   test("at exactly ten seconds, analyses the whole tune", () => {
     const window = resolve(MIN_ANALYSABLE_SECONDS);
-    expect(window.excluded).toBe(false);
     expect(window.skipSeconds).toBe(0);
     expect(window.analysisSeconds).toBeCloseTo(10, 6);
   });
@@ -53,15 +56,14 @@ describe("analysis window", () => {
       const window = resolve(duration);
       expect(window.skipSeconds).toBe(SKIP);
       expect(window.analysisSeconds).toBe(ANALYSIS);
-      expect(window.excluded).toBe(false);
     }
   });
 
-  test("the window never runs past the end of the tune", () => {
-    // The defect in one line: skip + analysis must stay inside the music.
-    for (let duration = MIN_ANALYSABLE_SECONDS; duration <= 40; duration += 0.5) {
+  test("the window never runs past the end of the tune, at any length", () => {
+    // The defect in one line: skip + analysis must stay inside the music. Checked from
+    // half a second, because every song is now classified.
+    for (let duration = 0.5; duration <= 40; duration += 0.5) {
       const window = resolve(duration);
-      if (window.excluded) continue;
       expect(window.skipSeconds + window.analysisSeconds).toBeLessThanOrEqual(duration + 1e-9);
     }
   });
@@ -83,7 +85,6 @@ describe("analysis window", () => {
     // Guessing "short" would drop real tunes that simply have no Songlengths entry.
     for (const unknown of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       const window = resolveAnalysisWindow(unknown as number | undefined, SKIP, ANALYSIS);
-      expect(window.excluded).toBe(false);
       expect(window.skipSeconds).toBe(SKIP);
       expect(window.analysisSeconds).toBe(ANALYSIS);
     }
@@ -97,7 +98,7 @@ describe("analysis window", () => {
   });
 
   test("never returns a non-positive analysis window", () => {
-    for (let duration = 10; duration <= 30; duration += 0.1) {
+    for (let duration = 0.1; duration <= 30; duration += 0.1) {
       expect(resolve(duration).analysisSeconds).toBeGreaterThan(0);
     }
   });

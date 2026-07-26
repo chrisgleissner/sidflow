@@ -10,22 +10,26 @@
  *
  * The rule scales the skip with the tune instead:
  *
- *   duration < 10s     excluded from the corpus entirely
- *   duration = 10s     skip 0s,    analyse all 10s
+ *   duration <= 10s    skip 0s,    analyse the whole tune
  *   duration = 20s     skip 7.5s,  analyse 12.5s
  *   duration >= 30s    skip 15s,   analyse 15s   (unchanged from before)
  *
  * Linear between 10s and 30s, so there is no discontinuity where a one-second difference
- * in song length produces a completely different description of the same tune.
+ * in song length produces a completely different description of the same tune. Clamping
+ * the skip at zero makes tunes under ten seconds fall out of the same formula rather than
+ * needing a special case: the window simply becomes the whole tune.
  *
- * Under ten seconds a tune is dropped rather than analysed on a shorter window. Fifteen
- * dimensions describe rates, regularities and entropies over frames, and below about ten
- * seconds there are too few frames for those to mean anything — the values would be real
- * numbers computed from too little evidence, which is worse than an absent track because
- * it looks the same as a measurement.
+ * **Every song is classified, including very short ones.** An earlier version of this
+ * excluded anything under ten seconds, on the argument that fifteen dimensions describe
+ * rates, regularities and entropies over frames and a handful of frames cannot support
+ * them. That reasoning still holds, but it is the consumer's call to make, not this
+ * function's: dropping 16% of HVSC from the published corpus would surprise anyone
+ * comparing it against the collection. The features are computed from real data in every
+ * case, and `sidTraceFrameCount` reports how many frames each one was measured over, so a
+ * consumer that wants to filter on evidence has the number to filter on.
  */
 
-/** Below this a tune is excluded from the corpus. */
+/** Below this the skip is zero and the whole tune is analysed. */
 export const MIN_ANALYSABLE_SECONDS = 10;
 /** At and above this the full configured intro skip applies. */
 export const FULL_SKIP_SECONDS = 30;
@@ -35,8 +39,6 @@ export interface AnalysisWindow {
   skipSeconds: number;
   /** Length of the analysis window in seconds. */
   analysisSeconds: number;
-  /** True when the tune is too short to describe and should not be classified. */
-  excluded: boolean;
 }
 
 /**
@@ -54,22 +56,20 @@ export function resolveAnalysisWindow(
 
   // No duration to reason about: behave exactly as before rather than assume.
   if (durationSeconds === undefined || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    return { skipSeconds: skipCeiling, analysisSeconds: analysisCeiling, excluded: false };
-  }
-
-  if (durationSeconds < MIN_ANALYSABLE_SECONDS) {
-    return { skipSeconds: 0, analysisSeconds: Math.max(1, durationSeconds), excluded: true };
+    return { skipSeconds: skipCeiling, analysisSeconds: analysisCeiling };
   }
 
   if (durationSeconds >= FULL_SKIP_SECONDS) {
-    return { skipSeconds: skipCeiling, analysisSeconds: analysisCeiling, excluded: false };
+    return { skipSeconds: skipCeiling, analysisSeconds: analysisCeiling };
   }
 
-  // Linear ramp: 0 at MIN_ANALYSABLE_SECONDS, the full skip at FULL_SKIP_SECONDS.
+  // Linear ramp: zero at MIN_ANALYSABLE_SECONDS, the full skip at FULL_SKIP_SECONDS. The
+  // lower clamp is what handles tunes shorter than MIN_ANALYSABLE_SECONDS -- the fraction
+  // goes negative and the skip becomes zero, so the window is the whole tune.
   const fraction = (durationSeconds - MIN_ANALYSABLE_SECONDS)
     / (FULL_SKIP_SECONDS - MIN_ANALYSABLE_SECONDS);
   const skipSeconds = Math.max(0, Math.min(skipCeiling, skipCeiling * fraction));
   // Whatever is left of the tune, never more than the configured window.
-  const analysisSeconds = Math.max(1, Math.min(analysisCeiling, durationSeconds - skipSeconds));
-  return { skipSeconds, analysisSeconds, excluded: false };
+  const analysisSeconds = Math.max(0.1, Math.min(analysisCeiling, durationSeconds - skipSeconds));
+  return { skipSeconds, analysisSeconds };
 }

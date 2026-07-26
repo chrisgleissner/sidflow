@@ -329,7 +329,7 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
-Classifying all 61,787 SID files of HVSC 85, which declare 87,868 songs. **73,690 are classified**; the other 14,178 (16.1%) are songs shorter than 10 seconds and are excluded — see the analysis window below.
+Classifying all 61,787 SID files of HVSC 85, which declare 87,868 songs. **Every song is classified**, including very short ones.
 
 ### Which part of a tune is analysed
 
@@ -337,14 +337,13 @@ The first seconds of a tune are its least characteristic part — a fade-in, a b
 
 | Song length | Skipped | Analysed |
 |---|---|---|
-| under 10s | — | **excluded from the corpus** |
-| 10s | 0s | all 10s |
+| 10s or less | 0s | the whole tune |
 | 20s | 7.5s | 12.5s |
 | 30s or more | 15s | 15s |
 
 Linear between 10s and 30s, so a one-second difference in length cannot produce a wholly different description of the same tune. The same window is applied to both the rendered audio and the SID register trace, so the two halves of the vector always describe the same interval.
 
-Songs under ten seconds are dropped rather than analysed on a shorter window: fifteen of the dimensions describe rates, regularities and entropies over frames, and below ten seconds there are too few frames for those to mean anything. A real number computed from too little evidence is worse than an absent track, because it is indistinguishable from a measurement.
+Very short songs are analysed rather than dropped, so the corpus matches the collection and nothing goes missing without explanation. They are, however, measured over fewer frames, and fifteen of the dimensions describe rates, regularities and entropies over frames. **`sidTraceFrameCount` reports how many frames each track was measured over**, so a consumer that wants to exclude thin evidence — or quiet tracks, using `rms` — has the numbers to do it.
 
 > **Timings depend on the engine and the thread count.** The log below is a SIDLite run, which is the default; `SIDFLOW_SID_ENGINE=residfp` renders roughly 7x slower and rendering dominates, so budget most of a day for a reference-fidelity pass. Measure your own hardware with `--max-songs 200` before committing either way.
 

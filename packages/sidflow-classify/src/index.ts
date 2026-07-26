@@ -41,7 +41,7 @@ import path from "node:path";
 import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
 import { createEngine, resolveClassifyEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
 import { indexExtractedSongs, resumeKeyFor } from "./resume-index.js";
-import { MIN_ANALYSABLE_SECONDS, resolveAnalysisWindow } from "./analysis-window.js";
+import { resolveAnalysisWindow } from "./analysis-window.js";
 import {
   createFeatureIntegrityTally,
   featureIntegrityBreach,
@@ -2355,11 +2355,7 @@ export async function generateAutoTags(
   // Collect SID metadata and count total songs using shared utility
   const { sidMetadataCache, totalSongs } = await collectSidMetadataAndSongCount(sidFiles);
   const configuredLimit = options.limit;
-  // Starts as the song count so queue-phase percentages mean something, then is corrected
-  // to the queued work once exclusions are known. Songs excluded for being too short are
-  // not work to be done, and leaving them in the total would make a complete run report
-  // 73,690 of 87,868 and be rejected as having stopped early.
-  let totalFiles = typeof configuredLimit === "number"
+  const totalFiles = typeof configuredLimit === "number"
     ? Math.min(totalSongs, Math.max(0, Math.floor(configuredLimit)))
     : totalSongs;
   const baseConcurrency = resolveThreadCount(options.threads ?? plan.config.threads);
@@ -2396,7 +2392,6 @@ export async function generateAutoTags(
   }
 
   const jobs: AutoTagJob[] = [];
-  let tooShortCount = 0;
   let metadataProcessed = 0;
 
   const maxRenderMs = getMaxClassificationRenderMs(plan.config);
@@ -2471,29 +2466,6 @@ export async function generateAutoTags(
       const index = Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1);
       const hvscDuration = durations?.[index];
 
-      // A tune under ten seconds is dropped rather than analysed on a shorter window.
-      // Fifteen of the dimensions describe rates, regularities and entropies over frames,
-      // and below ten seconds there are too few frames for those to mean anything: the
-      // values would be real numbers computed from too little evidence, which is worse
-      // than an absent track because it is indistinguishable from a measurement.
-      const analysisWindow = resolveAnalysisWindow(
-        typeof hvscDuration === "number" && Number.isFinite(hvscDuration) && hvscDuration > 0
-          ? hvscDuration / 1000
-          : undefined,
-        resolveIntroSkipSec(plan.config),
-        resolveMaxClassifySec(plan.config),
-      );
-      if (analysisWindow.excluded) {
-        tooShortCount += 1;
-        telemetry.emit(
-          buildSongTelemetryRecord(
-            "song_skipped",
-            { posixRelative, songCount, songIndex: songCount > 1 ? songIndex : undefined, queueIndex: jobs.length },
-            { reason: "too_short", durationMs: hvscDuration ?? null },
-          ),
-        );
-        continue;
-      }
       const cappedDuration =
         typeof hvscDuration === "number" && Number.isFinite(hvscDuration) && hvscDuration > 0
           ? Math.min(hvscDuration, maxRenderMs)
@@ -2542,16 +2514,7 @@ export async function generateAutoTags(
   if (skipAlreadyClassified && skippedAlreadyClassifiedCount > 0) {
     classifyLogger.info(`Skipped ${skippedAlreadyClassifiedCount} already classified songs`);
   }
-  if (tooShortCount > 0) {
-    classifyLogger.info(
-      `Excluded ${tooShortCount} songs shorter than ${MIN_ANALYSABLE_SECONDS}s: too few frames to`
-      + " describe rates, regularities or entropies",
-    );
-    // The queued jobs are the real total. Reported so completeness is measured against the
-    // work that exists rather than against the corpus before exclusions.
-    totalFiles = Math.max(jobs.length + skippedAlreadyClassifiedCount, 0);
-    classifyLogger.info(`Total songs to classify after exclusions: ${totalFiles}`);
-  }
+
 
   let processedSongs = 0;
 

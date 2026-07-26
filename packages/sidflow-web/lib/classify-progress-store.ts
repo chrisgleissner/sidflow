@@ -322,16 +322,6 @@ function processLine(line: string) {
     return;
   }
 
-  // Songs excluded for being too short are not work to be done. The classifier reports the
-  // corrected total once exclusions are known; without latching it, a complete run measures
-  // itself against the pre-exclusion corpus and is rejected as having stopped early.
-  const correctedTotalMatch = line.match(/Total songs to classify after exclusions:\s+(\d+)/i);
-  if (correctedTotalMatch) {
-    snapshot.totalFiles = Number(correctedTotalMatch[1]);
-    snapshot.updatedAt = Date.now();
-    return;
-  }
-
   // "Skipped N already classified songs" is the classifier telling us the corpus is
   // already done. Nothing parsed it, so completeness could not see it.
   const alreadyClassifiedMatch = line.match(/Skipped\s+(\d+)\s+already classified songs/i);
