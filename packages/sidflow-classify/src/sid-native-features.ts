@@ -10,6 +10,7 @@ import {
   type SidTraceVideoStandard,
 } from "./sid-register-trace.js";
 import { computeSidTonalFeatures, emptySidTonalFeatures } from "./sid-tonal-features.js";
+import { computeSidPlayroutineFeatures, emptySidPlayroutineFeatures } from "./sid-playroutine-features.js";
 import { readSidTraceSidecar, writeSidTraceSidecar } from "./render/wav-renderer.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
 import type { ExtractFeaturesOptions, FeatureExtractor, FeatureVector } from "./index.js";
@@ -268,9 +269,14 @@ export function extractSidNativeFeaturesFromWriteTrace(
   // transitions and the unpitched frames to segment notes, and applies its own
   // pitched-frame rule (noise sets a rate, not a note).
   const tonal = computeSidTonalFeatures({ ...options, voiceFrames });
+  // Driving behaviour of the playroutine, from the raw writes rather than the
+  // per-frame register state: the state summaries above cannot see how many times
+  // per frame the routine ran or which registers it favours.
+  const playroutine = computeSidPlayroutineFeatures(options);
 
   return {
     ...tonal,
+    ...playroutine,
     sidFeatureVariant: "sid-native",
     sidTraceClock: clock,
     sidTraceEventCount: options.traces.length,
@@ -308,6 +314,7 @@ function createEmptySidNativeFeatures(
 ): FeatureVector {
   return {
     ...emptySidTonalFeatures(),
+    ...emptySidPlayroutineFeatures(),
     sidFeatureVariant: variant,
     sidTraceClock: clock === "NTSC" ? "NTSC" : "PAL",
     sidTraceEventCount: 0,

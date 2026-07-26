@@ -20,10 +20,13 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  SIMILARITY_APPENDED_DIMENSIONS,
+  SIMILARITY_PLAYROUTINE_DIMENSIONS,
   SIMILARITY_TONAL_DIMENSIONS,
   SIMILARITY_VECTOR_DIMENSIONS,
   buildSimilarityVector,
 } from "../src/similarity-vector.js";
+import { SIMILARITY_VECTOR_DIMENSIONS as SERVING_VECTOR_DIMENSIONS } from "@sidflow/common";
 import {
   DeterministicRatingModelBuilder,
   buildPerceptualVector,
@@ -62,9 +65,9 @@ function makeFeatures(overrides: FeatureVector = {}): FeatureVector {
     inharmonicity: 0.2,
     lowFrequencyEnergyRatio: 0.3,
   };
-  // Every appended tonal dimension gets a distinct, recognisable value so the
-  // ORDER can be asserted rather than merely the count.
-  SIMILARITY_TONAL_DIMENSIONS.forEach((name, index) => {
+  // Every appended dimension gets a distinct, recognisable value so the ORDER can
+  // be asserted rather than merely the count.
+  SIMILARITY_APPENDED_DIMENSIONS.forEach((name, index) => {
     if (name === "sidTonalPresent") return;
     base[name] = (index + 1) / 100;
   });
@@ -83,7 +86,15 @@ describe("buildSimilarityVector", () => {
     const model = modelFor(features);
     const vector = buildSimilarityVector(model, features[0]!);
     expect(vector.length).toBe(SIMILARITY_VECTOR_DIMENSIONS);
-    expect(SIMILARITY_VECTOR_DIMENSIONS).toBe(24 + SIMILARITY_TONAL_DIMENSIONS.length);
+    expect(SIMILARITY_VECTOR_DIMENSIONS).toBe(24 + SIMILARITY_APPENDED_DIMENSIONS.length);
+  });
+
+  test("the serving weights table covers exactly this width", () => {
+    // A drift guard across package boundaries. The weights are indexed by position
+    // and looked up by vector width, so if the classifier grows a dimension without
+    // the table being refitted, every station silently reverts to unweighted cosine
+    // -- which measured 42.7 percentage points worse on held-out retrieval.
+    expect(SERVING_VECTOR_DIMENSIONS).toBe(SIMILARITY_VECTOR_DIMENSIONS);
   });
 
   test("keeps the 24-dimension perceptual vector as a strict prefix", () => {
@@ -96,15 +107,25 @@ describe("buildSimilarityVector", () => {
     expect(similarity.slice(0, perceptual.length)).toEqual(perceptual);
   });
 
-  test("appends the tonal dimensions in the declared order", () => {
+  test("appends every dimension in the declared order", () => {
     const features = [makeFeatures({ bpm: 90 }), makeFeatures({ bpm: 160 })];
     const model = modelFor(features);
     const tail = buildSimilarityVector(model, features[0]!).slice(24);
-    expect(tail.length).toBe(SIMILARITY_TONAL_DIMENSIONS.length);
-    SIMILARITY_TONAL_DIMENSIONS.forEach((name, index) => {
+    expect(tail.length).toBe(SIMILARITY_APPENDED_DIMENSIONS.length);
+    SIMILARITY_APPENDED_DIMENSIONS.forEach((name, index) => {
       const expected = name === "sidTonalPresent" ? 1 : (index + 1) / 100;
       expect(tail[index]).toBeCloseTo(expected, 10);
     });
+  });
+
+  test("keeps the playroutine dimensions, which carry the most signal", () => {
+    // One of these separates composers better than all 24 original dimensions
+    // together (0.7713 against 0.7229), because a composer reuses a playroutine and
+    // its register-write pattern is effectively that tooling's signature.
+    for (const name of ["sidWriteSpreadEntropy", "sidWritesPerFrame", "sidWriteRateRegularity"]) {
+      expect(SIMILARITY_PLAYROUTINE_DIMENSIONS as readonly string[]).toContain(name);
+    }
+    expect(SIMILARITY_PLAYROUTINE_DIMENSIONS.length).toBe(15);
   });
 
   test("derives sidTonalPresent from the tonal variant", () => {
@@ -121,7 +142,7 @@ describe("buildSimilarityVector", () => {
   test("treats a missing tonal feature as zero rather than NaN", () => {
     const model = modelFor([makeFeatures({ bpm: 90 }), makeFeatures({ bpm: 160 })]);
     const stripped = makeFeatures();
-    for (const name of SIMILARITY_TONAL_DIMENSIONS) delete stripped[name];
+    for (const name of SIMILARITY_APPENDED_DIMENSIONS) delete stripped[name];
     stripped.sidTonalVariant = "insufficient";
 
     const vector = buildSimilarityVector(model, stripped);
@@ -155,7 +176,7 @@ describe("buildSimilarityVector", () => {
       "sidMelodicRepeatRatio",
       "sidKeyRoot",
     ]) {
-      expect(SIMILARITY_TONAL_DIMENSIONS as readonly string[]).not.toContain(rejected);
+      expect(SIMILARITY_APPENDED_DIMENSIONS as readonly string[]).not.toContain(rejected);
     }
   });
 
@@ -169,7 +190,7 @@ describe("buildSimilarityVector", () => {
     // sidKeyRoot is nominal: C# is not between C and D, and the wrap from B to C
     // would read as the largest possible distance in a Euclidean or cosine metric.
     // sidNoteCount is unbounded, which would let one dimension dominate the norm.
-    expect(SIMILARITY_TONAL_DIMENSIONS as readonly string[]).not.toContain("sidKeyRoot");
-    expect(SIMILARITY_TONAL_DIMENSIONS as readonly string[]).not.toContain("sidNoteCount");
+    expect(SIMILARITY_APPENDED_DIMENSIONS as readonly string[]).not.toContain("sidKeyRoot");
+    expect(SIMILARITY_APPENDED_DIMENSIONS as readonly string[]).not.toContain("sidNoteCount");
   });
 });
