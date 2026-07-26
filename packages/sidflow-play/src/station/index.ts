@@ -113,6 +113,7 @@ export {
   orderStationTracksByFlow,
   summarizeRatingAnchors,
   computeAdventureMinSimilarity,
+  limitCandidatesPerFile,
 } from "./queue.js";
 
 export {

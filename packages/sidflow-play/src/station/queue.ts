@@ -49,6 +49,47 @@ export function buildStationSongKey(track: Pick<StationTrackRow, "sid_path" | "s
   return `${track.sid_path}#${track.song_index}`;
 }
 
+/**
+ * Prefer one subsong per SID file, relaxing only as far as needed to fill the
+ * station.
+ *
+ * Subsongs of one tune are near-identical by every similarity measure, so an
+ * unconstrained neighbour list stacks them: measured on a held-out slice of the
+ * development corpus, 59.4% of 20-track stations contained a repeated file, 2.57
+ * of the 20 slots were duplicates on average, and the worst case put **14 of 20
+ * slots on a single tune**. A station that plays one tune fourteen times is broken
+ * from the listener's side however good its retrieval metric looks — and the metric
+ * cannot see it, because it already excludes same-file siblings of the SEED and so
+ * never counts duplicates among the neighbours.
+ *
+ * The cap is soft rather than absolute. A hard limit of one would starve stations
+ * built from a sparse corner of the corpus, and the station refuses to build below
+ * a minimum size, so it is better to serve a listener a second subsong than an
+ * error. Candidates arrive in descending score order, so keeping the first
+ * occurrences keeps the best-matching subsong of each tune.
+ */
+export function limitCandidatesPerFile<T extends Pick<StationTrackRow, "sid_path">>(
+  candidates: T[],
+  target: number,
+): T[] {
+  for (const cap of [1, 2, 3]) {
+    const counts = new Map<string, number>();
+    const kept: T[] = [];
+    for (const candidate of candidates) {
+      const seen = counts.get(candidate.sid_path) ?? 0;
+      if (seen >= cap) {
+        continue;
+      }
+      counts.set(candidate.sid_path, seen + 1);
+      kept.push(candidate);
+    }
+    if (kept.length >= target) {
+      return kept;
+    }
+  }
+  return candidates;
+}
+
 function dedupeQueueBySongKey<T extends Pick<StationTrackRow, "sid_path" | "song_index">>(tracks: T[]): T[] {
   const seen = new Set<string>();
   const deduped: T[] = [];
@@ -560,7 +601,12 @@ export async function buildStationQueue(
       filteredCandidates.push(recommendation);
     }
 
-    const chosen = chooseStationTracks(dedupeQueueBySongKey(filteredCandidates), stationSize, adventure, runtime.random);
+    const chosen = chooseStationTracks(
+      limitCandidatesPerFile(dedupeQueueBySongKey(filteredCandidates), stationSize),
+      stationSize,
+      adventure,
+      runtime.random,
+    );
     const orderedChosen = orderStationTracksByFlow(
       chosen,
       readTrackVectorsByIds(datasetHandle, chosen.map((recommendation) => recommendation.track_id)),

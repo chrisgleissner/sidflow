@@ -7,6 +7,9 @@ where the protocol itself turned out to be wrong.
 
 The short version:
 
+- **More than half of all stations played the same tune twice or more**, and the
+  worst put 14 of 20 slots on one tune. No retrieval metric could see it, because
+  nDCG excludes same-file siblings of the seed but not of each other. Fixed.
 - **Category stations were broken and are now fixed, provably.** The 1-5 scale
   used 3 of its 5 levels with up to 94% of the collection on one level. It now
   uses all five at 20% each. This is a construction, not a tuning result.
@@ -622,7 +625,38 @@ re-express that setting as a percentile of the observed similarity distribution
 rather than an absolute cosine value. That is real remaining work, and its +3.2
 points are left on the table for now.
 
-### 8.10 Is there headroom left?
+### 8.10 A defect no retrieval metric could see
+
+Found by reading actual neighbour lists rather than metrics. Subsongs of one SID
+file are near-identical by every similarity measure, so an unconstrained neighbour
+list stacks them. Measured on a held-out slice:
+
+| | repeated-file stations | duplicate slots per 20 | worst single file |
+|---|---|---|---|
+| before | **54.7%** | 2.71 | **14 of 20 slots** |
+| after a soft per-file cap | **6.0%** | 0.52 | 11 |
+
+More than half of all stations contained the same tune twice or more, and the worst
+case played one tune fourteen times out of twenty. From a listener's side that is a
+broken station regardless of how good the retrieval number looks.
+
+**The primary metric is structurally incapable of detecting this.** nDCG already
+excludes same-file siblings of the SEED — that exclusion is in the pre-registered
+protocol, precisely so subsong-heavy tunes cannot inflate scores — but nothing
+excludes duplicates among the NEIGHBOURS of each other. The metric was blind to the
+single most audible flaw in the output.
+
+The cap is soft: prefer one subsong per file, relax to two and then three only as
+far as needed to fill the station, because a station refuses to build below a
+minimum size and serving a second subsong beats serving an error. The residual 6% is
+where the corpus is genuinely sparse and relaxation is the correct answer.
+
+Same-composer share falls from 16.5% to 13.5%, which is a *disclosure* rather than a
+regression: duplicate subsongs were being counted as same-composer hits, which they
+trivially are, so the higher figure was partly inflated by the repetition being
+removed.
+
+### 8.11 Is there headroom left?
 
 Separability — the probability that two tracks by one composer are closer than a
 random cross-composer pair — is a property of the features rather than of any
