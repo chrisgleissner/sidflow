@@ -1128,7 +1128,23 @@ export async function openTinySimilarityDataset(
       const excludeTrackIds = new Set((options.excludeTrackIds ?? []).map(canonicalTrackId));
       const favoriteCanonicalIds = new Set(options.favoriteTrackIds.map(canonicalTrackId));
       const scores = new Map<number, number>();
+      // Ranking and reported similarity are tracked separately, because they answer
+      // different questions and only one of them is on a scale anyone else shares.
+      //
+      // `scores` accumulates walk strength: a track reachable by several paths sums their
+      // contributions, which is the right way to RANK "closest to this set of favourites".
+      // It is not a similarity, it is unbounded, and reporting it as one is what broke the
+      // station layer -- that layer applies an absolute minimum-similarity threshold
+      // (0.73 at adventure 3), calibrated for cosine values where "similar" means ~0.9 up.
+      //
+      // `pathSimilarity` is the product of the stored edge similarities along the best
+      // path that reached a track. It stays in [0, 1], it decays with graph distance the
+      // way a similarity should, and a direct neighbour reports very nearly its stored
+      // edge similarity -- so it is directly comparable to the cosine the other two
+      // profiles report, and to that threshold.
+      const pathSimilarity = new Map<number, number>();
       let frontier = new Map<number, number>();
+      let frontierSimilarity = new Map<number, number>();
       for (const favoriteTrackId of options.favoriteTrackIds) {
         const { ordinal: favoriteOrdinal } = findRow(favoriteTrackId);
         if (favoriteOrdinal === undefined) {
@@ -1136,27 +1152,44 @@ export async function openTinySimilarityDataset(
         }
         const favoriteWeight = weightsByTrackId[favoriteTrackId] ?? 1;
         frontier.set(favoriteOrdinal, (frontier.get(favoriteOrdinal) ?? 0) + favoriteWeight);
+        // A favourite is perfectly similar to itself, so paths start at 1.
+        frontierSimilarity.set(favoriteOrdinal, 1);
       }
 
       for (let depth = 0; depth < 5 && frontier.size > 0; depth += 1) {
         const nextFrontier = new Map<number, number>();
+        const nextFrontierSimilarity = new Map<number, number>();
         const forwardDecay = Math.pow(0.76, depth);
         const reverseDecay = Math.pow(0.70, depth);
 
-        for (const [trackOrdinal, strength] of frontier) {
-          const directEdges = rows[trackOrdinal]?.neighbors ?? [];
-          for (const edge of directEdges) {
-            const contribution = strength * edge.similarity * forwardDecay;
+        const walk = (
+          trackOrdinal: number,
+          strength: number,
+          edges: Array<{ trackOrdinal: number; similarity: number }>,
+          decay: number,
+          reverseFactor: number,
+        ): void => {
+          const parentSimilarity = frontierSimilarity.get(trackOrdinal) ?? 0;
+          for (const edge of edges) {
+            const contribution = strength * edge.similarity * reverseFactor * decay;
             scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + contribution);
             nextFrontier.set(edge.trackOrdinal, (nextFrontier.get(edge.trackOrdinal) ?? 0) + contribution);
-          }
 
-          const reverseEdges = reverseAdjacency.get(trackOrdinal) ?? [];
-          for (const edge of reverseEdges) {
-            const contribution = strength * edge.similarity * 0.92 * reverseDecay;
-            scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + contribution);
-            nextFrontier.set(edge.trackOrdinal, (nextFrontier.get(edge.trackOrdinal) ?? 0) + contribution);
+            // Best path wins, so a track reachable both directly and via a detour reports
+            // the directer relationship rather than the weaker one.
+            const chained = Math.max(0, Math.min(1, parentSimilarity * edge.similarity));
+            if (chained > (pathSimilarity.get(edge.trackOrdinal) ?? 0)) {
+              pathSimilarity.set(edge.trackOrdinal, chained);
+            }
+            if (chained > (nextFrontierSimilarity.get(edge.trackOrdinal) ?? 0)) {
+              nextFrontierSimilarity.set(edge.trackOrdinal, chained);
+            }
           }
+        };
+
+        for (const [trackOrdinal, strength] of frontier) {
+          walk(trackOrdinal, strength, rows[trackOrdinal]?.neighbors ?? [], forwardDecay, 1);
+          walk(trackOrdinal, strength, reverseAdjacency.get(trackOrdinal) ?? [], reverseDecay, 0.92);
         }
 
         frontier = new Map(
@@ -1164,6 +1197,7 @@ export async function openTinySimilarityDataset(
             .sort((left, right) => right[1] - left[1] || left[0] - right[0])
             .slice(0, 256),
         );
+        frontierSimilarity = nextFrontierSimilarity;
       }
 
       // The walk above IS the ranking. There used to be a block here that computed a
@@ -1192,34 +1226,32 @@ export async function openTinySimilarityDataset(
         .filter(({ trackOrdinal }) => !excludeTrackIds.has(rows[trackOrdinal]!.track_id) && !favoriteCanonicalIds.has(rows[trackOrdinal]!.track_id))
         .sort((left, right) => right.score - left.score || left.trackOrdinal - right.trackOrdinal);
 
-      // Report the walk score relative to the strongest match rather than clamped.
+      // Rank by walk strength, report path similarity.
       //
-      // The walk ACCUMULATES: a track reachable by several paths sums their
-      // contributions, so raw scores routinely exceed 1. Clamping them to [-1, 1] --
-      // which is what this did -- made every strongly-connected candidate report exactly
-      // 1.0. Measured on the shipped bundle, a seed's top 100 recommendations came back
-      // with ONE distinct score between them, while the underlying walk had 973 distinct
-      // values across the 1,674 tracks it reached.
+      // Reporting the raw walk score does not work: it accumulates, so it routinely
+      // exceeds 1, and clamping it to [-1, 1] -- which is what this used to do -- made
+      // every strongly-connected candidate report exactly 1.0. Measured on the shipped
+      // bundle, a seed's top 100 came back with ONE distinct score between them while the
+      // walk underneath had 973 distinct values across the 1,674 tracks it reached.
       //
-      // The ranking was never wrong, because the sort happens on the raw score. But the
-      // number a consumer reads was, and a consumer thresholding on similarity, showing a
-      // confidence, or blending by score cannot tell a hundred tracks apart. Dividing by
-      // the strongest score preserves the ordering exactly and makes the value mean
-      // "how close to the best match this is", which is what it is used for.
-      const strongest = candidates[0]?.score ?? 0;
-      const normalise = (score: number): number => (
-        strongest > 0 ? Math.max(-1, Math.min(1, score / strongest)) : Math.max(-1, Math.min(1, score))
-      );
-
+      // Nor does normalising it against the strongest match. That reads as a sensible
+      // [0, 1] value and is not a similarity: SIDFlow's own station layer applies an
+      // absolute minimum-similarity threshold -- 0.73 at the default adventure setting,
+      // calibrated for cosine values -- and a normalised rank collapses a full station to
+      // three tracks against it. Measured, on the real corpus.
+      //
+      // `pathSimilarity` is the quantity that belongs in this field: bounded, decaying
+      // with graph distance, and on the same scale as the cosine the sqlite and lite
+      // profiles report.
       return candidates
         .slice(0, Math.max(1, options.limit ?? 100))
-        .map(({ trackOrdinal, score }, index) => {
+        .map(({ trackOrdinal }, index) => {
           const row = rows[trackOrdinal]!;
           return {
             track_id: row.track_id,
             sid_path: row.sid_path,
             song_index: row.song_index,
-            score: normalise(score),
+            score: pathSimilarity.get(trackOrdinal) ?? 0,
             rank: index + 1,
             e: row.e,
             m: row.m,

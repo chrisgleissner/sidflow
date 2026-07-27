@@ -16,7 +16,7 @@
  * station, and a flag whose effect lives only in a build log is not a record.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -40,13 +40,33 @@ function readStyleMasks(payload: Buffer): number[] {
   return Array.from({ length: trackCount }, (_unused, index) => payload.readUInt16LE(styleMaskOffset + (index * 2)));
 }
 
+/**
+ * Fixtures are built ONCE at module scope, not per test.
+ *
+ * Each chain is a full export plus a lite bundle over 1,200 tracks, which is seconds
+ * locally and considerably longer on a shared CI runner. Rebuilding it in a `beforeEach`
+ * put three of these tests past Bun's default 5-second timeout in CI while passing in two
+ * on this machine -- the same failure mode PLANS.md Phase 37 records for the
+ * similarity-dataset fixture, and the same fix.
+ *
+ * Only the tiny build, which is the cheap step and the one under test, runs per test.
+ */
+const TRACK_COUNT = 1200;
+const FIXTURE_TIMEOUT_MS = 120_000;
+
+interface Chain {
+  musicRoot: string;
+  sqlitePath: string;
+  litePath: string;
+  tinyPath: string;
+}
+
 describe("tiny profile station populations", () => {
   let tempRoot: string;
-  let hvscRoot: string;
-  let musicRoot: string;
-  let sqlitePath: string;
-  let litePath: string;
-  let tinyPath: string;
+  /** A corpus with a full spread of ratings: the gate should pass. */
+  let healthy: Chain;
+  /** Every track on one rating cell: the gate should refuse to build. */
+  let degenerate: Chain;
 
   /**
    * Build a corpus through the real export chain.
@@ -55,8 +75,13 @@ describe("tiny profile station populations", () => {
    * no usable spread looks like to the gate: the personas rank it identically, so their
    * member sets become indistinguishable and the distinctness check fires.
    */
-  async function buildChain(trackCount: number, degenerate: boolean): Promise<void> {
-    const classifiedPath = path.join(tempRoot, "classified");
+  async function buildChain(name: string, trackCount: number, flat: boolean): Promise<Chain> {
+    const root = path.join(tempRoot, name);
+    const classifiedPath = path.join(root, "classified");
+    const musicRoot = path.join(root, "hvsc", "C64Music");
+    const sqlitePath = path.join(root, "exports", "full.sqlite");
+    const litePath = path.join(root, "exports", "lite.sidcorr");
+    const tinyPath = path.join(root, "exports", "tiny.sidcorr");
     await mkdir(classifiedPath, { recursive: true });
 
     const lines: string[] = [];
@@ -89,7 +114,7 @@ describe("tiny profile station populations", () => {
       lines.push(JSON.stringify({
         sid_path: relative,
         song_index: 1,
-        ratings: degenerate
+        ratings: flat
           ? { e: 3, m: 3, c: 3, p: 3 }
           : {
             e: (index % 5) + 1,
@@ -121,29 +146,27 @@ describe("tiny profile station populations", () => {
       outputPath: litePath,
       corpusVersion: "populations",
     });
+
+    return { musicRoot, sqlitePath, litePath, tinyPath };
   }
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     tempRoot = await mkdtemp(path.join(os.tmpdir(), "sidflow-tiny-populations-"));
-    hvscRoot = path.join(tempRoot, "hvsc");
-    musicRoot = path.join(hvscRoot, "C64Music");
-    sqlitePath = path.join(tempRoot, "exports", "full.sqlite");
-    litePath = path.join(tempRoot, "exports", "lite.sidcorr");
-    tinyPath = path.join(tempRoot, "exports", "tiny.sidcorr");
-  });
+    healthy = await buildChain("healthy", TRACK_COUNT, false);
+    degenerate = await buildChain("degenerate", TRACK_COUNT, true);
+  }, FIXTURE_TIMEOUT_MS);
 
-  afterEach(async () => {
+  afterAll(async () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
 
   test("the manifest's populations match a recount from the bundle", async () => {
-    await buildChain(1500, false);
     const tiny = await buildTinySimilarityExport({
-      sourceLitePath: litePath,
-      hvscRoot: musicRoot,
-      outputPath: tinyPath,
+      sourceLitePath: healthy.litePath,
+      hvscRoot: healthy.musicRoot,
+      outputPath: healthy.tinyPath,
       corpusVersion: "populations",
-      neighborSqlitePath: sqlitePath,
+      neighborSqlitePath: healthy.sqlitePath,
     });
 
     expect(tiny.manifest.style_populations).toBeDefined();
@@ -151,32 +174,30 @@ describe("tiny profile station populations", () => {
     // A build that passed carries no waiver at all, rather than an empty one.
     expect(tiny.manifest.style_population_waiver).toBeUndefined();
 
-    const recounted = countStylePopulations(readStyleMasks(await readFile(tinyPath)));
+    const recounted = countStylePopulations(readStyleMasks(await readFile(healthy.tinyPath)));
     for (const personaId of PERSONA_IDS) {
       expect(tiny.manifest.style_populations?.[personaId]).toBe(recounted[personaId]);
       expect(recounted[personaId]).toBeGreaterThan(0);
     }
-  });
+  }, FIXTURE_TIMEOUT_MS);
 
   test("a corpus that cannot support nine stations fails the export", async () => {
-    await buildChain(1500, true);
     await expect(buildTinySimilarityExport({
-      sourceLitePath: litePath,
-      hvscRoot: musicRoot,
-      outputPath: tinyPath,
+      sourceLitePath: degenerate.litePath,
+      hvscRoot: degenerate.musicRoot,
+      outputPath: degenerate.tinyPath,
       corpusVersion: "populations",
-      neighborSqlitePath: sqlitePath,
+      neighborSqlitePath: degenerate.sqlitePath,
     })).rejects.toThrow(StylePopulationGateError);
-  });
+  }, FIXTURE_TIMEOUT_MS);
 
   test("--allow-sparse-styles permits the build and records the waiver in the manifest", async () => {
-    await buildChain(1500, true);
     const tiny = await buildTinySimilarityExport({
-      sourceLitePath: litePath,
-      hvscRoot: musicRoot,
-      outputPath: tinyPath,
+      sourceLitePath: degenerate.litePath,
+      hvscRoot: degenerate.musicRoot,
+      outputPath: degenerate.tinyPath,
       corpusVersion: "populations",
-      neighborSqlitePath: sqlitePath,
+      neighborSqlitePath: degenerate.sqlitePath,
       allowSparseStyles: true,
     });
 
@@ -188,5 +209,5 @@ describe("tiny profile station populations", () => {
       style_population_waiver?: string[];
     };
     expect(written.style_population_waiver).toEqual(tiny.manifest.style_population_waiver!);
-  });
+  }, FIXTURE_TIMEOUT_MS);
 });

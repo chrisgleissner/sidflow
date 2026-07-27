@@ -170,8 +170,8 @@ export class RecommendationEngine {
     const scored = this.scoreRecommendations(filtered, seedVector, weights, explorationFactor);
     
     // Apply diversity filtering
-    const diverse = this.applyDiversityFilter(scored, diversityThreshold);
-    
+    const diverse = this.applyDiversityFilter(scored, diversityThreshold, limit);
+
     // Return top recommendations
     return diverse.slice(0, limit);
   }
@@ -325,9 +325,28 @@ export class RecommendationEngine {
 
   /**
    * Compute song feedback score: (likes - dislikes - 0.3·skips) / max(plays, 1)
+   *
+   * The decayed counters have to be mapped across explicitly. A `DatabaseRecord` names
+   * them `decayed_likes` and `calculateNormalizedSongFeedback` reads `decayedLikes`, so
+   * passing the record straight through left every decayed field `undefined` and the
+   * function fell back to the raw lifetime totals for every track — silently, because the
+   * fallback is the intended behaviour for a record that genuinely has no decay data.
+   *
+   * The effect is that recency did not influence recommendations at all. A track liked
+   * 100 times years ago and one liked 5 times last week both scored 1.0, and therefore
+   * identically, because the ratio is what the formula uses.
    */
   private computeSongFeedback(record: DatabaseRecord): number {
-    return calculateNormalizedSongFeedback(record);
+    return calculateNormalizedSongFeedback({
+      likes: record.likes,
+      dislikes: record.dislikes,
+      skips: record.skips,
+      plays: record.plays,
+      decayedLikes: record.decayed_likes,
+      decayedDislikes: record.decayed_dislikes,
+      decayedSkips: record.decayed_skips,
+      decayedPlays: record.decayed_plays,
+    });
   }
 
   /**
@@ -356,16 +375,35 @@ export class RecommendationEngine {
 
   /**
    * Apply diversity filter to prevent consecutive similar songs.
+   *
+   * Diversity is a PREFERENCE, not a constraint, and the difference matters here because
+   * the only thing this can measure diversity over is `[e, m, c]` — three integers on a
+   * 1-5 scale, so 125 distinct positions across the whole corpus.
+   *
+   * That ceiling has a sharp edge. A query seeded on an exact rating target — which is
+   * what `--persona` does, since a persona's `ratingTargets` are integers — returns
+   * nearest neighbours whose ratings all EQUAL the target. The distance between any two of
+   * them is 0, every one falls below the threshold, and a request for 10 songs returned 1.
+   * Measured on an 87,868-track corpus: `--persona melodic --limit 10` yielded a
+   * single-track playlist at the default threshold and the full 10 at `--diversity 0`.
+   *
+   * So the threshold is applied first and then relaxed rather than allowed to starve the
+   * result: candidates that cleared it come first, in score order, and the remainder
+   * backfill behind them until the caller's limit is met. This mirrors the soft cap
+   * `limitCandidatesPerFile` already uses in the station layer, for the same reason —
+   * serving a listener a slightly less varied playlist beats serving them one song.
    */
   private applyDiversityFilter(
     recommendations: Recommendation[],
-    threshold: number
+    threshold: number,
+    limit: number
   ): Recommendation[] {
     if (recommendations.length === 0) {
       return [];
     }
 
     const diverse: Recommendation[] = [recommendations[0]];
+    const rejected: Recommendation[] = [];
 
     for (let i = 1; i < recommendations.length; i++) {
       const current = recommendations[i];
@@ -381,10 +419,18 @@ export class RecommendationEngine {
       if (distance >= threshold) {
         current.distanceFromPrevious = distance;
         diverse.push(current);
+      } else {
+        rejected.push(current);
       }
     }
 
-    return diverse;
+    if (diverse.length >= limit) {
+      return diverse;
+    }
+
+    // Backfill in score order — `recommendations` arrives ranked, and `rejected` preserves
+    // that order — so relaxing the preference costs relevance last, not first.
+    return diverse.concat(rejected.slice(0, limit - diverse.length));
   }
 
   /**

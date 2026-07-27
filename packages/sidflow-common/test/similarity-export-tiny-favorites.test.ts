@@ -211,28 +211,44 @@ describe("tiny recommendFromFavorites ranks from the neighbour graph", () => {
     expect(distinctScores.size).toBe(recommendations.length);
   });
 
-  test("scores are relative to the strongest match, not clamped", () => {
-    // The walk ACCUMULATES: a track reachable by several paths sums their contributions,
-    // so raw scores routinely exceed 1. Clamping to [-1, 1] made every strongly-connected
-    // candidate report exactly 1.0 — measured on the shipped HVSC bundle, a seed's top 100
-    // recommendations came back with ONE distinct score between them while the underlying
-    // walk had 973 distinct values across the 1,674 tracks it reached. The ranking was
-    // never wrong; the number a consumer reads was.
+  test("the reported score is a similarity, on the same scale as the other profiles", () => {
+    // Two shapes were tried here and both were wrong, which is why this asserts the
+    // property rather than the formula.
+    //
+    // Reporting the raw walk score fails because the walk ACCUMULATES: a track reachable
+    // by several paths sums their contributions, so scores exceed 1, and clamping them
+    // made every strongly-connected candidate report exactly 1.0 — measured on the shipped
+    // HVSC bundle, a seed's top 100 came back with ONE distinct score between them.
+    //
+    // Normalising against the strongest match fails differently: it looks like a sensible
+    // [0, 1] value but is a rank, not a similarity, and SIDFlow's own station layer
+    // applies an ABSOLUTE minimum-similarity threshold of 0.73. Measured on the real
+    // corpus, that collapsed a 100-track station to 3.
+    //
+    // What is reported now is the product of stored edge similarities along the best path
+    // that reached the track: bounded, decaying with graph distance, and comparable to the
+    // cosine the sqlite and lite profiles report.
     const recommendations = dataset.recommendFromFavorites({
       favoriteTrackIds: [seedTrackId],
       limit: TRACK_COUNT,
     });
 
     expect(recommendations.length).toBeGreaterThan(1);
-    expect(recommendations[0]!.score).toBeCloseTo(1, 10);
     for (const entry of recommendations) {
-      expect(entry.score).toBeLessThanOrEqual(1);
       expect(entry.score).toBeGreaterThan(0);
+      expect(entry.score).toBeLessThanOrEqual(1);
     }
-    // Strictly descending: no two tracks share the top score.
-    for (let index = 1; index < recommendations.length; index += 1) {
-      expect(recommendations[index]!.score).toBeLessThan(recommendations[index - 1]!.score);
+
+    // A direct neighbour reports its stored edge similarity, because its best path is one
+    // edge long and the product of a single term is that term.
+    const storedNeighbors = dataset.getNeighbors(seedTrackId, 3);
+    const byTrackId = new Map(recommendations.map((entry) => [entry.track_id, entry.score]));
+    for (const neighbor of storedNeighbors) {
+      expect(byTrackId.get(neighbor.track_id)).toBeCloseTo(neighbor.score, 6);
     }
+
+    // And it is not the single flat value the clamp produced.
+    expect(new Set(recommendations.map((entry) => entry.score.toFixed(9))).size).toBeGreaterThan(1);
   });
 
   test("tiny reports no vector data, and returns none", () => {
