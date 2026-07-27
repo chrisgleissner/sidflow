@@ -6,6 +6,7 @@ import {
   handleParseResult,
   buildSimilarityExport,
   buildTinySimilarityExport,
+  formatStylePopulations,
   loadConfig,
   parseArgs,
   resolveHvscVersionLabel,
@@ -27,6 +28,8 @@ interface SimilarityExportCliOptions {
   neighborSourceSqlite?: string;
   rewriteManifest?: boolean;
   hvscVersion?: string;
+  allowSparseStyles?: boolean;
+  styleTargetShare?: string;
 }
 
 const ARG_DEFS: ArgDef[] = [
@@ -104,6 +107,19 @@ const ARG_DEFS: ArgDef[] = [
     type: "string",
     description:
       "HVSC release the corpus was built from, e.g. \"HVSC 85 + Update 85\". Defaults to reading hvsc-version.json beside the configured sidPath.",
+  },
+  {
+    name: "--allow-sparse-styles",
+    type: "boolean",
+    description:
+      "Build a tiny bundle whose station populations fail the gate. The waiver and the violations it bypassed are recorded in the manifest.",
+    defaultValue: false,
+  },
+  {
+    name: "--style-target-share",
+    type: "string",
+    description:
+      "Share of the corpus assigned to each of the nine stations (default: 0.2). Lower makes stations more distinct and leaves more tracks unstationed.",
   },
 ];
 
@@ -249,9 +265,21 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   }
 
   if (options.format === "tiny") {
+    let stylePopulationPolicy: { targetShare: number } | undefined;
+    if (options.styleTargetShare !== undefined) {
+      const parsed = Number.parseFloat(String(options.styleTargetShare));
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+        process.stderr.write("Error: --style-target-share must be a fraction in (0, 1]\n");
+        return 1;
+      }
+      stylePopulationPolicy = { targetShare: parsed };
+    }
+
     process.stdout.write(`Converting ${options.sourceLite} into sidcorr-tiny-1\n`);
     process.stdout.write(`Writing tiny bundle to ${outputPath}\n`);
     const resultBundle = await buildTinySimilarityExport({
+      stylePopulationPolicy,
+      allowSparseStyles: options.allowSparseStyles,
       sourceLitePath: path.resolve(process.cwd(), options.sourceLite!),
       hvscRoot: path.resolve(process.cwd(), config.sidPath),
       outputPath,
@@ -263,6 +291,17 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
     });
     process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);
     process.stdout.write(`Tracks: ${resultBundle.manifest.track_count}\n`);
+    const populations = resultBundle.manifest.style_populations;
+    if (populations) {
+      process.stdout.write("Station populations:\n");
+      process.stdout.write(`${formatStylePopulations(populations, resultBundle.manifest.track_count)}\n`);
+    }
+    if (resultBundle.manifest.style_population_waiver) {
+      process.stdout.write("WARNING: built under --allow-sparse-styles; the manifest records:\n");
+      for (const violation of resultBundle.manifest.style_population_waiver) {
+        process.stdout.write(`  - ${violation}\n`);
+      }
+    }
     process.stdout.write(`Manifest: ${resultBundle.manifestPath}\n`);
     return 0;
   }

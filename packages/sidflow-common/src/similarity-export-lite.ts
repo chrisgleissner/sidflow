@@ -19,7 +19,7 @@ import {
 import { cosineSimilarity, weightsForDimensions } from "./vector-similarity.js";
 import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
 import {
-  computeSimilarityStyleMask,
+  buildStyleMaskIndex,
   packCompactRatings,
   pickRandomRows,
   unpackCompactRatings,
@@ -382,6 +382,9 @@ function cloneTrackRow(row: LiteTrackRecord): SimilarityTrackRow {
 
 function buildDataset(sourcePath: string, rows: LiteTrackRecord[]): SimilarityDataset {
   const rowsByTrackId = new Map(rows.map((row) => [row.track_id, row]));
+  // Corpus-relative, so it needs the whole set — computed once on first use rather than
+  // on open, since most callers never ask for a style mask.
+  let styleMaskIndex: Map<string, number> | null = null;
   return {
     info: {
       format: "lite",
@@ -414,8 +417,11 @@ function buildDataset(sourcePath: string, rows: LiteTrackRecord[]): SimilarityDa
       return scoreRows(rows, [trackId], {}, new Set(excludeTrackIds), Math.max(1, limit));
     },
     getStyleMask(trackId) {
-      const row = rowsByTrackId.get(trackId);
-      return row ? computeSimilarityStyleMask(row) : null;
+      if (!rowsByTrackId.has(trackId)) {
+        return null;
+      }
+      styleMaskIndex ??= buildStyleMaskIndex(rows);
+      return styleMaskIndex.get(trackId) ?? 0;
     },
     recommendFromFavorites(options) {
       return scoreRows(

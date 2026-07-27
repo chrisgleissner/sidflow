@@ -13,7 +13,7 @@ import {
 import { DEFAULT_RATING, DEFAULT_RATINGS, clampRating, type TagRatings } from "./ratings.js";
 import { aggregateFeedbackRecordsByKey, type AggregatedFeedback } from "./feedback-aggregation.js";
 import {
-  computeSimilarityStyleMask,
+  buildStyleMaskIndex,
   pickRandomRows,
   type SimilarityDataset,
   type SimilarityTrackRow,
@@ -1793,6 +1793,7 @@ export function recommendFromFavorites(
 
 export function openSqliteSimilarityDataset(dbPath: string): SimilarityDataset {
   const database = openReadonlyDatabase(dbPath);
+  let styleMaskIndex: Map<string, number> | null = null;
   try {
     const columnSupport = getTrackColumnSupport(database);
     const trackCountRow = database.query("SELECT COUNT(*) AS count FROM tracks").get() as { count: number };
@@ -1869,7 +1870,24 @@ export function openSqliteSimilarityDataset(dbPath: string): SimilarityDataset {
       },
       getStyleMask(trackId) {
         const row = this.resolveTrack(trackId);
-        return row ? computeSimilarityStyleMask(row) : null;
+        if (!row) {
+          return null;
+        }
+        // Corpus-relative, so the whole track set is read once and cached. A station is
+        // "the most X tracks in this corpus" and that cannot be answered from one row.
+        if (!styleMaskIndex) {
+          const readonlyDatabase = openReadonlyDatabase(dbPath);
+          try {
+            const columnSupport = getTrackColumnSupport(readonlyDatabase);
+            const allRows = readonlyDatabase
+              .query(`SELECT ${buildTrackIdExpression(columnSupport)} AS track_id, sid_path, e, m, c, p FROM tracks`)
+              .all() as Array<{ track_id: string; sid_path: string; e: number; m: number; c: number; p: number | null }>;
+            styleMaskIndex = buildStyleMaskIndex(allRows);
+          } finally {
+            readonlyDatabase.close();
+          }
+        }
+        return styleMaskIndex.get(row.track_id) ?? 0;
       },
       recommendFromFavorites(options) {
         return recommendFromFavorites(dbPath, options);

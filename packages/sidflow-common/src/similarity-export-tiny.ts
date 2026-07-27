@@ -19,7 +19,6 @@ import {
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
 import {
-  computeSimilarityStyleMask,
   packCompactRatings,
   pickRandomRows,
   unpackCompactRatings,
@@ -27,6 +26,19 @@ import {
   type SimilarityTrackRow,
 } from "./similarity-portable.js";
 import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
+import {
+  assignSimilarityStyleMasks,
+  type StylePopulationPolicy,
+} from "./style-assignment.js";
+import {
+  buildDirectoryOccupancy,
+  buildPersonaCorpusContext,
+  computeComposerProminence,
+  computeDirectoryRarity,
+  computeYearPosition,
+  derivePersonaMetadataFromSidBuffer,
+  type PersonaTrackMetadata,
+} from "./persona-metadata.js";
 
 export const TINY_SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-tiny-1";
 
@@ -78,6 +90,24 @@ export interface TinySimilarityExportManifest {
   track_count: number;
   file_count: number;
   style_count: number;
+  /**
+   * Persona key to member count, for all nine styles.
+   *
+   * Published so populations are verifiable at download time without a full pass over
+   * the mask table, so `c64commander` can render a track count on each station tile,
+   * and so the release gate has a machine-readable source to recount against. A station
+   * with 100 tracks next to one with 30,000 reads as a defect, and until 0.8.0 nothing
+   * in the export had any notion of how big a station was.
+   */
+  style_populations?: Record<string, number>;
+  /** The thresholds the population gate ran with, so a consumer can see what "passed" meant. */
+  style_population_policy?: StylePopulationPolicy;
+  /**
+   * Present ONLY when `--allow-sparse-styles` bypassed a failing gate, listing what it
+   * bypassed. A bundle produced under a waiver must never be mistakable for one that
+   * passed, so the waiver travels with the artefact rather than living in a build log.
+   */
+  style_population_waiver?: string[];
   file_id_kind: "md5_48";
   neighbors_per_track: 3;
   content_encoding: SimilarityBundleContentEncoding;
@@ -113,6 +143,13 @@ export interface BuildTinySimilarityExportOptions {
    */
   hvscVersion?: string;
   neighborSqlitePath?: string;
+  /** Overrides for the station population gate; see DEFAULT_STYLE_POPULATION_POLICY. */
+  stylePopulationPolicy?: Partial<StylePopulationPolicy>;
+  /**
+   * Bypass a failing population gate. Intended for small or unusual private corpora
+   * that genuinely cannot support nine stations. The bypass is recorded in the manifest.
+   */
+  allowSparseStyles?: boolean;
 }
 
 export interface BuildTinySimilarityExportResult {
@@ -189,7 +226,22 @@ function parseVector(row: SourceTrackRow): number[] {
   return normalizeVector(values);
 }
 
-async function computeMd548(context: Md548Context, sidPath: string): Promise<Buffer> {
+/**
+ * Resolve a SID path, hash it, and hand back the bytes.
+ *
+ * One read serves two purposes: the md5_48 file identity the bundle stores, and the
+ * header the hybrid personas need. Reading twice over 61,157 files to get both would be
+ * the obvious shape and the wrong one.
+ */
+async function readMd548AndPayload(
+  context: Md548Context,
+  sidPath: string,
+): Promise<{ digest: Buffer; payload: Buffer }> {
+  const payload = await readResolvedSidFile(context, sidPath);
+  return { digest: createHash("md5").update(payload).digest().subarray(0, 6), payload };
+}
+
+async function readResolvedSidFile(context: Md548Context, sidPath: string): Promise<Buffer> {
   const normalizedSidPath = sidPath.replace(/\\/g, "/").replace(/^\/+/, "");
   const candidatePaths = [
     path.resolve(context.musicRoot, normalizedSidPath),
@@ -212,8 +264,7 @@ async function computeMd548(context: Md548Context, sidPath: string): Promise<Buf
     throw new Error(`Unable to resolve SID path ${sidPath} within ${context.hvscRoot}`);
   }
 
-  const payload = await readFile(absolutePath);
-  return createHash("md5").update(payload).digest().subarray(0, 6);
+  return readFile(absolutePath);
 }
 
 /**
@@ -288,8 +339,8 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
         continue;
       }
       const relativePath = path.relative(songlengths.musicRoot, absolutePath).replace(/\\/g, "/");
-      const md548 = await computeMd548(md548Context, relativePath);
-      recordMd548(result, collisions, md548.toString("hex"), relativePath);
+      const { digest } = await readMd548AndPayload(md548Context, relativePath);
+      recordMd548(result, collisions, digest.toString("hex"), relativePath);
     }
   }
   warnAboutMd548Collisions(collisions);
@@ -558,16 +609,24 @@ export async function buildTinySimilarityExport(
   // learn before the release, not after.
   const identitySeen = new Map<string, string>();
   const identityCollisions: Array<[string, string, string]> = [];
+  // The SID header is parsed from the SAME buffer the md5_48 identity is computed from,
+  // so feeding the hybrid personas real metadata costs no extra I/O over a 61,157-file
+  // pass. That matters: it is the difference between the four metadata-led stations
+  // having a defining signal and being scored on the same three quintiles as everything
+  // else. It is also not reclassification -- composer, title and year come from file
+  // headers and paths, never from rendered audio.
+  const metadataByPath = new Map<string, PersonaTrackMetadata>();
   for (let index = 0; index < filePaths.length; index += 1) {
-    const md548 = await computeMd548(md548Context, filePaths[index]!);
-    const key = md548.toString("hex");
+    const { digest, payload } = await readMd548AndPayload(md548Context, filePaths[index]!);
+    const key = digest.toString("hex");
     const previous = identitySeen.get(key);
     if (previous !== undefined && previous !== filePaths[index]) {
       identityCollisions.push([key, previous, filePaths[index]!]);
     } else {
       identitySeen.set(key, filePaths[index]!);
     }
-    writeUInt48LE(fileIdentityTable, md548, index * 6);
+    writeUInt48LE(fileIdentityTable, digest, index * 6);
+    metadataByPath.set(filePaths[index]!, derivePersonaMetadataFromSidBuffer(filePaths[index]!, payload));
   }
   warnAboutMd548Collisions(identityCollisions);
 
@@ -577,9 +636,43 @@ export async function buildTinySimilarityExport(
     fileTrackCountTable.writeUInt8(Math.max(0, count - 1), fileIndex);
   }
 
+  // Station membership, corpus-relative and gated. See style-assignment.ts for what was
+  // wrong with taking each track's top three personas and why populations are assigned
+  // by quantile instead.
+  const occupancy = buildDirectoryOccupancy(rows.map((row) => row.sid_path));
+  const corpusContext = buildPersonaCorpusContext(
+    rows.map((row) => ({ sid_path: row.sid_path, metadata: metadataByPath.get(row.sid_path) })),
+  );
+  const styleAssignment = assignSimilarityStyleMasks(
+    rows.map((row) => {
+      const metadata = metadataByPath.get(row.sid_path);
+      return {
+        track_id: row.track_id,
+        sid_path: row.sid_path,
+        e: row.e,
+        m: row.m,
+        c: row.c,
+        p: row.p,
+        metadata,
+        rarity: computeDirectoryRarity(
+          row.sid_path,
+          occupancy.tracksPerDirectory,
+          occupancy.minimum,
+          occupancy.maximum,
+        ),
+        composerProminence: computeComposerProminence(metadata?.composer, corpusContext),
+        yearPosition: computeYearPosition(metadata?.year, corpusContext),
+      };
+    }),
+    {
+      policy: options.stylePopulationPolicy,
+      allowSparseStyles: options.allowSparseStyles,
+    },
+  );
+
   const styleMaskTable = Buffer.alloc(rows.length * STYLE_MASK_WIDTH_BYTES);
   for (let index = 0; index < rows.length; index += 1) {
-    styleMaskTable.writeUInt16LE(computeSimilarityStyleMask(rows[index]!), index * STYLE_MASK_WIDTH_BYTES);
+    styleMaskTable.writeUInt16LE(styleAssignment.masks[index] ?? 0, index * STYLE_MASK_WIDTH_BYTES);
   }
 
   const ratingTable = Buffer.alloc(rows.length * COMPACT_RATING_BYTES);
@@ -665,6 +758,9 @@ export async function buildTinySimilarityExport(
     track_count: rows.length,
     file_count: filePaths.length,
     style_count: PERSONA_IDS.length,
+    style_populations: styleAssignment.diagnostics.populations,
+    style_population_policy: styleAssignment.policy,
+    ...(styleAssignment.waived ? { style_population_waiver: styleAssignment.violations } : {}),
     file_id_kind: "md5_48",
     neighbors_per_track: 3,
     content_encoding: writeResult.contentEncoding,
