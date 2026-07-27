@@ -211,6 +211,30 @@ describe("tiny recommendFromFavorites ranks from the neighbour graph", () => {
     expect(distinctScores.size).toBe(recommendations.length);
   });
 
+  test("scores are relative to the strongest match, not clamped", () => {
+    // The walk ACCUMULATES: a track reachable by several paths sums their contributions,
+    // so raw scores routinely exceed 1. Clamping to [-1, 1] made every strongly-connected
+    // candidate report exactly 1.0 — measured on the shipped HVSC bundle, a seed's top 100
+    // recommendations came back with ONE distinct score between them while the underlying
+    // walk had 973 distinct values across the 1,674 tracks it reached. The ranking was
+    // never wrong; the number a consumer reads was.
+    const recommendations = dataset.recommendFromFavorites({
+      favoriteTrackIds: [seedTrackId],
+      limit: TRACK_COUNT,
+    });
+
+    expect(recommendations.length).toBeGreaterThan(1);
+    expect(recommendations[0]!.score).toBeCloseTo(1, 10);
+    for (const entry of recommendations) {
+      expect(entry.score).toBeLessThanOrEqual(1);
+      expect(entry.score).toBeGreaterThan(0);
+    }
+    // Strictly descending: no two tracks share the top score.
+    for (let index = 1; index < recommendations.length; index += 1) {
+      expect(recommendations[index]!.score).toBeLessThan(recommendations[index - 1]!.score);
+    }
+  });
+
   test("tiny reports no vector data, and returns none", () => {
     expect(dataset.info.hasVectorData).toBe(false);
     expect(dataset.getTrackVectors([seedTrackId]).size).toBe(0);

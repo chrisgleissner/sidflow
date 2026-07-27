@@ -148,7 +148,11 @@ export function derivePersonaMetadataFromSidPath(sidPath: string): PersonaTrackM
  * file to compute its md5_48 identity, so parsing the header from the same buffer adds
  * no I/O to a 61,157-file pass.
  */
-export function derivePersonaMetadataFromSidBuffer(sidPath: string, buffer: Buffer): PersonaTrackMetadata {
+export function derivePersonaMetadataFromSidBuffer(
+  sidPath: string,
+  buffer: Buffer,
+  report?: SidHeaderFallbackReport,
+): PersonaTrackMetadata {
   const fromPath = derivePersonaMetadataFromSidPath(sidPath);
   try {
     const header = parseSidFileFromBuffer(buffer);
@@ -162,15 +166,41 @@ export function derivePersonaMetadataFromSidBuffer(sidPath: string, buffer: Buff
       titleThemeTags: title ? deriveThemeTagsFromTitle(title) : fromPath.titleThemeTags,
     };
   } catch (error) {
-    // A file that will not parse is a property of the collection, not a reason to fail
-    // an export: the path-derived fields are still true and still useful.
-    console.debug(
-      `Could not parse the SID header of ${sidPath}, falling back to path-derived metadata: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    // A file that will not parse is a property of the collection, not a reason to fail an
+    // export: the path-derived fields are still true and still useful. Accumulated and
+    // reported once rather than logged per file, because a caller sweeping 61,157 files
+    // needs a count and an example, not 61,157 lines.
+    if (report) {
+      report.count += 1;
+      report.firstPath ??= sidPath;
+      report.firstMessage ??= error instanceof Error ? error.message : String(error);
+    }
     return fromPath;
   }
+}
+
+/** Accumulates SID header parse failures across a corpus sweep. See `summariseSidHeaderFallbacks`. */
+export interface SidHeaderFallbackReport {
+  count: number;
+  firstPath?: string;
+  firstMessage?: string;
+}
+
+export function createSidHeaderFallbackReport(): SidHeaderFallbackReport {
+  return { count: 0 };
+}
+
+/** Emit one line if any file's header could not be parsed. Returns true if it reported. */
+export function summariseSidHeaderFallbacks(report: SidHeaderFallbackReport, totalFiles: number): boolean {
+  if (report.count === 0) {
+    return false;
+  }
+  console.debug(
+    `[persona-metadata] ${report.count}/${totalFiles} SID headers could not be parsed and fell back to `
+    + `path-derived metadata (first: ${report.firstPath} — ${report.firstMessage}). `
+    + "Composer and category still resolve from the path; year and title-derived theme tags do not.",
+  );
+  return true;
 }
 
 /**

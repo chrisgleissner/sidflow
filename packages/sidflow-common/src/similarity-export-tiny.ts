@@ -36,7 +36,9 @@ import {
   computeComposerProminence,
   computeDirectoryRarity,
   computeYearPosition,
+  createSidHeaderFallbackReport,
   derivePersonaMetadataFromSidBuffer,
+  summariseSidHeaderFallbacks,
   type PersonaTrackMetadata,
 } from "./persona-metadata.js";
 
@@ -616,6 +618,7 @@ export async function buildTinySimilarityExport(
   // else. It is also not reclassification -- composer, title and year come from file
   // headers and paths, never from rendered audio.
   const metadataByPath = new Map<string, PersonaTrackMetadata>();
+  const headerFallbacks = createSidHeaderFallbackReport();
   for (let index = 0; index < filePaths.length; index += 1) {
     const { digest, payload } = await readMd548AndPayload(md548Context, filePaths[index]!);
     const key = digest.toString("hex");
@@ -626,9 +629,13 @@ export async function buildTinySimilarityExport(
       identitySeen.set(key, filePaths[index]!);
     }
     writeUInt48LE(fileIdentityTable, digest, index * 6);
-    metadataByPath.set(filePaths[index]!, derivePersonaMetadataFromSidBuffer(filePaths[index]!, payload));
+    metadataByPath.set(
+      filePaths[index]!,
+      derivePersonaMetadataFromSidBuffer(filePaths[index]!, payload, headerFallbacks),
+    );
   }
   warnAboutMd548Collisions(identityCollisions);
+  summariseSidHeaderFallbacks(headerFallbacks, filePaths.length);
 
   const fileTrackCountTable = Buffer.alloc(filePaths.length);
   for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
@@ -1180,10 +1187,31 @@ export async function openTinySimilarityDataset(
       // favourites call whose seeds have no neighbour edges returns nothing, rather
       // than returning noise that looks like a recommendation.
 
-      return [...scores.entries()]
+      const candidates = [...scores.entries()]
         .map(([trackOrdinal, score]) => ({ trackOrdinal, score }))
         .filter(({ trackOrdinal }) => !excludeTrackIds.has(rows[trackOrdinal]!.track_id) && !favoriteCanonicalIds.has(rows[trackOrdinal]!.track_id))
-        .sort((left, right) => right.score - left.score || left.trackOrdinal - right.trackOrdinal)
+        .sort((left, right) => right.score - left.score || left.trackOrdinal - right.trackOrdinal);
+
+      // Report the walk score relative to the strongest match rather than clamped.
+      //
+      // The walk ACCUMULATES: a track reachable by several paths sums their
+      // contributions, so raw scores routinely exceed 1. Clamping them to [-1, 1] --
+      // which is what this did -- made every strongly-connected candidate report exactly
+      // 1.0. Measured on the shipped bundle, a seed's top 100 recommendations came back
+      // with ONE distinct score between them, while the underlying walk had 973 distinct
+      // values across the 1,674 tracks it reached.
+      //
+      // The ranking was never wrong, because the sort happens on the raw score. But the
+      // number a consumer reads was, and a consumer thresholding on similarity, showing a
+      // confidence, or blending by score cannot tell a hundred tracks apart. Dividing by
+      // the strongest score preserves the ordering exactly and makes the value mean
+      // "how close to the best match this is", which is what it is used for.
+      const strongest = candidates[0]?.score ?? 0;
+      const normalise = (score: number): number => (
+        strongest > 0 ? Math.max(-1, Math.min(1, score / strongest)) : Math.max(-1, Math.min(1, score))
+      );
+
+      return candidates
         .slice(0, Math.max(1, options.limit ?? 100))
         .map(({ trackOrdinal, score }, index) => {
           const row = rows[trackOrdinal]!;
@@ -1191,7 +1219,7 @@ export async function openTinySimilarityDataset(
             track_id: row.track_id,
             sid_path: row.sid_path,
             song_index: row.song_index,
-            score: Math.max(-1, Math.min(1, score)),
+            score: normalise(score),
             rank: index + 1,
             e: row.e,
             m: row.m,
