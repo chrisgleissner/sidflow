@@ -22,9 +22,9 @@ Consumers migrating from any earlier data release should read
   omits `file_checksums` entirely — a file cannot contain its own digest — and the sidecar
   carries it, computed after the last write.
 - **`neighbor_row_count` is measured, not `track_count × k`.** The two coincide for HVSC
-  (2,196,700 = 87,868 × 25), but `u64deck` hard-fails its import on a mismatch with no
-  fallback, so one under-filled seed would have bricked every install. Measured on an
-  8-track corpus asking for 25 neighbours, the old code declared 200 against 56 actual.
+  (2,196,700 = 87,868 × 25), but a consumer that validates the table against this field
+  depends on it being accurate for any corpus. Measured on an 8-track corpus asking for 25
+  neighbours, the old code declared 200 against 56 actual.
 - `paths.*` are basenames. The 0.7.0 manifest published the build host's absolute
   filesystem layout.
 - New: `hvsc_version` (e.g. `"HVSC 85 + Update 85"`), read from `hvsc-version.json` at
@@ -109,9 +109,9 @@ Both additive; no existing filename changed.
 
 - `sidcorr-hvsc-full-sidcorr-1.sqlite.gz` — 194,351,886 bytes, **5.05×** smaller.
 - `sidcorr-hvsc-full-features-1.jsonl.gz` — 75,933,721 bytes. The raw feature records,
-  sorted by `track_id`, with their own manifest. `u64deck` downloads the full export for
-  exactly this and discards the rest; it can now take 8 MB of lite plus 76 MB of this
-  instead of 982 MB.
+  sorted by `track_id`, with their own manifest. A consumer that reads `features_json` and
+  uses neither `vector_json` nor the `neighbors` table can take 8 MB of lite plus 76 MB of
+  this instead of 982 MB.
 
 ### Release naming
 
