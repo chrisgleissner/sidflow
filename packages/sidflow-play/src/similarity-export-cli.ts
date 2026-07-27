@@ -4,6 +4,7 @@ import {
   buildLiteSimilarityExport,
   formatHelp,
   handleParseResult,
+  buildFeaturesSidecarExport,
   buildSimilarityExport,
   buildTinySimilarityExport,
   formatStylePopulations,
@@ -77,13 +78,13 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--format",
     type: "string",
-    description: "Export format: sqlite, lite, tiny",
+    description: "Export format: sqlite, lite, tiny, features",
     defaultValue: "sqlite",
   },
   {
     name: "--source-sqlite",
     type: "string",
-    description: "Convert an existing sidcorr-1 SQLite export into lite format",
+    description: "Source sidcorr-1 SQLite export, for --format lite and --format features",
   },
   {
     name: "--source-lite",
@@ -134,6 +135,7 @@ const HELP_TEXT = formatHelp(
     "sidflow-play export-similarity --format tiny --source-lite data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr --neighbor-source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --neighbors 25 --corpus-version HVSC-82",
     "sidflow-play export-similarity --format sqlite --rewrite-manifest --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
+    "sidflow-play export-similarity --format features --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
   ],
 );
 
@@ -145,13 +147,20 @@ function inferCorpusLabel(sidPath: string): string {
   return path.basename(normalized) || "custom";
 }
 
-function defaultOutputPath(corpusLabel: string, profile: "full" | "mobile", format: "sqlite" | "lite" | "tiny"): string {
+function defaultOutputPath(
+  corpusLabel: string,
+  profile: "full" | "mobile",
+  format: "sqlite" | "lite" | "tiny" | "features",
+): string {
   const base = `sidcorr-${corpusLabel}-${profile}`;
   if (format === "sqlite") {
     return path.join("data", "exports", `${base}-sidcorr-1.sqlite`);
   }
   if (format === "tiny") {
     return path.join("data", "exports", `${base}-sidcorr-tiny-1.sidcorr`);
+  }
+  if (format === "features") {
+    return path.join("data", "exports", `${base}-features-1.jsonl.gz`);
   }
   return path.join("data", "exports", `${base}-sidcorr-lite-1.sidcorr`);
 }
@@ -164,8 +173,13 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   }
 
   const { options } = result;
-  if (options.format !== "sqlite" && options.format !== "lite" && options.format !== "tiny") {
-    process.stderr.write("Error: --format must be sqlite, lite, or tiny\n");
+  if (
+    options.format !== "sqlite"
+    && options.format !== "lite"
+    && options.format !== "tiny"
+    && options.format !== "features"
+  ) {
+    process.stderr.write("Error: --format must be sqlite, lite, tiny, or features\n");
     return 1;
   }
   if (options.profile !== "full" && options.profile !== "mobile") {
@@ -224,8 +238,8 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
     return 0;
   }
 
-  if (options.sourceSqlite && options.format !== "lite") {
-    process.stderr.write("Error: --source-sqlite is only used with --format lite\n");
+  if (options.sourceSqlite && options.format !== "lite" && options.format !== "features") {
+    process.stderr.write("Error: --source-sqlite is only used with --format lite or --format features\n");
     return 1;
   }
 
@@ -242,6 +256,34 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   if (options.format === "lite" && !options.sourceSqlite) {
     process.stderr.write("Error: --source-sqlite is required for --format lite\n");
     return 1;
+  }
+
+  if (options.format === "features" && !options.sourceSqlite) {
+    process.stderr.write("Error: --source-sqlite is required for --format features\n");
+    return 1;
+  }
+
+  if (options.format === "features") {
+    process.stdout.write(`Extracting feature records from ${options.sourceSqlite}\n`);
+    process.stdout.write(`Writing features sidecar to ${outputPath}\n`);
+    const sidecar = await buildFeaturesSidecarExport({
+      sourceSqlitePath: path.resolve(process.cwd(), options.sourceSqlite!),
+      outputPath,
+      corpusVersion: corpusLabel,
+      hvscVersion,
+    });
+    const ratio = sidecar.manifest.bundle_bytes_uncompressed / Math.max(1, sidecar.manifest.bundle_bytes);
+    process.stdout.write(`Export complete in ${sidecar.durationMs}ms\n`);
+    process.stdout.write(`Tracks: ${sidecar.manifest.track_count}`);
+    if (sidecar.manifest.tracks_without_features > 0) {
+      process.stdout.write(` (${sidecar.manifest.tracks_without_features} without feature records)`);
+    }
+    process.stdout.write("\n");
+    process.stdout.write(
+      `Bytes: ${sidecar.manifest.bundle_bytes} gzipped from ${sidecar.manifest.bundle_bytes_uncompressed} (${ratio.toFixed(2)}x)\n`,
+    );
+    process.stdout.write(`Manifest: ${sidecar.manifestPath}\n`);
+    return 0;
   }
 
   if (options.format === "tiny" && !options.sourceLite) {

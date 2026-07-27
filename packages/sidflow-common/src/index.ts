@@ -47,3 +47,4 @@ export * from "./similarity-export.js";
 export * from "./similarity-portable.js";
 export * from "./similarity-export-lite.js";
 export * from "./similarity-export-tiny.js";
+export * from "./similarity-export-features.js";
