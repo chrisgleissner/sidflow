@@ -135,7 +135,7 @@ Both additive; no existing filename changed.
 ### Data release 0.8.0
 
 Rebuilt from the 0.7.0 full export. The lite bundle is **byte-identical** to 0.7.0's; the
-tiny bundle differs **only** in its style-mask table (104,637 bytes), with every `md5_48`
+tiny bundle differs **only** in its style-mask table (104,507 bytes), with every `md5_48`
 identity, per-file subsong count, packed rating and neighbour record unchanged. The full
 export shrank 1,013,977,088 → 982,155,264 bytes as `VACUUM` reclaimed free pages during
 the manifest repair. All digests change; see the migration document.

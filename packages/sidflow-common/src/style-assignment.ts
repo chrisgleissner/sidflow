@@ -71,7 +71,7 @@ import { buildPersonaMetricsFromRatings, type PersonaTrackMetadata } from "./per
  * populations they came out at Jaccard 0.659, sharing 79% of their tracks, and a
  * listener switching between them would hear the same station twice. Filing each dual
  * tune under its stronger fit takes the worst pair across all nine stations from 0.659
- * to 0.488 and, as a side effect, raises corpus coverage from 82.2% to 85.9%.
+ * to 0.386 and, as a side effect, raises corpus coverage from 82.1% to 84.7%.
  *
  * Everything else overlaps by design — a tune can be nostalgic and melodic, or a game
  * theme by a prolific composer — so declaring more pairs would encode taste rather than
@@ -137,9 +137,10 @@ export interface StylePopulationPolicy {
  * 15.76% for `era_explorer` before its metadata signal was made content-based.
  *
  * `maximumPairwiseJaccard` is set with the same discipline. Worst observed on HVSC is
- * 0.488 (`melodic` / `deep_discovery`), against 0.838 before the hybrid blend was
- * rebalanced. 0.55 leaves headroom over what the corpus actually produces while still
- * failing anything approaching the duplicate-station case this check was added for.
+ * 0.386 (`fast_paced` / `experimental`), against 0.838 before the hybrid blend was
+ * rebalanced and 0.488 before contested tracks were arbitrated by relative rank. 0.55
+ * leaves headroom over what the corpus actually produces while still failing anything
+ * approaching the duplicate-station case this check was added for.
  */
 export const DEFAULT_STYLE_POPULATION_POLICY: StylePopulationPolicy = {
   targetShare: 0.2,
@@ -264,18 +265,20 @@ function conflictsFor(personaId: PersonaId): PersonaId[] {
 /**
  * Assign every track its personas, corpus-relative, and gate the result.
  *
- * The algorithm in four steps:
+ * The algorithm:
  *
- *  1. score every track for every persona;
- *  2. rank each persona's scores descending, ties broken by `tieBreakHash`;
- *  3. walk each persona's ranking taking members until the target share is met,
- *     skipping any track already committed to a conflicting persona;
- *  4. measure, then refuse to return if the result would embarrass a station tile.
+ *  1. score every track for every persona, and rank each persona's view of the corpus,
+ *     ties broken by `tieBreakHash`;
+ *  2. every persona provisionally claims its own top `targetShare`, ignoring conflicts;
+ *  3. contested tracks are arbitrated by RELATIVE rank — each goes to the persona that
+ *     ranks it better — rather than to whichever persona is listed first;
+ *  4. each persona backfills what arbitration cost, from its own list, skipping anything
+ *     a conflicting persona holds;
+ *  5. measure, then refuse to return if the result would embarrass a station tile.
  *
- * Step 3 processes personas in a fixed order and commits as it goes, so a track
- * contested by `fast_paced` and `slow_ambient` goes to whichever ranks it better
- * relative to that persona's own distribution — and the loser simply reaches one place
- * further down its own list. That is why exclusivity costs nothing in population.
+ * Steps 3 and 4 are why exclusivity costs nothing in population: the loser of a contested
+ * track simply reaches one place further down its own ranking, and every persona still
+ * ends at exactly its target.
  */
 export function assignSimilarityStyleMasks(
   tracks: readonly StyleAssignmentTrack[],
@@ -324,29 +327,93 @@ export function assignSimilarityStyleMasks(
   const target = Math.max(1, Math.round(policy.targetShare * trackCount));
   const committed = new Map<PersonaId, Set<number>>(PERSONA_IDS.map((id) => [id, new Set<number>()]));
 
+  // Rank each persona's view of the corpus once. `position[i]` is where track i sits in
+  // this persona's descending order, so a SMALLER number is a better fit -- and because
+  // every persona ranks the same corpus, positions are directly comparable between them.
+  // That comparability is what makes conflict arbitration fair rather than positional.
+  const orderByPersona = new Map<PersonaId, number[]>();
+  const positionByPersona = new Map<PersonaId, Int32Array>();
   for (const personaId of PERSONA_IDS) {
     const scores = scoresByPersona.get(personaId)!;
-    const order = Array.from({ length: trackCount }, (_, index) => index).sort(
+    const order = Array.from({ length: trackCount }, (_unused, index) => index).sort(
       (left, right) => scores[right]! - scores[left]! || hashes[left]! - hashes[right]!,
     );
-    const conflicting = conflictsFor(personaId);
-    const members = committed.get(personaId)!;
+    const position = new Int32Array(trackCount);
+    for (let rank = 0; rank < order.length; rank += 1) {
+      position[order[rank]!] = rank;
+    }
+    orderByPersona.set(personaId, order);
+    positionByPersona.set(personaId, position);
+  }
 
-    let cutScore = Number.NaN;
-    for (const index of order) {
+  // Pass 1: every persona provisionally claims its own top `target`, ignoring conflicts.
+  for (const personaId of PERSONA_IDS) {
+    const members = committed.get(personaId)!;
+    for (const index of orderByPersona.get(personaId)!.slice(0, target)) {
+      members.add(index);
+    }
+  }
+
+  // Pass 2: arbitrate contested tracks by RELATIVE rank, not by which persona happens to
+  // be listed first.
+  //
+  // Filling personas one at a time and skipping already-taken tracks would give
+  // `fast_paced` unconditional first pick over `slow_ambient` purely because it comes
+  // first in PERSONA_IDS -- so a tune that is the 12,000th best fast-paced track and the
+  // 30th best ambient one would be filed as fast-paced. Comparing positions files each
+  // contested tune where it fits better, which is the judgement a music director makes.
+  for (const [left, right] of STYLE_CONFLICT_PAIRS) {
+    const leftMembers = committed.get(left)!;
+    const rightMembers = committed.get(right)!;
+    const leftPosition = positionByPersona.get(left)!;
+    const rightPosition = positionByPersona.get(right)!;
+    for (const index of [...leftMembers]) {
+      if (!rightMembers.has(index)) {
+        continue;
+      }
+      if (leftPosition[index]! <= rightPosition[index]!) {
+        rightMembers.delete(index);
+      } else {
+        leftMembers.delete(index);
+      }
+    }
+  }
+
+  // Pass 3: backfill what arbitration cost, from each persona's own ranked list, skipping
+  // anything a conflicting persona holds. Every persona ends at exactly `target` unless
+  // its list is exhausted, so exclusivity costs nothing in population.
+  for (const personaId of PERSONA_IDS) {
+    const members = committed.get(personaId)!;
+    const conflicting = conflictsFor(personaId);
+    if (conflicting.length === 0) {
+      continue;
+    }
+    for (const index of orderByPersona.get(personaId)!) {
       if (members.size >= target) {
         break;
       }
-      if (conflicting.some((other) => committed.get(other)!.has(index))) {
+      if (members.has(index) || conflicting.some((other) => committed.get(other)!.has(index))) {
         continue;
       }
       members.add(index);
-      cutScore = scores[index]!;
+    }
+  }
+
+  for (const personaId of PERSONA_IDS) {
+    const scores = scoresByPersona.get(personaId)!;
+    const members = committed.get(personaId)!;
+
+    // The score at which this persona's membership ends -- the weakest track it admitted.
+    let cutScore = Number.NaN;
+    for (const index of members) {
+      const score = scores[index]!;
+      if (!Number.isFinite(cutScore) || score < cutScore) {
+        cutScore = score;
+      }
     }
 
-    // How much of the corpus sits at exactly the score where the cut landed. A large
-    // number means membership at the boundary was decided by the hash rather than by
-    // anything about the music.
+    // How much of the corpus sits at exactly that score. A large number means membership
+    // at the boundary was decided by the tie-break rather than by anything about the music.
     let tiedAtCut = 0;
     if (Number.isFinite(cutScore)) {
       for (let index = 0; index < trackCount; index += 1) {

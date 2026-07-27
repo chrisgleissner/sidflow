@@ -576,7 +576,7 @@ its start.
 
 ### A track may carry no styles
 
-This is a legitimate and common outcome — 14.2% of HVSC — and it is the property the
+This is a legitimate and common outcome — 15.3% of HVSC — and it is the property the
 forced top-3 rule could not express. Consumers must not assume every track has a station.
 
 Bits outside the declared style table MUST remain unset.
@@ -600,7 +600,7 @@ collection is not blocked by a rule written for HVSC. The two semantic checks st
 below 1,000 tracks, where they measure discreteness rather than distribution.
 
 Measured on the 0.8.0 HVSC export: all nine styles at 17,574 tracks (20.0%), spread 1.0,
-zero conflicting overlap, worst tie-at-cut 7.03%, worst pairwise Jaccard 0.488.
+zero conflicting overlap, worst tie-at-cut 7.03%, worst pairwise Jaccard 0.386.
 
 `--allow-sparse-styles` bypasses the gate for a corpus that genuinely cannot support nine
 stations. When used, the violations it bypassed are written into the manifest as

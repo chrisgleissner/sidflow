@@ -1209,9 +1209,9 @@ before and after:
 | largest station | 46,652 (53.1%) | 17,574 (20.0%) |
 | spread | **69×** | **1.0** |
 | `fast_paced` ∩ `slow_ambient` | 9,451 tracks | **0** |
-| worst pairwise Jaccard | 0.838 | 0.488 |
+| worst pairwise Jaccard | 0.838 | 0.386 |
 | worst tie share at a station's cut | 15.76% (`era_explorer`) | 7.03% (`fast_paced`) |
-| tracks carrying no station | 0 (every track got exactly 3) | 12,442 (14.2%) |
+| tracks carrying no station | 0 (every track got exactly 3) | 13,478 (15.3%) |
 
 What it could **not** fix is the resolution of the underlying score.
 
@@ -1228,12 +1228,12 @@ Measured distinct scores across 87,868 tracks:
 |---|---:|---:|
 | `slow_ambient` | 125 | 0.58% |
 | `nostalgic` | 125 | 6.52% |
-| `experimental` | 120 | 1.28% |
+| `experimental` | 120 | 0.72% |
 | `fast_paced` | 96 | **7.03%** |
-| `melodic` | 75 | 0.07% |
+| `melodic` | 75 | 2.35% |
 | `deep_discovery` | 14,613 | 0.01% |
 | `composer_focus` | 5,986 | 0.02% |
-| `theme_hunter` | 5,321 | 0.02% |
+| `theme_hunter` | 5,321 | 0.01% |
 | `era_explorer` | 316 | 0.25% |
 
 The four hybrids escape the ceiling only because 0.8.0 gave them signals that are not

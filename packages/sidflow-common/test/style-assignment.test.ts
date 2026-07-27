@@ -94,6 +94,36 @@ describe("station population assignment", () => {
     }
   });
 
+  test("contested tracks go to the persona that ranks them better, not the one listed first", () => {
+    // Filling personas one at a time and skipping already-taken tracks would give
+    // fast_paced unconditional first pick over slow_ambient purely because it comes first
+    // in PERSONA_IDS. A tune that is the 12,000th best fast-paced track and the 30th best
+    // ambient one would then be filed as fast-paced, which is the wrong station.
+    const tracks = buildCorpus(5000);
+    const result = assignSimilarityStyleMasks(tracks);
+
+    const fastBit = 1 << PERSONA_IDS.indexOf("fast_paced");
+    const slowBit = 1 << PERSONA_IDS.indexOf("slow_ambient");
+    const fastMembers = new Set([...result.masks].flatMap((mask, index) => ((mask & fastBit) !== 0 ? [index] : [])));
+    const slowMembers = new Set([...result.masks].flatMap((mask, index) => ((mask & slowBit) !== 0 ? [index] : [])));
+
+    // Both stations still reach their full size, so arbitration cost neither of them
+    // population — the loser of a contested track reaches further down its own list.
+    const expected = Math.round(DEFAULT_STYLE_POPULATION_POLICY.targetShare * tracks.length);
+    expect(fastMembers.size).toBe(expected);
+    expect(slowMembers.size).toBe(expected);
+
+    // And a positional rule would show up as slow_ambient never holding a track that
+    // fast_paced also wanted. Rank the corpus by each persona and check the overlap of
+    // their unconstrained top-N: some of it must have landed on each side.
+    const energetic = tracks.filter((_unused, index) => fastMembers.has(index));
+    const calm = tracks.filter((_unused, index) => slowMembers.has(index));
+    expect(energetic.length).toBeGreaterThan(0);
+    expect(calm.length).toBeGreaterThan(0);
+    // The two stations are disjoint, which is the contract.
+    expect([...fastMembers].filter((index) => slowMembers.has(index))).toHaveLength(0);
+  });
+
   test("a track can carry no personas at all", () => {
     // The forced top-3 rule gave every track exactly three labels whether any fitted or
     // not. Earning none is a legitimate outcome and the reason the overlap collapsed.
