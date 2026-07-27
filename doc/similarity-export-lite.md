@@ -132,12 +132,30 @@ Semantics:
 `vector_dimensions` is the number of embedding components per track.
 
 - Allowed values in this schema: any positive integer representable by the file header.
+- **Read it from the manifest and from the file header. Never hardcode it.** It was 4 in
+  the 0.5-era releases and is **58** from 0.7.0, and it is expected to grow again.
 - The current generator preserves the upstream SQLite vector dimensionality when `vector_json` is present.
 - When the upstream export lacks `vector_json`, fallback values are `[e, m, c]` or `[e, m, c, p]`.
 
+The 58 dimensions of the current vector are 24 perceptual descriptors from rendered
+audio, 11 pitch and texture descriptors from rendered audio, and 23 derived from the SID
+register-write trace — the playroutine, not the sound. See `doc/similarity-export.md` for
+the full description.
+
 ## 5.2 Normalisation
 
-The generator MUST L2-normalise all vectors before any clustering, quantisation, or neighbour computations.
+Two normalisations apply, in this order, and a consumer needs to know about both.
+
+**Upstream, at export time: rank-uniform.** Each dimension is sorted independently across
+the whole corpus and a track's value replaced by `(r + 0.5) / n`, where `r` is its 0-based
+rank and `n` the corpus size, with ties receiving the mean of the values their span would
+have taken. The manifest records this as `vector_normalisation: "rank-uniform"`. Every
+dimension is therefore **corpus-relative**: 0.9 means "higher than 90% of this corpus in
+this dimension", and vectors from two different corpora are not comparable. This is
+skipped entirely for widths ≤ 4.
+
+**In this format: L2.** The generator MUST L2-normalise all vectors before any clustering,
+quantisation, or neighbour computations.
 
 For each track vector `V`:
 
@@ -150,10 +168,56 @@ Invalid vectors:
 
 ## 5.3 Similarity Semantics
 
-Unless stated otherwise, "similarity" refers to **cosine similarity** on L2-normalised vectors:
+**"Similarity" means WEIGHTED cosine, and the weights are in the manifest.** Read
+`similarity_metric` and, when it is `"weighted-cosine"`, `vector_weights`:
 
-- `cos(V_a, V_b) = dot(V_a, V_b)`
-- Range: `[-1.0, +1.0]`
+```
+similarity(a, b) =  Σ wᵢ·aᵢ·bᵢ  /  ( √(Σ wᵢ·aᵢ²) · √(Σ wᵢ·bᵢ²) )
+```
+
+Range: `[-1.0, +1.0]`.
+
+Three things about this formula are easy to get wrong, and each produces a plausible
+result that is quietly different:
+
+1. **The weight is applied to the dot product AND to both norms.** Reweighting only the
+   dot product gives a different ranking.
+2. **It is equivalent to a plain cosine over vectors scaled component-wise by `√wᵢ`.**
+   That is the cheap implementation: scale each vector once at load, re-normalise, and
+   every subsequent comparison is an ordinary dot product.
+3. **Weighted cosine is scale-invariant per vector**, so the L2 normalisation in §5.2 is
+   not an obstacle. Applying the weights to the vectors reconstructed from this bundle
+   reproduces the full export's ranking.
+
+When `similarity_metric` is `"cosine"` — which is the case for legacy widths ≤ 4 — no
+weights are published and similarity is the plain `dot(V_a, V_b)`. Weighting is selected
+by vector width; an unrecognised width receives none, because applying weights derived for
+one vector definition to a different one is worse than applying none.
+
+### Why this section exists
+
+Until 0.8.0 the weight table lived only in SIDFlow's TypeScript source. It was not in the
+bundle, not in any manifest, and not mentioned in this document. **A consumer who
+implemented this specification exactly computed a plain cosine and agreed with the
+authoritative neighbours on roughly half their results**, with no way to notice — both
+answers look like plausible recommendations.
+
+Measured over 3,000 seeds against the full export's stored neighbours:
+
+| What the consumer computes | R@1 | R@25 |
+|---|---:|---:|
+| lite vectors, weighted cosine | **0.9827** | **0.9878** |
+| lite vectors, plain cosine | 0.4783 | 0.5048 |
+
+And on a station grown from 5 favourites, top-50, over 400 trials: **0.982** overlap with
+the authoritative result using the weights, **0.403** without them.
+
+The quantisation in §6 costs about 1.5% of neighbours. The missing weight table cost 50%.
+
+You can check an implementation against the authoritative export with
+`scripts/verify-lite-against-full.ts`, which decodes the bundle from this specification
+rather than with SIDFlow's own reader and takes the metric from the manifest. Measured on
+the 0.8.0 bundle over 1,000 seeds: R@25 = 0.9868, R@1 = 0.9850.
 
 ---
 
@@ -450,42 +514,44 @@ A distribution release consists of:
 
 ## 10.2 Manifest JSON
 
-`manifest.json` MUST be a single JSON object with:
+The sidecar manifest is a single JSON object, written beside the bundle with the same
+basename and a `.manifest.json` extension. This is what the generator actually emits:
 
-- `schema_version` (string): MUST be `sidcorr-lite-1`
-- `binary_format_version` (number): MUST be `1`
-- `model_version` (string): opaque, stable identifier for this model lineage
-- `generated_at` (string): ISO 8601 timestamp (UTC recommended)
-- `source_export` (object):
-  - `schema_version` (string): MUST be `sidcorr-1`
-  - `vector_dimensions` (number): upstream stored vector dimensionality
-  - `include_vectors` (boolean)
-  - `neighbor_count_per_track` (number)
-  - `track_count` (number)
-- `parameters` (object):
-  - `vector_dimensions` (number)
-  - `pq_subspaces` (number)
-  - `pq_centroids` (number)
-  - `cluster_count` (number)
-  - `neighbors_enabled` (boolean)
-  - `neighbors_k_max` (number)
-- `base` (object):
-  - `path` (string)
-  - `sha256` (string, lowercase hex)
-  - `content_encoding` (string): `identity` or `gzip`
-  - `bytes_uncompressed` (number)
-- `deltas` (array of objects), ordered by application order:
-  - `path` (string)
-  - `sha256` (string)
-  - `content_encoding` (string): `gzip`
-  - `bytes_append_uncompressed` (number)
-  - `from_revision` (number)
-  - `to_revision` (number)
+- `schema_version` (string): `sidcorr-lite-1`
+- `generated_at` (string): ISO 8601 UTC timestamp
+- `corpus_version` (string): opaque corpus label, e.g. `hvsc`
+- `hvsc_version` (string): which HVSC release the bundle's `sid_path` values belong to,
+  e.g. `"HVSC 85 + Update 85"`, or `"unknown"`. Inherited from the source export rather
+  than read from the machine doing the conversion — a derived bundle describes the
+  source's corpus, and if the deriving machine's collection has moved on, the source is
+  the one telling the truth.
+- `track_count` (number)
+- `file_count` (number): distinct `.sid` files across those tracks
+- `vector_dimensions` (number)
+- `similarity_metric` (string): `weighted-cosine` or `cosine` — see §5.3
+- `vector_weights` (array of numbers): one per dimension; present for `weighted-cosine`
+  only. **This is the metric.** See §5.3 for what ignoring it costs.
+- `pq_subspaces` (number)
+- `pq_centroids_per_subspace` (number)
+- `cluster_count` (number)
+- `content_encoding` (string): `identity` or `gzip`
+- `bundle_bytes` (number): the file as written
+- `bundle_bytes_uncompressed` (number)
+- `source` (object):
+  - `sqlite` (string): basename of the `sidcorr-1` export this was derived from
+- `source_checksums` (object):
+  - `sqlite_sha256` (string, lowercase hex)
+- `file_checksums` (object):
+  - `bundle_sha256` (string, lowercase hex): digest of the bundle file itself
+- `paths` (object):
+  - `bundle` (string), `manifest` (string): **basenames only**, never absolute paths
 
-Notes:
+### Delta manifests
 
-- `from_revision`/`to_revision` are monotonically increasing integers local to `model_version`.
-- Deltas MUST apply only when the local store is exactly at `from_revision`.
+The delta model described in §10.1 and §10.3 is part of the format's design and is not
+yet emitted by the generator: every published release to date is a single base bundle
+with `content_encoding: identity`. A `model_version`/`deltas` manifest would be an
+additive change; consumers should not expect those fields today.
 
 ## 10.3 Delta Application
 
