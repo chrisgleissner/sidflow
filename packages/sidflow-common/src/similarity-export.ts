@@ -18,7 +18,12 @@ import {
   type SimilarityDataset,
   type SimilarityTrackRow,
 } from "./similarity-portable.js";
-import { LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS, cosineSimilarity } from "./vector-similarity.js";
+import {
+  LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS,
+  cosineSimilarity,
+  weightsForDimensions,
+} from "./vector-similarity.js";
+import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
 
 export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
 const SIMILARITY_SCORE_PRECISION = 1_000_000_000_000;
@@ -74,6 +79,38 @@ export interface SimilarityExportManifest {
    * the fast approximation without having to trust a release note.
    */
   sid_engine?: string;
+  /**
+   * Which HVSC release the `sid_path` values belong to, e.g. "HVSC 85 + Update 85",
+   * or "unknown" when it could not be established.
+   *
+   * Every consumer resolves these paths against a local collection, so the release is
+   * part of the data's identity. Releases before 0.8.0 recorded only `corpus_version:
+   * "hvsc"`, which says nothing.
+   */
+  hvsc_version?: string;
+  /**
+   * How to compare two vectors from this export: "weighted-cosine" or "cosine".
+   *
+   * Published because the choice is not inferable from the bundle. A consumer that
+   * assumes plain cosine over a weighted export agrees with the authoritative
+   * neighbours on roughly half its results — measured R@1 0.478 against 0.983 — and
+   * has no way to notice, since both answers look like plausible recommendations.
+   */
+  similarity_metric?: "weighted-cosine" | "cosine";
+  /**
+   * The per-dimension weights the metric applies, one per stored dimension.
+   *
+   * Present only for "weighted-cosine". These were fitted by coordinate ascent on
+   * nDCG@10 and lived solely in TypeScript source until 0.8.0, which made the
+   * published lite specification unimplementable: everything else a third party needs
+   * was in the bundle except the numbers that define what "similar" means.
+   *
+   * Applied to BOTH the dot product and both norms — see `cosineSimilarity` in
+   * vector-similarity.ts. That is equivalent to a plain cosine over vectors whose
+   * components have been scaled by sqrt(weight), and NOT to reweighting the dot
+   * product alone, which produces a different ranking.
+   */
+  vector_weights?: readonly number[];
   include_vectors: boolean;
   neighbor_count_per_track: number;
   track_count: number;
@@ -92,6 +129,22 @@ export interface SimilarityExportManifest {
   tables: readonly string[];
 }
 
+/**
+ * The manifest as embedded in the database's own `meta.manifest_json`.
+ *
+ * It is the sidecar manifest MINUS `file_checksums`, and the omission is the whole
+ * point. Every release up to 0.7.0 published a `file_checksums.sqlite_sha256` that
+ * had never matched the file, in either the sidecar or the embedded copy, because the
+ * exporter hashed the database and then wrote that hash into it — mutating the bytes
+ * it had just measured. The declared digest was therefore the digest of a file that
+ * was never published.
+ *
+ * A file cannot contain its own digest, so the type stops pretending it can. The
+ * embedded copy carries everything that describes the export; the sidecar carries
+ * that plus the digest of the finished file, computed after the last write.
+ */
+export type EmbeddedSimilarityExportManifest = Omit<SimilarityExportManifest, "file_checksums">;
+
 export interface BuildSimilarityExportOptions {
   classifiedPath: string;
   feedbackPath: string;
@@ -102,6 +155,34 @@ export interface BuildSimilarityExportOptions {
   dims?: number;
   includeVectors?: boolean;
   neighbors?: number;
+  /** Recorded verbatim as `hvsc_version`; defaults to "unknown" when not supplied. */
+  hvscVersion?: string;
+}
+
+export interface RewriteSimilarityExportManifestOptions {
+  /** An existing sidcorr-1 database. Rewritten in place. */
+  sqlitePath: string;
+  manifestPath?: string;
+  /**
+   * Replaces the stored `hvsc_version`. Omit to keep whatever the database already
+   * records, which for a pre-0.8.0 export is nothing.
+   */
+  hvscVersion?: string;
+}
+
+export interface RewriteSimilarityExportManifestResult {
+  sqlitePath: string;
+  manifestPath: string;
+  manifest: SimilarityExportManifest;
+  /**
+   * False when the embedded manifest was already correct and the database was left
+   * untouched. That case is what makes the operation idempotent: SQLite bumps the
+   * file change counter, the schema cookie and the version-valid-for number on every
+   * VACUUM, so a rewrite that always wrote would produce three different bytes each
+   * time it ran.
+   */
+  databaseRewritten: boolean;
+  durationMs: number;
 }
 
 export interface BuildSimilarityExportResult {
@@ -859,6 +940,165 @@ async function computeFileChecksum(filePath: string): Promise<string> {
 }
 
 /**
+ * Manifest paths are basenames, never the build host's filesystem layout.
+ *
+ * The v3 full manifest published "/mnt/data/dev/c64/sidflow/data/exports/…", in a file
+ * consumers are told to retain. A basename is all a consumer can use anyway — the file
+ * is somewhere else on their machine by definition — and it is the behaviour the lite
+ * and tiny profiles already had.
+ */
+function manifestPathFields(sqlitePath: string, manifestPath: string): { sqlite: string; manifest: string } {
+  return {
+    sqlite: path.basename(sqlitePath),
+    manifest: path.basename(manifestPath),
+  };
+}
+
+/**
+ * Name the metric, and publish the numbers that define it.
+ *
+ * `weightsForDimensions` is the single source of truth for which widths are weighted,
+ * so the manifest cannot drift from what `cosineSimilarity` actually does: both read
+ * the same table. Widths at or below the legacy ratings limit get plain cosine and no
+ * weights array, which is a statement rather than an omission.
+ */
+function describeSimilarityMetric(dimensions: number): {
+  similarity_metric: "weighted-cosine" | "cosine";
+  vector_weights?: readonly number[];
+} {
+  const weights = weightsForDimensions(dimensions);
+  if (!weights) {
+    return { similarity_metric: "cosine" };
+  }
+  return { similarity_metric: "weighted-cosine", vector_weights: [...weights] };
+}
+
+/** Insert or replace the embedded manifest. Shared by the export and the refresh path. */
+function writeEmbeddedManifest(database: Database, manifest: EmbeddedSimilarityExportManifest): void {
+  database
+    .query("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run("manifest_json", JSON.stringify(manifest));
+}
+
+function readEmbeddedManifest(database: Database): EmbeddedSimilarityExportManifest | null {
+  const row = database.query("SELECT value FROM meta WHERE key = ?").get("manifest_json") as
+    | { value: string }
+    | null;
+  if (!row) {
+    return null;
+  }
+  try {
+    return JSON.parse(row.value) as EmbeddedSimilarityExportManifest;
+  } catch (error) {
+    console.debug(
+      `Embedded manifest_json is not valid JSON and will be rebuilt from the database contents: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Hash the finished file, compose the sidecar, write it.
+ *
+ * The ONLY place a digest is computed, and it runs after the last write to the
+ * database in both the export and the refresh path. That ordering is the invariant
+ * this release exists to restore, so it lives in one function rather than being a
+ * property two call sites have to remember.
+ *
+ * `file_checksums.sqlite_sha256` stays in the sidecar even though `SHA256SUMS` also
+ * carries it: u64deck falls back to this field when SHA256SUMS has no matching entry
+ * and refuses the download outright when it is absent or malformed.
+ */
+async function writeSidecarManifest(
+  sqlitePath: string,
+  manifestPath: string,
+  embedded: EmbeddedSimilarityExportManifest,
+): Promise<SimilarityExportManifest> {
+  const sqliteSha256 = await computeFileChecksum(sqlitePath);
+  const manifest: SimilarityExportManifest = {
+    ...embedded,
+    file_checksums: { sqlite_sha256: sqliteSha256 },
+  };
+  await writeCanonicalJsonFile(manifestPath, manifest as unknown as import("./json.js").JsonValue, {
+    details: {
+      kind: "similarity-export-manifest",
+      trackCount: manifest.track_count,
+      neighborRowCount: manifest.neighbor_row_count,
+      sqliteSha256: manifest.file_checksums.sqlite_sha256,
+    },
+  });
+  return manifest;
+}
+
+/**
+ * Rebuild the embedded manifest from what the database actually contains.
+ *
+ * Split into "measure" and "preserve" deliberately. Anything a query can answer is
+ * re-measured, so the manifest describes the artefact rather than the intent of the
+ * run that produced it. Anything about the run itself is carried across untouched,
+ * because it cannot be recovered from the file and inventing it would be worse than
+ * an old value that is still true.
+ */
+function recomputeEmbeddedManifest(
+  database: Database,
+  stored: EmbeddedSimilarityExportManifest | null,
+  context: { sqlitePath: string; manifestPath: string; hvscVersion?: string },
+): EmbeddedSimilarityExportManifest {
+  const trackCount = Number(
+    (database.query("SELECT COUNT(*) AS count FROM tracks").get() as { count: number }).count,
+  );
+  const neighborRowCount = Number(
+    (database.query("SELECT COUNT(*) AS count FROM neighbors").get() as { count: number }).count,
+  );
+  // The declared depth is the deepest rank any seed reached, not an average: a seed in
+  // a corpus smaller than k cannot fill it, and reporting the mean would understate
+  // what the table offers a consumer asking for its top 25.
+  const neighborCountPerTrack = Number(
+    (database.query("SELECT COALESCE(MAX(rank), 0) AS depth FROM neighbors").get() as { depth: number }).depth,
+  );
+  const vectorRow = database
+    .query("SELECT vector_json FROM tracks WHERE vector_json IS NOT NULL LIMIT 1")
+    .get() as { vector_json: string } | null;
+  const featureRow = database
+    .query("SELECT feature_schema_version FROM tracks WHERE feature_schema_version IS NOT NULL LIMIT 1")
+    .get() as { feature_schema_version: string } | null;
+
+  let vectorDimensions = stored?.vector_dimensions ?? 0;
+  if (vectorRow) {
+    const parsed = JSON.parse(vectorRow.vector_json) as unknown;
+    if (Array.isArray(parsed)) {
+      vectorDimensions = parsed.length;
+    }
+  }
+
+  const tables = (database
+    .query("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all() as Array<{ name: string }>).map((row) => row.name);
+
+  return {
+    schema_version: SIMILARITY_EXPORT_SCHEMA_VERSION,
+    export_profile: stored?.export_profile ?? "full",
+    generated_at: stored?.generated_at ?? new Date().toISOString(),
+    corpus_version: stored?.corpus_version ?? "custom",
+    feature_schema_version: featureRow?.feature_schema_version ?? stored?.feature_schema_version ?? FEATURE_SCHEMA_VERSION,
+    vector_dimensions: vectorDimensions,
+    ...(stored?.vector_normalisation ? { vector_normalisation: stored.vector_normalisation } : {}),
+    ...(stored?.sid_engine ? { sid_engine: stored.sid_engine } : {}),
+    hvsc_version: context.hvscVersion ?? stored?.hvsc_version ?? HVSC_VERSION_UNKNOWN,
+    ...describeSimilarityMetric(vectorDimensions),
+    include_vectors: vectorRow !== null,
+    neighbor_count_per_track: neighborCountPerTrack,
+    track_count: trackCount,
+    neighbor_row_count: neighborRowCount,
+    paths: manifestPathFields(context.sqlitePath, context.manifestPath),
+    source_checksums: stored?.source_checksums ?? { classified: "unknown", feedback: "unknown" },
+    tables,
+  };
+}
+
+/**
  * Precompute the k nearest neighbours of every track.
  *
  * Two things here are deliberate, because the obvious implementation does not
@@ -1207,6 +1447,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
   await rm(temporaryOutputPath, { force: true });
 
   let neighborRowCount = 0;
+  let embeddedManifest: EmbeddedSimilarityExportManifest | undefined;
   const database = new Database(temporaryOutputPath, { create: true, strict: true });
   try {
     database.exec(`
@@ -1309,7 +1550,11 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
 
     const classifiedChecksum = await computeDirectoryChecksum(options.classifiedPath);
     const feedbackChecksum = await computeDirectoryChecksum(options.feedbackPath);
-    const placeholderManifest: SimilarityExportManifest = {
+
+    // Written ONCE, and written correct. The previous shape put a placeholder here and
+    // an UPDATE after hashing, which is what made the published digest describe a file
+    // that never existed. There is now no write to the database after the hash.
+    embeddedManifest = {
       schema_version: SIMILARITY_EXPORT_SCHEMA_VERSION,
       export_profile: profile,
       generated_at: new Date().toISOString(),
@@ -1318,82 +1563,107 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       vector_dimensions: dims,
       vector_normalisation: vectorNormalisation,
       ...(sidEngine ? { sid_engine: sidEngine } : {}),
+      hvsc_version: options.hvscVersion ?? HVSC_VERSION_UNKNOWN,
+      ...describeSimilarityMetric(dims),
       include_vectors: includeVectors,
       neighbor_count_per_track: neighborCount,
       track_count: tracks.length,
+      // Measured, not `tracks.length * neighborCount`. u64deck hard-fails its import
+      // when the two disagree, so a computed count turns one under-filled seed into a
+      // bricked install downstream.
       neighbor_row_count: neighborRowCount,
-      paths: {
-        sqlite: options.outputPath,
-        manifest: manifestPath,
-      },
+      paths: manifestPathFields(options.outputPath, manifestPath),
       source_checksums: {
         classified: classifiedChecksum,
         feedback: feedbackChecksum,
-      },
-      file_checksums: {
-        sqlite_sha256: "pending",
       },
       tables: ["meta", "tracks", "neighbors"],
     };
 
     const insertMeta = database.query("INSERT INTO meta (key, value) VALUES (?, ?)");
     insertMeta.run("schema_version", SIMILARITY_EXPORT_SCHEMA_VERSION);
-    insertMeta.run("manifest_json", JSON.stringify(placeholderManifest));
+    insertMeta.run("manifest_json", JSON.stringify(embeddedManifest));
   } finally {
     database.close();
-  }
-
-  const sqliteChecksum = await computeFileChecksum(temporaryOutputPath);
-  const manifest: SimilarityExportManifest = {
-    schema_version: SIMILARITY_EXPORT_SCHEMA_VERSION,
-    export_profile: profile,
-    generated_at: new Date().toISOString(),
-    corpus_version: options.corpusVersion ?? "custom",
-    feature_schema_version: FEATURE_SCHEMA_VERSION,
-    vector_dimensions: dims,
-    vector_normalisation: vectorNormalisation,
-    ...(sidEngine ? { sid_engine: sidEngine } : {}),
-    include_vectors: includeVectors,
-    neighbor_count_per_track: neighborCount,
-    track_count: tracks.length,
-    neighbor_row_count: neighborCount > 0 ? tracks.length * neighborCount : 0,
-    paths: {
-      sqlite: options.outputPath,
-      manifest: manifestPath,
-    },
-    source_checksums: {
-      classified: await computeDirectoryChecksum(options.classifiedPath),
-      feedback: await computeDirectoryChecksum(options.feedbackPath),
-    },
-    file_checksums: {
-      sqlite_sha256: sqliteChecksum,
-    },
-    tables: ["meta", "tracks", "neighbors"],
-  };
-
-  const writerDatabase = new Database(temporaryOutputPath, { create: true });
-  try {
-    writerDatabase.query("UPDATE meta SET value = ? WHERE key = ?").run(JSON.stringify(manifest), "manifest_json");
-  } finally {
-    writerDatabase.close();
   }
 
   await rm(options.outputPath, { force: true });
   await rename(temporaryOutputPath, options.outputPath);
 
-  await writeCanonicalJsonFile(manifestPath, manifest as unknown as import("./json.js").JsonValue, {
-    details: {
-      kind: "similarity-export-manifest",
-      trackCount: manifest.track_count,
-      neighborRowCount: manifest.neighbor_row_count,
-      sqliteSha256: manifest.file_checksums.sqlite_sha256,
-    },
-  });
+  const manifest = await writeSidecarManifest(options.outputPath, manifestPath, embeddedManifest!);
 
   return {
     outputPath: options.outputPath,
     manifestPath,
     manifest,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+/**
+ * Refresh an existing sidcorr-1 export's manifest from the database's own contents.
+ *
+ * This exists because the full export is the one artefact that cannot be regenerated:
+ * rebuilding it means reclassifying the whole corpus. Its data is correct — the stored
+ * neighbours reproduce from the stored vectors at R@25 = 1.0000 — and only the manifest
+ * was ever wrong, so the repair has to be a stage of the tool that owns the format
+ * rather than a bespoke patcher, and it has to be re-runnable.
+ *
+ * Everything measurable is re-measured: `track_count`, `neighbor_row_count`,
+ * `neighbor_count_per_track`, `vector_dimensions`, `feature_schema_version` and
+ * `include_vectors` all come from the tables. Everything that describes the build that
+ * produced the file — `generated_at`, `corpus_version`, `export_profile`,
+ * `source_checksums`, `sid_engine`, `vector_normalisation` — is preserved, because a
+ * repair is not a regeneration and must not claim to be one.
+ *
+ * ## Idempotency
+ *
+ * When the embedded manifest already matches what the contents imply, the database is
+ * not opened for writing at all. That is not an optimisation: SQLite increments the
+ * file change counter, the schema cookie and the version-valid-for number on every
+ * write transaction and VACUUM, so a rewrite that always wrote would emit a file that
+ * differs in three header bytes on every run — measured, and the reason for the guard.
+ */
+export async function rewriteSimilarityExportManifest(
+  options: RewriteSimilarityExportManifestOptions,
+): Promise<RewriteSimilarityExportManifestResult> {
+  const startedAt = Date.now();
+  const manifestPath = options.manifestPath ?? computeDefaultManifestPath(options.sqlitePath);
+
+  const reader = openReadonlyDatabase(options.sqlitePath);
+  let recomputed: EmbeddedSimilarityExportManifest;
+  let alreadyCorrect: boolean;
+  try {
+    const stored = readEmbeddedManifest(reader);
+    recomputed = recomputeEmbeddedManifest(reader, stored, {
+      sqlitePath: options.sqlitePath,
+      manifestPath,
+      hvscVersion: options.hvscVersion,
+    });
+    alreadyCorrect = stored !== null && JSON.stringify(stored) === JSON.stringify(recomputed);
+  } finally {
+    reader.close();
+  }
+
+  if (!alreadyCorrect) {
+    const writer = new Database(options.sqlitePath, { readwrite: true });
+    try {
+      writeEmbeddedManifest(writer, recomputed);
+      // Reclaims the pages the old manifest string freed and leaves the file in a
+      // canonical layout, so the digest describes a settled artefact.
+      writer.exec("VACUUM");
+    } finally {
+      writer.close();
+    }
+  }
+
+  const manifest = await writeSidecarManifest(options.sqlitePath, manifestPath, recomputed);
+
+  return {
+    sqlitePath: options.sqlitePath,
+    manifestPath,
+    manifest,
+    databaseRewritten: !alreadyCorrect,
     durationMs: Date.now() - startedAt,
   };
 }

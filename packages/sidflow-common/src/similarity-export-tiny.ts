@@ -26,6 +26,7 @@ import {
   type SimilarityDataset,
   type SimilarityTrackRow,
 } from "./similarity-portable.js";
+import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
 
 export const TINY_SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-tiny-1";
 
@@ -66,6 +67,14 @@ export interface TinySimilarityExportManifest {
   binary_format_version: number;
   generated_at: string;
   corpus_version: string;
+  /**
+   * Which HVSC release the bundle's file identities were computed from, or "unknown".
+   *
+   * Load-bearing for tiny in a way it is not for the other profiles: tiny stores a
+   * 48-bit MD5 prefix of each .sid file's bytes and nothing else, so a consumer whose
+   * collection differs resolves nothing at all and has no diagnostic to work from.
+   */
+  hvsc_version?: string;
   track_count: number;
   file_count: number;
   style_count: number;
@@ -98,6 +107,11 @@ export interface BuildTinySimilarityExportOptions {
   outputPath: string;
   manifestPath?: string;
   corpusVersion?: string;
+  /**
+   * Recorded as `hvsc_version`. Omit to inherit it from the source lite bundle's
+   * manifest, which is the corpus the identities actually describe.
+   */
+  hvscVersion?: string;
   neighborSqlitePath?: string;
 }
 
@@ -429,6 +443,32 @@ function computeFallbackNeighborGraph(
   });
 }
 
+/**
+ * Inherit the HVSC release from the lite bundle this tiny export is derived from.
+ *
+ * Read from lite's sidecar manifest rather than from the local workspace, for the same
+ * reason lite reads it from the SQLite: the derived bundle describes the source's
+ * corpus, and if the deriving machine's collection has since moved on, the source is
+ * the one telling the truth about these identities.
+ */
+async function readLiteManifestHvscVersion(sourceLitePath: string): Promise<string | null> {
+  const liteManifestPath = computePortableManifestPath(sourceLitePath);
+  try {
+    const parsed = JSON.parse(await readFile(liteManifestPath, "utf8")) as { hvsc_version?: unknown };
+    return typeof parsed.hvsc_version === "string" ? parsed.hvsc_version : null;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      console.debug(
+        `Could not read hvsc_version from ${liteManifestPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return null;
+  }
+}
+
 function describeHvscRootForManifest(hvscRoot: string): string {
   const normalized = hvscRoot.replace(/\\/g, "/").replace(/\/+$/g, "");
   if (!normalized) {
@@ -621,6 +661,7 @@ export async function buildTinySimilarityExport(
     binary_format_version: 2,
     generated_at: new Date().toISOString(),
     corpus_version: options.corpusVersion ?? path.basename(options.sourceLitePath, path.extname(options.sourceLitePath)),
+    hvsc_version: options.hvscVersion ?? (await readLiteManifestHvscVersion(options.sourceLitePath)) ?? HVSC_VERSION_UNKNOWN,
     track_count: rows.length,
     file_count: filePaths.length,
     style_count: PERSONA_IDS.length,

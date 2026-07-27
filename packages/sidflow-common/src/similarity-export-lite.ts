@@ -16,7 +16,8 @@ import {
   stableSimilarityScore,
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
-import { cosineSimilarity } from "./vector-similarity.js";
+import { cosineSimilarity, weightsForDimensions } from "./vector-similarity.js";
+import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
 import {
   computeSimilarityStyleMask,
   packCompactRatings,
@@ -90,9 +91,35 @@ export interface LiteSimilarityExportManifest {
   schema_version: typeof LITE_SIMILARITY_EXPORT_SCHEMA_VERSION;
   generated_at: string;
   corpus_version: string;
+  /**
+   * Which HVSC release the bundle's `sid_path` values belong to, or "unknown".
+   * See the note on the same field in SimilarityExportManifest.
+   */
+  hvsc_version?: string;
   track_count: number;
   file_count: number;
   vector_dimensions: number;
+  /**
+   * How to compare two vectors from this bundle: "weighted-cosine" or "cosine".
+   *
+   * This matters more for lite than for full, because lite is the profile a third
+   * party is expected to implement from the specification alone. Until 0.8.0 the
+   * weight table existed only in TypeScript source, so a consumer who followed the
+   * published spec exactly computed plain cosine and agreed with the authoritative
+   * neighbours on 48% of results while having every reason to believe they were
+   * correct.
+   */
+  similarity_metric?: "weighted-cosine" | "cosine";
+  /**
+   * The per-dimension weights, one per stored dimension. Present for
+   * "weighted-cosine" only.
+   *
+   * Lite stores each vector L2-normalised, which is not an obstacle: weighted cosine
+   * is scale-invariant per vector, so applying these to the reconstructed lite vectors
+   * reproduces the full export's ranking. Measured R@25 = 0.988 against full's stored
+   * neighbours; the residual 1.2% is product quantisation, not the metric.
+   */
+  vector_weights?: readonly number[];
   pq_subspaces: number;
   pq_centroids_per_subspace: number;
   cluster_count: number;
@@ -119,6 +146,12 @@ export interface BuildLiteSimilarityExportOptions {
   outputPath: string;
   manifestPath?: string;
   corpusVersion?: string;
+  /**
+   * Recorded as `hvsc_version`. Omit to inherit whatever the source SQLite's own
+   * manifest records, which keeps the derived bundle consistent with its source
+   * rather than with the machine that happened to derive it.
+   */
+  hvscVersion?: string;
   pqCentroidsPerSubspace?: number;
 }
 
@@ -148,6 +181,42 @@ function computeManifestPath(outputPath: string, explicitPath?: string): string 
 async function computeFileChecksum(filePath: string): Promise<string> {
   const payload = await readFile(filePath);
   return createHash("sha256").update(payload).digest("hex");
+}
+
+/**
+ * Inherit the HVSC release from the source export's own embedded manifest.
+ *
+ * A derived bundle describes the same corpus as the artefact it was derived from, so
+ * the provenance should follow the data rather than be re-read from whatever machine
+ * runs the conversion — those can differ, and when they do the source is right.
+ */
+function readSourceHvscVersion(database: Database): string | null {
+  try {
+    // A source without a meta table is a legitimate shape — the tests build minimal
+    // sidcorr-1 databases by hand — so probe for it rather than treating its absence
+    // as an error worth reporting.
+    const hasMeta = database
+      .query("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'meta'")
+      .get() as { name: string } | null;
+    if (!hasMeta) {
+      return null;
+    }
+    const row = database.query("SELECT value FROM meta WHERE key = ?").get("manifest_json") as
+      | { value: string }
+      | null;
+    if (!row) {
+      return null;
+    }
+    const parsed = JSON.parse(row.value) as { hvsc_version?: unknown };
+    return typeof parsed.hvsc_version === "string" ? parsed.hvsc_version : null;
+  } catch (error) {
+    console.debug(
+      `Could not read hvsc_version from the source export's manifest: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
 }
 
 function parseSourceVector(row: SourceTrackRow): number[] {
@@ -532,13 +601,18 @@ export async function buildLiteSimilarityExport(
     const manifestPath = computeManifestPath(options.outputPath, options.manifestPath);
     const sourceChecksum = await computeFileChecksum(options.sourceSqlitePath);
     const bundleChecksum = await computeFileChecksum(options.outputPath);
+    const sourceHvscVersion = readSourceHvscVersion(database);
+    const weights = weightsForDimensions(vectorDimensions);
     const manifest: LiteSimilarityExportManifest = {
       schema_version: LITE_SIMILARITY_EXPORT_SCHEMA_VERSION,
       generated_at: new Date().toISOString(),
       corpus_version: options.corpusVersion ?? path.basename(options.sourceSqlitePath, path.extname(options.sourceSqlitePath)),
+      hvsc_version: options.hvscVersion ?? sourceHvscVersion ?? HVSC_VERSION_UNKNOWN,
       track_count: rows.length,
       file_count: orderedFilePaths.length,
       vector_dimensions: vectorDimensions,
+      similarity_metric: weights ? "weighted-cosine" : "cosine",
+      ...(weights ? { vector_weights: [...weights] } : {}),
       pq_subspaces: vectorDimensions,
       pq_centroids_per_subspace: pqCentroidsPerSubspace,
       cluster_count: 1,

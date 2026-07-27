@@ -8,6 +8,8 @@ import {
   buildTinySimilarityExport,
   loadConfig,
   parseArgs,
+  resolveHvscVersionLabel,
+  rewriteSimilarityExportManifest,
   type ArgDef,
 } from "@sidflow/common";
 
@@ -23,6 +25,8 @@ interface SimilarityExportCliOptions {
   sourceSqlite?: string;
   sourceLite?: string;
   neighborSourceSqlite?: string;
+  rewriteManifest?: boolean;
+  hvscVersion?: string;
 }
 
 const ARG_DEFS: ArgDef[] = [
@@ -88,6 +92,19 @@ const ARG_DEFS: ArgDef[] = [
     type: "string",
     description: "Optional sidcorr-1 SQLite export used only as a precomputed neighbor hint when building tiny from lite",
   },
+  {
+    name: "--rewrite-manifest",
+    type: "boolean",
+    description:
+      "Recompute an existing sidcorr-1 export's manifest from the database's own contents and rewrite it in place, without reclassifying. Idempotent.",
+    defaultValue: false,
+  },
+  {
+    name: "--hvsc-version",
+    type: "string",
+    description:
+      "HVSC release the corpus was built from, e.g. \"HVSC 85 + Update 85\". Defaults to reading hvsc-version.json beside the configured sidPath.",
+  },
 ];
 
 const HELP_TEXT = formatHelp(
@@ -100,6 +117,7 @@ const HELP_TEXT = formatHelp(
     "sidflow-play export-similarity --format lite --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --format tiny --source-lite data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr --neighbor-source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --neighbors 25 --corpus-version HVSC-82",
+    "sidflow-play export-similarity --format sqlite --rewrite-manifest --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
   ],
 );
 
@@ -163,6 +181,32 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   const outputPath = options.output ?? defaultOutputPath(corpusLabel, options.profile, options.format);
   const classifiedPath = config.classifiedPath ?? "./data/classified";
   const feedbackPath = "./data/feedback";
+  // Read from the collection's own provenance file rather than asked for, so no future
+  // release can ship without it the way every release up to 0.7.0 did.
+  const hvscVersion = options.hvscVersion ?? (await resolveHvscVersionLabel(config.sidPath));
+
+  if (options.rewriteManifest) {
+    if (options.format !== "sqlite") {
+      process.stderr.write("Error: --rewrite-manifest is only used with --format sqlite\n");
+      return 1;
+    }
+    process.stdout.write(`Rewriting the manifest of ${outputPath} from its own contents\n`);
+    const rewritten = await rewriteSimilarityExportManifest({
+      sqlitePath: path.resolve(process.cwd(), outputPath),
+      hvscVersion,
+    });
+    process.stdout.write(
+      rewritten.databaseRewritten
+        ? "Embedded manifest updated and database vacuumed\n"
+        : "Embedded manifest was already correct; database left untouched\n",
+    );
+    process.stdout.write(`Tracks: ${rewritten.manifest.track_count}\n`);
+    process.stdout.write(`Neighbour rows: ${rewritten.manifest.neighbor_row_count}\n`);
+    process.stdout.write(`SQLite sha256: ${rewritten.manifest.file_checksums.sqlite_sha256}\n`);
+    process.stdout.write(`Manifest: ${rewritten.manifestPath}\n`);
+    process.stdout.write(`Complete in ${rewritten.durationMs}ms\n`);
+    return 0;
+  }
 
   if (options.sourceSqlite && options.format !== "lite") {
     process.stderr.write("Error: --source-sqlite is only used with --format lite\n");
@@ -196,6 +240,7 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
       sourceSqlitePath: path.resolve(process.cwd(), options.sourceSqlite!),
       outputPath,
       corpusVersion: corpusLabel,
+      hvscVersion,
     });
     process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);
     process.stdout.write(`Tracks: ${resultBundle.manifest.track_count}\n`);
@@ -211,6 +256,7 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
       hvscRoot: path.resolve(process.cwd(), config.sidPath),
       outputPath,
       corpusVersion: corpusLabel,
+      hvscVersion,
       neighborSqlitePath: options.neighborSourceSqlite
         ? path.resolve(process.cwd(), options.neighborSourceSqlite)
         : undefined,
@@ -233,6 +279,7 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
     dims: resolvedDims,
     includeVectors: options.includeVectors,
     neighbors: options.neighbors,
+    hvscVersion,
   });
 
   process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);

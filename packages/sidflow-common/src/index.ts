@@ -12,6 +12,7 @@ export * from "./jsonl-schema.js";
 export * from "./feedback.js";
 export * from "./feedback-aggregation.js";
 export * from "./hvsc-e2e-subset.js";
+export * from "./hvsc-version.js";
 export * from "./lancedb-builder.js";
 export * from "./recommender.js";
 export * from "./vector-similarity.js";
