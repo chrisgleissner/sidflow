@@ -270,14 +270,41 @@ export async function buildDatabase(
   }
   
   // Read classification records
-  const classifications = await readJsonlFiles<ClassificationRecord>(classifiedPath);
-  
+  const allRecords = await readJsonlFiles<ClassificationRecord>(classifiedPath);
+
+  // Not every .jsonl under the classified path is a classification.
+  //
+  // The directory also accumulates feature-phase records -- `features_*.jsonl`, written
+  // when feature extraction completes but rating does not -- and those carry no `ratings`
+  // field at all. Reading the tree recursively and destructuring `ratings` off every line
+  // therefore crashed the whole build on a corpus that had any: measured on an
+  // 87,868-track workspace, `bun run build:db` failed outright with
+  // "Cannot destructure property 'e' from null or undefined".
+  //
+  // The similarity export already handles this shape, so this only brings the database
+  // builder into line with it. Records without usable ratings are skipped and counted
+  // rather than crashing the run, because a partial extraction is an ordinary state for a
+  // corpus to be in, not a corrupt one.
+  const classifications = allRecords.filter((record) => {
+    const ratings = record?.ratings as { e?: unknown; m?: unknown; c?: unknown } | undefined;
+    return typeof ratings?.e === "number"
+      && typeof ratings?.m === "number"
+      && typeof ratings?.c === "number";
+  });
+  const skipped = allRecords.length - classifications.length;
+  if (skipped > 0) {
+    console.warn(
+      `[build:db] Skipped ${skipped} record(s) without ratings (feature-phase output); `
+      + `building from ${classifications.length} classification(s).`,
+    );
+  }
+
   // Read feedback events
   const feedbackEvents = await readJsonlFiles<FeedbackRecord>(feedbackPath);
-  
+
   // Aggregate feedback by SID path
   const feedbackAggregates = aggregateFeedbackBySidPath(feedbackEvents);
-  
+
   // Convert to database records
   const records: DatabaseRecord[] = classifications.map(classification =>
     toDatabaseRecord(classification, feedbackAggregates.get(classification.sid_path))

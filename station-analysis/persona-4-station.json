@@ -64,6 +64,26 @@
       "trackId": "C64Music/MUSICIANS/H/Hermit/Earmind_3SID.sid:1"
     },
     {
+      "explanation": "Selected for Experimental: experimentalTolerance=0.660 (high, w=0.60); timbralRichness=0.566 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.660194,
+        "melodicComplexity": 0.497416,
+        "nostalgiaBias": 0.312,
+        "rhythmicDensity": 0.389887,
+        "timbralRichness": 0.565616
+      },
+      "rank": 4,
+      "ratings": {
+        "c": 3,
+        "e": 2,
+        "m": 1
+      },
+      "score": 0.602408,
+      "sidPath": "C64Music/MUSICIANS/D/D_V/3SID_Test_3SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/D/D_V/3SID_Test_3SID.sid:1"
+    },
+    {
       "explanation": "Selected for Experimental: experimentalTolerance=0.530 (high, w=0.60); timbralRichness=0.536 (high, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.530301,
@@ -72,7 +92,7 @@
         "rhythmicDensity": 0.585347,
         "timbralRichness": 0.536051
       },
-      "rank": 4,
+      "rank": 5,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -92,7 +112,7 @@
         "rhythmicDensity": 0.604966,
         "timbralRichness": 0.482562
       },
-      "rank": 5,
+      "rank": 6,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -112,7 +132,7 @@
         "rhythmicDensity": 0.556095,
         "timbralRichness": 0.554028
       },
-      "rank": 6,
+      "rank": 7,
       "ratings": {
         "c": 3,
         "e": 5,
@@ -132,7 +152,7 @@
         "rhythmicDensity": 0.439316,
         "timbralRichness": 0.478591
       },
-      "rank": 7,
+      "rank": 8,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -142,26 +162,6 @@
       "sidPath": "C64Music/DEMOS/A-F/Devils_ReSIDence_3SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/DEMOS/A-F/Devils_ReSIDence_3SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Experimental: experimentalTolerance=0.660 (high, w=0.60); timbralRichness=0.566 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.660194,
-        "melodicComplexity": 0.447416,
-        "nostalgiaBias": 0.312,
-        "rhythmicDensity": 0.389887,
-        "timbralRichness": 0.565616
-      },
-      "rank": 8,
-      "ratings": {
-        "c": 2,
-        "e": 2,
-        "m": 1
-      },
-      "score": 0.589458,
-      "sidPath": "C64Music/MUSICIANS/D/D_V/3SID_Test_3SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/D/D_V/3SID_Test_3SID.sid:1"
     },
     {
       "explanation": "Selected for Experimental: experimentalTolerance=0.690 (high, w=0.60); timbralRichness=0.598 (high, w=0.15)",
@@ -484,6 +484,26 @@
       "trackId": "C64Music/MUSICIANS/N/Necrophobic/Heavy.sid:1"
     },
     {
+      "explanation": "Selected for Experimental: experimentalTolerance=0.442 (high, w=0.60); timbralRichness=0.472 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.442403,
+        "melodicComplexity": 0.691924,
+        "nostalgiaBias": 0.448364,
+        "rhythmicDensity": 0.441251,
+        "timbralRichness": 0.472228
+      },
+      "rank": 25,
+      "ratings": {
+        "c": 5,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.509612,
+      "sidPath": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid:1"
+    },
+    {
       "explanation": "Selected for Experimental: experimentalTolerance=0.426 (high, w=0.60); timbralRichness=0.464 (high, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.426467,
@@ -492,7 +512,7 @@
         "rhythmicDensity": 0.603538,
         "timbralRichness": 0.464211
       },
-      "rank": 25,
+      "rank": 26,
       "ratings": {
         "c": 3,
         "e": 5,
@@ -512,7 +532,7 @@
         "rhythmicDensity": 0.384408,
         "timbralRichness": 0.496081
       },
-      "rank": 26,
+      "rank": 27,
       "ratings": {
         "c": 2,
         "e": 2,
@@ -532,7 +552,7 @@
         "rhythmicDensity": 0.414766,
         "timbralRichness": 0.486741
       },
-      "rank": 27,
+      "rank": 28,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -544,6 +564,26 @@
       "trackId": "C64Music/MUSICIANS/B/Booker/Stereo_Pendejo_2SID.sid:1"
     },
     {
+      "explanation": "Selected for Experimental: experimentalTolerance=0.412 (high, w=0.60); timbralRichness=0.518 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.412062,
+        "melodicComplexity": 0.723933,
+        "nostalgiaBias": 0.576909,
+        "rhythmicDensity": 0.5186,
+        "timbralRichness": 0.518415
+      },
+      "rank": 29,
+      "ratings": {
+        "c": 4,
+        "e": 4,
+        "m": 2
+      },
+      "score": 0.503512,
+      "sidPath": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid:1"
+    },
+    {
       "explanation": "Selected for Experimental: experimentalTolerance=0.439 (high, w=0.60); nostalgiaBias=0.380 (low, w=0.10)",
       "metrics": {
         "experimentalTolerance": 0.438887,
@@ -552,7 +592,7 @@
         "rhythmicDensity": 0.482704,
         "timbralRichness": 0.360773
       },
-      "rank": 28,
+      "rank": 30,
       "ratings": {
         "c": 4,
         "e": 3,
@@ -572,7 +612,7 @@
         "rhythmicDensity": 0.492663,
         "timbralRichness": 0.328235
       },
-      "rank": 29,
+      "rank": 31,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -592,7 +632,7 @@
         "rhythmicDensity": 0.405395,
         "timbralRichness": 0.463192
       },
-      "rank": 30,
+      "rank": 32,
       "ratings": {
         "c": 4,
         "e": 1,
@@ -612,7 +652,7 @@
         "rhythmicDensity": 0.459975,
         "timbralRichness": 0.421956
       },
-      "rank": 31,
+      "rank": 33,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -632,7 +672,7 @@
         "rhythmicDensity": 0.607902,
         "timbralRichness": 0.497646
       },
-      "rank": 32,
+      "rank": 34,
       "ratings": {
         "c": 3,
         "e": 5,
@@ -652,7 +692,7 @@
         "rhythmicDensity": 0.724624,
         "timbralRichness": 0.439876
       },
-      "rank": 33,
+      "rank": 35,
       "ratings": {
         "c": 4,
         "e": 5,
@@ -672,7 +712,7 @@
         "rhythmicDensity": 0.644678,
         "timbralRichness": 0.39776
       },
-      "rank": 34,
+      "rank": 36,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -692,7 +732,7 @@
         "rhythmicDensity": 0.320988,
         "timbralRichness": 0.430169
       },
-      "rank": 35,
+      "rank": 37,
       "ratings": {
         "c": 5,
         "e": 1,
@@ -704,26 +744,6 @@
       "trackId": "C64Music/DEMOS/G-L/Hallows_Eve_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Experimental: experimentalTolerance=0.442 (high, w=0.60); timbralRichness=0.472 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.442403,
-        "melodicComplexity": 0.641924,
-        "nostalgiaBias": 0.448364,
-        "rhythmicDensity": 0.441251,
-        "timbralRichness": 0.472228
-      },
-      "rank": 36,
-      "ratings": {
-        "c": 4,
-        "e": 3,
-        "m": 3
-      },
-      "score": 0.496662,
-      "sidPath": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid:1"
-    },
-    {
       "explanation": "Selected for Experimental: experimentalTolerance=0.391 (high, w=0.60); timbralRichness=0.450 (high, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.390684,
@@ -732,7 +752,7 @@
         "rhythmicDensity": 0.370422,
         "timbralRichness": 0.449523
       },
-      "rank": 37,
+      "rank": 38,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -752,7 +772,7 @@
         "rhythmicDensity": 0.342206,
         "timbralRichness": 0.517178
       },
-      "rank": 38,
+      "rank": 39,
       "ratings": {
         "c": 3,
         "e": 1,
@@ -762,26 +782,6 @@
       "sidPath": "C64Music/MUSICIANS/J/Jellica/Teilmins2_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/J/Jellica/Teilmins2_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Experimental: experimentalTolerance=0.412 (high, w=0.60); timbralRichness=0.518 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.412062,
-        "melodicComplexity": 0.673933,
-        "nostalgiaBias": 0.576909,
-        "rhythmicDensity": 0.5186,
-        "timbralRichness": 0.518415
-      },
-      "rank": 39,
-      "ratings": {
-        "c": 3,
-        "e": 4,
-        "m": 2
-      },
-      "score": 0.490562,
-      "sidPath": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid:1"
     },
     {
       "explanation": "Selected for Experimental: experimentalTolerance=0.398 (high, w=0.60); timbralRichness=0.376 (high, w=0.15)",

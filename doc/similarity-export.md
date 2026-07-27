@@ -139,7 +139,17 @@ Useful flags:
 - `--config <path>` loads an alternate `.sidflow.json`
 - `--output <file>` overrides the SQLite output path
 - `--corpus-version <label>` stores an explicit corpus label in the manifest
-- `--dims 3|4` exports either `e/m/c` or `e/m/c/p` vectors
+- `--hvsc-version <label>` records which HVSC release the corpus is; defaults to reading
+  `hvsc-version.json` beside the configured `sidPath`
+- `--rewrite-manifest` recomputes an existing `sidcorr-1` export's manifest from the
+  database's own contents and rewrites it in place, without reclassifying. Idempotent:
+  running it twice on its own output produces a byte-identical file. See
+  [Repairing a manifest](#repairing-a-manifest).
+- `--dims 3|4` — **legacy, do not use for new exports.** It replaces the stored
+  similarity vector with a 3- or 4-element vector of the `e`/`m`/`c`/`p` ratings. That
+  path produced the 0.5-era exports in which 91.4% of 87,073 tracks shared the literal
+  vector `[3,3,3,3]` and recommendation was indistinguishable from random. The default,
+  `--dims auto`, exports the vector the classifier actually computed.
 - `--include-vectors` keeps vectors in SQLite for centroid queries
 - `--neighbors <k>` optionally precomputes the top `k` neighbors per track
 - `--publish-release true` stages and publishes the `.sqlite`, `.manifest.json`, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a tar.gz bundle to GitHub releases via `gh`
@@ -311,6 +321,166 @@ Classification has always run per subsong when a SID file exposes multiple track
 - `rank INTEGER NOT NULL`
 - `similarity REAL NOT NULL`
 
+## The similarity vector
+
+`vector_json` holds a **58-dimension** vector per track. Read `vector_dimensions` from
+the manifest; never hardcode the width. It was 4 in the 0.5-era releases and 58 from
+0.7.0, and it is expected to grow again.
+
+The 58 dimensions come from three groups:
+
+| Group | Dimensions | Source |
+|---|---:|---|
+| Perceptual | 24 | rendered audio — spectral, rhythmic and loudness descriptors |
+| Pitch and texture | 11 | rendered audio — tonal and harmonic descriptors |
+| Playroutine | 23 | the SID register-write trace, not the audio |
+
+The third group is what makes the vector composer-aware: it describes arrangement
+habit — how a tune drives the chip — rather than how it sounds.
+
+### Normalisation: `rank-uniform`
+
+The manifest field `vector_normalisation` reads `rank-uniform`. This is not a detail a
+re-implementation can approximate, because a plausible-looking alternative produces
+different numbers and there is no way to notice from the outside.
+
+Each dimension is sorted **independently across the whole corpus**, and a track's value
+in that dimension is replaced by its position:
+
+```
+value = (r + 0.5) / n
+```
+
+where `r` is the 0-based rank of the track in that dimension and `n` is the corpus track
+count. Midpoints, so values span `[0.5/n, 1 − 0.5/n]` and never reach exactly 0 or 1.
+
+**Ties receive the mean of the values their span would have taken.** That is load-bearing
+rather than cosmetic: SID features are full of exact ties — sample-playback activity and
+several waveform ratios are zero for most of the corpus — and giving tied values
+consecutive ranks would spread one repeated value across the whole quantile range in
+corpus order, turning arbitrary file ordering into a gradient the distance function can
+see. A perfectly constant dimension would become a perfect ramp.
+
+Two consequences worth stating plainly:
+
+- **Every dimension is corpus-relative.** A value of 0.9 means "higher than 90% of this
+  corpus in this dimension", not an absolute measurement. Vectors from two different
+  corpora are not comparable.
+- **Normalisation is skipped entirely for widths ≤ 4.** The legacy ratings vector holds
+  discrete 1–5 ratings whose absolute level is the meaning.
+
+### Similarity: weighted cosine
+
+**The metric is not plain cosine.** Neighbours in the `neighbors` table are ranked by a
+*weighted* cosine, and the weights are published in the manifest as `vector_weights`
+alongside `similarity_metric: "weighted-cosine"`.
+
+The weight is applied to the dot product **and to both norms**:
+
+```
+similarity(a, b) =  Σ wᵢ·aᵢ·bᵢ  /  ( √(Σ wᵢ·aᵢ²) · √(Σ wᵢ·bᵢ²) )
+```
+
+That is *not* a reweighting of the dot product alone, which produces a subtly different
+ranking. It is equivalent to a plain cosine over vectors whose components have each been
+scaled by `√wᵢ` — which is the cheapest way to implement it, since you can scale once and
+then use ordinary dot products.
+
+Because it is a cosine, it is **scale-invariant per vector**. The lite profile stores its
+vectors L2-normalised, and that is not an obstacle: applying these weights to lite's
+reconstructed vectors reproduces the full export's ranking.
+
+**A consumer that ignores the weights gets roughly half the correct neighbours.** Measured
+over 3,000 seeds against the full export's stored neighbours:
+
+| What the consumer computes | R@1 | R@25 |
+|---|---:|---:|
+| full vectors, weighted cosine *(reference)* | 0.9993 | 1.0000 |
+| lite vectors, weighted cosine | 0.9827 | 0.9878 |
+| full vectors, **plain** cosine | 0.4810 | 0.5055 |
+| lite vectors, **plain** cosine | 0.4783 | 0.5048 |
+
+On the product's actual primitive — a station grown from 5 favourites, top-50, 400 trials
+— weighted-vs-plain agreement is **0.403** on the whole corpus. Half the station is
+different, and nothing about the result looks wrong.
+
+Weighting is selected **by vector width**: a table maps each known width to its schedule.
+Widths at or below 4 are legacy ratings vectors and receive **no weighting**, so those
+manifests read `similarity_metric: "cosine"` and publish no `vector_weights`. An unknown
+width also receives no weighting — applying weights derived for one vector definition to a
+different one is worse than applying none.
+
+Verify your implementation with:
+
+```bash
+bun run scripts/verify-lite-against-full.ts \
+  --lite data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr \
+  --full data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite --seeds 1000
+```
+
+It parses the bundle from this specification rather than with SIDFlow's own decoder, and
+takes the metric from the manifest, so it fails if either drifts.
+
+## Ratings are exact quintiles, and that is deliberate
+
+`e`, `m` and `c` are **exact rank-uniform quintiles** of the corpus. Measured on HVSC:
+17,574 / 17,573 / 17,574 / 17,573 / 17,574 for each of the three, with all 125 `(e,m,c)`
+cells populated.
+
+So `e=1` means **"the calmest fifth of this corpus"**, not "objectively calm". That is the
+right choice for building a station and the wrong one for a label, and it is worth being
+explicit about because it guarantees the property a station needs: **every category has a
+usable pool, by construction**. A threshold tuned against a corpus where the ratings were
+not uniform will be wrong here.
+
+`p` carries user feedback. In a published corpus it is unset.
+
+## Neighbour quality: same-file siblings
+
+Consumers should diversify. Across the full export's 2,196,700 neighbour rows, the
+neighbour is a **different subsong of the same `.sid` file** at these rates:
+
+| Rank | 1 | 2 | 3 | 5 | 10 | overall (1–25) |
+|---|---:|---:|---:|---:|---:|---:|
+| same-file | **14.4%** | 11.0% | 9.2% | 7.2% | 4.7% | **5.1%** |
+
+- 905 seeds (1.03%) have **all 25** neighbours from their own file.
+- 2,103 seeds (2.39%) have a majority same-file.
+- 75.0% of seeds have none — the tail is concentrated, not diffuse.
+
+With 61,157 files and 87,868 tracks (1.44 subsongs per file on average), 14.4% at rank 1
+is far above chance. Subsongs of one tune are frequently near-identical variants, so "the
+most similar track" being the next subtune is a poor listening result.
+
+**Exclude the seed's `sid_path`, not just its `track_id`**, when serving "more like this".
+The `neighbors` table does not currently carry a same-file flag; deriving it is a string
+comparison on `sid_path`, and exporting file grouping explicitly is deferred to a future
+schema version because it changes the table's shape.
+
+## Repairing a manifest
+
+`--rewrite-manifest` recomputes an existing export's manifest from the database's own
+contents and rewrites it in place. It exists because the full export is the one artefact
+that cannot be regenerated without reclassifying the entire corpus, so a manifest defect
+has to be repairable without touching the data.
+
+```bash
+sidflow-play export-similarity --format sqlite --rewrite-manifest \
+  --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
+```
+
+Everything measurable is re-measured from the tables: `track_count`,
+`neighbor_row_count`, `neighbor_count_per_track`, `vector_dimensions`,
+`feature_schema_version`, `include_vectors`, `tables`. Everything describing the build
+that produced the file is preserved: `generated_at`, `corpus_version`, `export_profile`,
+`source_checksums`, `sid_engine`, `vector_normalisation`. A repair is not a regeneration
+and does not claim to be one.
+
+It is idempotent. When the embedded manifest already matches what the contents imply, the
+database is not opened for writing at all — SQLite bumps the file change counter, the
+schema cookie and the version-valid-for number on every `VACUUM`, so a rewrite that always
+wrote would emit three different bytes on every run.
+
 ## Manifest structure
 
 The sidecar manifest records:
@@ -319,18 +489,46 @@ The sidecar manifest records:
 - `export_profile`: `full` or `mobile`
 - `generated_at`
 - `corpus_version`
+- `hvsc_version` — which HVSC release the `sid_path` values belong to, e.g.
+  `"HVSC 85 + Update 85"`, or `"unknown"`. Every consumer resolves these paths against a
+  local collection, so the release is part of the data's identity. Releases before 0.8.0
+  recorded only `corpus_version: "hvsc"`, which says nothing.
 - `feature_schema_version`
 - `vector_dimensions`
+- `vector_normalisation` — `"rank-uniform"` or `"none"`
+- `similarity_metric` — `"weighted-cosine"` or `"cosine"`
+- `vector_weights` — one weight per dimension; present for `"weighted-cosine"` only
+- `sid_engine` — which SID emulation rendered the corpus, `"sidlite"` or `"residfp"`.
+  **This is not the same as the `render_engine` column**, which reads `wasm` for both:
+  that names the renderer, and both emulations run inside it. Absent when no track
+  recorded one, which is the case for corpora classified before the field existed.
 - `include_vectors`
 - `neighbor_count_per_track`
 - `track_count`
-- `neighbor_row_count`
-- `paths.sqlite`
-- `paths.manifest`
-- `source_checksums.classified`
-- `source_checksums.feedback`
+- `neighbor_row_count` — the **measured** row count of the `neighbors` table, not
+  `track_count × k`. Consumers that hard-fail on a mismatch are safe against an export
+  where some seed could not fill `k`.
+- `paths.sqlite`, `paths.manifest` — **basenames only**, never the build host's layout
+- `source_checksums.classified`, `source_checksums.feedback`
 - `file_checksums.sqlite_sha256`
 - `tables`
+
+### `file_checksums` and the embedded copy
+
+The manifest is published in two places, and they are deliberately **not identical**:
+
+- the **sidecar** `*.manifest.json` carries `file_checksums.sqlite_sha256`, computed after
+  the last write to the database;
+- the copy embedded in the database's own `meta.manifest_json` **omits `file_checksums`
+  entirely**.
+
+A file cannot contain its own digest. Every release up to and including 0.7.0 tried:
+the exporter hashed the database and then wrote that hash into it, mutating the bytes it
+had just measured, so the declared digest was the digest of a file that was never
+published. `SHA256SUMS` was always correct, so nothing downstream broke — but a consumer
+following the instruction to "verify the checksum and retain the manifest" rejected every
+release SIDFlow ever shipped. Verify against either the sidecar field or `SHA256SUMS`;
+from 0.8.0 they agree.
 
 ## Consumer workflow
 

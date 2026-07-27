@@ -4,10 +4,14 @@ import {
   buildLiteSimilarityExport,
   formatHelp,
   handleParseResult,
+  buildFeaturesSidecarExport,
   buildSimilarityExport,
   buildTinySimilarityExport,
+  formatStylePopulations,
   loadConfig,
   parseArgs,
+  resolveHvscVersionLabel,
+  rewriteSimilarityExportManifest,
   type ArgDef,
 } from "@sidflow/common";
 
@@ -23,6 +27,10 @@ interface SimilarityExportCliOptions {
   sourceSqlite?: string;
   sourceLite?: string;
   neighborSourceSqlite?: string;
+  rewriteManifest?: boolean;
+  hvscVersion?: string;
+  allowSparseStyles?: boolean;
+  styleTargetShare?: string;
 }
 
 const ARG_DEFS: ArgDef[] = [
@@ -70,13 +78,13 @@ const ARG_DEFS: ArgDef[] = [
   {
     name: "--format",
     type: "string",
-    description: "Export format: sqlite, lite, tiny",
+    description: "Export format: sqlite, lite, tiny, features",
     defaultValue: "sqlite",
   },
   {
     name: "--source-sqlite",
     type: "string",
-    description: "Convert an existing sidcorr-1 SQLite export into lite format",
+    description: "Source sidcorr-1 SQLite export, for --format lite and --format features",
   },
   {
     name: "--source-lite",
@@ -87,6 +95,32 @@ const ARG_DEFS: ArgDef[] = [
     name: "--neighbor-source-sqlite",
     type: "string",
     description: "Optional sidcorr-1 SQLite export used only as a precomputed neighbor hint when building tiny from lite",
+  },
+  {
+    name: "--rewrite-manifest",
+    type: "boolean",
+    description:
+      "Recompute an existing sidcorr-1 export's manifest from the database's own contents and rewrite it in place, without reclassifying. Idempotent.",
+    defaultValue: false,
+  },
+  {
+    name: "--hvsc-version",
+    type: "string",
+    description:
+      "HVSC release the corpus was built from, e.g. \"HVSC 85 + Update 85\". Defaults to reading hvsc-version.json beside the configured sidPath.",
+  },
+  {
+    name: "--allow-sparse-styles",
+    type: "boolean",
+    description:
+      "Build a tiny bundle whose station populations fail the gate. The waiver and the violations it bypassed are recorded in the manifest.",
+    defaultValue: false,
+  },
+  {
+    name: "--style-target-share",
+    type: "string",
+    description:
+      "Share of the corpus assigned to each of the nine stations (default: 0.2). Lower makes stations more distinct and leaves more tracks unstationed.",
   },
 ];
 
@@ -100,6 +134,8 @@ const HELP_TEXT = formatHelp(
     "sidflow-play export-similarity --format lite --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --format tiny --source-lite data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr --neighbor-source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
     "sidflow-play export-similarity --neighbors 25 --corpus-version HVSC-82",
+    "sidflow-play export-similarity --format sqlite --rewrite-manifest --output data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
+    "sidflow-play export-similarity --format features --source-sqlite data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite",
   ],
 );
 
@@ -111,13 +147,20 @@ function inferCorpusLabel(sidPath: string): string {
   return path.basename(normalized) || "custom";
 }
 
-function defaultOutputPath(corpusLabel: string, profile: "full" | "mobile", format: "sqlite" | "lite" | "tiny"): string {
+function defaultOutputPath(
+  corpusLabel: string,
+  profile: "full" | "mobile",
+  format: "sqlite" | "lite" | "tiny" | "features",
+): string {
   const base = `sidcorr-${corpusLabel}-${profile}`;
   if (format === "sqlite") {
     return path.join("data", "exports", `${base}-sidcorr-1.sqlite`);
   }
   if (format === "tiny") {
     return path.join("data", "exports", `${base}-sidcorr-tiny-1.sidcorr`);
+  }
+  if (format === "features") {
+    return path.join("data", "exports", `${base}-features-1.jsonl.gz`);
   }
   return path.join("data", "exports", `${base}-sidcorr-lite-1.sidcorr`);
 }
@@ -130,8 +173,13 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   }
 
   const { options } = result;
-  if (options.format !== "sqlite" && options.format !== "lite" && options.format !== "tiny") {
-    process.stderr.write("Error: --format must be sqlite, lite, or tiny\n");
+  if (
+    options.format !== "sqlite"
+    && options.format !== "lite"
+    && options.format !== "tiny"
+    && options.format !== "features"
+  ) {
+    process.stderr.write("Error: --format must be sqlite, lite, tiny, or features\n");
     return 1;
   }
   if (options.profile !== "full" && options.profile !== "mobile") {
@@ -163,9 +211,35 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   const outputPath = options.output ?? defaultOutputPath(corpusLabel, options.profile, options.format);
   const classifiedPath = config.classifiedPath ?? "./data/classified";
   const feedbackPath = "./data/feedback";
+  // Read from the collection's own provenance file rather than asked for, so no future
+  // release can ship without it the way every release up to 0.7.0 did.
+  const hvscVersion = options.hvscVersion ?? (await resolveHvscVersionLabel(config.sidPath));
 
-  if (options.sourceSqlite && options.format !== "lite") {
-    process.stderr.write("Error: --source-sqlite is only used with --format lite\n");
+  if (options.rewriteManifest) {
+    if (options.format !== "sqlite") {
+      process.stderr.write("Error: --rewrite-manifest is only used with --format sqlite\n");
+      return 1;
+    }
+    process.stdout.write(`Rewriting the manifest of ${outputPath} from its own contents\n`);
+    const rewritten = await rewriteSimilarityExportManifest({
+      sqlitePath: path.resolve(process.cwd(), outputPath),
+      hvscVersion,
+    });
+    process.stdout.write(
+      rewritten.databaseRewritten
+        ? "Embedded manifest updated and database vacuumed\n"
+        : "Embedded manifest was already correct; database left untouched\n",
+    );
+    process.stdout.write(`Tracks: ${rewritten.manifest.track_count}\n`);
+    process.stdout.write(`Neighbour rows: ${rewritten.manifest.neighbor_row_count}\n`);
+    process.stdout.write(`SQLite sha256: ${rewritten.manifest.file_checksums.sqlite_sha256}\n`);
+    process.stdout.write(`Manifest: ${rewritten.manifestPath}\n`);
+    process.stdout.write(`Complete in ${rewritten.durationMs}ms\n`);
+    return 0;
+  }
+
+  if (options.sourceSqlite && options.format !== "lite" && options.format !== "features") {
+    process.stderr.write("Error: --source-sqlite is only used with --format lite or --format features\n");
     return 1;
   }
 
@@ -184,6 +258,34 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
     return 1;
   }
 
+  if (options.format === "features" && !options.sourceSqlite) {
+    process.stderr.write("Error: --source-sqlite is required for --format features\n");
+    return 1;
+  }
+
+  if (options.format === "features") {
+    process.stdout.write(`Extracting feature records from ${options.sourceSqlite}\n`);
+    process.stdout.write(`Writing features sidecar to ${outputPath}\n`);
+    const sidecar = await buildFeaturesSidecarExport({
+      sourceSqlitePath: path.resolve(process.cwd(), options.sourceSqlite!),
+      outputPath,
+      corpusVersion: corpusLabel,
+      hvscVersion,
+    });
+    const ratio = sidecar.manifest.bundle_bytes_uncompressed / Math.max(1, sidecar.manifest.bundle_bytes);
+    process.stdout.write(`Export complete in ${sidecar.durationMs}ms\n`);
+    process.stdout.write(`Tracks: ${sidecar.manifest.track_count}`);
+    if (sidecar.manifest.tracks_without_features > 0) {
+      process.stdout.write(` (${sidecar.manifest.tracks_without_features} without feature records)`);
+    }
+    process.stdout.write("\n");
+    process.stdout.write(
+      `Bytes: ${sidecar.manifest.bundle_bytes} gzipped from ${sidecar.manifest.bundle_bytes_uncompressed} (${ratio.toFixed(2)}x)\n`,
+    );
+    process.stdout.write(`Manifest: ${sidecar.manifestPath}\n`);
+    return 0;
+  }
+
   if (options.format === "tiny" && !options.sourceLite) {
     process.stderr.write("Error: --source-lite is required for --format tiny\n");
     return 1;
@@ -196,6 +298,7 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
       sourceSqlitePath: path.resolve(process.cwd(), options.sourceSqlite!),
       outputPath,
       corpusVersion: corpusLabel,
+      hvscVersion,
     });
     process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);
     process.stdout.write(`Tracks: ${resultBundle.manifest.track_count}\n`);
@@ -204,19 +307,43 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   }
 
   if (options.format === "tiny") {
+    let stylePopulationPolicy: { targetShare: number } | undefined;
+    if (options.styleTargetShare !== undefined) {
+      const parsed = Number.parseFloat(String(options.styleTargetShare));
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+        process.stderr.write("Error: --style-target-share must be a fraction in (0, 1]\n");
+        return 1;
+      }
+      stylePopulationPolicy = { targetShare: parsed };
+    }
+
     process.stdout.write(`Converting ${options.sourceLite} into sidcorr-tiny-1\n`);
     process.stdout.write(`Writing tiny bundle to ${outputPath}\n`);
     const resultBundle = await buildTinySimilarityExport({
+      stylePopulationPolicy,
+      allowSparseStyles: options.allowSparseStyles,
       sourceLitePath: path.resolve(process.cwd(), options.sourceLite!),
       hvscRoot: path.resolve(process.cwd(), config.sidPath),
       outputPath,
       corpusVersion: corpusLabel,
+      hvscVersion,
       neighborSqlitePath: options.neighborSourceSqlite
         ? path.resolve(process.cwd(), options.neighborSourceSqlite)
         : undefined,
     });
     process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);
     process.stdout.write(`Tracks: ${resultBundle.manifest.track_count}\n`);
+    const populations = resultBundle.manifest.style_populations;
+    if (populations) {
+      process.stdout.write("Station populations:\n");
+      process.stdout.write(`${formatStylePopulations(populations, resultBundle.manifest.track_count)}\n`);
+    }
+    if (resultBundle.manifest.style_population_waiver) {
+      process.stdout.write("WARNING: built under --allow-sparse-styles; the manifest records:\n");
+      for (const violation of resultBundle.manifest.style_population_waiver) {
+        process.stdout.write(`  - ${violation}\n`);
+      }
+    }
     process.stdout.write(`Manifest: ${resultBundle.manifestPath}\n`);
     return 0;
   }
@@ -233,6 +360,7 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
     dims: resolvedDims,
     includeVectors: options.includeVectors,
     neighbors: options.neighbors,
+    hvscVersion,
   });
 
   process.stdout.write(`Export complete in ${resultBundle.durationMs}ms\n`);

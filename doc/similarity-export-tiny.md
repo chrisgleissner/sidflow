@@ -60,7 +60,12 @@ The following repository surfaces are normative:
 - `packages/sidflow-common/src/persona.ts`
   Canonical style IDs, labels, kinds, metric weights, directions, rating targets, metadata policy.
 - `packages/sidflow-common/src/persona-scorer.ts`
-  Canonical style scoring formulas and metadata bonus weights.
+  Canonical style scoring formulas and metadata affinity weights.
+- `packages/sidflow-common/src/style-assignment.ts`
+  Canonical corpus-relative style assignment and the population gate.
+- `packages/sidflow-common/src/persona-metadata.ts`
+  Canonical derivation of composer, year, category, theme tags, prominence, year position
+  and directory rarity from SID headers and HVSC paths.
 - `packages/sidflow-common/src/similarity-export.ts`
   Canonical sidcorr-1 identity and ordering model: `track_id = sid_path#song_index`, sorted by `sid_path`, then `song_index`.
 - `packages/sidflow-play/src/station/queue.ts`
@@ -456,22 +461,43 @@ Consumers MAY widen neighbor entries to `u32` in RAM after loading.
 
 # 11. Deterministic Style Derivation
 
-The current tiny export reuses the shared `computeSimilarityStyleMask(...)` helper from `packages/sidflow-common/src/similarity-portable.ts`.
+Style masks are assigned **corpus-relatively**, by
+`assignSimilarityStyleMasks(...)` in `packages/sidflow-common/src/style-assignment.ts`.
+
+A station is "the most X tracks in this corpus". That cannot be decided one track at a
+time, and the attempt to do so is what produced the 0.7.0 masks: each track took its
+three highest-scoring personas unconditionally, so every track carried exactly three
+labels whether any fitted or not. Measured on that bundle over 87,868 tracks —
+`theme_hunter` matched **0** tracks, `composer_focus` **673**, five personas each covered
+about half the corpus, and 10.8% of tracks carried both `fast_paced` and `slow_ambient`.
 
 ## 11.1 Required Track Context
 
-For each track, the generator uses only compact ratings:
+For each track the generator uses the compact ratings:
 
-- `e`
-- `m`
-- `c`
-- optional `p`
+- `e`, `m`, `c`, optional `p`
 
-The current `sidcorr-tiny-1` generator does not read metadata fields, SID headers, or the stored 24D vector when computing style masks.
+and, for the four **hybrid** styles, per-file metadata parsed from the SID header and the
+HVSC path:
+
+- `composer` — from the PSID `author` field, falling back to the
+  `MUSICIANS/<letter>/<name>/` path segment
+- `year` — the first four-digit year in the PSID `released` field
+- `category` — the top-level HVSC directory (`DEMOS`, `GAMES`, `MUSICIANS`)
+- `titleThemeTags` — content words derived from the title
+- plus three corpus-relative signals: composer prominence, year position, and directory
+  rarity (see §11.3)
+
+This costs no extra I/O: the generator already reads every `.sid` file to compute its
+`md5_48` identity, and the header is parsed from the same buffer. It is **not**
+reclassification — none of it comes from rendered audio.
+
+A generator without a local collection may omit the metadata. The hybrid styles then
+score on audio alone, and this is stated rather than silently degraded.
 
 ## 11.2 Rating-Normalized Proxy Metrics
 
-The helper derives bounded proxy metrics from the compact ratings:
+The scorer derives bounded proxy metrics from the compact ratings:
 
 ```text
 energy = clamp01((e - 1) / 4)
@@ -486,24 +512,198 @@ nostalgiaBias = mood
 experimentalTolerance = (complexity + (1 - mood) + preference) / 3
 ```
 
+Worth naming plainly: this is the entire input to the five **audio-led** styles, so each
+of their scores takes at most **125 distinct values** over any corpus — one per `(e,m,c)`
+cell, since `p` carries user feedback and is unset in a published export. That ceiling is
+the structural limit on the category axis. Deriving styles from the 58-dimension
+similarity vector is recorded as future work in `doc/station-quality.md`.
+
 ## 11.3 Persona Scoring And Bit Assignment
 
-The generator passes those proxy metrics plus the original `e/m/c` ratings into the shared persona scorer (`scoreAllPersonas(...)`). It then:
+For each style, every track is scored, the corpus is ranked by that style's own score, and
+the top share is admitted. The default share is **20%**, so on HVSC each of the nine
+stations holds 17,574 tracks and the spread between the largest and smallest is exactly
+1.0.
 
-1. computes a score for every persona in `PERSONA_IDS`
-2. sorts by score descending, then persona ID ascending
-3. keeps the top 3 personas
-4. sets one style-mask bit for each retained persona
+Hybrid styles blend audio and metadata:
+
+```text
+score = clamp01(audioScore * 0.45 + metadataAffinity * 0.55)
+```
+
+`metadataAffinity` is on `[0, 1]` and is normalised over the metadata fields **actually
+present** for that track, so a missing field neither helps nor hurts. When a track has no
+usable metadata at all, the style falls back to the audio score with no blend — and
+therefore no handicap.
+
+Each field contributes its **content**, not its presence:
+
+| Style | Signal | Derivation |
+|---|---|---|
+| `composer_focus` | composer prominence | `log(tracks by composer) / log(max tracks by any composer)` — log-scaled because 68% of composers have exactly one tune, so a linear share would put nearly all of them indistinguishably near zero |
+| `era_explorer` | year position | the year's **rank** among the corpus's years, on `[0,1]` oldest to newest — rank rather than min-max because a single unparseable `released` field otherwise stretches the axis |
+| `deep_discovery` | directory rarity | how sparse the track's containing directory is relative to the corpus |
+| `theme_hunter` | theme tag richness | content-word count from the title, saturating at four |
+
+`category` is deliberately **not** scored. It resolves for essentially every track and has
+no principled ordering, so it could only ever contribute a constant, and a constant cannot
+rank anything.
+
+### Exclusivity
+
+Declared conflicting pairs are assigned so that **no track carries both**. A track
+contested by two goes to whichever ranks it better relative to that style's own
+distribution; the loser reaches one place further down its own list, so exclusivity costs
+nothing in population.
+
+| Pair | Why |
+|---|---|
+| `fast_paced` / `slow_ambient` | a listener experiences these as opposites |
+| `melodic` / `experimental` | at equal populations they came out at Jaccard 0.659, sharing 79% of their tracks — two tiles playing the same station |
+
+Declaring a pair exclusive is a **format decision, not a claim about the music**. Plenty of
+SID music is both harmonically rich and timbrally adventurous; the rule files each such
+tune under its stronger fit, which is what a music director does when assigning a track to
+a format.
+
+### Ties
+
+Ties at a style's cut are broken by a hash of the track id, not by corpus order. Corpus
+order would hand every tie to the same low-ordinal tracks, so the same tunes would win
+every tie for every listener. A hash is still arbitrary, but arbitrary *uniformly*: the
+admitted slice of a tied group is spread across the collection rather than concentrated at
+its start.
+
+### A track may carry no styles
+
+This is a legitimate and common outcome — 15.3% of HVSC — and it is the property the
+forced top-3 rule could not express. Consumers must not assume every track has a station.
 
 Bits outside the declared style table MUST remain unset.
+
+## 11.4 Population Gate
+
+The generator **fails the export** rather than shipping a station a user would experience
+as broken. Checks, with the defaults calibrated against HVSC:
+
+| Check | Default | Rationale |
+|---|---|---|
+| Absolute floor | every style ≥ `max(1000, 5% of corpus)` | the user-visible floor; ~4,393 on HVSC |
+| Upper bound | every style ≤ 40% of corpus | a station admitting half of everything is not a filter |
+| Spread | largest ≤ 4× smallest | kills the 69× imbalance of 0.7.0 |
+| Exclusivity | conflicting pairs overlap by 0 tracks | |
+| Tie fraction at cut | ≤ 12% of corpus tied at the cut score | a populated station whose membership is decided inside one tie is *worse* than an empty one: a dead tile is visibly broken, a populated meaningless one misleads silently |
+| Distinctness | pairwise Jaccard ≤ 0.55 | above this, two styles are the same station under two names |
+
+Both population bounds are capped by what the corpus can supply, so a 500-track private
+collection is not blocked by a rule written for HVSC. The two semantic checks stand down
+below 1,000 tracks, where they measure discreteness rather than distribution.
+
+Measured on the 0.8.0 HVSC export: all nine styles at 17,574 tracks (20.0%), spread 1.0,
+zero conflicting overlap, worst tie-at-cut 7.03%, worst pairwise Jaccard 0.386.
+
+`--allow-sparse-styles` bypasses the gate for a corpus that genuinely cannot support nine
+stations. When used, the violations it bypassed are written into the manifest as
+`style_population_waiver`, so a bundle produced under a waiver can never be mistaken for
+one that passed.
+
+The manifest also carries `style_populations` (style key → track count) and
+`style_population_policy` (the thresholds the gate ran with), so populations are verifiable
+at download time without a pass over the mask table — which is what lets a client render a
+track count on each station tile.
+
+---
+
+# 11.5 Sidecar Manifest
+
+The sidecar manifest is written beside the bundle with the same basename and a
+`.manifest.json` extension:
+
+- `schema_version` — `sidcorr-tiny-1`
+- `binary_format_version` — currently `2`
+- `generated_at`, `corpus_version`
+- `hvsc_version` — which HVSC release the file identities were computed from, e.g.
+  `"HVSC 85 + Update 85"`, or `"unknown"`. **Load-bearing for this profile in a way it is
+  not for the others**: tiny stores a 48-bit MD5 prefix of each `.sid` file's bytes and
+  nothing else, so a consumer whose collection differs resolves *nothing at all* and has
+  no diagnostic to work from. Inherited from the source lite bundle.
+- `track_count`, `file_count`, `style_count`
+- `style_populations` — style key → member count, for all nine
+- `style_population_policy` — the gate thresholds this build ran with
+- `style_population_waiver` — present **only** when `--allow-sparse-styles` bypassed a
+  failing gate, listing the violations it bypassed
+- `file_id_kind` — `md5_48`
+- `neighbors_per_track` — `3`
+- `content_encoding`, `bundle_bytes`, `bundle_bytes_uncompressed`
+- `paths.bundle`, `paths.manifest` — basenames only
+- `source.lite`, `source.hvsc_root`, `source.sqlite_neighbor_hint`
+- `source_checksums.lite_sha256`, `source_checksums.sqlite_neighbor_hint_sha256`
+- `file_checksums.bundle_sha256`
+
+## Integration cost, stated up front
+
+This profile requires the consumer to **have HVSC locally and MD5 every file** to resolve
+any path at all. That is a real integration cost and it should be discovered here rather
+than after implementation. A consumer that only needs recommendations, and can afford
+8 MB, will have an easier time with `sidcorr-lite-1`, which carries paths directly.
+
+`md5_48` is a 48-bit prefix. Over HVSC's 61,157 files the birthday probability of at least
+one collision is ≈ 0.66%. The generator detects collisions at build time and names both
+files rather than silently mislabelling tracks, but the margin is thin and the next HVSC
+will make it thinner. Widening to `md5_64` costs 122 KB and drops the probability to
+~10⁻⁷; it changes the binary layout, so it is deferred to a future schema revision.
 
 ---
 
 # 12. Runtime Consumption
 
-sidcorr-tiny-1 does not store vectors or similarity floats. Runtime behavior therefore uses the exported 3-edge graph plus style masks.
+## 12.0 This profile carries no vectors
 
-## 12.1 Reverse Index
+sidcorr-tiny-1 stores **no embedded vectors and no similarity floats**. Its 1,834,993
+bytes on HVSC decompose exactly as:
+
+| Section | Bytes |
+|---|---:|
+| file identities, `md5_48` @ 6 B × 61,157 | 366,942 |
+| per-file subsong count, 1 B × 61,157 | 61,157 |
+| style mask, 2 B × 87,868 | 175,736 |
+| packed ratings, 2 B × 87,868 | 175,736 |
+| neighbours, 3 B ordinal + 1 B similarity × 3 × 87,868 | 1,054,416 |
+| header + style table | ~1,006 |
+
+That is why the bundle barely moved (+0.9%) when the similarity vector went from 4 to 58
+dimensions: **its size is independent of vector width**.
+
+**The retrieval model is a decayed walk over the 3-neighbour graph, not vector search.**
+A reader MUST report `hasVectorData: false` and MUST NOT synthesise a vector from the
+packed ratings.
+
+SIDFlow's own reader did exactly that until 0.8.0: it reported `hasVectorData: true` and
+returned `[e, m, c, p ?? 3]` — a 4-element rating vector with at most 125 distinct
+positions across 87,868 tracks, sitting exactly at the legacy ratings width so it received
+no weighting either. A consumer that branched on the flag and did centroid arithmetic
+silently reproduced the 0.5-era degeneracy the vector work existed to fix.
+
+The same synthesised vector was, worse, the actual ranking key for favourites: the reader
+computed the neighbour walk and then overwrote every score with a cosine over those four
+numbers. Measured on a purpose-built corpus, a seed whose stored neighbours were `T6` @
+0.867 and `T7` @ 0.725 got them back **5th and 7th**, behind two tracks that were not its
+neighbours at all, and all 11 returned scores matched an independent rating cosine to 12
+decimal places while taking only **5 distinct values**. Fixed in 0.8.0; the bundle bytes
+were never involved.
+
+A consequence worth stating: **a favourites query whose seeds have no neighbour edges
+returns nothing**, rather than falling back to a ranking over a key known to be
+degenerate. An empty result is the honest answer when the graph has nothing to say.
+
+Consumers needing vector arithmetic should use `sidcorr-lite-1`, which carries the real
+58-dimension vectors in 8 MB.
+
+## 12.1 Graph traversal
+
+Runtime behavior uses the exported 3-edge graph plus style masks.
+
+## 12.2 Reverse Index
 
 Consumers SHOULD build a reverse adjacency index once at load time:
 
@@ -515,7 +715,7 @@ reverseSource[edge_count] : u32[]
 
 On the current corpus, this reverse index costs about 1,567,318 bytes of RAM.
 
-## 12.2 Station Traversal
+## 12.3 Station Traversal
 
 Single-seed traversal:
 

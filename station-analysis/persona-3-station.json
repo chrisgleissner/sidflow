@@ -144,6 +144,26 @@
       "trackId": "C64Music/MUSICIANS/K/Klabbsock/Caribbean_Rainbow.sid:1"
     },
     {
+      "explanation": "Selected for Melodic: melodicComplexity=0.692 (high, w=0.60); timbralRichness=0.472 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.442403,
+        "melodicComplexity": 0.691924,
+        "nostalgiaBias": 0.448364,
+        "rhythmicDensity": 0.441251,
+        "timbralRichness": 0.472228
+      },
+      "rank": 8,
+      "ratings": {
+        "c": 5,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.657606,
+      "sidPath": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid:1"
+    },
+    {
       "explanation": "Selected for Melodic: melodicComplexity=0.692 (high, w=0.60); timbralRichness=0.494 (high, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.501154,
@@ -152,7 +172,7 @@
         "rhythmicDensity": 0.41609,
         "timbralRichness": 0.493707
       },
-      "rank": 8,
+      "rank": 9,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -172,7 +192,7 @@
         "rhythmicDensity": 0.579341,
         "timbralRichness": 0.517194
       },
-      "rank": 9,
+      "rank": 10,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -192,7 +212,7 @@
         "rhythmicDensity": 0.329199,
         "timbralRichness": 0.490977
       },
-      "rank": 10,
+      "rank": 11,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -212,7 +232,7 @@
         "rhythmicDensity": 0.572976,
         "timbralRichness": 0.441332
       },
-      "rank": 11,
+      "rank": 12,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -232,7 +252,7 @@
         "rhythmicDensity": 0.479902,
         "timbralRichness": 0.445733
       },
-      "rank": 12,
+      "rank": 13,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -252,7 +272,7 @@
         "rhythmicDensity": 0.530014,
         "timbralRichness": 0.350647
       },
-      "rank": 13,
+      "rank": 14,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -272,7 +292,7 @@
         "rhythmicDensity": 0.27891,
         "timbralRichness": 0.193736
       },
-      "rank": 14,
+      "rank": 15,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -292,7 +312,7 @@
         "rhythmicDensity": 0.452451,
         "timbralRichness": 0.522259
       },
-      "rank": 15,
+      "rank": 16,
       "ratings": {
         "c": 4,
         "e": 4,
@@ -312,7 +332,7 @@
         "rhythmicDensity": 0.407196,
         "timbralRichness": 0.388858
       },
-      "rank": 16,
+      "rank": 17,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -332,7 +352,7 @@
         "rhythmicDensity": 0.476915,
         "timbralRichness": 0.381242
       },
-      "rank": 17,
+      "rank": 18,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -352,7 +372,7 @@
         "rhythmicDensity": 0.370422,
         "timbralRichness": 0.449523
       },
-      "rank": 18,
+      "rank": 19,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -372,7 +392,7 @@
         "rhythmicDensity": 0.358572,
         "timbralRichness": 0.442591
       },
-      "rank": 19,
+      "rank": 20,
       "ratings": {
         "c": 4,
         "e": 3,
@@ -392,7 +412,7 @@
         "rhythmicDensity": 0.450507,
         "timbralRichness": 0.375844
       },
-      "rank": 20,
+      "rank": 21,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -412,7 +432,7 @@
         "rhythmicDensity": 0.415018,
         "timbralRichness": 0.412293
       },
-      "rank": 21,
+      "rank": 22,
       "ratings": {
         "c": 4,
         "e": 2,
@@ -432,7 +452,7 @@
         "rhythmicDensity": 0.386513,
         "timbralRichness": 0.258511
       },
-      "rank": 22,
+      "rank": 23,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -452,7 +472,7 @@
         "rhythmicDensity": 0.389063,
         "timbralRichness": 0.270221
       },
-      "rank": 23,
+      "rank": 24,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -472,7 +492,7 @@
         "rhythmicDensity": 0.501523,
         "timbralRichness": 0.326075
       },
-      "rank": 24,
+      "rank": 25,
       "ratings": {
         "c": 4,
         "e": 3,
@@ -492,7 +512,7 @@
         "rhythmicDensity": 0.463858,
         "timbralRichness": 0.668445
       },
-      "rank": 25,
+      "rank": 26,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -512,7 +532,7 @@
         "rhythmicDensity": 0.644678,
         "timbralRichness": 0.39776
       },
-      "rank": 26,
+      "rank": 27,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -532,7 +552,7 @@
         "rhythmicDensity": 0.668573,
         "timbralRichness": 0.329627
       },
-      "rank": 27,
+      "rank": 28,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -552,7 +572,7 @@
         "rhythmicDensity": 0.433469,
         "timbralRichness": 0.286687
       },
-      "rank": 28,
+      "rank": 29,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -572,7 +592,7 @@
         "rhythmicDensity": 0.495124,
         "timbralRichness": 0.349598
       },
-      "rank": 29,
+      "rank": 30,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -592,7 +612,7 @@
         "rhythmicDensity": 0.397912,
         "timbralRichness": 0.183477
       },
-      "rank": 30,
+      "rank": 31,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -612,7 +632,7 @@
         "rhythmicDensity": 0.229164,
         "timbralRichness": 0.360136
       },
-      "rank": 31,
+      "rank": 32,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -632,7 +652,7 @@
         "rhythmicDensity": 0.467275,
         "timbralRichness": 0.495632
       },
-      "rank": 32,
+      "rank": 33,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -652,7 +672,7 @@
         "rhythmicDensity": 0.483276,
         "timbralRichness": 0.43923
       },
-      "rank": 33,
+      "rank": 34,
       "ratings": {
         "c": 4,
         "e": 4,
@@ -672,7 +692,7 @@
         "rhythmicDensity": 0.297952,
         "timbralRichness": 0.510466
       },
-      "rank": 34,
+      "rank": 35,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -692,7 +712,7 @@
         "rhythmicDensity": 0.609255,
         "timbralRichness": 0.383095
       },
-      "rank": 35,
+      "rank": 36,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -712,7 +732,7 @@
         "rhythmicDensity": 0.522688,
         "timbralRichness": 0.509285
       },
-      "rank": 36,
+      "rank": 37,
       "ratings": {
         "c": 4,
         "e": 4,
@@ -732,7 +752,7 @@
         "rhythmicDensity": 0.402584,
         "timbralRichness": 0.407786
       },
-      "rank": 37,
+      "rank": 38,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -752,7 +772,7 @@
         "rhythmicDensity": 0.476738,
         "timbralRichness": 0.352309
       },
-      "rank": 38,
+      "rank": 39,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -772,7 +792,7 @@
         "rhythmicDensity": 0.604966,
         "timbralRichness": 0.482562
       },
-      "rank": 39,
+      "rank": 40,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -792,7 +812,7 @@
         "rhythmicDensity": 0.454286,
         "timbralRichness": 0.47777
       },
-      "rank": 40,
+      "rank": 41,
       "ratings": {
         "c": 4,
         "e": 3,
@@ -812,7 +832,7 @@
         "rhythmicDensity": 0.216602,
         "timbralRichness": 0.328682
       },
-      "rank": 41,
+      "rank": 42,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -832,7 +852,7 @@
         "rhythmicDensity": 0.448761,
         "timbralRichness": 0.440178
       },
-      "rank": 42,
+      "rank": 43,
       "ratings": {
         "c": 4,
         "e": 3,
@@ -852,7 +872,7 @@
         "rhythmicDensity": 0.539719,
         "timbralRichness": 0.589986
       },
-      "rank": 43,
+      "rank": 44,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -872,7 +892,7 @@
         "rhythmicDensity": 0.312796,
         "timbralRichness": 0.395744
       },
-      "rank": 44,
+      "rank": 45,
       "ratings": {
         "c": 5,
         "e": 1,
@@ -892,7 +912,7 @@
         "rhythmicDensity": 0.547893,
         "timbralRichness": 0.294962
       },
-      "rank": 45,
+      "rank": 46,
       "ratings": {
         "c": 5,
         "e": 4,
@@ -912,7 +932,7 @@
         "rhythmicDensity": 0.492663,
         "timbralRichness": 0.328235
       },
-      "rank": 46,
+      "rank": 47,
       "ratings": {
         "c": 5,
         "e": 3,
@@ -924,6 +944,26 @@
       "trackId": "C64Music/MUSICIANS/Y/Yaruni/Lethal_Xcess_Menu_2SID.sid:1"
     },
     {
+      "explanation": "Selected for Melodic: melodicComplexity=0.724 (high, w=0.60); timbralRichness=0.518 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.412062,
+        "melodicComplexity": 0.723933,
+        "nostalgiaBias": 0.576909,
+        "rhythmicDensity": 0.5186,
+        "timbralRichness": 0.518415
+      },
+      "rank": 48,
+      "ratings": {
+        "c": 4,
+        "e": 4,
+        "m": 2
+      },
+      "score": 0.624739,
+      "sidPath": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid:1"
+    },
+    {
       "explanation": "Selected for Melodic: melodicComplexity=0.659 (high, w=0.60); nostalgiaBias=0.485 (low, w=0.10)",
       "metrics": {
         "experimentalTolerance": 0.384087,
@@ -932,7 +972,7 @@
         "rhythmicDensity": 0.376057,
         "timbralRichness": 0.341309
       },
-      "rank": 47,
+      "rank": 49,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -952,7 +992,7 @@
         "rhythmicDensity": 0.43761,
         "timbralRichness": 0.291791
       },
-      "rank": 48,
+      "rank": 50,
       "ratings": {
         "c": 4,
         "e": 2,
@@ -962,46 +1002,6 @@
       "sidPath": "C64Music/MUSICIANS/K/Klegg/Procrastination.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/K/Klegg/Procrastination.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.723 (high, w=0.60); timbralRichness=0.408 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.325904,
-        "melodicComplexity": 0.723175,
-        "nostalgiaBias": 0.634545,
-        "rhythmicDensity": 0.574218,
-        "timbralRichness": 0.407705
-      },
-      "rank": 49,
-      "ratings": {
-        "c": 4,
-        "e": 4,
-        "m": 3
-      },
-      "score": 0.624555,
-      "sidPath": "C64Music/MUSICIANS/X/Xtense/lda_3b_sta_d011.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/X/Xtense/lda_3b_sta_d011.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.740 (high, w=0.60); nostalgiaBias=0.471 (low, w=0.10)",
-      "metrics": {
-        "experimentalTolerance": 0.284321,
-        "melodicComplexity": 0.739772,
-        "nostalgiaBias": 0.470909,
-        "rhythmicDensity": 0.579029,
-        "timbralRichness": 0.337238
-      },
-      "rank": 50,
-      "ratings": {
-        "c": 5,
-        "e": 5,
-        "m": 2
-      },
-      "score": 0.624177,
-      "sidPath": "C64Music/MUSICIANS/O/Odo/Chaos_Sequence.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/O/Odo/Chaos_Sequence.sid:1"
     }
   ]
 }

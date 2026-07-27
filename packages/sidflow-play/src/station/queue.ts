@@ -524,6 +524,21 @@ export async function buildStationQueue(
 
   const excludeTrackIds = [...ratings.entries()].filter(([, rating]) => rating <= 2).map(([trackId]) => trackId);
 
+  // Exclude the seed's FILE, not just the seed track.
+  //
+  // `recommendFromFavorites` drops the favourites themselves, by track id, which leaves
+  // their sibling subsongs eligible. Measured across the full export's 2,196,700 neighbour
+  // rows, the rank-1 neighbour is a different subsong of the SAME .sid file for 14.4% of
+  // seeds — far above the 1.44 subsongs-per-file base rate — and 905 seeds have all 25
+  // neighbours from their own file. Subsongs of one tune are frequently near-identical
+  // variants, so a station that opens with the next subtune of the tune you just liked is
+  // a poor listening result even though the metric considers it a perfect match.
+  //
+  // `limitCandidatesPerFile` below caps repetition AMONG candidates, but it cannot see
+  // this: the favourite is not in the candidate list, so its sibling arrives as the first
+  // occurrence of that file and is kept.
+  const favoriteSidPaths = new Set(favoriteRows.map((row) => row.sid_path));
+
   // C1: Build intent model to detect multi-cluster preferences
   const favoriteVectors = readTrackVectorsByIds(datasetHandle, favoriteTrackIds);
   const weightsMap = new Map<string, number>(Object.entries(weightsByTrackId));
@@ -588,6 +603,9 @@ export async function buildStationQueue(
       }
       const row = readTrackRowById(datasetHandle, recommendation.track_id);
       if (!row) {
+        continue;
+      }
+      if (favoriteSidPaths.has(row.sid_path)) {
         continue;
       }
       if (!passesDeviationFilter(row, ratingCentroid)) {

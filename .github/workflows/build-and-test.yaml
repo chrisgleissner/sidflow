@@ -69,6 +69,14 @@ jobs:
       - name: Run unit tests with coverage
         run: bun run test:ci
 
+      # The release gate could previously only run against a real 1 GB HVSC export, which
+      # meant it ran when someone remembered to. A published release then shipped a station
+      # tile that could never play anything and a manifest digest that had never matched
+      # its file. This builds a small corpus through the real export chain and runs the
+      # same gate against it, on every commit.
+      - name: Verify the similarity export chain against a fixture
+        run: bun run verify:exports:fixture
+
       - name: Run E2E tests with coverage
         run: cd packages/sidflow-web && BABEL_ENV=coverage E2E_COVERAGE=true npx playwright test --project=chromium
 

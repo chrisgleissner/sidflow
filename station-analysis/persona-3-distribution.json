@@ -2,10 +2,10 @@
   "personaId": "melodic",
   "personaLabel": "Melodic",
   "distribution": {
-    "avgExperimentalTolerance": 0.37200387999999995,
-    "avgMelodicComplexity": 0.7196597,
-    "avgNostalgiaBias": 0.5427672199999999,
-    "avgRhythmicDensity": 0.4497457000000001,
-    "avgTimbralRichness": 0.39845118000000007
+    "avgExperimentalTolerance": 0.3768886799999999,
+    "avgMelodicComplexity": 0.7187178999999999,
+    "avgNostalgiaBias": 0.5411636000000001,
+    "avgRhythmicDensity": 0.44587778000000017,
+    "avgTimbralRichness": 0.4033651800000001
   }
 }

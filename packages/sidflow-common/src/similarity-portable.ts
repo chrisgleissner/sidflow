@@ -1,5 +1,4 @@
-import { PERSONA_IDS } from "./persona.js";
-import { scoreAllPersonas } from "./persona-scorer.js";
+import { assignSimilarityStyleMasks } from "./style-assignment.js";
 import type { SimilarityExportRecommendation } from "./similarity-export.js";
 
 export type SimilarityDatasetFormat = "sqlite" | "lite" | "tiny";
@@ -80,40 +79,39 @@ export function unpackCompactRatings(value: number): Pick<SimilarityTrackRow, "e
   };
 }
 
-export function computeSimilarityStyleMask(track: Pick<SimilarityTrackRow, "e" | "m" | "c" | "p">): number {
-  const energy = Math.max(0, Math.min(1, (track.e - 1) / 4));
-  const mood = Math.max(0, Math.min(1, (track.m - 1) / 4));
-  const complexity = Math.max(0, Math.min(1, (track.c - 1) / 4));
-  const preference = track.p == null ? 0.5 : Math.max(0, Math.min(1, (track.p - 1) / 4));
-
-  const scores = scoreAllPersonas({
-    metrics: {
-      melodicComplexity: complexity,
-      rhythmicDensity: energy,
-      timbralRichness: (complexity + preference) / 2,
-      nostalgiaBias: mood,
-      experimentalTolerance: (complexity + (1 - mood) + preference) / 3,
-    },
-    ratings: {
+/**
+ * Corpus-relative style masks for a set of tracks, computed once and indexed by id.
+ *
+ * A station is "the most X tracks in this corpus", so a mask cannot be derived from one
+ * track in isolation — which is what the previous per-track `computeSimilarityStyleMask`
+ * tried to do, by taking each track's three highest-scoring personas unconditionally.
+ * That gave every track exactly three labels whether any fitted or not, put 10.8% of
+ * HVSC in both `fast_paced` and `slow_ambient`, and left `theme_hunter` with no members
+ * at all. See style-assignment.ts for the measurements.
+ *
+ * Readers that hold a whole corpus (lite, and the SQLite export) use this. It is
+ * audio-only: neither format carries SID header metadata, so the four hybrid personas
+ * score on audio alone here. The authoritative masks are the ones the tiny builder
+ * computes with metadata and ships in the bundle — this is what a reader can reconstruct
+ * without a local HVSC, and the specs say so.
+ */
+export function buildStyleMaskIndex(
+  tracks: readonly Pick<SimilarityTrackRow, "track_id" | "sid_path" | "e" | "m" | "c" | "p">[],
+): Map<string, number> {
+  const { masks } = assignSimilarityStyleMasks(
+    tracks.map((track) => ({
+      track_id: track.track_id,
+      sid_path: track.sid_path,
       e: track.e,
       m: track.m,
       c: track.c,
-    },
-  });
-
-  const ranked = PERSONA_IDS
-    .map((personaId) => ({ personaId, score: scores[personaId] }))
-    .sort((left, right) => right.score - left.score || left.personaId.localeCompare(right.personaId))
-    .slice(0, 3);
-
-  let mask = 0;
-  for (const entry of ranked) {
-    const bit = PERSONA_IDS.indexOf(entry.personaId);
-    if (bit >= 0) {
-      mask |= (1 << bit);
-    }
-  }
-  return mask;
+      p: track.p,
+    })),
+    // A reader must never refuse to answer because the corpus it was handed is small or
+    // lopsided. The gate belongs at export time, where someone can act on it.
+    { allowSparseStyles: true },
+  );
+  return new Map(tracks.map((track, index) => [track.track_id, masks[index] ?? 0]));
 }
 
 export function pickRandomRows<T extends { track_id: string }>(

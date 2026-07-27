@@ -19,13 +19,28 @@ import {
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
 import {
-  computeSimilarityStyleMask,
   packCompactRatings,
   pickRandomRows,
   unpackCompactRatings,
   type SimilarityDataset,
   type SimilarityTrackRow,
 } from "./similarity-portable.js";
+import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
+import {
+  assignSimilarityStyleMasks,
+  type StylePopulationPolicy,
+} from "./style-assignment.js";
+import {
+  buildDirectoryOccupancy,
+  buildPersonaCorpusContext,
+  computeComposerProminence,
+  computeDirectoryRarity,
+  computeYearPosition,
+  createSidHeaderFallbackReport,
+  derivePersonaMetadataFromSidBuffer,
+  summariseSidHeaderFallbacks,
+  type PersonaTrackMetadata,
+} from "./persona-metadata.js";
 
 export const TINY_SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-tiny-1";
 
@@ -66,9 +81,35 @@ export interface TinySimilarityExportManifest {
   binary_format_version: number;
   generated_at: string;
   corpus_version: string;
+  /**
+   * Which HVSC release the bundle's file identities were computed from, or "unknown".
+   *
+   * Load-bearing for tiny in a way it is not for the other profiles: tiny stores a
+   * 48-bit MD5 prefix of each .sid file's bytes and nothing else, so a consumer whose
+   * collection differs resolves nothing at all and has no diagnostic to work from.
+   */
+  hvsc_version?: string;
   track_count: number;
   file_count: number;
   style_count: number;
+  /**
+   * Persona key to member count, for all nine styles.
+   *
+   * Published so populations are verifiable at download time without a full pass over
+   * the mask table, so `c64commander` can render a track count on each station tile,
+   * and so the release gate has a machine-readable source to recount against. A station
+   * with 100 tracks next to one with 30,000 reads as a defect, and until 0.8.0 nothing
+   * in the export had any notion of how big a station was.
+   */
+  style_populations?: Record<string, number>;
+  /** The thresholds the population gate ran with, so a consumer can see what "passed" meant. */
+  style_population_policy?: StylePopulationPolicy;
+  /**
+   * Present ONLY when `--allow-sparse-styles` bypassed a failing gate, listing what it
+   * bypassed. A bundle produced under a waiver must never be mistakable for one that
+   * passed, so the waiver travels with the artefact rather than living in a build log.
+   */
+  style_population_waiver?: string[];
   file_id_kind: "md5_48";
   neighbors_per_track: 3;
   content_encoding: SimilarityBundleContentEncoding;
@@ -98,7 +139,19 @@ export interface BuildTinySimilarityExportOptions {
   outputPath: string;
   manifestPath?: string;
   corpusVersion?: string;
+  /**
+   * Recorded as `hvsc_version`. Omit to inherit it from the source lite bundle's
+   * manifest, which is the corpus the identities actually describe.
+   */
+  hvscVersion?: string;
   neighborSqlitePath?: string;
+  /** Overrides for the station population gate; see DEFAULT_STYLE_POPULATION_POLICY. */
+  stylePopulationPolicy?: Partial<StylePopulationPolicy>;
+  /**
+   * Bypass a failing population gate. Intended for small or unusual private corpora
+   * that genuinely cannot support nine stations. The bypass is recorded in the manifest.
+   */
+  allowSparseStyles?: boolean;
 }
 
 export interface BuildTinySimilarityExportResult {
@@ -175,7 +228,22 @@ function parseVector(row: SourceTrackRow): number[] {
   return normalizeVector(values);
 }
 
-async function computeMd548(context: Md548Context, sidPath: string): Promise<Buffer> {
+/**
+ * Resolve a SID path, hash it, and hand back the bytes.
+ *
+ * One read serves two purposes: the md5_48 file identity the bundle stores, and the
+ * header the hybrid personas need. Reading twice over 61,157 files to get both would be
+ * the obvious shape and the wrong one.
+ */
+async function readMd548AndPayload(
+  context: Md548Context,
+  sidPath: string,
+): Promise<{ digest: Buffer; payload: Buffer }> {
+  const payload = await readResolvedSidFile(context, sidPath);
+  return { digest: createHash("md5").update(payload).digest().subarray(0, 6), payload };
+}
+
+async function readResolvedSidFile(context: Md548Context, sidPath: string): Promise<Buffer> {
   const normalizedSidPath = sidPath.replace(/\\/g, "/").replace(/^\/+/, "");
   const candidatePaths = [
     path.resolve(context.musicRoot, normalizedSidPath),
@@ -198,8 +266,7 @@ async function computeMd548(context: Md548Context, sidPath: string): Promise<Buf
     throw new Error(`Unable to resolve SID path ${sidPath} within ${context.hvscRoot}`);
   }
 
-  const payload = await readFile(absolutePath);
-  return createHash("md5").update(payload).digest().subarray(0, 6);
+  return readFile(absolutePath);
 }
 
 /**
@@ -274,8 +341,8 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
         continue;
       }
       const relativePath = path.relative(songlengths.musicRoot, absolutePath).replace(/\\/g, "/");
-      const md548 = await computeMd548(md548Context, relativePath);
-      recordMd548(result, collisions, md548.toString("hex"), relativePath);
+      const { digest } = await readMd548AndPayload(md548Context, relativePath);
+      recordMd548(result, collisions, digest.toString("hex"), relativePath);
     }
   }
   warnAboutMd548Collisions(collisions);
@@ -429,6 +496,32 @@ function computeFallbackNeighborGraph(
   });
 }
 
+/**
+ * Inherit the HVSC release from the lite bundle this tiny export is derived from.
+ *
+ * Read from lite's sidecar manifest rather than from the local workspace, for the same
+ * reason lite reads it from the SQLite: the derived bundle describes the source's
+ * corpus, and if the deriving machine's collection has since moved on, the source is
+ * the one telling the truth about these identities.
+ */
+async function readLiteManifestHvscVersion(sourceLitePath: string): Promise<string | null> {
+  const liteManifestPath = computePortableManifestPath(sourceLitePath);
+  try {
+    const parsed = JSON.parse(await readFile(liteManifestPath, "utf8")) as { hvsc_version?: unknown };
+    return typeof parsed.hvsc_version === "string" ? parsed.hvsc_version : null;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      console.debug(
+        `Could not read hvsc_version from ${liteManifestPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return null;
+  }
+}
+
 function describeHvscRootForManifest(hvscRoot: string): string {
   const normalized = hvscRoot.replace(/\\/g, "/").replace(/\/+$/g, "");
   if (!normalized) {
@@ -518,18 +611,31 @@ export async function buildTinySimilarityExport(
   // learn before the release, not after.
   const identitySeen = new Map<string, string>();
   const identityCollisions: Array<[string, string, string]> = [];
+  // The SID header is parsed from the SAME buffer the md5_48 identity is computed from,
+  // so feeding the hybrid personas real metadata costs no extra I/O over a 61,157-file
+  // pass. That matters: it is the difference between the four metadata-led stations
+  // having a defining signal and being scored on the same three quintiles as everything
+  // else. It is also not reclassification -- composer, title and year come from file
+  // headers and paths, never from rendered audio.
+  const metadataByPath = new Map<string, PersonaTrackMetadata>();
+  const headerFallbacks = createSidHeaderFallbackReport();
   for (let index = 0; index < filePaths.length; index += 1) {
-    const md548 = await computeMd548(md548Context, filePaths[index]!);
-    const key = md548.toString("hex");
+    const { digest, payload } = await readMd548AndPayload(md548Context, filePaths[index]!);
+    const key = digest.toString("hex");
     const previous = identitySeen.get(key);
     if (previous !== undefined && previous !== filePaths[index]) {
       identityCollisions.push([key, previous, filePaths[index]!]);
     } else {
       identitySeen.set(key, filePaths[index]!);
     }
-    writeUInt48LE(fileIdentityTable, md548, index * 6);
+    writeUInt48LE(fileIdentityTable, digest, index * 6);
+    metadataByPath.set(
+      filePaths[index]!,
+      derivePersonaMetadataFromSidBuffer(filePaths[index]!, payload, headerFallbacks),
+    );
   }
   warnAboutMd548Collisions(identityCollisions);
+  summariseSidHeaderFallbacks(headerFallbacks, filePaths.length);
 
   const fileTrackCountTable = Buffer.alloc(filePaths.length);
   for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
@@ -537,9 +643,43 @@ export async function buildTinySimilarityExport(
     fileTrackCountTable.writeUInt8(Math.max(0, count - 1), fileIndex);
   }
 
+  // Station membership, corpus-relative and gated. See style-assignment.ts for what was
+  // wrong with taking each track's top three personas and why populations are assigned
+  // by quantile instead.
+  const occupancy = buildDirectoryOccupancy(rows.map((row) => row.sid_path));
+  const corpusContext = buildPersonaCorpusContext(
+    rows.map((row) => ({ sid_path: row.sid_path, metadata: metadataByPath.get(row.sid_path) })),
+  );
+  const styleAssignment = assignSimilarityStyleMasks(
+    rows.map((row) => {
+      const metadata = metadataByPath.get(row.sid_path);
+      return {
+        track_id: row.track_id,
+        sid_path: row.sid_path,
+        e: row.e,
+        m: row.m,
+        c: row.c,
+        p: row.p,
+        metadata,
+        rarity: computeDirectoryRarity(
+          row.sid_path,
+          occupancy.tracksPerDirectory,
+          occupancy.minimum,
+          occupancy.maximum,
+        ),
+        composerProminence: computeComposerProminence(metadata?.composer, corpusContext),
+        yearPosition: computeYearPosition(metadata?.year, corpusContext),
+      };
+    }),
+    {
+      policy: options.stylePopulationPolicy,
+      allowSparseStyles: options.allowSparseStyles,
+    },
+  );
+
   const styleMaskTable = Buffer.alloc(rows.length * STYLE_MASK_WIDTH_BYTES);
   for (let index = 0; index < rows.length; index += 1) {
-    styleMaskTable.writeUInt16LE(computeSimilarityStyleMask(rows[index]!), index * STYLE_MASK_WIDTH_BYTES);
+    styleMaskTable.writeUInt16LE(styleAssignment.masks[index] ?? 0, index * STYLE_MASK_WIDTH_BYTES);
   }
 
   const ratingTable = Buffer.alloc(rows.length * COMPACT_RATING_BYTES);
@@ -621,9 +761,13 @@ export async function buildTinySimilarityExport(
     binary_format_version: 2,
     generated_at: new Date().toISOString(),
     corpus_version: options.corpusVersion ?? path.basename(options.sourceLitePath, path.extname(options.sourceLitePath)),
+    hvsc_version: options.hvscVersion ?? (await readLiteManifestHvscVersion(options.sourceLitePath)) ?? HVSC_VERSION_UNKNOWN,
     track_count: rows.length,
     file_count: filePaths.length,
     style_count: PERSONA_IDS.length,
+    style_populations: styleAssignment.diagnostics.populations,
+    style_population_policy: styleAssignment.policy,
+    ...(styleAssignment.waived ? { style_population_waiver: styleAssignment.violations } : {}),
     file_id_kind: "md5_48",
     neighbors_per_track: 3,
     content_encoding: writeResult.contentEncoding,
@@ -845,7 +989,22 @@ export async function openTinySimilarityDataset(
       sourcePath: filePath,
       trackCount,
       hasTrackIdentity: true,
-      hasVectorData: true,
+      /**
+       * Tiny carries no vectors. Its 1.8 MB is file identities, per-file subsong
+       * counts, style masks, packed ratings and a 3-neighbour graph -- which is why
+       * its size barely moved when the vector went from 4 to 58 dimensions.
+       *
+       * This used to report `true` while `getTrackVectors()` synthesised
+       * [e, m, c, p ?? 3]: a 4-element rating vector with at most 125 distinct
+       * positions across 87,868 tracks, sitting exactly at the legacy ratings width,
+       * so it received no weighting either. A consumer that branched on this flag and
+       * did centroid arithmetic silently reproduced the 0.5-era degeneracy this
+       * release exists to have fixed.
+       *
+       * Tiny's retrieval model is a decayed walk over the neighbour graph, not vector
+       * search. Saying so is the honest answer.
+       */
+      hasVectorData: false,
     },
     readRandomTracksExcluding(limit, excludedTrackIds, random) {
       return pickRandomRows(rows, limit, excludedTrackIds, random).map((row) => ({
@@ -911,11 +1070,12 @@ export async function openTinySimilarityDataset(
         last_played: row.last_played,
       } : null;
     },
-    getTrackVectors(trackIds) {
-      return new Map(trackIds.flatMap((trackId) => {
-        const { row } = findRow(trackId);
-        return row ? [[trackId, [row.e, row.m, row.c, row.p ?? 3]]] : [];
-      }));
+    getTrackVectors() {
+      // Empty, always, and consistent with `hasVectorData: false`. Returning a
+      // synthesised rating vector here was the mechanism by which the flag above lied:
+      // a caller got four numbers that behaved like a vector, arithmetic on them
+      // succeeded, and the result was noise.
+      return new Map<string, number[]>();
     },
     getNeighbors(trackId, limit = 20, excludeTrackIds = []) {
       const exclude = new Set(excludeTrackIds);
@@ -967,50 +1127,69 @@ export async function openTinySimilarityDataset(
       const weightsByTrackId = options.weightsByTrackId ?? {};
       const excludeTrackIds = new Set((options.excludeTrackIds ?? []).map(canonicalTrackId));
       const favoriteCanonicalIds = new Set(options.favoriteTrackIds.map(canonicalTrackId));
-      // Re-key the weights on canonical ids too: the fallback path looks them up by
-      // the ROW's id, which is the music-root-relative form, so caller-supplied
-      // weights would otherwise be silently ignored and every favourite treated as
-      // equally weighted.
-      const weightsByCanonicalId: Record<string, number> = {};
-      for (const [trackId, weight] of Object.entries(weightsByTrackId)) {
-        weightsByCanonicalId[canonicalTrackId(trackId)] = weight;
-      }
       const scores = new Map<number, number>();
+      // Ranking and reported similarity are tracked separately, because they answer
+      // different questions and only one of them is on a scale anyone else shares.
+      //
+      // `scores` accumulates walk strength: a track reachable by several paths sums their
+      // contributions, which is the right way to RANK "closest to this set of favourites".
+      // It is not a similarity, it is unbounded, and reporting it as one is what broke the
+      // station layer -- that layer applies an absolute minimum-similarity threshold
+      // (0.73 at adventure 3), calibrated for cosine values where "similar" means ~0.9 up.
+      //
+      // `pathSimilarity` is the product of the stored edge similarities along the best
+      // path that reached a track. It stays in [0, 1], it decays with graph distance the
+      // way a similarity should, and a direct neighbour reports very nearly its stored
+      // edge similarity -- so it is directly comparable to the cosine the other two
+      // profiles report, and to that threshold.
+      const pathSimilarity = new Map<number, number>();
       let frontier = new Map<number, number>();
-      const favoriteRows: TinyTrackRecord[] = [];
+      let frontierSimilarity = new Map<number, number>();
       for (const favoriteTrackId of options.favoriteTrackIds) {
-        const { row: favorite, ordinal: favoriteOrdinalFromLookup } = findRow(favoriteTrackId);
-        if (!favorite) {
-          continue;
-        }
-        favoriteRows.push(favorite);
-        const favoriteOrdinal = favoriteOrdinalFromLookup;
+        const { ordinal: favoriteOrdinal } = findRow(favoriteTrackId);
         if (favoriteOrdinal === undefined) {
           continue;
         }
         const favoriteWeight = weightsByTrackId[favoriteTrackId] ?? 1;
         frontier.set(favoriteOrdinal, (frontier.get(favoriteOrdinal) ?? 0) + favoriteWeight);
+        // A favourite is perfectly similar to itself, so paths start at 1.
+        frontierSimilarity.set(favoriteOrdinal, 1);
       }
 
       for (let depth = 0; depth < 5 && frontier.size > 0; depth += 1) {
         const nextFrontier = new Map<number, number>();
+        const nextFrontierSimilarity = new Map<number, number>();
         const forwardDecay = Math.pow(0.76, depth);
         const reverseDecay = Math.pow(0.70, depth);
 
-        for (const [trackOrdinal, strength] of frontier) {
-          const directEdges = rows[trackOrdinal]?.neighbors ?? [];
-          for (const edge of directEdges) {
-            const contribution = strength * edge.similarity * forwardDecay;
+        const walk = (
+          trackOrdinal: number,
+          strength: number,
+          edges: Array<{ trackOrdinal: number; similarity: number }>,
+          decay: number,
+          reverseFactor: number,
+        ): void => {
+          const parentSimilarity = frontierSimilarity.get(trackOrdinal) ?? 0;
+          for (const edge of edges) {
+            const contribution = strength * edge.similarity * reverseFactor * decay;
             scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + contribution);
             nextFrontier.set(edge.trackOrdinal, (nextFrontier.get(edge.trackOrdinal) ?? 0) + contribution);
-          }
 
-          const reverseEdges = reverseAdjacency.get(trackOrdinal) ?? [];
-          for (const edge of reverseEdges) {
-            const contribution = strength * edge.similarity * 0.92 * reverseDecay;
-            scores.set(edge.trackOrdinal, (scores.get(edge.trackOrdinal) ?? 0) + contribution);
-            nextFrontier.set(edge.trackOrdinal, (nextFrontier.get(edge.trackOrdinal) ?? 0) + contribution);
+            // Best path wins, so a track reachable both directly and via a detour reports
+            // the directer relationship rather than the weaker one.
+            const chained = Math.max(0, Math.min(1, parentSimilarity * edge.similarity));
+            if (chained > (pathSimilarity.get(edge.trackOrdinal) ?? 0)) {
+              pathSimilarity.set(edge.trackOrdinal, chained);
+            }
+            if (chained > (nextFrontierSimilarity.get(edge.trackOrdinal) ?? 0)) {
+              nextFrontierSimilarity.set(edge.trackOrdinal, chained);
+            }
           }
+        };
+
+        for (const [trackOrdinal, strength] of frontier) {
+          walk(trackOrdinal, strength, rows[trackOrdinal]?.neighbors ?? [], forwardDecay, 1);
+          walk(trackOrdinal, strength, reverseAdjacency.get(trackOrdinal) ?? [], reverseDecay, 0.92);
         }
 
         frontier = new Map(
@@ -1018,45 +1197,61 @@ export async function openTinySimilarityDataset(
             .sort((left, right) => right[1] - left[1] || left[0] - right[0])
             .slice(0, 256),
         );
+        frontierSimilarity = nextFrontierSimilarity;
       }
 
-      if (favoriteRows.length > 0) {
-        const centroid = normalizeVector(
-          new Array(4).fill(0).map((_, dimension) => {
-            let totalWeight = 0;
-            let total = 0;
-            for (const row of favoriteRows) {
-              const weight = weightsByCanonicalId[row.track_id] ?? 1;
-              totalWeight += weight;
-              const vector = [row.e, row.m, row.c, row.p ?? 3];
-              total += (vector[dimension] ?? 0) * weight;
-            }
-            return total / Math.max(totalWeight, 1);
-          }),
-        );
+      // The walk above IS the ranking. There used to be a block here that computed a
+      // cosine over [e, m, c, p ?? 3] for every track in the corpus and `set` -- not
+      // added -- the result into `scores`, guarded only on a favourite having
+      // resolved. It read as a fallback and behaved as a replacement: whenever the
+      // function returned anything at all, 100% of the ranking came from a 4-element
+      // rating vector, and the neighbour graph that is 57% of this bundle's bytes
+      // contributed nothing. Measured on a purpose-built corpus, a seed whose stored
+      // neighbours were T6 @ 0.867 and T7 @ 0.725 got them back 5th and 7th, behind
+      // two tracks that were not its neighbours at all.
+      //
+      // It is deleted rather than guarded on `scores.size === 0` because the same
+      // change that fixed this declared that rating vector unfit as a retrieval key:
+      // it takes at most 125 distinct values over 87,868 tracks, and ties break by
+      // ordinal, so the same low-ordinal tracks win every tie for every listener.
+      // Keeping it as a genuine fallback would mean reaching for a key we have just
+      // established is degenerate, precisely when the good one has nothing to say.
+      //
+      // The consequence is deliberate and documented in the tiny specification: a
+      // favourites call whose seeds have no neighbour edges returns nothing, rather
+      // than returning noise that looks like a recommendation.
 
-        for (let trackOrdinal = 0; trackOrdinal < rows.length; trackOrdinal += 1) {
-          const row = rows[trackOrdinal]!;
-          if (excludeTrackIds.has(row.track_id) || favoriteCanonicalIds.has(row.track_id)) {
-            continue;
-          }
-          const fallbackScore = cosine(centroid, normalizeVector([row.e, row.m, row.c, row.p ?? 3]));
-          scores.set(trackOrdinal, fallbackScore);
-        }
-      }
-
-      return [...scores.entries()]
+      const candidates = [...scores.entries()]
         .map(([trackOrdinal, score]) => ({ trackOrdinal, score }))
         .filter(({ trackOrdinal }) => !excludeTrackIds.has(rows[trackOrdinal]!.track_id) && !favoriteCanonicalIds.has(rows[trackOrdinal]!.track_id))
-        .sort((left, right) => right.score - left.score || left.trackOrdinal - right.trackOrdinal)
+        .sort((left, right) => right.score - left.score || left.trackOrdinal - right.trackOrdinal);
+
+      // Rank by walk strength, report path similarity.
+      //
+      // Reporting the raw walk score does not work: it accumulates, so it routinely
+      // exceeds 1, and clamping it to [-1, 1] -- which is what this used to do -- made
+      // every strongly-connected candidate report exactly 1.0. Measured on the shipped
+      // bundle, a seed's top 100 came back with ONE distinct score between them while the
+      // walk underneath had 973 distinct values across the 1,674 tracks it reached.
+      //
+      // Nor does normalising it against the strongest match. That reads as a sensible
+      // [0, 1] value and is not a similarity: SIDFlow's own station layer applies an
+      // absolute minimum-similarity threshold -- 0.73 at the default adventure setting,
+      // calibrated for cosine values -- and a normalised rank collapses a full station to
+      // three tracks against it. Measured, on the real corpus.
+      //
+      // `pathSimilarity` is the quantity that belongs in this field: bounded, decaying
+      // with graph distance, and on the same scale as the cosine the sqlite and lite
+      // profiles report.
+      return candidates
         .slice(0, Math.max(1, options.limit ?? 100))
-        .map(({ trackOrdinal, score }, index) => {
+        .map(({ trackOrdinal }, index) => {
           const row = rows[trackOrdinal]!;
           return {
             track_id: row.track_id,
             sid_path: row.sid_path,
             song_index: row.song_index,
-            score: Math.max(-1, Math.min(1, score)),
+            score: pathSimilarity.get(trackOrdinal) ?? 0,
             rank: index + 1,
             e: row.e,
             m: row.m,
