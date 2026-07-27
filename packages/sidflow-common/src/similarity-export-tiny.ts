@@ -886,7 +886,22 @@ export async function openTinySimilarityDataset(
       sourcePath: filePath,
       trackCount,
       hasTrackIdentity: true,
-      hasVectorData: true,
+      /**
+       * Tiny carries no vectors. Its 1.8 MB is file identities, per-file subsong
+       * counts, style masks, packed ratings and a 3-neighbour graph -- which is why
+       * its size barely moved when the vector went from 4 to 58 dimensions.
+       *
+       * This used to report `true` while `getTrackVectors()` synthesised
+       * [e, m, c, p ?? 3]: a 4-element rating vector with at most 125 distinct
+       * positions across 87,868 tracks, sitting exactly at the legacy ratings width,
+       * so it received no weighting either. A consumer that branched on this flag and
+       * did centroid arithmetic silently reproduced the 0.5-era degeneracy this
+       * release exists to have fixed.
+       *
+       * Tiny's retrieval model is a decayed walk over the neighbour graph, not vector
+       * search. Saying so is the honest answer.
+       */
+      hasVectorData: false,
     },
     readRandomTracksExcluding(limit, excludedTrackIds, random) {
       return pickRandomRows(rows, limit, excludedTrackIds, random).map((row) => ({
@@ -952,11 +967,12 @@ export async function openTinySimilarityDataset(
         last_played: row.last_played,
       } : null;
     },
-    getTrackVectors(trackIds) {
-      return new Map(trackIds.flatMap((trackId) => {
-        const { row } = findRow(trackId);
-        return row ? [[trackId, [row.e, row.m, row.c, row.p ?? 3]]] : [];
-      }));
+    getTrackVectors() {
+      // Empty, always, and consistent with `hasVectorData: false`. Returning a
+      // synthesised rating vector here was the mechanism by which the flag above lied:
+      // a caller got four numbers that behaved like a vector, arithmetic on them
+      // succeeded, and the result was noise.
+      return new Map<string, number[]>();
     },
     getNeighbors(trackId, limit = 20, excludeTrackIds = []) {
       const exclude = new Set(excludeTrackIds);
@@ -1008,24 +1024,10 @@ export async function openTinySimilarityDataset(
       const weightsByTrackId = options.weightsByTrackId ?? {};
       const excludeTrackIds = new Set((options.excludeTrackIds ?? []).map(canonicalTrackId));
       const favoriteCanonicalIds = new Set(options.favoriteTrackIds.map(canonicalTrackId));
-      // Re-key the weights on canonical ids too: the fallback path looks them up by
-      // the ROW's id, which is the music-root-relative form, so caller-supplied
-      // weights would otherwise be silently ignored and every favourite treated as
-      // equally weighted.
-      const weightsByCanonicalId: Record<string, number> = {};
-      for (const [trackId, weight] of Object.entries(weightsByTrackId)) {
-        weightsByCanonicalId[canonicalTrackId(trackId)] = weight;
-      }
       const scores = new Map<number, number>();
       let frontier = new Map<number, number>();
-      const favoriteRows: TinyTrackRecord[] = [];
       for (const favoriteTrackId of options.favoriteTrackIds) {
-        const { row: favorite, ordinal: favoriteOrdinalFromLookup } = findRow(favoriteTrackId);
-        if (!favorite) {
-          continue;
-        }
-        favoriteRows.push(favorite);
-        const favoriteOrdinal = favoriteOrdinalFromLookup;
+        const { ordinal: favoriteOrdinal } = findRow(favoriteTrackId);
         if (favoriteOrdinal === undefined) {
           continue;
         }
@@ -1061,30 +1063,26 @@ export async function openTinySimilarityDataset(
         );
       }
 
-      if (favoriteRows.length > 0) {
-        const centroid = normalizeVector(
-          new Array(4).fill(0).map((_, dimension) => {
-            let totalWeight = 0;
-            let total = 0;
-            for (const row of favoriteRows) {
-              const weight = weightsByCanonicalId[row.track_id] ?? 1;
-              totalWeight += weight;
-              const vector = [row.e, row.m, row.c, row.p ?? 3];
-              total += (vector[dimension] ?? 0) * weight;
-            }
-            return total / Math.max(totalWeight, 1);
-          }),
-        );
-
-        for (let trackOrdinal = 0; trackOrdinal < rows.length; trackOrdinal += 1) {
-          const row = rows[trackOrdinal]!;
-          if (excludeTrackIds.has(row.track_id) || favoriteCanonicalIds.has(row.track_id)) {
-            continue;
-          }
-          const fallbackScore = cosine(centroid, normalizeVector([row.e, row.m, row.c, row.p ?? 3]));
-          scores.set(trackOrdinal, fallbackScore);
-        }
-      }
+      // The walk above IS the ranking. There used to be a block here that computed a
+      // cosine over [e, m, c, p ?? 3] for every track in the corpus and `set` -- not
+      // added -- the result into `scores`, guarded only on a favourite having
+      // resolved. It read as a fallback and behaved as a replacement: whenever the
+      // function returned anything at all, 100% of the ranking came from a 4-element
+      // rating vector, and the neighbour graph that is 57% of this bundle's bytes
+      // contributed nothing. Measured on a purpose-built corpus, a seed whose stored
+      // neighbours were T6 @ 0.867 and T7 @ 0.725 got them back 5th and 7th, behind
+      // two tracks that were not its neighbours at all.
+      //
+      // It is deleted rather than guarded on `scores.size === 0` because the same
+      // change that fixed this declared that rating vector unfit as a retrieval key:
+      // it takes at most 125 distinct values over 87,868 tracks, and ties break by
+      // ordinal, so the same low-ordinal tracks win every tie for every listener.
+      // Keeping it as a genuine fallback would mean reaching for a key we have just
+      // established is degenerate, precisely when the good one has nothing to say.
+      //
+      // The consequence is deliberate and documented in the tiny specification: a
+      // favourites call whose seeds have no neighbour edges returns nothing, rather
+      // than returning noise that looks like a recommendation.
 
       return [...scores.entries()]
         .map(([trackOrdinal, score]) => ({ trackOrdinal, score }))
