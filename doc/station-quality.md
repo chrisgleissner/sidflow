@@ -1158,3 +1158,109 @@ were fitted to — 11,284 dev keys against 87,868 corpus keys, overlap 0. The co
 strips the music-root prefix before matching. This is the third time in this campaign that a
 path-form mismatch has produced a silent wrong answer; the other two were the tiny profile
 resolving nothing and the exclusion set in the tiny export.
+
+---
+
+## 15. The category axis is now the binding constraint (0.8.0)
+
+§14 records that similarity got 243× better. The category half of the product did not move
+at all, and after 0.8.0 it is the thing limiting the "category radio that adapts" use case.
+
+### The quintiles are already a better category primitive than the personas
+
+`e`, `m` and `c` are **exact rank-uniform quintiles**. Measured on the shipped corpus:
+17,574 / 17,573 / 17,574 / 17,573 / 17,574 for each of the three, with all 125 `(e,m,c)`
+cells populated.
+
+That gives, by construction, everything a station-building primitive needs:
+
+- **a guaranteed 20% pool per level** — no category can be starved;
+- **monotone ordering** — `e ∈ {1,2}` is exactly the calmest 40%, and means it;
+- **no overlap** — a track is in exactly one energy level.
+
+And category-restricted adaptation is sound. Restricting to an energy quintile leaves a
+17,574-track pool, and lite tracks full inside that pool as well as it does globally:
+
+| Pool | lite vs full, favourites@50 |
+|---|---:|
+| whole corpus (87,868) | 0.982 |
+| `e=1` (17,574) | 0.981 |
+| `e=3` (17,574) | 0.986 |
+| `e=5` (17,574) | 0.987 |
+
+So "pick a category, then adapt inside it" works today. **Document the quintiles as the
+intended category axis**; the nine personas are a presentation-layer convenience over
+them.
+
+The corollary has to be stated wherever a category is surfaced: these are
+**corpus-relative**. `e=1` means "the calmest fifth of HVSC", not "objectively calm". That
+is the right choice for a station and the wrong one for a label.
+
+### What 0.8.0 fixed, and what it could not
+
+0.8.0 made station membership a design decision rather than an accident — quantile
+assignment, a hard population gate, content-based metadata signals for the four hybrid
+personas, and exclusivity for the pairs a listener experiences as contradictions. Measured
+before and after:
+
+| | 0.7.0 | 0.8.0 |
+|---|---|---|
+| smallest station | 0 tracks (`theme_hunter`) | 17,574 |
+| largest station | 46,652 (53.1%) | 17,574 (20.0%) |
+| spread | **69×** | **1.0** |
+| `fast_paced` ∩ `slow_ambient` | 9,451 tracks | **0** |
+| worst pairwise Jaccard | 0.838 | 0.488 |
+| worst tie share at a station's cut | 15.76% (`era_explorer`) | 7.03% (`fast_paced`) |
+| tracks carrying no station | 0 (every track got exactly 3) | 12,442 (14.2%) |
+
+What it could **not** fix is the resolution of the underlying score.
+
+### The ceiling: 125 values
+
+A persona score is computed from the five proxy metrics, and all five derive from `e`, `m`,
+`c` and `p`. In a published corpus `p` is unset. So **an audio-led persona's score takes at
+most 125 distinct values over any corpus** — one per `(e,m,c)` cell — however many tracks
+that corpus has.
+
+Measured distinct scores across 87,868 tracks:
+
+| Persona | distinct scores | tie share at its cut |
+|---|---:|---:|
+| `slow_ambient` | 125 | 0.58% |
+| `nostalgic` | 125 | 6.52% |
+| `experimental` | 120 | 1.28% |
+| `fast_paced` | 96 | **7.03%** |
+| `melodic` | 75 | 0.07% |
+| `deep_discovery` | 14,613 | 0.01% |
+| `composer_focus` | 5,986 | 0.02% |
+| `theme_hunter` | 5,321 | 0.02% |
+| `era_explorer` | 316 | 0.25% |
+
+The four hybrids escape the ceiling only because 0.8.0 gave them signals that are not
+quintiles — composer prominence, year rank, directory rarity, theme-tag richness. **The
+five audio-led personas cannot escape it**, because their entire input is three quintiles.
+`fast_paced` decides 7% of the corpus — 6,177 tracks — inside a single tie at its cut, and
+which of them get in is settled by a hash.
+
+That is the honest state: the stations are correctly sized, mutually distinguishable and
+gated, and the ranking underneath five of the nine is coarse.
+
+### The structural observation
+
+**0.7.0 made similarity 14.5× richer and left categories exactly as coarse as they were.**
+The export computes a 58-dimension description of every track and then labels it from three
+numbers. `slow_ambient` cannot distinguish a quiet arpeggio étude from a sparse noise piece;
+the vector can.
+
+### Deferred to 0.9.0, with the measured justification
+
+| Deferred | Why not in 0.8.0 | Measured payoff |
+|---|---|---|
+| **Derive categories from the 58-dim vector** rather than 3 quintiles | needs design and validation, not a patch release | removes the 125-value ceiling on five of nine stations; the binding constraint on the category+similarity product |
+| Re-encode full: `float32` vector BLOB, neighbours as one BLOB per seed, 64 KB pages or drop `WITHOUT ROWID` | breaks `sidcorr-1`; `u64deck` refuses an unrecognised `schema_version` outright | **982 MB → ~430 MB**, zero information loss. The neighbours table alone is 231 MB of the current file, seven times everything else combined — that is where to start |
+| `md5_48` → `md5_64` in tiny | changes the binary layout | collision probability 0.66% → ~10⁻⁷ over 61,157 files |
+| Neighbour diversification: a `same_file` flag, or export 30 and let consumers drop siblings | changes the `neighbors` table shape | removes the 14.4% rank-1 sibling rate at the export layer rather than at each consumer |
+
+The baseline for the first row is the coverage table above: any replacement has to keep
+every station populated, distinguishable and gated, and beat 125 distinct values on the
+audio-led five.

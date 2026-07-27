@@ -27,6 +27,7 @@ SQLITE_NEIGHBORS_FOR_TINY="25"
 PUBLISH_RELEASE="false"
 PUBLISH_REPO="chrisgleissner/sidflow-data"
 PUBLISH_TIMESTAMP=""
+SIDFLOW_VERSION=""
 
 CONFIG_PATH="${REPO_ROOT}/.sidflow.json"
 IMAGE="ghcr.io/chrisgleissner/sidflow:latest"
@@ -115,6 +116,10 @@ Options:
   --publish-release true|false        Create and publish a tar.gz release bundle. Default: false
   --publish-repo OWNER/REPO           Release target. Default: chrisgleissner/sidflow-data
   --publish-timestamp UTCSTAMP        Override UTC timestamp in YYYYMMDDTHHMMSSZ format
+                                      (staging directory names only; from 0.8.0 the release
+                                      tag is the SIDFlow version, not a timestamp)
+  --sidflow-version X.Y.Z             Release tag to publish under. Defaults to the version
+                                      in package.json, which must have a matching git tag.
   --sqlite-neighbors-for-tiny N       Precomputed neighbors stored per track in the full export. Default: 25
   --keep-runtime true|false           Keep started server/container running after success. Default: false
   --help                              Show this help
@@ -176,14 +181,53 @@ release_timestamp() {
   date -u +%Y%m%dT%H%M%SZ
 }
 
-release_tag() {
-  local timestamp="$1"
-  printf 'sidcorr-%s-%s-%s\n' "${CORPUS_VERSION}" "${PROFILE}" "${timestamp}"
+# The SIDFlow version that produced this data, which IS the release tag from 0.8.0.
+#
+# Until 0.8.0 the tag was `sidcorr-<corpus>-<profile>-<timestamp>` and the producing
+# version appeared nowhere machine-readable. Reconstructing it afterwards means comparing
+# an artefact's `generated_at` against the tag dates and hoping -- and doing that on the
+# 0.5-era release turns up a SPLIT lineage: its full SQLite was generated while 0.5.6 was
+# the newest tag, while its lite and tiny bundles were generated the following morning,
+# after 0.5.7 had been tagged. One release, two producing versions, and nothing recorded
+# either.
+#
+# So this fails loudly rather than falling back to a timestamp. A data release that cannot
+# name the tag that produced it is exactly the lineage problem 0.8.0 exists to fix, and a
+# silent fallback would reintroduce it the first time someone forgot the flag.
+resolve_sidflow_version() {
+  if [[ -n "${SIDFLOW_VERSION}" ]]; then
+    printf '%s\n' "${SIDFLOW_VERSION}"
+    return
+  fi
+
+  local from_package
+  from_package="$(python3 -c "
+import json
+print(json.load(open('${REPO_ROOT}/package.json')).get('version', ''))
+" 2>/dev/null || true)"
+
+  if [[ -z "${from_package}" ]]; then
+    fail "Cannot determine the SIDFlow version to release under. Pass --sidflow-version X.Y.Z."
+  fi
+
+  # The version must correspond to a real tag, or the release names a lineage that does not
+  # exist. A release built from an untagged working tree has to say so explicitly.
+  if ! git -C "${REPO_ROOT}" rev-parse --verify --quiet "refs/tags/${from_package}" >/dev/null; then
+    fail "package.json says ${from_package} but no such tag exists. Tag the release first, or pass --sidflow-version explicitly if you are deliberately publishing a pre-tag build."
+  fi
+
+  printf '%s\n' "${from_package}"
 }
 
+release_tag() {
+  resolve_sidflow_version
+}
+
+# Corpus and profile move out of the tag and into the title, where they were always more
+# useful: a reader scanning the release list sees "0.8.0 - HVSC full" rather than having to
+# parse a timestamp out of a slug.
 release_title() {
-  local timestamp="$1"
-  printf 'SID correlation export %s %s %s\n' "${CORPUS_VERSION}" "${PROFILE}" "${timestamp}"
+  printf 'SIDFlow %s - %s %s export\n' "$(resolve_sidflow_version)" "${CORPUS_VERSION}" "${PROFILE}"
 }
 
 # Read straight out of the manifest rather than hardcoded, so the notes cannot drift
@@ -390,6 +434,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --publish-repo)
       PUBLISH_REPO="$2"
+      shift 2
+      ;;
+    --sidflow-version)
+      SIDFLOW_VERSION="$2"
       shift 2
       ;;
     --publish-timestamp)
@@ -1781,12 +1829,12 @@ publish_release_if_requested() {
   local timestamp
   local tag
   timestamp="$(release_timestamp)"
-  tag="$(release_tag "${timestamp}")"
+  tag="$(release_tag)"
 
   stage_release_bundle "${output_path}" "${timestamp}"
 
   if gh release view "${tag}" --repo "${PUBLISH_REPO}" >/dev/null 2>&1; then
-    fail "Release ${tag} already exists in ${PUBLISH_REPO}; choose a different --publish-timestamp"
+    fail "Release ${tag} already exists in ${PUBLISH_REPO}. From 0.8.0 the tag is the SIDFlow version, so this means that version has already been published; bump the version and tag it, or delete the release if it was a mistake."
   fi
 
   local notes_file
@@ -1803,7 +1851,7 @@ publish_release_if_requested() {
     "${ARTIFACT_BUNDLE_DIR}/SHA256SUMS" \
     "${ARTIFACT_TARBALL_PATH}" \
     --repo "${PUBLISH_REPO}" \
-    --title "$(release_title "${timestamp}")" \
+    --title "$(release_title)" \
     --notes-file "${notes_file}"
 
   log "Published release ${tag} to ${PUBLISH_REPO}"
