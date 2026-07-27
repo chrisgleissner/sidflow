@@ -89,19 +89,16 @@ export interface BuildFeaturesSidecarResult {
   manifest: FeaturesSidecarManifest;
 }
 
+/**
+ * Streamed rather than `readFile`, because one of the two files this is called on is the
+ * full export -- currently 982 MB, and buffering it whole to hash it would cost more
+ * memory than building the sidecar does.
+ */
 async function computeFileChecksum(filePath: string): Promise<string> {
   const hash = createHash("sha256");
-  await pipeline(createReadStream(filePath), async function* (source) {
-    for await (const chunk of source) {
-      hash.update(chunk as Buffer);
-      yield chunk;
-    }
-  }, async (source) => {
-    // Drain; the digest is the point.
-    for await (const _chunk of source) {
-      // no-op
-    }
-  });
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk as Buffer);
+  }
   return hash.digest("hex");
 }
 
