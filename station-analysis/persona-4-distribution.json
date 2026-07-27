@@ -3,9 +3,9 @@
   "personaLabel": "Experimental",
   "distribution": {
     "avgExperimentalTolerance": 0.49138951999999997,
-    "avgMelodicComplexity": 0.6528636400000001,
+    "avgMelodicComplexity": 0.6558636400000001,
     "avgNostalgiaBias": 0.47809084000000013,
     "avgRhythmicDensity": 0.48486062,
-    "avgTimbralRichness": 0.4766550200000001
+    "avgTimbralRichness": 0.47665502
   }
 }

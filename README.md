@@ -114,11 +114,26 @@ The [sidflow-data README](https://github.com/chrisgleissner/sidflow-data#readme)
 
 Choose a published flavour by runtime need; the companion repository remains the authoritative source for release-specific asset names, checksums, and download instructions.
 
-| Flavour | Use it when | Formal specification |
-|---|---|---|
-| **Full** (`sidcorr-1`, SQLite) | You want the authoritative, complete offline dataset and SQL-backed querying in a desktop, service, or other capable runtime. | [Full SQLite export](doc/similarity-export.md) |
-| **Lite** (`sidcorr-lite-1`) | You need a compact portable representation while retaining the richer similarity-vector data. | [Lite portable export](doc/similarity-export-lite.md) |
-| **Tiny** (`sidcorr-tiny-1`) | You need the smallest, deterministic weak-device/runtime bundle for style filtering and neighbor expansion; it is intentionally lossy. | [Tiny portable export](doc/similarity-export-tiny.md) |
+**Start with lite.** It reproduces the full export's top-25 neighbours at R@25 = 0.987 and
+its favourite-seeded stations at 98% overlap, in 8 MB against 982 MB. Full is for consumers
+that specifically need `features_json` or SQL access.
+
+| Flavour | Bytes | Use it when | Formal specification |
+|---|---:|---|---|
+| **Lite** (`sidcorr-lite-1`) | 8.1 MB | You want recommendations, stations and similarity. **The right default for almost every consumer.** | [Lite portable export](doc/similarity-export-lite.md) |
+| **Tiny** (`sidcorr-tiny-1`) | 1.8 MB | You need the smallest deterministic bundle for a weak device: style filtering and neighbour expansion, intentionally lossy, and it carries no vectors. | [Tiny portable export](doc/similarity-export-tiny.md) |
+| **Features sidecar** | 76 MB | You want to derive your own representation from the raw 129-key feature records. Supplementary, not a tier — pair it with lite. | [Full SQLite export](doc/similarity-export.md) |
+| **Full** (`sidcorr-1`, SQLite) | 982 MB, or 194 MB gzipped | You need `features_json` in a database, or SQL-backed querying. | [Full SQLite export](doc/similarity-export.md) |
+
+> **Similarity is *weighted* cosine.** Read `vector_weights` from the manifest. A consumer
+> computing plain cosine agrees with the authoritative neighbours on roughly half its
+> results — measured R@1 = 0.478 against 0.983 — and nothing about the result looks wrong.
+> See [the metric](doc/similarity-export.md#similarity-weighted-cosine).
+
+> Upgrading from an earlier data release? Read
+> **[Migrating from the 0.5-era data release to 0.8.0](doc/migration/0.5-to-0.8.md)**. The
+> 0.5-era export's similarity data was inert — 91.4% of tracks shared one vector — so any
+> threshold tuned against it needs re-tuning rather than carrying over.
 
 > Use this repository when you need to **generate, inspect, or serve** similarity data. Use [sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases) when you need the **published HVSC results** in another project.
 

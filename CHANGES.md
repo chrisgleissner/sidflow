@@ -1,6 +1,146 @@
 # Changelog
 
 
+## 0.8.0 (2026-07-27)
+
+Closes the findings of the July 2026 export audit
+(`doc/research/hvsc-correlation-export-audit/20260726/review.md`). **No reclassification
+was run**: every artefact is derived deterministically from the 0.7.0 export, whose data
+the audit verified as correct.
+
+Consumers migrating from any earlier data release should read
+[`doc/migration/0.5-to-0.8.md`](doc/migration/0.5-to-0.8.md).
+
+### The manifest now describes the file it ships beside
+
+- **`file_checksums.sqlite_sha256` has never matched the published file, in any release,
+  by construction.** The exporter hashed the database and then wrote the manifest —
+  including that hash — into the database's own `meta` table, mutating the bytes it had
+  just measured. `SHA256SUMS` was always correct, so nothing downstream broke, but
+  `sidflow-data` tells consumers to "verify the checksum and retain the manifest", and a
+  consumer who did rejected every release SIDFlow ever shipped. The embedded copy now
+  omits `file_checksums` entirely — a file cannot contain its own digest — and the sidecar
+  carries it, computed after the last write.
+- **`neighbor_row_count` is measured, not `track_count × k`.** The two coincide for HVSC
+  (2,196,700 = 87,868 × 25), but `u64deck` hard-fails its import on a mismatch with no
+  fallback, so one under-filled seed would have bricked every install. Measured on an
+  8-track corpus asking for 25 neighbours, the old code declared 200 against 56 actual.
+- `paths.*` are basenames. The 0.7.0 manifest published the build host's absolute
+  filesystem layout.
+- New: `hvsc_version` (e.g. `"HVSC 85 + Update 85"`), read from `hvsc-version.json` at
+  export time. `corpus_version` was the bare string `"hvsc"` in every previous release, so
+  nothing recorded which collection the paths belong to.
+- New: `--rewrite-manifest` recomputes an existing export's manifest from the database's
+  own contents, without reclassifying. Idempotent: it does not open the database for
+  writing when the manifest is already correct, because SQLite bumps three header bytes on
+  every `VACUUM`.
+
+### The similarity metric is now implementable from what is published
+
+- **New manifest fields `similarity_metric` and `vector_weights`.** The 58-entry learned
+  weight table defines the metric and lived only in TypeScript source, so a third party who
+  implemented the published lite specification exactly computed plain cosine and agreed
+  with the authoritative neighbours on roughly half their results — measured R@1 0.478
+  against 0.983, and 40% station overlap against 98% — with no way to notice.
+- The three format specifications now describe the artefacts as shipped: the 58-dimension
+  vector and its three groups, rank-uniform normalisation with the exact `(r + 0.5) / n`
+  formula and its tie handling, the weight table and how it is applied, `sid_engine` versus
+  the `render_engine` column, and that `e`/`m`/`c` are corpus-relative quintiles.
+  `--dims 3|4` is marked legacy.
+- New: `scripts/verify-lite-against-full.ts`, which decodes the bundle from the published
+  specification rather than with SIDFlow's own reader and takes the metric from the
+  manifest. Measured on the 0.8.0 assets over 1,000 seeds: R@25 = 0.9868, R@1 = 0.9850.
+
+### Stations
+
+- **Station membership is now a design decision, and the export refuses to publish a
+  broken one.** 0.7.0 shipped `theme_hunter` matching **0** tracks — a tile that could
+  never play anything — `composer_focus` matching 673, five personas each covering about
+  half the corpus, and **9,451 tracks carrying both `fast_paced` and `slow_ambient`**.
+  Each persona is now the top 20% of the corpus by its own score: nine stations of 17,574
+  tracks, spread 1.0 against 69×, zero conflicting overlap.
+- **The hybrid personas had no distinguishing signal, and supplying metadata was not
+  enough.** `scoreMetadataBonus` scored metadata *presence*, and composer and category
+  resolve for 100% of HVSC, so the bonus was a constant that changed no ranking:
+  `composer_focus` had 30 distinct scores over 87,868 tracks with metadata and 30 without.
+  Each field now contributes its content — composer prominence on a log scale,
+  release year as a rank position, directory rarity, theme-tag richness. Measured:
+  `composer_focus` 30 → 5,986 distinct scores, `era_explorer` 14 → 316, `theme_hunter`
+  30 → 5,321.
+- The audio/metadata blend for hybrid personas moves from 0.85/0.15 to 0.45/0.55. At the
+  old blend, rarity — the entire premise of Deep Discovery — could move a score by 0.015,
+  and with populations equalised Deep Discovery and Melodic shared 91% of their tracks.
+- `melodic` / `experimental` join `fast_paced` / `slow_ambient` as mutually exclusive.
+  This is a format decision, not a claim about the music: plenty of SID music is both, but
+  as station tiles they came out at Jaccard 0.659 and a listener would hear the same
+  station twice.
+- **Hard population gate at export time**: floor `max(1000, 5%)`, ceiling 40%, spread ≤ 4×,
+  zero overlap on conflicting pairs, plus tie-fraction and pairwise-distinctness checks that
+  a population floor cannot make. Both bounds scale down so a small private collection is
+  not blocked. `--allow-sparse-styles` bypasses it and records the waiver in the manifest.
+- New tiny manifest fields: `style_populations`, `style_population_policy`,
+  `style_population_waiver`.
+- Stations exclude the seed's **file**, not just the seed track. The rank-1 neighbour is a
+  different subsong of the same `.sid` file for **14.4%** of seeds.
+
+### Tiny profile reader (library behaviour change)
+
+The bundle bytes are not involved; these affect consumers of `@sidflow/common`.
+
+- **`recommendFromFavorites` now ranks from the neighbour graph.** It computed a five-hop
+  decayed walk and then overwrote every score with a cosine over `[e, m, c, p ?? 3]` — a
+  4-element rating vector with at most 125 distinct values across 87,868 tracks. The
+  neighbour graph, 57% of the bundle's bytes, contributed nothing. Measured on a
+  purpose-built corpus: a seed's stored neighbours came back 5th and 7th behind two tracks
+  that were not its neighbours at all, and all 11 scores matched an independent rating
+  cosine to 12 decimal places while taking 5 distinct values.
+  **A favourites call whose seeds have no neighbour edges now returns nothing**, rather
+  than noise that looks like a recommendation.
+- `hasVectorData` reports `false` and `getTrackVectors()` returns nothing. Tiny carries no
+  vectors; reporting that it did let consumers do centroid arithmetic on the rating vector.
+- Returned scores are relative to the strongest match rather than clamped. The walk
+  accumulates, so the old clamp reported an entire top-100 as exactly `1.0`.
+- `computeSimilarityStyleMask` is replaced by `buildStyleMaskIndex`: a station is "the most
+  X tracks in this corpus" and cannot be derived from one track in isolation.
+
+### New release assets
+
+Both additive; no existing filename changed.
+
+- `sidcorr-hvsc-full-sidcorr-1.sqlite.gz` — 194,351,886 bytes, **5.05×** smaller.
+- `sidcorr-hvsc-full-features-1.jsonl.gz` — 75,933,721 bytes. The raw feature records,
+  sorted by `track_id`, with their own manifest. `u64deck` downloads the full export for
+  exactly this and discards the rest; it can now take 8 MB of lite plus 76 MB of this
+  instead of 982 MB.
+
+### Release naming
+
+- **A `sidflow-data` release tag is now the SIDFlow version that produced it.** The old
+  timestamp scheme recorded the producing version nowhere machine-readable — and the
+  0.5-era release turns out to have a *split* lineage, its full export generated while
+  0.5.6 was newest and its derived bundles the next morning after 0.5.7 was tagged.
+  Historical releases are not retagged; the verified mapping is in the migration document.
+
+### Verification
+
+- `scripts/verify-published-exports.ts` gains checks for every finding above. Measured:
+  **15 checks fail against the published 0.7.0 assets and all pass against 0.8.0.**
+- It now runs on every commit against a fixture built through the real export chain
+  (`scripts/ci/build-similarity-fixture.ts`), rather than only when someone remembered to
+  run it against a 1 GB export.
+- `scripts/reproduce-published-bundles.sh` proves the lite and tiny derivations are
+  deterministic; `scripts/diff-tiny-sections.ts` asserts which sections of a rebuilt tiny
+  bundle were allowed to change.
+
+### Data release 0.8.0
+
+Rebuilt from the 0.7.0 full export. The lite bundle is **byte-identical** to 0.7.0's; the
+tiny bundle differs **only** in its style-mask table (104,637 bytes), with every `md5_48`
+identity, per-file subsong count, packed rating and neighbour record unchanged. The full
+export shrank 1,013,977,088 → 982,155,264 bytes as `VACUUM` reclaimed free pages during
+the manifest repair. All digests change; see the migration document.
+
+
 ## 0.7.0 (2026-07-26)
 
 Rebuilds how SIDFlow decides two SID tunes are alike, and regenerates the published

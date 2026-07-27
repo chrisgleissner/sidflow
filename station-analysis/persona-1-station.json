@@ -604,6 +604,26 @@
       "trackId": "C64Music/DEMOS/A-F/Dropkick.sid:1"
     },
     {
+      "explanation": "Selected for Fast Paced: rhythmicDensity=0.506 (high, w=0.60); experimentalTolerance=0.156 (low, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.155687,
+        "melodicComplexity": 0.614611,
+        "nostalgiaBias": 0.534,
+        "rhythmicDensity": 0.506397,
+        "timbralRichness": 0.250817
+      },
+      "rank": 31,
+      "ratings": {
+        "c": 3,
+        "e": 4,
+        "m": 2
+      },
+      "score": 0.630139,
+      "sidPath": "C64Music/MUSICIANS/H/Harti/Chopin_2.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/H/Harti/Chopin_2.sid:1"
+    },
+    {
       "explanation": "Selected for Fast Paced: rhythmicDensity=0.585 (high, w=0.60); experimentalTolerance=0.295 (low, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.295015,
@@ -612,7 +632,7 @@
         "rhythmicDensity": 0.585002,
         "timbralRichness": 0.376235
       },
-      "rank": 31,
+      "rank": 32,
       "ratings": {
         "c": 4,
         "e": 5,
@@ -632,7 +652,7 @@
         "rhythmicDensity": 0.575475,
         "timbralRichness": 0.322866
       },
-      "rank": 32,
+      "rank": 33,
       "ratings": {
         "c": 3,
         "e": 5,
@@ -644,6 +664,26 @@
       "trackId": "C64Music/MUSICIANS/A/A-Man/No_Cruel.sid:1"
     },
     {
+      "explanation": "Selected for Fast Paced: rhythmicDensity=0.511 (high, w=0.60); experimentalTolerance=0.210 (low, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.209783,
+        "melodicComplexity": 0.415238,
+        "nostalgiaBias": 0.750364,
+        "rhythmicDensity": 0.510901,
+        "timbralRichness": 0.310541
+      },
+      "rank": 34,
+      "ratings": {
+        "c": 3,
+        "e": 5,
+        "m": 1
+      },
+      "score": 0.628281,
+      "sidPath": "C64Music/GAMES/0-9/20_Tons.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/0-9/20_Tons.sid:1"
+    },
+    {
       "explanation": "Selected for Fast Paced: rhythmicDensity=0.575 (high, w=0.60); experimentalTolerance=0.313 (low, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.313244,
@@ -652,7 +692,7 @@
         "rhythmicDensity": 0.574856,
         "timbralRichness": 0.307222
       },
-      "rank": 33,
+      "rank": 35,
       "ratings": {
         "c": 2,
         "e": 5,
@@ -672,7 +712,7 @@
         "rhythmicDensity": 0.611414,
         "timbralRichness": 0.374741
       },
-      "rank": 34,
+      "rank": 36,
       "ratings": {
         "c": 4,
         "e": 5,
@@ -692,7 +732,7 @@
         "rhythmicDensity": 0.631278,
         "timbralRichness": 0.30603
       },
-      "rank": 35,
+      "rank": 37,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -712,7 +752,7 @@
         "rhythmicDensity": 0.654838,
         "timbralRichness": 0.326401
       },
-      "rank": 36,
+      "rank": 38,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -732,7 +772,7 @@
         "rhythmicDensity": 0.603918,
         "timbralRichness": 0.333427
       },
-      "rank": 37,
+      "rank": 39,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -752,7 +792,7 @@
         "rhythmicDensity": 0.552615,
         "timbralRichness": 0.217538
       },
-      "rank": 38,
+      "rank": 40,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -772,7 +812,7 @@
         "rhythmicDensity": 0.562095,
         "timbralRichness": 0.420035
       },
-      "rank": 39,
+      "rank": 41,
       "ratings": {
         "c": 3,
         "e": 5,
@@ -792,7 +832,7 @@
         "rhythmicDensity": 0.564756,
         "timbralRichness": 0.337378
       },
-      "rank": 40,
+      "rank": 42,
       "ratings": {
         "c": 4,
         "e": 5,
@@ -812,7 +852,7 @@
         "rhythmicDensity": 0.579029,
         "timbralRichness": 0.337238
       },
-      "rank": 41,
+      "rank": 43,
       "ratings": {
         "c": 5,
         "e": 5,
@@ -832,7 +872,7 @@
         "rhythmicDensity": 0.532378,
         "timbralRichness": 0.333078
       },
-      "rank": 42,
+      "rank": 44,
       "ratings": {
         "c": 1,
         "e": 5,
@@ -844,26 +884,6 @@
       "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:5"
     },
     {
-      "explanation": "Selected for Fast Paced: rhythmicDensity=0.506 (high, w=0.60); experimentalTolerance=0.156 (low, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.155687,
-        "melodicComplexity": 0.564611,
-        "nostalgiaBias": 0.534,
-        "rhythmicDensity": 0.506397,
-        "timbralRichness": 0.250817
-      },
-      "rank": 43,
-      "ratings": {
-        "c": 2,
-        "e": 4,
-        "m": 2
-      },
-      "score": 0.619239,
-      "sidPath": "C64Music/MUSICIANS/H/Harti/Chopin_2.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/H/Harti/Chopin_2.sid:1"
-    },
-    {
       "explanation": "Selected for Fast Paced: rhythmicDensity=0.506 (high, w=0.60); experimentalTolerance=0.248 (low, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.247671,
@@ -872,7 +892,7 @@
         "rhythmicDensity": 0.505992,
         "timbralRichness": 0.340847
       },
-      "rank": 44,
+      "rank": 45,
       "ratings": {
         "c": 3,
         "e": 5,
@@ -892,7 +912,7 @@
         "rhythmicDensity": 0.605799,
         "timbralRichness": 0.493582
       },
-      "rank": 45,
+      "rank": 46,
       "ratings": {
         "c": 2,
         "e": 5,
@@ -912,7 +932,7 @@
         "rhythmicDensity": 0.579236,
         "timbralRichness": 0.34398
       },
-      "rank": 46,
+      "rank": 47,
       "ratings": {
         "c": 4,
         "e": 4,
@@ -922,26 +942,6 @@
       "sidPath": "C64Music/MUSICIANS/M/Mythus/Welcome_Mythus.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/M/Mythus/Welcome_Mythus.sid:1"
-    },
-    {
-      "explanation": "Selected for Fast Paced: rhythmicDensity=0.511 (high, w=0.60); experimentalTolerance=0.210 (low, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.209783,
-        "melodicComplexity": 0.365238,
-        "nostalgiaBias": 0.750364,
-        "rhythmicDensity": 0.510901,
-        "timbralRichness": 0.310541
-      },
-      "rank": 47,
-      "ratings": {
-        "c": 2,
-        "e": 5,
-        "m": 1
-      },
-      "score": 0.617381,
-      "sidPath": "C64Music/GAMES/0-9/20_Tons.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/GAMES/0-9/20_Tons.sid:1"
     },
     {
       "explanation": "Selected for Fast Paced: rhythmicDensity=0.591 (high, w=0.60); experimentalTolerance=0.244 (low, w=0.15)",

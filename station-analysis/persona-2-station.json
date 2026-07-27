@@ -84,6 +84,26 @@
       "trackId": "C64Music/MUSICIANS/T/Triace/Happy_Yummy_Bear.sid:1"
     },
     {
+      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.143 (low, w=0.60); melodicComplexity=0.606 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.317686,
+        "melodicComplexity": 0.605736,
+        "nostalgiaBias": 0.527818,
+        "rhythmicDensity": 0.143348,
+        "timbralRichness": 0.435814
+      },
+      "rank": 5,
+      "ratings": {
+        "c": 3,
+        "e": 1,
+        "m": 3
+      },
+      "score": 0.746147,
+      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:1"
+    },
+    {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.146 (low, w=0.60); melodicComplexity=0.608 (high, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.309145,
@@ -92,7 +112,7 @@
         "rhythmicDensity": 0.145607,
         "timbralRichness": 0.417637
       },
-      "rank": 5,
+      "rank": 6,
       "ratings": {
         "c": 3,
         "e": 1,
@@ -112,7 +132,7 @@
         "rhythmicDensity": 0.20476,
         "timbralRichness": 0.381011
       },
-      "rank": 6,
+      "rank": 7,
       "ratings": {
         "c": 3,
         "e": 2,
@@ -132,7 +152,7 @@
         "rhythmicDensity": 0.229164,
         "timbralRichness": 0.360136
       },
-      "rank": 7,
+      "rank": 8,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -152,7 +172,7 @@
         "rhythmicDensity": 0.174502,
         "timbralRichness": 0.13008
       },
-      "rank": 8,
+      "rank": 9,
       "ratings": {
         "c": 2,
         "e": 1,
@@ -172,7 +192,7 @@
         "rhythmicDensity": 0.216602,
         "timbralRichness": 0.328682
       },
-      "rank": 9,
+      "rank": 10,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -192,7 +212,7 @@
         "rhythmicDensity": 0.262547,
         "timbralRichness": 0.36138
       },
-      "rank": 10,
+      "rank": 11,
       "ratings": {
         "c": 4,
         "e": 2,
@@ -212,7 +232,7 @@
         "rhythmicDensity": 0.197737,
         "timbralRichness": 0.373937
       },
-      "rank": 11,
+      "rank": 12,
       "ratings": {
         "c": 4,
         "e": 1,
@@ -222,26 +242,6 @@
       "sidPath": "C64Music/DEMOS/0-9/3_Bit_Chip.sid",
       "songIndex": 1,
       "trackId": "C64Music/DEMOS/0-9/3_Bit_Chip.sid:1"
-    },
-    {
-      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.195 (low, w=0.60); experimentalTolerance=0.050 (low, w=0.10)",
-      "metrics": {
-        "experimentalTolerance": 0.050331,
-        "melodicComplexity": 0.384064,
-        "nostalgiaBias": 0.714,
-        "rhythmicDensity": 0.194981,
-        "timbralRichness": 0.258664
-      },
-      "rank": 12,
-      "ratings": {
-        "c": 3,
-        "e": 2,
-        "m": 4
-      },
-      "score": 0.730134,
-      "sidPath": "C64Music/GAMES/A-F/Act_Game_BASIC.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/GAMES/A-F/Act_Game_BASIC.sid:1"
     },
     {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.222 (low, w=0.60); melodicComplexity=0.610 (high, w=0.15)",
@@ -264,26 +264,6 @@
       "trackId": "C64Music/MUSICIANS/Y/Yzi/Abrels_Napen.sid:1"
     },
     {
-      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.143 (low, w=0.60); melodicComplexity=0.556 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.317686,
-        "melodicComplexity": 0.555736,
-        "nostalgiaBias": 0.527818,
-        "rhythmicDensity": 0.143348,
-        "timbralRichness": 0.435814
-      },
-      "rank": 14,
-      "ratings": {
-        "c": 2,
-        "e": 1,
-        "m": 3
-      },
-      "score": 0.724997,
-      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:1"
-    },
-    {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.217 (low, w=0.60); melodicComplexity=0.587 (high, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.234971,
@@ -292,7 +272,7 @@
         "rhythmicDensity": 0.216759,
         "timbralRichness": 0.348679
       },
-      "rank": 15,
+      "rank": 14,
       "ratings": {
         "c": 4,
         "e": 2,
@@ -312,7 +292,7 @@
         "rhythmicDensity": 0.228814,
         "timbralRichness": 0.172683
       },
-      "rank": 16,
+      "rank": 15,
       "ratings": {
         "c": 3,
         "e": 2,
@@ -332,7 +312,7 @@
         "rhythmicDensity": 0.198058,
         "timbralRichness": 0.417315
       },
-      "rank": 17,
+      "rank": 16,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -342,6 +322,26 @@
       "sidPath": "C64Music/MUSICIANS/R/Riot/Its_Late_II.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/R/Riot/Its_Late_II.sid:1"
+    },
+    {
+      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.216 (low, w=0.60); melodicComplexity=0.582 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.238542,
+        "melodicComplexity": 0.58225,
+        "nostalgiaBias": 0.663273,
+        "rhythmicDensity": 0.215937,
+        "timbralRichness": 0.379231
+      },
+      "rank": 17,
+      "ratings": {
+        "c": 2,
+        "e": 2,
+        "m": 4
+      },
+      "score": 0.717927,
+      "sidPath": "C64Music/MUSICIANS/N/Nula/Forever_and_Ever.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/N/Nula/Forever_and_Ever.sid:1"
     },
     {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.237 (low, w=0.60); melodicComplexity=0.649 (high, w=0.15)",
@@ -464,26 +464,6 @@
       "trackId": "C64Music/MUSICIANS/H/HTD/Katastrof.sid:1"
     },
     {
-      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.179 (low, w=0.60); melodicComplexity=0.629 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.305958,
-        "melodicComplexity": 0.629077,
-        "nostalgiaBias": 0.657273,
-        "rhythmicDensity": 0.179339,
-        "timbralRichness": 0.506298
-      },
-      "rank": 24,
-      "ratings": {
-        "c": 5,
-        "e": 2,
-        "m": 1
-      },
-      "score": 0.706656,
-      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
-      "songIndex": 8,
-      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:8"
-    },
-    {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.234 (low, w=0.60); melodicComplexity=0.547 (high, w=0.15)",
       "metrics": {
         "experimentalTolerance": 0.354712,
@@ -492,7 +472,7 @@
         "rhythmicDensity": 0.233622,
         "timbralRichness": 0.480826
       },
-      "rank": 25,
+      "rank": 24,
       "ratings": {
         "c": 4,
         "e": 2,
@@ -512,7 +492,7 @@
         "rhythmicDensity": 0.12802,
         "timbralRichness": 0.350542
       },
-      "rank": 26,
+      "rank": 25,
       "ratings": {
         "c": 4,
         "e": 1,
@@ -532,7 +512,7 @@
         "rhythmicDensity": 0.259025,
         "timbralRichness": 0.293368
       },
-      "rank": 27,
+      "rank": 26,
       "ratings": {
         "c": 3,
         "e": 3,
@@ -552,7 +532,7 @@
         "rhythmicDensity": 0.220106,
         "timbralRichness": 0.384387
       },
-      "rank": 28,
+      "rank": 27,
       "ratings": {
         "c": 3,
         "e": 2,
@@ -572,7 +552,7 @@
         "rhythmicDensity": 0.203022,
         "timbralRichness": 0.460527
       },
-      "rank": 29,
+      "rank": 28,
       "ratings": {
         "c": 2,
         "e": 2,
@@ -592,7 +572,7 @@
         "rhythmicDensity": 0.235324,
         "timbralRichness": 0.342875
       },
-      "rank": 30,
+      "rank": 29,
       "ratings": {
         "c": 3,
         "e": 2,
@@ -604,26 +584,6 @@
       "trackId": "C64Music/MUSICIANS/B/Brizz/Passport_to_Life.sid:1"
     },
     {
-      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.216 (low, w=0.60); melodicComplexity=0.532 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.238542,
-        "melodicComplexity": 0.53225,
-        "nostalgiaBias": 0.663273,
-        "rhythmicDensity": 0.215937,
-        "timbralRichness": 0.379231
-      },
-      "rank": 31,
-      "ratings": {
-        "c": 1,
-        "e": 2,
-        "m": 4
-      },
-      "score": 0.696777,
-      "sidPath": "C64Music/MUSICIANS/N/Nula/Forever_and_Ever.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/N/Nula/Forever_and_Ever.sid:1"
-    },
-    {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.142 (low, w=0.60); experimentalTolerance=0.235 (low, w=0.10)",
       "metrics": {
         "experimentalTolerance": 0.234671,
@@ -632,7 +592,7 @@
         "rhythmicDensity": 0.141737,
         "timbralRichness": 0.416635
       },
-      "rank": 32,
+      "rank": 30,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -652,7 +612,7 @@
         "rhythmicDensity": 0.272613,
         "timbralRichness": 0.509145
       },
-      "rank": 33,
+      "rank": 31,
       "ratings": {
         "c": 4,
         "e": 2,
@@ -672,7 +632,7 @@
         "rhythmicDensity": 0.101125,
         "timbralRichness": 0.537503
       },
-      "rank": 34,
+      "rank": 32,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -692,7 +652,7 @@
         "rhythmicDensity": 0.106644,
         "timbralRichness": 0.528706
       },
-      "rank": 35,
+      "rank": 33,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -712,7 +672,7 @@
         "rhythmicDensity": 0.107071,
         "timbralRichness": 0.53272
       },
-      "rank": 36,
+      "rank": 34,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -732,7 +692,7 @@
         "rhythmicDensity": 0.297952,
         "timbralRichness": 0.510466
       },
-      "rank": 37,
+      "rank": 35,
       "ratings": {
         "c": 5,
         "e": 2,
@@ -752,7 +712,7 @@
         "rhythmicDensity": 0.101582,
         "timbralRichness": 0.539484
       },
-      "rank": 38,
+      "rank": 36,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -772,7 +732,7 @@
         "rhythmicDensity": 0.107619,
         "timbralRichness": 0.534276
       },
-      "rank": 39,
+      "rank": 37,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -792,7 +752,7 @@
         "rhythmicDensity": 0.107232,
         "timbralRichness": 0.549527
       },
-      "rank": 40,
+      "rank": 38,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -812,7 +772,7 @@
         "rhythmicDensity": 0.312115,
         "timbralRichness": 0.440018
       },
-      "rank": 41,
+      "rank": 39,
       "ratings": {
         "c": 4,
         "e": 2,
@@ -832,7 +792,7 @@
         "rhythmicDensity": 0.200606,
         "timbralRichness": 0.222331
       },
-      "rank": 42,
+      "rank": 40,
       "ratings": {
         "c": 1,
         "e": 2,
@@ -852,7 +812,7 @@
         "rhythmicDensity": 0.117057,
         "timbralRichness": 0.524451
       },
-      "rank": 43,
+      "rank": 41,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -872,7 +832,7 @@
         "rhythmicDensity": 0.143557,
         "timbralRichness": 0.392139
       },
-      "rank": 44,
+      "rank": 42,
       "ratings": {
         "c": 2,
         "e": 1,
@@ -884,26 +844,6 @@
       "trackId": "C64Music/MUSICIANS/C/Comer/Felix.sid:1"
     },
     {
-      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.101 (low, w=0.60); experimentalTolerance=0.159 (low, w=0.10)",
-      "metrics": {
-        "experimentalTolerance": 0.158569,
-        "melodicComplexity": 0.285616,
-        "nostalgiaBias": 0.857273,
-        "rhythmicDensity": 0.100837,
-        "timbralRichness": 0.360669
-      },
-      "rank": 45,
-      "ratings": {
-        "c": 1,
-        "e": 1,
-        "m": 5
-      },
-      "score": 0.68372,
-      "sidPath": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
-      "songIndex": 7,
-      "trackId": "C64Music/MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid:7"
-    },
-    {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.128 (low, w=0.60); experimentalTolerance=0.396 (low, w=0.10)",
       "metrics": {
         "experimentalTolerance": 0.395741,
@@ -912,7 +852,7 @@
         "rhythmicDensity": 0.128117,
         "timbralRichness": 0.515866
       },
-      "rank": 46,
+      "rank": 43,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -932,7 +872,7 @@
         "rhythmicDensity": 0.235365,
         "timbralRichness": 0.379673
       },
-      "rank": 47,
+      "rank": 44,
       "ratings": {
         "c": 2,
         "e": 2,
@@ -944,26 +884,6 @@
       "trackId": "C64Music/DEMOS/G-L/Instantfunk.sid:1"
     },
     {
-      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.219 (low, w=0.60); experimentalTolerance=0.096 (low, w=0.10)",
-      "metrics": {
-        "experimentalTolerance": 0.09581,
-        "melodicComplexity": 0.337971,
-        "nostalgiaBias": 0.668545,
-        "rhythmicDensity": 0.218721,
-        "timbralRichness": 0.29047
-      },
-      "rank": 48,
-      "ratings": {
-        "c": 3,
-        "e": 3,
-        "m": 3
-      },
-      "score": 0.682783,
-      "sidPath": "C64Music/GAMES/A-F/Cocoduel_BASIC.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/GAMES/A-F/Cocoduel_BASIC.sid:1"
-    },
-    {
       "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.116 (low, w=0.60); experimentalTolerance=0.435 (low, w=0.10)",
       "metrics": {
         "experimentalTolerance": 0.434602,
@@ -972,7 +892,7 @@
         "rhythmicDensity": 0.11649,
         "timbralRichness": 0.542239
       },
-      "rank": 49,
+      "rank": 45,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -992,7 +912,7 @@
         "rhythmicDensity": 0.118591,
         "timbralRichness": 0.534619
       },
-      "rank": 50,
+      "rank": 46,
       "ratings": {
         "c": 1,
         "e": 1,
@@ -1002,6 +922,86 @@
       "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
       "songIndex": 27,
       "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:27"
+    },
+    {
+      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.156 (low, w=0.60); experimentalTolerance=0.246 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.246085,
+        "melodicComplexity": 0.372439,
+        "nostalgiaBias": 0.795091,
+        "rhythmicDensity": 0.15607,
+        "timbralRichness": 0.424522
+      },
+      "rank": 47,
+      "ratings": {
+        "c": 2,
+        "e": 1,
+        "m": 5
+      },
+      "score": 0.680147,
+      "sidPath": "C64Music/MUSICIANS/H/Harlequin/Super_Bonebreak_Cut.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/H/Harlequin/Super_Bonebreak_Cut.sid:1"
+    },
+    {
+      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.122 (low, w=0.60); experimentalTolerance=0.431 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.430794,
+        "melodicComplexity": 0.370472,
+        "nostalgiaBias": 0.627818,
+        "rhythmicDensity": 0.122277,
+        "timbralRichness": 0.541161
+      },
+      "rank": 48,
+      "ratings": {
+        "c": 1,
+        "e": 1,
+        "m": 5
+      },
+      "score": 0.680102,
+      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+      "songIndex": 30,
+      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:30"
+    },
+    {
+      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.122 (low, w=0.60); experimentalTolerance=0.430 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.429635,
+        "melodicComplexity": 0.369082,
+        "nostalgiaBias": 0.627818,
+        "rhythmicDensity": 0.122267,
+        "timbralRichness": 0.541592
+      },
+      "rank": 49,
+      "ratings": {
+        "c": 1,
+        "e": 1,
+        "m": 5
+      },
+      "score": 0.68003,
+      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+      "songIndex": 37,
+      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:37"
+    },
+    {
+      "explanation": "Selected for Slow / Ambient: rhythmicDensity=0.136 (low, w=0.60); experimentalTolerance=0.396 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.396043,
+        "melodicComplexity": 0.398771,
+        "nostalgiaBias": 0.627818,
+        "rhythmicDensity": 0.135686,
+        "timbralRichness": 0.521043
+      },
+      "rank": 50,
+      "ratings": {
+        "c": 1,
+        "e": 1,
+        "m": 5
+      },
+      "score": 0.679835,
+      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+      "songIndex": 11,
+      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:11"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Persona Divergence Report
 
-Generated: 2026-07-26T05:45:00.293Z
+Generated: 2026-07-27T19:26:37.970Z
 
 ## Architecture
 
@@ -21,21 +21,21 @@ NO cross-persona filtering. NO intersection. NO allAccepted requirement.
 
 | Persona | avgRhythmicDensity | avgMelodicComplexity | avgTimbralRichness | avgNostalgiaBias | avgExperimentalTolerance |
 |---------|-------------------|---------------------|-------------------|-----------------|------------------------|
-| Fast Paced | 0.5926 | 0.6359 | 0.3271 | 0.5724 | 0.2820 |
-| Slow / Ambient | 0.1950 | 0.5522 | 0.3911 | 0.6129 | 0.2745 |
-| Melodic | 0.4497 | 0.7197 | 0.3985 | 0.5428 | 0.3720 |
-| Experimental | 0.4849 | 0.6529 | 0.4767 | 0.4781 | 0.4914 |
-| Nostalgic | 0.3551 | 0.5441 | 0.3226 | 0.7466 | 0.2292 |
+| Fast Paced | 0.5926 | 0.6379 | 0.3271 | 0.5724 | 0.2820 |
+| Slow / Ambient | 0.1918 | 0.5516 | 0.4034 | 0.6086 | 0.2923 |
+| Melodic | 0.4459 | 0.7187 | 0.4034 | 0.5412 | 0.3769 |
+| Experimental | 0.4849 | 0.6559 | 0.4767 | 0.4781 | 0.4914 |
+| Nostalgic | 0.3688 | 0.5454 | 0.3209 | 0.7461 | 0.2318 |
 
 ## Distribution Assertions
 
 | Metric | Direction | Expected Persona | Actual Persona | Value | Passed |
 |--------|-----------|-----------------|----------------|-------|--------|
 | rhythmicDensity | highest | fast_paced | fast_paced | 0.5926 | PASS |
-| rhythmicDensity | lowest | slow_ambient | slow_ambient | 0.1950 | PASS |
+| rhythmicDensity | lowest | slow_ambient | slow_ambient | 0.1918 | PASS |
 | experimentalTolerance | highest | experimental | experimental | 0.4914 | PASS |
-| nostalgiaBias | highest | nostalgic | nostalgic | 0.7466 | PASS |
-| melodicComplexity | highest | melodic | melodic | 0.7197 | PASS |
+| nostalgiaBias | highest | nostalgic | nostalgic | 0.7461 | PASS |
+| melodicComplexity | highest | melodic | melodic | 0.7187 | PASS |
 
 ## Overlap Matrix
 
@@ -44,13 +44,13 @@ Max allowed overlap: 40%
 | Persona A | Persona B | Shared Tracks | Overlap % | Status |
 |-----------|-----------|---------------|-----------|--------|
 | fast_paced | slow_ambient | 0 | 0% | PASS |
-| fast_paced | melodic | 3 | 6% | PASS |
+| fast_paced | melodic | 2 | 4% | PASS |
 | fast_paced | experimental | 8 | 16% | PASS |
 | fast_paced | nostalgic | 2 | 4% | PASS |
 | slow_ambient | melodic | 5 | 10% | PASS |
 | slow_ambient | experimental | 2 | 4% | PASS |
-| slow_ambient | nostalgic | 9 | 18% | PASS |
-| melodic | experimental | 16 | 32% | PASS |
+| slow_ambient | nostalgic | 7 | 14% | PASS |
+| melodic | experimental | 18 | 36% | PASS |
 | melodic | nostalgic | 2 | 4% | PASS |
 | experimental | nostalgic | 0 | 0% | PASS |
 
@@ -81,7 +81,7 @@ Max allowed overlap: 40%
 | 2 | `C64Music/MUSICIANS/R/Roly/Electronic_Downscale.sid:1` | 0.7702 | Selected for Slow / Ambient: rhythmicDensity=0.221 (low, w=0.60); melodicComplexity=0.682 (high, w=0.15) |
 | 3 | `C64Music/MUSICIANS/E/Eeben_Aleksi/Barbie_Girl.sid:1` | 0.7641 | Selected for Slow / Ambient: rhythmicDensity=0.211 (low, w=0.60); melodicComplexity=0.668 (high, w=0.15) |
 | 4 | `C64Music/MUSICIANS/T/Triace/Happy_Yummy_Bear.sid:1` | 0.7620 | Selected for Slow / Ambient: rhythmicDensity=0.196 (low, w=0.60); melodicComplexity=0.686 (high, w=0.15) |
-| 5 | `C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:2` | 0.7460 | Selected for Slow / Ambient: rhythmicDensity=0.146 (low, w=0.60); melodicComplexity=0.608 (high, w=0.15) |
+| 5 | `C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:1` | 0.7461 | Selected for Slow / Ambient: rhythmicDensity=0.143 (low, w=0.60); melodicComplexity=0.606 (high, w=0.15) |
 
 ### Melodic
 
@@ -100,8 +100,8 @@ Max allowed overlap: 40%
 | 1 | `C64Music/MUSICIANS/M/MCH/Acid_Storm_3SID.sid:1` | 0.6421 | Selected for Experimental: experimentalTolerance=0.646 (high, w=0.60); timbralRichness=0.590 (high, w=0.15) |
 | 2 | `C64Music/MUSICIANS/P/Proton/Saunasolmuhumppa_2SID.sid:1` | 0.6332 | Selected for Experimental: experimentalTolerance=0.590 (high, w=0.60); timbralRichness=0.668 (high, w=0.15) |
 | 3 | `C64Music/MUSICIANS/H/Hermit/Earmind_3SID.sid:1` | 0.6081 | Selected for Experimental: experimentalTolerance=0.707 (high, w=0.60); timbralRichness=0.501 (high, w=0.15) |
-| 4 | `C64Music/DEMOS/S-Z/Sparkster-Lakeside_2SID.sid:1` | 0.5999 | Selected for Experimental: experimentalTolerance=0.530 (high, w=0.60); timbralRichness=0.536 (high, w=0.15) |
-| 5 | `C64Music/MUSICIANS/J/Jammer/Melbourne_Shuffle_3SID.sid:1` | 0.5989 | Selected for Experimental: experimentalTolerance=0.559 (high, w=0.60); timbralRichness=0.483 (high, w=0.15) |
+| 4 | `C64Music/MUSICIANS/D/D_V/3SID_Test_3SID.sid:1` | 0.6024 | Selected for Experimental: experimentalTolerance=0.660 (high, w=0.60); timbralRichness=0.566 (high, w=0.15) |
+| 5 | `C64Music/DEMOS/S-Z/Sparkster-Lakeside_2SID.sid:1` | 0.5999 | Selected for Experimental: experimentalTolerance=0.530 (high, w=0.60); timbralRichness=0.536 (high, w=0.15) |
 
 ### Nostalgic
 

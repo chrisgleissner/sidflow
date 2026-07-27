@@ -9,10 +9,10 @@
       "sharedCount": 0
     },
     {
-      "overlapPct": 6,
+      "overlapPct": 4,
       "personaA": "fast_paced",
       "personaB": "melodic",
-      "sharedCount": 3
+      "sharedCount": 2
     },
     {
       "overlapPct": 16,
@@ -39,16 +39,16 @@
       "sharedCount": 2
     },
     {
-      "overlapPct": 18,
+      "overlapPct": 14,
       "personaA": "slow_ambient",
       "personaB": "nostalgic",
-      "sharedCount": 9
+      "sharedCount": 7
     },
     {
-      "overlapPct": 32,
+      "overlapPct": 36,
       "personaA": "melodic",
       "personaB": "experimental",
-      "sharedCount": 16
+      "sharedCount": 18
     },
     {
       "overlapPct": 4,
