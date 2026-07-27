@@ -569,7 +569,11 @@ class SidProducerWorker {
     // Initialize WASM engine
     const locateFile = message.wasmLocateFile ?? ((asset: string) => `/wasm/${asset}`);
     this.postMessage({ type: 'init-progress', stage: 'wasm-loading' });
-    const module = await loadLibsidplayfp({ locateFile });
+    // Pinned to reSIDfp: both engines name their binary libsidplayfp.wasm, and
+    // locateFile flattens them onto one URL, so the engine here must match the
+    // single artifact deployed under public/wasm/ or the glue loads the wrong
+    // binary and the module aborts on init.
+    const module = await loadLibsidplayfp({ engine: 'residfp', locateFile });
     this.engine = new SidAudioEngine({
       module: Promise.resolve(module),
       sampleRate: this.targetSampleRate,

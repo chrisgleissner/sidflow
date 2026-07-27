@@ -15,6 +15,7 @@ import {
 
 import { planClassification, generateAutoTags } from "../packages/sidflow-classify/src/index.js";
 import { hasRealisticCompleteFeatureVector } from "../packages/sidflow-classify/src/deterministic-ratings.js";
+import { SIMILARITY_VECTOR_DIMENSIONS } from "../packages/sidflow-classify/src/similarity-vector.js";
 import {
   runPersonaStationCli,
   type ParallelPersonaStationResult,
@@ -312,7 +313,11 @@ describe("HVSC 300-file persona station E2E", () => {
         expect(record.features).toBeDefined();
         expect(hasRealisticCompleteFeatureVector(record.features ?? {})).toBe(true);
         expect(Array.isArray(record.vector)).toBe(true);
-        expect(record.vector).toHaveLength(24);
+        // Referenced rather than written as a literal: this is the width of the
+        // vector the product stores, and it changes whenever a musical property is
+        // added. A literal here would fail on every such change and say nothing
+        // about whether the change was correct.
+        expect(record.vector).toHaveLength(SIMILARITY_VECTOR_DIMENSIONS);
         expect((record.vector ?? []).every((value) => typeof value === "number" && Number.isFinite(value))).toBe(true);
       }
 

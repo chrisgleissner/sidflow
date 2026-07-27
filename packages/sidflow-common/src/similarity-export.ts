@@ -18,7 +18,7 @@ import {
   type SimilarityDataset,
   type SimilarityTrackRow,
 } from "./similarity-portable.js";
-import { cosineSimilarity } from "./vector-similarity.js";
+import { LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS, cosineSimilarity } from "./vector-similarity.js";
 
 export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
 const SIMILARITY_SCORE_PRECISION = 1_000_000_000_000;
@@ -56,6 +56,24 @@ export interface SimilarityExportManifest {
   corpus_version: string;
   feature_schema_version: string;
   vector_dimensions: number;
+  /**
+   * How the stored vectors were normalised. "rank-gaussian" means the stored
+   * vector IS the final representation and similarity is a plain cosine over it;
+   * "none" means raw feature values. Recorded so a consumer can tell which space
+   * the numbers live in rather than having to infer it.
+   */
+  vector_normalisation?: "rank-uniform" | "none";
+  /**
+   * Which SID emulation rendered the corpus: "sidlite" or "residfp". Absent when no
+   * track recorded one, which is the case for corpora classified before the field
+   * existed.
+   *
+   * This is the provenance `render_engine` cannot give: that field says "wasm",
+   * meaning the WASM renderer, and both emulations run inside it. Published so a
+   * consumer can tell whether a dataset came from the cycle-accurate reference or
+   * the fast approximation without having to trust a release note.
+   */
+  sid_engine?: string;
   include_vectors: boolean;
   neighbor_count_per_track: number;
   track_count: number;
@@ -164,6 +182,7 @@ interface FeaturePhaseRecord {
   manual_ratings?: PartialRatings | null;
   features: AudioFeatures;
   render_engine?: string;
+  sid_engine?: string;
 }
 
 interface FeatureNormStats {
@@ -501,11 +520,48 @@ function recoverClassificationsFromFeatureFile(
     if (record.song_index !== undefined) {
       classification.song_index = record.song_index;
     }
+    if (typeof record.sid_engine === "string" && record.sid_engine) {
+      classification.sid_engine = record.sid_engine;
+    }
     if (record.features.featureVariant === "heuristic") {
       classification.degraded = true;
     }
     return classification;
   });
+}
+
+/**
+ * Which SID emulation rendered this corpus, refusing a corpus that mixes two.
+ *
+ * Features are derived from rendered audio, so tracks emulated differently are not
+ * on a comparable scale, and cosine over a mixture measures the emulation as much as
+ * the music. The README has always said not to mix them; nothing enforced it, and
+ * nothing recorded enough to notice afterwards. Interrupting a long run and resuming
+ * it with a different engine is the obvious way to produce one by accident.
+ *
+ * Records predating the field contribute nothing rather than counting as a conflict,
+ * so an older corpus still exports -- just without the provenance.
+ */
+function resolveCorpusSidEngine(records: ClassificationRecord[]): string | undefined {
+  const engines = new Set<string>();
+  for (const record of records) {
+    if (typeof record.sid_engine === "string" && record.sid_engine) {
+      engines.add(record.sid_engine);
+    }
+  }
+  if (engines.size === 0) {
+    return undefined;
+  }
+  if (engines.size > 1) {
+    const listed = [...engines].sort().join(", ");
+    throw new Error(
+      `Similarity export refused: corpus mixes SID emulations (${listed}). `
+      + "Features derived from different emulations are not comparable, so the export "
+      + "would measure the emulation as much as the music. Reclassify the corpus with a "
+      + "single engine.",
+    );
+  }
+  return [...engines][0];
 }
 
 async function readClassificationsForExport(dirPath: string): Promise<ClassificationRecord[]> {
@@ -802,6 +858,26 @@ async function computeFileChecksum(filePath: string): Promise<string> {
   return hash.digest("hex");
 }
 
+/**
+ * Precompute the k nearest neighbours of every track.
+ *
+ * Two things here are deliberate, because the obvious implementation does not
+ * finish on a real corpus.
+ *
+ * Selection is bounded rather than a full sort. Building an object per candidate
+ * and sorting all of them costs one allocation per pair — at HVSC's ~87k tracks
+ * that is 7.6e9 allocations and an O(n^2 log n) comparison count. Only the top k
+ * (typically 25) is ever read, so an insertion into a k-sized buffer is O(n) per
+ * seed in practice and allocation-free in the hot loop.
+ *
+ * Inserts run inside one transaction. SQLite commits — and fsyncs — per statement
+ * otherwise, and this writes track_count * k rows: 282k for the development
+ * corpus, 2.2M for HVSC. That alone accounted for most of the wall clock on a
+ * corpus where the ranking work was not the bottleneck.
+ *
+ * Ties break on track_id so the output is deterministic across runs, matching the
+ * ordering stableSimilarityScore already imposes elsewhere.
+ */
 function insertNeighbors(database: Database, profile: SimilarityExportProfile, tracks: SimilarityExportTrack[], neighborCount: number): number {
   if (neighborCount <= 0 || tracks.length === 0) {
     return 0;
@@ -810,22 +886,52 @@ function insertNeighbors(database: Database, profile: SimilarityExportProfile, t
   const insert = database.query(
     "INSERT INTO neighbors (profile, seed_track_id, neighbor_track_id, rank, similarity) VALUES (?, ?, ?, ?, ?)",
   );
-  let inserted = 0;
-  for (const seedTrack of tracks) {
-    const ranked = tracks
-      .filter((candidate) => candidate.track_id !== seedTrack.track_id)
-      .map((candidate) => ({
-        track_id: candidate.track_id,
-        similarity: cosineSimilarity(seedTrack.vector, candidate.vector),
-      }))
-      .sort((left, right) => right.similarity - left.similarity)
-      .slice(0, neighborCount);
-
-    ranked.forEach((neighbor, index) => {
-      insert.run(profile, seedTrack.track_id, neighbor.track_id, index + 1, Number(neighbor.similarity.toFixed(8)));
-      inserted += 1;
-    });
+  const k = Math.min(neighborCount, tracks.length - 1);
+  if (k <= 0) {
+    return 0;
   }
+
+  let inserted = 0;
+  const runAll = database.transaction(() => {
+    const bestIndex = new Int32Array(k);
+    const bestScore = new Float64Array(k);
+
+    for (let seed = 0; seed < tracks.length; seed += 1) {
+      const seedTrack = tracks[seed]!;
+      let size = 0;
+      let worst = Number.POSITIVE_INFINITY;
+
+      for (let candidate = 0; candidate < tracks.length; candidate += 1) {
+        if (candidate === seed) continue;
+        const similarity = cosineSimilarity(seedTrack.vector, tracks[candidate]!.vector);
+        // Higher similarity is better, so the buffer is kept in descending order
+        // and `worst` is the smallest similarity currently retained.
+        if (size === k && similarity <= worst) continue;
+        let position = size < k ? size : k - 1;
+        while (position > 0 && bestScore[position - 1]! < similarity) {
+          bestScore[position] = bestScore[position - 1]!;
+          bestIndex[position] = bestIndex[position - 1]!;
+          position -= 1;
+        }
+        bestScore[position] = similarity;
+        bestIndex[position] = candidate;
+        if (size < k) size += 1;
+        worst = bestScore[size - 1]!;
+      }
+
+      for (let rank = 0; rank < size; rank += 1) {
+        insert.run(
+          profile,
+          seedTrack.track_id,
+          tracks[bestIndex[rank]!]!.track_id,
+          rank + 1,
+          Number(bestScore[rank]!.toFixed(8)),
+        );
+        inserted += 1;
+      }
+    }
+  });
+  runAll();
   return inserted;
 }
 
@@ -981,6 +1087,83 @@ function computeTemporaryOutputPath(outputPath: string): string {
   return path.join(parsed.dir, `.${parsed.base}.tmp-${Date.now()}`);
 }
 
+/**
+ * Rank-normalise every dimension across the corpus, in place, onto [0, 1].
+ *
+ * Has to happen here rather than during classification because it is
+ * corpus-relative: a dimension's normalised value depends on where that track
+ * falls among all the others. Doing it at export time means the stored vector IS
+ * the final representation, so serving needs nothing but a cosine — no transform
+ * tables shipped to clients, no per-request work.
+ *
+ * ## Why the quantile, and not the Gaussian quantile
+ *
+ * Mapping ranks through a probit scores slightly better on retrieval (nDCG@10
+ * 0.2849 vs 0.2777 on the development corpus, ~2.5% relative). It is nevertheless
+ * the wrong choice here, because it centres every dimension on zero and so makes
+ * cosine similarity span [-1, 1] with unrelated tracks near 0. The product is
+ * calibrated throughout for cosine over NON-NEGATIVE vectors, where "similar"
+ * means roughly 0.9 and up: the adventure-radius model applies an absolute
+ * minimum-similarity threshold, and the tiny profile quantises each edge
+ * similarity into a single byte. Centring silently invalidates all of it — the
+ * measured symptom was a station asked for 20 tracks returning 14, because most
+ * candidates no longer cleared the threshold.
+ *
+ * Giving up ~2.5% of the retrieval metric to keep the similarity scale the rest of
+ * the system was tuned against is the better trade, and it is a far smaller change
+ * than re-deriving the station model.
+ *
+ * Ties receive the AVERAGE of the ranks they span. That is not a detail: SID
+ * features are full of exact ties (sample-playback activity and several waveform
+ * ratios are zero for most of the corpus), and giving tied values CONSECUTIVE
+ * ranks would spread one repeated value across the whole quantile range in corpus
+ * order — turning arbitrary file ordering into a gradient the distance function
+ * can see. A perfectly constant dimension would become a perfect ramp.
+ *
+ * The legacy 4-element ratings vector is left alone: its values are discrete 1-5
+ * ratings whose absolute level is the meaning.
+ */
+function normaliseVectorsByRank(tracks: SimilarityExportTrack[], dimensions: number): boolean {
+  if (tracks.length < 2 || dimensions <= LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS) {
+    return false;
+  }
+
+  const count = tracks.length;
+  const order = new Int32Array(count);
+  const column = new Float64Array(count);
+  const normalised = tracks.map(() => new Array<number>(dimensions).fill(0));
+
+  for (let dimension = 0; dimension < dimensions; dimension += 1) {
+    for (let index = 0; index < count; index += 1) {
+      order[index] = index;
+      column[index] = tracks[index]!.vector[dimension] ?? 0;
+    }
+    order.sort((left, right) => column[left]! - column[right]! || left - right);
+
+    let start = 0;
+    while (start < count) {
+      let end = start;
+      while (end + 1 < count && column[order[end + 1]!]! === column[order[start]!]!) {
+        end += 1;
+      }
+      let positionSum = 0;
+      for (let rank = start; rank <= end; rank += 1) {
+        positionSum += (rank + 0.5) / count;
+      }
+      const value = positionSum / (end - start + 1);
+      for (let rank = start; rank <= end; rank += 1) {
+        normalised[order[rank]!]![dimension] = value;
+      }
+      start = end + 1;
+    }
+  }
+
+  for (let index = 0; index < count; index += 1) {
+    tracks[index]!.vector = normalised[index]!;
+  }
+  return true;
+}
+
 export async function buildSimilarityExport(options: BuildSimilarityExportOptions): Promise<BuildSimilarityExportResult> {
   const startedAt = Date.now();
   const profile = options.profile ?? "full";
@@ -994,6 +1177,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
   ]);
 
   const dedupedClassifications = dedupeClassifications(classifications);
+  const sidEngine = resolveCorpusSidEngine(dedupedClassifications);
   const dims = resolveTargetVectorDimensions(dedupedClassifications, options.dims);
   const feedbackByTrackId = aggregateFeedbackRecordsByKey(
     feedbackEvents,
@@ -1013,6 +1197,10 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       }
       return left.song_index - right.song_index;
     });
+
+  // Normalise before neighbours are computed, so the precomputed graph and any
+  // on-the-fly similarity are measured in the same space.
+  const vectorNormalisation = normaliseVectorsByRank(tracks, dims) ? "rank-uniform" : "none";
 
   await ensureDir(path.dirname(options.outputPath));
   const temporaryOutputPath = computeTemporaryOutputPath(options.outputPath);
@@ -1128,6 +1316,8 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       corpus_version: options.corpusVersion ?? "custom",
       feature_schema_version: FEATURE_SCHEMA_VERSION,
       vector_dimensions: dims,
+      vector_normalisation: vectorNormalisation,
+      ...(sidEngine ? { sid_engine: sidEngine } : {}),
       include_vectors: includeVectors,
       neighbor_count_per_track: neighborCount,
       track_count: tracks.length,
@@ -1161,6 +1351,8 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
     corpus_version: options.corpusVersion ?? "custom",
     feature_schema_version: FEATURE_SCHEMA_VERSION,
     vector_dimensions: dims,
+    vector_normalisation: vectorNormalisation,
+    ...(sidEngine ? { sid_engine: sidEngine } : {}),
     include_vectors: includeVectors,
     neighbor_count_per_track: neighborCount,
     track_count: tracks.length,
@@ -1246,9 +1438,15 @@ export function recommendFromSeedTrack(
       ).all(profile, options.seedTrackId, limit + excluded.size) as Array<PersistedTrackRow & { similarity: number; rank: number }>
       : [];
 
-    if (rows.length > 0) {
-      return rows
-        .filter((row) => !excluded.has(row.track_id))
+    // The precomputed table is a CACHE of the vector scan below, not a different
+    // answer, so it may only be used when it can serve the whole request. Taking it
+    // whenever it held even one row silently truncated every caller to however many
+    // neighbours the export happened to store -- and the export default was three, so
+    // a station asking the full SQLite bundle for a hundred candidates received three
+    // and then had nothing to build from. Falling back is slower and correct.
+    const usable = rows.filter((row) => !excluded.has(row.track_id));
+    if (usable.length >= limit) {
+      return usable
         .slice(0, limit)
         .map((row, index) => trackRowToRecommendation(row, row.similarity, index + 1));
     }

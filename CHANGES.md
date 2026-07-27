@@ -1,6 +1,100 @@
 # Changelog
 
 
+## 0.7.0 (2026-07-26)
+
+Rebuilds how SIDFlow decides two SID tunes are alike, and regenerates the published
+`sidflow-data` corpus from it.
+
+### Station quality
+
+- Similarity retrieval improves **243x** over the vectors in the currently published export
+  (nDCG@10 0.0016 -> 0.3915) and **+156.4%** over the best configuration previously in the
+  repository (0.1527 -> 0.3915), both p=0.0002. Measured on the full 87,868-track corpus with
+  all 11,284 development-corpus tracks excluded, so nothing measured was used for fitting.
+  (Absolute nDCG falls as a corpus grows, because each seed competes against more candidates
+  for the same ten slots; the relative figure is the one that transfers across corpus sizes.)
+- **A defect was suppressing that result by roughly half.** A fixed 15-second intro skip landed
+  past the end of short subsongs, so 16,398 of 87,868 tracks (18.66%) had all 22 playroutine
+  dimensions at the "no trace" default and 34 of the 58 similarity dimensions were a shared
+  constant across a fifth of HVSC. Nothing failed and every record was well-formed. The
+  analysis window now scales with song length. Corrected, the gain over the previous best rose
+  from +69.1% to +156.4%.
+- The stored similarity vector grows from 4 dimensions in the published export to
+  **58**: 24 perceptual, 11 pitch/texture, and 23 describing how a tune's playroutine
+  drives the SID chip. The manifest's `vector_dimensions` declares the width; consumers
+  must not assume it.
+- Most of the gain comes from describing the **playroutine** rather than the sound.
+  Composers reuse their player code, and its register-write pattern is that tooling's
+  signature. One such dimension separates composers better than all 24 original
+  dimensions together (0.7713 against 0.7229).
+- Category stations fixed: the 1-5 energy/mood/complexity scales used 3 of 5 levels with
+  up to 94% of the corpus on one value. Quantile calibration puts 20.00% in each level,
+  raising mood entropy from 0.397 bits to the 2.3219-bit maximum.
+- Complexity now measures note density, polyphony and rhythmic vocabulary rather than
+  loudness. Mood now sees harmony.
+- Stations no longer repeat themselves: 54.7% of generated stations replayed a tune,
+  now 6.0%.
+
+### The published export
+
+- Regenerated end to end through the documented `run-similarity-export.sh` workflow.
+- Renders with **SIDLite**, chosen by a pre-registered paired comparison on 23,817
+  identical tracks (`doc/sid-engine-comparison.md`). reSIDfp is +1.49% on the 24
+  WAV-derived dimensions but fails Holm correction, reverses on cold start, and shrinks
+  to +0.40% on the shipped vector because 34 of 58 dimensions read the register trace and
+  are engine-identical.
+- New `sid_engine` field records which SID emulation rendered the corpus, in both the
+  classified records and the export manifest. The export now **refuses** a corpus that
+  mixes emulations.
+- Precomputed neighbours per track raised from 3 to 25.
+
+### Reliability of the classification pipeline
+
+- Classification now runs in bounded chunks (default 2,500 songs) rather than one long-lived
+  process. A single process exhausts memory at a predictable ~3.5 GiB after tens of thousands
+  of WASM instantiations and dies; chunking holds peak RSS to ~2,000 MiB and the final corpus
+  pass completed with **zero crashes**, against three to fourteen per pass before.
+- A resume that works: the index of already-classified songs is built by streaming the feature
+  records, so it costs 948 ms and 400 MB at 87,868 records. It also validates each record and
+  treats an unsound one as not-done, so a rerun repairs rather than preserves it.
+- A live integrity assertion aborts a run whose records contradict themselves — a trace holding
+  events cannot yield an all-zero playroutine vector — above 1% over a 500-record sample.
+- Continuous memory sampling to `memory-samples.jsonl` and full crash reports under
+  `logs/crash-reports/`, which is how the failure above was finally characterised.
+- Thread count measured on real chunks rather than a microbenchmark: throughput is flat from 6
+  to 14 threads (9.43–9.90 songs/s), so the default is 6, which leaves the most memory headroom.
+
+### Fixes
+
+- `recommendFromSeedTrack` served the precomputed neighbour cache whenever it held even
+  one row, so with the previous default of 3 stored neighbours, a request for 100
+  candidates returned 3. It now falls back to a vector scan unless the cache can serve
+  the whole request.
+- The documented default classify runtime could not run at all: `--runtime node` failed
+  with `ERR_UNSUPPORTED_ESM_URL_SCHEME` because `@sidflow/common` re-exports modules
+  importing `bun:sqlite`. Default is now `bun`.
+- The tiny profile's 48-bit file identity had no collision check, so two files sharing
+  one silently reported the loser's tracks under the winner's path. Collisions are now
+  detected at build time and at open time, and both files named.
+- Weighted cosine switched itself off for any vector not exactly 24 wide.
+- The tiny profile returned zero recommendations against a real nested HVSC layout.
+- Neighbour insertion took over 40 minutes for 11,284 tracks; now 48 seconds.
+- Release notes no longer publish the builder's local filesystem path, and now state the
+  vector width and SID emulation, read from the manifest at publish time.
+
+### Documentation
+
+- `doc/station-quality.md` reports the full optimisation campaign including failures,
+  the four measurement defects that fabricated signal, a configuration scoring +136.9%
+  that was rejected for regressing cold start by 33%, and a representation that scored
+  higher but is unshippable because zero candidates clear the station's similarity
+  threshold.
+- `doc/sid-engine-comparison.md` pre-registers and reports the engine comparison.
+- README corrected: engine default now carries its measurement, thread optimum (12)
+  documented with the measured curve, and the broken Node runtime path replaced.
+
+
 ## 0.6.0 (2026-07-24)
 
 - docs: record PR 94 completion

@@ -1,0 +1,284 @@
+/**
+ * Named similarity-vector definitions, so a FEATURE SET can be a candidate.
+ *
+ * The optimisation loop as inherited could only vary how distances were computed
+ * over a fixed 24-dimension vector. That is the smaller half of the problem: if
+ * the vector cannot see a musical property, no metric over it can recover that
+ * property. Making the vector itself a candidate is what allows the question
+ * "would knowing the key help?" to be answered with a measurement instead of an
+ * opinion.
+ *
+ * Each spec is an ordered list of named dimensions. Names matter: they make an
+ * ablation interpretable and let the learned-weight output be read as a statement
+ * about which musical properties carry the signal.
+ */
+
+import {
+  buildPerceptualVector,
+  type DeterministicRatingModel,
+} from "../../packages/sidflow-classify/src/deterministic-ratings.js";
+import type { FeatureVector } from "../../packages/sidflow-classify/src/index.js";
+import { SIMILARITY_TONAL_DIMENSIONS } from "../../packages/sidflow-classify/src/similarity-vector.js";
+
+/**
+ * Names for the 24 dimensions buildPerceptualVector emits, in its own order.
+ *
+ * Kept as a parallel list rather than derived, because the function returns a
+ * bare number[]. The names are checked against the array length at load time so
+ * this cannot silently drift out of step with the implementation.
+ */
+export const SHIPPED_DIMENSION_NAMES = [
+  "tempoFused",
+  "onsetDensityFused",
+  "rhythmicRegularityFused",
+  "syncopationSid",
+  "arpeggioRateSid",
+  "waveTriangleRatio",
+  "waveSawRatio",
+  "wavePulseRatio",
+  "waveNoiseRatio",
+  "pwmActivitySid",
+  "filterCutoffMeanSid",
+  "filterMotionFused",
+  "samplePlaybackRate",
+  "melodicClarityFused",
+  "bassPresenceFused",
+  "accompanimentShareSid",
+  "voiceRoleEntropySid",
+  "adsrPluckRatioSid",
+  "adsrPadRatioSid",
+  "loudnessFused",
+  "dynamicRangeWav",
+  "inharmonicityWav",
+  "mfccResidual1",
+  "mfccResidual2",
+] as const;
+
+/**
+ * Tonal features admitted to a vector.
+ *
+ * Deliberately excludes four of the 36 computed tonal features:
+ *   sidKeyRoot      nominal. C# is not between C and D; a Euclidean metric would
+ *                   read the wrap-around from B to C as the largest possible
+ *                   distance. Tonality enters transposition-invariantly instead,
+ *                   through the tonic-rotated scale weights.
+ *   sidKeyIsMinor   a hard threshold on sidKeyMinorness, which is already here
+ *                   and carries strictly more information.
+ *   sidChromaticism exactly 1 - sidDiatonicRatio, so it adds a perfectly
+ *                   collinear dimension and nothing else.
+ *   sidNoteCount    unbounded, and sidNoteRate is its bounded form.
+ */
+export const TONAL_DIMENSION_NAMES = [
+  "sidTonalPresent",
+  "sidKeyStrength",
+  "sidKeyMinorness",
+  "sidKeyStability",
+  "sidPitchClassEntropy",
+  "sidDiatonicRatio",
+  "sidTonicWeight",
+  "sidDominantWeight",
+  "sidMinorThirdWeight",
+  "sidMajorThirdWeight",
+  "sidFlatSeventhWeight",
+  "sidTritoneWeight",
+  "sidMelodicRepeatRatio",
+  "sidMelodicStepRatio",
+  "sidMelodicThirdRatio",
+  "sidMelodicLeapRatio",
+  "sidMelodicMeanAbsInterval",
+  "sidMelodicRange",
+  "sidMelodicAscendingRatio",
+  "sidMelodicIntervalEntropy",
+  "sidHarmonyUnisonOctaveRatio",
+  "sidHarmonySemitoneRatio",
+  "sidHarmonyToneRatio",
+  "sidHarmonyMinorThirdRatio",
+  "sidHarmonyMajorThirdRatio",
+  "sidHarmonyFourthRatio",
+  "sidHarmonyTritoneRatio",
+  "sidNoteDurationMean",
+  "sidNoteDurationEntropy",
+  "sidNoteRate",
+  "sidPolyphonyMean",
+] as const;
+
+/**
+ * The tonal subset that describes musical CONTENT rather than texture.
+ *
+ * Separated out so the sweep can distinguish two different claims: that pitch
+ * information helps at all, and that all thirty dimensions of it help. Key, mode,
+ * scale shape and melodic shape are the properties a listener would name when
+ * asked why two tunes sound alike.
+ */
+export const TONAL_CORE_NAMES = [
+  "sidTonalPresent",
+  "sidKeyStrength",
+  "sidKeyMinorness",
+  "sidKeyStability",
+  "sidPitchClassEntropy",
+  "sidDiatonicRatio",
+  "sidMinorThirdWeight",
+  "sidMajorThirdWeight",
+  "sidMelodicStepRatio",
+  "sidMelodicLeapRatio",
+  "sidMelodicMeanAbsInterval",
+  "sidMelodicRange",
+  "sidHarmonyMinorThirdRatio",
+  "sidHarmonyMajorThirdRatio",
+  "sidNoteRate",
+  "sidPolyphonyMean",
+] as const;
+
+/**
+ * The tonal dimensions that individually separate composers, selected by
+ * univariate AUC on TRAIN ONLY at a 0.57 threshold — 11 of 31.
+ *
+ * Selected rather than hand-curated, because the hand-curated set was wrong. It
+ * omitted sidNoteDurationMean (AUC 0.634, third strongest of all) and included
+ * sidKeyMinorness, which scores 0.507 — indistinguishable from chance.
+ *
+ * That last point is the most interesting musical finding here: major-versus-minor
+ * mode carries essentially NO information about who wrote a tune. Neither do the
+ * specific chord-colour weights (major third 0.515, minor third 0.521, tritone
+ * 0.514). What does identify a composer is TEXTURE — how many voices sound at once
+ * (0.643), how long notes are held (0.634), how fast they arrive (0.623) — and
+ * whether there is pitched content at all (0.607). Composers are recognisable by
+ * their arrangement habits far more than by their harmonic palette.
+ */
+/**
+ * Imported from the product rather than duplicated here. The experiment and the
+ * shipped vector must be the same list, or a future edit to one silently
+ * invalidates every measurement made against the other.
+ */
+export const TONAL_SELECTED_NAMES = SIMILARITY_TONAL_DIMENSIONS;
+
+const clamp01 = (x: number): number => (Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0);
+
+/**
+ * Indicator for "this track has analysable pitch content at all".
+ *
+ * Derived rather than stored, so it costs no re-classification.
+ *
+ * Needed because 30% of HVSC has no pitched oscillator activity in the analysis
+ * window — digi tunes that play samples through the volume register, BASIC
+ * listings, and tunes whose window is silent. For those, every tonal dimension is
+ * zero, and without an indicator the metric cannot tell "no notes" from "notes,
+ * but very few of them in the scale". Those are completely different tracks that
+ * would otherwise sit on top of each other, and a third of the corpus collapsing
+ * into one point is exactly the kind of spurious cluster that ruins a station.
+ *
+ * This is the standard missing-indicator treatment: keep the zeros, and add one
+ * dimension saying whether they mean anything.
+ */
+function tonalPresent(features: FeatureVector): number {
+  return features.sidTonalVariant === "tonal" ? 1 : 0;
+}
+
+export const TONAL_PRESENT_DIMENSION = "sidTonalPresent";
+
+function tonalValue(features: FeatureVector, name: string): number {
+  if (name === TONAL_PRESENT_DIMENSION) return tonalPresent(features);
+  const value = features[name];
+  return typeof value === "number" && Number.isFinite(value) ? clamp01(value) : 0;
+}
+
+export interface VectorSpec {
+  name: string;
+  rationale: string;
+  dimensionNames: string[];
+  build: (model: DeterministicRatingModel, features: FeatureVector) => number[];
+}
+
+function shippedDimensions(model: DeterministicRatingModel, features: FeatureVector): number[] {
+  const vector = buildPerceptualVector(model, features);
+  if (vector.length !== SHIPPED_DIMENSION_NAMES.length) {
+    throw new Error(
+      `buildPerceptualVector returned ${vector.length} dimensions but SHIPPED_DIMENSION_NAMES has ` +
+        `${SHIPPED_DIMENSION_NAMES.length}; update the name list so ablations stay interpretable.`,
+    );
+  }
+  return vector;
+}
+
+/** A spec combining a subset of the shipped dimensions with a set of tonal ones. */
+export function makeSpec(
+  name: string,
+  rationale: string,
+  shippedNames: readonly string[],
+  tonalNames: readonly string[],
+): VectorSpec {
+  const shippedIndices = shippedNames.map((wanted) => {
+    const index = SHIPPED_DIMENSION_NAMES.indexOf(wanted as (typeof SHIPPED_DIMENSION_NAMES)[number]);
+    if (index < 0) throw new Error(`unknown shipped dimension: ${wanted}`);
+    return index;
+  });
+  return {
+    name,
+    rationale,
+    dimensionNames: [...shippedNames, ...tonalNames],
+    build: (model, features) => {
+      const shipped = shippedIndices.length > 0 ? shippedDimensions(model, features) : [];
+      const out: number[] = [];
+      for (const index of shippedIndices) out.push(shipped[index]!);
+      for (const tonal of tonalNames) out.push(tonalValue(features, tonal));
+      return out;
+    },
+  };
+}
+
+export const SHIPPED_SPEC: VectorSpec = makeSpec(
+  "shipped 24-dim",
+  "what ships today; the baseline every other spec is measured against",
+  SHIPPED_DIMENSION_NAMES,
+  [],
+);
+
+/**
+ * The vector users are actually served today.
+ *
+ * The published export carries `vector_dimensions: 4` -- the legacy
+ * [e, m, c, p] ratings vector -- because the exports have not been regenerated
+ * since the 24-dimension vector was restored. So the shipped 24-dimension
+ * baseline the sweep measures against is already better than what reaches a
+ * listener. Measuring this reference separately keeps that distinction visible
+ * instead of quietly crediting the improvement to something else.
+ *
+ * Deliberately NOT a sweep candidate: it is not a proposal, and adding it to the
+ * Holm family would cost power to test a hypothesis nobody holds.
+ */
+export const LEGACY_RATINGS_SPEC: VectorSpec = {
+  name: "legacy 4-dim ratings (what is published today)",
+  rationale: "reference point: the width the published export actually carries",
+  dimensionNames: ["e", "m", "c", "p"],
+  build: () => [0, 0, 0, 0],
+};
+
+export function buildVectorSpecs(): VectorSpec[] {
+  return [
+    SHIPPED_SPEC,
+    makeSpec(
+      "shipped + tonal core",
+      "does key, mode and melodic shape add anything the spectral/register vector lacks?",
+      SHIPPED_DIMENSION_NAMES,
+      TONAL_CORE_NAMES,
+    ),
+    makeSpec(
+      "shipped + tonal selected",
+      "only the tonal dimensions that individually separate composers on train (11 of 31)",
+      SHIPPED_DIMENSION_NAMES,
+      TONAL_SELECTED_NAMES,
+    ),
+    makeSpec(
+      "shipped + tonal all",
+      "or does the full tonal set help beyond the curated core?",
+      SHIPPED_DIMENSION_NAMES,
+      TONAL_DIMENSION_NAMES,
+    ),
+    makeSpec(
+      "tonal only",
+      "ablation: how much does pitch carry on its own? bounds how much of any gain is really tonal",
+      [],
+      TONAL_DIMENSION_NAMES,
+    ),
+  ];
+}

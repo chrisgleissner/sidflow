@@ -94,6 +94,55 @@ export function normalizeSidTraceClock(clock: SidClock | SidTraceVideoStandard |
 	return "PAL";
 }
 
+/**
+ * The intro skip has to fit inside the tune, or the analysis window lands past the end
+ * of the music.
+ *
+ * `introSkipSec` defaults to 15 seconds, which is right for a full-length tune and wrong
+ * for a jingle. HVSC is full of short subsongs: measured on the full 87,868-track corpus,
+ * **16,398 tracks (18.66%)** had every playroutine and driver dimension at exactly zero
+ * because the tune had stopped writing to the chip before the window opened. One example,
+ * `Games_Winter_Edition.sid` song 38, writes for 1.14 seconds; the window asked for
+ * 15-30 seconds and found nothing, so 22 of 58 dimensions were filled with a default and
+ * nothing reported a problem.
+ *
+ * The WAV side already clamps -- a 2-second render still yields spectral features -- so
+ * this brings the trace window into line with it rather than inventing a new policy.
+ *
+ * The window is placed to cover the END of the traced activity, because a tune's opening
+ * is the least characteristic part of it: that is the same reason the skip exists at all.
+ */
+export function resolveEffectiveTraceSkipSeconds(
+  traces: readonly { cyclePhi1: number }[],
+  options: CompactSidWriteTraceOptions,
+): number {
+  const requested = options.skipSeconds ?? 15;
+  if (traces.length === 0) {
+    return requested;
+  }
+
+  const clock = normalizeSidTraceClock(options.clock);
+  const cyclesPerSecond = clock === "NTSC" ? NTSC_CYCLES_PER_SECOND : PAL_CYCLES_PER_SECOND;
+  const analysisSeconds = options.analysisSeconds ?? 15;
+
+  let lastCycle = 0;
+  for (const trace of traces) {
+    if (Number.isFinite(trace.cyclePhi1) && trace.cyclePhi1 > lastCycle) {
+      lastCycle = trace.cyclePhi1;
+    }
+  }
+  const lastActivitySecond = lastCycle / cyclesPerSecond;
+
+  // Activity reaches into the requested window, so honour it unchanged. This keeps every
+  // full-length tune -- the large majority -- byte-identical to before.
+  if (lastActivitySecond > requested) {
+    return requested;
+  }
+
+  // Otherwise slide the window back so it ends where the activity ends.
+  return Math.max(0, Math.min(requested, lastActivitySecond - analysisSeconds));
+}
+
 export function resolveSidTraceFrameWindow(options: CompactSidWriteTraceOptions): SidTraceFrameWindow {
 	const clock = normalizeSidTraceClock(options.clock);
 	const frameRate = clock === "NTSC" ? NTSC_FRAME_RATE : PAL_FRAME_RATE;

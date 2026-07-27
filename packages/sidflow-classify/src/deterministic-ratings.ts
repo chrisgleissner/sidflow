@@ -52,6 +52,12 @@ export interface DeterministicRatingModel {
   featureSetVersion: string;
   renderEngine: string;
   features: Partial<Record<DeterministicFeatureKey, FeatureNormStats>>;
+  /**
+   * Corpus breakpoints that cut each raw score into five equally populated
+   * levels. Optional so a model persisted before calibration existed still
+   * loads; absent means fall back to the uncalibrated linear mapping.
+   */
+  ratingQuantiles?: RatingQuantiles;
 }
 
 type OnlineStats = {
@@ -336,22 +342,173 @@ export function computeDeterministicTags(
   };
 }
 
-function ratingFromRaw(raw: number): number {
+/**
+ * The uncalibrated mapping: raw in [0,1] spread linearly over five levels.
+ *
+ * Retained only as the fallback for a corpus too small to estimate quantiles
+ * from. On any real corpus it collapses, and the reason is structural rather
+ * than a matter of tuning. Each raw score is a weighted average of sigmoids of
+ * clamped z-scores, so reaching level 1 or 5 requires several of those sigmoids
+ * to sit at a joint ~2.4-sigma extreme simultaneously. Averaging independent
+ * terms concentrates the result on its mean, so almost everything lands on 3.
+ *
+ * Measured on 710 tracks of HVSC: 3 of 5 levels ever used, with 81.5% / 93.8% /
+ * 90.7% of tracks in a single bucket for e / m / c, and mood carrying 0.397 of
+ * the 2.322 bits a five-level scale can hold. A mood filter where 94% of the
+ * collection answers "3" cannot build a distinctive station.
+ */
+function uncalibratedRatingFromRaw(raw: number): number {
   const r = Math.round(1 + 4 * clamp01(raw));
   return clampRating(r);
+}
+
+/**
+ * Breakpoints splitting a corpus's raw scores into five equally populated levels.
+ *
+ * Four values per dimension, at the 20th, 40th, 60th and 80th percentiles.
+ */
+export interface RatingQuantiles {
+  c: number[];
+  e: number[];
+  m: number[];
+}
+
+/**
+ * Fewer records than this and the percentiles are noise: five levels need enough
+ * observations that each breakpoint is estimated from more than a handful of
+ * tracks. Below the threshold the uncalibrated mapping is used instead, which is
+ * poor but at least not arbitrary.
+ */
+export const MIN_RECORDS_FOR_RATING_QUANTILES = 50;
+
+function percentile(sorted: number[], fraction: number): number {
+  if (sorted.length === 0) return 0.5;
+  const position = fraction * (sorted.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.min(sorted.length - 1, lower + 1);
+  const weight = position - lower;
+  return sorted[lower]! * (1 - weight) + sorted[upper]! * weight;
+}
+
+/**
+ * Map a raw score to a level by where it falls among the corpus breakpoints.
+ *
+ * Monotone in `raw`, so the ordering the features produce is preserved exactly —
+ * calibration changes only how that ordering is cut into five bands, never which
+ * track is more energetic than which. The levels become corpus-relative
+ * percentiles: "5" means "in the most energetic fifth of this collection". For a
+ * radio station that is the useful reading, because it guarantees every category
+ * has material in it by construction.
+ */
+export function calibratedRatingFromRaw(raw: number, breakpoints: readonly number[]): number {
+  let level = 1;
+  for (const breakpoint of breakpoints) {
+    if (raw > breakpoint) level++;
+  }
+  return clampRating(level);
+}
+
+/**
+ * Derive breakpoints from the raw scores of a whole corpus.
+ *
+ * Ties are not resolvable: if a value is repeated across a breakpoint, every
+ * copy lands in the same level and a neighbouring level is left short. That is
+ * a property of the data, not of the mapping.
+ */
+export function buildRatingQuantiles(rawScores: Array<{ c: number; e: number; m: number }>): RatingQuantiles | null {
+  if (rawScores.length < MIN_RECORDS_FOR_RATING_QUANTILES) return null;
+  const fractions = [0.2, 0.4, 0.6, 0.8];
+  const breakpointsFor = (pick: (score: { c: number; e: number; m: number }) => number): number[] => {
+    const sorted = rawScores.map(pick).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    const breakpoints = fractions.map((fraction) => percentile(sorted, fraction));
+    // A dimension with no spread at all cannot be split into fifths, and forcing
+    // it through the comparison would drop every track to level 1 -- strictly
+    // worse than the neutral 3 the uncalibrated mapping gives. Returning no
+    // breakpoints makes that dimension fall back instead.
+    if (breakpoints[0] === breakpoints[breakpoints.length - 1]) return [];
+    return breakpoints;
+  };
+  return {
+    c: breakpointsFor((s) => s.c),
+    e: breakpointsFor((s) => s.e),
+    m: breakpointsFor((s) => s.m),
+  };
+}
+
+/** The continuous scores behind the discrete levels, before any calibration. */
+export function computeRawRatingScores(
+  model: DeterministicRatingModel,
+  features: FeatureVector
+): { c: number; e: number; m: number } {
+  const { raw } = predictDeterministicRatings(model, features);
+  return raw;
+}
+
+/**
+ * Musical terms available only once pitch is extracted from the register trace.
+ *
+ * doc/feature-tag-rating-mapping.md section F named the features needed to improve
+ * these ratings -- "chroma + key + mode (major/minor)", "predominant melody
+ * confidence", "onset rate" -- and deferred the improvement until they existed.
+ * They now exist, so the deferral is over.
+ */
+interface TonalTerms {
+  /** Notes per unit time: the density `c` claims to measure but did not. */
+  noteDensity: number | undefined;
+  /** Simultaneous voices, the other half of textural density. */
+  polyphony: number | undefined;
+  /** Spread of note lengths: a proxy for rhythmic vocabulary. */
+  rhythmicVocabulary: number | undefined;
+  /**
+   * Major-vs-minor, scaled by how confidently a key was found at all.
+   *
+   * 0.5 is neutral, above is major, below is minor. Weighting by key confidence
+   * matters: an atonal or percussion-only track has no valence to report, and
+   * asserting one from a meaningless key estimate would be worse than abstaining.
+   */
+  valence: number | undefined;
+}
+
+function computeTonalTerms(features: FeatureVector): TonalTerms {
+  const available = features.sidTonalVariant === "tonal";
+  if (!available) {
+    return { noteDensity: undefined, polyphony: undefined, rhythmicVocabulary: undefined, valence: undefined };
+  }
+  const minorness = direct01(features.sidKeyMinorness, 0.5);
+  const keyStrength = direct01(features.sidKeyStrength, 0.5);
+  // keyStrength maps a correlation onto [0,1] with 0.5 meaning "no tonal centre",
+  // so confidence is how far above that it sits.
+  const confidence = clamp01((keyStrength - 0.5) * 2);
+  return {
+    noteDensity: direct01(features.sidNoteRate),
+    polyphony: direct01(features.sidPolyphonyMean),
+    rhythmicVocabulary: direct01(features.sidNoteDurationEntropy),
+    valence: clamp01(0.5 + (0.5 - minorness) * confidence),
+  };
 }
 
 export function predictDeterministicRatings(
   model: DeterministicRatingModel,
   features: FeatureVector
-): { ratings: TagRatings; tags: DeterministicTags } {
+): { ratings: TagRatings; tags: DeterministicTags; raw: { c: number; e: number; m: number } } {
   const tags = computeDeterministicTags(model, features);
+  const tonal = computeTonalTerms(features);
 
+  // Complexity is documented as a "textural/rhythmic density proxy", but measured
+  // against the corpus it had a Spearman rho of -0.016 against note rate and -0.019
+  // against onset density -- no relationship at all with how many notes a tune
+  // actually contains. It was measuring spectral brightness instead (rho 0.64
+  // against both centroid and zero-crossing rate). Actual density terms restore the
+  // claim; the spectral terms keep their share of the weight because timbral
+  // busyness is a real part of perceived complexity.
   const cAvg = weightedAverageTerms([
-    { w: 0.35, x: tags.percussive.present ? tags.percussive.value : undefined },
-    { w: 0.25, x: tags.tempo_fast.present ? tags.tempo_fast.value : undefined },
-    { w: 0.25, x: tags.bright.present ? tags.bright.value : undefined },
-    { w: 0.15, x: tags.noisy.present ? tags.noisy.value : undefined },
+    { w: 0.22, x: tags.percussive.present ? tags.percussive.value : undefined },
+    { w: 0.16, x: tags.tempo_fast.present ? tags.tempo_fast.value : undefined },
+    { w: 0.16, x: tags.bright.present ? tags.bright.value : undefined },
+    { w: 0.10, x: tags.noisy.present ? tags.noisy.value : undefined },
+    { w: 0.20, x: tonal.noteDensity },
+    { w: 0.10, x: tonal.polyphony },
+    { w: 0.06, x: tonal.rhythmicVocabulary },
   ]);
 
   const eAvg = weightedAverageTerms([
@@ -360,23 +517,38 @@ export function predictDeterministicRatings(
     { w: 0.25, x: tags.percussive.present ? tags.percussive.value : undefined },
   ]);
 
+  // Mood carried an explicit RESTRICTED CLAIM: with only spectral features it could
+  // offer a "smooth/clear vs tense/harsh" axis and deliberately not valence, because
+  // major/minor was not observable. It is observable now, so a valence term is added
+  // -- weighted by key confidence, so an atonal or percussion-only track abstains
+  // rather than being assigned a mood from a meaningless key estimate. The smoothness
+  // terms are retained rather than replaced: both contribute to what a listener means
+  // by mood, and dropping them would discard a working signal to chase a new one.
   const mAvg = weightedAverageTerms([
-    { w: 0.45, x: tags.tonal_clarity.present ? tags.tonal_clarity.value : undefined },
-    { w: 0.25, x: tags.percussive.present ? 1 - tags.percussive.value : undefined },
-    { w: 0.15, x: tags.bright.present ? 1 - tags.bright.value : undefined },
-    { w: 0.15, x: tags.dynamic_loud.present ? 1 - tags.dynamic_loud.value : undefined },
+    { w: 0.34, x: tags.tonal_clarity.present ? tags.tonal_clarity.value : undefined },
+    { w: 0.19, x: tags.percussive.present ? 1 - tags.percussive.value : undefined },
+    { w: 0.11, x: tags.bright.present ? 1 - tags.bright.value : undefined },
+    { w: 0.11, x: tags.dynamic_loud.present ? 1 - tags.dynamic_loud.value : undefined },
+    { w: 0.25, x: tonal.valence },
   ]);
 
   const cRaw = clamp01(cAvg.present ? cAvg.value : 0.5);
   const eRaw = clamp01(eAvg.present ? eAvg.value : 0.5);
   const mRaw = clamp01(mAvg.present ? mAvg.value : 0.5);
 
+  const quantiles = model.ratingQuantiles;
+  const rate = (raw: number, breakpoints: number[] | undefined): number =>
+    breakpoints && breakpoints.length > 0
+      ? calibratedRatingFromRaw(raw, breakpoints)
+      : uncalibratedRatingFromRaw(raw);
+
   return {
     tags,
+    raw: { c: cRaw, e: eRaw, m: mRaw },
     ratings: {
-      c: ratingFromRaw(cRaw),
-      e: ratingFromRaw(eRaw),
-      m: ratingFromRaw(mRaw),
+      c: rate(cRaw, quantiles?.c),
+      e: rate(eRaw, quantiles?.e),
+      m: rate(mRaw, quantiles?.m),
     },
   };
 }

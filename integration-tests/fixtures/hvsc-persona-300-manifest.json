@@ -306,22 +306,6 @@
       "year": 2018
     },
     {
-      "author": "Adam Renquinha Henri (~J-@?!~)",
-      "category": "DEMOS",
-      "chipCount": 1,
-      "clock": "NTSC",
-      "released": "2007 Jarhmander",
-      "selectionBucket": "DEMOS|2000s|chip1|MOS6581|DEMOS/G-L",
-      "sidModel1": "MOS6581",
-      "sidPath": "DEMOS/G-L/Guitar.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "5f38f6cb05276c328d75188d42e5a82efdfce1ef697fbf214bec93411ef3198e",
-      "styleBucket": "DEMOS/G-L",
-      "title": "Guitar",
-      "year": 2007
-    },
-    {
       "author": "skeleT",
       "category": "DEMOS",
       "chipCount": 2,
@@ -352,22 +336,6 @@
       "styleBucket": "DEMOS/G-L",
       "title": "Hell's Gate (tune 1)",
       "year": 1989
-    },
-    {
-      "author": "Daniel (The User)",
-      "category": "DEMOS",
-      "chipCount": 1,
-      "clock": "PAL",
-      "released": "2020 Mayday!",
-      "selectionBucket": "DEMOS|2020s|chip1|MOS6581|DEMOS/G-L",
-      "sidModel1": "MOS6581",
-      "sidPath": "DEMOS/G-L/HF4k.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "46a8bea9d50c5b9c5a22698f94613f6bbda42b695a13e2fd008dd01ffe29e3ed",
-      "styleBucket": "DEMOS/G-L",
-      "title": "HF4k",
-      "year": 2020
     },
     {
       "author": "The Dood",
@@ -530,20 +498,20 @@
       "year": 1989
     },
     {
-      "author": "CastleNes",
+      "author": "Tomkh",
       "category": "DEMOS",
       "chipCount": 1,
-      "clock": "PAL",
-      "released": "2025 CastleNes",
-      "selectionBucket": "DEMOS|2020s|chip1|MOS6581|DEMOS/M-R",
-      "sidModel1": "MOS6581",
-      "sidPath": "DEMOS/M-R/Opening_the_Doors.sid",
+      "clock": "Unknown",
+      "released": "2026 Tomkh",
+      "selectionBucket": "DEMOS|2020s|chip1|Unknown|DEMOS/M-R",
+      "sidModel1": "Unknown",
+      "sidPath": "DEMOS/M-R/Nocturne.sid",
       "songs": 1,
       "source": "random",
-      "stableHash": "0bf5aaf08b710dc3da481e722332232b84330719ceeba59b23de954d9997a340",
+      "stableHash": "1bee1d21d8588d55cda5d3934834749f7901034264d139f6ee4d77fa4528bad0",
       "styleBucket": "DEMOS/M-R",
-      "title": "Opening the Doors",
-      "year": 2025
+      "title": "Nocturne",
+      "year": 2026
     },
     {
       "author": "Abyxus",
@@ -639,22 +607,6 @@
       "stableHash": "2f886c33176f929a8982c5b68374508479aa62b2841057b9410a07307dae5d22",
       "styleBucket": "DEMOS/S-Z",
       "title": "Sigi Music",
-      "year": null
-    },
-    {
-      "author": "ZR",
-      "category": "DEMOS",
-      "chipCount": 1,
-      "clock": "Unknown",
-      "released": "19?? TAC'2048",
-      "selectionBucket": "DEMOS|unknown|chip1|Unknown|DEMOS/S-Z",
-      "sidModel1": "Unknown",
-      "sidPath": "DEMOS/S-Z/Sleepy.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "28238bd281b000bbcb3520c023998ba9a77bd25106056ec0b2c5bc6ffaead35a",
-      "styleBucket": "DEMOS/S-Z",
-      "title": "Sleepy",
       "year": null
     },
     {
@@ -757,16 +709,16 @@
       "author": "<?>",
       "category": "DEMOS",
       "chipCount": 1,
-      "clock": "PAL",
-      "released": "2025 Ziili",
-      "selectionBucket": "DEMOS|2020s|chip1|MOS6581|DEMOS/UNKNOWN",
-      "sidModel1": "MOS6581",
-      "sidPath": "DEMOS/UNKNOWN/EnsKerrallaOtetaanSittenKatriHelenakinMukaan.sid",
+      "clock": "Unknown",
+      "released": "2025 <?>",
+      "selectionBucket": "DEMOS|2020s|chip1|Unknown|DEMOS/UNKNOWN",
+      "sidModel1": "Unknown",
+      "sidPath": "DEMOS/UNKNOWN/TCB_Intro.sid",
       "songs": 1,
       "source": "random",
-      "stableHash": "24cf04bb2c6ad5ce7f49b80d009496323d2138e59d9c91d4736cd4b66e0636d5",
+      "stableHash": "41f03cc640d1dae995cc0458fc784a7d4b568e39a4f7d15dbfc82e410ba6c8e2",
       "styleBucket": "DEMOS/UNKNOWN",
-      "title": "EnsKerrallaKatriHelenakinMukaan",
+      "title": "TCB Intro",
       "year": 2025
     },
     {
@@ -832,22 +784,6 @@
       "styleBucket": "GAMES/0-9",
       "title": "20 Tons",
       "year": 1985
-    },
-    {
-      "author": "Mik",
-      "category": "GAMES",
-      "chipCount": 1,
-      "clock": "Unknown",
-      "released": "1994 Fox PD",
-      "selectionBucket": "GAMES|1990s|chip1|Unknown|GAMES/0-9",
-      "sidModel1": "Unknown",
-      "sidPath": "GAMES/0-9/2112.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "d20881bec2def33c8e18a9ff4fd0a973f45836e7ee6a797391bcb4ae099a5c0c",
-      "styleBucket": "GAMES/0-9",
-      "title": "2112",
-      "year": 1994
     },
     {
       "author": "DJ Barrow",
@@ -994,7 +930,7 @@
       "year": 2014
     },
     {
-      "author": "ryba",
+      "author": "Pavel Rybicka (ryba)",
       "category": "GAMES",
       "chipCount": 1,
       "clock": "PAL",
@@ -1298,6 +1234,22 @@
       "year": 2020
     },
     {
+      "author": "Andrea Capitani",
+      "category": "GAMES",
+      "chipCount": 1,
+      "clock": "PAL",
+      "released": "2021 Marco Giorgini",
+      "selectionBucket": "GAMES|2020s|chip1|Unknown|GAMES/S-Z",
+      "sidModel1": "Unknown",
+      "sidPath": "GAMES/S-Z/Santas_Rats_Issue.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "100efb9491e5fa6c64507feaf15d521d2fd4c578ff229b47fd2493b4f8a412e3",
+      "styleBucket": "GAMES/S-Z",
+      "title": "Santa's Rats Issue",
+      "year": 2021
+    },
+    {
       "author": "Jan Böttcher",
       "category": "GAMES",
       "chipCount": 1,
@@ -1328,6 +1280,22 @@
       "styleBucket": "GAMES/S-Z",
       "title": "Ship",
       "year": null
+    },
+    {
+      "author": "Luke Marples",
+      "category": "GAMES",
+      "chipCount": 1,
+      "clock": "PAL",
+      "released": "2026 Gary Marples",
+      "selectionBucket": "GAMES|2020s|chip1|MOS6581|GAMES/S-Z",
+      "sidModel1": "MOS6581",
+      "sidPath": "GAMES/S-Z/Snoik64.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "c6dd9acb231fe5ed507cae1b8ff1dd14eb5565a2aa91fde5c4074e5c417a3f38",
+      "styleBucket": "GAMES/S-Z",
+      "title": "Snoik64",
+      "year": 2026
     },
     {
       "author": "Charles Grey",
@@ -1568,6 +1536,22 @@
       "styleBucket": "MUSICIANS/A",
       "title": "A Pointless Quest",
       "year": 2022
+    },
+    {
+      "author": "Aidan Crouzet-Pascal (acrouzet)",
+      "category": "MUSICIANS",
+      "chipCount": 3,
+      "clock": "PAL",
+      "released": "2026 Genesis Project",
+      "selectionBucket": "MUSICIANS|2020s|chip3|MOS8580|MUSICIANS/A",
+      "sidModel1": "MOS8580",
+      "sidPath": "MUSICIANS/A/Acrouzet/Astrolabe_Mono_3SID.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "770f1ccb95816852a7e4f0651ab13def228393d5fdfe3114d76ec17d065a90f6",
+      "styleBucket": "MUSICIANS/A",
+      "title": "Astrolabe (Mono)",
+      "year": 2026
     },
     {
       "author": "Ari Yliaho (Agemixer)",
@@ -1922,6 +1906,22 @@
       "year": 1993
     },
     {
+      "author": "Saul Cross",
+      "category": "MUSICIANS",
+      "chipCount": 1,
+      "clock": "PAL",
+      "released": "2025 Icon64",
+      "selectionBucket": "MUSICIANS|2020s|chip1|Unknown|MUSICIANS/C",
+      "sidModel1": "Unknown",
+      "sidPath": "MUSICIANS/C/Cross_Saul/Xmas_Demo_3.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "2e26ffa8be8ec5e086fa7c2dffa9401f3fca6805d247eb9646a39a5d76655ca7",
+      "styleBucket": "MUSICIANS/C",
+      "title": "Xmas Demo 3",
+      "year": 2025
+    },
+    {
       "author": "Owen Crowley (Conrad)",
       "category": "MUSICIANS",
       "chipCount": 2,
@@ -1952,6 +1952,22 @@
       "styleBucket": "MUSICIANS/C",
       "title": "Cubic Dream",
       "year": 2023
+    },
+    {
+      "author": "Daniel Veronski (D/V)",
+      "category": "MUSICIANS",
+      "chipCount": 3,
+      "clock": "PAL",
+      "released": "2026 NewLine",
+      "selectionBucket": "MUSICIANS|2020s|chip3|MOS8580|MUSICIANS/D",
+      "sidModel1": "MOS8580",
+      "sidPath": "MUSICIANS/D/D_V/3SID_Test_3SID.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "07274f60db63b9194fee3a33651b3af0bc4731dda1cfd4d74b73ad64bc941ddd",
+      "styleBucket": "MUSICIANS/D",
+      "title": "3SID Test",
+      "year": 2026
     },
     {
       "author": "Daniel Veronski (D/V)",
@@ -2031,22 +2047,6 @@
       "stableHash": "84c791cda7bb80cd4eac1f55b6dff1eab57b951daf862a53da1970fe49abef92",
       "styleBucket": "MUSICIANS/D",
       "title": "Music with No Name",
-      "year": 2022
-    },
-    {
-      "author": "DeMOSic",
-      "category": "MUSICIANS",
-      "chipCount": 3,
-      "clock": "PAL",
-      "released": "2022 MoonShine",
-      "selectionBucket": "MUSICIANS|2020s|chip3|MOS8580|MUSICIANS/D",
-      "sidModel1": "MOS8580",
-      "sidPath": "MUSICIANS/D/Demosic/Strangehold_3SID.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "1f06150e1bc6e4a8fdbffa9f8f39cf8388b42551259e757be573e5d89b2e0dcf",
-      "styleBucket": "MUSICIANS/D",
-      "title": "Strangehold",
       "year": 2022
     },
     {
@@ -2818,7 +2818,7 @@
       "year": 2008
     },
     {
-      "author": "J. van Dongen & Udo Gorissen",
+      "author": "Jurgen van Dongen & Udo Gorissen",
       "category": "MUSICIANS",
       "chipCount": 2,
       "clock": "PAL",
@@ -2864,22 +2864,6 @@
       "styleBucket": "MUSICIANS/K",
       "title": "Caribbean Rainbow",
       "year": 2023
-    },
-    {
-      "author": "Gabriel Jakerson & Timo(Kleeder)",
-      "category": "MUSICIANS",
-      "chipCount": 1,
-      "clock": "PAL",
-      "released": "2022 Jakerson & Kleeder",
-      "selectionBucket": "MUSICIANS|2020s|chip1|MOS6581|MUSICIANS/K",
-      "sidModel1": "MOS6581",
-      "sidPath": "MUSICIANS/K/Kleeder/Filter.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "1129dbd2865c0888e550171fee3d2504c4833b131e42a9ff923a387dbf310780",
-      "styleBucket": "MUSICIANS/K",
-      "title": "The Filter?",
-      "year": 2022
     },
     {
       "author": "Niklas B. (Klegg) & Miztluren",
@@ -3046,6 +3030,22 @@
       "category": "MUSICIANS",
       "chipCount": 1,
       "clock": "PAL",
+      "released": "2024 lft",
+      "selectionBucket": "MUSICIANS|2020s|chip1|Unknown|MUSICIANS/L",
+      "sidModel1": "Unknown",
+      "sidPath": "MUSICIANS/L/Lft/Computational_Soup_2KB.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "452445a660e57fc5ad6c5bb73059029c02b723711921242440b98ee23fe23109",
+      "styleBucket": "MUSICIANS/L",
+      "title": "Computational Soup 2KB",
+      "year": 2024
+    },
+    {
+      "author": "Linus Åkesson (lft)",
+      "category": "MUSICIANS",
+      "chipCount": 1,
+      "clock": "PAL",
       "released": "2018 lft",
       "selectionBucket": "MUSICIANS|2010s|chip1|Both|MUSICIANS/L",
       "sidModel1": "Both",
@@ -3106,17 +3106,17 @@
       "year": 2019
     },
     {
-      "author": "Mauro Staci (Mat64)",
+      "author": "Mauro Staci (MAT64)",
       "category": "MUSICIANS",
       "chipCount": 1,
       "clock": "PAL",
-      "released": "1999 Mat64",
+      "released": "1999 MAT64",
       "selectionBucket": "MUSICIANS|1990s|chip1|Both|MUSICIANS/M",
       "sidModel1": "Both",
-      "sidPath": "MUSICIANS/M/Mat64/Crashed_and_Damaged.sid",
+      "sidPath": "MUSICIANS/M/MAT64/Crashed_and_Damaged.sid",
       "songs": 1,
       "source": "random",
-      "stableHash": "1478f9f4f401f25161673686d817e3d83c9fec9474f06f58398ce19464955c1c",
+      "stableHash": "9b43f9a5b25a670ed8fe473652a30b08cb004106210be29b90f2de20e478e455",
       "styleBucket": "MUSICIANS/M",
       "title": "Crashed and Damaged",
       "year": 1999
@@ -3410,6 +3410,22 @@
       "year": 2009
     },
     {
+      "author": "Olivier Carnal (OCA)",
+      "category": "MUSICIANS",
+      "chipCount": 1,
+      "clock": "PAL",
+      "released": "2026 Atlantis",
+      "selectionBucket": "MUSICIANS|2020s|chip1|MOS6581|MUSICIANS/O",
+      "sidModel1": "MOS6581",
+      "sidPath": "MUSICIANS/O/OCA/Binary_10ve.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "38c406485c5f50b07574fad3629aaed99f1afff73d76ccd25aa26d81121a4847",
+      "styleBucket": "MUSICIANS/O",
+      "title": "Binary 10ve",
+      "year": 2026
+    },
+    {
       "author": "Kalle Mansikkaniemi (Ocean)",
       "category": "MUSICIANS",
       "chipCount": 2,
@@ -3522,22 +3538,6 @@
       "year": 2010
     },
     {
-      "author": "OminPigeonMaster",
-      "category": "MUSICIANS",
-      "chipCount": 1,
-      "clock": "PAL",
-      "released": "2024 OminPigeonMaster",
-      "selectionBucket": "MUSICIANS|2020s|chip1|MOS6581|MUSICIANS/O",
-      "sidModel1": "MOS6581",
-      "sidPath": "MUSICIANS/O/OminPigeonMaster/Slightly_Clumsy_Dragon_and_Knight.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "a74761a4bd9886b7ce9f159aa666d56f16bd4603cc79f9a0502f2a7cacaa9b19",
-      "styleBucket": "MUSICIANS/O",
-      "title": "Slightly Clumsy Dragon & Knight",
-      "year": 2024
-    },
-    {
       "author": "Olli-Pekka Niemi (Oxygen)",
       "category": "MUSICIANS",
       "chipCount": 1,
@@ -3648,6 +3648,22 @@
       "styleBucket": "MUSICIANS/P",
       "title": "Excalibur",
       "year": null
+    },
+    {
+      "author": "Pietro Pino",
+      "category": "MUSICIANS",
+      "chipCount": 1,
+      "clock": "PAL",
+      "released": "1989 Systems Editoriale",
+      "selectionBucket": "MUSICIANS|1980s|chip1|Both|MUSICIANS/P",
+      "sidModel1": "Both",
+      "sidPath": "MUSICIANS/P/Pino_Pietro/Jack_Bullett.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "de6b3dd1c80d4f584c81e3ed16f882943c9ab3f726f74ee8f4a4be22ade99d32",
+      "styleBucket": "MUSICIANS/P",
+      "title": "Jack Bullett",
+      "year": 1989
     },
     {
       "author": "Stein Pedersen",
@@ -3922,22 +3938,6 @@
       "year": 1988
     },
     {
-      "author": "Nick Sherman (MadBeagle)",
-      "category": "MUSICIANS",
-      "chipCount": 2,
-      "clock": "PAL",
-      "released": "2022 MadBeagle",
-      "selectionBucket": "MUSICIANS|2020s|chip2|MOS6581|MUSICIANS/S",
-      "sidModel1": "MOS6581",
-      "sidPath": "MUSICIANS/S/Sherman_Nick/Cold_Outside_2SID.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "6f645b37809b7eed271f9e31ef5eea2860e3d8d65a5e6d404c34fa905d71f736",
-      "styleBucket": "MUSICIANS/S",
-      "title": "Cold Outside",
-      "year": 2022
-    },
-    {
       "author": "Wojciech Radziejewski (Shogoon)",
       "category": "MUSICIANS",
       "chipCount": 3,
@@ -4066,6 +4066,22 @@
       "year": 1997
     },
     {
+      "author": "Stefan Kaps (St0ff)",
+      "category": "MUSICIANS",
+      "chipCount": 2,
+      "clock": "PAL",
+      "released": "2025 The Obsessed Maniacs",
+      "selectionBucket": "MUSICIANS|2020s|chip2|MOS6581|MUSICIANS/S",
+      "sidModel1": "MOS6581",
+      "sidPath": "MUSICIANS/S/Stoff/Tinydancer_Identify_Variable_2SID.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "3601a16784895fcf0179be5463815c4a86429966f833cbfa0e05c3b4036094c2",
+      "styleBucket": "MUSICIANS/S",
+      "title": "TinyDancer: Identify Variable",
+      "year": 2025
+    },
+    {
       "author": "Karl S. (theK)",
       "category": "MUSICIANS",
       "chipCount": 2,
@@ -4079,22 +4095,6 @@
       "stableHash": "4d0e4b45d4ef577ca0ffe807a1288fa6881f125c1ca6da137a73c52bf7fb4c92",
       "styleBucket": "MUSICIANS/T",
       "title": "Jump",
-      "year": 2022
-    },
-    {
-      "author": "Karl S. (theK)",
-      "category": "MUSICIANS",
-      "chipCount": 2,
-      "clock": "PAL",
-      "released": "2022 Atlantis",
-      "selectionBucket": "MUSICIANS|2020s|chip2|MOS8580|MUSICIANS/T",
-      "sidModel1": "MOS8580",
-      "sidPath": "MUSICIANS/T/TheK/Use_your_Imagination_2SID.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "2ecf28874f56a356501651b2f72bcc598b37610c42a581eb435882ffa0aa1e8a",
-      "styleBucket": "MUSICIANS/T",
-      "title": "(Use your) Imagination",
       "year": 2022
     },
     {
@@ -4128,6 +4128,22 @@
       "styleBucket": "MUSICIANS/T",
       "title": "Battle Khaos Theme",
       "year": 2003
+    },
+    {
+      "author": "Chris Lightfoot (TLF)",
+      "category": "MUSICIANS",
+      "chipCount": 2,
+      "clock": "PAL",
+      "released": "2026 Padua",
+      "selectionBucket": "MUSICIANS|2020s|chip2|MOS8580|MUSICIANS/T",
+      "sidModel1": "MOS8580",
+      "sidPath": "MUSICIANS/T/TLF/Frankly_Franky_2SID.sid",
+      "songs": 1,
+      "source": "random",
+      "stableHash": "1147246819b61cd75a67d3e625b05711dab47f616a48da2c132bafa01d5ff7a6",
+      "styleBucket": "MUSICIANS/T",
+      "title": "Frankly Franky",
+      "year": 2026
     },
     {
       "author": "Chris Lightfoot (TLF)",
@@ -4448,22 +4464,6 @@
       "styleBucket": "MUSICIANS/W",
       "title": "Knives Intro",
       "year": 2000
-    },
-    {
-      "author": "Chris Wemyss",
-      "category": "MUSICIANS",
-      "chipCount": 2,
-      "clock": "PAL",
-      "released": "2021 Chris Wemyss",
-      "selectionBucket": "MUSICIANS|2020s|chip2|MOS8580|MUSICIANS/W",
-      "sidModel1": "MOS8580",
-      "sidPath": "MUSICIANS/W/Wemyss_Chris/Grange_Hill_2SID.sid",
-      "songs": 1,
-      "source": "random",
-      "stableHash": "0bbc0e2e763d6841f1a462cf7eb0f5d2566540a2cc94497df8fddd301552984e",
-      "styleBucket": "MUSICIANS/W",
-      "title": "Grange Hill",
-      "year": 2021
     },
     {
       "author": "Chris Wemyss",
@@ -4802,7 +4802,7 @@
       "year": 2012
     }
   ],
-  "generatedAt": "2026-03-30T09:09:51.469Z",
+  "generatedAt": "2026-07-26T03:59:50.023Z",
   "problematicPaths": [
     "GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
     "MUSICIANS/C/C0zmo/Space_Oddity_2SID.sid",
@@ -4810,7 +4810,7 @@
     "MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid"
   ],
   "seed": 641729,
-  "sourceHvscCount": 60572,
+  "sourceHvscCount": 61157,
   "targetCount": 300,
   "version": "1"
 }

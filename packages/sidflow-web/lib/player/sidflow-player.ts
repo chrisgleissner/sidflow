@@ -792,7 +792,10 @@ export class SidflowPlayer {
 
     private async ensureEngine(): Promise<SidAudioEngine> {
         if (!this.enginePromise) {
+            // See the note in sid-producer.worker.ts: public/wasm/ holds one
+            // artifact, so the engine has to be named rather than defaulted.
             this.enginePromise = loadLibsidplayfp({
+                engine: 'residfp',
                 locateFile: (asset: string) => `/wasm/${asset}`,
             }).then(
                 (module: WasmModule) => new SidAudioEngine({ module: Promise.resolve(module) }),

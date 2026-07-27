@@ -184,6 +184,7 @@ export function buildClassifyProgressSnapshot(job: JobDescriptor | null): Classi
     renderedFiles: 0,
     taggedFiles: job.status === 'completed' ? progress?.total ?? 0 : 0,
     cachedFiles: 0,
+    skippedAlreadyClassifiedFiles: 0,
     skippedFiles: 0,
     extractedFiles: 0,
     featureHealthCheckedFiles: 0,

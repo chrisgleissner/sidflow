@@ -70,13 +70,33 @@ Many SID songs require the Commodore 64 system ROM files in **`workspace/roms/`*
 | `basic.901226-01.bin` (or `basic.bin`) | C64 BASIC | 8 KB |
 | `characters.901225-01.bin` (or `chargen.bin`) | Character generator | 4 KB |
 
-Obtain these files from a physical Commodore 64 or a BIOS dump. The `workspace/roms/` directory is git-ignored so the ROM files are never committed.
+The three files go **directly in the directory, not in subfolders**, and the sizes must be exact — 8192, 8192, and 4096 bytes. Either the preferred name or the short alias is recognised:
+
+```
+workspace/roms/
+├── kernal.901227-03.bin      (or kernal.bin)
+├── basic.901226-01.bin       (or basic.bin)
+└── characters.901225-01.bin  (or chargen.bin)
+```
+
+**You normally do not have to do anything.** When classification starts and the ROMs are missing, SIDFlow downloads them from [VICE's C64 data directory](https://github.com/libretro/vice-libretro/tree/master/vice/data/C64) into the first search path below, and verifies each against a pinned SHA-256 before use — a ROM that is not the one we pinned is a different machine, so a mismatch is refused rather than accepted.
+
+Fetch them up front, or into a specific directory:
+
+```bash
+bun run roms:fetch
+bun run roms:fetch -- /path/to/roms
+```
+
+Set `SIDFLOW_ROMS_AUTO_FETCH=0` to disable the download and supply the files yourself. They are copyrighted Commodore code that SIDFlow does not vendor; you can equally dump them from a physical Commodore 64. The `workspace/roms/` directory is git-ignored so the ROM files are never committed.
 
 Alternative locations (checked in order):
 1. `$SIDFLOW_ROMS_DIR` or `$SIDFLOW_ROM_DIR` environment variable
 2. `$SIDFLOW_ROOT/workspace/roms`
 3. `workspace/roms/` ← **recommended default**
 4. `public/roms/`
+
+**What happens without them:** rendering does not fail loudly. libsidplayfp initialises a tune but never advances it, so affected songs come out as silence or a single held frame — and they still classify, producing plausible-looking features from audio that is wrong. If all three are not found, SIDFlow logs a warning and continues with built-in ROMs; treat that warning as a reason to stop, not a detail. Set `SIDFLOW_WASM_DISABLE_ROMS=1` only when you deliberately want ROM-free rendering.
 
 ---
 
@@ -264,11 +284,36 @@ Production startup rejects default credentials, derived secrets, or a missing `J
 
 ### Build and publish portable similarity data
 
-Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 24-dimensional perceptual vectors (WAV + SID-native hybrid) for offline and downstream consumers.
+Produces a self-contained SQLite bundle containing per-track ratings, feedback aggregates, and 58-dimensional similarity vectors (WAV spectral + SID register-trace hybrid) for offline and downstream consumers.
 
 Use this workflow when you need to create new data from a collection you control. If you only need the public HVSC results, use [published `sidflow-data` releases](#reuse-published-hvsc-analysis-data) instead.
 
 Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish). Many SID songs also require [C64 system ROMs](#system-roms) in `workspace/roms/`.
+
+#### Regenerate and publish in one command
+
+`run-similarity-export.sh` is the whole workflow, not just the classify step: it reclassifies the corpus, writes the full, lite, and tiny bundles with their manifests, and creates the `sidflow-data` release. To do all of that on a machine that has never seen this repository:
+
+```bash
+# Ubuntu/Debian prerequisites
+sudo apt-get update && sudo apt-get install -y ffmpeg sidplayfp curl python3 git sqlite3
+curl -fsSL https://bun.sh/install | bash && source ~/.bashrc
+
+# Clone, fetch HVSC, reclassify everything, export all three formats, publish the release
+git clone https://github.com/chrisgleissner/sidflow && cd sidflow \
+  && bun install --frozen-lockfile \
+  && ./scripts/sidflow-fetch \
+  && bash scripts/run-similarity-export.sh --mode local --full-rerun true --publish-release true
+```
+
+Drop `--publish-release true` to stop after the export and inspect the bundles before releasing anything. Add `--max-songs 200` for a quick end-to-end rehearsal against a corpus subset.
+
+Before you start:
+
+- **Copy [C64 system ROMs](#system-roms) into `workspace/roms/` first.** They are git-ignored, so a fresh clone never has them, and many tunes need them to render correctly.
+- **`--publish-release true` needs `gh auth login`** with permission to create releases on `chrisgleissner/sidflow-data`. The script checks this before classifying, so it fails fast rather than after a long run.
+- **Use `--mode local`, not `--mode docker`, unless you know the image is current.** Docker mode pulls `ghcr.io/chrisgleissner/sidflow:latest`, which bakes in `packages/libsidplayfp-wasm/dist/libsidplayfp.wasm` at image build time. If that image predates a WASM engine fix, the run will happily regenerate data with the old engine. Local mode uses the artifact in your checkout.
+- **Classification runs under Bun, not Node.** `@sidflow/common` re-exports three SQLite-backed modules that import `bun:sqlite`, and Node's ESM loader rejects the `bun:` scheme, so every classify module that imports the package barrel is unloadable under Node. `--runtime node` therefore fails immediately with `ERR_UNSUPPORTED_ESM_URL_SCHEME`. Bun is already a prerequisite and the export step always ran under it.
 
 **0. Download HVSC:**
 
@@ -284,10 +329,30 @@ If you already have a local HVSC copy elsewhere, point `sidPath` in `.sidflow.js
 
 **1. Reclassify the entire HVSC collection and generate the export:**
 
-Classifying all 60,572 SID files with 87,074 tracks (as of HVSC version 84 in March 2026) takes about 30 mins on an Intel 14600K CPU using Kubuntu 24.04:
+Classifying all 61,787 SID files of HVSC 85, which declare 87,868 songs. **Every song is classified**, including very short ones.
+
+### Which part of a tune is analysed
+
+The first seconds of a tune are its least characteristic part — a fade-in, a bare bass line, a title jingle — so analysis skips them. A *fixed* skip is wrong for short tunes, and HVSC is full of them: with a flat 15-second skip, 16,398 of 87,868 songs (18.66%) were described by a window that opened after the music had already stopped, leaving 34 of the 58 similarity dimensions at a shared default. The skip therefore scales with the tune:
+
+| Song length | Skipped | Analysed |
+|---|---|---|
+| 10s or less | 0s | the whole tune |
+| 20s | 7.5s | 12.5s |
+| 30s or more | 15s | 15s |
+
+Linear between 10s and 30s, so a one-second difference in length cannot produce a wholly different description of the same tune. The same window is applied to both the rendered audio and the SID register trace, so the two halves of the vector always describe the same interval.
+
+Very short songs are analysed rather than dropped, so the corpus matches the collection and nothing goes missing without explanation. They are, however, measured over fewer frames, and fifteen of the dimensions describe rates, regularities and entropies over frames. **`sidTraceFrameCount` reports how many frames each track was measured over**, so a consumer that wants to exclude thin evidence — or quiet tracks, using `rms` — has the numbers to do it.
+
+> **Timings depend on the engine and the thread count.** The log below is a SIDLite run, which is the default; `SIDFLOW_SID_ENGINE=residfp` renders roughly 7x slower and rendering dominates, so budget most of a day for a reference-fidelity pass. Measure your own hardware with `--max-songs 200` before committing either way.
+
+> **Classification runs in chunks and restarts the stack between them.** A long-lived run exhausts memory at a predictable point — measured repeatedly at ~3.5 GiB RSS after roughly 88,000 WASM instantiations — and dies with `RangeError: Out of memory`. Rather than waiting for that and resuming, the workflow classifies `--chunk-songs` songs at a time (default 1000) and tears the whole local stack down between chunks. Measured across 19 consecutive chunks: peak RSS held constant at 1,632 MiB with zero failures. A continuous memory trace is written to `tmp/runtime/similarity-export/memory-samples.jsonl`, and any chunk that does fail leaves a full report under `logs/crash-reports/` rather than a truncated log line. Pass `--chunk-songs 0` for one long-lived run.
+
+> **Thread count barely affects throughput; it affects memory.** Measured on real 1,000-song chunks: 6 threads 9.52 songs/s, 8 threads 9.52, 10 threads 9.43, 14 threads 9.90 — a 5% spread. A short 710-track benchmark had suggested 12 threads was 22% faster (12.26 against 10.01 tracks/s), but that does not reproduce on a full corpus: per-thread throughput falls as threads rise while the total stays flat, so something shared is saturated and extra threads only add concurrent WASM instances. Since speed is flat, memory decides — at `--threads 12` a 5,000-song chunk reached the memory limit at 99%, while at `--threads 6` it completes comfortably. The default is **6**.
 
 ```bash
-bash scripts/run-similarity-export.sh --mode local --full-rerun true
+bash scripts/run-similarity-export.sh --mode local --full-rerun true --threads 6
 ```
 
 Expected logs:
@@ -296,9 +361,9 @@ Expected logs:
 [sidcorr] Mode is full rerun: existing classified data and export artifacts will be ignored and replaced
 [sidcorr] Full rerun: removing prior classified JSONL artifacts from /home/chris/dev/c64/sidflow/data/classified
 [sidcorr] Mode: local
-[sidcorr] Runtime: node
-[sidcorr] Building TypeScript artifacts for Node runtime
-[sidcorr] Starting local web server under Node on port 3000
+[sidcorr] Runtime: bun
+[sidcorr] Installing dependencies for Bun local mode
+[sidcorr] Starting local web server under Bun on port 3000
 [sidcorr] Triggering classification with payload {"async":false,"skipAlreadyClassified":false,"deleteWavAfterClassification":true,"forceRebuild":true}
 [sidcorr] Classification request started
 [sidcorr] Waiting for classification to finish
@@ -313,7 +378,7 @@ Expected logs:
 [sidcorr] progress update: completed=87074 remaining=0 total=87074 elapsed=27m 58s eta=0s rate=51.89 songs/s phase=completed phases[analyzing=done, metadata=done, building=done, tagging=done, finalizing=done, completed=done] stageCounts[rendered=87074, extracted=0, tagged=87074] featureHealth[completeRealistic=0/0 (unknown)]
 [sidcorr] Classification completed
 [sidcorr] Running local export with bun runtime
-$ node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity --profile full --corpus-version hvsc
+$ bun run packages/sidflow-play/src/cli.ts export-similarity --profile full --neighbors 25 --corpus-version hvsc
 Building similarity export from data/classified
 Writing SQLite bundle to data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite
 Export complete in 1488643ms
@@ -327,7 +392,72 @@ Manifest: data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
 
 Output: `data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite`, `sidcorr-hvsc-full-sidcorr-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.sidcorr`, `data/exports/sidcorr-hvsc-full-sidcorr-lite-1.manifest.json`, `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.sidcorr`, and `data/exports/sidcorr-hvsc-full-sidcorr-tiny-1.manifest.json`.
 
-**1a. Convert the full export into lite or tiny bundles explicitly (optional):**
+**1a. Choose the SID emulation (optional):**
+
+Classification renders with **SIDLite** by default, and that default is measured rather than assumed. A pre-registered paired comparison on **23,817 identical tracks** ([doc/sid-engine-comparison.md](doc/sid-engine-comparison.md)) found:
+
+| Endpoint | reSIDfp | SIDLite | Relative | Holm p |
+|---|---|---|---|---|
+| nDCG@10, 24 WAV-derived dimensions | 0.3221 | 0.3173 | +1.49% | 0.0848 |
+| nDCG@10, full 58-dimension vector | 0.5442 | 0.5421 | +0.40% | 0.1224 |
+| Cold-start nDCG@10, 24 dimensions | 0.0615 | 0.0766 | **−19.71%** | — |
+| Rating agreement, quadratic-weighted κ | — | — | 0.82–0.89 | — |
+
+reSIDfp is very slightly better in the WAV-derived subspace — the only place an audio model can act — but the effect fails multiplicity correction, reverses on cold start, and shrinks to +0.40% in the vector that ships, because 34 of the 58 dimensions read the SID register write trace and are identical under both engines by construction. Against roughly 7x the wall clock, it does not pay.
+
+`reSIDfp` remains the cycle-accurate reference. Choose it for audio fidelity — listening, A/B work, anything where you want the reference rendering itself. For *classification*, the measurement above is the reason not to.
+
+```bash
+# Default — fast, good enough to classify from
+bash scripts/run-similarity-export.sh --mode local --full-rerun true
+
+# Reference fidelity instead, roughly 10x slower
+SIDFLOW_SID_ENGINE=residfp bash scripts/run-similarity-export.sh --mode local --full-rerun true
+```
+
+The classify CLI takes the same choice as a flag:
+
+```bash
+./scripts/sidflow-classify --sid-engine residfp
+```
+
+Precedence is `--sid-engine`, then `SIDFLOW_SID_ENGINE`, then the SIDLite default.
+
+| Engine | Speed | DC offset (Commando) | Use for |
+|--------|-------|----------------------|---------|
+| `sidlite` (default) | ~30-40x realtime | 0.10 | Everyday use, and classifying a corpus |
+| `residfp` | ~2-6x realtime | 0.003 | Cycle-accurate reference, A/B comparison |
+
+Do not mix engines within one corpus. Features are derived from the rendered audio, so tracks rendered by different emulations are not comparable, and cosine over a mixture measures the emulation as much as the music. **The export now refuses a mixed corpus** rather than producing one quietly: every classified record carries a `sid_engine` field, and `buildSimilarityExport` fails if more than one value appears.
+
+Which engine to use for a corpus you intend to publish is a measurement question, not a taste one, and it is answered in [doc/sid-engine-comparison.md](doc/sid-engine-comparison.md) — a pre-registered paired comparison of the two engines on identical tracks.
+
+**1b. Verify the run used the engine you think it did:**
+
+Getting a *different* engine than you asked for is the failure mode this pipeline has actually suffered — and the damage was not the emulation but a broken build of it, which loaded, rendered, and returned plausible sample counts while producing materially wrong audio. All three checks below are cheap, and all three are worth running before you publish anything.
+
+```bash
+# Each artifact must contain its own builder and not the other one.
+grep -ac WasmSIDLite  packages/libsidplayfp-wasm/dist/sidlite/libsidplayfp.wasm  # expect > 0
+grep -ac WasmReSIDfp  packages/libsidplayfp-wasm/dist/libsidplayfp.wasm          # expect > 0
+
+# Which SID emulation actually rendered the corpus.
+jq -r '.sid_engine' data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
+
+# Which renderer backend was used. Note this is NOT the emulation: it reports "wasm"
+# for both sidlite and residfp, because both run inside the WASM renderer. Use the
+# manifest field above to tell them apart.
+sqlite3 data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
+  'select render_engine, count(*) from tracks group by 1'
+```
+
+These are enforced automatically too:
+
+- `test/engine-health.test.ts` runs the same signal checks against **both** engines — audible, unclipped, DC-bounded, multi-SID, repeatable. It is what would have caught the broken artifact.
+- `test/engine-parity.test.ts` pins reSIDfp and compares it against recorded goldens.
+- `.github/workflows/engine-parity.yaml` builds a native libsidplayfp from the same pinned refs and requires the WASM build to agree.
+
+**1c. Convert the full export into lite or tiny bundles explicitly (optional):**
 
 ```bash
 ./scripts/sidflow-play export-similarity \
@@ -375,13 +505,28 @@ The following command requires permissions to create new releases on `chrisgleis
 bash scripts/run-similarity-export.sh --workflow publish-only --mode local --publish-release true
 ```
 
-This uploads the sqlite export, sqlite manifest, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a `.tar.gz` bundle containing those same files.
+This uploads the sqlite export, sqlite manifest, lite bundle, lite manifest, tiny bundle, tiny manifest, `SHA256SUMS`, and a `.tar.gz` bundle containing those same files — that is, all three formats in one release.
+
+Use `--workflow publish-only` when the export already exists and you only want to release it. If you are regenerating anyway, pass `--publish-release true` to the full run instead and skip this step; both paths produce an identical release.
+
+The release is tagged `sidcorr-<corpus>-<profile>-<UTC timestamp>`, for example `sidcorr-hvsc-full-20260407T115218Z`. Pass `--publish-timestamp YYYYMMDDTHHMMSSZ` to pin it. Publishing refuses to overwrite an existing tag, so a re-run needs a new timestamp.
 
 Full schema and consumer workflow: [doc/similarity-export.md](doc/similarity-export.md).
 
 #### Classification vector reference
 
-Each exported song also gets a 24-number similarity vector. It mixes what SIDFlow hears in the rendered WAV with what it reads from the SID chip write trace. The raw per-song feature dump is larger, but these 24 fields are the compact fingerprint used for similarity search and station building.
+Each exported song also gets a **58-number** similarity vector — the compact fingerprint used for similarity search and station building. It has three parts:
+
+| Part | Count | Read from | Documented in |
+|---|---|---|---|
+| Perceptual | 24 | The rendered WAV, plus SID register-state summaries | The table below |
+| Tonal | 11 | Note-level analysis of the SID register write trace | [station-quality.md](doc/station-quality.md) |
+| Playroutine and driver shape | 23 | How the driver code drives the chip | [station-quality.md](doc/station-quality.md) |
+
+The 34 trace-derived dimensions were added after measurement showed the 24 perceptual
+ones had stopped improving: on a held-out, composer-grouped split they take retrieval
+from nDCG@10 0.2340 to 0.5392. Only the 24 below depend on the SID emulation; the other
+34 read the register write trace, which the audio model never touches.
 
 Sample record: [doc/examples/classification-vector-sample.json](doc/examples/classification-vector-sample.json)
 

@@ -1,0 +1,10 @@
+{
+  "name": "libsidplayfp-wasm",
+  "version": "0.1.0",
+  "description": "WebAssembly build of libsidplayfp with embind bindings for TypeScript projects.",
+  "type": "module",
+  "main": "./libsidplayfp.js",
+  "module": "./libsidplayfp.js",
+  "types": "./libsidplayfp.d.ts",
+  "sideEffects": false
+}

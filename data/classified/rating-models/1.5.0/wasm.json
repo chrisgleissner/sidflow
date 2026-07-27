@@ -1,0 +1,172 @@
+{
+  "createdAt": "2026-07-26T11:00:03.383Z",
+  "features": {
+    "bpm": {
+      "count": 32251,
+      "mu": 118.81436531631994,
+      "nonZeroCount": 32251,
+      "sigma": 53.820890393243566
+    },
+    "dynamicRange": {
+      "count": 32251,
+      "mu": 0.7736141738114376,
+      "nonZeroCount": 32239,
+      "sigma": 0.19576511249864587
+    },
+    "energy": {
+      "count": 32251,
+      "mu": 0.011288287842291104,
+      "nonZeroCount": 32241,
+      "sigma": 0.008240575091667148
+    },
+    "inharmonicity": {
+      "count": 32251,
+      "mu": 0.036349869882729806,
+      "nonZeroCount": 14690,
+      "sigma": 0.10533135838899386
+    },
+    "lowFrequencyEnergyRatio": {
+      "count": 32251,
+      "mu": 0.2340865134801033,
+      "nonZeroCount": 32239,
+      "sigma": 0.1006165834005571
+    },
+    "mfccMean1": {
+      "count": 32251,
+      "mu": 81.66471353997548,
+      "nonZeroCount": 32251,
+      "sigma": 32.77177197868873
+    },
+    "mfccMean2": {
+      "count": 32251,
+      "mu": 14.769702540808584,
+      "nonZeroCount": 32251,
+      "sigma": 16.89367046363657
+    },
+    "mfccMean3": {
+      "count": 32251,
+      "mu": 9.214226181072275,
+      "nonZeroCount": 32251,
+      "sigma": 13.011958950123594
+    },
+    "mfccMean4": {
+      "count": 32251,
+      "mu": 2.041152288176927,
+      "nonZeroCount": 32251,
+      "sigma": 10.590202883452438
+    },
+    "mfccMean5": {
+      "count": 32251,
+      "mu": 1.882082067168657,
+      "nonZeroCount": 32251,
+      "sigma": 9.223905866798024
+    },
+    "onsetDensity": {
+      "count": 32251,
+      "mu": 3.033053886953756,
+      "nonZeroCount": 31768,
+      "sigma": 1.206128528609567
+    },
+    "pitchSalience": {
+      "count": 32251,
+      "mu": 0.9636501301172722,
+      "nonZeroCount": 32239,
+      "sigma": 0.10533135838899388
+    },
+    "rhythmicRegularity": {
+      "count": 32251,
+      "mu": 0.49268689474604527,
+      "nonZeroCount": 29790,
+      "sigma": 0.21662432676063392
+    },
+    "rms": {
+      "count": 32251,
+      "mu": 0.09939302611958463,
+      "nonZeroCount": 32241,
+      "sigma": 0.0375408337824653
+    },
+    "spectralCentroid": {
+      "count": 32251,
+      "mu": 0.27947850235689614,
+      "nonZeroCount": 32239,
+      "sigma": 0.06343796397208441
+    },
+    "spectralCentroidStd": {
+      "count": 32251,
+      "mu": 0.04799133609603295,
+      "nonZeroCount": 32184,
+      "sigma": 0.031191745136892997
+    },
+    "spectralContrastMean": {
+      "count": 32206,
+      "mu": -26.025643544389577,
+      "nonZeroCount": 32206,
+      "sigma": 16.86437377643591
+    },
+    "spectralCrest": {
+      "count": 32251,
+      "mu": 39.87275418840063,
+      "nonZeroCount": 32239,
+      "sigma": 25.124892013269264
+    },
+    "spectralEntropy": {
+      "count": 32251,
+      "mu": 8.471396462734406,
+      "nonZeroCount": 32239,
+      "sigma": 0.9816109854258289
+    },
+    "spectralFlatnessDb": {
+      "count": 32251,
+      "mu": 0.0731253080472358,
+      "nonZeroCount": 32251,
+      "sigma": 0.08391143242094068
+    },
+    "spectralFluxMean": {
+      "count": 32251,
+      "mu": 0.39898496175182735,
+      "nonZeroCount": 32161,
+      "sigma": 0.09666563253932504
+    },
+    "spectralHfc": {
+      "count": 32251,
+      "mu": 4495378.180888892,
+      "nonZeroCount": 32239,
+      "sigma": 3555404.7501892685
+    },
+    "spectralRolloff": {
+      "count": 32251,
+      "mu": 3902.316937874359,
+      "nonZeroCount": 32239,
+      "sigma": 2474.240671030338
+    },
+    "zeroCrossingRate": {
+      "count": 32251,
+      "mu": 0.09218638963622332,
+      "nonZeroCount": 32241,
+      "sigma": 0.05368370502459306
+    }
+  },
+  "featureSetVersion": "1.5.0",
+  "ratingQuantiles": {
+    "c": [
+      0.4479316334728163,
+      0.5076025482250536,
+      0.5539391182327706,
+      0.5989893651483423
+    ],
+    "e": [
+      0.40630592867922577,
+      0.45979598331724214,
+      0.5116409426153506,
+      0.5728383434942037
+    ],
+    "m": [
+      0.4596233402376707,
+      0.4939635219424354,
+      0.5203559588400337,
+      0.5497488459133728
+    ]
+  },
+  "renderEngine": "wasm"
+}
+

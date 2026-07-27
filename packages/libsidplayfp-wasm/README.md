@@ -27,22 +27,96 @@ bun run wasm:build
 
 This helper runs the upstream check, executes the Docker build, and updates `data/wasm-build.json` with the new artifact metadata.
 
-## Using the Loader
+## Choosing a SID engine
 
-The TypeScript entrypoint exports two helpers:
+Two artifacts are built from the same bindings and shipped side by side:
+
+| Engine | Artifact | Speed | Use it for |
+|--------|----------|-------|------------|
+| `sidlite` (default) | `dist/sidlite/libsidplayfp.wasm` | ~30-40x realtime | Everyday use. Sounds good, and most listeners will not hear the difference. |
+| `residfp` | `dist/libsidplayfp.wasm` | ~2-6x realtime | The cycle-accurate reference, when you want the last few percent of fidelity. |
+
+Both render cleanly, multi-SID included, and both are built from the same bindings. The measured difference is DC offset: on `Commando`, reSIDfp sits at 0.003 and SIDLite at 0.10. Peaks and spectral balance are close, which is why SIDLite is the default — it is an order of magnitude cheaper for a difference that mostly matters to audiophiles and to comparison work.
+
+Select per call, or globally with the `SIDFLOW_SID_ENGINE` environment variable:
+
+```ts
+const reference = await loadLibsidplayfp();                      // residfp
+const fast      = await loadLibsidplayfp({ engine: "sidlite" });
+
+console.log(fast.getSidEngineName()); // "WasmSIDLite"
+```
+
+An explicit `engine` argument always beats `SIDFLOW_SID_ENGINE`. Ask for the engine you depend on rather than relying on the default — a test that means reSIDfp should say so, or an environment variable can silently redirect it.
+
+To build an artifact yourself:
+
+```bash
+SIDFLOW_SID_ENGINE=sidlite bun run build:wasm   # writes dist/
+SIDFLOW_DIST_DIR=/tmp/compare bun run build:wasm  # ...or somewhere else
+```
+
+The build asserts, in both directions, that the artifact contains the builder you asked for and not the other one, so neither engine can silently become the other.
+
+## Getting the artifacts without cloning
+
+Every SIDFlow release attaches `libsidplayfp-wasm-<tag>.tar.gz` plus a `SHA256SUMS`:
+
+```bash
+gh release download <tag> --repo chrisgleissner/sidflow -p 'libsidplayfp-wasm-*.tar.gz' -p SHA256SUMS
+tar -xzf libsidplayfp-wasm-<tag>.tar.gz
+cd libsidplayfp-wasm-<tag> && sha256sum -c SHA256SUMS
+```
+
+The tarball holds reSIDfp in the root and SIDLite in `sidlite/`, each with its loader, `.wasm`, and typings. The release job verifies, in both directions, that each binary contains its own builder and not the other before uploading.
+
+## Using this package from another program
+
+The package is a normal ES module with no runtime dependencies. It works in Node, Bun, and browsers.
 
 ```ts
 import loadLibsidplayfp, { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 
+// Low-level: a direct handle on the C++ player
 const module = await loadLibsidplayfp();
 const player = new module.SidPlayerContext();
+try {
+  player.configure(48000, /* stereo */ true);
+  player.loadSidBuffer(new Uint8Array(sidFileBytes));
+  player.selectSong(0);
+  const pcm = player.render(100000); // Int16Array, interleaved
+} finally {
+  player.delete(); // embind objects are not garbage collected
+}
 
+// Higher-level: memory management and format conversion handled for you
 const engine = new SidAudioEngine();
 await engine.loadSidBuffer(bytes);
 const samples = await engine.renderSeconds(60);
 ```
 
-Consumers may override `locateFile` to control how the `.wasm` file is resolved at runtime (useful when bundlers relocate assets).
+Two things catch people out:
+
+- **Always `delete()` a `SidPlayerContext`.** Embind objects are not garbage collected; leaking one keeps its SID emulations alive inside the shared module and changes the allocation pattern seen by later renders.
+- **Load the C64 ROMs if you care about accuracy.** Without them libsidplayfp initialises a tune but never advances it, and many tunes will not sound right:
+
+  ```ts
+  player.setSystemROMs(kernal, basic, chargen); // 8 KB, 8 KB, 4 KB
+  ```
+
+  The ROMs are copyrighted and are not shipped here; dump them from a real C64 or supply your own.
+
+### Resolving the `.wasm` in a bundler
+
+By default the loader resolves the `.wasm` beside the generated JS using `import.meta.url`, which is what you want for Node, Bun, and most CLI use. When a bundler relocates assets, override `locateFile`:
+
+```ts
+const module = await loadLibsidplayfp({
+  locateFile: (asset) => `/static/wasm/${asset}`,
+});
+```
+
+For a browser build, copy `dist/libsidplayfp.js` and `dist/libsidplayfp.wasm` (plus `dist/sidlite/` if you use SIDLite) into your static assets, or configure the bundler to treat them as assets. `SIDFLOW_LIBSIDPLAYFP_WASM_PATH` overrides the binary path in Node-like environments.
 
 ## Integrating in SIDFlow Packages
 

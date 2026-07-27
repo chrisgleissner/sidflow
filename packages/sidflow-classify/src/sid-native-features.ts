@@ -5,10 +5,13 @@ import { readFile } from "node:fs/promises";
 import {
   PAL_FRAME_RATE,
   compactSidWriteTraceToFrames,
+  resolveEffectiveTraceSkipSeconds,
   resolveSidTraceFrameWindow,
   type CompactSidWriteTraceOptions,
   type SidTraceVideoStandard,
 } from "./sid-register-trace.js";
+import { computeSidTonalFeatures, emptySidTonalFeatures } from "./sid-tonal-features.js";
+import { computeSidPlayroutineFeatures, emptySidPlayroutineFeatures } from "./sid-playroutine-features.js";
 import { readSidTraceSidecar, writeSidTraceSidecar } from "./render/wav-renderer.js";
 import { readWavRenderSettingsSidecar } from "./wav-render-settings.js";
 import type { ExtractFeaturesOptions, FeatureExtractor, FeatureVector } from "./index.js";
@@ -228,8 +231,18 @@ export async function captureSidWriteTraceSecondPass(
 }
 
 export function extractSidNativeFeaturesFromWriteTrace(
-  options: ExtractSidNativeFeaturesFromTraceOptions,
+  rawOptions: ExtractSidNativeFeaturesFromTraceOptions,
 ): FeatureVector {
+  // Clamp the intro skip to the tune before anything reads the window. A 15-second skip
+  // is right for a full-length tune and lands past the end of a jingle, and HVSC is full
+  // of short subsongs: 18.66% of the corpus previously came out with all 22 playroutine
+  // and driver dimensions at exactly zero because the window opened after the music had
+  // stopped. Applied here, once, so the tonal and playroutine paths cannot disagree
+  // about which window they are describing.
+  const options: ExtractSidNativeFeaturesFromTraceOptions = {
+    ...rawOptions,
+    skipSeconds: resolveEffectiveTraceSkipSeconds(rawOptions.traces, rawOptions),
+  };
   const frameWindow = resolveSidTraceFrameWindow(options);
   const clock = frameWindow.clock;
 
@@ -263,8 +276,18 @@ export function extractSidNativeFeaturesFromWriteTrace(
   });
   const voiceRoleEntropy = computeVoiceRoleEntropy(roleRatios);
   const d418WritesPerFrame = bucketAddressWritesByFrame(options.traces, 0x18, frameWindow);
+  // Pitch/key/melody/harmony. Fed the UNFILTERED voice frames: it needs the gate
+  // transitions and the unpitched frames to segment notes, and applies its own
+  // pitched-frame rule (noise sets a rate, not a note).
+  const tonal = computeSidTonalFeatures({ ...options, voiceFrames });
+  // Driving behaviour of the playroutine, from the raw writes rather than the
+  // per-frame register state: the state summaries above cannot see how many times
+  // per frame the routine ran or which registers it favours.
+  const playroutine = computeSidPlayroutineFeatures(options);
 
   return {
+    ...tonal,
+    ...playroutine,
     sidFeatureVariant: "sid-native",
     sidTraceClock: clock,
     sidTraceEventCount: options.traces.length,
@@ -301,6 +324,8 @@ function createEmptySidNativeFeatures(
   clock: SidClock | SidTraceVideoStandard | undefined,
 ): FeatureVector {
   return {
+    ...emptySidTonalFeatures(),
+    ...emptySidPlayroutineFeatures(),
     sidFeatureVariant: variant,
     sidTraceClock: clock === "NTSC" ? "NTSC" : "PAL",
     sidTraceEventCount: 0,

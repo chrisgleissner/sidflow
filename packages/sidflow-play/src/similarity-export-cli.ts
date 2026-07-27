@@ -17,7 +17,7 @@ interface SimilarityExportCliOptions {
   profile?: string;
   corpusVersion?: string;
   neighbors?: number;
-  dims?: number;
+  dims?: string;
   includeVectors?: boolean;
   format?: string;
   sourceSqlite?: string;
@@ -56,9 +56,10 @@ const ARG_DEFS: ArgDef[] = [
   },
   {
     name: "--dims",
-    type: "integer",
-    description: "Vector dimensions to export: 3 or 4",
-    defaultValue: 4,
+    type: "string",
+    description:
+      "Vector dimensions to export: auto (default, use the full stored vector), or 3 / 4 for the legacy rating-only vector",
+    defaultValue: "auto",
   },
   {
     name: "--include-vectors",
@@ -137,9 +138,24 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
     process.stderr.write("Error: --profile must be full or mobile\n");
     return 1;
   }
-  if (options.dims !== 3 && options.dims !== 4) {
-    process.stderr.write("Error: --dims must be 3 or 4\n");
-    return 1;
+  // `auto` means "export the vector classification actually computed".
+  //
+  // This used to default to 4, which routed every track through the legacy
+  // rating-only vector and discarded the 24-dimension perceptual vector stored
+  // in each classification record. The result was a similarity space of four
+  // integers in which ~90% of tracks were identical, so nearest-neighbour
+  // search was mostly tie-breaking: measured against an independent timbre
+  // fingerprint, neighbours came out FARTHER apart than random pairs
+  // (separation 0.84, Cohen's d -0.43). With the stored vector the same corpus
+  // gives 1.11 and +0.25 — neighbours genuinely closer than chance.
+  let resolvedDims: number | undefined;
+  if (options.dims !== undefined && options.dims !== "auto") {
+    const parsed = Number.parseInt(String(options.dims), 10);
+    if (parsed !== 3 && parsed !== 4) {
+      process.stderr.write("Error: --dims must be auto, 3 or 4\n");
+      return 1;
+    }
+    resolvedDims = parsed;
   }
 
   const config = await loadConfig(options.config);
@@ -214,7 +230,7 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
     outputPath,
     profile: options.profile,
     corpusVersion: corpusLabel,
-    dims: options.dims,
+    dims: resolvedDims,
     includeVectors: options.includeVectors,
     neighbors: options.neighbors,
   });

@@ -202,14 +202,60 @@ async function computeMd548(context: Md548Context, sidPath: string): Promise<Buf
   return createHash("md5").update(payload).digest().subarray(0, 6);
 }
 
+/**
+ * Two different SID files sharing a truncated hash resolve to one path.
+ *
+ * The tiny profile identifies files by the first 48 bits of their MD5 to keep the
+ * bundle small. Across HVSC's ~62,000 files the birthday probability of at least one
+ * collision is around 0.7% -- unlikely per release, but this is a published artifact
+ * and the failure is silent: the later file overwrites the earlier one in the map, and
+ * every track of the loser is then reported under the winner's path. A listener would
+ * see a station entry naming a tune that is not the one playing.
+ *
+ * Cheap to detect, so detect it. Reported rather than thrown because the collision is
+ * a property of the collection, not of a bug in this code, and refusing to build any
+ * bundle at all would be a worse outcome than a loud warning naming both files.
+ */
+function recordMd548(
+  result: Map<string, string>,
+  collisions: Array<[string, string, string]>,
+  key: string,
+  relativePath: string,
+): void {
+  const existing = result.get(key);
+  if (existing !== undefined && existing !== relativePath) {
+    collisions.push([key, existing, relativePath]);
+    return;
+  }
+  result.set(key, relativePath);
+}
+
+function warnAboutMd548Collisions(collisions: Array<[string, string, string]>): void {
+  if (collisions.length === 0) {
+    return;
+  }
+  const detail = collisions
+    .slice(0, 5)
+    .map(([key, first, second]) => `  ${key}: ${first} <-> ${second}`)
+    .join("\n");
+  process.stderr.write(
+    `[similarity-export-tiny] WARNING: ${collisions.length} md5_48 collision(s). `
+    + "Tracks of the second file in each pair will be reported under the first file's "
+    + `path in the tiny bundle:\n${detail}\n`,
+  );
+}
+
 async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>> {
   const md548Context = await resolveMd548Context(hvscRoot);
   const songlengths = await loadSonglengthsData(hvscRoot);
+  const collisions: Array<[string, string, string]> = [];
+
   if (songlengths.sourcePath && songlengths.pathByMd5.size > 0) {
     const result = new Map<string, string>();
     for (const [md5, relativePath] of songlengths.pathByMd5) {
-      result.set(md5.slice(0, 12), relativePath);
+      recordMd548(result, collisions, md5.slice(0, 12), relativePath);
     }
+    warnAboutMd548Collisions(collisions);
     return result;
   }
 
@@ -229,9 +275,10 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
       }
       const relativePath = path.relative(songlengths.musicRoot, absolutePath).replace(/\\/g, "/");
       const md548 = await computeMd548(md548Context, relativePath);
-      result.set(md548.toString("hex"), relativePath);
+      recordMd548(result, collisions, md548.toString("hex"), relativePath);
     }
   }
+  warnAboutMd548Collisions(collisions);
   return result;
 }
 
@@ -465,10 +512,24 @@ export async function buildTinySimilarityExport(
   const styleTable = buildStyleTable();
   const md548Context = await resolveMd548Context(options.hvscRoot);
   const fileIdentityTable = Buffer.alloc(filePaths.length * 6);
+  // Detected HERE, at build time, rather than only when a consumer opens the bundle.
+  // These are the identities that actually get published, and a collision among them
+  // means two files are indistinguishable to every consumer forever -- something to
+  // learn before the release, not after.
+  const identitySeen = new Map<string, string>();
+  const identityCollisions: Array<[string, string, string]> = [];
   for (let index = 0; index < filePaths.length; index += 1) {
     const md548 = await computeMd548(md548Context, filePaths[index]!);
+    const key = md548.toString("hex");
+    const previous = identitySeen.get(key);
+    if (previous !== undefined && previous !== filePaths[index]) {
+      identityCollisions.push([key, previous, filePaths[index]!]);
+    } else {
+      identitySeen.set(key, filePaths[index]!);
+    }
     writeUInt48LE(fileIdentityTable, md548, index * 6);
   }
+  warnAboutMd548Collisions(identityCollisions);
 
   const fileTrackCountTable = Buffer.alloc(filePaths.length);
   for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
@@ -728,6 +789,55 @@ export async function openTinySimilarityDataset(
 
   const rowsByTrackId = new Map(rows.map((row) => [row.track_id, row]));
   const trackOrdinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
+
+  /**
+   * Look a track id up, tolerating an extra leading path segment.
+   *
+   * The bundle stores files by a 48-bit MD5 prefix rather than by path, so the
+   * reader reconstructs track ids by walking the HVSC tree — relative to the MUSIC
+   * root, which yields "DEMOS/x.sid#1". Whether the SQLite and lite exports agree
+   * depends on where the operator pointed `sidPath`: at the HVSC root they produce
+   * "C64Music/DEMOS/x.sid#1" instead.
+   *
+   * When the two disagree, nothing fails loudly. The bundle builds, reports correct
+   * track and file counts, and then resolves nothing at all: measured on an
+   * 11,284-track corpus, every lookup returned null and every station came back
+   * empty. The builder already accepts either form when hashing files, so accepting
+   * either form here is what makes the three profiles genuinely interchangeable
+   * instead of interchangeable-only-if-configured-identically.
+   *
+   * The fallback is tried only after an exact miss, and only for ids that have a
+   * leading segment to drop, so it cannot shadow a real row.
+   */
+  /**
+   * The row's own id for a caller-supplied id, so exclusion sets compare like with
+   * like.
+   *
+   * Without this, tolerating an extra leading segment on LOOKUP would fix resolution
+   * and leave exclusion broken: the caller passes "C64Music/x.sid#1" while the row
+   * calls itself "x.sid#1", so `favoriteTrackIds.includes(row.track_id)` never
+   * matches and a station recommends its own seed back at similarity 1.0.
+   */
+  function canonicalTrackId(trackId: string): string {
+    return findRow(trackId).row?.track_id ?? trackId;
+  }
+
+  function findRow(trackId: string): { row: (typeof rows)[number] | undefined; ordinal: number | undefined } {
+    const exact = rowsByTrackId.get(trackId);
+    if (exact) {
+      return { row: exact, ordinal: trackOrdinalByTrackId.get(trackId) };
+    }
+    const separator = trackId.indexOf("/");
+    if (separator <= 0) {
+      return { row: undefined, ordinal: undefined };
+    }
+    const withoutLeadingSegment = trackId.slice(separator + 1);
+    return {
+      row: rowsByTrackId.get(withoutLeadingSegment),
+      ordinal: trackOrdinalByTrackId.get(withoutLeadingSegment),
+    };
+  }
+
   return {
     info: {
       format: "tiny",
@@ -759,7 +869,7 @@ export async function openTinySimilarityDataset(
     },
     resolveTracks(trackIds) {
       return new Map(trackIds.flatMap((trackId) => {
-        const row = rowsByTrackId.get(trackId);
+        const { row } = findRow(trackId);
         return row ? [[trackId, {
           track_id: row.track_id,
           sid_path: row.sid_path,
@@ -781,7 +891,7 @@ export async function openTinySimilarityDataset(
       }));
     },
     resolveTrack(trackId) {
-      const row = rowsByTrackId.get(trackId);
+      const { row } = findRow(trackId);
       return row ? {
         track_id: row.track_id,
         sid_path: row.sid_path,
@@ -803,14 +913,13 @@ export async function openTinySimilarityDataset(
     },
     getTrackVectors(trackIds) {
       return new Map(trackIds.flatMap((trackId) => {
-        const row = rowsByTrackId.get(trackId);
+        const { row } = findRow(trackId);
         return row ? [[trackId, [row.e, row.m, row.c, row.p ?? 3]]] : [];
       }));
     },
     getNeighbors(trackId, limit = 20, excludeTrackIds = []) {
       const exclude = new Set(excludeTrackIds);
-      const row = rowsByTrackId.get(trackId);
-      const trackOrdinal = trackOrdinalByTrackId.get(trackId);
+      const { row, ordinal: trackOrdinal } = findRow(trackId);
       if (!row || trackOrdinal === undefined) {
         return [];
       }
@@ -851,22 +960,31 @@ export async function openTinySimilarityDataset(
         });
     },
     getStyleMask(trackId) {
-      const row = rowsByTrackId.get(trackId);
+      const { row } = findRow(trackId);
       return row ? row.styleMask : null;
     },
     recommendFromFavorites(options) {
       const weightsByTrackId = options.weightsByTrackId ?? {};
-      const excludeTrackIds = new Set(options.excludeTrackIds ?? []);
+      const excludeTrackIds = new Set((options.excludeTrackIds ?? []).map(canonicalTrackId));
+      const favoriteCanonicalIds = new Set(options.favoriteTrackIds.map(canonicalTrackId));
+      // Re-key the weights on canonical ids too: the fallback path looks them up by
+      // the ROW's id, which is the music-root-relative form, so caller-supplied
+      // weights would otherwise be silently ignored and every favourite treated as
+      // equally weighted.
+      const weightsByCanonicalId: Record<string, number> = {};
+      for (const [trackId, weight] of Object.entries(weightsByTrackId)) {
+        weightsByCanonicalId[canonicalTrackId(trackId)] = weight;
+      }
       const scores = new Map<number, number>();
       let frontier = new Map<number, number>();
       const favoriteRows: TinyTrackRecord[] = [];
       for (const favoriteTrackId of options.favoriteTrackIds) {
-        const favorite = rowsByTrackId.get(favoriteTrackId);
+        const { row: favorite, ordinal: favoriteOrdinalFromLookup } = findRow(favoriteTrackId);
         if (!favorite) {
           continue;
         }
         favoriteRows.push(favorite);
-        const favoriteOrdinal = trackOrdinalByTrackId.get(favoriteTrackId);
+        const favoriteOrdinal = favoriteOrdinalFromLookup;
         if (favoriteOrdinal === undefined) {
           continue;
         }
@@ -908,7 +1026,7 @@ export async function openTinySimilarityDataset(
             let totalWeight = 0;
             let total = 0;
             for (const row of favoriteRows) {
-              const weight = weightsByTrackId[row.track_id] ?? 1;
+              const weight = weightsByCanonicalId[row.track_id] ?? 1;
               totalWeight += weight;
               const vector = [row.e, row.m, row.c, row.p ?? 3];
               total += (vector[dimension] ?? 0) * weight;
@@ -919,7 +1037,7 @@ export async function openTinySimilarityDataset(
 
         for (let trackOrdinal = 0; trackOrdinal < rows.length; trackOrdinal += 1) {
           const row = rows[trackOrdinal]!;
-          if (excludeTrackIds.has(row.track_id) || options.favoriteTrackIds.includes(row.track_id)) {
+          if (excludeTrackIds.has(row.track_id) || favoriteCanonicalIds.has(row.track_id)) {
             continue;
           }
           const fallbackScore = cosine(centroid, normalizeVector([row.e, row.m, row.c, row.p ?? 3]));
@@ -929,7 +1047,7 @@ export async function openTinySimilarityDataset(
 
       return [...scores.entries()]
         .map(([trackOrdinal, score]) => ({ trackOrdinal, score }))
-        .filter(({ trackOrdinal }) => !excludeTrackIds.has(rows[trackOrdinal]!.track_id) && !options.favoriteTrackIds.includes(rows[trackOrdinal]!.track_id))
+        .filter(({ trackOrdinal }) => !excludeTrackIds.has(rows[trackOrdinal]!.track_id) && !favoriteCanonicalIds.has(rows[trackOrdinal]!.track_id))
         .sort((left, right) => right.score - left.score || left.trackOrdinal - right.trackOrdinal)
         .slice(0, Math.max(1, options.limit ?? 100))
         .map(({ trackOrdinal, score }, index) => {

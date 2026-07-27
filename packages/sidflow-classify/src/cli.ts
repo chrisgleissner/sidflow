@@ -5,6 +5,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { resetConfigCache } from "@sidflow/common";
+import type { SidEngine } from "@sidflow/libsidplayfp-wasm";
 import {
   type AutoTagProgress,
   type BuildAudioCacheResult,
@@ -41,6 +42,7 @@ interface ClassifyCliOptions {
   metadataModule?: string;
   renderModule?: string;
   resumeFromFeaturesFile?: string;
+  sidEngine?: SidEngine;
 }
 
 interface ParseResult {
@@ -62,8 +64,11 @@ const KNOWN_FLAGS = new Set([
   "--metadata-module",
   "--render-module",
   "--resume-from-features",
+  "--sid-engine",
   "--help"
 ]);
+
+const SID_ENGINES = new Set<SidEngine>(["residfp", "sidlite"]);
 
 export function parseClassifyArgs(argv: string[]): ParseResult {
   const options: ClassifyCliOptions = {};
@@ -100,6 +105,7 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
       case "--predictor-module":
       case "--metadata-module":
       case "--render-module":
+      case "--sid-engine":
       case "--resume-from-features": {
         const next = argv[index + 1];
         if (!next || next.startsWith("--")) {
@@ -124,6 +130,13 @@ export function parseClassifyArgs(argv: string[]): ParseResult {
             options.metadataModule = next;
           } else if (token === "--resume-from-features") {
             options.resumeFromFeaturesFile = next;
+          } else if (token === "--sid-engine") {
+            const engine = next.trim().toLowerCase() as SidEngine;
+            if (!SID_ENGINES.has(engine)) {
+              errors.push(`--sid-engine must be residfp or sidlite (received ${next})`);
+            } else {
+              options.sidEngine = engine;
+            }
           } else {
             options.renderModule = next;
           }
@@ -170,6 +183,9 @@ function printHelp(): void {
     "  --metadata-module <path>          Module exporting an extractMetadata override",
     "  --render-module <path>            Module exporting a render override for WAV cache",
     "  --resume-from-features <path>     Skip Phase 1 (rendering/extraction); run Phase 2 from this features JSONL",
+    "  --sid-engine <residfp|sidlite>    SID emulation to render with. Default: sidlite (roughly an order of",
+    "                                    magnitude faster). Use residfp for reference-fidelity audio.",
+    "                                    Also settable with SIDFLOW_SID_ENGINE.",
     "  --help                            Show this message and exit"
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
@@ -326,9 +342,29 @@ function createProgressLogger(stdout: NodeJS.WritableStream) {
       const featureHealth = progress.completeFeaturePercent === null
         ? `completeRealistic=${progress.completeFeatureFiles}/${progress.featureHealthCheckedFiles} (unknown)`
         : `completeRealistic=${progress.completeFeatureFiles}/${progress.featureHealthCheckedFiles} (${progress.completeFeaturePercent.toFixed(1)}%)`;
+      // Memory and engine counters, so a run heading for exhaustion is visible while it
+      // develops rather than only in a post-mortem crash report.
+      const mib = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))}Mi`;
+      const resources = progress.resources
+        ? ` [res rss=${mib(progress.resources.rssBytes)}`
+          + ` ext=${mib(progress.resources.externalBytes)}`
+          + (progress.resources.renderEnginesCreated === undefined
+            ? ""
+            : ` engines=${progress.resources.renderEnginesCreated}`
+              + `/live=${progress.resources.renderEnginesLive}`
+              + ` wExt=${mib(progress.resources.renderWorkerExternalBytes ?? 0)}`)
+          + (progress.resources.rssGrowthBytesPerThousandSongs === null
+            ? ""
+            : ` growth=${mib(progress.resources.rssGrowthBytesPerThousandSongs)}/1k`)
+          + `]`
+        : "";
+      const integrity = progress.integrity ? ` [${progress.integrity}]` : "";
       stdout.write(
-        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}] [featureHealth ${featureHealth}]${file} - ${elapsed}`
+        `\r[${phaseLabel}] ${progress.processedFiles}/${progress.totalFiles} files, ${remaining} remaining (${percent}%) [${counters}] [featureHealth ${featureHealth}]${integrity}${resources}${file} - ${elapsed}`
       );
+      for (const warning of progress.resources?.warnings ?? []) {
+        stdout.write(`\n[classify-resources] WARNING: ${warning}\n`);
+      }
     },
 
     logThread(update: ThreadActivityUpdate): void {
@@ -425,6 +461,19 @@ export async function runClassifyCli(
       // Reset config cache to ensure the new env var is picked up
       resetConfigCache();
     }
+
+    // Render workers are worker_threads and inherit process.env, so this is how
+    // the choice reaches them — same mechanism as SIDFLOW_CONFIG above. An
+    // explicit flag beats an inherited environment value.
+    if (options.sidEngine) {
+      process.env.SIDFLOW_SID_ENGINE = options.sidEngine;
+    }
+
+    // Once, before any render worker starts. Without the ROMs libsidplayfp
+    // initialises a tune but never advances it, and the run would still produce
+    // features — from silence.
+    const { ensureSystemRomsForRun } = await import("./render/engine-factory.js");
+    await ensureSystemRomsForRun();
 
     // By default, Essentia feature extraction is required.
     // Users must explicitly opt into degraded heuristic fallback.

@@ -39,7 +39,20 @@ import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
-import { createEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
+import { createEngine, resolveClassifyEngine, setEngineFactoryOverride } from "./render/engine-factory.js";
+import { indexExtractedSongs, resumeKeyFor } from "./resume-index.js";
+import { resolveAnalysisWindow } from "./analysis-window.js";
+import {
+  createFeatureIntegrityTally,
+  featureIntegrityBreach,
+  formatFeatureIntegrity,
+  recordFeatureIntegrity,
+} from "./feature-integrity.js";
+import {
+  beginResourceTracking,
+  resourceWarnings,
+  snapshotResourceMetrics,
+} from "./classify-resource-metrics.js";
 import {
   WAV_HASH_EXTENSION,
   SID_TRACE_EXTENSION,
@@ -67,8 +80,12 @@ import {
   type WavRenderSettingsSidecar,
 } from "./wav-render-settings.js";
 import { HEARTBEAT_CONFIG, RETRY_CONFIG, createClassifyError, isRecoverableError, isSkippableSidError, withRetry, type ThreadCounters, type WorkerPhase } from "./types/state-machine.js";
+import { buildSimilarityVector } from "./similarity-vector.js";
 import {
   DeterministicRatingModelBuilder,
+  MIN_RECORDS_FOR_RATING_QUANTILES,
+  buildRatingQuantiles,
+  computeRawRatingScores,
   buildPerceptualVector,
   hasRealisticCompleteFeatureVector,
   inspectFeatureVectorHealth,
@@ -1489,8 +1506,18 @@ export async function buildAudioCache(
           // tagging phase can reuse it without a redundant second render pass.
           captureTrace: true,
           traceClock: sidMetadataCache.get(sidFile)?.clock,
-          traceIntroSkipSec: resolveIntroSkipSec(plan.config),
-          traceAnalysisSec: resolveMaxClassifySec(plan.config),
+          // Window scaled to the tune. A fixed 15s skip lands past the end of a short
+          // subsong, which is how 18.66% of the corpus came to be described by a window
+          // containing no music. Recorded in the sidecar so the consumer uses the same
+          // window the renderer did rather than re-deriving it.
+          ...(() => {
+            const window = resolveAnalysisWindow(
+              typeof targetDurationMs === "number" && targetDurationMs > 0 ? targetDurationMs / 1000 : undefined,
+              resolveIntroSkipSec(plan.config),
+              resolveMaxClassifySec(plan.config),
+            );
+            return { traceIntroSkipSec: window.skipSeconds, traceAnalysisSec: window.analysisSeconds };
+          })(),
         };
         let renderResult: ClassificationRenderResult | null = null;
 
@@ -1906,6 +1933,38 @@ export interface AutoTagProgress {
   featureHealthCheckedFiles: number;
   completeFeatureFiles: number;
   completeFeaturePercent: number | null;
+  /**
+   * Memory and engine counters sampled live.
+   *
+   * A full corpus pass has died with "Out of memory" during WASM instantiation at three
+   * different points, and everything known about it came from a post-mortem crash report
+   * -- one number, no history, no way to distinguish a leak from a spike. Reported on
+   * every progress tick so exhaustion is visible while it develops.
+   */
+  resources?: ClassifyResourceProgress;
+  /**
+   * Live result of the feature-integrity assertion, e.g. "integrity=ok(12000)". Surfaced
+   * on every tick so a systematically wrong corpus is visible in the first minute rather
+   * than discovered by auditing feature distributions afterwards.
+   */
+  integrity?: string;
+}
+
+export interface ClassifyResourceProgress {
+  rssBytes: number;
+  heapUsedBytes: number;
+  externalBytes: number;
+  arrayBuffersBytes: number;
+  rssGrowthBytes: number;
+  rssGrowthBytesPerThousandSongs: number | null;
+  /** Render-pool totals. Absent before any render worker has completed a job. */
+  renderWorkers?: number;
+  renderEnginesCreated?: number;
+  renderEnginesLive?: number;
+  /** Summed across render-worker isolates. Where WASM linear memory shows up. */
+  renderWorkerExternalBytes?: number;
+  renderWorkerArrayBuffersBytes?: number;
+  warnings: string[];
 }
 
 export type AutoTagProgressCallback = (progress: AutoTagProgress) => void;
@@ -2109,12 +2168,57 @@ export async function generateAutoTags(
   const grouped = new Map<string, Map<string, AutoTagEntry>>();
   const songlengthPromises = new Map<string, Promise<number[] | undefined>>();
 
+  const integrityTally = createFeatureIntegrityTally();
+
   const buildFeatureHealthProgress = () => ({
     featureHealthCheckedFiles,
     completeFeatureFiles,
     completeFeaturePercent:
       featureHealthCheckedFiles > 0 ? (completeFeatureFiles / featureHealthCheckedFiles) * 100 : null,
   });
+
+  /**
+   * Sampled on every progress tick. The render-pool half matters most: engines are
+   * created and disposed PER JOB inside worker threads, so the main process cannot
+   * observe the allocation that actually fails.
+   */
+  const buildResourceProgress = (
+    songsSoFar: number,
+  ): { resources: ClassifyResourceProgress; integrity: string } => {
+    const snapshot = snapshotResourceMetrics(songsSoFar);
+    const pool = rendererPool?.resourceSummary();
+    const warnings = resourceWarnings(snapshot);
+    if (pool && pool.enginesLive > pool.workers + 2) {
+      warnings.push(
+        `${pool.enginesLive} render engines live across ${pool.workers} workers;`
+        + " one per busy worker is expected, so engines are outliving their jobs",
+      );
+    }
+    return {
+      integrity: formatFeatureIntegrity(integrityTally),
+      resources: {
+        rssBytes: snapshot.rssBytes,
+        heapUsedBytes: snapshot.heapUsedBytes,
+        externalBytes: snapshot.externalBytes,
+        arrayBuffersBytes: snapshot.arrayBuffersBytes,
+        rssGrowthBytes: snapshot.rssGrowthBytes,
+        // Withheld below 500 songs: one-off startup allocation dominates and extrapolating
+        // it produced figures like "23,533Mi per 1000 songs" from a 40-song run.
+        rssGrowthBytesPerThousandSongs:
+          snapshot.songsProcessed >= 500 ? snapshot.rssGrowthBytesPerThousandSongs : null,
+        ...(pool
+          ? {
+            renderWorkers: pool.workers,
+            renderEnginesCreated: pool.enginesCreated,
+            renderEnginesLive: pool.enginesLive,
+            renderWorkerExternalBytes: pool.totalWorkerExternalBytes,
+            renderWorkerArrayBuffersBytes: pool.totalWorkerArrayBuffersBytes,
+          }
+          : {}),
+        warnings,
+      },
+    };
+  };
   
   // Set up JSONL file for incremental writes during classification
   const classifiedPath = plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified");
@@ -2149,12 +2253,25 @@ export async function generateAutoTags(
   
   // Cache for auto-tags.json files to avoid repeated reads for songs in the same directory
   const autoTagsCache = new Map<string, Record<string, unknown> | null>();
-  
+
   /**
-   * Check if a song is already classified using cached auto-tags data.
-   * This is more efficient than calling isAlreadyClassified repeatedly
-   * because many songs share the same auto-tags.json file.
+   * Songs already extracted by a previous, unfinished run of this corpus.
+   *
+   * See resume-index.ts for why the auto-tags cannot answer this and the features JSONL
+   * has to. Empty unless a resume was requested.
    */
+  let alreadyExtractedKeys = new Set<string>();
+  const loadPreviouslyExtracted = async (): Promise<void> => {
+    alreadyExtractedKeys = await indexExtractedSongs(
+      plan.config.classifiedPath ?? path.join(plan.tagsPath, "classified"),
+    );
+    if (alreadyExtractedKeys.size > 0) {
+      classifyLogger.info(
+        `Resume: ${alreadyExtractedKeys.size} songs already extracted in a previous run of this corpus`,
+      );
+    }
+  };
+
   const checkAlreadyClassified = async (
     sidFile: string,
     songIndex?: number
@@ -2184,19 +2301,21 @@ export async function generateAutoTags(
       autoTagsCache.set(autoTagsFile, tags);
     }
     
-    if (!tags) {
-      return false;
+    if (tags) {
+      const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
+      const key = songIndex !== undefined ? `${baseKey}:${songIndex}` : baseKey;
+
+      if (key in tags) {
+        const entry = tags[key] as Record<string, unknown>;
+        if (entry && (typeof entry.e === "number" || typeof entry.m === "number" || typeof entry.c === "number")) {
+          return true;
+        }
+      }
     }
-    
-    const baseKey = toPosixRelative(resolveAutoTagKey(relativePath, plan.classificationDepth));
-    const key = songIndex !== undefined ? `${baseKey}:${songIndex}` : baseKey;
-    
-    if (key in tags) {
-      const entry = tags[key] as Record<string, unknown>;
-      return entry && (typeof entry.e === "number" || typeof entry.m === "number" || typeof entry.c === "number");
-    }
-    
-    return false;
+
+    // Falls through to the features JSONL, which is the only record a crashed run
+    // leaves behind. Without this a resume re-renders everything it had already done.
+    return alreadyExtractedKeys.has(resumeKeyFor(toPosixRelative(relativePath), songIndex));
   };
 
   const getSongDurations = (sidFile: string): Promise<number[] | undefined> => {
@@ -2266,6 +2385,12 @@ export async function generateAutoTags(
   // Initialise the detailed lifecycle logger now that we know totalFiles.
   const lifecycle = new SongLifecycleLogger(lifecycleLogPath, totalFiles);
   lifecycle.emitRunStart(runContext);
+  beginResourceTracking();
+
+  if (skipAlreadyClassified && !plan.forceRebuild) {
+    await loadPreviouslyExtracted();
+  }
+
   const jobs: AutoTagJob[] = [];
   let metadataProcessed = 0;
 
@@ -2340,6 +2465,7 @@ export async function generateAutoTags(
       const wavPath = resolveWavPath(plan, sidFile, songCount > 1 ? songIndex : undefined);
       const index = Math.min(Math.max(songIndex - 1, 0), (durations?.length ?? 1) - 1);
       const hvscDuration = durations?.[index];
+
       const cappedDuration =
         typeof hvscDuration === "number" && Number.isFinite(hvscDuration) && hvscDuration > 0
           ? Math.min(hvscDuration, maxRenderMs)
@@ -2389,6 +2515,7 @@ export async function generateAutoTags(
     classifyLogger.info(`Skipped ${skippedAlreadyClassifiedCount} already classified songs`);
   }
 
+
   let processedSongs = 0;
 
   // Renderer pool for inline WAV rendering during tagging phase.
@@ -2410,6 +2537,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile,
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
   };
 
@@ -2423,6 +2551,20 @@ export async function generateAutoTags(
       manual_ratings: PartialTagRatings | null;
       features: FeatureVector;
       render_engine: string;
+      /**
+       * Which SID emulation produced the audio, when the renderer was the WASM one.
+       *
+       * `render_engine` cannot carry this: it holds "wasm" and three separate call
+       * sites branch on that exact value to decide whether a register trace is
+       * available, and 34 of the 58 similarity dimensions are derived from that
+       * trace. Making it more specific would silently switch them off.
+       *
+       * Recorded because mixing emulations within a corpus produces features that
+       * are not comparable, and until now nothing downstream could tell which
+       * emulation a track came from -- so a corpus half-rendered by each was
+       * indistinguishable from a clean one.
+       */
+      sid_engine: string | null;
       degraded: boolean;
       classification_depth: number;
       auto_file_path: string;
@@ -2466,6 +2608,30 @@ export async function generateAutoTags(
         const rec = intermediateBuffer.get(nextIntermediateIndex);
         if (!rec) return;
         intermediateBuffer.delete(nextIntermediateIndex);
+
+        // Asserted as records are produced, not after the run. A systematically wrong
+        // corpus is caught in the first minute instead of after hours of rendering, and
+        // the wrong data never reaches an export.
+        const integrityViolations = recordFeatureIntegrity(
+          integrityTally,
+          `${rec.sid_path}#${rec.song_index ?? 1}`,
+          rec.features,
+        );
+        if (integrityViolations.length > 0) {
+          classifyLogger.warn(
+            `[feature-integrity] ${rec.sid_path}#${rec.song_index ?? 1}: `
+            + integrityViolations.map((violation) => violation.detail).join("; "),
+          );
+        }
+        const integrityBreach = featureIntegrityBreach(integrityTally);
+        if (integrityBreach) {
+          throw new Error(
+            `Classification aborted by the feature-integrity check: ${integrityBreach}. `
+            + "This indicates a defect producing internally inconsistent records rather than "
+            + "difficult individual tunes; continuing would spend hours producing a corpus "
+            + "that has to be discarded.",
+          );
+        }
 
         builder.add(rec.features);
         await appendCanonicalJsonLines(featuresJsonlFile, [rec as unknown as JsonValue], {
@@ -2630,8 +2796,17 @@ export async function generateAutoTags(
               targetDurationMs: job.targetDurationMs,
               captureTrace: runtimeMode.captureTrace,
               traceClock: sidMetadataCache.get(job.sidFile)?.clock,
-              traceIntroSkipSec: resolveIntroSkipSec(plan.config),
-              traceAnalysisSec: resolveMaxClassifySec(plan.config),
+              // See the note at the other render site: the window is scaled to the tune.
+              ...(() => {
+                const window = resolveAnalysisWindow(
+                  typeof job.targetDurationMs === "number" && job.targetDurationMs > 0
+                    ? job.targetDurationMs / 1000
+                    : undefined,
+                  resolveIntroSkipSec(plan.config),
+                  resolveMaxClassifySec(plan.config),
+                );
+                return { traceIntroSkipSec: window.skipSeconds, traceAnalysisSec: window.analysisSeconds };
+              })(),
             } satisfies Omit<RenderWavOptions, "maxRenderSeconds" | "renderSampleRate" | "maxRenderWallTimeMs" | "renderProfile">;
 
             try {
@@ -2904,6 +3079,7 @@ export async function generateAutoTags(
         manual_ratings: manualRatings,
         features: extractedFeatures,
         render_engine: finalRuntimeMode.renderEngine,
+        sid_engine: finalRuntimeMode.renderEngine === "wasm" ? resolveClassifyEngine() : null,
         degraded:
           finalRuntimeMode.degraded
           || finalRenderResult?.degraded === true
@@ -2970,6 +3146,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile: "building dataset-normalized rating model",
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
     const ratingModelStartedAt = Date.now();
     telemetry.emit({
@@ -2981,6 +3158,54 @@ export async function generateAutoTags(
 
     // Build dataset-normalized rating model and persist it.
     const ratingModel: DeterministicRatingModel = builder.finalize(renderEngineForRecords);
+
+    // Calibrate the 1-5 rating scale against this corpus's own distribution.
+    //
+    // The uncalibrated mapping spreads a raw score linearly over five levels, and
+    // on a real corpus that collapses: each raw score is a weighted average of
+    // sigmoids of clamped z-scores, so levels 1 and 5 require several sigmoids at
+    // a joint ~2.4-sigma extreme at once. Measured on HVSC, 3 of 5 levels were
+    // ever used and up to 94% of tracks landed on a single level, leaving mood
+    // with 0.397 of the 2.322 bits a five-level scale can carry. Quantile
+    // breakpoints populate all five levels by construction while preserving the
+    // ordering exactly, since the mapping is monotone.
+    //
+    // This needs the finalized mu/sigma, so it cannot run during the streaming
+    // pass -- but the features file is about to be read in full for phase 2
+    // anyway, so the extra pass is cheap relative to rendering.
+    try {
+      const calibrationContent = await readFile(featuresJsonlFile, "utf8");
+      const rawScores: Array<{ c: number; e: number; m: number }> = [];
+      for (const line of calibrationContent.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line) as { features?: FeatureVector };
+          if (!parsed.features) continue;
+          rawScores.push(computeRawRatingScores(ratingModel, parsed.features));
+        } catch {
+          continue;
+        }
+      }
+      const quantiles = buildRatingQuantiles(rawScores);
+      if (quantiles) {
+        ratingModel.ratingQuantiles = quantiles;
+        classifyLogger.info(
+          `Calibrated rating scale on ${rawScores.length} tracks ` +
+            `(e breakpoints ${quantiles.e.map((v) => v.toFixed(4)).join("/")})`
+        );
+      } else {
+        classifyLogger.warn(
+          `Only ${rawScores.length} tracks available; need ${MIN_RECORDS_FOR_RATING_QUANTILES} ` +
+            `to calibrate the rating scale. Falling back to the uncalibrated mapping, which ` +
+            `concentrates most tracks on level 3.`
+        );
+      }
+    } catch (error) {
+      classifyLogger.warn(
+        `Rating-scale calibration skipped: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
     telemetry.emit({
       event: "rating_model_build_complete",
       timestamp: new Date().toISOString(),
@@ -3001,6 +3226,9 @@ export async function generateAutoTags(
         featureSetVersion: ratingModel.featureSetVersion,
         renderEngine: ratingModel.renderEngine,
         features: ratingModel.features,
+        // Persisted so the discretisation is inspectable and reproducible: the
+        // levels are corpus-relative percentiles, and these are the cut points.
+        ratingQuantiles: ratingModel.ratingQuantiles ?? null,
       } as unknown as JsonValue,
       { details: { phase: "rating-model" } }
     );
@@ -3027,6 +3255,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
     const resultsWriteStartedAt = Date.now();
 
@@ -3110,8 +3339,11 @@ export async function generateAutoTags(
         classified_at: nowIso,
         render_engine: rec.render_engine,
         features: rec.features as unknown as AudioFeatures,
-        vector: buildPerceptualVector(ratingModel, rec.features),
+        vector: buildSimilarityVector(ratingModel, rec.features),
       };
+      if (rec.sid_engine) {
+        classificationRecord.sid_engine = rec.sid_engine;
+      }
       if (rec.song_index) {
         classificationRecord.song_index = rec.song_index;
       }
@@ -3196,6 +3428,7 @@ export async function generateAutoTags(
       elapsedMs: Date.now() - startTime,
       currentFile: "writing final classification records",
       ...buildFeatureHealthProgress(),
+      ...buildResourceProgress(processedSongs),
     });
   }
 
