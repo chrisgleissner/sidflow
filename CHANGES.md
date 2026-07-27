@@ -103,6 +103,40 @@ The bundle bytes are not involved; these affect consumers of `@sidflow/common`.
 - `computeSimilarityStyleMask` is replaced by `buildStyleMaskIndex`: a station is "the most
   X tracks in this corpus" and cannot be derived from one track in isolation.
 
+### CLI player
+
+Verifying `sidflow-play` end to end against the 0.8.0 artefacts turned up four defects.
+
+- **Tiny stations collapsed to three tracks.** Tiny's reported score was changed earlier in
+  this release from a clamped walk score to one normalised against the strongest match —
+  which reads as a sensible `[0, 1]` value but is a *rank*, not a similarity. The station
+  layer applies an absolute minimum-similarity threshold (0.73 at the default adventure
+  setting), so a 100-track station came back with 3. The field now carries the product of
+  the stored edge similarities along the best path that reached a track: bounded, decaying
+  with distance, and on the same scale as the cosine the other two profiles report.
+- **`bun run build:db` crashed on any corpus containing feature-phase output.**
+  `data/classified` accumulates `features_*.jsonl` from runs where extraction completed but
+  rating did not, and those records carry no `ratings`. The builder walked the tree
+  recursively and destructured `ratings` off every line. Measured on an 87,868-track
+  workspace it could not build at all. It now skips and counts those records, as the
+  similarity export already did.
+- **Every `--persona` playlist returned one song.** A persona seeds the recommender with
+  its `ratingTargets`, which are integers, so the nearest neighbours all share the same
+  `[e, m, c]` — and the diversity filter measures Euclidean distance over exactly those
+  three integers, so every candidate scored 0 and was dropped. Diversity is now applied and
+  then relaxed rather than allowed to starve the result.
+- **Decayed feedback was silently ignored.** `calculateNormalizedSongFeedback` reads
+  `decayedLikes` while a `DatabaseRecord` names it `decayed_likes`, so the function fell
+  back to raw lifetime totals for every track and recency did not influence recommendations
+  at all. This predates the release; it was invisible because the diversity filter
+  truncated result lists to one item.
+
+New: `scripts/verify-station-cli.ts` drives the same code path as `sidflow-play station`
+against all three profiles and asserts the properties a listener experiences — seeds
+resolve, stations fill, no same-file siblings of a seed, no tune contributes twice, every
+persona can build a station, and lite reproduces the authoritative ranking at 0.970
+candidate overlap.
+
 ### New release assets
 
 Both additive; no existing filename changed.

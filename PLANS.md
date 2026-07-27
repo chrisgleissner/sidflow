@@ -18,6 +18,16 @@
 
 ### Progress
 
+- 2026-07-27: **CLI player verified against the 0.8.0 artefacts, and four defects fixed.**
+  `scripts/verify-station-cli.ts` drives the same path as `sidflow-play station` across all
+  three profiles. It found that tiny stations collapsed to 3 tracks -- a regression from
+  this branch's own score normalisation, which produced a rank where the station layer
+  expects a similarity and applies an absolute 0.73 threshold. Also fixed: `build:db`
+  crashed outright on any corpus carrying feature-phase output; every `--persona` playlist
+  returned one song because the diversity filter measures distance over three integers and
+  a persona seeds on exact integer targets; and decayed feedback was ignored entirely
+  because of a snake_case/camelCase mismatch, invisible because the diversity truncation
+  meant the test never had a second element to compare.
 - 2026-07-27: Baseline reproduction PASSED before any change. Lite rebuilt to
   `fe92bd57...a346cd` and tiny to `081664d8...cba7c5`, byte-identical to the published
   artefacts. Tiny's byte-identity is the load-bearing half: it stores a 48-bit MD5 prefix of
