@@ -7,6 +7,16 @@ impact of the third export on `u64deck`.
 **Artefacts audited:** all three profiles of releases `sidcorr-hvsc-full-20260407T115218Z` (v2) and
 `sidcorr-hvsc-full-20260726T203707Z` (v3, currently `latest`), downloaded from GitHub and verified
 against their published `SHA256SUMS`.
+**Source audited:** `fix/libsidplayfp-wasm-pin-and-residfp-audit` at `c282fd5` (tag `0.7.0`) — the tree
+that produced the v3 artefacts, not `main`. Every line number below is that tree's; where the
+pre-merge `main` (`4f41ed2`) numbering differs, it is given alongside.
+
+> **Re-verified 2026-07-27 against the merge.** The branch landed on `main` as `1e59ab6` (PR #95,
+> 09:25). It was based on `4f41ed2` with nothing on `main` in between, so the merge introduced no
+> tree change: `git diff c282fd5 origin/main` is empty and `0.7.0` is now contained in `main`. Every
+> source reference in this document therefore resolves identically on today's `main`. The merge
+> closes the *lineage* half of F3 and leaves the *specification* half open — see §3.2. Corrections
+> made during that pass are marked **[corrected 2026-07-27]**.
 
 ---
 
@@ -17,7 +27,7 @@ was **effectively inert** (91.4% of all 87,073 tracks shared the literal vector 
 third fixes that completely (87,717 distinct vectors over 87,868 tracks). Anything built on v2
 similarity was, in measurable terms, recommending at random.
 
-Six findings need action. Three are correctness defects, one is a specification gap that silently
+Seven findings need action. Four are correctness defects, one is a specification gap that silently
 halves third-party recommendation quality, one is a size problem with a clear fix, and one is a
 product-level gap in the category system that directly limits the "category radio that adapts"
 use case.
@@ -26,10 +36,11 @@ use case.
 |---|---------|----------|----------|
 | F1 | The full manifest's own `file_checksums.sqlite_sha256` **never matches the published file**, in every release, by construction | High | §4.1 |
 | F2 | The lite spec omits the per-dimension weight table that defines the similarity metric; a spec-compliant consumer gets **40% agreement** with the authoritative result | High | §5.2 |
-| F3 | v3 was generated from an **unmerged branch**; `main`'s format specs describe neither the 58-dim vector nor the normalisation | High | §3.2 |
+| F3 | The v3 artefacts were cut from a branch that never updated the three format specs; now that it is merged, `main`'s specs describe neither the 58-dim vector nor the normalisation | High | §3.2 |
 | F4 | `u64deck`'s footprint goes **37.6 MB → 269.4 MB** and its recommendation metric silently switches | High | §8 |
 | F5 | Full is 125× lite mostly through avoidable encoding, not information: **~615 MB of the 1014 MB is recoverable** without losing a single value | Medium | §6 |
 | F6 | The persona/category system is unusable as a station filter — `theme_hunter` matches 0 tracks, `slow_ambient` matches 53% of the corpus, 10.8% of tracks are labelled both `fast_paced` and `slow_ambient` — and `c64commander` ships all nine as user-facing station tiles | Medium, but user-visible today | §9 |
+| F7 | Tiny's `recommendFromFavorites` computes a 5-hop neighbour walk and then **overwrites every score** with a cosine over the 4-dimension rating vector; measured, a seed's own stored neighbours land 5th and 7th while non-neighbours take the top slots | High | §5.3 |
 
 The good news, and it is substantial: **lite is an excellent representation of full.** Measured on
 3,000 random seeds, lite reproduces full's top-25 neighbours at **R@1 = 0.983, R@25 = 0.988**, and
@@ -87,31 +98,38 @@ bump alone, since the export does not record which HVSC release it was built fro
 
 ### 3.2 F3 — the published data is ahead of the published tooling
 
-The v3 export was produced by commits that live only on
-`origin/fix/libsidplayfp-wasm-pin-and-residfp-audit` — 87 commits ahead of `origin/main`, **not
-merged**. `main` (and the current working branch, which is identical to it) is at `4f41ed2`,
-2026-07-24.
+The v3 export was produced by commits that, when this audit was measured, lived only on
+`origin/fix/libsidplayfp-wasm-pin-and-residfp-audit` — 87 commits ahead of `origin/main`, unmerged.
+`main` was at `4f41ed2`, 2026-07-24. The branch head `c282fd5` carries tag `0.7.0`, and the export
+was cut from it: the release timestamp `20260726T203707Z` falls between `32f5087` (21:36:39 +0100)
+and `8503797` (21:38:41 +0100), the last two commits before the release chore.
 
-That branch contains the entire station-quality campaign that makes v3 good: the 58-dimension vector,
+**[corrected 2026-07-27] The branch has since been merged** — `1e59ab6`, PR #95, 09:25. It was
+branched from `4f41ed2` with nothing landing on `main` in between, so the merge was a clean
+fast-forward in effect: `git diff c282fd5 origin/main` is empty and `git branch -a --contains 0.7.0`
+now lists `main`. The lineage half of this finding is closed.
+
+The branch contains the entire station-quality campaign that makes v3 good: the 58-dimension vector,
 the learned weight schedule, rank-uniform normalisation, greedy forward feature selection, the
 playroutine-based composer signal. It also adds `doc/station-quality.md` and
-`scripts/verify-published-exports.ts`.
+`scripts/verify-published-exports.ts`, neither of which existed on `4f41ed2`.
 
 What it does **not** touch is the three files the `sidflow-data` README sends consumers to:
 
 ```
-git diff --stat origin/main..origin/fix/libsidplayfp-wasm-pin-and-residfp-audit \
+git diff --stat 4f41ed2..origin/fix/libsidplayfp-wasm-pin-and-residfp-audit \
   -- doc/similarity-export.md doc/similarity-export-lite.md doc/similarity-export-tiny.md
 (empty)
 ```
 
-So a third party who follows the documented path — read the spec on `main`, implement it, load the
-`latest` bundle — is implementing against a description that predates the artefact by one major
-revision. `doc/similarity-export.md` still documents `--dims 3|4`; nothing anywhere in `doc/`
-mentions 58 dimensions, rank-uniform normalisation, or the weight schedule.
+That is the half the merge did not fix, and merging arguably made it worse: the stale specs are now
+`main`'s specs rather than a branch's. `doc/similarity-export.md:142` still documents `--dims 3|4`;
+`grep -c 58` returns 0 in all three files, and nothing in `doc/` outside `station-quality.md`
+mentions rank-uniform normalisation or the weight schedule. So a third party who follows the
+documented path — read the spec on `main`, implement it, load the `latest` bundle — is still
+implementing against a description that predates the artefact by one major revision.
 
-**Action:** merge the branch, or at minimum land the three spec documents, before leaving v3 tagged
-`latest`. This is the root cause of F2 as well.
+**Action:** land the three spec documents. This is the root cause of F2 as well.
 
 ---
 
@@ -131,9 +149,9 @@ matched, in either release:
 
 `SHA256SUMS` is correct. The manifest is not.
 
-The cause is a plain ordering bug in `packages/sidflow-common/src/similarity-export.ts` (line 1156 on
-`main`, 1346 on the branch that produced v3 — unchanged by the branch). The file is hashed, then
-mutated:
+The cause is a plain ordering bug in `packages/sidflow-common/src/similarity-export.ts` (line 1346 on
+the tree that produced v3 and on today's `main`; 1156 on the pre-merge `main` — the branch moved the
+code without changing it). The file is hashed, then mutated:
 
 ```ts
 const sqliteChecksum = await computeFileChecksum(temporaryOutputPath);
@@ -161,12 +179,17 @@ entry (`server.py:4821–4823`) — correct by luck of ordering, not by design.
 In the same function the final manifest reports:
 
 ```ts
-neighbor_row_count: neighborCount > 0 ? tracks.length * neighborCount : 0,
+neighbor_row_count: neighborCount > 0 ? tracks.length * neighborCount : 0,   // :1359
 ```
 
-…while `insertNeighbors()` returns the number actually inserted, which is discarded. For v3 the two
-happen to coincide (2,196,700 = 87,868 × 25, verified against the DB). They will not coincide the
-moment any track yields fewer than `neighborCount` candidates.
+**[corrected 2026-07-27]** The measured count is not simply thrown away — it is written and then
+overwritten. `insertNeighbors()` returns the number actually inserted (`:1308`) and that value goes
+into the placeholder manifest embedded in the database's `meta` table (`:1324`, alongside
+`sqlite_sha256: "pending"`). The final manifest at `:1347` recomputes every field from scratch,
+substitutes `tracks.length * neighborCount`, and `UPDATE`s it over the placeholder — so both the
+embedded copy and the sidecar end up carrying the computed number, and the measured one survives
+nowhere. For v3 the two happen to coincide (2,196,700 = 87,868 × 25, verified against the DB). They
+will not coincide the moment any track yields fewer than `neighborCount` candidates.
 
 This matters more than it looks, because `u64deck` treats the field as authoritative and **hard-fails
 the import** on mismatch (`sidflow_similarity.py:364`):
@@ -310,23 +333,81 @@ Tiny carries **no vectors at all**. Its 1,834,993 bytes decompose exactly as:
 | header + style table | ~1,006 |
 
 That explains why tiny barely moved between v2 and v3 (+0.9%): its size is independent of vector
-width. It also means tiny cannot do vector arithmetic. Its `recommendFromFavorites` is a 5-hop decayed
-walk over the 3-neighbour graph (forward and reverse edges), which is a reasonable design given the
-constraint — but it is a fundamentally different retrieval model, and there is no meaningful "recall
-against full" to quote because tiny stores only 3 of full's 25 neighbours by construction.
+width. It also means tiny cannot do vector arithmetic — and there is no meaningful "recall against
+full" to quote, because tiny stores only 3 of full's 25 neighbours by construction.
 
-Two defects here:
+Three defects here:
 
-- **`info.hasVectorData` is `true` and it is not.** `getTrackVectors()` returns
+- **F7 — the neighbour walk is computed and then discarded.**
+  **[corrected 2026-07-27; this section previously described only the walk.]**
+  `recommendFromFavorites` (`similarity-export-tiny.ts:966`) does run a 5-hop decayed walk over the
+  3-neighbour graph, forward and reverse edges, decays 0.76ᵈ / 0.70ᵈ with reverse edges at ×0.92,
+  frontier capped at 256 (`:995-1021`). That is a reasonable design given the constraint. It is then
+  thrown away. The block that follows is written as a fallback but is not conditioned on the walk
+  having failed:
+
+  ```ts
+  if (favoriteRows.length > 0) {                                    // :1023 — no `scores.size` guard
+    const centroid = normalizeVector(/* mean of [e, m, c, p ?? 3] over the favourites */);
+    for (let trackOrdinal = 0; trackOrdinal < rows.length; trackOrdinal += 1) {
+      …
+      const fallbackScore = cosine(centroid, normalizeVector([row.e, row.m, row.c, row.p ?? 3]));
+      scores.set(trackOrdinal, fallbackScore);                      // :1044 — set, not add
+    }
+  }
+  ```
+
+  It sweeps **every** ordinal and `set`s — not accumulates — so every track the walk scored is
+  overwritten, and every track it never reached is given a score anyway. The only ordinals skipped
+  are the excluded ones and the favourites themselves, which the final `.filter` drops regardless.
+  So whenever at least one favourite resolves — the only case in which the function returns anything
+  — **100% of the returned ranking comes from a cosine over the 4-dimension rating vector**, and the
+  neighbour graph that is 57% of the bundle's bytes contributes nothing.
+
+  **Measured, not only read.** Built a 12-track corpus through the real
+  `buildSimilarityExport` → `buildLiteSimilarityExport` → `buildTinySimilarityExport` chain on
+  `c282fd5`, with a vector geometry that gives the seed genuine neighbour edges and ratings ordered
+  against it, then called `recommendFromFavorites` on the opened bundle:
+
+  | | Result |
+  |---|---|
+  | Seed's stored neighbours (`getNeighbors`) | `T6` @ 0.867, `T7` @ 0.725 |
+  | Where those land in the recommendations | `T6` **5th**, `T7` **7th** — at their rating-cosine scores |
+  | Top two returned | `T10`, `T5` — not neighbours of the seed at all |
+  | Returned scores vs an independent rating-cosine computation | identical for all 11, to 12 decimal places |
+  | Distinct scores among 11 recommendations | **5** |
+
+  The control matters: the walk had edges available and its output still does not appear anywhere in
+  the result. The consequence is the v2 degeneracy in a new place — the ranking key takes at most 125
+  distinct values over 87,868 tracks (`e`,`m`,`c` ∈ 1..5; `p` carries user feedback, so in a
+  published corpus it is unset and `p ?? 3` is a constant fourth component), and ties break by
+  `trackOrdinal`, so the same low-ordinal tracks win every tie for every listener.
+  This is not new in v3. `git blame` puts the block at `a7aac3ea`, 2026-04-07; the branch touched
+  only its canonical-id handling (`499536a`). Every tiny bundle ever published has been read this
+  way — which is also why it survived the station-quality campaign untouched: that work measured the
+  full and lite retrieval paths, and this one is neither.
+
+  The release gate cannot see it: `verify-published-exports.ts:131` asserts only
+  `tinyRecommendations.length > 0`, which the fallback guarantees. Lite has no equivalent defect —
+  its `scoreRows` ranks by weighted `cosineSimilarity` over the real 58-dim vectors
+  (`similarity-export-lite.ts:238`, `:265`). Nor is `c64commander` affected: it has no dependency on
+  `@sidflow/common` and reads the bundle with its own `sidcorrTiny.ts` / `stationEngine.ts`, so this
+  is SIDFlow's own tiny reader and any third party using the library.
+
+  **Fix:** run the fallback only when the walk produced nothing (`scores.size === 0`), or delete it —
+  the next defect below argues the 4-dim rating vector should not be a retrieval key at all. Either
+  way this is a code change; the bundle bytes are unaffected.
+- **`info.hasVectorData` is `true` and it is not.** `getTrackVectors()` (`:914`) returns
   `[row.e, row.m, row.c, row.p ?? 3]` — a 4-element rating vector, at most 125 distinct positions
-  across 87,868 tracks, and below `LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS` so it receives no weighting.
-  A consumer that branches on `hasVectorData` and does centroid arithmetic silently reproduces the
-  exact v2 degeneracy. Set `hasVectorData: false`, or return `null`.
+  across 87,868 tracks, and at the `LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS` limit of 4, so
+  `weightsForDimensions()` returns `null` and it receives no weighting. A consumer that branches on
+  `hasVectorData` (`:848`) and does centroid arithmetic silently reproduces the exact v2 degeneracy.
+  Set `hasVectorData: false`, or return `null`.
 - **Identity is a 48-bit MD5 prefix.** Over 61,157 files the birthday probability of at least one
-  collision is ≈ 0.66%. The branch added collision *detection*
-  (`2b178bf fix(export): detect md5_48 identity collisions instead of mislabelling tracks`), which is
-  right, but the margin is thin and the next HVSC will make it thinner. `md5_64` costs 122 KB and
-  drops the probability to ~10⁻⁷.
+  collision is ≈ 0.66% — the figure the code's own comment quotes as "around 0.7%". The branch added
+  collision *detection* (`2b178bf fix(export): detect md5_48 identity collisions instead of
+  mislabelling tracks`), which is right, but the margin is thin and the next HVSC will make it
+  thinner. `md5_64` costs 122 KB and drops the probability to ~10⁻⁷.
 
 Tiny also requires the consumer to have HVSC locally and MD5 every file to resolve any path at all —
 a real integration cost that should be stated prominently in its spec rather than discovered.
@@ -346,7 +427,7 @@ Across the full export's 2,196,700 neighbour rows, the neighbour is a **differen
 
 With 61,157 files and 87,868 tracks (1.44 subsongs/file average), 14.4% at rank 1 is far above chance.
 Subsongs of one tune are frequently near-identical variants, so "the most similar track" being the
-next subtune is a poor listening result. The branch added `bdca7c3 fix(station): stop stations
+next subtune is a poor listening result. The branch added `bdc79c3 fix(station): stop stations
 replaying the same tune` at the station layer; the export layer should also expose the file grouping
 so any consumer can diversify. Cheapest fix: keep the 25 rows but add a `same_file` flag, or export
 30 and let consumers drop siblings.
@@ -659,23 +740,44 @@ So every number in the table above is something a user can see:
 - **"Fast-Paced" and "Chill / Ambient" share ~9,500 tracks**, which a listener experiences as two
   stations playing overlapping music.
 
-The client reads style keys, labels and bit assignments from the bundle's `STYLE_TABLE`, not from
-hardcoded constants (`parseStyleTable`, `sidcorrTiny.ts:148-180`). That is the right design and it
-means **the fix belongs in the export, not in the client's category list** — corrected masks
-propagate on a re-pin with no client code change.
+**[corrected 2026-07-27]** The client *parses* the bundle's `STYLE_TABLE` — `parseStyleTable`
+(`sidcorrTiny.ts:146-181`) reads each style's key, label, kind and mask bit — but it does not drive
+the UI from it. `bundle.styles` is consumed in exactly one place, for its `.length`
+(`sidRadioWorkerCore.ts:43`). The nine tiles are a hardcoded client-side table,
+`SID_RADIO_STYLE_TILES` (`useSidRadio.ts:389-399`), which fixes each persona's bit, key, label and
+blurb in the app.
+
+The practical consequence is narrower than "no client change", and it cuts both ways:
+
+- **Corrected masks do propagate on a re-pin with no client change**, because membership is
+  `styleMask[ordinal] & (1 << bit)` and the bit numbers on both sides are fixed constants that
+  agree. So the mask fix itself belongs in the export.
+- **Anything else does not propagate.** Renaming a style, retiring one, or reassigning a bit would
+  leave the client showing its own stale labels against the new mask — silently, since nothing
+  cross-checks `bundle.styles` against `SID_RADIO_STYLE_TILES`. That is why the bit assignments have
+  to be treated as a wire contract, and why an export-side fix must keep all nine positions.
 
 ### Why `theme_hunter` is empty — the mechanism
 
-`computeSimilarityStyleMask()` calls `scoreAllPersonas({ metrics, ratings })` and passes **no
-`metadata` field at all**. The four hybrid personas — `composer_focus`, `era_explorer`,
-`deep_discovery`, `theme_hunter` — are defined with a `metadataPolicy` and earn their distinguishing
-signal from `composer`, `year`, `category` and `titleThemeTags` (`persona.ts:209-320`). With
-`metadata` undefined, `scoreMetadataBonus()` returns 0 for every one of them
-(`persona-scorer.ts:99-137`), so they are scored on exactly the same five metrics derived from
-`e`/`m`/`c`/`p` as the audio-led personas.
+`computeSimilarityStyleMask()` (`similarity-portable.ts:83`) calls
+`scoreAllPersonas({ metrics, ratings })` and passes **no `metadata` field at all**. The four hybrid
+personas — `composer_focus`, `era_explorer`, `deep_discovery`, `theme_hunter` — are defined with a
+`metadataPolicy` and earn their distinguishing signal from `composer`, `year`, `category` and
+`titleThemeTags` (`persona.ts:209-320`). With `metadata` undefined, `scoreMetadataBonus()` returns 0
+for every one of them (`persona-scorer.ts:99-147`), so they are scored on exactly the same five
+metrics derived from `e`/`m`/`c`/`p` as the audio-led personas.
+
+**[corrected 2026-07-27]** They are scored on the same inputs but not on the same scale. A hybrid's
+score is `clamp01(audioScore * 0.85 + bonus * 0.15)` (`persona-scorer.ts:176`, applied to the four
+personas declared `kind: "hybrid"` at `persona.ts:214/241/268/295`), so a zero bonus
+is not neutral — it is a flat 15% handicap against every audio-led persona in the same top-3 race.
+That is the mechanism behind the whole bottom half of the coverage table: the four metadata-starved
+personas take the four lowest ranks (33.1%, 13.6%, 0.8%, 0.0%) while the five audio-led ones each
+clear 47%.
 
 `theme_hunter`, whose entire premise is title-derived theme tags, therefore has nothing to
-distinguish it and never reaches the top three. **Relaxing the top-3 rule alone will not revive it.**
+distinguish it, carries the handicap, and never reaches the top three. **Relaxing the top-3 rule
+alone will not revive it.**
 
 The fix does not need reclassification: composer, year and title come from SID file headers and
 paths, not from rendered audio, and `metadata-cache.ts` already exists. It does need a local HVSC
@@ -706,35 +808,39 @@ category axis is now the binding constraint.
 
 **Before anything else consumes v3 as `latest`:**
 
-1. Merge `fix/libsidplayfp-wasm-pin-and-residfp-audit`, or land the three spec docs from it. Published
-   data currently outruns published tooling by a full revision. (§3.2)
+1. ~~Merge `fix/libsidplayfp-wasm-pin-and-residfp-audit`~~ — **done 2026-07-27, `1e59ab6`.** What
+   remains is the half the merge did not do: land the three spec docs. Published data still outruns
+   published tooling by a full revision, and the stale specs are now on `main`. (§3.2)
 2. Fix the manifest self-checksum ordering bug and republish the manifests for v3. (§4.1)
 3. Publish `SIMILARITY_VECTOR_WEIGHTS` in the lite and full manifests and document them in both
    specs. This is ~600 bytes that takes third-party recommendation quality from 0.40 to 0.99. (§5.2)
 4. Notify `u64deck` of the 1 GB / 269 MB change and the metric switch before users discover it. (§8)
    Notify `c64commander` that "Game Themes" is an empty station and that `fast_paced` / `slow_ambient`
    overlap on 10.8% of the corpus — it is already pinned to this release. (§9)
+5. Stop tiny's favourites fallback overwriting the neighbour walk (`scores.size === 0` guard, or
+   delete the fallback). Every station SIDFlow's own tiny reader builds today is ranked by a 4-dim
+   rating cosine with at most 125 distinct values. Code-only; no artefact changes. (§5.3, F7)
 
 **Next:**
 
-5. Report the measured `neighbor_row_count`, not `tracks × k`. (§4.2)
-6. Add `hvsc_version` to all three manifests; publish basenames instead of build-host absolute paths.
+6. Report the measured `neighbor_row_count`, not `tracks × k`. (§4.2)
+7. Add `hvsc_version` to all three manifests; publish basenames instead of build-host absolute paths.
    (§4.3, §4.4)
-7. Set tiny's `hasVectorData: false`, or stop synthesising a 4-dim rating vector from
+8. Set tiny's `hasVectorData: false`, or stop synthesising a 4-dim rating vector from
    `getTrackVectors`. (§5.3)
-8. Re-encode full: `float32` vector BLOB, neighbours as one BLOB per seed, 64 KB pages. ~1014 MB →
+9. Re-encode full: `float32` vector BLOB, neighbours as one BLOB per seed, 64 KB pages. ~1014 MB →
    ~430 MB with zero information loss. (§6, §7)
 
 **Then:**
 
-9. Publish a features sidecar (~60–90 MB) so `u64deck` and future consumers stop downloading 1 GB for
-   the 37% of it they want. (§7)
-10. Widen tiny's file identity from `md5_48` to `md5_64`. (§5.3)
-11. Diversify neighbours away from same-file subsongs, or expose file grouping so consumers can.
+10. Publish a features sidecar (~60–90 MB) so `u64deck` and future consumers stop downloading 1 GB for
+    the 37% of it they want. (§7)
+11. Widen tiny's file identity from `md5_48` to `md5_64`. (§5.3)
+12. Diversify neighbours away from same-file subsongs, or expose file grouping so consumers can.
     (§5.4)
-12. Rebuild the category axis on the quintiles, and reconsider deriving it from the 58-dim vector.
+13. Rebuild the category axis on the quintiles, and reconsider deriving it from the 58-dim vector.
     (§9)
-13. **Gate station populations at export time.** The deeper gap behind F6 is that the export has no
+14. **Gate station populations at export time.** The deeper gap behind F6 is that the export has no
     notion of how big a station is, so nothing objected when one persona shipped with 0 members and
     another with 673 while five carried ~45,000 — a 69× spread among the non-empty ones. Guarantee
     population by construction (assign each persona the top *X*% by its own score, the way ratings
@@ -773,18 +879,35 @@ python3  tmp/audit/slim.py v2|v3  # u64deck's own slim_database against each exp
 bun  run tmp/audit/style.ts       # persona distribution and overlap
 ```
 
+**F7 (added 2026-07-27)** is reproduced from source rather than from the published artefacts: build a
+small corpus through `buildSimilarityExport` → `buildLiteSimilarityExport` → `buildTinySimilarityExport`
+with ratings ordered against the vector geometry, open it, and compare `recommendFromFavorites`
+against both `getNeighbors` on the same seed and an independent cosine over `[e, m, c, p ?? 3]`. The
+second matches to full precision; the first does not appear in the result at all. That check belongs
+in `packages/sidflow-common/test/` as a regression test — see the prompt's A5.
+
 ## Appendix B — key source locations
+
+Line numbers are `c282fd5` (tag `0.7.0`), which is now also `main`. Pre-merge `main` (`4f41ed2`) is
+given in brackets where it differs; "0.7.0 only" means the file or symbol does not exist on
+`4f41ed2` at all.
 
 | Concern | Location |
 |---|---|
-| Manifest checksum ordering bug | `packages/sidflow-common/src/similarity-export.ts:1156` (branch: `:1346`) |
-| `neighbor_row_count` computed not measured | same file, `:1167` (branch: `:1359`) |
-| Weight table (not published anywhere) | `packages/sidflow-common/src/vector-similarity.ts`, `SIMILARITY_VECTOR_WEIGHTS` |
-| Rank-uniform normalisation | same package, `normaliseVectorsByRank()` (branch only) |
-| Lite PQ encoding | `packages/sidflow-common/src/similarity-export-lite.ts` |
-| Tiny binary layout, `hasVectorData` | `packages/sidflow-common/src/similarity-export-tiny.ts` ~600–860 |
-| Persona mask from ratings only | `packages/sidflow-common/src/similarity-portable.ts`, `computeSimilarityStyleMask()` |
-| Release gate | `scripts/verify-published-exports.ts` (branch only) |
+| Manifest checksum ordering bug | `packages/sidflow-common/src/similarity-export.ts:1346` (pre-merge `main`: `:1156`) |
+| `neighbor_row_count` computed not measured | same file, `:1359` (pre-merge `main`: `:1167`); measured value written then overwritten, `:1308` → `:1324` |
+| Weight table (not published anywhere) | `packages/sidflow-common/src/vector-similarity.ts:78`, `SIMILARITY_VECTOR_WEIGHTS` (0.7.0 only — pre-merge `main` has only the 24-entry `PERCEPTUAL_VECTOR_WEIGHTS`) |
+| Weighting selected by vector width | same file, `weightsForDimensions():98`, `cosineSimilarity():114` |
+| Rank-uniform normalisation | `packages/sidflow-common/src/similarity-export.ts:1126`, `normaliseVectorsByRank()` (0.7.0 only) |
+| Lite PQ encoding | `packages/sidflow-common/src/similarity-export-lite.ts`, `buildScalarCodebooks():167` |
+| Lite favourites ranking (correct) | same file, `scoreRows():238`, ranks at `:265` |
+| Tiny `hasVectorData` / `getTrackVectors` | `packages/sidflow-common/src/similarity-export-tiny.ts:848`, `:914` |
+| **Tiny favourites fallback overwrites the walk (F7)** | same file, walk `:995-1021`, fallback `:1023-1046` |
+| Tiny `md5_48` resolution throws on a miss | same file, `:198`; style mask written at `:542` |
+| Persona mask from ratings only | `packages/sidflow-common/src/similarity-portable.ts:83`, `computeSimilarityStyleMask()` |
+| Hybrid personas' 0.85/0.15 blend | `packages/sidflow-common/src/persona-scorer.ts:176`; bonus `:99-147`; definitions `persona.ts:209-320` |
+| Release gate | `scripts/verify-published-exports.ts` (0.7.0 only); weak tiny assertion at `:132` |
+| `sidflow-data` tag scheme | `scripts/run-similarity-export.sh`, `release_tag():179` |
 | `u64deck` full-only asset choice | `u64deck/server.py:4740` |
 | `u64deck` checksum verification | `u64deck/server.py:4821` |
 | `u64deck` slim + neighbour count check | `u64deck/sidflow_similarity.py:213`, `:364` |

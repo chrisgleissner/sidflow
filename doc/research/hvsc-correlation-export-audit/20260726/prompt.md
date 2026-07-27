@@ -3,6 +3,13 @@
 **Read [`review.md`](./review.md) first.** It is the evidence base for everything below; every number
 quoted here was measured against the published artefacts and is reproducible via its Appendix A.
 
+> **Source references.** Every file and line number below is `c282fd5` (tag `0.7.0`), the tree that
+> produced the v3 artefacts. That branch was merged to `main` as `1e59ab6` (PR #95) on 2026-07-27
+> and the merge changed no files — `git diff c282fd5 origin/main` is empty — so all of them resolve
+> unchanged on today's `main`. Where the pre-merge `main` (`4f41ed2`) numbering differs it is given
+> alongside. Items already closed by the merge are struck through rather than deleted, so the
+> sequencing stays legible.
+
 Your job is to close the audit findings and ship the result as **`0.8.0`**, tagged identically in
 `chrisgleissner/sidflow` and `chrisgleissner/sidflow-data`, plus a migration document for consumers
 moving from the 0.5-era data release to 0.8.
@@ -18,6 +25,7 @@ Semver reserves PATCH for **backward-compatible bug fixes only**. This release i
 | `vector_weights`, `similarity_metric`, `hvsc_version` added to manifests (A3, A5) | added functionality → MINOR |
 | `.sqlite.gz` asset and the features sidecar published (B1, B2) | new artefacts → MINOR |
 | tiny's `hasVectorData` flips to `false`, `getTrackVectors()` returns nothing (A5) | library behaviour change → MINOR |
+| tiny's `recommendFromFavorites` starts ranking from the neighbour graph instead of the rating cosine (A5/F7) | library behaviour change → MINOR |
 | persona station membership changes for ~10% of the corpus (B3) | shipped-data semantics change → MINOR |
 | export gains a hard population gate and `style_populations` in the tiny manifest (B4) | added functionality + new failure mode → MINOR |
 | `sidflow-data` release tags change scheme (C1) | published naming contract → MINOR |
@@ -80,9 +88,9 @@ These are not negotiable. Violating any of them invalidates the work.
 *Finding F1, review §4.1. The declared `file_checksums.sqlite_sha256` has never matched the published
 file, in any release.*
 
-**Root cause.** `packages/sidflow-common/src/similarity-export.ts:1156` (`:1346` on the 0.7.0 branch)
-hashes the temporary database, then writes the manifest — including that hash — into the database's
-`meta` table, mutating the bytes that were just hashed.
+**Root cause.** `packages/sidflow-common/src/similarity-export.ts:1346` (`:1156` on the pre-merge
+`main`) hashes the temporary database, then writes the manifest — including that hash — into the
+database's `meta` table, mutating the bytes that were just hashed.
 
 **Fix the exporter** so the invariant holds by construction:
 
@@ -151,8 +159,9 @@ wrong `md5_48` identities.
 **Two properties make this safe, and both must be proven before you change anything.**
 
 *The lite build is deterministic.* Its PQ codebook is quantile-based — sort each dimension, take
-equal-count buckets, use the bucket mean as the centroid (`similarity-export-lite.ts:171-190`). There
-is no k-means and no RNG, so identical input yields identical output.
+equal-count buckets, use the bucket mean as the centroid (`buildScalarCodebooks`,
+`similarity-export-lite.ts:167-192`). There is no k-means and no RNG, so identical input yields
+identical output.
 
 *Therefore the pipeline is reproducible, and that is your baseline.* **Before applying any fix**, run
 steps 2 and 3 with today's code against the *published* full export and assert the results are
@@ -181,9 +190,11 @@ finding in its own right and changes the shape of this work.
 
 *Finding F1b, review §4.2.*
 
-`similarity-export.ts:1167` writes `neighbor_row_count: tracks.length * neighborCount` — a computed
-value. `insertNeighbors()` already returns the number actually inserted and it is discarded. Use the
-returned value.
+`similarity-export.ts:1359` (`:1167` pre-merge) writes `neighbor_row_count: tracks.length *
+neighborCount` — a computed value. `insertNeighbors()` already returns the number actually inserted
+(`:1308`); that measured value reaches only the placeholder manifest embedded in `meta` (`:1324`) and
+is then overwritten, along with the rest of the manifest, by the final `UPDATE` at `:1376`. Use the
+returned value in the final manifest, so the sidecar and the embedded copy both carry it.
 
 This is not cosmetic: `u64deck` **hard-fails the import** when the actual row count differs from the
 manifest (`sidflow_similarity.py:364`), with no fallback. Today's export happens to be exact
@@ -197,9 +208,9 @@ file. Add a regression test with a corpus small enough that some seed cannot fil
 
 *Finding F2, review §5.2. This is the highest-value fix in the release.*
 
-`SIMILARITY_VECTOR_WEIGHTS` (58 entries, range 0.328–2.109,
-`packages/sidflow-common/src/vector-similarity.ts`) defines the similarity metric and exists only in
-TypeScript source. A third party implementing the published lite spec computes plain cosine and gets
+`SIMILARITY_VECTOR_WEIGHTS` (58 entries, range 0.32813–2.10938,
+`packages/sidflow-common/src/vector-similarity.ts:78`) defines the similarity metric and exists only
+in TypeScript source. A third party implementing the published lite spec computes plain cosine and gets
 **R@1 = 0.478 and 40% station overlap** against the authoritative result, versus 0.983 / 98% with the
 weights applied.
 
@@ -227,25 +238,37 @@ Also state that weighting is selected by vector width via `weightsForDimensions(
 reproduces the full export's top-25 at R@25 ≥ 0.98 on a 1,000-seed sample. Ship that check as
 `scripts/verify-lite-against-full.ts` so it can be run on any future release.
 
-### A4. Land the 0.7.0 branch and its specifications
+### A4. Land the 0.7.0 specifications
 
 *Finding F3, review §3.2.*
 
-Tag `0.7.0` points at `c282fd5`, which is contained **only** in
-`origin/fix/libsidplayfp-wasm-pin-and-residfp-audit` — 87 commits ahead of `main`, unmerged. Both the
-published data *and* the published SIDFlow release were cut from an off-`main` branch, while `main`'s
-specs still document `--dims 3|4` and say nothing about 58 dimensions, rank-uniform normalisation, or
-the weight schedule.
+Tag `0.7.0` points at `c282fd5`. It was cut from `origin/fix/libsidplayfp-wasm-pin-and-residfp-audit`,
+87 commits ahead of `main` and unmerged at the time of the audit: both the published data *and* the
+published SIDFlow release came off an off-`main` branch.
 
-1. Merge the branch to `main`. Resolve honestly; do not squash away the station-quality history —
-   `doc/station-quality.md` is the record of why the vector is shaped as it is.
+1. ~~Merge the branch to `main`.~~ **Done 2026-07-27 — `1e59ab6`, PR #95.** The branch was based on
+   `4f41ed2` with nothing landing on `main` in between, so the merge introduced no tree change
+   (`git diff c282fd5 origin/main` is empty), the station-quality history including
+   `doc/station-quality.md` is intact, and `git branch -a --contains 0.7.0` now lists `main`. The
+   workspace version reconciliation named in C3 came with it: root and all nine packages read
+   `0.7.0`.
+
+   **The merge did not close this finding.** It moved it: `doc/similarity-export.md:142` still
+   documents `--dims 3|4`, `grep -c 58` is 0 in all three specs, and nothing outside
+   `doc/station-quality.md` mentions rank-uniform normalisation or the weight schedule — except now
+   those are `main`'s specs, which is what third parties read. Steps 2 and 3 are the whole job.
 2. Bring `doc/similarity-export.md`, `doc/similarity-export-lite.md` and
    `doc/similarity-export-tiny.md` up to what the artefacts actually contain:
    - the 58-dimension vector and its three groups (24 perceptual from rendered audio, 11 pitch/texture,
      23 from the playroutine's SID register-write trace) — this is currently documented only in the
      release-notes generator in `scripts/run-similarity-export.sh`, which is the wrong place for it;
-   - `vector_normalisation: "rank-uniform"`, what it means (per-dimension rank onto `[0,1]`, ties get
-     the average of the ranks they span), and that it makes every dimension **corpus-relative**;
+   - `vector_normalisation: "rank-uniform"`, and the exact formula, because a plausible-looking
+     re-implementation produces different numbers. `normaliseVectorsByRank()`
+     (`similarity-export.ts:1126`) sorts each dimension independently and maps 0-based rank *r* over
+     *n* tracks to **`(r + 0.5) / n`** — midpoints, so values span `[0.5/n, 1 − 0.5/n]` and never
+     reach 0 or 1 — with tied values all receiving the mean of the values their span would have
+     taken. State that it makes every dimension **corpus-relative**, and that it is skipped entirely
+     for widths ≤ 4;
    - `sid_engine`, and that it differs from the `render_engine` column (which reads `wasm` for both
      emulations);
    - the weight table (A3);
@@ -254,12 +277,14 @@ the weight schedule.
      every category has a usable pool.
 3. Remove the `--dims 3|4` documentation, or mark it explicitly legacy.
 
-**Acceptance:** `git branch -a --contains 0.7.0` includes `main`. `grep -c '58' doc/similarity-export*.md`
-is non-zero in all three. No spec describes a behaviour the shipped artefact does not have.
+**Acceptance:** ~~`git branch -a --contains 0.7.0` includes `main`~~ (already true since `1e59ab6`).
+`grep -c '58' doc/similarity-export*.md` is non-zero in all three — it is 0 in all three today. No
+spec describes a behaviour the shipped artefact does not have, and an independent reader can
+reproduce the normalisation from the spec alone.
 
-### A5. Manifest hygiene: HVSC version, paths, tiny vector claim
+### A5. Manifest hygiene: HVSC version, paths, tiny vector claims
 
-*Findings §4.3, §4.4, §5.3.*
+*Findings §4.3, §4.4, §5.3 (including F7).*
 
 **`hvsc_version`** — `corpus_version` is the bare string `"hvsc"` in every release, so nothing records
 which HVSC the `sid_path` values belong to. Every consumer resolves against a local collection, so this
@@ -280,19 +305,51 @@ release has this problem.
 (`/mnt/data/dev/c64/sidflow/data/exports/…`). Emit basenames only, in every profile. The v2 tiny
 manifest leaked `/home/chris/…`; that one is already fixed, so match its behaviour.
 
-**Tiny's `hasVectorData`** — `openTinySimilarityDataset` reports `hasVectorData: true` while
-`getTrackVectors()` returns `[e, m, c, p ?? 3]`: a 4-element rating vector with at most 125 distinct
-positions across 87,868 tracks, below `LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS` so it receives no
-weighting. A consumer branching on `hasVectorData` and doing centroid arithmetic silently reproduces
-the exact v2 degeneracy this release fixed.
+**Tiny's `hasVectorData`** — `openTinySimilarityDataset` reports `hasVectorData: true`
+(`similarity-export-tiny.ts:848`) while `getTrackVectors()` (`:914`) returns `[e, m, c, p ?? 3]`: a
+4-element rating vector with at most 125 distinct positions across 87,868 tracks, at the
+`LEGACY_RATINGS_VECTOR_MAX_DIMENSIONS` limit of 4, so `weightsForDimensions()` returns `null` and it
+receives no weighting. A consumer branching on `hasVectorData` and doing centroid arithmetic silently
+reproduces the exact v2 degeneracy this release fixed.
 
 Set `hasVectorData: false` and make `getTrackVectors()` return an empty map. This is a code change
 only — the tiny bundle bytes are unaffected. Document in the tiny spec that the profile carries **no
 embedded vectors** and that its retrieval model is a decayed walk over the 3-neighbour graph, not
 vector search.
 
+**Tiny's `recommendFromFavorites` — F7, and the reason the sentence above is not yet true.** The same
+4-dim rating vector is not merely exposed, it is *the* ranking key. `recommendFromFavorites` (`:966`)
+runs the 5-hop decayed walk over the neighbour graph (`:995-1021`) and then, at `:1023`, enters a
+block written as a fallback but guarded only on `favoriteRows.length > 0` — never on the walk having
+failed. That block sweeps every ordinal and calls `scores.set(...)`, **not** accumulate (`:1044`), so
+it overwrites every walk score and fills in every track the walk never reached. Whenever at least one
+favourite resolves — the only case that returns anything — 100% of the ranking comes from a cosine
+over `[e, m, c, p ?? 3]`, ties broken by `trackOrdinal`. The neighbour graph, 57% of the bundle's
+bytes, contributes nothing.
+
+Measured on a purpose-built 12-track corpus (review §5.3): a seed whose stored neighbours are `T6`
+@ 0.867 and `T7` @ 0.725 gets them back **5th and 7th**, behind two tracks that are not its
+neighbours at all, and every returned score equals an independently computed rating cosine to 12
+decimal places — 5 distinct scores across 11 recommendations. The walk had edges; they simply do not
+reach the output.
+
+This predates the branch (`a7aac3ea`, 2026-04-07) and is code-only: **do not rebuild any bundle for
+it.** Fix it by guarding the block on `scores.size === 0`, or by deleting it outright — which is the
+better answer, since A5 has just declared the rating vector unfit as a retrieval key. Deleting it
+means a favourites call whose seeds have no neighbour edges returns nothing rather than returning
+noise; say so in the tiny spec.
+
+Note what this does *not* touch: lite is unaffected (`similarity-export-lite.ts:238` ranks by
+weighted `cosineSimilarity` over the real 58-dim vectors), and `c64commander` is unaffected (no
+dependency on `@sidflow/common`; it reads the bundle with its own `sidcorrTiny.ts`). The exposure is
+SIDFlow's own tiny reader and any third party using the library.
+
 **Acceptance:** no manifest contains an absolute path. `hvsc_version` present in all three. Tiny's
-`info.hasVectorData` is `false` and a test asserts `getTrackVectors()` returns nothing.
+`info.hasVectorData` is `false` and a test asserts `getTrackVectors()` returns nothing. A test builds
+a tiny dataset, calls `recommendFromFavorites` with a favourite that has neighbour edges, and asserts
+the ranking follows those edges — it must fail against today's code, where the result is the rating
+cosine regardless. Ranking scores must take more than 125 distinct values over a corpus that has more
+than 125 distinct vectors.
 
 ---
 
@@ -346,8 +403,15 @@ required for recommendation.
 > tiles** — "Fast-Paced", "Chill / Ambient", "Composer Deep-Dive", "Game Themes". Station membership
 > is literally `bundle.styleMask[ordinal] & (1 << styleBit)`
 > (`src/lib/sidRadio/stationEngine.ts:120-123`). Every defect measured below is something a user can
-> see. It reads style keys, labels and bit assignments **from the bundle's STYLE_TABLE**, not from
-> hardcoded constants, so fixing the export propagates on a re-pin with no client change.
+> see.
+>
+> **The masks are data, but the vocabulary is not.** The client parses the bundle's `STYLE_TABLE`
+> (`parseStyleTable`, `sidcorrTiny.ts:146-181`) yet uses `bundle.styles` only for its `.length`
+> (`sidRadioWorkerCore.ts:43`); the nine tiles — bit, key, label, blurb — are hardcoded in
+> `SID_RADIO_STYLE_TILES` (`useSidRadio.ts:389-399`), as D1 describes. So **corrected masks do reach
+> users on a re-pin with no client change**, because both sides pin the same bit numbers — but a
+> renamed, retired or renumbered style would not, and nothing would report the mismatch. That is
+> what makes the constraint below a wire contract rather than a preference.
 
 Measured on the shipped tiny bundle:
 
@@ -364,15 +428,23 @@ unconditionally, so a mid-energy track gets three labels whether or not any fits
 tracks are `fast_paced` *and* 65% are `slow_ambient`. Replace it with a **score threshold**, so a
 track carries the personas it earns and may carry none.
 
-**(b) The masks are computed with no metadata at all.** `computeSimilarityStyleMask()` calls
-`scoreAllPersonas({ metrics, ratings })` and passes **no `metadata` field**. The four hybrid personas
-(`composer_focus`, `era_explorer`, `deep_discovery`, `theme_hunter`) are defined with a
-`metadataPolicy` and earn their distinguishing signal from `composer`, `year`, `category` and
-`titleThemeTags` (`persona.ts:209-320`, `persona-scorer.ts:99-137`). With `metadata` undefined,
-`scoreMetadataBonus()` returns 0 for all of them and they are scored on exactly the same five metrics
-derived from `e`/`m`/`c`/`p` as the audio-led personas. `theme_hunter` — whose entire premise is
-title-derived theme tags — therefore can never distinguish itself and never reaches the top three.
-**Thresholding alone will not revive it; it will simply stay at zero.**
+**(b) The masks are computed with no metadata at all.** `computeSimilarityStyleMask()`
+(`similarity-portable.ts:83`) calls `scoreAllPersonas({ metrics, ratings })` and passes **no
+`metadata` field**. The four hybrid personas (`composer_focus`, `era_explorer`, `deep_discovery`,
+`theme_hunter`) are defined with a `metadataPolicy` and earn their distinguishing signal from
+`composer`, `year`, `category` and `titleThemeTags` (`persona.ts:209-320`,
+`persona-scorer.ts:99-147`). With `metadata` undefined, `scoreMetadataBonus()` returns 0 for all of
+them and they are scored on the same five metrics derived from `e`/`m`/`c`/`p` as the audio-led
+personas.
+
+Not on the same *scale*, though, and this is the part that decides the outcome: a hybrid scores
+`clamp01(audioScore * 0.85 + bonus * 0.15)` (`persona-scorer.ts:176`), so a zero bonus is a flat 15%
+handicap in a top-3 race against five personas that carry none. That is why the four hybrids are
+exactly the four lowest-coverage personas in the shipped bundle (33.1%, 13.6%, 0.8%, 0.0%) while
+every audio-led one clears 47%. `theme_hunter` — whose entire premise is title-derived theme tags —
+can never distinguish itself and never reaches the top three. **Thresholding alone will not revive
+it; it will simply stay at zero.** Supplying metadata is what removes the handicap; if you change the
+blend instead, say so and measure it, because it moves all four hybrids at once.
 
 The metadata comes from SID file headers and paths, not from rendered audio, so supplying it is
 **not** reclassification. The full SQLite carries `sid_path` for every track, and `metadata-cache.ts`
@@ -519,7 +591,7 @@ Changing the `neighbors` table shape is deferred (constraint 3, Part E). For 0.8
 
 - document the measured rate in the full spec so consumers know to diversify;
 - ensure SIDFlow's own station layer excludes the seed's **file**, not just the seed track — verify
-  `bdca7c3 fix(station): stop stations replaying the same tune` actually covers this and extend it if
+  `bdc79c3 fix(station): stop stations replaying the same tune` actually covers this and extend it if
   not;
 - note it in the migration doc as a behaviour `u64deck` will now see, since its `excluded` set contains
   only the seed track (`sidflow_similarity.py:533`).
@@ -648,8 +720,11 @@ Cover, with measured numbers:
   `style_populations` in the tiny manifest as the machine-readable source.
 - It surfaces all nine personas as station tiles and does not guard against an empty one; recommend
   hiding a zero-population style and showing population counts.
-- Tiny still carries no vectors (§5.3) — its retrieval is a decayed walk over the 3-neighbour graph.
-  That is unchanged in 0.8.0 and is worth restating so the client does not expect vector search.
+- Tiny still carries no vectors (§5.3) — its retrieval is a decayed walk over the 3-neighbour graph,
+  and the bundle's shape is unchanged in 0.8.0. Worth restating so the client does not expect vector
+  search. Note in passing that this is only true of SIDFlow's *library* reader from 0.8.0: until
+  A5/F7 lands, that reader ranks favourites by a 4-dim rating cosine instead. `c64commander` reads
+  the bundle itself and was never affected, so this is a library note, not a re-pin action.
 
 **Also record:** the 209 disappeared tracks need a cause. Investigate — check whether they were excluded
 by the analysis-window or completeness changes on the 0.7.0 branch (`6742460`, `c54af22`, `e8323e0`) —
@@ -658,13 +733,13 @@ rather than speculating.
 
 ### C3. Release 0.8.0
 
-- Version bump across the workspace packages. Note that `main`'s root `package.json` reads `0.3.10`
-  while the 0.7.0 branch reads `0.7.0`; reconcile that during the merge (A4) rather than papering over
-  it.
+- Version bump across the workspace packages. The `0.3.10` / `0.7.0` split between `main` and the
+  branch was resolved by the merge (A4): root and all nine workspace packages now read `0.7.0`, so
+  this is an ordinary bump from a consistent base.
 - `CHANGES.md` entry describing the manifest fix, the published weights, the compressed and features
   assets, the persona-mask correction, and the migration doc.
-- Tag `0.8.0` in `sidflow` **on `main`**, after the merge. The 0.7.0 tag pointing off-`main` is one of
-  the findings; do not repeat it.
+- Tag `0.8.0` in `sidflow` **on `main`**. The 0.7.0 tag was cut off-`main` and that is one of the
+  findings; `1e59ab6` brought it back in, so do not repeat the original mistake.
 - Publish `sidflow-data` release `0.8.0` with the repaired assets.
 - Update the `sidflow-data` README: the lineage table (C1), the new assets, and — per review §7 — lead
   with **lite** as the recommended default rather than listing full first. Lite reproduces full at 98%
@@ -672,8 +747,8 @@ rather than speculating.
 
 ### C4. Extend the release gate
 
-`scripts/verify-published-exports.ts` (added on the 0.7.0 branch) is a good gate and did not catch the
-findings in this audit. Add:
+`scripts/verify-published-exports.ts` (added on the 0.7.0 branch, so new to `main` as of `1e59ab6`)
+is a good gate and did not catch the findings in this audit. Add:
 
 - sidecar `file_checksums.sqlite_sha256` equals the actual file digest, and equals its `SHA256SUMS`
   entry (would have caught F1 in both prior releases);
@@ -689,8 +764,14 @@ findings in this audit. Add:
   export time, but it must also be checkable against a finished artefact — that is what catches a
   bundle built under `--allow-sparse-styles` and published by mistake.
 
-Tighten the existing tiny assertion while you are there: `!tinyRecommendations.every(e => e.track_id === seedTrackId)`
-passes if a single recommendation differs from the seed. It should be `!some(...)`.
+- tiny's favourites ranking actually uses the neighbour graph (A5/F7). The two existing tiny checks
+  cannot see the defect: `:131` asserts only `tinyRecommendations.length > 0`, which the rating-cosine
+  fallback guarantees for every seed. Assert instead that a seed's stored neighbours appear in its
+  own recommendations, and that the returned scores take more than 125 distinct values.
+
+Tighten the existing tiny assertion while you are there:
+`!tinyRecommendations.every(e => e.track_id === seedTrackId)` (`:132`) passes if a single
+recommendation differs from the seed. It should be `!some(...)`.
 
 Wire the gate into CI so it runs against a fixture, and document the command for running it against a
 real release.
@@ -816,8 +897,10 @@ file — seven times everything else combined. That is where the 0.9.0 work shou
       intended fix.
 - [ ] An independent reader using only the lite bundle and its manifest reaches R@25 ≥ 0.98 against
       the full export.
-- [ ] `0.7.0` is contained in `main`; `0.8.0` is tagged on `main` in `sidflow` and as the release name
-      in `sidflow-data`.
+- [x] `0.7.0` is contained in `main` — `1e59ab6`, 2026-07-27.
+- [ ] `0.8.0` is tagged on `main` in `sidflow` and is the release name in `sidflow-data`.
+- [ ] Tiny's `recommendFromFavorites` ranks from the neighbour graph, not from the 4-dim rating
+      cosine, and a test that fails against today's code proves it (A5/F7).
 - [ ] `doc/migration/0.5-to-0.8.md` exists, is linked from both READMEs, and every number in it was
       re-measured against the artefacts actually published.
 - [ ] The three format specs describe the artefacts as shipped — width, normalisation, weights,
