@@ -71,7 +71,8 @@ export interface PersonaTrackContext {
  * it.
  *
  * Chosen by measurement, not taste. Worst pairwise Jaccard across the nine stations on
- * HVSC, at equal 20% populations:
+ * HVSC, at equal 20% populations, measured BEFORE melodic/experimental was declared
+ * mutually exclusive -- which is why that pair can appear here at all:
  *
  * | weight | worst pair                  | Jaccard |
  * |-------:|-----------------------------|--------:|
@@ -80,11 +81,15 @@ export interface PersonaTrackContext {
  * |   0.45 | melodic/experimental        |   0.659 |
  * |   0.55 | melodic/experimental        |   0.659 |
  *
- * Past 0.30 the binding pair is two AUDIO personas, which this weight cannot affect --
- * so the hybrids are no longer what limits distinctness, which is the point. Within
- * that, 0.55 gives the lowest hybrid-vs-anything overlap; going further starts
- * admitting tracks whose audio is a poor fit for the station's mood, which a listener
- * hears immediately even when the metadata premise is satisfied.
+ * That is exactly the finding. Past 0.30 the binding pair is two AUDIO personas, which
+ * this weight cannot affect -- so the hybrids stopped being what limits distinctness,
+ * and the remaining overlap became a question for the conflict rules rather than for the
+ * blend. Within that range 0.55 gives the lowest hybrid-vs-anything overlap; going
+ * further starts admitting tracks whose audio is a poor fit for the station's mood,
+ * which a listener hears immediately even when the metadata premise is satisfied.
+ *
+ * With the exclusivity in place the shipped worst pair is 0.386 (fast_paced /
+ * experimental); see STYLE_CONFLICT_PAIRS in style-assignment.ts.
  */
 const HYBRID_METADATA_WEIGHT = 0.55;
 
