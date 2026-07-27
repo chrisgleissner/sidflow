@@ -255,13 +255,38 @@ if (storedNeighbors.length > 0) {
 // The rating vector reaches at most 125 distinct values corpus-wide, so a ranking that
 // takes more than that cannot be the rating cosine in disguise.
 const distinctScores = new Set(tinyRecommendations.map((entry) => entry.score.toFixed(12)));
-// The rating vector reaches at most 125 distinct values corpus-wide, so a ranking that
-// resolves more finely than its own length cannot be that cosine in disguise.
+// Two things have gone wrong with this field, and each needs its own assertion.
+//
+// Clamping the accumulated walk score to [-1, 1] reported an entire top-100 as exactly
+// 1.0, so the scores must take more than one value. A single distinct value is the
+// signature of that defect and of nothing else.
 check(
-  "the ranking resolves more than a handful of distinct scores",
-  distinctScores.size >= Math.min(tinyRecommendations.length, isRelease ? 100 : 3),
+  "the ranking is not one flat value",
+  distinctScores.size > 1,
   `${distinctScores.size} distinct over ${tinyRecommendations.length}`,
 );
+
+// Normalising against the strongest match reported a RANK rather than a similarity, and a
+// rank is indistinguishable from a similarity by counting distinct values. What separates
+// them is scale: a direct stored neighbour's reported score must BE its stored edge
+// similarity, because its best path is one edge long. That also fails against the
+// rating-cosine defect, whose scores had nothing to do with the graph.
+//
+// Counting distinct values is deliberately not used to catch either: the edge similarities
+// are 8-bit quantised, so products along short paths land on a bounded set — 35 distinct
+// over 100 on the shipped bundle — and a threshold tuned to that would be arbitrary.
+if (storedNeighbors.length > 0) {
+  const scoreByTrackId = new Map(tinyRecommendations.map((entry) => [entry.track_id, entry.score]));
+  const mismatched = storedNeighbors.filter((neighbor) => {
+    const reported = scoreByTrackId.get(neighbor.track_id);
+    return reported === undefined || Math.abs(reported - neighbor.score) > 1e-6;
+  });
+  check(
+    "a direct neighbour's score is its stored edge similarity",
+    mismatched.length === 0,
+    mismatched.map((neighbor) => `${neighbor.track_id} ${scoreByTrackId.get(neighbor.track_id)} vs ${neighbor.score}`).join("; "),
+  );
+}
 
 // ---- station populations ----
 process.stdout.write("\n=== station populations ===\n");
