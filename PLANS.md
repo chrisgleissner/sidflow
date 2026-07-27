@@ -1,5 +1,73 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 39 - Export Audit Remediation, Released As 0.8.0
+
+1. [DONE] P39-T01 Close the July 2026 HVSC export audit findings and ship them as 0.8.0.
+  Acceptance criteria:
+  - No reclassification. Every artefact derived deterministically from the 0.7.0 export.
+  - The lite and tiny derivations reproduce the published bundles byte-for-byte with pre-fix
+    code, establishing a baseline against which every later byte is attributable.
+  - Manifest digests match the files they describe; neighbour counts are measured; paths are
+    basenames; `hvsc_version`, `similarity_metric` and `vector_weights` are published.
+  - A third party reading only the lite bundle and its manifest reaches R@25 >= 0.98.
+  - No persona ships empty; conflicting personas share no tracks; the export fails rather
+    than publishing a starved or indistinguishable station.
+  - The release gate fails against 0.7.0's assets and passes against 0.8.0's, and runs in CI
+    against a fixture built through the real export chain.
+  - Three consecutive `bun run test:ci` runs with 0 fail.
+
+### Progress
+
+- 2026-07-27: Baseline reproduction PASSED before any change. Lite rebuilt to
+  `fe92bd57...a346cd` and tiny to `081664d8...cba7c5`, byte-identical to the published
+  artefacts. Tiny's byte-identity is the load-bearing half: it stores a 48-bit MD5 prefix of
+  every `.sid` file and throws on the first unresolvable path, so reproducing it identifies
+  the corpus empirically as **HVSC 85 + Update 85** rather than by assertion. Committed as
+  `scripts/reproduce-published-bundles.sh`.
+- 2026-07-27: Manifest integrity. The embedded copy now omits `file_checksums` entirely and
+  the sidecar carries the digest, computed after the last write; there is no longer any write
+  to the database after the hash. `neighbor_row_count` is measured (old code declared 200
+  against 56 actual on an 8-track corpus asking for 25 neighbours). `--rewrite-manifest`
+  repairs an existing export without reclassifying and is idempotent by short-circuit --
+  SQLite bumps three header bytes on every VACUUM, measured, so a rewrite that always wrote
+  could not be byte-stable. Verified on the real 982 MB artefact.
+- 2026-07-27: Station assignment rebuilt. Quantile assignment gives all nine personas 17,574
+  tracks (20.0%), spread 1.0 against 69x, zero conflicting overlap against 9,451 tracks.
+  Feeding metadata in was necessary and NOT sufficient: `scoreMetadataBonus` scored metadata
+  PRESENCE, and composer and category resolve for 100% of HVSC, so it was a constant that
+  changed no ranking -- `composer_focus` had 30 distinct scores with metadata and 30 without.
+  Content-based signals took it to 5,986, `era_explorer` 14 -> 316, `theme_hunter` 30 -> 5,321.
+  The hybrid blend moved 0.85/0.15 -> 0.45/0.55 after measuring that at the old blend
+  `deep_discovery` and `melodic` shared 91% of their tracks. Verified with
+  `scripts/diff-tiny-sections.ts`: the rebuild changed 104,637 bytes of the style-mask table
+  and nothing else.
+- 2026-07-27: Two defects found by the new checks rather than by the audit. Tiny's favourites
+  scores were CLAMPED not normalised, so an entire top-100 reported exactly 1.0 while the
+  walk underneath had 973 distinct values. The station layer excluded the seed TRACK but not
+  the seed FILE, so with 14.4% of rank-1 neighbours being same-file siblings a station could
+  open with the next subtune of the tune just liked.
+- 2026-07-27: The 209 disappeared tracks are explained without reclassifying. 184 of the 185
+  files involved are absent from HVSC 85 itself -- verified by resolving every path against a
+  local HVSC 85 -- and the remaining case lost a subsong because HVSC 85's copy of the file
+  declares `songs: 1`. Not a SIDFlow coverage regression.
+- 2026-07-27: Release gate extended and wired into CI. Measured 15 checks fail against the
+  published 0.7.0 assets, including `theme_hunter` at 0 tracks, a 69.3x spread and the 9,451
+  fast/slow overlap; all pass against 0.8.0. A 1,200-track fixture now runs the same gate on
+  every commit.
+
+### Known gaps carried forward
+
+- The category axis is now the binding constraint. An audio-led persona's score derives
+  entirely from three quintiles, so it takes at most 125 distinct values over any corpus:
+  `fast_paced` decides 7.03% of HVSC inside a single tie at its cut. Deriving categories from
+  the 58-dimension vector is 0.9.0 work; see `doc/station-quality.md` section 15.
+- The full export re-encode (~982 MB -> ~430 MB), `md5_64` in tiny, and neighbour
+  diversification all break a schema version and are deferred with measured justification in
+  the same section.
+- `bun test packages/sidflow-web/` reports 13 failures when the whole package runs in one
+  process, identically on `origin/main` and unrelated to this work. `bun run test:ci`, which
+  batches them the way CI does, is green.
+
 ## Phase 38 - README Persona-First Information Architecture
 
 1. [DONE] P38-T01 Reorganize the project README without losing operational detail.
