@@ -15,9 +15,6 @@
   "references": [
     {
       "path": "../sidflow-common"
-    },
-    {
-      "path": "../libsidplayfp-wasm"
     }
   ]
 }

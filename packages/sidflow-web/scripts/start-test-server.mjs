@@ -11,8 +11,13 @@ const hostname = process.env.HOSTNAME ?? '0.0.0.0';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(thisDir, '../../..');
-const wasmArtifactPath = resolve(repoRoot, 'packages/libsidplayfp-wasm/dist/libsidplayfp.wasm');
 const require = createRequire(import.meta.url);
+// Resolved through node_modules: the engine is a dependency, not a workspace
+// package, so there is no path in this repository that points at its artifacts.
+const wasmArtifactPath = resolve(
+  dirname(require.resolve('libsidplayfp-wasm/package.json')),
+  'dist/libsidplayfp.wasm',
+);
 
 if (!process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH) {
   process.env.SIDFLOW_LIBSIDPLAYFP_WASM_PATH = wasmArtifactPath;

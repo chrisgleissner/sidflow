@@ -208,7 +208,6 @@ echo "=== WASM Files Check ==="
 check_path "/sidflow/app/packages/sidflow-web/public/wasm/libsidplayfp.wasm" "SIDPlayFP WASM (public)" || ((FAILED++))
 check_path "/sidflow/app/packages/sidflow-web/public/wasm/libsidplayfp.js" "SIDPlayFP JS (public)" || ((FAILED++))
 # Source files should also exist in packages
-check_path "/sidflow/app/packages/libsidplayfp-wasm/dist/libsidplayfp.wasm" "SIDPlayFP WASM (source)" || echo "  (optional - only needed for CLI usage)"
 echo ""
 
 echo "=== Command Availability ==="

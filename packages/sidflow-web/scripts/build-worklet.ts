@@ -4,7 +4,9 @@
  * Bundles the worklet and worker code into single JS files.
  */
 
+import { readdir } from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { build } from 'bun';
 
 const projectRoot = path.resolve(import.meta.dir, '..');
@@ -16,49 +18,85 @@ const workletOutputDir = path.join(projectRoot, 'public/audio/worklet');
 // Worker build
 const workerSource = path.join(projectRoot, 'lib/audio/worker/sid-producer.worker.ts');
 const workerOutputDir = path.join(projectRoot, 'public/audio/worker');
-const wasmDistDir = path.join(projectRoot, '../libsidplayfp-wasm/dist');
+// Resolved through node_modules rather than a sibling workspace path, so the
+// served artifacts come from the published, integrity-checked package.
+const wasmDistDir = path.join(
+  path.dirname(fileURLToPath(import.meta.resolve('libsidplayfp-wasm/package.json'))),
+  'dist',
+);
 const wasmPublicDir = path.join(projectRoot, 'public/wasm');
 
 async function copyWasmArtifacts(): Promise<void> {
   console.log('[build-worker] Syncing libsidplayfp WASM artifacts...');
 
-  const wasmBinary = await Bun.file(path.join(wasmDistDir, 'libsidplayfp.wasm')).arrayBuffer();
-  await Bun.write(path.join(wasmPublicDir, 'libsidplayfp.wasm'), wasmBinary);
+  // Copy what the package ships, rather than a hand-listed subset. The list this
+  // replaces named four files and missed `upstream-versions.js`, which `index.js`
+  // imports — so the served bundle referenced a module that was never deployed.
+  // A list has to be updated every time the package grows a module; a filter only
+  // has to know what a browser never needs.
+  const runtimeOnly = (name: string) =>
+    !name.endsWith('.d.ts') &&
+    !name.endsWith('.map') &&
+    !name.endsWith('.md') &&
+    !name.startsWith('complete-source.tar.gz') &&
+    name !== 'package.json' &&
+    name !== 'LICENSE' &&
+    name !== 'UPSTREAM.json';
 
-  const wasmJs = await Bun.file(path.join(wasmDistDir, 'libsidplayfp.js')).text();
-  await Bun.write(path.join(wasmPublicDir, 'libsidplayfp.js'), wasmJs);
-
-  // Both engines are deployed: reSIDfp at the root, SIDLite in sidlite/, mirroring
-  // dist/. The browser player asks for reSIDfp explicitly, but shipping both means
-  // a caller can pass { engine: 'sidlite' } without the loader reaching outside
-  // the served directory.
-  const sidliteDistDir = path.join(wasmDistDir, 'sidlite');
-  const sidlitePublicDir = path.join(wasmPublicDir, 'sidlite');
-  for (const file of ['libsidplayfp.wasm', 'libsidplayfp.js']) {
-    const source = Bun.file(path.join(sidliteDistDir, file));
-    if (await source.exists()) {
-      await Bun.write(path.join(sidlitePublicDir, file), await source.arrayBuffer());
+  let copied = 0;
+  for (const relative of ['', 'sidlite']) {
+    const from = path.join(wasmDistDir, relative);
+    const to = path.join(wasmPublicDir, relative);
+    for (const entry of await readdir(from, { withFileTypes: true })) {
+      if (!entry.isFile() || !runtimeOnly(entry.name)) continue;
+      const source = Bun.file(path.join(from, entry.name));
+      // index.js is copied unmodified. Up to libsidplayfp-wasm 0.1.0 it reached
+      // outside its own directory (`../dist/...`), which did not resolve once
+      // served from /wasm/, so it had to be rewritten here — and a rewritten
+      // copy is one that can drift from the package it claims to be. Since
+      // 0.1.1 it resolves relative to itself; the check below keeps it that way
+      // instead of quietly reintroducing the rewrite on some future version.
+      if (entry.name.endsWith('.js')) {
+        const text = await source.text();
+        const escaping = [...text.matchAll(/["(](\.\.\/[^"')]+)["')]/g)].map((match) => match[1]);
+        if (escaping.length > 0) {
+          throw new Error(
+            `${relative || '.'}/${entry.name} reaches outside its own directory ` +
+              `(${escaping.join(', ')}), which will not resolve under /wasm/`,
+          );
+        }
+        await Bun.write(path.join(to, entry.name), text);
+      } else {
+        await Bun.write(path.join(to, entry.name), await source.arrayBuffer());
+      }
+      copied++;
     }
   }
 
-  const indexSource = await Bun.file(path.join(wasmDistDir, 'index.js')).text();
-  // Global, not first-match: index.js references ../dist/ several times (the
-  // default artifact, the SIDLite base URL, and the dynamic SIDLite import), and
-  // any left behind escapes the served /wasm/ directory at runtime.
-  const indexRewritten = indexSource.replaceAll('../dist/', './');
-  if (indexRewritten.includes('../dist/')) {
-    throw new Error('index.js still references ../dist/ after rewriting; it would not resolve under /wasm/');
+  // Every relative import in what we just deployed must land inside it.
+  for (const relative of ['', 'sidlite']) {
+    const dir = path.join(wasmPublicDir, relative);
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
+      const text = await Bun.file(path.join(dir, entry.name)).text();
+      for (const match of text.matchAll(/from\s+"(\.[^"]+)"|import\("(\.[^"]+)"\)/g)) {
+        // Two alternatives, so the specifier is in whichever group matched.
+        const specifier = match[1] ?? match[2];
+        const target = path.resolve(dir, specifier);
+        if (!(await Bun.file(target).exists())) {
+          throw new Error(`${entry.name} imports ${specifier}, which is not deployed under public/wasm/`);
+        }
+      }
+    }
   }
-  await Bun.write(path.join(wasmPublicDir, 'index.js'), indexRewritten);
 
-  const playerSource = await Bun.file(path.join(wasmDistDir, 'player.js')).text();
-  await Bun.write(path.join(wasmPublicDir, 'player.js'), playerSource);
+  console.log(`[build-worker] ${copied} files -> public/wasm/`);
 }
 
 async function rewriteWorkerImports(): Promise<void> {
   const workerPath = path.join(workerOutputDir, 'sid-producer.worker.js');
   const source = await Bun.file(workerPath).text();
-  const rewritten = source.replace(/from "@sidflow\/libsidplayfp-wasm"/g, 'from "../../wasm/index.js"');
+  const rewritten = source.replace(/from "libsidplayfp-wasm"/g, 'from "../../wasm/index.js"');
   if (rewritten !== source) {
     await Bun.write(workerPath, rewritten);
   }
@@ -107,7 +145,7 @@ async function buildWorker() {
     minify: false,
     sourcemap: 'inline',
     naming: '[dir]/[name].js',
-    external: ['@sidflow/libsidplayfp-wasm'],
+    external: ['libsidplayfp-wasm'],
   });
 
   if (!result.success) {

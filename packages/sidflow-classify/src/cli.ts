@@ -5,7 +5,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { resetConfigCache } from "@sidflow/common";
-import type { SidEngine } from "@sidflow/libsidplayfp-wasm";
+import type { SidEngine } from "libsidplayfp-wasm";
 import {
   type AutoTagProgress,
   type BuildAudioCacheResult,

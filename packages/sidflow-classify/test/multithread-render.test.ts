@@ -12,7 +12,7 @@ import {
 const TEMP_PREFIX = path.join(os.tmpdir(), "sidflow-classify-mt-");
 
 async function copySampleSid(target: string): Promise<void> {
-  const sourcePath = new URL("../../libsidplayfp-wasm/examples/assets/test-tone.sid", import.meta.url);
+  const sourcePath = new URL("../../sidflow-web/public/test-tone-c4.sid", import.meta.url);
   const buffer = await readFile(sourcePath);
   await writeFile(target, buffer);
 }

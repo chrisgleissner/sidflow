@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { SidWriteTrace } from "libsidplayfp-wasm";
 
 import {
   PAL_CYCLES_PER_SECOND,

@@ -1,6 +1,6 @@
 {
   "name": "@sidflow/web",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -34,7 +34,6 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@sidflow/classify": "workspace:*",
     "@sidflow/common": "workspace:*",
-    "@sidflow/libsidplayfp-wasm": "workspace:*",
     "@tensorflow/tfjs": "^4.22.0",
     "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
@@ -42,6 +41,7 @@
     "ffmpeg-static": "^5.2.0",
     "hls.js": "^1.5.11",
     "jsonwebtoken": "^9.0.2",
+    "libsidplayfp-wasm": "^1.0.1",
     "lucide-react": "^0.552.0",
     "next": "16.0.1",
     "react": "19.2.0",

@@ -11,7 +11,7 @@ import { constants as fsConstants } from "node:fs";
 import { access, rm, stat, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
+import { SidAudioEngine } from "libsidplayfp-wasm";
 import type { RenderEngine, RenderFormat } from "@sidflow/common";
 import { pathExists } from "@sidflow/common";
 import { renderWavWithEngine, type RenderWavOptions } from "../src/render/wav-renderer.js";

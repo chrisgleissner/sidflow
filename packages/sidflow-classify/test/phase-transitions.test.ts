@@ -34,7 +34,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
 const testWorkspace = path.resolve(repoRoot, 'test-workspace-phase');
 // Use test-tone.sid for fast execution
-const testSidSource = path.resolve(__dirname, '../../libsidplayfp-wasm/examples/assets/test-tone.sid');
+const testSidSource = path.resolve(__dirname, '../../sidflow-web/public/test-tone-c4.sid');
 const testDataPath = path.resolve(testWorkspace, 'hvsc');
 const testAudioCache = path.resolve(testWorkspace, 'audio-cache');
 const testTagsPath = path.resolve(testWorkspace, 'tags');

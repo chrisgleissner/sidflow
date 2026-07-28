@@ -200,53 +200,6 @@ jobs:
           set -euo pipefail
           bash scripts/docker-smoke.sh
 
-      # The WASM build is the part of this repo other projects embed directly, and
-      # it is the component whose provenance has actually been wrong before. Ship
-      # it as a release asset so a consumer can pin an engine without cloning, and
-      # verify which emulation they got.
-      - name: Package libsidplayfp WASM artifacts
-        id: wasm_assets
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          set -euo pipefail
-          DIST="packages/libsidplayfp-wasm/dist"
-          STAGE="$(mktemp -d)/libsidplayfp-wasm-${TAG}"
-          mkdir -p "${STAGE}/sidlite"
-
-          for file in libsidplayfp.js libsidplayfp.wasm libsidplayfp.d.ts LICENSE README.md; do
-            cp "${DIST}/${file}" "${STAGE}/${file}"
-            cp "${DIST}/sidlite/${file}" "${STAGE}/sidlite/${file}"
-          done
-
-          # Assert each artifact is the engine it claims to be before publishing
-          # it. A mislabelled artifact is the exact failure this repo has shipped.
-          # `if` rather than `&&`/`||` chains: under `set -e` a failing grep in a
-          # `&&` list aborts the step, and "not found" is the passing case here.
-          assert_builder() {
-              local artifact="$1" want="$2" unwanted="$3"
-              if ! grep -aq "${want}" "${artifact}"; then
-                  echo "${artifact} does not contain ${want}" >&2
-                  exit 1
-              fi
-              if grep -aq "${unwanted}" "${artifact}"; then
-                  echo "${artifact} also contains ${unwanted}; it is not a pure build" >&2
-                  exit 1
-              fi
-          }
-          assert_builder "${STAGE}/libsidplayfp.wasm" WasmReSIDfp WasmSIDLite
-          assert_builder "${STAGE}/sidlite/libsidplayfp.wasm" WasmSIDLite WasmReSIDfp
-
-          ( cd "${STAGE}" && find . -type f ! -name SHA256SUMS -printf '%P\n' \
-              | sort | xargs sha256sum > SHA256SUMS && sha256sum -c SHA256SUMS >/dev/null )
-
-          TARBALL="${PWD}/libsidplayfp-wasm-${TAG}.tar.gz"
-          tar -czf "${TARBALL}" -C "$(dirname "${STAGE}")" "$(basename "${STAGE}")"
-          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
-          echo "checksums=${STAGE}/SHA256SUMS" >> "$GITHUB_OUTPUT"
-          echo "packaged $(du -h "${TARBALL}" | cut -f1) -> ${TARBALL}"
-
       - name: Update GitHub release notes
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
@@ -254,17 +207,14 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           BODY: ${{ steps.changelog.outputs.entry }}
           REPO: ${{ github.repository }}
-          WASM_TARBALL: ${{ steps.wasm_assets.outputs.tarball }}
-          WASM_CHECKSUMS: ${{ steps.wasm_assets.outputs.checksums }}
         run: |
           set -euo pipefail
           NOTES_FILE="$(mktemp)"
           IMAGE_LINE="Docker image: ghcr.io/${REPO}:${TAG}"
-          WASM_LINE="libsidplayfp WASM: \`libsidplayfp-wasm-${TAG}.tar.gz\` (reSIDfp in the root, SIDLite in \`sidlite/\`)"
           if [ -n "${BODY}" ]; then
-            printf "%s\n\n%s\n%s\n" "${BODY}" "${IMAGE_LINE}" "${WASM_LINE}" > "${NOTES_FILE}"
+            printf "%s\n\n%s\n" "${BODY}" "${IMAGE_LINE}" > "${NOTES_FILE}"
           else
-            printf "%s\n%s\n" "${IMAGE_LINE}" "${WASM_LINE}" > "${NOTES_FILE}"
+            printf "%s\n" "${IMAGE_LINE}" > "${NOTES_FILE}"
           fi
 
           if gh release view "${TAG}" >/dev/null 2>&1; then
@@ -272,5 +222,3 @@ jobs:
           else
             gh release create "${TAG}" --notes-file "${NOTES_FILE}" --title "${TAG}"
           fi
-
-          gh release upload "${TAG}" "${WASM_TARBALL}" "${WASM_CHECKSUMS}" --clobber

@@ -6,7 +6,7 @@ import {
     resetWasmModuleCache,
     setEngineFactoryOverride,
 } from "../src/render/engine-factory";
-import { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
+import { SidAudioEngine } from "libsidplayfp-wasm";
 
 describe("Engine Factory", () => {
     afterEach(() => {

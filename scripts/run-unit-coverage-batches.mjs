@@ -36,7 +36,6 @@ const bunTestConfig = [
 // runtime crash.
 // See: https://github.com/oven-sh/bun/issues (coverage + worker_threads/WASM segfault)
 const noCoverageDirectories = [
-  "packages/libsidplayfp-wasm/test/",
 ];
 
 const noCoverageGlobs = [
@@ -50,7 +49,6 @@ function matchesNoCoverage(relativeFile) {
 }
 
 const batchRoots = [
-  { name: "libsidplayfp-wasm", dir: "packages/libsidplayfp-wasm/test", chunkSize: 10 },
   { name: "sidflow-classify", dir: "packages/sidflow-classify/test", chunkSize: 1 },
   { name: "sidflow-common", dir: "packages/sidflow-common/test", chunkSize: 16 },
   { name: "sidflow-fetch", dir: "packages/sidflow-fetch/test", chunkSize: 12 },

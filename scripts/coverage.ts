@@ -16,7 +16,6 @@ const EXCLUDE_PATH_CONTAINS = [
   "/packages/sidflow-classify/src/render/render-orchestrator.ts",
   "/packages/sidflow-classify/src/render/engine-factory.ts",
   "/packages/sidflow-classify/src/render/wav-renderer.ts",
-  "/packages/libsidplayfp-wasm/src/player.ts",
 ];
 
 function includePath(p: string): boolean {

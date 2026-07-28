@@ -5,7 +5,7 @@ import { appendFile, open, readFile, rm, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import readline from "node:readline";
 import path from "node:path";
-import type { SidAudioEngine, SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { SidAudioEngine, SidWriteTrace } from "libsidplayfp-wasm";
 import type { RenderEngine } from "./render-orchestrator.js";
 
 export interface RenderWavOptions {

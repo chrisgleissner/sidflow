@@ -74,7 +74,7 @@ The original audit was still audio-centric. For the requested SID-native redesig
 
 | Gap | Current Evidence | Consequence |
 |---|---|---|
-| No SID register tracing | `packages/sidflow-common/src/sid-parser.ts` parses headers only; no register event API exists in `@sidflow/libsidplayfp-wasm` | No direct arpeggio, waveform, PWM, filter, or `$D418` causal features |
+| No SID register tracing | `packages/sidflow-common/src/sid-parser.ts` parses headers only; no register event API exists in `libsidplayfp-wasm` | No direct arpeggio, waveform, PWM, filter, or `$D418` causal features |
 | No canonical frame event model | No `frame/voice/register/value` event store or JSONL schema exists | SID-native features cannot be derived reproducibly |
 | Window mismatch | `packages/sidflow-classify/src/index.ts:69-79`, `packages/sidflow-classify/src/essentia-features.ts:475-480`, `packages/sidflow-classify/src/audio-window.ts:28-33` default to `introSkipSec = 30`, `maxClassifySec = 15` | WAV and SID-native analyses are not aligned to the same bounded region |
 | No explicit orthogonalization | Current 24D vector mixes spectral/audio concepts without a formal SID-vs-WAV overlap policy | Double-counting risk remains for timbre, rhythm, and motion features |

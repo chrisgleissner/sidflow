@@ -327,7 +327,7 @@ Before you start:
 
 - **Copy [C64 system ROMs](#system-roms) into `workspace/roms/` first.** They are git-ignored, so a fresh clone never has them, and many tunes need them to render correctly.
 - **`--publish-release true` needs `gh auth login`** with permission to create releases on `chrisgleissner/sidflow-data`. The script checks this before classifying, so it fails fast rather than after a long run.
-- **Use `--mode local`, not `--mode docker`, unless you know the image is current.** Docker mode pulls `ghcr.io/chrisgleissner/sidflow:latest`, which bakes in `packages/libsidplayfp-wasm/dist/libsidplayfp.wasm` at image build time. If that image predates a WASM engine fix, the run will happily regenerate data with the old engine. Local mode uses the artifact in your checkout.
+- **Use `--mode local`, not `--mode docker`, unless you know the image is current.** Docker mode pulls `ghcr.io/chrisgleissner/sidflow:latest`, which bakes in whichever `libsidplayfp-wasm` version was installed at image build time. If that image predates an engine fix, the run will happily regenerate data with the old engine. Local mode uses the version in your lockfile.
 - **Classification runs under Bun, not Node.** `@sidflow/common` re-exports three SQLite-backed modules that import `bun:sqlite`, and Node's ESM loader rejects the `bun:` scheme, so every classify module that imports the package barrel is unloadable under Node. `--runtime node` therefore fails immediately with `ERR_UNSUPPORTED_ESM_URL_SCHEME`. Bun is already a prerequisite and the export step always ran under it.
 
 **0. Download HVSC:**
@@ -453,8 +453,8 @@ Getting a *different* engine than you asked for is the failure mode this pipelin
 
 ```bash
 # Each artifact must contain its own builder and not the other one.
-grep -ac WasmSIDLite  packages/libsidplayfp-wasm/dist/sidlite/libsidplayfp.wasm  # expect > 0
-grep -ac WasmReSIDfp  packages/libsidplayfp-wasm/dist/libsidplayfp.wasm          # expect > 0
+grep -ac WasmSIDLite  node_modules/libsidplayfp-wasm/dist/sidlite/libsidplayfp.wasm  # expect > 0
+grep -ac WasmReSIDfp  node_modules/libsidplayfp-wasm/dist/libsidplayfp.wasm          # expect > 0
 
 # Which SID emulation actually rendered the corpus.
 jq -r '.sid_engine' data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json
@@ -469,8 +469,7 @@ sqlite3 data/exports/sidcorr-hvsc-full-sidcorr-1.sqlite \
 These are enforced automatically too:
 
 - `test/engine-health.test.ts` runs the same signal checks against **both** engines — audible, unclipped, DC-bounded, multi-SID, repeatable. It is what would have caught the broken artifact.
-- `test/engine-parity.test.ts` pins reSIDfp and compares it against recorded goldens.
-- `.github/workflows/engine-parity.yaml` builds a native libsidplayfp from the same pinned refs and requires the WASM build to agree.
+- The engine's own repository ([libsidplayfp-wasm](https://github.com/chrisgleissner/libsidplayfp-wasm)) qualifies each release against a native libsidplayfp built from the same pinned refs, so the package installed here has already been proved to agree with the reference implementation.
 
 **1c. Convert the full export into lite or tiny bundles explicitly (optional):**
 

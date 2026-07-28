@@ -22,7 +22,7 @@ import {
   encodePcmToWav,
   writeSidTraceSidecar,
 } from "../../sidflow-classify/src/render/wav-renderer.js";
-import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { SidWriteTrace } from "libsidplayfp-wasm";
 import { PAL_CYCLES_PER_SECOND } from "../../sidflow-classify/src/sid-register-trace.js";
 import { writeWavRenderSettingsSidecar } from "../../sidflow-classify/src/wav-render-settings.js";
 import { buildSelectionStatePath, buildStationQueue, openStationSimilarityDataset, readPersistedStationSelections, runStationCli } from "../src/sid-station.js";

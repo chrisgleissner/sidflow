@@ -1,5 +1,5 @@
 import { createLogger, parseSidFile, type SidClock } from "@sidflow/common";
-import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { SidWriteTrace } from "libsidplayfp-wasm";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -190,7 +190,7 @@ export async function captureSidWriteTraceSecondPass(
 ): Promise<SidWriteTraceCapture> {
   const metadata = await parseSidFile(options.sidFile);
   const sidBuffer = new Uint8Array(await readFile(options.sidFile));
-  const { SidAudioEngine } = await import("@sidflow/libsidplayfp-wasm");
+  const { SidAudioEngine } = await import("libsidplayfp-wasm");
   const engine = new SidAudioEngine();
 
   try {

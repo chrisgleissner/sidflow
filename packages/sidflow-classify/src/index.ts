@@ -35,7 +35,7 @@ import {
   getFeatureExtractionPool, 
   destroyFeatureExtractionPool 
 } from "./feature-extraction-pool.js";
-import type { SidAudioEngine } from "@sidflow/libsidplayfp-wasm";
+import type { SidAudioEngine, SidTuneInfo } from "libsidplayfp-wasm";
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { WasmRendererPool, type RenderPoolLifecycleEvent } from "./render/wasm-render-pool.js";
@@ -1625,17 +1625,15 @@ export interface ExtractMetadataOptions {
 
 export type ExtractMetadata = (options: ExtractMetadataOptions) => Promise<SidMetadata>;
 
-function metadataFromTuneInfo(info: Record<string, unknown> | null): SidMetadata | null {
+function metadataFromTuneInfo(info: SidTuneInfo | null): SidMetadata | null {
   if (!info) {
     return null;
   }
-  const infoStrings = Array.isArray((info as Record<string, unknown>).infoStrings)
-    ? (info as Record<string, unknown>).infoStrings
-    : [];
-  const [titleRaw, authorRaw, releasedRaw] = infoStrings as Array<unknown>;
-  const title = typeof titleRaw === "string" && titleRaw.trim().length > 0 ? titleRaw.trim() : undefined;
-  const author = typeof authorRaw === "string" && authorRaw.trim().length > 0 ? authorRaw.trim() : undefined;
-  const released = typeof releasedRaw === "string" && releasedRaw.trim().length > 0 ? releasedRaw.trim() : undefined;
+  // PSID/RSID carry exactly three: title, author, released. They are fixed-width
+  // fields, so a tune that leaves one blank still occupies its slot.
+  const [title, author, released] = (info.infoStrings ?? []).map((value) =>
+    value.trim().length > 0 ? value.trim() : undefined
+  );
   if (!title && !author && !released) {
     return null;
   }

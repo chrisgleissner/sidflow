@@ -13,7 +13,7 @@ import {
   resolveWavPath,
   type ClassificationPlan,
 } from "@sidflow/classify";
-import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { SidWriteTrace } from "libsidplayfp-wasm";
 import { SID_TRACE_SIDECAR_VERSION, writeSidTraceSidecar } from "../src/render/wav-renderer.js";
 import { writeWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 

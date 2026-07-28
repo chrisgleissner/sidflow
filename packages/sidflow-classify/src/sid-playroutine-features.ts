@@ -31,7 +31,7 @@
  * in a distance function. These are continuous descriptors of driving behaviour.
  */
 
-import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { SidWriteTrace } from "libsidplayfp-wasm";
 
 import {
   resolveSidTraceFrameWindow,

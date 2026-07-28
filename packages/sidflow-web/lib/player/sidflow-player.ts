@@ -1,4 +1,4 @@
-import loadLibsidplayfp, { SidAudioEngine } from '@sidflow/libsidplayfp-wasm';
+import loadLibsidplayfp, { SidAudioEngine } from 'libsidplayfp-wasm';
 import type { PlaybackSessionDescriptor } from '@/lib/types/playback-session';
 import type { RateTrackInfo } from '@/lib/types/rate-track';
 import { telemetry } from '@/lib/telemetry';

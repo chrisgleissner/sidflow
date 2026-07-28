@@ -1,5 +1,102 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 40 - Extract And Automate libsidplayfp WASM
+
+1. [IN_PROGRESS] P40-T01 Establish `chrisgleissner/libsidplayfp-wasm` as the standalone,
+   source-compatible TypeScript and WASM package.
+  Acceptance criteria:
+ - The package preserves the current loader, `SidAudioEngine`, engine-selection, trace, and
+    direct generated-module API without a caller-facing code change.
+  - It builds and ships both SIDLite and reSIDfp from pinned, recorded upstream sources.
+  - Playback fixtures are obtained on demand from the complete HVSC 85 result of Update 85,
+    integrity-checked, and cached locally so real single-, dual-, and triple-SID scenarios never
+    repeatedly load the remote server.
+  - The test-only C64 ROM cache is sourced from pinned `libretro/vice-libretro` bytes, never
+    committed or published, and is applied before every real playback load.
+  - The standalone suite reproduces SIDFlow's renderer contract over a representative HVSC subset:
+    it enables tracing before load, renders WAV output in 20,000-cycle chunks, drains every SID
+    register-write batch to a sidecar, and proves that the batched stream equals the complete trace.
+  - The cache selector reproduces SIDFlow's 998-case edge corpus: every 2-/3-SID, RSID+BASIC,
+    and >=32-subsong file plus deterministic RSID and zero-play-address samples.
+  - Test coverage exceeds SIDFlow's existing WASM suite: public API and clean-package contracts,
+    browser execution, corrupt-input resistance, cache/header-selection behavior, lifecycle and
+    render-mode matrices, both-engine corpus health, and native differential parity all gate a
+    release.
+  - README and package metadata make installation, browser asset resolution, C64 ROM handling,
+    engine selection, and verification concise and clear.
+  - Codecov uploads LCOV from the same local CI command and independently enforces at least 95%
+    production TypeScript line coverage; the README carries npm, build, Codecov, GPL, and runtime
+    badges consistent with the relevant C64Bridge conventions.
+  - Every ordinary test run includes concurrent multi-instance playback. Browser tests cover desktop
+    Chromium, Firefox, WebKit, and Pixel-5-configured Chromium, including concurrent module workers.
+    A weekly Sunday-night two-hour virtual-playback soak detects post-warm-up WASM heap growth; the
+    initial 30-minute soak is run locally before the first release.
+
+2. [TODO] P40-T02 Automate release-only upstream tracking and supply-chain-safe publication.
+  Acceptance criteria:
+  - A public-runner workflow detects stable libsidplayfp GitHub releases, never prereleases or
+    ordinary branch commits.
+  - Each candidate rebuilds, validates actual playback against native libsidplayfp across the
+    single-/multi-SID and both-engine fixtures, and publishes only after every gate passes.
+  - npm (with provenance) and GitHub release assets contain the same verified package, checksums,
+    SBOM, and provenance metadata.
+  - The initial migration does not manually publish a registry package or GitHub release.
+
+3. [TODO] P40-T03 Replace SIDFlow's workspace implementation with the standalone dependency and
+   remove the embedded package/build/release coupling.
+  Acceptance criteria:
+  - SIDFlow imports the external package without behavioral or public API changes.
+  - No production copy of the former package, its build metadata, or its release staging remains
+    in SIDFlow.
+  - SIDFlow's dependency-update workflow opens an automatically mergeable update when the
+    standalone package releases; lockfile updates retain reproducible builds.
+
+4. [TODO] P40-T04 Validate both repositories and preserve evidence.
+  Acceptance criteria:
+  - Each repository builds, package checks pass, and its full relevant test suite passes three
+    consecutive times with zero failures.
+  - The final progress record contains literal terminal summaries and explicitly confirms that no
+    package or release was published manually during migration.
+
+### Progress
+
+- 2026-07-27: Read the existing package, SIDFlow integration/release paths, upstream release
+  state, target repository, and `c64bridge` package-validation workflows. The target repository
+  is deliberately bare and public; no source, registry, or release publication has
+  occurred. Upstream is pinned at libsidplayfp `v3.0.2` and libresidfp `v1.1.2`. The standalone
+  release provenance will record both exact refs, since reSIDfp is a separately linked library.
+- 2026-07-27: Added HVSC Update 85 real-fixture acquisition to the migration contract, then
+  strengthened it to match SIDFlow's existing absolute-edge selection rather than testing only
+  the update's own files. The complete HVSC 85 result will be cached, its SID headers parsed, and
+  the deterministic 998-case union exercised in release gates. The standalone test architecture
+  also adds package, browser, input-resilience, cache, lifecycle, and both-engine native-parity
+  layers beyond SIDFlow's current WASM tests.
+- 2026-07-27: Implemented the standalone package on branch
+  `codex/extract-libsidplayfp-wasm` without publication. It now carries pinned complete-HVSC-85 and
+  VICE-ROM caches, source-built SIDLite/reSIDfp artifacts, lifecycle/cache/failure tests, 16-player
+  concurrent playback, browser and browser-worker concurrency across Chrome/Android-sized Chrome/
+  Firefox/WebKit, and the SIDFlow WAV-plus-full-register-trace compatibility test. The local LCOV
+  report measures 99.36% production line coverage (`src/player.ts` 100%); Codecov configuration and
+  badge are included. The initial 30-minute soak is running under a logged harness; no registry or
+  GitHub release has been created.
+- 2026-07-27: The initial local 30-minute dual-engine virtual-playback soak completed with exit 0.
+  Local Chromium, Android-sized Chromium, Firefox, and WebKit playback completed 28 Playwright
+  checks successfully. Three consecutive standalone unit runs each ended with `348 pass`, `1 skip`
+  (the separately executed operational soak), and `0 fail`; the complete 1,678-file HVSC #85 edge
+  health sweep then passed for both engines. A legitimate reSIDfp peak of 0.9848 in Druid Remix was
+  verified byte-for-byte against the pinned native renderer, so the health gate now correctly rejects
+  actual Int16 saturation instead of high but valid upstream output. The exhaustive native
+  differential sweep is in progress; no PR, package publication, or release has yet been created.
+- 2026-07-28: Completed the standalone local release qualification: both 1,678-case HVSC health
+  sweeps and both-engine native differential sweep are green; quiet/held-frame parity uses a strict
+  -60 dBFS absolute-error and 16-LSB peak bound rather than invalid mean-subtracted correlation,
+  while normal-level AC signals retain the 0.9999 correlation requirement. The exact native
+  comparison completed after this correction. Three subsequent unit runs all reported `348 pass`,
+  `1 skip` (the separately completed operational soak), and `0 fail`; package validation passed.
+  The standalone work is committed as `cf44ff9` and is now in draft PR
+  https://github.com/chrisgleissner/libsidplayfp-wasm/pull/1. Its GitHub Actions release-quality
+  build is running; no package publication or GitHub release has occurred.
+
 ## Phase 39 - Export Audit Remediation, Released As 0.8.0
 
 1. [DONE] P39-T01 Close the July 2026 HVSC export audit findings and ship them as 0.8.0.
