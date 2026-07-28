@@ -34,9 +34,6 @@
       "@sidflow/rate": [
         "../sidflow-rate/dist/index.js"
       ],
-      "@sidflow/libsidplayfp-wasm": [
-        "../libsidplayfp-wasm/dist/index.js"
-      ],
       "@sidflow/classify": [
         "../sidflow-classify/dist/index.js"
       ]

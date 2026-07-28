@@ -1,5 +1,5 @@
 import type { SidClock } from "@sidflow/common";
-import type { SidWriteTrace } from "@sidflow/libsidplayfp-wasm";
+import type { SidWriteTrace } from "libsidplayfp-wasm";
 
 export const PAL_CYCLES_PER_SECOND = 985_248;
 export const NTSC_CYCLES_PER_SECOND = 1_022_727;

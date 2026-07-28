@@ -2,9 +2,6 @@
   "files": [],
   "references": [
     {
-      "path": "./packages/libsidplayfp-wasm"
-    },
-    {
       "path": "./packages/sidflow-performance"
     },
     {

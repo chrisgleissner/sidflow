@@ -27,42 +27,38 @@
         "typescript": "^5.4.0",
       },
     },
-    "packages/libsidplayfp-wasm": {
-      "name": "@sidflow/libsidplayfp-wasm",
-      "version": "0.3.10",
-    },
     "packages/sidflow-classify": {
       "name": "@sidflow/classify",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "@sidflow/common": "workspace:*",
-        "@sidflow/libsidplayfp-wasm": "workspace:*",
         "@tensorflow/tfjs": "^4.22.0",
         "@tensorflow/tfjs-backend-wasm": "^4.22.0",
         "@tensorflow/tfjs-node": "^4.22.0",
         "essentia.js": "^0.1.3",
+        "libsidplayfp-wasm": "^0.1.1",
       },
     },
     "packages/sidflow-common": {
       "name": "@sidflow/common",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "7zip-min": "^1.3.1",
         "@ffmpeg/core": "0.11.0",
         "@ffmpeg/ffmpeg": "0.11.6",
-        "@sidflow/libsidplayfp-wasm": "workspace:*",
+        "libsidplayfp-wasm": "^0.1.1",
       },
     },
     "packages/sidflow-fetch": {
       "name": "@sidflow/fetch",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "@sidflow/common": "workspace:*",
       },
     },
     "packages/sidflow-performance": {
       "name": "@sidflow/performance",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "playwright": "^1.48.0",
         "yaml": "^2.6.0",
@@ -73,21 +69,21 @@
     },
     "packages/sidflow-play": {
       "name": "@sidflow/play",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "@sidflow/common": "workspace:*",
       },
     },
     "packages/sidflow-rate": {
       "name": "@sidflow/rate",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "@sidflow/common": "workspace:*",
       },
     },
     "packages/sidflow-train": {
       "name": "@sidflow/train",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "@sidflow/classify": "workspace:*",
         "@sidflow/common": "workspace:*",
@@ -96,7 +92,7 @@
     },
     "packages/sidflow-web": {
       "name": "@sidflow/web",
-      "version": "0.3.10",
+      "version": "0.8.1",
       "dependencies": {
         "@ffmpeg/core": "0.11.0",
         "@ffmpeg/ffmpeg": "0.11.6",
@@ -111,7 +107,6 @@
         "@radix-ui/react-tabs": "^1.1.13",
         "@sidflow/classify": "workspace:*",
         "@sidflow/common": "workspace:*",
-        "@sidflow/libsidplayfp-wasm": "workspace:*",
         "@tensorflow/tfjs": "^4.22.0",
         "bcrypt": "^6.0.0",
         "class-variance-authority": "^0.7.1",
@@ -119,6 +114,7 @@
         "ffmpeg-static": "^5.2.0",
         "hls.js": "^1.5.11",
         "jsonwebtoken": "^9.0.2",
+        "libsidplayfp-wasm": "^0.1.1",
         "lucide-react": "^0.552.0",
         "next": "16.0.1",
         "react": "19.2.0",
@@ -153,9 +149,6 @@
         "vite-plugin-istanbul": "^7.2.1",
       },
     },
-  },
-  "overrides": {
-    "baseline-browser-mapping": "^2.9.4",
   },
   "packages": {
     "7zip-bin": ["7zip-bin@5.1.1", "", {}, "sha512-sAP4LldeWNz0lNzmTird3uWfFDWWTeg6V/MsmyyLR9X1idwKBWIgt/ZvinqQldJm3LecKEs1emkbquO6PCiLVQ=="],
@@ -701,8 +694,6 @@
     "@sidflow/common": ["@sidflow/common@workspace:packages/sidflow-common"],
 
     "@sidflow/fetch": ["@sidflow/fetch@workspace:packages/sidflow-fetch"],
-
-    "@sidflow/libsidplayfp-wasm": ["@sidflow/libsidplayfp-wasm@workspace:packages/libsidplayfp-wasm"],
 
     "@sidflow/performance": ["@sidflow/performance@workspace:packages/sidflow-performance"],
 
@@ -1473,6 +1464,8 @@
     "language-tags": ["language-tags@1.0.9", "", { "dependencies": { "language-subtag-registry": "^0.3.20" } }, "sha512-MbjN408fEndfiQXbFQ1vnd+1NoLDsnQW41410oQBXiyXDMYH5z505juWa4KUE1LqxRC7DgOgZDbKLxHIwm27hA=="],
 
     "levn": ["levn@0.4.1", "", { "dependencies": { "prelude-ls": "^1.2.1", "type-check": "~0.4.0" } }, "sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ=="],
+
+    "libsidplayfp-wasm": ["libsidplayfp-wasm@0.1.1", "", {}, "sha512-UkvIeAjwrdtlr7iFcu4DKPu1uqSc7pdu9HsbjfWp8uMPn4+R36YadRqCmIhUY2Q+SfXdKKXgiaLWerrz7Yn8CQ=="],
 
     "lightningcss": ["lightningcss@1.30.2", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.30.2", "lightningcss-darwin-arm64": "1.30.2", "lightningcss-darwin-x64": "1.30.2", "lightningcss-freebsd-x64": "1.30.2", "lightningcss-linux-arm-gnueabihf": "1.30.2", "lightningcss-linux-arm64-gnu": "1.30.2", "lightningcss-linux-arm64-musl": "1.30.2", "lightningcss-linux-x64-gnu": "1.30.2", "lightningcss-linux-x64-musl": "1.30.2", "lightningcss-win32-arm64-msvc": "1.30.2", "lightningcss-win32-x64-msvc": "1.30.2" } }, "sha512-utfs7Pr5uJyyvDETitgsaqSyjCb2qNRAtuqUeWIAKztsOYdcACf2KtARYXg2pSvhkt+9NfoaNY7fxjl6nuMjIQ=="],
 

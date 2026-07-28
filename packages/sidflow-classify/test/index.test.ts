@@ -758,7 +758,7 @@ describe("metadata helpers", () => {
             return;
           },
           getTuneInfo: () => ({ infoStrings: ["Tune Title", "Tune Author", "1999"] })
-        }) as unknown as import("@sidflow/libsidplayfp-wasm").SidAudioEngine
+        }) as unknown as import("libsidplayfp-wasm").SidAudioEngine
       });
 
       const metadata = await defaultExtractMetadata({
@@ -789,7 +789,7 @@ describe("metadata helpers", () => {
             return;
           },
           getTuneInfo: () => null
-        }) as unknown as import("@sidflow/libsidplayfp-wasm").SidAudioEngine
+        }) as unknown as import("libsidplayfp-wasm").SidAudioEngine
       });
 
       const metadata = await defaultExtractMetadata({

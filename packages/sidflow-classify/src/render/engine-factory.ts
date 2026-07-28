@@ -1,7 +1,7 @@
 import loadLibsidplayfp, {
   SidAudioEngine,
   type SidEngine,
-} from "@sidflow/libsidplayfp-wasm";
+} from "libsidplayfp-wasm";
 
 import { createLogger, pathExists } from "@sidflow/common";
 import { ensureSystemRoms } from "./system-roms-fetch.js";
@@ -223,7 +223,7 @@ export function setEngineFactoryOverride(
 const compiledWasmModulePromises = new Map<SidEngine, Promise<WebAssembly.Module>>();
 
 async function compileWasmModule(engine: SidEngine): Promise<WebAssembly.Module> {
-  const pkgEntry = import.meta.resolve("@sidflow/libsidplayfp-wasm");
+  const pkgEntry = import.meta.resolve("libsidplayfp-wasm");
   const entryDir = path.dirname(fileURLToPath(pkgEntry));
   // SIDLite ships alongside the reference engine in dist/sidlite/.
   const suffix = engine === "sidlite" ? path.join("sidlite", "libsidplayfp.wasm") : "libsidplayfp.wasm";

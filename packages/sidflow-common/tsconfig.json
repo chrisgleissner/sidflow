@@ -11,10 +11,5 @@
   ],
   "exclude": [
     "test/**/*"
-  ],
-  "references": [
-    {
-      "path": "../libsidplayfp-wasm"
-    }
   ]
 }

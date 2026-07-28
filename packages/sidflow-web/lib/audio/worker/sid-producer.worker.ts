@@ -9,7 +9,7 @@
  * - Pre-rolls buffer before signaling ready to play
  */
 
-import loadLibsidplayfp, { SidAudioEngine } from '@sidflow/libsidplayfp-wasm';
+import loadLibsidplayfp, { SidAudioEngine } from 'libsidplayfp-wasm';
 import { SABRingBufferProducer, type SABRingBufferPointers } from '../shared/sab-ring-buffer';
 
 let fastFromQuery = false;

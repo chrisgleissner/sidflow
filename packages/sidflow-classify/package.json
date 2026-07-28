@@ -1,6 +1,6 @@
 {
   "name": "@sidflow/classify",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,10 +19,10 @@
   "sideEffects": false,
   "dependencies": {
     "@sidflow/common": "workspace:*",
-    "@sidflow/libsidplayfp-wasm": "workspace:*",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-backend-wasm": "^4.22.0",
     "@tensorflow/tfjs-node": "^4.22.0",
-    "essentia.js": "^0.1.3"
+    "essentia.js": "^0.1.3",
+    "libsidplayfp-wasm": "^0.1.1"
   }
 }

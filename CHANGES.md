@@ -1,6 +1,57 @@
 # Changelog
 
 
+## 0.8.1 (2026-07-28)
+
+### libsidplayfp WASM moves to its own package
+
+The engine was vendored here as the `@sidflow/libsidplayfp-wasm` workspace package: its
+own Docker build of libsidplayfp and libresidfp, its own upstream pin, its own release
+qualification, all carried inside this repository. It now lives at
+[`chrisgleissner/libsidplayfp-wasm`](https://github.com/chrisgleissner/libsidplayfp-wasm)
+and is consumed from npm as [`libsidplayfp-wasm`](https://www.npmjs.com/package/libsidplayfp-wasm).
+
+That removes 58 files and roughly 8,200 lines from this repository, along with the
+`wasm:build` and `wasm:check-upstream` scripts and the Docker cross-compilation they
+drove. Upstream tracking, the dual-engine build, native differential parity, and release
+publication are now that project's responsibility.
+
+**Behaviour changes inherited from the extracted package**, all fixes:
+
+- `seekSeconds()` budgeted its fast-forward loop by dividing samples by cycles, which are
+  not interchangeable. A 60-second seek landed at 3.95 seconds and reported the shortfall
+  as if it were the position. It now seeks where it is asked to.
+- `seekSeconds()` was a no-op whenever a render cache existed: it returned a sample index
+  and left playback where it was.
+- libsidplayfp was compiled with exception handling disabled, so its own `try`/`catch`
+  blocks were compiled not to catch and errors it reports through a status escaped as
+  opaque exceptions. Malformed input now returns `false` with a readable message.
+- The engine artifacts are 16–26% smaller.
+
+**New capability**, should this repository want it: per-voice muting, filter bypass,
+playback clock, CIA1 timer, SID register read-back, the HVSC `Songlengths.md5` key, the
+full `SidConfig` (C64 and SID model, sampling method, digi boost, power-on delay, extra
+chip addresses), and reSIDfp filter tuning.
+
+The web player's `public/wasm/` deployment is now synchronised from
+`node_modules/libsidplayfp-wasm/dist`, so its integrity comes from the npm lockfile
+rather than from a hand-maintained checksum list.
+
+**Fixed: the web player's deployed engine was missing a module.** `public/wasm/index.js`
+imports `./upstream-versions.js`, but the deployment copied a hand-listed set of four
+files that did not include it, so the served bundle referenced a module that was never
+deployed. The deployment now copies what the package ships, filtered to what a browser
+needs, and fails the build if any relative import in the result does not resolve inside
+the served directory. It also no longer rewrites `index.js` on the way in: from
+libsidplayfp-wasm 0.1.1 the entry point resolves its artifacts relative to itself, so the
+copy is byte-for-byte and cannot drift from the package it claims to be.
+
+The `Engine Parity` workflow, which built libsidplayfp natively to check the WASM build
+against it, and the release job that published the engine as a GitHub release asset, both
+move with the package. Releases here no longer carry a `libsidplayfp-wasm-*.tar.gz`
+asset; install the npm package instead.
+
+
 ## 0.8.0 (2026-07-27)
 
 Closes the findings of the July 2026 export audit

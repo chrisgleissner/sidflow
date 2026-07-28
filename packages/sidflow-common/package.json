@@ -1,6 +1,6 @@
 {
   "name": "@sidflow/common",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,8 +19,8 @@
   "sideEffects": false,
   "dependencies": {
     "7zip-min": "^1.3.1",
-    "@sidflow/libsidplayfp-wasm": "workspace:*",
+    "@ffmpeg/core": "0.11.0",
     "@ffmpeg/ffmpeg": "0.11.6",
-    "@ffmpeg/core": "0.11.0"
+    "libsidplayfp-wasm": "^0.1.1"
   }
 }
