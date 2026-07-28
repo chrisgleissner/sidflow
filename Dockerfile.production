@@ -67,7 +67,6 @@ COPY package.json bun.lock* ./
 COPY packages/sidflow-web/package.json ./packages/sidflow-web/
 COPY packages/sidflow-common/package.json ./packages/sidflow-common/
 COPY packages/sidflow-classify/package.json ./packages/sidflow-classify/
-COPY packages/libsidplayfp-wasm/package.json ./packages/libsidplayfp-wasm/
 COPY packages/sidflow-fetch/package.json ./packages/sidflow-fetch/
 COPY packages/sidflow-play/package.json ./packages/sidflow-play/
 COPY packages/sidflow-rate/package.json ./packages/sidflow-rate/

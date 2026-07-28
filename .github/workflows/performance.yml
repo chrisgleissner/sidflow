@@ -53,8 +53,6 @@ jobs:
       
       - name: Build project
         run: bun run build
-        env:
-          SIDFLOW_SKIP_WASM_UPSTREAM_CHECK: '1'
 
       - name: Build web app
         run: cd packages/sidflow-web && npm run build
@@ -133,7 +131,6 @@ jobs:
           exit $EXIT_CODE
         env:
           CI: true
-          SIDFLOW_SKIP_WASM_UPSTREAM_CHECK: '1'
       
       - name: Stop web server
         if: always()
