@@ -1,6 +1,6 @@
 # Persona Divergence Report
 
-Generated: 2026-07-28T13:57:59.352Z
+Generated: 2026-07-28T15:30:48.044Z
 
 ## Architecture
 

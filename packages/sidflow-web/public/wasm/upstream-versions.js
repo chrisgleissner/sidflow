@@ -13,5 +13,5 @@ export const UPSTREAM_COMMITS = {
     libresidfp: "a5cd8f2486d627c40ea8c7c7a25827db73837002",
 };
 /** Version of this npm package. */
-export const PACKAGE_VERSION = "0.1.1";
+export const PACKAGE_VERSION = "1.0.1";
 //# sourceMappingURL=upstream-versions.js.map

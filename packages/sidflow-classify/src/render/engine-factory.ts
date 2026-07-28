@@ -241,7 +241,7 @@ async function compileWasmModule(engine: SidEngine): Promise<WebAssembly.Module>
   }
   throw new Error(
     `Could not find the ${engine} libsidplayfp.wasm; looked in: ${candidates.join(", ")}. ` +
-      `Build it with \`SIDFLOW_SID_ENGINE=${engine} bun run build:wasm\`.`,
+      "The engine is the libsidplayfp-wasm dependency, not a local build: run `bun install`.",
   );
 }
 

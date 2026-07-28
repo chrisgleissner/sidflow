@@ -39,7 +39,11 @@ if (!isPlaywrightRunner) {
     console.warn('[sidflow-web] Skipping Playwright playback e2e spec; run via `bun run test:e2e`.');
 } else {
     const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
-    const TEST_SID_PATH = path.resolve(CURRENT_DIR, '../../../libsidplayfp-wasm/test-tone-c4.sid');
+    // Resolved from the libsidplayfp-wasm package, which publishes it. It used to
+    // come from `packages/libsidplayfp-wasm/`, a workspace that no longer exists.
+    const TEST_SID_PATH = fileURLToPath(
+      import.meta.resolve('libsidplayfp-wasm/fixtures/test-tone-c4.sid'),
+    );
     const TEST_SID_BUFFER = readFileSync(TEST_SID_PATH);
     const TEST_SID_DATA_URL = `data:application/octet-stream;base64,${TEST_SID_BUFFER.toString('base64')}`;
 

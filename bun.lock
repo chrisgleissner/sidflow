@@ -36,7 +36,7 @@
         "@tensorflow/tfjs-backend-wasm": "^4.22.0",
         "@tensorflow/tfjs-node": "^4.22.0",
         "essentia.js": "^0.1.3",
-        "libsidplayfp-wasm": "^0.1.1",
+        "libsidplayfp-wasm": "^1.0.1",
       },
     },
     "packages/sidflow-common": {
@@ -46,7 +46,7 @@
         "7zip-min": "^1.3.1",
         "@ffmpeg/core": "0.11.0",
         "@ffmpeg/ffmpeg": "0.11.6",
-        "libsidplayfp-wasm": "^0.1.1",
+        "libsidplayfp-wasm": "^1.0.1",
       },
     },
     "packages/sidflow-fetch": {
@@ -114,7 +114,7 @@
         "ffmpeg-static": "^5.2.0",
         "hls.js": "^1.5.11",
         "jsonwebtoken": "^9.0.2",
-        "libsidplayfp-wasm": "^0.1.1",
+        "libsidplayfp-wasm": "^1.0.1",
         "lucide-react": "^0.552.0",
         "next": "16.0.1",
         "react": "19.2.0",
@@ -1465,7 +1465,7 @@
 
     "levn": ["levn@0.4.1", "", { "dependencies": { "prelude-ls": "^1.2.1", "type-check": "~0.4.0" } }, "sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ=="],
 
-    "libsidplayfp-wasm": ["libsidplayfp-wasm@0.1.1", "", {}, "sha512-UkvIeAjwrdtlr7iFcu4DKPu1uqSc7pdu9HsbjfWp8uMPn4+R36YadRqCmIhUY2Q+SfXdKKXgiaLWerrz7Yn8CQ=="],
+    "libsidplayfp-wasm": ["libsidplayfp-wasm@1.0.1", "", {}, "sha512-uOFxkjxVJdBhMSOzxHCj9PDCtDe69adr9GTDSpFUixzRo5+Jo6FMjEAWyDsZzENwnxaidQpFKxCbtUrGpU0BJw=="],
 
     "lightningcss": ["lightningcss@1.30.2", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.30.2", "lightningcss-darwin-arm64": "1.30.2", "lightningcss-darwin-x64": "1.30.2", "lightningcss-freebsd-x64": "1.30.2", "lightningcss-linux-arm-gnueabihf": "1.30.2", "lightningcss-linux-arm64-gnu": "1.30.2", "lightningcss-linux-arm64-musl": "1.30.2", "lightningcss-linux-x64-gnu": "1.30.2", "lightningcss-linux-x64-musl": "1.30.2", "lightningcss-win32-arm64-msvc": "1.30.2", "lightningcss-win32-x64-msvc": "1.30.2" } }, "sha512-utfs7Pr5uJyyvDETitgsaqSyjCb2qNRAtuqUeWIAKztsOYdcACf2KtARYXg2pSvhkt+9NfoaNY7fxjl6nuMjIQ=="],
 

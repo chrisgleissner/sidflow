@@ -9,6 +9,19 @@ const DEFAULT_CACHE_SECONDS = 600;
  */
 const MAX_CACHE_SECONDS = 3600;
 /**
+ * The furthest `seekSeconds` will go.
+ *
+ * libsidplayfp cannot skip: reaching a position means emulating every cycle up
+ * to it, so the cost of a seek is linear in how far it goes. Without a bound, a
+ * caller who passes a wrong number — a millisecond value, a stray multiply —
+ * gets no error and no result, just a thread that renders for hours. On a main
+ * thread that is a frozen tab.
+ *
+ * An hour is far past any real SID and matches the cache limit, so the bound
+ * only ever catches a mistake.
+ */
+const MAX_SEEK_SECONDS = 3600;
+/**
  * Consecutive empty render() results tolerated before a pull loop gives up.
  *
  * A tune that has ended returns nothing forever, so an unbounded loop would
@@ -528,6 +541,11 @@ export class SidAudioEngine {
     async seekSeconds(seconds, cyclesPerChunk = 100000) {
         if (!Number.isFinite(seconds)) {
             throw new Error("Seek position must be a finite number of seconds");
+        }
+        if (seconds > MAX_SEEK_SECONDS) {
+            throw new RangeError(`Seek position must be at most ${MAX_SEEK_SECONDS} seconds; ` +
+                `got ${seconds}. Seeking emulates every cycle up to the target, so a ` +
+                `larger value would render for hours rather than fail.`);
         }
         this.resetPendingChunk();
         await this.reloadCurrentSong();
