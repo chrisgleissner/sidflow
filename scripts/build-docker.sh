@@ -11,10 +11,6 @@ echo "[build] Bun version: $(bun --version)"
 echo "[build] Installing dependencies..."
 node scripts/run-bun.mjs install --frozen-lockfile
 
-# Check WASM upstream
-echo "[build] Checking WASM upstream..."
-node scripts/run-bun.mjs run wasm:check-upstream
-
 # Run TypeScript compilation
 # Note: We must run tsc -b to generate dist/ outputs for monorepo packages
 # Next.js imports from @sidflow/common, @sidflow/classify etc require these
