@@ -47,3 +47,6 @@ export * from "./similarity-portable.js";
 export * from "./similarity-export-lite.js";
 export * from "./similarity-export-tiny.js";
 export * from "./similarity-export-features.js";
+export * from "./similarity-neighbour-selection.js";
+export * from "./similarity-hubness.js";
+export * from "./similarity-graph-build.js";

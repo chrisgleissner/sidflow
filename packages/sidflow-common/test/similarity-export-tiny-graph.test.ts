@@ -1,21 +1,23 @@
 /**
- * The tiny bundle's neighbour graph carries a stream, not a drain.
+ * The tiny bundle's neighbour graph is a navigable proximity index.
  *
- * Until 0.8.2 the exported edges were oriented by track ordinal, which is alphabetical
- * `sid_path` position. Measured on the published 0.8.0 bundle over 87,868 tracks: the
- * longest forward path from the median track was 17, the longest anywhere was 79, 28.08%
- * of tracks had no incoming edge, 3.17% had no outgoing edge, and a rank-greedy forward
- * walk ran a median of 5 tracks. A station could only work by ignoring the direction the
- * export had gone to the trouble of enforcing.
+ * ## What it is not, any more
  *
- * The edges are now oriented by a corpus-wide flow order and slot 0 of every row is the
- * track's flow successor, so the exported graph contains a Hamiltonian path and a forward
- * walk from any track can keep going until the order runs out.
+ * Through 0.8.0 and 0.8.2 the exported edges were required to form a directed acyclic graph,
+ * which is a playback policy — "never play the same tune twice" — expressed as a structural
+ * constraint on the artefact. 0.8.0 satisfied it by orienting edges by track ordinal, which is
+ * alphabetical `sid_path` position: measured on that published bundle over 87,868 tracks, 28.08%
+ * of tracks had no incoming edge, 3.17% had no outgoing edge, and 6.69% of the slot capacity
+ * shipped empty. 0.8.2 satisfied it by threading a Hamiltonian path through the graph, which
+ * made a forward walk long but left the graph unsearchable and 14.76% of its capacity empty, and
+ * has been withdrawn.
  *
- * Every assertion below reads the shipped bytes rather than the builder's return value,
- * because the bytes are what a consumer gets. Three of them fail against the pre-0.8.2
- * builder: the Hamiltonian slot-0 chain, the absence of an ordinal constraint on edges,
- * and the forward-path depth.
+ * The artefact now carries no traversal order and makes no acyclicity promise. Not revisiting a
+ * track is the player's job, and every player already keeps a set of what it has played.
+ *
+ * Every assertion below reads the shipped bytes rather than the builder's return value, because
+ * the bytes are what a consumer gets. `doc/neighbour-graph-design.md` records the corpus-scale
+ * measurements these properties were chosen from.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -37,6 +39,7 @@ const NEIGHBORS_PER_TRACK = 3;
 const NEIGHBOR_RECORD_BYTES = 4;
 const EMPTY_NEIGHBOR = 0xffffff;
 const GRAPH_FLAG_ACYCLIC = 1 << 0;
+const GRAPH_FLAG_RESERVED_LEGACY = (1 << 1) | (1 << 2);
 const GRAPH_FLAG_FLOW_SUCCESSOR_FIRST = 1 << 3;
 
 const TRACK_COUNT = 1200;
@@ -54,14 +57,18 @@ interface Graph {
   graphFlags: number;
   /** `targets[track][slot]`, with unpopulated slots dropped. */
   targets: number[][];
+  /** `similarities[track][slot]`, aligned with `targets`. */
+  similarities: number[][];
 }
 
 function readGraph(payload: Buffer): Graph {
   const trackCount = payload.readUInt32LE(TRACK_COUNT_FIELD);
   const neighborsOffset = payload.readUInt32LE(NEIGHBORS_OFFSET_FIELD);
   const targets: number[][] = [];
+  const similarities: number[][] = [];
   for (let track = 0; track < trackCount; track += 1) {
     const row: number[] = [];
+    const scores: number[] = [];
     for (let slot = 0; slot < NEIGHBORS_PER_TRACK; slot += 1) {
       const offset = neighborsOffset
         + (track * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES)
@@ -69,11 +76,13 @@ function readGraph(payload: Buffer): Graph {
       const target = payload[offset]! | (payload[offset + 1]! << 8) | (payload[offset + 2]! << 16);
       if (target !== EMPTY_NEIGHBOR) {
         row.push(target);
+        scores.push(((payload[offset + 3]! / 255) * 2) - 1);
       }
     }
     targets.push(row);
+    similarities.push(scores);
   }
-  return { trackCount, graphFlags: payload.readUInt16LE(GRAPH_FLAGS_FIELD), targets };
+  return { trackCount, graphFlags: payload.readUInt16LE(GRAPH_FLAGS_FIELD), targets, similarities };
 }
 
 /** Kahn's algorithm; returns a topological order, or null if the graph has a cycle. */
@@ -104,28 +113,7 @@ function topologicalOrder(graph: Graph): number[] | null {
   return order.length === graph.trackCount ? order : null;
 }
 
-/** Longest forward path from each track, computed over a topological order. */
-function longestPaths(graph: Graph, order: number[]): Int32Array {
-  const longest = new Int32Array(graph.trackCount);
-  for (let index = order.length - 1; index >= 0; index -= 1) {
-    const track = order[index]!;
-    let best = 0;
-    for (const target of graph.targets[track]!) {
-      if (longest[target]! + 1 > best) {
-        best = longest[target]! + 1;
-      }
-    }
-    longest[track] = best;
-  }
-  return longest;
-}
-
-function median(values: ArrayLike<number>): number {
-  const sorted = [...Array.from(values)].sort((left, right) => left - right);
-  return sorted[Math.floor(sorted.length / 2)]!;
-}
-
-describe("tiny profile neighbour flow", () => {
+describe("tiny profile neighbour graph", () => {
   let tempRoot: string;
   let musicRoot: string;
   let sqlitePath: string;
@@ -213,83 +201,106 @@ describe("tiny profile neighbour flow", () => {
     await rm(tempRoot, { recursive: true, force: true });
   });
 
-  test("the header declares an acyclic graph whose slot 0 is the flow successor", () => {
-    expect(graph.graphFlags & GRAPH_FLAG_ACYCLIC).toBe(GRAPH_FLAG_ACYCLIC);
-    expect(graph.graphFlags & GRAPH_FLAG_FLOW_SUCCESSOR_FIRST).toBe(GRAPH_FLAG_FLOW_SUCCESSOR_FIRST);
+  test("the header no longer claims acyclicity or a flow successor", () => {
+    // Withdrawn deliberately, not by accident: the promise was never the artefact's to make.
+    // The two legacy reserved bits stay set, because a consumer may depend on the literal value
+    // even though the specification tells it not to.
+    expect(graph.graphFlags & GRAPH_FLAG_ACYCLIC).toBe(0);
+    expect(graph.graphFlags & GRAPH_FLAG_FLOW_SUCCESSOR_FIRST).toBe(0);
+    expect(graph.graphFlags & GRAPH_FLAG_RESERVED_LEGACY).toBe(GRAPH_FLAG_RESERVED_LEGACY);
   });
 
-  test("the exported edges are acyclic", () => {
-    expect(topologicalOrder(graph)).not.toBeNull();
-  });
-
-  test("edge direction no longer follows the track ordinal", () => {
-    // The pre-0.8.2 rule was "every populated target MUST be a track ordinal strictly
-    // smaller than the current track ordinal", which is what made the graph shallow. A
-    // flow-oriented graph points both ways in ordinal terms.
-    let forwardInOrdinal = 0;
+  test("every slot carries a real edge", () => {
+    // 0.8.0 shipped 6.69% of its slot capacity as sentinels and 0.8.2 shipped 14.76%, both
+    // because an edge that would have violated acyclicity was dropped rather than replaced.
+    // With no such constraint there is no reason for any slot to be empty on a corpus this size.
     for (let track = 0; track < graph.trackCount; track += 1) {
-      for (const target of graph.targets[track]!) {
-        if (target > track) {
-          forwardInOrdinal += 1;
-        }
+      expect(graph.targets[track]!.length).toBe(NEIGHBORS_PER_TRACK);
+    }
+  });
+
+  test("no row repeats a target or points at itself", () => {
+    for (let track = 0; track < graph.trackCount; track += 1) {
+      const row = graph.targets[track]!;
+      expect(new Set(row).size).toBe(row.length);
+      expect(row).not.toContain(track);
+    }
+  });
+
+  test("every row is in descending similarity order", () => {
+    // Slot 0 is the nearest kept neighbour again. 0.8.2 put a traversal successor there, which
+    // left 46.09% of the published rows out of similarity order and broke the assumption
+    // c64commander's rank weighting (`neighbors - slot`) makes.
+    for (let track = 0; track < graph.trackCount; track += 1) {
+      const scores = graph.similarities[track]!;
+      for (let slot = 1; slot < scores.length; slot += 1) {
+        expect(scores[slot - 1]!).toBeGreaterThanOrEqual(scores[slot]!);
       }
     }
-    expect(forwardInOrdinal).toBeGreaterThan(0);
   });
 
-  test("slot 0 chains every track into a single path over the corpus", () => {
-    const successor = new Int32Array(graph.trackCount).fill(-1);
-    const successorInDegree = new Int32Array(graph.trackCount);
-    let withoutSuccessor = 0;
-    for (let track = 0; track < graph.trackCount; track += 1) {
-      const first = graph.targets[track]![0];
-      if (first === undefined) {
-        withoutSuccessor += 1;
-        continue;
-      }
-      successor[track] = first;
-      successorInDegree[first] += 1;
-    }
-    // A path has exactly one end and exactly one start.
-    expect(withoutSuccessor).toBe(1);
-    expect([...successorInDegree].filter((degree) => degree === 0)).toHaveLength(1);
-    expect([...successorInDegree].every((degree) => degree <= 1)).toBe(true);
-
-    const start = [...successorInDegree].indexOf(0);
-    const visited = new Set<number>([start]);
-    let current = start;
-    while (successor[current] !== -1) {
-      current = successor[current]!;
-      expect(visited.has(current)).toBe(false);
-      visited.add(current);
-    }
-    expect(visited.size).toBe(graph.trackCount);
-  });
-
-  test("every track can be reached and every track but one can go somewhere", () => {
+  test("every track has an incoming edge and an outgoing edge", () => {
+    // A track with no incoming edge is one a forward-only walk can never arrive at; on the
+    // published 0.8.0 bundle that was 24,669 tracks. The construction's reverse-insertion pass
+    // and its reachability repair together are what make this exact rather than approximate.
     const inDegree = new Int32Array(graph.trackCount);
-    let withoutOut = 0;
     for (let track = 0; track < graph.trackCount; track += 1) {
-      if (graph.targets[track]!.length === 0) {
-        withoutOut += 1;
-      }
+      expect(graph.targets[track]!.length).toBeGreaterThan(0);
       for (const target of graph.targets[track]!) {
         inDegree[target] += 1;
       }
     }
-    expect(withoutOut).toBe(1);
-    expect([...inDegree].filter((degree) => degree === 0)).toHaveLength(1);
+    expect([...inDegree].filter((degree) => degree === 0)).toHaveLength(0);
   });
 
-  test("a forward walk from the median track covers a large part of the corpus", () => {
-    const order = topologicalOrder(graph);
-    expect(order).not.toBeNull();
-    const longest = longestPaths(graph, order!);
-    // With a Hamiltonian path embedded, the median track reaches about half the corpus.
-    // The published 0.8.0 bundle's median was 17 of 87,868.
-    expect(median(longest)).toBeGreaterThanOrEqual(Math.floor(graph.trackCount / 4));
-    expect(Math.min(...longest)).toBe(0);
-    expect(Math.max(...longest)).toBe(graph.trackCount - 1);
+  test("the corpus is a single undirected component", () => {
+    // What a station actually needs: it traverses forward and reverse edges, so a pocket it
+    // cannot leave is a station that ends. Measured undirected for the same reason.
+    const parent = new Int32Array(graph.trackCount);
+    for (let track = 0; track < graph.trackCount; track += 1) {
+      parent[track] = track;
+    }
+    const find = (node: number): number => {
+      let root = node;
+      while (parent[root] !== root) {
+        root = parent[root]!;
+      }
+      return root;
+    };
+    for (let track = 0; track < graph.trackCount; track += 1) {
+      for (const target of graph.targets[track]!) {
+        const left = find(track);
+        const right = find(target);
+        if (left !== right) {
+          parent[left] = right;
+        }
+      }
+    }
+    const roots = new Set<number>();
+    for (let track = 0; track < graph.trackCount; track += 1) {
+      roots.add(find(track));
+    }
+    expect(roots.size).toBe(1);
+  });
+
+  test("the graph is no longer acyclic, and that is the point", () => {
+    // Not an incidental consequence. If A's nearest neighbour is B and B's is A, both edges are
+    // true, and 0.8.0 discarded half the source graph's edges to avoid saying so.
+    expect(topologicalOrder(graph)).toBeNull();
+  });
+
+  test("edges reach beyond the seed's own nearest neighbours", () => {
+    // The property the pruning rule alone could not deliver. Every candidate the source export
+    // offers sits within a narrow shell around the seed, so a graph confined to that pool has no
+    // edge that crosses the space and cannot be searched. The construction draws its candidates
+    // from a search over the graph instead, so some edges are much longer than the shell.
+    //
+    // Stated as a spread rather than an absolute threshold, because the fixture's geometry is
+    // synthetic and only the corpus-scale numbers in the design document are meaningful.
+    const allScores = graph.similarities.flat();
+    const lowest = Math.min(...allScores);
+    const highest = Math.max(...allScores);
+    expect(highest - lowest).toBeGreaterThan(0.1);
   });
 
   test("the build is deterministic", async () => {
