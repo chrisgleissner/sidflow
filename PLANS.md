@@ -32,7 +32,7 @@ version question was settled with the user: reuse 0.8.2, restore and rewrite
   - `scripts/neighbour-graph/simulate-station.ts` plus `station-engine-port.ts` and
     `station-metrics.ts` port `computeStation` and drive it as `stationQueueProvider` does.
 
-4. [IN_PROGRESS] P41-T04 Choose the construction with measurements, not assumptions.
+4. [DONE] P41-T04 Choose the construction with measurements, not assumptions.
   Findings so far, all at 3 slots over the 87,868-track corpus:
   - **Alpha-pruning the source export's top-25 cannot work.** Swept alpha in
     {1.0, 1.05, 1.1, 1.2, 1.4} x {none, mutual proximity, local scaling} x {reverse insertion on,
@@ -48,13 +48,21 @@ version question was settled with the user: reuse 0.8.2, restore and rewrite
     station median of 6,168 distinct tracks against 1,367 on the 0.8.0 bundle — from the artefact
     alone, with no client change.
   - **Reachability repair** takes zero-in-degree to exactly 0 (16,871-20,192 tracks repaired).
-  - **Open trade-off.** Vamana at 3 slots concentrates in-degree: max 1,030 against a mean of 3
-    (p99 23). Hub trimming at 8x the mean bounds it to 24, but moves 39,517 edges and cuts the
-    station median from 6,168 to 2,057 and recall@1 from 0.80% to 0.50% — the hubs are the long
-    edges. Next: sweep the cap to find the knee, and measure mutual proximity, which changes which
-    edges are chosen rather than deleting them afterwards.
+  - **The hubness trade-off resolved itself once the client policy was measured.** Under the
+    drifting query every sampled station reaches the 25,000-track cap on any candidate graph, so
+    station length is delivered by the policy and the graph can be chosen as an index. A cap at 8x
+    the mean is unusable anyway: it takes the largest undirected component to 99.885%, below the
+    99.9% the same acceptance table requires. The bound ships at 64x, which holds connectivity at
+    99.995%.
+  - **The retrieval guardrail chose the final parameter.** Diversifying all three slots drops
+    composer lift 21.12% against the withdrawn 0.8.2, which the 5% guardrail refuses. Reserving two
+    of three slots for the seed's nearest neighbours brings it to -1.44% while raising nDCG@10
+    33.05%. Shipped: alpha 1.5, beam 96, in-degree bound 64x, one entry point, no hubness
+    correction, two reserved slots.
+  - Mutual proximity was measured and not shipped: it raises the untrimmed in-degree maximum
+    (1,268 against 1,030) and trades routing recall for station length.
 
-5. [IN_PROGRESS] P41-T05 Land the change in the export.
+5. [DONE] P41-T05 Land the change in the export.
   - `similarity-flow-order.ts` and its test are deleted; the flow order and the shortcut edge are
     gone, not disabled.
   - New: `similarity-neighbour-selection.ts` (the diversifying rule, backfill, reverse insertion),
@@ -65,7 +73,7 @@ version question was settled with the user: reuse 0.8.2, restore and rewrite
   - `decodeTinyNeighbourGraph` added to `@sidflow/common` so the gate and the analyser share one
     statement of the header offsets.
 
-6. [IN_PROGRESS] P41-T06 Release gate. The acyclicity, flow-successor, slot-0-Hamiltonian and
+6. [DONE] P41-T06 Release gate. ALL CHECKS PASSED against the rebuilt bundle. The acyclicity, flow-successor, slot-0-Hamiltonian and
    longest-forward-path checks are removed — **the acyclicity check because the property is no
    longer claimed, not because it became inconvenient** — and replaced by slot occupancy, dead
    ends, unreachable tracks, in-degree bound, undirected connectivity, row ordering and greedy
@@ -76,16 +84,38 @@ version question was settled with the user: reuse 0.8.2, restore and rewrite
    is a different subsong of the same `.sid` file for 14.42% of seeds and 905 seeds have all 25
    neighbours from their own file.
 
-8. [PENDING] P41-T08 `doc/neighbour-graph-design.md`, the `doc/similarity-export-tiny.md` §10.3-
-   §10.5 rewrite, the `CHANGES.md` 0.8.2 body replacement, and the restored migration guide.
+8. [DONE] P41-T08 `doc/neighbour-graph-design.md`, the `doc/similarity-export-tiny.md` §10.3-§10.5
+   rewrite, the `CHANGES.md` 0.8.2 body replacement, and the restored migration guide.
 
-9. [IN_PROGRESS] P41-T09 `c64commander` Part E, delegated to a subagent in that checkout on a
-   branch off `main`: drifting query, tune-level dedupe, determinism and resume tests. Added scope
-   from the user: both a song-similarity station and a category station must exist and both must be
-   shaped by likes and rejections.
+9. [DONE] P41-T09 `c64commander` Part E, on `feat/station-drifting-query` (3 commits, 23 files).
+  - Station depth: median 1,453 -> 59,704 distinct tracks (97.6% of the corpus); same-file adjacency
+    0.082% -> 0.000%; no duplicate track in a session. Recent window 3, decay 0.4, origin weight
+    0.35, hop budget kept at 3/8 because removing the widening loop stranded a station after 390
+    tracks.
+  - The added feedback scope found a real defect: `loadRankings()` was never called by production
+    code, so likes and rejections were invisible after every app relaunch, for both station kinds.
+    Also fixed: the reject down-weight was a flat subtraction and so nearly inert on category
+    stations; like steering was unbounded; the aim/roam balance is now an exported `StationBalance`.
+  - Known limitations, not fixed and flagged deliberately: a resumed station recomputes the
+    un-emitted tail of its last batch rather than replaying it (true before this change too), and
+    two main-thread costs grow with the exclusion set and would likely breach the 16 ms refill
+    budget on a Pixel 4 in a very deep session.
+  - The pin stays at 0.8.0; neither pin file is in the diff.
 
-10. [PENDING] P41-T10 Full suite 3x at 100%, retrieval-quality guardrail (composer lift and
-    nDCG@10 within 5% relative), then tag and publish with the complete asset set re-uploaded.
+10. [IN_PROGRESS] P41-T10 Validation done; publishing awaits the maintainer.
+  - Three consecutive clean runs: `sidflow-common` 599 pass / 0 fail, `sidflow-play` 439 pass / 0
+    fail. `sidflow-train` 66, `sidflow-rate` 10, `sidflow-fetch` 26, `sidflow-performance` 92, all 0
+    fail. `c64commander` 9,846 pass / 1 skipped, branch coverage 91.55%.
+  - Guardrail passes: composer lift -1.44%, nDCG@10 +33.05% against the withdrawn 0.8.2.
+  - **Two environment problems found, neither caused by this work and neither fixed.**
+    `sidflow-classify` has 19 failures in the WASM render and essentia.js feature paths; that package
+    imports none of the modules this change touches. And `bun test` cannot run from the repository
+    root at all — it scans for ~110s and dies with EMFILE, on untouched test files too — so every
+    suite here was run from its package directory. That makes the documented `bun run test` unusable
+    on this machine and is worth its own change.
+  - Remaining: tag `0.8.2` on `main`, publish `sidflow-data` `0.8.2` with the complete asset set
+    re-uploaded (the four unchanged assets plus tiny `10db2838...c1c0bc`), re-pin `c64commander`,
+    merge both branches.
 
 ## Phase 40 - Extract And Automate libsidplayfp WASM
 
