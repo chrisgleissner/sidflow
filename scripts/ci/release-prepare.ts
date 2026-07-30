@@ -110,6 +110,11 @@ async function main(): Promise<void> {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const pkgJsonPath = path.join(packagesDir, entry.name, "package.json");
+    // A directory under packages/ without a package.json is not a workspace package.
+    // Leftovers survive an extraction — `packages/libsidplayfp-wasm/` still holds build
+    // caches after 0.8.1 moved that package to npm — and a stale directory should not make
+    // a release script throw in the middle of bumping versions.
+    if (!(await Bun.file(pkgJsonPath).exists())) continue;
     await updatePackageJson(pkgJsonPath, version);
   }
 

@@ -213,7 +213,18 @@ export async function runSimilarityExportCli(argv: string[]): Promise<number> {
   const feedbackPath = "./data/feedback";
   // Read from the collection's own provenance file rather than asked for, so no future
   // release can ship without it the way every release up to 0.7.0 did.
-  const hvscVersion = options.hvscVersion ?? (await resolveHvscVersionLabel(config.sidPath));
+  //
+  // Only for the formats built FROM the local collection. `lite` and `tiny` are derived
+  // from an existing export, and that export is the authority on which HVSC its `sid_path`
+  // values belong to — the library builders already fall back to the source's own
+  // `hvsc_version` when none is passed. Passing the local one here overrode that fallback
+  // and stamped whatever the deriving machine happened to have on disk: rebuilding 0.8.0's
+  // lite bundle on a machine holding HVSC 84 produced byte-identical bundle contents with a
+  // manifest claiming "HVSC 84 + Update 84" against the source's "HVSC 85 + Update 85".
+  // `--hvsc-version` still overrides, for the case where the source itself is unlabelled.
+  const derivedFromAnotherExport = options.format === "lite" || options.format === "tiny";
+  const hvscVersion = options.hvscVersion
+    ?? (derivedFromAnotherExport ? undefined : await resolveHvscVersionLabel(config.sidPath));
 
   if (options.rewriteManifest) {
     if (options.format !== "sqlite") {

@@ -41,6 +41,8 @@ data/high-cpu-use/
 
 # Test-generated audit logs (should not be committed)
 data/audit/admin-actions.jsonl
+# Bun runs tests with the package directory as cwd, so the same log lands there too.
+packages/*/data/audit/
 
 # Manifests and canonical data ARE committed
 !data/sidflow.lance.manifest.json

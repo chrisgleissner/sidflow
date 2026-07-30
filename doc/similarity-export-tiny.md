@@ -181,7 +181,7 @@ Then resolve any track ordinal `t` to:
 | 26 | neighbor_ref_kind | u8 | `1 = absolute_track_ordinal` |
 | 27 | style_mask_width_bytes | u8 | MUST be `2` |
 | 28 | style_table_version | u16 | current value `1` |
-| 30 | graph_flags | u16 | bit `0` = acyclic exported edges (always `1`). The current generator writes `0x0007`; consumers MUST ignore bits they do not recognize |
+| 30 | graph_flags | u16 | bit `0` = acyclic exported edges (always `1`); bit `3` = slot 0 of every populated row is the track's flow successor, so the edges contain a Hamiltonian path (§10.4). Bits `1` and `2` have never been assigned a meaning and are set for historical reasons. The current generator writes `0x000F` (`0x0007` before 0.8.2); consumers MUST ignore bits they do not recognize |
 | 32 | style_table_offset | u32 | byte offset |
 | 36 | file_identity_offset | u32 | byte offset |
 | 40 | file_track_count_offset | u32 | byte offset |
@@ -436,24 +436,88 @@ are identical in both versions.
 Rules:
 
 - exported edges MUST form a directed acyclic graph
-- every populated target MUST be a track ordinal strictly smaller than the current track ordinal
+- every populated target MUST come later in the builder's **flow order** than the current
+  track (§10.4), which is what makes the graph acyclic
 - duplicates within a row are forbidden
-- row order MUST preserve the original sidcorr-1 similarity rank among the retained edges
+- slot 0 of a populated row MUST be the current track's flow successor
 - `0xFFFFFF` is the unused-slot sentinel and MUST appear only after populated slots
+
+> **Changed in 0.8.2.** Before 0.8.2 the acyclicity rule read *"every populated target MUST
+> be a track ordinal strictly smaller than the current track ordinal"*, and row order
+> preserved the sidcorr-1 similarity rank. Track ordinal is alphabetical `sid_path` position
+> (§4.2), which bears no relation to how a tune sounds, so the graph it induced was shallow.
+> Measured on the 0.8.0 bundle over 87,868 tracks: the longest forward path from the median
+> track was **17**, the longest anywhere was **79**, **28.08%** of tracks had no incoming
+> edge, **3.17%** had no outgoing edge, and 6.69% of the slot capacity went unused. The
+> binary layout is unchanged and `binary_format_version` stays `2`; only the edge values and
+> their ordering differ, so a reader that does not check the old ordinal invariant needs no
+> change.
 
 Retention rule:
 
-1. read the original sidcorr-1 neighbor ranking for the current track
-2. scan it in stored similarity order
-3. retain the first 3 targets whose track ordinal is smaller than the current track ordinal
-4. write each retained edge as the absolute target track ordinal
-5. if fewer than 3 qualifying targets exist, write `0xFFFFFF` sentinels for the remaining slots
+1. read the original sidcorr-1 neighbor ranking for the current track — the whole ranking,
+   not a prefix of it
+2. write the flow successor (§10.4) to slot 0
+3. write to slot 1 the forward candidate with the largest flow-order distance — the
+   shortcut (§10.5)
+4. fill the remaining slots from the ranking in stored similarity order, skipping targets
+   that do not come later in the flow order and targets already written
+5. write each retained edge as the absolute target track ordinal
+6. write `0xFFFFFF` sentinels for any slot the ranking could not fill
+
+Every edge except slot 0 therefore comes from the source export's neighbour ranking for
+that track; slot 0 is the flow successor, which is drawn from the same ranking for 89.88%
+of tracks and computed directly for the rest. Nothing is fabricated to fill a row: a track
+whose ranking holds no further forward candidate ships with sentinels, which on the HVSC
+corpus leaves the mean out-degree at 2.557 of 3.
+
+## 10.4 Flow Order
+
+The flow order is a single ordering of the whole corpus in which consecutive tracks are
+similar. It is the artefact's acyclicity witness and its continuation guarantee.
+
+Builders MUST construct it as a greedy nearest-unvisited walk:
+
+1. start at track ordinal 0
+2. from the current track, step to the most similar track that is unvisited and belongs to
+   a different `.sid` file
+3. resolve that from the current track's sidcorr-1 ranking when it still contains such a
+   track, and by a full scan otherwise — the two agree, because the ranking holds the *k*
+   nearest tracks, so nothing nearer can be missing from it
+4. if every unvisited track is a sibling of the current file, step to the most similar of
+   those
+5. break every tie on the lower track ordinal
+
+The walk is deterministic and has no random component, so a bundle is reproducible from its
+source export.
+
+The order is **not** stored. It does not need to be: it exists in the exported edges as the
+chain of slot-0 targets, so a consumer can recover it, and a consumer that only wants to
+keep playing can simply follow slot 0. A reader that wants to verify acyclicity does not
+need the order at all — a topological sort over 3 × `track_count` edges is linear.
+
+Because the order is a permutation of the corpus, the exported edges contain a Hamiltonian
+path. A forward walk starting at flow position *r* can always continue and reaches at least
+`track_count - r` distinct tracks without repeating one.
+
+## 10.5 The Shortcut Edge
+
+Slot 1 holds the forward candidate that jumps furthest along the flow order. It is still one
+of the track's *k* nearest neighbours in the source export, so it is a genuine musical match:
+on the HVSC corpus **73.0%** of tracks have such an edge at least 1,000 flow positions ahead,
+and the median track's furthest one is **11,958** positions ahead.
+
+It is there because a graph that is only a path is navigable in sequence and in nothing else.
+A consumer that expands a bounded neighbourhood rather than walking — `c64commander`'s station
+engine stops at 8 hops from its seed — would otherwise see 8 steps of an 87,868-track stream.
+The shortcut still moves forward, so the graph stays acyclic.
 
 Current corpus note:
 
-- `track_count = 87,073`
+- `track_count = 87,868`
 - the current corpus fits comfortably within 24 bits
-- 3 neighbors therefore fit in exactly 9 bytes per row
+- 3 neighbors therefore fit in exactly 9 bytes per row in `binary_format_version` 1, and 12
+  bytes per row in version 2
 
 Consumers MAY widen neighbor entries to `u32` in RAM after loading.
 

@@ -197,11 +197,26 @@ describe("similarity dataset backends", () => {
     const tiny = await openTinySimilarityDataset(fixture.tinyPath, { hvscRoot: fixture.hvscRoot });
     const seedTrackId = buildSimilarityTrackId("fast/fast-001.sid", 1);
 
-    const sqliteNeighbors = sqlite.getNeighbors(seedTrackId, 5).map((entry) => entry.track_id);
-    const tinyNeighbors = tiny.getNeighbors(seedTrackId, 5).map((entry) => entry.track_id);
-    const overlap = tinyNeighbors.filter((trackId) => sqliteNeighbors.includes(trackId));
+    // Tiny selects from the source export's ranking and never invents an edge, with one
+    // stated exception: slot 0 is the flow successor, which is drawn from the ranking for
+    // most tracks and computed directly when the walk has already consumed the listed ones.
+    //
+    // The fixture exports 8 neighbours per track. Until 0.8.2 tiny took the first three
+    // that pointed at a lower track ordinal, so its edges were also the seed's most similar
+    // and overlapped the top 5 completely. From 0.8.2 slot 1 is the candidate that jumps
+    // furthest along the flow order, which can sit outside the top 5 while still being one
+    // of the seed's 8 nearest — so the subset relation is asserted against the full ranking,
+    // which is the property that has to hold.
+    // Ask tiny for exactly its three stored slots. Asking for more makes it expand through
+    // the graph, and those extra entries are derived rather than stored, so including them
+    // would test the expansion rather than the exported edges.
+    const sqliteRanking = sqlite.getNeighbors(seedTrackId, 8).map((entry) => entry.track_id);
+    const tinyNeighbors = tiny.getNeighbors(seedTrackId, 3).map((entry) => entry.track_id);
 
-    expect(overlap.length).toBeGreaterThanOrEqual(3);
+    expect(tinyNeighbors.length).toBeGreaterThan(0);
+    for (const trackId of tinyNeighbors.slice(1)) {
+      expect(sqliteRanking).toContain(trackId);
+    }
 
     const sqliteReachable = reachableCount(sqlite, seedTrackId, 3);
     const tinyReachable = reachableCount(tiny, seedTrackId, 3);

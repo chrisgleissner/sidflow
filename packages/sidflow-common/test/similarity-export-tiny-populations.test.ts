@@ -52,6 +52,14 @@ function readStyleMasks(payload: Buffer): number[] {
  * Only the tiny build, which is the cheap step and the one under test, runs per test.
  */
 const TRACK_COUNT = 1200;
+/**
+ * Per-test timeout for the tests that build a tiny bundle.
+ *
+ * The pinned Bun (1.3.1) rejects a timeout argument on `beforeAll` — `beforeAll() expects a
+ * function as the second argument` — and the rejection happens at collection time, so every
+ * test in the file errors out before it runs. The shared fixture therefore relies on the
+ * 120s default from `bunfig.toml`; only `test()` takes an explicit allowance.
+ */
 const FIXTURE_TIMEOUT_MS = 120_000;
 
 interface Chain {
@@ -154,7 +162,7 @@ describe("tiny profile station populations", () => {
     tempRoot = await mkdtemp(path.join(os.tmpdir(), "sidflow-tiny-populations-"));
     healthy = await buildChain("healthy", TRACK_COUNT, false);
     degenerate = await buildChain("degenerate", TRACK_COUNT, true);
-  }, FIXTURE_TIMEOUT_MS);
+  });
 
   afterAll(async () => {
     await rm(tempRoot, { recursive: true, force: true });
