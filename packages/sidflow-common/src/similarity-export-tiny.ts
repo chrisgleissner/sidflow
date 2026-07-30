@@ -19,11 +19,18 @@ import {
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
 import {
-  computeFlowOrder,
-  selectForwardNeighbors,
-  type FlowOrderCandidate,
-} from "./similarity-flow-order.js";
-import { cosineSimilarity } from "./vector-similarity.js";
+  selectDiversifiedNeighbours,
+  type HubnessCorrection,
+  type NeighbourCandidate,
+  type NeighbourSelectionSettings,
+  type SelectionDistance,
+} from "./similarity-neighbour-selection.js";
+import { buildNavigableNeighbourGraph } from "./similarity-graph-build.js";
+import {
+  buildLocalScalingDistance,
+  buildMutualProximityModel,
+} from "./similarity-hubness.js";
+import { cosineSimilarity, weightsForDimensions } from "./vector-similarity.js";
 import {
   packCompactRatings,
   pickRandomRows,
@@ -60,8 +67,21 @@ const NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY = 4;
 const STYLE_TABLE_VERSION = 1;
 const APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT = 256;
 
-/** graph_flags bit 0: the exported edges form a directed acyclic graph. */
-const GRAPH_FLAG_ACYCLIC = 1 << 0;
+/**
+ * graph_flags bit 0: the exported edges form a directed acyclic graph.
+ *
+ * **No longer set.** Through 0.8.0 and 0.8.2 the builder guaranteed acyclicity, and the
+ * specification said the bit was "always 1". That guarantee was a mistake, not a feature: it
+ * encoded a playback policy — "never play the same tune twice" — as a structural constraint on
+ * the artefact, and satisfying it meant discarding 50.76% of the source graph's edges. Cycles
+ * in a similarity graph are not a defect; if A's nearest neighbour is B and B's is A, that is
+ * true and useful. Not revisiting a track is the player's job, and every player already keeps a
+ * set of what it has played.
+ *
+ * The bit is kept as a named constant rather than deleted so that the withdrawal is visible
+ * here rather than only in a changelog.
+ */
+export const GRAPH_FLAG_ACYCLIC = 1 << 0;
 /**
  * graph_flags bits 1 and 2: written since the format's first release and never assigned a
  * meaning in the specification. They are preserved rather than cleared, because a consumer
@@ -69,13 +89,15 @@ const GRAPH_FLAG_ACYCLIC = 1 << 0;
  */
 const GRAPH_FLAG_RESERVED_LEGACY = (1 << 1) | (1 << 2);
 /**
- * graph_flags bit 3: slot 0 of every populated row is the track's flow successor, so the
- * exported edges contain a Hamiltonian path over the corpus. A forward walk from any track
- * can keep going until the order runs out. New in 0.8.2; readers that predate it ignore the
- * bit, per §5.2, and see a bundle that is still an ordinary acyclic 3-neighbour graph.
+ * graph_flags bit 3: slot 0 of every populated row is the track's flow successor.
+ *
+ * **Retired.** It was introduced in 0.8.2 to declare a Hamiltonian path through the exported
+ * edges, and 0.8.2 has been withdrawn. No bundle that sets it was ever published for longer
+ * than a few days, and none is published now.
  */
-const GRAPH_FLAG_FLOW_SUCCESSOR_FIRST = 1 << 3;
-const GRAPH_FLAGS = GRAPH_FLAG_ACYCLIC | GRAPH_FLAG_RESERVED_LEGACY | GRAPH_FLAG_FLOW_SUCCESSOR_FIRST;
+export const GRAPH_FLAG_FLOW_SUCCESSOR_FIRST = 1 << 3;
+/** What the builder writes to `graph_flags`: the two legacy reserved bits and nothing else. */
+export const GRAPH_FLAGS = GRAPH_FLAG_RESERVED_LEGACY;
 
 interface SourceTrackRow {
   track_id: string;
@@ -175,6 +197,12 @@ export interface BuildTinySimilarityExportOptions {
    * that genuinely cannot support nine stations. The bypass is recorded in the manifest.
    */
   allowSparseStyles?: boolean;
+  /**
+   * Overrides for how the neighbour graph is built. Omit for the shipped settings; see
+   * DEFAULT_NEIGHBOUR_SELECTION. Intended for the parameter sweep and for tests, which need to
+   * build a cheap graph over a small corpus without the navigable builder's two search passes.
+   */
+  neighbourSelection?: NeighbourSelectionSettings;
 }
 
 export interface BuildTinySimilarityExportResult {
@@ -444,7 +472,7 @@ function compactRatingDistance(
 function computeApproximateNeighborCandidates(
   rows: SourceTrackRow[],
   vectors: number[][],
-): Array<Array<FlowOrderCandidate>> {
+): Array<Array<NeighbourCandidate>> {
   const ordinalsBySignature = new Map<string, number[]>();
   const rowsBySignature = new Map<string, SourceTrackRow>();
   for (let index = 0; index < rows.length; index += 1) {
@@ -507,13 +535,13 @@ function computeApproximateNeighborCandidates(
 function computeFallbackNeighborCandidates(
   rows: SourceTrackRow[],
   vectors: number[][],
-): Array<Array<FlowOrderCandidate>> {
+): Array<Array<NeighbourCandidate>> {
   if (rows.length > 5000) {
     return computeApproximateNeighborCandidates(rows, vectors);
   }
 
   return rows.map((_, seedOrdinal) => {
-    const scores: FlowOrderCandidate[] = [];
+    const scores: NeighbourCandidate[] = [];
     for (let candidateOrdinal = 0; candidateOrdinal < rows.length; candidateOrdinal += 1) {
       if (candidateOrdinal === seedOrdinal) {
         continue;
@@ -577,9 +605,9 @@ function describeHvscRootForManifest(hvscRoot: string): string {
 function buildNeighborCandidatesFromSqliteHint(
   rows: SourceTrackRow[],
   database: Database,
-): Array<Array<FlowOrderCandidate>> | null {
+): Array<Array<NeighbourCandidate>> | null {
   const ordinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
-  const candidatesBySeed = rows.map(() => [] as FlowOrderCandidate[]);
+  const candidatesBySeed = rows.map(() => [] as NeighbourCandidate[]);
   let hasPrecomputedNeighbors = false;
   try {
     const existingNeighbors = database.query(`
@@ -615,22 +643,32 @@ function buildNeighborCandidatesFromSqliteHint(
 }
 
 /**
- * The similarity function the flow order falls back on when a track's candidate list runs
- * out.
+ * The similarity function neighbour selection scores pairs with.
  *
- * It reads the source export's own `vector_json` and applies the published weighted
- * cosine, so a fallback step is scored on the same metric that produced the candidate
- * lists. Lite's decoded vectors are the fallback's fallback: they are quantised and, worse,
- * `parseVector` truncates them to four dimensions, which is fine for the small-corpus paths
- * that have no better source but would silently change the metric mid-order here.
+ * It reads the source export's own `vector_json` and applies the published weighted cosine, so
+ * every selection decision is made on the same metric that produced the candidate lists. Lite's
+ * decoded vectors are the fallback: they are quantised and, worse, `parseVector` truncates them
+ * to four dimensions, which is fine for the small-corpus paths that have no better source but
+ * would silently change the metric here.
+ *
+ * ## Why the vectors are pre-scaled
+ *
+ * Weighted cosine is `sum(w*l*r) / (sqrt(sum(w*l^2)) * sqrt(sum(w*r^2)))`, which is the ordinary
+ * cosine of the vectors scaled by `sqrt(w)`. Scaling once and L2-normalising once turns every
+ * subsequent evaluation into a plain dot product with no square roots and no per-call norm
+ * recomputation. Graph construction evaluates this tens of millions of times, so the difference
+ * is between a build that finishes and one that does not. The values are identical to
+ * `cosineSimilarity`'s to within floating-point reassociation, and the exported byte quantises
+ * `[-1, 1]` into 255 steps, so nothing observable depends on which route is taken.
  */
 function buildSourceVectorSimilarity(
   rows: SourceTrackRow[],
   database: Database,
   fallbackVectors: number[][],
 ): (left: number, right: number) => number {
-  const vectorsByOrdinal: Array<number[] | null> = rows.map(() => null);
   const ordinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
+  let dimensions = 0;
+  const rawByOrdinal: Array<number[] | null> = rows.map(() => null);
   try {
     const stored = database.query(
       "SELECT track_id, vector_json FROM tracks WHERE vector_json IS NOT NULL AND vector_json != ''",
@@ -642,7 +680,10 @@ function buildSourceVectorSimilarity(
       }
       const parsed = JSON.parse(entry.vector_json) as number[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        vectorsByOrdinal[ordinal] = parsed;
+        rawByOrdinal[ordinal] = parsed;
+        if (parsed.length > dimensions) {
+          dimensions = parsed.length;
+        }
       }
     }
   } catch (error) {
@@ -651,14 +692,125 @@ function buildSourceVectorSimilarity(
     }
   }
 
-  return (left: number, right: number): number => {
-    const leftVector = vectorsByOrdinal[left];
-    const rightVector = vectorsByOrdinal[right];
-    if (leftVector && rightVector && leftVector.length === rightVector.length) {
-      return cosineSimilarity(leftVector, rightVector);
+  const complete = dimensions > 0 && rawByOrdinal.every((vector) => vector?.length === dimensions);
+  if (!complete) {
+    // A mixed-width or partial vector set cannot be packed, and silently comparing vectors of
+    // different widths is worse than being slow. Fall back to the per-call implementation, which
+    // handles the ragged case the same way the rest of the codebase does.
+    return (left: number, right: number): number => {
+      const leftVector = rawByOrdinal[left];
+      const rightVector = rawByOrdinal[right];
+      if (leftVector && rightVector && leftVector.length === rightVector.length) {
+        return cosineSimilarity(leftVector, rightVector);
+      }
+      return cosine(fallbackVectors[left] ?? [], fallbackVectors[right] ?? []);
+    };
+  }
+
+  const weights = weightsForDimensions(dimensions);
+  const scale = Array.from({ length: dimensions }, (_, index) => Math.sqrt(weights?.[index] ?? 1));
+  const packed = new Float64Array(rows.length * dimensions);
+  for (let ordinal = 0; ordinal < rows.length; ordinal += 1) {
+    const vector = rawByOrdinal[ordinal]!;
+    const base = ordinal * dimensions;
+    let norm = 0;
+    for (let index = 0; index < dimensions; index += 1) {
+      const value = (vector[index] ?? 0) * scale[index]!;
+      packed[base + index] = value;
+      norm += value * value;
     }
-    return cosine(fallbackVectors[left] ?? [], fallbackVectors[right] ?? []);
+    if (norm > 0) {
+      const inverse = 1 / Math.sqrt(norm);
+      for (let index = 0; index < dimensions; index += 1) {
+        packed[base + index]! *= inverse;
+      }
+    }
+  }
+
+  return (left: number, right: number): number => {
+    const leftBase = left * dimensions;
+    const rightBase = right * dimensions;
+    let total = 0;
+    for (let index = 0; index < dimensions; index += 1) {
+      total += packed[leftBase + index]! * packed[rightBase + index]!;
+    }
+    return total;
   };
+}
+
+/**
+ * The diversification strength the release ships.
+ *
+ * Chosen by the sweep in `doc/neighbour-graph-design.md` §5. Higher values diversify the exported
+ * edges more, which raises greedy routing recall and lengthens the reachable region, and concentrates
+ * in-degree further. The value is a constant here rather than a build flag because a bundle built
+ * with a different one is a different artefact.
+ */
+const SHIPPED_ALPHA = 1.5;
+
+/**
+ * The in-degree bound the release ships, as a multiple of the mean.
+ *
+ * Larger than the 8x the plan's acceptance table names, and deliberately so: measured on the HVSC
+ * corpus, a cap at 8x takes the largest undirected component to 99.885%, below the 99.9% the same
+ * table requires. The edges that hold the corpus together are the same edges that make a few tracks
+ * over-subscribed, so at three slots the two bounds are in direct tension and only one can be met.
+ * This is the looser of the two, set where connectivity passes with margin. §5 of the design
+ * document carries the sweep.
+ */
+const SHIPPED_IN_DEGREE_CAP_MULTIPLE = 64;
+
+/**
+ * Slots reserved for the seed's own nearest neighbours, before diversification chooses the rest.
+ *
+ * Two of three. Chosen by the guardrail rather than by preference: diversifying every slot drops
+ * composer lift 21.12% against the withdrawn 0.8.2, and the release refuses more than 5%. Reserving
+ * one slot leaves it at -14.4%; reserving two brings it to **-1.44%** while raising nDCG@10 33.0%.
+ * The cost is measured and accepted — greedy routing recall falls from 1.00% to 0.80% and the
+ * fixed-seed station median from 6,332 to 2,364 — because station length comes from the client's
+ * drifting query, not from the graph, and retrieval quality has no other source. §5 of the design
+ * document carries the sweep.
+ */
+const SHIPPED_FORCED_NEAREST_SLOTS = 2;
+
+/**
+ * The shipped neighbour-selection settings.
+ *
+ * These are the values `doc/neighbour-graph-design.md` records the sweep choosing. They are
+ * constants rather than configuration because the exported graph is a published contract: a
+ * bundle built with different settings is a different artefact, and a caller that can vary them
+ * silently can ship one without saying so. `BuildTinySimilarityExportOptions.neighbourSelection`
+ * exists so the sweep and the tests can vary them deliberately.
+ */
+export const DEFAULT_NEIGHBOUR_SELECTION: Required<NeighbourSelectionSettings> = {
+  builder: "navigable",
+  alpha: SHIPPED_ALPHA,
+  searchListSize: 96,
+  hubnessCorrection: "none",
+  inDegreeCapMultiple: SHIPPED_IN_DEGREE_CAP_MULTIPLE,
+  entryPointCount: 1,
+  forcedNearestSlots: SHIPPED_FORCED_NEAREST_SLOTS,
+};
+
+function resolveNeighbourSelectionSettings(
+  overrides: NeighbourSelectionSettings | undefined,
+): Required<NeighbourSelectionSettings> {
+  return { ...DEFAULT_NEIGHBOUR_SELECTION, ...overrides };
+}
+
+function buildSelectionDistance(
+  correction: HubnessCorrection,
+  trackCount: number,
+  candidates: ReadonlyArray<ReadonlyArray<NeighbourCandidate>>,
+  similarityBetween: (left: number, right: number) => number,
+): SelectionDistance {
+  if (correction === "mutual-proximity") {
+    return buildMutualProximityModel({ trackCount, similarityBetween }).distance;
+  }
+  if (correction === "local-scaling") {
+    return buildLocalScalingDistance({ trackCount, candidates, similarityBetween }).distance;
+  }
+  return (left, right, similarity) => 1 - (similarity ?? similarityBetween(left, right));
 }
 
 export async function buildTinySimilarityExport(
@@ -771,13 +923,11 @@ export async function buildTinySimilarityExport(
     ratingTable.writeUInt16LE(packCompactRatings(rows[index]!), index * COMPACT_RATING_BYTES);
   }
 
-  // The exported graph is oriented by a corpus-wide flow order rather than by track
-  // ordinal, and slot 0 of every track is its flow successor. See `similarity-flow-order.ts`
-  // for why, and for the measurements that motivated the change in 0.8.2.
-  const fileOrdinalByPath = new Map(filePaths.map((filePath, index) => [filePath, index]));
-  const fileOrdinals = rows.map((row) => fileOrdinalByPath.get(row.sid_path) ?? 0);
-
-  let candidates: Array<Array<FlowOrderCandidate>> | null = null;
+  // The exported graph is a proximity index: three diversified edges per track, chosen so the
+  // graph can be navigated rather than only read one hop at a time. It carries no traversal
+  // order and makes no acyclicity promise. See `doc/neighbour-graph-design.md` for the rule, the
+  // parameter sweep that chose its settings, and the two earlier designs it replaces.
+  let candidates: Array<Array<NeighbourCandidate>> | null = null;
   let similarityBetween: (left: number, right: number) => number = (left, right) =>
     cosine(vectors[left] ?? [], vectors[right] ?? []);
   if (options.neighborSqlitePath) {
@@ -795,19 +945,34 @@ export async function buildTinySimilarityExport(
     candidates = computeFallbackNeighborCandidates(rows, vectors);
   }
 
-  const flow = computeFlowOrder({
-    trackCount: rows.length,
+  const selection = resolveNeighbourSelectionSettings(options.neighbourSelection);
+  const selectionDistance = buildSelectionDistance(
+    selection.hubnessCorrection,
+    rows.length,
     candidates,
     similarityBetween,
-    fileOrdinals,
-  });
-  const neighbors = selectForwardNeighbors({
-    trackCount: rows.length,
-    flow,
-    candidates,
-    similarityBetween,
-    neighborsPerTrack: NEIGHBORS_PER_TRACK,
-  });
+  );
+  const neighbors = selection.builder === "navigable"
+    ? buildNavigableNeighbourGraph({
+      trackCount: rows.length,
+      neighboursPerTrack: NEIGHBORS_PER_TRACK,
+      similarityBetween,
+      candidates,
+      alpha: selection.alpha,
+      searchListSize: selection.searchListSize,
+      inDegreeCapMultiple: selection.inDegreeCapMultiple,
+      entryPointCount: selection.entryPointCount,
+      forcedNearestSlots: selection.forcedNearestSlots,
+      selectionDistance,
+    }).rows
+    : selectDiversifiedNeighbours({
+      trackCount: rows.length,
+      candidates,
+      neighboursPerTrack: NEIGHBORS_PER_TRACK,
+      alpha: selection.alpha,
+      selectionDistance,
+      similarityBetween,
+    }).rows;
   const neighborTable = Buffer.alloc(rows.length * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
   for (let index = 0; index < rows.length; index += 1) {
     const rowNeighbors = neighbors[index] ?? [];
@@ -909,6 +1074,102 @@ export async function buildTinySimilarityExport(
     outputPath: options.outputPath,
     manifestPath,
     manifest,
+  };
+}
+
+export interface TinyNeighbourGraph {
+  binaryFormatVersion: number;
+  trackCount: number;
+  fileCount: number;
+  neighborsPerTrack: number;
+  graphFlags: number;
+  /**
+   * `trackCount * neighborsPerTrack` target ordinals in slot order, `-1` where the slot
+   * holds the unused-slot sentinel.
+   */
+  targets: Int32Array;
+  /** Decoded similarity per slot, `NaN` where the slot holds the sentinel. */
+  similarities: Float64Array;
+  /** File ordinal per track, recovered from FILE_TRACK_COUNT (§4.3). */
+  fileOrdinalByTrack: Int32Array;
+  /** Style mask per track, so a station simulation can apply the style filter. */
+  styleMaskByTrack: Uint16Array;
+}
+
+/**
+ * Read just the neighbour graph out of a tiny bundle, as flat typed arrays.
+ *
+ * `openTinySimilarityDataset` also decodes the graph, but it builds a row object per track
+ * and needs an HVSC root to recover `sid_path`. Structural analysis needs neither and does
+ * need to run over 87,868 tracks repeatedly, so it gets its own decode. The point of having
+ * it here rather than in each caller is that the header offsets are stated once: the release
+ * gate and the graph analyser previously each carried their own copy of them, which is how a
+ * reader and a writer drift apart.
+ */
+export async function decodeTinyNeighbourGraph(filePath: string): Promise<TinyNeighbourGraph> {
+  const { payload } = await readPortableBundlePayload(filePath);
+  if (payload.subarray(0, 8).toString("ascii") !== MAGIC) {
+    throw new Error(`${filePath} is not a sidcorr-tiny-1 export.`);
+  }
+  const binaryFormatVersion = payload.readUInt16LE(8);
+  if (binaryFormatVersion !== 1 && binaryFormatVersion !== 2) {
+    throw new Error(`Unsupported sidcorr-tiny-1 binary version ${binaryFormatVersion}.`);
+  }
+
+  const trackCount = payload.readUInt32LE(12);
+  const fileCount = payload.readUInt32LE(16);
+  const neighborsPerTrack = payload.readUInt16LE(22);
+  const graphFlags = payload.readUInt16LE(30);
+  const fileTrackCountOffset = payload.readUInt32LE(40);
+  const styleMaskOffset = payload.readUInt32LE(44);
+  const neighborsOffset = payload.readUInt32LE(48);
+  const neighborsBytes = payload.readUInt32LE(60);
+
+  const slots = trackCount * neighborsPerTrack;
+  const recordBytes = neighborsBytes === slots * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY
+    ? NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY
+    : 3;
+  const targets = new Int32Array(slots);
+  const similarities = new Float64Array(slots);
+  for (let slot = 0; slot < slots; slot += 1) {
+    const recordOffset = neighborsOffset + (slot * recordBytes);
+    const target = readUInt24LE(payload, recordOffset);
+    if (target === EMPTY_NEIGHBOR || target >= trackCount) {
+      targets[slot] = -1;
+      similarities[slot] = Number.NaN;
+      continue;
+    }
+    targets[slot] = target;
+    similarities[slot] = recordBytes === NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY
+      ? decodeSimilarity(payload.readUInt8(recordOffset + 3))
+      : Number.NaN;
+  }
+
+  const fileOrdinalByTrack = new Int32Array(trackCount);
+  let trackOrdinal = 0;
+  for (let fileOrdinal = 0; fileOrdinal < fileCount; fileOrdinal += 1) {
+    const tracksInFile = payload.readUInt8(fileTrackCountOffset + fileOrdinal) + 1;
+    for (let index = 0; index < tracksInFile && trackOrdinal < trackCount; index += 1) {
+      fileOrdinalByTrack[trackOrdinal] = fileOrdinal;
+      trackOrdinal += 1;
+    }
+  }
+
+  const styleMaskByTrack = new Uint16Array(trackCount);
+  for (let track = 0; track < trackCount; track += 1) {
+    styleMaskByTrack[track] = payload.readUInt16LE(styleMaskOffset + (track * STYLE_MASK_WIDTH_BYTES));
+  }
+
+  return {
+    binaryFormatVersion,
+    trackCount,
+    fileCount,
+    neighborsPerTrack,
+    graphFlags,
+    targets,
+    similarities,
+    fileOrdinalByTrack,
+    styleMaskByTrack,
   };
 }
 

@@ -1,5 +1,180 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 41 - Neighbour Graph As An Index, Station As A Policy (0.8.2, reissued)
+
+Plan: `doc/plans/neighbour-graph-redesign/prompt.md`. Released 0.8.2 was **withdrawn** (releases
+and tags deleted from `sidflow` and `sidflow-data`) and the number is being reused for this work,
+so a consumer's history reads 0.8.0 -> 0.8.2 with one change in what a tiny edge means. The
+version question was settled with the user: reuse 0.8.2, restore and rewrite
+`doc/migration/0.8.0-to-0.8.2.md`, no workspace version bump.
+
+1. [DONE] P41-T01 Confirm the withdrawal and that no consumer broke.
+  - 0.8.2 absent from both repos' releases and tags; `sidflow-data` latest is 0.8.0 again; all five
+    `releases/latest/download/<name>` URLs return 200; `c64commander` is pinned to **0.8.0**
+    (tag and digest `64bee446...f7c9c6d`), not 0.8.2, so it was never exposed.
+  - The published 0.8.2 assets survive locally under `tmp/rebuild-0.8.2/`, digests verified, since
+    the release can no longer be downloaded.
+
+2. [DONE] P41-T02 Prove the graph is derivable from the published vectors, and reproduce the
+   baseline byte for byte before changing anything.
+  - `scripts/neighbour-graph/verify-rank1-reproduction.ts`: 503 of 503 sampled seeds reproduce
+    their published rank-1 neighbour from `vector_json` under the manifest's weights, including the
+    three pinned probes (0 -> 86297, 1000 -> 359, 50000 -> 61874). No reclassification is needed.
+  - `scripts/reproduce-published-bundles.sh` rebuilt lite and tiny from the published full export
+    with pre-change code: lite `fe92bd57...a346cd` and tiny `62097331...c62d294`, both MATCH.
+
+3. [DONE] P41-T03 Commit the measurement tools the 0.8.2 work left as throwaways in `tmp/`.
+  - `scripts/neighbour-graph/analyse.ts` reproduces every published figure exactly: 0.8.0 tiny
+    (out-degree 2.799, 24,669 zero-in = 28.08%, 2,786 zero-out, 99.08% largest component, in-degree
+    max 66), 0.8.2 tiny (2.557, 1, 1, 100%), and the full export at k=25/3/1 (reciprocity
+    47.28%/43.92%/38.01%, 16,700 attractors all of length 2, in-degree max 217, 456 zero-in,
+    same-file 14.42% at rank 1 and 5.13% over all 25).
+  - `scripts/neighbour-graph/simulate-station.ts` plus `station-engine-port.ts` and
+    `station-metrics.ts` port `computeStation` and drive it as `stationQueueProvider` does.
+
+4. [DONE] P41-T04 Choose the construction with measurements, not assumptions.
+  Findings so far, all at 3 slots over the 87,868-track corpus:
+  - **Alpha-pruning the source export's top-25 cannot work.** Swept alpha in
+    {1.0, 1.05, 1.1, 1.2, 1.4} x {none, mutual proximity, local scaling} x {reverse insertion on,
+    off} = 30 configurations. Every one leaves 9.9%-13.6% of tracks with no incoming edge, 99.52%-
+    99.66% largest component, and greedy routing recall@1 of 0.10%-0.30% — no better than a plain
+    top-3 graph. Cause measured directly: d(u, rank 1) 0.02832, d(u, rank 25) 0.05190, d(u, random
+    track) 0.24294, and mutual distance among candidates 0.05526. Every edge the pool can offer is
+    five to nine times shorter than a typical corpus distance, so the pool contains no long edge
+    and only 23.41% of candidates are dominated. Reverse insertion also cannot help a track nothing
+    chose, because an unchosen track is offered no reverse edge.
+  - **Vamana construction does work**, because its candidate pool comes from a search over the
+    graph being built: one undirected component (100.00%), longest edge distance 0.5877, and a
+    station median of 6,168 distinct tracks against 1,367 on the 0.8.0 bundle — from the artefact
+    alone, with no client change.
+  - **Reachability repair** takes zero-in-degree to exactly 0 (16,871-20,192 tracks repaired).
+  - **The hubness trade-off resolved itself once the client policy was measured.** Under the
+    drifting query every sampled station reaches the 25,000-track cap on any candidate graph, so
+    station length is delivered by the policy and the graph can be chosen as an index. A cap at 8x
+    the mean is unusable anyway: it takes the largest undirected component to 99.885%, below the
+    99.9% the same acceptance table requires. The bound ships at 64x, which holds connectivity at
+    99.995%.
+  - **The retrieval guardrail chose the final parameter.** Diversifying all three slots drops
+    composer lift 21.12% against the withdrawn 0.8.2, which the 5% guardrail refuses. Reserving two
+    of three slots for the seed's nearest neighbours brings it to -1.44% while raising nDCG@10
+    33.05%. Shipped: alpha 1.5, beam 96, in-degree bound 64x, one entry point, no hubness
+    correction, two reserved slots.
+  - Mutual proximity was measured and not shipped: it raises the untrimmed in-degree maximum
+    (1,268 against 1,030) and trades routing recall for station length.
+
+5. [DONE] P41-T05 Land the change in the export.
+  - `similarity-flow-order.ts` and its test are deleted; the flow order and the shortcut edge are
+    gone, not disabled.
+  - New: `similarity-neighbour-selection.ts` (the diversifying rule, backfill, reverse insertion),
+    `similarity-graph-build.ts` (Vamana construction, reachability repair, hub trimming),
+    `similarity-hubness.ts` (mutual proximity with sampled moments, local scaling).
+  - `graph_flags` bit 0 (acyclic) and bit 3 (flow successor) are no longer set; the two legacy
+    reserved bits are preserved. Row order is descending similarity again.
+  - `decodeTinyNeighbourGraph` added to `@sidflow/common` so the gate and the analyser share one
+    statement of the header offsets.
+
+6. [DONE] P41-T06 Release gate. ALL CHECKS PASSED against the rebuilt bundle. The acyclicity, flow-successor, slot-0-Hamiltonian and
+   longest-forward-path checks are removed — **the acyclicity check because the property is no
+   longer claimed, not because it became inconvenient** — and replaced by slot occupancy, dead
+   ends, unreachable tracks, in-degree bound, undirected connectivity, row ordering and greedy
+   routing recall.
+
+7. [PENDING] P41-T07 `sidcorr-1` decision (Part B), with the numbers that drove it, including the
+   case where the decision is to change nothing. Also the same-file question: the rank-1 neighbour
+   is a different subsong of the same `.sid` file for 14.42% of seeds and 905 seeds have all 25
+   neighbours from their own file.
+
+8. [DONE] P41-T08 `doc/neighbour-graph-design.md`, the `doc/similarity-export-tiny.md` §10.3-§10.5
+   rewrite, the `CHANGES.md` 0.8.2 body replacement, and the restored migration guide.
+
+9. [DONE] P41-T09 `c64commander` Part E, on `feat/station-drifting-query` (3 commits, 23 files).
+  - Station depth: median 1,453 -> 59,704 distinct tracks (97.6% of the corpus); same-file adjacency
+    0.082% -> 0.000%; no duplicate track in a session. Recent window 3, decay 0.4, origin weight
+    0.35, hop budget kept at 3/8 because removing the widening loop stranded a station after 390
+    tracks.
+  - The added feedback scope found a real defect: `loadRankings()` was never called by production
+    code, so likes and rejections were invisible after every app relaunch, for both station kinds.
+    Also fixed: the reject down-weight was a flat subtraction and so nearly inert on category
+    stations; like steering was unbounded; the aim/roam balance is now an exported `StationBalance`.
+  - Known limitations, not fixed and flagged deliberately: a resumed station recomputes the
+    un-emitted tail of its last batch rather than replaying it (true before this change too), and
+    two main-thread costs grow with the exclusion set and would likely breach the 16 ms refill
+    budget on a Pixel 4 in a very deep session.
+  - The pin stays at 0.8.0; neither pin file is in the diff.
+
+10. [IN_PROGRESS] P41-T10 Validation done; publishing awaits the maintainer.
+  - Three consecutive clean runs: `sidflow-common` 599 pass / 0 fail, `sidflow-play` 439 pass / 0
+    fail. `sidflow-train` 66, `sidflow-rate` 10, `sidflow-fetch` 26, `sidflow-performance` 92, all 0
+    fail. `c64commander` 9,846 pass / 1 skipped, branch coverage 91.55%.
+  - Guardrail passes: composer lift -1.44%, nDCG@10 +33.05% against the withdrawn 0.8.2.
+  - **Two environment problems found, neither caused by this work and neither fixed.**
+    `sidflow-classify` has 19 failures in the WASM render and essentia.js feature paths; that package
+    imports none of the modules this change touches. And `bun test` cannot run from the repository
+    root at all — it scans for ~110s and dies with EMFILE, on untouched test files too — so every
+    suite here was run from its package directory. That makes the documented `bun run test` unusable
+    on this machine and is worth its own change.
+  - Remaining: tag `0.8.2` on `main`, publish `sidflow-data` `0.8.2` with the complete asset set
+    re-uploaded (the four unchanged assets plus tiny `10db2838...c1c0bc`), re-pin `c64commander`,
+    merge both branches.
+
+## Phase 42 - SID Radio CPU Cost And An Audible Audio Dropout
+
+Raised by the user on 2026-07-30, after Phase 41's station change landed on the device.
+
+1. [IN_PROGRESS] P42-T01 An audible dropout in playback, reported by ear and not by a counter.
+  - **Reported:** "a short 0.1ms gap ca. 2s into the song (`No_way_out.sid`)", on the Pixel 4 running
+    the Phase 41 branch build `0.9.4-f7b3c`. The user believes it is a recurrence of a defect that
+    was previously fixed.
+  - **History it matches.** `ci/perf/sid-radio-perf-thresholds.json` records that `audioUnderruns`
+    regressed to 1 once before, when the G11 determinism sequence moved to emit time and put
+    `querySelector` plus a full `JSON.stringify` on the main thread once per emitted item. The fix
+    made `recordEmitted` update memory only and left the following `recordRefill` to flush.
+  - **Hypothesis, to be tested rather than assumed.** That fix reduced how *often* the main thread
+    stringifies, not how *much* it costs, and the cost has since grown roughly 40x because a station
+    now excludes ~59,700 tracks instead of ~1,400. Two seconds into a track is about when the queue
+    provider tops up its lookahead, which is when `recordRefill` and the session save run. The
+    prediction that makes this falsifiable: the dropout should recur about once per track, early in
+    the track, and should scale with station depth — rare on a fresh station, reliable on a deep one.
+  - **An unresolved detail that changes the diagnosis.** 0.1 ms is about five samples at 48 kHz,
+    which is audible as a click but not as a gap; a main-thread block would give a dropout two to
+    three orders of magnitude longer. So the report is either a sample-level discontinuity (a click,
+    pointing at a buffer seam) or a much longer starvation gap estimated by ear. The detector must
+    look for both.
+  - **The counters and the ear disagree.** `audioUnderruns` reads 0. Either the counter does not
+    observe this path or the event is not an underrun in the sense it means. That discrepancy is a
+    finding in its own right and must not be resolved in favour of the more convenient number.
+
+2. [IN_PROGRESS] P42-T02 Station CPU cost must not grow with station depth.
+  - The constraint the user stated: local SID playback already uses most of the CPU, so the station
+    must not add to it. The margin is documented and thin — `renderMsPerSec` is pinned at 850 against
+    715 measured, about 1.4x realtime, and `audioUnderruns` is pinned at 0.
+  - Three costs currently scale with the exclusion set. Measured on desktop at 87,868 tracks, 60,000
+    exclusions: session `JSON.stringify` 2.07 ms over 344 KB, `structuredClone` of the exclude array
+    1.80 ms, and the worker's `new Set(...)` 4.03 ms. At depth 1,000 the same three are 0.05, 0.06
+    and 0.09 ms.
+  - A fixed bitset over the corpus is 10,984 bytes at any depth: 0.02 ms and 14 KB to persist, 0.002
+    ms to transfer, and no set to build at all because membership becomes a bit test. That turns all
+    three from O(depth) into O(1).
+  - Note the desktop figures above are 2-4x lower than the ones measured during Phase 41 under heavy
+    load. At a 3-5x Pixel 4 multiplier the two extrapolations straddle the 16 ms
+    `refillMainThreadMaxMs` budget from opposite sides, which is exactly why the device measurement
+    decides and neither extrapolation should be quoted as a result.
+  - Also open, and cheap if the worker's BFS proves to be a material share of CPU: Phase 41's sweep
+    reached 58,971 tracks at hop budget 4 against 59,704 at 8, so roughly half the station compute
+    may be available for about 1% of depth.
+
+3. [PENDING] P42-T03 Measure on the device, not by extrapolation.
+  - Depth sweep (1k / 10k / 30k / 60k) via a pre-seeded session descriptor, which is the state a
+    resumed deep session is genuinely in. A normal soak advances ~45 tracks in 40 minutes and never
+    reaches the depth where the problem lives, so a shallow pass proves nothing.
+  - Report worker CPU as well as the main-thread budget: the largest single cost is the worker's set
+    rebuild, which does not touch `refillMainThreadMaxMs` at all but does contend with the audio
+    render, and that contention is the user's actual constraint.
+  - Independent microphone check against the on-device counters. Room noise floor measured at
+    **-40.7 dBFS RMS** with nothing playing. A dropout is a collapse toward that floor, and SID tunes
+    contain real rests, so a silence-threshold detector will produce false positives; key on
+    discontinuity, and state what the detector would miss.
+
 ## Phase 40 - Extract And Automate libsidplayfp WASM
 
 1. [IN_PROGRESS] P40-T01 Establish `chrisgleissner/libsidplayfp-wasm` as the standalone,

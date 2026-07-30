@@ -3,79 +3,163 @@
 
 ## 0.8.2 (2026-07-30)
 
-### The tiny neighbour graph carries a stream instead of draining into the alphabet
+> **A release tagged 0.8.2 existed briefly and was withdrawn.** Its releases and tags were deleted
+> from both `chrisgleissner/sidflow` and `chrisgleissner/sidflow-data`. It shipped one definition of
+> what a tiny neighbour edge means; this release ships a different one, and publishing both would
+> have asked every consumer to absorb two incompatible redefinitions of the same field within days,
+> for no benefit, since nobody had built against the first. The number is reused so that a
+> consumer's history reads 0.8.0 → 0.8.2 with one change in what the edges mean. The entry below
+> replaces the withdrawn one entirely. `doc/plans/neighbour-graph-flow/prompt.md` and PR #100 remain
+> as an accurate record of what was tried; history is not what is being cleaned up here, the
+> published contract is.
 
-`sidcorr-tiny-1` is the profile SID Radio stations are built from, and it exports a directed
-acyclic graph. Acyclicity is the right property — a station that can revisit a track is a
-station that repeats itself — but the orientation came from the wrong place. The
-specification required every edge to point at a **lower track ordinal**, and the track
-ordinal is alphabetical `sid_path` position, which has nothing to do with what a tune sounds
-like. The graph that rule produced was acyclic and shallow.
+### The tiny neighbour graph becomes an index, and the station becomes a policy
 
-Measured on the published 0.8.0 bundle, 87,868 tracks:
+`sidcorr-tiny-1` is the profile SID Radio stations are built from. Through 0.8.0 it exported a
+**directed acyclic graph**, and that guarantee was the defect — not the orientation that implemented
+it.
+
+"A station must never repeat a track" is a real product requirement. Turning it into "the exported
+edges must form a directed acyclic graph" looks like enforcing it at the source and is actually
+something else: a constraint on which *true* similarity relationships the artefact is allowed to
+state. Cycles in a similarity graph are not a defect; if A's nearest neighbour is B and B's is A,
+both edges are true and both are useful. What must not happen is a *player* revisiting a track, and
+the fix for that is a set of what has already been played — which every player already keeps.
+
+Enforcing acyclicity here discarded **50.76%** of the source export's edges and shipped **6.69%** of
+the tiny bundle's slot capacity as sentinels, to solve a problem that does not belong in the
+artefact.
+
+**`graph_flags` bit 0 therefore reads 0, and acyclicity is no longer claimed or true.** The ordinal
+rule — every target must be a lower track ordinal — is gone with it. This is a specification change,
+not a schema change: `binary_format_version` stays `2`, the header layout and section order are
+unchanged, and §5.2 already required consumers to ignore bits they do not recognise. Only the edge
+values, their order within a row, and `graph_flags` differ.
+
+**What replaces it.** Vamana (DiskANN) construction with diversifying pruning, reverse insertion, a
+reachability repair and a bound on in-degree. Measured on the published 0.8.0 bundle against the
+bundle this release ships, 87,868 tracks:
 
 | | 0.8.0 | 0.8.2 |
 |---|---:|---:|
-| longest forward path from the median track | **17** | **43,934** |
-| longest forward path anywhere in the corpus | 79 | 87,867 |
-| rank-greedy forward walk, median | 5 | 43,384 |
-| tracks with no outgoing edge | 2,786 (3.17%) | 1 |
-| tracks with no incoming edge | 24,669 (28.08%) | 1 |
-| slot capacity used | 93.31% | 85.2% |
+| mean out-degree | 2.799 of 3 | **3.000 of 3** |
+| tracks with no incoming edge | 24,669 (28.08%) | **0** |
+| tracks with no outgoing edge | 2,786 (3.17%) | **0** |
+| largest undirected component | 99.08% | **99.995%** |
+| in-degree max, as a multiple of the mean | 66 (23.6x) | 192 (64.0x) |
+| greedy routing recall@1 | 0.30% | **0.80%** |
 | bundle size | 1,834,993 B | 1,834,993 B |
 
-A consumer that followed the exported edges — the obvious thing to do with a neighbour
-table — ran out of music after a handful of tracks, and 28% of the corpus could not be
-reached at all. The rule cost almost nothing in match quality (the first slot carried mean
-similarity 0.9681 against a true rank-1 mean of 0.9729) and almost everything in structure.
+Row order is descending similarity, so slot 0 is the closest exported neighbour — the convention
+0.8.0 used and the one `c64commander`'s `neighbors - slot` weighting assumes.
 
-**What replaces it.** Edges are now oriented by a **flow order**: a single ordering of the
-corpus, built as a greedy nearest-unvisited walk over the source export's own neighbour
-ranking, in which consecutive tracks are similar (mean consecutive weighted cosine 0.9582
-against 0.9728 for the best possible single step). Slot 0 of every row is the track's flow
-successor, so the exported edges contain a Hamiltonian path: a forward walk from flow
-position *r* can always continue and reaches at least `track_count - r` distinct tracks
-without repeating one. Slot 1 is the forward candidate that jumps furthest along that order
-— still one of the track's nearest neighbours, so still a real musical match, but far enough
-ahead that a consumer exploring a bounded neighbourhood sees more than eight steps of an
-87,868-track stream.
+**Why a simpler rule was not enough, since this is the part worth knowing.** The obvious fix is to
+keep three of the source export's 25 nearest neighbours and choose them by diversifying pruning
+(HNSW's neighbour heuristic, DiskANN's alpha rule). That was implemented and swept over 30
+configurations — alpha in {1.0, 1.05, 1.1, 1.2, 1.4} × {no correction, mutual proximity, local
+scaling} × {reverse insertion on, off} — and **every one of them failed**: 9.9% to 13.6% of tracks
+left with no incoming edge, 99.52%-99.66% largest component, and greedy routing recall@1 of
+0.10%-0.30%, no better than a plain top-3 graph.
 
-The flow order also refuses to walk from one subsong of a `.sid` file straight into another,
-which is the same defect at its smallest scale.
+The reason is geometric and was measured directly over 400 sampled tracks: the mean distance from a
+seed to its rank-1 neighbour is **0.02832**, to its rank-25 neighbour **0.05190**, and to a random
+track **0.24294**. Every edge the published candidate pool can offer is five to nine times shorter
+than a typical distance in the corpus, so no selection over that pool can produce an edge that
+crosses the space, and a graph of only short edges cannot be searched. Vamana works because it
+generates each track's candidate pool from a search over the graph being built, so long edges are
+available to keep. `doc/neighbour-graph-design.md` §3 states this in full; it is the finding most
+likely to be re-learned the hard way.
 
-**This is a data and builder fix, not a format change.** `binary_format_version` stays `2`,
-the section layout is unchanged, the bundle is byte-for-byte the same size, and the rebuilt
-artefact differs from the 0.8.0 one **only in the header and the neighbour table** — every
-`md5_48` identity, per-file track count, style mask and packed rating is untouched, asserted
-rather than eyeballed. `graph_flags` gains bit 3 to declare the new guarantee, using the
-mechanism §5.2 already reserved ("consumers MUST ignore bits they do not recognize"). The
-`sidcorr-1` full export is not modified at all, and the lite bundle rebuilds byte-identical
-to the published `fe92bd57…a346cd`.
+**What this fixes for a listener, and what it does not.** The graph is no longer what limits a
+station. `c64commander` expands at most 8 hops from a seed that never moves, so the reachable region
+depends on the branching factor rather than on how far the graph goes — which is why the withdrawn
+0.8.2 raised the reachable stream from 17 tracks to 43,934 and the station it fed still served
+*fewer* tracks than 0.8.0 did (1,141 against 1,367, simulated over 300 seeds). Reaching a station
+that runs for hours needs the client to let its query drift with what the listener has heard. With
+that policy, measured on this bundle, every one of 30 sampled stations reached the 25,000-track
+measurement cap. The client change ships alongside this release; see
+`doc/neighbour-graph-design.md` §7.
 
-`doc/similarity-export-tiny.md` §10.3 has been rewritten to describe what the artefact
-actually contains, with §10.4 and §10.5 covering the flow order and the shortcut edge. The
-stale "Current corpus note" (`track_count = 87,073`, two releases out of date) is corrected.
+**Retrieval quality, and the constraint that shaped the design.** Diversifying all three slots
+raised nDCG@10 by 14.35% and dropped composer lift by **21.12%** against the withdrawn 0.8.2 — the
+third slot goes to a long edge that rarely shares a composer, and a 21% drop is a graph that streams
+further through worse matches. The release refuses more than 5%, so **two of the three slots are
+reserved for the seed's own nearest neighbours** and only the third is diversified, which is the move
+HNSW makes with `keepPrunedConnections`. The reserved edges are protected from the reachability
+repair and the hub trim as well, since either would otherwise silently undo the reservation.
 
-**What this does not fix, and what it costs.** Consumers that explore a bounded
-neighbourhood rather than walking the graph are limited by their hop budget, not by the
-graph, and the flow-oriented graph gives them slightly less to expand into. The old
-orientation produced hubs — in-degree reached 66 against a mean of 2.8 — and expanding
-through a hub pulls in a lot at once; the new graph's in-degree is a near-uniform 3.
+Measured over 8,000 sampled seeds against the withdrawn 0.8.2:
 
-- `c64commander`'s station engine expands at most 8 hops from a seed that never moves.
-  Simulated over 300 seeds on both bundles, the median distinct tracks it serves before
-  reporting `exhausted` moves from **1,137 to 1,042**. The tail improves — stations ending
-  within 500 tracks fall from 5.3% to 4.0% — and the median gives up 8%. To see the
-  87,868-track stream the client has to follow it rather than expand a ball around a fixed
-  seed; the data can now support that, and until it does, station length there is
-  effectively unchanged.
-- SIDFlow's own tiny-profile station ranks by a five-hop walk, so the same applies. Measured
-  on the real bundles from three resolvable seeds, the walk reaches **1,674 / 856 / 517**
-  tracks on 0.8.0 and **939 / 691 / 720** on 0.8.2. Stations are 20-100 tracks, so both fill
-  with a wide margin.
+| | 0.8.2 | shipped | change |
+|---|---:|---:|---:|
+| composer lift | 75.865 | 74.772 | **-1.44%** |
+| nDCG@10 | 0.1133 | 0.1507 | **+33.05%** |
 
-The sqlite and lite profiles are untouched: they rank by weighted cosine over the 58-dim
-vectors and never read the neighbour graph.
+Slot 0's mean similarity is 0.9729 and slot 1's is 0.9675, which are exactly the source export's own
+rank-1 and rank-2 means: the reservation is exact, not approximate. For reference, 0.8.0's composer
+lift was 84.536 and its nDCG@10 0.1440 — it spent all three slots on proximity, so it is still ahead
+on unweighted precision and behind on the rank-weighted metric. The release's stated baseline is
+0.8.2; both numbers are recorded so a reader can compare against either.
+
+### `sidcorr-1` is deliberately not changed
+
+The full export's `neighbors` table is a **retrieval** answer — `u64deck` uses it for "♪ More like
+this", a single-hop query where "the 25 most similar" is exactly right — so it was evaluated rather
+than assumed, and left alone.
+
+Measured over 8,000 sampled seeds, re-ranking each seed's published 25 candidates:
+
+| ordering | composer lift | nDCG@10 | rank 1 changed | mean Spearman vs published |
+|---|---:|---:|---:|---:|
+| published (raw weighted cosine) | 70.382 | 0.2919 | — | 1.000 |
+| mutual proximity | 69.991 (**-0.56%**) | 0.2843 (**-2.60%**) | 4,664 of 8,000 | 0.5015 |
+| local scaling | 71.162 (+1.11%) | 0.2953 (+1.16%) | 2,126 of 8,000 | 0.7083 |
+
+Mutual proximity — the correction the plan proposed — makes retrieval **worse** on this corpus.
+Local scaling gains 1.1%, which is a fifth of the regression the guardrail tolerates elsewhere, and
+buying it would change the rank-1 answer for 27% of seeds and reorder 99.96% of rows. Neither can
+touch the headline hubness figures at all: in-degree max **217** and the **456 tracks (0.52%)** with
+no incoming edge are properties of which tracks appear in someone's row, and re-ranking changes order,
+never membership. Against that, the cost is a 982 MB re-download for every consumer.
+
+So `sidcorr-hvsc-full-sidcorr-1.sqlite` ships byte-identical to 0.8.0 and `u64deck` is unaffected.
+The 456 unreachable tracks remain a real, unfixed limitation of the full export, recorded in
+`doc/neighbour-graph-design.md` §9; the tiny profile does not inherit it.
+
+The same-file question was taken deliberately rather than inherited: the rank-1 neighbour is a
+different subsong of the same `.sid` file for **14.42%** of seeds, and **905** seeds have all 25
+neighbours from their own file.
+
+They stay in the export. The metric is telling the truth — subsongs of one file usually are
+near-identical — and a table that silently answered "most similar, from a different file" would be
+harder to build on, since a consumer can derive that from the inclusive answer and not the reverse.
+Flagging them would need a new column, which is a schema change this release does not make, and is
+unnecessary because `sid_path` and `song_index` are already in the table. The specification now says
+plainly that a neighbour may be a sibling and that a consumer wanting distinct tunes must group by
+file identity itself. The defect a listener actually experiences — three subsongs of one file in a
+row — is fixed in the client, where the exclusion set moves from track ordinals to file identities.
+
+### Measurement tools are committed, not thrown away
+
+Every figure above comes from a script in the repository. The 0.8.0 and 0.8.2 numbers were originally
+produced by throwaway code that no longer ran, so nothing could be re-derived or compared:
+
+- `scripts/neighbour-graph/analyse.ts` — degree distributions, connectivity, reciprocity, greedy
+  routing recall, slot-0 walk attractors and same-file rates, over any tiny bundle or the full
+  export at any width.
+- `scripts/neighbour-graph/simulate-station.ts` — a port of `c64commander`'s `computeStation` driven
+  the way `stationQueueProvider` drives it, with both the shipped fixed-seed policy and the drifting
+  query. No HVSC, no audio, no device.
+- `scripts/neighbour-graph/sweep-selection.ts` — the parameter sweeps, reporting the curve rather
+  than a chosen point.
+- `scripts/neighbour-graph/verify-rank1-reproduction.ts` — proves the published graph is derivable
+  from the published vectors under the published weights, so a rebuild needs no reclassification.
+  503 of 503 sampled seeds reproduce their published rank-1 neighbour.
+- `scripts/neighbour-graph/retrieval-quality.ts` — composer lift and nDCG@10, the guardrail.
+- `scripts/neighbour-graph/full-export-hubness.ts` — the evidence for the `sidcorr-1` decision.
+
+`decodeTinyNeighbourGraph` was added to `@sidflow/common` so the release gate and the analyser share
+one statement of the header offsets instead of each carrying a copy.
 
 ### Derived exports stop stamping the building machine's HVSC version
 
