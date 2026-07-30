@@ -117,6 +117,64 @@ version question was settled with the user: reuse 0.8.2, restore and rewrite
     re-uploaded (the four unchanged assets plus tiny `10db2838...c1c0bc`), re-pin `c64commander`,
     merge both branches.
 
+## Phase 42 - SID Radio CPU Cost And An Audible Audio Dropout
+
+Raised by the user on 2026-07-30, after Phase 41's station change landed on the device.
+
+1. [IN_PROGRESS] P42-T01 An audible dropout in playback, reported by ear and not by a counter.
+  - **Reported:** "a short 0.1ms gap ca. 2s into the song (`No_way_out.sid`)", on the Pixel 4 running
+    the Phase 41 branch build `0.9.4-f7b3c`. The user believes it is a recurrence of a defect that
+    was previously fixed.
+  - **History it matches.** `ci/perf/sid-radio-perf-thresholds.json` records that `audioUnderruns`
+    regressed to 1 once before, when the G11 determinism sequence moved to emit time and put
+    `querySelector` plus a full `JSON.stringify` on the main thread once per emitted item. The fix
+    made `recordEmitted` update memory only and left the following `recordRefill` to flush.
+  - **Hypothesis, to be tested rather than assumed.** That fix reduced how *often* the main thread
+    stringifies, not how *much* it costs, and the cost has since grown roughly 40x because a station
+    now excludes ~59,700 tracks instead of ~1,400. Two seconds into a track is about when the queue
+    provider tops up its lookahead, which is when `recordRefill` and the session save run. The
+    prediction that makes this falsifiable: the dropout should recur about once per track, early in
+    the track, and should scale with station depth — rare on a fresh station, reliable on a deep one.
+  - **An unresolved detail that changes the diagnosis.** 0.1 ms is about five samples at 48 kHz,
+    which is audible as a click but not as a gap; a main-thread block would give a dropout two to
+    three orders of magnitude longer. So the report is either a sample-level discontinuity (a click,
+    pointing at a buffer seam) or a much longer starvation gap estimated by ear. The detector must
+    look for both.
+  - **The counters and the ear disagree.** `audioUnderruns` reads 0. Either the counter does not
+    observe this path or the event is not an underrun in the sense it means. That discrepancy is a
+    finding in its own right and must not be resolved in favour of the more convenient number.
+
+2. [IN_PROGRESS] P42-T02 Station CPU cost must not grow with station depth.
+  - The constraint the user stated: local SID playback already uses most of the CPU, so the station
+    must not add to it. The margin is documented and thin — `renderMsPerSec` is pinned at 850 against
+    715 measured, about 1.4x realtime, and `audioUnderruns` is pinned at 0.
+  - Three costs currently scale with the exclusion set. Measured on desktop at 87,868 tracks, 60,000
+    exclusions: session `JSON.stringify` 2.07 ms over 344 KB, `structuredClone` of the exclude array
+    1.80 ms, and the worker's `new Set(...)` 4.03 ms. At depth 1,000 the same three are 0.05, 0.06
+    and 0.09 ms.
+  - A fixed bitset over the corpus is 10,984 bytes at any depth: 0.02 ms and 14 KB to persist, 0.002
+    ms to transfer, and no set to build at all because membership becomes a bit test. That turns all
+    three from O(depth) into O(1).
+  - Note the desktop figures above are 2-4x lower than the ones measured during Phase 41 under heavy
+    load. At a 3-5x Pixel 4 multiplier the two extrapolations straddle the 16 ms
+    `refillMainThreadMaxMs` budget from opposite sides, which is exactly why the device measurement
+    decides and neither extrapolation should be quoted as a result.
+  - Also open, and cheap if the worker's BFS proves to be a material share of CPU: Phase 41's sweep
+    reached 58,971 tracks at hop budget 4 against 59,704 at 8, so roughly half the station compute
+    may be available for about 1% of depth.
+
+3. [PENDING] P42-T03 Measure on the device, not by extrapolation.
+  - Depth sweep (1k / 10k / 30k / 60k) via a pre-seeded session descriptor, which is the state a
+    resumed deep session is genuinely in. A normal soak advances ~45 tracks in 40 minutes and never
+    reaches the depth where the problem lives, so a shallow pass proves nothing.
+  - Report worker CPU as well as the main-thread budget: the largest single cost is the worker's set
+    rebuild, which does not touch `refillMainThreadMaxMs` at all but does contend with the audio
+    render, and that contention is the user's actual constraint.
+  - Independent microphone check against the on-device counters. Room noise floor measured at
+    **-40.7 dBFS RMS** with nothing playing. A dropout is a collapse toward that floor, and SID tunes
+    contain real rests, so a silence-threshold detector will produce false positives; key on
+    discontinuity, and state what the detector would miss.
+
 ## Phase 40 - Extract And Automate libsidplayfp WASM
 
 1. [IN_PROGRESS] P40-T01 Establish `chrisgleissner/libsidplayfp-wasm` as the standalone,
