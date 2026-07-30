@@ -19,6 +19,12 @@ import {
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
 import {
+  computeFlowOrder,
+  selectForwardNeighbors,
+  type FlowOrderCandidate,
+} from "./similarity-flow-order.js";
+import { cosineSimilarity } from "./vector-similarity.js";
+import {
   packCompactRatings,
   pickRandomRows,
   unpackCompactRatings,
@@ -53,6 +59,23 @@ const NEIGHBORS_PER_TRACK = 3;
 const NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY = 4;
 const STYLE_TABLE_VERSION = 1;
 const APPROXIMATE_NEIGHBOR_CANDIDATE_LIMIT = 256;
+
+/** graph_flags bit 0: the exported edges form a directed acyclic graph. */
+const GRAPH_FLAG_ACYCLIC = 1 << 0;
+/**
+ * graph_flags bits 1 and 2: written since the format's first release and never assigned a
+ * meaning in the specification. They are preserved rather than cleared, because a consumer
+ * may have come to depend on the literal value even though §5.2 tells it not to.
+ */
+const GRAPH_FLAG_RESERVED_LEGACY = (1 << 1) | (1 << 2);
+/**
+ * graph_flags bit 3: slot 0 of every populated row is the track's flow successor, so the
+ * exported edges contain a Hamiltonian path over the corpus. A forward walk from any track
+ * can keep going until the order runs out. New in 0.8.2; readers that predate it ignore the
+ * bit, per §5.2, and see a bundle that is still an ordinary acyclic 3-neighbour graph.
+ */
+const GRAPH_FLAG_FLOW_SUCCESSOR_FIRST = 1 << 3;
+const GRAPH_FLAGS = GRAPH_FLAG_ACYCLIC | GRAPH_FLAG_RESERVED_LEGACY | GRAPH_FLAG_FLOW_SUCCESSOR_FIRST;
 
 interface SourceTrackRow {
   track_id: string;
@@ -409,10 +432,19 @@ function compactRatingDistance(
     + Math.abs((left.p ?? 3) - (right.p ?? 3));
 }
 
-function computeApproximateNeighborGraph(
+/**
+ * Candidate lists for the flow order and the forward edge selection.
+ *
+ * These are *candidates*, not exported edges: unrestricted by direction and longer than
+ * the three slots a bundle carries. Both the flow order and the edge selection need to see
+ * more than three options per track, and neither can be given a direction before the flow
+ * order exists. Restricting the list here is what produced the shallow graph that 0.8.2
+ * fixes — see `similarity-flow-order.ts`.
+ */
+function computeApproximateNeighborCandidates(
   rows: SourceTrackRow[],
   vectors: number[][],
-): Array<Array<{ trackOrdinal: number; similarity: number }>> {
+): Array<Array<FlowOrderCandidate>> {
   const ordinalsBySignature = new Map<string, number[]>();
   const rowsBySignature = new Map<string, SourceTrackRow>();
   for (let index = 0; index < rows.length; index += 1) {
@@ -450,7 +482,7 @@ function computeApproximateNeighborGraph(
       const ordinals = ordinalsBySignature.get(signature) ?? [];
       for (let index = ordinals.length - 1; index >= 0; index -= 1) {
         const candidateOrdinal = ordinals[index]!;
-        if (candidateOrdinal >= seedOrdinal) {
+        if (candidateOrdinal === seedOrdinal) {
           continue;
         }
         candidateOrdinals.push(candidateOrdinal);
@@ -463,36 +495,37 @@ function computeApproximateNeighborGraph(
       }
     }
 
-    const scored = candidateOrdinals
+    return candidateOrdinals
       .map((candidateOrdinal) => ({
         trackOrdinal: candidateOrdinal,
         similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
       }))
       .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal);
-
-    return scored.slice(0, NEIGHBORS_PER_TRACK);
   });
 }
 
-function computeFallbackNeighborGraph(
+function computeFallbackNeighborCandidates(
   rows: SourceTrackRow[],
   vectors: number[][],
-): Array<Array<{ trackOrdinal: number; similarity: number }>> {
+): Array<Array<FlowOrderCandidate>> {
   if (rows.length > 5000) {
-    return computeApproximateNeighborGraph(rows, vectors);
+    return computeApproximateNeighborCandidates(rows, vectors);
   }
 
   return rows.map((_, seedOrdinal) => {
-    const scores: Array<{ trackOrdinal: number; similarity: number }> = [];
-    for (let candidateOrdinal = 0; candidateOrdinal < seedOrdinal; candidateOrdinal += 1) {
+    const scores: FlowOrderCandidate[] = [];
+    for (let candidateOrdinal = 0; candidateOrdinal < rows.length; candidateOrdinal += 1) {
+      if (candidateOrdinal === seedOrdinal) {
+        continue;
+      }
       scores.push({
         trackOrdinal: candidateOrdinal,
         similarity: cosine(vectors[seedOrdinal]!, vectors[candidateOrdinal]!),
       });
     }
-    return scores
-      .sort((left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal)
-      .slice(0, NEIGHBORS_PER_TRACK);
+    return scores.sort(
+      (left, right) => right.similarity - left.similarity || left.trackOrdinal - right.trackOrdinal,
+    );
   });
 }
 
@@ -533,12 +566,20 @@ function describeHvscRootForManifest(hvscRoot: string): string {
   return path.basename(normalized) || "hvsc";
 }
 
-function buildNeighborGraphFromSqliteHint(
+/**
+ * Candidate lists taken from the source export's own `neighbors` table.
+ *
+ * The whole ranked list is read, not the first three and not only the edges pointing at a
+ * lower track ordinal. Both restrictions were applied here before 0.8.2, and between them
+ * they discarded 50.76% of the source graph and fixed the orientation to alphabetical
+ * `sid_path` order.
+ */
+function buildNeighborCandidatesFromSqliteHint(
   rows: SourceTrackRow[],
   database: Database,
-): Array<Array<{ trackOrdinal: number; similarity: number }>> {
+): Array<Array<FlowOrderCandidate>> | null {
   const ordinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
-  const neighborsBySeed = rows.map(() => [] as Array<{ trackOrdinal: number; similarity: number }>);
+  const candidatesBySeed = rows.map(() => [] as FlowOrderCandidate[]);
   let hasPrecomputedNeighbors = false;
   try {
     const existingNeighbors = database.query(`
@@ -552,13 +593,13 @@ function buildNeighborGraphFromSqliteHint(
       for (const neighbor of existingNeighbors) {
         const seedOrdinal = ordinalByTrackId.get(neighbor.seed_track_id);
         const targetOrdinal = ordinalByTrackId.get(neighbor.neighbor_track_id);
-        if (seedOrdinal === undefined || targetOrdinal === undefined || targetOrdinal >= seedOrdinal) {
+        if (seedOrdinal === undefined || targetOrdinal === undefined || targetOrdinal === seedOrdinal) {
           continue;
         }
-        const arr = neighborsBySeed[seedOrdinal]!;
-        if (arr.length < NEIGHBORS_PER_TRACK) {
-          arr.push({ trackOrdinal: targetOrdinal, similarity: neighbor.similarity });
-        }
+        candidatesBySeed[seedOrdinal]!.push({
+          trackOrdinal: targetOrdinal,
+          similarity: neighbor.similarity,
+        });
       }
     }
   } catch (error) {
@@ -570,11 +611,54 @@ function buildNeighborGraphFromSqliteHint(
     }
   }
 
-  if (!hasPrecomputedNeighbors) {
-    return computeApproximateNeighborGraph(rows, rows.map(parseVector));
+  return hasPrecomputedNeighbors ? candidatesBySeed : null;
+}
+
+/**
+ * The similarity function the flow order falls back on when a track's candidate list runs
+ * out.
+ *
+ * It reads the source export's own `vector_json` and applies the published weighted
+ * cosine, so a fallback step is scored on the same metric that produced the candidate
+ * lists. Lite's decoded vectors are the fallback's fallback: they are quantised and, worse,
+ * `parseVector` truncates them to four dimensions, which is fine for the small-corpus paths
+ * that have no better source but would silently change the metric mid-order here.
+ */
+function buildSourceVectorSimilarity(
+  rows: SourceTrackRow[],
+  database: Database,
+  fallbackVectors: number[][],
+): (left: number, right: number) => number {
+  const vectorsByOrdinal: Array<number[] | null> = rows.map(() => null);
+  const ordinalByTrackId = new Map(rows.map((row, index) => [row.track_id, index]));
+  try {
+    const stored = database.query(
+      "SELECT track_id, vector_json FROM tracks WHERE vector_json IS NOT NULL AND vector_json != ''",
+    ).all() as Array<{ track_id: string; vector_json: string }>;
+    for (const entry of stored) {
+      const ordinal = ordinalByTrackId.get(entry.track_id);
+      if (ordinal === undefined) {
+        continue;
+      }
+      const parsed = JSON.parse(entry.vector_json) as number[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        vectorsByOrdinal[ordinal] = parsed;
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.toLowerCase().includes("no such")) {
+      throw error;
+    }
   }
 
-  return neighborsBySeed;
+  return (left: number, right: number): number => {
+    const leftVector = vectorsByOrdinal[left];
+    const rightVector = vectorsByOrdinal[right];
+    if (leftVector && rightVector && leftVector.length === rightVector.length) {
+      return cosineSimilarity(leftVector, rightVector);
+    }
+    return cosine(fallbackVectors[left] ?? [], fallbackVectors[right] ?? []);
+  };
 }
 
 export async function buildTinySimilarityExport(
@@ -687,17 +771,43 @@ export async function buildTinySimilarityExport(
     ratingTable.writeUInt16LE(packCompactRatings(rows[index]!), index * COMPACT_RATING_BYTES);
   }
 
-  let neighbors: Array<Array<{ trackOrdinal: number; similarity: number }>>;
+  // The exported graph is oriented by a corpus-wide flow order rather than by track
+  // ordinal, and slot 0 of every track is its flow successor. See `similarity-flow-order.ts`
+  // for why, and for the measurements that motivated the change in 0.8.2.
+  const fileOrdinalByPath = new Map(filePaths.map((filePath, index) => [filePath, index]));
+  const fileOrdinals = rows.map((row) => fileOrdinalByPath.get(row.sid_path) ?? 0);
+
+  let candidates: Array<Array<FlowOrderCandidate>> | null = null;
+  let similarityBetween: (left: number, right: number) => number = (left, right) =>
+    cosine(vectors[left] ?? [], vectors[right] ?? []);
   if (options.neighborSqlitePath) {
     const neighborDatabase = new Database(options.neighborSqlitePath, { readonly: true, strict: true });
     try {
-      neighbors = buildNeighborGraphFromSqliteHint(rows, neighborDatabase);
+      candidates = buildNeighborCandidatesFromSqliteHint(rows, neighborDatabase);
+      if (candidates) {
+        similarityBetween = buildSourceVectorSimilarity(rows, neighborDatabase, vectors);
+      }
     } finally {
       neighborDatabase.close();
     }
-  } else {
-    neighbors = computeFallbackNeighborGraph(rows, vectors);
   }
+  if (!candidates) {
+    candidates = computeFallbackNeighborCandidates(rows, vectors);
+  }
+
+  const flow = computeFlowOrder({
+    trackCount: rows.length,
+    candidates,
+    similarityBetween,
+    fileOrdinals,
+  });
+  const neighbors = selectForwardNeighbors({
+    trackCount: rows.length,
+    flow,
+    candidates,
+    similarityBetween,
+    neighborsPerTrack: NEIGHBORS_PER_TRACK,
+  });
   const neighborTable = Buffer.alloc(rows.length * NEIGHBORS_PER_TRACK * NEIGHBOR_RECORD_BYTES_WITH_SIMILARITY);
   for (let index = 0; index < rows.length; index += 1) {
     const rowNeighbors = neighbors[index] ?? [];
@@ -729,7 +839,7 @@ export async function buildTinySimilarityExport(
   header.writeUInt8(1, 26);
   header.writeUInt8(STYLE_MASK_WIDTH_BYTES, 27);
   header.writeUInt16LE(STYLE_TABLE_VERSION, 28);
-  header.writeUInt16LE(0b111, 30);
+  header.writeUInt16LE(GRAPH_FLAGS, 30);
   header.writeUInt32LE(styleTableOffset, 32);
   header.writeUInt32LE(fileIdentityOffset, 36);
   header.writeUInt32LE(fileTrackCountOffset, 40);

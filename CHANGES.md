@@ -1,6 +1,120 @@
 # Changelog
 
 
+## 0.8.2 (2026-07-30)
+
+### The tiny neighbour graph carries a stream instead of draining into the alphabet
+
+`sidcorr-tiny-1` is the profile SID Radio stations are built from, and it exports a directed
+acyclic graph. Acyclicity is the right property — a station that can revisit a track is a
+station that repeats itself — but the orientation came from the wrong place. The
+specification required every edge to point at a **lower track ordinal**, and the track
+ordinal is alphabetical `sid_path` position, which has nothing to do with what a tune sounds
+like. The graph that rule produced was acyclic and shallow.
+
+Measured on the published 0.8.0 bundle, 87,868 tracks:
+
+| | 0.8.0 | 0.8.2 |
+|---|---:|---:|
+| longest forward path from the median track | **17** | **43,934** |
+| longest forward path anywhere in the corpus | 79 | 87,867 |
+| rank-greedy forward walk, median | 5 | 43,384 |
+| tracks with no outgoing edge | 2,786 (3.17%) | 1 |
+| tracks with no incoming edge | 24,669 (28.08%) | 1 |
+| slot capacity used | 93.31% | 85.2% |
+| bundle size | 1,834,993 B | 1,834,993 B |
+
+A consumer that followed the exported edges — the obvious thing to do with a neighbour
+table — ran out of music after a handful of tracks, and 28% of the corpus could not be
+reached at all. The rule cost almost nothing in match quality (the first slot carried mean
+similarity 0.9681 against a true rank-1 mean of 0.9729) and almost everything in structure.
+
+**What replaces it.** Edges are now oriented by a **flow order**: a single ordering of the
+corpus, built as a greedy nearest-unvisited walk over the source export's own neighbour
+ranking, in which consecutive tracks are similar (mean consecutive weighted cosine 0.9582
+against 0.9728 for the best possible single step). Slot 0 of every row is the track's flow
+successor, so the exported edges contain a Hamiltonian path: a forward walk from flow
+position *r* can always continue and reaches at least `track_count - r` distinct tracks
+without repeating one. Slot 1 is the forward candidate that jumps furthest along that order
+— still one of the track's nearest neighbours, so still a real musical match, but far enough
+ahead that a consumer exploring a bounded neighbourhood sees more than eight steps of an
+87,868-track stream.
+
+The flow order also refuses to walk from one subsong of a `.sid` file straight into another,
+which is the same defect at its smallest scale.
+
+**This is a data and builder fix, not a format change.** `binary_format_version` stays `2`,
+the section layout is unchanged, the bundle is byte-for-byte the same size, and the rebuilt
+artefact differs from the 0.8.0 one **only in the header and the neighbour table** — every
+`md5_48` identity, per-file track count, style mask and packed rating is untouched, asserted
+rather than eyeballed. `graph_flags` gains bit 3 to declare the new guarantee, using the
+mechanism §5.2 already reserved ("consumers MUST ignore bits they do not recognize"). The
+`sidcorr-1` full export is not modified at all, and the lite bundle rebuilds byte-identical
+to the published `fe92bd57…a346cd`.
+
+`doc/similarity-export-tiny.md` §10.3 has been rewritten to describe what the artefact
+actually contains, with §10.4 and §10.5 covering the flow order and the shortcut edge. The
+stale "Current corpus note" (`track_count = 87,073`, two releases out of date) is corrected.
+
+**What this does not fix, and what it costs.** Consumers that explore a bounded
+neighbourhood rather than walking the graph are limited by their hop budget, not by the
+graph, and the flow-oriented graph gives them slightly less to expand into. The old
+orientation produced hubs — in-degree reached 66 against a mean of 2.8 — and expanding
+through a hub pulls in a lot at once; the new graph's in-degree is a near-uniform 3.
+
+- `c64commander`'s station engine expands at most 8 hops from a seed that never moves.
+  Simulated over 300 seeds on both bundles, the median distinct tracks it serves before
+  reporting `exhausted` moves from **1,137 to 1,042**. The tail improves — stations ending
+  within 500 tracks fall from 5.3% to 4.0% — and the median gives up 8%. To see the
+  87,868-track stream the client has to follow it rather than expand a ball around a fixed
+  seed; the data can now support that, and until it does, station length there is
+  effectively unchanged.
+- SIDFlow's own tiny-profile station ranks by a five-hop walk, so the same applies. Measured
+  on the real bundles from three resolvable seeds, the walk reaches **1,674 / 856 / 517**
+  tracks on 0.8.0 and **939 / 691 / 720** on 0.8.2. Stations are 20-100 tracks, so both fill
+  with a wide margin.
+
+The sqlite and lite profiles are untouched: they rank by weighted cosine over the 58-dim
+vectors and never read the neighbour graph.
+
+### Derived exports stop stamping the building machine's HVSC version
+
+`lite` and `tiny` are derived from an existing export, and that export is the authority on
+which HVSC its `sid_path` values belong to. The library builders already fell back to the
+source's own `hvsc_version` when none was passed, but the CLI always resolved the local
+collection's `hvsc-version.json` first and passed it in, which overrode the fallback.
+Rebuilding the 0.8.0 lite bundle on a machine holding HVSC 84 produced byte-identical bundle
+contents with a manifest claiming `"HVSC 84 + Update 84"` against the source's
+`"HVSC 85 + Update 85"`. The CLI now resolves the local version only for the formats built
+from the local collection; `--hvsc-version` still overrides.
+
+### Smaller fixes
+
+- `scripts/ci/release-prepare.ts` threw when a directory under `packages/` had no
+  `package.json`. `packages/libsidplayfp-wasm/` still holds build caches after 0.8.1 moved
+  that package to npm, and a stale directory should not break a release mid-bump.
+- Two station-equivalence assertions divided an overlap count by the station size requested
+  rather than by the number of tracks the profile returned, so a legitimately short tiny
+  queue scored as disagreement. They now measure precision over what was returned.
+
+### Release gate
+
+`scripts/verify-published-exports.ts` gains seven checks over the shipped tiny bytes: the
+acyclicity declaration, the flow-successor declaration, a topological sort proving the edges
+really are acyclic, dead-end and unreachable-track bounds, that slot 0 chains every track
+into a single path, and that the median track's longest forward path covers at least a
+quarter of the corpus. All five of the substantive ones fail against the published 0.8.0
+bundle.
+
+### Fixed: two test files could not run at all
+
+`beforeAll` takes no timeout argument on the pinned Bun (1.3.1) — passing one raises
+`beforeAll() expects a function as the second argument` at collection time, so every test in
+the file errored out before it ran. `similarity-export-tiny-populations.test.ts` had been in
+that state; the fixture now relies on the 120s default from `bunfig.toml` and only `test()`
+carries an explicit allowance.
+
+
 ## 0.8.1 (2026-07-28)
 
 ### libsidplayfp WASM moves to its own package

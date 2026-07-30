@@ -392,5 +392,124 @@ check(
   check("the shipped bundle passes the export's own gate", gateViolations.length === 0, gateViolations.join("; "));
 }
 
+// ---- tiny: the neighbour graph carries a stream ----
+//
+// The 0.8.0 bundle was acyclic and useless for it: oriented by alphabetical sid_path
+// position, its longest forward path from the median track was 17 of 87,868, 28.08% of
+// tracks were unreachable and 3.17% were dead ends. Everything below reads the shipped
+// bytes, so it catches a bundle built by an older builder as well as one built by a broken
+// new one.
+process.stdout.write("\n=== tiny profile neighbour graph ===\n");
+{
+  const payload = readFileSync(tinyPath);
+  const trackCount = payload.readUInt32LE(12);
+  const graphFlags = payload.readUInt16LE(30);
+  const neighborsPerTrack = payload.readUInt16LE(22);
+  const neighborsOffset = payload.readUInt32LE(48);
+  const neighborsBytes = payload.readUInt32LE(60);
+  const recordBytes = neighborsBytes === trackCount * neighborsPerTrack * 4 ? 4 : 3;
+  const EMPTY = 0xffffff;
+
+  const targets: number[][] = new Array(trackCount);
+  for (let track = 0; track < trackCount; track += 1) {
+    const row: number[] = [];
+    for (let slot = 0; slot < neighborsPerTrack; slot += 1) {
+      const offset = neighborsOffset + (track * neighborsPerTrack * recordBytes) + (slot * recordBytes);
+      const target = payload[offset]! | (payload[offset + 1]! << 8) | (payload[offset + 2]! << 16);
+      if (target !== EMPTY) {
+        row.push(target);
+      }
+    }
+    targets[track] = row;
+  }
+
+  check("declares an acyclic graph", (graphFlags & 0b1) !== 0, `graph_flags 0x${graphFlags.toString(16).padStart(4, "0")}`);
+  check("declares slot 0 as the flow successor", (graphFlags & 0b1000) !== 0, `graph_flags 0x${graphFlags.toString(16).padStart(4, "0")}`);
+
+  // Kahn's algorithm: a graph with a cycle leaves nodes unemitted.
+  const inDegree = new Int32Array(trackCount);
+  for (const row of targets) {
+    for (const target of row) {
+      inDegree[target]! += 1;
+    }
+  }
+  const queue: number[] = [];
+  for (let track = 0; track < trackCount; track += 1) {
+    if (inDegree[track] === 0) {
+      queue.push(track);
+    }
+  }
+  const topological: number[] = [];
+  const pending = Int32Array.from(inDegree);
+  while (queue.length > 0) {
+    const track = queue.pop()!;
+    topological.push(track);
+    for (const target of targets[track]!) {
+      pending[target]! -= 1;
+      if (pending[target] === 0) {
+        queue.push(target);
+      }
+    }
+  }
+  check("the exported edges really are acyclic", topological.length === trackCount, `${trackCount - topological.length} tracks in cycles`);
+
+  const deadEnds = targets.filter((row) => row.length === 0).length;
+  const unreachable = [...inDegree].filter((degree) => degree === 0).length;
+  check("at most one track is a dead end", deadEnds <= 1, `${deadEnds} tracks with no outgoing edge`);
+  check("at most one track is unreachable", unreachable <= 1, `${unreachable} tracks with no incoming edge`);
+
+  // Slot 0 must chain the whole corpus into one path. This is the guarantee: a forward walk
+  // from flow position r reaches at least trackCount - r distinct tracks.
+  const successorInDegree = new Int32Array(trackCount);
+  let withoutSuccessor = 0;
+  for (let track = 0; track < trackCount; track += 1) {
+    const first = targets[track]![0];
+    if (first === undefined) {
+      withoutSuccessor += 1;
+    } else {
+      successorInDegree[first]! += 1;
+    }
+  }
+  const starts = [...successorInDegree].reduce((count, degree) => (degree === 0 ? count + 1 : count), 0);
+  const merges = [...successorInDegree].reduce((count, degree) => (degree > 1 ? count + 1 : count), 0);
+  let pathLength = 0;
+  if (withoutSuccessor === 1 && starts === 1 && merges === 0) {
+    let current = [...successorInDegree].indexOf(0);
+    const seen = new Uint8Array(trackCount);
+    while (current >= 0 && seen[current] === 0) {
+      seen[current] = 1;
+      pathLength += 1;
+      current = targets[current]![0] ?? -1;
+    }
+  }
+  check(
+    "slot 0 chains every track into a single path",
+    pathLength === trackCount,
+    `${pathLength} of ${trackCount} (ends ${withoutSuccessor}, starts ${starts}, merges ${merges})`,
+  );
+
+  // Longest forward path per track, over the topological order the acyclicity check produced.
+  if (topological.length === trackCount) {
+    const longest = new Int32Array(trackCount);
+    for (let index = topological.length - 1; index >= 0; index -= 1) {
+      const track = topological[index]!;
+      let best = 0;
+      for (const target of targets[track]!) {
+        if (longest[target]! + 1 > best) {
+          best = longest[target]! + 1;
+        }
+      }
+      longest[track] = best;
+    }
+    const sorted = Int32Array.from(longest).sort();
+    const median = sorted[Math.floor(trackCount / 2)]!;
+    check(
+      "the median track can reach a quarter of the corpus without repeating",
+      median >= Math.floor(trackCount / 4),
+      `median longest forward path ${median} of ${trackCount}`,
+    );
+  }
+}
+
 process.stdout.write(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}\n`);
 process.exit(failures === 0 ? 0 : 1);
