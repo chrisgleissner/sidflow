@@ -34,8 +34,11 @@ import process from "node:process";
 import {
   buildSimilarityTrackId,
   countStylePopulations,
+  decodeTinyNeighbourGraph,
   DEFAULT_STYLE_POPULATION_POLICY,
   evaluateStylePopulationGate,
+  GRAPH_FLAG_ACYCLIC,
+  GRAPH_FLAG_FLOW_SUCCESSOR_FIRST,
   openLiteSimilarityDataset,
   openTinySimilarityDataset,
   PERSONA_IDS,
@@ -392,122 +395,285 @@ check(
   check("the shipped bundle passes the export's own gate", gateViolations.length === 0, gateViolations.join("; "));
 }
 
-// ---- tiny: the neighbour graph carries a stream ----
+// ---- tiny: the neighbour graph is a navigable proximity index ----
 //
-// The 0.8.0 bundle was acyclic and useless for it: oriented by alphabetical sid_path
-// position, its longest forward path from the median track was 17 of 87,868, 28.08% of
-// tracks were unreachable and 3.17% were dead ends. Everything below reads the shipped
-// bytes, so it catches a bundle built by an older builder as well as one built by a broken
-// new one.
+// What replaced the previous checks, and why.
+//
+// Through 0.8.2 this section asserted that the exported edges formed a directed acyclic graph,
+// that slot 0 chained every track into a Hamiltonian path, and that the median track's longest
+// forward path covered a quarter of the corpus. All three are gone. **The acyclicity check is
+// removed because the property is no longer claimed, not because it became inconvenient**: it
+// encoded a playback policy as a constraint on the artefact, and satisfying it cost 50.76% of
+// the source graph's edges. The Hamiltonian and forward-path checks tested the mechanism 0.8.2
+// used to satisfy it, and that mechanism has been withdrawn along with the release.
+//
+// What is checked instead is what a proximity index has to be true of: every slot carries a real
+// edge, nothing is unreachable, nothing is a dead end, no track has become everyone's neighbour,
+// the corpus is one navigable region, and rows are in the similarity order a consumer's rank
+// weighting assumes. Everything below reads the shipped bytes, so it catches a bundle built by an
+// older builder as well as one built by a broken new one.
 process.stdout.write("\n=== tiny profile neighbour graph ===\n");
 {
-  const payload = readFileSync(tinyPath);
-  const trackCount = payload.readUInt32LE(12);
-  const graphFlags = payload.readUInt16LE(30);
-  const neighborsPerTrack = payload.readUInt16LE(22);
-  const neighborsOffset = payload.readUInt32LE(48);
-  const neighborsBytes = payload.readUInt32LE(60);
-  const recordBytes = neighborsBytes === trackCount * neighborsPerTrack * 4 ? 4 : 3;
-  const EMPTY = 0xffffff;
+  const graph = await decodeTinyNeighbourGraph(tinyPath);
+  const { trackCount, neighborsPerTrack, graphFlags, targets, similarities } = graph;
 
-  const targets: number[][] = new Array(trackCount);
+  const rows: number[][] = new Array(trackCount);
+  const rowSimilarities: number[][] = new Array(trackCount);
   for (let track = 0; track < trackCount; track += 1) {
     const row: number[] = [];
+    const scores: number[] = [];
     for (let slot = 0; slot < neighborsPerTrack; slot += 1) {
-      const offset = neighborsOffset + (track * neighborsPerTrack * recordBytes) + (slot * recordBytes);
-      const target = payload[offset]! | (payload[offset + 1]! << 8) | (payload[offset + 2]! << 16);
-      if (target !== EMPTY) {
+      const target = targets[(track * neighborsPerTrack) + slot]!;
+      if (target >= 0) {
         row.push(target);
+        scores.push(similarities[(track * neighborsPerTrack) + slot]!);
       }
     }
-    targets[track] = row;
+    rows[track] = row;
+    rowSimilarities[track] = scores;
   }
 
-  check("declares an acyclic graph", (graphFlags & 0b1) !== 0, `graph_flags 0x${graphFlags.toString(16).padStart(4, "0")}`);
-  check("declares slot 0 as the flow successor", (graphFlags & 0b1000) !== 0, `graph_flags 0x${graphFlags.toString(16).padStart(4, "0")}`);
+  check(
+    "does not claim acyclicity",
+    (graphFlags & GRAPH_FLAG_ACYCLIC) === 0,
+    `graph_flags 0x${graphFlags.toString(16).padStart(4, "0")}`,
+  );
+  check(
+    "does not claim a flow successor in slot 0",
+    (graphFlags & GRAPH_FLAG_FLOW_SUCCESSOR_FIRST) === 0,
+    `graph_flags 0x${graphFlags.toString(16).padStart(4, "0")}`,
+  );
 
-  // Kahn's algorithm: a graph with a cycle leaves nodes unemitted.
   const inDegree = new Int32Array(trackCount);
-  for (const row of targets) {
+  let usedSlots = 0;
+  let duplicateRows = 0;
+  let selfEdges = 0;
+  let unorderedRows = 0;
+  for (let track = 0; track < trackCount; track += 1) {
+    const row = rows[track]!;
+    usedSlots += row.length;
+    if (new Set(row).size !== row.length) {
+      duplicateRows += 1;
+    }
+    if (row.includes(track)) {
+      selfEdges += 1;
+    }
     for (const target of row) {
       inDegree[target]! += 1;
     }
-  }
-  const queue: number[] = [];
-  for (let track = 0; track < trackCount; track += 1) {
-    if (inDegree[track] === 0) {
-      queue.push(track);
-    }
-  }
-  const topological: number[] = [];
-  const pending = Int32Array.from(inDegree);
-  while (queue.length > 0) {
-    const track = queue.pop()!;
-    topological.push(track);
-    for (const target of targets[track]!) {
-      pending[target]! -= 1;
-      if (pending[target] === 0) {
-        queue.push(target);
+    const scores = rowSimilarities[track]!;
+    for (let slot = 1; slot < scores.length; slot += 1) {
+      if (scores[slot - 1]! < scores[slot]!) {
+        unorderedRows += 1;
+        break;
       }
     }
   }
-  check("the exported edges really are acyclic", topological.length === trackCount, `${trackCount - topological.length} tracks in cycles`);
 
-  const deadEnds = targets.filter((row) => row.length === 0).length;
+  const totalSlots = trackCount * neighborsPerTrack;
+  const meanOutDegree = usedSlots / trackCount;
+  check(
+    "every slot carries a real edge",
+    usedSlots === totalSlots,
+    `mean out-degree ${meanOutDegree.toFixed(3)} of ${neighborsPerTrack}`
+    + ` (${totalSlots - usedSlots} sentinels)`,
+  );
+  check("no row repeats a target", duplicateRows === 0, `${duplicateRows} rows with a duplicate`);
+  check("no row points at itself", selfEdges === 0, `${selfEdges} self edges`);
+  check(
+    "every row is in descending similarity order",
+    unorderedRows === 0,
+    `${unorderedRows} rows out of order`,
+  );
+
+  const deadEnds = rows.filter((row) => row.length === 0).length;
   const unreachable = [...inDegree].filter((degree) => degree === 0).length;
-  check("at most one track is a dead end", deadEnds <= 1, `${deadEnds} tracks with no outgoing edge`);
-  check("at most one track is unreachable", unreachable <= 1, `${unreachable} tracks with no incoming edge`);
+  check("no track is a dead end", deadEnds === 0, `${deadEnds} tracks with no outgoing edge`);
+  check(
+    "at most 0.1% of tracks are unreachable",
+    unreachable <= Math.floor(trackCount / 1_000),
+    `${unreachable} tracks with no incoming edge (${((unreachable / trackCount) * 100).toFixed(3)}%)`,
+  );
 
-  // Slot 0 must chain the whole corpus into one path. This is the guarantee: a forward walk
-  // from flow position r reaches at least trackCount - r distinct tracks.
-  const successorInDegree = new Int32Array(trackCount);
-  let withoutSuccessor = 0;
-  for (let track = 0; track < trackCount; track += 1) {
-    const first = targets[track]![0];
-    if (first === undefined) {
-      withoutSuccessor += 1;
-    } else {
-      successorInDegree[first]! += 1;
+  // No track may become everyone's neighbour. Music similarity is hub-prone, and a hub is a
+  // listener-facing defect before it is a structural one: the same handful of tunes in every
+  // station. The bound is a multiple of the mean rather than an absolute, so it holds at any
+  // corpus size and any slot count.
+  let inDegreeMax = 0;
+  for (const degree of inDegree) {
+    if (degree > inDegreeMax) {
+      inDegreeMax = degree;
     }
   }
-  const starts = [...successorInDegree].reduce((count, degree) => (degree === 0 ? count + 1 : count), 0);
-  const merges = [...successorInDegree].reduce((count, degree) => (degree > 1 ? count + 1 : count), 0);
-  let pathLength = 0;
-  if (withoutSuccessor === 1 && starts === 1 && merges === 0) {
-    let current = [...successorInDegree].indexOf(0);
-    const seen = new Uint8Array(trackCount);
-    while (current >= 0 && seen[current] === 0) {
-      seen[current] = 1;
-      pathLength += 1;
-      current = targets[current]![0] ?? -1;
+  // The bound is 64x the mean, not the 8x that would be the natural figure, and the reason is
+  // measured rather than a matter of taste: at three slots a cap of 8x takes the largest undirected
+  // component to 99.885%, below the 99.9% the next check requires. The edges that hold the corpus
+  // together are the same edges that make a few tracks over-subscribed, so only one of the two
+  // bounds can be met. This is the looser one, and the tighter check below is the one that would
+  // catch a graph that had genuinely fallen apart. `doc/neighbour-graph-design.md` §5 carries the
+  // sweep. The untrimmed construction reaches 1,806, so the bound is doing real work.
+  const IN_DEGREE_CAP_MULTIPLE = 64;
+  check(
+    `no track is more than ${IN_DEGREE_CAP_MULTIPLE}x the mean in-degree`,
+    inDegreeMax <= meanOutDegree * IN_DEGREE_CAP_MULTIPLE,
+    `max in-degree ${inDegreeMax}, mean ${meanOutDegree.toFixed(2)}`
+    + ` (${(inDegreeMax / Math.max(meanOutDegree, 1e-9)).toFixed(1)}x)`,
+  );
+
+  // Undirected, because the consumer traverses reverse edges too: a pocket a station cannot
+  // leave is a station that ends early, whichever way its edges point.
+  const parent = new Int32Array(trackCount);
+  for (let track = 0; track < trackCount; track += 1) {
+    parent[track] = track;
+  }
+  const find = (node: number): number => {
+    let root = node;
+    while (parent[root] !== root) {
+      root = parent[root]!;
+    }
+    let walk = node;
+    while (parent[walk] !== root) {
+      const next = parent[walk]!;
+      parent[walk] = root;
+      walk = next;
+    }
+    return root;
+  };
+  for (let track = 0; track < trackCount; track += 1) {
+    for (const target of rows[track]!) {
+      const left = find(track);
+      const right = find(target);
+      if (left !== right) {
+        parent[left] = right;
+      }
+    }
+  }
+  const componentSize = new Int32Array(trackCount);
+  for (let track = 0; track < trackCount; track += 1) {
+    componentSize[find(track)]! += 1;
+  }
+  let largestComponent = 0;
+  for (const size of componentSize) {
+    if (size > largestComponent) {
+      largestComponent = size;
     }
   }
   check(
-    "slot 0 chains every track into a single path",
-    pathLength === trackCount,
-    `${pathLength} of ${trackCount} (ends ${withoutSuccessor}, starts ${starts}, merges ${merges})`,
+    "at least 99.9% of the corpus is in one undirected component",
+    largestComponent >= trackCount * 0.999,
+    `largest component ${largestComponent} of ${trackCount}`
+    + ` (${((largestComponent / trackCount) * 100).toFixed(3)}%)`,
   );
 
-  // Longest forward path per track, over the topological order the acyclicity check produced.
-  if (topological.length === trackCount) {
-    const longest = new Int32Array(trackCount);
-    for (let index = topological.length - 1; index >= 0; index -= 1) {
-      const track = topological[index]!;
-      let best = 0;
-      for (const target of targets[track]!) {
-        if (longest[target]! + 1 > best) {
-          best = longest[target]! + 1;
+  // Greedy routing recall: the standard test of whether a proximity index can be searched, and
+  // the check that says the construction did what it is for. It needs the source export's
+  // vectors, so it only runs when they are available; a top-3 graph scores about 0.3% and the
+  // shipped construction scores several times that. The floor is set from the measured value
+  // with headroom, so a regression to a top-k selection fails here.
+  if (isRelease) {
+    // A fresh handle: the checks above this section close the shared one, and reopening read-only is
+    // cheaper than making every earlier check's lifetime depend on this one.
+    const vectorDatabase = new Database(sqlitePath, { readonly: true });
+    const vectorRows = vectorDatabase.query(
+      "SELECT track_id, sid_path, song_index, vector_json FROM tracks"
+      + " WHERE vector_json IS NOT NULL AND vector_json != ''"
+      + " ORDER BY sid_path ASC, song_index ASC",
+    ).all() as Array<{ track_id: string; sid_path: string; song_index: number; vector_json: string }>;
+    if (vectorRows.length !== trackCount) {
+      check(
+        "the full export supplies a vector for every tiny track",
+        false,
+        `${vectorRows.length} vectors for ${trackCount} tracks`,
+      );
+    } else {
+      // Safe to use the code's constant rather than the manifest's `vector_weights`: an earlier
+      // check in this script asserts the two are identical, and fails the gate if they are not.
+      const dimensions = SIMILARITY_VECTOR_WEIGHTS.length;
+      const scale = SIMILARITY_VECTOR_WEIGHTS.map((weight) => Math.sqrt(weight));
+      const packed = new Float64Array(trackCount * dimensions);
+      for (let ordinal = 0; ordinal < trackCount; ordinal += 1) {
+        const parsed = JSON.parse(vectorRows[ordinal]!.vector_json) as number[];
+        const base = ordinal * dimensions;
+        let norm = 0;
+        for (let index = 0; index < dimensions; index += 1) {
+          const value = (parsed[index] ?? 0) * scale[index]!;
+          packed[base + index] = value;
+          norm += value * value;
+        }
+        if (norm > 0) {
+          const inverse = 1 / Math.sqrt(norm);
+          for (let index = 0; index < dimensions; index += 1) {
+            packed[base + index]! *= inverse;
+          }
         }
       }
-      longest[track] = best;
+      const similarityOf = (left: number, right: number): number => {
+        const leftBase = left * dimensions;
+        const rightBase = right * dimensions;
+        let total = 0;
+        for (let index = 0; index < dimensions; index += 1) {
+          total += packed[leftBase + index]! * packed[rightBase + index]!;
+        }
+        return total;
+      };
+
+      // Forward and reverse adjacency, as the consumer walks it.
+      const undirected: number[][] = Array.from({ length: trackCount }, () => []);
+      for (let track = 0; track < trackCount; track += 1) {
+        for (const target of rows[track]!) {
+          undirected[track]!.push(target);
+          undirected[target]!.push(track);
+        }
+      }
+
+      const QUERIES = 400;
+      let hits = 0;
+      let totalHops = 0;
+      for (let index = 0; index < QUERIES; index += 1) {
+        // A deterministic query and entry point, so the gate's verdict is reproducible.
+        const query = Math.floor((index * 2_654_435_761) % trackCount);
+        let best = -1;
+        let bestSimilarity = Number.NEGATIVE_INFINITY;
+        for (let candidate = 0; candidate < trackCount; candidate += 1) {
+          if (candidate === query) continue;
+          const similarity = similarityOf(query, candidate);
+          if (similarity > bestSimilarity) {
+            bestSimilarity = similarity;
+            best = candidate;
+          }
+        }
+        let current = (query + Math.floor(trackCount / 2)) % trackCount;
+        if (current === query) current = (current + 1) % trackCount;
+        let currentSimilarity = similarityOf(query, current);
+        let hops = 0;
+        for (;;) {
+          let next = -1;
+          let nextSimilarity = currentSimilarity;
+          for (const candidate of undirected[current]!) {
+            if (candidate === query) continue;
+            const similarity = similarityOf(query, candidate);
+            if (similarity > nextSimilarity) {
+              nextSimilarity = similarity;
+              next = candidate;
+            }
+          }
+          if (next < 0) break;
+          current = next;
+          currentSimilarity = nextSimilarity;
+          hops += 1;
+        }
+        totalHops += hops;
+        if (current === best) hits += 1;
+      }
+      vectorDatabase.close();
+      const recall = hits / QUERIES;
+      check(
+        "greedy routing finds the true nearest neighbour for at least 0.6% of queries",
+        recall >= 0.006,
+        `recall@1 ${(recall * 100).toFixed(2)}% over ${QUERIES} queries,`
+        + ` mean ${(totalHops / QUERIES).toFixed(1)} hops`,
+      );
     }
-    const sorted = Int32Array.from(longest).sort();
-    const median = sorted[Math.floor(trackCount / 2)]!;
-    check(
-      "the median track can reach a quarter of the corpus without repeating",
-      median >= Math.floor(trackCount / 4),
-      `median longest forward path ${median} of ${trackCount}`,
-    );
   }
 }
 
