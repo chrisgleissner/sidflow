@@ -1,5 +1,92 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 41 - Neighbour Graph As An Index, Station As A Policy (0.8.2, reissued)
+
+Plan: `doc/plans/neighbour-graph-redesign/prompt.md`. Released 0.8.2 was **withdrawn** (releases
+and tags deleted from `sidflow` and `sidflow-data`) and the number is being reused for this work,
+so a consumer's history reads 0.8.0 -> 0.8.2 with one change in what a tiny edge means. The
+version question was settled with the user: reuse 0.8.2, restore and rewrite
+`doc/migration/0.8.0-to-0.8.2.md`, no workspace version bump.
+
+1. [DONE] P41-T01 Confirm the withdrawal and that no consumer broke.
+  - 0.8.2 absent from both repos' releases and tags; `sidflow-data` latest is 0.8.0 again; all five
+    `releases/latest/download/<name>` URLs return 200; `c64commander` is pinned to **0.8.0**
+    (tag and digest `64bee446...f7c9c6d`), not 0.8.2, so it was never exposed.
+  - The published 0.8.2 assets survive locally under `tmp/rebuild-0.8.2/`, digests verified, since
+    the release can no longer be downloaded.
+
+2. [DONE] P41-T02 Prove the graph is derivable from the published vectors, and reproduce the
+   baseline byte for byte before changing anything.
+  - `scripts/neighbour-graph/verify-rank1-reproduction.ts`: 503 of 503 sampled seeds reproduce
+    their published rank-1 neighbour from `vector_json` under the manifest's weights, including the
+    three pinned probes (0 -> 86297, 1000 -> 359, 50000 -> 61874). No reclassification is needed.
+  - `scripts/reproduce-published-bundles.sh` rebuilt lite and tiny from the published full export
+    with pre-change code: lite `fe92bd57...a346cd` and tiny `62097331...c62d294`, both MATCH.
+
+3. [DONE] P41-T03 Commit the measurement tools the 0.8.2 work left as throwaways in `tmp/`.
+  - `scripts/neighbour-graph/analyse.ts` reproduces every published figure exactly: 0.8.0 tiny
+    (out-degree 2.799, 24,669 zero-in = 28.08%, 2,786 zero-out, 99.08% largest component, in-degree
+    max 66), 0.8.2 tiny (2.557, 1, 1, 100%), and the full export at k=25/3/1 (reciprocity
+    47.28%/43.92%/38.01%, 16,700 attractors all of length 2, in-degree max 217, 456 zero-in,
+    same-file 14.42% at rank 1 and 5.13% over all 25).
+  - `scripts/neighbour-graph/simulate-station.ts` plus `station-engine-port.ts` and
+    `station-metrics.ts` port `computeStation` and drive it as `stationQueueProvider` does.
+
+4. [IN_PROGRESS] P41-T04 Choose the construction with measurements, not assumptions.
+  Findings so far, all at 3 slots over the 87,868-track corpus:
+  - **Alpha-pruning the source export's top-25 cannot work.** Swept alpha in
+    {1.0, 1.05, 1.1, 1.2, 1.4} x {none, mutual proximity, local scaling} x {reverse insertion on,
+    off} = 30 configurations. Every one leaves 9.9%-13.6% of tracks with no incoming edge, 99.52%-
+    99.66% largest component, and greedy routing recall@1 of 0.10%-0.30% — no better than a plain
+    top-3 graph. Cause measured directly: d(u, rank 1) 0.02832, d(u, rank 25) 0.05190, d(u, random
+    track) 0.24294, and mutual distance among candidates 0.05526. Every edge the pool can offer is
+    five to nine times shorter than a typical corpus distance, so the pool contains no long edge
+    and only 23.41% of candidates are dominated. Reverse insertion also cannot help a track nothing
+    chose, because an unchosen track is offered no reverse edge.
+  - **Vamana construction does work**, because its candidate pool comes from a search over the
+    graph being built: one undirected component (100.00%), longest edge distance 0.5877, and a
+    station median of 6,168 distinct tracks against 1,367 on the 0.8.0 bundle — from the artefact
+    alone, with no client change.
+  - **Reachability repair** takes zero-in-degree to exactly 0 (16,871-20,192 tracks repaired).
+  - **Open trade-off.** Vamana at 3 slots concentrates in-degree: max 1,030 against a mean of 3
+    (p99 23). Hub trimming at 8x the mean bounds it to 24, but moves 39,517 edges and cuts the
+    station median from 6,168 to 2,057 and recall@1 from 0.80% to 0.50% — the hubs are the long
+    edges. Next: sweep the cap to find the knee, and measure mutual proximity, which changes which
+    edges are chosen rather than deleting them afterwards.
+
+5. [IN_PROGRESS] P41-T05 Land the change in the export.
+  - `similarity-flow-order.ts` and its test are deleted; the flow order and the shortcut edge are
+    gone, not disabled.
+  - New: `similarity-neighbour-selection.ts` (the diversifying rule, backfill, reverse insertion),
+    `similarity-graph-build.ts` (Vamana construction, reachability repair, hub trimming),
+    `similarity-hubness.ts` (mutual proximity with sampled moments, local scaling).
+  - `graph_flags` bit 0 (acyclic) and bit 3 (flow successor) are no longer set; the two legacy
+    reserved bits are preserved. Row order is descending similarity again.
+  - `decodeTinyNeighbourGraph` added to `@sidflow/common` so the gate and the analyser share one
+    statement of the header offsets.
+
+6. [IN_PROGRESS] P41-T06 Release gate. The acyclicity, flow-successor, slot-0-Hamiltonian and
+   longest-forward-path checks are removed — **the acyclicity check because the property is no
+   longer claimed, not because it became inconvenient** — and replaced by slot occupancy, dead
+   ends, unreachable tracks, in-degree bound, undirected connectivity, row ordering and greedy
+   routing recall.
+
+7. [PENDING] P41-T07 `sidcorr-1` decision (Part B), with the numbers that drove it, including the
+   case where the decision is to change nothing. Also the same-file question: the rank-1 neighbour
+   is a different subsong of the same `.sid` file for 14.42% of seeds and 905 seeds have all 25
+   neighbours from their own file.
+
+8. [PENDING] P41-T08 `doc/neighbour-graph-design.md`, the `doc/similarity-export-tiny.md` §10.3-
+   §10.5 rewrite, the `CHANGES.md` 0.8.2 body replacement, and the restored migration guide.
+
+9. [IN_PROGRESS] P41-T09 `c64commander` Part E, delegated to a subagent in that checkout on a
+   branch off `main`: drifting query, tune-level dedupe, determinism and resume tests. Added scope
+   from the user: both a song-similarity station and a category station must exist and both must be
+   shaped by likes and rejections.
+
+10. [PENDING] P41-T10 Full suite 3x at 100%, retrieval-quality guardrail (composer lift and
+    nDCG@10 within 5% relative), then tag and publish with the complete asset set re-uploaded.
+
 ## Phase 40 - Extract And Automate libsidplayfp WASM
 
 1. [IN_PROGRESS] P40-T01 Establish `chrisgleissner/libsidplayfp-wasm` as the standalone,

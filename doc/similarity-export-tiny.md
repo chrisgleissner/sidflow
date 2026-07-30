@@ -181,7 +181,7 @@ Then resolve any track ordinal `t` to:
 | 26 | neighbor_ref_kind | u8 | `1 = absolute_track_ordinal` |
 | 27 | style_mask_width_bytes | u8 | MUST be `2` |
 | 28 | style_table_version | u16 | current value `1` |
-| 30 | graph_flags | u16 | bit `0` = acyclic exported edges (always `1`); bit `3` = slot 0 of every populated row is the track's flow successor, so the edges contain a Hamiltonian path (§10.4). Bits `1` and `2` have never been assigned a meaning and are set for historical reasons. The current generator writes `0x000F` (`0x0007` before 0.8.2); consumers MUST ignore bits they do not recognize |
+| 30 | graph_flags | u16 | bit `0` = acyclic exported edges — **no longer set**, and no longer claimed (§10.3); bit `3` = slot 0 is the track's flow successor — **retired**, and set only by the withdrawn 0.8.2. Bits `1` and `2` have never been assigned a meaning and are set for historical reasons. The current generator writes `0x0006` (`0x0007` in 0.8.0). Consumers MUST ignore bits they do not recognize, and MUST NOT infer acyclicity from a bundle that predates 0.8.2 either — the older bundles were acyclic, but the property was never useful and is not part of the format |
 | 32 | style_table_offset | u32 | byte offset |
 | 36 | file_identity_offset | u32 | byte offset |
 | 40 | file_track_count_offset | u32 | byte offset |
@@ -435,82 +435,103 @@ are identical in both versions.
 
 Rules:
 
-- exported edges MUST form a directed acyclic graph
-- every populated target MUST come later in the builder's **flow order** than the current
-  track (§10.4), which is what makes the graph acyclic
-- duplicates within a row are forbidden
-- slot 0 of a populated row MUST be the current track's flow successor
+- each row holds up to `neighbors_per_track` distinct target ordinals
+- a row MUST NOT contain the current track, and MUST NOT repeat a target
+- a row MUST be ordered by **descending** stored similarity, so slot 0 is the current track's
+  closest exported neighbour
 - `0xFFFFFF` is the unused-slot sentinel and MUST appear only after populated slots
+- the exported edges are a **directed graph with no further structural constraint**: they may
+  contain cycles, and a target may have any track ordinal
 
-> **Changed in 0.8.2.** Before 0.8.2 the acyclicity rule read *"every populated target MUST
-> be a track ordinal strictly smaller than the current track ordinal"*, and row order
-> preserved the sidcorr-1 similarity rank. Track ordinal is alphabetical `sid_path` position
-> (§4.2), which bears no relation to how a tune sounds, so the graph it induced was shallow.
-> Measured on the 0.8.0 bundle over 87,868 tracks: the longest forward path from the median
-> track was **17**, the longest anywhere was **79**, **28.08%** of tracks had no incoming
-> edge, **3.17%** had no outgoing edge, and 6.69% of the slot capacity went unused. The
-> binary layout is unchanged and `binary_format_version` stays `2`; only the edge values and
-> their ordering differ, so a reader that does not check the old ordinal invariant needs no
-> change.
+> **Changed in 0.8.2.** Two rules were **removed**, and a consumer that relied on either behaves
+> differently.
+>
+> 1. *"Exported edges MUST form a directed acyclic graph"*, with `graph_flags` bit 0 declared
+>    "always 1". Bit 0 now reads **0**. The guarantee was never the artefact's to make: it
+>    expressed a playback policy — never play the same tune twice — as a constraint on which true
+>    similarity relationships the export was allowed to state. Cycles in a similarity graph are not
+>    a defect; if A's nearest neighbour is B and B's is A, both edges are true. Not revisiting a
+>    track is the player's job, and every player already keeps a set of what it has played.
+>    Enforcing acyclicity here discarded **50.76%** of the source export's edges.
+> 2. *"Slot 0 of a populated row MUST be the current track's flow successor"*, declared by
+>    `graph_flags` bit 3. Both the rule and the bit are **retired**. They existed only in 0.8.2,
+>    which was withdrawn rather than superseded, so no bundle that sets bit 3 is published.
+>
+> Row order is descending similarity again, which is what it was through 0.8.0 and what a consumer
+> reading a neighbour table expects. Under the withdrawn 0.8.2 rule **46.09%** of published rows
+> were not in similarity order.
+>
+> The binary layout is unchanged and `binary_format_version` stays `2`. Only the edge values, their
+> order within a row, and `graph_flags` differ.
 
 Retention rule:
 
-1. read the original sidcorr-1 neighbor ranking for the current track — the whole ranking,
-   not a prefix of it
-2. write the flow successor (§10.4) to slot 0
-3. write to slot 1 the forward candidate with the largest flow-order distance — the
-   shortcut (§10.5)
-4. fill the remaining slots from the ranking in stored similarity order, skipping targets
-   that do not come later in the flow order and targets already written
-5. write each retained edge as the absolute target track ordinal
-6. write `0xFFFFFF` sentinels for any slot the ranking could not fill
+1. build the graph by the construction in §10.4
+2. write each retained edge as the absolute target track ordinal, in descending stored similarity
+3. write `0xFFFFFF` sentinels for any slot the construction could not fill
 
-Every edge except slot 0 therefore comes from the source export's neighbour ranking for
-that track; slot 0 is the flow successor, which is drawn from the same ranking for 89.88%
-of tracks and computed directly for the rest. Nothing is fabricated to fill a row: a track
-whose ranking holds no further forward candidate ships with sentinels, which on the HVSC
-corpus leaves the mean out-degree at 2.557 of 3.
+On the HVSC corpus every slot is filled, so the mean out-degree is exactly `3.000`. The two
+withdrawn designs left **6.69%** (0.8.0) and **14.76%** (0.8.2) of the slot capacity empty, in both
+cases because an edge that would have violated acyclicity was dropped rather than replaced.
 
-## 10.4 Flow Order
+## 10.4 Graph Construction
 
-The flow order is a single ordering of the whole corpus in which consecutive tracks are
-similar. It is the artefact's acyclicity witness and its continuation guarantee.
+The exported graph is a **navigable proximity index**. It carries no traversal order.
 
-Builders MUST construct it as a greedy nearest-unvisited walk:
+Builders MUST produce a graph with these properties, and `scripts/verify-published-exports.ts`
+checks each of them against the shipped bytes:
 
-1. start at track ordinal 0
-2. from the current track, step to the most similar track that is unvisited and belongs to
-   a different `.sid` file
-3. resolve that from the current track's sidcorr-1 ranking when it still contains such a
-   track, and by a full scan otherwise — the two agree, because the ranking holds the *k*
-   nearest tracks, so nothing nearer can be missing from it
-4. if every unvisited track is a sibling of the current file, step to the most similar of
-   those
-5. break every tie on the lower track ordinal
+| Property | Requirement |
+|---|---|
+| slot occupancy | every slot carries a real edge where the corpus allows one |
+| dead ends | no track has zero outgoing edges |
+| unreachable tracks | at most 0.1% of tracks have zero incoming edges |
+| in-degree concentration | bounded relative to the mean, or the bundle states why not |
+| connectivity | at least 99.9% of tracks lie in one undirected component |
+| searchability | greedy routing over forward and reverse edges finds a query's true nearest neighbour materially more often than a top-*k* graph does |
 
-The walk is deterministic and has no random component, so a bundle is reproducible from its
-source export.
+The shipped implementation is **Vamana** (DiskANN) construction in
+`packages/sidflow-common/src/similarity-graph-build.ts`. The essential point, and the reason a
+simpler rule does not work, is where the candidates come from:
 
-The order is **not** stored. It does not need to be: it exists in the exported edges as the
-chain of slot-0 targets, so a consumer can recover it, and a consumer that only wants to
-keep playing can simply follow slot 0. A reader that wants to verify acyclicity does not
-need the order at all — a topological sort over 3 × `track_count` edges is linear.
+- Selecting three of the source export's 25 nearest neighbours **cannot** produce a searchable
+  graph, however cleverly the three are chosen. Measured over 400 sampled HVSC tracks, the mean
+  distance from a seed to its rank-1 neighbour is 0.02832 and to its rank-25 neighbour is 0.05190,
+  while the mean distance to a random track is 0.24294. Every edge that pool can offer is five to
+  nine times shorter than a typical distance in the corpus, so the graph has no edge that crosses
+  the space, and greedy search stalls after about three hops.
+- Vamana instead generates each track's candidate set by running a greedy search **for that track
+  over the graph being built**. The visited set of such a search contains the tracks it passed
+  through on the way in, which are far from the query, so diversifying pruning has long edges
+  available to keep.
 
-Because the order is a permutation of the corpus, the exported edges contain a Hamiltonian
-path. A forward walk starting at flow position *r* can always continue and reaches at least
-`track_count - r` distinct tracks without repeating one.
+Construction is deterministic: a fixed insertion permutation, fixed entry-point selection, and every
+tie broken on the lower track ordinal. A bundle therefore reproduces exactly from its source export,
+which `scripts/reproduce-published-bundles.sh` verifies.
 
-## 10.5 The Shortcut Edge
+`doc/neighbour-graph-design.md` states the pruning rule, the parameter sweeps that chose its
+settings, the hubness findings, and the two rejected designs with their measurements.
 
-Slot 1 holds the forward candidate that jumps furthest along the flow order. It is still one
-of the track's *k* nearest neighbours in the source export, so it is a genuine musical match:
-on the HVSC corpus **73.0%** of tracks have such an edge at least 1,000 flow positions ahead,
-and the median track's furthest one is **11,958** positions ahead.
+## 10.5 What Consumers May And May Not Assume
 
-It is there because a graph that is only a path is navigable in sequence and in nothing else.
-A consumer that expands a bounded neighbourhood rather than walking — `c64commander`'s station
-engine stops at 8 hops from its seed — would otherwise see 8 steps of an 87,868-track stream.
-The shortcut still moves forward, so the graph stays acyclic.
+MAY assume:
+
+- slot 0 is the closest exported neighbour, and the row is in descending similarity order
+- every populated target is a valid track ordinal, distinct within its row, and not the seed
+- the stored similarity byte is the weighted cosine between the two tracks, quantised as in §10.2
+- following forward and reverse edges reaches essentially the whole corpus
+
+MUST NOT assume:
+
+- that the graph is acyclic — it is not, deliberately
+- that a target's ordinal stands in any relation to the seed's
+- that an edge is one of the seed's *k* nearest neighbours in the source export; the construction
+  deliberately keeps some edges that are not, because a graph of only nearest neighbours cannot be
+  searched
+- that the graph encodes any listening order
+
+A consumer that must not repeat a track keeps a set of what it has played. That is the only correct
+place for the rule, and it is what the acyclicity guarantee was standing in for.
 
 Current corpus note:
 
@@ -818,11 +839,11 @@ Generators MUST validate:
 5. no bits `>= style_count` are set
 6. style assignment is reproducible byte-for-byte from the same inputs
 7. every exported `md5_48` prefix is unique within the export corpus
-8. every neighbor row contains no duplicates and only backward references
+8. every neighbor row contains no duplicates and no self reference
 9. every populated target resolves to an in-range track ordinal
 10. `0xFFFFFF` sentinels appear only after populated slots
 11. track ordering matches sidcorr-1 ordering exactly
-12. exported graph acyclicity holds by construction
+12. every row is ordered by descending stored similarity
 
 Consumers MUST validate:
 
@@ -908,7 +929,7 @@ sidcorr-tiny-1:
 - stores style membership as a deterministic bitmask projection
 - matches files across HVSC revisions by 6-byte MD5 prefix or full path
 - maps tracks through per-file subsong counts rather than per-track identity arrays
-- stores 3 acyclic similarity edges per track as absolute `u24` parent ordinals on disk, each carrying a quantized `u8` similarity byte in binary_format_version 2
+- stores 3 similarity edges per track as absolute `u24` target ordinals on disk, each carrying a quantized `u8` similarity byte in binary_format_version 2; the edges form a navigable proximity index and are not required to be acyclic
 - stores one packed `u16` compact-rating word per track in binary_format_version 2
 - rebuilds reverse reachability once at load time for runtime traversal
 
