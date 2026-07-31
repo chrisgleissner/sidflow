@@ -98,6 +98,21 @@ to the run's failures file with the reason. The run continues: one pathological 
 a reason to discard hours of rendering, and the existing corpus-wide integrity threshold
 (1% of at least 500 records) is what stops a run that is producing them in bulk.
 
+### Release tooling
+
+Two defects in the release workflow's changelog extraction, both found while publishing this
+release.
+
+- The step piped every byte of `CHANGES.md` below the version heading into
+  `awk '/^## /{exit}'`. awk stops reading at the next heading, so once the text below the
+  extracted entry passed the 64 KiB pipe buffer, `printf` blocked, took `EPIPE`, and
+  `set -o pipefail` failed the release. This entry took the file past that size and the
+  0.8.3 tag was the first to hit it. awk now reads the file directly, so there is no pipe
+  to break at any size.
+- The extracted entry was passed through `sed '/^[[:space:]]*$/d'`, which removes every
+  blank line rather than only the leading and trailing ones, so generated release notes
+  arrived as one unbroken block. Only the surrounding blank lines are removed now.
+
 ### Resume no longer loses work it already did
 
 Three defects made a resumed classification redo or refuse work it had completed.

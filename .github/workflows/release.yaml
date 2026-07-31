@@ -141,7 +141,14 @@ jobs:
             found && /^## / { exit }
             found { print }
           ' CHANGES.md)
-          ENTRY_TRIMMED=$(printf "%s\n" "${ENTRY}" | sed '/^[[:space:]]*$/d')
+          # Only leading and trailing blank lines are removed. The previous
+          # `sed '/^[[:space:]]*$/d'` deleted every blank line, including the ones between
+          # paragraphs and sections, so a generated release note arrived as one unbroken
+          # block: 0.8.3 published 92 lines with 2 blank, against 11 blank in 0.8.1.
+          ENTRY_TRIMMED=$(printf "%s\n" "${ENTRY}" | awk '
+            /[^[:space:]]/ { for (; pending > 0; pending--) print ""; print; started = 1; next }
+            started { pending++ }
+          ')
           {
             echo "entry<<EOF"
             echo "${ENTRY_TRIMMED}"
