@@ -16,7 +16,7 @@
  * station, and a flag whose effect lives only in a build log is not a record.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -41,24 +41,30 @@ function readStyleMasks(payload: Buffer): number[] {
 }
 
 /**
- * Fixtures are built ONCE at module scope, not per test.
+ * Fixtures are built ONCE for the file, not per test.
  *
  * Each chain is a full export plus a lite bundle over 1,200 tracks, which is seconds
- * locally and considerably longer on a shared CI runner. Rebuilding it in a `beforeEach`
- * put three of these tests past Bun's default 5-second timeout in CI while passing in two
- * on this machine -- the same failure mode PLANS.md Phase 37 records for the
- * similarity-dataset fixture, and the same fix.
- *
- * Only the tiny build, which is the cheap step and the one under test, runs per test.
+ * locally and considerably longer on a shared CI runner. Only the tiny build, which is the
+ * cheap step and the one under test, runs per test.
  */
 const TRACK_COUNT = 1200;
 /**
- * Per-test timeout for the tests that build a tiny bundle.
+ * Per-test timeout for every test that touches the fixture.
  *
- * The pinned Bun (1.3.1) rejects a timeout argument on `beforeAll` — `beforeAll() expects a
- * function as the second argument` — and the rejection happens at collection time, so every
- * test in the file errors out before it runs. The shared fixture therefore relies on the
- * 120s default from `bunfig.toml`; only `test()` takes an explicit allowance.
+ * The fixture must not be built in `beforeAll`. Bun caps hooks at a hardcoded 5 seconds and
+ * ignores the `timeout` setting in `bunfig.toml` for them, on both the pinned 1.3.1 and the
+ * 1.3.11 used by CI. Building both chains takes roughly 2 seconds locally and about 5
+ * seconds on a CI runner, so a `beforeAll` sat right on the cap and crossed it whenever the
+ * runner was slower than usual — the failure seen in CI run 30637626423, reported as "a
+ * beforeEach/afterEach hook timed out for this test".
+ *
+ * Passing an explicit timeout to `beforeAll` is not a portable fix either: 1.3.11 accepts
+ * the argument but 1.3.1 rejects it — `beforeAll() expects a function as the second
+ * argument` — and the rejection happens at collection time, so every test in the file
+ * errors out before it runs.
+ *
+ * The fixture is therefore built lazily by `getFixture()` and awaited by each test, which
+ * does honour an explicit per-test timeout.
  */
 const FIXTURE_TIMEOUT_MS = 120_000;
 
@@ -69,12 +75,31 @@ interface Chain {
   tinyPath: string;
 }
 
-describe("tiny profile station populations", () => {
-  let tempRoot: string;
+interface Fixture {
+  tempRoot: string;
   /** A corpus with a full spread of ratings: the gate should pass. */
-  let healthy: Chain;
+  healthy: Chain;
   /** Every track on one rating cell: the gate should refuse to build. */
-  let degenerate: Chain;
+  degenerate: Chain;
+}
+
+describe("tiny profile station populations", () => {
+  let fixturePromise: Promise<Fixture> | null = null;
+
+  /** Builds both chains on first call and hands every later caller the same result. */
+  function getFixture(): Promise<Fixture> {
+    fixturePromise ??= buildFixture();
+    return fixturePromise;
+  }
+
+  async function buildFixture(): Promise<Fixture> {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), "sidflow-tiny-populations-"));
+    return {
+      tempRoot,
+      healthy: await buildChain(tempRoot, "healthy", TRACK_COUNT, false),
+      degenerate: await buildChain(tempRoot, "degenerate", TRACK_COUNT, true),
+    };
+  }
 
   /**
    * Build a corpus through the real export chain.
@@ -83,7 +108,7 @@ describe("tiny profile station populations", () => {
    * no usable spread looks like to the gate: the personas rank it identically, so their
    * member sets become indistinguishable and the distinctness check fires.
    */
-  async function buildChain(name: string, trackCount: number, flat: boolean): Promise<Chain> {
+  async function buildChain(tempRoot: string, name: string, trackCount: number, flat: boolean): Promise<Chain> {
     const root = path.join(tempRoot, name);
     const classifiedPath = path.join(root, "classified");
     const musicRoot = path.join(root, "hvsc", "C64Music");
@@ -158,17 +183,19 @@ describe("tiny profile station populations", () => {
     return { musicRoot, sqlitePath, litePath, tinyPath };
   }
 
-  beforeAll(async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), "sidflow-tiny-populations-"));
-    healthy = await buildChain("healthy", TRACK_COUNT, false);
-    degenerate = await buildChain("degenerate", TRACK_COUNT, true);
-  });
-
   afterAll(async () => {
-    await rm(tempRoot, { recursive: true, force: true });
+    // Nothing to remove if no test ever forced the fixture to build.
+    if (fixturePromise === null) {
+      return;
+    }
+    const built = await fixturePromise.catch(() => null);
+    if (built !== null) {
+      await rm(built.tempRoot, { recursive: true, force: true });
+    }
   });
 
   test("the manifest's populations match a recount from the bundle", async () => {
+    const { healthy } = await getFixture();
     const tiny = await buildTinySimilarityExport({
       sourceLitePath: healthy.litePath,
       hvscRoot: healthy.musicRoot,
@@ -190,6 +217,7 @@ describe("tiny profile station populations", () => {
   }, FIXTURE_TIMEOUT_MS);
 
   test("a corpus that cannot support nine stations fails the export", async () => {
+    const { degenerate } = await getFixture();
     await expect(buildTinySimilarityExport({
       sourceLitePath: degenerate.litePath,
       hvscRoot: degenerate.musicRoot,
@@ -200,6 +228,7 @@ describe("tiny profile station populations", () => {
   }, FIXTURE_TIMEOUT_MS);
 
   test("--allow-sparse-styles permits the build and records the waiver in the manifest", async () => {
+    const { degenerate } = await getFixture();
     const tiny = await buildTinySimilarityExport({
       sourceLitePath: degenerate.litePath,
       hvscRoot: degenerate.musicRoot,
