@@ -1,6 +1,59 @@
 # Changelog
 
 
+## 0.8.4 (2026-07-31)
+
+### No export schema changes, and no change to the published bytes
+
+`sidcorr-1`, `sidcorr-lite-1` and `sidcorr-tiny-1` keep their schema versions, their binary
+format versions, their section layouts and their column sets. This release changes how fast
+the full export is written and how one group of tests is structured. It does not change what
+any builder produces: on a 3,000-track corpus built with 5 neighbours, the `tracks` rows, the
+`neighbors` rows and the published lite bundle are byte-identical to 0.8.3.
+
+### The full export writes its track table in one transaction
+
+`buildSimilarityExport` opens the output database with `journal_mode = DELETE` and
+`synchronous = FULL`, then filled the `tracks` table with a plain loop over
+`insertTrack.run(...)`. SQLite commits every statement on its own outside a transaction, so
+that loop committed once per track and, under `synchronous = FULL`, fsynced once per track.
+`insertNeighbors`, defined immediately below it in the same file, already wrapped its inserts
+in `database.transaction()`; the track loop was the one place that did not.
+
+The track loop is now wrapped the same way. On a 65,600-track corpus the full export goes
+from 5922 ms to 1143 ms, and the whole generate-build-open chain from 7155 ms to 2274 ms. In
+CI the effect is larger, because a container filesystem charges more for an fsync than a
+local tmpfs does: the test that builds that corpus went from 65.2 s to 3.1 s, and the unit
+test suite as a whole from 226 s to 161 s. The published corpus is 87,868 songs, so a
+production export saves more than these figures show.
+
+Durability is unchanged. A transaction changes how many times the commit fsyncs, not whether
+it does, and the database was already built at a temporary path and renamed into place, so a
+partially written track table was never observable to a reader.
+
+The SQLite file's own bytes do differ between any two builds, but they already did before
+this change, because the embedded manifest carries `generated_at`. The lite bundle, which is
+what the determinism checks assert on, is stable.
+
+### The tiny export fixtures no longer build inside a test hook
+
+`similarity-export-tiny-populations.test.ts` and `similarity-export-tiny-graph.test.ts` each
+built their fixture in `beforeAll`, on the documented assumption that the hook inherits the
+120000 ms `timeout` from `bunfig.toml`. It does not. Bun caps every test hook at a hardcoded
+5 seconds and ignores that setting for hooks, on both the pinned 1.3.1 and the 1.3.11 the CI
+image uses. Each fixture writes 1,200 SID files and runs a full export chain, which takes
+about 2 seconds locally and 3 to 5 seconds on a CI runner, so the hook sat just under the cap
+and crossed it whenever the runner was slower than usual. The whole describe block then
+collapsed into one failure reported as "a beforeEach/afterEach hook timed out for this test",
+and `afterAll` threw `ERR_INVALID_ARG_TYPE` on top of it because the temp path had never been
+assigned.
+
+Both fixtures are now built by a lazily-memoized `getFixture()` that each test awaits, so the
+build runs under a per-test timeout, which Bun does honour, and is still built only once per
+file. Passing an explicit timeout to `beforeAll` was rejected as a fix because 1.3.11 accepts
+the argument and 1.3.1 rejects it at collection time, which would have made every test in the
+file error out before running locally.
+
 ## 0.8.3 (2026-07-31)
 
 ### No export schema changes
