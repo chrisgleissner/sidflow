@@ -129,18 +129,18 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          START_LINE=$(grep -n "^## ${VERSION} " CHANGES.md | cut -d: -f1 | head -n1 || true)
-          if [ -z "${START_LINE}" ]; then
-            {
-              echo "entry<<EOF"
-              echo ""
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          TAIL_FROM=$((START_LINE+1))
-          TAIL_CONTENT=$(tail -n +"${TAIL_FROM}" CHANGES.md)
-          ENTRY=$(printf "%s\n" "${TAIL_CONTENT}" | awk '/^## /{exit} {print}')
+          # awk reads CHANGES.md directly rather than being fed the rest of the file
+          # through a pipe. The previous shape piped every byte after the heading into
+          # `awk '/^## /{exit}'`, and awk exits at the NEXT heading, so once the text
+          # below the extracted entry grew past the 64 KiB pipe buffer printf blocked,
+          # took EPIPE when awk left, and `set -o pipefail` failed the release. That is
+          # what broke the 0.8.3 release: the file crossed the buffer size. Reading the
+          # file directly means there is no pipe to break, whatever the file's size.
+          ENTRY=$(awk -v header="## ${VERSION} " '
+            index($0, header) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGES.md)
           ENTRY_TRIMMED=$(printf "%s\n" "${ENTRY}" | sed '/^[[:space:]]*$/d')
           {
             echo "entry<<EOF"
