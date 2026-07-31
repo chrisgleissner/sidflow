@@ -248,6 +248,17 @@ async function computeFileChecksum(filePath: string): Promise<string> {
   return createHash("sha256").update(payload).digest("hex");
 }
 
+async function resolveRealHvscRoot(hvscRoot: string): Promise<string> {
+  try {
+    return await realpath(hvscRoot);
+  } catch (error) {
+    throw new Error(
+      `Unable to resolve the HVSC root ${hvscRoot}: ${(error as NodeJS.ErrnoException).code ?? String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
 async function resolveMd548Context(hvscRoot: string): Promise<Md548Context> {
   const nestedMusicRoot = path.join(hvscRoot, "C64Music");
   const musicRoot = await pathExists(nestedMusicRoot) ? nestedMusicRoot : hvscRoot;
@@ -255,7 +266,13 @@ async function resolveMd548Context(hvscRoot: string): Promise<Md548Context> {
     hvscRoot,
     // Resolved once. Doing it per file would add a full path resolution to each of the
     // corpus's 61,000 reads for a value that cannot change during a build.
-    resolvedHvscRoot: await realpath(hvscRoot).catch(() => path.resolve(hvscRoot)),
+    //
+    // A failure here is reported rather than absorbed. Falling back to the unresolved
+    // path would leave the containment test comparing an unresolved root against
+    // resolved files, which is the defect this field exists to fix, and an unreadable
+    // HVSC root would otherwise be reported later as "unable to resolve SID path",
+    // naming a file when the root is what is wrong.
+    resolvedHvscRoot: await resolveRealHvscRoot(hvscRoot),
     musicRoot,
     musicRootPrefix: `${path.basename(musicRoot).toLowerCase()}/`,
   };

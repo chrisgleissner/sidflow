@@ -131,6 +131,40 @@ describe("resume index", () => {
     expect([...keys][0]).toBe(`${awkward}#1`);
   });
 
+  test("names a sid_path it cannot decode instead of dropping it in silence", async () => {
+    // A record whose escaped path will not decode is dropped, which reclassifies that
+    // song -- the safe direction. It must still be reported: on an 87,868-line features
+    // file a systematic decode failure would quietly shrink the index and re-render the
+    // corpus, with nothing on stderr to say why.
+    const written: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    (process.stderr as unknown as { write: (chunk: string) => boolean }).write = (chunk: string) => {
+      written.push(String(chunk));
+      return true;
+    };
+
+    try {
+      await writeFile(
+        path.join(classifiedPath, "features_bad_escape.jsonl"),
+        // A lone trailing backslash escape that JSON.parse rejects, followed by a record
+        // that decodes cleanly, so the file is not simply unreadable.
+        '{"sid_path":"DEMOS/0-9/Bad\\x.sid","features":{}}\n'
+        + JSON.stringify({ sid_path: "DEMOS/0-9/Good.sid", features: {} }) + "\n",
+        "utf8",
+      );
+
+      const keys = await indexExtractedSongs(classifiedPath);
+      expect(keys.has("DEMOS/0-9/Good.sid#1")).toBe(true);
+      expect(keys.size).toBe(1);
+
+      const stderr = written.join("");
+      expect(stderr).toContain("could not be decoded");
+      expect(stderr).toContain("features_bad_escape.jsonl");
+    } finally {
+      (process.stderr as unknown as { write: typeof originalWrite }).write = originalWrite;
+    }
+  });
+
   test("returns empty for a directory that does not exist, rather than throwing", async () => {
     // A first run has no classified directory yet, and that is not an error.
     const keys = await indexExtractedSongs(path.join(classifiedPath, "absent"));
