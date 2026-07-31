@@ -50,6 +50,7 @@ async function seedWasmCacheArtifact(
     maxClassifySec: options.maxClassifySec ?? 15,
     sourceOffsetSec: 0,
     renderEngine: "wasm",
+    sidEngine: "sidlite",
     traceCaptureEnabled: true,
     traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
   });
@@ -201,6 +202,37 @@ describe("classification helpers", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("refreshes a WASM cache when SID emulation changes", async () => {
+    const root = await mkdtemp(TEMP_PREFIX);
+    const sidFile = path.join(root, "track.sid");
+    const wavFile = path.join(root, "track.wav");
+    const previousSidEngine = process.env.SIDFLOW_SID_ENGINE;
+    const config = {
+      maxRenderSec: 45,
+      introSkipSec: 15,
+      maxClassifySec: 15,
+      render: { preferredEngines: ["wasm"] },
+    } as any;
+
+    try {
+      delete process.env.SIDFLOW_SID_ENGINE;
+      await writeFile(sidFile, "sid");
+      await writeFile(wavFile, "wav");
+      await seedWasmCacheArtifact(wavFile);
+      expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeFalse();
+
+      process.env.SIDFLOW_SID_ENGINE = "residfp";
+      expect(await needsWavRefresh(sidFile, wavFile, false, config)).toBeTrue();
+    } finally {
+      if (previousSidEngine === undefined) {
+        delete process.env.SIDFLOW_SID_ENGINE;
+      } else {
+        process.env.SIDFLOW_SID_ENGINE = previousSidEngine;
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("builds wav cache using injected renderer", async () => {
     const root = await mkdtemp(TEMP_PREFIX);
     const sidPath = path.join(root, "hvsc");
@@ -273,12 +305,13 @@ describe("classification helpers", () => {
     await writeFile(
       `${wavFile}.render.json`,
       JSON.stringify({
-        v: 3,
+        v: 4,
         maxRenderSec: 45,
         introSkipSec: 15,
         maxClassifySec: 15,
         sourceOffsetSec: 0,
         renderEngine: "sidplayfp-cli",
+        sidEngine: null,
         traceCaptureEnabled: false,
         traceSidecarVersion: null,
       })
@@ -459,6 +492,7 @@ fs.writeFileSync(wavPath, buffer);
       await defaultRenderWav({ sidFile, wavFile, maxRenderSeconds: 1 });
       const renderSettings = JSON.parse(await readFile(`${wavFile}.render.json`, "utf8")) as {
         renderEngine: string | null;
+        sidEngine: string | null;
         traceCaptureEnabled: boolean;
       };
       expect(renderSettings.renderEngine).toBe("sidplayfp-cli");
@@ -877,11 +911,13 @@ describe("generateAutoTags", () => {
       const renderSettings = JSON.parse(await readFile(renderPath, "utf8")) as {
         v: number;
         renderEngine: string | null;
+        sidEngine: string | null;
         traceCaptureEnabled: boolean;
         traceSidecarVersion: number | null;
       };
-      expect(renderSettings.v).toBe(3);
+      expect(renderSettings.v).toBe(4);
       expect(renderSettings.renderEngine).toBe("wasm");
+      expect(renderSettings.sidEngine).toBe("sidlite");
       expect(renderSettings.traceCaptureEnabled).toBeTrue();
       expect(renderSettings.traceSidecarVersion).toBe(SID_TRACE_SIDECAR_VERSION);
     } finally {

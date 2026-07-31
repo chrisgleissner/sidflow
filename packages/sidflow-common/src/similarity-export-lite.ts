@@ -16,6 +16,7 @@ import {
   stableSimilarityScore,
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
+import { compareUtf8Bytewise } from "./utf8-byte-order.js";
 import { cosineSimilarity, weightsForDimensions } from "./vector-similarity.js";
 import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
 import {
@@ -334,7 +335,7 @@ function scoreRows(
     .map((row) => ({ row, score: cosineSimilarity(normalizedCentroid, row.vector) }))
     .sort(
       (left, right) => stableSimilarityScore(right.score) - stableSimilarityScore(left.score)
-        || left.row.track_id.localeCompare(right.row.track_id),
+        || compareUtf8Bytewise(left.row.track_id, right.row.track_id),
     )
     .slice(0, limit)
     .map(({ row, score }, index) => ({
@@ -478,7 +479,7 @@ export async function buildLiteSimilarityExport(
         .map((_, dimension) => vectors.reduce((total, vector) => total + (vector[dimension] ?? 0), 0) / vectors.length),
     );
 
-    const orderedFilePaths = [...new Set(rows.map((row) => row.sid_path))].sort((left, right) => left.localeCompare(right));
+    const orderedFilePaths = [...new Set(rows.map((row) => row.sid_path))].sort(compareUtf8Bytewise);
     const fileIdByPath = new Map(orderedFilePaths.map((sidPath, index) => [sidPath, index]));
     const fileIdWidth = orderedFilePaths.length <= 0xffff ? 2 : 3;
     const songIndexWidth = rows.every((row) => row.song_index >= 0 && row.song_index <= 0xff) ? 1 : 2;

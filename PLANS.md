@@ -1,5 +1,100 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 43 - Classification And Tiny Export Bug Bash
+
+Raised 2026-07-31. Audit the classification pipeline that feeds `sidflow-data` and the
+`sidcorr-tiny-1` producer consumed by c64commander. Work is on
+`copilot/bugbash-classify-tiny-export`, released as 0.8.3.
+
+1. [DONE] P43-T01 Establish a failing baseline and audit the producer/consumer contract.
+  - Root `bun run test` completed all unit batches except `integration-tests/hvsc-persona-station.test.ts`.
+    Its real-HVSC classification run emitted an incomplete feature vector
+    (`spectralContrastMean: null`) and failed the complete-vector assertion. That failure is the
+    SIDLite spectral-contrast gap, is present on `main`, and is not addressed by this phase.
+  - The audit found classification cache identity, non-finite JSONL output, escaped-path resume,
+    and crash-truncated `--resume-from-features` defects. It also found tiny ordering,
+    containment, duplicate-identity, and SQLite neighbour-integrity defects.
+  - c64commander is a separate, dirty worktree under this checkout and is not modified by this
+    SIDFlow branch. The producer enforces the tiny specification's duplicate-identity rejection so
+    it cannot publish a bundle that c64commander would resolve ambiguously.
+
+2. [DONE] P43-T02 Repair classification correctness and add focused regressions.
+  - The WAV render settings sidecar is version 4 and records `sidEngine`. Versions 1 to 3 are
+    rejected rather than upgraded, because nothing in an older sidecar says which emulation wrote
+    it, so the first run after this release re-renders the WAV cache.
+  - A non-finite feature value fails its own song: the record is not persisted, `failedCount`
+    counts it, and the run's failures file records the reason. The corpus-wide 1% integrity
+    threshold is unchanged and remains the guard against a defect producing them in bulk.
+  - The resume index decodes the JSON-escaped `sid_path` capture before building its key, and
+    `--resume-from-features` drops a truncated final record while still failing on a malformed
+    complete one.
+
+3. [DONE] P43-T03 Repair portable export determinism and integrity.
+  - `compareUtf8Bytewise` replaces `localeCompare` in every ordering and tie-break that reaches a
+    published artefact, and in the station's own recommendation tie-break, which applies the same
+    rule. This is conformance with the lite and tiny specifications, which already required
+    bytewise UTF-8; no schema or binary format version changes.
+  - The tiny builder rejects duplicate `md5_48` identities and the reader leaves an ambiguous one
+    unresolved. Both the builder and the reader refuse a `sid_path` that escapes the HVSC root by
+    traversal or through a symlink.
+  - New full exports declare neighbour foreign keys, and `--rewrite-manifest` refuses to restate
+    the row count of an export whose graph references a missing track.
+
+4. [DONE] P43-T04 Adversarial review of the first pass, and its repairs.
+  The first pass introduced four defects and left one gap. All are fixed on the branch:
+  - **Containment compared unlike paths.** `readResolvedSidFile` tested an unresolved candidate
+    against `realpath(hvscRoot)`, so every SID under an HVSC root reached through a symlink looked
+    as though it escaped. That includes macOS, where `os.tmpdir()` sits under `/var` and `/var` is
+    a symlink to `/private/var`, so the tiny export would have failed outright there. Both sides of
+    the test are now resolved, and the root is resolved once per build rather than once per file.
+  - **The reader lost its `Songlengths.md5` fast path**, and hashed the whole corpus on every
+    open: 11.7 s for 59,886 files with a warm page cache, on the path a station opens. HVSC's
+    index keys are the plain file MD5 — verified against the shipped corpus — so the fast path was
+    correct. Removing it also broke the test that pins it,
+    `"resolves tiny track paths from Songlengths.md5 without rescanning the SID tree"`.
+  - **A non-finite feature aborted the whole run**, which contradicts this plan's own wording and
+    would discard hours of rendering over one tune. It is a per-song failure now.
+  - **`RenderOrchestrator` recorded `sidEngine: null` for a WASM render**, which both misdescribes
+    the file and would make `needsWavRefresh` treat it as stale on every run.
+  - **The bytewise ordering fix stopped at the export boundary.** `sidflow-play`'s station applied
+    the identical score-then-track-id tie-break with `localeCompare`, so the station and the
+    artefact could disagree about tie order — which is what the convergence audits compare.
+
+5. [DONE] P43-T05 Validation.
+  - `tsc -b` clean. `node scripts/run-unit-coverage-batches.mjs` runs every batch with one failure,
+    `integration-tests/hvsc-persona-station.test.ts`, which is the P43-T01 baseline and is not
+    caused by this work. It was confirmed by checking out `main` and running the same file there:
+    the same assertion fails at the same line, on the same two records
+    (`GAMES/S-Z/Super_Mario_Bros_64_2SID.sid` songs 31 and 35, `spectralContrastMean=missing`),
+    in 373 s. `doc/engine-comparison.md` already records SIDLite dropping that feature on very
+    quiet subsongs of that exact file. Repairing it means repairing the feature extractor, which
+    is a separate piece of work.
+  - `bun run verify:exports:fixture` passes over a freshly built fixture.
+  - Each repair has a regression that fails when the repair is reverted, and each revert was
+    actually performed rather than assumed: the symlinked HVSC root, the SID file symlinked out of
+    HVSC, the orchestrator's WASM sidecar, the per-song rejection of a non-finite feature, the
+    `Songlengths.md5` fast path, and `compareUtf8Bytewise` against `Buffer.compare`.
+
+### Decision Log
+
+- The tiny format specification requires duplicate 48-bit identities to be rejected. Warning and
+  continuing creates an unresolvable artefact for its c64commander consumer, so rejection is safer
+  than silently publishing a wrong station.
+- The nested c64commander checkout has unrelated user changes and its own Git branch. This plan
+  changes SIDFlow's versioned producer only; downstream parser hardening requires a separate,
+  clean c64commander task.
+- `stringifyDeterministic` still sorts object keys with `localeCompare` and was deliberately left
+  alone. It writes every canonical JSON file in the repository, so changing it churns far more than
+  the exports, and it was measured not to matter for them: for the full, lite and tiny manifest key
+  sets and for the classification record keys, locale and bytewise ordering agree. The only
+  divergence found was among the camelCase keys of the local rating-model file, which is not
+  published.
+
+### Progress
+
+- 2026-07-31: Branch created, baseline taken, defects repaired, first pass reviewed adversarially
+  and its five findings repaired, released as 0.8.3.
+
 ## Phase 41 - Neighbour Graph As An Index, Station As A Policy (0.8.2, reissued)
 
 Plan: `doc/plans/neighbour-graph-redesign/prompt.md`. Released 0.8.2 was **withdrawn** (releases

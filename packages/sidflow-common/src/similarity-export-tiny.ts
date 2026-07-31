@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { PERSONA_IDS, PERSONAS } from "./persona.js";
@@ -18,6 +18,7 @@ import {
   buildSimilarityTrackId,
   type SimilarityExportRecommendation,
 } from "./similarity-export.js";
+import { compareUtf8Bytewise } from "./utf8-byte-order.js";
 import {
   selectDiversifiedNeighbours,
   type HubnessCorrection,
@@ -117,6 +118,16 @@ interface TinyTrackRecord extends SimilarityTrackRow {
 
 interface Md548Context {
   hvscRoot: string;
+  /**
+   * `hvscRoot` with every symlinked path component resolved.
+   *
+   * Containment has to be judged against this, and only against paths that have been
+   * resolved the same way. Comparing an unresolved candidate against a resolved root
+   * rejects ordinary installations: on macOS `os.tmpdir()` is under `/var`, which is a
+   * symlink to `/private/var`, so every SID path under a temporary HVSC root would look
+   * as though it escaped.
+   */
+  resolvedHvscRoot: string;
   musicRoot: string;
   musicRootPrefix: string;
 }
@@ -242,9 +253,18 @@ async function resolveMd548Context(hvscRoot: string): Promise<Md548Context> {
   const musicRoot = await pathExists(nestedMusicRoot) ? nestedMusicRoot : hvscRoot;
   return {
     hvscRoot,
+    // Resolved once. Doing it per file would add a full path resolution to each of the
+    // corpus's 61,000 reads for a value that cannot change during a build.
+    resolvedHvscRoot: await realpath(hvscRoot).catch(() => path.resolve(hvscRoot)),
     musicRoot,
     musicRootPrefix: `${path.basename(musicRoot).toLowerCase()}/`,
   };
+}
+
+/** True when `candidate` is `root` itself or sits underneath it. */
+function isContainedIn(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 function computeManifestPath(outputPath: string, explicitPath?: string): string {
@@ -295,7 +315,20 @@ async function readMd548AndPayload(
 }
 
 async function readResolvedSidFile(context: Md548Context, sidPath: string): Promise<Buffer> {
+  // A leading slash is stripped rather than rejected: HVSC's own indexes write music-root
+  // paths as "/DEMOS/x.sid", earlier releases accepted that form, and it cannot escape the
+  // root once it is relative. A drive letter or UNC prefix can escape on Windows, and a
+  // ".." segment can escape anywhere, so those are refused.
   const normalizedSidPath = sidPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (
+    normalizedSidPath.length === 0
+    || normalizedSidPath.includes("\0")
+    || path.win32.isAbsolute(normalizedSidPath)
+    || normalizedSidPath.split("/").some((segment) => segment === "..")
+  ) {
+    throw new Error(`SID path ${sidPath} must be a non-empty relative path within ${context.hvscRoot}`);
+  }
+
   const candidatePaths = [
     path.resolve(context.musicRoot, normalizedSidPath),
     path.resolve(context.hvscRoot, normalizedSidPath),
@@ -305,44 +338,61 @@ async function readResolvedSidFile(context: Md548Context, sidPath: string): Prom
     candidatePaths.push(path.resolve(context.musicRoot, normalizedSidPath.slice(context.musicRootPrefix.length)));
   }
 
-  let absolutePath: string | null = null;
   for (const candidatePath of candidatePaths) {
-    if (await pathExists(candidatePath)) {
-      absolutePath = candidatePath;
-      break;
+    // `realpath` both tests existence and follows symlinks, so one call replaces a
+    // separate existence probe. A missing candidate is not an error: the loop exists
+    // because the same record can be written relative to the HVSC root or the music root.
+    let resolvedPath: string;
+    try {
+      resolvedPath = await realpath(candidatePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error as NodeJS.ErrnoException).code === "ENOTDIR") {
+        continue;
+      }
+      throw error;
     }
+    // Judged after resolution, against the resolved root, so a symlink inside HVSC that
+    // points elsewhere is rejected while a symlinked HVSC root itself still works.
+    if (!isContainedIn(context.resolvedHvscRoot, resolvedPath)) {
+      throw new Error(`SID path ${sidPath} resolves outside ${context.hvscRoot}`);
+    }
+    return readFile(resolvedPath);
   }
 
-  if (!absolutePath) {
-    throw new Error(`Unable to resolve SID path ${sidPath} within ${context.hvscRoot}`);
-  }
-
-  return readFile(absolutePath);
+  throw new Error(`Unable to resolve SID path ${sidPath} within ${context.hvscRoot}`);
 }
 
 /**
- * Two different SID files sharing a truncated hash resolve to one path.
+ * Two different local SID files sharing a truncated hash cannot resolve safely.
  *
  * The tiny profile identifies files by the first 48 bits of their MD5 to keep the
  * bundle small. Across HVSC's ~62,000 files the birthday probability of at least one
- * collision is around 0.7% -- unlikely per release, but this is a published artifact
- * and the failure is silent: the later file overwrites the earlier one in the map, and
- * every track of the loser is then reported under the winner's path. A listener would
- * see a station entry naming a tune that is not the one playing.
+ * collision is around 0.7% -- unlikely per release, but this is a published artifact.
+ * The matching rule requires an ambiguous local identity to remain unresolved; choosing
+ * whichever path the scanner saw last would make a listener play a different SID from
+ * the one the station identifies.
  *
- * Cheap to detect, so detect it. Reported rather than thrown because the collision is
- * a property of the collection, not of a bug in this code, and refusing to build any
- * bundle at all would be a worse outcome than a loud warning naming both files.
+ * The key is removed rather than overwritten, so a colliding identity resolves to
+ * nothing instead of to one of the two candidates. The builder treats the same condition
+ * as fatal (section 4.1 of the format specification requires an export to reject
+ * duplicate prefixes); a reader cannot refuse to open a bundle somebody already
+ * published, so it warns and leaves the affected entries unresolved.
  */
 function recordMd548(
   result: Map<string, string>,
+  ambiguousKeys: Set<string>,
   collisions: Array<[string, string, string]>,
   key: string,
   relativePath: string,
 ): void {
+  if (ambiguousKeys.has(key)) {
+    return;
+  }
   const existing = result.get(key);
   if (existing !== undefined && existing !== relativePath) {
     collisions.push([key, existing, relativePath]);
+    result.delete(key);
+    ambiguousKeys.add(key);
     return;
   }
   result.set(key, relativePath);
@@ -357,31 +407,44 @@ function warnAboutMd548Collisions(collisions: Array<[string, string, string]>): 
     .map(([key, first, second]) => `  ${key}: ${first} <-> ${second}`)
     .join("\n");
   process.stderr.write(
-    `[similarity-export-tiny] WARNING: ${collisions.length} md5_48 collision(s). `
-    + "Tracks of the second file in each pair will be reported under the first file's "
-    + `path in the tiny bundle:\n${detail}\n`,
+    `[similarity-export-tiny] WARNING: ${collisions.length} ambiguous local md5_48 identity/identities. `
+    + `Matching bundle entries remain unresolved:\n${detail}\n`,
   );
 }
 
+/**
+ * Map every local md5_48 prefix to the SID path that carries it.
+ *
+ * HVSC ships `DOCUMENTS/Songlengths.md5`, whose keys are the plain MD5 of each SID
+ * file -- verified against the shipped corpus, not assumed -- so when it is present the
+ * whole map is one text file read. The alternative is reading and hashing every SID:
+ * measured at 11.7 s for 59,886 files with a warm page cache, on a path that runs every
+ * time a station opens a tiny bundle.
+ *
+ * The directory walk is the fallback for a corpus without that index. It is also the
+ * only mode that sees a local file HVSC does not list, which is why the walk, not the
+ * index, is what detects a duplicate somebody added themselves.
+ */
 async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>> {
   const md548Context = await resolveMd548Context(hvscRoot);
   const songlengths = await loadSonglengthsData(hvscRoot);
   const collisions: Array<[string, string, string]> = [];
+  const result = new Map<string, string>();
+  const ambiguousKeys = new Set<string>();
 
   if (songlengths.sourcePath && songlengths.pathByMd5.size > 0) {
-    const result = new Map<string, string>();
     for (const [md5, relativePath] of songlengths.pathByMd5) {
-      recordMd548(result, collisions, md5.slice(0, 12), relativePath);
+      recordMd548(result, ambiguousKeys, collisions, md5.slice(0, 12), relativePath);
     }
     warnAboutMd548Collisions(collisions);
     return result;
   }
 
-  const result = new Map<string, string>();
-  const queue = [songlengths.musicRoot];
+  const queue = [md548Context.musicRoot];
   while (queue.length > 0) {
     const current = queue.shift()!;
     const entries = await readdir(current, { withFileTypes: true });
+    entries.sort((left, right) => compareUtf8Bytewise(left.name, right.name));
     for (const entry of entries) {
       const absolutePath = path.join(current, entry.name);
       if (entry.isDirectory()) {
@@ -391,9 +454,9 @@ async function buildMd548PathMap(hvscRoot: string): Promise<Map<string, string>>
       if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".sid")) {
         continue;
       }
-      const relativePath = path.relative(songlengths.musicRoot, absolutePath).replace(/\\/g, "/");
+      const relativePath = path.relative(md548Context.musicRoot, absolutePath).replace(/\\/g, "/");
       const { digest } = await readMd548AndPayload(md548Context, relativePath);
-      recordMd548(result, collisions, digest.toString("hex"), relativePath);
+      recordMd548(result, ambiguousKeys, collisions, digest.toString("hex"), relativePath);
     }
   }
   warnAboutMd548Collisions(collisions);
@@ -496,7 +559,7 @@ function computeApproximateNeighborCandidates(
       [...signatures].sort((left, right) => {
         const leftDistance = compactRatingDistance(seedRow, rowsBySignature.get(left)!);
         const rightDistance = compactRatingDistance(seedRow, rowsBySignature.get(right)!);
-        return leftDistance - rightDistance || left.localeCompare(right);
+        return leftDistance - rightDistance || compareUtf8Bytewise(left, right);
       }),
     );
   }
@@ -818,16 +881,18 @@ export async function buildTinySimilarityExport(
 ): Promise<BuildTinySimilarityExportResult> {
   const startedAt = Date.now();
   const decodedLite = await decodeLiteSimilarityExport(options.sourceLitePath);
-  const rows = decodedLite.rows.map((row) => ({
-    track_id: row.track_id,
-    sid_path: row.sid_path,
-    song_index: row.song_index,
-    vector_json: JSON.stringify(row.vector),
-    e: row.e,
-    m: row.m,
-    c: row.c,
-    p: row.p,
-  } satisfies SourceTrackRow));
+  const rows = decodedLite.rows
+    .map((row) => ({
+      track_id: row.track_id,
+      sid_path: row.sid_path,
+      song_index: row.song_index,
+      vector_json: JSON.stringify(row.vector),
+      e: row.e,
+      m: row.m,
+      c: row.c,
+      p: row.p,
+    } satisfies SourceTrackRow))
+    .sort((left, right) => compareUtf8Bytewise(left.sid_path, right.sid_path) || left.song_index - right.song_index);
   if (rows.length === 0) {
     throw new Error("Cannot build sidcorr-tiny-1 export from an empty sidcorr-lite-1 export.");
   }
@@ -870,7 +935,16 @@ export async function buildTinySimilarityExport(
       derivePersonaMetadataFromSidBuffer(filePaths[index]!, payload, headerFallbacks),
     );
   }
-  warnAboutMd548Collisions(identityCollisions);
+  if (identityCollisions.length > 0) {
+    const detail = identityCollisions
+      .slice(0, 5)
+      .map(([key, first, second]) => `  ${key}: ${first} <-> ${second}`)
+      .join("\n");
+    throw new Error(
+      `Cannot build sidcorr-tiny-1 export: ${identityCollisions.length} duplicate md5_48 identity/identities `
+      + `violate the format's unambiguous file-identity requirement:\n${detail}`,
+    );
+  }
   summariseSidHeaderFallbacks(headerFallbacks, filePaths.length);
 
   const fileTrackCountTable = Buffer.alloc(filePaths.length);

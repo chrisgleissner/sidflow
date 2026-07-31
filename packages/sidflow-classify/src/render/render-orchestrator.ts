@@ -28,7 +28,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { DEFAULT_ANALYSIS_SKIP_SEC, DEFAULT_ANALYSIS_WINDOW_SEC } from "../audio-window.js";
 import { renderWavWithEngine, resolveTimeLimitSeconds } from "./wav-renderer.js";
-import { createEngine } from "./engine-factory.js";
+import { createEngine, resolveClassifyEngine } from "./engine-factory.js";
 import { truncateWavFileToDurationMs } from "./wav-truncate.js";
 import { sliceWavFileToRepresentativeStart, trimLeadingSilenceWavFile } from "./wav-postprocess.js";
 import { writeWavRenderSettingsSidecar } from "../wav-render-settings.js";
@@ -298,6 +298,11 @@ export class RenderOrchestrator {
             : DEFAULT_ANALYSIS_WINDOW_SEC,
         sourceOffsetSec,
         renderEngine: request.engine,
+        // The orchestrator renders with the WASM engine too, so the sidecar has to name
+        // the SID emulation that produced this WAV. Recording null for a WASM render
+        // would both misdescribe the file and make needsWavRefresh treat it as stale on
+        // every run, because the value it compares against is never null for WASM.
+        sidEngine: request.engine === "wasm" ? resolveClassifyEngine() : null,
         traceCaptureEnabled: false,
         traceSidecarVersion: null,
       });

@@ -123,12 +123,13 @@ describe("buildAudioCache (cache-hit preserves WAV)", () => {
     await writeFile(
       renderSettingsFile,
       JSON.stringify({
-        v: 3,
+        v: 4,
         maxRenderSec: 25,
         introSkipSec: 15,
         maxClassifySec: 10,
         sourceOffsetSec: 0,
         renderEngine: "wasm",
+        sidEngine: "sidlite",
         traceCaptureEnabled: true,
         traceSidecarVersion: 1,
         renderProfile: null,

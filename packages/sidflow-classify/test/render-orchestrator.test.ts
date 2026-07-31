@@ -9,6 +9,7 @@ import {
 } from "@sidflow/common";
 
 import { RenderOrchestrator } from "../src/render/render-orchestrator.js";
+import { readWavRenderSettingsSidecar } from "../src/wav-render-settings.js";
 
 function createTestWavBuffer(durationSeconds: number, sampleRate: number): Buffer {
   const numSamples = Math.floor(durationSeconds * sampleRate);
@@ -106,6 +107,73 @@ describe("RenderOrchestrator render mode validation", () => {
       });
 
       expect(result.errors).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("RenderOrchestrator render settings sidecar", () => {
+  /**
+   * The orchestrator renders with the WASM engine as well as sidplayfp-cli, and the
+   * cache freshness check compares the sidecar's sidEngine against the SID emulation the
+   * run is configured for. A sidecar that reports null for a WASM render both
+   * misdescribes the file and makes needsWavRefresh treat it as stale on every run,
+   * because the value it compares against is never null for WASM.
+   */
+  it.each([
+    ["wasm" as const, true],
+    ["sidplayfp-cli" as const, false],
+  ])("records the SID emulation for a %s render", async (engine, expectsSidEngine) => {
+    // The default mode for a WASM render is server/prepared/wasm, which the render
+    // matrix still marks "future", so this drives the WASM branch with the mode the
+    // matrix does allow. Validation checks the mode, not that it agrees with `engine`.
+    const root = await mkdtemp(path.join(os.tmpdir(), "sidflow-render-sidecar-"));
+    const hvscRoot = path.join(root, "hvsc");
+    const outputDir = path.join(root, "renders");
+
+    try {
+      await mkdir(path.join(hvscRoot, "MUSICIANS", "Test"), { recursive: true });
+      const sidPath = path.join(hvscRoot, "MUSICIANS", "Test", "demo.sid");
+      await writeFile(sidPath, Buffer.from("dummy sid"));
+
+      const orchestrator = new RenderOrchestrator({ hvscRoot });
+      const wavBuffer = createTestWavBuffer(1, 44100);
+      const orchestratorAny = orchestrator as unknown as {
+        renderWav: typeof orchestrator["renderWav"];
+      };
+      orchestratorAny.renderWav = async (_request, wavPath) => {
+        await writeFile(wavPath, wavBuffer);
+        return undefined;
+      };
+
+      const result = await orchestrator.render({
+        sidPath,
+        outputDir,
+        engine,
+        formats: ["wav"],
+        ...(engine === "wasm"
+          ? {
+            renderMode: {
+              location: "client" as const,
+              time: "realtime" as const,
+              technology: "wasm" as const,
+              target: "playback-only" as const,
+            },
+          }
+          : {}),
+      });
+
+      const wavPath = result.outputs.find((output) => output.format === "wav")?.path;
+      expect(wavPath).toBeDefined();
+      const sidecar = await readWavRenderSettingsSidecar(wavPath!);
+      expect(sidecar).not.toBeNull();
+      expect(sidecar!.renderEngine).toBe(engine);
+      if (expectsSidEngine) {
+        expect(sidecar!.sidEngine).toBe("sidlite");
+      } else {
+        expect(sidecar!.sidEngine).toBeNull();
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }

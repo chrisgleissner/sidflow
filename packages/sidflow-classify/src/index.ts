@@ -265,6 +265,7 @@ async function persistRenderedWavMetadata(
     maxClassifySec: resolveMaxClassifySec(config),
     sourceOffsetSec: existingSettings?.sourceOffsetSec ?? 0,
     renderEngine,
+    sidEngine: renderEngine === "wasm" ? resolveClassifyEngine() : null,
     traceCaptureEnabled,
     traceSidecarVersion: traceCaptureEnabled && traceSidecar !== null ? SID_TRACE_SIDECAR_VERSION : null,
     renderProfile: overrides.renderProfile ?? existingSettings?.renderProfile ?? null,
@@ -980,12 +981,13 @@ export async function needsWavRefresh(
     const config = configOverride ?? (await loadConfig(process.env.SIDFLOW_CONFIG));
     const selectedEngine = resolveClassificationPreferredEngine(config);
     const desired: WavRenderSettingsSidecar = {
-      v: 3,
+      v: 4,
       maxRenderSec: resolveEffectiveMaxRenderSec(config),
       introSkipSec: resolveIntroSkipSec(config),
       maxClassifySec: resolveMaxClassifySec(config),
       sourceOffsetSec: 0,
       renderEngine: selectedEngine,
+      sidEngine: selectedEngine === "wasm" ? resolveClassifyEngine() : null,
       traceCaptureEnabled: selectedEngine === "wasm",
       traceSidecarVersion: selectedEngine === "wasm" ? SID_TRACE_SIDECAR_VERSION : null,
     };
@@ -998,6 +1000,7 @@ export async function needsWavRefresh(
       existing.introSkipSec !== desired.introSkipSec ||
       existing.maxClassifySec !== desired.maxClassifySec ||
       existing.renderEngine !== desired.renderEngine ||
+      existing.sidEngine !== desired.sidEngine ||
       existing.traceCaptureEnabled !== desired.traceCaptureEnabled ||
       existing.traceSidecarVersion !== desired.traceSidecarVersion
     ) {
@@ -1149,6 +1152,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
       maxClassifySec: maxClassifySeconds,
       sourceOffsetSec: renderedSettings?.sourceOffsetSec ?? 0,
       renderEngine: 'sidplayfp-cli',
+      sidEngine: null,
       traceCaptureEnabled: false,
       traceSidecarVersion: null,
     });
@@ -1200,6 +1204,7 @@ export const defaultRenderWav: RenderWav = async (options) => {
         maxClassifySec: maxClassifySeconds,
         sourceOffsetSec,
         renderEngine: 'wasm',
+        sidEngine: resolveClassifyEngine(),
         traceCaptureEnabled: options.captureTrace === true,
         traceSidecarVersion: options.captureTrace === true ? SID_TRACE_SIDECAR_VERSION : null,
       });
@@ -2585,6 +2590,95 @@ export async function generateAutoTags(
     };
 
     const renderEngineForRecords = classificationRenderEngine;
+    let warnedAboutTruncatedFeatureFile = false;
+
+    const parseCompleteFeatureRecord = (line: string, lineNumber: number): IntermediateRecord => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch (error) {
+        throw new Error(
+          "Invalid complete features JSONL record in " + featuresJsonlFile + " at line " + lineNumber
+          + ": " + (error instanceof Error ? error.message : String(error)),
+          { cause: error },
+        );
+      }
+      if (!parsed || typeof parsed !== "object" || !("features" in parsed)
+        || !(parsed as { features?: unknown }).features || typeof (parsed as { features?: unknown }).features !== "object") {
+        throw new Error(
+          "Invalid complete features JSONL record in " + featuresJsonlFile + " at line " + lineNumber
+          + ": expected an object with features",
+        );
+      }
+      return parsed as IntermediateRecord;
+    };
+
+    /**
+     * Visit every complete record in the features file, tolerating a truncated tail.
+     *
+     * A run that is killed part-way through an append leaves an unterminated final line.
+     * That record is incomplete, so it is dropped and its song reclassified; any earlier
+     * line that will not parse is a different problem and is reported rather than
+     * skipped, because silently dropping it would quietly shrink the corpus.
+     *
+     * Records are handed to the caller one at a time rather than returned as an array.
+     * The full corpus is 87,868 records of roughly a hundred features each, and holding
+     * every parsed record at once costs several times what the file itself does.
+     */
+    const forEachFeatureRecord = async (
+      onRecord: (record: IntermediateRecord) => void | Promise<void>,
+      options: { allowMissing?: boolean } = {},
+    ): Promise<number> => {
+      let content: string;
+      try {
+        content = await readFile(featuresJsonlFile, "utf8");
+      } catch (error) {
+        if (options.allowMissing === true && (error as NodeJS.ErrnoException).code === "ENOENT") {
+          return 0;
+        }
+        throw error;
+      }
+
+      const endsWithNewline = content.length === 0 || content.endsWith("\n");
+      let visited = 0;
+      let lineStart = 0;
+      let lineNumber = 0;
+      while (lineStart <= content.length) {
+        const newlineAt = content.indexOf("\n", lineStart);
+        const isFinalLine = newlineAt === -1;
+        if (isFinalLine && lineStart === content.length) {
+          break;
+        }
+        const line = content.slice(lineStart, isFinalLine ? content.length : newlineAt);
+        lineStart = isFinalLine ? content.length + 1 : newlineAt + 1;
+        lineNumber += 1;
+        if (line.trim().length === 0) {
+          continue;
+        }
+
+        let record: IntermediateRecord;
+        try {
+          record = parseCompleteFeatureRecord(line, lineNumber);
+        } catch (error) {
+          const isTruncatedTail = isFinalLine && !endsWithNewline
+            && error instanceof Error && error.cause instanceof SyntaxError;
+          if (!isTruncatedTail) {
+            throw error;
+          }
+          if (!warnedAboutTruncatedFeatureFile) {
+            classifyLogger.warn(
+              "[classify-resume] discarding truncated final JSONL record from " + featuresJsonlFile,
+            );
+            warnedAboutTruncatedFeatureFile = true;
+          }
+          continue;
+        }
+        visited += 1;
+        await onRecord(record);
+      }
+
+      return visited;
+    };
 
     const builder = new DeterministicRatingModelBuilder();
     const intermediateBuffer = new Map<number, IntermediateRecord>();
@@ -2592,6 +2686,10 @@ export async function generateAutoTags(
     // A skip at index N must not orphan all features at indices N+1, N+2, … in the
     // intermediateBuffer — flushIntermediate advances past skipped slots.
     const skippedIntermediateIndices = new Set<number>();
+    // The feature mode each buffered record was produced under. The failure record the
+    // flush writes for a rejected song needs it, and the intermediate record does not
+    // carry it — adding a field there would change the shape of the features file.
+    const featureModeByIntermediateIndex = new Map<number, ClassificationFeatureMode>();
     let nextIntermediateIndex = 0;
     let intermediateFlushChain: Promise<void> = Promise.resolve();
 
@@ -2606,6 +2704,10 @@ export async function generateAutoTags(
         const rec = intermediateBuffer.get(nextIntermediateIndex);
         if (!rec) return;
         intermediateBuffer.delete(nextIntermediateIndex);
+        const recFeatureMode = featureModeByIntermediateIndex.get(nextIntermediateIndex)
+          ?? classificationRuntimeModes[0]?.featureMode
+          ?? "wav-only";
+        featureModeByIntermediateIndex.delete(nextIntermediateIndex);
 
         // Asserted as records are produced, not after the run. A systematically wrong
         // corpus is caught in the first minute instead of after hours of rendering, and
@@ -2620,6 +2722,39 @@ export async function generateAutoTags(
             `[feature-integrity] ${rec.sid_path}#${rec.song_index ?? 1}: `
             + integrityViolations.map((violation) => violation.detail).join("; "),
           );
+        }
+        // NaN and Infinity serialise to JSON null, which every downstream reader takes
+        // for a MISSING feature rather than a broken one, so the record must not be
+        // written. This is a per-song failure, not a run failure: one pathological tune
+        // in 87,868 is not a reason to discard hours of rendering, and the corpus-wide
+        // integrity threshold below is what catches a defect producing them in bulk.
+        const nonFiniteViolation = integrityViolations.find((violation) => violation.kind === "non_finite_value");
+        if (nonFiniteViolation) {
+          const songLabel = rec.sid_path + "#" + (rec.song_index ?? 1);
+          const message = "Classification rejected non-finite feature for " + songLabel
+            + ": " + nonFiniteViolation.detail;
+          classifyLogger.warn(message);
+          failedCount += 1;
+          const rejection: ClassificationFailureRecord = {
+            sid_path: rec.sid_path,
+            song_count: rec.song_count,
+            queue_index: rec.queue_index,
+            render_engine: rec.render_engine,
+            feature_mode: recFeatureMode,
+            retry_count: 0,
+            degraded: rec.degraded,
+            error: message,
+            failed_at: new Date().toISOString(),
+          };
+          if (rec.song_index !== undefined) {
+            rejection.song_index = rec.song_index;
+          }
+          await queueJsonlWrite(failureFile, [rejection as unknown as JsonValue], {
+            phase: "classification-failure",
+            itemIndex: nextIntermediateIndex,
+          });
+          nextIntermediateIndex += 1;
+          continue;
         }
         const integrityBreach = featureIntegrityBreach(integrityTally);
         if (integrityBreach) {
@@ -3094,6 +3229,7 @@ export async function generateAutoTags(
       // Lifecycle: ANALYZING stage — intermediate record placed in buffer for deferred flush
       const analyzingKey = lifecycle.stageStart({ ...lifecycleBase, stage: "ANALYZING" });
       intermediateBuffer.set(context.itemIndex, intermediate);
+      featureModeByIntermediateIndex.set(context.itemIndex, finalRuntimeMode.featureMode);
       intermediateFlushChain = intermediateFlushChain.then(flushIntermediate);
       lifecycle.stageEnd(analyzingKey, { ...lifecycleBase, stage: "ANALYZING" });
       // Lifecycle: ANALYZED marker; STARTED end (concurrent processing done for this song)
@@ -3121,17 +3257,14 @@ export async function generateAutoTags(
     await flushIntermediate();
     } else {
       // Resume-only mode: skip Phase 1 and build the rating model from the provided features file.
-      const resumeContent = await readFile(featuresJsonlFile, "utf8").catch(() => "");
-      const resumeLines = resumeContent.split("\n").filter((l) => l.trim().length > 0);
-      for (const resumeLine of resumeLines) {
-        const resumeRec = JSON.parse(resumeLine) as IntermediateRecord;
+      await forEachFeatureRecord((resumeRec) => {
         builder.add(resumeRec.features);
         processedSongs += 1;
         featureHealthCheckedFiles += 1;
         if (hasRealisticCompleteFeatureVector(resumeRec.features)) {
           completeFeatureFiles += 1;
         }
-      }
+      }, { allowMissing: true });
     }
     onProgress?.({
       phase: "rating-model",
@@ -3172,18 +3305,10 @@ export async function generateAutoTags(
     // pass -- but the features file is about to be read in full for phase 2
     // anyway, so the extra pass is cheap relative to rendering.
     try {
-      const calibrationContent = await readFile(featuresJsonlFile, "utf8");
       const rawScores: Array<{ c: number; e: number; m: number }> = [];
-      for (const line of calibrationContent.split("\n")) {
-        if (!line.trim()) continue;
-        try {
-          const parsed = JSON.parse(line) as { features?: FeatureVector };
-          if (!parsed.features) continue;
-          rawScores.push(computeRawRatingScores(ratingModel, parsed.features));
-        } catch {
-          continue;
-        }
-      }
+      await forEachFeatureRecord((record) => {
+        rawScores.push(computeRawRatingScores(ratingModel, record.features));
+      }, { allowMissing: true });
       const quantiles = buildRatingQuantiles(rawScores);
       if (quantiles) {
         ratingModel.ratingQuantiles = quantiles;
@@ -3233,14 +3358,9 @@ export async function generateAutoTags(
 
     // Phase 2: compute ratings (manual + deterministic auto) and emit canonical outputs.
     // If all songs were skipped (e.g. render timeouts), the features file may not exist.
-    let featuresContent: string;
-    try {
-      featuresContent = await readFile(featuresJsonlFile, "utf8");
-    } catch {
+    if (!(await pathExists(featuresJsonlFile))) {
       classifyLogger.warn("No features file found — all songs may have been skipped");
-      featuresContent = "";
     }
-    const featureLines = featuresContent.split("\n").filter((l) => l.trim().length > 0);
     const nowIso = new Date().toISOString();
     onProgress?.({
       phase: "finalizing",
@@ -3262,8 +3382,7 @@ export async function generateAutoTags(
     // because we update it in place after each write).
     const autoTagsFlushCache = new Map<string, Record<string, JsonValue>>();
 
-    for (const line of featureLines) {
-      const rec = JSON.parse(line) as IntermediateRecord;
+    await forEachFeatureRecord(async (rec) => {
       const manual = rec.manual_ratings;
       const needsAuto = !manual || hasMissingDimensions(manual);
 
@@ -3383,7 +3502,7 @@ export async function generateAutoTags(
         completionRecord.totalDurationMs = Date.now() - startedAt;
       }
       telemetry.emit(completionRecord);
-    }
+    }, { allowMissing: true });
     // Lifecycle: run_end
     lifecycle.emitRunEnd();
     telemetry.emit({

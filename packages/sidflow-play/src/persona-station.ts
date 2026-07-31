@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  compareUtf8Bytewise,
   ensureDir,
   loadHvscE2eSubsetManifest,
   stringifyDeterministic,
@@ -411,7 +412,7 @@ export function buildParallelPersonaStation(
       } satisfies PersonaTrackContext;
     })
     .filter((v): v is PersonaTrackContext => v !== null)
-    .sort((a, b) => a.trackId.localeCompare(b.trackId));
+    .sort((a, b) => compareUtf8Bytewise(a.trackId, b.trackId));
 
   // Each persona independently scores ALL tracks and takes top STATION_SIZE
   const stations: PersonaStationOutput[] = AUDIO_PERSONAS.map((persona) => {
@@ -422,7 +423,7 @@ export function buildParallelPersonaStation(
       })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        return a.ctx.trackId.localeCompare(b.ctx.trackId);
+        return compareUtf8Bytewise(a.ctx.trackId, b.ctx.trackId);
       });
 
     const topN = scored.slice(0, STATION_SIZE);

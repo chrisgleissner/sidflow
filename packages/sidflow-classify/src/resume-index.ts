@@ -47,6 +47,16 @@ const SID_PATH_PATTERN = /"sid_path":"((?:[^"\\]|\\.)*)"/;
 const SONG_INDEX_PATTERN = /"song_index":(\d+)/;
 const TRACE_EVENT_PATTERN = /"sidTraceEventCount":(\d+)/;
 
+/** Decode the JSON string capture without parsing the feature payload. */
+function decodeSidPath(escapedPath: string): string | null {
+  try {
+    const decoded = JSON.parse("\"" + escapedPath + "\"");
+    return typeof decoded === "string" ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Dimensions that cannot all be zero at once when the trace holds events.
  *
@@ -155,8 +165,12 @@ export async function indexExtractedSongs(classifiedPath: string): Promise<Set<s
         return;
       }
 
+      const sidPath = decodeSidPath(pathMatch[1]!);
+      if (sidPath === null) {
+        return;
+      }
       const songMatch = SONG_INDEX_PATTERN.exec(line);
-      keys.add(resumeKeyFor(pathMatch[1]!, songMatch ? Number.parseInt(songMatch[1]!, 10) : undefined));
+      keys.add(resumeKeyFor(sidPath, songMatch ? Number.parseInt(songMatch[1]!, 10) : undefined));
     });
   }
 

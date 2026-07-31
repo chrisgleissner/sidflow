@@ -120,10 +120,10 @@ describe("resume index", () => {
   test("does not truncate a path containing an escaped quote", async () => {
     // A greedy or naive pattern stops at the escaped quote and yields a key that matches
     // nothing, so the song is re-rendered on every resume forever.
-    const awkward = 'DEMOS/0-9/Quote\\"Name.sid';
+    const awkward = 'DEMOS/0-9/Quote"Name.sid';
     await writeFile(
       path.join(classifiedPath, "features_quote.jsonl"),
-      `{"sid_path":"${awkward}","features":{}}\n`,
+      JSON.stringify({ sid_path: awkward, features: {} }) + "\n",
       "utf8",
     );
 

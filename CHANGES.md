@@ -1,6 +1,121 @@
 # Changelog
 
 
+## 0.8.3 (2026-07-31)
+
+### No export schema changes
+
+`sidcorr-1`, `sidcorr-lite-1` and `sidcorr-tiny-1` keep their schema versions, their binary
+format versions, their section layouts and their column sets. Nothing published as 0.8.2
+becomes invalid and no consumer has to change to read a 0.8.3 artefact. The changes below
+are to what the builders produce and to what the classification pipeline accepts.
+
+One consumer-visible consequence is stated up front: **a bundle rebuilt with this release
+assigns different track and file ordinals, and orders equal-score recommendations
+differently, than the same corpus built with 0.8.2.** Ordinals are internal to a bundle and
+every consumer resolves them from the bundle it holds, so this is not a compatibility
+break, but a station built from a rebuilt bundle will not contain exactly the same tracks
+in the same order.
+
+### Portable ordering is bytewise UTF-8, as the specifications already required
+
+`doc/similarity-export-lite.md` requires base ordering and file dictionary entries to be
+sorted "lexicographically (bytewise UTF-8) ascending", and `doc/similarity-export-tiny.md`
+section 4.2 requires track ordinals to follow the same rule. The builders used
+`String.prototype.localeCompare`, which resolves against whatever ICU locale the build host
+has. Two effects followed from that. The same corpus could produce different artefacts on
+different machines. And within one lite bundle the track rows came from SQLite (`ORDER BY
+sid_path`, which is bytewise) while the file dictionary was sorted in JavaScript by locale,
+so the two orders were derived by different rules.
+
+Every ordering and tie-break that reaches a published artefact now uses one comparator,
+`compareUtf8Bytewise`: the full export's track sort and recommendation tie-break, the lite
+export's file dictionary and scored-row tie-break, the tiny export's track sort and
+signature tie-break, the directory walks that read classifications and JSONL, and the
+station's own recommendation tie-break in `sidflow-play`. The station is included because
+it applies the same score-then-track-id rule the exports do; leaving it on locale collation
+would have made the station order equal-score recommendations differently from the artefact
+they came out of, which is what the lite-against-full convergence audit compares.
+
+The comparator walks UTF-16 code units with a bias that puts surrogates in code point
+order, rather than encoding both strings, because the lite dataset re-sorts every scored
+row on each recommendation. Sorting 61,000 HVSC-shaped paths takes 0.05 s this way and
+0.55 s with a `Buffer.from` per comparison. A test checks the result against
+`Buffer.compare` over ASCII, accented Latin, U+E000, U+FFFD and supplementary characters.
+
+### The tiny profile stops publishing an identity it cannot resolve
+
+Section 4.1 of the tiny format requires an export to reject duplicate 6-byte MD5 prefixes,
+and section 13 requires a reader never to guess when several local files share one. Neither
+rule was implemented. The builder warned and continued, and the reader kept whichever path
+its scan happened to see last.
+
+The builder now fails, naming both paths, rather than producing a bundle in which one file
+identity has two possible answers. The reader now removes an ambiguous prefix from its map
+instead of picking a side, so an affected track resolves to nothing rather than to a file
+that is not the one the station names. Over HVSC's 61,157 files the birthday probability of
+at least one collision is about 0.66% per release, so this is a rare condition that had a
+silent and wrong outcome.
+
+### The tiny profile refuses to read outside the HVSC root
+
+`sid_path` values come from the classification records, and the tiny builder and reader
+turn them into file reads. A record whose path was absolute, contained `..` segments, or
+resolved through a symlink pointing outside the collection was read anyway. Paths are now
+validated before resolution, and the resolved file must sit under the resolved HVSC root.
+An HVSC root that is itself reached through a symlink still works, because both sides of
+the containment test are resolved the same way.
+
+### The full export declares its neighbour foreign keys
+
+`neighbors.seed_track_id` and `neighbors.neighbor_track_id` are now declared as foreign keys
+onto `tracks(track_id)`, and the builder writes with `PRAGMA foreign_keys = ON`. The columns
+and their types are unchanged; only the table's DDL text gained the two clauses, and SQLite
+does not enforce them for a reader that has not set the pragma.
+
+`--rewrite-manifest` additionally checks the same property with a join, so it reports an
+orphaned neighbour row in an export built before the declaration existed instead of
+restating that file's row count as though the graph were intact.
+
+### The WAV cache is bound to the SID emulation that filled it
+
+The render settings sidecar recorded `renderEngine: "wasm"` without saying which SID
+emulation produced the audio. SIDLite and reSIDfp renders were therefore indistinguishable,
+and each was accepted as a cache hit for the other — which is how a corpus half-rendered by
+each emulation could look identical to a clean one, while 34 of the 58 similarity dimensions
+are derived from the register trace that the emulation produces.
+
+The sidecar is now version 4 and carries `sidEngine`. Versions 1 to 3 are rejected rather
+than upgraded, because nothing in an older sidecar can say which emulation wrote it.
+**The first classification run after this release re-renders the whole WAV cache.**
+
+### A non-finite feature fails its own song, not the run
+
+`NaN` and `Infinity` serialise to JSON `null`, which every downstream reader takes for a
+feature that was never measured rather than one that came out broken, so a record carrying
+one must not be written. Such a record is now dropped, counted in `failedCount`, and written
+to the run's failures file with the reason. The run continues: one pathological tune is not
+a reason to discard hours of rendering, and the existing corpus-wide integrity threshold
+(1% of at least 500 records) is what stops a run that is producing them in bulk.
+
+### Resume no longer loses work it already did
+
+Three defects made a resumed classification redo or refuse work it had completed.
+
+- The resume index read `sid_path` out of the JSONL with a regular expression and used the
+  captured text directly. For any path containing a character JSON escapes — a quote or a
+  backslash — the key never matched the one the classifier builds, so that song was
+  reclassified on every resume. The capture is now decoded before the key is built.
+- `--resume-from-features` parsed the file with `JSON.parse` per line. A run killed part-way
+  through an append leaves an unterminated final line, and that threw, so the flag could not
+  read the file a crash produced. The truncated final record is now dropped, with a warning,
+  and its song reclassified. A malformed line anywhere else still fails the run rather than
+  being skipped, because quietly dropping it would shrink the corpus without saying so.
+- The same file was read three times into fully materialised record arrays. Records are now
+  visited one at a time, so peak memory over an 87,868-record features file is the file
+  itself rather than the file plus every parsed record in it.
+
+
 ## 0.8.2 (2026-07-30)
 
 > **A release tagged 0.8.2 existed briefly and was withdrawn.** Its releases and tags were deleted

@@ -23,6 +23,7 @@ import {
   cosineSimilarity,
   weightsForDimensions,
 } from "./vector-similarity.js";
+import { compareUtf8Bytewise } from "./utf8-byte-order.js";
 import { HVSC_VERSION_UNKNOWN } from "./hvsc-version.js";
 
 export const SIMILARITY_EXPORT_SCHEMA_VERSION = "sidcorr-1";
@@ -654,7 +655,7 @@ async function readClassificationsForExport(dirPath: string): Promise<Classifica
 
   async function walk(currentPath: string): Promise<void> {
     const entries = await readdir(currentPath, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
+    entries.sort((left, right) => compareUtf8Bytewise(left.name, right.name));
     for (const entry of entries) {
       const fullPath = path.join(currentPath, entry.name);
       if (entry.isDirectory()) {
@@ -699,6 +700,7 @@ async function readJsonlFiles<T>(dirPath: string): Promise<T[]> {
 
   async function walk(currentPath: string): Promise<void> {
     const entries = await readdir(currentPath, { withFileTypes: true });
+    entries.sort((left, right) => compareUtf8Bytewise(left.name, right.name));
     for (const entry of entries) {
       const fullPath = path.join(currentPath, entry.name);
       if (entry.isDirectory()) {
@@ -897,7 +899,7 @@ function compareScoredTrackRows(
   right: { row: Pick<PersistedTrackRow, "track_id">; score: number },
 ): number {
   return stableSimilarityScore(right.score) - stableSimilarityScore(left.score)
-    || left.row.track_id.localeCompare(right.row.track_id);
+    || compareUtf8Bytewise(left.row.track_id, right.row.track_id);
 }
 
 function computeDefaultManifestPath(outputPath: string): string {
@@ -926,7 +928,7 @@ async function computeDirectoryChecksum(dirPath: string): Promise<string> {
   }
 
   await walk(dirPath);
-  files.sort();
+  files.sort(compareUtf8Bytewise);
   for (const filePath of files) {
     hash.update(await readFile(filePath));
   }
@@ -1431,7 +1433,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
       dims,
     ))
     .sort((left, right) => {
-      const sidPathCompare = left.sid_path.localeCompare(right.sid_path);
+      const sidPathCompare = compareUtf8Bytewise(left.sid_path, right.sid_path);
       if (sidPathCompare !== 0) {
         return sidPathCompare;
       }
@@ -1453,6 +1455,7 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
     database.exec(`
       PRAGMA journal_mode = DELETE;
       PRAGMA synchronous = FULL;
+      PRAGMA foreign_keys = ON;
       CREATE TABLE meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -1487,7 +1490,9 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
         neighbor_track_id TEXT NOT NULL,
         rank INTEGER NOT NULL,
         similarity REAL NOT NULL,
-        PRIMARY KEY (profile, seed_track_id, rank)
+        PRIMARY KEY (profile, seed_track_id, rank),
+        FOREIGN KEY (seed_track_id) REFERENCES tracks(track_id),
+        FOREIGN KEY (neighbor_track_id) REFERENCES tracks(track_id)
       ) WITHOUT ROWID;
       CREATE INDEX tracks_sid_path_idx ON tracks (sid_path, song_index);
     `);
@@ -1601,6 +1606,32 @@ export async function buildSimilarityExport(options: BuildSimilarityExportOption
 }
 
 /**
+ * Every neighbour row must name two tracks the export actually contains.
+ *
+ * The declared foreign keys catch this while a new export is being written, but they
+ * only apply to a connection that enabled `PRAGMA foreign_keys`, and they were not
+ * declared at all in exports built before this check existed. The join below is what
+ * covers those files, which is the case that matters: a manifest rewrite must not
+ * restate the row count of an artefact whose graph points at tracks that are not there.
+ */
+function assertNeighborReferences(database: Database): void {
+  const orphan = database.query(`
+    SELECT n.profile, n.seed_track_id, n.neighbor_track_id
+    FROM neighbors n
+    LEFT JOIN tracks seed ON seed.track_id = n.seed_track_id
+    LEFT JOIN tracks neighbor ON neighbor.track_id = n.neighbor_track_id
+    WHERE seed.track_id IS NULL OR neighbor.track_id IS NULL
+    LIMIT 1
+  `).get() as { profile: string; seed_track_id: string; neighbor_track_id: string } | null;
+  if (orphan) {
+    throw new Error(
+      "Similarity export integrity check failed: neighbor relation references a missing track "
+      + `(profile=${orphan.profile}, seed=${orphan.seed_track_id}, neighbor=${orphan.neighbor_track_id}).`,
+    );
+  }
+}
+
+/**
  * Refresh an existing sidcorr-1 export's manifest from the database's own contents.
  *
  * This exists because the full export is the one artefact that cannot be regenerated:
@@ -1635,6 +1666,7 @@ export async function rewriteSimilarityExportManifest(
   let alreadyCorrect: boolean;
   try {
     const stored = readEmbeddedManifest(reader);
+    assertNeighborReferences(reader);
     recomputed = recomputeEmbeddedManifest(reader, stored, {
       sqlitePath: options.sqlitePath,
       manifestPath,

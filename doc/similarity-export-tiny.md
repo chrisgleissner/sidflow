@@ -732,9 +732,17 @@ any path at all. That is a real integration cost and it should be discovered her
 than after implementation. A consumer that only needs recommendations, and can afford
 8 MB, will have an easier time with `sidcorr-lite-1`, which carries paths directly.
 
+HVSC ships `DOCUMENTS/Songlengths.md5`, whose keys are the plain MD5 of each SID file, so a
+consumer that trusts that index can build the whole prefix-to-path map from one text file
+instead of hashing the corpus. A consumer that does not trust it, or whose collection
+contains files HVSC does not list, has to hash. The reference reader prefers the index and
+falls back to hashing, which costs about 12 seconds for 59,886 files with a warm page cache.
+
 `md5_48` is a 48-bit prefix. Over HVSC's 61,157 files the birthday probability of at least
-one collision is ≈ 0.66%. The generator detects collisions at build time and names both
-files rather than silently mislabelling tracks, but the margin is thin and the next HVSC
+one collision is ≈ 0.66%. Per section 4.1 the generator **rejects** a corpus containing a
+duplicate prefix, naming both files, rather than publishing a bundle in which one entry
+cannot be resolved to a single file. A reader that finds two local files sharing a prefix
+leaves that identity unresolved for the same reason. The margin is thin and the next HVSC
 will make it thinner. Widening to `md5_64` costs 122 KB and drops the probability to
 ~10⁻⁷; it changes the binary layout, so it is deferred to a future schema revision.
 

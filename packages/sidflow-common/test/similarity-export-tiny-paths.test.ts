@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -49,7 +49,10 @@ describe("tiny profile with a nested C64Music layout", () => {
    * `prefix` mirrors the operator's choice: pointing sidPath at the HVSC root gives
    * "C64Music/..." paths, pointing it at the music root gives bare ones.
    */
-  async function build(prefix: "C64Music/" | "") {
+  async function build(
+    prefix: "C64Music/" | "",
+    recordPath = (relative: string) => `${prefix}${relative}`,
+  ) {
     const root = path.join(tempRoot, prefix ? "prefixed" : "bare");
     const classifiedPath = path.join(root, "classified");
     const hvscRoot = path.join(root, "hvsc");
@@ -67,7 +70,7 @@ describe("tiny profile with a nested C64Music layout", () => {
 
       lines.push(
         JSON.stringify({
-          sid_path: `${prefix}${relative}`,
+          sid_path: recordPath(relative),
           song_index: 1,
           ratings: { e: 1 + (index % 5), m: 1 + (index % 5), c: 1 + (index % 5), p: 3 },
           features: { bpm: 100 + index },
@@ -147,5 +150,80 @@ describe("tiny profile with a nested C64Music layout", () => {
     const dataset = await openTinySimilarityDataset(built.tinyPath, { hvscRoot: built.hvscRoot });
     expect(dataset.resolveTrack(`C64Music/${TRACKS[0]!}#1`)).not.toBeNull();
     expect(dataset.resolveTrack(`${TRACKS[0]!}#1`)).not.toBeNull();
+  });
+
+  test("rejects a traversal sid_path instead of reading a file outside HVSC", async () => {
+    await expect(build(
+      "C64Music/",
+      (relative) => relative === TRACKS[0] ? "../outside.sid" : `C64Music/${relative}`,
+    )).rejects.toThrow(/must be a non-empty relative path within/i);
+  });
+
+  test("leaves an ambiguous local md5_48 identity unresolved", async () => {
+    const built = await build("");
+    const duplicatePath = path.join(built.hvscRoot, "C64Music", "COPIES", "First.sid");
+    await mkdir(path.dirname(duplicatePath), { recursive: true });
+    await writeFile(duplicatePath, Buffer.from(`PSID-${TRACKS[0]!}`, "utf8"));
+
+    const dataset = await openTinySimilarityDataset(built.tinyPath, { hvscRoot: built.hvscRoot });
+    expect(dataset.resolveTrack(`${TRACKS[0]!}#1`)).toBeNull();
+  });
+
+  test("accepts an HVSC root reached through a symlink", async () => {
+    // Containment has to compare like with like. Judging an unresolved candidate path
+    // against a fully resolved root rejects every file in an ordinary installation
+    // whose root is a symlink -- which includes macOS, where os.tmpdir() sits under
+    // /var and /var is a symlink to /private/var.
+    const built = await build("");
+    const linkedRoot = path.join(tempRoot, "hvsc-symlink");
+    await symlink(built.hvscRoot, linkedRoot, "dir");
+
+    const dataset = await openTinySimilarityDataset(built.tinyPath, { hvscRoot: linkedRoot });
+    expect(dataset.resolveTrack(`${TRACKS[0]!}#1`)).not.toBeNull();
+  });
+
+  test("rejects a SID file that symlinks outside HVSC", async () => {
+    const outsideFile = path.join(tempRoot, "outside.sid");
+    await writeFile(outsideFile, Buffer.from("PSID-outside", "utf8"));
+
+    await expect((async () => {
+      const root = path.join(tempRoot, "escaping");
+      const classifiedPath = path.join(root, "classified");
+      const hvscRoot = path.join(root, "hvsc");
+      await mkdir(path.join(hvscRoot, "C64Music", "DEMOS"), { recursive: true });
+      await mkdir(classifiedPath, { recursive: true });
+      await symlink(outsideFile, path.join(hvscRoot, "C64Music", "DEMOS", "Escape.sid"), "file");
+      await writeFile(
+        path.join(classifiedPath, "classification_tracks.jsonl"),
+        `${JSON.stringify({
+          sid_path: "DEMOS/Escape.sid",
+          song_index: 1,
+          ratings: { e: 3, m: 3, c: 3, p: 3 },
+          features: { bpm: 120 },
+          classified_at: "2026-03-13T10:00:00.000Z",
+          source: "auto",
+          render_engine: "wasm",
+        })}\n`,
+        "utf8",
+      );
+
+      const sqlitePath = path.join(root, "exports", "full.sqlite");
+      const litePath = path.join(root, "exports", "lite.sidcorr");
+      await buildSimilarityExport({
+        classifiedPath,
+        feedbackPath: path.join(root, "feedback"),
+        outputPath: sqlitePath,
+        manifestPath: path.join(root, "exports", "full.manifest.json"),
+        corpusVersion: "escape",
+      });
+      await buildLiteSimilarityExport({ sourceSqlitePath: sqlitePath, outputPath: litePath, corpusVersion: "escape" });
+      await buildTinySimilarityExport({
+        sourceLitePath: litePath,
+        hvscRoot,
+        outputPath: path.join(root, "exports", "tiny.sidcorr"),
+        neighborSqlitePath: sqlitePath,
+        corpusVersion: "escape",
+      });
+    })()).rejects.toThrow(/resolves outside/i);
   });
 });
