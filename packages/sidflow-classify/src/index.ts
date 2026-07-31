@@ -3993,6 +3993,21 @@ export {
   type ClassificationMetrics,
 } from "./classify-metrics.js";
 
+// Re-export the WAV cache sidecar writer and the SID emulation resolver.
+//
+// Exported so a test fixture that has to look like a cache hit can call the same writer
+// the renderer does, rather than hand-building the sidecar. A hand-built copy stops
+// matching the moment the sidecar version changes, which turns a deliberate cache
+// invalidation into an unexplained end-to-end failure.
+export {
+  getWavRenderSettingsSidecarPath,
+  readWavRenderSettingsSidecar,
+  writeWavRenderSettingsSidecar,
+  WAV_RENDER_SETTINGS_EXTENSION,
+  type WavRenderSettingsSidecar,
+} from "./wav-render-settings.js";
+export { resolveClassifyEngine, CLASSIFY_DEFAULT_SID_ENGINE } from "./render/engine-factory.js";
+
 // Re-export classification telemetry utilities
 export {
   ClassificationTelemetryLogger,
