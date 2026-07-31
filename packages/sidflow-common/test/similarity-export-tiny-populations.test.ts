@@ -85,6 +85,11 @@ interface Fixture {
 
 describe("tiny profile station populations", () => {
   let fixturePromise: Promise<Fixture> | null = null;
+  /**
+   * Recorded as soon as the directory exists, rather than read back from the resolved
+   * fixture, so that a build which fails after `mkdtemp` still gets cleaned up.
+   */
+  let tempRootForCleanup: string | null = null;
 
   /** Builds both chains on first call and hands every later caller the same result. */
   function getFixture(): Promise<Fixture> {
@@ -94,6 +99,7 @@ describe("tiny profile station populations", () => {
 
   async function buildFixture(): Promise<Fixture> {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), "sidflow-tiny-populations-"));
+    tempRootForCleanup = tempRoot;
     return {
       tempRoot,
       healthy: await buildChain(tempRoot, "healthy", TRACK_COUNT, false),
@@ -184,13 +190,16 @@ describe("tiny profile station populations", () => {
   }
 
   afterAll(async () => {
-    // Nothing to remove if no test ever forced the fixture to build.
-    if (fixturePromise === null) {
-      return;
+    // Wait for an in-flight build before removing anything, so the directory is not deleted
+    // underneath it. The failure itself is reported by whichever test awaited the fixture;
+    // it is logged here only because it must not stop the cleanup below.
+    if (fixturePromise !== null) {
+      await fixturePromise.catch((error: unknown) => {
+        console.debug(`[tiny-populations] fixture build failed, cleaning up anyway: ${String(error)}`);
+      });
     }
-    const built = await fixturePromise.catch(() => null);
-    if (built !== null) {
-      await rm(built.tempRoot, { recursive: true, force: true });
+    if (tempRootForCleanup !== null) {
+      await rm(tempRootForCleanup, { recursive: true, force: true });
     }
   });
 
