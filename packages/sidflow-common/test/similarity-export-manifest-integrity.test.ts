@@ -140,6 +140,49 @@ describe("similarity export manifest integrity", () => {
     }
   });
 
+  test("enforces neighbor endpoints and refuses to refresh an orphaned relation", async () => {
+    await buildSimilarityExport({
+      classifiedPath,
+      feedbackPath,
+      outputPath,
+      manifestPath,
+      corpusVersion: "test",
+      neighbors: 3,
+    });
+
+    const database = new Database(outputPath, { readwrite: true, strict: true });
+    try {
+      const foreignKeys = database.query("PRAGMA foreign_key_list(neighbors)").all() as Array<{
+        table: string;
+        from: string;
+        to: string;
+      }>;
+      expect(foreignKeys).toEqual(expect.arrayContaining([
+        expect.objectContaining({ table: "tracks", from: "seed_track_id", to: "track_id" }),
+        expect.objectContaining({ table: "tracks", from: "neighbor_track_id", to: "track_id" }),
+      ]));
+
+      database.exec("PRAGMA foreign_keys = ON");
+      expect(() => database.query(`
+        INSERT INTO neighbors (profile, seed_track_id, neighbor_track_id, rank, similarity)
+        VALUES ('full', 'missing#1', 'also-missing#1', 999, 0.5)
+      `).run()).toThrow(/FOREIGN KEY constraint failed/);
+
+      // Simulate a legacy or externally corrupted artifact. A manifest rewrite must
+      // not make its reported row count look legitimate.
+      database.exec("PRAGMA foreign_keys = OFF");
+      database.query(`
+        INSERT INTO neighbors (profile, seed_track_id, neighbor_track_id, rank, similarity)
+        VALUES ('full', 'missing#1', 'also-missing#1', 999, 0.5)
+      `).run();
+    } finally {
+      database.close();
+    }
+
+    await expect(rewriteSimilarityExportManifest({ sqlitePath: outputPath }))
+      .rejects.toThrow(/neighbor relation references a missing track/);
+  });
+
   test("manifest paths are basenames, never the build host's layout", async () => {
     const result = await buildSimilarityExport({
       classifiedPath,

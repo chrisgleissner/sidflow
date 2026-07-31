@@ -321,6 +321,15 @@ Classification has always run per subsong when a SID file exposes multiple track
 - `rank INTEGER NOT NULL`
 - `similarity REAL NOT NULL`
 
+Both `seed_track_id` and `neighbor_track_id` are declared as foreign keys onto
+`tracks(track_id)`. The columns and their types are unchanged; only the table's DDL text
+gained the two `FOREIGN KEY` clauses. SQLite does not enforce foreign keys unless a
+connection sets `PRAGMA foreign_keys = ON`, so this changes nothing for a reader — it
+constrains the builder, which enables the pragma while it writes. Exports published before
+0.8.3 do not carry the declaration; `sidflow-play export-similarity --format sqlite --rewrite-manifest`
+checks the same property with a join, so it reports an orphaned neighbour row in those
+files too.
+
 ## The similarity vector
 
 `vector_json` holds a **58-dimension** vector per track. Read `vector_dimensions` from

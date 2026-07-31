@@ -48,6 +48,24 @@ const SONG_INDEX_PATTERN = /"song_index":(\d+)/;
 const TRACE_EVENT_PATTERN = /"sidTraceEventCount":(\d+)/;
 
 /**
+ * Decode the JSON string capture without parsing the feature payload.
+ *
+ * Returns the reason on failure rather than just null, because the caller drops the
+ * record and a dropped record means that song is reclassified. That is the safe
+ * direction, but it must not be silent: on an 87,868-line features file a systematically
+ * undecodable path would quietly shrink the resume index and re-render the corpus.
+ */
+function decodeSidPath(escapedPath: string): { path: string } | { error: string } {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse("\"" + escapedPath + "\"");
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  return typeof decoded === "string" ? { path: decoded } : { error: `decoded to ${typeof decoded}` };
+}
+
+/**
  * Dimensions that cannot all be zero at once when the trace holds events.
  *
  * `sidSilentFrameRatio` is deliberately absent: the empty default sets it to 1, so including
@@ -126,6 +144,8 @@ export function resumeKeyFor(sidPath: string, songIndex?: number): string {
 export async function indexExtractedSongs(classifiedPath: string): Promise<Set<string>> {
   const keys = new Set<string>();
   let unsound = 0;
+  let undecodable = 0;
+  let firstUndecodable: string | null = null;
   if (!(await pathExists(classifiedPath))) {
     return keys;
   }
@@ -155,8 +175,16 @@ export async function indexExtractedSongs(classifiedPath: string): Promise<Set<s
         return;
       }
 
+      const decoded = decodeSidPath(pathMatch[1]!);
+      if ("error" in decoded) {
+        undecodable += 1;
+        if (firstUndecodable === null) {
+          firstUndecodable = `${name}: ${pathMatch[1]!} (${decoded.error})`;
+        }
+        return;
+      }
       const songMatch = SONG_INDEX_PATTERN.exec(line);
-      keys.add(resumeKeyFor(pathMatch[1]!, songMatch ? Number.parseInt(songMatch[1]!, 10) : undefined));
+      keys.add(resumeKeyFor(decoded.path, songMatch ? Number.parseInt(songMatch[1]!, 10) : undefined));
     });
   }
 
@@ -164,6 +192,13 @@ export async function indexExtractedSongs(classifiedPath: string): Promise<Set<s
     process.stderr.write(
       `[classify-resume] ${unsound} previously classified record(s) failed the integrity`
       + " check and will be reclassified\n",
+    );
+  }
+
+  if (undecodable > 0) {
+    process.stderr.write(
+      `[classify-resume] ${undecodable} record(s) have a sid_path that could not be decoded and`
+      + ` will be reclassified; first: ${firstUndecodable}\n`,
     );
   }
 

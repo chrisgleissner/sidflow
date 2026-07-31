@@ -7,6 +7,7 @@ import process from "node:process";
 import { Database } from "bun:sqlite";
 
 import {
+  compareUtf8Bytewise,
   cosineSimilarity,
   ensureDir,
   formatHelp,
@@ -646,7 +647,10 @@ async function selectSeedFavorites(
     };
   }));
 
-  scored.sort((left, right) => right.score - left.score || left.row.track_id.localeCompare(right.row.track_id));
+  // Bytewise, so the audit's seed selection breaks ties the same way the exports it
+  // compares do. A locale tie-break here would report disagreement that only exists
+  // between the audit and the artefact, not between the two artefacts.
+  scored.sort((left, right) => right.score - left.score || compareUtf8Bytewise(left.row.track_id, right.row.track_id));
   const favorites: SeedFavorite[] = [];
   const seenPaths = new Set<string>();
   for (const entry of scored) {

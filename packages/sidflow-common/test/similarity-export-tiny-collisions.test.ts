@@ -8,9 +8,9 @@
  * winner's path. A listener sees a station entry naming a tune that is not playing,
  * and nothing in the build says so.
  *
- * These tests pin that the collision is DETECTED and NAMED, and that the bundle still
- * builds -- a collision is a property of the collection, not a bug in the exporter, so
- * refusing to produce anything would be the worse outcome.
+ * The tiny format has no room to disambiguate a duplicated prefix, so publishing one
+ * would make an affected station resolve the wrong local file. The builder must reject
+ * that source rather than emit a bundle a consumer cannot use correctly.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -108,21 +108,10 @@ describe("tiny profile md5_48 collisions", () => {
     return tinyPath;
   }
 
-  test("names both colliding files instead of silently dropping one", async () => {
-    await build();
-    const stderr = stderrChunks.join("");
-    expect(stderr).toContain("md5_48 collision");
-    // Both sides named, so an operator can act on it rather than just knowing a
-    // count. Which one wins is an implementation detail; that both appear is not.
-    expect(stderr).toContain("Alpha.sid");
-    expect(stderr).toContain("Beta.sid");
-  });
-
-  test("still produces a usable bundle, because a collision is the corpus's property", async () => {
-    const tinyPath = await build();
-    const { stat } = await import("node:fs/promises");
-    const info = await stat(tinyPath);
-    expect(info.size).toBeGreaterThan(0);
+  test("rejects colliding identities instead of publishing an ambiguous bundle", async () => {
+    // Both paths are named so an operator can repair the corpus rather than receiving
+    // a generic collision count.
+    await expect(build()).rejects.toThrow(/duplicate md5_48 identity[\s\S]*Alpha\.sid[\s\S]*Beta\.sid/i);
   });
 
   test("says nothing when no two files collide", async () => {

@@ -44,6 +44,7 @@ async function seedWasmCacheArtifact(wavFile: string): Promise<void> {
     maxClassifySec: 15,
     sourceOffsetSec: 0,
     renderEngine: "wasm",
+    sidEngine: "sidlite",
     traceCaptureEnabled: true,
     traceSidecarVersion: SID_TRACE_SIDECAR_VERSION,
   });

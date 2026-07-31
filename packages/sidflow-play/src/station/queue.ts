@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  compareUtf8Bytewise,
   cosineSimilarity,
   openSqliteSimilarityDataset,
   openLiteSimilarityDataset,
@@ -263,8 +264,11 @@ function compareRecommendationByScoreThenTrackId(
   left: Pick<SimilarityExportRecommendation, "score" | "track_id" | "rank">,
   right: Pick<SimilarityExportRecommendation, "score" | "track_id" | "rank">,
 ): number {
+  // The same tie-break the exports apply. Locale collation here would order equal-score
+  // recommendations differently from the artifact they came out of, which is exactly what
+  // the lite-against-full convergence audit compares.
   return stableRecommendationScore(right.score) - stableRecommendationScore(left.score)
-    || left.track_id.localeCompare(right.track_id)
+    || compareUtf8Bytewise(left.track_id, right.track_id)
     || left.rank - right.rank;
 }
 
