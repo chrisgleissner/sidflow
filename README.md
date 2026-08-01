@@ -12,9 +12,6 @@ A seamless stream of similar Commodore 64 SID songs.
 
 SIDFlow analyses your Commodore 64 SID music collection. It extracts audio features, learns your taste, and generates a continuous stream of similar tracks.
 
-> [!NOTE]
-> This project is under active development. Some documented features may not yet be fully functional. 
-
 ## Choose your path
 
 Start with the outcome you need; each path is independent at first and leads to the relevant detailed reference.
