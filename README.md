@@ -122,8 +122,6 @@ that specifically need `features_json` or SQL access.
 | **Features sidecar** | 76 MB | You want to derive your own representation from the raw 129-key feature records. Supplementary, not a tier — pair it with lite. | [Full SQLite export](doc/similarity-export.md) |
 | **Full** (`sidcorr-1`, SQLite) | 982 MB, or 194 MB gzipped | You need `features_json` in a database, or SQL-backed querying. | [Full SQLite export](doc/similarity-export.md) |
 
-> Use this repository when you need to **generate, inspect, or serve** similarity data. Use [sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases) when you need the **published HVSC results** in another project.
-
 ---
 
 ## Play SID music
