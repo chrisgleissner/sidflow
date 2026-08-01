@@ -101,7 +101,10 @@ The Phase 5 export is a SQLite-first artifact intended for downstream offline re
 - Sidecar manifest: `data/exports/sidcorr-hvsc-full-sidcorr-1.manifest.json`
 - Shared query helpers: `recommendFromSeedTrack(...)` and `recommendFromFavorites(...)` from `@sidflow/common`
 
-The full schema and operator workflow live in [./similarity-export.md](./similarity-export.md).
+The full schema and operator workflow live in:
+- [Full export](./similarity-export.md) - all data
+- [Lite export](./similarity-export-lite.md) - trimmed data but sufficient for most use cases
+- [Tiny export](./similarity-export-tiny.md) - minimal data for resource constrained environments
 
 ## Configuration
 
