@@ -122,16 +122,6 @@ that specifically need `features_json` or SQL access.
 | **Features sidecar** | 76 MB | You want to derive your own representation from the raw 129-key feature records. Supplementary, not a tier — pair it with lite. | [Full SQLite export](doc/similarity-export.md) |
 | **Full** (`sidcorr-1`, SQLite) | 982 MB, or 194 MB gzipped | You need `features_json` in a database, or SQL-backed querying. | [Full SQLite export](doc/similarity-export.md) |
 
-> **Similarity is *weighted* cosine.** Read `vector_weights` from the manifest. A consumer
-> computing plain cosine agrees with the authoritative neighbours on roughly half its
-> results — measured R@1 = 0.478 against 0.983 — and nothing about the result looks wrong.
-> See [the metric](doc/similarity-export.md#similarity-weighted-cosine).
-
-> Upgrading from an earlier data release? Read
-> **[Migrating from the 0.5-era data release to 0.8.0](doc/migration/0.5-to-0.8.md)**. The
-> 0.5-era export's similarity data was inert — 91.4% of tracks shared one vector — so any
-> threshold tuned against it needs re-tuning rather than carrying over.
-
 > Use this repository when you need to **generate, inspect, or serve** similarity data. Use [sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases) when you need the **published HVSC results** in another project.
 
 ---
