@@ -1,5 +1,22 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## Phase 44 - SID Header Conformance Verifier
+
+Raised 2026-10-04. Check every HVSC header against `SID_file_format.txt`, cross-checked
+against libsidplayfp's loader. Branch `feat/sid-header-conformance`.
+
+1. [DONE] P44-T01 Rule set in `@sidflow/common` (`sid-header-conformance.ts`), one firing and one
+   non-firing synthetic test per rule.
+2. [DONE] P44-T02 Parallel audit script `scripts/audit-sid-headers.ts` with a libsidplayfp-wasm
+   cross-check; full HVSC #85 run.
+3. [OPEN] P44-T03 `sid-parser.ts` treats any non-zero $7A/$7B as a SID and
+   `doc/c64/sid-file-structure.md` describes flags as a uint32. Both are left unchanged here.
+
+### Progress
+
+- 2026-10-04: HVSC #85, 61,157 files: no findings of any severity; libsidplayfp 3.0.2 loads all
+  files without changing a value.
+
 ## Phase 43 - Classification And Tiny Export Bug Bash
 
 Raised 2026-07-31. Audit the classification pipeline that feeds `sidflow-data` and the
