@@ -18,6 +18,7 @@ export * from "./recommender.js";
 export * from "./vector-similarity.js";
 export * from "./utf8-byte-order.js";
 export * from "./sid-parser.js";
+export * from "./sid-header-conformance.js";
 export * from "./playback-lock.js";
 export * from "./archive.js";
 export * from "./playback-harness.js";

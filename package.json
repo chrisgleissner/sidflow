@@ -25,6 +25,7 @@
     "ci:verify": "npm run validate:config && npm run fetch:sample && npm run classify:sample && npm run test:e2e",
     "format:json": "node scripts/run-bun.mjs run scripts/format-json.ts",
     "build:db": "node scripts/run-bun.mjs run scripts/build-db.ts",
+    "audit:sid-headers": "node scripts/run-bun.mjs run scripts/audit-sid-headers.ts --",
     "export:similarity": "node scripts/run-bun.mjs run packages/sidflow-play/src/cli.ts export-similarity",
     "validate:similarity-convergence": "node scripts/run-bun.mjs run scripts/run-similarity-convergence.ts --",
     "validate:tiny-export-equivalence": "node scripts/run-bun.mjs run scripts/run-tiny-export-equivalence-audit.ts --",
