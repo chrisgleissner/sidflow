@@ -1,0 +1,224 @@
+{
+  "populations": {
+    "files": 61157,
+    "subtunes": 87868
+  },
+  "basicDeclarations": {
+    "files": 589,
+    "subtunes": 1390
+  },
+  "categories": {
+    "basic-sensitive": {
+      "files": 21,
+      "filePercent": "0.0343%",
+      "subtunes": 21,
+      "subtunePercent": "0.0239%"
+    },
+    "both-sensitive": {
+      "files": 534,
+      "filePercent": "0.8732%",
+      "subtunes": 1189,
+      "subtunePercent": "1.3532%"
+    },
+    "identical-in-window": {
+      "files": 1601,
+      "filePercent": "2.6179%",
+      "subtunes": 2379,
+      "subtunePercent": "2.7075%"
+    },
+    "insufficient-reference-activity": {
+      "files": 344,
+      "filePercent": "0.5625%",
+      "subtunes": 1233,
+      "subtunePercent": "1.4032%"
+    },
+    "kernal-sensitive": {
+      "files": 1044,
+      "filePercent": "1.7071%",
+      "subtunes": 1430,
+      "subtunePercent": "1.6274%"
+    },
+    "pcm-difference-with-similar-write-sequence": {
+      "files": 58089,
+      "filePercent": "94.9834%",
+      "subtunes": 81615,
+      "subtunePercent": "92.8836%"
+    },
+    "quiet-reference": {
+      "files": 1,
+      "filePercent": "0.0016%",
+      "subtunes": 1,
+      "subtunePercent": "0.0011%"
+    }
+  },
+  "kernalRemoval": {
+    "files": 1578,
+    "filePercent": "2.5802%",
+    "subtunes": 2619,
+    "subtunePercent": "2.9806%"
+  },
+  "basicRemoval": {
+    "files": 555,
+    "filePercent": "0.9075%",
+    "subtunes": 1210,
+    "subtunePercent": "1.3771%"
+  },
+  "anyExecutionSensitivity": {
+    "files": 1599,
+    "filePercent": "2.6146%",
+    "subtunes": 2640,
+    "subtunePercent": "3.0045%"
+  },
+  "inconclusive": {
+    "files": 345,
+    "filePercent": "0.5641%",
+    "subtunes": 1234,
+    "subtunePercent": "1.4044%"
+  },
+  "windows": {
+    "2": 82637,
+    "10": 5153,
+    "30": 45,
+    "60": 33
+  },
+  "errors": {
+    "kernal": 308,
+    "neither": 128,
+    "basic": 22
+  },
+  "derived": 171716,
+  "transitions": {
+    "both-sensitive -> both-sensitive": 6,
+    "pcm-difference-with-similar-write-sequence -> pcm-difference-with-similar-write-sequence": 40,
+    "identical-in-window -> identical-in-window": 5,
+    "identical-in-window -> kernal-sensitive": 1,
+    "insufficient-reference-activity -> insufficient-reference-activity": 3,
+    "insufficient-reference-activity -> both-sensitive": 9,
+    "basic-sensitive -> both-sensitive": 3,
+    "basic-sensitive -> basic-sensitive": 13,
+    "basic-sensitive -> quiet-reference": 1,
+    "kernal-sensitive -> kernal-sensitive": 1
+  },
+  "runs": [
+    {
+      "name": "rom-audit-final",
+      "manifest": {
+        "schema": 1,
+        "files": 61157,
+        "songs": 87868,
+        "seconds": 2,
+        "nativeSha256": "7c4494076d6fcb26f7d355314bf1c467f7ec68c159efe61e98def4451ee11123",
+        "sourceSha256": "9c4a79f69836f7a10574fa4275cb8c875f5e9f10a98b35d34e01c1aacfe58378",
+        "corpusSha256": "4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e",
+        "documents": {
+          "HVSC.txt": "69e45ce83aa511f917b8f59d4078606325c4bc01254473ea29800ff0a8c89792",
+          "SID_file_format.txt": "b89a78d3c1d90d0b8c6b4cfd2001be026ad6c2c31b73cdbab857c627a60779f0",
+          "Songlengths.md5": "3f2bb5c14e3396fb20979cb017421386dc9e32162999974ad1e4f0a230dc397e",
+          "STIL.txt": "b1ef3584a5b3501e2bbd2ef056d6539a1bbee7933a7828537c3946c1b16cde43",
+          "Update85.hvs": "23b38b9827538c361cb342f3aada8df2bcb355ba6c2337bd0b67d573c733cd17"
+        },
+        "roms": {
+          "kernal.901227-03.bin": "83c60d47047d7beab8e5b7bf6f67f80daa088b7a6a27de0d7e016f6484042721",
+          "basic.901226-01.bin": "89878cea0a268734696de11c4bae593eaaa506465d2029d619c0e0cbccdfa62d",
+          "characters.901225-01.bin": "fd0d53b8480e86163ac98998976c72cc58d5dd8eb824ed7b829774e74213b420"
+        },
+        "protocol": {
+          "rate": 8000,
+          "stereo": true,
+          "powerOnDelay": 5000,
+          "chunkCycles": 256,
+          "engine": "SIDLite",
+          "missingBasic": "8192 zero bytes",
+          "missingKernal": "libsidplayfp minimal interrupt shim",
+          "chargen": "constant in all variants",
+          "adaptive": "BASIC-flagged, execution-sensitive and inconclusive references tested for at least 10 seconds"
+        },
+        "optimization": "unread BASIC bank equivalence; derivedFrom marks skipped renders"
+      },
+      "manifestSha256": "f8a0a0b8fbdc214d9f358054c462f291457eaa5a467b0167033d102496d72898",
+      "executionSha256": "abdbc76b4549576bb6428d6a9a4687b42b8d6eb1ecfd8777ddc207fb0c3e9c23",
+      "testedSubtunes": 87868
+    },
+    {
+      "name": "rom-audit-notable-final",
+      "manifest": {
+        "schema": 1,
+        "files": 61157,
+        "songs": 87868,
+        "seconds": 30,
+        "selectionSha256": "07dd3b03be2930d3f0f977a282d32a94b9978c6df8e98cca5f25eec28e23888f",
+        "nativeSha256": "7c4494076d6fcb26f7d355314bf1c467f7ec68c159efe61e98def4451ee11123",
+        "sourceSha256": "9c4a79f69836f7a10574fa4275cb8c875f5e9f10a98b35d34e01c1aacfe58378",
+        "corpusSha256": "4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e",
+        "documents": {
+          "HVSC.txt": "69e45ce83aa511f917b8f59d4078606325c4bc01254473ea29800ff0a8c89792",
+          "SID_file_format.txt": "b89a78d3c1d90d0b8c6b4cfd2001be026ad6c2c31b73cdbab857c627a60779f0",
+          "Songlengths.md5": "3f2bb5c14e3396fb20979cb017421386dc9e32162999974ad1e4f0a230dc397e",
+          "STIL.txt": "b1ef3584a5b3501e2bbd2ef056d6539a1bbee7933a7828537c3946c1b16cde43",
+          "Update85.hvs": "23b38b9827538c361cb342f3aada8df2bcb355ba6c2337bd0b67d573c733cd17"
+        },
+        "roms": {
+          "kernal.901227-03.bin": "83c60d47047d7beab8e5b7bf6f67f80daa088b7a6a27de0d7e016f6484042721",
+          "basic.901226-01.bin": "89878cea0a268734696de11c4bae593eaaa506465d2029d619c0e0cbccdfa62d",
+          "characters.901225-01.bin": "fd0d53b8480e86163ac98998976c72cc58d5dd8eb824ed7b829774e74213b420"
+        },
+        "protocol": {
+          "rate": 8000,
+          "stereo": true,
+          "powerOnDelay": 5000,
+          "chunkCycles": 256,
+          "engine": "SIDLite",
+          "missingBasic": "8192 zero bytes",
+          "missingKernal": "libsidplayfp minimal interrupt shim",
+          "chargen": "constant in all variants",
+          "adaptive": "BASIC-flagged, execution-sensitive and inconclusive references tested for at least 10 seconds"
+        },
+        "optimization": "unread BASIC bank equivalence; derivedFrom marks skipped renders"
+      },
+      "manifestSha256": "04e0c556204bd1152cb89ec6622772b9f8863403e60af270660f52c6186c3307",
+      "executionSha256": "bb58e47bb9d9015cd33551d1a2681342df7b82373be2617ee8423c25fc648bec",
+      "testedSubtunes": 49
+    },
+    {
+      "name": "rom-audit-extended-final",
+      "manifest": {
+        "schema": 1,
+        "files": 61157,
+        "songs": 87868,
+        "seconds": 60,
+        "selectionSha256": "f9f9a198395822bb9454eef2ce22483ff407934308a6797db32ee6198ed7ce00",
+        "nativeSha256": "7c4494076d6fcb26f7d355314bf1c467f7ec68c159efe61e98def4451ee11123",
+        "sourceSha256": "9c4a79f69836f7a10574fa4275cb8c875f5e9f10a98b35d34e01c1aacfe58378",
+        "corpusSha256": "4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e",
+        "documents": {
+          "HVSC.txt": "69e45ce83aa511f917b8f59d4078606325c4bc01254473ea29800ff0a8c89792",
+          "SID_file_format.txt": "b89a78d3c1d90d0b8c6b4cfd2001be026ad6c2c31b73cdbab857c627a60779f0",
+          "Songlengths.md5": "3f2bb5c14e3396fb20979cb017421386dc9e32162999974ad1e4f0a230dc397e",
+          "STIL.txt": "b1ef3584a5b3501e2bbd2ef056d6539a1bbee7933a7828537c3946c1b16cde43",
+          "Update85.hvs": "23b38b9827538c361cb342f3aada8df2bcb355ba6c2337bd0b67d573c733cd17"
+        },
+        "roms": {
+          "kernal.901227-03.bin": "83c60d47047d7beab8e5b7bf6f67f80daa088b7a6a27de0d7e016f6484042721",
+          "basic.901226-01.bin": "89878cea0a268734696de11c4bae593eaaa506465d2029d619c0e0cbccdfa62d",
+          "characters.901225-01.bin": "fd0d53b8480e86163ac98998976c72cc58d5dd8eb824ed7b829774e74213b420"
+        },
+        "protocol": {
+          "rate": 8000,
+          "stereo": true,
+          "powerOnDelay": 5000,
+          "chunkCycles": 256,
+          "engine": "SIDLite",
+          "missingBasic": "8192 zero bytes",
+          "missingKernal": "libsidplayfp minimal interrupt shim",
+          "chargen": "constant in all variants",
+          "adaptive": "BASIC-flagged, execution-sensitive and inconclusive references tested for at least 10 seconds"
+        },
+        "optimization": "unread BASIC bank equivalence; derivedFrom marks skipped renders"
+      },
+      "manifestSha256": "8e9927801cfc1f2a6999fd279c11827d2f016ad12b893a0efd3f741bb21bcebc",
+      "executionSha256": "1026a512c04617d5bc2207fdff0e7613bbf44eb9f61217ee3711269be789ed00",
+      "testedSubtunes": 33
+    }
+  ],
+  "note": "Longest available controlled window per subtune; finite-window sensitivity, not perpetual necessity; file categories overlap."
+}

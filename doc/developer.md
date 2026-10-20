@@ -46,6 +46,37 @@ tsc -b                 # Type check
 
 For iterative phase work, prefer `bun run build:quick` plus targeted test files for the area you changed. Reserve `bun run build` and the full coverage suite from `bun run test` for phase gates and final validation.
 
+### HVSC ROM requirement research
+
+The [ROM requirement report](research/hvsc-rom-requirements.md) distinguishes
+BASIC header declarations, changed execution and PCM differences with similar
+register sequences. Its audit reads the complete HVSC release index and checks all
+files before starting checkpointed parallel native workers:
+
+```sh
+bash scripts/rom-audit/build-native.sh
+bun scripts/rom-audit/verify-native.ts /path/C64Music /path/roms
+bun scripts/rom-audit/audit.ts --hvsc /path/C64Music --roms /path/roms \
+  --out workspace/rom-audit --workers 7 --seconds 2
+```
+
+The native build uses the complete source bundled in the locked WASM dependency;
+it needs `g++`, `make`, `autoreconf`, `libtoolize`, `pkg-config` and `xa` (`xa65`),
+without Docker or a different distro SID engine. `--seconds` is a bounded start
+window; BASIC and inconclusive or changed cases receive at least ten seconds.
+Repeated identical commands resume only matching manifests. `--selection` accepts
+a JSON array of relative `path` and one-based `song` pairs for longer follow-ups.
+Never interpret a passing short window as proof that a song never needs ROMs.
+
+The sanitizer regression requires the actual HVSC failure input as well as
+synthetic stimuli:
+
+```sh
+ROM_AUDIT_SANITIZE=1 bash scripts/rom-audit/build-native.sh
+bun scripts/rom-audit/native-regression.ts \
+  workspace/rom-audit-native-asan/render /path/roms /path/C64Music
+```
+
 Queued web jobs created through `/api/fetch`, `/api/train`, and `/api/classify` with `async=true` rely on the manifest-backed worker started by `bun run jobs:run`. The web app now submits those jobs and reports their state; the worker owns execution.
 
 For offline consumer integrations, generate the portable similarity bundle after classification:
