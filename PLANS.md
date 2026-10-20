@@ -1,5 +1,108 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## HVSC ROM dependency investigation (2026-10-20) — complete
+
+Branch `research/hvsc-rom-requirements`, based on refreshed `origin/main` (`d893e32`).
+The separate SIDFlow and C64 Commander checkouts are left unchanged.
+
+- [x] Locate HVSC 85 and verify its stated population: 61,157 SID files.
+- [x] Census headers: 87,868 subtunes; 589 BASIC-flagged files / 1,390 subtunes.
+- [x] Add a reproducible header census and controlled four-configuration render audit.
+- [x] Verify deterministic reference renders, ROM isolation, error accounting and denominators.
+- [x] Run the census and rendering comparison; record scope and limitations without
+  equating RSID, ROM address references, or PCM differences with proven dependencies.
+- [x] Publish the report and per-file/per-subtune evidence; validate script and repository.
+
+### Additional backlog task — ROM-free SIDLite fallback feasibility
+
+- [x] Establish whether SIDLite in the locked `libsidplayfp-wasm` package can
+  execute ROM-dependent tunes without KERNAL/BASIC; distinguish the SID chip
+  emulator from libsidplayfp's shared 6510/C64 execution environment.
+- [x] Include measured examples and evaluate transparent playback routing:
+  versioned per-file/per-subtune requirements versus bounded dynamic detection,
+  cache identity, unknown/local tunes, and startup latency. A proposed fallback
+  must actually restore correct playback; changing chip emulation alone is not
+  evidence that missing C64 system routines have been supplied.
+- [x] Document the design in the investigation's Markdown report. Implementation
+  in C64 Commander or SIDFlow's playback path is follow-up work, not part of this
+  research branch.
+
+### Controlled census evidence
+
+- All 61,157 raw MD5s, paths and 87,868 subtune counts match Songlengths.md5.
+- Native engine built from the locked 1.0.1 complete-source archive (libsidplayfp
+  3.0.2), with the existing SID-write observer and an observational BASIC-bank
+  read counter. Original native/WASM controls: 24 matching PCM hashes and write
+  counts across PSID, RSID, BASIC, multi-SID and non-default subtunes.
+- An engine heap-buffer overflow was isolated on `Justincase_part_6.sid` and
+  confirmed with AddressSanitizer. All preliminary 20,000/16,000-event execution
+  batches are excluded. The final renderer pulls 256 scheduler events at a time;
+  its native/WASM controls pass, and the actual crashing input passes ASAN.
+  The native regression fails under ASAN when the old 20,000-event pull is restored.
+- The final full two-second census (ten seconds for BASIC, execution-sensitive
+  and inconclusive cases) is checkpointed under `workspace/rom-audit-final`.
+  No preliminary rows are seeded into it. Zero mapped BASIC reads prove redundant
+  bank comparisons; every inferred result is explicitly marked in its JSON.
+- A fresh 30-second follow-up for 49 notable/competition-related subtunes is under
+  `workspace/rom-audit-notable-final`; selection is retained in validation.
+- Current C64 Commander package 1.1.0 / libsidplayfp 3.1.1 is checked separately
+  with both SIDLite and reSIDfp, without changing SIDFlow's pinned dependency.
+- `bun run build:quick` passed. Focused tests passed. An initial full test run
+  hit the Super Mario throughput drift assertion while the CPU-intensive audit
+  and another process's emulator were running. Three subsequent complete
+  runs pass with the audit idle; the performance assertion is unchanged.
+
+Rendering keeps CHARGEN constant, uses fixed power-on delay, and compares both-ROMs
+against neither, KERNAL-only and BASIC-only. Repeat references distinguish unstable
+output from ROM effects. A bounded render proves behavior only within its measured
+window, not the absence of a dependency later in a song.
+
+### Resumed investigation: completed measurements and tracker disposition
+
+- Re-inspected worktree HEAD `d893e32`, all audit scripts and logs, process list,
+  installed packages, actual Commander source and current GitHub trackers.
+  No audit process remained. The complete 87,868-row final run, 49-subtune
+  thirty-second run and 33-subtune sixty-second run were already present.
+- Re-ran the exact full-census command: every corpus file/hash/subtune matched
+  Songlengths.md5, manifest and local ROM identities; zero pending jobs. All
+  three runs share the same binary/archive/corpus/documents/ROMs/protocol and
+  have no preliminary seed. Publication validates unique complete coverage,
+  adaptive durations, finite/error outcomes and each zero-read derivation.
+- Longest-window totals: KERNAL-sensitive including both 1,578 files / 2,619
+  subtunes; BASIC-sensitive including both 555 / 1,210; both 534 / 1,189;
+  distinct union 1,599 / 2,640. Inconclusive 345 / 1,234, retained separately.
+  These are finite-window execution sensitivity, not universal necessity counts.
+- Generated the exhaustive Markdown catalogue (59,631 files / 85,687 rows,
+  including PCM-only changes) and all 49 notable rows; retained full available
+  STIL notes, missing-metadata markers, exact selections and portable manifests.
+  Raw execution/audio/corpus/ROM files remain local and uncommitted.
+- Existing confirmed defect reports, verified open:
+  [libsidplayfp-wasm #14](https://github.com/chrisgleissner/libsidplayfp-wasm/issues/14)
+  (primary SIDLite capacity/default-pull defect),
+  [Commander #538](https://github.com/chrisgleissner/c64commander/issues/538)
+  (separate live/prerender/seek containment/update action), and
+  [Commander #539](https://github.com/chrisgleissner/c64commander/issues/539)
+  (missing-ROM playback/status). No duplicate issues or application patch.
+- Reproduced actual dispatcher/core results with package 1.1.0: supplied-ROM
+  1,177 writes versus one without ROMs, both reported opened/romRequired false.
+  Current SIDLite/reSIDfp controlled checks show 1,176 vs one, with sustained
+  per-second reference audio versus a startup transient. No phone failure claimed.
+- Re-ran 24 native/WASM parity controls and safe real-input ASAN regression:
+  pass. Restored-old-pull regression fails with the expected SIDLite overflow.
+  The old minimal-*48k logs are invalid (missing executable); the newly compiled
+  standalone 1.1.0 48 kHz reproducer passes at 256 and ASAN-fails at 20,000.
+  Shipped 1.1.0 WASM pull-size differential controls also rechecked.
+- Fixed publication script's Map tuple inference error; strict ESNext/bundler
+  script typechecking and repository build pass. The earlier `--types bun`
+  invocation was invalid; use `--types bun-types`. Audit tests now 14 / 45
+  expectations. Final repository validation: `bun run build` passed; strict script typecheck
+  passed; focused audit tests 14 pass / 0 fail; three serial full `test:ci`
+  coverage runs each 2,888 pass / 0 fail / one existing opt-in skip. Literal
+  per-batch outputs are retained in `doc/research/hvsc-rom-validation.md`.
+  Report/catalogue links and population totals checked. Fresh native rebuild is byte-identical to the
+  measured binary. Completed research stays on its existing branch; no merge
+  or application deployment.
+
 ## Phase 44 - SID Header Conformance Verifier
 
 Raised 2026-10-04. Check every HVSC header against `SID_file_format.txt`, cross-checked
