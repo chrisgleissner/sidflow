@@ -103,6 +103,30 @@ window, not the absence of a dependency later in a song.
   measured binary. Completed research stays on its existing branch; no merge
   or application deployment.
 
+### Software-fix follow-through (2026-10-20)
+
+- [x] Publish research in [SIDFlow PR #107](https://github.com/chrisgleissner/sidflow/pull/107), now merged.
+- [x] Track the native SIDLite capacity correction in library PR #15 and the
+  rootless-Docker build correction in issue #16 / PR #17; both PRs are merged
+  and published in libsidplayfp-wasm 1.1.1.
+- [x] Raise Commander PR #540 for the exact dependency upgrade and BASIC status
+  correction. Adversarial review reproduced and fixed a cached-intro bypass;
+  regression tests fail without the correction.
+- [x] Deploy both Android editions and verify actual worker controls without an
+  audio sink. Silent Callback input/rotation/search checks pass. Speaker tests
+  are blocked by the user's explicit all-audio-silent requirement.
+- [x] Converge Commander PR #540: all required CI checks pass; merged coverage
+  is 96.25% lines / 89.64% branches. The E2E shard-2 artifact upload timed out
+  after all 72 tests passed, then passed on retry. Both issues #538/#539 are
+  closed; Commander has no open issues. Created the **1.1.1-rc1** source tag at
+  `2b1ad80bb136f49512a83013226a6024f84b0436`; release workflows build its artifacts.
+- [x] Record final tracker and RC tag disposition in this documentation-only
+  follow-up. Verified links and `git diff --check`; no code or measurements change.
+
+The historical controlled measurements and their package 1.0.1 / libsidplayfp
+3.0.2 provenance remain unchanged. No ROM, corpus or generated audio is committed.
+The original research worktree's unrelated deletion is preserved.
+
 ## Phase 44 - SID Header Conformance Verifier
 
 Raised 2026-10-04. Check every HVSC header against `SID_file_format.txt`, cross-checked
