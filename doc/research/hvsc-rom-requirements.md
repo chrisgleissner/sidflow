@@ -401,20 +401,37 @@ perceptible degradation, or that 8 kHz preserves full SID fidelity.
 
 | Tracker | Confirmed evidence | Disposition |
 |---|---|---|
-| [libsidplayfp-wasm #14](https://github.com/chrisgleissner/libsidplayfp-wasm/issues/14) | Native SIDLite heap overflow in bundled libsidplayfp 3.0.2 and 3.1.1; shipped WASM output depends on pull size in both package versions. | Open primary engine/wrapper issue; real-input hashes, standalone ASAN reproducer, safe/unsafe controls and remediation surface supplied. |
-| [Commander #538](https://github.com/chrisgleissner/c64commander/issues/538) | Actual live/prerender/seek code at `c99f2dd2adf2f95efb823d9ffee5cc73e5047277` inherits unsafe package defaults. | Open linked consumer containment/dependency-update issue. No Android crash claimed. |
-| [Commander #539](https://github.com/chrisgleissner/c64commander/issues/539) | Actual dispatcher/core opens BASIC-dependent 128 Byte Blues with `romRequired: false` and only one write without ROMs, versus 1,177 with ROMs. | Open application integration/status issue, including real-path reproduction and regression requirements. |
+| [libsidplayfp-wasm #14](https://github.com/chrisgleissner/libsidplayfp-wasm/issues/14) | Native SIDLite heap overflow in bundled libsidplayfp 3.0.2 and 3.1.1; shipped WASM output depends on pull size in both package versions. | Closed by [library PR #15](https://github.com/chrisgleissner/libsidplayfp-wasm/pull/15), released in [1.1.1](https://github.com/chrisgleissner/libsidplayfp-wasm/releases/tag/v1.1.1). Real-input ASAN positive/negative controls establish the capacity correction; PCM pull-size differences alone do not establish corruption. |
+| [Commander #538](https://github.com/chrisgleissner/c64commander/issues/538) | Actual live/prerender/seek code at `c99f2dd2adf2f95efb823d9ffee5cc73e5047277` inherits unsafe package defaults. | Closed by merged [Commander PR #540](https://github.com/chrisgleissner/c64commander/pull/540), pinning the corrected 1.1.1 package for live, prerender and seek calls. No Android crash is claimed. |
+| [Commander #539](https://github.com/chrisgleissner/c64commander/issues/539) | Actual dispatcher/core opens BASIC-dependent 128 Byte Blues with `romRequired: false` and only one write without ROMs, versus 1,177 with ROMs. | Closed by merged [Commander PR #540](https://github.com/chrisgleissner/c64commander/pull/540): declared-BASIC refusal, unsupported-prerender rejection and protection against cached intros bypassing that refusal. Both cache regressions fail without the correction. |
 
-These existing trackers were checked rather than duplicated. The
-[overflow investigation](sidlite-20ms-buffer-overflow.md) distinguishes native,
-shipped-WASM and reachable application evidence. All three remain open; no
-engine correction has landed as part of this branch. Detailed issues are the
-chosen disposition rather than a consumer-only patch: fixing engine capacity
-is authoritative, and live rendering, prerendering, seeking, status reporting
-and unknown-file routing need coordinated tests. A smaller pull is local
-containment, not a universal capacity proof. Changing fallback product behavior
-is outside this research implementation. No application code is changed here,
-so no device deployment or UI/screenshot refresh is part of this software-only study.
+A separate build defect,
+[library #16](https://github.com/chrisgleissner/libsidplayfp-wasm/issues/16),
+left rootless-Docker outputs owned by subordinate host IDs and blocked the
+following TypeScript build. It is closed by
+[PR #17](https://github.com/chrisgleissner/libsidplayfp-wasm/pull/17), also in
+1.1.1. The fix has rootful/rootless mapping tests and a successful rootless
+WASM build; it is not evidence about music compatibility.
+
+The [overflow investigation](sidlite-20ms-buffer-overflow.md) distinguishes native,
+shipped-WASM and reachable application evidence. The library grows storage before
+each SIDLite clock and refreshes mixer pointers; Commander consumes that fix in
+all three rendering paths instead of introducing a temporary event-count override.
+A smaller pull remains the historical audit's containment, not a universal capacity
+proof. **The census, engine pin, observation windows and counts are unchanged**;
+the later library/consumer corrections do not retrospectively upgrade the measured
+libsidplayfp 3.0.2 environment.
+
+Both Commander APK editions were deployed for worker controls and silent handset
+checks. The user requires all audio to remain silent: no speaker
+fidelity, audible latency or crossfade validation is claimed. The verified worker
+refusal and finite-window ROM sensitivity do not establish a general ROM-free
+fallback. The Commander [1.1.1-rc1 source tag](https://github.com/chrisgleissner/c64commander/tree/1.1.1-rc1)
+contains the merged fixes at `2b1ad80bb136f49512a83013226a6024f84b0436`;
+its [release workflow](https://github.com/chrisgleissner/c64commander/actions/workflows/android.yaml)
+produces the distributable artifacts after its gates pass.
+No application code, ROM binaries or generated audio is included in this research
+follow-up.
 
 ## Reproducing follow-ups and publication
 

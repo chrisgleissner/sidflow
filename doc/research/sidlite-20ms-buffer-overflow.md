@@ -3,7 +3,7 @@
 Observed with the exact complete source distributed in `libsidplayfp-wasm` 1.0.1,
 libsidplayfp 3.0.2, and independently with package 1.1.0 / libsidplayfp 3.1.1.
 Primary tracker: [libsidplayfp-wasm #14](https://github.com/chrisgleissner/libsidplayfp-wasm/issues/14).
-Consumer containment: [Commander #538](https://github.com/chrisgleissner/c64commander/issues/538).
+Consumer upgrade: [Commander #538](https://github.com/chrisgleissner/c64commander/issues/538).
 
 ## Reproduction input
 
@@ -99,3 +99,24 @@ again; synthetic fixtures alone pass. Neither allocator survival nor synthetic
 coverage substitutes for the real failing input. The 256-event workaround passes
 these controls and the complete corpus sweep, but is not a proof of a universal
 maximum-safe scheduler-event count.
+
+## Released correction and consumer follow-through
+
+[Library PR #15](https://github.com/chrisgleissner/libsidplayfp-wasm/pull/15)
+corrects storage capacity before SIDLite clocks, preserves pending samples and
+refreshes mixer pointers. It is published in
+[libsidplayfp-wasm 1.1.1](https://github.com/chrisgleissner/libsidplayfp-wasm/releases/tag/v1.1.1).
+The real-input native ASAN regression passes at 8/48 kHz with 256/20,000-event
+pulls and fails with the capacity patch disabled. Small PCM differences between
+pull sizes persist after the fix; they are not the memory-safety oracle.
+No phone crash is established by those native or WASM comparisons.
+
+[Commander PR #540](https://github.com/chrisgleissner/c64commander/pull/540)
+pins that release for live, offline and seek calls and adds missing-BASIC status
+and cached-intro safeguards. The fix is merged and included in the
+[1.1.1-rc1 source tag](https://github.com/chrisgleissner/c64commander/tree/1.1.1-rc1).
+Silent worker controls on Pixel 4 and Callback 8020 confirm the BASIC
+refusal without ROMs and supplied-ROM rendering; they are not speaker tests.
+The user requires all audio silent, so no audible fidelity or crossfade claim is
+made. The original census retains its exact older engine and 256-event protocol;
+its results have not been recomputed with 1.1.1.
