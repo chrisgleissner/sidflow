@@ -1,5 +1,71 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## PR #109 continuation: listener relevance and 16-hour budget (2026-10-23) — implementation qualified; target-machine timing pending
+
+- [x] Inspect PR/CI and completed pilot. Pilot: 567 completed, one crashed worker,
+  4,553.233 seconds elapsed, 15.552 aggregate horizon-seconds/second. CI fails
+  because the maintained v3 publication is absent. Preserve existing v2 untracked files.
+- [x] Measure and reduce WASM allocation, trace and hashing overhead without losing
+  reference comparisons or late-song coverage; reproduce long-job memory behavior.
+- [x] Add a separately identified listener-relevant assessment: harmless timing
+  offsets must not be called audible failures; missing/changed music must remain
+  detectable. Keep exact evidence distinct and never relabel old measurements.
+- [x] Replace unsupported CPU extrapolations with measured aggregate throughput,
+  representative corpus weighting and an explicit target-machine budget gate.
+- [x] Restore maintained publication and update usage/review evidence; CI status is recorded by the live PR checks.
+- [x] Build/typecheck and run full tests three consecutive times; record literal
+  outputs in doc/research/hvsc-rom-validation-4.md. Source qualification complete.
+- [ ] Validate the 14600K budget on that machine before a full-corpus run.
+
+Validated implementation was pushed in commit 8c0579d to PR #109; its live
+checks are the CI follow-through record. No full-corpus completion or 14600K timing is claimed.
+
+The prior 11–17 hour claim divides by a per-lane speed estimate rather than the
+completed census rate. At the observed aggregate rate the full horizon inventory
+projects to 181.75 hours on this loaded 6700K. The pilot deliberately oversamples
+unusual/long songs, so this is diagnostic rather than a representative corpus ETA.
+
+Implementation: methodology 4 / census schema 2, exact audit dependency 1.1.1
+(current Commander main), safe default large pulls, shared SIDLite module with
+independent C64 states, buffered hashes, register timing tolerance and spectral
+fallback. Unknown is reserved for inadequate evidence. Controls cover inaudible
+writes, phase/DC shifts, dense digi writes, late/short events, quiet melody under
+loud bass, pitch/volume/stereo changes, sawtooth/noise timing and fallback models, held notes lost on a decoder stop, inaudible silent stops,
+and DC-preserving partial-window padding.
+Final qualification passed: strict script check, build, package checks,
+source-bound decision regression, reproducibility and three focused runs
+(82 pass / 0 fail / 0 skip each). Partial development
+pilots are retained under workspace/rom-audit-v4-draft* and do not qualify sources.
+
+The first 80-job corpus-weighted 1.1.1 benchmark measured 43.762 aggregate horizon
+seconds/second, projecting 67.70 h (77.86 h with 15% margin) on this loaded 6700K.
+It precedes the final band refinement and improved per-subtune sampling and is
+not final qualification evidence. No 14600K duration is claimed. A target-machine
+benchmark with its final sources must pass the 15 h census budget.
+
+Final-renderer benchmark: 80 per-subtune-hash samples, all format/duration strata,
+7 workers, 46.8 aggregate horizon-seconds/second. Population-weighted projection
+62.52 h; 71.90 h including the 15% margin, on the loaded 6700K. Stored in
+workspace/rom-audit-benchmark-v4.json. The 14600K would need approximately 4.8x
+this measured throughput to pass the configured 15 h budget; it has not been
+measured. The canonical final-source pilot completed: 567/567, 0 failures, 113 matching
+reference repeats, no unresolved measured decisions for masks 0/3. Mask 0:
+399 compatible / 168 incompatible; mask 3: 567 compatible. Maximum horizon
+2,031.332 s and the prior crash (Gordian Tomb #2, 1,922 s) both passed. Elapsed
+1,592.253 s, 44.473 aggregate horizon-seconds/second, peak worker RSS 188 MB.
+The maintained v4 snapshot was republished (87,868 total rows, 567 measured,
+87,301 pending). Exhaustive lookup consistency: 24 pass / 0 fail / 1,406,134
+expectations. Source identity 6d8fbd169fc69cb0bac600fbda560812988b9e0a7383e683bd73526ec98581f7
+matches a fresh checkout. Qualification completed with that unchanged identity:
+three full suites each 2,958 pass / 0 fail / 0 skip. The matching machine
+certificate is under workspace/rom-audit-hardening; stage-status reports done.
+Literal terminal summaries are retained in doc/research/hvsc-rom-validation-4.md.
+
+Qualification additionally verifies the complete canonical selection and repeat
+sampling, clears ROM_DECISION_ONLY for the regression, and checks measured masks
+0/3 have no unknown results. Reviewer identity is truthful and portable rather
+than hardcoded to an unavailable model; no independent Opus review is claimed.
+
 ## HVSC ROM dependency investigation (2026-10-20) — complete
 
 Branch `research/hvsc-rom-requirements`, based on refreshed `origin/main` (`d893e32`).
@@ -1838,3 +1904,131 @@ Equivalent programmatic validation will be performed:
 
 ### Outcomes
 - Pending.
+
+## Full-song three-ROM audit and production projection (2026-10-23) — active
+
+- [x] Inspect existing runner, analysis, renderer, patches, parity and publisher;
+  preserve the four-ROM historical reports and 256-event safety constraint.
+- [x] Identify methodological gaps before implementation: identical/PCM-only short
+  windows escape extension; approximate write thresholds are diagnostic only;
+  CHARGEN is constant; native controls compare PCM and counts, not timed traces.
+  No workspace/checkpoints exist in this checkout. Installed target is 1.0.1.
+- [x] Verify/download HVSC85, inventory every subtune and song-length provenance.
+- [x] Extend native runner to eight isolated ROM masks, exact timed-write evidence,
+  duration policy, bounded resources and resumable complete/pending accounting.
+- [x] Add strict three-state research assessment, deterministic catalogue/manifest
+  and derived fail-closed production lookup, with exhaustive consistency checking.
+- [x] Add delayed KERNAL/BASIC/CHARGEN fixtures and expanded parity/sanitizer checks.
+- [ ] Execute full available inventory and rendering; preserve explicit unknowns
+  and exact pending counts if full-duration work exceeds available execution time.
+- [ ] Build, focused tests, established suite three consecutive times, document
+  literal outputs and measured throughput. Do not claim unfinished work complete.
+
+Correctness decisions before implementation: a finite observation supports only
+its declared horizon. Songlength metadata is a scheduling estimate, not a machine
+state recurrence proof. Unknown/interactive/loop-unproven cases retain uncertainty.
+A PCM-only difference is not proof of incorrect music. Strict production eligibility
+requires stable reference, validated engine provenance and exact timed writes plus
+PCM across the required horizon; approximate historical labels never grant access.
+
+Progress: verified all 61,157 raw MD5/path/subtune counts (87,868 subtunes) against
+HVSC85. All tokens have positive lengths; horizons range 10–2,031.332s, total
+10,176,145.245s. Two six-worker passes measured 763 subtunes / 6,104 mask outcomes,
+leaving 87,105 subtunes / 696,840 mask outcomes pending. Scheduling budgets were
+180s each, with active jobs drained; elapsed 205.526s and 181.051s. No environmental
+failure forced the stop. Full rendering remains unfinished (roughly 72h estimated
+at measured aggregate emulation throughput). Never describe the inventory as a
+completed full-duration census. Checkpoints: `workspace/rom-audit-v2`.
+
+Original 24 hash/count controls expanded to 104 controls: all eight masks, six
+historical inputs, four delayed synthetic fixtures, Giana60s and two measured
+full-horizon corpus cases. PCM and timed-write hashes/counts match. ASAN passes
+PAL/NTSC/busy-loop/Justincase plus all four delayed dependency fixtures. All 702,944
+published decisions are exhaustively checked against their research records.
+
+Build and strict script typecheck pass. Downloading HVSC activated an existing
+300-file persona integration test skipped at the empty-workspace baseline. It
+exposed two real sparse/steady-tone records with missing spectral contrast: the
+aggregator rejected every band when one Essentia coefficient was singular.
+Keep valid measured bands and add a focused regression; do not weaken the health
+assertion or skip the integration test. Full-suite validation is still running.
+
+Final corpus-wide protocol check found 576 floating-point horizon round-trip
+mismatches (e.g. 66.38499999999999 vs native JSON 66.385). Compute horizons in integer
+milliseconds; all 763 existing measurements retain exactly the same durations,
+and the complete inventory now has zero protocol round-trip mismatches. Added
+fractional-duration regressions and restarted final full-suite validation after
+this last source change. The preceding three full runs each passed 2,899 tests,
+0 fail, 0 skip; fresh final-source runs are pending.
+
+User requested effective core use. Keep native work idle during timing-sensitive
+unit probes, but run six native workers alongside each long real-HVSC integration
+phase. The validation coordinator records actual per-core busy percentages and
+checkpoint throughput in `workspace/rom-audit-v2/utilization-validation.json`.
+After validation, continue the unbounded full corpus run with seven native workers
+on this eight-logical-core machine; preserve PID/log and publish on completion.
+
+### Adversarial pilot hardening gate (user steering, 2026-10-23)
+
+Do not exceed 5% of HVSC files OR subtunes before adversarial small-corpus
+hardening is complete. Current unique scope is 1,653 subtunes / 370 files,
+below conservative limits 4,393 subtunes / 3,057 files. Stopped validation/audit
+coordinators before further rollout or native build changes; checkpoints survive.
+The earlier intention to launch an unrestricted background run is superseded.
+
+- [ ] Add an enforced pilot ceiling and a version-bound full-rollout hardening gate.
+- [ ] Adversarially test invalid/forged horizon and provenance inputs, short/late
+  divergences, trace truncation, matrix identity, stale parity and checkpoint data.
+- [ ] Replace hash-only native/WASM qualification with exact PCM/timed-trace
+  comparison on the small control corpus; bind certificates to actual outcomes.
+- [ ] Close the finite-observation/runtime contract: an allow decision must carry
+  its playback horizon; it cannot silently authorize indefinite looping.
+- [ ] Exercise the hardened protocol on diverse curated HVSC cases and synthetic
+  KERNAL/BASIC/CHARGEN cases before repeating larger pilot measurements.
+- [ ] Record findings and proof obligations, pass focused/sanitizer/parity and
+  final full-suite checks, then permit expansion with an explicit machine gate.
+
+### Handover requested by user (2026-10-23)
+
+Created `doc/hvsc-rom-audit-handover.md` for a fresh LLM to independently review and
+improve the unfinished implementation. Mandatory routing: Opus 5.5 for architect /
+important decisions, Sonnet 5.5 otherwise. No >5% rollout is approved. Audit-only
+scope is 1,653 subtunes / 370 files; known union including real integration/parity
+controls is 2,004 subtunes / 663 files. No broad audit/coordinator remains running.
+Current source is not validated: latest strict check fails because a child exit
+`signal` argument shadows the outer AbortSignal; native binaries predate immutable
+hex-payload changes; `harden.ts` and methodology-3 maintained publication are still
+missing. The handover explicitly separates historical test successes from current
+unvalidated hardening work and lists open proof/provenance/rollout weaknesses.
+
+### Takeover: hardening implementation (2026-10-23)
+
+Handover `doc/hvsc-rom-audit-handover.md` implemented against the Opus 5.5 architect reviews in
+`doc/research/hvsc-rom-adversarial-review.md` (Sonnet 5.5 implemented; Opus 5.5 reviewed read-only).
+Draft PR #109. No run beyond the 5% pilot has been started.
+
+Design change after the second review (user decisions: match C64 Commander as shipped):
+
+- Commander ships `libsidplayfp-wasm` 1.1.0 (the repo's classifier pins 1.0.1), plays at 48 kHz,
+  never sets the power-on delay (engine default 8191), only creates the ROM sets {KERNAL+BASIC with
+  CHARGEN null} and {nothing}, and defaults to the reSIDfp renderer. The census now renders
+  exactly that on WASM 1.1.0 (audit-only aliased dev dependency `libsidplayfp-wasm-audit`), with
+  null banks covered by zero and 0xFF fills. The native renderer and the native-screen /
+  WASM-confirm split were dropped from the decision path: one engine measures and grants.
+- Comparator defects found by the review reproduced and fixed (engine output is a view into WASM
+  memory; chunk-by-chunk exact comparison; a variant that stops writing is not identical).
+  Regression: `decision-regression.ts` (two real subtunes that failed in the pilot, silent tail).
+- Measured: SIDLite lane ~11x realtime under load, reSIDfp lane ~1.7x (6x more expensive);
+  Commander's default renderer is reSIDfp, so SIDLite results do not cover it by default.
+  Transfer via "no SID reads" was tested and rejected (7% of the pilot never reads a SID register).
+
+Resolved from the reviews: B1 ledger (content-keyed, fsynced before dispatch, checksummed), B3
+`harden.ts` and evidence-verified certificate, H1 error classification, H2 lookup takes ROM hashes
+and profile, H3 kernel flock lock, H5 pilot requires a selection, N1 N2 comparator, N4 per-job
+failure isolation, N5 provenance, ledger/checkpoint repair only under the scope lock.
+
+- [ ] Pilot on the reviewed selection (567 subtunes) with the final sources; v3 dataset committed.
+- [ ] Third Opus review of the frozen sources; `Approved-source-identity` line.
+- [ ] `harden.ts` certificate (decision regression, pilot checks, reproducibility, 3 focused + 3 full suites).
+- [ ] Full-corpus execution (days; resumable; intended for a faster machine via `run-full.sh`).
+- [ ] Decide whether to qualify reSIDfp (about 6x the lane cost) and SidplayEZ.

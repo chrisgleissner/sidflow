@@ -1,0 +1,199 @@
+#!/usr/bin/env bun
+/**
+ * Hardening qualification for the ROM census. A certificate is written only after every step
+ * below has actually run against one source identity:
+ *
+ *   1. strict TypeScript check of scripts/rom-audit
+ *   2. decision-path regression on both engines (comparator regressions on real subtunes,
+ *      synthetic programs through lanes, assess, deny tuple and lookup)
+ *   3. a completed pilot: no failed jobs, engine hashes equal to the installed engine,
+ *      publication and exhaustive lookup consistency pass
+ *   4. fresh-process re-run equality on pilot subtunes
+ *   5. three consecutive focused test runs and three complete repository suites, 0 fail / 0 skip
+ *   6. an architect approval bound to the exact source identity
+ *
+ *   bun scripts/rom-audit/harden.ts --identity
+ *   bun scripts/rom-audit/harden.ts --hvsc workspace/hvsc/C64Music --roms workspace/roms \
+ *     --pilot workspace/rom-audit-v4 --review doc/research/hvsc-rom-adversarial-review.md
+ *   (add --dry-run to skip the repository suites and the certificate)
+ *
+ * The scope lock is held throughout, so no audit can start while qualification runs. The source
+ * identity (every file under scripts/rom-audit, the engine package, the lock file) is compared
+ * before and after. The approval line is checked first, so a missing approval fails in seconds.
+ */
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
+import { ROM_AUDIT_ENGINES } from "../../packages/sidflow-common/src/rom-eligibility.js";
+import { METHODOLOGY, isExtendedSample, validateRecord, assessMask, type CensusRecord } from "./methodology.js";
+import { corpusIdentity, readVerifiedSid, toolHash } from "./inputs.js";
+import { approvalOf, hardeningIdentity, REQUIRED_LOGS, scopeLock, suiteTotals, HARDENING_CERTIFICATE_SCHEMA, type HardeningCertificate, type SuiteTotals } from "./rollout.js";
+import { publishProduction } from "./publish-production.js";
+import { readCensus } from "./checkpoint.js";
+import { engineHashes } from "./wasm-lanes.js";
+
+const root = path.resolve(import.meta.dir, "../..");
+const sha = (bytes: string | Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const REQUIRED_RUNS = 3;
+
+function options(): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (let i = 2; i < process.argv.length; i++) {
+    const key = process.argv[i]!;
+    if (key === "--identity" || key === "--dry-run") { values[key.slice(2)] = "1"; continue; }
+    const value = process.argv[++i];
+    if (!["--hvsc", "--roms", "--pilot", "--review", "--out"].includes(key) || !value) throw new Error(`Invalid option ${key}`);
+    values[key.slice(2)] = value;
+  }
+  return values;
+}
+
+interface Step { name: string; command: string[]; log: string }
+function run(step: Step, evidence: string, environment: Record<string, string> = {}): string {
+  const log = path.join(evidence, step.log);
+  const fd = openSync(log, "w");
+  console.log(`[harden] ${step.name}`);
+  try {
+    const result = spawnSync(step.command[0]!, step.command.slice(1), {
+      cwd: root, stdio: ["ignore", fd, fd], env: { ...process.env, ...environment }, timeout: 3 * 3600 * 1000,
+    });
+    if (result.status !== 0) throw new Error(`${step.name} failed (${result.status}/${result.signal}); see ${log}`);
+  } finally { closeSync(fd); }
+  return log;
+}
+
+/** A clean prefix is not a completed reviewed pilot. */
+export function verifyPilotPopulation(selection: { path: string; song: number }[], headers: { path: string; sha256: string }[], rows: Map<string, CensusRecord>): void {
+  const byPath = new Map(headers.map(h => [h.path, h.sha256]));
+  const keys = selection.map(s => `${byPath.get(s.path)}#${s.song}`);
+  if (new Set(keys).size !== keys.length || rows.size !== keys.length || keys.some(key => !rows.has(key)))
+    throw new Error("Pilot does not cover the complete reviewed selection");
+}
+
+async function main(): Promise<void> {
+  const o = options();
+  if (o.identity) { console.log(await hardeningIdentity()); return; }
+  for (const key of ["hvsc", "roms", "pilot", "review"]) if (!o[key]) throw new Error(`--${key} is required`);
+  const hvsc = path.resolve(o.hvsc!), roms = path.resolve(o.roms!), pilot = path.resolve(o.pilot!), review = path.resolve(o.review!);
+  const identity = await hardeningIdentity();
+  // The architect approval is checked first: without it nothing below could produce a certificate.
+  const reviewText = readFileSync(review, "utf8");
+  const approval = approvalOf(reviewText);
+  if (!o["dry-run"] && (approval?.identity !== identity || !approval.reviewer))
+    throw new Error(`Architect approval missing or bound to another source identity. Required line: "Approved-source-identity: ${identity}" with a truthful "Reviewer-model: <reviewer>" line`);
+  scopeLock(await corpusIdentity(hvsc));   // held until this process exits
+  const evidence = path.resolve(o.out ?? path.join(root, "workspace/rom-audit-hardening"), identity.slice(0, 16));
+  mkdirSync(evidence, { recursive: true });
+  const censusEngines = ROM_AUDIT_ENGINES.filter(e => Object.hasOwn(JSON.parse(readFileSync(path.join(pilot, "manifest.json"), "utf8")).engines, e));
+  const engines = Object.fromEntries(censusEngines.map(e => [e, engineHashes(e)]));
+  const logs: Record<string, string> = {};
+  const record = (step: Step, environment?: Record<string, string>): string => {
+    const log = run(step, evidence, environment);
+    logs[step.log] = sha(readFileSync(log));
+    return log;
+  };
+
+  // 1. type check every script in the directory
+  const scripts = readdirSync(path.join(root, "scripts/rom-audit")).filter(n => n.endsWith(".ts")).map(n => `scripts/rom-audit/${n}`);
+  record({ name: "strict type check", log: "typecheck.log", command: ["bunx", "tsc", "--noEmit", "--strict", "--module", "ESNext",
+    "--moduleResolution", "bundler", "--target", "ES2022", "--types", "bun-types", "--skipLibCheck", "--allowImportingTsExtensions", ...scripts] });
+
+  // 2. decision-path regression (both engines)
+  const decisionLog = record({ name: "decision-path regression", log: "decision-regression.log", command: ["bun", "scripts/rom-audit/decision-regression.ts", roms, censusEngines.join(",")] }, { ROM_DECISION_ONLY: "" });
+  const decisionDigest = /^DIGEST ([a-f0-9]{64})$/m.exec(readFileSync(decisionLog, "utf8"))?.[1];
+  if (!decisionDigest) throw new Error("No decision digest");
+
+  // 3. pilot: provenance, completeness and publication
+  const manifest = JSON.parse(readFileSync(path.join(pilot, "manifest.json"), "utf8")) as { selectionSha256: string; extendedEvery: number; toolSha256: string; engines: Record<string, { sourceSha256: string; wasmSha256: string }>; hvscRoot: string };
+  const tool = toolHash();
+  if (manifest.toolSha256 !== tool) throw new Error("The pilot was produced by different census tooling; re-run the pilot");
+  for (const engine of censusEngines)
+    if (manifest.engines[engine]?.sourceSha256 !== engines[engine]!.sourceSha256 || manifest.engines[engine]?.wasmSha256 !== engines[engine]!.wasmSha256)
+      throw new Error(`Pilot ${engine} engine differs from the installed engine; re-run the pilot`);
+  const rows = readCensus(path.join(pilot, "census.jsonl"), censusEngines, { repair: false });
+  if (rows.size < 50) throw new Error(`Pilot has only ${rows.size} measured subtunes`);
+  const failed = [...rows.values()].filter(r => r.failure).length;
+  if (failed) throw new Error(`Pilot has ${failed} failed jobs; investigate each before qualifying`);
+  const horizons = JSON.parse(readFileSync(path.join(pilot, "horizons.json"), "utf8"));
+  const pilotHeaders = JSON.parse(readFileSync(path.join(pilot, "headers.json"), "utf8")) as { path: string; sha256: string }[];
+  const reviewedSelection = path.join(evidence, "reviewed-selection.json");
+  run({ name: "verify canonical reviewed selection", log: "selection.log", command: ["bun", "scripts/rom-audit/select-pilot.ts", hvsc, reviewedSelection] }, evidence);
+  if (sha(readFileSync(reviewedSelection)) !== manifest.selectionSha256) throw new Error("Pilot selection differs from the reviewed canonical selection");
+  verifyPilotPopulation(JSON.parse(readFileSync(reviewedSelection, "utf8")), pilotHeaders, rows);
+  const horizonBySha = new Map(pilotHeaders.map(h => [h.sha256, horizons[h.path]]));
+  for (const row of rows.values()) for (const run of row.runs) {
+    if (run.extended !== isExtendedSample(row.sha256, manifest.extendedEvery)) throw new Error("Pilot repeat sampling differs from its manifest");
+    if (run.comparison !== "listener-v1") throw new Error("Pilot used the obsolete exact comparator");
+    for (const mask of [0, 3]) if (assessMask(run, horizonBySha.get(row.sha256)?.[row.song - 1], row.seconds, row.sampleRate, mask).state === "unknown")
+      throw new Error(`Unresolved measured pilot result ${row.sha256}#${row.song} mask ${mask}`);
+  }
+  await publishProduction(pilot, path.join(evidence, "pilot-publication"));
+  const published = JSON.parse(readFileSync(path.join(evidence, "pilot-publication/manifest.json"), "utf8")) as { crossCheck: { sampledSubtunes: number; disagreements: number } };
+  if (published.crossCheck.sampledSubtunes < 30 || published.crossCheck.disagreements !== 0)
+    throw new Error(`Cross-check sample: ${published.crossCheck.sampledSubtunes} subtunes, ${published.crossCheck.disagreements} disagreements (need >= 30 and 0)`);
+
+  // 4. fresh-process re-run equality on evenly spaced pilot subtunes
+  const headers = JSON.parse(readFileSync(path.join(pilot, "headers.json"), "utf8")) as { path: string; sha256: string }[];
+  const pathBySha = new Map(headers.map(h => [h.sha256, h.path]));
+  const sample = [...rows.values()].filter(r => r.seconds <= 200).filter((_, index) => index % Math.max(1, Math.floor(rows.size / 6)) === 0).slice(0, 6);
+  if (sample.length < 5) throw new Error("Too few short pilot subtunes for the reproducibility check");
+  const input = sample.map(r => JSON.stringify({ sha256: r.sha256, song: r.song, seconds: r.seconds, engines: censusEngines, extended: isExtendedSample(r.sha256, (manifest as unknown as { extendedEvery: number }).extendedEvery),
+    hex: readVerifiedSid(path.join(manifest.hvscRoot, pathBySha.get(r.sha256)!), r.sha256).toString("hex") }) + "\n").join("");
+  const again = spawnSync(process.execPath, [path.join(root, "scripts/rom-audit/census-worker.ts"), roms], { input, encoding: "utf8", maxBuffer: 1 << 28, timeout: 3 * 3600 * 1000 });
+  if (again.status !== 0) throw new Error(`Reproducibility run failed: ${again.stderr}`);
+  const reproducibility: string[] = [];
+  again.stdout.trim().split("\n").forEach((line, i) => {
+    const fresh = JSON.parse(line);
+    validateRecord(fresh, censusEngines);
+    if (stringifyDeterministic(fresh as JsonValue, 0) !== stringifyDeterministic(sample[i] as unknown as JsonValue, 0)) throw new Error(`Fresh-process re-run differs: ${sample[i]!.sha256.slice(0, 12)}#${sample[i]!.song}`);
+    reproducibility.push(`${sample[i]!.sha256.slice(0, 12)}#${sample[i]!.song} ${sample[i]!.seconds}s identical to the pilot record (${sha(stringifyDeterministic(fresh as JsonValue, 0)).slice(0, 16)})`);
+  });
+  writeFileSync(path.join(evidence, "reproducibility.log"), reproducibility.join("\n") + "\n");
+  logs["reproducibility.log"] = sha(readFileSync(path.join(evidence, "reproducibility.log")));
+
+  // 5. focused tests, three consecutive runs; then complete repository suites
+  const focused = readdirSync(path.join(root, "packages/sidflow-common/test")).filter(n => /^rom-.*\.test\.ts$/.test(n)).map(n => `packages/sidflow-common/test/${n}`);
+  const focusedTotals: SuiteTotals[] = [];
+  for (let n = 1; n <= REQUIRED_RUNS; n++) {
+    const log = `focused-${n}.log`;
+    record({ name: `focused ROM audit tests, run ${n}`, log, command: ["bun", "test", ...focused] });
+    const totals = suiteTotals(readFileSync(path.join(evidence, log), "utf8"));
+    if (totals.fail !== 0 || totals.pass === 0) throw new Error(`Focused run ${n}: ${JSON.stringify(totals)}`);
+    console.log(`[harden] Focused run ${n}: ${totals.pass} pass, ${totals.fail} fail, ${totals.skip} skip`);
+    focusedTotals.push(totals);
+  }
+  const suites: SuiteTotals[] = [];
+  if (o["dry-run"]) console.log("[harden] dry run: repository suites skipped; no certificate will be written");
+  else for (let n = 1; n <= REQUIRED_RUNS; n++) {
+    const log = `full-suite-${n}.log`;
+    record({ name: `complete repository suite, run ${n}`, log, command: ["bun", "run", "test"] });
+    const totals = suiteTotals(readFileSync(path.join(evidence, log), "utf8"));
+    if (totals.fail !== 0 || totals.skip !== 0 || totals.pass === 0) throw new Error(`Full suite run ${n}: ${JSON.stringify(totals)}`);
+    console.log(`[harden] Full suite run ${n}: ${totals.pass} pass, ${totals.fail} fail, ${totals.skip} skip`);
+    suites.push(totals);
+  }
+
+  // 6. nothing may have changed while the checks ran
+  if ((await hardeningIdentity()) !== identity) throw new Error("Hardening sources changed during qualification; certificate refused");
+  if (stringifyDeterministic(Object.fromEntries(censusEngines.map(e => [e, engineHashes(e)])) as JsonValue, 0) !== stringifyDeterministic(engines as JsonValue, 0)) throw new Error("Engine package changed during qualification");
+  if (o["dry-run"]) return;
+
+  const certificate: HardeningCertificate = {
+    schema: HARDENING_CERTIFICATE_SCHEMA, methodology: METHODOLOGY, sourceIdentity: identity, engines, passed: true,
+    checks: {
+      typecheck: true, focusedRuns: REQUIRED_RUNS, focusedTotals, fullSuiteRuns: REQUIRED_RUNS, fullSuiteTotals: suites,
+      pilot: { manifestSha256: sha(readFileSync(path.join(pilot, "manifest.json"))), subtunes: rows.size, files: new Set([...rows.values()].map(r => r.sha256)).size, failed },
+      decisionRegression: { digest: decisionDigest }, reproducibility: { rows: sample.length },
+      adversarialReview: { file: path.relative(root, review), sha256: sha(approval!.text), sourceIdentity: approval!.identity },
+    },
+    logs,
+  };
+  if (JSON.stringify(Object.keys(logs).sort()) !== JSON.stringify([...REQUIRED_LOGS].sort())) throw new Error(`Qualification logs ${Object.keys(logs).join(",")} differ from the required set`);
+  const text = stringifyDeterministic(certificate as unknown as JsonValue);
+  writeFileSync(path.join(evidence, "certificate.json"), text);
+  writeFileSync(path.join(path.dirname(evidence), "certificate.json"), text);
+  console.log(`[harden] certificate written: ${path.join(evidence, "certificate.json")}`);
+}
+if (import.meta.main) main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });

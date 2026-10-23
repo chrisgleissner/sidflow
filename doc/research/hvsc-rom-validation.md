@@ -1,5 +1,9 @@
 # HVSC ROM audit validation
 
+For the expanded eight-mask, full-song methodology, maintained machine-readable
+artifacts and outstanding coverage, see [methodology 3](hvsc-rom-production.md).
+The measurements below retain their original finite-window scope.
+
 Research base: SIDFlow `d893e32`, branch `research/hvsc-rom-requirements`.
 Bun 1.3.1; Node v24.11.0; g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0.
 A fresh build in an independent cache reproduces the measured renderer binary
@@ -1032,3 +1036,47 @@ No application UI was changed: browser/device suites, Android builds/deployment
 and screenshot regeneration are outside this local-emulator research scope.
 The three confirmed defect issues remain open, as stated in the main report;
 this research result is not an assertion that those product defects are fixed.
+
+## Methodology 2 validation (2026-10-23)
+
+The complete release was freshly fetched and independently verified: 61,157 files,
+87,868 subtunes, with every raw MD5/path/song count matching Songlengths.md5.
+All 104 expanded native/WASM controls pass PCM and timed-write hashes/counts,
+including all eight masks, delayed individual/combined dependencies, Giana at 60s,
+and 23s / 24.3s documented-horizon corpus cases. The certificate is maintained in
+`hvsc-rom-catalogue/v2/parity.json` and binds source, native/WASM and ROM identities.
+
+The AddressSanitizer build passes PAL, NTSC, RSID busy-loop and the real Justincase
+case, and delayed dependency masks 1/2/4/7. All four delayed stimuli escape the old
+2s adaptive criterion but change register values at 8s. Native pulls remain 256.
+Strict audit script typechecking, repository build and `git diff --check` pass.
+The exhaustive maintained-data test checks 87,868 unique records and 702,944 mask
+decisions, including artifact digests and the production lookup.
+
+The empty-workspace baseline full suite passed with its existing corpus-dependent
+integration test skipped. After HVSC was installed, that integration test ran and
+failed on missing spectral contrast in Super Mario #31/#35. The aggregator had
+rejected a whole frame when just one band's coefficient was singular. Essentia's
+[spectral-contrast implementation](https://raw.githubusercontent.com/MTG/essentia/master/src/algorithms/spectral/spectralcontrast.cpp)
+uses a `1/log(bandMean)` exponent, which can diverge near band mean one. The fix
+retains valid measured coefficients rather than dropping all bands. A regression
+covers mixed finite/singular bands; the actual #31 recording now yields finite
+contrast mean −4.291328902542591 / std 5.029006062594819. No health assertion was
+weakened and no integration test was skipped. Three fresh full-suite runs follow
+that fix; their final output will be recorded below.
+
+A further complete-inventory duration/protocol check caught 576 decimal
+round-trip mismatches caused by adding fractional seconds as floating-point
+numbers. Integer-millisecond horizon arithmetic removes all mismatches; every one
+of the 763 existing measurements retains its exact duration. Regression examples
+include 1:01.385 + 5s = 66.385s and 2:04.491 + 5s = 129.491s. Final full-suite
+runs were restarted after this correction.
+
+Resource-use check: on the eight-logical-core host, six native workers each used
+about 96–98% CPU while the long real-HVSC integration test ran on another core.
+Across the first concurrent audit invocation, `/proc/stat` measured per-core busy
+percentages 85.9, 84.6, 89.8, 83.3, 77.3, 84.4, 88.5 and 85.7. It completed 442
+additional subtunes in 121.294s rendering time (3.644/s), with 133.977s end-to-end
+including census/publication. The first final-source full test run still passed
+all 2,899 tests, 0 fail, 0 skip. Raw per-invocation utilization/coverage evidence is
+kept in `workspace/rom-audit-v2/utilization-validation.json`.

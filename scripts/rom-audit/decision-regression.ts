@@ -1,0 +1,175 @@
+#!/usr/bin/env bun
+/**
+ * Decision-path regression: synthetic programs and real subtunes with known behavior go
+ * through the same stages as a corpus subtune on both WASM engines: lockstep lanes,
+ * assessMask(), the deny-list tuple and the production lookup, including its deadline and
+ * unsupported ROM sets. Every case states the decision expected for the Commander ROM sets
+ * (mask 3: KERNAL+BASIC supplied, CHARGEN null; mask 0: nothing supplied; mask 7: everything).
+ * The last line is a deterministic digest of all results, so two runs can be compared.
+ *
+ *   bun scripts/rom-audit/decision-regression.ts <ROM directory>
+ */
+import { listenerControls } from "./listener-regression.js";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { createRomEligibilityLookup, REFERENCE_ROM_SHA256, romConsumerProfile, romEngineId, romSetId, ROM_AUDIT_ENGINES, ROM_DENY_SCHEMA, type RomAuditEngine, type RomDenyList, type RomSelection } from "../../packages/sidflow-common/src/rom-eligibility.js";
+import { assessMask, crossCheckDisagreements, observationHorizon, validateRecord, CENSUS_SCHEMA, METHODOLOGY, type Compatibility, type EngineRun } from "./methodology.js";
+import { engineHashes, loadModule, renderDigest, runEngine, SAMPLE_RATE, UNTOUCHED, type RomConfig } from "./wasm-lanes.js";
+import { loadRoms } from "./census-worker.js";
+import { delayedRomFixture, syntheticFixture, type SyntheticKind } from "./fixtures.js";
+
+const romDirectory = process.argv[2];
+if (!romDirectory) throw new Error("Usage: decision-regression.ts <ROM directory> [sidlite[,residfp]]");
+const ENGINES = (process.argv[3] ?? "sidlite").split(",") as RomAuditEngine[];
+if (ENGINES.some(e => !(ROM_AUDIT_ENGINES as readonly string[]).includes(e))) throw new Error("Invalid engine list");
+const roms = loadRoms(romDirectory);
+const sha = (bytes: Uint8Array | string): string => createHash("sha256").update(bytes).digest("hex");
+const corpus = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../workspace/hvsc/C64Music");
+type Expectation = { m0: Compatibility; m3: Compatibility; residfp?: Partial<{ m0: Compatibility; m3: Compatibility; m7: Compatibility }> };
+interface Case { name: string; bytes: Buffer; song?: number; token: string; expect: Expectation; check?: (run: EngineRun, engine: string) => void; deadline: number }
+const seconds = (token: string): number => observationHorizon(token, 10).seconds;
+const cases: Case[] = [];
+// Dependencies read at ~70 s. Without KERNAL the engine's interrupt shim shifts every SID write by a few cycles,
+// so the "nothing supplied" set is unknown for every program; that is measured behavior, asserted here.
+for (const dependency of [1, 2, 4, 7]) {
+  const bank = (dependency & 4) !== 0;   // CHARGEN content is never supplied by the consumer
+  cases.push({ name: `late-${dependency}-visible`, bytes: delayedRomFixture(dependency, { frames: 3500 }), token: "1:15", deadline: seconds("1:15"),
+    expect: { m0: "unknown", m3: bank ? "unknown" : "compatible" } });
+  cases.push({ name: `late-${dependency}-beyond-horizon`, bytes: delayedRomFixture(dependency, { frames: 3500 }), token: "1:00", deadline: 65,
+    expect: { m0: "unknown", m3: "compatible" } });
+}
+// A CHARGEN read inside the 5 s ending margin (63 s) must be seen; one just after it (66 s) must not.
+cases.push({ name: "margin-inside", bytes: delayedRomFixture(4, { frames: 3150 }), token: "1:00", deadline: 65, expect: { m0: "unknown", m3: "unknown" } });
+cases.push({ name: "margin-after", bytes: delayedRomFixture(4, { frames: 3300 }), token: "1:00", deadline: 65, expect: { m0: "unknown", m3: "compatible" } });
+const synthetic = (kind: SyntheticKind, token: string, expect: Expectation, options: { frames?: number; mask?: number } = {}, check?: Case["check"]): void => {
+  cases.push({ name: kind + (options.mask ? `-rom${options.mask}` : ""), bytes: syntheticFixture(kind, options), token, expect, check, deadline: seconds(token) });
+};
+synthetic("silent-divergence", "0:05", { m0: "unknown", m3: "compatible" }, { frames: 100 });
+// Volume 0, so PCM is equal; only the final per-frame write is missing when BASIC is absent. Must never be identical.
+synthetic("silent-tail", "0:05", { m0: "unknown", m3: "compatible" }, { frames: 100 }, run => {
+  const none = run.lanes.filter(l => l.set === "none");
+  if (none.some(l => l.outcome === "identical")) throw new Error("silent-tail: a variant with missing writes was reported identical");
+});
+synthetic("sparse-sfx", "1:00", { m0: "unknown", m3: "compatible" }, { frames: 2500 });
+synthetic("silence", "0:05", { m0: "unknown", m3: "compatible" });
+// A program that jumps through a BASIC byte executes an illegal opcode when the bank is zero or 0xFF. A diverged lane is not run on, and
+// the engine reports a stop inconsistently, so the census never turns this into `incompatible`: every none lane simply differs.
+synthetic("halt-without-basic", "0:05", { m0: "unknown", m3: "compatible" }, {}, run => {
+  for (const lane of run.lanes.filter(l => l.set === "none")) if (lane.outcome === "identical") throw new Error(`halt-without-basic: none/${lane.fill} is identical`);
+});
+synthetic("busy-writes", "0:10", { m0: "compatible", m3: "compatible" }, {}, run => { if (run.reference.writes < 2_000_000) throw new Error(`busy-writes produced only ${run.reference.writes} writes`); });
+synthetic("osc3-reader", "0:05", { m0: "unknown", m3: "compatible" }, { frames: 100 });
+synthetic("second-sid-late", "0:05", { m0: "unknown", m3: "unknown" }, { frames: 100, mask: 4 });
+synthetic("third-sid-late", "0:05", { m0: "unknown", m3: "compatible" }, { frames: 100, mask: 2 });
+
+const selection = (mask: number): RomSelection => ({ kernal: mask & 1 ? REFERENCE_ROM_SHA256.kernal : null, basic: mask & 2 ? REFERENCE_ROM_SHA256.basic : null, chargen: mask & 4 ? REFERENCE_ROM_SHA256.chargen : null });
+const digest: Record<string, unknown> = {};
+const only = process.env.ROM_DECISION_ONLY ? new RegExp(process.env.ROM_DECISION_ONLY) : undefined;   // iteration aid; harden.ts never sets it
+function verify(name: string, bytes: Buffer, song: number, token: string, expect: Expectation, deadline: number, runs: EngineRun[], check?: Case["check"]): void {
+  const horizon = observationHorizon(token, 10), observed = horizon.seconds;
+  const record = { schema: CENSUS_SCHEMA, sha256: sha(bytes), song, seconds: observed, sampleRate: SAMPLE_RATE, runs } as const;
+  validateRecord({ ...record, runs: [...runs] }, ENGINES);
+  const results: string[] = [];
+  runs.forEach((run, index) => {
+    const engine = ENGINES[index]!, hashes = engineHashes(engine), profile = romConsumerProfile(engine);
+    check?.(run, engine);
+    if (run.reference.repeat !== "identical") throw new Error(`${name}/${engine}: the reference is not reproducible (${run.reference.repeat})`);
+    const decisions = ([0, 1, 2, 3, 4, 5, 6, 7] as const).map(mask => assessMask(run, horizon, observed, SAMPLE_RATE, mask));
+    const wantedFor = { ...expect, ...(engine === "residfp" ? expect.residfp : {}) };
+    for (const [mask, wanted] of [[0, wantedFor.m0], [3, wantedFor.m3]] as const)
+      if (decisions[mask]!.state !== wanted) throw new Error(`${name}/${engine} mask ${mask}: expected ${wanted}, decided ${decisions[mask]!.state} (${decisions[mask]!.reason}); lanes ${JSON.stringify(run.lanes.map(l => `${l.set}/${l.fill}:${l.outcome}`))}`);
+    for (const mask of [1, 2, 4, 5, 6, 7]) if (decisions[mask]!.state !== "unknown") throw new Error(`${name}/${engine}: unsupported ROM set ${mask} was decided`);
+    // Production projection: the lookup must agree with every decision, enforce the deadline and deny unsupported sets.
+    const bits = (state: Compatibility): number => decisions.reduce((n, d, mask) => (d.state === state ? n | 1 << mask : n), 0);
+    const compatible = bits("compatible");
+    const deny: RomDenyList = { schema: ROM_DENY_SCHEMA, engineId: romEngineId(hashes, profile), romSetId: romSetId(), methodology: METHODOLOGY,
+      entries: { [record.sha256]: [[compatible, bits("incompatible"), compatible ? Math.round(observed * 1000) : 0, compatible && horizon.documentedSeconds ? Math.round(horizon.documentedSeconds * 1000) : 0, 0]] } };
+    const lookup = createRomEligibilityLookup(deny, { ...hashes, profile, methodology: METHODOLOGY, fallbackSidModel: "MOS8580" });
+    for (let mask = 0; mask < 8; mask++) {
+      const answer = lookup(record.sha256, song, selection(mask));
+      if (answer.state !== decisions[mask]!.state) throw new Error(`${name}/${engine} mask ${mask}: lookup disagrees with assessMask`);
+      if (answer.eligible) {
+        if (answer.maxPlaybackSeconds !== deadline) throw new Error(`${name}: deadline ${answer.maxPlaybackSeconds}, expected ${deadline}`);
+        if (lookup(record.sha256, song, selection(mask), deadline).eligible) throw new Error(`${name}: playback allowed at the deadline`);
+        if (!lookup(record.sha256, song, selection(mask), deadline - 0.001).eligible) throw new Error(`${name}: playback denied before the deadline`);
+      }
+    }
+    results.push(`${engine}:${decisions[0]!.state[0]}${decisions[3]!.state[0]}`);
+    const bad = crossCheckDisagreements(run, horizon, observed, SAMPLE_RATE);
+    if (bad.length) throw new Error(`${name}/${engine}: the core lanes alone are more permissive than all lanes for masks ${bad}`);
+    digest[`${name}/${engine}`] = { states: decisions.map(d => `${d.state}:${d.reason}`), reference: [run.reference.samples, run.reference.writes, run.reference.pcmSha256.slice(0, 12), run.reference.traceSha256.slice(0, 12)],
+      lanes: run.lanes.map(l => `${l.set}/${l.fill}:${l.outcome}:${l.samples}:${l.writes}:${l.firstDifferenceSample}`) };
+  });
+  console.log(`PASS ${name}: ${results.join(" ")} (masks 0,3; c=compatible i=incompatible u=unknown)`);
+}
+
+for (const c of cases) {
+  if (only && !only.test(c.name)) continue;
+  const song = c.song ?? 1, observed = observationHorizon(c.token, 10).seconds;
+  const runs: EngineRun[] = [];
+  for (const engine of ENGINES) runs.push(await runEngine(engine, c.bytes, song, observed, roms, true));
+  verify(c.name, c.bytes, song, c.token, c.expect, c.deadline, runs, c.check);
+}
+
+// Real subtunes that exposed comparator defects in the pilot: the reference compared with a fresh instance of itself
+// must be identical however many lanes are alive (engine output is a view into memory the next call overwrites).
+if (!only || only.test("real")) {
+  for (const [file, song, token] of [["GAMES/M-R/Out_on_a_Limb.sid", 8, "0:05"], ["DEMOS/A-F/Baroque_Music_64_BASIC.sid", 1, "0:56"]] as const) {
+    const bytes = readFileSync(path.join(corpus, file)), observed = observationHorizon(token, 10).seconds;
+    for (const engine of ENGINES) {
+      for (const extended of [false, true]) {   // the core path every subtune takes, and the extended cross-check sample
+        const run = await runEngine(engine, bytes, song, observed, roms, extended);
+        if (run.reference.outcome !== "clean" || run.reference.repeat !== (extended ? "identical" : "not-run")) throw new Error(`${file} #${song}/${engine}: reference ${JSON.stringify(run.reference)}`);
+        const full = run.lanes.filter(l => l.set === "full");
+        if (!full.every(l => l.outcome === "identical")) throw new Error(`${file} #${song}/${engine}: full-set lanes ${JSON.stringify(full.map(l => l.outcome))}`);
+        if (assessMask(run, observationHorizon(token, 10), observed, SAMPLE_RATE, 3).state !== "compatible") throw new Error(`${file} #${song}/${engine}: mask 3 not granted (extended=${extended})`);
+        digest[`real:${file}#${song}/${engine}/${extended ? "extended" : "core"}`] = run.lanes.map(l => `${l.set}/${l.fill}:${l.outcome}:${l.samples}`);
+      }
+    }
+    console.log(`PASS real ${file} #${song}: reference reproducible and full ROM set identical on every census engine`);
+  }
+}
+// Commander's "nothing supplied" never calls the engine's ROM setter; our none-lanes call it with (null, fill, fill).
+// In a fresh instance the untouched banks must behave exactly like the zero-filled ones for the lane to stand in for it.
+if (!only || only.test("untouched")) {
+  for (const [name, bytes, song, token] of [["silence", syntheticFixture("silence"), 1, "0:05"], ["halt-without-basic", syntheticFixture("halt-without-basic"), 1, "0:05"],
+    ["busy-writes", syntheticFixture("busy-writes"), 1, "0:05"], ["Out_on_a_Limb", readFileSync(path.join(corpus, "GAMES/M-R/Out_on_a_Limb.sid")), 8, "0:05"],
+    ["Commando", readFileSync(path.join(corpus, "MUSICIANS/H/Hubbard_Rob/Commando.sid")), 1, "0:05"]] as const) {
+    const observed = observationHorizon(token, 10).seconds;
+    for (const engine of ENGINES) {
+      const untouched = await renderDigest(engine, bytes, song, observed, UNTOUCHED, roms);
+      const zero = await renderDigest(engine, bytes, song, observed, { kernal: "null", basic: "zero", chargen: "zero" }, roms);
+      if (JSON.stringify(untouched) !== JSON.stringify(zero)) throw new Error(`${name}/${engine}: untouched banks differ from the zero-filled none lane: ${JSON.stringify([untouched, zero])}`);
+      const suppliedNull = await renderDigest(engine, bytes, song, observed, { kernal: "authentic", basic: "authentic", chargen: "null" }, roms);   // Commander: setSystemROMs(K, B, null)
+      const suppliedZero = await renderDigest(engine, bytes, song, observed, { kernal: "authentic", basic: "authentic", chargen: "zero" }, roms);
+      if (JSON.stringify(suppliedNull) !== JSON.stringify(suppliedZero)) throw new Error(`${name}/${engine}: a null CHARGEN differs from the zero-filled full lane: ${JSON.stringify([suppliedNull, suppliedZero])}`);
+      digest[`untouched:${name}/${engine}`] = [untouched.samples, untouched.writes, untouched.pcmSha256.slice(0, 12), untouched.ended];
+    }
+    console.log(`PASS untouched null banks behave like the zero-filled none lane: ${name}`);
+  }
+}
+// Commander plays every tune in ONE cached engine instance. The census renders each lane in a fresh instance, so the
+// two must be indistinguishable: a tune played as the Nth player of a shared instance, after other tunes with other
+// ROM sets, must produce exactly the fresh-instance PCM and writes.
+if (!only || only.test("shared")) {
+  const sequence: [string, Buffer, number][] = [["Commando", readFileSync(path.join(corpus, "MUSICIANS/H/Hubbard_Rob/Commando.sid")), 1], ["Out_on_a_Limb", readFileSync(path.join(corpus, "GAMES/M-R/Out_on_a_Limb.sid")), 8],
+    ["silence", syntheticFixture("silence"), 1], ["osc3-reader", syntheticFixture("osc3-reader", { frames: 100 }), 1], ["busy-writes", syntheticFixture("busy-writes"), 1], ["third-sid", syntheticFixture("third-sid-late", { frames: 100, mask: 2 }), 1]];
+  // Bank contents are explicit here so that only hidden engine state can make the two differ; contents left behind in
+  // "null" banks by earlier players are the census' stale-basic and fill lanes, not this check.
+  const configs: [string, RomConfig][] = [["full-zero-chargen", { kernal: "authentic", basic: "authentic", chargen: "zero" }], ["nothing-zero", { kernal: "null", basic: "zero", chargen: "zero" }],
+    ["all-authentic", { kernal: "authentic", basic: "authentic", chargen: "authentic" }]];
+  for (const engine of ENGINES) {
+    const shared = await loadModule(engine);
+    // Warm the shared instance with varied earlier players (ROM sets differ, so stale bank contents are left behind).
+    for (const [, bytes, song] of sequence) for (const [, config] of configs) await renderDigest(engine, bytes, song, 3, config, roms, shared);
+    for (const [name, bytes, song] of sequence) for (const [label, config] of configs) {
+      const fresh = await renderDigest(engine, bytes, song, 5, config, roms), later = await renderDigest(engine, bytes, song, 5, config, roms, shared);
+      if (JSON.stringify(fresh) !== JSON.stringify(later)) throw new Error(`${name}/${label}/${engine}: a shared-instance playback differs from a fresh instance: ${JSON.stringify([fresh, later])}`);
+      digest[`shared:${name}/${label}/${engine}`] = [fresh.samples, fresh.writes, fresh.pcmSha256.slice(0, 12)];
+    }
+    console.log(`PASS shared-instance playbacks are bit-identical to fresh instances on ${engine} (${sequence.length * configs.length} comparisons after ${sequence.length * configs.length} warm-up players)`);
+  }
+}
+if (!only || only.test("listener")) digest.listener = await listenerControls(roms);
+console.log("DIGEST " + sha(JSON.stringify(digest)));
