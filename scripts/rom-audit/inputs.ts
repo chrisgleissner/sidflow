@@ -77,3 +77,9 @@ export async function corpusIdentity(hvscRoot:string):Promise<string>{
  }));
  return createHash("sha256").update(lines.join("")).digest("hex");
 }
+
+/** Hash of the census tooling whose behavior defines a measurement; recorded in every run manifest. */
+export function toolHash(): string {
+ const directory=path.join(repositoryRoot,"scripts/rom-audit");
+ return createHash("sha256").update(Buffer.concat(["wasm-lanes.ts","census-worker.ts","methodology.ts","checkpoint.ts","inputs.ts","audit.ts"].map(f=>readFileSync(path.join(directory,f))))).digest("hex");
+}

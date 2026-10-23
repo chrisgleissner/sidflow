@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { stringifyDeterministic, type JsonValue } from "./json.js";
 
 export const ROM_ELIGIBILITY_METHODOLOGY = "rom-audit-3";
-export const ROM_DENY_SCHEMA = "sidflow-rom-deny-3";
+export const ROM_DENY_SCHEMA = "sidflow-rom-deny-4";
 /** The reference system ROM images. Any other image denies. */
 export const REFERENCE_ROM_SHA256 = {
   kernal: "83c60d47047d7beab8e5b7bf6f67f80daa088b7a6a27de0d7e016f6484042721",
@@ -60,8 +60,13 @@ export function romEngineId(engine: { sourceSha256: string; wasmSha256: string }
 }
 export const romSetId = (): string => sha256(canonical(REFERENCE_ROM_SHA256));
 
-/** [compatible mask bits, incompatible mask bits, maxPlaybackMs, documentedMs]. Bit M is ROM mask M. */
-export type RomDecision = [compatibleByte: number, incompatibleByte: number, maxPlaybackMs: number, documentedMs: number];
+/**
+ * [compatible mask bits, incompatible mask bits, maxPlaybackMs, documentedMs, modelFixed]. Bit M is ROM mask M.
+ * `modelFixed` is 1 when the SID header names the model of every chip, so the decision holds whatever fallback
+ * model the consumer forces; otherwise it was measured with the MOS8580 fallback and denies a MOS6581 consumer.
+ */
+export type RomDecision = [compatibleByte: number, incompatibleByte: number, maxPlaybackMs: number, documentedMs: number, modelFixed: number];
+export type FallbackSidModel = "MOS6581" | "MOS8580";
 export interface RomDenyList {
   schema: typeof ROM_DENY_SCHEMA;
   engineId: string;
@@ -97,17 +102,17 @@ export function romMask(roms: RomSelection): number | null {
   return null;
 }
 export function createRomEligibilityLookup(data: RomDenyList,
-  expected: { sourceSha256: string; wasmSha256: string; profile: RomConsumerProfile; methodology: string }):
+  expected: { sourceSha256: string; wasmSha256: string; profile: RomConsumerProfile; methodology: string; fallbackSidModel: FallbackSidModel }):
   (sha256: string, song: number, roms: RomSelection, elapsedSeconds?: number) => RomEligibility {
   const deny = (reason: string): RomEligibility => ({ eligible: false, state: "unknown", reason, maxPlaybackSeconds: null, documentedSeconds: null });
   const hash = (v: unknown): boolean => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
   const engineId = romEngineId(expected, expected.profile);
-  const matches = data?.schema === ROM_DENY_SCHEMA && hash(data.engineId) && hash(data.romSetId) &&
+  const matches = (expected.fallbackSidModel === "MOS6581" || expected.fallbackSidModel === "MOS8580") && data?.schema === ROM_DENY_SCHEMA && hash(data.engineId) && hash(data.romSetId) &&
     data.engineId === engineId && data.romSetId === romSetId() &&
     data.methodology === ROM_ELIGIBILITY_METHODOLOGY && data.methodology === expected.methodology;
   const valid = matches && data.entries !== null && typeof data.entries === "object" && !Array.isArray(data.entries) &&
     Object.entries(data.entries).every(([identity, songs]) => hash(identity) && Array.isArray(songs) && songs.length > 0 &&
-      songs.every(pair => Array.isArray(pair) && pair.length === 4 &&
+      songs.every(pair => Array.isArray(pair) && pair.length === 5 && ((pair[0] | pair[1]) & ~0b10001001) === 0 && (pair[4] === 0 || (pair[4] === 1 && pair[0] !== 0)) &&
         pair.slice(0, 2).every(n => Number.isInteger(n) && n >= 0 && n <= 255) && !(pair[0] & pair[1]) &&
         Number.isSafeInteger(pair[2]) && Number.isSafeInteger(pair[3]) && pair[3] >= 0 &&
         (pair[0] ? pair[2] > 0 && pair[2] <= 3600000 && pair[3] > 0 && pair[3] < pair[2] : pair[2] === 0 && pair[3] === 0)));
@@ -122,6 +127,8 @@ export function createRomEligibilityLookup(data: RomDenyList,
     const pair = entries.get(sha)?.[song - 1];
     if (!pair) return deny("missing-entry");
     if (pair[0] & (1 << mask)) {
+      // Measured with the MOS8580 fallback; a consumer forcing another fallback is covered only where the header fixes every chip's model.
+      if (expected.fallbackSidModel !== "MOS8580" && pair[4] !== 1) return deny("depends-on-fallback-sid-model");
       if (elapsedSeconds * 1000 >= pair[2]) return deny("observation-horizon-exhausted");
       return { eligible: true, state: "compatible", reason: "bounded-documented-horizon-equality", maxPlaybackSeconds: pair[2] / 1000, documentedSeconds: pair[3] / 1000 };
     }

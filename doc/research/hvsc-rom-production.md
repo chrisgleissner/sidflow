@@ -16,14 +16,17 @@ offline.
   engines or versions, sample rates, ROM images, looping or musical correctness. A
   full-ROM render is an operational reference, not an artistic or historical fidelity
   certificate.
-- **Renderer coverage.** The census qualifies **SIDLite** by default. C64 Commander's
-  default renderer is reSIDfp; a SIDLite decision does not cover it. reSIDfp lanes are
-  available (`--engines sidlite,residfp`) but cost about six times as much per lane, and
-  SidplayEZ (Android native) is a different CPU core that this audit does not cover. A
-  published deny list names its renderer in its engine id; a lookup built for another
-  renderer denies everything. Transferring SIDLite results to reSIDfp was evaluated and
-  rejected: only 7% of the pilot subtunes never read a SID register (dummy reads of
-  indexed stores count), so a "no reads" argument would cover almost nothing.
+- **Renderer coverage.** The census qualifies **SIDLite** only. C64 Commander's default renderer
+  depends on the build variant: SidplayEZ (Android native, a different CPU core) where it exists,
+  reSIDfp on web and iOS; SIDLite is used only when selected. **Most Commander users therefore get
+  no coverage from this census**: the lookup built for their renderer denies everything. reSIDfp
+  lanes are refused (`audit.ts` rejects `--engines residfp`) because a second reSIDfp player in
+  one WASM instance renders different PCM for identical input (the SID write traces are equal;
+  reproduction in `scripts/rom-audit/residfp-instance-state.ts`, upstream report not yet filed),
+  while Commander plays every tune in one shared instance, and because a reSIDfp lane costs about
+  six times as much as a SIDLite lane. Transferring SIDLite results to reSIDfp via "no SID
+  reads" was evaluated and rejected: only 7% of the pilot subtunes never read a SID register
+  (dummy reads of indexed stores count). SidplayEZ would need its own build and harness.
 - There is one engine for both measurement and grant: the shipping WASM build. An earlier
   design screened natively and confirmed on WASM; it cost more, needed an equivalence
   argument between two compilations, and could not follow Commander's configuration, so it
@@ -53,12 +56,17 @@ does (`src/lib/playback/sidRenderer/wasmRendererCore.ts`, read-only):
 | Pull size | 256 cycles for SIDLite, the engine default for reSIDfp | `pullSize()` |
 | Subtune selection | start-song header rewrite before load | `SidAudioEngine.patchStartSong` |
 | ROM sets | KERNAL and BASIC supplied together with CHARGEN `null`, or nothing supplied | `prepare()` / `open()` |
-| SID model | from the header; the engine default where the header names none (Commander may force one) | `applySidModel()` |
+| SID model | from the header; where the header names none, the fallback model. The census fallback is MOS8580 (the engine default). Commander passes its own fallback, by default learned from the connected device, so it can be MOS6581 | `applySidModel()`, `localSidEngine.ts` |
 
-A bank the consumer passes as `null` keeps whatever the engine heap held. Each ROM set is
-therefore rendered with every unsupplied bank filled with zeros and with 0xFF; a decision
-requires identical output for both. Output that does not depend on the fill does not
-depend on the bank's content.
+A bank the consumer passes as `null` keeps whatever the engine heap held: Commander plays every tune
+in one cached engine instance, so the bank can hold bytes from an earlier player, including the
+authentic BASIC image. Each ROM set is therefore rendered with the null banks filled with zeros,
+0xFF and a fixed pseudo-random pattern, and the "nothing supplied" set additionally with the
+authentic BASIC left behind; a decision requires identical output for **every** fill. This is
+evidence about those contents, not a proof for every possible content. Fresh instances are
+equivalent to Commander's shared instance for SIDLite: `decision-regression.ts` plays tunes as the
+Nth player of one instance after players with other ROM sets and compares them bit for bit with
+fresh instances. The SID model is handled by a per-entry flag (see the contract below).
 
 ## Critical review of methodology 1 (historical)
 
@@ -79,7 +87,7 @@ for non-CPU engine uses of ROM bytes and regression against all explicit masks.
 
 ## Correctness model
 
-Per subtune and engine the worker renders six instances in lockstep from fresh WASM
+Per subtune and engine the worker renders nine instances in lockstep from fresh WASM
 instances (a second reSIDfp player in one instance produces different PCM for identical input,
 so instances are never shared):
 
@@ -87,36 +95,34 @@ so instances are never shared):
 |---|---|---|
 | reference | KERNAL, BASIC, CHARGEN authentic | the operational reference |
 | repeat | same | determinism of the engine for this subtune |
-| full/zero, full/ff | KERNAL and BASIC authentic, CHARGEN filled with 0x00 / 0xFF | Commander's "supplied" set (mask 3) |
-| none/zero, none/ff | KERNAL `null`, BASIC and CHARGEN filled | Commander's "nothing supplied" set (mask 0) |
+| full/zero, full/ff, full/random | KERNAL and BASIC authentic, CHARGEN filled with 0x00 / 0xFF / pseudo-random | Commander's "supplied" set (mask 3) |
+| none/zero, none/ff, none/random | KERNAL `null`, BASIC and CHARGEN filled likewise | Commander's "nothing supplied" set (mask 0) |
+| none/stale-basic | KERNAL `null`, BASIC authentic (left behind by an earlier player), CHARGEN zero | the same set after a playback that supplied ROMs |
 
 Each pull of a lane is compared with the reference's pull exactly: sample count, every PCM
 sample and every packed SID write including its PHI1 cycle. A lane is `identical` only if
 every pull through the horizon matched, so it also ends with the same number of writes.
 Identical output with different internal pulls (as happens when the engine's interrupt
 shim replaces the KERNAL) is reported `different`; that is conservative and never grants.
-A diverged lane keeps running for up to 30 emulated seconds to see whether it executes
-an illegal opcode.
+A diverged lane is not run on.
 
 Decisions (`assessMask` in `methodology.ts`):
 
 - mask 7: `compatible` if the reference is clean, complete and reproducible.
-- mask 3 / mask 0: `compatible` only if both fills match the reference through the horizon;
-  `incompatible` only if both fills end in a CPU halt (illegal opcode); otherwise `unknown`
-  (`depends-on-null-bank-content`, `output-diverges`, `non-tune-error`).
+- mask 3 / mask 0: `compatible` only if every fill matches the reference through the horizon; otherwise
+  `unknown` (`depends-on-null-bank-content`, `variant-stopped`, `output-diverges`, `non-tune-error`).
+- **`incompatible` is never produced.** The engine reports an illegal opcode inconsistently (sometimes with its message,
+  sometimes as an exception without one, for identical input), so a stopped variant is recorded as `stopped` and decided
+  `unknown`. Deny is the outcome either way; the research record keeps where each lane first differed.
 - every other ROM set is not something Commander can create: `unknown`.
 - a documented duration is required; unknown lengths, short observations, an invalid horizon
   and a failed or timed-out job stay `unknown`.
 
 Without the KERNAL the engine runs its own interrupt shim, which shifts every SID write by a
-few cycles, so mask 0 is `unknown` for nearly every program. This is measured behavior
-(see the decision regression), not a shortcut. The reSIDfp build throws a C++ exception
-without a message when the CPU halts, so it cannot prove a halt: its lanes report `error`
-and never produce `incompatible`.
-
-Engine errors other than an illegal opcode (`error`, `trace-dropped`, a failed reference)
-are infrastructure and can never produce `incompatible`. A job that times out or throws is
-recorded as a failure and every decision for it is `unknown`; the census continues.
+few cycles, so mask 0 is `unknown` for nearly every program. This is measured behavior (see the
+decision regression), not a shortcut. Engine errors other than a stop (`trace-dropped`, a failed
+reference) are infrastructure. A job that times out or throws is recorded as a failure and every
+decision for it is `unknown`; the census continues.
 
 ## Observation policy
 
@@ -162,8 +168,10 @@ re-checks every decision through the production lookup.
   cited log and the architect approval. The source identity covers every file under
   `scripts/rom-audit`, the engine package, the lock file and the ROM-audit tests; it
   deliberately excludes git HEAD so that committing the approval does not change the
-  identity it approves. `harden.ts` checks the approval line first and writes a certificate
-  only after all of its steps ran on one source identity.
+  identity it approves. `harden.ts` checks the approval first (the LAST `Approved-source-identity` and
+  `Reviewer-model` lines of the review document) and writes a certificate only after all of its steps
+  ran on one source identity. The certificate binds the approval text, not the whole review document,
+  and requires exactly the logs harden writes (`REQUIRED_LOGS`).
 
 ## Test strategy
 
@@ -172,7 +180,7 @@ re-checks every decision through the production lookup.
   included). Classes: dependencies read at ~70 s observed at 80 s and beyond a 65 s horizon,
   a CHARGEN read inside (63 s) and just after (66 s) the 5 s margin, silent divergence (PCM
   equal, writes differ), a variant that stops writing at volume 0 (must never be identical),
-  sparse effects, silence, a CPU halt that depends on BASIC for both fills, a 2M+ write
+  sparse effects, silence, a program that executes an illegal opcode without BASIC, a 2M+ write
   program, an OSC3 reader, dependencies on a second and third SID, and two real subtunes on
   which the pilot's earlier comparator reported the full-ROM configuration as different from
   itself (engine output is a view into memory the next call overwrites).
@@ -185,9 +193,12 @@ re-checks every decision through the production lookup.
 
 ## Publication and C64 Commander contract
 
-`deny-list.<engine>.json` (`sidflow-rom-deny-3`) maps complete-file SHA-256 to one tuple per
-subtune `[compatibleMaskBits, incompatibleMaskBits, maxPlaybackMs, documentedMs]` (bit M
-describes ROM mask M; only masks 0, 3 and 7 are ever set). `manifest.json` records profiles,
+`deny-list.<engine>.json` (`sidflow-rom-deny-4`) maps complete-file SHA-256 to one tuple per
+subtune `[compatibleMaskBits, incompatibleMaskBits, maxPlaybackMs, documentedMs, modelFixed]`
+(bit M describes ROM mask M; only masks 0, 3 and 7 are ever set). `modelFixed` is 1 when the SID
+header names the model of every chip: the decision then holds for any fallback model. Otherwise it
+was measured with the MOS8580 fallback, and a lookup created with `fallbackSidModel: "MOS6581"`
+denies it (`depends-on-fallback-sid-model`). `manifest.json` records profiles,
 engine hashes, ROM and document hashes, counts per mask with reasons, coverage, failures and
 the SHA-256 of each artifact. No SID, ROM or PCM is distributed.
 
@@ -196,6 +207,7 @@ const lookup = createRomEligibilityLookup(denyList, {
   sourceSha256, wasmSha256,                 // of the engine build you actually run
   profile: romConsumerProfile("sidlite"),   // your actual configuration; any difference denies
   methodology: "rom-audit-3",
+  fallbackSidModel: "MOS8580",              // the model you force where the header names none
 });
 const answer = lookup(fileSha256, oneBasedSong,
   { kernal: kernalSha256OrNull, basic: basicSha256OrNull, chargen: null }, elapsedSeconds);
@@ -220,16 +232,16 @@ Consumer obligations:
 6. Filter individual subtunes, not whole multi-song files. Re-evaluate cached eligibility when
    the ROM set changes.
 
-No Commander code has been changed. If Commander forces a SID model for tunes whose header
-names none, or runs a different renderer than the one named in the deny list, the decision
-does not describe that playback.
+No Commander code has been changed. A renderer other than the one named in the deny list is not
+covered. Where Commander derives its fallback SID model from the connected device, it must pass that
+model to the lookup.
 
 ## Known limitations
 
 - Finite equality is not perpetual independence; loops, interactive input and endings beyond
   the horizon are unproven.
-- reSIDfp and SidplayEZ are not covered unless reSIDfp lanes are requested; SidplayEZ never.
-- A CHARGEN or BASIC bank left `null` is covered by two fills, not by every possible content.
+- reSIDfp and SidplayEZ are not covered (see the summary).
+- A bank left `null` is covered by the fills above, not by every possible content.
 - Full instruction traces and CPU state snapshots are not implemented.
 - Throughput: see [hvsc-rom-full-run.md](hvsc-rom-full-run.md). The census takes days on a
   workstation and resumes from its checkpoint.

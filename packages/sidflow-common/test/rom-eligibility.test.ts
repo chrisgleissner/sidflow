@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { createRomEligibilityLookup,romEngineId,romMask,romSetId,romConsumerProfile,REFERENCE_ROM_SHA256,ROM_AUDIT_ENGINES,type RomDenyList,type RomSelection } from "../src/rom-eligibility.js";
-import { assessMask,observationHorizon,validateRecord,CENSUS_SCHEMA,type EngineRun } from "../../../scripts/rom-audit/methodology.js";
+import { assessMask,headerFixesSidModels,observationHorizon,validateRecord,CENSUS_SCHEMA,LANE_FILLS,type EngineRun } from "../../../scripts/rom-audit/methodology.js";
 import { delayedRomFixture,syntheticFixture,type SyntheticKind } from "../../../scripts/rom-audit/fixtures.js";
 import { readCensus } from "../../../scripts/rom-audit/checkpoint.js";
 import { publishProduction,sha } from "../../../scripts/rom-audit/publish-production.js";
@@ -13,11 +13,11 @@ import { SYSTEM_ROMS } from "../../sidflow-classify/src/render/system-roms-fetch
 import { engineRun,lane,censusRecord,publicationFixture,fakeEngine,fixtureHash,stable,SAMPLE_RATE,CENSUS_ENGINES } from "./rom-audit-fixtures.js";
 
 const engine=fakeEngine("sidlite"),profile=romConsumerProfile("sidlite");
-const expected={...engine,profile,methodology:"rom-audit-3"};
+const expected={...engine,profile,methodology:"rom-audit-3",fallbackSidModel:"MOS8580" as const};
 const hash="b".repeat(64);
 const selection=(mask:number):RomSelection=>({kernal:mask&1?REFERENCE_ROM_SHA256.kernal:null,basic:mask&2?REFERENCE_ROM_SHA256.basic:null,chargen:mask&4?REFERENCE_ROM_SHA256.chargen:null});
-function data():RomDenyList{return {schema:"sidflow-rom-deny-3",engineId:romEngineId(engine,profile),romSetId:romSetId(),methodology:"rom-audit-3",
- entries:{[hash]:[[0b10001000,0b00000001,15000,10000],[0,0,0,0]]}};}
+function data():RomDenyList{return {schema:"sidflow-rom-deny-4",engineId:romEngineId(engine,profile),romSetId:romSetId(),methodology:"rom-audit-3",
+ entries:{[hash]:[[0b10001000,0b00000001,15000,10000,1],[0,0,0,0,0]]}};}
 describe("production ROM eligibility",()=>{
  it("evaluates the Commander ROM sets and denies every other set",()=>{
   const lookup=createRomEligibilityLookup(data(),expected);
@@ -60,12 +60,20 @@ describe("production ROM eligibility",()=>{
    const changed={...profile,...change} as unknown as typeof profile;
    expect(createRomEligibilityLookup(data(),{...expected,profile:changed})(hash,1,selection(3)).reason).toBe("catalogue-provenance-or-schema-mismatch");
   }
-  const mutations:((d:RomDenyList)=>void)[]=[d=>{d.entries[hash]=[[128,128,15000,10000]];},d=>{d.entries[hash]=[[0b00000010,0,15000,10000]];},   // bit outside {0,3,7}
-   d=>{d.entries[hash]=[[128,0,0,0]];},d=>{d.entries[hash]=[[128,0,15000,15000]];},d=>{d.entries[hash]=[[128,0,Infinity,1]];},d=>{d.entries[hash]=[[128,0,15000] as never];},
-   d=>{d.schema="sidflow-rom-deny-2" as never;},d=>{d.engineId="";}];
+  const mutations:((d:RomDenyList)=>void)[]=[d=>{d.entries[hash]=[[128,128,15000,10000,0]];},d=>{d.entries[hash]=[[0b00000010,0,15000,10000,0]];},d=>{d.entries[hash]=[[0,0,0,0,1]];},d=>{d.entries[hash]=[[128,0,15000,10000,2]];},   // bit outside {0,3,7}
+   d=>{d.entries[hash]=[[128,0,0,0,0]];},d=>{d.entries[hash]=[[128,0,15000,15000,0]];},d=>{d.entries[hash]=[[128,0,Infinity,1,0]];},d=>{d.entries[hash]=[[128,0,15000,10000] as never];},
+   d=>{d.schema="sidflow-rom-deny-3" as never;},d=>{d.engineId="";}];
   for(const mutate of mutations){const d=data();mutate(d);expect(createRomEligibilityLookup(d,expected)(hash,1,selection(3)).eligible).toBe(false);}
   const d=data(),lookup=createRomEligibilityLookup(d,expected);d.entries[hash]![0]![0]=0;
   expect(lookup(hash,1,selection(3)).eligible).toBe(true);   // validated snapshot cannot be altered afterwards
+ });
+ it("applies a decision measured with the MOS8580 fallback to a MOS6581 consumer only where the header fixes the model",()=>{
+  const table=data();table.entries[hash]=[[0b10001000,0,15000,10000,1],[0b10001000,0,15000,10000,0]];
+  const lookup=createRomEligibilityLookup(table,{...expected,fallbackSidModel:"MOS6581"});
+  expect(lookup(hash,1,selection(3)).eligible).toBe(true);
+  expect(lookup(hash,2,selection(3)).reason).toBe("depends-on-fallback-sid-model");
+  expect(createRomEligibilityLookup(table,expected)(hash,2,selection(3)).eligible).toBe(true);
+  expect(createRomEligibilityLookup(table,{...expected,fallbackSidModel:"MOS6502" as never})(hash,1,selection(3)).eligible).toBe(false);
  });
  it("never turns finite equality into permission beyond the recorded deadline",()=>{
   const lookup=createRomEligibilityLookup(data(),expected);
@@ -94,24 +102,26 @@ describe("assessMask",()=>{
   expect(state(run,0).state).toBe("unknown");
   for(const mask of [1,2,4,5,6])expect(state(run,mask).reason).toBe("not-a-consumer-rom-set");
  });
- it("needs BOTH fills of the null banks to match",()=>{
-  for(const fill of ["zero","ff"] as const){
+ it("needs EVERY fill of the null banks to match",()=>{
+  for(const fill of LANE_FILLS.full){
    const run=engineRun("sidlite");run.lanes=run.lanes.map(l=>l.set==="full"&&l.fill===fill?{...l,outcome:"different" as const,samples:10}:l);
    expect(state(run,3).reason).toBe("depends-on-null-bank-content");
   }
+  const stale=engineRun("sidlite");stale.lanes=stale.lanes.map(l=>l.set==="none"&&l.fill==="stale-basic"?{...l,outcome:"identical" as const,samples:l.samples}:l);
+  expect(state(stale,0).state).toBe("unknown");                    // the other none fills still differ
   const both=engineRun("sidlite");both.lanes=both.lanes.map(l=>l.set==="full"?{...l,outcome:"different" as const}:l);
   expect(state(both,3).reason).toBe("output-diverges");
  });
- it("grants incompatible only when both fills halt the CPU, never for engine anomalies",()=>{
-  const halt=Object.fromEntries(["zero","ff"].map(fill=>[fill,lane("none",fill as "zero"|"ff",{outcome:"halt",message:"Illegal instruction $02 at address $2000"})]));
-  const run=engineRun("sidlite");run.lanes=[run.lanes[0]!,run.lanes[1]!,halt.zero!,halt.ff!];
-  expect(state(run,0).state).toBe("incompatible");
-  const mixed=engineRun("sidlite");mixed.lanes=[mixed.lanes[0]!,mixed.lanes[1]!,halt.zero!,mixed.lanes[3]!];
-  expect(state(mixed,0).state).toBe("unknown");
-  for(const outcome of ["error","trace-dropped","reference-failed"] as const){
-   const anomaly=engineRun("sidlite");anomaly.lanes=[anomaly.lanes[0]!,anomaly.lanes[1]!,lane("none","zero",{outcome,message:"allocation failure"}),lane("none","ff",{outcome,message:"allocation failure"})];
+ it("never grants incompatible: a stopped variant and engine anomalies are unknown with their own reasons",()=>{
+  const stopped=engineRun("sidlite");stopped.lanes=[...stopped.lanes.filter(l=>l.set==="full"),...LANE_FILLS.none.map(f=>lane("none",f,{outcome:"stopped",samples:100}))];
+  expect(state(stopped,0)).toEqual({state:"unknown",reason:"variant-stopped"});
+  const full=engineRun("sidlite");full.lanes=full.lanes.map(l=>l.set==="full"&&l.fill==="ff"?{...l,outcome:"stopped" as const,samples:5}:l);
+  expect(state(full,3).reason).toBe("depends-on-null-bank-content");
+  for(const outcome of ["trace-dropped","reference-failed"] as const){
+   const anomaly=engineRun("sidlite");anomaly.lanes=[...anomaly.lanes.filter(l=>l.set==="full"),...LANE_FILLS.none.map(f=>lane("none",f,{outcome}))];
    expect(state(anomaly,0).reason).toBe("non-tune-error");
   }
+  for(const mask of [0,3,7])for(const run of [engineRun("sidlite"),stopped])expect(state(run,mask).state).not.toBe("incompatible");
  });
  it("keeps unreproducible, failed, short, unknown-length and pending evidence unknown",()=>{
   const unstable=engineRun("sidlite");unstable.reference.repeat="different";
@@ -128,16 +138,29 @@ describe("assessMask",()=>{
   expect(state(engineRun("sidlite"),7,NaN).state).toBe("unknown");
  });
 });
+describe("SID model fallback",()=>{
+ it("recognises headers that name the model of every chip",()=>{
+  const flags=(...models:number[]):number=>models.reduce((n,m,i)=>n|m<<(4+2*i),0);
+  expect(headerFixesSidModels({version:2,flags:flags(1)})).toBe(true);
+  expect(headerFixesSidModels({version:3,flags:flags(2,1),secondSidAddress:0x42})).toBe(true);
+  expect(headerFixesSidModels({version:3,flags:flags(2,0),secondSidAddress:0x42})).toBe(false);          // second chip unknown
+  expect(headerFixesSidModels({version:3,flags:flags(3)})).toBe(false);                                   // "either"
+  expect(headerFixesSidModels({version:3,flags:flags(1,1,2),secondSidAddress:0x42,thirdSidAddress:0x44})).toBe(true);
+  expect(headerFixesSidModels({version:1,flags:flags(1)})).toBe(false);                                   // v1 has no flags
+  expect(headerFixesSidModels(undefined)).toBe(false);
+ });
+});
 describe("census records",()=>{
  const engines=[...CENSUS_ENGINES];
  it("accepts a well-formed record and rejects contradictions",()=>{
   expect(()=>validateRecord(censusRecord(),engines)).not.toThrow();
   const mutate=(f:(r:ReturnType<typeof censusRecord>)=>void)=>()=>{const r=structuredClone(censusRecord());f(r);validateRecord(r,engines);};
-  expect(mutate(r=>{r.runs[0]!.lanes[0]!.pcmSha256="9".repeat(64);})).toThrow("Invalid census lane");          // identical lane must carry the reference hashes
+  expect(mutate(r=>{r.runs[0]!.lanes[0]!.pcmSha256="9".repeat(64);})).toThrow("Invalid census lane");
+  expect(mutate(r=>{r.runs[0]!.lanes[0]!.fill="stale-basic";})).toThrow("Invalid census lane");   // stale-basic belongs to the none set          // identical lane must carry the reference hashes
   expect(mutate(r=>{r.runs[0]!.lanes[0]!.samples-=2;})).toThrow("Invalid census lane");
   expect(mutate(r=>{r.runs[0]!.lanes.pop();})).toThrow("Invalid census lanes");
   expect(mutate(r=>{r.runs[0]!.lanes[1]=r.runs[0]!.lanes[0]!;})).toThrow("Invalid census lane");              // duplicate lane key
-  expect(mutate(r=>{r.runs[0]!.lanes[2]!.outcome="halt";})).toThrow("Invalid census lane");                    // halt needs the illegal-opcode message
+  expect(mutate(r=>{r.runs[0]!.lanes[2]!.outcome="halt" as never;})).toThrow("Invalid census lane");                  // retired outcome
   expect(mutate(r=>{r.runs[0]!.engine="residfp";})).toThrow("engine order");
   expect(mutate(r=>{r.runs[0]!.reference.samples-=2;})).toThrow("Invalid census reference");
   expect(mutate(r=>{r.runs[0]!.reference.repeat="identical";r.runs[0]!.reference.outcome="failed";})).toThrow();
@@ -220,17 +243,19 @@ describe("publication",()=>{
    const m=JSON.parse(await readFile(path.join(dir,"published/manifest.json"),"utf8"));
    for(const e of CENSUS_ENGINES){
     const d=JSON.parse(await readFile(path.join(dir,`published/deny-list.${e}.json`),"utf8")) as RomDenyList;
-    const lookup=createRomEligibilityLookup(d,{...m.engines[e],profile:romConsumerProfile(e),methodology:m.methodology});
+    const lookup=createRomEligibilityLookup(d,{...m.engines[e],profile:romConsumerProfile(e),methodology:m.methodology,fallbackSidModel:"MOS8580"});
     expect(lookup(fixtureHash,1,selection(3)).maxPlaybackSeconds).toBe(15);
     expect(lookup(fixtureHash,1,selection(7)).eligible).toBe(true);
     expect(lookup(fixtureHash,1,selection(0)).eligible).toBe(false);
     expect(lookup(fixtureHash,2,selection(3)).reason).toBe("compatibility-unresolved");
+    expect(d.entries[fixtureHash]![0]![4]).toBe(1);   // the fixture header names the SID model, so a MOS6581 consumer is covered too
+    expect(createRomEligibilityLookup(d,{...m.engines[e],profile:romConsumerProfile(e),methodology:m.methodology,fallbackSidModel:"MOS6581"})(fixtureHash,1,selection(3)).eligible).toBe(true);
    }
    const failed={...censusRecord(),runs:[],failure:{reason:"timeout",message:"x"}};
    await writeFile(path.join(dir,"census.jsonl"),stable(failed).trimEnd()+"\n");
    await publishProduction(dir);
    const d=JSON.parse(await readFile(path.join(dir,"published/deny-list.sidlite.json"),"utf8")) as RomDenyList;
-   expect(d.entries[fixtureHash]![0]).toEqual([0,0,0,0]);
+   expect(d.entries[fixtureHash]![0]).toEqual([0,0,0,0,0]);
    expect(JSON.parse(await readFile(path.join(dir,"published/manifest.json"),"utf8")).failedSubtunes).toBe(1);
   }finally{await rm(dir,{recursive:true,force:true});}
  });
@@ -247,7 +272,7 @@ it("exhaustively agrees with every maintained research decision",async()=>{
  for(const e of Object.keys(manifest.engines) as ("sidlite"|"residfp")[]){
   const raw=await readFile(path.join(dir,`deny-list.${e}.json`),"utf8");
   expect(sha(raw)).toBe(manifest.artifacts[`deny-list.${e}.json`]);
-  const lookup=createRomEligibilityLookup(JSON.parse(raw) as RomDenyList,{sourceSha256:manifest.engines[e].sourceSha256,wasmSha256:manifest.engines[e].wasmSha256,profile:romConsumerProfile(e),methodology:manifest.methodology});
+  const lookup=createRomEligibilityLookup(JSON.parse(raw) as RomDenyList,{sourceSha256:manifest.engines[e].sourceSha256,wasmSha256:manifest.engines[e].wasmSha256,profile:romConsumerProfile(e),methodology:manifest.methodology,fallbackSidModel:"MOS8580"});
   const seen=new Set<string>();
   for(const r of records){
    const key=`${r.sha256}#${r.song}`;if(seen.has(key)&&e===Object.keys(manifest.engines)[0])throw new Error(`Duplicate research record ${key}`);seen.add(key);

@@ -17,23 +17,25 @@ git clone git@github.com:chrisgleissner/sidflow.git && cd sidflow \
   && git checkout <branch-or-tag-given-to-you> && bash scripts/rom-audit/run-full.sh 2>&1 | tee -a rom-audit-run.log
 ```
 
-Resume after a reboot or Ctrl-C: `cd sidflow && bash scripts/rom-audit/run-full.sh 2>&1 | tee -a rom-audit-run.log`.
+Resume after a reboot or Ctrl-C: the same command. A finished pilot or a valid hardening certificate is
+detected and skipped (`scripts/rom-audit/stage-status.ts`); the `full` stage resumes from its checkpoint.
 Run one stage: `ROM_AUDIT_STAGE_ONLY=full bash scripts/rom-audit/run-full.sh`.
 `ROM_AUDIT_WORKERS=N` sets the worker count (default: logical CPUs minus one).
-`ROM_AUDIT_ENGINES=sidlite,residfp` adds the reSIDfp renderer (Commander's default), which costs
-about six times as much per lane and cannot prove CPU halts; leave it off for the first run.
+`ROM_AUDIT_RETRY_FAILURES=1` re-runs jobs recorded as failed. Only the SIDLite renderer is supported;
+reSIDfp lanes are refused (see the design document).
 
 ## Prerequisites (Linux x86-64)
 
-`bun` 1.3.x and `git`, about 5 GB free disk and roughly 400 MB RAM per worker. No compiler,
-Docker, or native build is needed: the census runs the prebuilt WASM engine from the npm
+`bun` 1.3.x, `node`, `npm` (the repository test suite builds with npm) and `git`; about 5 GB free disk
+and 650 MB RAM per worker (workers are recycled every 200 jobs; the log shows peak worker RSS). No
+compiler, Docker or native build is needed: the census runs the prebuilt WASM engine from the npm
 package. The script stops with a message if a tool is missing.
 
 ## Stages
 
 | Stage | What it does | Stops when |
 |---|---|---|
-| `setup` | `bun install --frozen-lockfile`, fetches HVSC 85 and the authentic ROMs, verifies the corpus identity `4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e` (61,157 files / 87,868 subtunes), and checks that `doc/research/hvsc-rom-adversarial-review.md` carries an `Approved-source-identity` line for the sources you checked out (`bun scripts/rom-audit/harden.ts --identity`). | A different HVSC release, a modified file, or sources without architect approval. |
+| `setup` | `bun install --frozen-lockfile`, fetches HVSC (the latest release; HVSC 85 is required), fetches the authentic ROMs, verifies the corpus identity `4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e` (61,157 files / 87,868 subtunes), checks that `doc/research/hvsc-rom-adversarial-review.md` carries an `Approved-source-identity` line (the last one counts) for the sources you checked out (`bun scripts/rom-audit/harden.ts --identity`), and runs the repository test suite once so that environment problems show up before the pilot. | A different HVSC release (once HVSC 86 exists, place the HVSC 85 collection in `workspace/hvsc/C64Music` first), a modified file, sources without architect approval, or a failing test. |
 | `pilot` | Renders the reviewed stratified pilot (567 subtunes, under the 5% ceiling). About an hour on 7 workers. | A job error is recorded as a failure, not a stop. |
 | `harden` | Decision-path regression on the census engines, pilot completeness (engine hashes, tool hash, no failed jobs), publication, fresh-process re-run equality, three focused test runs and three complete repository suites (each 0 fail, 0 skip). Writes `workspace/rom-audit-hardening/certificate.json`. About 1.5 hours. | Any failed check, or any change to the sources or engine during qualification. |
 | `full` | `audit.ts --rollout full` with the certificate: every subtune at its full documented horizon, resumable. | Rerun to continue. |
@@ -52,7 +54,7 @@ wc -l workspace/rom-audit-full/census.jsonl # one line per finished subtune
 
 A job that exceeds its timeout (ten times its expected duration, at least five minutes) or throws
 is recorded as a failure and its decisions are `unknown`; the census goes on. Rerun with
-`--retry-failures` (add it to the `audit.ts` call in `run-full.sh`) after fixing the cause.
+`ROM_AUDIT_RETRY_FAILURES=1` after fixing the cause.
 
 ## After the run
 
@@ -69,8 +71,7 @@ is recorded as a failure and its decisions are `unknown`; the census goes on. Re
 
 `compatible` applies to the consumer profile in the design document (WASM 1.1.0, 48 kHz, default
 power-on delay, ROM sets {KERNAL+BASIC with CHARGEN null, nothing}) and the documented duration plus
-5 s, nothing more. **It applies to the renderer the census ran: SIDLite.** Commander's default
-renderer is reSIDfp and its Android renderer SidplayEZ is a different core; neither is covered
-unless reSIDfp is added with `ROM_AUDIT_ENGINES`. Unknown is not failure: the set "nothing
+5 s, nothing more. **It applies to the renderer the census ran: SIDLite.** Commander's default renderer
+depends on the build (SidplayEZ on Android, reSIDfp on web and iOS); neither is covered. Unknown is not failure: the set "nothing
 supplied" is `unknown` for almost every program, because the engine's interrupt shim shifts SID
-writes by a few cycles.
+writes by a few cycles. The decision also assumes the MOS8580 fallback SID model unless the header names the model of every chip.

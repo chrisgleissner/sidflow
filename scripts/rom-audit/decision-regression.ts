@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createRomEligibilityLookup, REFERENCE_ROM_SHA256, romConsumerProfile, romEngineId, romSetId, ROM_AUDIT_ENGINES, ROM_DENY_SCHEMA, type RomAuditEngine, type RomDenyList, type RomSelection } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { assessMask, observationHorizon, validateRecord, CENSUS_SCHEMA, METHODOLOGY, type Compatibility, type EngineRun } from "./methodology.js";
-import { engineHashes, renderDigest, runEngine, SAMPLE_RATE, UNTOUCHED } from "./wasm-lanes.js";
+import { engineHashes, loadModule, renderDigest, runEngine, SAMPLE_RATE, UNTOUCHED, type RomConfig } from "./wasm-lanes.js";
 import { loadRoms } from "./census-worker.js";
 import { delayedRomFixture, syntheticFixture, type SyntheticKind } from "./fixtures.js";
 
@@ -52,9 +52,11 @@ synthetic("silent-tail", "0:05", { m0: "unknown", m3: "compatible", m7: "compati
 });
 synthetic("sparse-sfx", "1:00", { m0: "unknown", m3: "compatible", m7: "compatible" }, { frames: 2500 });
 synthetic("silence", "0:05", { m0: "unknown", m3: "compatible", m7: "compatible" });
-// The reSIDfp build throws an exception without a message when the CPU halts, so it cannot prove the halt: unknown, never incompatible.
-synthetic("halt-without-basic", "0:05", { m0: "incompatible", m3: "compatible", m7: "compatible", residfp: { m0: "unknown" } });
-// An RSID that masks interrupts and never calls the KERNAL does not depend on it, so even nothing-supplied is identical; 2M+ writes are compared without truncation.
+// A program that jumps through a BASIC byte executes an illegal opcode when the bank is zero or 0xFF. A diverged lane is not run on, and
+// the engine reports a stop inconsistently, so the census never turns this into `incompatible`: every none lane simply differs.
+synthetic("halt-without-basic", "0:05", { m0: "unknown", m3: "compatible", m7: "compatible" }, {}, run => {
+  for (const lane of run.lanes.filter(l => l.set === "none")) if (lane.outcome === "identical") throw new Error(`halt-without-basic: none/${lane.fill} is identical`);
+});
 synthetic("busy-writes", "0:10", { m0: "compatible", m3: "compatible", m7: "compatible" }, {}, run => { if (run.reference.writes < 2_000_000) throw new Error(`busy-writes produced only ${run.reference.writes} writes`); });
 synthetic("osc3-reader", "0:05", { m0: "unknown", m3: "compatible", m7: "compatible" }, { frames: 100 });
 synthetic("second-sid-late", "0:05", { m0: "unknown", m3: "unknown", m7: "compatible" }, { frames: 100, mask: 4 });
@@ -81,8 +83,8 @@ function verify(name: string, bytes: Buffer, song: number, token: string, expect
     const bits = (state: Compatibility): number => decisions.reduce((n, d, mask) => (d.state === state ? n | 1 << mask : n), 0);
     const compatible = bits("compatible");
     const deny: RomDenyList = { schema: ROM_DENY_SCHEMA, engineId: romEngineId(hashes, profile), romSetId: romSetId(), methodology: METHODOLOGY,
-      entries: { [record.sha256]: [[compatible, bits("incompatible"), compatible ? Math.round(observed * 1000) : 0, compatible && horizon.documentedSeconds ? Math.round(horizon.documentedSeconds * 1000) : 0]] } };
-    const lookup = createRomEligibilityLookup(deny, { ...hashes, profile, methodology: METHODOLOGY });
+      entries: { [record.sha256]: [[compatible, bits("incompatible"), compatible ? Math.round(observed * 1000) : 0, compatible && horizon.documentedSeconds ? Math.round(horizon.documentedSeconds * 1000) : 0, 0]] } };
+    const lookup = createRomEligibilityLookup(deny, { ...hashes, profile, methodology: METHODOLOGY, fallbackSidModel: "MOS8580" });
     for (let mask = 0; mask < 8; mask++) {
       const answer = lookup(record.sha256, song, selection(mask));
       if (answer.state !== decisions[mask]!.state) throw new Error(`${name}/${engine} mask ${mask}: lookup disagrees with assessMask`);
@@ -139,6 +141,28 @@ if (!only || only.test("untouched")) {
       digest[`untouched:${name}/${engine}`] = [untouched.samples, untouched.writes, untouched.pcmSha256.slice(0, 12), untouched.ended];
     }
     console.log(`PASS untouched null banks behave like the zero-filled none lane: ${name}`);
+  }
+}
+// Commander plays every tune in ONE cached engine instance. The census renders each lane in a fresh instance, so the
+// two must be indistinguishable: a tune played as the Nth player of a shared instance, after other tunes with other
+// ROM sets, must produce exactly the fresh-instance PCM and writes.
+if (!only || only.test("shared")) {
+  const sequence: [string, Buffer, number][] = [["Commando", readFileSync(path.join(corpus, "MUSICIANS/H/Hubbard_Rob/Commando.sid")), 1], ["Out_on_a_Limb", readFileSync(path.join(corpus, "GAMES/M-R/Out_on_a_Limb.sid")), 8],
+    ["silence", syntheticFixture("silence"), 1], ["osc3-reader", syntheticFixture("osc3-reader", { frames: 100 }), 1], ["busy-writes", syntheticFixture("busy-writes"), 1], ["third-sid", syntheticFixture("third-sid-late", { frames: 100, mask: 2 }), 1]];
+  // Bank contents are explicit here so that only hidden engine state can make the two differ; contents left behind in
+  // "null" banks by earlier players are the census' stale-basic and fill lanes, not this check.
+  const configs: [string, RomConfig][] = [["full-zero-chargen", { kernal: "authentic", basic: "authentic", chargen: "zero" }], ["nothing-zero", { kernal: "null", basic: "zero", chargen: "zero" }],
+    ["all-authentic", { kernal: "authentic", basic: "authentic", chargen: "authentic" }]];
+  for (const engine of ENGINES) {
+    const shared = await loadModule(engine);
+    // Warm the shared instance with varied earlier players (ROM sets differ, so stale bank contents are left behind).
+    for (const [, bytes, song] of sequence) for (const [, config] of configs) await renderDigest(engine, bytes, song, 3, config, roms, shared);
+    for (const [name, bytes, song] of sequence) for (const [label, config] of configs) {
+      const fresh = await renderDigest(engine, bytes, song, 5, config, roms), later = await renderDigest(engine, bytes, song, 5, config, roms, shared);
+      if (JSON.stringify(fresh) !== JSON.stringify(later)) throw new Error(`${name}/${label}/${engine}: a shared-instance playback differs from a fresh instance: ${JSON.stringify([fresh, later])}`);
+      digest[`shared:${name}/${label}/${engine}`] = [fresh.samples, fresh.writes, fresh.pcmSha256.slice(0, 12)];
+    }
+    console.log(`PASS shared-instance playbacks are bit-identical to fresh instances on ${engine} (${sequence.length * configs.length} comparisons after ${sequence.length * configs.length} warm-up players)`);
   }
 }
 console.log("DIGEST " + sha(JSON.stringify(digest)));

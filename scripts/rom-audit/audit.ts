@@ -19,7 +19,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { availableParallelism, tmpdir } from "node:os";
 import path from "node:path";
-import { RELEASE_DOCUMENTS, releaseLengths, readVerifiedSid } from "./inputs.js";
+import { RELEASE_DOCUMENTS, releaseLengths, readVerifiedSid, toolHash } from "./inputs.js";
 import { scopeLock, validateHardening, verifyHardeningEvidence, hardeningIdentity, type HardeningCertificate } from "./rollout.js";
 import { RolloutLedger, ceilings } from "./ledger.js";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
@@ -56,9 +56,12 @@ function args(): { hvsc: string; roms: string; out: string; workers: number; sec
   if (!["pilot", "full"].includes(rollout)) throw new Error("Invalid rollout (pilot/full)");
   // A pilot without a reviewed selection would take the shortest tunes first and say nothing about long horizons.
   if (rollout === "pilot" && !values.selection) throw new Error("--rollout pilot requires --selection (see select-pilot.ts)");
-  // reSIDfp costs about six times as much per lane as SIDLite (measured); it is opt-in.
   const engines = (values.engines ?? "sidlite").split(",") as RomAuditEngine[];
   if (!engines.length || engines.some(e => !(ROM_AUDIT_ENGINES as readonly string[]).includes(e)) || new Set(engines).size !== engines.length) throw new Error("Invalid --engines");
+  // reSIDfp is refused: a second player in one reSIDfp instance renders different PCM for identical input (see
+  // residfp-instance-state.ts), and C64 Commander plays every tune in one shared instance, so fresh-instance lanes would
+  // describe a state Commander never produces. It also costs about six times as much per lane.
+  if (engines.includes("residfp")) throw new Error("reSIDfp lanes are not supported until its per-instance PCM state is understood; see doc/research/hvsc-rom-production.md");
   return { rollout, budget, workers, seconds, limit, engines, retryFailures: !!values["retry-failures"],
     ...(values.hardening ? { hardening: path.resolve(values.hardening) } : {}), hvsc: path.resolve(values.hvsc!), roms: path.resolve(values.roms!), out: path.resolve(values.out!),
     ...(values.selection ? { selection: path.resolve(values.selection) } : {}) };
@@ -91,6 +94,7 @@ class WorkerProcess {
   private readonly child;
   private pending: { resolve: (r: CensusRecord) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | undefined;
   private stderrTail = "";
+  jobs = 0;
   constructor(runtime: string) {
     this.child = spawn(process.execPath, [path.join(scriptDir, "census-worker.ts"), runtime], { stdio: ["pipe", "pipe", "pipe"] });
     this.child.stderr.on("data", (chunk: Buffer) => { this.stderrTail = (this.stderrTail + chunk.toString()).slice(-4000); process.stderr.write(chunk); });
@@ -112,6 +116,10 @@ class WorkerProcess {
       this.child.stdin.write(JSON.stringify(message) + "\n", error => { if (error) { clearTimeout(timer); this.pending = undefined; reject(error); } });
     });
   }
+  /** Peak resident set of the worker so far, in MB (0 where /proc is unavailable). */
+  peakRssMb(): number {
+    try { return Number(/VmHWM:\s+(\d+) kB/.exec(readFileSync(`/proc/${this.child.pid}/status`, "utf8"))?.[1] ?? 0) / 1024; } catch (error) { console.debug(`Cannot read worker memory: ${(error as Error).message}`); return 0; }
+  }
   close(): void { this.child.stdin.end(); this.child.kill("SIGKILL"); }
 }
 /**
@@ -119,7 +127,8 @@ class WorkerProcess {
  * measured at least ~5x realtime per lane, i.e. 1.2 s of wall time per horizon second and engine.
  * Allow ten times that (and never less than five minutes) before declaring the job hung.
  */
-export const jobTimeoutMs = (seconds: number, engines: number): number => Math.max(300000, Math.ceil(seconds * engines * 12 * 1000));
+export const jobTimeoutMs = (seconds: number, engines: readonly RomAuditEngine[]): number =>
+  Math.max(300000, Math.ceil(seconds * engines.reduce((n, engine) => n + (engine === "residfp" ? 60 : 12), 0) * 1000));
 
 async function main(): Promise<void> {
   const a = args();
@@ -152,7 +161,7 @@ async function main(): Promise<void> {
     return [engine, { ...hashes, profile, engineId: romEngineId(hashes, profile) }];
   }));
   const manifest = { schema: 4, methodology: METHODOLOGY, censusSchema: CENSUS_SCHEMA, hvscRoot: a.hvsc, files: tunes.length, songs: allSongs, seconds: a.seconds, sampleRate: SAMPLE_RATE,
-    engines: engineIdentity, toolSha256: digest(Buffer.concat(["wasm-lanes.ts", "census-worker.ts", "methodology.ts", "checkpoint.ts", "inputs.ts", "audit.ts"].map(f => readFileSync(path.join(scriptDir, f))))), headersSha256: digest(headersText), horizonsSha256: digest(horizonsText), corpusSha256, documents, roms,
+    engines: engineIdentity, toolSha256: toolHash(), headersSha256: digest(headersText), horizonsSha256: digest(horizonsText), corpusSha256, documents, roms,
     ...(a.selection ? { selectionSha256: digest(await readFile(a.selection)) } : {}) };
   if (a.rollout === "full") {
     const cert = a.hardening ? JSON.parse(await readFile(a.hardening, "utf8")) as HardeningCertificate : undefined;
@@ -203,23 +212,33 @@ async function main(): Promise<void> {
   };
   const runtime = await mkdtemp(path.join(tmpdir(), "sidflow-rom-audit-runtime-"));
   for (const [name, bytes] of Object.entries(romBytes)) await writeFile(path.join(runtime, name), bytes, { mode: 0o400 });
-  const save = (record: CensusRecord): void => {
-    validateRecord(record, engines);
+  const save = (candidate: CensusRecord): void => {
+    let record = candidate;
+    try { validateRecord(record, engines); } catch (error) {
+      // An invalid record is a defect in that job's evidence, not a reason to stop the census.
+      console.error(`Invalid census record ${record.sha256.slice(0, 12)}#${record.song}: ${(error as Error).message}`);
+      record = { schema: CENSUS_SCHEMA, sha256: record.sha256, song: record.song, seconds: record.seconds, sampleRate: record.sampleRate, runs: [], failure: { reason: "exception", message: `invalid record: ${(error as Error).message}` } };
+    }
     const fd = openSync(checkpoint, "a");
     try { appendFileSync(fd, json(record).trimEnd() + "\n"); fsyncSync(fd); } finally { closeSync(fd); }
     rows.set(censusKey(record), record); added++; if (record.failure) failures++;
   };
   const progress = setInterval(() => {
     const elapsed = (Date.now() - started) / 1000, rate = doneHorizon / Math.max(1, elapsed);
-    console.log(`${rows.size}/${jobs.length} done; ${added} this run (${failures} failed); ${elapsed.toFixed(0)}s; ${rate.toFixed(1)} horizon-s/s; ETA ${rate > 0 ? (((totalHorizon - doneHorizon) / rate) / 3600).toFixed(1) : "?"} h`);
+    console.log(`${rows.size}/${jobs.length} done; ${added} this run (${failures} failed); ${elapsed.toFixed(0)}s; peak worker RSS ${peakRss.toFixed(0)} MB; ${rate.toFixed(1)} horizon-s/s; ETA ${rate > 0 ? (((totalHorizon - doneHorizon) / rate) / 3600).toFixed(1) : "?"} h`);
   }, 30000);
+  let peakRss = 0;
+  const WORKER_JOBS = 200;
   const slot = async (): Promise<void> => {
     let worker = new WorkerProcess(runtime);
     try {
       for (let job = takeJob(); job; job = takeJob()) {
         const message = { sha256: job.sha256, song: job.song, seconds: job.seconds, engines, hex: readVerifiedSid(job.path, job.sha256).toString("hex") };
+        // Recycle the worker periodically: each job instantiates many WASM modules.
+        if (worker.jobs >= WORKER_JOBS) { peakRss = Math.max(peakRss, worker.peakRssMb()); worker.close(); worker = new WorkerProcess(runtime); }
+        worker.jobs++;
         let record: CensusRecord;
-        try { record = await worker.request(message, jobTimeoutMs(job.seconds, engines.length)); } catch (error) {
+        try { record = await worker.request(message, jobTimeoutMs(job.seconds, engines)); } catch (error) {
           // Isolate the failure: record it, replace the worker and carry on with the census.
           const timeout = (error as { timeout?: boolean }).timeout === true;
           console.error(`Job ${path.relative(a.hvsc, job.path)}#${job.song} failed (${timeout ? "timeout" : "exception"}): ${(error as Error).message}`);
@@ -230,7 +249,7 @@ async function main(): Promise<void> {
         if (rows.has(censusKey(record))) rows.delete(censusKey(record));   // a retried failure replaces its earlier record in memory only
         save(record); doneHorizon += job.seconds;
       }
-    } finally { worker.close(); }
+    } finally { peakRss = Math.max(peakRss, worker.peakRssMb()); worker.close(); }
   };
   try { await Promise.all(Array.from({ length: a.workers }, slot)); } finally { clearInterval(progress); await rm(runtime, { recursive: true, force: true }); }
   const elapsedSec = (Date.now() - started) / 1000;

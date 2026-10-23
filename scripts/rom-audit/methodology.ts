@@ -31,10 +31,21 @@ export function observationHorizon(token: string | undefined, minimum = 10): Hor
   };
 }
 
-export type LaneOutcome = "identical" | "different" | "halt" | "error" | "reference-failed" | "trace-dropped";
+export type LaneFill = "zero" | "ff" | "random" | "stale-basic";
+/** The null-bank contents each Commander ROM set must be insensitive to. */
+export const LANE_FILLS: Record<"full" | "none", readonly LaneFill[]> = { full: ["zero", "ff", "random"], none: ["zero", "ff", "random", "stale-basic"] };
+/**
+ * `stopped`: the lane's engine ended (an illegal opcode or an exception) while the reference was still running. The engine
+ * reports an illegal opcode with its message only some of the time, so the reason is deliberately not part of the evidence.
+ */
+export type LaneOutcome = "identical" | "different" | "stopped" | "reference-failed" | "trace-dropped";
 export interface LaneResult {
-  /** `full`: KERNAL and BASIC supplied, CHARGEN null. `none`: nothing supplied. `fill`: content of the null banks. */
-  set: "full" | "none"; fill: "zero" | "ff";
+  /**
+   * `full`: KERNAL and BASIC supplied, CHARGEN null. `none`: nothing supplied. `fill`: what the null banks held:
+   * zeros, 0xFF, a fixed pseudo-random pattern, or (none only) the authentic BASIC image left behind by an
+   * earlier playback in the same engine instance.
+   */
+  set: "full" | "none"; fill: LaneFill;
   outcome: LaneOutcome; samples: number; writes: number; firstDifferenceSample: number | null; message: string;
   pcmSha256: string; traceSha256: string;
 }
@@ -57,8 +68,9 @@ const unknown = (reason: string): Assessment => ({ state: "unknown", reason });
 /**
  * Decision for one ROM set of one engine run.
  * - mask 7 (all authentic ROMs): compatible when the reference is clean and reproducible.
- * - mask 3 / mask 0: compatible only if both fills of the null banks match the reference through
- *   the whole horizon; incompatible only if both fills end in an illegal opcode.
+ * - mask 3 / mask 0: compatible only if every fill of the null banks matches the reference through
+ *   the whole horizon. Everything else is unknown: a variant that stops is not turned into `incompatible`
+ *   because the engine does not reliably say why it stopped.
  * - every other mask is not a configuration the consumer can create: unknown.
  * Anything short of the documented duration plus margin, or without a documented duration, is unknown.
  */
@@ -79,11 +91,11 @@ export function assessMask(run: EngineRun | undefined, horizon: Horizon, observe
   if (mask === 7) return { state: "compatible", reason: "reference-reproducible-through-documented-horizon" };
   const set = mask === 3 ? "full" : "none";
   const lanes = run.lanes.filter(l => l.set === set);
-  if (lanes.length !== 2 || new Set(lanes.map(l => l.fill)).size !== 2) return unknown("experiment-pending");
-  if (lanes.every(l => l.outcome === "identical" && l.samples === wanted)) return { state: "compatible", reason: "identical-for-both-null-bank-fills-through-documented-horizon" };
-  if (lanes.every(l => l.outcome === "halt")) return { state: "incompatible", reason: "cpu-halt-for-both-null-bank-fills" };
-  if (lanes.some(l => l.outcome === "error" || l.outcome === "reference-failed" || l.outcome === "trace-dropped")) return unknown("non-tune-error");
+  if (lanes.length !== LANE_FILLS[set].length || !LANE_FILLS[set].every(f => lanes.some(l => l.fill === f))) return unknown("experiment-pending");
+  if (lanes.every(l => l.outcome === "identical" && l.samples === wanted)) return { state: "compatible", reason: "identical-for-every-null-bank-fill-through-documented-horizon" };
+  if (lanes.some(l => l.outcome === "reference-failed" || l.outcome === "trace-dropped")) return unknown("non-tune-error");
   if (lanes.some(l => l.outcome === "identical")) return unknown("depends-on-null-bank-content");
+  if (lanes.some(l => l.outcome === "stopped")) return unknown("variant-stopped");
   return unknown("output-diverges");
 }
 
@@ -108,19 +120,29 @@ export function validateRecord(record: CensusRecord, engines: readonly RomAuditE
         ref.writes < 0 || !hex(ref.pcmSha256) || !hex(ref.traceSha256) || !["identical", "different", "failed"].includes(ref.repeat) ||
         (ref.outcome === "clean" && ref.samples !== wanted))
       throw new Error("Invalid census reference");
-    if (!Array.isArray(run.lanes) || run.lanes.length !== 4) throw new Error("Invalid census lanes");
+    if (!Array.isArray(run.lanes) || run.lanes.length !== LANE_FILLS.full.length + LANE_FILLS.none.length) throw new Error("Invalid census lanes");
     const seen = new Set<string>();
     for (const lane of run.lanes) {
       const key = `${lane.set}/${lane.fill}`;
-      if (!["full", "none"].includes(lane.set) || !["zero", "ff"].includes(lane.fill) || seen.has(key) ||
-          !["identical", "different", "halt", "error", "reference-failed", "trace-dropped"].includes(lane.outcome) ||
+      if (!["full", "none"].includes(lane.set) || !(LANE_FILLS[lane.set] ?? []).includes(lane.fill) || seen.has(key) ||
+          !["identical", "different", "stopped", "reference-failed", "trace-dropped"].includes(lane.outcome) ||
           !Number.isSafeInteger(lane.samples) || lane.samples < 0 || !Number.isSafeInteger(lane.writes) || lane.writes < 0 || !hex(lane.pcmSha256) || !hex(lane.traceSha256) ||
           (lane.outcome === "identical" && (ref.outcome !== "clean" || lane.samples !== wanted || lane.pcmSha256 !== ref.pcmSha256 || lane.traceSha256 !== ref.traceSha256 || lane.writes !== ref.writes)) ||
-          (lane.outcome === "halt" && !lane.message.startsWith("Illegal instruction $")) ||
           (lane.firstDifferenceSample !== null && (!Number.isSafeInteger(lane.firstDifferenceSample) || lane.firstDifferenceSample < 0)))
         throw new Error(`Invalid census lane ${key}`);
       seen.add(key);
     }
     if (ref.repeat === "identical" && ref.outcome !== "clean") throw new Error("Contradictory reference repeat");
   });
+}
+
+/**
+ * Does the SID header name the model of every chip? PSID v2+ flags: bits 4-5 first chip, 6-7 second, 8-9 third, each
+ * 0 unknown, 1 MOS6581, 2 MOS8580, 3 either. Where it does, the consumer's fallback model never applies.
+ */
+export function headerFixesSidModels(header: { version?: number; flags?: number; secondSidAddress?: number; thirdSidAddress?: number } | undefined): boolean {
+  if (!header || !Number.isInteger(header.version) || (header.version as number) < 2 || !Number.isInteger(header.flags)) return false;
+  const flags = header.flags as number, chips = 1 + (header.secondSidAddress ? 1 : 0) + (header.thirdSidAddress ? 1 : 0);
+  for (let chip = 0; chip < chips; chip++) { const model = (flags >> (4 + 2 * chip)) & 3; if (model !== 1 && model !== 2) return false; }
+  return true;
 }

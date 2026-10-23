@@ -28,8 +28,8 @@ import path from "node:path";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import { ROM_AUDIT_ENGINES } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { METHODOLOGY, validateRecord } from "./methodology.js";
-import { corpusIdentity, readVerifiedSid } from "./inputs.js";
-import { hardeningIdentity, scopeLock, suiteTotals, HARDENING_CERTIFICATE_SCHEMA, type HardeningCertificate, type SuiteTotals } from "./rollout.js";
+import { corpusIdentity, readVerifiedSid, toolHash } from "./inputs.js";
+import { approvalOf, hardeningIdentity, REQUIRED_LOGS, scopeLock, suiteTotals, HARDENING_CERTIFICATE_SCHEMA, type HardeningCertificate, type SuiteTotals } from "./rollout.js";
 import { publishProduction } from "./publish-production.js";
 import { readCensus } from "./checkpoint.js";
 import { engineHashes } from "./wasm-lanes.js";
@@ -72,9 +72,8 @@ async function main(): Promise<void> {
   const identity = await hardeningIdentity();
   // The architect approval is checked first: without it nothing below could produce a certificate.
   const reviewText = readFileSync(review, "utf8");
-  const approved = /^Approved-source-identity: ([a-f0-9]{64})$/m.exec(reviewText)?.[1];
-  const reviewer = /^Reviewer-model: (\S+)$/m.exec(reviewText)?.[1];
-  if (!o["dry-run"] && (approved !== identity || reviewer !== "claude-opus-5-5"))
+  const approval = approvalOf(reviewText);
+  if (!o["dry-run"] && (approval?.identity !== identity || approval.reviewer !== "claude-opus-5-5"))
     throw new Error(`Architect approval missing or bound to another source identity. Required line: "Approved-source-identity: ${identity}" with "Reviewer-model: claude-opus-5-5"`);
   scopeLock(await corpusIdentity(hvsc));   // held until this process exits
   const evidence = path.resolve(o.out ?? path.join(root, "workspace/rom-audit-hardening"), identity.slice(0, 16));
@@ -100,7 +99,7 @@ async function main(): Promise<void> {
 
   // 3. pilot: provenance, completeness and publication
   const manifest = JSON.parse(readFileSync(path.join(pilot, "manifest.json"), "utf8")) as { toolSha256: string; engines: Record<string, { sourceSha256: string; wasmSha256: string }>; hvscRoot: string };
-  const tool = sha(Buffer.concat(["wasm-lanes.ts", "census-worker.ts", "methodology.ts", "checkpoint.ts", "inputs.ts", "audit.ts"].map(f => readFileSync(path.join(root, "scripts/rom-audit", f)))));
+  const tool = toolHash();
   if (manifest.toolSha256 !== tool) throw new Error("The pilot was produced by different census tooling; re-run the pilot");
   for (const engine of censusEngines)
     if (manifest.engines[engine]?.sourceSha256 !== engines[engine]!.sourceSha256 || manifest.engines[engine]?.wasmSha256 !== engines[engine]!.wasmSha256)
@@ -120,11 +119,15 @@ async function main(): Promise<void> {
     hex: readVerifiedSid(path.join(manifest.hvscRoot, pathBySha.get(r.sha256)!), r.sha256).toString("hex") }) + "\n").join("");
   const again = spawnSync(process.execPath, [path.join(root, "scripts/rom-audit/census-worker.ts"), roms], { input, encoding: "utf8", maxBuffer: 1 << 28, timeout: 3 * 3600 * 1000 });
   if (again.status !== 0) throw new Error(`Reproducibility run failed: ${again.stderr}`);
+  const reproducibility: string[] = [];
   again.stdout.trim().split("\n").forEach((line, i) => {
     const fresh = JSON.parse(line);
     validateRecord(fresh, censusEngines);
     if (stringifyDeterministic(fresh as JsonValue, 0) !== stringifyDeterministic(sample[i] as unknown as JsonValue, 0)) throw new Error(`Fresh-process re-run differs: ${sample[i]!.sha256.slice(0, 12)}#${sample[i]!.song}`);
+    reproducibility.push(`${sample[i]!.sha256.slice(0, 12)}#${sample[i]!.song} ${sample[i]!.seconds}s identical to the pilot record (${sha(stringifyDeterministic(fresh as JsonValue, 0)).slice(0, 16)})`);
   });
+  writeFileSync(path.join(evidence, "reproducibility.log"), reproducibility.join("\n") + "\n");
+  logs["reproducibility.log"] = sha(readFileSync(path.join(evidence, "reproducibility.log")));
 
   // 5. focused tests, three consecutive runs; then complete repository suites
   const focused = readdirSync(path.join(root, "packages/sidflow-common/test")).filter(n => /^rom-.*\.test\.ts$/.test(n)).map(n => `packages/sidflow-common/test/${n}`);
@@ -157,10 +160,11 @@ async function main(): Promise<void> {
       typecheck: true, focusedRuns: REQUIRED_RUNS, focusedTotals, fullSuiteRuns: REQUIRED_RUNS, fullSuiteTotals: suites,
       pilot: { manifestSha256: sha(readFileSync(path.join(pilot, "manifest.json"))), subtunes: rows.size, files: new Set([...rows.values()].map(r => r.sha256)).size, failed },
       decisionRegression: { digest: decisionDigest }, reproducibility: { rows: sample.length },
-      adversarialReview: { file: path.relative(root, review), sha256: sha(reviewText), sourceIdentity: approved! },
+      adversarialReview: { file: path.relative(root, review), sha256: sha(approval!.text), sourceIdentity: approval!.identity },
     },
     logs,
   };
+  if (JSON.stringify(Object.keys(logs).sort()) !== JSON.stringify([...REQUIRED_LOGS].sort())) throw new Error(`Qualification logs ${Object.keys(logs).join(",")} differ from the required set`);
   const text = stringifyDeterministic(certificate as unknown as JsonValue);
   writeFileSync(path.join(evidence, "certificate.json"), text);
   writeFileSync(path.join(path.dirname(evidence), "certificate.json"), text);

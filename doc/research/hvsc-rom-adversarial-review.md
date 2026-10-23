@@ -1010,3 +1010,283 @@ and removing M7 from the branch.
 - Confirmation is per-case evidence on the shipping engine. Its correctness rests on
   `confirm.ts`, which has had less adversarial testing than `assess()`. The mask-7 control must
   stay in the run, and any mask-7 non-`identical` result must stop publication.
+
+## Third review (2026-10-23)
+
+- Reviewer: Opus 5.5 (`claude-opus-5-5`), same role as above.
+- Scope: commit `8cdeef0` on `feat/hvsc-rom-audit-methodology-3` (the working tree had no tracked
+  changes at the time of the final check). The design changed after the second review: native
+  screening and WASM confirmation were replaced by one WASM 1.1.0 engine that measures and grants.
+- Method: reading only. Files: `scripts/rom-audit/{wasm-lanes,methodology,audit,census-worker,
+  checkpoint,publish-production,ledger,rollout,harden,decision-regression,inputs}.ts`, `run-full.sh`,
+  `rom-eligibility.ts`, the `rom-*` tests, `hvsc-rom-production.md`, `hvsc-rom-full-run.md`; the
+  engine package `node_modules/libsidplayfp-wasm-audit/dist/{index.js,player.js}` and its
+  `complete-source.tar.gz` (`bindings.cpp`, `SystemROMBanks.h`, `player.cpp`, `SidConfig.cpp`,
+  `apply-sid-write-hook.py`); C64 Commander at `fd7c46138` (`wasmRendererCore.ts`,
+  `appSettings.ts`, `src/generated/variant.json`), read-only. I also tallied the running pilot's
+  `workspace/rom-audit-v3/census.jsonl` (233 to 252 rows while reading) and `horizons.json`, and
+  read worker RSS with `ps`. No build, render, audit or test was run.
+- Engine file references below are to the 1.1.0 source archive.
+
+### 1. Lockstep comparator (`wasm-lanes.ts`)
+
+The comparator is sound for the `identical` outcome. N1 and N2 from the second review are fixed.
+
+- Each pull is copied out of WASM memory before any other call on that context
+  (`wasm-lanes.ts:96-97`). Nothing keeps a view.
+- Each lane pull is compared with the reference pull for equal sample count, every PCM sample and
+  every packed write including its PHI1 cycle (`:108-113`). A variant that omits or adds a write in
+  any pull is `different`. A prefix is never accepted, and the reference advances by pulls only.
+  This closes N2.
+- `identical` is assigned only when the reference has reached the horizon (`:151`).
+  `validateRecord` then requires each identical lane's PCM hash, trace hash and write count to
+  equal the reference's (`methodology.ts:118`). The final pull is compared beyond the horizon,
+  which is stricter than necessary and therefore safe.
+- Each lane is a fresh module instance (`:54-57`), and the repeat lane checks reproducibility for
+  every subtune. `assessMask` refuses every decision unless `repeat === "identical"`
+  (`methodology.ts:76`).
+- The trace hook only reads the scheduler time (`apply-sid-write-hook.py:79-87`). Tracing
+  therefore does not change emulation, so a traced lane can stand in for Commander's untraced
+  playback.
+- A halt produces only `incompatible`, which denies, so its soundness does not affect allow
+  decisions. A reference failure makes every mask `unknown`.
+- The ROM order (configure, trace, ROMs, load, reset) and the start-song rewrite match
+  `SidAudioEngine.loadPatchedBuffer` and `patchStartSong` (`player.js:116-152,224-235`). The 1-based
+  census song equals Commander's `songIndex + 1`. Pull sizes match: 256 cycles for SIDLite, and the
+  `renderSeconds` default of 100000 cycles for reSIDfp (`player.js:455`).
+
+Defects found:
+
+- **C1 (MEDIUM): a legitimate record can stop the census.** The repeat lane can leave the active
+  set (`different` or `error`) while all four variants have already diverged. The loop at
+  `wasm-lanes.ts:150` then ends with `reference.samples < wanted` and outcome `clean`.
+  `validateRecord` rejects that combination (`methodology.ts:109`). `save()` validates the record
+  (`audit.ts:207`), and the exception rejects `Promise.all` and ends the whole census. On resume,
+  jobs are sorted shortest first, so the same job is retried first. This needs fresh-instance
+  non-determinism to occur, which has not been observed. Fix: let the reference run to `wanted`
+  while any lane or the reference itself is unresolved, or record the reference as `failed`, and
+  turn a validation error in `save()` into a per-job failure record.
+- **C2 (LOW): trace-drop detection never fires.** `getAndClearSidWriteTracesPacked()` calls
+  `clearSidWriteTrace()`, which sets `droppedTraces = 0` (`bindings.cpp:910,1239-1243`).
+  `Lane.pull` reads the counter after draining (`wasm-lanes.ts:97-98`), so it always reads 0. The
+  cap is 2^20 records per drain (`bindings.cpp:84`), and a pull of at most 100000 cycles cannot
+  reach it, so no false `identical` can result today. Read the counter before draining.
+- **C3 (MEDIUM): one worker process runs for the whole census.** It is replaced only after a
+  failure (`audit.ts:226`). Each job instantiates six modules. After about 35 jobs each worker held
+  380 to 630 MB RSS and about 74 GB of virtual address space, with no clear upward trend between two
+  samples. A full run gives each worker about 12,500 jobs. Recycle workers every few hundred jobs
+  and log peak RSS.
+- **C4 (LOW):** a `WebAssembly.Exception` is still reported as `[object WebAssembly.Exception]`.
+  The pilot shows it on `none/ff` where `none/zero` halted at `$BF54`. No unit test runs `runEngine`
+  against a fake context whose `render()` reuses one buffer, because `loadModule` cannot be
+  injected. The real-subtune controls in `decision-regression.ts:112-124` partly cover this.
+
+### 2. Null banks, KERNAL `null`, CHARGEN `null`
+
+- **KERNAL `null` is modelled correctly.** `KernalRomBank::set(nullptr)` overwrites the whole bank
+  with NOPs plus a fixed stub (`SystemROMBanks.h:173-219`). The `Player` constructor already calls
+  it (`player.cpp:84`). The bank is therefore deterministic whether or not `setSystemROMs` is ever
+  called, and `setSystemROMs(null, fill, fill)` leaves the same KERNAL as Commander's skipped call
+  (`player.js:198-206`). `decision-regression.ts:125-143` checks this in a fresh instance.
+- **BASIC and CHARGEN `null` keep whatever the bank's memory held** (`romBank::set` ignores
+  `nullptr`, `SystemROMBanks.h:80`). Passing a CHARGEN fill for the `full` set is equivalent to
+  Commander's `setSystemROMs(K, B, null)` only to the extent that the fill matches that unknown
+  content. For `full`, three contents are effectively tested: 0x00, 0xFF and the authentic image
+  (through the reference). For `none`, BASIC and CHARGEN are tested only at 0x00 and 0xFF.
+- **The fills are a heuristic, and the design document overstates them.** In Commander, every
+  `SidAudioEngine` uses the same cached module instance: `loadLibsidplayfp({engine})` is
+  memoised (`index.js:88-101`), and Commander constructs engines with only `engine` as a loader
+  option (`wasmRendererCore.ts:129,184`). A new context's `null` banks therefore hold memory reused
+  from earlier players. After a playback with ROMs, that can be the authentic BASIC image; otherwise
+  it can be any leftover bytes. `hvsc-rom-production.md:60-61` says "output that does not depend on
+  the fill does not depend on the bank's content". That is not established; line 232 states the
+  limitation correctly. Recommended change: add a third, fixed pseudo-random fill. For the `none`
+  set, also add a lane with KERNAL `null` and authentic BASIC.
+
+### 3. Decision logic and what the deny list can be trusted for
+
+`assessMask` (`methodology.ts:65-88`) is fail-closed. A decision requires a valid canonical
+horizon, a clean and reproducible reference that reached the horizon, both fills `identical` to the
+horizon for `compatible`, and both fills `halt` for `incompatible`. Masks other than 0, 3 and 7 are
+`unknown`, and the lookup denies them (`rom-eligibility.ts:214-224`). Mask 7 is the reference
+itself. Commander cannot create it, because it never supplies CHARGEN.
+
+The `compatible` bit can be trusted only for SIDLite on 1.1.0, 48 kHz stereo, 256-cycle pulls,
+fallback SID model MOS8580, a fresh module instance, the reference ROM images, and playback from
+reset up to `maxPlaybackSeconds`. The documentation does not state three Commander differences:
+
+- **D1 (BLOCKER for the documentation): Commander's default renderer is not reSIDfp.**
+  `DEFAULT_SID_EMULATION_ENGINE` comes from the variant, and the variant is `"sidplayez"`
+  (`appSettings.ts:630-640`, `src/generated/variant.json:183`). reSIDfp is used only where
+  SidplayEZ does not exist (web, iOS). SIDLite is used only when a user selects it or a variant
+  names it. `hvsc-rom-production.md:19-22` and `hvsc-rom-full-run.md:23,72-74` call reSIDfp the
+  default. In practice, the default census covers a renderer that most Commander users do not run.
+  For them the lookup denies everything, because the engine id differs. That is safe, but it
+  provides no coverage for those users.
+- **D2 (BLOCKER for the claim "configured as Commander"): instance lifetime.** The census uses a
+  fresh instance per lane, and its own measurement shows that a second reSIDfp player in one
+  instance produces different PCM. Commander always plays in one shared instance (see section 2),
+  so every playback after the first runs in a state the census never measured.
+  `hvsc-rom-production.md:82-84` presents fresh instances as a design choice and does not mention
+  this. Required work:
+  - Measure SIDLite. Render pilot subtunes as the Nth context in one instance, after varied earlier
+    tunes and ROM sets, and compare PCM and traces with the census reference. Bit-identical results
+    close D2 for SIDLite.
+  - Root-cause the reSIDfp divergence and report it upstream, as `AGENTS.md` requires.
+  - Do not run reSIDfp lanes until this is resolved, because they would describe a state Commander
+    does not produce.
+- **D3 (HIGH): SID model.** Commander always passes a fallback `sidModel` (`localSidEngine.ts:890`).
+  By default that model is learned from the connected device (`DEFAULT_LOCAL_SID_MODEL_FROM_DEVICE =
+  true`, `appSettings.ts:776`), so it can be 6581. The census uses the engine default MOS8580
+  (`SidConfig.cpp:30`). The profile string "engine default where the header does not name one"
+  does not identify this, and a consumer cannot express its model to the lookup. A tune whose header
+  says UNKNOWN or ANY and which reads SID registers can take a different program path under 6581.
+  This is the same transfer argument that was rejected for SIDLite to reSIDfp. Fix: name MOS8580 in
+  the profile, and make the lookup take the consumer's fallback model. It must deny when the model is
+  not 8580 and the header does not fix the model; that needs the header model, or a per-entry flag,
+  in the deny tuple. Alternatively, render both models for those tunes.
+
+The rest of the documentation about reSIDfp is accurate. The reSIDfp build cannot prove a halt
+(`hvsc-rom-production.md:113-115`). The rejection of the transfer argument via "no SID reads" is
+stated with the measured figure. Mask 0 is `unknown` for nearly every program, and the partial pilot
+agrees: 224 of 233 `none` lanes were `different` per fill. All 233 `full` lanes were `identical` for
+both fills, and the repeat lane was `identical` in all 233 rows.
+
+### 4. Ledger, checkpoint, failure isolation, resume, ETA
+
+- Fixed: incremental ledger reads from a stored offset (`ledger.ts:93-121`, N6). The unlocked
+  constructor no longer truncates (`:74`, B1(a)). Repair runs only under the lock (`:106`, and
+  `checkpoint.ts` `repair` used only by `audit.ts:170` under the scope lock). Content keys and
+  `flock` are as before. Readers (`harden.ts`, `publish-production.ts:36-37`) do not repair.
+- Per-job isolation: worker exceptions become failure records (`census-worker.ts:25-28`). Parent
+  timeouts and worker crashes become failure records and the worker is replaced (`audit.ts:222-228`).
+  The remaining fatal paths are C1 and a result-identity mismatch (`audit.ts:229`).
+- Timeout: `max(300 s, 12 s × horizon × engines)` (`audit.ts:122`). For SIDLite the measured cost
+  is about 0.4 to 0.55 s per horizon-second, which is more than 20× margin. For reSIDfp the cost
+  derived from the 1.7× real-time figure is about 2.4 to 3.5 s, which is under 5× margin. Use a
+  per-engine factor.
+- Resume: the manifest must be byte-equal (`audit.ts:165`), and it binds the engines, the tool hash,
+  the corpus and the selection. `--retry-failures` works in `audit.ts` (`:181,230`).
+- **R1 (HIGH): retrying is not reachable through `run-full.sh` without voiding the certificate.**
+  The documentation says to add `--retry-failures` by editing `run-full.sh`
+  (`hvsc-rom-full-run.md:55`). That file is part of the source identity (`rollout.ts:30`), and
+  `harden` requires 0 failed pilot jobs. Fix: add an environment variable such as
+  `ROM_AUDIT_RETRY_FAILURES=1`.
+- ETA (`audit.ts:212-215`) is computed from horizon-seconds per second since the start, with
+  shortest jobs first. Short jobs run all six lanes to the horizon, because the halt probe is capped
+  by the horizon, while long jobs stop diverged lanes early. The ETA therefore starts high. The
+  horizon of failed jobs is counted as done. This is acceptable as a progress indicator.
+
+### 5. `harden.ts` and `rollout.ts`
+
+- **H1 (BLOCKER): a certificate written by `harden.ts` can never pass `validateHardening`.**
+  `validateHardening` requires `Object.keys(c.logs).length >= 9` (`rollout.ts:68`). `harden.ts`
+  records exactly 8 logs: `typecheck`, `decision-regression`, `focused-1..3` and `full-suite-1..3`
+  (`harden.ts:93,97,134,143`). The reproducibility run is not logged. `--rollout full` is therefore
+  always refused, after the pilot and several hours of hardening. The unit test passes because it
+  builds a fake certificate with 10 logs (`rom-audit-adversarial.test.ts:41`). Fix: require the
+  exact set of log names instead of a count, log the reproducibility step, and add a test that
+  builds the certificate from `harden.ts`'s own step list.
+- A certificate still cannot be obtained without the checks except by forging it.
+  `verifyHardeningEvidence` now re-parses the focused and full-suite totals and the regression
+  digest (`rollout.ts:84-90`). It does not parse `typecheck.log`, and the pilot and reproducibility
+  results are structural fields only. That is acceptable for detecting accidental changes.
+- Identity: every file under `scripts/rom-audit`, the listed extras, the engine `dist` and
+  `bun.lock` (`rollout.ts:14-31`). `bun.lock` now contains the alias (`bun.lock:24,1470`). The
+  identity does not cover the Bun runtime version or `@sidflow/common` beyond the listed files
+  (`system-roms-fetch.ts` imports it). The impact is low, because the ROMs are verified by hash in
+  `audit.ts:139-142` and in the worker (`census-worker.ts:30-38`).
+- Approval-first ordering works (`harden.ts:72-78`, `run-full.sh:39-42`). The two checks parse
+  differently. `harden.ts` takes the first `Approved-source-identity` line in the file (`.exec` on a
+  multiline regex), while `run-full.sh:41` accepts any line. With two approval lines in the file,
+  setup passes and harden fails. Use the same rule in both places, preferably the last line.
+- The certificate binds the SHA-256 of the whole review file (`rollout.ts:91-92`). Any later edit to
+  this document, including another review section, invalidates the certificate and blocks resuming
+  `full`. The documentation must say that this file is frozen from `harden` until `publish`, or the
+  certificate should bind only the approval line.
+- Stale: `rollout.ts:1-3` still mentions the native renderer.
+
+### 6. `run-full.sh` on a fresh machine
+
+1. `bun install --frozen-lockfile`: the lockfile now contains the alias, so this should succeed.
+   `bun@1.3.x` is not enforced.
+2. `bash scripts/sidflow-fetch` fetches the latest HVSC base archive (`manifest.ts:5`). Once HVSC 86
+   is released, the corpus check stops the run. That is fail-closed, but the run cannot start.
+3. `bun run roms:fetch` runs `node scripts/run-bun.mjs` (`package.json:13`), and `bun run test` runs
+   `npm run build` (`package.json:15`). `run-full.sh:32` checks only `bun` and `git`, and
+   `hvsc-rom-full-run.md:28` lists only those two (N7, not fixed).
+4. The corpus identity and the approval pre-check are correct (`run-full.sh:36-42`).
+   `corpusIdentity` and `audit.ts` compute the same hash, so `harden` and `audit` contend for the
+   same scope lock.
+5. The pilot is correct on the first pass.
+6. **S1 (BLOCKER): resuming does not work.** Without `ROM_AUDIT_STAGE_ONLY`, every invocation runs
+   every stage (`run-full.sh:28`). Once `full` has reserved more than 5% of the corpus, the pilot
+   stage stops in `audit.ts:187-189` ("exceeds the 5% pilot ceiling"), and `set -e` aborts. The
+   documented resume command (`hvsc-rom-full-run.md:20`) therefore fails. `harden` also repeats all
+   of its steps, including three full suites, on every invocation. The header claim "a finished
+   stage is skipped quickly" (`run-full.sh:7-8`) is false. Fix: skip stages using completion
+   markers (pilot coverage shows 0 pending; a certificate that validates and verifies), or document
+   `ROM_AUDIT_STAGE_ONLY=full` as the only resume command.
+7. `harden` requires three complete repository suites with 0 skip on the target machine.
+   Environment-dependent tests have not been tried there, so run `bun run test` once before starting
+   the pilot.
+8. `publish` re-publishes what `audit.ts:240` has already published. This is harmless.
+
+Duration estimates are not derived from a measurement:
+
+- `horizons.json` gives a total horizon of 10,176,145 s (2,827 h) for 87,868 subtunes. No duration
+  is unknown and none exceeds 3,600 s. The pilot selection is 567 subtunes and 70,812 s.
+- The running pilot completed 252 rows, 4,574 horizon-seconds, in about 6.3 minutes on 7 workers.
+  That is about 12 horizon-seconds per second, on the shortest jobs.
+- Projection for SIDLite only on the development machine: about 6 to 10 days, because long jobs
+  stop diverged lanes early. `hvsc-rom-full-run.md:10` says "about 12 days". The pilot estimate of
+  "about an hour" (`:37`) projects to about 1 to 1.6 h. The `harden` estimate of 1.5 h (`:38`) is
+  unmeasured.
+- Adding reSIDfp multiplies the cost by about 7, which is weeks on this machine.
+- The memory figure "roughly 400 MB per worker" (`:28`) is at the low end of what was observed.
+- Replace every estimate with figures from the finished pilot.
+
+### 7. Remaining items
+
+Blockers: H1, S1, D1 (documentation), D2 (instance lifetime: measure SIDLite; do not run reSIDfp).
+High: D3, R1. Medium: C1, C3, the reSIDfp timeout factor, the null-bank fills, the
+approval-line rule, the review-file binding. Low: C2, C4, N7 prerequisites, the HVSC 86 pin, stale
+comments, `test-workspace-phase/` residue.
+
+### Verdict: NOT READY
+
+With the current sources, the documented pipeline cannot complete. `full` is always refused (H1),
+and the documented resume command fails (S1). Whether a SIDLite census describes Commander at all
+depends on a measurement that has not been made (D2). All required fixes change the source identity,
+so the pilot must be re-run after them. The comparator itself is sound for allow decisions. After
+the fixes and the evidence below, the verdict would be READY WITH CONDITIONS.
+
+### Residual risks the user must be told
+
+- The default census qualifies SIDLite. Commander's default renderer is SidplayEZ on Android and
+  reSIDfp on web and iOS. Those users get no coverage: the lookup denies everything for them.
+- A `compatible` bit describes a fresh module instance, a MOS8580 fallback model, the reference ROM
+  images, BASIC and CHARGEN `null` banks that behave like 0x00 and 0xFF, and playback from reset to
+  the documented duration plus 5 s. It does not cover a shared instance (unless D2 is measured), a
+  6581 fallback, other ROM images, other uninitialised bank content, loops, or incorrect
+  Songlengths entries.
+- The set "nothing supplied" will be `unknown` for almost every subtune. Mask 7 is not a
+  configuration Commander can create.
+- The certificate and the approval line detect accidental changes. They do not authenticate anyone.
+- The duration has not been measured beyond short pilot jobs.
+
+### Evidence required before an `Approved-source-identity` line is written
+
+1. All fixes committed. The identity printed by `harden.ts --identity` in a fresh clone of the
+   commit equals the identity on the development machine.
+2. A test showing that a certificate built from `harden.ts`'s real step list passes
+   `validateHardening` and `verifyHardeningEvidence`. Reverting the log-count fix must make that
+   test fail.
+3. The D2 measurement for SIDLite in a shared instance, with the comparison method and its result.
+4. A complete pilot under the final tool hash with 0 failed jobs and every repeat `identical`. Every
+   `full` lane that is not `identical`, and every `error` and `halt`, listed and explained. Peak
+   worker RSS and horizon-seconds per second for the longest pilot jobs.
+5. The decision-regression log with its `DIGEST` line, on the engines the census will run.
+6. One `harden --dry-run` and one `bun run test` on the target machine, both passing.
+7. A decision on the SID model (D3), and documentation corrected for D1, D2, D3, R1, S1, the
+   review-file freeze and measured durations.

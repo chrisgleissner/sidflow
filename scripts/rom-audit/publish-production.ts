@@ -13,7 +13,7 @@ import path from "node:path";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import { createRomEligibilityLookup, romEngineId, romSetId, romConsumerProfile, ROM_DENY_SCHEMA, ROM_AUDIT_ENGINES, REFERENCE_ROM_SHA256,
   type RomDenyList, type RomDecision, type RomSelection, type RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
-import { assessMask, METHODOLOGY, ROM_MASKS, CONSUMER_MASKS, type Horizon, type Assessment } from "./methodology.js";
+import { assessMask, headerFixesSidModels, METHODOLOGY, ROM_MASKS, CONSUMER_MASKS, type Horizon, type Assessment } from "./methodology.js";
 import { readCensus } from "./checkpoint.js";
 import type { Header } from "./publish.js";
 export const sha = (v: string | Uint8Array): string => createHash("sha256").update(v).digest("hex");
@@ -67,7 +67,7 @@ export async function publishProduction(run: string, out = path.join(run, "publi
           if (d.state === "compatible") allowed |= 1 << mask;
           if (d.state === "incompatible") incompatible |= 1 << mask;
         });
-        pairs.get(engine)!.push([allowed, incompatible, allowed ? Math.round(record!.seconds * 1000) : 0, allowed && horizon.documentedSeconds !== null ? Math.round(horizon.documentedSeconds * 1000) : 0]);
+        pairs.get(engine)!.push([allowed, incompatible, allowed ? Math.round(record!.seconds * 1000) : 0, allowed && horizon.documentedSeconds !== null ? Math.round(horizon.documentedSeconds * 1000) : 0, allowed && headerFixesSidModels(h.header as never) ? 1 : 0]);
         perEngine[engine] = { reference: run?.reference ?? null, lanes: run?.lanes ?? null, assessments: decisions };
       }
       const out_ = { schema: "sidflow-rom-research-5", hvsc: 85, path: h.path, sha256: h.sha256, md5: h.md5, song, header: h.header,
@@ -85,7 +85,7 @@ export async function publishProduction(run: string, out = path.join(run, "publi
   // Exhaustively check the production lookup against every decision, and that unsupported ROM sets deny.
   const selection = (mask: number): RomSelection => ({ kernal: mask & 1 ? REFERENCE_ROM_SHA256.kernal : null, basic: mask & 2 ? REFERENCE_ROM_SHA256.basic : null, chargen: mask & 4 ? REFERENCE_ROM_SHA256.chargen : null });
   for (const engine of engines) {
-    const lookup = createRomEligibilityLookup(denyLists.get(engine)!, { sourceSha256: manifest.engines[engine].sourceSha256, wasmSha256: manifest.engines[engine].wasmSha256, profile: romConsumerProfile(engine), methodology: METHODOLOGY });
+    const lookup = createRomEligibilityLookup(denyLists.get(engine)!, { sourceSha256: manifest.engines[engine].sourceSha256, wasmSha256: manifest.engines[engine].wasmSha256, profile: romConsumerProfile(engine), methodology: METHODOLOGY, fallbackSidModel: "MOS8580" });
     for (const h of headers) for (let song = 1; song <= h.songs; song++) for (const mask of ROM_MASKS) {
       const pair = denyLists.get(engine)!.entries[h.sha256]![song - 1]!, d = lookup(h.sha256, song, selection(mask));
       const supported = (CONSUMER_MASKS as readonly number[]).includes(mask);

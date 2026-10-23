@@ -4,7 +4,7 @@ import { readdirSync,readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { METHODOLOGY,observationHorizon } from "../../../scripts/rom-audit/methodology.js";
-import { pilotQueue,validateHardening,verifyHardeningEvidence,hardeningSources,type HardeningCertificate } from "../../../scripts/rom-audit/rollout.js";
+import { approvalOf,pilotQueue,validateHardening,verifyHardeningEvidence,hardeningSources,REQUIRED_LOGS,type HardeningCertificate } from "../../../scripts/rom-audit/rollout.js";
 import { publishProduction,sha } from "../../../scripts/rom-audit/publish-production.js";
 import { releaseLengths,readVerifiedSid } from "../../../scripts/rom-audit/inputs.js";
 import { jobTimeoutMs } from "../../../scripts/rom-audit/audit.js";
@@ -28,9 +28,9 @@ describe("adversarial ROM audit review",()=>{
   expect(pilotQueue(jobs,[],20,100)).toHaveLength(1);
  });
  it("sizes job timeouts as a hang detector scaled by horizon and engine count",()=>{
-  expect(jobTimeoutMs(10,2)).toBe(300000);                    // never below five minutes
-  expect(jobTimeoutMs(2031.332,2)).toBeGreaterThan(2031*2*12*1000-1);
-  expect(jobTimeoutMs(100,2)).toBeLessThan(jobTimeoutMs(100,3));
+  expect(jobTimeoutMs(10,["sidlite"])).toBe(300000);                    // never below five minutes
+  expect(jobTimeoutMs(2031.332,["sidlite"])).toBeGreaterThan(2031*12*1000-1);
+  expect(jobTimeoutMs(100,["sidlite","residfp"])).toBe(100*(12+60)*1000);   // reSIDfp lanes are about six times as slow
  });
  it("requires a source-bound, complete hardening certificate before full rollout",()=>{
   const clean={pass:10,fail:0,skip:0},engine={sourceSha256:"a".repeat(64),wasmSha256:"b".repeat(64)};
@@ -38,7 +38,7 @@ describe("adversarial ROM audit review",()=>{
    checks:{typecheck:true,focusedRuns:3,focusedTotals:[clean,clean,clean],fullSuiteRuns:3,fullSuiteTotals:[clean,clean,clean],
     pilot:{manifestSha256:"m",subtunes:100,files:50,failed:0},decisionRegression:{digest:"d".repeat(64)},reproducibility:{rows:6},
     adversarialReview:{file:"r.md",sha256:"b".repeat(64),sourceIdentity:"s"}},
-   logs:Object.fromEntries(Array.from({length:10},(_,i)=>[`l${i}.log`,"c".repeat(64)]))};
+   logs:Object.fromEntries(REQUIRED_LOGS.map(n=>[n,"c".repeat(64)]))};
   expect(validateHardening(c,"s")).toBe(true);
   expect(validateHardening(undefined,"s")).toBe(false);
   expect(validateHardening(c,"changed")).toBe(false);
@@ -55,6 +55,8 @@ describe("adversarial ROM audit review",()=>{
   expect(mutate(x=>{x.checks.decisionRegression.digest="x";})).toBe(false);
   expect(mutate(x=>{x.checks.reproducibility.rows=0;})).toBe(false);
   expect(mutate(x=>{x.logs={};})).toBe(false);
+  expect(mutate(x=>{delete x.logs["reproducibility.log"];})).toBe(false);        // the exact set of logs, not a count
+  expect(mutate(x=>{x.logs["extra.log"]="c".repeat(64);})).toBe(false);
   expect(mutate(x=>{x.engines={};})).toBe(false);
   expect(mutate(x=>{x.schema="sidflow-rom-hardening-1" as HardeningCertificate["schema"];})).toBe(false);
  });
@@ -67,7 +69,7 @@ describe("publication adversary",()=>{
  const decide=async(dir:string,engine="sidlite"):Promise<ReturnType<ReturnType<typeof createRomEligibilityLookup>>>=>{
   await publishProduction(dir);
   const d=JSON.parse(await readFile(path.join(dir,`published/deny-list.${engine}.json`),"utf8")) as RomDenyList,m=JSON.parse(await readFile(path.join(dir,"published/manifest.json"),"utf8"));
-  return createRomEligibilityLookup(d,{...m.engines[engine],profile:romConsumerProfile(engine as "sidlite"),methodology:m.methodology})(fixtureHash,1,full);
+  return createRomEligibilityLookup(d,{...m.engines[engine],profile:romConsumerProfile(engine as "sidlite"),methodology:m.methodology,fallbackSidModel:"MOS8580"})(fixtureHash,1,full);
  };
  it("grants a valid measurement",()=>scenario(async dir=>{expect((await decide(dir)).eligible).toBe(true);}));
  it("denies when one fill of the null banks differs",()=>scenario(async dir=>{
@@ -117,29 +119,36 @@ it("derives the hardening source set from the directory, so a new script cannot 
    "node_modules/libsidplayfp-wasm-audit/dist/sidlite/libsidplayfp.wasm","node_modules/libsidplayfp-wasm-audit/dist/complete-source.tar.gz"])expect(sources).toContain(required);
  expect(new Set(sources).size).toBe(sources.length);
 });
-it("re-hashes and re-parses every evidence log and the review named by a hardening certificate",async()=>{
+it("re-hashes and re-parses every evidence log and the approval named by a hardening certificate",async()=>{
  const dir=await mkdtemp(path.join(tmpdir(),"rom-evidence-"));
  try{
-  const review="doc/research/hvsc-rom-adversarial-review.md",digest="d".repeat(64);
-  const files:Record<string,string>={"typecheck.log":"","decision-regression.log":`PASS x\nDIGEST ${digest}\n`};
+  const digest="d".repeat(64),identity="e".repeat(64),root=path.resolve(import.meta.dir,"../../..");
+  const reviewFile=path.join(dir,"review.md"),review=path.relative(root,reviewFile);
+  const approvalText=`Approved-source-identity: ${identity}\nReviewer-model: claude-opus-5-5\n`;
+  await writeFile(reviewFile,`# review\nApproved-source-identity: ${"0".repeat(64)}\nReviewer-model: claude-opus-5-5\n\nlater section\n${approvalText}`);   // only the LAST approval counts
+  const files:Record<string,string>={"typecheck.log":"","decision-regression.log":`PASS x\nDIGEST ${digest}\n`,"reproducibility.log":"ok\n"};
   for(const n of [1,2,3]){files[`focused-${n}.log`]=" 10 pass\n 0 fail\n";files[`full-suite-${n}.log`]=" 100 pass\n 0 fail\n 0 skip\n";}
   for(const [name,text] of Object.entries(files))await writeFile(path.join(dir,name),text);
-  const certificate=(logs:Record<string,string>):HardeningCertificate=>({schema:"sidflow-rom-hardening-2",methodology:METHODOLOGY,sourceIdentity:"s",
-   engines:{},passed:true,checks:{decisionRegression:{digest},adversarialReview:{file:review,sha256:sha(readFileSync(path.resolve(import.meta.dir,"../../..",review))),sourceIdentity:"s"}} as HardeningCertificate["checks"],logs});
+  const certificate=(logs:Record<string,string>):HardeningCertificate=>({schema:"sidflow-rom-hardening-2",methodology:METHODOLOGY,sourceIdentity:identity,
+   engines:{},passed:true,checks:{decisionRegression:{digest},adversarialReview:{file:review,sha256:sha(approvalText),sourceIdentity:identity}} as HardeningCertificate["checks"],logs});
   const hashes=():Record<string,string>=>Object.fromEntries(Object.entries(files).map(([n,t])=>[n,sha(t)]));
+  expect(Object.keys(hashes()).sort()).toEqual([...REQUIRED_LOGS].sort());
   expect(verifyHardeningEvidence(certificate(hashes()),dir)).toBe(true);
   expect(verifyHardeningEvidence(certificate({...hashes(),"typecheck.log":sha("forged")}),dir)).toBe(false);
   expect(verifyHardeningEvidence(certificate({...hashes(),"missing.log":sha("x")}),dir)).toBe(false);
   expect(verifyHardeningEvidence(certificate({...hashes(),"../a.log":sha("x")}),dir)).toBe(false);
   // A log whose hash matches but which does not say what the certificate claims.
-  for(const [name,text] of [["full-suite-2.log"," 100 pass\n 1 fail\n 0 skip\n"],["full-suite-3.log"," 100 pass\n 0 fail\n 2 skip\n"],["focused-1.log"," 0 pass\n 0 fail\n"],["decision-regression.log","DIGEST "+"e".repeat(64)+"\n"]] as const){
+  for(const [name,text] of [["full-suite-2.log"," 100 pass\n 1 fail\n 0 skip\n"],["full-suite-3.log"," 100 pass\n 0 fail\n 2 skip\n"],["focused-1.log"," 0 pass\n 0 fail\n"],["decision-regression.log","DIGEST "+"f".repeat(64)+"\n"]] as const){
    await writeFile(path.join(dir,name),text);
    expect(verifyHardeningEvidence(certificate({...hashes(),[name]:sha(text)}),dir)).toBe(false);
    await writeFile(path.join(dir,name),files[name]!);
   }
   const missingRuns=certificate(hashes());delete missingRuns.logs["full-suite-3.log"];expect(verifyHardeningEvidence(missingRuns,dir)).toBe(false);
-  const wrongReview=certificate(hashes());wrongReview.checks.adversarialReview.sha256="0".repeat(64);
-  expect(verifyHardeningEvidence(wrongReview,dir)).toBe(false);
+  // The review document may keep changing; only the approval is bound.
+  await writeFile(reviewFile,`# review changed\n${approvalText}\nmore text\n`);expect(verifyHardeningEvidence(certificate(hashes()),dir)).toBe(true);
+  await writeFile(reviewFile,`${approvalText}\nApproved-source-identity: ${"0".repeat(64)}\nReviewer-model: claude-opus-5-5\n`);expect(verifyHardeningEvidence(certificate(hashes()),dir)).toBe(false);
+  await writeFile(reviewFile,approvalText.replace("claude-opus-5-5","someone-else"));expect(verifyHardeningEvidence(certificate(hashes()),dir)).toBe(false);
+  expect(approvalOf("no approval")).toBeUndefined();
  }finally{await rm(dir,{recursive:true,force:true});}
 });
-void observationHorizon;
+void observationHorizon;void readFileSync;
