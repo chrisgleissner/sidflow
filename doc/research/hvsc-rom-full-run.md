@@ -1,14 +1,27 @@
 # Running the full HVSC 85 ROM census on another machine
 
+## Status (read first)
+
+The branch contains the complete pipeline, but **`run-full.sh` stops at the `setup` stage until the sources carry an
+architect approval**: `doc/research/hvsc-rom-adversarial-review.md` must end with an `Approved-source-identity` line equal to
+`bun scripts/rom-audit/harden.ts --identity`. That line is written only after the final review of the frozen sources and a
+passing pilot, and it is not there yet. Use a commit or tag that has it; the one-liner below is correct for that commit.
+A fresh clone of the branch computes the same source identity as the development machine (checked).
+
 ## Summary
 
 `scripts/rom-audit/run-full.sh` runs the complete methodology 3 census
-([design](hvsc-rom-production.md)) from a fresh clone: it sets up the inputs, checks that the
-sources carry an architect approval, measures the reviewed pilot, qualifies the sources on
-this machine, renders all 87,868 subtunes on the shipping WASM engine (`libsidplayfp-wasm`
-1.1.0, SIDLite by default) and publishes the dataset. Every stage checkpoints, so the
-identical command resumes after an interruption. **Expect days of CPU time**: about 12 days on the
-8-thread development machine (an i7-6700K), so a machine with many fast cores is worthwhile.
+([design](hvsc-rom-production.md)) from a fresh clone: it sets up the inputs, checks that the sources carry an architect
+approval, benchmarks the machine and projects the total duration, measures the reviewed pilot, qualifies the sources on this
+machine, renders all 87,868 subtunes on the shipping WASM engine (`libsidplayfp-wasm` 1.1.0, SIDLite) and publishes the
+dataset. Every stage checkpoints, so the identical command resumes after an interruption.
+
+**Duration.** A subtune costs about 2.15 full-length renders (reference plus one supplied-set lane; the four
+nothing-supplied lanes diverge within a fraction of a second for ~96% of programs) plus 2% cross-check samples. Measured on the
+8-thread i7-6700K under heavy foreign load: 11.3 horizon-seconds per second per worker thread; the corpus has 10,176,145
+horizon-seconds. For a 14600K (6 P + 8 E cores, 20 threads) the estimate is 11 to 17 hours. **That is an estimate.** The
+`bench` stage measures the real rate in a few minutes and refuses to continue if the projection exceeds
+`ROM_AUDIT_MAX_HOURS` (default 15).
 
 ## One-liner
 
@@ -21,6 +34,7 @@ Resume after a reboot or Ctrl-C: the same command. A finished pilot or a valid h
 detected and skipped (`scripts/rom-audit/stage-status.ts`); the `full` stage resumes from its checkpoint.
 Run one stage: `ROM_AUDIT_STAGE_ONLY=full bash scripts/rom-audit/run-full.sh`.
 `ROM_AUDIT_WORKERS=N` sets the worker count (default: logical CPUs minus one).
+`ROM_AUDIT_MAX_HOURS=H` sets the budget checked by the `bench` stage; `ROM_AUDIT_IGNORE_BENCHMARK=1` continues despite a larger projection.
 `ROM_AUDIT_RETRY_FAILURES=1` re-runs jobs recorded as failed. Only the SIDLite renderer is supported;
 reSIDfp lanes are refused (see the design document).
 
@@ -36,7 +50,8 @@ package. The script stops with a message if a tool is missing.
 | Stage | What it does | Stops when |
 |---|---|---|
 | `setup` | `bun install --frozen-lockfile`, fetches HVSC (the latest release; HVSC 85 is required), fetches the authentic ROMs, verifies the corpus identity `4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e` (61,157 files / 87,868 subtunes), checks that `doc/research/hvsc-rom-adversarial-review.md` carries an `Approved-source-identity` line (the last one counts) for the sources you checked out (`bun scripts/rom-audit/harden.ts --identity`), and runs the repository test suite once so that environment problems show up before the pilot. | A different HVSC release (once HVSC 86 exists, place the HVSC 85 collection in `workspace/hvsc/C64Music` first), a modified file, sources without architect approval, or a failing test. |
-| `pilot` | Renders the reviewed stratified pilot (567 subtunes, under the 5% ceiling). About an hour on 7 workers. | A job error is recorded as a failure, not a stop. |
+| `bench` | Renders 60 representative subtunes of the pilot selection (already counted by the ledger) and prints the measured rate and the projected hours for the full census. | A projection above the budget. |
+| `pilot` | Renders the reviewed stratified pilot (567 subtunes, under the 5% ceiling), 20% of it with the full cross-check lanes. | A job error is recorded as a failure, not a stop. |
 | `harden` | Decision-path regression on the census engines, pilot completeness (engine hashes, tool hash, no failed jobs), publication, fresh-process re-run equality, three focused test runs and three complete repository suites (each 0 fail, 0 skip). Writes `workspace/rom-audit-hardening/certificate.json`. About 1.5 hours. | Any failed check, or any change to the sources or engine during qualification. |
 | `full` | `audit.ts --rollout full` with the certificate: every subtune at its full documented horizon, resumable. | Rerun to continue. |
 | `publish` | Writes `workspace/rom-audit-full/published/` (`manifest.json`, `deny-list.<engine>.json`, `research.jsonl.gz`, `census.jsonl.gz`) and prints coverage. | |
