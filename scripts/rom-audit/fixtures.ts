@@ -91,6 +91,7 @@ const KERNAL_PRESENT_TEST = 0xea;   // absent KERNAL: the engine's shim starts w
 export type SyntheticKind =
   | "combined-only"      // output changes only when BOTH KERNAL and BASIC are absent
   | "exactly-one"        // output changes when exactly one of KERNAL/BASIC is present (non-monotonic)
+  | "silent-tail"         // volume 0; with BASIC absent the final per-frame write is missing
   | "silent-divergence"  // volume 0: PCM equal, SID write trace differs when BASIC is absent
   | "sparse-sfx"         // one write at frame 2500 (50 s) and nothing else
   | "silence"            // no SID write at all
@@ -106,7 +107,7 @@ export function syntheticFixture(kind: SyntheticKind, options: SyntheticOptions 
   const chip = kind === "second-sid-late" ? 1 : kind === "third-sid-late" ? 2 : 0;
   const base = 0xd400 + 0x20 * chip;
   const a = new Asm(0x1000);
-  const volume = kind === "silent-divergence" ? 0 : 15;
+  const volume = kind === "silent-divergence" || kind === "silent-tail" ? 0 : 15;
   // init: bank RAM+IO, clear the frame counter, audible sawtooth on voice 1 of the chosen chip.
   if (kind === "busy-writes") a.emit(0x78);   // SEI: with the KERNAL banked out an IRQ would vector through RAM
   a.lda(0x35).staZp(1).lda(0).sta(0x3000).sta(0x3001);
@@ -130,6 +131,9 @@ export function syntheticFixture(kind: SyntheticKind, options: SyntheticOptions 
     } else if (kind === "osc3-reader") {
       a.ldaAbs(0xd41b).staZp(0xfd).lda(0x37).staZp(1).ldaAbs(0xe000).staZp(0xfe).lda(0x35).staZp(1).ldaAbs(0xfd).emit(0x4d, 0xfe, 0x00)
         .sta(base).emit(0x60);
+    } else if (kind === "silent-tail") {
+      a.lda(0x40).sta(base + 1).lda(0x37).staZp(1).ldaAbs(0xa000).staZp(0xfe).lda(0x35).staZp(1).ldaAbs(0xfe).branch(BEQ, "skipped").lda(1).sta(base + 14)
+        .label("skipped").emit(0x60);
     } else if (kind === "silent-divergence") {
       a.lda(0x37).staZp(1).ldaAbs(0xa000).staZp(0xfe).lda(0x35).staZp(1).ldaAbs(0xfe).sta(base + 14).emit(0x60);
     } else if (kind === "second-sid-late" || kind === "third-sid-late") {
@@ -149,10 +153,11 @@ export function syntheticFixture(kind: SyntheticKind, options: SyntheticOptions 
     else a.label("early").lda(0x40).sta(base).emit(0x60);
   }
   const code = a.resolve();
-  // The halt fixture needs RTS at $2094 (authentic BASIC byte path) and an illegal opcode at $2000.
-  const blob = kind === "halt-without-basic" ? Buffer.concat([code, Buffer.alloc(0x1000 - code.length)]) : code;
-  const image = kind === "halt-without-basic" ? Buffer.concat([blob, Buffer.alloc(0x95)]) : blob;
-  if (kind === "halt-without-basic") { image[0x1000] = 0x02; image[0x1094] = 0x60; }
+  // The halt fixture: $A000 is 0x94 in the authentic BASIC ROM, 0x00 or 0xFF in an unsupplied bank.
+  // The jump lands on RTS at $2094, or on an illegal opcode at $2000 (zero fill) or $20FF (0xFF fill).
+  const image = Buffer.alloc(kind === "halt-without-basic" ? 0x1100 : code.length);
+  code.copy(image);
+  if (kind === "halt-without-basic") { image[0x1000] = 0x02; image[0x10ff] = 0x02; image[0x1094] = 0x60; }
   const header = Buffer.alloc(0x7c);
   header.write(kind === "busy-writes" ? "RSID" : "PSID"); header.writeUInt16BE(3, 4); header.writeUInt16BE(0x7c, 6); header.writeUInt16BE(kind === "busy-writes" ? 0 : 0x1000, 8);
   header.writeUInt16BE(0x1000, 10); header.writeUInt16BE(kind === "busy-writes" ? 0 : play, 12); header.writeUInt16BE(1, 14); header.writeUInt16BE(1, 16);

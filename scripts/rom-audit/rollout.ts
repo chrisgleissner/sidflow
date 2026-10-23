@@ -3,7 +3,6 @@
  * whose source identity, native renderer and evidence logs all still match.
  */
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -20,7 +19,7 @@ export const HARDENING_EXTRA_SOURCES = [
   "packages/sidflow-common/test/rom-audit-adversarial.test.ts", "packages/sidflow-common/test/rom-audit-ledger.test.ts",
   "packages/sidflow-common/test/rom-audit-fixtures.ts",
 ] as const;
-const ENGINE_DIST = "packages/sidflow-classify/node_modules/libsidplayfp-wasm/dist";
+const ENGINE_DIST = "node_modules/libsidplayfp-wasm-audit/dist";
 const sha = (bytes: string | Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 function listFiles(directory: string): string[] {
   return readdirSync(path.join(root, directory), { recursive: true, withFileTypes: true })
@@ -32,24 +31,23 @@ export function hardeningSources(): string[] {
 }
 export async function hardeningIdentity(): Promise<string> {
   const hashes = await Promise.all(hardeningSources().map(async file => [file, sha(await readFile(path.join(root, file)))]));
-  const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" });
-  if (head.status !== 0) throw new Error(`git rev-parse failed: ${head.stderr}`);
-  return sha(JSON.stringify({ head: head.stdout.trim(), hashes }));
+  // git HEAD is deliberately not part of the identity: the architect approval is committed after
+  // the sources are frozen, and committing it must not change the identity it approves.
+  return sha(JSON.stringify({ hashes }));
 }
 export interface SuiteTotals { pass: number; fail: number; skip: number }
 export interface HardeningCertificate {
-  schema: typeof HARDENING_CERTIFICATE_SCHEMA; methodology: string; sourceIdentity: string; nativeSha256: string; asanSha256: string;
-  engine: { sourceSha256: string; wasmSha256: string }; passed: boolean;
+  schema: typeof HARDENING_CERTIFICATE_SCHEMA; methodology: string; sourceIdentity: string;
+  /** Source and WASM hashes of every engine the census used. */
+  engines: Record<string, { sourceSha256: string; wasmSha256: string }>; passed: boolean;
   checks: {
-    typecheck: boolean; nativeRegression: boolean; sanitizer: boolean; exactParity: boolean; parityCases: number;
+    typecheck: boolean;
     focusedRuns: number; focusedTotals: SuiteTotals[]; fullSuiteRuns: number; fullSuiteTotals: SuiteTotals[];
-    pilot: { manifestSha256: string; subtunes: number; files: number };
-    /** Decision-path regression digests of the release and sanitizer binaries; they must be identical. */
-    decisionRegression: { digest: string; sanitizerDigest: string };
-    /** Fresh-process re-render equality on pilot rows. */
+    pilot: { manifestSha256: string; subtunes: number; files: number; failed: number };
+    /** Digest of the decision-path regression (comparator regressions and synthetic programs on both engines). */
+    decisionRegression: { digest: string };
+    /** Fresh-process re-run equality on pilot subtunes. */
     reproducibility: { rows: number };
-    /** Native candidates re-run on the shipping engine; mismatches stay unknown and are explained in the review. */
-    shippingEngine: { confirmedSubtunes: number; mismatches: number };
     adversarialReview: { file: string; sha256: string; sourceIdentity: string };
   };
   /** Log file name -> SHA-256, relative to the evidence directory next to the certificate. */
@@ -58,24 +56,38 @@ export interface HardeningCertificate {
 const clean = (t: SuiteTotals | undefined): boolean =>
   !!t && [t.pass, t.fail, t.skip].every(Number.isSafeInteger) && t.pass > 0 && t.fail === 0 && t.skip === 0;
 /** Structural validation only; use verifyHardeningEvidence to re-hash the logs. */
-export function validateHardening(c: HardeningCertificate | undefined, identity: string, nativeSha256: string): boolean {
+export function validateHardening(c: HardeningCertificate | undefined, identity: string): boolean {
   const k = c?.checks;
-  return c?.schema === HARDENING_CERTIFICATE_SCHEMA && c.methodology === METHODOLOGY && c.sourceIdentity === identity &&
-    c.nativeSha256 === nativeSha256 && /^[a-f0-9]{64}$/.test(c.asanSha256 ?? "") && c.passed === true && !!k &&
-    k.typecheck === true && k.nativeRegression === true && k.sanitizer === true && k.exactParity === true &&
-    Number.isSafeInteger(k.parityCases) && k.parityCases >= 100 &&
+  return c?.schema === HARDENING_CERTIFICATE_SCHEMA && c.methodology === METHODOLOGY && c.sourceIdentity === identity && c.passed === true && !!k &&
+    k.typecheck === true && Object.keys(c.engines ?? {}).length >= 1 &&
+    Object.values(c.engines).every(e => /^[a-f0-9]{64}$/.test(e?.sourceSha256 ?? "") && /^[a-f0-9]{64}$/.test(e?.wasmSha256 ?? "")) &&
     k.focusedRuns >= 3 && k.focusedTotals?.length === k.focusedRuns && k.focusedTotals.every(clean) &&
     k.fullSuiteRuns >= 3 && k.fullSuiteTotals?.length === k.fullSuiteRuns && k.fullSuiteTotals.every(clean) &&
-    k.pilot?.subtunes >= 50 && /^[a-f0-9]{64}$/.test(k.decisionRegression?.digest ?? "") && k.decisionRegression.digest === k.decisionRegression.sanitizerDigest &&
-    k.reproducibility?.rows >= 5 && k.shippingEngine?.confirmedSubtunes >= 50 && Number.isSafeInteger(k.shippingEngine.mismatches) && k.shippingEngine.mismatches >= 0 && k.adversarialReview?.sourceIdentity === identity &&
-    /^[a-f0-9]{64}$/.test(k.adversarialReview.sha256) && !!c.logs && Object.keys(c.logs).length >= 14;
+    k.pilot?.subtunes >= 50 && Number.isSafeInteger(k.pilot.failed) && k.pilot.failed === 0 &&
+    /^[a-f0-9]{64}$/.test(k.decisionRegression?.digest ?? "") && k.reproducibility?.rows >= 5 &&
+    k.adversarialReview?.sourceIdentity === identity && /^[a-f0-9]{64}$/.test(k.adversarialReview.sha256) && !!c.logs && Object.keys(c.logs).length >= 9;
+}
+/** Sum the per-batch summaries printed by bun test / run-unit-coverage-batches. */
+export function suiteTotals(output: string): SuiteTotals {
+  const total = { pass: 0, fail: 0, skip: 0 };
+  for (const match of output.matchAll(/^\s*(\d+) (pass|fail|skip)\s*$/gm)) total[match[2] as keyof SuiteTotals] += Number(match[1]);
+  return total;
 }
 /** Re-hash every recorded log (and the review) next to the certificate. */
 export function verifyHardeningEvidence(c: HardeningCertificate, evidenceDir: string): boolean {
+  let focused = 0, suites = 0, digestSeen = false;
   for (const [name, digest] of Object.entries(c.logs)) {
     const file = path.join(evidenceDir, name);
-    if (path.basename(name) !== name || !existsSync(file) || sha(readFileSync(file)) !== digest) return false;
+    if (path.basename(name) !== name || !existsSync(file)) return false;
+    const bytes = readFileSync(file);
+    if (sha(bytes) !== digest) return false;
+    // Re-parse the evidence: a log that hashes correctly must also say what the certificate claims.
+    const text = bytes.toString("utf8");
+    if (/^focused-\d+\.log$/.test(name)) { const t = suiteTotals(text); if (t.fail !== 0 || t.pass === 0) return false; focused++; }
+    if (/^full-suite-\d+\.log$/.test(name)) { const t = suiteTotals(text); if (t.fail !== 0 || t.skip !== 0 || t.pass === 0) return false; suites++; }
+    if (name === "decision-regression.log") { if (new RegExp(`^DIGEST ${c.checks.decisionRegression.digest}$`, "m").exec(text) === null) return false; digestSeen = true; }
   }
+  if (focused < 3 || suites < 3 || !digestSeen) return false;
   const review = path.join(root, c.checks.adversarialReview.file);
   return existsSync(review) && sha(readFileSync(review)) === c.checks.adversarialReview.sha256;
 }

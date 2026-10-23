@@ -11,7 +11,7 @@
  *  - a torn final record is preserved and ignored (its reservation never completed
  *    its fsync, so no job was dispatched on its strength); interior damage fails.
  */
-import { appendFileSync, closeSync, existsSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, truncateSync, writeSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, fsyncSync, ftruncateSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, truncateSync, writeSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dlopen, FFIType } from "bun:ffi";
 import path from "node:path";
@@ -71,7 +71,7 @@ export class RolloutLedger {
   private readonly lock: ProcessLock;
   private constructor(readonly file: string) {
     this.lock = new ProcessLock(file + ".lock", "rollout ledger");
-    this.load();
+    this.load(false);
   }
   static open(corpusSha256: string, directory = WORKSPACE): RolloutLedger {
     if (!/^[a-f0-9]{64}$/.test(corpusSha256)) throw new Error("Invalid corpus identity");
@@ -84,20 +84,31 @@ export class RolloutLedger {
       !Number.isSafeInteger(identity.song) || identity.song < 1 || identity.song > 256)
       throw new Error(`Invalid ledger identity ${JSON.stringify(identity)}`);
   }
-  /** Re-read the file: another process may have appended since the last call. */
-  private load(): void {
-    this.songs.clear(); this.files.clear();
+  private offset = 0;
+  /**
+   * Read the records appended since the last call. Only the lock holder may repair a torn tail
+   * (`repair`); an unlocked reader ignores it without touching the file. Reading incrementally keeps
+   * a dispatch O(1) however long the ledger has grown.
+   */
+  private load(repair: boolean): void {
     if (!existsSync(this.file)) return;
-    const bytes = readFileSync(this.file);
+    const size = statSync(this.file).size;
+    if (size < this.offset) { this.songs.clear(); this.files.clear(); this.offset = 0; }   // truncated by a repair elsewhere
+    if (size === this.offset) return;
+    const fd = openSync(this.file, "r");
+    let bytes: Buffer;
+    try { bytes = Buffer.alloc(size - this.offset); readSync(fd, bytes, 0, bytes.length, this.offset); } finally { closeSync(fd); }
     let end = bytes.length;
-    if (end && bytes[end - 1] !== 10) {
-      // Reservations are fsynced before any job is dispatched, so a torn final
-      // record belongs to a batch that never ran. Keep its bytes; never lose them.
+    if (bytes[end - 1] !== 10) {
+      // Reservations are fsynced before any job is dispatched, so a torn final record belongs to a batch
+      // that never ran. Keep its bytes; never lose them.
       end = bytes.lastIndexOf(10) + 1;
-      const tail = bytes.subarray(end);
-      appendFileSync(`${this.file}.torn.${sha256(tail).slice(0, 16)}`, tail);
-      truncateSync(this.file, end);
-      console.warn("Preserved incomplete rollout ledger tail; it was never acknowledged, so no job depended on it");
+      if (repair) {
+        const tail = bytes.subarray(end);
+        appendFileSync(`${this.file}.torn.${sha256(tail).slice(0, 16)}`, tail);
+        truncateSync(this.file, this.offset + end);
+        console.warn("Preserved incomplete rollout ledger tail; it was never acknowledged, so no job depended on it");
+      }
     }
     for (const line of bytes.subarray(0, end).toString("utf8").split("\n").filter(Boolean)) {
       const { crc, ...record } = JSON.parse(line) as LedgerRecord;
@@ -106,6 +117,7 @@ export class RolloutLedger {
       if (recordCrc(record) !== crc) throw new Error(`Rollout ledger record fails its checksum: ${line.slice(0, 80)}`);
       this.songs.add(RolloutLedger.key(record)); this.files.add(record.sha256);
     }
+    this.offset += end;
   }
   get subtunes(): number { return this.songs.size; }
   get distinctFiles(): number { return this.files.size; }
@@ -117,7 +129,7 @@ export class RolloutLedger {
   reserve(identities: Identity[], source: string, limit?: { maxFiles: number; maxSongs: number }): boolean {
     this.lock.acquire(10000);
     try {
-      this.load();
+      this.load(true);
       const fresh = identities.filter((identity, index, all) => {
         RolloutLedger.validate(identity);
         return !this.has(identity) && all.findIndex(other => RolloutLedger.key(other) === RolloutLedger.key(identity)) === index;
@@ -135,6 +147,7 @@ export class RolloutLedger {
       try { appendFileSync(fd, text); fsyncSync(fd); } finally { closeSync(fd); }
       if (created) this.syncDirectory();
       for (const i of fresh) { this.songs.add(RolloutLedger.key(i)); this.files.add(i.sha256); }
+      this.offset += Buffer.byteLength(text);
       return true;
     } finally { this.lock.release(); }
   }
@@ -158,9 +171,20 @@ export class RolloutLedger {
     for (const entry of readdirSync(workspace, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const base = path.join(workspace, entry.name), manifestPath = path.join(base, "manifest.json"), checkpoint = path.join(base, "execution.jsonl");
-      if (!existsSync(manifestPath) || !existsSync(checkpoint)) continue;
+      if (!existsSync(manifestPath)) continue;
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { corpusSha256?: string; hvscRoot?: string };
       if (manifest.corpusSha256 !== corpusSha256 || typeof manifest.hvscRoot !== "string") continue;
+      // Methodology 3 census checkpoints identify rows by content hash.
+      const census = path.join(base, "census.jsonl");
+      if (existsSync(census)) {
+        for (const line of readFileSync(census, "utf8").split("\n").filter(Boolean)) {
+          const lead = /^\{.*?"sha256":"([a-f0-9]{64})".*?"song":(\d+)/.exec(line) ?? /"sha256":"([a-f0-9]{64})"/.exec(line);
+          const song = /"song":(\d+)/.exec(line);
+          if (!lead || !song) { console.warn(`Unrecoverable census record in ${census}`); continue; }
+          found.push({ sha256: lead[1]!, path: `census:${base}`, song: Number(song[1]) });
+        }
+      }
+      if (!existsSync(checkpoint)) continue;
       const raw = readFileSync(checkpoint, "utf8");
       for (const line of raw.split("\n").filter(Boolean)) {
         let row: { path?: unknown; song?: unknown };

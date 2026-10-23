@@ -1,21 +1,25 @@
 /**
- * Offline, bounded ROM eligibility for HVSC subtunes.
+ * Offline, bounded ROM eligibility for HVSC subtunes, per SID renderer.
  *
- * A `compatible` bit means: on the pinned engine, configured exactly as
- * CONSUMER_PROFILE, a fresh playback with that ROM set produced the same PCM and
- * the same timed SID writes as the full-ROM reference for the whole documented
- * duration plus a 5 s margin. It is not a statement about any other engine,
- * sample rate, power-on delay or ROM image, and it is not about looping.
+ * A `compatible` bit means: on the pinned engine (`libsidplayfp-wasm` 1.1.0, the renderer
+ * named by the profile), configured exactly as the consumer profile, a fresh playback
+ * with that ROM set produced the same PCM and the same cycle-timed SID writes as the
+ * full-ROM reference for the whole documented duration plus a 5 s margin. It is not a
+ * statement about any other engine, version, sample rate, ROM image or about looping.
+ *
+ * The ROM sets are those C64 Commander can create: KERNAL and BASIC supplied together
+ * (CHARGEN always `null`), or nothing supplied. A bank the consumer leaves `null` keeps
+ * whatever the engine heap held, so a decision requires identical output with that bank
+ * filled with zeros and with 0xFF, which shows the run does not depend on its content.
  *
  * Consumer obligations (the lookup can only verify the identities it is given):
- *  - build the lookup from your ACTUAL profile and engine hashes; a different
- *    profile derives a different engine id and every query denies;
- *  - pass the SHA-256 of each present ROM, `null` for an absent one, and pass
- *    absent BASIC/CHARGEN to the engine as zero banks (profile.banks);
- *  - each eligible playback starts from a new player with that ROM set; ROMs are
- *    never changed during a playback;
- *  - elapsed time is emulated time since reset; stop at `maxPlaybackSeconds`;
- *    repetition is only a fresh restart; never continue past the deadline.
+ *  - build the lookup from your ACTUAL profile and engine hashes; a different profile
+ *    derives a different engine id and every query denies;
+ *  - pass the SHA-256 of each present ROM and `null` for an absent one;
+ *  - each eligible playback starts from a new player with that ROM set; ROMs are never
+ *    changed during a playback;
+ *  - elapsed time is emulated time since reset; stop at `maxPlaybackSeconds`; repetition is
+ *    only a fresh restart; never continue past the deadline.
  * Verify artifact checksums against a trusted manifest before loading.
  */
 import { createHash } from "node:crypto";
@@ -29,18 +33,29 @@ export const REFERENCE_ROM_SHA256 = {
   basic: "89878cea0a268734696de11c4bae593eaaa506465d2029d619c0e0cbccdfa62d",
   chargen: "fd0d53b8480e86163ac98998976c72cc58d5dd8eb824ed7b829774e74213b420",
 } as const;
-/** The machine a published decision describes. See the header comment. */
-export const ROM_CONSUMER_PROFILE = {
-  engine: "SIDLite", package: "libsidplayfp-wasm@1.0.1", sampleRate: 48000, stereo: true, powerOnDelay: 5000,
-  sidModel: "from header", c64Model: "from header", subtuneSelection: "start-song header rewrite before load",
-  banks: { kernal: "null when absent (engine interrupt shim)", basic: "8192 zero bytes when absent", chargen: "4096 zero bytes when absent" },
-  otherDefaultsFromPinnedSource: true,
-} as const;
-export type RomConsumerProfile = typeof ROM_CONSUMER_PROFILE;
+/** Renderers the audit can qualify. Both are WASM builds in the same package. */
+export const ROM_AUDIT_ENGINES = ["sidlite", "residfp"] as const;
+export type RomAuditEngine = (typeof ROM_AUDIT_ENGINES)[number];
+/** The machine a published decision describes, as C64 Commander configures it (read from its source). */
+export function romConsumerProfile(engine: RomAuditEngine) {
+  return {
+    engine,
+    package: "libsidplayfp-wasm@1.1.0",
+    sampleRate: 48000,
+    stereo: true,
+    powerOnDelay: "engine default (8191)",
+    pullCycles: engine === "sidlite" ? 256 : 100000,
+    sidModel: "from header; engine default where the header does not name one",
+    subtuneSelection: "start-song header rewrite before load",
+    romSets: { full: "KERNAL and BASIC supplied, CHARGEN null", none: "KERNAL, BASIC and CHARGEN all null" },
+    nullBanks: "uninitialised in the consumer; decisions require identical output with zero and 0xFF fills",
+  } as const;
+}
+export type RomConsumerProfile = ReturnType<typeof romConsumerProfile>;
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 const canonical = (value: unknown): string => stringifyDeterministic(value as JsonValue, 0);
 /** Identity of the engine build plus the consumer profile that evidence was produced under. */
-export function romEngineId(engine: { sourceSha256: string; wasmSha256: string }, profile: RomConsumerProfile = ROM_CONSUMER_PROFILE): string {
+export function romEngineId(engine: { sourceSha256: string; wasmSha256: string }, profile: RomConsumerProfile): string {
   return sha256(canonical({ source: engine.sourceSha256, wasm: engine.wasmSha256, profile }));
 }
 export const romSetId = (): string => sha256(canonical(REFERENCE_ROM_SHA256));
@@ -66,16 +81,20 @@ export interface RomEligibility {
   /** The documented musical duration; the remainder up to the deadline is an observation margin. */
   documentedSeconds: number | null;
 }
-/** Mask for a ROM selection, or null if any present image is not the reference image. */
+/**
+ * Mask of a Commander ROM set: 0 nothing supplied, 3 KERNAL+BASIC supplied with CHARGEN null,
+ * 7 all three reference images. `null` for anything else, including a non-reference image.
+ */
 export function romMask(roms: RomSelection): number | null {
-  let mask = 0;
-  for (const [bit, key] of [[1, "kernal"], [2, "basic"], [4, "chargen"]] as const) {
-    const image = roms?.[key];
-    if (image === null) continue;
-    if (image !== REFERENCE_ROM_SHA256[key]) return null;
-    mask |= bit;
-  }
-  return mask;
+  const slots = [roms?.kernal, roms?.basic, roms?.chargen];
+  if (slots.some(v => v !== null && typeof v !== "string")) return null;
+  for (const [index, key] of (["kernal", "basic", "chargen"] as const).entries())
+    if (slots[index] !== null && slots[index] !== REFERENCE_ROM_SHA256[key]) return null;
+  const [kernal, basic, chargen] = slots.map(v => v !== null);
+  if (!kernal && !basic && !chargen) return 0;
+  if (kernal && basic && !chargen) return 3;
+  if (kernal && basic && chargen) return 7;
+  return null;
 }
 export function createRomEligibilityLookup(data: RomDenyList,
   expected: { sourceSha256: string; wasmSha256: string; profile: RomConsumerProfile; methodology: string }):
@@ -98,7 +117,7 @@ export function createRomEligibilityLookup(data: RomDenyList,
   return (sha, song, roms, elapsedSeconds = 0) => {
     if (!valid) return deny("catalogue-provenance-or-schema-mismatch");
     const mask = romMask(roms);
-    if (mask === null) return deny("non-reference-rom-image");
+    if (mask === null) return deny("not-a-supported-rom-set");
     if (!Number.isInteger(song) || song < 1 || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return deny("invalid-lookup");
     const pair = entries.get(sha)?.[song - 1];
     if (!pair) return deny("missing-entry");

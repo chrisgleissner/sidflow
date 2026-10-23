@@ -60,10 +60,10 @@ for bank, size, symbol in [('KernalRomBank', '0x2000', 'kernal'),
     text = text.replace(old, new, 1)
 source.write_text(text)
 
-# Extended 2026-10-23: count CPU reads of the SID registers that feed sampled
-# oscillator/envelope state back to the program ($D419-$D41C, any chip and mirror).
-# SIDLite refreshes OSC3 once per output sample, so a program that reads it follows
-# a CPU path that depends on the output sample rate.
+# Extended 2026-10-23: count EVERY CPU read of a SID register (any chip, any mirror).
+# A read returns engine-specific state (OSC3/ENV3 are sampled at engine-specific moments, write-only
+# registers return a decaying bus value in reSIDfp), so a program that never reads a SID follows the
+# same CPU path under every SID builder and every output sample rate.
 sidlite = source.parents[2] / 'builders/sidlite-builder/sidlite-emu.cpp'
 text = sidlite.read_text()
 if 'sidflow_sid_readback_reads' not in text:
@@ -72,8 +72,8 @@ if 'sidflow_sid_readback_reads' not in text:
     clock();'''
     new = '''uint8_t SIDLiteEmu::read(uint_least8_t addr)
 {
-    // Modified by SIDFlow on 2026-10-23: passive counter of feedback register reads.
-    if ((addr & 0x1f) >= 0x19 && (addr & 0x1f) <= 0x1c) ++::sidflow_sid_readback_reads;
+    // Modified by SIDFlow on 2026-10-23: passive counter of SID register reads.
+    ++::sidflow_sid_readback_reads;
     clock();'''
     namespace_anchor = 'namespace libsidplayfp\n{'
     if text.count(old) != 1 or text.count(namespace_anchor) != 1:

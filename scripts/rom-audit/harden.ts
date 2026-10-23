@@ -1,42 +1,38 @@
 #!/usr/bin/env bun
 /**
- * Hardening qualification for the ROM audit. A certificate is written only after
- * every step below has actually run against one source identity:
+ * Hardening qualification for the ROM census. A certificate is written only after every step
+ * below has actually run against one source identity:
  *
  *   1. strict TypeScript check of scripts/rom-audit
- *   2. clean release and AddressSanitizer+UBSan native builds (build-native.sh)
- *   3. native regression suite on both binaries, sanitizer faults fatal
- *   4. decision-path regression (synthetic programs through screening, shipping-engine
- *      confirmation, assess() and the lookup) on both binaries; digests must be identical
- *   5. exact native/WASM parity controls (consistency control, not allow evidence)
- *   6. a completed pilot: native rows valid, every nominated candidate confirmed on the
- *      shipping engine, publication and exhaustive lookup consistency pass
- *   7. fresh-process re-render equality on pilot rows
- *   8. three consecutive focused test runs and three complete repository suites, 0 fail / 0 skip
- *   9. an architect approval bound to the exact source identity
+ *   2. decision-path regression on both engines (comparator regressions on real subtunes,
+ *      synthetic programs through lanes, assess, deny tuple and lookup)
+ *   3. a completed pilot: no failed jobs, engine hashes equal to the installed engine,
+ *      publication and exhaustive lookup consistency pass
+ *   4. fresh-process re-run equality on pilot subtunes
+ *   5. three consecutive focused test runs and three complete repository suites, 0 fail / 0 skip
+ *   6. an architect approval bound to the exact source identity
  *
  *   bun scripts/rom-audit/harden.ts --identity
  *   bun scripts/rom-audit/harden.ts --hvsc workspace/hvsc/C64Music --roms workspace/roms \
  *     --pilot workspace/rom-audit-v3 --review doc/research/hvsc-rom-adversarial-review.md
  *   (add --dry-run to skip the repository suites and the certificate)
  *
- * The scope lock is held throughout, so no audit can start while qualification runs.
- * Source identity (every file under scripts/rom-audit, the engine package, the lock
- * file and git HEAD) and the native hashes are compared before and after.
+ * The scope lock is held throughout, so no audit can start while qualification runs. The source
+ * identity (every file under scripts/rom-audit, the engine package, the lock file) is compared
+ * before and after. The approval line is checked first, so a missing approval fails in seconds.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
-import { METHODOLOGY, validateMatrix } from "./methodology.js";
-import { corpusIdentity, freshNativeRenderer, readVerifiedSid } from "./inputs.js";
-import { hardeningIdentity, scopeLock, HARDENING_CERTIFICATE_SCHEMA, type HardeningCertificate, type SuiteTotals } from "./rollout.js";
+import { ROM_AUDIT_ENGINES } from "../../packages/sidflow-common/src/rom-eligibility.js";
+import { METHODOLOGY, validateRecord } from "./methodology.js";
+import { corpusIdentity, readVerifiedSid } from "./inputs.js";
+import { hardeningIdentity, scopeLock, suiteTotals, HARDENING_CERTIFICATE_SCHEMA, type HardeningCertificate, type SuiteTotals } from "./rollout.js";
 import { publishProduction } from "./publish-production.js";
-import { readCheckpoint } from "./checkpoint.js";
-import { candidateMasks, verdictFromConfirmation, type JobResult } from "./confirm.js";
-import { screen, type Horizon } from "./methodology.js";
-import type { Execution } from "./analysis.js";
+import { readCensus } from "./checkpoint.js";
+import { engineHashes } from "./wasm-lanes.js";
 
 const root = path.resolve(import.meta.dir, "../..");
 const sha = (bytes: string | Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -68,115 +64,70 @@ function run(step: Step, evidence: string, environment: Record<string, string> =
   return log;
 }
 
-/** Sum the per-batch summaries printed by bun test / run-unit-coverage-batches. */
-export function suiteTotals(output: string): SuiteTotals {
-  const total = { pass: 0, fail: 0, skip: 0 };
-  for (const match of output.matchAll(/^\s*(\d+) (pass|fail|skip)\s*$/gm)) total[match[2] as keyof SuiteTotals] += Number(match[1]);
-  return total;
-}
-const digestOf = (log: string): string => {
-  const found = /^DIGEST ([a-f0-9]{64})$/m.exec(readFileSync(log, "utf8"))?.[1];
-  if (!found) throw new Error(`No decision digest in ${log}`);
-  return found;
-};
-
 async function main(): Promise<void> {
   const o = options();
   if (o.identity) { console.log(await hardeningIdentity()); return; }
   for (const key of ["hvsc", "roms", "pilot", "review"]) if (!o[key]) throw new Error(`--${key} is required`);
   const hvsc = path.resolve(o.hvsc!), roms = path.resolve(o.roms!), pilot = path.resolve(o.pilot!), review = path.resolve(o.review!);
-  scopeLock(await corpusIdentity(hvsc));   // held until this process exits
   const identity = await hardeningIdentity();
+  // The architect approval is checked first: without it nothing below could produce a certificate.
+  const reviewText = readFileSync(review, "utf8");
+  const approved = /^Approved-source-identity: ([a-f0-9]{64})$/m.exec(reviewText)?.[1];
+  const reviewer = /^Reviewer-model: (\S+)$/m.exec(reviewText)?.[1];
+  if (!o["dry-run"] && (approved !== identity || reviewer !== "claude-opus-5-5"))
+    throw new Error(`Architect approval missing or bound to another source identity. Required line: "Approved-source-identity: ${identity}" with "Reviewer-model: claude-opus-5-5"`);
+  scopeLock(await corpusIdentity(hvsc));   // held until this process exits
   const evidence = path.resolve(o.out ?? path.join(root, "workspace/rom-audit-hardening"), identity.slice(0, 16));
   mkdirSync(evidence, { recursive: true });
-  const engine = (): Record<string, string> => {
-    const base = path.join(root, "packages/sidflow-classify/node_modules/libsidplayfp-wasm/dist");
-    return { sourceSha256: sha(readFileSync(path.join(base, "complete-source.tar.gz"))), wasmSha256: sha(readFileSync(path.join(base, "sidlite/libsidplayfp.wasm"))) };
-  };
-  const engineBefore = engine();
+  const censusEngines = ROM_AUDIT_ENGINES.filter(e => Object.hasOwn(JSON.parse(readFileSync(path.join(pilot, "manifest.json"), "utf8")).engines, e));
+  const engines = Object.fromEntries(censusEngines.map(e => [e, engineHashes(e)]));
   const logs: Record<string, string> = {};
   const record = (step: Step, environment?: Record<string, string>): string => {
     const log = run(step, evidence, environment);
     logs[step.log] = sha(readFileSync(log));
     return log;
   };
-  const sanitizerEnvironment = { ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1", UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1" };
 
   // 1. type check every script in the directory
   const scripts = readdirSync(path.join(root, "scripts/rom-audit")).filter(n => n.endsWith(".ts")).map(n => `scripts/rom-audit/${n}`);
   record({ name: "strict type check", log: "typecheck.log", command: ["bunx", "tsc", "--noEmit", "--strict", "--module", "ESNext",
     "--moduleResolution", "bundler", "--target", "ES2022", "--types", "bun-types", "--skipLibCheck", "--allowImportingTsExtensions", ...scripts] });
 
-  // 2. clean builds; the hashes are what the certificate binds to
-  console.log("[harden] building native renderers");
-  const native = freshNativeRenderer(false), asan = freshNativeRenderer(true);
-  const nativeSha256 = sha(readFileSync(native)), asanSha256 = sha(readFileSync(asan));
-  const compiler = spawnSync("g++", ["--version"], { encoding: "utf8" }).stdout.split("\n")[0] ?? "";
-  writeFileSync(path.join(evidence, "toolchain.log"), `${compiler}\nnative ${nativeSha256}\nsanitizer ${asanSha256}\n`);
-  logs["toolchain.log"] = sha(readFileSync(path.join(evidence, "toolchain.log")));
+  // 2. decision-path regression (both engines)
+  const decisionLog = record({ name: "decision-path regression", log: "decision-regression.log", command: ["bun", "scripts/rom-audit/decision-regression.ts", roms, censusEngines.join(",")] });
+  const decisionDigest = /^DIGEST ([a-f0-9]{64})$/m.exec(readFileSync(decisionLog, "utf8"))?.[1];
+  if (!decisionDigest) throw new Error("No decision digest");
 
-  // 3. regressions on both binaries
-  record({ name: "native regression (release build)", log: "native-regression.log", command: ["bun", "scripts/rom-audit/native-regression.ts", native, roms, hvsc] });
-  record({ name: "native regression (ASan+UBSan)", log: "native-regression-sanitizer.log", command: ["bun", "scripts/rom-audit/native-regression.ts", asan, roms, hvsc] }, sanitizerEnvironment);
-
-  // 4. decision-path regression: identical digests from both binaries
-  const releaseDigest = digestOf(record({ name: "decision regression (release build)", log: "decision-release.log", command: ["bun", "scripts/rom-audit/decision-regression.ts", native, roms] }));
-  const sanitizerDigest = digestOf(record({ name: "decision regression (ASan+UBSan)", log: "decision-sanitizer.log", command: ["bun", "scripts/rom-audit/decision-regression.ts", asan, roms] }, sanitizerEnvironment));
-  if (releaseDigest !== sanitizerDigest) throw new Error("Release and sanitizer binaries decided differently");
-
-  // 5. exact native/WASM parity (consistency control)
-  const parityFile = path.join(evidence, "parity.json");
-  record({ name: "exact native/WASM parity", log: "parity.log", command: ["bun", "scripts/rom-audit/verify-native.ts", hvsc, roms, parityFile] });
-  const parity = JSON.parse(readFileSync(parityFile, "utf8")) as { cases: unknown[]; nativeSha256: string };
-  if (parity.nativeSha256 !== nativeSha256) throw new Error("Parity certificate was produced by a different native renderer");
-  const parityCases = parity.cases.length;
-  if (parityCases < 100) throw new Error(`Parity certificate has only ${parityCases} cases`);
-
-  // 6. pilot rows, shipping-engine confirmation and publication
-  const manifest = JSON.parse(readFileSync(path.join(pilot, "manifest.json"), "utf8")) as { nativeSha256: string; sourceSha256: string; wasmSha256: string; hvscRoot: string };
-  if (manifest.nativeSha256 !== nativeSha256) throw new Error("Pilot was measured with a different native renderer; re-run the pilot");
-  if (manifest.sourceSha256 !== engineBefore.sourceSha256 || manifest.wasmSha256 !== engineBefore.wasmSha256) throw new Error("Pilot engine differs from the installed engine");
-  const rows = readCheckpoint(path.join(pilot, "execution.jsonl"));
+  // 3. pilot: provenance, completeness and publication
+  const manifest = JSON.parse(readFileSync(path.join(pilot, "manifest.json"), "utf8")) as { toolSha256: string; engines: Record<string, { sourceSha256: string; wasmSha256: string }>; hvscRoot: string };
+  const tool = sha(Buffer.concat(["wasm-lanes.ts", "census-worker.ts", "methodology.ts", "checkpoint.ts", "inputs.ts", "audit.ts"].map(f => readFileSync(path.join(root, "scripts/rom-audit", f)))));
+  if (manifest.toolSha256 !== tool) throw new Error("The pilot was produced by different census tooling; re-run the pilot");
+  for (const engine of censusEngines)
+    if (manifest.engines[engine]?.sourceSha256 !== engines[engine]!.sourceSha256 || manifest.engines[engine]?.wasmSha256 !== engines[engine]!.wasmSha256)
+      throw new Error(`Pilot ${engine} engine differs from the installed engine; re-run the pilot`);
+  const rows = readCensus(path.join(pilot, "census.jsonl"), censusEngines, { repair: false });
   if (rows.size < 50) throw new Error(`Pilot has only ${rows.size} measured subtunes`);
-  for (const row of rows.values()) validateMatrix(row);
-  const headers = JSON.parse(readFileSync(path.join(pilot, "headers.json"), "utf8")) as { path: string; sha256: string }[];
-  const shaByPath = new Map(headers.map(h => [h.path, h.sha256]));
-  const horizons = JSON.parse(readFileSync(path.join(pilot, "horizons.json"), "utf8")) as Record<string, Horizon[]>;
-  const confirmations = new Map<string, JobResult>();
-  for (const line of readFileSync(path.join(pilot, "confirmation.jsonl"), "utf8").split("\n").filter(Boolean)) {
-    const c = JSON.parse(line) as JobResult; confirmations.set(`${c.sha256}#${c.song}#${c.seconds}`, c);
-  }
-  let confirmedSubtunes = 0, mismatches = 0;
-  for (const row of rows.values()) {
-    const relative = path.relative(manifest.hvscRoot, row.path), horizon = horizons[relative]![row.song - 1]!, sha256 = shaByPath.get(relative)!;
-    const candidates = candidateMasks(row, horizon);
-    if (!candidates.length) continue;
-    const job = confirmations.get(`${sha256}#${row.song}#${row.seconds}`);
-    if (!job) throw new Error(`Candidate subtune without shipping-engine confirmation: ${relative}#${row.song}`);
-    confirmedSubtunes++;
-    for (const c of candidates) {
-      const verdict = verdictFromConfirmation(screen(row.matrix![c.mask], row.both, row.repeat, row.seconds, horizon).state, job.results.find(r => r.mask === c.mask), row, c.mask);
-      if (verdict === undefined) throw new Error(`Unbound or missing confirmation: ${relative}#${row.song} mask ${c.mask}`);
-      if (verdict === "mismatch") mismatches++;
-    }
-  }
+  const failed = [...rows.values()].filter(r => r.failure).length;
+  if (failed) throw new Error(`Pilot has ${failed} failed jobs; investigate each before qualifying`);
   await publishProduction(pilot, path.join(evidence, "pilot-publication"));
 
-  // 7. fresh-process re-render equality on evenly spaced pilot rows
-  const sample = [...rows.values()].filter((_, index) => index % Math.max(1, Math.floor(rows.size / 6)) === 0).slice(0, 6);
-  const reproducible = spawnSync(native, [roms], {
-    input: sample.map(r => `${r.path}\t${r.song}\t${r.seconds}\thex:${readVerifiedSid(r.path, shaByPath.get(path.relative(manifest.hvscRoot, r.path))!).toString("hex")}\n`).join(""),
-    encoding: "utf8", maxBuffer: 256 * 1024 * 1024, timeout: 3 * 3600 * 1000 });
-  if (reproducible.status !== 0) throw new Error(`Reproducibility render failed: ${reproducible.stderr}`);
-  const again = reproducible.stdout.trim().split("\n").map(line => JSON.parse(line) as Execution);
-  sample.forEach((r, i) => {
-    if (stringifyDeterministic(again[i]!.matrix as unknown as JsonValue, 0) !== stringifyDeterministic(r.matrix as unknown as JsonValue, 0))
-      throw new Error(`Fresh-process re-render differs: ${r.path}#${r.song}`);
+  // 4. fresh-process re-run equality on evenly spaced pilot subtunes
+  const headers = JSON.parse(readFileSync(path.join(pilot, "headers.json"), "utf8")) as { path: string; sha256: string }[];
+  const pathBySha = new Map(headers.map(h => [h.sha256, h.path]));
+  const sample = [...rows.values()].filter(r => r.seconds <= 200).filter((_, index) => index % Math.max(1, Math.floor(rows.size / 6)) === 0).slice(0, 6);
+  if (sample.length < 5) throw new Error("Too few short pilot subtunes for the reproducibility check");
+  const input = sample.map(r => JSON.stringify({ sha256: r.sha256, song: r.song, seconds: r.seconds, engines: censusEngines,
+    hex: readVerifiedSid(path.join(manifest.hvscRoot, pathBySha.get(r.sha256)!), r.sha256).toString("hex") }) + "\n").join("");
+  const again = spawnSync(process.execPath, [path.join(root, "scripts/rom-audit/census-worker.ts"), roms], { input, encoding: "utf8", maxBuffer: 1 << 28, timeout: 3 * 3600 * 1000 });
+  if (again.status !== 0) throw new Error(`Reproducibility run failed: ${again.stderr}`);
+  again.stdout.trim().split("\n").forEach((line, i) => {
+    const fresh = JSON.parse(line);
+    validateRecord(fresh, censusEngines);
+    if (stringifyDeterministic(fresh as JsonValue, 0) !== stringifyDeterministic(sample[i] as unknown as JsonValue, 0)) throw new Error(`Fresh-process re-run differs: ${sample[i]!.sha256.slice(0, 12)}#${sample[i]!.song}`);
   });
 
-  // 8. focused tests, three consecutive runs; then complete repository suites
-  const focused = ["packages/sidflow-common/test/rom-audit.test.ts", "packages/sidflow-common/test/rom-eligibility.test.ts",
-    "packages/sidflow-common/test/rom-audit-adversarial.test.ts", "packages/sidflow-common/test/rom-audit-ledger.test.ts"];
+  // 5. focused tests, three consecutive runs; then complete repository suites
+  const focused = readdirSync(path.join(root, "packages/sidflow-common/test")).filter(n => /^rom-.*\.test\.ts$/.test(n)).map(n => `packages/sidflow-common/test/${n}`);
   const focusedTotals: SuiteTotals[] = [];
   for (let n = 1; n <= REQUIRED_RUNS; n++) {
     const log = `focused-${n}.log`;
@@ -195,30 +146,18 @@ async function main(): Promise<void> {
     suites.push(totals);
   }
 
-  // 9. nothing may have changed while the checks ran
+  // 6. nothing may have changed while the checks ran
   if ((await hardeningIdentity()) !== identity) throw new Error("Hardening sources changed during qualification; certificate refused");
-  if (sha(readFileSync(native)) !== nativeSha256 || sha(readFileSync(asan)) !== asanSha256) throw new Error("Native renderer changed during qualification");
-  if (stringifyDeterministic(engine() as unknown as JsonValue, 0) !== stringifyDeterministic(engineBefore as unknown as JsonValue, 0)) throw new Error("Engine package changed during qualification");
-
-  // Architect approval bound to this exact source identity.
-  const reviewText = readFileSync(review, "utf8");
-  const approved = /^Approved-source-identity: ([a-f0-9]{64})$/m.exec(reviewText)?.[1];
-  const reviewer = /^Reviewer-model: (\S+)$/m.exec(reviewText)?.[1];
-  if (approved !== identity || reviewer !== "claude-opus-5-5")
-    throw new Error(`Architect approval missing or bound to another source identity. Required line: "Approved-source-identity: ${identity}" with "Reviewer-model: claude-opus-5-5"`);
+  if (stringifyDeterministic(Object.fromEntries(censusEngines.map(e => [e, engineHashes(e)])) as JsonValue, 0) !== stringifyDeterministic(engines as JsonValue, 0)) throw new Error("Engine package changed during qualification");
   if (o["dry-run"]) return;
 
   const certificate: HardeningCertificate = {
-    schema: HARDENING_CERTIFICATE_SCHEMA, methodology: METHODOLOGY, sourceIdentity: identity, nativeSha256, asanSha256,
-    engine: engineBefore as { sourceSha256: string; wasmSha256: string }, passed: true,
+    schema: HARDENING_CERTIFICATE_SCHEMA, methodology: METHODOLOGY, sourceIdentity: identity, engines, passed: true,
     checks: {
-      typecheck: true, nativeRegression: true, sanitizer: true, exactParity: true, parityCases,
-      focusedRuns: REQUIRED_RUNS, focusedTotals, fullSuiteRuns: REQUIRED_RUNS, fullSuiteTotals: suites,
-      pilot: { manifestSha256: sha(readFileSync(path.join(pilot, "manifest.json"))), subtunes: rows.size, files: new Set([...rows.values()].map(r => r.path)).size },
-      decisionRegression: { digest: releaseDigest, sanitizerDigest },
-      reproducibility: { rows: sample.length },
-      shippingEngine: { confirmedSubtunes, mismatches },
-      adversarialReview: { file: path.relative(root, review), sha256: sha(reviewText), sourceIdentity: approved },
+      typecheck: true, focusedRuns: REQUIRED_RUNS, focusedTotals, fullSuiteRuns: REQUIRED_RUNS, fullSuiteTotals: suites,
+      pilot: { manifestSha256: sha(readFileSync(path.join(pilot, "manifest.json"))), subtunes: rows.size, files: new Set([...rows.values()].map(r => r.sha256)).size, failed },
+      decisionRegression: { digest: decisionDigest }, reproducibility: { rows: sample.length },
+      adversarialReview: { file: path.relative(root, review), sha256: sha(reviewText), sourceIdentity: approved! },
     },
     logs,
   };

@@ -29,7 +29,12 @@ unsigned long long sidflow_sid_readback_reads = 0;
 }
 
 namespace {
-constexpr unsigned rate = 8000;
+// Legacy default: 8 kHz and a fixed power-on delay of 5000. The census reads-pass uses the Commander profile
+// (ROM_AUDIT_SAMPLE_RATE=48000, ROM_AUDIT_POWER_ON_DELAY=8191, ROM_AUDIT_REFERENCE_ONLY=1): the CPU path of a
+// program that never reads a SID register depends on neither value.
+unsigned rate = 8000;
+unsigned powerOnDelay = 5000;
+bool referenceOnly = false;
 // play() counts scheduler events, not elapsed PHI1 cycles. Large pulls can
 // overflow SIDLite 3.0.2's 20ms buffer when VIC DMA stalls the CPU. Small
 // batches also bound elapsed time when CPU events are sparse. PCM stays in
@@ -64,6 +69,7 @@ std::string quote(const std::string& value) {
 }
 struct Render {
     std::vector<int16_t> pcm;
+    size_t samples = 0;   // interleaved samples produced (pcm is not kept in reference-only mode)
     struct Write {unsigned chip, address, value; long long cycle;};
     std::vector<Write> writes;
     unsigned long long basicReads = 0, kernalReads = 0, chargenReads = 0, readbackReads = 0;
@@ -101,7 +107,7 @@ Render render(const std::vector<uint8_t>& bytes, unsigned song, double seconds,
         cfg.sidEmulation = &builder;
         cfg.samplingMethod = SidConfig::RESAMPLE_INTERPOLATE;
         cfg.digiBoost = true;
-        cfg.powerOnDelay = 5000; // below MAX: disables randomized power-on delay
+        cfg.powerOnDelay = powerOnDelay; // below MAX_POWER_ON_DELAY (8191) disables the randomized delay
         if (!player.config(cfg)) throw std::runtime_error(player.error());
         player.setRoms(kernal, basic, chargen);
         if (tune.selectSong(song) != song) throw std::runtime_error("subtune selection mismatch");
@@ -111,10 +117,10 @@ Render render(const std::vector<uint8_t>& bytes, unsigned song, double seconds,
         // Ignore engine reset writes, retain everything the tune does in play().
         result.writes.clear(); chips.clear();
         const size_t wanted = static_cast<size_t>(std::llround(seconds * rate)) * 2;
-        result.pcm.reserve(wanted);
+        if (!referenceOnly) result.pcm.reserve(wanted);
         std::vector<int16_t> buffer;
         unsigned empty = 0;
-        while (result.pcm.size() < wanted) {
+        while (result.samples < wanted) {
             int produced = player.play(chunkCycles);
             if (produced < 0) throw std::runtime_error(player.error());
             if (produced == 0) {
@@ -125,8 +131,9 @@ Render render(const std::vector<uint8_t>& bytes, unsigned song, double seconds,
             buffer.resize(static_cast<size_t>(produced) * 2);
             unsigned written = player.mix(buffer.data(), static_cast<unsigned>(produced));
             if (written == 0) throw std::runtime_error("mixer returned no samples");
-            const size_t take = std::min(static_cast<size_t>(written), wanted - result.pcm.size());
-            result.pcm.insert(result.pcm.end(), buffer.begin(), buffer.begin() + take);
+            const size_t take = std::min(static_cast<size_t>(written), wanted - result.samples);
+            if (!referenceOnly) result.pcm.insert(result.pcm.end(), buffer.begin(), buffer.begin() + take);
+            result.samples += take;
         }
         player.load(nullptr); // tune is stack allocated after player
     } catch (const std::bad_alloc& error) {
@@ -245,6 +252,10 @@ void output(const Render& value, const Render& reference) {
 int main(int argc, char** argv) {
     try {
         if (argc != 2) throw std::runtime_error("usage: render <ROM directory>");
+        referenceOnly = std::getenv("ROM_AUDIT_REFERENCE_ONLY") != nullptr;
+        if (const char* value = std::getenv("ROM_AUDIT_SAMPLE_RATE")) rate = static_cast<unsigned>(std::stoul(value));
+        if (const char* value = std::getenv("ROM_AUDIT_POWER_ON_DELAY")) powerOnDelay = static_cast<unsigned>(std::stoul(value));
+        if (rate < 4000 || rate > 192000 || powerOnDelay > SidConfig::MAX_POWER_ON_DELAY) throw std::runtime_error("invalid rate or power-on delay");
         const std::string dir = argv[1];
         const auto kernal = read(dir + "/kernal.901227-03.bin");
         const auto basic = read(dir + "/basic.901226-01.bin");
@@ -272,6 +283,13 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("invalid song or duration");
             const auto bytes = c==std::string::npos?read(path):payload(line.substr(c+1));
             auto reference = render(bytes, song, seconds, kernal.data(), basic.data(), chargen.data());
+            if (referenceOnly) {
+                std::cout << "{\"path\":" << quote(path) << ",\"song\":" << song << ",\"seconds\":" << seconds << ",\"samples\":" << reference.samples
+                    << ",\"error\":" << quote(reference.error) << ",\"errorKind\":" << quote(reference.errorKind) << ",\"writes\":" << reference.writes.size()
+                    << ",\"traceComplete\":" << (reference.traceComplete ? "true" : "false") << ",\"sidReads\":" << reference.readbackReads << "}\n" << std::flush;
+                ++jobIndex;
+                continue;
+            }
             control(reference,jobIndex,7);
             std::cout << "{\"path\":" << quote(path) << ",\"song\":" << song << ",\"seconds\":" << seconds << ",\"both\":";
             output(reference, reference);

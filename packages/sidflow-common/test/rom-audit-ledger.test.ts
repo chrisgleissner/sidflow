@@ -50,15 +50,23 @@ describe("rollout reservation ledger",()=>{
   expect(b.reserve([id("b",1)],"b",limit)).toBe(true);
   expect(a.reserve([id("c",1)],"a",limit)).toBe(false);
  }));
- it("preserves and ignores a torn final record, then appends on a clean line",()=>withDirectory(dir=>{
+ it("ignores a torn final record when reading, and preserves then removes it under the lock",()=>withDirectory(dir=>{
   const first=RolloutLedger.open(corpus,dir);first.reserve([id("a",1)],"s");
   appendFileSync(first.file,'{"v":2,"sha256":"ab');
   const reopened=RolloutLedger.open(corpus,dir);
   expect(reopened.subtunes).toBe(1);
+  expect(readdirSync(dir).filter(n=>n.includes(".torn."))).toHaveLength(0);   // opening takes no lock, so it repairs nothing
+  expect(readFileSync(first.file,"utf8").endsWith("ab")).toBe(true);
+  reopened.reserve([id("b",1)],"s");
   const torn=readdirSync(dir).filter(n=>n.includes(".torn."));
   expect(torn).toHaveLength(1);expect(readFileSync(path.join(dir,torn[0]!),"utf8")).toBe('{"v":2,"sha256":"ab');
-  reopened.reserve([id("b",1)],"s");
   expect(RolloutLedger.open(corpus,dir).subtunes).toBe(2);
+ }));
+ it("reads only appended records on later reservations",()=>withDirectory(dir=>{
+  const a=RolloutLedger.open(corpus,dir),b=RolloutLedger.open(corpus,dir);
+  a.reserve([id("a",1)],"s");b.reserve([id("b",1)],"s");a.reserve([id("c",1)],"s");
+  expect(a.subtunes).toBe(3);expect(RolloutLedger.open(corpus,dir).subtunes).toBe(3);
+  expect(readFileSync(a.file,"utf8").trim().split("\n")).toHaveLength(3);
  }));
  it("refuses interior damage, a failed checksum and invalid identities",()=>withDirectory(dir=>{
   const ledger=RolloutLedger.open(corpus,dir);

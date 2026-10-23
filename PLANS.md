@@ -1937,35 +1937,32 @@ unvalidated hardening work and lists open proof/provenance/rollout weaknesses.
 
 ### Takeover: hardening implementation (2026-10-23)
 
-Handover `doc/hvsc-rom-audit-handover.md` implemented against the Opus 5.5 architect
-review `doc/research/hvsc-rom-adversarial-review.md` (Sonnet 5.5 implemented; Opus 5.5
-reviewed read-only and wrote the decisions). No run beyond the 5% pilot has been started.
+Handover `doc/hvsc-rom-audit-handover.md` implemented against the Opus 5.5 architect reviews in
+`doc/research/hvsc-rom-adversarial-review.md` (Sonnet 5.5 implemented; Opus 5.5 reviewed read-only).
+Draft PR #109. No run beyond the 5% pilot has been started.
 
-Resolved from the review:
+Design change after the second review (user decisions: match C64 Commander as shipped):
 
-- [x] Strict TypeScript passes (child `exit` argument no longer shadows the `AbortSignal`).
-- [x] B1 5% accounting: corpus ledger keyed by content SHA-256 + subtune, fsynced before
-  dispatch, checksummed, torn-tail preserved, history + integration subset imported;
-  verify-native and native-regression reserve their real-HVSC controls. 2,260 identities /
-  888 files were counted when the ledger was created from the earlier work (ceiling 4,393 / 3,057).
-- [x] B2 consumer profile: 48 kHz (Commander `DEFAULT_SAMPLE_RATE`), fixed power-on delay 5000,
-  zero banks. Allow evidence is produced by the shipping WASM engine under that profile
-  (`confirm.ts`); the native renderer only screens. SID feedback-register reads are counted.
-  Commander does not pin the power-on delay today; documented as a required consumer change.
-- [x] B3 hardening certificate: `harden.ts` (enumerated source identity incl. engine package,
-  lock file and git HEAD; clean release + ASan/UBSan builds; regressions; decision-regression
-  digests identical across binaries; parity control; pilot confirmation; fresh-process
-  re-render equality; 3 focused + 3 full suites; approval bound to the source identity).
-  `validateHardening` + `verifyHardeningEvidence` re-hash the evidence.
-- [x] H1 error classification (`errorKind`; only `cpu-halt` can be `incompatible`).
-- [x] H2 lookup takes ROM image hashes and the consumer profile; non-reference images deny.
-- [x] H3 kernel `flock` scope lock, taken before builds.
-- [x] H4 build stamp binds toolchain/flags and the output hash; fresh tree per stamp; UBSan added.
-- [x] H5 pilot requires `--selection`; `select-pilot.ts` is the reproducible stratified selection.
-- [x] H6 `parity.json` no longer grants anything; confirmation log is bound to native rows.
-- [x] Delayed-dependency coverage: 70 s triggers per ROM, non-default subtune, margin cases,
-  combined-only, exactly-one, silent divergence, sparse effect, silence, halt, trace overflow,
-  OSC3 reader, second/third SID (`decision-regression.ts`).
-- [ ] Pilot on the reviewed selection with rebuilt binaries, confirmation, v3 publication.
-- [ ] Architect approval line, `harden.ts` certificate, three complete suites.
-- [ ] Full-corpus execution (days; resumable) or exact outstanding counts.
+- Commander ships `libsidplayfp-wasm` 1.1.0 (the repo's classifier pins 1.0.1), plays at 48 kHz,
+  never sets the power-on delay (engine default 8191), only creates the ROM sets {KERNAL+BASIC with
+  CHARGEN null} and {nothing}, and defaults to the reSIDfp renderer. The census now renders
+  exactly that on WASM 1.1.0 (audit-only aliased dev dependency `libsidplayfp-wasm-audit`), with
+  null banks covered by zero and 0xFF fills. The native renderer and the native-screen /
+  WASM-confirm split were dropped from the decision path: one engine measures and grants.
+- Comparator defects found by the review reproduced and fixed (engine output is a view into WASM
+  memory; chunk-by-chunk exact comparison; a variant that stops writing is not identical).
+  Regression: `decision-regression.ts` (two real subtunes that failed in the pilot, silent tail).
+- Measured: SIDLite lane ~11x realtime under load, reSIDfp lane ~1.7x (6x more expensive);
+  Commander's default renderer is reSIDfp, so SIDLite results do not cover it by default.
+  Transfer via "no SID reads" was tested and rejected (7% of the pilot never reads a SID register).
+
+Resolved from the reviews: B1 ledger (content-keyed, fsynced before dispatch, checksummed), B3
+`harden.ts` and evidence-verified certificate, H1 error classification, H2 lookup takes ROM hashes
+and profile, H3 kernel flock lock, H5 pilot requires a selection, N1 N2 comparator, N4 per-job
+failure isolation, N5 provenance, ledger/checkpoint repair only under the scope lock.
+
+- [ ] Pilot on the reviewed selection (567 subtunes) with the final sources; v3 dataset committed.
+- [ ] Third Opus review of the frozen sources; `Approved-source-identity` line.
+- [ ] `harden.ts` certificate (decision regression, pilot checks, reproducibility, 3 focused + 3 full suites).
+- [ ] Full-corpus execution (days; resumable; intended for a faster machine via `run-full.sh`).
+- [ ] Decide whether to qualify reSIDfp (about 6x the lane cost) and SidplayEZ.

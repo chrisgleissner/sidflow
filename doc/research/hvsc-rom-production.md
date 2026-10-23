@@ -2,53 +2,63 @@
 
 ## Summary
 
-This document describes how SIDFlow decides, per HVSC subtune, whether the subtune
-may be played without some of the three C64 system ROMs (KERNAL, BASIC, CHARGEN), and
-how a player consumes that decision offline.
+This document describes how SIDFlow decides, per HVSC subtune, whether the subtune may be
+played with the ROM sets C64 Commander can create, and how a player consumes that decision
+offline.
 
 - The policy is strict: `compatible` allows, `incompatible` and `unknown` deny. A missing
-  entry, an unsupported catalogue or engine identity, an unknown ROM image, a profile
-  mismatch and any evidence that is inadequate all deny.
-- A `compatible` bit means one thing: on the pinned engine (`libsidplayfp-wasm` 1.0.1,
-  SIDLite), configured exactly as the **consumer profile** below, a fresh playback with that
-  ROM set produced the same PCM and the same cycle-timed SID writes as the full-ROM
-  reference for the whole documented duration plus a 5 s margin. It is not a statement about
-  other engines, sample rates, power-on delays or ROM images, about looping, or about
-  musical correctness. A full-ROM render is an operational reference, not an artistic or
-  historical fidelity certificate.
-- Evidence has two stages. A fast native renderer built from the engine's own source
-  **screens**: it can deny and it nominates candidates. Only the **shipping engine** (the WASM
-  package, run under the consumer profile) can **grant**. `scripts/rom-audit/confirm.ts`
-  replays every nominated candidate against the reference in lockstep through the whole
-  horizon and records the outcome.
+  entry, an unsupported catalogue or engine identity, an unsupported ROM set, a profile
+  mismatch and any inadequate evidence all deny.
+- A `compatible` bit means one thing: on `libsidplayfp-wasm` 1.1.0 (the exact build C64
+  Commander ships), configured as Commander configures it, a fresh playback with that ROM
+  set produced the same PCM and the same cycle-timed SID writes as the full-ROM reference
+  for the whole documented duration plus a 5 s margin. It is not a statement about other
+  engines or versions, sample rates, ROM images, looping or musical correctness. A
+  full-ROM render is an operational reference, not an artistic or historical fidelity
+  certificate.
+- **Renderer coverage.** The census qualifies **SIDLite** by default. C64 Commander's
+  default renderer is reSIDfp; a SIDLite decision does not cover it. reSIDfp lanes are
+  available (`--engines sidlite,residfp`) but cost about six times as much per lane, and
+  SidplayEZ (Android native) is a different CPU core that this audit does not cover. A
+  published deny list names its renderer in its engine id; a lookup built for another
+  renderer denies everything. Transferring SIDLite results to reSIDfp was evaluated and
+  rejected: only 7% of the pilot subtunes never read a SID register (dummy reads of
+  indexed stores count), so a "no reads" argument would cover almost nothing.
+- There is one engine for both measurement and grant: the shipping WASM build. An earlier
+  design screened natively and confirmed on WASM; it cost more, needed an equivalence
+  argument between two compilations, and could not follow Commander's configuration, so it
+  was dropped. The native renderer remains in the repository as a research and regression
+  tool only.
 - The full-corpus census is not finished. The maintained dataset
-  (`doc/research/hvsc-rom-catalogue/v3/`) contains every subtune; unmeasured experiments are
-  `unknown`. Its manifest is authoritative for coverage counts. The older methodology 2
-  snapshot (`catalogue/v2/`) is superseded and must not be used for decisions.
+  (`doc/research/hvsc-rom-catalogue/v3/`) contains every subtune; unmeasured work is
+  `unknown`. Its manifest is authoritative for coverage. The methodology 2 snapshot
+  (`catalogue/v2/`) is superseded and must not be used for decisions.
 - Expansion beyond 5% of HVSC (4,393 subtunes **and** 3,057 files, whichever is reached
-  first) is gated by a hardening certificate produced by `scripts/rom-audit/harden.ts`; see
+  first) is gated by a hardening certificate from `scripts/rom-audit/harden.ts`; see
   [Rollout gate](#rollout-gate). The architect review is in
-  [hvsc-rom-adversarial-review.md](hvsc-rom-adversarial-review.md).
+  [hvsc-rom-adversarial-review.md](hvsc-rom-adversarial-review.md). Instructions for a
+  full run on another machine are in [hvsc-rom-full-run.md](hvsc-rom-full-run.md).
 
 ## Consumer profile
 
-The profile is `ROM_CONSUMER_PROFILE` in `packages/sidflow-common/src/rom-eligibility.ts`
-and is hashed, with the engine's source and WASM hashes, into the engine id.
+`romConsumerProfile(engine)` in `packages/sidflow-common/src/rom-eligibility.ts` is hashed,
+with the engine's source and WASM hashes, into the engine id. It records what Commander
+does (`src/lib/playback/sidRenderer/wasmRendererCore.ts`, read-only):
 
-| Setting | Value | Why it is part of the contract |
+| Setting | Value | Source |
 |---|---|---|
-| Engine | SIDLite in `libsidplayfp-wasm` 1.0.1 (libsidplayfp 3.0.2) | Other engines or versions are different machines. |
-| Sample rate | 48,000 Hz, stereo | C64 Commander's local player requests 48 kHz (`localSidEngine.ts`, `DEFAULT_SAMPLE_RATE`). SIDLite refreshes the OSC3 register once per output sample, so a program that reads `$D41B`/`$D41C` follows a rate-dependent CPU path. |
-| Power-on delay | 5000 (fixed) | The library default is a random delay seeded from the clock. A random delay changes the CIA/VIC phase at start; evidence for one phase does not cover another. |
-| Models | SID/C64 model from the header | Forcing a model changes behaviour. |
-| Subtune selection | start-song header rewrite before load | Same mechanism for reference and variants. |
-| Absent KERNAL | `null` (engine interrupt shim) | Deterministic upstream fallback. |
-| Absent BASIC / CHARGEN | explicit zero banks (8,192 / 4,096 bytes) | Passing `null` leaves an uninitialised member array in place. |
+| Engine | `libsidplayfp-wasm` 1.1.0 (the audit pins it as the aliased dev dependency `libsidplayfp-wasm-audit`; SIDFlow's classifier keeps 1.0.1) | Commander `package.json` |
+| Sample rate | 48,000 Hz stereo | `localSidEngine.ts` `DEFAULT_SAMPLE_RATE` |
+| Power-on delay | the engine default (8191, deterministic); Commander never sets it | `bindings.cpp` default |
+| Pull size | 256 cycles for SIDLite, the engine default for reSIDfp | `pullSize()` |
+| Subtune selection | start-song header rewrite before load | `SidAudioEngine.patchStartSong` |
+| ROM sets | KERNAL and BASIC supplied together with CHARGEN `null`, or nothing supplied | `prepare()` / `open()` |
+| SID model | from the header; the engine default where the header names none (Commander may force one) | `applySidModel()` |
 
-**Commander does not currently pin the power-on delay**, and it must do so before any
-`compatible` decision can describe its playback; otherwise its lookup is built from a profile
-that differs from the one used for the evidence, and the profile check below denies every
-query. This repository does not modify Commander.
+A bank the consumer passes as `null` keeps whatever the engine heap held. Each ROM set is
+therefore rendered with every unsupplied bank filled with zeros and with 0xFF; a decision
+requires identical output for both. Output that does not depend on the fill does not
+depend on the bank's content.
 
 ## Critical review of methodology 1 (historical)
 
@@ -69,124 +79,126 @@ for non-CPU engine uses of ROM bytes and regression against all explicit masks.
 
 ## Correctness model
 
-| Concept | Representation |
-|---|---|
-| Declared requirement | SID header incl. the RSID BASIC flag (PSID's same bit means something else). No separate KERNAL/CHARGEN declaration exists. |
-| Actual access | Per-experiment CPU reads of mapped KERNAL/BASIC/CHARGEN, incl. instruction fetches; reads are not proof of musical dependence. |
-| Feedback reads | CPU reads of SID registers `$19–$1C` (`sidReadbackReads`). Non-zero means the program's CPU path depends on sampled oscillator/envelope state and therefore on the sample rate; such rows are why allow evidence is produced at the profile rate. |
-| Execution failure | `errorKind` `cpu-halt` (illegal opcode) is the only error that is evidence about a tune. `resource` and `engine` errors are infrastructure and can never produce `incompatible`. |
-| SID output | Exact timed writes `[chip, register, value, PHI1 cycle]`, counts, startup offset, drift, first divergence, trace hash and truncation flag (cap 2,000,000 events). |
-| Audio output | Sample-by-sample equality, first differing sample, difference and AC RMS. |
-| Observed compatibility | Exact PCM and exact timed-write equality through the horizon on the shipping engine. |
-| Unresolved | Unrun, under-observed, unconfirmed, unstable, trace-truncated, unexplained divergence, unknown lengths. |
+Per subtune and engine the worker renders six instances in lockstep from fresh WASM
+instances (a second reSIDfp player in one instance produces different PCM for identical input,
+so instances are never shared):
 
-Without the KERNAL the engine runs its own interrupt shim, which shifts every SID write by
-a few cycles. Cycle-exact equality therefore does not hold for masks without KERNAL, whatever
-the program does; those masks are `unknown`. This is measured behaviour (see the decision
-regression below), not a shortcut.
+| Lane | ROMs | Role |
+|---|---|---|
+| reference | KERNAL, BASIC, CHARGEN authentic | the operational reference |
+| repeat | same | determinism of the engine for this subtune |
+| full/zero, full/ff | KERNAL and BASIC authentic, CHARGEN filled with 0x00 / 0xFF | Commander's "supplied" set (mask 3) |
+| none/zero, none/ff | KERNAL `null`, BASIC and CHARGEN filled | Commander's "nothing supplied" set (mask 0) |
 
-`exactWrites` tolerates no count, order, startup or timing difference. Perceptual
-comparison, aggregate RMS thresholds, loop-state proofs and instruction-level CPU traces are
-not used to grant eligibility.
+Each pull of a lane is compared with the reference's pull exactly: sample count, every PCM
+sample and every packed SID write including its PHI1 cycle. A lane is `identical` only if
+every pull through the horizon matched, so it also ends with the same number of writes.
+Identical output with different internal pulls (as happens when the engine's interrupt
+shim replaces the KERNAL) is reported `different`; that is conservative and never grants.
+A diverged lane keeps running for up to 30 emulated seconds to see whether it executes
+an illegal opcode.
+
+Decisions (`assessMask` in `methodology.ts`):
+
+- mask 7: `compatible` if the reference is clean, complete and reproducible.
+- mask 3 / mask 0: `compatible` only if both fills match the reference through the horizon;
+  `incompatible` only if both fills end in a CPU halt (illegal opcode); otherwise `unknown`
+  (`depends-on-null-bank-content`, `output-diverges`, `non-tune-error`).
+- every other ROM set is not something Commander can create: `unknown`.
+- a documented duration is required; unknown lengths, short observations, an invalid horizon
+  and a failed or timed-out job stay `unknown`.
+
+Without the KERNAL the engine runs its own interrupt shim, which shifts every SID write by a
+few cycles, so mask 0 is `unknown` for nearly every program. This is measured behavior
+(see the decision regression), not a shortcut. The reSIDfp build throws a C++ exception
+without a message when the CPU halts, so it cannot prove a halt: its lanes report `error`
+and never produce `incompatible`.
+
+Engine errors other than an illegal opcode (`error`, `trace-dropped`, a failed reference)
+are infrastructure and can never produce `incompatible`. A job that times out or throws is
+recorded as a failure and every decision for it is `unknown`; the census continues.
 
 ## Observation policy
 
 `Songlengths.md5` is joined by verified complete-file MD5 and path, keeping each subtune's
-token by position (the convenience parser drops invalid tokens and would shift later songs).
-For a valid positive duration the horizon is `max(--seconds, documented + 5 s)`, in integer
-milliseconds. Invalid or missing lengths use a 300 s exploratory horizon and stay `unknown`.
-Horizons above 3,600 s are never clamped; they stay pending. Durations are playback metadata,
-not control-flow bounds: they do not prove loop recurrence, interactive paths or endings.
+token by position (the convenience parser drops invalid tokens and would shift later
+songs). For a valid positive duration the horizon is `max(--seconds, documented + 5 s)`, in
+integer milliseconds. Invalid or missing lengths use a 300 s exploratory horizon and stay
+`unknown`. Horizons above 3,600 s are never clamped; they stay pending. Durations are
+playback metadata, not control-flow bounds: they do not prove loop recurrence,
+interactive paths or endings.
 
 ## Pipeline
 
 ```
-select-pilot.ts / full  ->  audit.ts (native, 8 masks + repeat)  ->  confirm.ts (shipping engine)
-                                    |                                       |
-                              execution.jsonl                        confirmation.jsonl
-                                              \                       /
-                                               publish.ts --production  ->  catalogue/v3/
+select-pilot.ts  ->  audit.ts (census-worker.ts processes, lockstep lanes)  ->  census.jsonl
+                                                                              |
+                                              publish.ts --production  ->  catalogue/v3/
 ```
 
-1. **Native screening** (`audit.ts`, `render.cpp`). Built from the exact source in the locked
-   package by `build-native.sh` (stamp over inputs, toolchain and flags; output hash recorded
-   and re-verified; fresh tree per stamp). Per subtune: full-ROM reference, a repeat, and
-   seven removals; only reference plus one variant are in memory. Jobs travel as
-   checksum-verified immutable hex payloads, workers run private read-only copies of the
-   hashed binary and ROMs. Native rows are fsynced; a torn tail is preserved and requeued.
-   Native `compatible`/`incompatible` are **candidates**.
-2. **Shipping-engine confirmation** (`confirm.ts`). For each candidate mask the WASM engine
-   runs the reference and the variant from fresh modules at 48 kHz with the profile's
-   power-on delay. The pulls of 256 scheduler events differ in size between runs with
-   identical output, so streams are compared by absolute sample and write index. A candidate
-   `compatible` needs `identical` through the horizon; a candidate `incompatible` needs the
-   variant to halt on an illegal opcode while the reference continues. Results are bound to
-   the exact native rows by SHA-256; a re-measured row invalidates its confirmation.
-3. **Publication** (`publish.ts --production`) emits the research JSONL (every subtune, eight
-   experiments, native measurement, shipping-engine result, assessment), the deny list and a
-   manifest, then re-checks every decision through the production lookup.
-
-Decisions: `assess()` returns `compatible`/`incompatible` only for a native candidate that the
-shipping engine reproduced; a disagreement is `unknown` with reason
-`shipping-engine-disagrees-with-native-screen`. Deny decisions need no confirmation.
+`audit.ts` verifies the corpus against the release index, takes the kernel scope lock,
+reserves each job durably in the ledger before dispatch, sends the SID bytes (checksum-verified
+immutable payloads) to worker processes holding private read-only copies of the hashed ROMs,
+fsyncs each result, and resumes from `census.jsonl`. A torn final record is preserved and
+requeued; only the lock holder repairs a file. Publication emits the research JSONL (every
+subtune, all lanes, assessments), one deny list per engine, a manifest and the raw census, then
+re-checks every decision through the production lookup.
 
 ## Rollout gate
 
-- `audit.ts` pilot runs require `--selection` (a pilot without one takes the shortest tunes
-  first and says nothing about long horizons). `select-pilot.ts` builds the reproducible
-  stratified selection.
+- Pilot runs require `--selection`; `select-pilot.ts` builds the reproducible stratified
+  selection (long horizons, RSID/BASIC, multi-SID, non-default subtunes, static OSC3 readers).
 - Every dispatch is preceded by a durable reservation in the corpus ledger
-  `workspace/rom-audit-ledger-<corpus>.jsonl`: keyed by file content SHA-256 and subtune,
-  appended and fsynced before the job is sent, with a per-record checksum. A different
-  `--out` directory or a copy of a file elsewhere does not obtain a new allowance. The ledger
-  imports prior audit runs and the 300-file integration subset; `verify-native.ts` and
-  `native-regression.ts` reserve their real-HVSC controls too. Re-rendering a counted
-  identity is free; a reservation is never removed, so the count can only over-estimate.
-  A torn final record (never acknowledged, so never dispatched) is preserved and ignored;
-  interior damage or a failed checksum refuses to run.
+  `workspace/rom-audit-ledger-<corpus>.jsonl`, keyed by file content SHA-256 and subtune,
+  appended and fsynced, with a per-record checksum. A different `--out` directory or a copy
+  of a file elsewhere gets no new allowance. The ledger imports earlier audit runs and the
+  300-file integration subset. Re-rendering a counted identity is free; a reservation is
+  never removed. A torn final record (never acknowledged, so never dispatched) is preserved
+  and ignored; interior damage or a failed checksum refuses to run.
 - A kernel `flock` scope lock (released by the kernel even on `SIGKILL`) serialises audit
-  parents per corpus and is taken before any shared build output is touched.
-- `--rollout full` needs `--hardening <certificate.json>`: `validateHardening` checks its
-  structure against the recomputed source identity and native hash, and
-  `verifyHardeningEvidence` re-hashes every cited log and the architect approval.
-  `harden.ts` writes the certificate only after all of its steps ran on one source identity
-  (see its header comment); a handwritten certificate fails evidence verification.
+  parents per corpus.
+- `--rollout full` needs `--hardening <certificate.json>`. `validateHardening` checks its
+  structure against the recomputed source identity and `verifyHardeningEvidence` re-hashes every
+  cited log and the architect approval. The source identity covers every file under
+  `scripts/rom-audit`, the engine package, the lock file and the ROM-audit tests; it
+  deliberately excludes git HEAD so that committing the approval does not change the
+  identity it approves. `harden.ts` checks the approval line first and writes a certificate
+  only after all of its steps ran on one source identity.
 
 ## Test strategy
 
-- `native-regression.ts`: PAL/NTSC, an RSID busy loop, the real Justincase overflow input,
-  delayed dependencies, dependencies first read at ~70 s in a non-default subtune (invisible
-  at 65 s and 69 s, detected at 75 s), and the native input protocol (path/payload
-  equivalence, a deleted label path, malformed and trailing fields rejected).
-- `decision-regression.ts`: synthetic programs through screening, shipping-engine
-  confirmation, `assess()`, the deny tuple and the lookup deadline, on both the release and the
-  ASan+UBSan binaries, which must produce a byte-identical digest. Classes: per-ROM and
-  combined dependencies read at 70 s observed at 80 s and beyond a 65 s horizon, a trigger
-  inside (63 s) and just after (66 s) the 5 s margin, combined-only and exactly-one (no
-  inference across masks), silent divergence (PCM equal, writes differ), sparse effects,
-  pure silence, a CPU halt that depends on BASIC, trace overflow, an OSC3 reader (flagged by
-  the readback counter), and a dependency on a second or third SID.
-- `verify-native.ts`: exact native/WASM PCM and timed-write comparison on controls. It is a
-  consistency check that stops the census on any mismatch; it no longer grants decisions.
-- Unit tests: `rom-eligibility.test.ts`, `rom-audit.test.ts`, `rom-audit-adversarial.test.ts`,
-  `rom-audit-ledger.test.ts`.
+- `decision-regression.ts` (run by `harden.ts`): synthetic programs and real subtunes through
+  lanes, `assessMask()`, the deny tuple and the lookup (deadline and unsupported ROM sets
+  included). Classes: dependencies read at ~70 s observed at 80 s and beyond a 65 s horizon,
+  a CHARGEN read inside (63 s) and just after (66 s) the 5 s margin, silent divergence (PCM
+  equal, writes differ), a variant that stops writing at volume 0 (must never be identical),
+  sparse effects, silence, a CPU halt that depends on BASIC for both fills, a 2M+ write
+  program, an OSC3 reader, dependencies on a second and third SID, and two real subtunes on
+  which the pilot's earlier comparator reported the full-ROM configuration as different from
+  itself (engine output is a view into memory the next call overwrites).
+- Unit tests: `rom-eligibility.test.ts` (lookup, profile, assessments, record validation,
+  synthetic programs, checkpoint recovery, publication, the maintained dataset),
+  `rom-audit-adversarial.test.ts`, `rom-audit-ledger.test.ts`.
+- The native renderer (`render.cpp`, `build-native.sh`, `verify-native.ts`,
+  `native-regression.ts`) is a research and sanitizer tool for the engine's 20 ms buffer
+  overflow and ROM-read counters. It is no longer part of the decision path.
 
 ## Publication and C64 Commander contract
 
-`deny-list.json` (`sidflow-rom-deny-3`) maps complete-file SHA-256 to one tuple per subtune
-`[compatibleMaskBits, incompatibleMaskBits, maxPlaybackMs, documentedMs]` (bit M describes
-ROM mask M; KERNAL=1, BASIC=2, CHARGEN=4). `manifest.json` records the profile, engine,
-screening protocol, ROM and document hashes, counts per mask with reasons, coverage and the
-SHA-256 of each artifact and of `confirm.ts`. No SID, ROM or PCM is distributed.
+`deny-list.<engine>.json` (`sidflow-rom-deny-3`) maps complete-file SHA-256 to one tuple per
+subtune `[compatibleMaskBits, incompatibleMaskBits, maxPlaybackMs, documentedMs]` (bit M
+describes ROM mask M; only masks 0, 3 and 7 are ever set). `manifest.json` records profiles,
+engine hashes, ROM and document hashes, counts per mask with reasons, coverage, failures and
+the SHA-256 of each artifact. No SID, ROM or PCM is distributed.
 
 ```ts
 const lookup = createRomEligibilityLookup(denyList, {
-  sourceSha256, wasmSha256,              // of the engine you actually run
-  profile: ROM_CONSUMER_PROFILE,         // your actual configuration; any difference denies
+  sourceSha256, wasmSha256,                 // of the engine build you actually run
+  profile: romConsumerProfile("sidlite"),   // your actual configuration; any difference denies
   methodology: "rom-audit-3",
 });
 const answer = lookup(fileSha256, oneBasedSong,
-  { kernal: kernalSha256OrNull, basic: basicSha256OrNull, chargen: chargenSha256OrNull }, elapsedSeconds);
+  { kernal: kernalSha256OrNull, basic: basicSha256OrNull, chargen: null }, elapsedSeconds);
 // answer.eligible, answer.state, answer.reason, answer.maxPlaybackSeconds, answer.documentedSeconds
 ```
 
@@ -194,35 +206,33 @@ Consumer obligations:
 
 1. Verify the artifact checksums against a trusted manifest before loading.
 2. Pass the SHA-256 of each present ROM and `null` for an absent one. Any present image other
-   than the reference ROMs denies (JiffyDOS and other revisions are different machines).
-3. Pass absent BASIC and CHARGEN to the engine as zero banks and absent KERNAL as `null`.
+   than the reference ROMs, and any ROM set other than {nothing, KERNAL+BASIC with CHARGEN
+   `null`, all three}, denies.
+3. Use the engine build, sample rate, default power-on delay and pull configuration of the
+   profile. A different engine version (for example a newer `libsidplayfp-wasm`) is a
+   different engine id and needs a new census.
 4. Start every eligible playback from a new player and reset with that ROM set. ROM changes
    apply between executions, never during one.
-5. Elapsed time is emulated time since reset. Stop at `maxPlaybackSeconds`; the lookup denies
-   at and after the deadline. Seeking is emulated fast-forward. Repetition is allowed only as
-   a fresh restart, which reproduces the audited prefix; never continue past the deadline.
-   `documentedSeconds` is the musical duration; the remainder up to the deadline is margin.
-6. Filter individual subtunes, not whole multi-song files. Re-evaluate cached eligibility
-   when the ROM set changes, keeping content identities so denied entries can be restored.
+5. Elapsed time is emulated time since reset. Stop at `maxPlaybackSeconds`; the lookup
+   denies at and after the deadline. Seeking is emulated fast-forward. Repetition is allowed
+   only as a fresh restart. `documentedSeconds` is the musical duration; the remainder up to
+   the deadline is margin.
+6. Filter individual subtunes, not whole multi-song files. Re-evaluate cached eligibility when
+   the ROM set changes.
 
-No Commander code has been changed. Items 3 and the power-on delay (see the profile table)
-require Commander configuration changes before its playback matches the evidence.
+No Commander code has been changed. If Commander forces a SID model for tunes whose header
+names none, or runs a different renderer than the one named in the deny list, the decision
+does not describe that playback.
 
 ## Known limitations
 
 - Finite equality is not perpetual independence; loops, interactive input and endings beyond
   the horizon are unproven.
-- The trace cap (2,000,000 events) leaves very write-dense tunes permanently `unknown`.
-- PCM is buffered by the native renderer (a 3,600 s render pair is a few hundred MB per
-  worker); the shipping-engine confirmation is streaming.
-- Full instruction traces, CPU state snapshots and sustained-activity analysis are not
-  implemented.
-- CHARGEN instrumentation describes mapped CPU access; the pinned VIC does not fetch
-  character graphics through that bank.
-- The native binary is built with `-ffp-contract=off` but is a different compilation of the
-  engine from the WASM build. That is why it cannot grant decisions.
-- Full-corpus execution takes days. The census resumes from its checkpoints; see the
-  maintained manifest for exact outstanding counts.
+- reSIDfp and SidplayEZ are not covered unless reSIDfp lanes are requested; SidplayEZ never.
+- A CHARGEN or BASIC bank left `null` is covered by two fills, not by every possible content.
+- Full instruction traces and CPU state snapshots are not implemented.
+- Throughput: see [hvsc-rom-full-run.md](hvsc-rom-full-run.md). The census takes days on a
+  workstation and resumes from its checkpoint.
 
 ## Authoritative references
 

@@ -725,3 +725,288 @@ I will approve expansion only when all of the following evidence exists for one 
 9. The essentia change (M7) has been either removed from this change set or justified separately with
    before/after feature evidence, and the `station-analysis/*` and `test-workspace-phase/` test residue
    has been restored or removed.
+
+## Re-review after implementation (2026-10-23)
+
+- Reviewer: Opus 5.5 (`claude-opus-5-5`), same role as above.
+- Scope: branch `feat/hvsc-rom-audit-methodology-3` at `e16df75` plus the uncommitted working tree
+  (`rollout.ts` modified; `run-full.sh` and `doc/research/hvsc-rom-full-run.md` untracked).
+- Method: reading only. Files: `scripts/rom-audit/{audit,confirm,decision-regression,fixtures,harden,
+  inputs,ledger,methodology,publish-production,rollout,select-pilot,verify-native,native-regression,
+  checkpoint}.ts`, `render.cpp`, `apply-basic-read-hook.py`, `build-native.sh`, `run-full.sh`,
+  `rom-eligibility.ts`, the `rom-*` tests, `hvsc-rom-production.md`, `hvsc-rom-full-run.md`, the
+  1.0.1 engine bindings in `workspace/rom-audit-native/build-4493dcb8481cda84/`, and C64 Commander's
+  `src/lib/playback` (read-only). I also tallied the pilot's partial
+  `workspace/rom-audit-v3/confirmation.jsonl` (296 of 558 subtunes at the time of reading). No build,
+  render, audit or test was run.
+- File:line references are to the files as they stand in the working tree.
+
+### Status of the earlier findings
+
+| ID | Status | Evidence | Remaining hole |
+|---|---|---|---|
+| B1 | PARTIAL (sufficient for the full run) | `ledger.ts:68-140`: content-keyed identity (sha256, song), reservation fsynced before dispatch (`audit.ts:212-221`), independent of `--out`. `verify-native.ts:35-36` and `native-regression.ts` reserve. | (a) `RolloutLedger` constructor calls `load()` without the lock (`ledger.ts:72-75`), and `load()` truncates a torn tail (`ledger.ts:93-100`). A process that opens the ledger while another is mid-append can cut a record that the writer then fsyncs and dispatches. (b) `importHistory` scans only `workspace/<dir>/` one level deep (`ledger.ts:158-178`); `/tmp` runs, `.interrupted-tail` files and parity JSON files are not imported. (c) `verify-native` and `native-regression` reserve without a ceiling. (d) The ledger is per clone, so a second machine starts from zero. None of this matters once a valid certificate exists, because `--rollout full` has no ceiling. |
+| B2 | PARTIAL | Allow evidence now comes from the WASM engine at 48 kHz with power-on delay 5000 (`confirm.ts:67-75`, `methodology.ts:84-91`). The native SID read-back counter exists (`apply-basic-read-hook.py:116-135`) and is published (`publish-production.ts:92-93`). | (a) The comparator in `confirm.ts` is defective (N1, N2 below). (b) The profile does not describe C64 Commander's actual playback (N3). (c) `createRomEligibilityLookup` types `profile` as the literal `RomConsumerProfile` constant (`rom-eligibility.ts:39,81`), so a consumer can only pass the constant. The "verify the actual profile" step is therefore a self-declaration. |
+| B3 | PARTIAL | `harden.ts` exists and runs real checks. The certificate binds log hashes (`harden.ts:98-101`), sources are enumerated (`rollout.ts:24-31`), and approval is bound to the identity (`harden.ts:204-208`). | `verifyHardeningEvidence` re-hashes logs but does not re-parse them as passing (`rollout.ts:73-80`). The live spot check at `--rollout full` startup (decision 7) is not implemented. The identity does not cover transitive imports: `system-roms-fetch.ts` imports `@sidflow/common`, and only some of its files are listed. `shippingEngine.mismatches` is accepted at any value (`rollout.ts:69`). |
+| H1 | PARTIAL (fail-closed) | `render.cpp:132-144` classifies errors as `cpu-halt`, `resource` or `engine`. `screen()` treats only `cpu-halt` as tune evidence (`methodology.ts:77`). | Resource and engine errors are still checkpointed as permanent `unknown` rows instead of aborting or being retried. |
+| H2 | FIXED (SIDFlow side) | `romMask` derives the mask from ROM hashes and denies any non-reference image (`rom-eligibility.ts:70-79`). | The only consumer passes `null` for CHARGEN in every configuration and `null` for absent BASIC (N3). |
+| H3 | FIXED, with one residual | Kernel `flock` through `bun:ffi` (`ledger.ts:27-57`). The lock is taken before the build (`audit.ts:153-154`). A SIGKILL test exists (`rom-audit-ledger.test.ts:111`). | `dlopen("libc.so.6")` limits this to glibc Linux. `confirm.ts`, `harden.ts` and `publish-production.ts` call `readCheckpoint`, which truncates a torn tail (`checkpoint.ts:11-15`), without holding the scope lock. |
+| H4 | FIXED, with minor gaps | The stamp binds the inputs, `g++ --version`, the flags and the job count. Each stamp builds into a fresh tree, and the output hash is re-verified (`build-native.sh:16-22,26-29,48-50`). UBSan is added. | `verify-native`, `native-regression`, `decision-regression` and the `harden` reproducibility step execute the build-path binary rather than a private copy. Neither these tools nor `confirm.ts` check the ROMs against `SYSTEM_ROMS`. |
+| H5 | FIXED | A pilot requires `--selection` (`audit.ts:54`). `select-pilot.ts` is deterministic and stratified. | The quotas are smaller than decision 8 (for example 10 longest subtunes instead of 40), and most strata exclude horizons above 400 s. This is acceptable for qualification. |
+| H6 | PARTIAL | Parity no longer grants decisions. | Its replacement, `confirmation.jsonl`, is equally unauthenticated. It records neither the engine hash, the ROM hashes, the `confirm.ts` hash nor the profile hash. `publish-production.ts:132` hashes `confirm.ts` at publication time, not at confirmation time (N5). |
+| M1 | PARTIAL | Each case's evidence is deleted after it is compared (`verify-native.ts:89`). | All cases still run in one `spawnSync` and are written before the first comparison (`verify-native.ts:43-44`). |
+| M2 | NOT FIXED | `audit.ts:187,234`, `publish-production.ts:30-45` | The parent keeps every row in memory and reads the whole file as one string. At full scale that is about 0.6 GB of JSON text plus the parsed objects. |
+| M3 | NOT FIXED | `audit.ts:180-187` writes a fresh manifest next to an existing checkpoint that has none. `checkpoint.ts:13` overwrites `.interrupted-tail`. | As before. |
+| M4 | NOT FIXED (fail-closed) | — | Truncation is not counted in the publication counts. |
+| M5 | FIXED | `decision-regression.ts:44-51,90-116` passes the late and margin fixtures through `screen`, `confirmMasks`, `assess` and the lookup, including the deadline. | The OSC3 fixture only checks the counter (`:68`). It does not show a rate-dependent decision. There is no non-default-subtune case. |
+| M6 | PARTIAL | `harden.ts:166-175` | Six rows are rendered in one fresh process, not one process per row, and not 2% of the rows. |
+| M7 | NOT FIXED | `essentia-frame-features.ts` is still in the branch diff. | `test-workspace-phase/` is still present as untracked residue. |
+| M8 | PARTIAL | `verify-native.ts` compares native `selectSong` against the WASM header rewrite on Tusari #10 and on second-subtune fixtures. | Commander's `patchStartSong` is the same header rewrite, so the profile entry is accurate. |
+
+### New defects
+
+**N1 — BLOCKER: `confirm.ts` keeps WASM memory views and reads them after the engine has overwritten them.**
+`SidPlayerContext.render()` returns a view into WASM linear memory. The engine's own `.d.ts`
+states that the next `render()` overwrites it, that heap growth detaches it, and that the caller
+must copy it before calling anything else (`libsidplayfp.d.ts:180-191`; `bindings.cpp:776-783`).
+`confirm.ts` breaks this contract in two places:
+
+- `Lane.pull` calls `getAndClearSidWriteTracesPacked()` (which allocates) and
+  `getDroppedSidWriteTraceCount()` before it consumes the PCM view (`confirm.ts:79-89`). If the
+  heap grows, the view is detached, `take` becomes 0 (`:166`), that chunk is never compared, and
+  every later comparison is offset by one chunk.
+- `extendReference` pushes the uncopied reference view into `History` (`:143`). Each further
+  reference pull overwrites the memory behind every earlier `History` chunk. If `mixBuffer` is
+  reallocated, the earlier views point at freed memory. Whenever a lane needs reference samples
+  from an earlier pull, the comparison reads the wrong data. This happens whenever pull sizes
+  differ between lanes, which `hvsc-rom-production.md:120` describes as normal.
+
+Evidence from the running pilot: the reference configuration itself (mask 7, compared with a
+fresh mask-7 reference) is reported `different` in 2 of 296 jobs.
+
+- `sha256 456fe347bd0e…` song 8: every mask, including 7, is reported different at sample
+  145,290, which is also the lane's own sample count.
+- `sha256 3f179fc28043…` song 1: masks 3 and 7 are reported different at sample 118,774.
+
+A deterministic engine cannot produce a mask-7 difference. Either the comparator is wrong, as the
+code reading above predicts, or the engine is not deterministic. Either explanation invalidates
+`identical` as allow evidence until it is resolved. The visible failures are fail-closed (a false
+`different`). However, a comparator whose result depends on buffer reuse provides no guarantee in
+the other direction: a detached chunk is skipped silently, and over silent or constant passages
+the one-chunk offset is invisible.
+
+Required fix:
+
+- Copy every PCM chunk (`chunk.slice()`) immediately after `render()` and before any other call
+  on that context.
+- Store only copies in `History`.
+- Re-run the two jobs above. Mask 7 must be `identical` in both. If it is not, stop and treat the
+  engine as non-deterministic.
+- Add a unit test with a fake context whose `render()` reuses one buffer and whose pull sizes
+  differ between lanes. The test must fail against the current code.
+
+**N2 — BLOCKER: a variant that omits writes the reference makes within the horizon can be
+confirmed `identical`.**
+`confirmMasks` compares each variant chunk's writes with the reference at the same absolute
+write index (`confirm.ts:173`). It declares `identical` as soon as the variant has `wanted`
+samples (`:158`). Nothing checks that the reference made no further writes before the horizon.
+
+Example: under the 48 kHz profile, the variant stops writing near the end, for example because
+its interrupt handler hangs in a zero-filled bank. Meanwhile the reference keeps rewriting
+unchanged register values over a silent ending. The variant's writes are a prefix of the
+reference's writes, its PCM is equal, and it is confirmed `identical`.
+
+The native screen would catch this case at 8 kHz, because `exactWrites` requires equal counts.
+A false allow therefore needs a divergence that appears only at 48 kHz. That is exactly the case
+the WASM confirmation exists to catch. The code comment "event counts beyond the horizon may
+legitimately differ" (`:125-126`) also hides this gap; the actual over-strictness runs the other
+way, because writes after the horizon in the final pull are compared too.
+
+Required fix: when a lane reaches `wanted`, compare the number of writes whose PHI1 cycle falls
+before the horizon (the cycle of the last sample inside the horizon) in both streams, and require
+them to be equal.
+
+A related defect: `extendReference` advances the reference until it has as many writes as the
+variant (`:139`). A variant that writes in a fast loop drives the reference far past the horizon
+with no bound. The reference must be advanced by samples only, and a variant with more writes
+than the reference at the same sample position must be reported as `different`. Add a
+"variant stops writing in a silent tail" fixture to `decision-regression.ts`.
+
+**N3 — BLOCKER for the value of the run: the consumer profile is not C64 Commander's
+configuration.**
+Read from `c64commander/src/lib/playback` (not modified):
+
+- Commander depends on `libsidplayfp-wasm` `^1.1.0`, and 1.1.0 is installed
+  (`package.json:210`). The census pins 1.0.1, and `engineId` hashes the 1.0.1 WASM and source.
+- Commander never sets `powerOnDelay` (`wasmRendererCore.ts:69-73` sets only `sidModel`).
+  `SidPlayerContext`'s default is `MAX_POWER_ON_DELAY` = 0x1FFF (`bindings.cpp:372`, 1.0.1
+  source), not 5000.
+- Commander passes `null` for CHARGEN even when it has ROMs, and `null` for BASIC when it has
+  none (`wasmRendererCore.ts:106-110,132-136`). The profile requires zero banks, and with `null`
+  libsidplayfp leaves the bank contents uninitialised.
+- Commander forces `sidModel` for tunes whose header model is unknown (`:69-73`). The profile
+  says "from header".
+- Commander lets the user choose reSIDfp, SIDLite or sidplay-ez. The census covers SIDLite only.
+
+`hvsc-rom-production.md:48-51,208-209` admits the power-on delay and bank differences, but not the
+engine version. If Commander moves to the evidence, it must downgrade the engine or the census
+must be repeated. If the profile moves to Commander, the census has to change before it runs.
+Either way, the decision has to be made before about two weeks of CPU time are spent. Also
+change the lookup so that it takes the consumer's actual configuration object (N3 belongs with
+B2(c)).
+
+**N4 — HIGH (operational): a single slow or failing job stops a whole stage, and on resume the
+stage stops on the same job again.**
+
+- Confirmation timeout: `max(180 s, seconds × (1 + k) × 0.4 s)` (`confirm.ts:266`), and a timeout
+  rejects every worker (`:260,284`). In the pilot so far, confirmation processes about
+  10.7 horizon-seconds per second on 7 workers, with about 4.8 lanes per job. That is roughly
+  7 lane-seconds of emulation per wall-clock second per worker, so the margin against the
+  2.5× real-time requirement is under 3×. A 3SID subtune with a long horizon, or a loaded
+  machine, can exceed the limit.
+- Jobs are sorted shortest first, both on resume and in `audit.ts:204`. The failing job is
+  therefore retried at the same position every time, and the pipeline cannot pass it without
+  manual intervention.
+- The native audit behaves the same way (`audit.ts:97,117,121`).
+
+Required fix: record a timeout or an engine exception on one job as a per-job `unknown` result
+with a reason, and continue. Derive the timeouts from the pilot's measured throughput with a
+margin of at least 10×.
+
+**N5 — HIGH: confirmation provenance is not bound to what produced it.**
+
+- `JobResult` (`confirm.ts:41-44`) carries no engine hash, ROM hashes, tool hash or profile hash.
+- The worker reads the ROM files without checking them against `SYSTEM_ROMS` (`confirm.ts:220-221`).
+- Publication checks only `sampleRate` and `powerOnDelay` (`publish-production.ts:54`), and labels
+  every result with the audit manifest's engine (`:58-59`).
+
+A `bun install` of a different engine between `audit` and `confirm`, or a replaced KERNAL file,
+yields confirmations that are published as evidence for the 1.0.1 reference ROMs.
+
+Required fix: have the worker verify the ROM hashes and record the engine, ROM, `confirm.ts` and
+profile hashes in every line. Publication must require all of them to equal the manifest and the
+certificate.
+
+**N6 — MEDIUM: the ledger cost grows quadratically.**
+`reserve()` re-reads, re-parses and re-hashes every ledger line on each dispatch
+(`ledger.ts:118-120`, `load()`). For 87,868 dispatches that is about 3.9 × 10⁹ record parses on
+the parent thread, which works out to hours of event-loop time. With many workers the parent
+becomes the bottleneck. Required fix: read incrementally from the last known file offset.
+
+**N7 — MEDIUM: `run-full.sh` and its documentation do not work as written on a fresh machine.**
+
+- `run-full.sh` and the `rollout.ts` change are uncommitted. A `git checkout` of the branch does
+  not contain them.
+- `node` and `npm` are required (`roms:fetch`, `bun run test` → `npm run build`), but
+  `run-full.sh:38` does not check for them, and the documentation does not list them.
+- `scripts/sidflow-fetch` fetches the latest HVSC base archive. Once HVSC 86 is released, setup
+  fails on the corpus check (fail-closed, but the run cannot start).
+- `bun@1.3.1` is not enforced. The engine path in the identity depends on bun's install layout.
+- `harden.ts` checks the approval line last (`:204-208`), after hours of work. It should check it
+  first.
+- The claim that "a finished stage is skipped" (`run-full.sh:7-8`) is false. `harden` repeats
+  everything, including three full suites, on every invocation.
+- The `harden.ts:24-25` comment still says the identity includes git HEAD.
+- `hvsc-rom-full-run.md` says confirmation takes "a comparable time" to native screening. The
+  pilot measures about 3× slower per horizon-second (10.7 versus 32 horizon-seconds per second).
+  On the development machine that is about 88 h for native screening plus about 260 h for
+  confirmation, not about 8 days in total. This estimate is provisional, because short jobs are
+  dominated by module start-up.
+
+**N8 — LOW.**
+
+- `Uint32Array.from` truncates the Float64 trace scalars (`confirm.ts:87`). The values fit for
+  horizons up to 3,600 s, but the code does not check this.
+- A `WebAssembly.Exception` produces the message `[object WebAssembly.Exception]`, as seen in
+  pilot job `50c0032b7402…` song 83, mask 0. The exception is not decoded.
+- An empty `render()` result (the engine's `produced == 0` case, which native rendering treats
+  as normal) ends a lane as `variant-error` (`confirm.ts:86`).
+- A confirmed halt does not check that the WASM reference stays clean up to the horizon.
+- Mask 7 is sent for confirmation, which costs time. It is a useful control (it exposed N1), so
+  keep it, but report it as a control rather than as a decision.
+
+### Answers to the specific questions
+
+1. **Lockstep comparison.** It is not sound as written (N1, N2). Comparing by absolute index is
+   the right idea, but the stored history aliases engine memory, and an index-prefix match is
+   accepted as equality. Halt-expecting lanes behave acceptably, because a halt only denies.
+   `WebAssembly.Exception` handling fails closed.
+2. **Publication without confirmation.** `assess()` cannot return `compatible` or `incompatible`
+   without `verdictFromConfirmation(...) === true`, and that function requires hashes equal to
+   the current native rows (`confirm.ts:199-207`, `methodology.ts:84-91`). Every publication path
+   goes through `publishProduction`. The weak points are the authenticity and provenance of
+   `confirmation.jsonl` (N5) and the correctness of the `identical` outcome itself (N1, N2).
+3. **Ledger and flock.** The kernel lock is correct, and the descriptor lives for the life of the
+   process. The ceilings use both denominators. Identity is keyed by content. The unlocked
+   truncate in the constructor (B1(a)) and the quadratic reload (N6) remain.
+4. **Harden and rollout.** A certificate cannot be obtained without running the checks through
+   `harden.ts`. A hand-written certificate plus hand-written logs still validates, because the
+   logs are hashed but not parsed and there is no live spot check. Removing git HEAD from the
+   identity is correct for the approval workflow. However, files outside the enumerated set can
+   then change without voiding the certificate, because `@sidflow/common` is a transitive import.
+   The approval line is a tamper-evident marker against accidents, not an authentication
+   mechanism. Stale items are listed in N7.
+5. **Fresh machine.** The stages run in the right order, the corpus identity check is correct,
+   and the pilot directory satisfies harden's requirement, because `select-pilot.ts` is
+   deterministic and the native hash is re-derived locally. The blockers there are N7. A different
+   compiler or CPU changes only the native screen. The WASM engine remains the authority, and
+   `-ffp-contract=off` reduces the cross-compiler differences. On a non-x86-64 or non-glibc host,
+   expect the parity controls or `dlopen` to fail; that is fail-closed. The difference between the
+   8 kHz screen and the 48 kHz profile costs coverage, not soundness.
+6. **Consumer profile.** It does not match Commander (N3).
+7. **Threats to the claim that a `compatible` bit is sound.** In priority order: N1, N2, N5, N3,
+   and the earlier limits (finite window, Songlengths accuracy, SIDLite only).
+
+### Verdict: NOT READY
+
+Running the full census now would spend roughly two weeks of CPU time (88 h native plus about
+260 h of confirmation on the development machine; less on a faster machine) to produce allow
+evidence from a comparator that is defective and contradicted by its own mask-7 control, under a
+profile that the only consumer does not use. Every required fix changes the hardening identity.
+A run started now could not be resumed under a certificate issued after the fixes, so the fixes
+must come first.
+
+Conditions, in order:
+
+1. Fix N1: copy each chunk and keep only copies in `History`. Add a failing-then-passing test.
+   Re-run the two mask-7 jobs and require `identical`.
+2. Fix N2: require equal write counts within the horizon, advance the reference by samples only,
+   and add the silent-tail fixture to `decision-regression.ts`.
+3. Decide the profile and engine version against Commander (N3) before the run: 1.0.1 or 1.1.x,
+   the power-on delay, and CHARGEN/BASIC zero banks versus `null`. Make the lookup take the
+   consumer's actual configuration.
+4. Fix N4: isolate per-job failures and derive the timeouts from measured pilot throughput.
+5. Fix N5: bind each confirmation line to the engine, ROM, tool and profile hashes, verify the
+   ROMs in the worker, and check all of them at publication.
+6. Fix B1(a) and N6: no unlocked truncation, and incremental ledger reads. Also stop readers
+   (`confirm.ts`, `harden.ts`, `publish-production.ts`) from truncating checkpoints.
+7. Fix N7: commit `run-full.sh` and all edits; add the `node`/`npm` and `bun@1.3.1` checks; pin
+   HVSC 85; check the approval line first in `harden.ts`; correct the stale comments and the
+   duration estimate.
+8. Complete the pilot confirmation with the fixed `confirm.ts`. Review every `different`,
+   `variant-error` and mismatch individually, record peak RSS for the longest horizons, and
+   re-measure confirmation throughput.
+9. Then freeze the sources, compute the identity, have the review approve that identity, and run
+   `harden` on the target machine before `full`.
+
+Recommended but not blocking for the census: M2 (parent memory; until it is fixed, provide at
+least 16 GB of RAM for the parent), M3, M6, re-parsing the logs in `verifyHardeningEvidence`,
+and removing M7 from the branch.
+
+### What the user must be told about residual risk
+
+- Even after these fixes, a `compatible` bit means one thing only. A fresh SIDLite playback on
+  the pinned engine build, under the declared profile, with byte-identical reference ROMs and
+  zero banks, matched the full-ROM reference in PCM and in timed SID writes, from reset through
+  the Songlengths duration plus 5 s. It says nothing about other engines or versions, other
+  sample rates or power-on delays, `null` banks, looping, user interaction, or an incorrect
+  Songlengths entry.
+- The case Commander cares most about, playback without ROMs, will be almost entirely `unknown`.
+  In the pilot so far, masks without KERNAL (0, 2, 4, 6) were candidates in only 11 to 14 of 296
+  confirmed subtunes, because the engine's interrupt shim shifts SID writes by a few cycles. The
+  run will mainly qualify "KERNAL present" configurations.
+- The certificate and the approval line detect accidental or agent-made changes. They do not
+  stop a deliberate local forger.
+- Confirmation is per-case evidence on the shipping engine. Its correctness rests on
+  `confirm.ts`, which has had less adversarial testing than `assess()`. The mask-7 control must
+  stay in the run, and any mask-7 non-`identical` result must stop publication.
