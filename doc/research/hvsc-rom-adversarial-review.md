@@ -1,5 +1,9 @@
 # HVSC ROM audit: adversarial architecture review (methodology 3)
 
+Current methodology 4 qualification is recorded in the
+[frozen-source review below](#frozen-methodology-4-source-review-and-qualification).
+Earlier entries preserve the methodology 3 review history.
+
 - Reviewer role: architect / adversarial reviewer, model Opus 5.5 (`claude-opus-5-5`), as required by
   `doc/hvsc-rom-audit-handover.md`.
 - Date: 2026-10-23.

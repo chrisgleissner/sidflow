@@ -1,6 +1,6 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
-## PR #109 continuation: listener relevance and 16-hour budget (2026-10-23)
+## PR #109 continuation: listener relevance and 16-hour budget (2026-10-23) — implementation qualified; target-machine timing pending
 
 - [x] Inspect PR/CI and completed pilot. Pilot: 567 completed, one crashed worker,
   4,553.233 seconds elapsed, 15.552 aggregate horizon-seconds/second. CI fails
@@ -12,13 +12,13 @@
   detectable. Keep exact evidence distinct and never relabel old measurements.
 - [x] Replace unsupported CPU extrapolations with measured aggregate throughput,
   representative corpus weighting and an explicit target-machine budget gate.
-- [x] Restore maintained publication and update usage/review evidence; CI will be checked after the validated push.
+- [x] Restore maintained publication and update usage/review evidence; CI status is recorded by the live PR checks.
 - [x] Build/typecheck and run full tests three consecutive times; record literal
   outputs in doc/research/hvsc-rom-validation-4.md. Source qualification complete.
 - [ ] Validate the 14600K budget on that machine before a full-corpus run.
 
-Validated changes are being pushed to PR #109; its live checks are the CI
-follow-through record. No full-corpus completion or 14600K timing is claimed.
+Validated implementation was pushed in commit 8c0579d to PR #109; its live
+checks are the CI follow-through record. No full-corpus completion or 14600K timing is claimed.
 
 The prior 11–17 hour claim divides by a per-lane speed estimate rather than the
 completed census rate. At the observed aggregate rate the full horizon inventory
