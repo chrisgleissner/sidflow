@@ -1,9 +1,8 @@
 /**
  * Lockstep WASM renders of one subtune, configured as C64 Commander configures its
- * players (read from its source, which is not modified): `libsidplayfp-wasm` 1.1.0,
+ * players (read from its source, which is not modified): `libsidplayfp-wasm` 1.1.1,
  * 48 kHz stereo, the engine's default power-on delay, start-song header rewrite, ROMs
- * supplied before the tune, a reset after load, and 256-cycle pulls for SIDLite (the
- * engine's default for reSIDfp).
+ * supplied before the tune, a reset after load, and the default 100,000-event API request (clamped internally to 20,000).
  *
  * The reference has all three authentic ROMs. Commander can only create two ROM sets:
  * KERNAL and BASIC together with CHARGEN left `null`, or nothing supplied. A `null` bank
@@ -22,9 +21,11 @@ import path from "node:path";
 import type { RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import type { EngineRun, LaneFill, LaneOutcome, LaneResult, ReferenceResult } from "./methodology.js";
 
+import { BufferedDigest, ListenerComparator } from "./listener.js";
+
 export const AUDIT_PACKAGE = "libsidplayfp-wasm-audit";
 export const SAMPLE_RATE = 48000;
-export const PULL_CYCLES: Record<RomAuditEngine, number> = { sidlite: 256, residfp: 100000 };
+export const PULL_CYCLES: Record<RomAuditEngine, number> = { sidlite: 100000, residfp: 100000 };
 export interface RomImages { kernal: Uint8Array; basic: Uint8Array; chargen: Uint8Array }
 
 const require = createRequire(import.meta.url);
@@ -44,8 +45,9 @@ interface Context {
 }
 type ModuleFactory = (options: { engine: string; print: () => void; printErr: () => void }) => Promise<{ SidPlayerContext: new () => Context }>;
 let factory: ModuleFactory | undefined;
+let sidliteModule: Promise<EngineModule> | undefined;
 /**
- * Every lane gets its own WASM instance. Two players created in one reSIDfp instance produce different PCM for
+ * reSIDfp lanes get independent instances. Two players created in one reSIDfp instance produce different PCM for
  * identical input (the write traces are equal), so lanes sharing an instance could never be compared exactly.
  * Fresh instances are bit-reproducible, which is what the repeat lane verifies for every subtune.
  */
@@ -72,11 +74,15 @@ const bankBytes = (bank: Bank, authentic: Uint8Array, size: number): Uint8Array 
     : new Uint8Array(size).fill(bank === "ff" ? 0xff : 0);
 
 class Lane {
-  readonly pcm = createHash("sha256"); readonly trace = createHash("sha256");
+  readonly pcm = new BufferedDigest(); readonly trace = new BufferedDigest();
   samples = 0; writes = 0; dropped = false; message = "";
   private constructor(private readonly ctx: Context, private readonly pullCycles: number) {}
   static async open(engine: RomAuditEngine, bytes: Uint8Array, song: number, config: RomConfig, roms: RomImages, shared?: EngineModule): Promise<Lane> {
-    const module = shared ?? await loadModule(engine), ctx = new module.SidPlayerContext();
+    // SIDLite has no shared analogue-filter state. Reuse its module while keeping
+    // a separate C64/player for every lane; repeated WASM instantiation retains
+    // hundreds of MB during long jobs. reSIDfp must keep independent modules.
+    const module = shared ?? (engine === "sidlite" ? await (sidliteModule ??= loadModule(engine)) : await loadModule(engine));
+    const ctx = new module.SidPlayerContext();
     // Same order as SidAudioEngine: configure, trace, ROMs (only when any is supplied), load, reset.
     const fail = (what: string): never => { const message = ctx.getLastError(); ctx.delete(); throw new Error(`${what}: ${message}`); };
     if (!ctx.configure(SAMPLE_RATE, true)) fail("configure");
@@ -97,6 +103,9 @@ class Lane {
     try { chunk = this.ctx.render(this.pullCycles); } catch (error) {
       // A CPU halt can surface as a thrown C++ exception; the engine still records the reason.
       this.message = this.ctx.getLastError() || `engine exception: ${error instanceof Error ? error.message : String(error)}`;
+      // stderr preserves the worker's stdout JSON protocol.
+      console.error(`ROM-audit render stopped: ${this.message}; cause: ${error instanceof Error ? error.message : String(error)}`);
+      if (/out of memory|allocation failed|memory access out of bounds/i.test(error instanceof Error ? error.message : String(error))) throw error;
       return null;
     }
     if (!chunk?.length) { this.message = this.ctx.getLastError() || "engine returned no samples"; return null; }
@@ -156,7 +165,7 @@ export async function runEngine(engine: RomAuditEngine, bytes: Uint8Array, song:
     const result = (lane: Lane, outcome: LaneOutcome, first: number | null, message = ""): void => {
       const label = labels.get(lane) ?? { set: "full" as const, fill: "zero" as const };   // the repeat lane carries no label
       outcomes.set(lane, { ...label, outcome, samples: lane.samples, writes: lane.writes, firstDifferenceSample: first, message,
-        pcmSha256: lane.pcm.digest("hex"), traceSha256: lane.trace.digest("hex") });
+        pcmSha256: lane.pcm.digest(), traceSha256: lane.trace.digest() });
     };
     const active = new Set(lanes);
     // The reference always runs to the horizon (or fails), even if every lane has already left the set: a record
@@ -184,7 +193,7 @@ export async function runEngine(engine: RomAuditEngine, bytes: Uint8Array, song:
     if (referenceOutcome === "clean") for (const lane of active) result(lane, "identical", null);
     if (repeatLane) { const outcome = outcomes.get(repeatLane)?.outcome; repeat = outcome === "identical" ? "identical" : outcome === "different" ? "different" : "failed"; }
     const referenceResult: ReferenceResult = { outcome: referenceOutcome, samples: reference.samples, writes: reference.writes, message: referenceMessage,
-      pcmSha256: reference.pcm.digest("hex"), traceSha256: reference.trace.digest("hex"), repeat };
+      pcmSha256: reference.pcm.digest(), traceSha256: reference.trace.digest(), repeat };
     return { engine, extended, reference: referenceResult, lanes: lanes.filter(l => l !== repeatLane).map(l => outcomes.get(l)!) };
   } finally {
     for (const lane of lanes) lane.close();
@@ -196,7 +205,7 @@ export async function runEngine(engine: RomAuditEngine, bytes: Uint8Array, song:
 export async function renderDigest(engine: RomAuditEngine, bytes: Uint8Array, song: number, seconds: number, config: RomConfig, roms: RomImages, shared?: EngineModule):
   Promise<{ samples: number; writes: number; pcmSha256: string; traceSha256: string; ended: string }> {
   const wanted = Math.round(seconds * SAMPLE_RATE) * 2;
-  const lane = await Lane.open(engine, bytes, song, config, roms, shared);
+  const lane = await Lane.open(engine, bytes, song, config, roms, shared ?? await loadModule(engine));
   try {
     let ended = "horizon";
     while (lane.samples < wanted) {
@@ -204,6 +213,75 @@ export async function renderDigest(engine: RomAuditEngine, bytes: Uint8Array, so
       if (!chunk) { ended = lane.message; break; }
       lane.absorb(chunk, Math.min(chunk.pcm.length, wanted - lane.samples));
     }
-    return { samples: lane.samples, writes: lane.writes, pcmSha256: lane.pcm.digest("hex"), traceSha256: lane.trace.digest("hex"), ended };
+    return { samples: lane.samples, writes: lane.writes, pcmSha256: lane.pcm.digest(), traceSha256: lane.trace.digest(), ended };
   } finally { lane.close(); }
+}
+
+/** Compare the actual, cold-start consumer configurations, with explicit zeroed
+ * absent banks. This avoids testing arbitrary imaginary ROM contents on every
+ * song. Consumers must clear absent banks when creating a player. A reference
+ * repeat is sampled; every result retains complete hashes and listener evidence.
+ */
+export async function runListenerEngine(engine: RomAuditEngine, bytes: Uint8Array, song: number, seconds: number, roms: RomImages, extended = false): Promise<EngineRun> {
+  const wanted = Math.round(seconds * SAMPLE_RATE) * 2;
+  const reference = await Lane.open(engine, bytes, song, { kernal: "authentic", basic: "authentic", chargen: "authentic" }, roms);
+  const lanes: { lane: Lane; set: "full" | "none"; comparator: ListenerComparator; stoppedAtSample?: number; stopMessage?: string; result?: LaneResult }[] = [];
+  let repeatLane: Lane | undefined;
+  let repeat: ReferenceResult["repeat"] = extended ? "identical" : "not-run";
+  let outcome: ReferenceResult["outcome"] = "clean", message = "";
+  try {
+    if (extended) repeatLane = await Lane.open(engine, bytes, song, { kernal: "authentic", basic: "authentic", chargen: "authentic" }, roms);
+    for (const set of ["full", "none"] as const) lanes.push({ set, comparator: new ListenerComparator(), lane: await Lane.open(engine, bytes, song,
+      set === "full" ? { kernal: "authentic", basic: "authentic", chargen: "zero" } : { kernal: "null", basic: "zero", chargen: "zero" }, roms) });
+    const complete = (entry: typeof lanes[number], result: LaneOutcome, text = ""): void => {
+      const listener = entry.comparator.finish();
+      entry.result = { set: entry.set, fill: "zero", outcome: result, samples: entry.lane.samples, writes: entry.lane.writes,
+        pcmSha256: entry.lane.pcm.digest(), traceSha256: entry.lane.trace.digest(), firstDifferenceSample: listener.firstDifferenceSample, message: text || entry.stopMessage || "", listener, ...(entry.stoppedAtSample === undefined ? {} : { stoppedAtSample: entry.stoppedAtSample }) };
+    };
+    while (reference.samples < wanted) {
+      const ref = reference.pull();
+      if (!ref || reference.dropped) {
+        outcome = reference.dropped ? "trace-dropped" : "failed"; message = reference.message;
+        for (const entry of lanes) if (!entry.result) complete(entry, reference.dropped ? "trace-dropped" : "reference-failed", message);
+        break;
+      }
+      const take = Math.min(ref.pcm.length, wanted - reference.samples), target = reference.samples + take;
+      if (repeatLane && repeat === "identical") {
+        const chunk = repeatLane.pull();
+        if (!chunk || repeatLane.dropped) repeat = "failed";
+        else if (!samePull(ref, chunk)) repeat = "different";
+      }
+      for (const entry of lanes) {
+        if (entry.result) continue;
+        entry.comparator.append(0, ref.pcm.subarray(0, take), ref.writes);
+        while (entry.lane.samples < target) {
+          // A decoder that stops contributes silence after its final output.
+          // Judge the resulting audio, rather than treating an inaudible ending
+          // as a failed song. Preserve where actual engine output ended.
+          const chunk = entry.stoppedAtSample === undefined ? entry.lane.pull()
+            : { pcm: new Int16Array(target - entry.lane.samples), writes: new Float64Array() };
+          if (entry.lane.dropped) { complete(entry, "trace-dropped", entry.lane.message); break; }
+          if (!chunk) {
+            entry.stoppedAtSample = entry.lane.samples; entry.stopMessage = entry.lane.message;
+            entry.comparator.forceAudio(); continue;
+          }
+          const count = Math.min(chunk.pcm.length, wanted - entry.lane.samples);
+          entry.lane.absorb(chunk, count);
+          entry.comparator.append(1, chunk.pcm.subarray(0, count), chunk.writes);
+        }
+        if (!entry.result && entry.comparator.compare()) complete(entry, "audible-difference");
+      }
+      reference.absorb(ref, take);
+    }
+    for (const entry of lanes) if (!entry.result) {
+      const evidence = entry.comparator.finish();
+      complete(entry, evidence.audible ? "audible-difference" : "equivalent");
+    }
+    if (outcome !== "clean" && repeatLane) repeat = "failed";
+    return { engine, comparison: "listener-v1", extended, reference: { outcome, message, samples: reference.samples, writes: reference.writes,
+      pcmSha256: reference.pcm.digest(), traceSha256: reference.trace.digest(), repeat }, lanes: lanes.map(entry => entry.result!) };
+  } finally {
+    for (const entry of lanes) entry.lane.close();
+    repeatLane?.close(); reference.close();
+  }
 }

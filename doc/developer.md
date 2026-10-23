@@ -48,19 +48,18 @@ For iterative phase work, prefer `bun run build:quick` plus targeted test files 
 
 ### HVSC ROM requirement research
 
-For eight ROM masks, full documented horizons, shipping-engine confirmation and a
-fail-closed consumer lookup, use [methodology 3](research/hvsc-rom-production.md). The
+For listener-relevant ROM comparisons, full documented horizons and a
+versioned consumer lookup, use [methodology 4](research/hvsc-rom-production.md). The
 older command below is retained as a historical research example. Rollout is gated:
 a pilot (at most 5% of subtunes and of files, counted in a durable ledger) needs a reviewed
 `--selection`, and a full run needs a hardening certificate:
 
 ```sh
 bun scripts/rom-audit/select-pilot.ts /path/C64Music workspace/rom-audit-selection.json
-bun scripts/rom-audit/audit.ts --hvsc /path/C64Music --roms /path/roms --out workspace/rom-audit-v3 \
+bun scripts/rom-audit/audit.ts --hvsc /path/C64Music --roms /path/roms --out workspace/rom-audit-v4 \
   --workers 7 --rollout pilot --selection workspace/rom-audit-selection.json
-bun scripts/rom-audit/confirm.ts workspace/rom-audit-v3 /path/roms --workers 7
-bun scripts/rom-audit/publish.ts --production workspace/rom-audit-v3 doc/research/hvsc-rom-catalogue/v3
-bun scripts/rom-audit/harden.ts --hvsc /path/C64Music --roms /path/roms --pilot workspace/rom-audit-v3 \
+bun scripts/rom-audit/publish.ts --production workspace/rom-audit-v4 doc/research/hvsc-rom-catalogue/v4
+bun scripts/rom-audit/harden.ts --hvsc /path/C64Music --roms /path/roms --pilot workspace/rom-audit-v4 \
   --review doc/research/hvsc-rom-adversarial-review.md   # writes workspace/rom-audit-hardening/certificate.json
 bun scripts/rom-audit/audit.ts ... --rollout full --hardening workspace/rom-audit-hardening/certificate.json
 ```

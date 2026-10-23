@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * HVSC ROM census (methodology 3): every subtune is rendered in lockstep on the shipping
+ * HVSC ROM census (methodology 4): every subtune is rendered in lockstep on the shipping
  * WASM engines under the C64 Commander profile (see wasm-lanes.ts), in parallel worker
  * processes, with a durable checkpoint, a durable 5% rollout ledger and a kernel scope lock.
  *
- *   bun scripts/rom-audit/audit.ts --hvsc /path/C64Music --roms /path/roms --out workspace/rom-audit-v3 \
+ *   bun scripts/rom-audit/audit.ts --hvsc /path/C64Music --roms /path/roms --out workspace/rom-audit-v4 \
  *     --rollout pilot --selection selection.json [--extended-every N] [--workers N] [--limit N] [--budget-seconds S] [--retry-failures] [--engines sidlite[,residfp]]
  *   bun scripts/rom-audit/audit.ts ... --rollout full --hardening workspace/rom-audit-hardening/certificate.json
  *
@@ -106,9 +106,13 @@ export class WorkerProcess {
       this.pending = undefined; clearTimeout(pending.timer);
       try { pending.resolve(JSON.parse(line) as CensusRecord); } catch (error) { pending.reject(error as Error); }
     });
-    this.child.on("exit", code => {
+    this.child.on("error", error => {
       const pending = this.pending;
-      if (pending) { this.pending = undefined; clearTimeout(pending.timer); pending.reject(new Error(`worker exited ${code}: ${this.stderrTail.trim().split("\n").pop() ?? ""}`)); }
+      if (pending) { this.pending = undefined; clearTimeout(pending.timer); pending.reject(error); }
+    });
+    this.child.on("exit", (code, signal) => {
+      const pending = this.pending;
+      if (pending) { this.pending = undefined; clearTimeout(pending.timer); pending.reject(new Error(`worker exited ${code}/${signal}: ${this.stderrTail.trim().split("\n").pop() ?? ""}`)); }
     });
   }
   request(message: unknown, timeoutMs: number): Promise<CensusRecord> {
@@ -236,7 +240,7 @@ async function main(): Promise<void> {
     try {
       for (let job = takeJob(); job; job = takeJob()) {
         const message = { sha256: job.sha256, song: job.song, seconds: job.seconds, engines, extended: isExtendedSample(job.sha256, a.extendedEvery), hex: readVerifiedSid(job.path, job.sha256).toString("hex") };
-        // Recycle the worker periodically: each job instantiates many WASM modules.
+        // Recycle periodically to bound host and engine allocator fragmentation.
         if (worker.jobs >= WORKER_JOBS) { peakRss = Math.max(peakRss, worker.peakRssMb()); worker.close(); worker = new WorkerProcess(runtime); }
         worker.jobs++;
         let record: CensusRecord;
@@ -244,9 +248,11 @@ async function main(): Promise<void> {
           // Isolate the failure: record it, replace the worker and carry on with the census.
           const timeout = (error as { timeout?: boolean }).timeout === true;
           console.error(`Job ${path.relative(a.hvsc, job.path)}#${job.song} failed (${timeout ? "timeout" : "exception"}): ${(error as Error).message}`);
+          peakRss = Math.max(peakRss, worker.peakRssMb());
           worker.close(); worker = new WorkerProcess(runtime);
           record = { schema: CENSUS_SCHEMA, sha256: job.sha256, song: job.song, seconds: job.seconds, sampleRate: SAMPLE_RATE, runs: [], failure: { reason: timeout ? "timeout" : "exception", message: (error as Error).message } };
         }
+        peakRss = Math.max(peakRss, worker.peakRssMb());
         if (record.sha256 !== job.sha256 || record.song !== job.song || record.seconds !== job.seconds) throw new Error("Worker result identity mismatch");
         if (rows.has(censusKey(record))) rows.delete(censusKey(record));   // a retried failure replaces its earlier record in memory only
         save(record); doneHorizon += job.seconds;

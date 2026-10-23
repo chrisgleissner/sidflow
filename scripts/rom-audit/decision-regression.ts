@@ -9,6 +9,7 @@
  *
  *   bun scripts/rom-audit/decision-regression.ts <ROM directory>
  */
+import { listenerControls } from "./listener-regression.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -170,4 +171,5 @@ if (!only || only.test("shared")) {
     console.log(`PASS shared-instance playbacks are bit-identical to fresh instances on ${engine} (${sequence.length * configs.length} comparisons after ${sequence.length * configs.length} warm-up players)`);
   }
 }
+if (!only || only.test("listener")) digest.listener = await listenerControls(roms);
 console.log("DIGEST " + sha(JSON.stringify(digest)));

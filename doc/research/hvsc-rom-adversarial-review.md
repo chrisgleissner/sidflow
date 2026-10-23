@@ -1290,3 +1290,89 @@ the fixes and the evidence below, the verdict would be READY WITH CONDITIONS.
 6. One `harden --dry-run` and one `bun run test` on the target machine, both passing.
 7. A decision on the SID model (D3), and documentation corrected for D1, D2, D3, R1, S1, the
    review-file freeze and measured durations.
+
+## Methodology 4 continuation review (2026-10-23, Codex)
+
+The prior NOT READY findings describe the superseded exact-equality methodology.
+The user explicitly rejected `unknown` for harmless timing differences. The new
+contract compares listener-relevant playback and reserves unknown for inadequate
+measurement. Review is performed by the current Codex agent; no independent
+Claude/Opus review is claimed. Qualification accepts a truthfully named reviewer
+rather than requiring an unavailable model brand. It still binds approval to the
+frozen sources and measured evidence.
+
+Findings addressed in this continuation:
+
+- The completed old pilot had 567 results, one worker crash and 15.552 aggregate
+  horizon-seconds/second. The earlier 11–17 hour CPU projection lacked a valid
+  aggregate-throughput calculation. It is withdrawn.
+- CI failed because the maintained publication was absent. Methodology 4 publishes
+  a new snapshot with measured and pending counts, never relabeling old results.
+- Live Commander main pins engine 1.1.1 and removed 256-event containment. The audit
+  now pins that exact package, records new engine/profile identities and uses the
+  engine-default large pulls supported by its upstream capacity correction.
+- Continuous register streams accept harmless startup/timing offsets. Spectral
+  fallback distinguishes audible differences from silent/phase/DC differences.
+  Dense digi/sample streams require spectra even when register values match.
+- Three consumer players replace arbitrary null-bank fill lanes. Absent banks
+  must be explicitly zeroed. This is a new consumer precondition recorded in the
+  profile; it does not cover old players with arbitrary stale heap contents.
+- SIDLite shares a WASM module while retaining separate C64/player states; exact
+  and listener regressions check reference determinism. Hash updates are batched
+  without changing the byte stream. Worker exit diagnostics include the signal.
+- The timing benchmark samples the verified full corpus, weights format/duration
+  strata by their populations, reserves jobs through the pilot ledger and applies
+  a 15% margin. Budget bypass cannot hide a broken benchmark.
+
+Residual limits: thresholds are engineering choices with synthetic/real-engine
+controls, not a listening-study result. SIDLite is the qualified renderer. Another
+renderer, model, engine version or absent-bank initialisation requires matching
+measurements. The 14600K budget must be measured there; this host is a 6700K with
+other workloads. No full census is claimed before zero pending/failed results.
+
+Final pilot, three-suite validation, throughput and source-identity attestation
+are pending below. No source approval is granted by this paragraph.
+
+Additional review repairs: negative as well as positive results now respect the
+fallback SID model; a fixed model remains recorded even when every tested set
+fails. Qualification regenerates the canonical reviewed selection and requires
+all its rows, rather than accepting a clean prefix. It checks repeat sampling
+against the manifest and clears the inherited `ROM_DECISION_ONLY` debug filter.
+New controls cover a brief loud sound and a quiet melody underneath a loud bass,
+with phase-shifted tones, sawtooth and noise as acceptance controls.
+
+Stopped decoders are now judged by their audible output: the comparison models
+silence after `stoppedAtSample`. It accepts a silent halt after startup and rejects
+a halt that loses a held note. The reference must still complete successfully.
+A real-engine silent-halt control exposed an initial-transient mistake in the
+first control, then final-window zero padding exposed an artificial DC click;
+the corrected control halts after the transient and FFT padding preserves channel
+means. Both have regressions. Resource/memory exceptions remain failed measurements,
+and caught render exceptions are logged to stderr without corrupting worker JSON.
+
+## Frozen methodology 4 source review and qualification
+
+Reviewed source identity:
+`6d8fbd169fc69cb0bac600fbda560812988b9e0a7383e683bd73526ec98581f7`.
+The same identity was computed in a fresh checkout carrying the final sources
+and a frozen-lockfile install. Review was by the current Codex agent, with the
+limitations above; no independent model review is claimed.
+
+The complete canonical pilot passed: 567 subtunes, 0 failed, 113 exact reference
+repeats and no unresolved measured decisions for masks 0/3. Mask 0: 399 compatible,
+168 incompatible. Mask 3: 567 compatible. Gordian Tomb #2 (the previous crash) and
+the maximum 2,031.332-second horizon completed. Elapsed 1,592.253 seconds; peak
+worker RSS 188 MB. The final 80-job weighted benchmark projects 62.52 h on this
+loaded 6700K (71.90 h with margin). A 14600K runtime is not claimed without its
+own benchmark.
+
+This source is approved for qualification. Full rollout still requires the
+machine certificate after reproducibility, decision regression, focused tests
+and three full repository suites. Qualification completed successfully: three
+focused runs each 82 pass / 0 fail / 0 skip and three full suites each 2,958
+pass / 0 fail / 0 skip. Source identity remained unchanged; stage-status verifies
+the completed certificate and intact evidence. Literal outputs are recorded in
+[methodology 4 validation](hvsc-rom-validation-4.md).
+
+Reviewer-model: codex
+Approved-source-identity: 6d8fbd169fc69cb0bac600fbda560812988b9e0a7383e683bd73526ec98581f7

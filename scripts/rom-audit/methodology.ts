@@ -1,7 +1,7 @@
-/** Versioned evidence policy (methodology 3): decisions come from lockstep renders on the shipping engine. */
+/** Versioned evidence policy (methodology 4): decisions come from lockstep renders on the shipping engine. */
 import type { RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
-export const METHODOLOGY = "rom-audit-3";
-export const CENSUS_SCHEMA = "sidflow-rom-census-1";
+export const METHODOLOGY = "rom-audit-4";
+export const CENSUS_SCHEMA = "sidflow-rom-census-2";
 export const ROM_MASKS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 /** The ROM sets C64 Commander can create (KERNAL=1, BASIC=2, CHARGEN=4): nothing, or KERNAL+BASIC with CHARGEN null. */
 export const CONSUMER_MASKS = [0, 3] as const;
@@ -48,8 +48,11 @@ export const isExtendedSample = (sha256: string, every: number): boolean => ever
  * `stopped`: the lane's engine ended (an illegal opcode or an exception) while the reference was still running. The engine
  * reports an illegal opcode with its message only some of the time, so the reason is deliberately not part of the evidence.
  */
-export type LaneOutcome = "identical" | "different" | "stopped" | "reference-failed" | "trace-dropped";
+export type LaneOutcome = "identical" | "different" | "equivalent" | "audible-difference" | "stopped" | "reference-failed" | "trace-dropped";
 export interface LaneResult {
+  listener?: import("./listener.js").ListenerEvidence;
+  /** Actual engine output ended here; the rest of the compared audio is silence. */
+  stoppedAtSample?: number;
   /**
    * `full`: KERNAL and BASIC supplied, CHARGEN null. `none`: nothing supplied. `fill`: what the null banks held:
    * zeros, 0xFF, a fixed pseudo-random pattern, or (none only) the authentic BASIC image left behind by an
@@ -62,10 +65,10 @@ export interface LaneResult {
 export interface ReferenceResult {
   outcome: "clean" | "failed" | "trace-dropped"; samples: number; writes: number; message: string;
   pcmSha256: string; traceSha256: string;
-  /** A second fresh instance of the reference configuration (extended sample only): determinism for this subtune. */
+  /** An independent reference player (extended sample only): determinism for this subtune. */
   repeat: "identical" | "different" | "failed" | "not-run";
 }
-export interface EngineRun { engine: RomAuditEngine; /** Cross-check sample: repeat lane and all supplied-set fills. */ extended: boolean; reference: ReferenceResult; lanes: LaneResult[] }
+export interface EngineRun { comparison?: "listener-v1"; engine: RomAuditEngine; /** Cross-check sample: repeat lane and all supplied-set fills. */ extended: boolean; reference: ReferenceResult; lanes: LaneResult[] }
 /** One checkpoint line: everything measured for one subtune. */
 export interface CensusRecord {
   schema: typeof CENSUS_SCHEMA; sha256: string; song: number; seconds: number; sampleRate: number; runs: EngineRun[];
@@ -76,7 +79,9 @@ export interface Assessment { state: Compatibility; reason: string }
 
 const unknown = (reason: string): Assessment => ({ state: "unknown", reason });
 /**
- * Decision for one ROM set of one engine run.
+ * Decision for one ROM set of one engine run. listener-v1 returns a concrete
+ * compatible/incompatible result for successful observations; the exact branch
+ * below is retained for research comparator regressions.
  * - mask 3 / mask 0: compatible only if every fill of the null banks matches the reference through
  *   the whole horizon. Everything else is unknown: a variant that stops is not turned into `incompatible`
  *   because the engine does not reliably say why it stopped.
@@ -99,6 +104,16 @@ export function assessMask(run: EngineRun | undefined, horizon: Horizon, observe
   if (horizon.documentedSeconds === null) return unknown("observation-horizon-incomplete");
   if (observedSeconds < horizon.seconds) return unknown("observation-horizon-incomplete");
   const set = mask === 3 ? "full" : "none";
+  if (run.comparison === "listener-v1") {
+    const lanes = run.lanes.filter(l => l.set === set);
+    if (lanes.length !== 1 || lanes[0]!.fill !== "zero") return unknown("experiment-pending");
+    const lane = lanes[0]!;
+    if (lane.outcome === "audible-difference" || lane.outcome === "stopped")
+      return { state: "incompatible", reason: lane.outcome === "stopped" ? "playback-stopped" : "audible-output-difference" };
+    if (lane.outcome === "equivalent" && lane.samples === wanted && lane.listener?.audible === false)
+      return { state: "compatible", reason: "listener-equivalent-through-documented-horizon" };
+    return unknown("non-tune-error");
+  }
   const lanes = run.lanes.filter(l => l.set === set), fills = laneFillsOf(run.extended)[set];
   if (lanes.length !== fills.length || !fills.every(f => lanes.some(l => l.fill === f))) return unknown("experiment-pending");
   if (lanes.every(l => l.outcome === "identical" && l.samples === wanted)) return { state: "compatible", reason: "identical-for-every-null-bank-fill-through-documented-horizon" };
@@ -113,7 +128,7 @@ export function assessMask(run: EngineRun | undefined, horizon: Horizon, observe
  * permissive than the decision from all lanes. Returns the masks where it is.
  */
 export function crossCheckDisagreements(run: EngineRun, horizon: Horizon, observedSeconds: number, sampleRate: number): number[] {
-  if (!run.extended) return [];
+  if (!run.extended || run.comparison === "listener-v1") return [];
   const core: EngineRun = { ...run, extended: false, reference: { ...run.reference, repeat: "not-run" },
     lanes: run.lanes.filter(l => (LANE_FILLS[l.set] as readonly LaneFill[]).includes(l.fill)) };
   return (CONSUMER_MASKS as readonly number[]).filter(mask =>
@@ -125,7 +140,7 @@ export function validateRecord(record: CensusRecord, engines: readonly RomAuditE
   const hex = (v: unknown): boolean => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
   if (record?.schema !== CENSUS_SCHEMA || !hex(record.sha256) || !Number.isSafeInteger(record.song) || record.song < 1 || record.song > 256 ||
       !Number.isFinite(record.seconds) || record.seconds <= 0 || record.seconds > 3600 || Math.round(record.seconds * 1000) / 1000 !== record.seconds ||
-      !Number.isSafeInteger(record.sampleRate) || !Array.isArray(record.runs))
+      record.sampleRate !== 48000 || !Array.isArray(record.runs))
     throw new Error("Invalid census record header");
   if (record.failure !== undefined) {
     if (!["timeout", "exception"].includes(record.failure.reason) || typeof record.failure.message !== "string" || record.runs.length !== 0)
@@ -141,17 +156,31 @@ export function validateRecord(record: CensusRecord, engines: readonly RomAuditE
         ref.writes < 0 || !hex(ref.pcmSha256) || !hex(ref.traceSha256) || !["identical", "different", "failed", "not-run"].includes(ref.repeat) || typeof run.extended !== "boolean" || (run.extended ? ref.repeat === "not-run" : ref.repeat !== "not-run") ||
         (ref.outcome === "clean" && ref.samples !== wanted))
       throw new Error("Invalid census reference");
-    const fills = laneFillsOf(run.extended);
+    if (run.comparison !== undefined && run.comparison !== "listener-v1") throw new Error("Invalid comparison policy");
+    const fills: Record<"full" | "none", readonly LaneFill[]> = run.comparison === "listener-v1" ? { full: ["zero"] as const, none: ["zero"] as const } : laneFillsOf(run.extended);
     if (!Array.isArray(run.lanes) || run.lanes.length !== fills.full.length + fills.none.length) throw new Error("Invalid census lanes");
     const seen = new Set<string>();
     for (const lane of run.lanes) {
       const key = `${lane.set}/${lane.fill}`;
       if (!["full", "none"].includes(lane.set) || !(fills[lane.set] ?? []).includes(lane.fill) || seen.has(key) ||
-          !["identical", "different", "stopped", "reference-failed", "trace-dropped"].includes(lane.outcome) ||
+          !["identical", "different", "equivalent", "audible-difference", "stopped", "reference-failed", "trace-dropped"].includes(lane.outcome) ||
           !Number.isSafeInteger(lane.samples) || lane.samples < 0 || !Number.isSafeInteger(lane.writes) || lane.writes < 0 || !hex(lane.pcmSha256) || !hex(lane.traceSha256) ||
           (lane.outcome === "identical" && (ref.outcome !== "clean" || lane.samples !== wanted || lane.pcmSha256 !== ref.pcmSha256 || lane.traceSha256 !== ref.traceSha256 || lane.writes !== ref.writes)) ||
           (lane.firstDifferenceSample !== null && (!Number.isSafeInteger(lane.firstDifferenceSample) || lane.firstDifferenceSample < 0)))
         throw new Error(`Invalid census lane ${key}`);
+      if (lane.stoppedAtSample !== undefined && (run.comparison !== "listener-v1" || !Number.isSafeInteger(lane.stoppedAtSample) || lane.stoppedAtSample < 0 || lane.stoppedAtSample > lane.samples))
+        throw new Error("Invalid decoder stop position");
+      if (run.comparison === "listener-v1") {
+        if (!["equivalent", "audible-difference", "stopped", "reference-failed", "trace-dropped"].includes(lane.outcome)) throw new Error("Invalid listener outcome");
+        const evidence = lane.listener;
+        if (["equivalent", "audible-difference"].includes(lane.outcome) && (!evidence || evidence.policy !== "listener-v1" ||
+            !["register-equivalent", "spectral"].includes(evidence.method) || !Number.isSafeInteger(evidence.windows) || evidence.windows < 0 || evidence.windows > Math.ceil(wanted / 2048) ||
+            !Number.isSafeInteger(evidence.differentWindows) || evidence.differentWindows < 0 || evidence.differentWindows > evidence.windows ||
+            !Number.isFinite(evidence.maxDistance) || evidence.maxDistance < 0 ||
+            !Number.isFinite(evidence.maxAbsoluteDifference) || evidence.maxAbsoluteDifference < 0 ||
+            (lane.outcome === "equivalent" ? evidence.audible !== false || lane.samples !== wanted || evidence.windows !== Math.ceil(wanted / 2048) : evidence.audible !== true || evidence.method !== "spectral" || (evidence.differentWindows < 2 && !(evidence.differentWindows === 1 && evidence.maxDistance > 0.8 && evidence.maxAbsoluteDifference > 0.03)))))
+          throw new Error("Invalid listener evidence");
+      } else if (lane.listener || ["equivalent", "audible-difference"].includes(lane.outcome)) throw new Error("Listener evidence in exact run");
       seen.add(key);
     }
     if ((ref.repeat === "identical") && ref.outcome !== "clean") throw new Error("Contradictory reference repeat");

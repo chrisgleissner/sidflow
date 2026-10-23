@@ -20,7 +20,7 @@ engines=sidlite   # reSIDfp lanes are refused: see doc/research/hvsc-rom-product
 retry=(); [[ "${ROM_AUDIT_RETRY_FAILURES:-0}" == 1 ]] && retry=(--retry-failures)
 hvsc=workspace/hvsc/C64Music
 roms=workspace/roms
-pilot=workspace/rom-audit-v3
+pilot=workspace/rom-audit-v4
 full=workspace/rom-audit-full
 evidence=workspace/rom-audit-hardening
 review=doc/research/hvsc-rom-adversarial-review.md
@@ -50,17 +50,21 @@ fi
 
 if want bench; then
   log "bench: throughput on this machine and projected duration of the full census"
-  bun scripts/rom-audit/select-pilot.ts "$hvsc" workspace/rom-audit-v3-selection.json
-  bun scripts/rom-audit/bench.ts "$hvsc" "$roms" workspace/rom-audit-v3-selection.json --workers "$workers" --count 60 --max-hours "${ROM_AUDIT_MAX_HOURS:-15}" \
-    || { [[ "${ROM_AUDIT_IGNORE_BENCHMARK:-0}" == 1 ]] && echo "continuing despite the projection" || { echo "Stopping: the projection exceeds the budget (ROM_AUDIT_IGNORE_BENCHMARK=1 to continue)" >&2; exit 3; }; }
+  bun scripts/rom-audit/select-pilot.ts "$hvsc" workspace/rom-audit-v4-selection.json
+  bun scripts/rom-audit/bench.ts "$hvsc" "$roms" workspace/rom-audit-v4-selection.json --workers "$workers" --count 80 --max-hours "${ROM_AUDIT_MAX_HOURS:-15}" \
+    || { status=$?; if [[ "$status" == 3 && "${ROM_AUDIT_IGNORE_BENCHMARK:-0}" == 1 ]]; then
+      echo "continuing despite the projection"
+    else
+      echo "Stopping: benchmark failed or exceeded the budget (exit $status)" >&2; exit "$status"
+    fi; }
 fi
 
 if want pilot; then
   log "pilot: reviewed stratified selection (at most 5%), engines: $engines"
   if [[ "$(bun scripts/rom-audit/stage-status.ts pilot "$pilot")" == done ]]; then echo "pilot already complete"; else
-  bun scripts/rom-audit/select-pilot.ts "$hvsc" workspace/rom-audit-v3-selection.json
+  bun scripts/rom-audit/select-pilot.ts "$hvsc" workspace/rom-audit-v4-selection.json
   bun scripts/rom-audit/audit.ts --hvsc "$hvsc" --roms "$roms" --out "$pilot" --workers "$workers" --seconds 10 \
-    --rollout pilot --selection workspace/rom-audit-v3-selection.json --engines "$engines" --extended-every 5 ${retry[@]+"${retry[@]}"}
+    --rollout pilot --selection workspace/rom-audit-v4-selection.json --engines "$engines" --extended-every 5 ${retry[@]+"${retry[@]}"}
   fi
 fi
 
@@ -82,6 +86,6 @@ if want publish; then
   bun scripts/rom-audit/publish.ts --production "$full" "$full/published"
   cat "$full/coverage.json"
   echo "Dataset: $full/published (manifest.json, deny-list.<engine>.json, research.jsonl.gz, census.jsonl.gz)"
-  echo "Copy $full/published into doc/research/hvsc-rom-catalogue/v3/ to commit it; see doc/research/hvsc-rom-full-run.md"
+  echo "Copy $full/published into doc/research/hvsc-rom-catalogue/v4/ to commit it; see doc/research/hvsc-rom-full-run.md"
 fi
 log "stage(s) finished"

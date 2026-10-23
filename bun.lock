@@ -21,7 +21,7 @@
         "@types/uuid": "^11.0.0",
         "baseline-browser-mapping": "^2.9.4",
         "bun-types": "^1.3.1",
-        "libsidplayfp-wasm-audit": "npm:libsidplayfp-wasm@1.1.0",
+        "libsidplayfp-wasm-audit": "npm:libsidplayfp-wasm@1.1.1",
         "pngjs": "^7.0.0",
         "speedscope": "^1.20.4",
         "typescript": "^5.4.0",
@@ -1467,7 +1467,7 @@
 
     "libsidplayfp-wasm": ["libsidplayfp-wasm@1.0.1", "", {}, "sha512-uOFxkjxVJdBhMSOzxHCj9PDCtDe69adr9GTDSpFUixzRo5+Jo6FMjEAWyDsZzENwnxaidQpFKxCbtUrGpU0BJw=="],
 
-    "libsidplayfp-wasm-audit": ["libsidplayfp-wasm@1.1.0", "", {}, "sha512-po4ukYpeP/HYYLDr6fjc52WbyJR4+Ud0nJk+eVsVGyXIMf91M/U5ek5XxZxhVRiDy4qPCQmJ0nSWpjQSzuCBUA=="],
+    "libsidplayfp-wasm-audit": ["libsidplayfp-wasm@1.1.1", "", {}, "sha512-SJ9JSUWoUDGsMERqzryFqcJVDn1/XzFCWjXitxDbiWEDoeGK3ALqe1UtQOlr2vk6LHqk8XdXBR+IoqHOZQ3Ozg=="],
 
     "lightningcss": ["lightningcss@1.30.2", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.30.2", "lightningcss-darwin-arm64": "1.30.2", "lightningcss-darwin-x64": "1.30.2", "lightningcss-freebsd-x64": "1.30.2", "lightningcss-linux-arm-gnueabihf": "1.30.2", "lightningcss-linux-arm64-gnu": "1.30.2", "lightningcss-linux-arm64-musl": "1.30.2", "lightningcss-linux-x64-gnu": "1.30.2", "lightningcss-linux-x64-musl": "1.30.2", "lightningcss-win32-arm64-msvc": "1.30.2", "lightningcss-win32-x64-msvc": "1.30.2" } }, "sha512-utfs7Pr5uJyyvDETitgsaqSyjCb2qNRAtuqUeWIAKztsOYdcACf2KtARYXg2pSvhkt+9NfoaNY7fxjl6nuMjIQ=="],
 

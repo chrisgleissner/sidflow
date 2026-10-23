@@ -1,31 +1,13 @@
-/**
- * Offline, bounded ROM eligibility for HVSC subtunes, per SID renderer.
- *
- * A `compatible` bit means: on the pinned engine (`libsidplayfp-wasm` 1.1.0, the renderer
- * named by the profile), configured exactly as the consumer profile, a fresh playback
- * with that ROM set produced the same PCM and the same cycle-timed SID writes as the
- * full-ROM reference for the whole documented duration plus a 5 s margin. It is not a
- * statement about any other engine, version, sample rate, ROM image or about looping.
- *
- * The ROM sets are those C64 Commander can create: KERNAL and BASIC supplied together
- * (CHARGEN always `null`), or nothing supplied. A bank the consumer leaves `null` keeps
- * whatever the engine heap held, so a decision requires identical output with that bank
- * filled with zeros and with 0xFF, which shows the run does not depend on its content.
- *
- * Consumer obligations (the lookup can only verify the identities it is given):
- *  - build the lookup from your ACTUAL profile and engine hashes; a different profile
- *    derives a different engine id and every query denies;
- *  - pass the SHA-256 of each present ROM and `null` for an absent one;
- *  - each eligible playback starts from a new player with that ROM set; ROMs are never
- *    changed during a playback;
- *  - elapsed time is emulated time since reset; stop at `maxPlaybackSeconds`; repetition is
- *    only a fresh restart; never continue past the deadline.
- * Verify artifact checksums against a trusted manifest before loading.
+/** Offline listener-relevant ROM eligibility. Compatible means no material
+ * audible difference against the pinned full-ROM reference through the stored
+ * horizon. Consumers must zero absent banks, match engine/profile/model hashes,
+ * and stop at the deadline. Unknown is reserved for inadequate evidence.
+ * See doc/research/hvsc-rom-production.md for thresholds and limitations.
  */
 import { createHash } from "node:crypto";
 import { stringifyDeterministic, type JsonValue } from "./json.js";
 
-export const ROM_ELIGIBILITY_METHODOLOGY = "rom-audit-3";
+export const ROM_ELIGIBILITY_METHODOLOGY = "rom-audit-4";
 export const ROM_DENY_SCHEMA = "sidflow-rom-deny-4";
 /** The reference system ROM images. Any other image denies. */
 export const REFERENCE_ROM_SHA256 = {
@@ -40,15 +22,15 @@ export type RomAuditEngine = (typeof ROM_AUDIT_ENGINES)[number];
 export function romConsumerProfile(engine: RomAuditEngine) {
   return {
     engine,
-    package: "libsidplayfp-wasm@1.1.0",
+    package: "libsidplayfp-wasm@1.1.1",
     sampleRate: 48000,
     stereo: true,
     powerOnDelay: "engine default (8191)",
-    pullCycles: engine === "sidlite" ? 256 : 100000,
+    pullCycles: 100000,
     sidModel: "from header; engine default where the header does not name one",
     subtuneSelection: "start-song header rewrite before load",
     romSets: { full: "KERNAL and BASIC supplied, CHARGEN null", none: "KERNAL, BASIC and CHARGEN all null" },
-    nullBanks: "uninitialised in the consumer; decisions require identical output with zero and 0xFF fills",
+    nullBanks: "absent banks must be zeroed before each player; listener-v1",
   } as const;
 }
 export type RomConsumerProfile = ReturnType<typeof romConsumerProfile>;
@@ -111,7 +93,7 @@ export function createRomEligibilityLookup(data: RomDenyList,
     data.methodology === ROM_ELIGIBILITY_METHODOLOGY && data.methodology === expected.methodology;
   const valid = matches && data.entries !== null && typeof data.entries === "object" && !Array.isArray(data.entries) &&
     Object.entries(data.entries).every(([identity, songs]) => hash(identity) && Array.isArray(songs) && songs.length > 0 &&
-      songs.every(pair => Array.isArray(pair) && pair.length === 5 && ((pair[0] | pair[1]) & ~0b00001001) === 0 && (pair[4] === 0 || (pair[4] === 1 && pair[0] !== 0)) &&
+      songs.every(pair => Array.isArray(pair) && pair.length === 5 && ((pair[0] | pair[1]) & ~0b00001001) === 0 && (pair[4] === 0 || (pair[4] === 1 && (pair[0] | pair[1]) !== 0)) &&
         pair.slice(0, 2).every(n => Number.isInteger(n) && n >= 0 && n <= 255) && !(pair[0] & pair[1]) &&
         Number.isSafeInteger(pair[2]) && Number.isSafeInteger(pair[3]) && pair[3] >= 0 &&
         (pair[0] ? pair[2] > 0 && pair[2] <= 3600000 && pair[3] > 0 && pair[3] < pair[2] : pair[2] === 0 && pair[3] === 0)));
@@ -125,13 +107,14 @@ export function createRomEligibilityLookup(data: RomDenyList,
     if (!Number.isInteger(song) || song < 1 || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return deny("invalid-lookup");
     const pair = entries.get(sha)?.[song - 1];
     if (!pair) return deny("missing-entry");
+    // Positive and negative measurements both describe the measured model.
+    if (((pair[0] | pair[1]) & (1 << mask)) && expected.fallbackSidModel !== "MOS8580" && pair[4] !== 1)
+      return deny("depends-on-fallback-sid-model");
     if (pair[0] & (1 << mask)) {
-      // Measured with the MOS8580 fallback; a consumer forcing another fallback is covered only where the header fixes every chip's model.
-      if (expected.fallbackSidModel !== "MOS8580" && pair[4] !== 1) return deny("depends-on-fallback-sid-model");
       if (elapsedSeconds * 1000 >= pair[2]) return deny("observation-horizon-exhausted");
-      return { eligible: true, state: "compatible", reason: "bounded-documented-horizon-equality", maxPlaybackSeconds: pair[2] / 1000, documentedSeconds: pair[3] / 1000 };
+      return { eligible: true, state: "compatible", reason: "listener-equivalent-through-documented-horizon", maxPlaybackSeconds: pair[2] / 1000, documentedSeconds: pair[3] / 1000 };
     }
-    if (pair[1] & (1 << mask)) return { eligible: false, state: "incompatible", reason: "confirmed-cpu-halt", maxPlaybackSeconds: null, documentedSeconds: null };
+    if (pair[1] & (1 << mask)) return { eligible: false, state: "incompatible", reason: "audible-output-difference", maxPlaybackSeconds: null, documentedSeconds: null };
     return deny("compatibility-unresolved");
   };
 }

@@ -1,4 +1,4 @@
-/** Machine-readable publication for the methodology 3 census. Every header subtune is emitted,
+/** Machine-readable publication for the methodology 4 census. Every header subtune is emitted,
  * including pending ones. Per engine: a research record with the measurements and a deny list
  * derived only from them; the production lookup is then checked against every decision.
  */
@@ -20,7 +20,7 @@ export const sha = (v: string | Uint8Array): string => createHash("sha256").upda
 const json = (v: unknown): string => stringifyDeterministic(v as JsonValue, 0);
 export async function publishProduction(run: string, out = path.join(run, "published")): Promise<void> {
   const manifest = JSON.parse(await readFile(path.join(run, "manifest.json"), "utf8"));
-  if (manifest.schema !== 4 || manifest.methodology !== METHODOLOGY) throw new Error("Production publication requires a methodology 3 census run");
+  if (manifest.schema !== 4 || manifest.methodology !== METHODOLOGY) throw new Error("Production publication requires a methodology 4 census run");
   const headerText = await readFile(path.join(run, "headers.json"), "utf8"), horizonText = await readFile(path.join(run, "horizons.json"), "utf8");
   if (sha(headerText) !== manifest.headersSha256 || sha(horizonText) !== manifest.horizonsSha256) throw new Error("Header/horizon provenance mismatch");
   const headers = JSON.parse(headerText) as (Header & { header: unknown })[];
@@ -74,10 +74,10 @@ export async function publishProduction(run: string, out = path.join(run, "publi
           if (d.state === "compatible") allowed |= 1 << mask;
           if (d.state === "incompatible") incompatible |= 1 << mask;
         });
-        pairs.get(engine)!.push([allowed, incompatible, allowed ? Math.round(record!.seconds * 1000) : 0, allowed && horizon.documentedSeconds !== null ? Math.round(horizon.documentedSeconds * 1000) : 0, allowed && headerFixesSidModels(h.header as never) ? 1 : 0]);
+        pairs.get(engine)!.push([allowed, incompatible, allowed ? Math.round(record!.seconds * 1000) : 0, allowed && horizon.documentedSeconds !== null ? Math.round(horizon.documentedSeconds * 1000) : 0, (allowed || incompatible) && headerFixesSidModels(h.header as never) ? 1 : 0]);
         perEngine[engine] = { reference: run?.reference ?? null, lanes: run?.lanes ?? null, assessments: decisions };
       }
-      const out_ = { schema: "sidflow-rom-research-5", hvsc: 85, path: h.path, sha256: h.sha256, md5: h.md5, song, header: h.header,
+      const out_ = { schema: "sidflow-rom-research-6", hvsc: 85, path: h.path, sha256: h.sha256, md5: h.md5, song, header: h.header,
         declared: { basic: h.basicFlag, kernal: "not separately declared", chargen: "not separately declared" }, horizon, seconds: record?.seconds ?? 0,
         failure: record?.failure ?? null, engines: perEngine, confidence: "bounded operational comparison only",
         unresolved: [horizon.limitation], provenance: { methodology: METHODOLOGY, engineIds: Object.fromEntries(engines.map(e => [e, manifest.engines[e].engineId])) }, legacyEvidence: "../index.md" };
@@ -108,7 +108,7 @@ export async function publishProduction(run: string, out = path.join(run, "publi
   }
   const raw = gzipSync(censusText, { level: 9 });
   await writeFile(path.join(out, "census.jsonl.gz"), raw); artifacts["census.jsonl.gz"] = sha(raw);
-  const publication = { schema: "sidflow-rom-manifest-5", methodology: METHODOLOGY, hvsc: 85, files: headers.length, subtunes: represented,
+  const publication = { schema: "sidflow-rom-manifest-6", methodology: METHODOLOGY, hvsc: 85, files: headers.length, subtunes: represented,
     engines: manifest.engines, roms: manifest.roms, documents: manifest.documents, corpusSha256: manifest.corpusSha256, counts, windows, observedSeconds, plannedSeconds, unknownLengths,
     measuredSubtunes: rows.size, failedSubtunes: failed, extendedEvery: manifest.extendedEvery, crossCheck: { sampledSubtunes: sampled, disagreements, examples: disagreementList.slice(0, 20) }, pendingSubtunes: represented - rows.size,
     strictPolicy: "unknown/absent/expired/unsupported evidence denies; allowed playback must end at the recorded horizon", artifacts };

@@ -10,7 +10,7 @@ import path from "node:path";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import { REFERENCE_ROM_SHA256, type RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { CENSUS_SCHEMA, type CensusRecord, type EngineRun } from "./methodology.js";
-import { runEngine, SAMPLE_RATE, type RomImages } from "./wasm-lanes.js";
+import { runListenerEngine, SAMPLE_RATE, type RomImages } from "./wasm-lanes.js";
 
 const sha = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 export interface CensusJob { sha256: string; song: number; seconds: number; engines: RomAuditEngine[]; extended: boolean; hex: string }
@@ -20,7 +20,7 @@ export async function runJob(job: CensusJob, roms: RomImages): Promise<CensusRec
     const bytes = Buffer.from(job.hex, "hex");
     if (sha(bytes) !== job.sha256) throw new Error("Job input checksum mismatch");
     const runs: EngineRun[] = [];
-    for (const engine of job.engines) runs.push(await runEngine(engine, bytes, job.song, job.seconds, roms, job.extended));
+    for (const engine of job.engines) runs.push(await runListenerEngine(engine, bytes, job.song, job.seconds, roms, job.extended));
     return { ...header, runs };
   } catch (error) {
     console.error(`census job ${job.sha256.slice(0, 12)}#${job.song} failed: ${error instanceof Error ? error.stack : String(error)}`);

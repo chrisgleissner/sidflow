@@ -1,5 +1,71 @@
 # PLANS.md - SID Classification Pipeline Recovery
 
+## PR #109 continuation: listener relevance and 16-hour budget (2026-10-23)
+
+- [x] Inspect PR/CI and completed pilot. Pilot: 567 completed, one crashed worker,
+  4,553.233 seconds elapsed, 15.552 aggregate horizon-seconds/second. CI fails
+  because the maintained v3 publication is absent. Preserve existing v2 untracked files.
+- [x] Measure and reduce WASM allocation, trace and hashing overhead without losing
+  reference comparisons or late-song coverage; reproduce long-job memory behavior.
+- [x] Add a separately identified listener-relevant assessment: harmless timing
+  offsets must not be called audible failures; missing/changed music must remain
+  detectable. Keep exact evidence distinct and never relabel old measurements.
+- [x] Replace unsupported CPU extrapolations with measured aggregate throughput,
+  representative corpus weighting and an explicit target-machine budget gate.
+- [x] Restore maintained publication and update usage/review evidence; CI will be checked after the validated push.
+- [x] Build/typecheck and run full tests three consecutive times; record literal
+  outputs in doc/research/hvsc-rom-validation-4.md. Source qualification complete.
+- [ ] Validate the 14600K budget on that machine before a full-corpus run.
+
+Validated changes are being pushed to PR #109; its live checks are the CI
+follow-through record. No full-corpus completion or 14600K timing is claimed.
+
+The prior 11–17 hour claim divides by a per-lane speed estimate rather than the
+completed census rate. At the observed aggregate rate the full horizon inventory
+projects to 181.75 hours on this loaded 6700K. The pilot deliberately oversamples
+unusual/long songs, so this is diagnostic rather than a representative corpus ETA.
+
+Implementation: methodology 4 / census schema 2, exact audit dependency 1.1.1
+(current Commander main), safe default large pulls, shared SIDLite module with
+independent C64 states, buffered hashes, register timing tolerance and spectral
+fallback. Unknown is reserved for inadequate evidence. Controls cover inaudible
+writes, phase/DC shifts, dense digi writes, late/short events, quiet melody under
+loud bass, pitch/volume/stereo changes, sawtooth/noise timing and fallback models, held notes lost on a decoder stop, inaudible silent stops,
+and DC-preserving partial-window padding.
+Final qualification passed: strict script check, build, package checks,
+source-bound decision regression, reproducibility and three focused runs
+(82 pass / 0 fail / 0 skip each). Partial development
+pilots are retained under workspace/rom-audit-v4-draft* and do not qualify sources.
+
+The first 80-job corpus-weighted 1.1.1 benchmark measured 43.762 aggregate horizon
+seconds/second, projecting 67.70 h (77.86 h with 15% margin) on this loaded 6700K.
+It precedes the final band refinement and improved per-subtune sampling and is
+not final qualification evidence. No 14600K duration is claimed. A target-machine
+benchmark with its final sources must pass the 15 h census budget.
+
+Final-renderer benchmark: 80 per-subtune-hash samples, all format/duration strata,
+7 workers, 46.8 aggregate horizon-seconds/second. Population-weighted projection
+62.52 h; 71.90 h including the 15% margin, on the loaded 6700K. Stored in
+workspace/rom-audit-benchmark-v4.json. The 14600K would need approximately 4.8x
+this measured throughput to pass the configured 15 h budget; it has not been
+measured. The canonical final-source pilot completed: 567/567, 0 failures, 113 matching
+reference repeats, no unresolved measured decisions for masks 0/3. Mask 0:
+399 compatible / 168 incompatible; mask 3: 567 compatible. Maximum horizon
+2,031.332 s and the prior crash (Gordian Tomb #2, 1,922 s) both passed. Elapsed
+1,592.253 s, 44.473 aggregate horizon-seconds/second, peak worker RSS 188 MB.
+The maintained v4 snapshot was republished (87,868 total rows, 567 measured,
+87,301 pending). Exhaustive lookup consistency: 24 pass / 0 fail / 1,406,134
+expectations. Source identity 6d8fbd169fc69cb0bac600fbda560812988b9e0a7383e683bd73526ec98581f7
+matches a fresh checkout. Qualification completed with that unchanged identity:
+three full suites each 2,958 pass / 0 fail / 0 skip. The matching machine
+certificate is under workspace/rom-audit-hardening; stage-status reports done.
+Literal terminal summaries are retained in doc/research/hvsc-rom-validation-4.md.
+
+Qualification additionally verifies the complete canonical selection and repeat
+sampling, clears ROM_DECISION_ONLY for the regression, and checks measured masks
+0/3 have no unknown results. Reviewer identity is truthful and portable rather
+than hardcoded to an unavailable model; no independent Opus review is claimed.
+
 ## HVSC ROM dependency investigation (2026-10-20) — complete
 
 Branch `research/hvsc-rom-requirements`, based on refreshed `origin/main` (`d893e32`).

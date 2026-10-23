@@ -95,6 +95,7 @@ export type SyntheticKind =
   | "silent-divergence"  // volume 0: PCM equal, SID write trace differs when BASIC is absent
   | "sparse-sfx"         // one write at frame 2500 (50 s) and nothing else
   | "silence"            // no SID write at all
+  | "silent-halt"        // volume 0; halts without BASIC after the initial transient has ended
   | "halt-without-basic" // jumps through a BASIC byte; the absent (zero) bank leads to an illegal opcode
   | "busy-writes"        // more than the trace cap of SID writes within 15 s
   | "osc3-reader"        // reads $D41B, then depends on KERNAL after frame 100
@@ -107,7 +108,7 @@ export function syntheticFixture(kind: SyntheticKind, options: SyntheticOptions 
   const chip = kind === "second-sid-late" ? 1 : kind === "third-sid-late" ? 2 : 0;
   const base = 0xd400 + 0x20 * chip;
   const a = new Asm(0x1000);
-  const volume = kind === "silent-divergence" || kind === "silent-tail" ? 0 : 15;
+  const volume = kind === "silent-divergence" || kind === "silent-tail" || kind === "silent-halt" ? 0 : 15;
   // init: bank RAM+IO, clear the frame counter, audible sawtooth on voice 1 of the chosen chip.
   if (kind === "busy-writes") a.emit(0x78);   // SEI: with the KERNAL banked out an IRQ would vector through RAM
   a.lda(0x35).staZp(1).lda(0).sta(0x3000).sta(0x3001);
@@ -131,6 +132,9 @@ export function syntheticFixture(kind: SyntheticKind, options: SyntheticOptions 
     } else if (kind === "osc3-reader") {
       a.ldaAbs(0xd41b).staZp(0xfd).lda(0x37).staZp(1).ldaAbs(0xe000).staZp(0xfe).lda(0x35).staZp(1).ldaAbs(0xfd).emit(0x4d, 0xfe, 0x00)
         .sta(base).emit(0x60);
+    } else if (kind === "silent-halt") {
+      a.lda(0x37).staZp(1).ldaAbs(0xa000).branch(BNE, "present").emit(0x02)
+        .label("present").lda(0x35).staZp(1).emit(0x60);
     } else if (kind === "silent-tail") {
       a.lda(0x40).sta(base + 1).lda(0x37).staZp(1).ldaAbs(0xa000).staZp(0xfe).lda(0x35).staZp(1).ldaAbs(0xfe).branch(BEQ, "skipped").lda(1).sta(base + 14)
         .label("skipped").emit(0x60);

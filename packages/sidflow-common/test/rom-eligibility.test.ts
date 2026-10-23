@@ -13,10 +13,10 @@ import { SYSTEM_ROMS } from "../../sidflow-classify/src/render/system-roms-fetch
 import { engineRun,lane,censusRecord,publicationFixture,fakeEngine,fixtureHash,stable,SAMPLE_RATE,CENSUS_ENGINES } from "./rom-audit-fixtures.js";
 
 const engine=fakeEngine("sidlite"),profile=romConsumerProfile("sidlite");
-const expected={...engine,profile,methodology:"rom-audit-3",fallbackSidModel:"MOS8580" as const};
+const expected={...engine,profile,methodology:"rom-audit-4",fallbackSidModel:"MOS8580" as const};
 const hash="b".repeat(64);
 const selection=(mask:number):RomSelection=>({kernal:mask&1?REFERENCE_ROM_SHA256.kernal:null,basic:mask&2?REFERENCE_ROM_SHA256.basic:null,chargen:mask&4?REFERENCE_ROM_SHA256.chargen:null});
-function data():RomDenyList{return {schema:"sidflow-rom-deny-4",engineId:romEngineId(engine,profile),romSetId:romSetId(),methodology:"rom-audit-3",
+function data():RomDenyList{return {schema:"sidflow-rom-deny-4",engineId:romEngineId(engine,profile),romSetId:romSetId(),methodology:"rom-audit-4",
  entries:{[hash]:[[0b00001000,0b00000001,15000,10000,1],[0,0,0,0,0]]}};}
 describe("production ROM eligibility",()=>{
  it("evaluates the Commander ROM sets and denies every other set",()=>{
@@ -49,7 +49,7 @@ describe("production ROM eligibility",()=>{
  it("derives different engine identities per renderer and per profile field",()=>{
   const ids=new Set(ROM_AUDIT_ENGINES.map(e=>romEngineId(engine,romConsumerProfile(e))));
   expect(ids.size).toBe(ROM_AUDIT_ENGINES.length);
-  expect(romConsumerProfile("sidlite").pullCycles).toBe(256);
+  expect(romConsumerProfile("sidlite").pullCycles).toBe(100000);
   expect(romEngineId(engine,{...profile,sampleRate:44100} as unknown as typeof profile)).not.toBe(romEngineId(engine,profile));
  });
  it("rejects engine, profile, methodology and malformed tables",()=>{
@@ -281,7 +281,7 @@ describe("publication",()=>{
 });
 // Once present, validate ALL maintained research/production decisions, without skipping cases or sampling.
 it("exhaustively agrees with every maintained research decision",async()=>{
- const dir=path.resolve(import.meta.dir,"../../../doc/research/hvsc-rom-catalogue/v3");
+ const dir=path.resolve(import.meta.dir,"../../../doc/research/hvsc-rom-catalogue/v4");
  if(!existsSync(path.join(dir,"manifest.json")))throw new Error("Maintained ROM publication is missing");
  const manifest=JSON.parse(await readFile(path.join(dir,"manifest.json"),"utf8"));
  const compressed=await readFile(path.join(dir,"research.jsonl.gz"));

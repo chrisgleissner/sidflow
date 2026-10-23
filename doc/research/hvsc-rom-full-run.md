@@ -1,92 +1,64 @@
-# Running the full HVSC 85 ROM census on another machine
+# Run the HVSC 85 listener-relevant ROM audit
 
-## Status (read first)
-
-The branch contains the complete pipeline, but **`run-full.sh` stops at the `setup` stage until the sources carry an
-architect approval**: `doc/research/hvsc-rom-adversarial-review.md` must end with an `Approved-source-identity` line equal to
-`bun scripts/rom-audit/harden.ts --identity`. That line is written only after the final review of the frozen sources and a
-passing pilot, and it is not there yet. Use a commit or tag that has it; the one-liner below is correct for that commit.
-A fresh clone of the branch computes the same source identity as the development machine (checked).
-
-## Summary
-
-`scripts/rom-audit/run-full.sh` runs the complete methodology 3 census
-([design](hvsc-rom-production.md)) from a fresh clone: it sets up the inputs, checks that the sources carry an architect
-approval, benchmarks the machine and projects the total duration, measures the reviewed pilot, qualifies the sources on this
-machine, renders all 87,868 subtunes on the shipping WASM engine (`libsidplayfp-wasm` 1.1.0, SIDLite) and publishes the
-dataset. Every stage checkpoints, so the identical command resumes after an interruption.
-
-**Duration.** A subtune costs about 2.15 full-length renders (reference plus one supplied-set lane; the four
-nothing-supplied lanes diverge within a fraction of a second for ~96% of programs) plus 2% cross-check samples. Measured on the
-8-thread i7-6700K under heavy foreign load: 11.3 horizon-seconds per second per worker thread; the corpus has 10,176,145
-horizon-seconds. For a 14600K (6 P + 8 E cores, 20 threads) the estimate is 11 to 17 hours. **That is an estimate.** The
-`bench` stage measures the real rate in a few minutes and refuses to continue if the projection exceeds
-`ROM_AUDIT_MAX_HOURS` (default 15).
-
-## One-liner
+The goal is a full census within 16 hours on a 14600K. Run the benchmark on that
+machine first; a different CPU's speed or the deliberately adversarial pilot is
+not sufficient evidence for this budget.
 
 ```sh
-git clone git@github.com:chrisgleissner/sidflow.git && cd sidflow \
-  && git checkout <branch-or-tag-given-to-you> && bash scripts/rom-audit/run-full.sh 2>&1 | tee -a rom-audit-run.log
+git clone git@github.com:chrisgleissner/sidflow.git && cd sidflow
+git checkout feat/hvsc-rom-audit-methodology-3
+set -o pipefail
+bash scripts/rom-audit/run-full.sh 2>&1 | tee -a rom-audit-run.log
 ```
 
-Resume after a reboot or Ctrl-C: the same command. A finished pilot or a valid hardening certificate is
-detected and skipped (`scripts/rom-audit/stage-status.ts`); the `full` stage resumes from its checkpoint.
-Run one stage: `ROM_AUDIT_STAGE_ONLY=full bash scripts/rom-audit/run-full.sh`.
-`ROM_AUDIT_WORKERS=N` sets the worker count (default: logical CPUs minus one).
-`ROM_AUDIT_MAX_HOURS=H` sets the budget checked by the `bench` stage; `ROM_AUDIT_IGNORE_BENCHMARK=1` continues despite a larger projection.
-`ROM_AUDIT_RETRY_FAILURES=1` re-runs jobs recorded as failed. Only the SIDLite renderer is supported;
-reSIDfp lanes are refused (see the design document).
+Linux prerequisites: Bun 1.3.x, Node, npm, git, around 5 GB disk and enough RAM
+for the requested workers. The scripts install locked packages and fetch inputs.
+HVSC 85 is required: 61,157 SID files, 87,868 subtunes, corpus identity
+`4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e`.
+When a newer release exists, supply HVSC 85 at `workspace/hvsc/C64Music` first.
 
-## Prerequisites (Linux x86-64)
+Stages are `setup`, `bench`, `pilot`, `harden`, `full`, `publish`. Setup verifies
+source approval before qualification. The benchmark renders 80 stratified
+subtunes from the complete verified corpus using the same listener classifier,
+workers and repeat sampling as the full census. It writes
+`workspace/rom-audit-benchmark.json`: actual CPU, workers, corpus/source/engine
+identities, per-job timings, population weights and projected hours with a 15%
+margin. Benchmark samples are reserved in the same 5% rollout ledger as pilots.
 
-`bun` 1.3.x, `node`, `npm` (the repository test suite builds with npm) and `git`; about 5 GB free disk
-and 650 MB RAM per worker (workers are recycled every 200 jobs; the log shows peak worker RSS). No
-compiler, Docker or native build is needed: the census runs the prebuilt WASM engine from the npm
-package. The script stops with a message if a tool is missing.
+The budget gate defaults to **15 hours for the census**, leaving one hour within
+the requested 16-hour target. Setup and hardening are additional prerequisites;
+they include three full test suites and should be done before timing the census.
+The gate stops on a larger projection. `ROM_AUDIT_IGNORE_BENCHMARK=1` explicitly
+bypasses only that budget rejection; it never bypasses a broken benchmark.
+Neither the projection nor its margin guarantees the eventual runtime.
 
-## Stages
+Use `ROM_AUDIT_WORKERS=N` to choose workers (default logical CPUs minus one),
+`ROM_AUDIT_MAX_HOURS=H` for the budget, `ROM_AUDIT_STAGE_ONLY=bench` for one stage,
+and `ROM_AUDIT_RETRY_FAILURES=1` to retry failed jobs. The same command resumes
+checkpoints after interruption. Source/profile changes require a new run directory
+and qualification; old exact-comparison v3 data cannot be resumed as listener data.
 
-| Stage | What it does | Stops when |
-|---|---|---|
-| `setup` | `bun install --frozen-lockfile`, fetches HVSC (the latest release; HVSC 85 is required), fetches the authentic ROMs, verifies the corpus identity `4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e` (61,157 files / 87,868 subtunes), checks that `doc/research/hvsc-rom-adversarial-review.md` carries an `Approved-source-identity` line (the last one counts) for the sources you checked out (`bun scripts/rom-audit/harden.ts --identity`), and runs the repository test suite once so that environment problems show up before the pilot. | A different HVSC release (once HVSC 86 exists, place the HVSC 85 collection in `workspace/hvsc/C64Music` first), a modified file, sources without architect approval, or a failing test. |
-| `bench` | Renders 60 representative subtunes of the pilot selection (already counted by the ledger) and prints the measured rate and the projected hours for the full census. | A projection above the budget. |
-| `pilot` | Renders the reviewed stratified pilot (567 subtunes, under the 5% ceiling), 20% of it with the full cross-check lanes. | A job error is recorded as a failure, not a stop. |
-| `harden` | Decision-path regression on the census engines, pilot completeness (engine hashes, tool hash, no failed jobs), publication, fresh-process re-run equality, three focused test runs and three complete repository suites (each 0 fail, 0 skip). Writes `workspace/rom-audit-hardening/certificate.json`. About 1.5 hours. | Any failed check, or any change to the sources or engine during qualification. |
-| `full` | `audit.ts --rollout full` with the certificate: every subtune at its full documented horizon, resumable. | Rerun to continue. |
-| `publish` | Writes `workspace/rom-audit-full/published/` (`manifest.json`, `deny-list.<engine>.json`, `research.jsonl.gz`, `census.jsonl.gz`) and prints coverage. | |
-
-The certificate is verified again when `full` starts: source identity, and every cited log is
-re-hashed and re-parsed (test logs must show 0 fail and 0 skip, the regression digest must match).
-
-## Monitoring
+The pilot lives in `workspace/rom-audit-v4`, with 567 selected subtunes and a
+sampled reference repeat. Hardening refuses failed jobs and unresolved measured
+results for either supported ROM set. Full execution remains gated on a completed
+source-bound certificate. Check current approval and validation in
+[the review](hvsc-rom-adversarial-review.md).
 
 ```sh
-tail -n 3 rom-audit-run.log                 # done/total, failures, horizon-seconds per second, ETA in hours
-cat workspace/rom-audit-full/coverage.json  # after a stage ends
-wc -l workspace/rom-audit-full/census.jsonl # one line per finished subtune
+tail -n 3 rom-audit-run.log
+cat workspace/rom-audit-full/coverage.json
 ```
 
-A job that exceeds its timeout (ten times its expected duration, at least five minutes) or throws
-is recorded as a failure and its decisions are `unknown`; the census goes on. Rerun with
-`ROM_AUDIT_RETRY_FAILURES=1` after fixing the cause.
+Publication is `workspace/rom-audit-full/published/`. Its manifest reports measured,
+failed and pending subtunes; a complete successful census has zero failed and
+zero pending. Copy it to `doc/research/hvsc-rom-catalogue/v4/` to update the
+maintained snapshot and run the exhaustive lookup test. Horizons above one hour
+are left pending rather than silently shortened (HVSC 85's verified maximum is
+2,031.332 seconds).
 
-## After the run
-
-1. Read `workspace/rom-audit-full/published/manifest.json`: per-mask `compatible` /
-   `incompatible` / `unknown` counts with reasons, `measuredSubtunes`, `failedSubtunes` and
-   `pendingSubtunes` (0 pending and 0 failed for a complete census), `unsupportedDuration` in
-   `coverage.json`.
-2. To commit the dataset, copy the published files into `doc/research/hvsc-rom-catalogue/v3/`,
-   run `bun test packages/sidflow-common/test/rom-eligibility.test.ts` (it checks every published
-   decision against the production lookup) and open a PR.
-3. A subtune with a horizon above 3,600 s is never clamped; it stays pending.
-
-## What a result means
-
-`compatible` applies to the consumer profile in the design document (WASM 1.1.0, 48 kHz, default
-power-on delay, ROM sets {KERNAL+BASIC with CHARGEN null, nothing}) and the documented duration plus
-5 s, nothing more. **It applies to the renderer the census ran: SIDLite.** Commander's default renderer
-depends on the build (SidplayEZ on Android, reSIDfp on web and iOS); neither is covered. Unknown is not failure: the set "nothing
-supplied" is `unknown` for almost every program, because the engine's interrupt shim shifts SID
-writes by a few cycles. The decision also assumes the MOS8580 fallback SID model unless the header names the model of every chip.
+Results answer whether missing ROMs cause listener-relevant differences on the
+pinned SIDLite engine. Tiny timing changes are accepted. **Consumers must zero
+absent banks before creating a player**, use the tested profile/model and stop at
+the measured horizon. See [the methodology and thresholds](hvsc-rom-production.md).
+No coverage of another renderer, actual hardware fidelity or indefinite looping
+is implied.
