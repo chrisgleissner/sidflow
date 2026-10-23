@@ -1838,3 +1838,134 @@ Equivalent programmatic validation will be performed:
 
 ### Outcomes
 - Pending.
+
+## Full-song three-ROM audit and production projection (2026-10-23) — active
+
+- [x] Inspect existing runner, analysis, renderer, patches, parity and publisher;
+  preserve the four-ROM historical reports and 256-event safety constraint.
+- [x] Identify methodological gaps before implementation: identical/PCM-only short
+  windows escape extension; approximate write thresholds are diagnostic only;
+  CHARGEN is constant; native controls compare PCM and counts, not timed traces.
+  No workspace/checkpoints exist in this checkout. Installed target is 1.0.1.
+- [x] Verify/download HVSC85, inventory every subtune and song-length provenance.
+- [x] Extend native runner to eight isolated ROM masks, exact timed-write evidence,
+  duration policy, bounded resources and resumable complete/pending accounting.
+- [x] Add strict three-state research assessment, deterministic catalogue/manifest
+  and derived fail-closed production lookup, with exhaustive consistency checking.
+- [x] Add delayed KERNAL/BASIC/CHARGEN fixtures and expanded parity/sanitizer checks.
+- [ ] Execute full available inventory and rendering; preserve explicit unknowns
+  and exact pending counts if full-duration work exceeds available execution time.
+- [ ] Build, focused tests, established suite three consecutive times, document
+  literal outputs and measured throughput. Do not claim unfinished work complete.
+
+Correctness decisions before implementation: a finite observation supports only
+its declared horizon. Songlength metadata is a scheduling estimate, not a machine
+state recurrence proof. Unknown/interactive/loop-unproven cases retain uncertainty.
+A PCM-only difference is not proof of incorrect music. Strict production eligibility
+requires stable reference, validated engine provenance and exact timed writes plus
+PCM across the required horizon; approximate historical labels never grant access.
+
+Progress: verified all 61,157 raw MD5/path/subtune counts (87,868 subtunes) against
+HVSC85. All tokens have positive lengths; horizons range 10–2,031.332s, total
+10,176,145.245s. Two six-worker passes measured 763 subtunes / 6,104 mask outcomes,
+leaving 87,105 subtunes / 696,840 mask outcomes pending. Scheduling budgets were
+180s each, with active jobs drained; elapsed 205.526s and 181.051s. No environmental
+failure forced the stop. Full rendering remains unfinished (roughly 72h estimated
+at measured aggregate emulation throughput). Never describe the inventory as a
+completed full-duration census. Checkpoints: `workspace/rom-audit-v2`.
+
+Original 24 hash/count controls expanded to 104 controls: all eight masks, six
+historical inputs, four delayed synthetic fixtures, Giana60s and two measured
+full-horizon corpus cases. PCM and timed-write hashes/counts match. ASAN passes
+PAL/NTSC/busy-loop/Justincase plus all four delayed dependency fixtures. All 702,944
+published decisions are exhaustively checked against their research records.
+
+Build and strict script typecheck pass. Downloading HVSC activated an existing
+300-file persona integration test skipped at the empty-workspace baseline. It
+exposed two real sparse/steady-tone records with missing spectral contrast: the
+aggregator rejected every band when one Essentia coefficient was singular.
+Keep valid measured bands and add a focused regression; do not weaken the health
+assertion or skip the integration test. Full-suite validation is still running.
+
+Final corpus-wide protocol check found 576 floating-point horizon round-trip
+mismatches (e.g. 66.38499999999999 vs native JSON 66.385). Compute horizons in integer
+milliseconds; all 763 existing measurements retain exactly the same durations,
+and the complete inventory now has zero protocol round-trip mismatches. Added
+fractional-duration regressions and restarted final full-suite validation after
+this last source change. The preceding three full runs each passed 2,899 tests,
+0 fail, 0 skip; fresh final-source runs are pending.
+
+User requested effective core use. Keep native work idle during timing-sensitive
+unit probes, but run six native workers alongside each long real-HVSC integration
+phase. The validation coordinator records actual per-core busy percentages and
+checkpoint throughput in `workspace/rom-audit-v2/utilization-validation.json`.
+After validation, continue the unbounded full corpus run with seven native workers
+on this eight-logical-core machine; preserve PID/log and publish on completion.
+
+### Adversarial pilot hardening gate (user steering, 2026-10-23)
+
+Do not exceed 5% of HVSC files OR subtunes before adversarial small-corpus
+hardening is complete. Current unique scope is 1,653 subtunes / 370 files,
+below conservative limits 4,393 subtunes / 3,057 files. Stopped validation/audit
+coordinators before further rollout or native build changes; checkpoints survive.
+The earlier intention to launch an unrestricted background run is superseded.
+
+- [ ] Add an enforced pilot ceiling and a version-bound full-rollout hardening gate.
+- [ ] Adversarially test invalid/forged horizon and provenance inputs, short/late
+  divergences, trace truncation, matrix identity, stale parity and checkpoint data.
+- [ ] Replace hash-only native/WASM qualification with exact PCM/timed-trace
+  comparison on the small control corpus; bind certificates to actual outcomes.
+- [ ] Close the finite-observation/runtime contract: an allow decision must carry
+  its playback horizon; it cannot silently authorize indefinite looping.
+- [ ] Exercise the hardened protocol on diverse curated HVSC cases and synthetic
+  KERNAL/BASIC/CHARGEN cases before repeating larger pilot measurements.
+- [ ] Record findings and proof obligations, pass focused/sanitizer/parity and
+  final full-suite checks, then permit expansion with an explicit machine gate.
+
+### Handover requested by user (2026-10-23)
+
+Created `doc/hvsc-rom-audit-handover.md` for a fresh LLM to independently review and
+improve the unfinished implementation. Mandatory routing: Opus 5.5 for architect /
+important decisions, Sonnet 5.5 otherwise. No >5% rollout is approved. Audit-only
+scope is 1,653 subtunes / 370 files; known union including real integration/parity
+controls is 2,004 subtunes / 663 files. No broad audit/coordinator remains running.
+Current source is not validated: latest strict check fails because a child exit
+`signal` argument shadows the outer AbortSignal; native binaries predate immutable
+hex-payload changes; `harden.ts` and methodology-3 maintained publication are still
+missing. The handover explicitly separates historical test successes from current
+unvalidated hardening work and lists open proof/provenance/rollout weaknesses.
+
+### Takeover: hardening implementation (2026-10-23)
+
+Handover `doc/hvsc-rom-audit-handover.md` implemented against the Opus 5.5 architect
+review `doc/research/hvsc-rom-adversarial-review.md` (Sonnet 5.5 implemented; Opus 5.5
+reviewed read-only and wrote the decisions). No run beyond the 5% pilot has been started.
+
+Resolved from the review:
+
+- [x] Strict TypeScript passes (child `exit` argument no longer shadows the `AbortSignal`).
+- [x] B1 5% accounting: corpus ledger keyed by content SHA-256 + subtune, fsynced before
+  dispatch, checksummed, torn-tail preserved, history + integration subset imported;
+  verify-native and native-regression reserve their real-HVSC controls. 2,260 identities /
+  888 files were counted when the ledger was created from the earlier work (ceiling 4,393 / 3,057).
+- [x] B2 consumer profile: 48 kHz (Commander `DEFAULT_SAMPLE_RATE`), fixed power-on delay 5000,
+  zero banks. Allow evidence is produced by the shipping WASM engine under that profile
+  (`confirm.ts`); the native renderer only screens. SID feedback-register reads are counted.
+  Commander does not pin the power-on delay today; documented as a required consumer change.
+- [x] B3 hardening certificate: `harden.ts` (enumerated source identity incl. engine package,
+  lock file and git HEAD; clean release + ASan/UBSan builds; regressions; decision-regression
+  digests identical across binaries; parity control; pilot confirmation; fresh-process
+  re-render equality; 3 focused + 3 full suites; approval bound to the source identity).
+  `validateHardening` + `verifyHardeningEvidence` re-hash the evidence.
+- [x] H1 error classification (`errorKind`; only `cpu-halt` can be `incompatible`).
+- [x] H2 lookup takes ROM image hashes and the consumer profile; non-reference images deny.
+- [x] H3 kernel `flock` scope lock, taken before builds.
+- [x] H4 build stamp binds toolchain/flags and the output hash; fresh tree per stamp; UBSan added.
+- [x] H5 pilot requires `--selection`; `select-pilot.ts` is the reproducible stratified selection.
+- [x] H6 `parity.json` no longer grants anything; confirmation log is bound to native rows.
+- [x] Delayed-dependency coverage: 70 s triggers per ROM, non-default subtune, margin cases,
+  combined-only, exactly-one, silent divergence, sparse effect, silence, halt, trace overflow,
+  OSC3 reader, second/third SID (`decision-regression.ts`).
+- [ ] Pilot on the reviewed selection with rebuilt binaries, confirmation, v3 publication.
+- [ ] Architect approval line, `harden.ts` certificate, three complete suites.
+- [ ] Full-corpus execution (days; resumable) or exact outstanding counts.

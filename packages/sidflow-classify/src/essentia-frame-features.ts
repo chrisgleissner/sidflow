@@ -224,20 +224,11 @@ export function extractEssentiaFrameSummaries(
 
         const sc = toNumberArray(essentia, scRaw);
         if (sc) {
-          // SpectralContrast can occasionally produce extreme magnitudes on some frames
-          // (likely due to numerical issues on near-silent / low-energy frames). If we
-          // include those, they dominate the aggregate mean/std and break station
-          // similarity. Treat the whole frame as invalid if any coefficient is extreme.
-          let ok = true;
-          for (let i = 0; i < sc.length; i++) {
-            const v = sc[i];
-            if (!Number.isFinite(v) || Math.abs(v) > 1_000) {
-              ok = false;
-              break;
-            }
-          }
-          if (ok) {
-            for (let i = 0; i < sc.length; i++) add(contrast, sc[i]);
+          // A single band's coefficient can diverge when bandMean approaches
+          // one (Essentia uses 1/log(bandMean) as an exponent). Keep valid bands
+          // rather than discarding all contrast evidence for a sustained tone.
+          for (const value of sc) {
+            if (Number.isFinite(value) && Math.abs(value) <= 1_000) add(contrast, value);
           }
         }
 

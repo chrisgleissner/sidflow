@@ -1,5 +1,11 @@
 # Complete HVSC 85 ROM audit catalogue
 
+The maintained eight-mask machine-readable inventory and strict production
+projection are in [methodology 3](v3/README.md). The methodology 2 snapshot in
+[v2](v2/README.md) is superseded: it predates shipping-engine confirmation and must not
+be used for decisions. The pages below preserve the historical short-window evidence and
+do not grant production eligibility.
+
 Metadata and all subtunes of each included file. Each file appears once, in the first applicable bucket: execution sensitivity, inconclusive reference, PCM-only difference, then BASIC declaration. File buckets are mutually exclusive; per-subtune evidence remains in each row. Files with exclusively identical PCM and no BASIC declaration are omitted; they are not guaranteed ROM-independent.
 
 K-only removes BASIC; B-only removes KERNAL. ΔRMS is normalized PCM difference RMS, writes/prefix count SID writes, drift is maximum relative PHI1 cycles after startup alignment. `derived` means the source outcome read mapped BASIC zero times, under that same KERNAL state. Windows use the longest available controlled measurement. STIL includes applicable directory notes and full file notes (possibly describing other subtunes). Header authors differ from STIL cover artists; missing metadata is explicit. See [the report](../hvsc-rom-requirements.md) for thresholds and limits.

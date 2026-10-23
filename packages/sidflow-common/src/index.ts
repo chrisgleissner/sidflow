@@ -52,3 +52,4 @@ export * from "./similarity-export-features.js";
 export * from "./similarity-neighbour-selection.js";
 export * from "./similarity-hubness.js";
 export * from "./similarity-graph-build.js";
+export { createRomEligibilityLookup, romEngineId, romMask, romSetId, ROM_CONSUMER_PROFILE, ROM_DENY_SCHEMA, ROM_ELIGIBILITY_METHODOLOGY, REFERENCE_ROM_SHA256, type RomConsumerProfile, type RomDecision, type RomDenyList, type RomEligibility, type RomSelection } from "./rom-eligibility.js";

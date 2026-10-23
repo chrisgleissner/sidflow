@@ -2,6 +2,7 @@
 /** Validate completed safe runs and publish metadata/evidence Markdown, never SID/ROM/PCM.
  * publish.ts <full run> <notable run> <extended run> <HVSC root> <output directory>
  */
+import { publishProduction } from "./publish-production.js";
 import { createHash } from "node:crypto";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -46,6 +47,10 @@ function describe(m:Measurement):string {
   return `${m.error?`ERROR: ${md(m.error)}`:m.equal?"identical PCM":`ΔRMS ${number(m.differenceRms)}`}; writes ${m.sidWrites}; prefix ${m.matchingWritePrefix}; drift ${m.maxRelativeWriteDriftCycles}${m.derivedFrom?"; derived":""}`;
 }
 async function main():Promise<void> {
+  if (process.argv[2]==="--production") {
+    if (!process.argv[3]) throw new Error("Expected run directory");
+    await publishProduction(process.argv[3],process.argv[4]);return;
+  }
   const [fullDir,notableDir,extendedDir,root,out]=process.argv.slice(2);
   if (!fullDir||!notableDir||!extendedDir||!root||!out) throw new Error("Expected full/notable/extended directories, HVSC root, output directory");
   const headers=JSON.parse(await readFile(path.join(fullDir,"headers.json"),"utf8")) as Header[];
