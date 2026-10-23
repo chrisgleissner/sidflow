@@ -87,8 +87,8 @@ export interface RomEligibility {
   documentedSeconds: number | null;
 }
 /**
- * Mask of a Commander ROM set: 0 nothing supplied, 3 KERNAL+BASIC supplied with CHARGEN null,
- * 7 all three reference images. `null` for anything else, including a non-reference image.
+ * Mask of a Commander ROM set: 0 nothing supplied, 3 KERNAL+BASIC supplied with CHARGEN null.
+ * `null` for anything else, including a non-reference image and the all-three set Commander never creates.
  */
 export function romMask(roms: RomSelection): number | null {
   const slots = [roms?.kernal, roms?.basic, roms?.chargen];
@@ -98,7 +98,6 @@ export function romMask(roms: RomSelection): number | null {
   const [kernal, basic, chargen] = slots.map(v => v !== null);
   if (!kernal && !basic && !chargen) return 0;
   if (kernal && basic && !chargen) return 3;
-  if (kernal && basic && chargen) return 7;
   return null;
 }
 export function createRomEligibilityLookup(data: RomDenyList,
@@ -112,7 +111,7 @@ export function createRomEligibilityLookup(data: RomDenyList,
     data.methodology === ROM_ELIGIBILITY_METHODOLOGY && data.methodology === expected.methodology;
   const valid = matches && data.entries !== null && typeof data.entries === "object" && !Array.isArray(data.entries) &&
     Object.entries(data.entries).every(([identity, songs]) => hash(identity) && Array.isArray(songs) && songs.length > 0 &&
-      songs.every(pair => Array.isArray(pair) && pair.length === 5 && ((pair[0] | pair[1]) & ~0b10001001) === 0 && (pair[4] === 0 || (pair[4] === 1 && pair[0] !== 0)) &&
+      songs.every(pair => Array.isArray(pair) && pair.length === 5 && ((pair[0] | pair[1]) & ~0b00001001) === 0 && (pair[4] === 0 || (pair[4] === 1 && pair[0] !== 0)) &&
         pair.slice(0, 2).every(n => Number.isInteger(n) && n >= 0 && n <= 255) && !(pair[0] & pair[1]) &&
         Number.isSafeInteger(pair[2]) && Number.isSafeInteger(pair[3]) && pair[3] >= 0 &&
         (pair[0] ? pair[2] > 0 && pair[2] <= 3600000 && pair[3] > 0 && pair[3] < pair[2] : pair[2] === 0 && pair[3] === 0)));

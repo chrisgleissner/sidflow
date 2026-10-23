@@ -8,7 +8,8 @@
 # harden) are detected and skipped; the full stage resumes from its checkpoint. Environment:
 #   ROM_AUDIT_WORKERS         worker processes (default: logical CPUs - 1)
 #   ROM_AUDIT_RETRY_FAILURES  set to 1 to re-run jobs recorded as failed
-#   ROM_AUDIT_STAGE_ONLY      run just one stage: setup|pilot|harden|full|publish
+#   ROM_AUDIT_MAX_HOURS       budget for the benchmark stage (default 15); ROM_AUDIT_IGNORE_BENCHMARK=1 to continue anyway
+#   ROM_AUDIT_STAGE_ONLY      run just one stage: setup|bench|pilot|harden|full|publish
 # See doc/research/hvsc-rom-full-run.md for what each stage proves and what to read afterwards.
 set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -47,12 +48,19 @@ if want setup; then
   [[ "$(bun scripts/rom-audit/stage-status.ts harden "$evidence")" == done ]] || bun run test
 fi
 
+if want bench; then
+  log "bench: throughput on this machine and projected duration of the full census"
+  bun scripts/rom-audit/select-pilot.ts "$hvsc" workspace/rom-audit-v3-selection.json
+  bun scripts/rom-audit/bench.ts "$hvsc" "$roms" workspace/rom-audit-v3-selection.json --workers "$workers" --count 60 --max-hours "${ROM_AUDIT_MAX_HOURS:-15}" \
+    || { [[ "${ROM_AUDIT_IGNORE_BENCHMARK:-0}" == 1 ]] && echo "continuing despite the projection" || { echo "Stopping: the projection exceeds the budget (ROM_AUDIT_IGNORE_BENCHMARK=1 to continue)" >&2; exit 3; }; }
+fi
+
 if want pilot; then
   log "pilot: reviewed stratified selection (at most 5%), engines: $engines"
   if [[ "$(bun scripts/rom-audit/stage-status.ts pilot "$pilot")" == done ]]; then echo "pilot already complete"; else
   bun scripts/rom-audit/select-pilot.ts "$hvsc" workspace/rom-audit-v3-selection.json
   bun scripts/rom-audit/audit.ts --hvsc "$hvsc" --roms "$roms" --out "$pilot" --workers "$workers" --seconds 10 \
-    --rollout pilot --selection workspace/rom-audit-v3-selection.json --engines "$engines" ${retry[@]+"${retry[@]}"}
+    --rollout pilot --selection workspace/rom-audit-v3-selection.json --engines "$engines" --extended-every 5 ${retry[@]+"${retry[@]}"}
   fi
 fi
 

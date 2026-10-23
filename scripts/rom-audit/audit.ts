@@ -5,7 +5,7 @@
  * processes, with a durable checkpoint, a durable 5% rollout ledger and a kernel scope lock.
  *
  *   bun scripts/rom-audit/audit.ts --hvsc /path/C64Music --roms /path/roms --out workspace/rom-audit-v3 \
- *     --rollout pilot --selection selection.json [--workers N] [--limit N] [--budget-seconds S] [--retry-failures] [--engines sidlite[,residfp]]
+ *     --rollout pilot --selection selection.json [--extended-every N] [--workers N] [--limit N] [--budget-seconds S] [--retry-failures] [--engines sidlite[,residfp]]
  *   bun scripts/rom-audit/audit.ts ... --rollout full --hardening workspace/rom-audit-hardening/certificate.json
  *
  * Re-run the identical command to resume; a changed manifest is refused. A job that times
@@ -26,7 +26,7 @@ import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-c
 import { ROM_AUDIT_ENGINES, REFERENCE_ROM_SHA256, romConsumerProfile, romEngineId, type RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { readCensus, censusKey } from "./checkpoint.js";
 import { SYSTEM_ROMS } from "../../packages/sidflow-classify/src/render/system-roms-fetch.js";
-import { observationHorizon, METHODOLOGY, CENSUS_SCHEMA, validateRecord, type CensusRecord } from "./methodology.js";
+import { observationHorizon, METHODOLOGY, CENSUS_SCHEMA, validateRecord, isExtendedSample, type CensusRecord } from "./methodology.js";
 import { engineHashes, SAMPLE_RATE } from "./wasm-lanes.js";
 import { publishProduction } from "./publish-production.js";
 import { checkSidHeader } from "../../packages/sidflow-common/src/sid-header-conformance.js";
@@ -37,13 +37,13 @@ const scriptDir = path.dirname(new URL(import.meta.url).pathname);
 const digest = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
 const json = (v: unknown): string => stringifyDeterministic(v as JsonValue, 0);
 
-function args(): { hvsc: string; roms: string; out: string; workers: number; seconds: number; limit: number; selection?: string; budget: number; rollout: string; hardening?: string; retryFailures: boolean; engines: RomAuditEngine[] } {
+function args(): { hvsc: string; roms: string; out: string; workers: number; seconds: number; limit: number; selection?: string; budget: number; rollout: string; hardening?: string; retryFailures: boolean; engines: RomAuditEngine[]; extendedEvery: number } {
   const values: Record<string, string> = {};
   for (let i = 2; i < process.argv.length; i++) {
     const key = process.argv[i]!;
     if (key === "--retry-failures") { values["retry-failures"] = "1"; continue; }
     const value = process.argv[++i];
-    if (!["--hvsc", "--roms", "--out", "--workers", "--seconds", "--limit", "--selection", "--budget-seconds", "--rollout", "--hardening", "--engines"].includes(key) || !value)
+    if (!["--hvsc", "--roms", "--out", "--workers", "--seconds", "--limit", "--selection", "--budget-seconds", "--rollout", "--hardening", "--engines", "--extended-every"].includes(key) || !value)
       throw new Error(`Invalid option ${key}; see script usage comment`);
     values[key.slice(2)] = value;
   }
@@ -62,7 +62,9 @@ function args(): { hvsc: string; roms: string; out: string; workers: number; sec
   // residfp-instance-state.ts), and C64 Commander plays every tune in one shared instance, so fresh-instance lanes would
   // describe a state Commander never produces. It also costs about six times as much per lane.
   if (engines.includes("residfp")) throw new Error("reSIDfp lanes are not supported until its per-instance PCM state is understood; see doc/research/hvsc-rom-production.md");
-  return { rollout, budget, workers, seconds, limit, engines, retryFailures: !!values["retry-failures"],
+  const extendedEvery = Number(values["extended-every"] ?? 50);
+  if (!Number.isSafeInteger(extendedEvery) || extendedEvery < 0) throw new Error("Invalid --extended-every");
+  return { rollout, budget, workers, seconds, limit, engines, extendedEvery, retryFailures: !!values["retry-failures"],
     ...(values.hardening ? { hardening: path.resolve(values.hardening) } : {}), hvsc: path.resolve(values.hvsc!), roms: path.resolve(values.roms!), out: path.resolve(values.out!),
     ...(values.selection ? { selection: path.resolve(values.selection) } : {}) };
 }
@@ -90,7 +92,7 @@ async function census(root: string): Promise<Tune[]> {
 }
 
 /** One worker process. A timeout or a crash rejects only the active job; the caller records it and respawns. */
-class WorkerProcess {
+export class WorkerProcess {
   private readonly child;
   private pending: { resolve: (r: CensusRecord) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | undefined;
   private stderrTail = "";
@@ -161,7 +163,7 @@ async function main(): Promise<void> {
     return [engine, { ...hashes, profile, engineId: romEngineId(hashes, profile) }];
   }));
   const manifest = { schema: 4, methodology: METHODOLOGY, censusSchema: CENSUS_SCHEMA, hvscRoot: a.hvsc, files: tunes.length, songs: allSongs, seconds: a.seconds, sampleRate: SAMPLE_RATE,
-    engines: engineIdentity, toolSha256: toolHash(), headersSha256: digest(headersText), horizonsSha256: digest(horizonsText), corpusSha256, documents, roms,
+    engines: engineIdentity, extendedEvery: a.extendedEvery, toolSha256: toolHash(), headersSha256: digest(headersText), horizonsSha256: digest(horizonsText), corpusSha256, documents, roms,
     ...(a.selection ? { selectionSha256: digest(await readFile(a.selection)) } : {}) };
   if (a.rollout === "full") {
     const cert = a.hardening ? JSON.parse(await readFile(a.hardening, "utf8")) as HardeningCertificate : undefined;
@@ -233,7 +235,7 @@ async function main(): Promise<void> {
     let worker = new WorkerProcess(runtime);
     try {
       for (let job = takeJob(); job; job = takeJob()) {
-        const message = { sha256: job.sha256, song: job.song, seconds: job.seconds, engines, hex: readVerifiedSid(job.path, job.sha256).toString("hex") };
+        const message = { sha256: job.sha256, song: job.song, seconds: job.seconds, engines, extended: isExtendedSample(job.sha256, a.extendedEvery), hex: readVerifiedSid(job.path, job.sha256).toString("hex") };
         // Recycle the worker periodically: each job instantiates many WASM modules.
         if (worker.jobs >= WORKER_JOBS) { peakRss = Math.max(peakRss, worker.peakRssMb()); worker.close(); worker = new WorkerProcess(runtime); }
         worker.jobs++;

@@ -73,12 +73,12 @@ describe("publication adversary",()=>{
  };
  it("grants a valid measurement",()=>scenario(async dir=>{expect((await decide(dir)).eligible).toBe(true);}));
  it("denies when one fill of the null banks differs",()=>scenario(async dir=>{
-  const record=censusRecord();record.runs[0]!.lanes[1]=lane("full","ff",{outcome:"different",samples:10,firstDifferenceSample:3,pcmSha256:"3".repeat(64),traceSha256:"4".repeat(64)});
+  const record=censusRecord();record.runs[0]!.lanes[0]=lane("full","inverse",{outcome:"different",samples:10,firstDifferenceSample:3,pcmSha256:"3".repeat(64),traceSha256:"4".repeat(64)});
   await writeFile(path.join(dir,"census.jsonl"),stable(record).trimEnd()+"\n");
   expect((await decide(dir)).eligible).toBe(false);
  }));
  it("denies when the reference is not reproducible",()=>scenario(async dir=>{
-  const record=censusRecord();record.runs[0]!.reference.repeat="different";
+  const record=censusRecord(15,1,fixtureHash,true);record.runs[0]!.reference.repeat="different";
   await writeFile(path.join(dir,"census.jsonl"),stable(record).trimEnd()+"\n");
   expect((await decide(dir)).eligible).toBe(false);
  }));

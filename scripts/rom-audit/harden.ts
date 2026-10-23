@@ -27,7 +27,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSyn
 import path from "node:path";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import { ROM_AUDIT_ENGINES } from "../../packages/sidflow-common/src/rom-eligibility.js";
-import { METHODOLOGY, validateRecord } from "./methodology.js";
+import { METHODOLOGY, isExtendedSample, validateRecord } from "./methodology.js";
 import { corpusIdentity, readVerifiedSid, toolHash } from "./inputs.js";
 import { approvalOf, hardeningIdentity, REQUIRED_LOGS, scopeLock, suiteTotals, HARDENING_CERTIFICATE_SCHEMA, type HardeningCertificate, type SuiteTotals } from "./rollout.js";
 import { publishProduction } from "./publish-production.js";
@@ -109,13 +109,16 @@ async function main(): Promise<void> {
   const failed = [...rows.values()].filter(r => r.failure).length;
   if (failed) throw new Error(`Pilot has ${failed} failed jobs; investigate each before qualifying`);
   await publishProduction(pilot, path.join(evidence, "pilot-publication"));
+  const published = JSON.parse(readFileSync(path.join(evidence, "pilot-publication/manifest.json"), "utf8")) as { crossCheck: { sampledSubtunes: number; disagreements: number } };
+  if (published.crossCheck.sampledSubtunes < 30 || published.crossCheck.disagreements !== 0)
+    throw new Error(`Cross-check sample: ${published.crossCheck.sampledSubtunes} subtunes, ${published.crossCheck.disagreements} disagreements (need >= 30 and 0)`);
 
   // 4. fresh-process re-run equality on evenly spaced pilot subtunes
   const headers = JSON.parse(readFileSync(path.join(pilot, "headers.json"), "utf8")) as { path: string; sha256: string }[];
   const pathBySha = new Map(headers.map(h => [h.sha256, h.path]));
   const sample = [...rows.values()].filter(r => r.seconds <= 200).filter((_, index) => index % Math.max(1, Math.floor(rows.size / 6)) === 0).slice(0, 6);
   if (sample.length < 5) throw new Error("Too few short pilot subtunes for the reproducibility check");
-  const input = sample.map(r => JSON.stringify({ sha256: r.sha256, song: r.song, seconds: r.seconds, engines: censusEngines,
+  const input = sample.map(r => JSON.stringify({ sha256: r.sha256, song: r.song, seconds: r.seconds, engines: censusEngines, extended: isExtendedSample(r.sha256, (manifest as unknown as { extendedEvery: number }).extendedEvery),
     hex: readVerifiedSid(path.join(manifest.hvscRoot, pathBySha.get(r.sha256)!), r.sha256).toString("hex") }) + "\n").join("");
   const again = spawnSync(process.execPath, [path.join(root, "scripts/rom-audit/census-worker.ts"), roms], { input, encoding: "utf8", maxBuffer: 1 << 28, timeout: 3 * 3600 * 1000 });
   if (again.status !== 0) throw new Error(`Reproducibility run failed: ${again.stderr}`);

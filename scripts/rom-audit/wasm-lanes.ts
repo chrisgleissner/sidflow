@@ -56,7 +56,7 @@ export async function loadModule(engine: RomAuditEngine): Promise<EngineModule> 
 }
 
 /** A bank in the consumer's terms: authentic image, `null` (never supplied) or a fill that stands for its unknown content. */
-export type Bank = "authentic" | "null" | "zero" | "ff" | "random";
+export type Bank = "authentic" | "null" | "zero" | "ff" | "random" | "inverse";
 /** Fixed pseudo-random bank content (xorshift32), identical on every machine. */
 function randomBytes(size: number): Uint8Array {
   const out = new Uint8Array(size);
@@ -68,7 +68,8 @@ export interface RomConfig { kernal: Bank; basic: Bank; chargen: Bank }
 /** Commander's "nothing supplied": setSystemROMs(null, null, null), which SidAudioEngine turns into no ROM call at all. */
 export const UNTOUCHED: RomConfig = { kernal: "null", basic: "null", chargen: "null" };
 const bankBytes = (bank: Bank, authentic: Uint8Array, size: number): Uint8Array | null =>
-  bank === "authentic" ? authentic : bank === "null" ? null : bank === "random" ? randomBytes(size) : new Uint8Array(size).fill(bank === "ff" ? 0xff : 0);
+  bank === "authentic" ? authentic : bank === "null" ? null : bank === "random" ? randomBytes(size) : bank === "inverse" ? authentic.map(b => ~b & 0xff)
+    : new Uint8Array(size).fill(bank === "ff" ? 0xff : 0);
 
 class Lane {
   readonly pcm = createHash("sha256"); readonly trace = createHash("sha256");
@@ -102,7 +103,7 @@ class Lane {
     const pcm = Int16Array.from(chunk);
     // Draining clears the drop counter, so read it first.
     const dropped = this.ctx.getDroppedSidWriteTraceCount();
-    const writes = Float64Array.from(this.ctx.getAndClearSidWriteTracesPacked());
+    const writes = this.ctx.getAndClearSidWriteTracesPacked();   // already a fresh copy (see libsidplayfp.d.ts)
     if (dropped || writes.length % 4) this.dropped = true;
     return { pcm, writes };
   }
@@ -125,32 +126,33 @@ const firstPcmDifference = (a: Int16Array, b: Int16Array): number => {
   return n;
 };
 
-/** The variant lanes: the two Commander ROM sets, each with the contents its null banks may hold. */
-export const LANES: { set: "full" | "none"; fill: LaneFill; config: RomConfig }[] = [
-  { set: "full", fill: "zero", config: { kernal: "authentic", basic: "authentic", chargen: "zero" } },
-  { set: "full", fill: "ff", config: { kernal: "authentic", basic: "authentic", chargen: "ff" } },
-  { set: "full", fill: "random", config: { kernal: "authentic", basic: "authentic", chargen: "random" } },
-  { set: "none", fill: "zero", config: { kernal: "null", basic: "zero", chargen: "zero" } },
-  { set: "none", fill: "ff", config: { kernal: "null", basic: "ff", chargen: "ff" } },
-  { set: "none", fill: "random", config: { kernal: "null", basic: "random", chargen: "random" } },
+/** Variant lanes (see LANE_FILLS in methodology.ts for why these and how the sample extends them). */
+export const LANES: { set: "full" | "none"; fill: LaneFill; config: RomConfig; extended: boolean }[] = [
+  { set: "full", fill: "inverse", config: { kernal: "authentic", basic: "authentic", chargen: "inverse" }, extended: false },
+  { set: "full", fill: "zero", config: { kernal: "authentic", basic: "authentic", chargen: "zero" }, extended: true },
+  { set: "full", fill: "ff", config: { kernal: "authentic", basic: "authentic", chargen: "ff" }, extended: true },
+  { set: "full", fill: "random", config: { kernal: "authentic", basic: "authentic", chargen: "random" }, extended: true },
+  { set: "none", fill: "zero", config: { kernal: "null", basic: "zero", chargen: "zero" }, extended: false },
+  { set: "none", fill: "ff", config: { kernal: "null", basic: "ff", chargen: "ff" }, extended: false },
+  { set: "none", fill: "random", config: { kernal: "null", basic: "random", chargen: "random" }, extended: false },
   // A previous playback in the same instance can leave the authentic BASIC image behind a "nothing supplied" set.
-  { set: "none", fill: "stale-basic", config: { kernal: "null", basic: "authentic", chargen: "zero" } },
+  { set: "none", fill: "stale-basic", config: { kernal: "null", basic: "authentic", chargen: "zero" }, extended: false },
 ];
 
 /** Render one subtune on one engine: reference, a repeat of the reference, and the four variant lanes. */
-export async function runEngine(engine: RomAuditEngine, bytes: Uint8Array, song: number, seconds: number, roms: RomImages): Promise<EngineRun> {
+export async function runEngine(engine: RomAuditEngine, bytes: Uint8Array, song: number, seconds: number, roms: RomImages, extended = false): Promise<EngineRun> {
   const wanted = Math.round(seconds * SAMPLE_RATE) * 2;
   const reference = await Lane.open(engine, bytes, song, { kernal: "authentic", basic: "authentic", chargen: "authentic" }, roms);
   const lanes: Lane[] = [];
-  const outcomes = new Map<Lane, LaneResult & { halfway?: never }>();
+  const outcomes = new Map<Lane, LaneResult>();
   const labels = new Map<Lane, { set: "full" | "none"; fill: LaneFill }>();
-  let repeat: ReferenceResult["repeat"] = "failed";
+  let repeat: ReferenceResult["repeat"] = extended ? "failed" : "not-run";
   let referenceOutcome: ReferenceResult["outcome"] = "clean", referenceMessage = "";
   try {
-    const again = await Lane.open(engine, bytes, song, { kernal: "authentic", basic: "authentic", chargen: "authentic" }, roms);
-    lanes.push(again);
-    for (const spec of LANES) { const lane = await Lane.open(engine, bytes, song, spec.config, roms); lanes.push(lane); labels.set(lane, { set: spec.set, fill: spec.fill }); }
-    const [repeatLane] = lanes;
+    // Open lanes one by one; `lanes` is closed in `finally` even if a later open throws.
+    let repeatLane: Lane | undefined;
+    if (extended) { repeatLane = await Lane.open(engine, bytes, song, { kernal: "authentic", basic: "authentic", chargen: "authentic" }, roms); lanes.push(repeatLane); }
+    for (const spec of LANES.filter(l => extended || !l.extended)) { const lane = await Lane.open(engine, bytes, song, spec.config, roms); lanes.push(lane); labels.set(lane, { set: spec.set, fill: spec.fill }); }
     const result = (lane: Lane, outcome: LaneOutcome, first: number | null, message = ""): void => {
       const label = labels.get(lane) ?? { set: "full" as const, fill: "zero" as const };   // the repeat lane carries no label
       outcomes.set(lane, { ...label, outcome, samples: lane.samples, writes: lane.writes, firstDifferenceSample: first, message,
@@ -180,10 +182,10 @@ export async function runEngine(engine: RomAuditEngine, bytes: Uint8Array, song:
       reference.absorb(ref, take);
     }
     if (referenceOutcome === "clean") for (const lane of active) result(lane, "identical", null);
-    repeat = outcomes.get(repeatLane!)?.outcome === "identical" ? "identical" : outcomes.get(repeatLane!)?.outcome === "different" ? "different" : "failed";
+    if (repeatLane) { const outcome = outcomes.get(repeatLane)?.outcome; repeat = outcome === "identical" ? "identical" : outcome === "different" ? "different" : "failed"; }
     const referenceResult: ReferenceResult = { outcome: referenceOutcome, samples: reference.samples, writes: reference.writes, message: referenceMessage,
       pcmSha256: reference.pcm.digest("hex"), traceSha256: reference.trace.digest("hex"), repeat };
-    return { engine, reference: referenceResult, lanes: lanes.filter(l => l !== repeatLane).map(l => outcomes.get(l)!) };
+    return { engine, extended, reference: referenceResult, lanes: lanes.filter(l => l !== repeatLane).map(l => outcomes.get(l)!) };
   } finally {
     for (const lane of lanes) lane.close();
     reference.close();

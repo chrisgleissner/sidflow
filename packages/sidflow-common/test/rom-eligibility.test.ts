@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { createRomEligibilityLookup,romEngineId,romMask,romSetId,romConsumerProfile,REFERENCE_ROM_SHA256,ROM_AUDIT_ENGINES,type RomDenyList,type RomSelection } from "../src/rom-eligibility.js";
-import { assessMask,headerFixesSidModels,observationHorizon,validateRecord,CENSUS_SCHEMA,LANE_FILLS,type EngineRun } from "../../../scripts/rom-audit/methodology.js";
+import { assessMask,crossCheckDisagreements,headerFixesSidModels,isExtendedSample,observationHorizon,validateRecord,CENSUS_SCHEMA,LANE_FILLS,type EngineRun } from "../../../scripts/rom-audit/methodology.js";
 import { delayedRomFixture,syntheticFixture,type SyntheticKind } from "../../../scripts/rom-audit/fixtures.js";
 import { readCensus } from "../../../scripts/rom-audit/checkpoint.js";
 import { publishProduction,sha } from "../../../scripts/rom-audit/publish-production.js";
@@ -17,12 +17,12 @@ const expected={...engine,profile,methodology:"rom-audit-3",fallbackSidModel:"MO
 const hash="b".repeat(64);
 const selection=(mask:number):RomSelection=>({kernal:mask&1?REFERENCE_ROM_SHA256.kernal:null,basic:mask&2?REFERENCE_ROM_SHA256.basic:null,chargen:mask&4?REFERENCE_ROM_SHA256.chargen:null});
 function data():RomDenyList{return {schema:"sidflow-rom-deny-4",engineId:romEngineId(engine,profile),romSetId:romSetId(),methodology:"rom-audit-3",
- entries:{[hash]:[[0b10001000,0b00000001,15000,10000,1],[0,0,0,0,0]]}};}
+ entries:{[hash]:[[0b00001000,0b00000001,15000,10000,1],[0,0,0,0,0]]}};}
 describe("production ROM eligibility",()=>{
  it("evaluates the Commander ROM sets and denies every other set",()=>{
   const lookup=createRomEligibilityLookup(data(),expected);
   expect(lookup(hash,1,selection(3)).state).toBe("compatible");
-  expect(lookup(hash,1,selection(7)).state).toBe("compatible");
+  expect(lookup(hash,1,selection(7)).reason).toBe("not-a-supported-rom-set");   // all three images is not a set Commander creates
   expect(lookup(hash,1,selection(0)).state).toBe("incompatible");
   for(const mask of [1,2,4,5,6]){const answer=lookup(hash,1,selection(mask));expect(answer.eligible).toBe(false);expect(answer.reason).toBe("not-a-supported-rom-set");}
   expect(lookup(hash,2,selection(3)).eligible).toBe(false);expect(lookup("c".repeat(64),1,selection(3)).reason).toBe("missing-entry");
@@ -34,13 +34,13 @@ describe("production ROM eligibility",()=>{
  it("derives the ROM set from image hashes and denies any non-reference image",()=>{
   const lookup=createRomEligibilityLookup(data(),expected);
   for(const slot of ["kernal","basic","chargen"] as const){
-   const roms={...selection(7),[slot]:"0".repeat(64)};
+   const roms={...selection(3),[slot]:"0".repeat(64)};
    expect(romMask(roms)).toBeNull();
    expect(lookup(hash,1,roms).reason).toBe("not-a-supported-rom-set");
   }
   expect(lookup(hash,1,{kernal:undefined,basic:null,chargen:null} as unknown as RomSelection).eligible).toBe(false);
   expect(lookup(hash,1,null as unknown as RomSelection).eligible).toBe(false);
-  expect([romMask(selection(0)),romMask(selection(3)),romMask(selection(7)),romMask(selection(1)),romMask(selection(5))]).toEqual([0,3,7,null,null]);
+  expect([romMask(selection(0)),romMask(selection(3)),romMask(selection(7)),romMask(selection(1)),romMask(selection(5))]).toEqual([0,3,null,null,null]);
  });
  it("pins the reference ROM hashes to the fetcher's table",()=>{
   const byName=Object.fromEntries(SYSTEM_ROMS.map(s=>[s.localName,s.sha256]));
@@ -60,15 +60,15 @@ describe("production ROM eligibility",()=>{
    const changed={...profile,...change} as unknown as typeof profile;
    expect(createRomEligibilityLookup(data(),{...expected,profile:changed})(hash,1,selection(3)).reason).toBe("catalogue-provenance-or-schema-mismatch");
   }
-  const mutations:((d:RomDenyList)=>void)[]=[d=>{d.entries[hash]=[[128,128,15000,10000,0]];},d=>{d.entries[hash]=[[0b00000010,0,15000,10000,0]];},d=>{d.entries[hash]=[[0,0,0,0,1]];},d=>{d.entries[hash]=[[128,0,15000,10000,2]];},   // bit outside {0,3,7}
-   d=>{d.entries[hash]=[[128,0,0,0,0]];},d=>{d.entries[hash]=[[128,0,15000,15000,0]];},d=>{d.entries[hash]=[[128,0,Infinity,1,0]];},d=>{d.entries[hash]=[[128,0,15000,10000] as never];},
+  const mutations:((d:RomDenyList)=>void)[]=[d=>{d.entries[hash]=[[8,8,15000,10000,0]];},d=>{d.entries[hash]=[[0b10000000,0,15000,10000,0]];},d=>{d.entries[hash]=[[0,0,0,0,1]];},d=>{d.entries[hash]=[[8,0,15000,10000,2]];},   // bit outside {0,3}
+   d=>{d.entries[hash]=[[8,0,0,0,0]];},d=>{d.entries[hash]=[[8,0,15000,15000,0]];},d=>{d.entries[hash]=[[8,0,Infinity,1,0]];},d=>{d.entries[hash]=[[8,0,15000,10000] as never];},
    d=>{d.schema="sidflow-rom-deny-3" as never;},d=>{d.engineId="";}];
   for(const mutate of mutations){const d=data();mutate(d);expect(createRomEligibilityLookup(d,expected)(hash,1,selection(3)).eligible).toBe(false);}
   const d=data(),lookup=createRomEligibilityLookup(d,expected);d.entries[hash]![0]![0]=0;
   expect(lookup(hash,1,selection(3)).eligible).toBe(true);   // validated snapshot cannot be altered afterwards
  });
  it("applies a decision measured with the MOS8580 fallback to a MOS6581 consumer only where the header fixes the model",()=>{
-  const table=data();table.entries[hash]=[[0b10001000,0,15000,10000,1],[0b10001000,0,15000,10000,0]];
+  const table=data();table.entries[hash]=[[0b00001000,0,15000,10000,1],[0b00001000,0,15000,10000,0]];
   const lookup=createRomEligibilityLookup(table,{...expected,fallbackSidModel:"MOS6581"});
   expect(lookup(hash,1,selection(3)).eligible).toBe(true);
   expect(lookup(hash,2,selection(3)).reason).toBe("depends-on-fallback-sid-model");
@@ -98,13 +98,13 @@ describe("assessMask",()=>{
  const h=observationHorizon("0:10"),state=(run:EngineRun|undefined,mask:number,observed=15,horizon=h)=>assessMask(run,horizon,observed,SAMPLE_RATE,mask);
  it("grants the reference and both Commander sets only for complete, matching evidence",()=>{
   const run=engineRun("sidlite");
-  expect(state(run,7).state).toBe("compatible");expect(state(run,3).state).toBe("compatible");
+  expect(state(run,3).state).toBe("compatible");expect(state(engineRun("sidlite",15,{},true),3).state).toBe("compatible");
   expect(state(run,0).state).toBe("unknown");
-  for(const mask of [1,2,4,5,6])expect(state(run,mask).reason).toBe("not-a-consumer-rom-set");
+  for(const mask of [1,2,4,5,6,7])expect(state(run,mask).reason).toBe("not-a-consumer-rom-set");
  });
  it("needs EVERY fill of the null banks to match",()=>{
-  for(const fill of LANE_FILLS.full){
-   const run=engineRun("sidlite");run.lanes=run.lanes.map(l=>l.set==="full"&&l.fill===fill?{...l,outcome:"different" as const,samples:10}:l);
+  for(const fill of ["inverse","zero","ff","random"] as const){
+   const run=engineRun("sidlite",15,{},true);run.lanes=run.lanes.map(l=>l.set==="full"&&l.fill===fill?{...l,outcome:"different" as const,samples:10}:l);
    expect(state(run,3).reason).toBe("depends-on-null-bank-content");
   }
   const stale=engineRun("sidlite");stale.lanes=stale.lanes.map(l=>l.set==="none"&&l.fill==="stale-basic"?{...l,outcome:"identical" as const,samples:l.samples}:l);
@@ -115,27 +115,29 @@ describe("assessMask",()=>{
  it("never grants incompatible: a stopped variant and engine anomalies are unknown with their own reasons",()=>{
   const stopped=engineRun("sidlite");stopped.lanes=[...stopped.lanes.filter(l=>l.set==="full"),...LANE_FILLS.none.map(f=>lane("none",f,{outcome:"stopped",samples:100}))];
   expect(state(stopped,0)).toEqual({state:"unknown",reason:"variant-stopped"});
-  const full=engineRun("sidlite");full.lanes=full.lanes.map(l=>l.set==="full"&&l.fill==="ff"?{...l,outcome:"stopped" as const,samples:5}:l);
+  const full=engineRun("sidlite",15,{},true);full.lanes=full.lanes.map(l=>l.set==="full"&&l.fill==="ff"?{...l,outcome:"stopped" as const,samples:5}:l);
   expect(state(full,3).reason).toBe("depends-on-null-bank-content");
   for(const outcome of ["trace-dropped","reference-failed"] as const){
    const anomaly=engineRun("sidlite");anomaly.lanes=[...anomaly.lanes.filter(l=>l.set==="full"),...LANE_FILLS.none.map(f=>lane("none",f,{outcome}))];
    expect(state(anomaly,0).reason).toBe("non-tune-error");
   }
-  for(const mask of [0,3,7])for(const run of [engineRun("sidlite"),stopped])expect(state(run,mask).state).not.toBe("incompatible");
+  for(const mask of [0,3])for(const run of [engineRun("sidlite"),stopped])expect(state(run,mask).state).not.toBe("incompatible");
  });
  it("keeps unreproducible, failed, short, unknown-length and pending evidence unknown",()=>{
-  const unstable=engineRun("sidlite");unstable.reference.repeat="different";
-  for(const mask of [3,7])expect(state(unstable,mask).reason).toBe("reference-unstable");
-  const failed=engineRun("sidlite");failed.reference.outcome="failed";expect(state(failed,7).reason).toBe("reference-failed");
-  const truncated=engineRun("sidlite");truncated.reference.samples-=2;expect(state(truncated,7).reason).toBe("reference-failed");
-  expect(state(engineRun("sidlite",10),7,10).reason).toBe("observation-horizon-incomplete");
+  const unstable=engineRun("sidlite",15,{},true);unstable.reference.repeat="different";
+  for(const mask of [0,3])expect(state(unstable,mask).reason).toBe("reference-unstable");
+  const unrun=engineRun("sidlite",15,{},true);unrun.reference.repeat="not-run";expect(state(unrun,3).reason).toBe("reference-unstable");   // an extended record must have its repeat
+  const spurious=engineRun("sidlite");spurious.reference.repeat="identical";expect(state(spurious,3).reason).toBe("reference-unstable");   // a core record has none
+  const failed=engineRun("sidlite");failed.reference.outcome="failed";expect(state(failed,3).reason).toBe("reference-failed");
+  const truncated=engineRun("sidlite");truncated.reference.samples-=2;expect(state(truncated,3).reason).toBe("reference-failed");
+  expect(state(engineRun("sidlite",10),3,10).reason).toBe("observation-horizon-incomplete");
   const unknownLength=observationHorizon(undefined);
-  expect(state(engineRun("sidlite",300),7,300,unknownLength).reason).toBe("observation-horizon-incomplete");
-  expect(state(undefined,7).reason).toBe("experiment-pending");
+  expect(state(engineRun("sidlite",300),3,300,unknownLength).reason).toBe("observation-horizon-incomplete");
+  expect(state(undefined,3).reason).toBe("experiment-pending");
   for(const bad of [{...h,seconds:NaN},{...h,seconds:2},{...h,documentedSeconds:1},{...h,source:"invented" as typeof h.source},{...h,seconds:15.000000001}])
-   expect(state(engineRun("sidlite"),7,15,bad).reason).toBe("invalid-observation-horizon");
+   expect(state(engineRun("sidlite"),3,15,bad).reason).toBe("invalid-observation-horizon");
   const short=engineRun("sidlite");short.lanes=short.lanes.map(l=>({...l,samples:l.samples-2}));expect(state(short,3).state).toBe("unknown");
-  expect(state(engineRun("sidlite"),7,NaN).state).toBe("unknown");
+  expect(state(engineRun("sidlite"),3,NaN).state).toBe("unknown");
  });
 });
 describe("SID model fallback",()=>{
@@ -150,15 +152,33 @@ describe("SID model fallback",()=>{
   expect(headerFixesSidModels(undefined)).toBe(false);
  });
 });
+describe("cross-check sample",()=>{
+ it("selects a deterministic fraction by content hash",()=>{
+  expect(isExtendedSample("00000000"+"a".repeat(56),50)).toBe(true);
+  expect(isExtendedSample("00000001"+"a".repeat(56),50)).toBe(false);
+  expect(isExtendedSample("00000032"+"a".repeat(56),50)).toBe(true);   // 0x32 = 50
+  expect(isExtendedSample("00000000"+"a".repeat(56),0)).toBe(false);
+ });
+ it("flags a core lane that is more permissive than the full set of fills",()=>{
+  const h=observationHorizon("0:10"),agree=engineRun("sidlite",15,{},true);
+  expect(crossCheckDisagreements(agree,h,15,SAMPLE_RATE)).toEqual([]);
+  const bad=engineRun("sidlite",15,{},true);bad.lanes=bad.lanes.map(l=>l.set==="full"&&l.fill==="random"?{...l,outcome:"different" as const,samples:5}:l);
+  expect(crossCheckDisagreements(bad,h,15,SAMPLE_RATE)).toEqual([3]);   // the inverse lane alone would have granted mask 3
+  expect(assessMask(bad,h,15,SAMPLE_RATE,3).reason).toBe("depends-on-null-bank-content");
+  expect(crossCheckDisagreements(engineRun("sidlite"),h,15,SAMPLE_RATE)).toEqual([]);   // only the sample is cross-checked
+ });
+});
 describe("census records",()=>{
  const engines=[...CENSUS_ENGINES];
- it("accepts a well-formed record and rejects contradictions",()=>{
+ it("accepts a well-formed core and extended record and rejects contradictions",()=>{
   expect(()=>validateRecord(censusRecord(),engines)).not.toThrow();
+  expect(()=>validateRecord(censusRecord(15,1,fixtureHash,true),engines)).not.toThrow();
   const mutate=(f:(r:ReturnType<typeof censusRecord>)=>void)=>()=>{const r=structuredClone(censusRecord());f(r);validateRecord(r,engines);};
   expect(mutate(r=>{r.runs[0]!.lanes[0]!.pcmSha256="9".repeat(64);})).toThrow("Invalid census lane");
   expect(mutate(r=>{r.runs[0]!.lanes[0]!.fill="stale-basic";})).toThrow("Invalid census lane");   // stale-basic belongs to the none set          // identical lane must carry the reference hashes
   expect(mutate(r=>{r.runs[0]!.lanes[0]!.samples-=2;})).toThrow("Invalid census lane");
   expect(mutate(r=>{r.runs[0]!.lanes.pop();})).toThrow("Invalid census lanes");
+  expect(mutate(r=>{r.runs[0]!.extended=true;})).toThrow();                        // an extended run needs its repeat and extra fills
   expect(mutate(r=>{r.runs[0]!.lanes[1]=r.runs[0]!.lanes[0]!;})).toThrow("Invalid census lane");              // duplicate lane key
   expect(mutate(r=>{r.runs[0]!.lanes[2]!.outcome="halt" as never;})).toThrow("Invalid census lane");                  // retired outcome
   expect(mutate(r=>{r.runs[0]!.engine="residfp";})).toThrow("engine order");
@@ -245,7 +265,6 @@ describe("publication",()=>{
     const d=JSON.parse(await readFile(path.join(dir,`published/deny-list.${e}.json`),"utf8")) as RomDenyList;
     const lookup=createRomEligibilityLookup(d,{...m.engines[e],profile:romConsumerProfile(e),methodology:m.methodology,fallbackSidModel:"MOS8580"});
     expect(lookup(fixtureHash,1,selection(3)).maxPlaybackSeconds).toBe(15);
-    expect(lookup(fixtureHash,1,selection(7)).eligible).toBe(true);
     expect(lookup(fixtureHash,1,selection(0)).eligible).toBe(false);
     expect(lookup(fixtureHash,2,selection(3)).reason).toBe("compatibility-unresolved");
     expect(d.entries[fixtureHash]![0]![4]).toBe(1);   // the fixture header names the SID model, so a MOS6581 consumer is covered too
@@ -278,7 +297,7 @@ it("exhaustively agrees with every maintained research decision",async()=>{
    const key=`${r.sha256}#${r.song}`;if(seen.has(key)&&e===Object.keys(manifest.engines)[0])throw new Error(`Duplicate research record ${key}`);seen.add(key);
    for(const a of r.engines[e].assessments.map((x:{state:string},mask:number)=>({mask,state:x.state}))){
     const actual=lookup(r.sha256,r.song,selection(a.mask));
-    const supported=[0,3,7].includes(a.mask);
+    const supported=[0,3].includes(a.mask);
     expect(actual.state).toBe(supported?a.state:"unknown");
     expect(actual.eligible).toBe(supported&&a.state==="compatible");
    }

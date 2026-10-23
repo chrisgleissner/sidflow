@@ -13,7 +13,7 @@ import path from "node:path";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import { createRomEligibilityLookup, romEngineId, romSetId, romConsumerProfile, ROM_DENY_SCHEMA, ROM_AUDIT_ENGINES, REFERENCE_ROM_SHA256,
   type RomDenyList, type RomDecision, type RomSelection, type RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
-import { assessMask, headerFixesSidModels, METHODOLOGY, ROM_MASKS, CONSUMER_MASKS, type Horizon, type Assessment } from "./methodology.js";
+import { assessMask, crossCheckDisagreements, headerFixesSidModels, METHODOLOGY, ROM_MASKS, CONSUMER_MASKS, type Horizon, type Assessment } from "./methodology.js";
 import { readCensus } from "./checkpoint.js";
 import type { Header } from "./publish.js";
 export const sha = (v: string | Uint8Array): string => createHash("sha256").update(v).digest("hex");
@@ -47,6 +47,8 @@ export async function publishProduction(run: string, out = path.join(run, "publi
   await mkdir(out, { recursive: true });
   const gzip = createGzip({ level: 9 }), destination = createWriteStream(path.join(out, "research.jsonl.gz.tmp"));
   const completion = pipeline(gzip, destination);
+  let sampled = 0, disagreements = 0;
+  const disagreementList: string[] = [];
   let represented = 0, observedSeconds = 0, plannedSeconds = 0, unknownLengths = 0, failed = 0;
   const windows: Record<string, number> = {};
   for (const h of headers) {
@@ -61,6 +63,11 @@ export async function publishProduction(run: string, out = path.join(run, "publi
       for (const [index, engine] of engines.entries()) {
         const run = record?.failure ? undefined : record?.runs[index];
         const decisions: Assessment[] = ROM_MASKS.map(mask => record?.failure ? { state: "unknown", reason: "census-job-failed" } : assessMask(run, horizon, record?.seconds ?? 0, record?.sampleRate ?? manifest.sampleRate, mask));
+        if (run?.extended && record) {
+          sampled++;
+          const bad = crossCheckDisagreements(run, horizon, record.seconds, record.sampleRate);
+          if (bad.length) { disagreements += bad.length; disagreementList.push(`${h.path}#${song} masks ${bad.join(",")}`); }
+        }
         let allowed = 0, incompatible = 0;
         decisions.forEach((d, mask) => {
           counts[engine]![mask]![d.state]++; counts[engine]![mask]!.reasons[d.reason] = (counts[engine]![mask]!.reasons[d.reason] ?? 0) + 1;
@@ -103,7 +110,7 @@ export async function publishProduction(run: string, out = path.join(run, "publi
   await writeFile(path.join(out, "census.jsonl.gz"), raw); artifacts["census.jsonl.gz"] = sha(raw);
   const publication = { schema: "sidflow-rom-manifest-5", methodology: METHODOLOGY, hvsc: 85, files: headers.length, subtunes: represented,
     engines: manifest.engines, roms: manifest.roms, documents: manifest.documents, corpusSha256: manifest.corpusSha256, counts, windows, observedSeconds, plannedSeconds, unknownLengths,
-    measuredSubtunes: rows.size, failedSubtunes: failed, pendingSubtunes: represented - rows.size,
+    measuredSubtunes: rows.size, failedSubtunes: failed, extendedEvery: manifest.extendedEvery, crossCheck: { sampledSubtunes: sampled, disagreements, examples: disagreementList.slice(0, 20) }, pendingSubtunes: represented - rows.size,
     strictPolicy: "unknown/absent/expired/unsupported evidence denies; allowed playback must end at the recorded horizon", artifacts };
   await writeFile(path.join(out, "manifest.json"), stringifyDeterministic(publication as unknown as JsonValue));
   console.log(`Published ${represented} research rows; ${rows.size} measured (${failed} failed); ${represented - rows.size} pending.`);

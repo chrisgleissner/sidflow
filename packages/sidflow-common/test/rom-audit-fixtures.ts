@@ -2,7 +2,7 @@ import { mkdir,writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stringifyDeterministic,type JsonValue } from "../src/json.js";
 import { romConsumerProfile,romEngineId,type RomAuditEngine } from "../src/rom-eligibility.js";
-import { CENSUS_SCHEMA,LANE_FILLS,METHODOLOGY,observationHorizon,type CensusRecord,type EngineRun,type LaneFill,type LaneResult } from "../../../scripts/rom-audit/methodology.js";
+import { CENSUS_SCHEMA,EXTENDED_FULL_FILLS,LANE_FILLS,METHODOLOGY,observationHorizon,type CensusRecord,type EngineRun,type LaneFill,type LaneResult } from "../../../scripts/rom-audit/methodology.js";
 import { RELEASE_DOCUMENTS } from "../../../scripts/rom-audit/inputs.js";
 import { sha } from "../../../scripts/rom-audit/publish-production.js";
 export const fixtureHash="a".repeat(64);
@@ -15,12 +15,14 @@ const PCM="1".repeat(64),TRACE="2".repeat(64);
 export function lane(set:"full"|"none",fill:LaneFill,overrides:Partial<LaneResult>={},seconds=15):LaneResult{
  return {set,fill,outcome:"identical",samples:seconds*SAMPLE_RATE*2,writes:7,firstDifferenceSample:null,message:"",pcmSha256:PCM,traceSha256:TRACE,...overrides};
 }
-export function engineRun(engine:RomAuditEngine,seconds=15,overrides:Partial<EngineRun>={}):EngineRun{
- return {engine,reference:{outcome:"clean",samples:seconds*SAMPLE_RATE*2,writes:7,message:"",pcmSha256:PCM,traceSha256:TRACE,repeat:"identical"},
-  lanes:[...LANE_FILLS.full.map(f=>lane("full",f,{},seconds)),...LANE_FILLS.none.map(f=>lane("none",f,{outcome:"different",samples:2812,writes:1,firstDifferenceSample:38,pcmSha256:"3".repeat(64),traceSha256:"4".repeat(64)},seconds))],...overrides};
+const DIFFERENT={outcome:"different" as const,samples:2812,writes:1,firstDifferenceSample:38,pcmSha256:"3".repeat(64),traceSha256:"4".repeat(64)};
+/** A core run (every ordinary subtune) or, with `extended`, a cross-check sample run. */
+export function engineRun(engine:RomAuditEngine,seconds=15,overrides:Partial<EngineRun>={},extended=false):EngineRun{
+ return {engine,extended,reference:{outcome:"clean",samples:seconds*SAMPLE_RATE*2,writes:7,message:"",pcmSha256:PCM,traceSha256:TRACE,repeat:extended?"identical":"not-run"},
+  lanes:[...(extended?EXTENDED_FULL_FILLS:LANE_FILLS.full).map(f=>lane("full",f,{},seconds)),...LANE_FILLS.none.map(f=>lane("none",f,DIFFERENT,seconds))],...overrides};
 }
-export function censusRecord(seconds=15,song=1,sha256=fixtureHash):CensusRecord{
- return {schema:CENSUS_SCHEMA,sha256,song,seconds,sampleRate:SAMPLE_RATE,runs:CENSUS_ENGINES.map(e=>engineRun(e,seconds))};
+export function censusRecord(seconds=15,song=1,sha256=fixtureHash,extended=false):CensusRecord{
+ return {schema:CENSUS_SCHEMA,sha256,song,seconds,sampleRate:SAMPLE_RATE,runs:CENSUS_ENGINES.map(e=>engineRun(e,seconds,{},extended))};
 }
 export const fakeEngine=(engine:RomAuditEngine)=>({sourceSha256:sha(`source-${engine}`),wasmSha256:sha(`wasm-${engine}`)});
 export async function publicationFixture(dir:string,measured=false):Promise<{manifest:Record<string,unknown>;record:CensusRecord;horizons:Record<string,ReturnType<typeof observationHorizon>[]>}>{

@@ -13,14 +13,14 @@ import { CENSUS_SCHEMA, type CensusRecord, type EngineRun } from "./methodology.
 import { runEngine, SAMPLE_RATE, type RomImages } from "./wasm-lanes.js";
 
 const sha = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
-export interface CensusJob { sha256: string; song: number; seconds: number; engines: RomAuditEngine[]; hex: string }
+export interface CensusJob { sha256: string; song: number; seconds: number; engines: RomAuditEngine[]; extended: boolean; hex: string }
 export async function runJob(job: CensusJob, roms: RomImages): Promise<CensusRecord> {
   const header = { schema: CENSUS_SCHEMA, sha256: job.sha256, song: job.song, seconds: job.seconds, sampleRate: SAMPLE_RATE } as const;
   try {
     const bytes = Buffer.from(job.hex, "hex");
     if (sha(bytes) !== job.sha256) throw new Error("Job input checksum mismatch");
     const runs: EngineRun[] = [];
-    for (const engine of job.engines) runs.push(await runEngine(engine, bytes, job.song, job.seconds, roms));
+    for (const engine of job.engines) runs.push(await runEngine(engine, bytes, job.song, job.seconds, roms, job.extended));
     return { ...header, runs };
   } catch (error) {
     console.error(`census job ${job.sha256.slice(0, 12)}#${job.song} failed: ${error instanceof Error ? error.stack : String(error)}`);
