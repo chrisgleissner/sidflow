@@ -15,6 +15,7 @@ const disableRender = process.env.SIDFLOW_DISABLE_RENDER === '1';
 const serverExternalPackages = [
   'vectordb',
   '@sidflow/classify', 
+  'libsidplayfp-wasm',
   'ws', 
   '@ffmpeg/ffmpeg', 
   '@ffmpeg/core',

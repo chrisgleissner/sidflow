@@ -136,7 +136,8 @@ export function crossCheckDisagreements(run: EngineRun, horizon: Horizon, observ
 }
 
 /** Reject corrupt checkpoint structures rather than interpreting them as evidence. */
-export function validateRecord(record: CensusRecord, engines: readonly RomAuditEngine[]): void {
+export function validateRecord(record: CensusRecord, engines: readonly RomAuditEngine[], requiredSets:readonly ("full"|"none")[]=["full","none"]): void {
+  if(new Set(requiredSets).size!==requiredSets.length||requiredSets.some(s=>s!=="full"&&s!=="none"))throw new Error("Invalid required ROM sets");
   const hex = (v: unknown): boolean => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
   if (record?.schema !== CENSUS_SCHEMA || !hex(record.sha256) || !Number.isSafeInteger(record.song) || record.song < 1 || record.song > 256 ||
       !Number.isFinite(record.seconds) || record.seconds <= 0 || record.seconds > 3600 || Math.round(record.seconds * 1000) / 1000 !== record.seconds ||
@@ -158,11 +159,11 @@ export function validateRecord(record: CensusRecord, engines: readonly RomAuditE
       throw new Error("Invalid census reference");
     if (run.comparison !== undefined && run.comparison !== "listener-v1") throw new Error("Invalid comparison policy");
     const fills: Record<"full" | "none", readonly LaneFill[]> = run.comparison === "listener-v1" ? { full: ["zero"] as const, none: ["zero"] as const } : laneFillsOf(run.extended);
-    if (!Array.isArray(run.lanes) || run.lanes.length !== fills.full.length + fills.none.length) throw new Error("Invalid census lanes");
+    if (!Array.isArray(run.lanes) || run.lanes.length !== requiredSets.reduce((n,set)=>n+fills[set].length,0)) throw new Error("Invalid census lanes");
     const seen = new Set<string>();
     for (const lane of run.lanes) {
       const key = `${lane.set}/${lane.fill}`;
-      if (!["full", "none"].includes(lane.set) || !(fills[lane.set] ?? []).includes(lane.fill) || seen.has(key) ||
+      if (!requiredSets.includes(lane.set) || !(fills[lane.set] ?? []).includes(lane.fill) || seen.has(key) ||
           !["identical", "different", "equivalent", "audible-difference", "stopped", "reference-failed", "trace-dropped"].includes(lane.outcome) ||
           !Number.isSafeInteger(lane.samples) || lane.samples < 0 || !Number.isSafeInteger(lane.writes) || lane.writes < 0 || !hex(lane.pcmSha256) || !hex(lane.traceSha256) ||
           (lane.outcome === "identical" && (ref.outcome !== "clean" || lane.samples !== wanted || lane.pcmSha256 !== ref.pcmSha256 || lane.traceSha256 !== ref.traceSha256 || lane.writes !== ref.writes)) ||

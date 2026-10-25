@@ -64,19 +64,18 @@ source.write_text(text)
 # A read returns engine-specific state (OSC3/ENV3 are sampled at engine-specific moments, write-only
 # registers return a decaying bus value in reSIDfp), so a program that never reads a SID follows the
 # same CPU path under every SID builder and every output sample rate.
-sidlite = source.parents[2] / 'builders/sidlite-builder/sidlite-emu.cpp'
-text = sidlite.read_text()
-if 'sidflow_sid_readback_reads' not in text:
-    old = '''uint8_t SIDLiteEmu::read(uint_least8_t addr)
-{
-    clock();'''
-    new = '''uint8_t SIDLiteEmu::read(uint_least8_t addr)
-{
+for builder, implementation in [('sidlite', 'SIDLiteEmu'), ('residfp', 'reSIDfpEmu')]:
+    emulator = source.parents[2] / f'builders/{builder}-builder/{builder}-emu.cpp'
+    text = emulator.read_text()
+    if 'sidflow_sid_readback_reads' in text:
+        continue
+    old = f'uint8_t {implementation}::read(uint_least8_t addr)\n' + '{\n    clock();'
+    new = old.replace('    clock();', '''
     // Modified by SIDFlow on 2026-10-23: passive counter of SID register reads.
     ++::sidflow_sid_readback_reads;
-    clock();'''
+    clock();'''.lstrip('\n'))
     namespace_anchor = 'namespace libsidplayfp\n{'
     if text.count(old) != 1 or text.count(namespace_anchor) != 1:
-        raise SystemExit(f'Pinned SIDLite read anchor changed in {sidlite}')
+        raise SystemExit(f'Pinned {builder} read anchor changed in {emulator}')
     text = text.replace(namespace_anchor, 'extern "C" unsigned long long sidflow_sid_readback_reads;\n\n' + namespace_anchor, 1)
-    sidlite.write_text(text.replace(old, new, 1))
+    emulator.write_text(text.replace(old, new, 1))

@@ -173,3 +173,34 @@ export function syntheticFixture(kind: SyntheticKind, options: SyntheticOptions 
   // RSID carries its load address in the first two data bytes (header field is 0).
   return Buffer.concat([header, kind === "busy-writes" ? Buffer.from([0x00, 0x10]) : Buffer.alloc(0), image]);
 }
+
+/** Same intended full-ROM note on both chips; only the selected engine reaches
+ * BASIC after reading its actual write-only-register bus value. */
+export function busReadRomFixture(dependent:"sidlite"|"residfp"):Buffer {
+  const a=new Asm(0x1000);
+  a.lda(0x35).staZp(1);
+  for(const [register,value]of [[0,0x40],[1,0x10],[4,0x21],[5,0],[6,0xf0],[24,15]]as const)a.lda(value).sta(0xd400+register);
+  a.rts();const play=a.here;
+  a.lda(15).sta(0xd415).ldaAbs(0xd400).branch(dependent==="residfp"?0xf0:0xd0,"present");
+  a.lda(0x37).staZp(1).ldaAbs(0xa000).cmp(0x94).branch(0xf0,"present");
+  a.lda(0).sta(0xd418).jump("end");
+  a.label("present").lda(15).sta(0xd418);
+  a.label("end").lda(0x35).staZp(1).rts();
+  const header=Buffer.alloc(0x7c);header.write("PSID");header.writeUInt16BE(2,4);header.writeUInt16BE(0x7c,6);header.writeUInt16BE(0x1000,8);header.writeUInt16BE(0x1000,10);header.writeUInt16BE(play,12);header.writeUInt16BE(1,14);header.writeUInt16BE(1,16);header.writeUInt16BE(0x14,0x76);
+  header.write(`Bus ROM dependency ${dependent}`,0x16);
+  return Buffer.concat([header,a.resolve()]);
+}
+
+/** One stateful SID read, early or late, with a running third-voice oscillator
+ * and envelope. The sampled byte changes voice 1's pitch, so fabricated read
+ * values cannot pass the trace/native/WASM controls. */
+export function seedReadRomFixture(register:0x1b|0x1c,frame=5):Buffer {
+  if(!Number.isInteger(frame)||frame<1||frame>255)throw new Error("Invalid seed-read frame");
+  const a=new Asm(0x1000);a.lda(0x35).staZp(1).lda(0).sta(0x3000).sta(0x3001);
+  for(const base of [0xd400,0xd40e])for(const [reg,value]of [[0,0x40],[1,0x10],[4,0x21],[5,0],[6,0xf0]]as const)a.lda(value).sta(base+reg);
+  a.lda(15).sta(0xd418).rts();const play=a.here;
+  a.ldaAbs(0x3001).branch(0xd0,"return").inc(0x3000).ldaAbs(0x3000).cmp(frame).branch(0xd0,"return");
+  a.ldaAbs(0xd400+register).sta(0xd400).lda(1).sta(0x3001).label("return").rts();
+  const header=Buffer.alloc(0x7c);header.write("PSID");header.writeUInt16BE(2,4);header.writeUInt16BE(0x7c,6);header.writeUInt16BE(0x1000,8);header.writeUInt16BE(0x1000,10);header.writeUInt16BE(play,12);header.writeUInt16BE(1,14);header.writeUInt16BE(1,16);header.writeUInt16BE(0x14,0x76);header.write(`Seed ${register} at frame ${frame}`,0x16);
+  return Buffer.concat([header,a.resolve()]);
+}

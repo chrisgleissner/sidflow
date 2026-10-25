@@ -84,7 +84,7 @@ async function getTelemetrySink(page: Page): Promise<any[]> {
 /**
  * Setup page and play a test track
  */
-async function setupAndPlayTrack(page: Page): Promise<void> {
+async function setupAndPlayTrack(page: Page, duringPlayback = false): Promise<void> {
   await page.goto('/test/audio-capture', { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
   const isIsolated = await page.evaluate(() => window.crossOriginIsolated);
@@ -132,10 +132,18 @@ async function setupAndPlayTrack(page: Page): Promise<void> {
     await player.load({ session: testSession, track: testTrack });
     await player.play();
   },
-  { durationSeconds: TRACK_DURATION_SECONDS });
+  { durationSeconds: TRACK_DURATION_SECONDS + (duringPlayback ? 5 : 0) });
 
-  // Wait for playback to complete
-  await page.waitForTimeout(PLAYBACK_WAIT_MS);
+  if (duringPlayback) {
+    // Occupancy is a playback invariant. After EOS, a correctly drained buffer
+    // may reach zero; observe it while the consumer is still playing instead.
+    await page.waitForFunction(() => {
+      const player = (window as any).__testPlayer;
+      return player?.getState() === 'playing' && player.getTelemetry().framesConsumed >= 12_000;
+    }, undefined, { timeout: 10_000 });
+  } else {
+    await page.waitForTimeout(PLAYBACK_WAIT_MS);
+  }
 }
 
 if (isPlaywrightRunner) {
@@ -209,7 +217,7 @@ test.describe('Telemetry Validation', () => {
   });
 
   test('verifies buffer occupancy is healthy', async ({ page }) => {
-    await setupAndPlayTrack(page);
+    await setupAndPlayTrack(page, true);
 
     const telemetry = await getTelemetry(page);
     expect(telemetry).not.toBeNull();

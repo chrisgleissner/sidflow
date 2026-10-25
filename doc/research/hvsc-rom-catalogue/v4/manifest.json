@@ -1,9 +1,15 @@
 {
   "artifacts": {
     "census.jsonl.gz": "cb544d65f599e51fb95b94697b4b21c49ccfe72b0380a7473dd10b13dc1d2fa2",
-    "deny-list.sidlite.json": "8ab5ca0ce835ecd104ae245081de9709e4051fc19abfa4a159b0bcb23e7e8dcf",
-    "research.jsonl.gz": "baa23aa2926d431e0973a6ce47c71f540d5f4f1a2b37bc5648a6dd8702bec91f"
+    "deny-list.sidlite.json": "3e1c0076970c13e6abbeb7831449032553ec5931d1f5c2b1395f660f86da61cb",
+    "research.jsonl.gz": "baa23aa2926d431e0973a6ce47c71f540d5f4f1a2b37bc5648a6dd8702bec91f",
+    "sha256-to-md5.json": "fa97cdff4fee66b05d01af2f139e509d5843232205872c494fcce69acfc26411"
   },
+  "classificationComplete": {
+    "sidlite": false
+  },
+  "complete": false,
+  "completenessScope": "Recorded engines, consumer ROM sets, SID model profiles and observation horizons only; not universal C64 fidelity",
   "corpusSha256": "4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e",
   "counts": {
     "sidlite": [
@@ -131,6 +137,7 @@
   "files": 61157,
   "hvsc": 85,
   "measuredSubtunes": 567,
+  "measurementComplete": false,
   "methodology": "rom-audit-4",
   "observedSeconds": 70811.856,
   "pendingSubtunes": 87301,

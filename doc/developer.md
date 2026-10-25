@@ -48,6 +48,11 @@ For iterative phase work, prefer `bun run build:quick` plus targeted test files 
 
 ### HVSC ROM requirement research
 
+The dual-engine workflow for the 14600K is documented in
+[the full ROM census guide](research/hvsc-rom-dual-run.md). Its one command builds,
+qualifies and benchmarks both engines before running the complete inventory.
+The methodology-4 commands below are historical SIDLite-only workflows.
+
 For listener-relevant ROM comparisons, full documented horizons and a
 versioned consumer lookup, use [methodology 4](research/hvsc-rom-production.md). The
 older command below is retained as a historical research example. Rollout is gated:

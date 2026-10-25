@@ -114,7 +114,9 @@ it("detects changed SID inputs and keeps queued immutable bytes unchanged",async
 });
 it("derives the hardening source set from the directory, so a new script cannot be left out of the identity",()=>{
  const sources=hardeningSources();
- for(const name of readdirSync(path.resolve(import.meta.dir,"../../../scripts/rom-audit")))expect(sources).toContain(`scripts/rom-audit/${name}`);
+ const root=path.resolve(import.meta.dir,"../../.."),directory=path.join(root,"scripts/rom-audit");
+ for(const entry of readdirSync(directory,{recursive:true,withFileTypes:true}).filter(e=>e.isFile()))
+  expect(sources).toContain(path.relative(root,path.join(entry.parentPath,entry.name)));
  for(const required of ["bun.lock","packages/sidflow-common/src/rom-eligibility.ts","node_modules/libsidplayfp-wasm-audit/dist/libsidplayfp.wasm",
    "node_modules/libsidplayfp-wasm-audit/dist/sidlite/libsidplayfp.wasm","node_modules/libsidplayfp-wasm-audit/dist/complete-source.tar.gz"])expect(sources).toContain(required);
  expect(new Set(sources).size).toBe(sources.length);

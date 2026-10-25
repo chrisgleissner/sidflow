@@ -38,7 +38,7 @@ export async function publishProduction(run: string, out = path.join(run, "publi
   const expected = new Set(headers.flatMap(h => Array.from({ length: h.songs }, (_, i) => `${h.sha256}#${i + 1}`)));
   for (const key of rows.keys()) if (!expected.has(key)) throw new Error(`Unknown census record ${key}`);
   const denyLists = new Map<RomAuditEngine, RomDenyList>(engines.map(engine => [engine, {
-    schema: ROM_DENY_SCHEMA, engineId: manifest.engines[engine].engineId, romSetId: romSetId(), methodology: METHODOLOGY, entries: {} }]));
+    schema: ROM_DENY_SCHEMA, engine, engineId: manifest.engines[engine].engineId, romSetId: romSetId(), methodology: METHODOLOGY, entries: {} }]));
   for (const engine of engines) {
     const declared = manifest.engines[engine];
     if (declared.engineId !== romEngineId(declared, romConsumerProfile(engine))) throw new Error(`Engine identity does not match its profile: ${engine}`);
@@ -102,13 +102,23 @@ export async function publishProduction(run: string, out = path.join(run, "publi
   }
   await rename(path.join(out, "research.jsonl.gz.tmp"), path.join(out, "research.jsonl.gz"));
   const artifacts: Record<string, string> = { "research.jsonl.gz": sha(await readFile(path.join(out, "research.jsonl.gz"))) };
+  // Include pending files: identity coverage and classification completeness are separate.
+  const identityText = json(Object.fromEntries(headers.map(h => [h.sha256, h.md5])));
+  await writeFile(path.join(out, "sha256-to-md5.json"), identityText);
+  artifacts["sha256-to-md5.json"] = sha(identityText);
   for (const engine of engines) {
     const text = json(denyLists.get(engine)!), name = `deny-list.${engine}.json`;
     await writeFile(path.join(out, name), text); artifacts[name] = sha(text);
   }
   const raw = gzipSync(censusText, { level: 9 });
   await writeFile(path.join(out, "census.jsonl.gz"), raw); artifacts["census.jsonl.gz"] = sha(raw);
+  const measurementComplete = rows.size === represented && failed === 0;
+  const classificationComplete = Object.fromEntries(engines.map(engine => [engine,
+    CONSUMER_MASKS.every(mask => counts[engine]![mask]!.unknown === 0)]));
+  const complete = measurementComplete && unknownLengths === 0 && disagreements === 0 && Object.values(classificationComplete).every(Boolean);
   const publication = { schema: "sidflow-rom-manifest-6", methodology: METHODOLOGY, hvsc: 85, files: headers.length, subtunes: represented,
+    complete, measurementComplete, classificationComplete,
+    completenessScope: "Recorded engines, consumer ROM sets, SID model profiles and observation horizons only; not universal C64 fidelity",
     engines: manifest.engines, roms: manifest.roms, documents: manifest.documents, corpusSha256: manifest.corpusSha256, counts, windows, observedSeconds, plannedSeconds, unknownLengths,
     measuredSubtunes: rows.size, failedSubtunes: failed, extendedEvery: manifest.extendedEvery, crossCheck: { sampledSubtunes: sampled, disagreements, examples: disagreementList.slice(0, 20) }, pendingSubtunes: represented - rows.size,
     strictPolicy: "unknown/absent/expired/unsupported evidence denies; allowed playback must end at the recorded horizon", artifacts };

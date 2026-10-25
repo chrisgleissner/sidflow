@@ -1,5 +1,8 @@
 # Listener-relevant ROM audit (methodology 4)
 
+This is the historical SIDLite-only methodology-4 workflow. Use the
+[dual-engine census](hvsc-rom-dual-run.md) for the current 14600K run and Commander bundle.
+
 The audit compares each HVSC subtune with a full-ROM render on the pinned
 `libsidplayfp-wasm` 1.1.1 SIDLite engine. Its question is whether missing ROMs
 change playback for an ordinary listener. It does not judge the artistic or

@@ -2,10 +2,10 @@
   "personaId": "experimental",
   "personaLabel": "Experimental",
   "distribution": {
-    "avgExperimentalTolerance": 0.49138951999999997,
-    "avgMelodicComplexity": 0.6558636400000001,
-    "avgNostalgiaBias": 0.47809084000000013,
-    "avgRhythmicDensity": 0.48486062,
-    "avgTimbralRichness": 0.47665502
+    "avgExperimentalTolerance": 0.4876252799999998,
+    "avgMelodicComplexity": 0.6496382199999999,
+    "avgNostalgiaBias": 0.4827999400000001,
+    "avgRhythmicDensity": 0.4885598600000002,
+    "avgTimbralRichness": 0.4744596
   }
 }

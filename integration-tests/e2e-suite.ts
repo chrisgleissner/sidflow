@@ -164,7 +164,12 @@ describe("End-to-End SIDFlow Pipeline", () => {
       tagsPath,
       classifiedPath,
       threads: 0,
-      classificationDepth: 3
+      classificationDepth: 3,
+      // Exercise real rendering and feature extraction on bounded clips. Full
+      // song duration coverage belongs to the dedicated renderer regressions.
+      maxRenderSec: 20,
+      introSkipSec: 1,
+      maxClassifySec: 10
     };
 
     configPath = path.join(tempRoot, "test.sidflow.json");
@@ -211,7 +216,8 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(result.skipped).toHaveLength(0);
     expect(result.metrics.totalFiles).toBe(totalSongCount);
     expect(result.metrics.cacheHitRate).toBe(0);
-  });
+    // The fixture corpus includes 67 subtunes, including two/three-SID songs.
+  }, 300_000);
 
   it("extracts features from WAV files", async () => {
     const wavFiles = await readdir(audioCachePath, { recursive: true });
@@ -377,7 +383,7 @@ describe("End-to-End SIDFlow Pipeline", () => {
     expect(firstTag).toHaveProperty("c");
     expect(firstTag.e).toBeGreaterThanOrEqual(1);
     expect(firstTag.e).toBeLessThanOrEqual(5);
-  });
+  }, 300_000);
 
   it("exports classification to JSONL format", async () => {
     // Verify JSONL output was created

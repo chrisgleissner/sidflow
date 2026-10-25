@@ -197,6 +197,7 @@ export default defineConfig({
       NODE_ENV: serverNodeEnv,
       HOSTNAME: webServerHost,
       PORT: webServerPort,
+      SIDFLOW_PREFS_PATH: path.join(repoRoot, 'data', '.sidflow-e2e-preferences.json'),
       SIDFLOW_CONFIG: testConfigPath,
       SIDFLOW_MODEL_PATH: process.env.SIDFLOW_MODEL_PATH ?? defaultModelPath,
       SIDFLOW_TEST_SERVER_MODE: normalizedServerMode,

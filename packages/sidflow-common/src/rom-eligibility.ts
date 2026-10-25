@@ -51,6 +51,8 @@ export type RomDecision = [compatibleByte: number, incompatibleByte: number, max
 export type FallbackSidModel = "MOS6581" | "MOS8580";
 export interface RomDenyList {
   schema: typeof ROM_DENY_SCHEMA;
+  /** Every entry in this file describes this renderer. Older v4 files bind it through engineId. */
+  engine?: RomAuditEngine;
   engineId: string;
   romSetId: string;
   methodology: string;
@@ -89,7 +91,7 @@ export function createRomEligibilityLookup(data: RomDenyList,
   const hash = (v: unknown): boolean => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
   const engineId = romEngineId(expected, expected.profile);
   const matches = (expected.fallbackSidModel === "MOS6581" || expected.fallbackSidModel === "MOS8580") && data?.schema === ROM_DENY_SCHEMA && hash(data.engineId) && hash(data.romSetId) &&
-    data.engineId === engineId && data.romSetId === romSetId() &&
+    data.engineId === engineId && (data.engine === undefined || data.engine === expected.profile.engine) && data.romSetId === romSetId() &&
     data.methodology === ROM_ELIGIBILITY_METHODOLOGY && data.methodology === expected.methodology;
   const valid = matches && data.entries !== null && typeof data.entries === "object" && !Array.isArray(data.entries) &&
     Object.entries(data.entries).every(([identity, songs]) => hash(identity) && Array.isArray(songs) && songs.length > 0 &&

@@ -19,6 +19,11 @@ const selection=(mask:number):RomSelection=>({kernal:mask&1?REFERENCE_ROM_SHA256
 function data():RomDenyList{return {schema:"sidflow-rom-deny-4",engineId:romEngineId(engine,profile),romSetId:romSetId(),methodology:"rom-audit-4",
  entries:{[hash]:[[0b00001000,0b00000001,15000,10000,1],[0,0,0,0,0]]}};}
 describe("production ROM eligibility",()=>{
+ it("checks an explicit engine label as well as the engine build identity",()=>{
+  const labelled={...data(),engine:"sidlite" as const};
+  expect(createRomEligibilityLookup(labelled,expected)(hash,1,selection(3)).eligible).toBe(true);
+  expect(createRomEligibilityLookup({...labelled,engine:"residfp"},expected)(hash,1,selection(3)).reason).toBe("catalogue-provenance-or-schema-mismatch");
+ });
  it("evaluates the Commander ROM sets and denies every other set",()=>{
   const lookup=createRomEligibilityLookup(data(),expected);
   expect(lookup(hash,1,selection(3)).state).toBe("compatible");
@@ -248,6 +253,12 @@ describe("publication",()=>{
    await publicationFixture(dir);
    await publishProduction(dir);const first=await readFile(path.join(dir,"published/research.jsonl.gz"));
    await publishProduction(dir);expect(await readFile(path.join(dir,"published/research.jsonl.gz"))).toEqual(first);
+   const m=JSON.parse(await readFile(path.join(dir,"published/manifest.json"),"utf8"));
+   expect(m.complete).toBe(false);expect(m.measurementComplete).toBe(false);
+   expect(m.classificationComplete).toEqual(Object.fromEntries(CENSUS_ENGINES.map(e=>[e,false])));
+   const identities=await readFile(path.join(dir,"published/sha256-to-md5.json"),"utf8");
+   expect(JSON.parse(identities)).toEqual({[fixtureHash]:"a".repeat(32)});
+   expect(sha(identities)).toBe(m.artifacts["sha256-to-md5.json"]);
    const records=gunzipSync(first).toString().trim().split("\n").map(line=>JSON.parse(line));
    expect(records.length).toBe(2);expect(records[0].declared.basic).toBe(true);
    for(const r of records)for(const e of CENSUS_ENGINES)for(const a of r.engines[e].assessments)expect(a.state).toBe("unknown");
@@ -279,6 +290,42 @@ describe("publication",()=>{
   }finally{await rm(dir,{recursive:true,force:true});}
  });
 });
+ it("marks completion only when all supported engine decisions have adequate evidence",async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),"rom-completeness-"));
+  try{
+   const {manifest,horizons}=await publicationFixture(dir);
+   const bothEngines=["sidlite","residfp"] as const;
+   manifest.engines=Object.fromEntries(bothEngines.map(e=>{const hashes=fakeEngine(e);return [e,{...hashes,profile:romConsumerProfile(e),engineId:romEngineId(hashes,romConsumerProfile(e))}];}));
+   await writeFile(path.join(dir,"manifest.json"),stable(manifest));
+   const resolvedRecord=(seconds:number,song=1)=>({...censusRecord(seconds,song),runs:bothEngines.map(e=>{
+    const run=engineRun(e,seconds);run.lanes=run.lanes.map(l=>lane(l.set,l.fill,{},seconds));return run;
+   })});
+   const publish=async()=>{await publishProduction(dir);return JSON.parse(await readFile(path.join(dir,"published/manifest.json"),"utf8"));};
+   await writeFile(path.join(dir,"census.jsonl"),[resolvedRecord(15),resolvedRecord(300,2)].map(r=>stable(r).trimEnd()).join("\n")+"\n");
+   const unresolved=await publish();
+   expect(unresolved.measurementComplete).toBe(true);expect(unresolved.complete).toBe(false); // unknown duration
+   horizons["silent.sid"]![1]={...horizons["silent.sid"]![0]!};
+   const horizonText=stable(horizons),lengths=`[Database]\n; /silent.sid\n${"a".repeat(32)}=0:10 0:10\n`;
+   await writeFile(path.join(dir,"horizons.json"),horizonText);
+   await writeFile(path.join(dir,"corpus/DOCUMENTS/Songlengths.md5"),lengths);
+   manifest.horizonsSha256=sha(horizonText);
+   (manifest.documents as Record<string,string>)["Songlengths.md5"]=sha(lengths);
+   await writeFile(path.join(dir,"manifest.json"),stable(manifest));
+   await writeFile(path.join(dir,"census.jsonl"),[resolvedRecord(15),resolvedRecord(15,2)].map(r=>stable(r).trimEnd()).join("\n")+"\n");
+   const complete=await publish();
+   expect(complete.complete).toBe(true);expect(complete.measurementComplete).toBe(true);
+   expect(complete.classificationComplete).toEqual({sidlite:true,residfp:true});
+   for(const engine of bothEngines){
+    const d=JSON.parse(await readFile(path.join(dir,`published/deny-list.${engine}.json`),"utf8"));
+    expect(d.engine).toBe(engine);expect(d.engineId).toBe(complete.engines[engine].engineId);
+   }
+   const failed={...censusRecord(15,2),runs:[],failure:{reason:"timeout",message:"x"}};
+   await writeFile(path.join(dir,"census.jsonl"),[resolvedRecord(15),failed].map(r=>stable(r).trimEnd()).join("\n")+"\n");
+   const incomplete=await publish();
+   expect(incomplete.pendingSubtunes).toBe(0);expect(incomplete.failedSubtunes).toBe(1);
+   expect(incomplete.measurementComplete).toBe(false);expect(incomplete.complete).toBe(false);
+  }finally{await rm(dir,{recursive:true,force:true});}
+ });
 // Once present, validate ALL maintained research/production decisions, without skipping cases or sampling.
 it("exhaustively agrees with every maintained research decision",async()=>{
  const dir=path.resolve(import.meta.dir,"../../../doc/research/hvsc-rom-catalogue/v4");

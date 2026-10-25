@@ -1,5 +1,8 @@
 # Run the HVSC 85 listener-relevant ROM audit
 
+This is the historical SIDLite-only methodology-4 workflow. Use the
+[dual-engine census](hvsc-rom-dual-run.md) for the current 14600K run and Commander bundle.
+
 The goal is a full census within 16 hours on a 14600K. Run the benchmark on that
 machine first; a different CPU's speed or the deliberately adversarial pilot is
 not sufficient evidence for this budget.

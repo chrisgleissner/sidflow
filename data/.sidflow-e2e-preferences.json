@@ -1,0 +1,19 @@
+{
+  "renderEngine": "wasm",
+  "preferredEngines": null,
+  "sidplayfpCliFlags": null,
+  "defaultFormats": null,
+  "scheduler": {
+    "enabled": false,
+    "time": "06:00",
+    "timezone": "UTC"
+  },
+  "training": {
+    "enabled": false
+  },
+  "renderPrefs": {
+    "preserveWav": true,
+    "enableFlac": false,
+    "enableM4a": false
+  }
+}
