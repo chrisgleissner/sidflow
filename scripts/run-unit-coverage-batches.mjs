@@ -41,6 +41,12 @@ const noCoverageDirectories = [
 const noCoverageGlobs = [
   "packages/sidflow-classify/test/render-timeout.test.ts",
   "packages/sidflow-classify/test/phase-transitions.test.ts",
+  // Bun 1.3.1 coverage intermittently corrupts Essentia's WASM call table
+  // (SpectralContrast: access to a null reference) and crashes the real SID
+  // worker stress test. Run every assertion in the existing uninstrumented
+  // phase, as for the other WASM/worker regressions above.
+  "packages/sidflow-classify/test/essentia-features.test.ts",
+  "packages/sidflow-classify/test/super-mario-stress.test.ts",
 ];
 
 function matchesNoCoverage(relativeFile) {
@@ -242,10 +248,14 @@ async function prepareBatches() {
       });
     });
     if (noCoverageFiles.length > 0) {
-      noCoverageBatches.push({
-        name: `${root.name}-no-coverage`,
-        files: noCoverageFiles.sort((left, right) => left.localeCompare(right)),
-        testRoot: root.dir,
+      // Preserve the same process isolation as instrumented batches; grouping
+      // real WASM workers with unrelated pool lifecycle tests shares VM state.
+      splitIntoChunks(noCoverageFiles.sort((left, right) => left.localeCompare(right)), root.chunkSize).forEach((chunk, index) => {
+        noCoverageBatches.push({
+          name: `${root.name}-no-coverage-${index + 1}`,
+          files: chunk,
+          testRoot: root.dir,
+        });
       });
     }
   }

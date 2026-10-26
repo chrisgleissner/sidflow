@@ -1,5 +1,9 @@
 # HVSC playback and C64 ROM requirements
 
+For the expanded eight-mask, full-song methodology, maintained machine-readable
+artifacts and outstanding coverage, see [methodology 3](hvsc-rom-production.md).
+The measurements below retain their original finite-window scope.
+
 Investigation date: 20 October 2026. Corpus: **HVSC release 85, 28 June 2026**.
 This research belongs to branch `research/hvsc-rom-requirements`, based on
 `origin/main` at `d893e32`. The complete controlled census covers **61,157 files / 87,868 subtunes**.

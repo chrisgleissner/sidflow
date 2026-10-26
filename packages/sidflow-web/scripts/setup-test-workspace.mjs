@@ -7,9 +7,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
 const testWorkspace = resolve(repoRoot, 'test-workspace');
 const testData = resolve(repoRoot, 'test-data');
-// Web preferences are stored under repoRoot/data/.sidflow-preferences.json (see lib/preferences-store.ts).
-// Keep E2E runs deterministic by resetting scheduler + sidBasePath there.
-const prefsFile = resolve(repoRoot, 'data', '.sidflow-preferences.json');
+// Match Playwright's isolated preference store; never inherit or overwrite the
+// developer's renderer choice in data/.sidflow-preferences.json.
+const prefsFile = resolve(process.env.SIDFLOW_PREFS_PATH ?? resolve(repoRoot, 'data', '.sidflow-e2e-preferences.json'));
 const runtimePathsToReset = [
   resolve(repoRoot, 'data', 'jobs'),
   resolve(repoRoot, 'data', 'rate-limits'),
@@ -37,6 +37,10 @@ try {
   const existing = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : {};
   // Clear sidBasePath so tests use config's sidPath instead
   delete existing.sidBasePath;
+  existing.renderEngine = 'wasm';
+  existing.preferredEngines = null;
+  existing.sidplayfpCliFlags = null;
+  existing.defaultFormats = null;
   // Disable any background schedulers / training to avoid unexpected pipeline runs during E2E.
   existing.scheduler = { enabled: false, time: '06:00', timezone: 'UTC' };
   existing.training = { enabled: false };

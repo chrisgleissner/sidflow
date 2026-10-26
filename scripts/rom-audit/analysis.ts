@@ -1,6 +1,10 @@
 /** Evidence labels, deliberately distinct from a claim of perpetual ROM independence. */
 export interface Measurement {
   error: string;
+  /** cpu-halt | engine | resource; empty when error is empty. */
+  errorKind?: string;
+  /** CPU reads of SID registers $19-$1C, which feed sampled state back to the program. */
+  sidReadbackReads?: number;
   samples: number;
   hash: string;
   acRms: number;
@@ -14,12 +18,18 @@ export interface Measurement {
   startupOffsetCycles: number;
   maxRelativeWriteDriftCycles: number;
   basicReads?: number;
+  kernalReads?: number;
+  chargenReads?: number;
+  traceComplete?: boolean;
+  traceHash?: string;
+  firstWriteDivergence?: { index: number; actual: number[] | null; reference: number[] | null } | null;
   derivedFrom?: string;
 }
 export interface Execution {
   path: string;
   song: number;
   seconds: number;
+  matrix?: Measurement[];
   both: Measurement;
   repeat: Measurement;
   neither: Measurement;

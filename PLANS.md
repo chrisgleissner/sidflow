@@ -1,4 +1,367 @@
+## PR #109 merge readiness (2026-10-26) — active
+
+User scope: review, fix, validate and merge the current ROM audit PR. Document
+reruns and publication in the main README. The user will execute the full HVSC
+census on another machine; no complete census or target-CPU timing is claimed here.
+Preserve pre-existing workspace edits and all prior measurement checkpoints.
+
+- [x] Read project/bridge instructions, current PR, correspondence and dual-engine path.
+- [x] Review decision, checkpoint, qualification and Commander publication boundaries;
+  fix concrete defects with regression coverage and record review findings.
+- [x] Document runnable setup/resume commands, artifact locations and conservative
+  compatible/incompatible/unknown consumer behavior in README.md.
+- [x] Qualify final sources (native/WASM controls, transport, build/typecheck,
+  three consecutive clean full test runs), run required E2E/package checks.
+- [ ] Update PR description, obtain/process GitHub review, push fixes, wait for CI
+  and merge only when all checks and review threads are clear.
+
+Review fixes (current-source validation in progress): dense sub-100ms digi bursts
+now require audio, including final tails; native terminal packets distinguish
+emulated CPU halts from resource/engine failures, which remain unknown; resumes
+retry unresolved decisions; complete publications include the validated
+qualification/benchmark evidence and a separate releaseReady flag. Added a
+post-census verifier covering complete HVSC85 inventory, qualification binding,
+checksums, exception domain, binary/JSON equivalence and aggregate counts.
+Focused regression run: 34 pass, 0 fail. Build, strict audit-script typecheck,
+config validation and package checks passed before the final terminal hardening;
+qualification was deliberately restarted after that last behavior change.
+No full-HVSC run was started.
+
+Qualification found the existing Bun 1.3.1 coverage/WASM failure in the first
+Essentia feature test (SpectralContrast: null-reference indirect call), after
+192 native/WASM controls and 32 transport jobs passed. Five consecutive isolated
+uninstrumented Essentia runs passed 8/8 each. The two affected Essentia/real-SID
+worker tests now use the existing uninstrumented phase, with the same process
+isolation as instrumented batches; every assertion still executes, no test is
+skipped. Qualification now binds the actual test runner/package/runtime wrappers.
+A final short-burst regression also covers fewer than 100 volume writes.
+Full qualification restarted against this frozen source.
+
+Final-source qualification passed, with literal outputs:
+
+```text
+Full run 1: 2975 pass / 0 fail / 0 skip
+Full run 2: 2975 pass / 0 fail / 0 skip
+Full run 3: 2975 pass / 0 fail / 0 skip
+```
+
+192 native/WASM controls and 32 transport jobs passed. Certificate qualification
+identity `812d25fac32ebb2d2ad23c36ea541c76d1ea131a889cf7dc467a924869153ea9`; measurement identity
+`6affdd9f7ba2ffda73d79dde2b3efcfeace4a4191b48089f49df780d7479208c`.
+Package, config and similarity fixture checks passed. CI on user-pushed commit
+7c8590d exposed the rolling image's Bun 1.3.11 worker-lifecycle crash versus the
+declared/local 1.3.1 runtime. Install the package-declared Bun in the workflow;
+three isolated worker-lifecycle regressions passed locally. Independent GitHub
+Codex review of 7c8590dc1d found no major issues and no unresolved threads.
+Local E2E passed 10/10 pipeline tests and 122/122 browser tests. Commit and push
+only the CI runtime fix plus validation documentation, then require final green
+CI before the authorized merge. No full-HVSC classification has been started.
+
+
+Initial findings: no GitHub review threads; draft description is stale SIDLite-only
+methodology 4 while current sources implement independently measured dual engines.
+Prior qualification has two successful suites and a failed third suite with a
+Bun/WASM crash; it is not a valid current certificate. Review requested on GitHub.
+
+## Dual-engine ROM census delivery (2026-10-24) — active
+
+Current request: prepare and qualify the complete workflow here, without running
+all HVSC on the 6700K; one command on a 14600K, ideally <12h and at most 16h.
+The earlier stricter target remains an optimization goal, not a claim of measured
+14600K performance. Preserve existing checkpoints and user-owned changes.
+
+- [x] Recover Commander MD5/completeness contract and engine-specific counterexamples.
+- [x] Measure existing native reference cost: Commando #1, 120s, 48kHz/8191,
+  256-event safe pulls: SIDLite 1.785s; reSIDfp 11.365s on this loaded 6700K.
+  This single tune is a profiling probe, not a corpus runtime prediction.
+- [x] Profile native streaming; choose a digital-screen + unchanged listener comparison
+  design instead of transporting every PCM sample. Preserve per-engine
+  SID readback via upstream reSIDfp clockSilent; never transfer engine results.
+  First 54 exact native/WASM trace controls passed (all banks, OSC3, multi-SID,
+  silent changes). Expanded 156-control parity passed; final source qualification is pending.
+- [ ] Benchmark representative dual-engine jobs and choose the measured path;
+  never infer a superset from a small sample or silently omit CHARGEN. The current
+  320-job target-host sample is running on the 6700K; it will not be treated as a
+  14600K timing result.
+- [x] Implement both engines, source/binary/log-bound qualification, resumable
+  checksummed checkpoints and target-machine stratified budget gate (25% margin).
+  New entry point: scripts/rom-audit/run-dual.sh. Historical v4 launcher
+  remains SIDLite-only. Commander JSON/11-byte packed MD5 exceptions, unknown
+  sidecar, identity map, horizon/model data and checksummed manifest are implemented;
+  no full census or final release is claimed.
+- [ ] Build/typecheck, meaningful regression checks and three clean full suites;
+  document literal summaries, one-liner, scope and timing uncertainty.
+- [x] Fix the reported colored-output timeout bug: the launcher now uses Node plain
+  output for timeout seconds. Reproduced with FORCE_COLOR=3/NO_COLOR=1; launcher
+  entered qualification and was correctly stopped by its 5.8-second watchdog (124),
+  with no invalid-time-interval error. Hard default budget is now 12h; maximum 16h.
+- [x] Full E2E passed: integration 10/10 (43 assertions), browser 122/122. The
+  browser run emitted existing HLS asset path type errors while tests passed; track
+  that separately if playback streaming needs investigation.
+
 # PLANS.md - SID Classification Pipeline Recovery
+
+
+Current candidate: complete inventory preflight verified all 61,157 files / 87,868
+subtunes and 10,176,145.245 horizon seconds. Strict audit-script TypeScript and
+focused checks pass. The candidate qualification coordinator is running under
+`workspace/rom-audit-screen-qualification-run.log`; its source-bound logs and
+certificate live in `workspace/rom-audit-screen-qualification/`. Preliminary
+80-job profile (the already-counted v4 stratified sample) was recorded under
+`workspace/rom-audit-screen-benchmark.{json,log}`. That exploratory profile was stopped after 32 jobs identified the concrete
+WASM-256 audio-fallback bottleneck (partial strata alone already exceeded 185h
+on this loaded 6700K). Its measurements survive and are not a completed projection.
+Final candidate instead streams native PCM/traces into the unchanged comparator;
+initial Commando probe: SIDLite native/WASM exact, reSIDfp maximum 5 LSB / exact
+writes. Selecting the archive's inline filter-table initialization removes native
+thread-dependent dither; fresh native reSIDfp references repeat exactly.
+The final 80-job source-bound benchmark uses `screen-census.ts bench` under
+`workspace/rom-audit-dual-6700k-benchmark.log`; no full stage runs here.
+Full production classification on the 6700K is explicitly outside this request.
+
+Latest measured findings (2026-10-24 continuation):
+
+- Final candidate adds a bounded real-emulation warm-up before bus-only
+  screening. Later stateful reads still abort and rerun detailed; early OSC3,
+  early ENV3 and late ENV3 controls exercise this boundary on both chip models.
+  Fresh official WASM references now run in separate cold Node processes:
+  repeated Emscripten factory initialization in Bun 1.3.1 crashed before tune
+  loading. This changes the qualification host, not the emulator or comparator.
+  The 192-control comparison is running, followed by transport stress and three
+  complete suites. Final 80-job timing uses
+  `workspace/rom-audit-dual-warmup-6700k`; no full census runs here.
+- The preceding bus-only/unresolved-audio candidate completed 80/80 jobs with
+  zero failures and zero unresolved measured decisions. Population CPU cost was
+  404.173 core-hours; loaded-6700K capacity 5.259 cores yielded 76.85h (96.06h
+  with margin). It predates warm-up and cannot establish the requested budget.
+- Verified the maintained partial v4 publication's 61,157-file MD5 map, absence
+  of eight-byte MD5 prefix collisions, explicit `complete:false`, and unchanged
+  engineId/romSetId. This is metadata completion, not new v4 measurements.
+- The first standalone end-to-end run exposed five-second default timeouts on
+  real rendering and classification (about six seconds each under contention).
+  Those two operations now have explicit one-minute limits with all output
+  assertions retained; the complete end-to-end command is rerunning.
+- Follow-up: the E2E fixture corpus contains 67 subtunes. Its real renders now
+  use configured 20s clips and a 10s analysis window after a 1s intro skip;
+  rendering/classification retain every fixture and allow five minutes each.
+  The CLI pipeline passed 10/10. Browser validation is rebuilding stale Next.js
+  output before its final run.
+- Warm-up completed 80/80 with no failed or unknown measured decisions; the
+  population estimate was still 366.525 core-hours. Added CPU-specific LTO
+  compilation (IEEE floating-point contraction remains disabled), binding the
+  resolved compiler target features in the build cache. The final benchmark is
+  `workspace/rom-audit-dual-ready-6700k` and qualification is restarting against
+  those exact binaries.
+- A natural-exit regression reproduced a retained native child watcher when a
+  paused output pipe survived cancellation. NativeLane.close now destroys all
+  three pipes after terminating the child. The regression passes without forced
+  process.exit; focused screen tests: 10 pass, 0 fail.
+- Closing native pipes also unreferences the canceled child watcher. All 192
+  optimized native/WASM comparisons now pass and the verifier exits naturally.
+  Final qualification and 80-job timing are running under
+  `workspace/rom-audit-dual-final-qualified-6700k` and the qualification logs.
+- The fresh browser build resolved stale-build runtime errors. Its classification
+  fixtures exposed inherited developer renderer preferences, which forced the
+  CLI renderer and invalidated WASM cache fixtures. Playwright now uses a separate
+  `data/.sidflow-e2e-preferences.json`, initialized deterministically by the setup
+  script. The developer's saved preferences are no longer overwritten by setup.
+
+- Native audio + detailed screens passed 132 PCM/trace controls, but their
+  80-job loaded-machine wall projection was 192.93h (241.16h with margin).
+  Preserve `workspace/rom-audit-dual-6700k`; this candidate does not meet budget.
+- The first full suite exposed a real source-enumeration test bug: it expected
+  a directory itself in the file-only source set. Fixed it to verify every
+  recursive file, including files under the existing user-owned `__pycache__`.
+- Dark Tower BASIC #3 reproduced a terminal-packet failure while the native
+  process exited normally after an expected CPU halt. Replaced Bun readable
+  async iteration with a bounded event queue; 32 repeated dual-engine jobs then
+  passed with zero failures. This real regression is now qualification-gated.
+- Added a bus-only screen preserving each engine's actual write-only/POT read
+  behavior. OSC3/ENV3 reads abort before granting and rerun from immutable bytes
+  in detailed mode. All 156 bus/detailed/native-audio/WASM comparisons passed,
+  including opposite engine-specific BASIC dependencies and both chip models.
+- Commando #1 /120s bus screen: SIDLite 2.613 process CPU seconds, reSIDfp 3.670;
+  both consumer configurations equivalent. These are probe costs, not a census
+  projection. C++ and coordinator CPU accounting now separates work from host
+  contention. Benchmark modelling weights process CPU by population and divides
+  by the capacity actually delivered during the complete sample; retains the old
+  wall-weighted projection for audit. The 25% margin and target-machine gate stay.
+- Final candidate benchmark is `workspace/rom-audit-dual-bus-6700k-benchmark.log`
+  with results/checkpoints under `workspace/rom-audit-dual-bus-6700k`. No full
+  corpus stage has been launched here. Final three-suite qualification is pending.
+
+## PR #109: verified correctness and 12-hour extrapolation (2026-10-24) — active
+
+Latest user contract supersedes the 16-hour target: demonstrate ROM-need detection
+correctness and a full-HVSC runtime below 12 hours on a 14600K, extrapolated from
+measurements on this 6700K. Existing methodology-4 pilot/CI results remain historical
+validated evidence; they do not establish either new claim. Preserve user-owned
+untracked v2 files and existing checkpoints.
+
+Execution discipline requested by the user:
+
+- [x] Identify wasted work: comparator changes repeatedly restarted the expensive
+  pilot; excessive speculative analysis and repeated status polling delayed delivery.
+- [ ] Profile before redesign: benchmark native and WASM execution on the same
+  already-counted inputs; identify the dominant cost and select the fastest defensible
+  implementation using measured results. Batch independent reads/checks.
+- [ ] Write a precise correctness contract and enumerate its proof obligations.
+  Distinguish full-ROM reference agreement, ROM dependency and listener audibility.
+  A finite test corpus or heuristic threshold is not proof of universal 100% accuracy.
+  Do not weaken or silently redefine the requested accuracy claim.
+- [ ] Complete small adversarial controls before a long pilot: late dependencies,
+  each ROM and interacting removals, quiet/short/stereo/digi changes, harmless timing,
+  silence/stops, SID model scope and reference failures. Reuse existing controls.
+- [ ] Implement the smallest measured performance improvement. Keep native/WASM
+  reference agreement and provenance explicit if a native backend is selected.
+- [ ] Freeze rendering and decision behavior after all small controls pass. Changes
+  only to publication/docs/qualification must not invalidate measured PCM/trace evidence;
+  actual renderer/engine/configuration/comparator changes must invalidate it.
+- [ ] Run one final canonical pilot, investigate every discrepancy, then execute one
+  final qualification sequence (build/typecheck, focused checks and three consecutive
+  complete suites). Restart only for an actual defect affecting the evidence.
+- [ ] Produce a reproducible 6700K benchmark and transparent 14600K extrapolation,
+  including workload, worker/core scaling, uncertainty and all census overhead. Require
+  headroom below 12 hours; do not present an assumed CPU multiplier as measured proof.
+- [ ] Push reviewed changes, converge CI, and report exact achieved scope and any
+  unproven requirement. Do not claim 100% listener accuracy from self-labelled controls.
+
+Engine-scope correction (2026-10-24): inspected packaged SIDLite and reSIDfp
+read paths and ran four synthetic listener controls plus four isolated-BASIC
+PCM comparisons. Both directions of engine-specific ROM dependency are proven:
+SIDLite write-only SID reads return zero; reSIDfp returns the retained bus byte.
+The affected engine loses a sustained note; the unaffected engine has exact PCM
+agreement. Evidence and reproducible stimuli are in
+`doc/research/hvsc-rom-engine-dependency.md`. These are not HVSC disagreement counts.
+SIDLite qualification cannot certify reSIDfp. The next design/benchmark must
+cover both engines, or prove a valid per-case transfer rule; do not spend another
+long SIDLite-only pilot to claim the broader user goal.
+
+- [x] Inspect both engines and verify engine-specific ROM dependencies with actual
+  WASM output, independent reference repeats, and isolated BASIC removal.
+- [ ] Extend qualification and performance design to reSIDfp; keep engine IDs separate.
+- [ ] Publish requested complete-file MD5 mapping and explicit completeness metadata
+  for Claude, without representing pending entries as known compatible/incompatible.
+
+Commander correspondence follow-up (2026-10-24): wrote the user-requested reply
+at `/home/chris/dev/c64/c64commander-workspace/correspondence/from-sidflow-to-c64commander.md`
+and kept an identical copy under `doc/research/correspondence/`. Extracted a local
+deterministic SHA-256-to-complete-file-MD5 map for all 61,157 v4 file entries at
+`workspace/rom-audit-sha256-to-md5-v4.json`; verified exact deny-list coverage,
+per-subtune identity consistency, and no eight-byte MD5 prefix collisions.
+Map SHA-256: `fa97cdff4fee66b05d01af2f139e509d5843232205872c494fcce69acfc26411`.
+This is a derived local artifact, not release integration or new audio evidence.
+The response explicitly states partial coverage, engine-specific counterexamples,
+stable current IDs and remaining publication/qualification work.
+
+Claude disagreement investigation (2026-10-24): acknowledged bridge request
+`2026-10-24-1035-claude-c64commander-to-codex-sidflow-reSIDfp-disagreement` and
+answered with accepted diagnostic scope/initial timing. Inspected the actual app
+branch read-only at `/home/chris/dev/c64/wt-sid-player`: its check uses six seconds
+and a 3 dB whole-render RMS criterion, which cannot establish musical equivalence
+or attribute disagreement to the engine. Matched all 111 non-header-declared app
+source records to v4 research rows (all already counted/measured SIDLite inputs).
+Reserved them through the existing corpus lock/ledger, adding no new subtunes.
+Running a six-second listener-v1 comparison on both engines, followed by full-horizon
+reSIDfp (16,941.016 horizon seconds), with fresh reSIDfp modules and full-ROM repeats.
+Diagnostic checkpoints: `workspace/rom-audit-claude-111-{prefix,full}.jsonl`;
+selection: `workspace/rom-audit-claude-111-selection.json`. This does not change v4
+or qualify a reSIDfp release. Initial cases show both genuine engine-specific
+outcomes and reSIDfp listener differences that an RMS-level check cannot exclude.
+
+Thorough engine-scope follow-up (user steering 2026-10-24): both engines share
+CPU/MMU execution and actually execute reached ROM calls. SID readback can change
+the path to those calls. Expanded synthetic controls to both chip models and all
+three ROM banks: 24 comparisons passed, with full-ROM paths requesting the same
+note/volume in both engines. Preserve the separate question of real-C64 fidelity;
+full-ROM differential agreement is not universal correct-playback proof.
+Matched six-second 111-pair results: 46 both differ, 43 both equivalent, 20
+SIDLite-only difference, one reSIDfp-only difference, one reSIDfp failure; the
+existing full-horizon SIDLite baseline differs for all 111, so the single reverse
+six-second row is not full-horizon evidence. Full-horizon checks already found
+Snooker #2 and No Mercy #3 SIDLite-incompatible/reSIDfp-equivalent.
+An independent diagnostic search prioritizes SIDLite-compatible inputs containing
+readable-SID-register byte patterns (64 candidates), asserting every identity is
+already present in the rollout ledger before rendering. This adds no input scope
+or corpus reservation and does not run a second full-census rollout. Initial
+four high-distance compatible controls stayed equivalent in reSIDfp for six seconds.
+The reverse search must confirm any candidate through its complete horizon before
+claiming a real-HVSC reverse example. ReSIDfp cleanup trap for Justincase #1 is
+reproducible at the recorded large pull; a separate 256-event diagnostic succeeds.
+Do not silently apply a local engine workaround or publish the failure as compatible.
+
+Speed rules: investigate one concrete hypothesis at a time; timebox an inconclusive
+approach and record its result; avoid speculative cleanup and duplicate validation.
+Use the required three full runs at the final source freeze, rather than repeatedly
+running them during development. Keep updates concise and tied to decisions/results.
+The quality bar, reference comparisons, full-song horizons, rollout ceiling and
+three-clean-run requirement are unchanged.
+
+## PR #109 continuation: listener relevance and 16-hour budget (2026-10-23) — implementation qualified; target-machine timing pending
+
+- [x] Inspect PR/CI and completed pilot. Pilot: 567 completed, one crashed worker,
+  4,553.233 seconds elapsed, 15.552 aggregate horizon-seconds/second. CI fails
+  because the maintained v3 publication is absent. Preserve existing v2 untracked files.
+- [x] Measure and reduce WASM allocation, trace and hashing overhead without losing
+  reference comparisons or late-song coverage; reproduce long-job memory behavior.
+- [x] Add a separately identified listener-relevant assessment: harmless timing
+  offsets must not be called audible failures; missing/changed music must remain
+  detectable. Keep exact evidence distinct and never relabel old measurements.
+- [x] Replace unsupported CPU extrapolations with measured aggregate throughput,
+  representative corpus weighting and an explicit target-machine budget gate.
+- [x] Restore maintained publication and update usage/review evidence; CI status is recorded by the live PR checks.
+- [x] Build/typecheck and run full tests three consecutive times; record literal
+  outputs in doc/research/hvsc-rom-validation-4.md. Source qualification complete.
+- [ ] Validate the 14600K budget on that machine before a full-corpus run.
+
+Validated implementation was pushed in commit 8c0579d to PR #109; its live
+checks are the CI follow-through record. No full-corpus completion or 14600K timing is claimed.
+
+The prior 11–17 hour claim divides by a per-lane speed estimate rather than the
+completed census rate. At the observed aggregate rate the full horizon inventory
+projects to 181.75 hours on this loaded 6700K. The pilot deliberately oversamples
+unusual/long songs, so this is diagnostic rather than a representative corpus ETA.
+
+Implementation: methodology 4 / census schema 2, exact audit dependency 1.1.1
+(current Commander main), safe default large pulls, shared SIDLite module with
+independent C64 states, buffered hashes, register timing tolerance and spectral
+fallback. Unknown is reserved for inadequate evidence. Controls cover inaudible
+writes, phase/DC shifts, dense digi writes, late/short events, quiet melody under
+loud bass, pitch/volume/stereo changes, sawtooth/noise timing and fallback models, held notes lost on a decoder stop, inaudible silent stops,
+and DC-preserving partial-window padding.
+Final qualification passed: strict script check, build, package checks,
+source-bound decision regression, reproducibility and three focused runs
+(82 pass / 0 fail / 0 skip each). Partial development
+pilots are retained under workspace/rom-audit-v4-draft* and do not qualify sources.
+
+The first 80-job corpus-weighted 1.1.1 benchmark measured 43.762 aggregate horizon
+seconds/second, projecting 67.70 h (77.86 h with 15% margin) on this loaded 6700K.
+It precedes the final band refinement and improved per-subtune sampling and is
+not final qualification evidence. No 14600K duration is claimed. A target-machine
+benchmark with its final sources must pass the 15 h census budget.
+
+Final-renderer benchmark: 80 per-subtune-hash samples, all format/duration strata,
+7 workers, 46.8 aggregate horizon-seconds/second. Population-weighted projection
+62.52 h; 71.90 h including the 15% margin, on the loaded 6700K. Stored in
+workspace/rom-audit-benchmark-v4.json. The 14600K would need approximately 4.8x
+this measured throughput to pass the configured 15 h budget; it has not been
+measured. The canonical final-source pilot completed: 567/567, 0 failures, 113 matching
+reference repeats, no unresolved measured decisions for masks 0/3. Mask 0:
+399 compatible / 168 incompatible; mask 3: 567 compatible. Maximum horizon
+2,031.332 s and the prior crash (Gordian Tomb #2, 1,922 s) both passed. Elapsed
+1,592.253 s, 44.473 aggregate horizon-seconds/second, peak worker RSS 188 MB.
+The maintained v4 snapshot was republished (87,868 total rows, 567 measured,
+87,301 pending). Exhaustive lookup consistency: 24 pass / 0 fail / 1,406,134
+expectations. Source identity 6d8fbd169fc69cb0bac600fbda560812988b9e0a7383e683bd73526ec98581f7
+matches a fresh checkout. Qualification completed with that unchanged identity:
+three full suites each 2,958 pass / 0 fail / 0 skip. The matching machine
+certificate is under workspace/rom-audit-hardening; stage-status reports done.
+Literal terminal summaries are retained in doc/research/hvsc-rom-validation-4.md.
+
+Qualification additionally verifies the complete canonical selection and repeat
+sampling, clears ROM_DECISION_ONLY for the regression, and checks measured masks
+0/3 have no unknown results. Reviewer identity is truthful and portable rather
+than hardcoded to an unavailable model; no independent Opus review is claimed.
 
 ## HVSC ROM dependency investigation (2026-10-20) — complete
 
@@ -1838,3 +2201,131 @@ Equivalent programmatic validation will be performed:
 
 ### Outcomes
 - Pending.
+
+## Full-song three-ROM audit and production projection (2026-10-23) — active
+
+- [x] Inspect existing runner, analysis, renderer, patches, parity and publisher;
+  preserve the four-ROM historical reports and 256-event safety constraint.
+- [x] Identify methodological gaps before implementation: identical/PCM-only short
+  windows escape extension; approximate write thresholds are diagnostic only;
+  CHARGEN is constant; native controls compare PCM and counts, not timed traces.
+  No workspace/checkpoints exist in this checkout. Installed target is 1.0.1.
+- [x] Verify/download HVSC85, inventory every subtune and song-length provenance.
+- [x] Extend native runner to eight isolated ROM masks, exact timed-write evidence,
+  duration policy, bounded resources and resumable complete/pending accounting.
+- [x] Add strict three-state research assessment, deterministic catalogue/manifest
+  and derived fail-closed production lookup, with exhaustive consistency checking.
+- [x] Add delayed KERNAL/BASIC/CHARGEN fixtures and expanded parity/sanitizer checks.
+- [ ] Execute full available inventory and rendering; preserve explicit unknowns
+  and exact pending counts if full-duration work exceeds available execution time.
+- [ ] Build, focused tests, established suite three consecutive times, document
+  literal outputs and measured throughput. Do not claim unfinished work complete.
+
+Correctness decisions before implementation: a finite observation supports only
+its declared horizon. Songlength metadata is a scheduling estimate, not a machine
+state recurrence proof. Unknown/interactive/loop-unproven cases retain uncertainty.
+A PCM-only difference is not proof of incorrect music. Strict production eligibility
+requires stable reference, validated engine provenance and exact timed writes plus
+PCM across the required horizon; approximate historical labels never grant access.
+
+Progress: verified all 61,157 raw MD5/path/subtune counts (87,868 subtunes) against
+HVSC85. All tokens have positive lengths; horizons range 10–2,031.332s, total
+10,176,145.245s. Two six-worker passes measured 763 subtunes / 6,104 mask outcomes,
+leaving 87,105 subtunes / 696,840 mask outcomes pending. Scheduling budgets were
+180s each, with active jobs drained; elapsed 205.526s and 181.051s. No environmental
+failure forced the stop. Full rendering remains unfinished (roughly 72h estimated
+at measured aggregate emulation throughput). Never describe the inventory as a
+completed full-duration census. Checkpoints: `workspace/rom-audit-v2`.
+
+Original 24 hash/count controls expanded to 104 controls: all eight masks, six
+historical inputs, four delayed synthetic fixtures, Giana60s and two measured
+full-horizon corpus cases. PCM and timed-write hashes/counts match. ASAN passes
+PAL/NTSC/busy-loop/Justincase plus all four delayed dependency fixtures. All 702,944
+published decisions are exhaustively checked against their research records.
+
+Build and strict script typecheck pass. Downloading HVSC activated an existing
+300-file persona integration test skipped at the empty-workspace baseline. It
+exposed two real sparse/steady-tone records with missing spectral contrast: the
+aggregator rejected every band when one Essentia coefficient was singular.
+Keep valid measured bands and add a focused regression; do not weaken the health
+assertion or skip the integration test. Full-suite validation is still running.
+
+Final corpus-wide protocol check found 576 floating-point horizon round-trip
+mismatches (e.g. 66.38499999999999 vs native JSON 66.385). Compute horizons in integer
+milliseconds; all 763 existing measurements retain exactly the same durations,
+and the complete inventory now has zero protocol round-trip mismatches. Added
+fractional-duration regressions and restarted final full-suite validation after
+this last source change. The preceding three full runs each passed 2,899 tests,
+0 fail, 0 skip; fresh final-source runs are pending.
+
+User requested effective core use. Keep native work idle during timing-sensitive
+unit probes, but run six native workers alongside each long real-HVSC integration
+phase. The validation coordinator records actual per-core busy percentages and
+checkpoint throughput in `workspace/rom-audit-v2/utilization-validation.json`.
+After validation, continue the unbounded full corpus run with seven native workers
+on this eight-logical-core machine; preserve PID/log and publish on completion.
+
+### Adversarial pilot hardening gate (user steering, 2026-10-23)
+
+Do not exceed 5% of HVSC files OR subtunes before adversarial small-corpus
+hardening is complete. Current unique scope is 1,653 subtunes / 370 files,
+below conservative limits 4,393 subtunes / 3,057 files. Stopped validation/audit
+coordinators before further rollout or native build changes; checkpoints survive.
+The earlier intention to launch an unrestricted background run is superseded.
+
+- [ ] Add an enforced pilot ceiling and a version-bound full-rollout hardening gate.
+- [ ] Adversarially test invalid/forged horizon and provenance inputs, short/late
+  divergences, trace truncation, matrix identity, stale parity and checkpoint data.
+- [ ] Replace hash-only native/WASM qualification with exact PCM/timed-trace
+  comparison on the small control corpus; bind certificates to actual outcomes.
+- [ ] Close the finite-observation/runtime contract: an allow decision must carry
+  its playback horizon; it cannot silently authorize indefinite looping.
+- [ ] Exercise the hardened protocol on diverse curated HVSC cases and synthetic
+  KERNAL/BASIC/CHARGEN cases before repeating larger pilot measurements.
+- [ ] Record findings and proof obligations, pass focused/sanitizer/parity and
+  final full-suite checks, then permit expansion with an explicit machine gate.
+
+### Handover requested by user (2026-10-23)
+
+Created `doc/hvsc-rom-audit-handover.md` for a fresh LLM to independently review and
+improve the unfinished implementation. Mandatory routing: Opus 5.5 for architect /
+important decisions, Sonnet 5.5 otherwise. No >5% rollout is approved. Audit-only
+scope is 1,653 subtunes / 370 files; known union including real integration/parity
+controls is 2,004 subtunes / 663 files. No broad audit/coordinator remains running.
+Current source is not validated: latest strict check fails because a child exit
+`signal` argument shadows the outer AbortSignal; native binaries predate immutable
+hex-payload changes; `harden.ts` and methodology-3 maintained publication are still
+missing. The handover explicitly separates historical test successes from current
+unvalidated hardening work and lists open proof/provenance/rollout weaknesses.
+
+### Takeover: hardening implementation (2026-10-23)
+
+Handover `doc/hvsc-rom-audit-handover.md` implemented against the Opus 5.5 architect reviews in
+`doc/research/hvsc-rom-adversarial-review.md` (Sonnet 5.5 implemented; Opus 5.5 reviewed read-only).
+Draft PR #109. No run beyond the 5% pilot has been started.
+
+Design change after the second review (user decisions: match C64 Commander as shipped):
+
+- Commander ships `libsidplayfp-wasm` 1.1.0 (the repo's classifier pins 1.0.1), plays at 48 kHz,
+  never sets the power-on delay (engine default 8191), only creates the ROM sets {KERNAL+BASIC with
+  CHARGEN null} and {nothing}, and defaults to the reSIDfp renderer. The census now renders
+  exactly that on WASM 1.1.0 (audit-only aliased dev dependency `libsidplayfp-wasm-audit`), with
+  null banks covered by zero and 0xFF fills. The native renderer and the native-screen /
+  WASM-confirm split were dropped from the decision path: one engine measures and grants.
+- Comparator defects found by the review reproduced and fixed (engine output is a view into WASM
+  memory; chunk-by-chunk exact comparison; a variant that stops writing is not identical).
+  Regression: `decision-regression.ts` (two real subtunes that failed in the pilot, silent tail).
+- Measured: SIDLite lane ~11x realtime under load, reSIDfp lane ~1.7x (6x more expensive);
+  Commander's default renderer is reSIDfp, so SIDLite results do not cover it by default.
+  Transfer via "no SID reads" was tested and rejected (7% of the pilot never reads a SID register).
+
+Resolved from the reviews: B1 ledger (content-keyed, fsynced before dispatch, checksummed), B3
+`harden.ts` and evidence-verified certificate, H1 error classification, H2 lookup takes ROM hashes
+and profile, H3 kernel flock lock, H5 pilot requires a selection, N1 N2 comparator, N4 per-job
+failure isolation, N5 provenance, ledger/checkpoint repair only under the scope lock.
+
+- [ ] Pilot on the reviewed selection (567 subtunes) with the final sources; v3 dataset committed.
+- [ ] Third Opus review of the frozen sources; `Approved-source-identity` line.
+- [ ] `harden.ts` certificate (decision regression, pilot checks, reproducibility, 3 focused + 3 full suites).
+- [ ] Full-corpus execution (days; resumable; intended for a faster machine via `run-full.sh`).
+- [ ] Decide whether to qualify reSIDfp (about 6x the lane cost) and SidplayEZ.

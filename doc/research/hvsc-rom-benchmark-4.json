@@ -1,0 +1,907 @@
+{
+  "aggregateHorizonSecondsPerSecond": 46.81149509617315,
+  "budgetHours": 71.90160145938316,
+  "corpus": "4b66fe03e72e18155ee4e14a0a7fd3f2c4de2ed1a467296156d5642e716f132e",
+  "cpu": "Intel(R) Core(TM) i7-6700K CPU @ 4.00GHz",
+  "elapsed": 288.958,
+  "engine": {
+    "sourceSha256": "e8521da254a1d063aecf76448ba013d8ed1c74b6c1e233bf52ae63b60cec3f57",
+    "wasmSha256": "dd33f26261f130c3260b4b2680cfd4afbfd4a05019e6b016145938e933a250f5"
+  },
+  "extended": 3,
+  "horizonSeconds": 13526.556,
+  "logicalCpus": 8,
+  "margin": 1.15,
+  "measured": [
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/T/Tonge_Paul/Pang.sid",
+        "seconds": 13,
+        "sha256": "7277494fecd5538172fa334f47a3647cbe90c521ba9621d571f3ee7afbe1a04a",
+        "song": 7
+      },
+      "seconds": 2.328223379
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/0-9/128_Byte_Blues_BASIC.sid",
+        "seconds": 23,
+        "sha256": "eeb9f82e62441738a78b28fdc4c963cd19d3d3ef0259baa4579a8d786c490681",
+        "song": 1
+      },
+      "seconds": 2.7953165769999995
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/H/Huelsbeck_Chris/Antics_Dulcedo_Cogitationis.sid",
+        "seconds": 10,
+        "sha256": "44f4713b24870530fd7f6273d8ac17d96769e823fd60efcb1455863d83af3fb9",
+        "song": 3
+      },
+      "seconds": 1.5241266140000007
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/B/Bond_Alan/Randomly_generated_music_BASIC.sid",
+        "seconds": 35,
+        "sha256": "01d89db7cf1048c5dae5d9b25a984bc40552a8100e11eb5bbb27c92c9736302c",
+        "song": 224
+      },
+      "seconds": 4.665313813
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/L/Laxity/Sanxion_Loader_Remix.sid",
+        "seconds": 98,
+        "sha256": "c7a0b04ce3430a2b82ebf2c7246ba9f02ba5c5931bf8d45481ae4935f3a5400e",
+        "song": 1
+      },
+      "seconds": 11.460942331000002
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "DEMOS/0-9/1_45_Tune.sid",
+        "seconds": 110,
+        "sha256": "9eea51c6586e09b44fa22edd3c17d4ee5a621c4448cc00c43d393758cc74a1cc",
+        "song": 1
+      },
+      "seconds": 16.362975306
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/H/Hermit/3SID_Tracker_Demo_1_3SID.sid",
+        "seconds": 23,
+        "sha256": "9fed907f28d4b575acd4402008196a5e591202b15af5861ce94c673c01e63c01",
+        "song": 1
+      },
+      "seconds": 3.6569122100000024
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/A/Atte/Blue_River_Floyd.sid",
+        "seconds": 176.772,
+        "sha256": "76b04e849b5bd984f74bd43f464164b66eec6d14ec5c743febd568561fddff2b",
+        "song": 1
+      },
+      "seconds": 26.388629092000002
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/S-Z/Swan_BASIC.sid",
+        "seconds": 260.523,
+        "sha256": "24c1e36b042e4e86aff14587eda8ba791710089b50829800f1d1b47154d045c9",
+        "song": 1
+      },
+      "seconds": 32.426825928999996
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/F/Future_Freak/Dexion_Demo.sid",
+        "seconds": 250.293,
+        "sha256": "ec042b1cd8039493cbe13c1ffddc7e0f265b64f915af5db587b24a35055c6a84",
+        "song": 1
+      },
+      "seconds": 29.841275469999996
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "GAMES/A-F/Dark_Tower_BASIC.sid",
+        "seconds": 10,
+        "sha256": "199b39f212492f2ad8fdf74d75575628fad3a7b61ddd8dec62cea89737174ff7",
+        "song": 3
+      },
+      "seconds": 1.2052631309999997
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/F/Fong_William/Electronic_Foreheads_in_Concert_BASIC.sid",
+        "seconds": 399,
+        "sha256": "b87e2e320d95b66ccef105fb1bd650978b5e30c6cda356e778df78662c7c4e3d",
+        "song": 1
+      },
+      "seconds": 45.953492698000005
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/M/Moraff/Perplexity_of_Life_2SID.sid",
+        "seconds": 119.934,
+        "sha256": "30d4269c023745e1442c1ab6b1f8c9db6aa52af65fe459ae35bd84b7e29efdf6",
+        "song": 1
+      },
+      "seconds": 20.798006855999997
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/B/Bond_Alan/Randomly_generated_music_2_BASIC.sid",
+        "seconds": 51,
+        "sha256": "50c0032b74021defa496bfdb2106962caa7cfb80ea652da864c1afd57fabc275",
+        "song": 40
+      },
+      "seconds": 5.871941055999996
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/B/Brooke_Jason/Rockford.sid",
+        "seconds": 10,
+        "sha256": "6308678b7b5cde73ae93cdbc0237aec978a2732973bc909809b61bda7c2a1bd1",
+        "song": 3
+      },
+      "seconds": 1.4359873819999993
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/N/Nobody/Turn_it_Louder_2SID.sid",
+        "seconds": 225,
+        "sha256": "020721f5bb39c54d97b9a247735de812ab0eb11bbb7c4875ea181d087725052a",
+        "song": 1
+      },
+      "seconds": 40.257380307
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/M-R/Mozart_Machine_BASIC.sid",
+        "seconds": 168,
+        "sha256": "5eccb4ac9b9087409a7e07f12abfd7d3b46dbc0aa501ccc183bdd88332814ade",
+        "song": 1
+      },
+      "seconds": 30.020180696000004
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/S/SoundLogic/Track_064.sid",
+        "seconds": 410.5,
+        "sha256": "e9562d1bf6f11904d927bb0068238b82d347ba07b629529e39c8f654bf50f8ea",
+        "song": 1
+      },
+      "seconds": 53.90826507399999
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/N/Nizze/Cirkus.sid",
+        "seconds": 21,
+        "sha256": "6cee3c77c08c499b336983212b1d6a53376f495b8f9ecf82e8cbe8c7acb0a984",
+        "song": 1
+      },
+      "seconds": 2.3900903020000115
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "DEMOS/UNKNOWN/Music_Shop/Aurora.sid",
+        "seconds": 110,
+        "sha256": "f5c575dcb567d43a5d99cda1ea569be933acca6417d1b9d6f7d7809e80962564",
+        "song": 1
+      },
+      "seconds": 16.250112687999994
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/K/Klink_Harold/My_Heart_Sorrows.sid",
+        "seconds": 528,
+        "sha256": "b88c201e8a93147d70a245ff46599d9017950ee782733a00f624120c2b6e94de",
+        "song": 1
+      },
+      "seconds": 78.127459239
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/M/Mitch_and_Dane/Mitch/Crucial_Moment_part_5.sid",
+        "seconds": 205,
+        "sha256": "7b47d197d87ca16730fbbc88c555840fa548bc6418570bc7c0a35781bc354a0f",
+        "song": 1
+      },
+      "seconds": 30.503065764
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+        "seconds": 14,
+        "sha256": "69c53522a81414e6c323306b18ada40788fdeba5dc45cb033109c420ff352e18",
+        "song": 3
+      },
+      "seconds": 2.818743690000003
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/K/Kraetzig_Thomas/Zufallstonfolge_mit_Blues-Schema_BASIC.sid",
+        "seconds": 396,
+        "sha256": "2df98cc059a800dc12a5455b0f6618268ee48555eb9a3a050ed61789ef079349",
+        "song": 1
+      },
+      "seconds": 44.014740836
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/M/Madhacker/Fine_Time.sid",
+        "seconds": 81,
+        "sha256": "543506807c3002909626d1d3053cd6609aa0462e3b1652619130980e0a7ed38c",
+        "song": 1
+      },
+      "seconds": 16.221538386999992
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/S/Slaxx/Nordlicht_Express_2SID.sid",
+        "seconds": 344.654,
+        "sha256": "aa784661d5f36ea9cc4b81c2f9ee7e0f9a34b314651ac83154de6335d1a79de1",
+        "song": 1
+      },
+      "seconds": 61.63390457
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/B/Bond_Alan/Mini_Hoedown_BASIC.sid",
+        "seconds": 27,
+        "sha256": "defcead4adc641f992a675d7594d225e1d913eebee5f14aab54220ba86a3eba7",
+        "song": 1
+      },
+      "seconds": 3.1114555739999923
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/T/Taxim/Kampfstern_Galactica.sid",
+        "seconds": 247,
+        "sha256": "0a742ea7d51b468dada6485adf727ef9fa11f59554da6e9e5d40b29086760de7",
+        "song": 1
+      },
+      "seconds": 31.99689053799999
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/C/Crowley_Owen/Blank_Page_2SID.sid",
+        "seconds": 120,
+        "sha256": "e14d2c58d62a6c5604a94c1054fcec35b5183b39f5b6c230115fca3cd9043d7a",
+        "song": 1
+      },
+      "seconds": 22.022280874000003
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/F/Factor6/Progressive.sid",
+        "seconds": 336,
+        "sha256": "5a2c2f55465bcdfb27b918ed7bb68272a9d4396e94b7ddda0585bbaf40eed9dd",
+        "song": 1
+      },
+      "seconds": 50.04321365599999
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/A-F/Arrival_of_the_Queen_of_Sheba_BASIC.sid",
+        "seconds": 67,
+        "sha256": "4bb887a6b8e7c37b310806725032e29276330244dc12fd6cfaeb55707c638924",
+        "song": 1
+      },
+      "seconds": 11.307962826999995
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/P/Proton/Rogue64.sid",
+        "seconds": 10,
+        "sha256": "162232301ee77fd1686bb1030c9ec52a4df8c9644a5027b7c107c97cddfcac03",
+        "song": 4
+      },
+      "seconds": 1.5601262859999987
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/G-L/Jesu_Joy_of_Mans_Desiring_BASIC.sid",
+        "seconds": 202,
+        "sha256": "39566cd9652da8a5ab41023f48ffb6f79fb1c7116dc5ecb3cec80c22c7cc3e6b",
+        "song": 1
+      },
+      "seconds": 23.378829702000004
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/J/Jellica/Centre_Letters_Rmx_2SID.sid",
+        "seconds": 266,
+        "sha256": "a283ff23a81d7c990f96bafbea476e12d45bcf67ef4e0dfc49394774e022d253",
+        "song": 1
+      },
+      "seconds": 39.638013935
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "GAMES/G-L/Halcyon.sid",
+        "seconds": 10,
+        "sha256": "acbd10fcbbdb95365e488ca224fd9243faf1007781822bb2fd74e177a13a04c8",
+        "song": 1
+      },
+      "seconds": 1.5152077909999935
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/R/Remarque/Hardcore.sid",
+        "seconds": 114,
+        "sha256": "cb2c82b9148f342202be12af058d53bed48f032a05387add98b6b964e41f8d50",
+        "song": 1
+      },
+      "seconds": 16.73802635999999
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/K/Kubiszyn_Paul/Moody.sid",
+        "seconds": 240,
+        "sha256": "88613b0af61f65484892c6e114bcf9ddeae92b7190793eaab11f7424407dd3e4",
+        "song": 1
+      },
+      "seconds": 28.648677053000007
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/S/Sanden_Peter/Drunken_DJ.sid",
+        "seconds": 72,
+        "sha256": "f9a1dbae30b3cfe6628161ec7ed30627e454fdbc13fb69a1fccfc22027f492a9",
+        "song": 1
+      },
+      "seconds": 10.93544028499999
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/B/Bad_Rat/Iron_Mix.sid",
+        "seconds": 490.354,
+        "sha256": "bddda9bc1f61f23b8b10815dacca8bc6af82379da825621c59ccb25dcab0d25a",
+        "song": 1
+      },
+      "seconds": 64.65655761
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+        "seconds": 10,
+        "sha256": "69c53522a81414e6c323306b18ada40788fdeba5dc45cb033109c420ff352e18",
+        "song": 16
+      },
+      "seconds": 1.9112648219999975
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/UNKNOWN/Bagpipes_BASIC.sid",
+        "seconds": 323,
+        "sha256": "ebff863b5e988d6c453523256086989869f69c5d556fbcd68503f75f4770baca",
+        "song": 1
+      },
+      "seconds": 38.97179667899999
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/R/Rayden/Mopped_Tester_2SID.sid",
+        "seconds": 35.326,
+        "sha256": "6a6623d05a2804cfdf7f5da174c7554b37f1a9a994d5298a3c1d414be32a11f7",
+        "song": 3
+      },
+      "seconds": 6.383873239000008
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/K/Kidd_Clark_and_Kathy/Spend_your_Allowance_BASIC.sid",
+        "seconds": 10,
+        "sha256": "a5bd6dd04bcc1a87536523f54f352a25a3181c01d3a69079df2071fdfbf9ac0a",
+        "song": 1
+      },
+      "seconds": 1.5448003869999958
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/H/Holt_Hein/SidKit_2SID.sid",
+        "seconds": 355.45,
+        "sha256": "015d7195f7a0f725b47ee1fbd56fa5f17e099e3831656bea9986bed77eae977e",
+        "song": 1
+      },
+      "seconds": 64.562110015
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/S/Scout/Rave_da_Scene_part_2.sid",
+        "seconds": 168,
+        "sha256": "b0b9a5dd2645f158a80705304029773fe5fa4c3d0cb042b1942c44e87800999f",
+        "song": 1
+      },
+      "seconds": 37.23706383199998
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/UNKNOWN/Baby_Elephant_Walk_BASIC.sid",
+        "seconds": 78.397,
+        "sha256": "1bd8142676420247729a5c66312e98111fc26dfa379e532f84c75f8f5665703d",
+        "song": 1
+      },
+      "seconds": 9.801109550000023
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/M/MC_Lord/Lord_MC_Sun.sid",
+        "seconds": 10,
+        "sha256": "f59d93c6bb1b4f699374dcb89de3466b441aeee52fde6769ab880f772fdd199a",
+        "song": 8
+      },
+      "seconds": 1.4138643489999814
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/A/Arenz_Bernhard/Hotel.sid",
+        "seconds": 314,
+        "sha256": "9bd0a301017e9b6c543eae4e48b2af132adb6a775bbc36c2f88a010e9793949a",
+        "song": 1
+      },
+      "seconds": 49.146243214000016
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/N/Nordischsound/Oooaaaeee_2SID.sid",
+        "seconds": 149.7,
+        "sha256": "ce908ec9e0e926cf2679251b5751f26e510a2ba2c2756efd90f9183ce7055217",
+        "song": 1
+      },
+      "seconds": 25.792971292
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/UNKNOWN/Pachelbels_Canon_BASIC.sid",
+        "seconds": 132.893,
+        "sha256": "b267a454b70c87bb3db720a93f6756a87b4d9bb501e13b71e6562b5711707866",
+        "song": 1
+      },
+      "seconds": 16.612927800000005
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/E/Electronic_Speech_Systems/Cave_of_the_Word_Wizard_Set_4.sid",
+        "seconds": 10,
+        "sha256": "2c985d1267bb1860c3f12f4a3325ad599270ebd79f4d5f85e1016bd1242cebac",
+        "song": 1
+      },
+      "seconds": 1.2428913170000013
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/B/Blues_Muz/Nordboe_Kjell/Looking_at_Myself_Im_sick.sid",
+        "seconds": 54,
+        "sha256": "1cf8001c20e009cd4918d03d7f53a61884811bb5b9ac728144d0aad4948b275e",
+        "song": 1
+      },
+      "seconds": 7.742357382999995
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/C/Cleve/Cleve_10.sid",
+        "seconds": 151,
+        "sha256": "8beafe3fd1ca2f1dbf5c1593be896fab5c7a9776afcc27909b3f7ad823bc7d50",
+        "song": 1
+      },
+      "seconds": 21.212463522000004
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/B/Brennan_Neil/Way_of_the_Exploding_Fist.sid",
+        "seconds": 91,
+        "sha256": "80617ca5b798638917700658b86021042d196d38cedfbf6a68f087069ba2c5c4",
+        "song": 2
+      },
+      "seconds": 13.502139705000008
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/S/Sonic/Jupiter_Fracture_2SID.sid",
+        "seconds": 10.86,
+        "sha256": "61e7646acc2d1940f53a4637aa47a87c0e60bbd3b6489dd146f8d85a4b8f1339",
+        "song": 2
+      },
+      "seconds": 2.0860257850000052
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/P/Proton/Mindwarped_2SID.sid",
+        "seconds": 323,
+        "sha256": "b8edadfa665cfee7dad2eb841e9f577c8be04d16674dc7b49b75cbdaa4d9d424",
+        "song": 1
+      },
+      "seconds": 42.00551496099998
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/L/Latimer_Joey/Arcade_Alley_BASIC.sid",
+        "seconds": 323,
+        "sha256": "943289c625dfa16acb6bb028d0fcec82b7f4022aaad4aea12f5313f3e3635911",
+        "song": 1
+      },
+      "seconds": 39.70355238200003
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "DEMOS/UNKNOWN/Letz_Fetz.sid",
+        "seconds": 520,
+        "sha256": "bc59451533ee1b4c82bd21c8c5abe8066e0563a284851b5de55e4c251bc5b959",
+        "song": 1
+      },
+      "seconds": 61.327122439
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/S/Sonic/Jupiter_Fracture_2SID.sid",
+        "seconds": 86.8,
+        "sha256": "61e7646acc2d1940f53a4637aa47a87c0e60bbd3b6489dd146f8d85a4b8f1339",
+        "song": 7
+      },
+      "seconds": 14.89069413399999
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "GAMES/A-F/Crazy_Conveyors_BASIC.sid",
+        "seconds": 22.065,
+        "sha256": "63a563846d5b92b8d9296c98e39d69969e5557a5cccc5f3b55c681e831b435ab",
+        "song": 4
+      },
+      "seconds": 4.059458809000003
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/R/Rayden/4_Ever_Young_2SID.sid",
+        "seconds": 174,
+        "sha256": "6ae74bab356a929435fc3fb530621c2bdbfac9b748adf5e842c2e88078b4b50a",
+        "song": 1
+      },
+      "seconds": 42.05952517500002
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/J/JCH/Orcus_orcushion.sid",
+        "seconds": 16,
+        "sha256": "109f5b8cdece11b661563890e9470de1434cf527b7d66c1da415c4d03062426e",
+        "song": 6
+      },
+      "seconds": 2.6003185469999734
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/L/Lft/Machine_Yearning_2SID.sid",
+        "seconds": 203.722,
+        "sha256": "b266fd8e98243f3964e0d6e57655a8859aaa9a3c3185107568bb52553ff34f7b",
+        "song": 4
+      },
+      "seconds": 27.245274585000008
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "DEMOS/G-L/Gabooto_Bach_BASIC.sid",
+        "seconds": 88.851,
+        "sha256": "fe590f891893bc9ee8a7bc93a86701350134d346233134193d73da678cd77efe",
+        "song": 1
+      },
+      "seconds": 10.773437967999984
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/A/Alien_WOW/Speedy-Voice.sid",
+        "seconds": 393,
+        "sha256": "3a5c902b3a87ee016ed73c83e8dde1cc548ee8ec7f23dd98e897d5e095eaa8d7",
+        "song": 1
+      },
+      "seconds": 57.40829315099999
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/B/Bond_Alan/Legion_of_One_BASIC.sid",
+        "seconds": 168,
+        "sha256": "7b6cd759fc9d5ffd84788d05b1bebc36dabe919d8b5cb5c364727ea24fac1ee5",
+        "song": 1
+      },
+      "seconds": 20.586690931999996
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/H/Huelsbeck_Chris/Great_Giana_Sisters.sid",
+        "seconds": 10,
+        "sha256": "014764e6ee11df4b458c6b30e235ea639d702bd56766a87b5e90d4737558b1c8",
+        "song": 12
+      },
+      "seconds": 1.6013762519999872
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/S/Scarzix/Waiting.sid",
+        "seconds": 67,
+        "sha256": "b4d8df3b66db907cd7402dfc3a42df8958e9e03ed3b3cd8a0596fb2975bdd119",
+        "song": 1
+      },
+      "seconds": 9.945738503000001
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/B/Bruce/Ninja_Mix.sid",
+        "seconds": 405,
+        "sha256": "40ab212afe8e82baf8be0421eb2c55c0f266e186ec2d07c6b722a5e07e526939",
+        "song": 1
+      },
+      "seconds": 45.12362270199999
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+        "seconds": 10,
+        "sha256": "69c53522a81414e6c323306b18ada40788fdeba5dc45cb033109c420ff352e18",
+        "song": 11
+      },
+      "seconds": 1.7898201529999787
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/B/Brodersen_Frank/Pacman_II.sid",
+        "seconds": 58.093,
+        "sha256": "4cb2dd2df0970ec2a34a26d9747f58ea0f41434901887627e8c4f35b5f504b88",
+        "song": 6
+      },
+      "seconds": 8.534288685000007
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/R/Ray/Circles.sid",
+        "seconds": 200,
+        "sha256": "66912f4c8d96ea2e056e92c7531d1406aeb6460664a458cb74a2ba58fae40c50",
+        "song": 1
+      },
+      "seconds": 29.079105783000006
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/S/Sonic/Jupiter_Fracture_2SID.sid",
+        "seconds": 76.503,
+        "sha256": "61e7646acc2d1940f53a4637aa47a87c0e60bbd3b6489dd146f8d85a4b8f1339",
+        "song": 10
+      },
+      "seconds": 13.232191743999982
+    },
+    {
+      "job": {
+        "kind": "BASIC",
+        "path": "MUSICIANS/R/Reynolds_Daryll/Secret_of_Bastow_Manor_BASIC.sid",
+        "seconds": 11,
+        "sha256": "8f9b5220a53bd6181a62113ce2b4ba3b12d3b38bdcd24371c2a8ae626f0c1a8d",
+        "song": 2
+      },
+      "seconds": 1.2356745620000003
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "DEMOS/UNKNOWN/Justine_4_All_digi.sid",
+        "seconds": 130,
+        "sha256": "e0774d8d8a49922aedad3ca117ab90cb391fbf522c35e5c1b569ebccb9f115cf",
+        "song": 1
+      },
+      "seconds": 24.535590341000002
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/S/Sonic/Jupiter_Fracture_2SID.sid",
+        "seconds": 127.575,
+        "sha256": "61e7646acc2d1940f53a4637aa47a87c0e60bbd3b6489dd146f8d85a4b8f1339",
+        "song": 8
+      },
+      "seconds": 21.671621602999977
+    },
+    {
+      "job": {
+        "kind": "RSID",
+        "path": "MUSICIANS/Z/Zenox/Jammin_Out_2.sid",
+        "seconds": 434,
+        "sha256": "ddc73ac1c8c8915485c9e4208e749778918176a72cf48b169b77645bef187a47",
+        "song": 1
+      },
+      "seconds": 40.64722293199998
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/M/Mac_TUGCS/Crystal_Creatures_stereo_remix_2SID.sid",
+        "seconds": 315.291,
+        "sha256": "56298828237f140884a940ee73d35f01b24d785fe4e21b3a66cac7b0d63f8bd9",
+        "song": 1
+      },
+      "seconds": 36.30417568999997
+    },
+    {
+      "job": {
+        "kind": "PSID",
+        "path": "MUSICIANS/L/LDX40/Delta.sid",
+        "seconds": 527,
+        "sha256": "2d89a14ecffa23797ba0b127b79dbd97b82b31714dd77364f81ff65fc5803317",
+        "song": 1
+      },
+      "seconds": 63.07257196100001
+    },
+    {
+      "job": {
+        "kind": "multiSID",
+        "path": "MUSICIANS/L/Lft/Fratres_Arvo_Paert_2SID.sid",
+        "seconds": 639,
+        "sha256": "bc9e86f35592ff971df5dd16ab6a1f9d21b96afc0e7947f054da5773e69b0179",
+        "song": 1
+      },
+      "seconds": 84.26204855399997
+    }
+  ],
+  "originalReportSha256": "38d6cbd4ed0a1cce39eef96c0bdd109f59bb430db6204749c6b902308b2ff180",
+  "pathBase": "HVSC 85 C64Music; root prefix removed for publication",
+  "projectedHours": 62.52313170381145,
+  "sampleSubtunes": 80,
+  "schema": "sidflow-rom-benchmark-1",
+  "sourceHash": "1532909a585f0b9ffc03caa35b492218e0c116dd9dc157ce3887349bcf702496",
+  "sourceIdentity": "6d8fbd169fc69cb0bac600fbda560812988b9e0a7383e683bd73526ec98581f7",
+  "strata": {
+    "BASIC/0-30": {
+      "measured": 6,
+      "population": 558,
+      "workerSeconds": 13.951969039999991
+    },
+    "BASIC/120-300": {
+      "measured": 5,
+      "population": 58,
+      "workerSeconds": 123.02545505900001
+    },
+    "BASIC/30-120": {
+      "measured": 5,
+      "population": 770,
+      "workerSeconds": 42.419765213999995
+    },
+    "BASIC/300+": {
+      "measured": 4,
+      "population": 4,
+      "workerSeconds": 168.64358259500003
+    },
+    "multiSID/0-30": {
+      "measured": 5,
+      "population": 50,
+      "workerSeconds": 12.262766659999986
+    },
+    "multiSID/120-300": {
+      "measured": 5,
+      "population": 265,
+      "workerSeconds": 154.605261722
+    },
+    "multiSID/30-120": {
+      "measured": 5,
+      "population": 107,
+      "workerSeconds": 77.32704684699998
+    },
+    "multiSID/300+": {
+      "measured": 5,
+      "population": 28,
+      "workerSeconds": 288.7677537899999
+    },
+    "PSID/0-30": {
+      "measured": 5,
+      "population": 17306,
+      "workerSeconds": 9.338519942999953
+    },
+    "PSID/120-300": {
+      "measured": 5,
+      "population": 30855,
+      "workerSeconds": 135.83194121400004
+    },
+    "PSID/30-120": {
+      "measured": 5,
+      "population": 28621,
+      "workerSeconds": 67.03921023999999
+    },
+    "PSID/300+": {
+      "measured": 5,
+      "population": 3362,
+      "workerSeconds": 297.797781221
+    },
+    "RSID/0-30": {
+      "measured": 5,
+      "population": 2244,
+      "workerSeconds": 8.273692275999995
+    },
+    "RSID/120-300": {
+      "measured": 5,
+      "population": 1791,
+      "workerSeconds": 165.67034535599998
+    },
+    "RSID/30-120": {
+      "measured": 5,
+      "population": 1494,
+      "workerSeconds": 60.654349393000004
+    },
+    "RSID/300+": {
+      "measured": 5,
+      "population": 355,
+      "workerSeconds": 265.6627907569999
+    }
+  },
+  "workers": 7
+}

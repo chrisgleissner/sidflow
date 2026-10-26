@@ -47,6 +47,7 @@ interface RoundSummary {
   name: string;
   expectedRecords: number;
   durationMs: number;
+  cpuDurationMs: number;
   initialSample: ProcessSample;
   finalSample: ProcessSample;
   peakRssMb: number;
@@ -181,6 +182,7 @@ async function runClassificationRound(options: {
   const initialSample = readProcessSample();
   samples.push(initialSample);
   const startedAt = Date.now();
+  const startedCpu = process.cpuUsage();
 
   const sampler = setInterval(() => {
     samples.push(readProcessSample());
@@ -199,6 +201,9 @@ async function runClassificationRound(options: {
           completionTimestamps.push(Date.now());
         }
       },
+    }).catch((error: unknown) => {
+      console.error(`[Classification stability] ${options.name} failed before cleanup`, error);
+      throw error;
     });
 
     expect(result.jsonlRecordCount).toBe(options.expectedRecords);
@@ -210,12 +215,14 @@ async function runClassificationRound(options: {
     samples.push(readProcessSample());
 
     const finalSample = samples.at(-1) ?? initialSample;
+    const cpuUsage = process.cpuUsage(startedCpu);
     const completionGapsMs = completionTimestamps.slice(1).map((timestamp, index) => timestamp - completionTimestamps[index]);
 
     return {
       name: options.name,
       expectedRecords: options.expectedRecords,
       durationMs: Date.now() - startedAt,
+      cpuDurationMs: (cpuUsage.user + cpuUsage.system) / 1000,
       initialSample,
       finalSample,
       peakRssMb: Math.max(...samples.map((sample) => sample.rssMb)),
@@ -250,7 +257,11 @@ function assertNoCrossRoundDrift(rounds: RoundSummary[]): void {
   let lowestFinalThreads = Number.POSITIVE_INFINITY;
 
   for (const round of rounds) {
-    const msPerRecord = round.durationMs / Math.max(1, round.expectedRecords);
+    // All WASM rendering/extraction workers run in this process. CPU work
+    // detects a growing cost per record without mistaking another process's
+    // scheduling share for a classification leak. Wall-clock completion gaps,
+    // test timeouts, thread counts and RSS bounds remain independently checked.
+    const msPerRecord = round.cpuDurationMs / Math.max(1, round.expectedRecords);
     if (Number.isFinite(bestMsPerRecord)) {
       expect(msPerRecord).toBeLessThanOrEqual(bestMsPerRecord * THROUGHPUT_SLOWDOWN_FACTOR + THROUGHPUT_SLOWDOWN_GRACE_MS);
     }

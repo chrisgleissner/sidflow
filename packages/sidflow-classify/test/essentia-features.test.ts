@@ -377,3 +377,18 @@ describe("essentiaFeatureExtractor", () => {
     await rm(root, { recursive: true, force: true });
   });
 });
+
+import { extractEssentiaFrameSummaries } from "../src/essentia-frame-features.js";
+it("retains measured spectral contrast bands when a sustained tone makes one band singular",()=>{
+ const vector=(values:number[])=>({delete(){},values});
+ const essentia={
+  arrayToVector:()=>vector([]),vectorToArray:(v:{values:number[]})=>v.values,
+  Spectrum:()=>({spectrum:vector([0,1,0,0])}),Centroid:()=>({centroid:1}),RollOff:()=>({rollOff:1}),
+  FlatnessDB:()=>({flatnessDB:1}),Crest:()=>({crest:1}),Entropy:()=>({entropy:1}),HFC:()=>({hfc:1}),
+  MFCC:()=>({mfcc:vector([0,1,2,3,4,5])}),
+  SpectralContrast:()=>({spectralContrast:vector([-0.5,-0.75,-Infinity,-0.25])}),
+ };
+ const result=extractEssentiaFrameSummaries(essentia,new Float32Array(2048));
+ expect(result.spectralContrastMean).toBe(-0.5);
+ expect(Number.isFinite(result.spectralContrastStd)).toBe(true);
+});

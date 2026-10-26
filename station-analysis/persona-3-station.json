@@ -4,13 +4,13 @@
   "trackCount": 50,
   "tracks": [
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.813 (high, w=0.60); timbralRichness=0.296 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.811 (high, w=0.60); timbralRichness=0.295 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.243625,
-        "melodicComplexity": 0.813442,
+        "experimentalTolerance": 0.241946,
+        "melodicComplexity": 0.811428,
         "nostalgiaBias": 0.590545,
-        "rhythmicDensity": 0.445117,
-        "timbralRichness": 0.295952
+        "rhythmicDensity": 0.444495,
+        "timbralRichness": 0.295177
       },
       "rank": 1,
       "ratings": {
@@ -18,7 +18,7 @@
         "e": 3,
         "m": 3
       },
-      "score": 0.692202,
+      "score": 0.691185,
       "sidPath": "C64Music/MUSICIANS/A/Agemixer/Rapping_Radical_v2.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/A/Agemixer/Rapping_Radical_v2.sid:1"
@@ -26,11 +26,11 @@
     {
       "explanation": "Selected for Melodic: melodicComplexity=0.785 (high, w=0.60); timbralRichness=0.413 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.310634,
-        "melodicComplexity": 0.785427,
+        "experimentalTolerance": 0.309952,
+        "melodicComplexity": 0.784609,
         "nostalgiaBias": 0.489091,
-        "rhythmicDensity": 0.467572,
-        "timbralRichness": 0.412886
+        "rhythmicDensity": 0.466554,
+        "timbralRichness": 0.413131
       },
       "rank": 2,
       "ratings": {
@@ -38,139 +38,139 @@
         "e": 3,
         "m": 2
       },
-      "score": 0.683374,
+      "score": 0.683029,
       "sidPath": "C64Music/MUSICIANS/A/Ahz_The_Demon/Mindblended.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/A/Ahz_The_Demon/Mindblended.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.766 (high, w=0.60); timbralRichness=0.382 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.699 (high, w=0.60); timbralRichness=0.486 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.394155,
-        "melodicComplexity": 0.766248,
-        "nostalgiaBias": 0.498364,
-        "rhythmicDensity": 0.374656,
-        "timbralRichness": 0.382487
+        "experimentalTolerance": 0.474572,
+        "melodicComplexity": 0.699002,
+        "nostalgiaBias": 0.584727,
+        "rhythmicDensity": 0.414017,
+        "timbralRichness": 0.486266
       },
       "rank": 3,
       "ratings": {
         "c": 5,
         "e": 3,
-        "m": 3
+        "m": 5
       },
-      "score": 0.681014,
-      "sidPath": "C64Music/MUSICIANS/B/Bayliss_Richard/Summer_Timebooze_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/B/Bayliss_Richard/Summer_Timebooze_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.719 (high, w=0.60); timbralRichness=0.422 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.474828,
-        "melodicComplexity": 0.718835,
-        "nostalgiaBias": 0.480182,
-        "rhythmicDensity": 0.459975,
-        "timbralRichness": 0.421956
-      },
-      "rank": 4,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 4
-      },
-      "score": 0.675725,
-      "sidPath": "C64Music/MUSICIANS/A/Acrouzet/A_Pointless_Quest_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/A/Acrouzet/A_Pointless_Quest_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.701 (high, w=0.60); timbralRichness=0.487 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.475989,
-        "melodicComplexity": 0.700702,
-        "nostalgiaBias": 0.534727,
-        "rhythmicDensity": 0.414766,
-        "timbralRichness": 0.486741
-      },
-      "rank": 5,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 4
-      },
-      "score": 0.670251,
+      "score": 0.680315,
       "sidPath": "C64Music/MUSICIANS/B/Booker/Stereo_Pendejo_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/B/Booker/Stereo_Pendejo_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.808 (high, w=0.60); nostalgiaBias=0.525 (low, w=0.10)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.764 (high, w=0.60); timbralRichness=0.381 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.196005,
-        "melodicComplexity": 0.807879,
-        "nostalgiaBias": 0.525455,
-        "rhythmicDensity": 0.294257,
-        "timbralRichness": 0.312695
+        "experimentalTolerance": 0.391929,
+        "melodicComplexity": 0.763577,
+        "nostalgiaBias": 0.498364,
+        "rhythmicDensity": 0.373482,
+        "timbralRichness": 0.381149
       },
-      "rank": 6,
-      "ratings": {
-        "c": 5,
-        "e": 2,
-        "m": 2
-      },
-      "score": 0.668815,
-      "sidPath": "C64Music/MUSICIANS/H/HTD/Katastrof.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/H/HTD/Katastrof.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.708 (high, w=0.60); timbralRichness=0.459 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.35311,
-        "melodicComplexity": 0.707662,
-        "nostalgiaBias": 0.543636,
-        "rhythmicDensity": 0.459184,
-        "timbralRichness": 0.459404
-      },
-      "rank": 7,
-      "ratings": {
-        "c": 4,
-        "e": 3,
-        "m": 4
-      },
-      "score": 0.659621,
-      "sidPath": "C64Music/MUSICIANS/K/Klabbsock/Caribbean_Rainbow.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/K/Klabbsock/Caribbean_Rainbow.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.692 (high, w=0.60); timbralRichness=0.472 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.442403,
-        "melodicComplexity": 0.691924,
-        "nostalgiaBias": 0.448364,
-        "rhythmicDensity": 0.441251,
-        "timbralRichness": 0.472228
-      },
-      "rank": 8,
+      "rank": 4,
       "ratings": {
         "c": 5,
         "e": 3,
         "m": 3
       },
-      "score": 0.657606,
-      "sidPath": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid",
+      "score": 0.679626,
+      "sidPath": "C64Music/MUSICIANS/B/Bayliss_Richard/Summer_Timebooze_2SID.sid",
       "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid:1"
+      "trackId": "C64Music/MUSICIANS/B/Bayliss_Richard/Summer_Timebooze_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.692 (high, w=0.60); timbralRichness=0.494 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.805 (high, w=0.60); timbralRichness=0.311 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.501154,
-        "melodicComplexity": 0.692178,
+        "experimentalTolerance": 0.193558,
+        "melodicComplexity": 0.804944,
+        "nostalgiaBias": 0.575455,
+        "rhythmicDensity": 0.291169,
+        "timbralRichness": 0.311171
+      },
+      "rank": 5,
+      "ratings": {
+        "c": 5,
+        "e": 2,
+        "m": 3
+      },
+      "score": 0.678183,
+      "sidPath": "C64Music/MUSICIANS/H/HTD/Katastrof.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/H/HTD/Katastrof.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.716 (high, w=0.60); timbralRichness=0.421 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.472809,
+        "melodicComplexity": 0.716413,
+        "nostalgiaBias": 0.480182,
+        "rhythmicDensity": 0.458788,
+        "timbralRichness": 0.420845
+      },
+      "rank": 6,
+      "ratings": {
+        "c": 5,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.674479,
+      "sidPath": "C64Music/MUSICIANS/A/Acrouzet/A_Pointless_Quest_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/A/Acrouzet/A_Pointless_Quest_2SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.707 (high, w=0.60); timbralRichness=0.460 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.352518,
+        "melodicComplexity": 0.706953,
+        "nostalgiaBias": 0.593636,
+        "rhythmicDensity": 0.45733,
+        "timbralRichness": 0.459791
+      },
+      "rank": 7,
+      "ratings": {
+        "c": 4,
+        "e": 3,
+        "m": 5
+      },
+      "score": 0.670244,
+      "sidPath": "C64Music/MUSICIANS/K/Klabbsock/Caribbean_Rainbow.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/K/Klabbsock/Caribbean_Rainbow.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.740 (high, w=0.60); experimentalTolerance=0.069 (low, w=0.05)",
+      "metrics": {
+        "experimentalTolerance": 0.06937,
+        "melodicComplexity": 0.739611,
+        "nostalgiaBias": 0.818,
+        "rhythmicDensity": 0.278213,
+        "timbralRichness": 0.193354
+      },
+      "rank": 8,
+      "ratings": {
+        "c": 5,
+        "e": 3,
+        "m": 5
+      },
+      "score": 0.661751,
+      "sidPath": "C64Music/GAMES/G-L/Groessenwarnsinnig_Boulder_Dash.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/GAMES/G-L/Groessenwarnsinnig_Boulder_Dash.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.690 (high, w=0.60); timbralRichness=0.492 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.498972,
+        "melodicComplexity": 0.68956,
         "nostalgiaBias": 0.464545,
-        "rhythmicDensity": 0.41609,
-        "timbralRichness": 0.493707
+        "rhythmicDensity": 0.415176,
+        "timbralRichness": 0.492438
       },
       "rank": 9,
       "ratings": {
@@ -178,339 +178,339 @@
         "e": 3,
         "m": 3
       },
-      "score": 0.656637,
+      "score": 0.655283,
       "sidPath": "C64Music/DEMOS/M-R/Outerversal_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/DEMOS/M-R/Outerversal_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.687 (high, w=0.60); timbralRichness=0.517 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.800 (high, w=0.60); timbralRichness=0.373 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.631851,
-        "melodicComplexity": 0.687203,
-        "nostalgiaBias": 0.598364,
-        "rhythmicDensity": 0.579341,
-        "timbralRichness": 0.517194
+        "experimentalTolerance": 0.237233,
+        "melodicComplexity": 0.799613,
+        "nostalgiaBias": 0.536545,
+        "rhythmicDensity": 0.193614,
+        "timbralRichness": 0.373451
       },
       "rank": 10,
       "ratings": {
         "c": 5,
-        "e": 4,
-        "m": 5
+        "e": 1,
+        "m": 2
       },
-      "score": 0.655747,
-      "sidPath": "C64Music/MUSICIANS/J/Jammer/Odyssey_2SID.sid",
+      "score": 0.654621,
+      "sidPath": "C64Music/DEMOS/0-9/3_Bit_Chip.sid",
       "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/J/Jammer/Odyssey_2SID.sid:1"
+      "trackId": "C64Music/DEMOS/0-9/3_Bit_Chip.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.739 (high, w=0.60); timbralRichness=0.491 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.713 (high, w=0.60); timbralRichness=0.440 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.318069,
-        "melodicComplexity": 0.738849,
-        "nostalgiaBias": 0.484,
-        "rhythmicDensity": 0.329199,
-        "timbralRichness": 0.490977
+        "experimentalTolerance": 0.408643,
+        "melodicComplexity": 0.713087,
+        "nostalgiaBias": 0.589091,
+        "rhythmicDensity": 0.572217,
+        "timbralRichness": 0.440478
       },
       "rank": 11,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 1
-      },
-      "score": 0.655175,
-      "sidPath": "C64Music/MUSICIANS/A/Alias_Medron/Deferoxamine.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/A/Alias_Medron/Deferoxamine.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.715 (high, w=0.60); timbralRichness=0.441 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.410387,
-        "melodicComplexity": 0.715181,
-        "nostalgiaBias": 0.589091,
-        "rhythmicDensity": 0.572976,
-        "timbralRichness": 0.441332
-      },
-      "rank": 12,
       "ratings": {
         "c": 5,
         "e": 4,
         "m": 4
       },
-      "score": 0.655022,
+      "score": 0.653958,
       "sidPath": "C64Music/MUSICIANS/D/Dalezy/donald_ducks_playground.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/D/Dalezy/donald_ducks_playground.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.723 (high, w=0.60); timbralRichness=0.446 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.775 (high, w=0.60); timbralRichness=0.387 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.365446,
-        "melodicComplexity": 0.723341,
-        "nostalgiaBias": 0.667818,
-        "rhythmicDensity": 0.479902,
-        "timbralRichness": 0.445733
-      },
-      "rank": 13,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 3
-      },
-      "score": 0.654965,
-      "sidPath": "C64Music/MUSICIANS/E/Ed/Cancer.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/E/Ed/Cancer.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.733 (high, w=0.60); timbralRichness=0.351 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.385685,
-        "melodicComplexity": 0.732794,
-        "nostalgiaBias": 0.577636,
-        "rhythmicDensity": 0.530014,
-        "timbralRichness": 0.350647
-      },
-      "rank": 14,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 3
-      },
-      "score": 0.654485,
-      "sidPath": "C64Music/GAMES/A-F/Floppy_Bird_Preview_2.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/GAMES/A-F/Floppy_Bird_Preview_2.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.741 (high, w=0.60); experimentalTolerance=0.071 (low, w=0.05)",
-      "metrics": {
-        "experimentalTolerance": 0.07064,
-        "melodicComplexity": 0.741135,
-        "nostalgiaBias": 0.768,
-        "rhythmicDensity": 0.27891,
-        "timbralRichness": 0.193736
-      },
-      "rank": 15,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 4
-      },
-      "score": 0.651596,
-      "sidPath": "C64Music/GAMES/G-L/Groessenwarnsinnig_Boulder_Dash.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/GAMES/G-L/Groessenwarnsinnig_Boulder_Dash.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.747 (high, w=0.60); timbralRichness=0.522 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.40448,
-        "melodicComplexity": 0.747208,
-        "nostalgiaBias": 0.584,
-        "rhythmicDensity": 0.452451,
-        "timbralRichness": 0.522259
-      },
-      "rank": 16,
-      "ratings": {
-        "c": 4,
-        "e": 4,
-        "m": 3
-      },
-      "score": 0.651392,
-      "sidPath": "C64Music/MUSICIANS/I/Isildur/Star_Wars_Theme.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/I/Isildur/Star_Wars_Theme.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.778 (high, w=0.60); timbralRichness=0.389 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.258377,
-        "melodicComplexity": 0.778458,
+        "experimentalTolerance": 0.255607,
+        "melodicComplexity": 0.775134,
         "nostalgiaBias": 0.475455,
-        "rhythmicDensity": 0.407196,
-        "timbralRichness": 0.388858
+        "rhythmicDensity": 0.408046,
+        "timbralRichness": 0.387029
       },
-      "rank": 17,
+      "rank": 12,
       "ratings": {
         "c": 5,
         "e": 4,
         "m": 1
       },
-      "score": 0.65025,
+      "score": 0.648503,
       "sidPath": "C64Music/MUSICIANS/L/Little-Nero/Gagarin.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/L/Little-Nero/Gagarin.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.735 (high, w=0.60); timbralRichness=0.381 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.723 (high, w=0.60); timbralRichness=0.286 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.330223,
-        "melodicComplexity": 0.734915,
-        "nostalgiaBias": 0.577636,
-        "rhythmicDensity": 0.476915,
-        "timbralRichness": 0.381242
+        "experimentalTolerance": 0.317887,
+        "melodicComplexity": 0.723084,
+        "nostalgiaBias": 0.717091,
+        "rhythmicDensity": 0.431468,
+        "timbralRichness": 0.286102
       },
-      "rank": 18,
+      "rank": 13,
+      "ratings": {
+        "c": 5,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.648113,
+      "sidPath": "C64Music/MUSICIANS/J/JVD/Double_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/J/JVD/Double_2SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.731 (high, w=0.60); timbralRichness=0.379 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.327011,
+        "melodicComplexity": 0.731061,
+        "nostalgiaBias": 0.577636,
+        "rhythmicDensity": 0.477165,
+        "timbralRichness": 0.378971
+      },
+      "rank": 14,
       "ratings": {
         "c": 5,
         "e": 3,
         "m": 2
       },
-      "score": 0.646566,
+      "score": 0.644522,
       "sidPath": "C64Music/GAMES/A-F/Fifteen_3D.sid",
       "songIndex": 1,
       "trackId": "C64Music/GAMES/A-F/Fifteen_3D.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.703 (high, w=0.60); timbralRichness=0.450 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.712 (high, w=0.60); timbralRichness=0.375 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.390684,
-        "melodicComplexity": 0.703005,
-        "nostalgiaBias": 0.467091,
-        "rhythmicDensity": 0.370422,
-        "timbralRichness": 0.449523
-      },
-      "rank": 19,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 2
-      },
-      "score": 0.64585,
-      "sidPath": "C64Music/MUSICIANS/E/Et1999cc/Back_Again_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/E/Et1999cc/Back_Again_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.685 (high, w=0.60); timbralRichness=0.443 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.250693,
-        "melodicComplexity": 0.684537,
-        "nostalgiaBias": 0.800727,
-        "rhythmicDensity": 0.358572,
-        "timbralRichness": 0.442591
-      },
-      "rank": 20,
-      "ratings": {
-        "c": 4,
-        "e": 3,
-        "m": 5
-      },
-      "score": 0.644293,
-      "sidPath": "C64Music/DEMOS/0-9/1988_Carat_tune_1.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/DEMOS/0-9/1988_Carat_tune_1.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.715 (high, w=0.60); timbralRichness=0.376 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.398122,
-        "melodicComplexity": 0.714733,
+        "experimentalTolerance": 0.395911,
+        "melodicComplexity": 0.71208,
         "nostalgiaBias": 0.448364,
-        "rhythmicDensity": 0.450507,
-        "timbralRichness": 0.375844
+        "rhythmicDensity": 0.451264,
+        "timbralRichness": 0.374562
       },
-      "rank": 21,
+      "rank": 15,
       "ratings": {
         "c": 5,
         "e": 3,
         "m": 2
       },
-      "score": 0.643789,
+      "score": 0.642416,
       "sidPath": "C64Music/MUSICIANS/A/A-Man/Phat_Frog_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/A/A-Man/Phat_Frog_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.728 (high, w=0.60); timbralRichness=0.412 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.690 (high, w=0.60); timbralRichness=0.472 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.369267,
-        "melodicComplexity": 0.727993,
-        "nostalgiaBias": 0.604182,
-        "rhythmicDensity": 0.415018,
-        "timbralRichness": 0.412293
+        "experimentalTolerance": 0.440931,
+        "melodicComplexity": 0.690157,
+        "nostalgiaBias": 0.448364,
+        "rhythmicDensity": 0.389268,
+        "timbralRichness": 0.471699
       },
-      "rank": 22,
+      "rank": 16,
       "ratings": {
-        "c": 4,
+        "c": 5,
         "e": 2,
-        "m": 4
+        "m": 3
       },
-      "score": 0.643202,
-      "sidPath": "C64Music/MUSICIANS/D/Demosic/Music_with_No_Name.sid",
+      "score": 0.641732,
+      "sidPath": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid",
       "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/D/Demosic/Music_with_No_Name.sid:1"
+      "trackId": "C64Music/MUSICIANS/P/PCH/Get_Up_and_Jump_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.703 (high, w=0.60); nostalgiaBias=0.578 (low, w=0.10)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.691 (high, w=0.60); timbralRichness=0.666 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.389603,
-        "melodicComplexity": 0.702688,
-        "nostalgiaBias": 0.577818,
-        "rhythmicDensity": 0.386513,
-        "timbralRichness": 0.258511
+        "experimentalTolerance": 0.587226,
+        "melodicComplexity": 0.69086,
+        "nostalgiaBias": 0.489818,
+        "rhythmicDensity": 0.460867,
+        "timbralRichness": 0.665654
       },
-      "rank": 23,
+      "rank": 17,
       "ratings": {
         "c": 5,
-        "e": 3,
-        "m": 4
+        "e": 4,
+        "m": 2
       },
-      "score": 0.643164,
-      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
-      "songIndex": 9,
-      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:9"
+      "score": 0.641537,
+      "sidPath": "C64Music/MUSICIANS/P/Proton/Saunasolmuhumppa_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/P/Proton/Saunasolmuhumppa_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.699 (high, w=0.60); nostalgiaBias=0.578 (low, w=0.10)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.702 (high, w=0.60); timbralRichness=0.449 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.386945,
-        "melodicComplexity": 0.699038,
-        "nostalgiaBias": 0.577818,
-        "rhythmicDensity": 0.389063,
-        "timbralRichness": 0.270221
+        "experimentalTolerance": 0.389645,
+        "melodicComplexity": 0.701757,
+        "nostalgiaBias": 0.517091,
+        "rhythmicDensity": 0.31785,
+        "timbralRichness": 0.449416
       },
-      "rank": 24,
+      "rank": 18,
       "ratings": {
         "c": 5,
-        "e": 3,
-        "m": 4
+        "e": 2,
+        "m": 3
       },
-      "score": 0.642918,
-      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
-      "songIndex": 4,
-      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:4"
+      "score": 0.641166,
+      "sidPath": "C64Music/MUSICIANS/E/Et1999cc/Back_Again_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/E/Et1999cc/Back_Again_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.744 (high, w=0.60); timbralRichness=0.326 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.723 (high, w=0.60); timbralRichness=0.446 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.36169,
-        "melodicComplexity": 0.744159,
+        "experimentalTolerance": 0.365251,
+        "melodicComplexity": 0.723107,
+        "nostalgiaBias": 0.667818,
+        "rhythmicDensity": 0.530964,
+        "timbralRichness": 0.446425
+      },
+      "rank": 19,
+      "ratings": {
+        "c": 5,
+        "e": 4,
+        "m": 3
+      },
+      "score": 0.639942,
+      "sidPath": "C64Music/MUSICIANS/E/Ed/Cancer.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/E/Ed/Cancer.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.743 (high, w=0.60); timbralRichness=0.326 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.360429,
+        "melodicComplexity": 0.742647,
         "nostalgiaBias": 0.607273,
-        "rhythmicDensity": 0.501523,
-        "timbralRichness": 0.326075
+        "rhythmicDensity": 0.499371,
+        "timbralRichness": 0.325722
       },
-      "rank": 25,
+      "rank": 20,
       "ratings": {
         "c": 4,
         "e": 3,
         "m": 3
       },
-      "score": 0.640608,
+      "score": 0.639872,
       "sidPath": "C64Music/MUSICIANS/Z/Zapac/Karl-Bertil_Jonsson.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/Z/Zapac/Karl-Bertil_Jonsson.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.688 (high, w=0.60); timbralRichness=0.668 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.737 (high, w=0.60); timbralRichness=0.490 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.590017,
-        "melodicComplexity": 0.68751,
-        "nostalgiaBias": 0.489818,
-        "rhythmicDensity": 0.463858,
-        "timbralRichness": 0.668445
+        "experimentalTolerance": 0.316645,
+        "melodicComplexity": 0.73714,
+        "nostalgiaBias": 0.484,
+        "rhythmicDensity": 0.277636,
+        "timbralRichness": 0.490489
+      },
+      "rank": 21,
+      "ratings": {
+        "c": 5,
+        "e": 2,
+        "m": 1
+      },
+      "score": 0.639333,
+      "sidPath": "C64Music/MUSICIANS/A/Alias_Medron/Deferoxamine.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/A/Alias_Medron/Deferoxamine.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.771 (high, w=0.60); timbralRichness=0.397 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.362423,
+        "melodicComplexity": 0.770786,
+        "nostalgiaBias": 0.526909,
+        "rhythmicDensity": 0.646201,
+        "timbralRichness": 0.397196
+      },
+      "rank": 22,
+      "ratings": {
+        "c": 5,
+        "e": 5,
+        "m": 2
+      },
+      "score": 0.639016,
+      "sidPath": "C64Music/MUSICIANS/C/Cerix/Cracking_Intro_Tune.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/C/Cerix/Cracking_Intro_Tune.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.766 (high, w=0.60); timbralRichness=0.349 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.271796,
+        "melodicComplexity": 0.766257,
+        "nostalgiaBias": 0.499636,
+        "rhythmicDensity": 0.496485,
+        "timbralRichness": 0.348967
+      },
+      "rank": 23,
+      "ratings": {
+        "c": 5,
+        "e": 4,
+        "m": 1
+      },
+      "score": 0.636808,
+      "sidPath": "C64Music/MUSICIANS/P/Pepsi/Friday_Rebecca_Black.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/P/Pepsi/Friday_Rebecca_Black.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.658 (high, w=0.60); timbralRichness=0.341 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.383013,
+        "melodicComplexity": 0.657638,
+        "nostalgiaBias": 0.534727,
+        "rhythmicDensity": 0.37313,
+        "timbralRichness": 0.341141
+      },
+      "rank": 24,
+      "ratings": {
+        "c": 5,
+        "e": 2,
+        "m": 5
+      },
+      "score": 0.634967,
+      "sidPath": "C64Music/MUSICIANS/J/Jammer/BBC_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/J/Jammer/BBC_2SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.719 (high, w=0.60); timbralRichness=0.291 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.301329,
+        "melodicComplexity": 0.719467,
+        "nostalgiaBias": 0.695091,
+        "rhythmicDensity": 0.436859,
+        "timbralRichness": 0.290785
+      },
+      "rank": 25,
+      "ratings": {
+        "c": 4,
+        "e": 2,
+        "m": 5
+      },
+      "score": 0.634392,
+      "sidPath": "C64Music/MUSICIANS/K/Klegg/Procrastination.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/K/Klegg/Procrastination.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.686 (high, w=0.60); timbralRichness=0.494 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.431289,
+        "melodicComplexity": 0.686241,
+        "nostalgiaBias": 0.371091,
+        "rhythmicDensity": 0.467484,
+        "timbralRichness": 0.494091
       },
       "rank": 26,
       "ratings": {
@@ -518,490 +518,490 @@
         "e": 4,
         "m": 2
       },
-      "score": 0.640118,
-      "sidPath": "C64Music/MUSICIANS/P/Proton/Saunasolmuhumppa_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/P/Proton/Saunasolmuhumppa_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.773 (high, w=0.60); timbralRichness=0.398 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.363897,
-        "melodicComplexity": 0.772554,
-        "nostalgiaBias": 0.526909,
-        "rhythmicDensity": 0.644678,
-        "timbralRichness": 0.39776
-      },
-      "rank": 27,
-      "ratings": {
-        "c": 5,
-        "e": 5,
-        "m": 2
-      },
-      "score": 0.639895,
-      "sidPath": "C64Music/MUSICIANS/C/Cerix/Cracking_Intro_Tune.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/C/Cerix/Cracking_Intro_Tune.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.754 (high, w=0.60); timbralRichness=0.330 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.319253,
-        "melodicComplexity": 0.754014,
-        "nostalgiaBias": 0.520909,
-        "rhythmicDensity": 0.668573,
-        "timbralRichness": 0.329627
-      },
-      "rank": 28,
-      "ratings": {
-        "c": 5,
-        "e": 5,
-        "m": 3
-      },
-      "score": 0.639715,
-      "sidPath": "C64Music/MUSICIANS/B/Bordeaux/Dr_Schnuggels/Europes_No_1.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/B/Bordeaux/Dr_Schnuggels/Europes_No_1.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.725 (high, w=0.60); timbralRichness=0.287 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.319358,
-        "melodicComplexity": 0.724848,
-        "nostalgiaBias": 0.667091,
-        "rhythmicDensity": 0.433469,
-        "timbralRichness": 0.286687
-      },
-      "rank": 29,
-      "ratings": {
-        "c": 5,
-        "e": 3,
-        "m": 3
-      },
-      "score": 0.638093,
-      "sidPath": "C64Music/MUSICIANS/J/JVD/Double_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/J/JVD/Double_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.768 (high, w=0.60); timbralRichness=0.350 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.273372,
-        "melodicComplexity": 0.768148,
-        "nostalgiaBias": 0.499636,
-        "rhythmicDensity": 0.495124,
-        "timbralRichness": 0.349598
-      },
-      "rank": 30,
-      "ratings": {
-        "c": 5,
-        "e": 4,
-        "m": 1
-      },
-      "score": 0.637751,
-      "sidPath": "C64Music/MUSICIANS/P/Pepsi/Friday_Rebecca_Black.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/P/Pepsi/Friday_Rebecca_Black.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.767 (high, w=0.60); nostalgiaBias=0.513 (low, w=0.10)",
-      "metrics": {
-        "experimentalTolerance": 0.111096,
-        "melodicComplexity": 0.767452,
-        "nostalgiaBias": 0.513273,
-        "rhythmicDensity": 0.397912,
-        "timbralRichness": 0.183477
-      },
-      "rank": 31,
-      "ratings": {
-        "c": 5,
-        "e": 4,
-        "m": 2
-      },
-      "score": 0.637511,
-      "sidPath": "C64Music/MUSICIANS/I/Isocosa/Twee_Dub.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/I/Isocosa/Twee_Dub.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.693 (high, w=0.60); timbralRichness=0.360 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.254756,
-        "melodicComplexity": 0.693274,
-        "nostalgiaBias": 0.639818,
-        "rhythmicDensity": 0.229164,
-        "timbralRichness": 0.360136
-      },
-      "rank": 32,
-      "ratings": {
-        "c": 5,
-        "e": 2,
-        "m": 4
-      },
-      "score": 0.636477,
-      "sidPath": "C64Music/MUSICIANS/J/Julian_Jaymz/Slanted_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/J/Julian_Jaymz/Slanted_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.689 (high, w=0.60); timbralRichness=0.496 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.433742,
-        "melodicComplexity": 0.689185,
-        "nostalgiaBias": 0.371091,
-        "rhythmicDensity": 0.467275,
-        "timbralRichness": 0.495632
-      },
-      "rank": 33,
-      "ratings": {
-        "c": 5,
-        "e": 4,
-        "m": 2
-      },
-      "score": 0.635829,
+      "score": 0.634291,
       "sidPath": "C64Music/MUSICIANS/G/GuyGavin/CrabNicholsonExtremeSleepover_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/G/GuyGavin/CrabNicholsonExtremeSleepover_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.741 (high, w=0.60); timbralRichness=0.439 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.738 (high, w=0.60); timbralRichness=0.438 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.305414,
-        "melodicComplexity": 0.740971,
+        "experimentalTolerance": 0.30299,
+        "melodicComplexity": 0.738062,
         "nostalgiaBias": 0.499636,
-        "rhythmicDensity": 0.483276,
-        "timbralRichness": 0.43923
+        "rhythmicDensity": 0.482045,
+        "timbralRichness": 0.43776
       },
-      "rank": 34,
+      "rank": 27,
       "ratings": {
         "c": 4,
         "e": 4,
         "m": 2
       },
-      "score": 0.634091,
+      "score": 0.632578,
       "sidPath": "C64Music/MUSICIANS/C/Cyborgjeff/Cubic_Dream.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/C/Cyborgjeff/Cubic_Dream.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.644 (high, w=0.60); timbralRichness=0.510 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.694 (high, w=0.60); timbralRichness=0.507 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.560975,
-        "melodicComplexity": 0.643785,
-        "nostalgiaBias": 0.462,
-        "rhythmicDensity": 0.297952,
-        "timbralRichness": 0.510466
-      },
-      "rank": 35,
-      "ratings": {
-        "c": 5,
-        "e": 2,
-        "m": 4
-      },
-      "score": 0.632645,
-      "sidPath": "C64Music/MUSICIANS/A/Acrouzet/Astrolabe_Mono_3SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/A/Acrouzet/Astrolabe_Mono_3SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.705 (high, w=0.60); timbralRichness=0.383 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.522248,
-        "melodicComplexity": 0.705202,
-        "nostalgiaBias": 0.493818,
-        "rhythmicDensity": 0.609255,
-        "timbralRichness": 0.383095
-      },
-      "rank": 36,
-      "ratings": {
-        "c": 5,
-        "e": 4,
-        "m": 3
-      },
-      "score": 0.631175,
-      "sidPath": "C64Music/MUSICIANS/T/TSM/Fiki_Fiki_2SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/T/TSM/Fiki_Fiki_2SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.690 (high, w=0.60); timbralRichness=0.509 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.473923,
-        "melodicComplexity": 0.690332,
+        "experimentalTolerance": 0.470851,
+        "melodicComplexity": 0.694018,
         "nostalgiaBias": 0.443818,
-        "rhythmicDensity": 0.522688,
-        "timbralRichness": 0.509285
+        "rhythmicDensity": 0.522124,
+        "timbralRichness": 0.507225
       },
-      "rank": 37,
+      "rank": 28,
       "ratings": {
         "c": 4,
         "e": 4,
         "m": 3
       },
-      "score": 0.630461,
+      "score": 0.632148,
       "sidPath": "C64Music/MUSICIANS/M/MCH/Technolooper_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/M/MCH/Technolooper_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.671 (high, w=0.60); timbralRichness=0.408 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.692 (high, w=0.60); timbralRichness=0.375 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.406052,
-        "melodicComplexity": 0.670884,
-        "nostalgiaBias": 0.576182,
-        "rhythmicDensity": 0.402584,
-        "timbralRichness": 0.407786
+        "experimentalTolerance": 0.457035,
+        "melodicComplexity": 0.69192,
+        "nostalgiaBias": 0.612,
+        "rhythmicDensity": 0.382489,
+        "timbralRichness": 0.375182
       },
-      "rank": 38,
+      "rank": 29,
       "ratings": {
-        "c": 5,
+        "c": 4,
         "e": 2,
-        "m": 4
+        "m": 5
       },
-      "score": 0.630338,
-      "sidPath": "C64Music/MUSICIANS/M/MegaSparky/1981-1986_The_Casiopea_Years_2SID.sid",
+      "score": 0.63165,
+      "sidPath": "C64Music/MUSICIANS/K/Kozaki_Soft/KnotCrafter_2SID.sid",
       "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/M/MegaSparky/1981-1986_The_Casiopea_Years_2SID.sid:1"
+      "trackId": "C64Music/MUSICIANS/K/Kozaki_Soft/KnotCrafter_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.748 (high, w=0.60); timbralRichness=0.352 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.637 (high, w=0.60); timbralRichness=0.482 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.274215,
-        "melodicComplexity": 0.748015,
-        "nostalgiaBias": 0.484,
-        "rhythmicDensity": 0.476738,
-        "timbralRichness": 0.352309
-      },
-      "rank": 39,
-      "ratings": {
-        "c": 5,
-        "e": 4,
-        "m": 1
-      },
-      "score": 0.629426,
-      "sidPath": "C64Music/MUSICIANS/Q/Q-Man/303_plus_808_plus_303.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/Q/Q-Man/303_plus_808_plus_303.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.699 (high, w=0.60); timbralRichness=0.483 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.558755,
-        "melodicComplexity": 0.699215,
-        "nostalgiaBias": 0.434727,
-        "rhythmicDensity": 0.604966,
-        "timbralRichness": 0.482562
-      },
-      "rank": 40,
-      "ratings": {
-        "c": 5,
-        "e": 5,
-        "m": 3
-      },
-      "score": 0.628812,
-      "sidPath": "C64Music/MUSICIANS/J/Jammer/Melbourne_Shuffle_3SID.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/J/Jammer/Melbourne_Shuffle_3SID.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.633 (high, w=0.60); timbralRichness=0.478 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.448392,
-        "melodicComplexity": 0.632763,
+        "experimentalTolerance": 0.452,
+        "melodicComplexity": 0.637092,
         "nostalgiaBias": 0.635273,
-        "rhythmicDensity": 0.454286,
-        "timbralRichness": 0.47777
+        "rhythmicDensity": 0.450198,
+        "timbralRichness": 0.482339
       },
-      "rank": 41,
+      "rank": 30,
       "ratings": {
         "c": 4,
         "e": 3,
         "m": 5
       },
-      "score": 0.628608,
+      "score": 0.631152,
       "sidPath": "C64Music/MUSICIANS/F/F7sus4/Timewarp_Spheres_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/F/F7sus4/Timewarp_Spheres_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.701 (high, w=0.60); timbralRichness=0.329 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.703 (high, w=0.60); timbralRichness=0.382 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.303203,
-        "melodicComplexity": 0.700857,
-        "nostalgiaBias": 0.527818,
-        "rhythmicDensity": 0.216602,
-        "timbralRichness": 0.328682
+        "experimentalTolerance": 0.520163,
+        "melodicComplexity": 0.7027,
+        "nostalgiaBias": 0.493818,
+        "rhythmicDensity": 0.612843,
+        "timbralRichness": 0.381921
       },
-      "rank": 42,
-      "ratings": {
-        "c": 5,
-        "e": 2,
-        "m": 3
-      },
-      "score": 0.628537,
-      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
-      "songIndex": 10,
-      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:10"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.688 (high, w=0.60); timbralRichness=0.440 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.334285,
-        "melodicComplexity": 0.687549,
-        "nostalgiaBias": 0.607273,
-        "rhythmicDensity": 0.448761,
-        "timbralRichness": 0.440178
-      },
-      "rank": 43,
-      "ratings": {
-        "c": 4,
-        "e": 3,
-        "m": 3
-      },
-      "score": 0.627914,
-      "sidPath": "C64Music/MUSICIANS/Q/Q-Man/Short_Energizer.sid",
-      "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/Q/Q-Man/Short_Energizer.sid:1"
-    },
-    {
-      "explanation": "Selected for Melodic: melodicComplexity=0.646 (high, w=0.60); timbralRichness=0.590 (high, w=0.15)",
-      "metrics": {
-        "experimentalTolerance": 0.645735,
-        "melodicComplexity": 0.64622,
-        "nostalgiaBias": 0.434727,
-        "rhythmicDensity": 0.539719,
-        "timbralRichness": 0.589986
-      },
-      "rank": 44,
+      "rank": 31,
       "ratings": {
         "c": 5,
         "e": 4,
         "m": 3
       },
-      "score": 0.627386,
+      "score": 0.629885,
+      "sidPath": "C64Music/MUSICIANS/T/TSM/Fiki_Fiki_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/T/TSM/Fiki_Fiki_2SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.649 (high, w=0.60); timbralRichness=0.589 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.643455,
+        "melodicComplexity": 0.648957,
+        "nostalgiaBias": 0.434727,
+        "rhythmicDensity": 0.53779,
+        "timbralRichness": 0.588676
+      },
+      "rank": 32,
+      "ratings": {
+        "c": 5,
+        "e": 4,
+        "m": 3
+      },
+      "score": 0.628664,
       "sidPath": "C64Music/MUSICIANS/M/MCH/Acid_Storm_3SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/M/MCH/Acid_Storm_3SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.721 (high, w=0.60); timbralRichness=0.396 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.697 (high, w=0.60); timbralRichness=0.482 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.402752,
-        "melodicComplexity": 0.721322,
-        "nostalgiaBias": 0.550909,
-        "rhythmicDensity": 0.312796,
-        "timbralRichness": 0.395744
+        "experimentalTolerance": 0.557249,
+        "melodicComplexity": 0.697408,
+        "nostalgiaBias": 0.434727,
+        "rhythmicDensity": 0.607037,
+        "timbralRichness": 0.481967
       },
-      "rank": 45,
+      "rank": 33,
       "ratings": {
         "c": 5,
-        "e": 1,
+        "e": 5,
         "m": 3
       },
-      "score": 0.62588,
-      "sidPath": "C64Music/DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid",
+      "score": 0.627912,
+      "sidPath": "C64Music/MUSICIANS/J/Jammer/Melbourne_Shuffle_3SID.sid",
       "songIndex": 1,
-      "trackId": "C64Music/DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid:1"
+      "trackId": "C64Music/MUSICIANS/J/Jammer/Melbourne_Shuffle_3SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.733 (high, w=0.60); nostalgiaBias=0.530 (low, w=0.10)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.743 (high, w=0.60); timbralRichness=0.349 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.294497,
-        "melodicComplexity": 0.733332,
-        "nostalgiaBias": 0.53,
-        "rhythmicDensity": 0.547893,
-        "timbralRichness": 0.294962
+        "experimentalTolerance": 0.270328,
+        "melodicComplexity": 0.74335,
+        "nostalgiaBias": 0.484,
+        "rhythmicDensity": 0.476624,
+        "timbralRichness": 0.349328
       },
-      "rank": 46,
+      "rank": 34,
+      "ratings": {
+        "c": 5,
+        "e": 4,
+        "m": 1
+      },
+      "score": 0.626924,
+      "sidPath": "C64Music/MUSICIANS/Q/Q-Man/303_plus_808_plus_303.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/Q/Q-Man/303_plus_808_plus_303.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.732 (high, w=0.60); nostalgiaBias=0.530 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.293132,
+        "melodicComplexity": 0.731694,
+        "nostalgiaBias": 0.53,
+        "rhythmicDensity": 0.549089,
+        "timbralRichness": 0.294511
+      },
+      "rank": 35,
       "ratings": {
         "c": 5,
         "e": 4,
         "m": 2
       },
-      "score": 0.625545,
+      "score": 0.62474,
       "sidPath": "C64Music/MUSICIANS/A/Ahti/Icecube.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/A/Ahti/Icecube.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.694 (high, w=0.60); nostalgiaBias=0.463 (low, w=0.10)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.719 (high, w=0.60); timbralRichness=0.394 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.435043,
-        "melodicComplexity": 0.69431,
-        "nostalgiaBias": 0.462545,
-        "rhythmicDensity": 0.492663,
-        "timbralRichness": 0.328235
+        "experimentalTolerance": 0.400467,
+        "melodicComplexity": 0.718581,
+        "nostalgiaBias": 0.550909,
+        "rhythmicDensity": 0.30924,
+        "timbralRichness": 0.394389
       },
-      "rank": 47,
+      "rank": 36,
+      "ratings": {
+        "c": 5,
+        "e": 1,
+        "m": 3
+      },
+      "score": 0.624458,
+      "sidPath": "C64Music/DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.692 (high, w=0.60); nostalgiaBias=0.463 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.433075,
+        "melodicComplexity": 0.691949,
+        "nostalgiaBias": 0.462545,
+        "rhythmicDensity": 0.49186,
+        "timbralRichness": 0.327158
+      },
+      "rank": 37,
       "ratings": {
         "c": 5,
         "e": 3,
         "m": 2
       },
-      "score": 0.625208,
+      "score": 0.623995,
       "sidPath": "C64Music/MUSICIANS/Y/Yaruni/Lethal_Xcess_Menu_2SID.sid",
       "songIndex": 1,
       "trackId": "C64Music/MUSICIANS/Y/Yaruni/Lethal_Xcess_Menu_2SID.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.724 (high, w=0.60); timbralRichness=0.518 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.683 (high, w=0.60); timbralRichness=0.458 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.412062,
-        "melodicComplexity": 0.723933,
-        "nostalgiaBias": 0.576909,
-        "rhythmicDensity": 0.5186,
-        "timbralRichness": 0.518415
+        "experimentalTolerance": 0.353123,
+        "melodicComplexity": 0.683415,
+        "nostalgiaBias": 0.648182,
+        "rhythmicDensity": 0.448513,
+        "timbralRichness": 0.458345
       },
-      "rank": 48,
+      "rank": 38,
+      "ratings": {
+        "c": 3,
+        "e": 3,
+        "m": 4
+      },
+      "score": 0.623988,
+      "sidPath": "C64Music/MUSICIANS/U/Uneksija/Bring_Back_Beltram.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/U/Uneksija/Bring_Back_Beltram.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.739 (high, w=0.60); nostalgiaBias=0.471 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.283796,
+        "melodicComplexity": 0.739142,
+        "nostalgiaBias": 0.470909,
+        "rhythmicDensity": 0.580279,
+        "timbralRichness": 0.337632
+      },
+      "rank": 39,
+      "ratings": {
+        "c": 5,
+        "e": 5,
+        "m": 2
+      },
+      "score": 0.623937,
+      "sidPath": "C64Music/MUSICIANS/O/Odo/Chaos_Sequence.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/O/Odo/Chaos_Sequence.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.659 (high, w=0.60); timbralRichness=0.478 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.590182,
+        "melodicComplexity": 0.658655,
+        "nostalgiaBias": 0.596909,
+        "rhythmicDensity": 0.435157,
+        "timbralRichness": 0.477979
+      },
+      "rank": 40,
+      "ratings": {
+        "c": 5,
+        "e": 3,
+        "m": 3
+      },
+      "score": 0.623706,
+      "sidPath": "C64Music/DEMOS/A-F/Devils_ReSIDence_3SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/A-F/Devils_ReSIDence_3SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.721 (high, w=0.60); timbralRichness=0.407 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.324314,
+        "melodicComplexity": 0.721267,
+        "nostalgiaBias": 0.634545,
+        "rhythmicDensity": 0.574902,
+        "timbralRichness": 0.407017
+      },
+      "rank": 41,
       "ratings": {
         "c": 4,
         "e": 4,
-        "m": 2
+        "m": 3
       },
-      "score": 0.624739,
-      "sidPath": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid",
+      "score": 0.623597,
+      "sidPath": "C64Music/MUSICIANS/X/Xtense/lda_3b_sta_d011.sid",
       "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/H/Holt_Hein/Trans_Form_remix_6581_8580.sid:1"
+      "trackId": "C64Music/MUSICIANS/X/Xtense/lda_3b_sta_d011.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.659 (high, w=0.60); nostalgiaBias=0.485 (low, w=0.10)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.696 (high, w=0.60); timbralRichness=0.359 (high, w=0.15)",
       "metrics": {
-        "experimentalTolerance": 0.384087,
-        "melodicComplexity": 0.658927,
-        "nostalgiaBias": 0.484727,
-        "rhythmicDensity": 0.376057,
-        "timbralRichness": 0.341309
+        "experimentalTolerance": 0.252507,
+        "melodicComplexity": 0.695972,
+        "nostalgiaBias": 0.639818,
+        "rhythmicDensity": 0.175302,
+        "timbralRichness": 0.358822
       },
-      "rank": 49,
+      "rank": 42,
+      "ratings": {
+        "c": 5,
+        "e": 1,
+        "m": 4
+      },
+      "score": 0.622735,
+      "sidPath": "C64Music/MUSICIANS/J/Julian_Jaymz/Slanted_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/J/Julian_Jaymz/Slanted_2SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.764 (high, w=0.60); timbralRichness=0.379 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.244814,
+        "melodicComplexity": 0.7639,
+        "nostalgiaBias": 0.536545,
+        "rhythmicDensity": 0.507105,
+        "timbralRichness": 0.378548
+      },
+      "rank": 43,
+      "ratings": {
+        "c": 5,
+        "e": 5,
+        "m": 1
+      },
+      "score": 0.622366,
+      "sidPath": "C64Music/DEMOS/A-F/Driver.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/DEMOS/A-F/Driver.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.685 (high, w=0.60); experimentalTolerance=0.091 (low, w=0.05)",
+      "metrics": {
+        "experimentalTolerance": 0.091183,
+        "melodicComplexity": 0.685068,
+        "nostalgiaBias": 0.549636,
+        "rhythmicDensity": 0.192934,
+        "timbralRichness": 0.277618
+      },
+      "rank": 44,
       "ratings": {
         "c": 5,
         "e": 2,
-        "m": 4
+        "m": 3
       },
-      "score": 0.624678,
-      "sidPath": "C64Music/MUSICIANS/J/Jammer/BBC_2SID.sid",
+      "score": 0.621392,
+      "sidPath": "C64Music/MUSICIANS/T/Triace/Happy_Yummy_Bear.sid",
       "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/J/Jammer/BBC_2SID.sid:1"
+      "trackId": "C64Music/MUSICIANS/T/Triace/Happy_Yummy_Bear.sid:1"
     },
     {
-      "explanation": "Selected for Melodic: melodicComplexity=0.722 (high, w=0.60); timbralRichness=0.292 (high, w=0.15)",
+      "explanation": "Selected for Melodic: melodicComplexity=0.735 (high, w=0.60); experimentalTolerance=0.182 (low, w=0.05)",
       "metrics": {
-        "experimentalTolerance": 0.30324,
-        "melodicComplexity": 0.721759,
-        "nostalgiaBias": 0.645091,
-        "rhythmicDensity": 0.43761,
-        "timbralRichness": 0.291791
+        "experimentalTolerance": 0.181667,
+        "melodicComplexity": 0.734766,
+        "nostalgiaBias": 0.740545,
+        "rhythmicDensity": 0.472588,
+        "timbralRichness": 0.229932
+      },
+      "rank": 45,
+      "ratings": {
+        "c": 4,
+        "e": 4,
+        "m": 4
+      },
+      "score": 0.620613,
+      "sidPath": "C64Music/MUSICIANS/L/Leitch_Barry/Space_Crusade.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/L/Leitch_Barry/Space_Crusade.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.690 (high, w=0.60); nostalgiaBias=0.462 (low, w=0.10)",
+      "metrics": {
+        "experimentalTolerance": 0.193019,
+        "melodicComplexity": 0.689543,
+        "nostalgiaBias": 0.461818,
+        "rhythmicDensity": 0.378219,
+        "timbralRichness": 0.349192
+      },
+      "rank": 46,
+      "ratings": {
+        "c": 4,
+        "e": 3,
+        "m": 2
+      },
+      "score": 0.620423,
+      "sidPath": "C64Music/MUSICIANS/W/Wemyss_Chris/Tuncha.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/W/Wemyss_Chris/Tuncha.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.697 (high, w=0.60); timbralRichness=0.282 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.207793,
+        "melodicComplexity": 0.696669,
+        "nostalgiaBias": 0.589091,
+        "rhythmicDensity": 0.326732,
+        "timbralRichness": 0.28198
+      },
+      "rank": 47,
+      "ratings": {
+        "c": 4,
+        "e": 2,
+        "m": 4
+      },
+      "score": 0.619619,
+      "sidPath": "C64Music/MUSICIANS/C/ChristopherJam/Jam_Ball_2.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/C/ChristopherJam/Jam_Ball_2.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.650 (high, w=0.60); timbralRichness=0.328 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.30919,
+        "melodicComplexity": 0.649883,
+        "nostalgiaBias": 0.694364,
+        "rhythmicDensity": 0.375418,
+        "timbralRichness": 0.32794
+      },
+      "rank": 48,
+      "ratings": {
+        "c": 5,
+        "e": 2,
+        "m": 5
+      },
+      "score": 0.619464,
+      "sidPath": "C64Music/MUSICIANS/C/Cadaver/Simple_2SID.sid",
+      "songIndex": 1,
+      "trackId": "C64Music/MUSICIANS/C/Cadaver/Simple_2SID.sid:1"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.649 (high, w=0.60); timbralRichness=0.397 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.295775,
+        "melodicComplexity": 0.648655,
+        "nostalgiaBias": 0.627818,
+        "rhythmicDensity": 0.252675,
+        "timbralRichness": 0.397346
+      },
+      "rank": 49,
+      "ratings": {
+        "c": 4,
+        "e": 2,
+        "m": 5
+      },
+      "score": 0.618404,
+      "sidPath": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid",
+      "songIndex": 12,
+      "trackId": "C64Music/GAMES/S-Z/Super_Mario_Bros_64_2SID.sid:12"
+    },
+    {
+      "explanation": "Selected for Melodic: melodicComplexity=0.708 (high, w=0.60); timbralRichness=0.362 (high, w=0.15)",
+      "metrics": {
+        "experimentalTolerance": 0.185754,
+        "melodicComplexity": 0.707523,
+        "nostalgiaBias": 0.626909,
+        "rhythmicDensity": 0.207838,
+        "timbralRichness": 0.361831
       },
       "rank": 50,
       "ratings": {
         "c": 4,
-        "e": 2,
+        "e": 1,
         "m": 4
       },
-      "score": 0.624666,
-      "sidPath": "C64Music/MUSICIANS/K/Klegg/Procrastination.sid",
+      "score": 0.617584,
+      "sidPath": "C64Music/MUSICIANS/N/No-XS/Saufzucht_tune_1.sid",
       "songIndex": 1,
-      "trackId": "C64Music/MUSICIANS/K/Klegg/Procrastination.sid:1"
+      "trackId": "C64Music/MUSICIANS/N/No-XS/Saufzucht_tune_1.sid:1"
     }
   ]
 }

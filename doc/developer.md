@@ -48,6 +48,27 @@ For iterative phase work, prefer `bun run build:quick` plus targeted test files 
 
 ### HVSC ROM requirement research
 
+The dual-engine workflow for the 14600K is documented in
+[the full ROM census guide](research/hvsc-rom-dual-run.md). Its one command builds,
+qualifies and benchmarks both engines before running the complete inventory.
+The methodology-4 commands below are historical SIDLite-only workflows.
+
+For listener-relevant ROM comparisons, full documented horizons and a
+versioned consumer lookup, use [methodology 4](research/hvsc-rom-production.md). The
+older command below is retained as a historical research example. Rollout is gated:
+a pilot (at most 5% of subtunes and of files, counted in a durable ledger) needs a reviewed
+`--selection`, and a full run needs a hardening certificate:
+
+```sh
+bun scripts/rom-audit/select-pilot.ts /path/C64Music workspace/rom-audit-selection.json
+bun scripts/rom-audit/audit.ts --hvsc /path/C64Music --roms /path/roms --out workspace/rom-audit-v4 \
+  --workers 7 --rollout pilot --selection workspace/rom-audit-selection.json
+bun scripts/rom-audit/publish.ts --production workspace/rom-audit-v4 doc/research/hvsc-rom-catalogue/v4
+bun scripts/rom-audit/harden.ts --hvsc /path/C64Music --roms /path/roms --pilot workspace/rom-audit-v4 \
+  --review doc/research/hvsc-rom-adversarial-review.md   # writes workspace/rom-audit-hardening/certificate.json
+bun scripts/rom-audit/audit.ts ... --rollout full --hardening workspace/rom-audit-hardening/certificate.json
+```
+
 The [ROM requirement report](research/hvsc-rom-requirements.md) distinguishes
 BASIC header declarations, changed execution and PCM differences with similar
 register sequences. Its audit reads the complete HVSC release index and checks all
@@ -72,9 +93,11 @@ The sanitizer regression requires the actual HVSC failure input as well as
 synthetic stimuli:
 
 ```sh
-ROM_AUDIT_SANITIZE=1 bash scripts/rom-audit/build-native.sh
+ROM_AUDIT_SANITIZE=1 bash scripts/rom-audit/build-native.sh   # ASan + UBSan
 bun scripts/rom-audit/native-regression.ts \
   workspace/rom-audit-native-asan/render /path/roms /path/C64Music
+bun scripts/rom-audit/decision-regression.ts \
+  workspace/rom-audit-native-asan/render /path/roms
 ```
 
 Queued web jobs created through `/api/fetch`, `/api/train`, and `/api/classify` with `async=true` rely on the manifest-backed worker started by `bun run jobs:run`. The web app now submits those jobs and reports their state; the worker owns execution.
