@@ -18,6 +18,15 @@ describe("digital screening eligibility",()=>{
     const dense:number[]=[];for(let i=0;i<500;i++)dense.push(0,24,i%16,i*400);
     expect(screenEquivalent(screen(dense),screen(dense))).toBe(false);
   });
+  it("requires audio for dense bursts shorter than the density window, including the final tail",()=>{
+    for(const address of [0,24]){
+      const burst:number[]=[];
+      for(let i=0;i<350;i++)burst.push(0,address,i%16,1000000+i*100);
+      expect(screenEquivalent(screen(burst),screen(burst))).toBe(false);
+    }
+    const short=Array.from({length:12},(_,i)=>[0,24,i%16,1000000+i*500]).flat();
+    expect(screenEquivalent(screen(short),screen(short))).toBe(false);
+  });
 });
 const sha="a".repeat(64),md5="a".repeat(32);
 const tune=(hash=md5):ScreenTune=>({path:"test.sid",sha256:sha,md5:hash,modelFixed:true,jobs:[{path:"test.sid",song:1,sha256:sha,seconds:10,kind:"PSID"}]});
@@ -60,6 +69,30 @@ describe("native stream terminal delivery",()=>{
     expect([...await reader.read(2)]).toEqual([1,2]);expect([...await reader.read(4)]).toEqual([3,4,5,6]);
     await expect(reader.read(1)).rejects.toThrow("received 6, consumed 6");
   });
+  it("distinguishes an emulated CPU halt from resource, engine and malformed terminal failures",async()=>{
+    const {mkdtempSync,writeFileSync,rmSync}=await import("node:fs"),{tmpdir}=await import("node:os"),{join}=await import("node:path");
+    const {NativeLane}=await import("../../../scripts/rom-audit/native-lanes.js");
+    const directory=mkdtempSync(join(tmpdir(),"sidflow-native-terminal-")),producer=join(directory,"producer.mjs");
+    try{
+      for(const terminal of [
+        {error:"allocation failure: bad_alloc",errorKind:"resource"},
+        {error:"mixer returned no samples",errorKind:"engine"},
+        {error:"Illegal instruction $02",errorKind:"engine"},
+        {error:"unexpected failure",errorKind:"cpu-halt"},
+        {error:"",errorKind:undefined},
+        {error:"Illegal instruction $02",errorKind:"cpu-halt"},
+        {error:"",errorKind:""},
+      ]){
+        const bytes=JSON.stringify({cpuSeconds:0.01,traceComplete:true,...terminal});
+        writeFileSync(producer,`const data=Buffer.from(${JSON.stringify(bytes)});const h=Buffer.alloc(8);h.writeUInt32LE(0xffffffff);h.writeUInt32LE(data.length,4);process.stdout.write(Buffer.concat([h,data]));`);
+        const lane=NativeLane.open("node",producer,new Uint8Array(32),1,1,7);
+        try{
+          if(terminal.errorKind===""||terminal.errorKind==="cpu-halt"&&terminal.error.startsWith("Illegal instruction $"))expect(await lane.pull()).toBeNull();
+          else await expect(lane.pull()).rejects.toThrow();
+        }finally{lane.close();}
+      }
+    }finally{rmSync(directory,{recursive:true,force:true});}
+  });
   it("exits naturally after closing a paused native output pipe",async()=>{
     const {mkdtempSync,writeFileSync,rmSync}=await import("node:fs"),{tmpdir}=await import("node:os"),{join}=await import("node:path"),{spawnSync}=await import("node:child_process");
     const directory=mkdtempSync(join(tmpdir(),"sidflow-native-close-")),producer=join(directory,"producer.mjs");
@@ -87,4 +120,55 @@ describe("screened configurations avoid redundant audio",()=>{
     expect(audioStates(proof,run,15).full).toBe("compatible");
     run.reference.outcome="failed";expect(audioStates(proof,run,15).full).toBe("unknown");
   });
+});
+
+describe("resumable decisions",()=>{
+  it("retries unknown and failed rows while preserving resolved rows",async()=>{
+    const {resolvedScreenRow}=await import("../../../scripts/rom-audit/screen-publication.js");
+    expect(resolvedScreenRow(undefined)).toBe(false);
+    const measured=row();expect(resolvedScreenRow(measured)).toBe(true);
+    measured.result.engines[1]!.states.full="unknown";expect(resolvedScreenRow(measured)).toBe(false);
+    measured.result={engines:[],failure:"interrupted"};expect(resolvedScreenRow(measured)).toBe(false);
+  });
+});
+
+describe("Commander release verification",()=>{
+  it("refuses incomplete publications even when their files have valid checksums",async()=>{
+    const {mkdtemp,rm}=await import("node:fs/promises"),{tmpdir}=await import("node:os"),{join}=await import("node:path");
+    const {publishScreen}=await import("../../../scripts/rom-audit/screen-publication.js"),{verifyPublication}=await import("../../../scripts/rom-audit/verify-publication.js");
+    const directory=await mkdtemp(join(tmpdir(),"rom-incomplete-"));
+    try{const manifest=await publishScreen(directory,[tune()],new Map(),{});expect(manifest.releaseReady).toBe(false);expect(()=>verifyPublication(directory)).toThrow("incomplete or unqualified");}
+    finally{await rm(directory,{recursive:true,force:true});}
+  });
+  it("verifies a complete bundle and rejects corruption, mixed profiles and inconsistent packed data",async()=>{
+    const {mkdtemp,rm,readFile,writeFile}=await import("node:fs/promises"),{tmpdir}=await import("node:os"),{join}=await import("node:path");
+    const {publishScreen}=await import("../../../scripts/rom-audit/screen-publication.js"),{verifyPublication}=await import("../../../scripts/rom-audit/verify-publication.js");
+    const {screenJson,screenSha}=await import("../../../scripts/rom-audit/screen-identity.js");
+    const directory=await mkdtemp(join(tmpdir(),"rom-verified-"));
+    try{
+      const tunes:ScreenTune[]=[],rows=new Map<string,ScreenRow>();
+      for(let i=0;i<61157;i++){
+        const identity=(i+1).toString(16).padStart(16,"0"),sha256=identity+"0".repeat(48),md5=identity+"0".repeat(16);
+        const jobs=Array.from({length:i<26711?2:1},(_,j)=>({path:"fixture.sid",sha256,song:j+1,seconds:10,kind:"PSID"}));
+        tunes.push({path:"fixture.sid",sha256,md5,modelFixed:true,jobs});
+        for(const job of jobs){const measured=row();measured.sha256=sha256;measured.song=job.song;rows.set(`${sha256}#${job.song}`,measured);}
+      }
+      const nativeHashes={sidlite:sha,residfp:sha},sourceIdentity=sha;
+      const qualification={schema:"sidflow-screen-qualification-1",sourceIdentity,measurementIdentity:sourceIdentity,passed:true,nativeHashes,
+        logs:Object.fromEntries(["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log"].map(n=>[n,sha])),fullRuns:Array.from({length:3},()=>({pass:1,fail:0,skip:0}))};
+      const manifest=await publishScreen(directory,tunes,rows,{sourceIdentity,nativeHashes},{qualification:screenJson(qualification),benchmark:screenJson({sourceIdentity,passed:true})});
+      expect(manifest.releaseReady).toBe(true);expect(verifyPublication(directory)).toBe(screenSha(await readFile(join(directory,"manifest.json"))));
+      const packed=await readFile(join(directory,"commander-exceptions.bin"));packed[22]=0;
+      await writeFile(join(directory,"commander-exceptions.bin"),packed);
+      expect(()=>verifyPublication(directory)).toThrow("checksum");
+      // Even a recomputed checksum cannot conceal disagreement with JSON.
+      manifest.artifacts["commander-exceptions.bin"]=screenSha(packed);
+      await writeFile(join(directory,"manifest.json"),screenJson(manifest));
+      expect(()=>verifyPublication(directory)).toThrow("packed/JSON/count");
+      qualification.measurementIdentity="b".repeat(64);
+      const changed=screenJson(qualification);await writeFile(join(directory,"qualification.json"),changed);
+      manifest.artifacts["qualification.json"]=screenSha(changed);await writeFile(join(directory,"manifest.json"),screenJson(manifest));
+      expect(()=>verifyPublication(directory)).toThrow("qualification");
+    }finally{await rm(directory,{recursive:true,force:true});}
+  },30000);
 });

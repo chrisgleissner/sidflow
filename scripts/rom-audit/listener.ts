@@ -138,6 +138,7 @@ export class ListenerComparator {
   private densityStart: number | undefined;
   private densityWrites = 0;
   private densityVolumeWrites = 0;
+  private readonly volumeCycles = new Map<number, number[]>();
   private pendingKey = "";
   private pendingWindow = 0;
   private spectral = false;
@@ -176,9 +177,18 @@ export class ListenerComparator {
       // can change sampled/digi audio. Dense streams must use audio spectra.
       this.densityStart ??= a![i - 1]!;
       this.densityWrites++;
-      if ((a![i - 3]! & 31) === 24) this.densityVolumeWrites++;
+      if ((a![i - 3]! & 31) === 24) {
+        this.densityVolumeWrites++;
+        const chip=a![i-4]!,cycles=this.volumeCycles.get(chip)??[];
+        cycles.push(a![i-1]!);if(cycles.length>3)cycles.shift();this.volumeCycles.set(chip,cycles);
+        // Three volume samples at >=1 kHz already identify a short digi burst;
+        // do not need 100 writes before protecting a brief sampled effect.
+        if(cycles.length===3&&cycles[2]!-cycles[0]!<=2000){this.useSpectra();return;}
+      }
+      // Check before resetting the window, including a burst at the very end
+      // of a tune. Waiting for 100,000 cycles misses short sampled effects.
+      if (this.densityWrites > 300 || this.densityVolumeWrites > 100) { this.useSpectra(); return; }
       if (a![i - 1]! - this.densityStart >= 100000) {
-        if (this.densityWrites > 300 || this.densityVolumeWrites > 100) { this.useSpectra(); return; }
         this.densityStart = a![i - 1]!; this.densityWrites = 0; this.densityVolumeWrites = 0;
       }
     }

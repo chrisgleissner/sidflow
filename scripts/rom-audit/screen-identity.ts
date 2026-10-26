@@ -11,7 +11,7 @@ export const screenSha=(value:string|Uint8Array):string=>createHash("sha256").up
 export function screenQualificationIdentity(): string {
   const directory=import.meta.dir;
   const files=readdirSync(directory).filter(f=>/\.(ts|mjs|cpp|sh|py)$/.test(f)).sort().map(f=>[f,screenSha(readFileSync(path.join(directory,f)))]);
-  const extra=["packages/sidflow-common/src/rom-eligibility.ts","packages/sidflow-common/src/json.ts","packages/sidflow-common/src/sid-header-conformance.ts","packages/sidflow-common/test/rom-screen.test.ts","packages/sidflow-common/test/rom-audit-adversarial.test.ts","packages/sidflow-classify/test/super-mario-stress.test.ts","bun.lock"].map(f=>[f,screenSha(readFileSync(path.resolve(directory,"../..",f)))]);
+  const extra=["packages/sidflow-common/src/rom-eligibility.ts","packages/sidflow-common/src/json.ts","packages/sidflow-common/src/sid-header-conformance.ts","packages/sidflow-common/test/rom-screen.test.ts","packages/sidflow-common/test/rom-audit-adversarial.test.ts","packages/sidflow-classify/test/super-mario-stress.test.ts","package.json","scripts/run-unit-coverage-batches.mjs","scripts/run-bun.mjs","scripts/ensure-bun.mjs","bun.lock"].map(f=>[f,screenSha(readFileSync(path.resolve(directory,"../..",f)))]);
   return screenSha(screenJson({files,extra,engines:{sidlite:engineHashes("sidlite"),residfp:engineHashes("residfp")}}));
 }
 /** Renderer/decision identity deliberately excludes publication, qualification

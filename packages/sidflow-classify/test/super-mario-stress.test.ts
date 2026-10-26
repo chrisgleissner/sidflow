@@ -201,6 +201,9 @@ async function runClassificationRound(options: {
           completionTimestamps.push(Date.now());
         }
       },
+    }).catch((error: unknown) => {
+      console.error(`[Classification stability] ${options.name} failed before cleanup`, error);
+      throw error;
     });
 
     expect(result.jsonlRecordCount).toBe(options.expectedRecords);

@@ -79,7 +79,13 @@ export class NativeLane {
     const header = await this.reader.read(8), samples = header.readUInt32LE(0), scalars = header.readUInt32LE(4);
     if (samples === 0xffffffff) {
       if (scalars > 65536) throw new Error("Invalid native terminal packet");
-      const end = JSON.parse((await this.reader.read(scalars)).toString()) as {error: string; traceComplete: boolean;cpuSeconds:number};
+      const end = JSON.parse((await this.reader.read(scalars)).toString()) as {error: string; errorKind:string; traceComplete: boolean;cpuSeconds:number};
+      if(typeof end.error!=="string"||typeof end.errorKind!=="string"||typeof end.traceComplete!=="boolean"||!Number.isFinite(end.cpuSeconds)||end.cpuSeconds<0)
+        throw new Error("Malformed native terminal evidence");
+      // A resource/engine error is inadequate evidence, never the tune becoming
+      // silent. Only an explicitly diagnosed emulated CPU halt may be padded.
+      if(end.error&&(end.errorKind!=="cpu-halt"||!end.error.startsWith("Illegal instruction $")))
+        throw new Error(`Native measurement failed (${end.errorKind}): ${end.error}`);
       this.cpuSeconds=end.cpuSeconds;
       this.message = end.error || this.stderr; this.dropped = !end.traceComplete; this.ended = true; return null;
     }

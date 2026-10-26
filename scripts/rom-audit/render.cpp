@@ -372,7 +372,7 @@ int main(int argc, char** argv) {
                 }
                 std::ostringstream end;
                 end << "{\"cpuSeconds\":" << double(std::clock())/CLOCKS_PER_SEC << ",\"error\":" << quote(value.error) << ",\"samples\":" << value.samples
-                    << ",\"traceComplete\":" << (value.traceComplete?"true":"false") << '}';
+                    << ",\"errorKind\":" << quote(value.errorKind) << ",\"traceComplete\":" << (value.traceComplete?"true":"false") << '}';
                 const auto text=end.str();
                 const uint32_t header[]={UINT32_MAX,static_cast<uint32_t>(text.size())};
                 std::cout.write(reinterpret_cast<const char*>(header),sizeof(header));

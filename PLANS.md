@@ -1,3 +1,49 @@
+## PR #109 merge readiness (2026-10-26) — active
+
+User scope: review, fix, validate and merge the current ROM audit PR. Document
+reruns and publication in the main README. The user will execute the full HVSC
+census on another machine; no complete census or target-CPU timing is claimed here.
+Preserve pre-existing workspace edits and all prior measurement checkpoints.
+
+- [x] Read project/bridge instructions, current PR, correspondence and dual-engine path.
+- [x] Review decision, checkpoint, qualification and Commander publication boundaries;
+  fix concrete defects with regression coverage and record review findings.
+- [x] Document runnable setup/resume commands, artifact locations and conservative
+  compatible/incompatible/unknown consumer behavior in README.md.
+- [ ] Qualify final sources (native/WASM controls, transport, build/typecheck,
+  three consecutive clean full test runs), run required E2E/package checks.
+- [ ] Update PR description, obtain/process GitHub review, push fixes, wait for CI
+  and merge only when all checks and review threads are clear.
+
+Review fixes (current-source validation in progress): dense sub-100ms digi bursts
+now require audio, including final tails; native terminal packets distinguish
+emulated CPU halts from resource/engine failures, which remain unknown; resumes
+retry unresolved decisions; complete publications include the validated
+qualification/benchmark evidence and a separate releaseReady flag. Added a
+post-census verifier covering complete HVSC85 inventory, qualification binding,
+checksums, exception domain, binary/JSON equivalence and aggregate counts.
+Focused regression run: 34 pass, 0 fail. Build, strict audit-script typecheck,
+config validation and package checks passed before the final terminal hardening;
+qualification was deliberately restarted after that last behavior change.
+No full-HVSC run was started.
+
+Qualification found the existing Bun 1.3.1 coverage/WASM failure in the first
+Essentia feature test (SpectralContrast: null-reference indirect call), after
+192 native/WASM controls and 32 transport jobs passed. Five consecutive isolated
+uninstrumented Essentia runs passed 8/8 each. The two affected Essentia/real-SID
+worker tests now use the existing uninstrumented phase, with the same process
+isolation as instrumented batches; every assertion still executes, no test is
+skipped. Qualification now binds the actual test runner/package/runtime wrappers.
+A final short-burst regression also covers fewer than 100 volume writes.
+Full qualification restarted against this frozen source.
+
+First final-source full suite: literal qualifier output `Full run 1: 2975 pass / 0 fail / 0 skip`. Two further consecutive suites remain in progress.
+
+Initial findings: no GitHub review threads; draft description is stale SIDLite-only
+methodology 4 while current sources implement independently measured dual engines.
+Prior qualification has two successful suites and a failed third suite with a
+Bun/WASM crash; it is not a valid current certificate. Review requested on GitHub.
+
 ## Dual-engine ROM census delivery (2026-10-24) — active
 
 Current request: prepare and qualify the complete workflow here, without running
@@ -15,15 +61,24 @@ The earlier stricter target remains an optimization goal, not a claim of measure
   First 54 exact native/WASM trace controls passed (all banks, OSC3, multi-SID,
   silent changes). Expanded 156-control parity passed; final source qualification is pending.
 - [ ] Benchmark representative dual-engine jobs and choose the measured path;
-  never infer a superset from a small sample or silently omit CHARGEN.
+  never infer a superset from a small sample or silently omit CHARGEN. The current
+  320-job target-host sample is running on the 6700K; it will not be treated as a
+  14600K timing result.
 - [x] Implement both engines, source/binary/log-bound qualification, resumable
-  checksummed checkpoints and target-machine 80-job stratified budget gate (25%
-  margin). New entry point: scripts/rom-audit/run-dual.sh. Historical v4 launcher
+  checksummed checkpoints and target-machine stratified budget gate (25% margin).
+  New entry point: scripts/rom-audit/run-dual.sh. Historical v4 launcher
   remains SIDLite-only. Commander JSON/11-byte packed MD5 exceptions, unknown
   sidecar, identity map, horizon/model data and checksummed manifest are implemented;
   no full census or final release is claimed.
 - [ ] Build/typecheck, meaningful regression checks and three clean full suites;
   document literal summaries, one-liner, scope and timing uncertainty.
+- [x] Fix the reported colored-output timeout bug: the launcher now uses Node plain
+  output for timeout seconds. Reproduced with FORCE_COLOR=3/NO_COLOR=1; launcher
+  entered qualification and was correctly stopped by its 5.8-second watchdog (124),
+  with no invalid-time-interval error. Hard default budget is now 12h; maximum 16h.
+- [x] Full E2E passed: integration 10/10 (43 assertions), browser 122/122. The
+  browser run emitted existing HLS asset path type errors while tests passed; track
+  that separately if playback streaming needs investigation.
 
 # PLANS.md - SID Classification Pipeline Recovery
 

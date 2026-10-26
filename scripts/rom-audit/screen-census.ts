@@ -9,7 +9,7 @@ import { cpus } from "node:os";
 import { screenInventory } from "./screen-inventory.js";
 import { ScreenWorker } from "./screen-worker.js";
 import { screenJson, screenIdentity, screenQualificationIdentity, screenSha, SCREEN_METHODOLOGY, screenEngineIdentity } from "./screen-identity.js";
-import { publishScreen, type ScreenRow } from "./screen-publication.js";
+import { publishScreen, resolvedScreenRow, type ScreenRow } from "./screen-publication.js";
 import { benchmarkSample, projectCensus, type BenchmarkCandidate } from "./benchmark-model.js";
 import { readVerifiedSid } from "./inputs.js";
 import { RolloutLedger, ceilings, ProcessLock } from "./ledger.js";
@@ -60,10 +60,11 @@ if(existsSync(checkpoint)){
     const envelope=JSON.parse(line) as {row:ScreenRow;sha256:string};
     if(screenSha(screenJson(envelope.row))!==envelope.sha256)throw new Error("Checkpoint checksum mismatch");validate(envelope.row);
     const key=`${envelope.row.sha256}#${envelope.row.song}`;
-    if(rows.has(key)&&!rows.get(key)!.result.failure)throw new Error("Duplicate successful census result");rows.set(key,envelope.row);
+    if(resolvedScreenRow(rows.get(key)))throw new Error("Duplicate successful census result");rows.set(key,envelope.row);
   }
 }
 const sample=benchmarkSample(inventory.jobs,benchmarkJobs), selected=mode==="bench"?sample:inventory.jobs;
+let publicationEvidence:{qualification:string;benchmark:string}|undefined;
 if(mode==="full"){
   const evidence="workspace/rom-audit-screen-qualification";
   const qualification=JSON.parse(readFileSync(path.join(evidence,"certificate.json"),"utf8")) as {sourceIdentity:string;measurementIdentity:string;passed:boolean;nativeHashes:Record<string,string>;logs:Record<string,string>;fullRuns:{pass:number;fail:number;skip:number}[]};
@@ -72,8 +73,9 @@ if(mode==="full"){
     ["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log"].some(name=>screenSha(readFileSync(path.join(evidence,name)))!==qualification.logs?.[name]))throw new Error("Missing source-bound three-suite qualification");
   const benchmark=JSON.parse(readFileSync(path.join(directory,"benchmark.json"),"utf8")) as {sourceIdentity:string;cpu:string;workers:number;budgetHours:number;sampleSize:number;passed:boolean};
   if(benchmark.sourceIdentity!==identity||benchmark.cpu!==cpus()[0]?.model||benchmark.workers!==workers||benchmark.sampleSize!==benchmarkJobs||!benchmark.passed||benchmark.budgetHours>maxHours)throw new Error("Missing matching target-machine budget benchmark");
+  publicationEvidence={qualification:readFileSync(path.join(evidence,"certificate.json"),"utf8"),benchmark:readFileSync(path.join(directory,"benchmark.json"),"utf8")};
 }
-const todo=mode==="bench"?selected:selected.filter(j=>!rows.has(`${j.sha256}#${j.song}`)||rows.get(`${j.sha256}#${j.song}`)!.result.failure);
+const todo=mode==="bench"?selected:selected.filter(j=>!resolvedScreenRow(rows.get(`${j.sha256}#${j.song}`)));
 const reservations=todo.map(j=>({sha256:j.sha256,song:j.song,path:path.relative(hvsc,j.path)}));
 if(!ledger.reserve(reservations,`dual-${mode}`,mode==="bench"?ceilings(61157,87868):undefined))throw new Error("Benchmark would exceed pilot ceiling");
 let next=0,completed=0,benchmarkFailures=0;const start=performance.now(),measured:{job:BenchmarkCandidate;seconds:number;cpuSeconds:number}[]=[], active=new Set<ScreenWorker>();
@@ -94,7 +96,7 @@ try{
       if(result.failure||result.engines.some(e=>e.states.none==="unknown"||e.states.full==="unknown"))benchmarkFailures++;
       measured.push({job,seconds:row.workerSeconds,cpuSeconds:result.cpuSeconds??0});
       const key=`${job.sha256}#${job.song}`,previous=rows.get(key);
-      if(!previous||previous.result.failure){appendFileSync(fd,screenJson({row,sha256:screenSha(screenJson(row))})+"\n");fsyncSync(fd);rows.set(key,row);}
+      if(!resolvedScreenRow(previous)){appendFileSync(fd,screenJson({row,sha256:screenSha(screenJson(row))})+"\n");fsyncSync(fd);rows.set(key,row);}
       completed++;if(completed%10===0||completed===todo.length)console.log(`${mode}: ${completed}/${todo.length}; ${rows.size}/87868 checkpointed; ${((performance.now()-start)/1000).toFixed(1)}s elapsed`);
     }}finally{if(worker){active.delete(worker);worker.close();}}
   }));
@@ -118,7 +120,7 @@ if(mode==="bench"){
   console.log(`Dual-engine census projection on THIS CPU: ${projectedHours.toFixed(2)}h; ${budgetHours.toFixed(2)}h with 25% margin; budget ${maxHours}h. CPU work ${coreProjection?.projectedHours.toFixed(2)??"unavailable"} core-hours; measured capacity ${effectiveCpuCores.toFixed(2)} cores.`);
   if(!report.passed)process.exitCode=3;
 }
-const publication=await publishScreen(path.join(directory,"published"),inventory.tunes,rows,plan);
+const publication=await publishScreen(path.join(directory,"published"),inventory.tunes,rows,plan,publicationEvidence);
 console.log(`Publication: complete=${publication.complete}, measured=${rows.size}, pending=${publication.pendingSubtunes}, failed=${publication.failedSubtunes}, unknown=${publication.unknownSubtunes}`);
 if(mode==="full"&&!publication.complete)process.exitCode=4;
 lock.release();
