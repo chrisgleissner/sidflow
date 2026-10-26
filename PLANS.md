@@ -10,7 +10,7 @@ Preserve pre-existing workspace edits and all prior measurement checkpoints.
   fix concrete defects with regression coverage and record review findings.
 - [x] Document runnable setup/resume commands, artifact locations and conservative
   compatible/incompatible/unknown consumer behavior in README.md.
-- [ ] Qualify final sources (native/WASM controls, transport, build/typecheck,
+- [x] Qualify final sources (native/WASM controls, transport, build/typecheck,
   three consecutive clean full test runs), run required E2E/package checks.
 - [ ] Update PR description, obtain/process GitHub review, push fixes, wait for CI
   and merge only when all checks and review threads are clear.
@@ -37,7 +37,26 @@ skipped. Qualification now binds the actual test runner/package/runtime wrappers
 A final short-burst regression also covers fewer than 100 volume writes.
 Full qualification restarted against this frozen source.
 
-First final-source full suite: literal qualifier output `Full run 1: 2975 pass / 0 fail / 0 skip`. Two further consecutive suites remain in progress.
+Final-source qualification passed, with literal outputs:
+
+```text
+Full run 1: 2975 pass / 0 fail / 0 skip
+Full run 2: 2975 pass / 0 fail / 0 skip
+Full run 3: 2975 pass / 0 fail / 0 skip
+```
+
+192 native/WASM controls and 32 transport jobs passed. Certificate qualification
+identity `812d25fac32ebb2d2ad23c36ea541c76d1ea131a889cf7dc467a924869153ea9`; measurement identity
+`6affdd9f7ba2ffda73d79dde2b3efcfeace4a4191b48089f49df780d7479208c`.
+Package, config and similarity fixture checks passed. CI on user-pushed commit
+7c8590d exposed the rolling image's Bun 1.3.11 worker-lifecycle crash versus the
+declared/local 1.3.1 runtime. Install the package-declared Bun in the workflow;
+three isolated worker-lifecycle regressions passed locally. Independent GitHub
+Codex review of 7c8590dc1d found no major issues and no unresolved threads.
+Local E2E passed 10/10 pipeline tests and 122/122 browser tests. Commit and push
+only the CI runtime fix plus validation documentation, then require final green
+CI before the authorized merge. No full-HVSC classification has been started.
+
 
 Initial findings: no GitHub review threads; draft description is stale SIDLite-only
 methodology 4 while current sources implement independently measured dual engines.

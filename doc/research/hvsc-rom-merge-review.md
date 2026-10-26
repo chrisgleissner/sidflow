@@ -65,6 +65,46 @@ The historical v4 SIDLite pilot is not a final dual-engine release.
 
 ## Validation
 
-Final-source qualification and complete repository validation are in progress.
-Literal full-suite outcomes and the source-bound certificate will be recorded
-here before merge. No full-corpus timing or classification result is claimed.
+The final renderer/decision sources passed 192 native digital/audio versus fresh
+WASM PCM/absolute-trace controls, 32 concurrent repeated dual-engine transport
+jobs, the workspace build and strict audit-script TypeScript checking. The
+qualifier issued a source/binary/log-bound certificate after these literal
+consecutive full-suite outputs:
+
+```text
+Full run 1: 2975 pass / 0 fail / 0 skip
+Full run 2: 2975 pass / 0 fail / 0 skip
+Full run 3: 2975 pass / 0 fail / 0 skip
+```
+
+Qualification identity: `812d25fac32ebb2d2ad23c36ea541c76d1ea131a889cf7dc467a924869153ea9`.
+Measurement identity: `6affdd9f7ba2ffda73d79dde2b3efcfeace4a4191b48089f49df780d7479208c`.
+
+| Evidence log | SHA-256 |
+|---|---|
+| `parity.log` | `80d610331b5fa1a2183e5c345aa01e6809dd6dd59e4385a68a94cc3a64c74feb` |
+| `transport.log` | `efddeeabacde2af86b0c7be61d74a07f919383bd052971e69c2e7653c8bbc038` |
+| `full-1.log` | `3d753337dbed9747e06bf3ed99bed00bb38dd13f420194937497f6162a1a3000` |
+| `full-2.log` | `90356c8e7c8c026cc0e3a77da5a41154083b265d774fbc7febf214ded34909dc` |
+| `full-3.log` | `15b842c6c5e4427d2ddd5dfa5096ae2d4a2edf98f3e8f40102358d8af55e0fbc` |
+
+The certificate and raw logs are retained under
+`workspace/rom-audit-screen-qualification/`. The launcher rechecks these before
+reuse and requalifies on the target machine when sources/binaries differ.
+Focused regressions passed 34/34; package, config and similarity-export fixture
+checks passed. The worker-lifecycle regression implicated by CI also passed
+three consecutive runs on the repository's declared Bun 1.3.1 runtime.
+
+CI exposed a runtime mismatch: its rolling image supplied Bun 1.3.11 while
+`package.json` and local qualification declared 1.3.1. The workflow now explicitly
+installs the package-declared version with `oven-sh/setup-bun@v2` before building
+or testing. The failed job was a native runtime crash in the worker-lifecycle
+regression, not a failing classification assertion. CI must pass on the final
+commit before merge; no tests were skipped to address it.
+
+Local `bun run test:e2e` passed all 10 pipeline tests and all 122 browser tests.
+The independent GitHub Codex review of classifier commit `7c8590dc1d` reported
+no major issues; there are no unresolved review threads. The follow-up changes
+are the CI runtime selection and this validation record. Final CI and merge
+outcomes are recorded on [PR #109](https://github.com/chrisgleissner/sidflow/pull/109).
+No full-corpus timing or classification result is claimed.

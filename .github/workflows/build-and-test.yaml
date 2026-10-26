@@ -35,6 +35,13 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
 
+      # Match local qualification rather than inheriting a different Bun from
+      # the rolling CI image (worker lifecycle behavior is runtime-specific).
+      - name: Use repository Bun version
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
       - name: Restore HVSC E2E subset cache
         uses: actions/cache@v4
         with:
