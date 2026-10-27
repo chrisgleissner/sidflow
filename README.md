@@ -172,12 +172,17 @@ reused only while its source, binaries and validation logs match. For a fresh
 rerun, select a new `ROM_AUDIT_OUT`; never delete old evidence to force reuse.
 Changing renderer/decision sources, engine binaries or corpus requires a new
 output directory. Moving machines rebuilds CPU-specific binaries and requalifies.
+If a census refuses to start because its saved plan differs, it now reports the
+identity category that changed and preserves that checkpoint; set ROM_AUDIT_OUT
+to a new directory for the newly qualified sources instead of deleting old evidence.
 
-For a bounded checkpoint after setup, qualification and benchmark have passed,
-set `ROM_AUDIT_STAGE_ONLY=full ROM_AUDIT_MAX_JOBS=1000`. This processes at most
-1,000 pending subtunes and saves a resumable checkpoint; its publication remains
-incomplete and must not be consumed. Resume the full census with the same output
-directory and settings but omit `ROM_AUDIT_MAX_JOBS`.
+For a bounded checkpoint after setup, qualification and a complete zero-failure
+benchmark sample, set `ROM_AUDIT_STAGE_ONLY=full ROM_AUDIT_MAX_JOBS=1000`. This
+processes at most 1,000 pending subtunes even when the full-census time projection
+exceeds the machine budget, and saves a resumable checkpoint; its publication
+remains incomplete and must not be consumed. Starting an unbounded census still
+requires the full-census budget gate to pass. Resume with the same output directory
+and settings, omitting `ROM_AUDIT_MAX_JOBS` only after that gate passes.
 
 To inspect one stage, set `ROM_AUDIT_STAGE_ONLY=setup`, `qualify`, `bench` or
 `full`. Run those in that order; `full` requires matching qualification and a

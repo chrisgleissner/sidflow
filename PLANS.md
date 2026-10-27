@@ -2393,3 +2393,22 @@ failure isolation, N5 provenance, ledger/checkpoint repair only under the scope 
 - [ ] `harden.ts` certificate (decision regression, pilot checks, reproducibility, 3 focused + 3 full suites).
 - [ ] Full-corpus execution (days; resumable; intended for a faster machine via `run-full.sh`).
 - [ ] Decide whether to qualify reSIDfp (about 6x the lane cost) and SidplayEZ.
+## Diagnose stale dual-ROM census plans (2026-10-27) — active
+
+Fix the opaque plan mismatch reported after successful qualification, retain
+existing checkpoints, run a fresh 1,000-subtune dual-ROM classification, and
+raise a reviewed PR for merge.
+
+- [x] Read repository guidance and inspect the stale-plan guard and workspace.
+- [x] Improve mismatch output to identify changed provenance categories and
+  explicitly preserve the prior checkpoint.
+- [x] Allow bounded checkpoints after a complete zero-failure benchmark even
+  when the full-census time projection exceeds the machine budget; keep the
+  budget gate mandatory for unbounded full censuses.
+- [ ] Run the qualified workflow in a new output directory through 1,000 jobs.
+- [ ] Validate code, run three consecutive full suites, and record literal output.
+- [ ] Push branch, open/update PR, resolve review/CI, and merge.
+
+The failure came from correctly refusing to reuse a checkpoint whose classifier
+identity no longer matched the current qualified sources. Existing workspace
+census artifacts and the user's station-analysis changes are preserved.
