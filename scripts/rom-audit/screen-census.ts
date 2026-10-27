@@ -33,7 +33,20 @@ const lock=new ProcessLock(path.join(directory,"run.lock"),"dual census");lock.a
 const ledger=RolloutLedger.open(inventory.corpus);ledger.importHistory(path.resolve(hvsc),inventory.corpus);
 const plan={schema:"sidflow-dual-rom-plan-1",methodology:SCREEN_METHODOLOGY,sourceIdentity:identity,corpus:inventory.corpus,documents:inventory.documents,nativeHashes,engines:{sidlite:{...engineHashes("sidlite"),engineId:screenEngineIdentity("sidlite")},residfp:{...engineHashes("residfp"),engineId:screenEngineIdentity("residfp")}}};
 const planFile=path.join(directory,"plan.json");
-if(existsSync(planFile)&&readFileSync(planFile,"utf8")!==screenJson(plan)+"\n")throw new Error("Existing census belongs to different sources/engines/input; use a new output directory");
+if(existsSync(planFile)){
+  const existingText=readFileSync(planFile,"utf8");
+  if(existingText!==screenJson(plan)+"\n"){
+    let existing:Partial<typeof plan>={};
+    try{existing=JSON.parse(existingText) as Partial<typeof plan>;}catch(error){console.error("Could not parse existing census plan; preserving it.",error);}
+    const differences:string[]=[];
+    if(existing.sourceIdentity!==plan.sourceIdentity)differences.push("classifier source identity");
+    if(existing.corpus!==plan.corpus)differences.push("HVSC corpus");
+    if(screenJson(existing.documents??{})!==screenJson(plan.documents))differences.push("HVSC documents");
+    if(screenJson(existing.nativeHashes??{})!==screenJson(plan.nativeHashes))differences.push("native renderer binaries");
+    if(screenJson(existing.engines??{})!==screenJson(plan.engines))differences.push("engine identities");
+    throw new Error(`Existing census plan does not match current ${differences.length?differences.join(", "):"plan"}; its checkpoint was preserved. Choose a new ROM_AUDIT_OUT (current: ${directory}) to start a census for these sources.`);
+  }
+}
 writeFileSync(planFile,screenJson(plan)+"\n");
 const jobsByKey=new Map(inventory.jobs.map(j=>[`${j.sha256}#${j.song}`,j]));
 const rows=new Map<string,ScreenRow>(), checkpoint=path.join(directory,"census.jsonl");
@@ -73,8 +86,10 @@ if(mode==="full"){
   if(qualification.measurementIdentity!==identity||qualification.sourceIdentity!==screenQualificationIdentity()||!qualification.passed||qualification.fullRuns.length!==3||qualification.fullRuns.some(r=>!r.pass||r.fail||r.skip)||
     Object.entries(nativeHashes).some(([e,sha])=>qualification.nativeHashes?.[e]!==sha)||
     ["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log"].some(name=>screenSha(readFileSync(path.join(evidence,name)))!==qualification.logs?.[name]))throw new Error("Missing source-bound three-suite qualification");
-  const benchmark=JSON.parse(readFileSync(path.join(directory,"benchmark.json"),"utf8")) as {sourceIdentity:string;cpu:string;workers:number;budgetHours:number;sampleSize:number;passed:boolean};
-  if(benchmark.sourceIdentity!==identity||benchmark.cpu!==cpus()[0]?.model||benchmark.workers!==workers||benchmark.sampleSize!==benchmarkJobs||!benchmark.passed||benchmark.budgetHours>maxHours)throw new Error("Missing matching target-machine budget benchmark");
+  const benchmark=JSON.parse(readFileSync(path.join(directory,"benchmark.json"),"utf8")) as {sourceIdentity:string;cpu:string;workers:number;budgetHours:number;sampleSize:number;passed:boolean;measured:unknown[];benchmarkFailures:number};
+  if(benchmark.sourceIdentity!==identity||benchmark.cpu!==cpus()[0]?.model||benchmark.workers!==workers||benchmark.sampleSize!==benchmarkJobs||
+    (maxJobs===undefined&&(!benchmark.passed||benchmark.budgetHours>maxHours))||
+    (maxJobs!==undefined&&(benchmark.measured.length!==benchmark.sampleSize||benchmark.benchmarkFailures!==0)))throw new Error("Missing matching target-machine budget benchmark; bounded checkpoints require a complete zero-failure sample, and full censuses also require the budget projection to pass");
   publicationEvidence={qualification:readFileSync(path.join(evidence,"certificate.json"),"utf8"),benchmark:readFileSync(path.join(directory,"benchmark.json"),"utf8")};
 }
 const pending=mode==="bench"?selected:selected.filter(j=>!resolvedScreenRow(rows.get(`${j.sha256}#${j.song}`)));
@@ -118,7 +133,7 @@ if(mode==="bench"){
   // Capacity includes startup, scheduling and checkpoint waits in elapsed time.
   const projectedHours=coreProjection&&effectiveCpuCores>0?coreProjection.projectedHours/effectiveCpuCores:projection.projectedHours;
   const budgetHours=projectedHours*1.25;
-  const report={schema:"sidflow-dual-rom-benchmark-1",sourceIdentity:identity,sampleSize:benchmarkJobs,cpu:cpus()[0]?.model,workers,corpus:inventory.corpus,elapsedSeconds,totalCpuSeconds,effectiveCpuCores,cpuCoreHours:coreProjection?.projectedHours??null,
+  const report={schema:"sidflow-dual-rom-benchmark-1",sourceIdentity:identity,sampleSize:benchmarkJobs,cpu:cpus()[0]?.model,workers,corpus:inventory.corpus,elapsedSeconds,totalCpuSeconds,effectiveCpuCores,cpuCoreHours:coreProjection?.projectedHours??null,benchmarkFailures,
     ...projection,wallWeightedHours:projection.projectedHours,projectedHours,budgetHours,projectionMethod:"population-weighted process CPU / measured aggregate CPU capacity",passed:!bad&&!!coreProjection&&budgetHours<=maxHours,measured};
   writeFileSync(path.join(directory,"benchmark.json"),screenJson(report)+"\n");
   console.log(`Dual-engine census projection on THIS CPU: ${projectedHours.toFixed(2)}h; ${budgetHours.toFixed(2)}h with 25% margin; budget ${maxHours}h. CPU work ${coreProjection?.projectedHours.toFixed(2)??"unavailable"} core-hours; measured capacity ${effectiveCpuCores.toFixed(2)} cores.`);

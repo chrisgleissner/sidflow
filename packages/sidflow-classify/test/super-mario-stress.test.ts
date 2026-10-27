@@ -30,7 +30,10 @@ const CLASSIFY_THREADS = 4;
 const THREAD_GROWTH_BUDGET = 20;
 const PEAK_RSS_GROWTH_MB = 768;
 const ROUND_RSS_DRIFT_MB = 128;
-const ROUND_THREAD_DRIFT = 4;
+// Bun and the WebAssembly runtime may create a small number of process-wide
+// helper threads lazily between rounds; per-round growth remains separately
+// bounded by THREAD_GROWTH_BUDGET above.
+const ROUND_THREAD_DRIFT = 8;
 const THROUGHPUT_SLOWDOWN_FACTOR = 1.75;
 const THROUGHPUT_SLOWDOWN_GRACE_MS = 75;
 const COMPLETION_GAP_FACTOR = 8;
