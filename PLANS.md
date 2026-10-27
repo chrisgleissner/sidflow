@@ -1,4 +1,4 @@
-## Repair README HVSC ROM classifier run (2026-10-27) — active
+## Repair README HVSC ROM classifier run (2026-10-27) — completed
 
 User ran the README dual-engine ROM classifier and encountered errors. Fix the
 runtime/worker failure, classify at least 1,000 HVSC subtunes, then commit and
@@ -12,7 +12,7 @@ working-tree edits.
 - [x] Validate the launcher/runtime change and resolve further errors.
 - [x] Run the ROM classifier on at least 1,000 HVSC subtunes and retain its
   checkpoint.
-- [ ] Record final evidence, commit only task-owned files, and push the repair.
+- [x] Record final evidence, commit only task-owned files, and push the repair.
 
 Findings: the checkpoint contains 2,271 benchmark rows and 19 consecutive
 `Screen worker closed` failures at its end. This checkout declares Bun 1.3.1
@@ -38,6 +38,7 @@ stage classified 1,040 unique subtunes successfully (both engines, 0 failed,
 `workspace/rom-audit-dual-fixed/`, 1,090 measured, 86,778 pending, 0 failed.
 Its publication is intentionally incomplete and not a consumer bundle. The
 user's `station-analysis/` modifications remain untouched.
+Pushed to `origin/main` as `461fd26` (`Fix pinned Bun execution for HVSC ROM census`).
 
 ## PR #109 merge readiness (2026-10-26) — active
 
