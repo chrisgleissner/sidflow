@@ -427,7 +427,7 @@ Produces a self-contained SQLite bundle containing per-track ratings, feedback a
 
 Use this workflow when you need to create new data from a collection you control. If you only need the public HVSC results, use [published `sidflow-data` releases](#reuse-published-hvsc-analysis-data) instead.
 
-Prerequisites: `bun` 1.3.1+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish). Many SID songs also require [C64 system ROMs](#system-roms) in `workspace/roms/`.
+Prerequisites: `bun` 1.4.4+, `ffmpeg`, `sidplayfp`, `curl`, `python3` (plus `gh` authenticated for step 3/publish). Many SID songs also require [C64 system ROMs](#system-roms) in `workspace/roms/`.
 
 #### Regenerate and publish in one command
 

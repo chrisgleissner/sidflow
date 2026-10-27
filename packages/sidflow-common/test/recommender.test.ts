@@ -577,13 +577,16 @@ describe("RecommendationEngine", () => {
 
   test("handles database with no tables gracefully", async () => {
     const emptyDbPath = await mkdtemp(join(tmpdir(), "test-empty-db-"));
-    await connect(emptyDbPath); // Create empty database
+    // An empty directory is a valid new LanceDB database. Let the engine make
+    // the only connection so the fixture does not leave a second native
+    // connection alive while it checks the empty-table error path.
 
     const engine = createRecommendationEngine({ dbPath: emptyDbPath });
-    
-    await expect(engine.connect()).rejects.toThrow("No tables found");
-    
-    await rm(emptyDbPath, { recursive: true, force: true });
+    try {
+      await expect(engine.connect()).rejects.toThrow("No tables found");
+    } finally {
+      await rm(emptyDbPath, { recursive: true, force: true });
+    }
   });
 
   test("throws error when recommending before connecting", async () => {

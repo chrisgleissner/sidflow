@@ -1211,7 +1211,7 @@ async function buildReport(
   reportLines.push("");
   reportLines.push("### Environment Notes");
   reportLines.push("");
-  reportLines.push("- Bun version: 1.3.1+");
+  reportLines.push("- Bun version: 1.4.4+");
   reportLines.push(`- Expected runtime: local full audit is heavier because it runs ${stationRuns.length + PERSONA_IDS.length * (options.personaRuns ?? DEFAULT_PERSONA_RUNS)} station builds plus ${seedMetrics.length} seed-song checks`);
   reportLines.push("- Artifact size expectations: hosted sqlite is hundreds of MB, lite/tiny artifacts are much smaller, report artifacts remain in tmp/");
   reportLines.push(`- Prebuilt exports required?: no, but release mode assumes downloadable prebuilt exports from ${options.releaseRepo ?? DEFAULT_RELEASE_REPO}`);

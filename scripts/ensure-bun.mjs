@@ -76,7 +76,7 @@ function getConfiguredBunVersion() {
   } catch {
     // ignore
   }
-  return "1.3.1";
+  return "1.4.4";
 }
 
 function extractVersion(descriptor) {
@@ -84,7 +84,7 @@ function extractVersion(descriptor) {
   if (match && match[1]) {
     return match[1].startsWith("v") ? match[1].slice(1) : match[1];
   }
-  return "1.3.1";
+  return "1.4.4";
 }
 
 async function downloadToFile(url, destination) {

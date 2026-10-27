@@ -37,7 +37,7 @@ bash scripts/run-similarity-export.sh --help
 
 Local prerequisites:
 
-- `bun` 1.3.1
+- `bun` 1.4.4
 - `ffmpeg`
 - `sidplayfp`
 - `curl`

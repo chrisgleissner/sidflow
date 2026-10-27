@@ -1,3 +1,22 @@
+## Upgrade the repository runtime to Bun 1.4.4 (2026-10-27) — active
+
+User requested an upgrade to Bun 1.4.4, three clean full test runs, and a push
+to `main`. Preserve the existing uncommitted `station-analysis/` changes.
+
+- [x] Read required repository guidance and inventory active Bun version pins.
+- [x] Update package, Docker, type declarations, runtime resolver and current
+  prerequisite/report documentation to 1.4.4.
+- [x] Install and verify exact Bun 1.4.4; build/typecheck passed. Three
+  consecutive full test runs passed, each 2,975 pass / 0 fail / 0 skip.
+  Run 1 exposed a LanceDB empty-directory fixture retaining an extra native
+  connection; the fixture now uses only the engine connection and cleans up
+  in `finally`. The focused regression test passes under Bun 1.4.4.
+- [ ] Commit only upgrade files and this plan entry, then push `main`.
+
+Official GitHub release metadata confirms Bun 1.4.4 and its Linux archive
+digests: x64 `bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c`,
+aarch64 `baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e`.
+
 ## Repair README HVSC ROM classifier run (2026-10-27) — completed
 
 User ran the README dual-engine ROM classifier and encountered errors. Fix the
