@@ -11,7 +11,10 @@ to `main`. Preserve the existing uncommitted `station-analysis/` changes.
   Run 1 exposed a LanceDB empty-directory fixture retaining an extra native
   connection; the fixture now uses only the engine connection and cleans up
   in `finally`. The focused regression test passes under Bun 1.4.4.
-- [ ] Commit only upgrade files and this plan entry, then push `main`.
+- [x] Commit only upgrade files and this plan entry, then push `main`.
+
+Pushed to `origin/main` as `1ad7add` (`Upgrade repository runtime to Bun
+1.4.4`). The user's `station-analysis/` edits remain unstaged and untouched.
 
 Official GitHub release metadata confirms Bun 1.4.4 and its Linux archive
 digests: x64 `bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c`,
