@@ -1,3 +1,44 @@
+## Repair README HVSC ROM classifier run (2026-10-27) — active
+
+User ran the README dual-engine ROM classifier and encountered errors. Fix the
+runtime/worker failure, classify at least 1,000 HVSC subtunes, then commit and
+push the repair as requested. Preserve the user's unrelated `station-analysis/`
+working-tree edits.
+
+- [x] Read required repository docs and inspect the failed durable checkpoint.
+- [x] Identify `Screen worker closed` failures and trace the worker runtime.
+- [x] Pin every ROM launcher Bun invocation to `packageManager` and make the
+  shared Bun resolver verify installed versions.
+- [x] Validate the launcher/runtime change and resolve further errors.
+- [x] Run the ROM classifier on at least 1,000 HVSC subtunes and retain its
+  checkpoint.
+- [ ] Record final evidence, commit only task-owned files, and push the repair.
+
+Findings: the checkpoint contains 2,271 benchmark rows and 19 consecutive
+`Screen worker closed` failures at its end. This checkout declares Bun 1.3.1
+but `bun --version` resolves to 1.3.11; the launcher called system Bun directly
+for qualification, census, and the child worker runtime. The preceding ROM
+audit notes record a worker lifecycle crash on 1.3.11. The launcher now routes
+all Bun phases through `scripts/run-bun.mjs`; `ensure-bun.mjs` now verifies the
+resolved runtime against `packageManager` and installs the pinned version if
+needed. No HVSC classification had been run when the runtime repair was first
+identified.
+
+Follow-up findings and validation: the pinned-runtime downloader exposed a
+second setup defect (`EXDEV` renaming from `/tmp` into the checkout); it now
+copies the downloaded binary across filesystems and verifies the resulting
+version. Qualification runs the full suite with `.sidflow.test.json`, preventing
+the Admin Metrics API test from recursively scanning the developer's full
+HVSC/audio cache. Native/WASM parity, transport, build and script typecheck
+passed. Final source-bound qualification: three runs of 2,975 pass / 0 fail /
+0 skip. The clean target-machine benchmark completed 320/320 jobs with zero
+failures; projection 11.99h, 14.98h with 25% margin on the i5-14600K. The full
+stage classified 1,040 unique subtunes successfully (both engines, 0 failed,
+0 unknown); bounded resume added 50 more. Current checkpoint:
+`workspace/rom-audit-dual-fixed/`, 1,090 measured, 86,778 pending, 0 failed.
+Its publication is intentionally incomplete and not a consumer bundle. The
+user's `station-analysis/` modifications remain untouched.
+
 ## PR #109 merge readiness (2026-10-26) — active
 
 User scope: review, fix, validate and merge the current ROM audit PR. Document

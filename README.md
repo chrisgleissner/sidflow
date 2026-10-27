@@ -142,10 +142,11 @@ review findings and qualification evidence.
 
 ### Run or resume the classification
 
-Use Linux with Bun, Node/npm, git, Python 3, GNU coreutils (`timeout`, `nproc`),
-`g++`, make, autoconf/automake, libtool, pkg-config and xa65 (`xa`). Allow 16 GB
-RAM minimum; 32 GB is preferable. Use a clean checkout of the merged revision.
-From the repository root:
+Use Linux with the repository-pinned Bun runtime. The launcher installs it when
+the system version differs. Also install Node/npm, git, Python 3, GNU coreutils
+(`timeout`, `nproc`), `g++`, make, autoconf/automake, libtool, pkg-config and
+xa65 (`xa`). Allow 16 GB RAM minimum; 32 GB is preferable. Use a clean checkout
+of the merged revision. From the repository root:
 
 ```bash
 # Installs locked dependencies; fetches and verifies HVSC85 and the three ROMs;
@@ -171,6 +172,12 @@ reused only while its source, binaries and validation logs match. For a fresh
 rerun, select a new `ROM_AUDIT_OUT`; never delete old evidence to force reuse.
 Changing renderer/decision sources, engine binaries or corpus requires a new
 output directory. Moving machines rebuilds CPU-specific binaries and requalifies.
+
+For a bounded checkpoint after setup, qualification and benchmark have passed,
+set `ROM_AUDIT_STAGE_ONLY=full ROM_AUDIT_MAX_JOBS=1000`. This processes at most
+1,000 pending subtunes and saves a resumable checkpoint; its publication remains
+incomplete and must not be consumed. Resume the full census with the same output
+directory and settings but omit `ROM_AUDIT_MAX_JOBS`.
 
 To inspect one stage, set `ROM_AUDIT_STAGE_ONLY=setup`, `qualify`, `bench` or
 `full`. Run those in that order; `full` requires matching qualification and a

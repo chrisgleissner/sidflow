@@ -22,6 +22,8 @@ if(!["bench","full"].includes(mode??"")||!hvsc||!roms||!directory||!workerArg)th
 const workers=Number(workerArg),maxHours=Number(maxArg??15);
 const benchmarkJobs=Number(process.env.ROM_AUDIT_BENCHMARK_JOBS??320);
 if(!Number.isSafeInteger(benchmarkJobs)||benchmarkJobs<80||benchmarkJobs>512)throw new Error("ROM_AUDIT_BENCHMARK_JOBS must be an integer from 80 to 512");
+const maxJobs=process.env.ROM_AUDIT_MAX_JOBS===undefined?undefined:Number(process.env.ROM_AUDIT_MAX_JOBS);
+if(maxJobs!==undefined&&(!Number.isSafeInteger(maxJobs)||maxJobs<1))throw new Error("ROM_AUDIT_MAX_JOBS must be a positive integer");
 if(!Number.isSafeInteger(workers)||workers<1||!Number.isFinite(maxHours)||maxHours<=0||maxHours>16)throw new Error("Invalid workers/budget (maximum 16h)");
 const identity=screenIdentity(), binaries={sidlite:path.resolve("workspace/rom-audit-screen-sidlite/render"),residfp:path.resolve("workspace/rom-audit-screen-residfp/render")};
 const nativeHashes=Object.fromEntries(Object.entries(binaries).map(([e,f])=>[e,screenSha(readFileSync(f))]));
@@ -75,7 +77,9 @@ if(mode==="full"){
   if(benchmark.sourceIdentity!==identity||benchmark.cpu!==cpus()[0]?.model||benchmark.workers!==workers||benchmark.sampleSize!==benchmarkJobs||!benchmark.passed||benchmark.budgetHours>maxHours)throw new Error("Missing matching target-machine budget benchmark");
   publicationEvidence={qualification:readFileSync(path.join(evidence,"certificate.json"),"utf8"),benchmark:readFileSync(path.join(directory,"benchmark.json"),"utf8")};
 }
-const todo=mode==="bench"?selected:selected.filter(j=>!resolvedScreenRow(rows.get(`${j.sha256}#${j.song}`)));
+const pending=mode==="bench"?selected:selected.filter(j=>!resolvedScreenRow(rows.get(`${j.sha256}#${j.song}`)));
+const todo=mode==="full"&&maxJobs!==undefined?pending.slice(0,maxJobs):pending;
+if(mode==="full"&&maxJobs!==undefined)console.log(`Bounded census: processing at most ${todo.length} pending subtunes; rerun without ROM_AUDIT_MAX_JOBS to continue the full inventory.`);
 const reservations=todo.map(j=>({sha256:j.sha256,song:j.song,path:path.relative(hvsc,j.path)}));
 if(!ledger.reserve(reservations,`dual-${mode}`,mode==="bench"?ceilings(61157,87868):undefined))throw new Error("Benchmark would exceed pilot ceiling");
 let next=0,completed=0,benchmarkFailures=0;const start=performance.now(),measured:{job:BenchmarkCandidate;seconds:number;cpuSeconds:number}[]=[], active=new Set<ScreenWorker>();
@@ -122,5 +126,5 @@ if(mode==="bench"){
 }
 const publication=await publishScreen(path.join(directory,"published"),inventory.tunes,rows,plan,publicationEvidence);
 console.log(`Publication: complete=${publication.complete}, measured=${rows.size}, pending=${publication.pendingSubtunes}, failed=${publication.failedSubtunes}, unknown=${publication.unknownSubtunes}`);
-if(mode==="full"&&!publication.complete)process.exitCode=4;
+if(mode==="full"&&!publication.complete&&maxJobs===undefined)process.exitCode=4;
 lock.release();

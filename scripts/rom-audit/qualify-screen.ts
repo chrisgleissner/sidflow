@@ -18,7 +18,8 @@ if(existsSync(file)){
   }
 }
 const logs:Record<string,string>={}, fullRuns:Certificate["fullRuns"]=[];
-function run(name:string,command:string[]):string{
+const bunRunner=["node","scripts/run-bun.mjs"];
+function run(name:string,command:string[],extraEnv:NodeJS.ProcessEnv={}):string{
   console.log(`Qualification: ${name}`);
   const logFile=path.join(directory,name);
   if(existsSync(logFile)){
@@ -26,18 +27,18 @@ function run(name:string,command:string[]):string{
     if(!existsSync(archive))writeFileSync(archive,prior);
   }
   writeFileSync(logFile,`Running ${name} for qualification ${sourceIdentity}\n`);
-  const result=spawnSync(command[0]!,command.slice(1),{encoding:"utf8",maxBuffer:256*1024*1024,env:{...process.env,ROM_DECISION_ONLY:""}});
+  const result=spawnSync(command[0]!,command.slice(1),{encoding:"utf8",maxBuffer:256*1024*1024,env:{...process.env,...extraEnv,ROM_DECISION_ONLY:""}});
   const text=result.stdout+result.stderr;writeFileSync(path.join(directory,name),text);logs[name]=screenSha(text);
   if(result.status!==0)throw new Error(`${name} failed (${result.status}): ${text.slice(-5000)}`);
   return text;
 }
-run("build.log",["bun","run","build"]);
+run("build.log",[...bunRunner,"run","build"]);
 const scripts=readdirSync("scripts/rom-audit").filter(f=>f.endsWith(".ts")).map(f=>`scripts/rom-audit/${f}`);
-run("typecheck.log",["bunx","tsc","--noEmit","--strict","--module","ESNext","--moduleResolution","bundler","--target","ES2022","--types","bun-types","--skipLibCheck","--allowImportingTsExtensions",...scripts]);
-run("parity.log",["bun","scripts/rom-audit/verify-screen.ts",roms,"workspace/rom-audit-screen-sidlite/render","workspace/rom-audit-screen-residfp/render",path.join(directory,"parity.json"),hvsc]);
-run("transport.log",["bun","scripts/rom-audit/transport-regression.ts",roms,hvsc]);
+run("typecheck.log",[...bunRunner,"x","tsc","--noEmit","--strict","--module","ESNext","--moduleResolution","bundler","--target","ES2022","--types","bun-types","--skipLibCheck","--allowImportingTsExtensions",...scripts]);
+run("parity.log",[...bunRunner,"scripts/rom-audit/verify-screen.ts",roms,"workspace/rom-audit-screen-sidlite/render","workspace/rom-audit-screen-residfp/render",path.join(directory,"parity.json"),hvsc]);
+run("transport.log",[...bunRunner,"scripts/rom-audit/transport-regression.ts",roms,hvsc]);
 for(let i=1;i<=3;i++){
-  const text=run(`full-${i}.log`,["bun","run","test"]),totals=suiteTotals(text);
+  const text=run(`full-${i}.log`,[...bunRunner,"run","test"],{SIDFLOW_CONFIG:".sidflow.test.json"}),totals=suiteTotals(text);
   if(!totals.pass||totals.fail||totals.skip)throw new Error(`Full run ${i} was not entirely clean: ${screenJson(totals)}`);
   fullRuns.push(totals);console.log(`Full run ${i}: ${totals.pass} pass / ${totals.fail} fail / ${totals.skip} skip`);
 }

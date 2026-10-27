@@ -25,23 +25,30 @@ fi
 want(){ [[ -z "$only" || "$only" == "$1" ]]; }
 if want setup; then
   for tool in bun node npm git python3 g++ make autoreconf libtoolize pkg-config xa; do command -v "$tool" >/dev/null || { echo "Missing prerequisite: $tool" >&2; exit 1; }; done
-  bun install --frozen-lockfile
-  bun run build
-  bun scripts/rom-audit/fetch-hvsc85.ts --destination workspace/hvsc/C64Music
-  bun run roms:fetch
+  # All Bun processes, including the census workers spawned through
+  # process.execPath, must use the packageManager-pinned runtime. Newer Bun
+  # releases have exhibited worker lifecycle crashes in this long-running flow.
+  node scripts/run-bun.mjs install --frozen-lockfile
+  node scripts/run-bun.mjs run build
+  node scripts/run-bun.mjs scripts/rom-audit/fetch-hvsc85.ts --destination workspace/hvsc/C64Music
+  node scripts/run-bun.mjs run roms:fetch
   for engine in sidlite residfp; do
     ROM_AUDIT_ENGINE="$engine" ROM_AUDIT_PACKAGE="$root/node_modules/libsidplayfp-wasm-audit" \
       ROM_AUDIT_BUILD_DIR="$root/workspace/rom-audit-screen-$engine" ROM_AUDIT_JOBS="$workers" bash scripts/rom-audit/build-native.sh
   done
 fi
-if want qualify; then bun scripts/rom-audit/qualify-screen.ts; fi
+if want qualify; then node scripts/run-bun.mjs scripts/rom-audit/qualify-screen.ts; fi
 # Account for setup, qualification and benchmark instead of silently adding them
 # to the promised command budget. Reserve one minute for final publication.
 remaining(){ node -e 'const [hours,start]=process.argv.slice(1).map(Number);const left=hours-(Date.now()/1000-start+60)/3600;if(!Number.isFinite(left)||left<=0||hours>16)throw Error("Command budget exhausted/invalid");process.stdout.write(String(left))' "$maximum" "$started"; }
 if want bench; then
-  bun scripts/rom-audit/screen-census.ts bench workspace/hvsc/C64Music workspace/roms "$out" "$workers" "$(remaining)"
+  node scripts/run-bun.mjs scripts/rom-audit/screen-census.ts bench workspace/hvsc/C64Music workspace/roms "$out" "$workers" "$(remaining)"
 fi
 if want full; then
-  bun scripts/rom-audit/screen-census.ts full workspace/hvsc/C64Music workspace/roms "$out" "$workers" "$(remaining)"
-  bun scripts/rom-audit/verify-publication.ts "$out/published"
+  node scripts/run-bun.mjs scripts/rom-audit/screen-census.ts full workspace/hvsc/C64Music workspace/roms "$out" "$workers" "$(remaining)"
+  if [[ -n ${ROM_AUDIT_MAX_JOBS:-} ]]; then
+    echo "Bounded checkpoint saved; publication remains incomplete and is not a consumer bundle. Resume without ROM_AUDIT_MAX_JOBS to classify the remaining HVSC inventory."
+  else
+    node scripts/run-bun.mjs scripts/rom-audit/verify-publication.ts "$out/published"
+  fi
 fi

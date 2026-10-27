@@ -4,6 +4,7 @@ import { createWriteStream, readFileSync } from "node:fs";
 import {
   access,
   chmod,
+  copyFile,
   mkdir,
   readdir,
   rename,
@@ -50,6 +51,19 @@ async function findExecutable(name) {
     }
   }
   return null;
+}
+
+async function getBunVersion(binary) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, ["--version"], { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk) => { output += chunk; });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code !== 0) reject(new Error(`bun --version exited with code ${code}`));
+      else resolve(output.trim());
+    });
+  });
 }
 
 function getConfiguredBunVersion() {
@@ -161,16 +175,11 @@ async function findBinary(rootDir, fileName) {
 }
 
 export async function ensureBun() {
-  const existing = await findExecutable("bun");
-  if (existing) {
-    return existing;
-  }
-
-  if (await fileExists(BUN_BINARY)) {
-    return BUN_BINARY;
-  }
-
   const version = getConfiguredBunVersion();
+  const existing = await findExecutable("bun");
+  if (existing && await getBunVersion(existing) === version) return existing;
+  if (await fileExists(BUN_BINARY) && await getBunVersion(BUN_BINARY) === version) return BUN_BINARY;
+
   const releaseTag = version.startsWith("v") ? version : `v${version}`;
   const tempDir = path.join(os.tmpdir(), `bun-download-${Date.now()}`);
   const archivePath = path.join(tempDir, "bun-archive");
@@ -220,18 +229,24 @@ export async function ensureBun() {
   if (!bunSource) {
     throw new Error("Failed to locate bun binary in downloaded archive");
   }
-  await rename(bunSource, BUN_BINARY);
+  // The archive is extracted under the OS temp directory, which can be a
+  // different mount from the checkout. Copying is portable across filesystems;
+  // rename() would fail with EXDEV in that common setup.
+  await copyFile(bunSource, BUN_BINARY);
   await chmod(BUN_BINARY, 0o755);
 
   // Optionally install bunx if present.
   const bunxSource = await findBinary(extractDir, "bunx");
   if (bunxSource) {
     const bunxTarget = path.join(BIN_DIR, "bunx");
-    await rename(bunxSource, bunxTarget);
+    await copyFile(bunxSource, bunxTarget);
     await chmod(bunxTarget, 0o755);
   }
 
   await rm(tempDir, { recursive: true, force: true });
+
+  const installedVersion = await getBunVersion(BUN_BINARY);
+  if (installedVersion !== version) throw new Error(`Installed Bun ${installedVersion}, expected ${version}`);
 
   return BUN_BINARY;
 }
