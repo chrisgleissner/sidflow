@@ -23,6 +23,9 @@ Preserve original-checkout changes and historical checkpoints.
 - [ ] Resume the identity-matching checkpoint using its 320-job, zero-failure
   target-host benchmark; classify all 87,868 HVSC85 subtunes and resolve every
   failed/unknown decision. Existing projection: 32.86h before 25% margin.
+  Bounded 3.5h run is active; checkpoint count was 12,763/87,868 with 0 new
+  failed/unknown at handover. See `doc/plans/pr-111-handover.md` for the live
+  process, exact resume command, identities and next gates.
 - [ ] Verify complete publication, reduce the GitHub payload to consumer data and
   essential reproducibility/provenance, run validation, commit and push PR updates.
 - [ ] Update PR title/body/state and require green CI/review before calling it merge-ready.
