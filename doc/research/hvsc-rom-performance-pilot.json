@@ -1,0 +1,268 @@
+{
+  "schema": "sidflow-hvsc-rom-performance-pilot-v1",
+  "status": "experimental, bounded research; no production eligibility change",
+  "scope": {
+    "inputs": "Real SID rows use already-counted benchmark subtunes; summaries also include synthetic controls and resampler-readiness fixtures. No corpus payload or per-track paths are included.",
+    "benchmarkSha256": "43a0cfbf506939370736d00fece6296c2e71519d76b6505669ec93f539c391ae",
+    "productionRuntimeProjection": null,
+    "projectionLimit": "Samples are small, completion-ordered or deliberately stratified, and not population weighted. These measurements do not establish a whole-HVSC runtime or a sub-30-hour result."
+  },
+  "nativeBinaries": {
+    "sidlite": "cbcd6a221c92f187fcea7223e905e18af041d73a77f8be2e4efea9a8a7fbb3f9",
+    "residfp": "605b45eec6434af26258d8cff0a45b685c1d5e1a779beea5a48912f352db3c0b",
+    "libsidplayezProbe": "07fa24a0091b19b35f10509bb0bd82fabdd5752d4bf5142f7ad91a53475241e5",
+    "forkReferenceProbe": "c4fa018e2942529d47338c2c09048d38fc1b268c7e675fb4e7ab740bca54ec4a"
+  },
+  "adaptiveScreen": {
+    "stages": [
+      {
+        "subtunes": 4,
+        "rows": 8,
+        "attemptsPerEngine": 8,
+        "cpuSeconds": {
+          "sidlite": {
+            "baseline": 1.091427,
+            "adaptive": 1.089014
+          },
+          "residfp": {
+            "baseline": 2.922063,
+            "adaptive": 2.905764
+          }
+        },
+        "reportSha256": "f51b46deddb466cde8eb6f38340a3ce3d7093cbb17f508e59494a1c0801d9f8e"
+      },
+      {
+        "subtunes": 16,
+        "rows": 32,
+        "attemptsPerEngine": 32,
+        "cpuSeconds": {
+          "sidlite": {
+            "baseline": 15.749035,
+            "adaptive": 15.768408
+          },
+          "residfp": {
+            "baseline": 23.194948,
+            "adaptive": 23.197897
+          }
+        },
+        "reportSha256": "db21d3663c3036a2ff8e0c5e5168eb70412b4d03baced1fbdfa6394f2a49a591"
+      }
+    ],
+    "result": "Final evidence, errors and completion matched in both engines. The 16-subtune sample had 32 attempts per engine under either schedule and no material cost saving.",
+    "syntheticControls": {
+      "result": "Early OSC3 reduced attempts 4 to 3; late ENV3 reduced 6 to 4; late CHARGEN still required all three masks. Exact final evidence matched.",
+      "reportSha256": "1a658eaaae09d31f1edd41dd13954dfa20a6a929c99072737cf36dd550e68cf1"
+    }
+  },
+  "sustainedUtilization": {
+    "machine": "Intel Core i5-14600K",
+    "method": "64 full-horizon comparisons of the same 16 subtunes; per-core sampling every 250 ms.",
+    "runs": [
+      {
+        "id": "original-19",
+        "workers": 19,
+        "elapsedSeconds": 63.420522,
+        "meanBusyLogicalCores": 15.44,
+        "reportSha256": "6c5e1eb7670e02f8ece5387e9d63a4209c0f5dccd4097ec8bb5234f21dbf241d"
+      },
+      {
+        "id": "original-8",
+        "workers": 8,
+        "elapsedSeconds": 81.023419,
+        "meanBusyLogicalCores": 9.91,
+        "reportSha256": "c0f1a54a75e15f850845e229786a4dfb97b3a112470c50ee9701be8d2cf95fcc"
+      },
+      {
+        "id": "prior-cost-descending-19-clean",
+        "workers": 19,
+        "elapsedSeconds": 50.991835,
+        "meanBusyLogicalCores": 19.62,
+        "reportSha256": "abf50432d754249d2bb50652a3eb61f2ab11ea984448975ee659a22d25ecb96b"
+      }
+    ],
+    "fullClassificationDigestEquality": {
+      "equal": true,
+      "comparison": "The multiset of all 64 final row digests is identical across all three reports (16 distinct digests, each repeated four times).",
+      "meaning": "Evidence equality across scheduling runs; it does not make the bounded workload representative of the corpus."
+    },
+    "result": "Cost-ordered scheduling shortened this bounded batch by about 19.6% relative to original 19-worker order. This is not a whole-corpus runtime projection.",
+    "limitations": "Host occupancy includes unrelated work. The clean cost-ordered run excluded simultaneous builds/tests; package energy counters were inaccessible, so these data do not establish the cause of historical power drops."
+  },
+  "forkReference": {
+    "correctness": "Cold and forked paths matched exact PCM bytes, timed traces, ROM-read counters and summaries for all reference rows; production remains cold-process isolated.",
+    "stages": [
+      {
+        "subtunes": 4,
+        "coldElapsedSeconds": 4.084143,
+        "forkElapsedSeconds": 3.423529,
+        "reportSha256": "a8b102efc96b398efc9a0b69089caa7c9b7642d87327c5a9e868e564a7e259bf"
+      },
+      {
+        "subtunes": 16,
+        "coldElapsedSeconds": 59.464627,
+        "forkElapsedSeconds": 55.919063,
+        "reportSha256": "1555bce0f7ddcb938038fc4d335430cfe5a817456a3140a82ec311bb120b703e"
+      }
+    ],
+    "limitations": "Proof-of-concept full-reference cases only; mask variants, streaming transport and stateful-read screening are not qualified."
+  },
+  "libSidplayEZ": {
+    "profile": "Native upstream timing probe; not Commander's patched/analogue-profile backend qualification.",
+    "stages": [
+      {
+        "subtunes": 4,
+        "fullReferenceCpuSeconds": {
+          "residfp": 8.111298,
+          "ez": 7.489539
+        },
+        "measurementErrors": {
+          "residfp": 0,
+          "ez": 2
+        },
+        "comparisonReportSha256": "c1cfa4c15193f8164ff35a002ddda4113f66db5cba431e41f37aca1ca0ca0348"
+      },
+      {
+        "subtunes": 8,
+        "fullReferenceCpuSeconds": {
+          "residfp": 31.743884,
+          "ez": 27.438288
+        },
+        "measurementErrors": {
+          "residfp": 1,
+          "ez": 3
+        },
+        "comparisonReportSha256": "ad82ca176fa756991586383edc8c0649e037181f62aec69afa7fc021e08ea5ae"
+      }
+    ],
+    "errorHandling": "Errors are retained as unknown and are not promoted to equivalence. The EZ pilot had absent-ROM BASIC lanes stop before horizon; the 8-input native reference also retained one illegal-instruction stop.",
+    "result": "No factor-of-two improvement over the optimized native baseline was established. The pilot is too small and nonrepresentative for a production runtime projection.",
+    "commanderProfileFollowUp": {
+      "status": "bounded exact-profile speed probe; not ROM-mask qualification",
+      "commanderCommit": "fd7c461383718902f7c1bfc5c172cc05c137c939",
+      "upstreamRevision": "4c8664c80df8d363049e1a3eadf59cd9e52afd1f",
+      "upstreamArchiveSha256": "b74103101f95e1635a064147d9b83c54a6f128a28e2ded043e70779513075590",
+      "hostCompiler": "Clang 21; -O3 -march=native -ffp-contract=off",
+      "sameInputsAs": "ez-pilot-8",
+      "fullRomReferenceCpuSeconds": {
+        "nativeOptimizedReSIDfp": 15.906416,
+        "commanderProfileEZ": 13.6
+      },
+      "cpuReductionPercent": 14.4999,
+      "throughputRatio": 1.17,
+      "ezBinarySha256": "3e96fa41f68f5950ed9d42652927f8e79a5b110d41b313a2e00af2f9766f97eb",
+      "localEvidence": "workspace/ez-commander-profile-eight-o3.json",
+      "limitations": "Eight repeated nonrepresentative inputs; no full/no-ROM decision matrix; EZ PCM-only host harness omits the native screen timed-write transport; no whole-corpus projection."
+    }
+  },
+  "sampleClockPrototype": {
+    "status": "experimental, still under evaluation",
+    "nativeBinarySha256": "60451a450327d989d54dfc74d94fff09159015b07b8a44b215e15917717ec105",
+    "controls": {
+      "rows": 30,
+      "exactFrameCountAndTimedWriteMatches": 24,
+      "abortedForStatefulSidRead": 6,
+      "reportSha256": "dcb4b526ec3cbddc2b4bf1bf139ea7e7ceb6dc05773b62f3a8d2ced42de18bd5"
+    },
+    "fourInputPilot": {
+      "realSubtunes": 4,
+      "realInputRows": 8,
+      "totalRowsIncludingControls": 38,
+      "exactFrameCountAndTimedWriteMatches": 32,
+      "abortedForStatefulSidRead": 6,
+      "reportSha256": "1345288b3528385ff76826598c7f765472c34f45d0c8927be931c25e76ec63c0"
+    },
+    "independentReadinessTest": {
+      "checks": 3200,
+      "matrix": "four PAL/NTSC clock values \u00d7 four sample rates \u00d7 200 varying/reset batches",
+      "comparison": "Batched advanceClock readiness equals repeated upstream SINC input readiness.",
+      "claimBoundary": "Readiness parity only; amplitudes are intentionally not compared.",
+      "buildScriptSha256": "9bd8c49c5cefffed37a96ec2ab893283a14798b18cd774aa33c1e151f1ca069b"
+    },
+    "claimBoundary": "This prototype checks sample-clock frame counts and timed writes only. It does not produce or compare PCM, establish audio equivalence, change eligibility, or support a corpus runtime projection. Stateful-read aborts remain unresolved evidence."
+  },
+  "sampleScreenExperiment": {
+    "status": "experimental, not production-qualified",
+    "stage": "Earlier standalone conservative raw-register-screen, measured before the unread-CHARGEN shortcut was corrected.",
+    "method": "Sample-clock counts and timed writes feed the register comparator; the bounded decisions are checked against separately rendered native reSIDfp audio outcomes and the historical census states.",
+    "nativeBinaries": {
+      "sampleClock": "60451a450327d989d54dfc74d94fff09159015b07b8a44b215e15917717ec105",
+      "audioRenderer": "605b45eec6434af26258d8cff0a45b685c1d5e1a779beea5a48912f352db3c0b"
+    },
+    "stages": [
+      {
+        "subtunes": 4,
+        "noneRomGrants": 1,
+        "noneRomRejects": 3,
+        "fullRomGrants": 3,
+        "fullRomRejects": 1,
+        "historicalFalseGrants": 0,
+        "reportSha256": "f23a8ab29bd4effe0f8eb152bc6b35284e1e6c910e24cb43b5e5ff4324064d06"
+      },
+      {
+        "subtunes": 16,
+        "noneRomGrants": 5,
+        "noneRomRejects": 11,
+        "fullRomGrants": 10,
+        "fullRomRejects": 6,
+        "historicalFalseGrants": 0,
+        "reportSha256": "42e27df080add9008ee98447287dbc38b1d00083c331add453d0b1f1ea0e723d"
+      }
+    ],
+    "result": "Dense identical reference streams could conservatively yield full=false in this earlier raw-register stage. Every grant in these bounded samples agreed with the historical dual-engine compatible state; there were no false compatibility grants in the 4- or 16-subtune check.",
+    "reproductionNote": "The old standalone full-set counts (3/4 and 10/16 grants) are historical and are not expected to reproduce with the current corrected bench-sample-screen.ts.",
+    "claimBoundary": "The count/write comparator does not synthesize PCM. Audio verification is a separate measured native-render path. This is a small, prefix-selected pilot and is not corpus coverage or production qualification."
+  },
+  "samplePipelineExperiment": {
+    "status": "experimental bounded A/B; not production-qualified",
+    "stage": "Final A/B after the sound unread-CHARGEN shortcut correction; full grants can exceed the earlier standalone raw-register stage.",
+    "method": "Run the exact-write native screen and sample-clock register screen on the same already-counted jobs. Resolve uncertain sets with measured native reSIDfp audio; extended samples also require identical reference repeats, and all references must cover the full horizon.",
+    "sourceIdentity": "7629bb5790e076b582feaaab26db78b36e9d1eb4e7e7326ca3f99dd9da49075c",
+    "experimentSources": {
+      "bench-sample-pipeline.ts": "20f909d69df0d16734d39b3540f90ee97fbf5162880f7bda9afbdde11fa3d499",
+      "sample-screen.ts": "6f57f9d15ab1d7738cf610454e12c4e7e7b48b0b52b6feff9fea279e516378ed",
+      "register-comparison.ts": "7158ef644f81e05a5ed7548264297656cae774b87edb77cfb01563342f6a6f89",
+      "apply-sample-clock.py": "db9a1ac97fe8efacd629accfb67f4af83ca181eae81ccefd245ec7f3c97361b8",
+      "build-sample-clock.sh": "9bd8c49c5cefffed37a96ec2ab893283a14798b18cd774aa33c1e151f1ca069b"
+    },
+    "fourInput": {
+      "allStatesMatchedPriorController": true,
+      "oldNativeChildCpuSeconds": 8.802233,
+      "sampleScreenNativeChildCpuSeconds": 7.541673,
+      "reportSha256": "97e1c2b9e69bc30374a46df927a5047cfcdcc30293f3a3edda855cbaccbb79eb"
+    },
+    "sixteenInputFrozen": {
+      "allStatesMatched": true,
+      "fullSetRegisterGrants": 16,
+      "oldNativeChildCpuSeconds": 121.715178,
+      "sampleScreenNativeChildCpuSeconds": 82.064427,
+      "boundedChildCpuWorkReductionPercent": 32.6,
+      "reportSha256": "6ed3938cd7b11c03f16e30b0fb8d5d6ee77f7311a8327a712b34f0c1a8cca84b"
+    },
+    "historicalCheck": "Separate 4- and 16-subtune sample-screen reports had zero false grants against historical dual-engine census states; each grant also passed measured native audio verification.",
+    "claimBoundary": "The 16 inputs are a small completion-ordered prefix. The 32.60% difference is native child-process CPU work, not coordinator-inclusive CPU or elapsed speedup, and is not a whole-corpus runtime projection. Sample-clock register evidence does not generate PCM; uncertain sets use a separate full-horizon audio path. No eligibility policy or publication changed.",
+    "nextGate": "Before any runtime promise or default activation, measure a representative stratified benchmark at target worker load and include coordinator, JSON, and FFT CPU cost."
+  },
+  "sampleBoundaryControls": {
+    "reportSha256": "88fed37477a612fcd252ed744a9cece9490791e389e1f58a1ff79946a3b951b1",
+    "itsHipToBeCool": "Clean reSIDfp reference; both ROM-set register grants agreed with separately rendered native audio.",
+    "mexico86AndNewScener": "Both references halted with illegal-instruction errors and returned no grants.",
+    "limitation": "These three boundary cases do not qualify SIDLite or any halted-tail optimization."
+  },
+  "artifactSha256": {
+    "adaptive-screen-16.log": "abc21fe7cf977ebe691be6d9575409277554a12efcf2018c28b422a4066e40e3",
+    "utilization-19.log": "6f0fa2237df585b520159314d12d120582f572d8ea228d634d01979490a4a3ee",
+    "utilization-8.log": "a0af42c2f606ebee349208bb87396804396eca7c48e8e0aef9726ad04c5f5a97",
+    "utilization-19-cost-clean.log": "58c8914824d03d4274754db565e158069f8dfed57908450107db0f2027fde144",
+    "fork-pilot-4.log": "38bbbd0ebcdef76db3a8e1edb93e416a5f2316c28a8819a07dffd4bebcbea51f",
+    "fork-pilot-16.log": "11a9fe47543df0cefc0d0f0751ff8751516270cbbafe1607130f3335011fb3be",
+    "ez-pilot-4.log": "761691da3d3b9a577e879a311c036645ea163d2213504c2c67ba9d6e1599c845",
+    "ez-pilot-8.log": "f2caee6ba812d727bc5009293766e468821122d64edb866352bb2803d161e349",
+    "sample-clock-controls.log": "cb59e7d0e98191d93df10c639e6fd7ce34009a6e2daad969929c33e7d612b9cb",
+    "sample-clock-pilot-4.log": "4271ad91a8d490b8c5ca286bf144fe3e24dc15e4ffab7ac9c30f6a2fd601556c",
+    "sample-screen-4.log": "f55da593e85dd2afbbfab7af91883eef89427639c5b6cd876a2feda830c073c3",
+    "sample-screen-16.log": "317b88fc5d4a478ffe62af8c31024b803ee888f3afa59f973096c1fe31af4ee1",
+    "sample-pipeline-4-polished.log": "fb9e280117d322575d02d3a14b71fe9d8ae50ad79c236e141021400e9daa2994",
+    "sample-pipeline-16-frozen.log": "66d6bcd5c9bf5552542dfe9bcceb6b8f64a10e973e238e0d5153172bd23cf9c6",
+    "sample-boundary-results.json": "88fed37477a612fcd252ed744a9cece9490791e389e1f58a1ff79946a3b951b1"
+  }
+}

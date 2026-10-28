@@ -1,3 +1,45 @@
+## Continue PR #111: validate fast ROM classification and complete HVSC export (2026-10-28) — active
+
+User requests an exceptionally fast but empirically defensible ROM classifier for
+Commander, a complete HVSC classification and verified export, and all necessary
+changes pushed to PR #111. Evaluate the libsidplayEZ speed claim against the
+current optimized native baseline and the exact Commander playback profile. Keep
+the experiment separate from eligibility decisions until its behavior is qualified.
+Preserve original-checkout changes and historical checkpoints.
+
+- [x] Inspect PR #111, performance evidence, live checkpoints and Commander engine.
+- [x] Transfer exact-write/digi screening and symmetric diagnosed-CPU-halt tails
+  from the already-qualified correction work; identify methodology 2 explicitly.
+- [x] Freeze production listener semantics and restore measurement identity
+  `a8803b971aeb79d7082c7259ea73c8b4820823b38988807085e793421abcea1b`; this
+  permits safe reuse of the exact-identity 12,719-row checkpoint.
+- [x] Qualify this PR source set and exact native binaries: 192 native/WASM parity
+  controls, full-horizon transport/ending controls, build/typecheck, and three
+  consecutive full runs (2,987 pass / 0 fail / 0 skip each). Certificate source
+  identity `6445a3f4419d53fd3018890b1c5606e23f73f2265687f8c4e88f124e4d50ace8`.
+- [x] Reassess EZ with C64 Commander's patched profile on the same eight real
+  inputs: 13.600 CPU seconds versus 15.906 for native reSIDfp (14.5% less); keep
+  it experimental because this is not a representative ROM-mask census.
+- [ ] Resume the identity-matching checkpoint using its 320-job, zero-failure
+  target-host benchmark; classify all 87,868 HVSC85 subtunes and resolve every
+  failed/unknown decision. Existing projection: 32.86h before 25% margin.
+  Bounded 3.5h run is active; checkpoint count was 12,763/87,868 with 0 new
+  failed/unknown at handover. See `doc/plans/pr-111-handover.md` for the live
+  process, exact resume command, identities and next gates.
+- [ ] Verify complete publication, reduce the GitHub payload to consumer data and
+  essential reproducibility/provenance, run validation, commit and push PR updates.
+- [ ] Update PR title/body/state and require green CI/review before calling it merge-ready.
+
+Initial evidence: PR #111 is draft at 0665ed8; CI is green. The target host is
+an i5-14600K. The `rom-audit-dual-3` checkpoint has 12,719 verified dual-engine
+decisions and no unresolved outcomes; its source identity now matches the
+qualified PR classifier. A matching complete publication still does not exist.
+The 8-input EZ pilot measured 13.4% lower CPU (15.906s vs 13.779s), not a
+factor-two improvement over current optimized native reSIDfp; it omitted
+Commander's patches/analogue profile and retained failed no-ROM BASIC lanes as
+unknown. The PR's sample-clock pipeline reduced native child-process CPU 32.6%
+on a completion-ordered 16-subtune set, not coordinator-inclusive or corpus-wide.
+
 ## Upgrade the repository runtime to Bun 1.4.4 (2026-10-27) — active
 
 User requested an upgrade to Bun 1.4.4, three clean full test runs, and a push
@@ -2412,3 +2454,68 @@ raise a reviewed PR for merge.
 The failure came from correctly refusing to reuse a checkpoint whose classifier
 identity no longer matched the current qualified sources. Existing workspace
 census artifacts and the user's station-analysis changes are preserved.
+
+## Bounded ROM audit performance investigation (2026-10-28) — investigation completed; prototype qualification pending
+
+- [x] Inspect classifier, header specification and existing timing evidence.
+- [x] Create isolated PR branch; preserve all pre-existing working tree changes.
+- [x] Implement experimental adaptive screen scheduling, with no production
+  eligibility changes. Reference clocking mode is only a cost hint; every
+  variant still executes independently through the complete horizon.
+- [x] Run 4 then 16 already-counted benchmark inputs; require exact final traces,
+  errors and completion status across both engines before expanding.
+- [x] Record measurements, static-analysis limits and next optimization gates.
+- [x] Build/typecheck and obtain three consecutive clean full test runs
+  (final-source runs: 2,986 pass / 0 fail / 0 skip each; explicit exit 0 in
+  `workspace/performance-qualified-full-{1,2,3}.exit`). Full build and strict
+  typecheck of all `scripts/rom-audit/*.ts` also passed.
+- [x] Open isolated draft [PR #111](https://github.com/chrisgleissner/sidflow/pull/111) containing only this investigation's changes.
+
+No full classification is authorized by this task. Existing census output is
+preserved. Experiments have a hard 32-subtune ceiling and reuse ledger entries.
+
+User steering: prioritize correctness AND reject a 30-hour production runtime;
+investigate recurring power drops, direct Linux-native tools and libSidplayEZ.
+The existing hot path is already native; installed sidplayfp 2.16.0 lacks
+SIDLite, while our pinned instrumented native build supplies both engines.
+
+- [x] Native adaptive controls: early OSC3, late ENV3 and late CHARGEN match
+  exact final evidence for both engines. The 16-subtune real sample saves no
+  retries; do not promote this policy as a corpus speed improvement.
+- [x] Build upstream Commander-pinned libSidplayEZ natively, without installing
+  system packages; use locally unpacked Clang after GCC rejects upstream enum
+  linkage. Keep Commander-specific patches distinct from unmodified upstream.
+- [x] Profile 64 repeated full-horizon comparisons: 19-worker queue saturates
+  ~19.9 logical CPUs while full; long-job drain causes the utilization drop.
+  All non-cost evidence repeats exactly. Eight-worker comparison takes 81.0s
+  versus 63.4s with 19 workers; investigate cost-ordered dispatch separately.
+- [x] Measure descending prior-cost dispatch, 4/16 fork-reference pilots and
+  4/8 libSidplayEZ pilots; summarize report hashes, timings and limitations in
+  `doc/research/hvsc-rom-performance-pilot.json`.
+- [x] Compare native EZ timing/PCM and ROM outcomes on 4, then 8 existing
+  benchmark subtunes, retaining errors and rejecting unqualified substitutions.
+- [x] Capture final sustained measurements without simultaneous builds/tests.
+- [x] Validate sample-clock readiness against upstream SINC (`3,200` exact
+  readiness checks), check sample-screen grants against native audio and the
+  historical census on 4/16 subtunes (zero false grants), and run the frozen
+  sample-pipeline A/B on 4/16 subtunes with matching states. Bounded CPU figures
+  are native child-process work only and do not imply whole-corpus runtime.
+- [x] Evaluate the sample-clock prototype separately; it is not part of
+  the completed adaptive/fork/EZ evidence or production qualification.
+  Existing bounded controls and the 4-input pilot matched frame counts and
+  timed writes where the probe completed; stateful-read cases aborted. The
+  probe does not produce or compare PCM, so this remains experimental.
+
+Published the bounded investigation in draft PR #111. Production dispatch starts
+expensive jobs first; sample-clock/EZ/fork backends remain experiments. The frozen
+16-subtune controller comparison preserved every state while reducing measured
+native child CPU work from 121.715178s to 82.064427s. This excludes coordinator
+cost and is not a whole-corpus runtime forecast. Three final-source full suites
+passed with 2,986 pass / 0 fail / 0 skip, exit 0 each. Build/typecheck, direct
+readiness controls and bounded native comparisons passed. Existing main-checkout
+changes and census artifacts were excluded from the PR.
+
+Follow-up gate before default activation or any full classification: broaden
+adversarial coverage, qualify the exact backend/profile and failure behavior,
+and measure a representative stratified sample under target worker load with
+coordinator CPU included. No full census was started or authorized by this work.

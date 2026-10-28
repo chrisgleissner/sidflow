@@ -7,6 +7,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { cpus } from "node:os";
 import { screenInventory } from "./screen-inventory.js";
+import { orderScreenJobs, type ScreenCost } from "./screen-scheduling.js";
 import { ScreenWorker } from "./screen-worker.js";
 import { screenJson, screenIdentity, screenQualificationIdentity, screenSha, SCREEN_METHODOLOGY, screenEngineIdentity } from "./screen-identity.js";
 import { publishScreen, resolvedScreenRow, type ScreenRow } from "./screen-publication.js";
@@ -79,6 +80,7 @@ if(existsSync(checkpoint)){
   }
 }
 const sample=benchmarkSample(inventory.jobs,benchmarkJobs), selected=mode==="bench"?sample:inventory.jobs;
+let schedulingCosts: ScreenCost[] = [];
 let publicationEvidence:{qualification:string;benchmark:string}|undefined;
 if(mode==="full"){
   const evidence="workspace/rom-audit-screen-qualification";
@@ -86,14 +88,16 @@ if(mode==="full"){
   if(qualification.measurementIdentity!==identity||qualification.sourceIdentity!==screenQualificationIdentity()||!qualification.passed||qualification.fullRuns.length!==3||qualification.fullRuns.some(r=>!r.pass||r.fail||r.skip)||
     Object.entries(nativeHashes).some(([e,sha])=>qualification.nativeHashes?.[e]!==sha)||
     ["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log"].some(name=>screenSha(readFileSync(path.join(evidence,name)))!==qualification.logs?.[name]))throw new Error("Missing source-bound three-suite qualification");
-  const benchmark=JSON.parse(readFileSync(path.join(directory,"benchmark.json"),"utf8")) as {sourceIdentity:string;cpu:string;workers:number;budgetHours:number;sampleSize:number;passed:boolean;measured:unknown[];benchmarkFailures:number};
+  const benchmark=JSON.parse(readFileSync(path.join(directory,"benchmark.json"),"utf8")) as {sourceIdentity:string;cpu:string;workers:number;budgetHours:number;sampleSize:number;passed:boolean;measured:ScreenCost[];benchmarkFailures:number};
   if(benchmark.sourceIdentity!==identity||benchmark.cpu!==cpus()[0]?.model||benchmark.workers!==workers||benchmark.sampleSize!==benchmarkJobs||
     (maxJobs===undefined&&(!benchmark.passed||benchmark.budgetHours>maxHours))||
     (maxJobs!==undefined&&(benchmark.measured.length!==benchmark.sampleSize||benchmark.benchmarkFailures!==0)))throw new Error("Missing matching target-machine budget benchmark; bounded checkpoints require a complete zero-failure sample, and full censuses also require the budget projection to pass");
+  schedulingCosts=benchmark.measured;
   publicationEvidence={qualification:readFileSync(path.join(evidence,"certificate.json"),"utf8"),benchmark:readFileSync(path.join(directory,"benchmark.json"),"utf8")};
 }
 const pending=mode==="bench"?selected:selected.filter(j=>!resolvedScreenRow(rows.get(`${j.sha256}#${j.song}`)));
-const todo=mode==="full"&&maxJobs!==undefined?pending.slice(0,maxJobs):pending;
+const bounded=mode==="full"&&maxJobs!==undefined?pending.slice(0,maxJobs):pending;
+const todo=orderScreenJobs(bounded,schedulingCosts);
 if(mode==="full"&&maxJobs!==undefined)console.log(`Bounded census: processing at most ${todo.length} pending subtunes; rerun without ROM_AUDIT_MAX_JOBS to continue the full inventory.`);
 const reservations=todo.map(j=>({sha256:j.sha256,song:j.song,path:path.relative(hvsc,j.path)}));
 if(!ledger.reserve(reservations,`dual-${mode}`,mode==="bench"?ceilings(61157,87868):undefined))throw new Error("Benchmark would exceed pilot ceiling");
