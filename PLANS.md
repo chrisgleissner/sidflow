@@ -2412,3 +2412,54 @@ raise a reviewed PR for merge.
 The failure came from correctly refusing to reuse a checkpoint whose classifier
 identity no longer matched the current qualified sources. Existing workspace
 census artifacts and the user's station-analysis changes are preserved.
+
+## Bounded ROM audit performance investigation (2026-10-28) — active
+
+- [x] Inspect classifier, header specification and existing timing evidence.
+- [x] Create isolated PR branch; preserve all pre-existing working tree changes.
+- [x] Implement experimental adaptive screen scheduling, with no production
+  eligibility changes. Reference clocking mode is only a cost hint; every
+  variant still executes independently through the complete horizon.
+- [x] Run 4 then 16 already-counted benchmark inputs; require exact final traces,
+  errors and completion status across both engines before expanding.
+- [x] Record measurements, static-analysis limits and next optimization gates.
+- [x] Build/typecheck and obtain three consecutive clean full test runs
+  (final-source runs: 2,986 pass / 0 fail / 0 skip each; explicit exit 0 in
+  `workspace/performance-qualified-full-{1,2,3}.exit`). Full build and strict
+  typecheck of all `scripts/rom-audit/*.ts` also passed.
+- [ ] Open new SIDFlow PR containing only this investigation's changes.
+
+No full classification is authorized by this task. Existing census output is
+preserved. Experiments have a hard 32-subtune ceiling and reuse ledger entries.
+
+User steering: prioritize correctness AND reject a 30-hour production runtime;
+investigate recurring power drops, direct Linux-native tools and libSidplayEZ.
+The existing hot path is already native; installed sidplayfp 2.16.0 lacks
+SIDLite, while our pinned instrumented native build supplies both engines.
+
+- [x] Native adaptive controls: early OSC3, late ENV3 and late CHARGEN match
+  exact final evidence for both engines. The 16-subtune real sample saves no
+  retries; do not promote this policy as a corpus speed improvement.
+- [x] Build upstream Commander-pinned libSidplayEZ natively, without installing
+  system packages; use locally unpacked Clang after GCC rejects upstream enum
+  linkage. Keep Commander-specific patches distinct from unmodified upstream.
+- [x] Profile 64 repeated full-horizon comparisons: 19-worker queue saturates
+  ~19.9 logical CPUs while full; long-job drain causes the utilization drop.
+  All non-cost evidence repeats exactly. Eight-worker comparison takes 81.0s
+  versus 63.4s with 19 workers; investigate cost-ordered dispatch separately.
+- [x] Measure descending prior-cost dispatch, 4/16 fork-reference pilots and
+  4/8 libSidplayEZ pilots; summarize report hashes, timings and limitations in
+  `doc/research/hvsc-rom-performance-pilot.json`.
+- [x] Compare native EZ timing/PCM and ROM outcomes on 4, then 8 existing
+  benchmark subtunes, retaining errors and rejecting unqualified substitutions.
+- [x] Capture final sustained measurements without simultaneous builds/tests.
+- [x] Validate sample-clock readiness against upstream SINC (`3,200` exact
+  readiness checks), check sample-screen grants against native audio and the
+  historical census on 4/16 subtunes (zero false grants), and run the frozen
+  sample-pipeline A/B on 4/16 subtunes with matching states. Bounded CPU figures
+  are native child-process work only and do not imply whole-corpus runtime.
+- [ ] Evaluate the active sample-clock prototype separately; it is not part of
+  the completed adaptive/fork/EZ evidence or production qualification.
+  Existing bounded controls and the 4-input pilot matched frame counts and
+  timed writes where the probe completed; stateful-read cases aborted. The
+  probe does not produce or compare PCM, so this remains experimental.

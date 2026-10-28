@@ -18,7 +18,7 @@ export function screenQualificationIdentity(): string {
  * and rollout controllers: changing those cannot invalidate measured PCM. */
 export function screenIdentity():string {
   const names=["render.cpp","apply-basic-read-hook.py","apply-sid-write-hook.py","apply-digital-screen.py","apply-inline-filters.py","build-native.sh",
-    "digital-screen.ts","native-lanes.ts","listener.ts","wasm-lanes.ts","screen-classifier.ts","screen-worker.ts","screen-inventory.ts","methodology.ts","inputs.ts"];
+    "digital-screen.ts","native-lanes.ts","listener.ts","register-comparison.ts","wasm-lanes.ts","screen-classifier.ts","screen-worker.ts","screen-inventory.ts","methodology.ts","inputs.ts"];
   const sources=names.map(name=>[name,screenSha(readFileSync(path.join(import.meta.dir,name)))]);
   const common=["rom-eligibility.ts","json.ts","sid-header-conformance.ts"].map(name=>[name,screenSha(readFileSync(path.resolve(import.meta.dir,"../../packages/sidflow-common/src",name)))]);
   return screenSha(screenJson({sources,common,engineIds:{sidlite:screenEngineIdentity("sidlite"),residfp:screenEngineIdentity("residfp")}}));
