@@ -2413,7 +2413,7 @@ The failure came from correctly refusing to reuse a checkpoint whose classifier
 identity no longer matched the current qualified sources. Existing workspace
 census artifacts and the user's station-analysis changes are preserved.
 
-## Bounded ROM audit performance investigation (2026-10-28) — active
+## Bounded ROM audit performance investigation (2026-10-28) — investigation completed; prototype qualification pending
 
 - [x] Inspect classifier, header specification and existing timing evidence.
 - [x] Create isolated PR branch; preserve all pre-existing working tree changes.
@@ -2427,7 +2427,7 @@ census artifacts and the user's station-analysis changes are preserved.
   (final-source runs: 2,986 pass / 0 fail / 0 skip each; explicit exit 0 in
   `workspace/performance-qualified-full-{1,2,3}.exit`). Full build and strict
   typecheck of all `scripts/rom-audit/*.ts` also passed.
-- [ ] Open new SIDFlow PR containing only this investigation's changes.
+- [x] Open isolated draft [PR #111](https://github.com/chrisgleissner/sidflow/pull/111) containing only this investigation's changes.
 
 No full classification is authorized by this task. Existing census output is
 preserved. Experiments have a hard 32-subtune ceiling and reuse ledger entries.
@@ -2458,8 +2458,22 @@ SIDLite, while our pinned instrumented native build supplies both engines.
   historical census on 4/16 subtunes (zero false grants), and run the frozen
   sample-pipeline A/B on 4/16 subtunes with matching states. Bounded CPU figures
   are native child-process work only and do not imply whole-corpus runtime.
-- [ ] Evaluate the active sample-clock prototype separately; it is not part of
+- [x] Evaluate the sample-clock prototype separately; it is not part of
   the completed adaptive/fork/EZ evidence or production qualification.
   Existing bounded controls and the 4-input pilot matched frame counts and
   timed writes where the probe completed; stateful-read cases aborted. The
   probe does not produce or compare PCM, so this remains experimental.
+
+Published the bounded investigation in draft PR #111. Production dispatch starts
+expensive jobs first; sample-clock/EZ/fork backends remain experiments. The frozen
+16-subtune controller comparison preserved every state while reducing measured
+native child CPU work from 121.715178s to 82.064427s. This excludes coordinator
+cost and is not a whole-corpus runtime forecast. Three final-source full suites
+passed with 2,986 pass / 0 fail / 0 skip, exit 0 each. Build/typecheck, direct
+readiness controls and bounded native comparisons passed. Existing main-checkout
+changes and census artifacts were excluded from the PR.
+
+Follow-up gate before default activation or any full classification: broaden
+adversarial coverage, qualify the exact backend/profile and failure behavior,
+and measure a representative stratified sample under target worker load with
+coordinator CPU included. No full census was started or authorized by this work.
