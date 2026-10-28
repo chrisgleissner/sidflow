@@ -20,8 +20,14 @@
         "rows": 8,
         "attemptsPerEngine": 8,
         "cpuSeconds": {
-          "sidlite": { "baseline": 1.091427, "adaptive": 1.089014 },
-          "residfp": { "baseline": 2.922063, "adaptive": 2.905764 }
+          "sidlite": {
+            "baseline": 1.091427,
+            "adaptive": 1.089014
+          },
+          "residfp": {
+            "baseline": 2.922063,
+            "adaptive": 2.905764
+          }
         },
         "reportSha256": "f51b46deddb466cde8eb6f38340a3ce3d7093cbb17f508e59494a1c0801d9f8e"
       },
@@ -30,8 +36,14 @@
         "rows": 32,
         "attemptsPerEngine": 32,
         "cpuSeconds": {
-          "sidlite": { "baseline": 15.749035, "adaptive": 15.768408 },
-          "residfp": { "baseline": 23.194948, "adaptive": 23.197897 }
+          "sidlite": {
+            "baseline": 15.749035,
+            "adaptive": 15.768408
+          },
+          "residfp": {
+            "baseline": 23.194948,
+            "adaptive": 23.197897
+          }
         },
         "reportSha256": "db21d3663c3036a2ff8e0c5e5168eb70412b4d03baced1fbdfa6394f2a49a591"
       }
@@ -46,9 +58,27 @@
     "machine": "Intel Core i5-14600K",
     "method": "64 full-horizon comparisons of the same 16 subtunes; per-core sampling every 250 ms.",
     "runs": [
-      { "id": "original-19", "workers": 19, "elapsedSeconds": 63.420522, "meanBusyLogicalCores": 15.44, "reportSha256": "6c5e1eb7670e02f8ece5387e9d63a4209c0f5dccd4097ec8bb5234f21dbf241d" },
-      { "id": "original-8", "workers": 8, "elapsedSeconds": 81.023419, "meanBusyLogicalCores": 9.91, "reportSha256": "c0f1a54a75e15f850845e229786a4dfb97b3a112470c50ee9701be8d2cf95fcc" },
-      { "id": "prior-cost-descending-19-clean", "workers": 19, "elapsedSeconds": 50.991835, "meanBusyLogicalCores": 19.62, "reportSha256": "abf50432d754249d2bb50652a3eb61f2ab11ea984448975ee659a22d25ecb96b" }
+      {
+        "id": "original-19",
+        "workers": 19,
+        "elapsedSeconds": 63.420522,
+        "meanBusyLogicalCores": 15.44,
+        "reportSha256": "6c5e1eb7670e02f8ece5387e9d63a4209c0f5dccd4097ec8bb5234f21dbf241d"
+      },
+      {
+        "id": "original-8",
+        "workers": 8,
+        "elapsedSeconds": 81.023419,
+        "meanBusyLogicalCores": 9.91,
+        "reportSha256": "c0f1a54a75e15f850845e229786a4dfb97b3a112470c50ee9701be8d2cf95fcc"
+      },
+      {
+        "id": "prior-cost-descending-19-clean",
+        "workers": 19,
+        "elapsedSeconds": 50.991835,
+        "meanBusyLogicalCores": 19.62,
+        "reportSha256": "abf50432d754249d2bb50652a3eb61f2ab11ea984448975ee659a22d25ecb96b"
+      }
     ],
     "fullClassificationDigestEquality": {
       "equal": true,
@@ -61,8 +91,18 @@
   "forkReference": {
     "correctness": "Cold and forked paths matched exact PCM bytes, timed traces, ROM-read counters and summaries for all reference rows; production remains cold-process isolated.",
     "stages": [
-      { "subtunes": 4, "coldElapsedSeconds": 4.084143, "forkElapsedSeconds": 3.423529, "reportSha256": "a8b102efc96b398efc9a0b69089caa7c9b7642d87327c5a9e868e564a7e259bf" },
-      { "subtunes": 16, "coldElapsedSeconds": 59.464627, "forkElapsedSeconds": 55.919063, "reportSha256": "1555bce0f7ddcb938038fc4d335430cfe5a817456a3140a82ec311bb120b703e" }
+      {
+        "subtunes": 4,
+        "coldElapsedSeconds": 4.084143,
+        "forkElapsedSeconds": 3.423529,
+        "reportSha256": "a8b102efc96b398efc9a0b69089caa7c9b7642d87327c5a9e868e564a7e259bf"
+      },
+      {
+        "subtunes": 16,
+        "coldElapsedSeconds": 59.464627,
+        "forkElapsedSeconds": 55.919063,
+        "reportSha256": "1555bce0f7ddcb938038fc4d335430cfe5a817456a3140a82ec311bb120b703e"
+      }
     ],
     "limitations": "Proof-of-concept full-reference cases only; mask variants, streaming transport and stateful-read screening are not qualified."
   },
@@ -71,19 +111,48 @@
     "stages": [
       {
         "subtunes": 4,
-        "fullReferenceCpuSeconds": { "residfp": 8.111298, "ez": 7.489539 },
-        "measurementErrors": { "residfp": 0, "ez": 2 },
+        "fullReferenceCpuSeconds": {
+          "residfp": 8.111298,
+          "ez": 7.489539
+        },
+        "measurementErrors": {
+          "residfp": 0,
+          "ez": 2
+        },
         "comparisonReportSha256": "c1cfa4c15193f8164ff35a002ddda4113f66db5cba431e41f37aca1ca0ca0348"
       },
       {
         "subtunes": 8,
-        "fullReferenceCpuSeconds": { "residfp": 31.743884, "ez": 27.438288 },
-        "measurementErrors": { "residfp": 1, "ez": 3 },
+        "fullReferenceCpuSeconds": {
+          "residfp": 31.743884,
+          "ez": 27.438288
+        },
+        "measurementErrors": {
+          "residfp": 1,
+          "ez": 3
+        },
         "comparisonReportSha256": "ad82ca176fa756991586383edc8c0649e037181f62aec69afa7fc021e08ea5ae"
       }
     ],
     "errorHandling": "Errors are retained as unknown and are not promoted to equivalence. The EZ pilot had absent-ROM BASIC lanes stop before horizon; the 8-input native reference also retained one illegal-instruction stop.",
-    "result": "No factor-of-two improvement over the optimized native baseline was established. The pilot is too small and nonrepresentative for a production runtime projection."
+    "result": "No factor-of-two improvement over the optimized native baseline was established. The pilot is too small and nonrepresentative for a production runtime projection.",
+    "commanderProfileFollowUp": {
+      "status": "bounded exact-profile speed probe; not ROM-mask qualification",
+      "commanderCommit": "fd7c461383718902f7c1bfc5c172cc05c137c939",
+      "upstreamRevision": "4c8664c80df8d363049e1a3eadf59cd9e52afd1f",
+      "upstreamArchiveSha256": "b74103101f95e1635a064147d9b83c54a6f128a28e2ded043e70779513075590",
+      "hostCompiler": "Clang 21; -O3 -march=native -ffp-contract=off",
+      "sameInputsAs": "ez-pilot-8",
+      "fullRomReferenceCpuSeconds": {
+        "nativeOptimizedReSIDfp": 15.906416,
+        "commanderProfileEZ": 13.6
+      },
+      "cpuReductionPercent": 14.4999,
+      "throughputRatio": 1.17,
+      "ezBinarySha256": "3e96fa41f68f5950ed9d42652927f8e79a5b110d41b313a2e00af2f9766f97eb",
+      "localEvidence": "workspace/ez-commander-profile-eight-o3.json",
+      "limitations": "Eight repeated nonrepresentative inputs; no full/no-ROM decision matrix; EZ PCM-only host harness omits the native screen timed-write transport; no whole-corpus projection."
+    }
   },
   "sampleClockPrototype": {
     "status": "experimental, still under evaluation",
@@ -104,7 +173,7 @@
     },
     "independentReadinessTest": {
       "checks": 3200,
-      "matrix": "four PAL/NTSC clock values × four sample rates × 200 varying/reset batches",
+      "matrix": "four PAL/NTSC clock values \u00d7 four sample rates \u00d7 200 varying/reset batches",
       "comparison": "Batched advanceClock readiness equals repeated upstream SINC input readiness.",
       "claimBoundary": "Readiness parity only; amplitudes are intentionally not compared.",
       "buildScriptSha256": "9bd8c49c5cefffed37a96ec2ab893283a14798b18cd774aa33c1e151f1ca069b"
@@ -166,7 +235,7 @@
       "fullSetRegisterGrants": 16,
       "oldNativeChildCpuSeconds": 121.715178,
       "sampleScreenNativeChildCpuSeconds": 82.064427,
-      "boundedChildCpuWorkReductionPercent": 32.60,
+      "boundedChildCpuWorkReductionPercent": 32.6,
       "reportSha256": "6ed3938cd7b11c03f16e30b0fb8d5d6ee77f7311a8327a712b34f0c1a8cca84b"
     },
     "historicalCheck": "Separate 4- and 16-subtune sample-screen reports had zero false grants against historical dual-engine census states; each grant also passed measured native audio verification.",

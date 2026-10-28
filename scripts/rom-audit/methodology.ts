@@ -63,6 +63,8 @@ export interface LaneResult {
   pcmSha256: string; traceSha256: string;
 }
 export interface ReferenceResult {
+  /** Diagnosed CPU halt: actual output ends here, then explicit playback silence. */
+  stoppedAtSample?: number;
   outcome: "clean" | "failed" | "trace-dropped"; samples: number; writes: number; message: string;
   pcmSha256: string; traceSha256: string;
   /** An independent reference player (extended sample only): determinism for this subtune. */
@@ -157,6 +159,10 @@ export function validateRecord(record: CensusRecord, engines: readonly RomAuditE
         ref.writes < 0 || !hex(ref.pcmSha256) || !hex(ref.traceSha256) || !["identical", "different", "failed", "not-run"].includes(ref.repeat) || typeof run.extended !== "boolean" || (run.extended ? ref.repeat === "not-run" : ref.repeat !== "not-run") ||
         (ref.outcome === "clean" && ref.samples !== wanted))
       throw new Error("Invalid census reference");
+    if (ref.stoppedAtSample !== undefined && (run.comparison !== "listener-v1" ||
+        !Number.isSafeInteger(ref.stoppedAtSample) || ref.stoppedAtSample < 0 || ref.stoppedAtSample >= ref.samples ||
+        typeof ref.message !== "string" || !ref.message.startsWith("Illegal instruction $")))
+      throw new Error("Invalid reference stop position");
     if (run.comparison !== undefined && run.comparison !== "listener-v1") throw new Error("Invalid comparison policy");
     const fills: Record<"full" | "none", readonly LaneFill[]> = run.comparison === "listener-v1" ? { full: ["zero"] as const, none: ["zero"] as const } : laneFillsOf(run.extended);
     if (!Array.isArray(run.lanes) || run.lanes.length !== requiredSets.reduce((n,set)=>n+fills[set].length,0)) throw new Error("Invalid census lanes");

@@ -287,3 +287,35 @@ node scripts/run-bun.mjs scripts/rom-audit/bench-sample-pipeline.ts \
 These are bounded experiments. A new backend must retain engine/profile identity,
 full horizons, errors and unknowns, and independently pass correctness gates.
 Do not relabel existing reSIDfp measurements as EZ or original-C64 proof.
+
+### Follow-up: the exact C64 Commander EZ profile
+
+The upstream probe above did not use C64 Commander's wrapper and profile. To
+address that limitation, the same eight previously measured HVSC inputs were
+also rendered with C64 Commander's `EzSession` and `ez_render` harness from
+Commander commit `fd7c461383718902f7c1bfc5c172cc05c137c939`, using its verified
+libSidplayEZ revision `4c8664c80df8d363049e1a3eadf59cd9e52afd1f`, archive
+SHA-256 `b74103101f95e1635a064147d9b83c54a6f128a28e2ded043e70779513075590`,
+and the Commander patch/profile. The host probe used Clang 21 `-O3
+-march=native -ffp-contract=off`, 48 kHz stereo and the app's 8580 fallback.
+`workspace/ez-commander-profile-eight-o3.json` retains per-input CPU times and
+hashes locally; the raw tune paths and audio are not part of this repository.
+
+Across these same eight full-ROM references, the Commander-profile EZ process
+used 13.600 CPU seconds versus 15.906 seconds for the optimized native reSIDfp
+screen renderer: 14.5% less CPU (1.17x throughput). Individual inputs ranged
+from a small EZ slowdown to a roughly 30% saving. This is stronger evidence
+about the actual Commander profile than the upstream-only probe, and it supports
+treating EZ as a modestly faster candidate. It still does not establish a
+whole-corpus speedup: this is eight repeated, nonrepresentative inputs; the
+Commander host harness writes PCM without the native screen's timed-write
+transport; and it did not test the full/no-ROM decision matrix. The exact
+Commander profile therefore remains unqualified for eligibility publication.
+A separate representative, matched comparison of all ROM masks and stopped
+lanes is required before an EZ-backed census can replace or supplement the
+existing per-engine export.
+
+The host build script also attempted to link its sanitizer test binaries, but
+this environment's local Clang package lacks compiler-rt sanitizer archives.
+The `ez_render` profiling executable itself built and ran successfully; the
+full Commander host test build was not qualified by this experiment.

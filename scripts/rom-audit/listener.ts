@@ -6,11 +6,10 @@
  * not a claim of a calibrated human hearing model.
  */
 import { createHash } from "node:crypto";
-import { RegisterComparator, REGISTER_RETAIN_WINDOWS } from "./register-comparison.js";
 
 export const LISTENER_POLICY = "listener-v1";
 export const LISTENER_WINDOW = 1024; // 21.3 ms at 48 kHz, stereo
-const RETAIN_WINDOWS = REGISTER_RETAIN_WINDOWS; // 256 ms retained before a trace mismatch
+const RETAIN_WINDOWS = 12; // 256 ms retained before a trace mismatch
 const QUIET = 0.001; // -60 dBFS
 const SPECTRAL_DISTANCE = 0.15;
 export interface ListenerEvidence {
@@ -132,8 +131,16 @@ class AudioFrames {
  * same lengths or end at the same write: compare continuous streams instead.
  */
 export class ListenerComparator {
-  private readonly register = new RegisterComparator();
   private readonly audio = [new AudioFrames(), new AudioFrames()] as const;
+  private readonly writes: number[][] = [[], []];
+  private readonly positions = [0, 0];
+  private offset: number | undefined;
+  private densityStart: number | undefined;
+  private densityWrites = 0;
+  private densityVolumeWrites = 0;
+  private readonly volumeCycles = new Map<number, number[]>();
+  private pendingKey = "";
+  private pendingWindow = 0;
   private spectral = false;
   private readonly retained: { a: Int16Array; b: Int16Array; index: number }[] = [];
   private windows = 0;
@@ -145,7 +152,7 @@ export class ListenerComparator {
   private audible = false;
   append(side: 0 | 1, pcm: Int16Array, writes: Float64Array): void {
     this.audio[side].append(pcm);
-    if (!this.spectral) this.register.append(side, writes);
+    if (!this.spectral) for (const value of writes) this.writes[side]!.push(value);
   }
   compare(): boolean {
     if (!this.spectral) this.compareWrites();
@@ -158,15 +165,49 @@ export class ListenerComparator {
     return this.audible;
   }
   private compareWrites(): void {
-    this.register.compare(this.windows);
-    if (this.register.needsAudio) this.useSpectra();
+    const [a, b] = this.writes;
+    let i = this.positions[0]!, j = this.positions[1]!;
+    while (i < a!.length && j < b!.length) {
+      const delta = b![j + 3]! - a![i + 3]!;
+      this.offset ??= delta;
+      if (a![i] !== b![j] || a![i + 1] !== b![j + 1] || a![i + 2] !== b![j + 2] ||
+          Math.abs(this.offset) > 20000 || Math.abs(delta - this.offset) > 2000) { this.useSpectra(); return; }
+      i += 4; j += 4;
+      // Millisecond tolerance is appropriate for musical control writes, but
+      // can change sampled/digi audio. Dense streams must use audio spectra.
+      this.densityStart ??= a![i - 1]!;
+      this.densityWrites++;
+      if ((a![i - 3]! & 31) === 24) {
+        this.densityVolumeWrites++;
+        const chip=a![i-4]!,cycles=this.volumeCycles.get(chip)??[];
+        cycles.push(a![i-1]!);if(cycles.length>3)cycles.shift();this.volumeCycles.set(chip,cycles);
+        // Three volume samples at >=1 kHz already identify a short digi burst;
+        // do not need 100 writes before protecting a brief sampled effect.
+        if(cycles.length===3&&cycles[2]!-cycles[0]!<=2000){this.useSpectra();return;}
+      }
+      // Check before resetting the window, including a burst at the very end
+      // of a tune. Waiting for 100,000 cycles misses short sampled effects.
+      if (this.densityWrites > 300 || this.densityVolumeWrites > 100) { this.useSpectra(); return; }
+      if (a![i - 1]! - this.densityStart >= 100000) {
+        this.densityStart = a![i - 1]!; this.densityWrites = 0; this.densityVolumeWrites = 0;
+      }
+    }
+    this.positions[0] = i; this.positions[1] = j;
+    // A stalled/missing write stream cannot hide behind chunk boundaries. Keep
+    // at most 256 ms of audio while waiting for its counterpart.
+    const pendingKey = i < a!.length ? `a:${a![i + 3]}` : j < b!.length ? `b:${b![j + 3]}` : "";
+    if (pendingKey !== this.pendingKey) { this.pendingKey = pendingKey; this.pendingWindow = this.windows; }
+    if (pendingKey && this.windows - this.pendingWindow >= RETAIN_WINDOWS - 1) { this.useSpectra(); return; }
+    for (const side of [0, 1] as const) if (this.positions[side]! >= 4096) {
+      this.writes[side] = this.writes[side]!.slice(this.positions[side]); this.positions[side] = 0;
+    }
   }
   /** A stopped decoder emits silence even if no later SID writes expose it. */
   forceAudio(): void { if (!this.spectral) this.useSpectra(); }
   private useSpectra(): void {
     this.spectral = true;
     for (const frame of this.retained) this.measure(frame);
-    this.retained.length = 0; this.register.clear();
+    this.retained.length = 0; this.writes[0] = []; this.writes[1] = [];
   }
   private measure(frame: { a: Int16Array; b: Int16Array; index: number }): void {
     if (this.audible) return;
@@ -179,7 +220,7 @@ export class ListenerComparator {
     } else this.consecutive = 0;
   }
   finish(): ListenerEvidence {
-    if (!this.spectral && !this.register.complete()) this.useSpectra();
+    if (!this.spectral && (this.positions[0] !== this.writes[0]!.length || this.positions[1] !== this.writes[1]!.length)) this.useSpectra();
     this.audio[0].finish(); this.audio[1].finish(); this.compare();
     return { policy: LISTENER_POLICY, method: this.spectral ? "spectral" : "register-equivalent", windows: this.windows,
       differentWindows: this.bad, firstDifferenceSample: this.audible ? this.first : null, maxDistance: this.max, maxAbsoluteDifference: this.maxAbsolute, audible: this.audible };

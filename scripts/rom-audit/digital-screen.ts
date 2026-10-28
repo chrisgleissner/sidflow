@@ -46,6 +46,12 @@ export async function screenLane(binary: string, roms: string, bytes: Uint8Array
 }
 export function screenEquivalent(reference: DigitalScreen, variant: DigitalScreen): boolean {
   if (reference.error || variant.error || !reference.traceComplete || !variant.traceComplete) return false;
+  // A timing-tolerant whole-stream match does not imply the same audio
+  // decision: at a finite PCM boundary the shifted lanes can contain different
+  // final writes. Only exact timed writes may bypass audio. Keep the listener
+  // density checks below: even identical dense digi streams require PCM.
+  if (reference.writes.length !== variant.writes.length ||
+      reference.writes.some((value,index)=>value!==variant.writes[index])) return false;
   // Entire streams, including their tails, are submitted together. The comparator
   // checks offset, drift, lengths and digi density. Spectral fallback has no PCM
   // here and MUST NOT grant a decision.

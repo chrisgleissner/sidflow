@@ -421,5 +421,4 @@ int main(int argc, char** argv) {
     } catch (const std::exception& error) {
         std::cerr << "ROM audit: " << error.what() << '\n'; return 1;
     }
-    return 0;
 }

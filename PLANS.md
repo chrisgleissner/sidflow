@@ -1,3 +1,42 @@
+## Continue PR #111: validate fast ROM classification and complete HVSC export (2026-10-28) — active
+
+User requests an exceptionally fast but empirically defensible ROM classifier for
+Commander, a complete HVSC classification and verified export, and all necessary
+changes pushed to PR #111. Evaluate the libsidplayEZ speed claim against the
+current optimized native baseline and the exact Commander playback profile. Keep
+the experiment separate from eligibility decisions until its behavior is qualified.
+Preserve original-checkout changes and historical checkpoints.
+
+- [x] Inspect PR #111, performance evidence, live checkpoints and Commander engine.
+- [x] Transfer exact-write/digi screening and symmetric diagnosed-CPU-halt tails
+  from the already-qualified correction work; identify methodology 2 explicitly.
+- [x] Freeze production listener semantics and restore measurement identity
+  `a8803b971aeb79d7082c7259ea73c8b4820823b38988807085e793421abcea1b`; this
+  permits safe reuse of the exact-identity 12,719-row checkpoint.
+- [x] Qualify this PR source set and exact native binaries: 192 native/WASM parity
+  controls, full-horizon transport/ending controls, build/typecheck, and three
+  consecutive full runs (2,987 pass / 0 fail / 0 skip each). Certificate source
+  identity `6445a3f4419d53fd3018890b1c5606e23f73f2265687f8c4e88f124e4d50ace8`.
+- [x] Reassess EZ with C64 Commander's patched profile on the same eight real
+  inputs: 13.600 CPU seconds versus 15.906 for native reSIDfp (14.5% less); keep
+  it experimental because this is not a representative ROM-mask census.
+- [ ] Resume the identity-matching checkpoint using its 320-job, zero-failure
+  target-host benchmark; classify all 87,868 HVSC85 subtunes and resolve every
+  failed/unknown decision. Existing projection: 32.86h before 25% margin.
+- [ ] Verify complete publication, reduce the GitHub payload to consumer data and
+  essential reproducibility/provenance, run validation, commit and push PR updates.
+- [ ] Update PR title/body/state and require green CI/review before calling it merge-ready.
+
+Initial evidence: PR #111 is draft at 0665ed8; CI is green. The target host is
+an i5-14600K. The `rom-audit-dual-3` checkpoint has 12,719 verified dual-engine
+decisions and no unresolved outcomes; its source identity now matches the
+qualified PR classifier. A matching complete publication still does not exist.
+The 8-input EZ pilot measured 13.4% lower CPU (15.906s vs 13.779s), not a
+factor-two improvement over current optimized native reSIDfp; it omitted
+Commander's patches/analogue profile and retained failed no-ROM BASIC lanes as
+unknown. The PR's sample-clock pipeline reduced native child-process CPU 32.6%
+on a completion-ordered 16-subtune set, not coordinator-inclusive or corpus-wide.
+
 ## Upgrade the repository runtime to Bun 1.4.4 (2026-10-27) — active
 
 User requested an upgrade to Bun 1.4.4, three clean full test runs, and a push

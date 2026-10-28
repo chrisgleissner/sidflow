@@ -80,9 +80,11 @@ Detailed SIDLite uses normal synthesis. Detailed reSIDfp uses upstream
 omitting audio production.
 This is not a dummy SID and does not replace SID readbacks with constants.
 Screens run 100 ms beyond the requested horizon to cover output latency and
-rounding. Only complete register streams accepted by the existing listener-v1
-fast path can grant compatibility. Dense digi streams, different tails, changed
-writes, excessive timing drift, errors and truncation require native audio.
+rounding. Only complete, exactly cycle-timed register streams accepted by the listener-v1
+fast path can grant compatibility. The audio-free screen does not use the audio
+comparator's timing tolerance: even a few cycles of displacement can move a final
+write across the finite PCM cutoff. Dense digi streams, different tails, changed
+writes, any timing difference, errors and truncation require native audio.
 A screen difference never proves an audible dependency. Audio fallback renders only
 unresolved configurations; sampled cross-checks still render both. No synthetic
 PCM hashes or pretend comparison windows are created for screened configurations.
@@ -106,7 +108,13 @@ exact; reSIDfp correlation >=0.9999, error RMS <=-60dBFS and tighter quiet-signa
 bounds), plus exact absolute SID-write traces and exact native reference repeats.
 Native and WASM identities and this backend's separate engine IDs are explicit.
 Resource/engine errors remain failed measurements; only a diagnosed emulated
-CPU halt may contribute silence after its last actual sample.
+CPU halt may contribute silence after its last actual sample. This rule applies
+to references, reference repeats and variants alike. The reference records its
+`stoppedAtSample` and diagnostic; PCM hashes include the explicit silence tail,
+and independently repeated references must agree on the stop position. An early
+clean EOF, dropped trace or truncated terminal packet cannot authorize padding.
+The full-horizon ending controls compare the halted native PCM, absolute writes
+and stop positions with cold official WASM for all three consumer/reference masks.
 The fallbacks retain the established listener-v1 comparator and its
 [engineering thresholds](hvsc-rom-production.md#listener-comparison). This has a
 separate methodology/profile identity from the older 100,000-event v4 results.
@@ -177,3 +185,29 @@ manual playback should warn. An unresolved/missing/mismatched/expired decision
 is unknown and needs an unverified-playback warning, never a compatibility claim.
 An unset bit grants compatibility only from a verified complete qualified bundle
 and a valid inventoried file/subtune in the matching measured scope.
+
+## October 2026 ending/screen correction
+
+Methodology `rom-audit-digital-screen-2` supersedes version 1. The earlier
+reference path incorrectly treated diagnosed end-of-tune CPU halts as failed
+references, although the variant path already compared their silence tails.
+`Mexico_86.sid` and `New_Scener.sid` exercise this asymmetry. A separate control,
+`Its_Hip_to_be_Cool.sid`, exposed a timing-tolerant screen grant whose finite
+audio trace ended at a different write boundary. Version 2 requires exact timed
+writes to bypass audio and retains the screen/audio disagreement assertion.
+
+Keep version-1 checkpoints as evidence, but do not reuse or relabel their
+screened grants. Use a new `ROM_AUDIT_OUT`, rerun qualification and benchmark,
+then measure the new census. Stricter screening can increase audio work; the
+previous 12.12h/15.14h projection is not a version-2 runtime promise. The budget
+gate still applies. A compatible-with-ROMs result and a no-ROM incompatibility
+mean a measured difference against the full-ROM reference, not that the tune
+cannot produce recognizable music without ROMs.
+
+Run the real full-horizon regression independently with:
+
+```sh
+node scripts/run-bun.mjs scripts/rom-audit/ending-regression.ts
+```
+
+The normal qualification transport gate includes these controls automatically.

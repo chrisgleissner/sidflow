@@ -22,3 +22,6 @@ await Promise.all(Array.from({length:8},async()=>{
   }}finally{worker.close();}
 }));
 console.log(`Dark Tower #3: ${completed} repeated dual-engine jobs passed, 0 failures.`);
+
+// Full-horizon reference and finite-boundary controls share the transport gate.
+await import("./ending-regression.js");

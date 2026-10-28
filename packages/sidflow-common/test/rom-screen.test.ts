@@ -5,8 +5,11 @@ import { commanderExceptions, type ScreenRow } from "../../../scripts/rom-audit/
 import type { ScreenTune } from "../../../scripts/rom-audit/screen-inventory.js";
 const screen=(writes:number[],overrides:Partial<DigitalScreen>={}):DigitalScreen=>({error:"",traceComplete:true,chargenReads:0,writes,...overrides});
 describe("digital screening eligibility",()=>{
-  it("accepts complete register streams across the listener timing tolerance",()=>{
-    expect(screenEquivalent(screen([0,24,15,1000,0,0,80,3000]),screen([0,24,15,1100,0,0,80,3100]))).toBe(true);
+  it("accepts exact complete register streams and requires audio for timing changes",()=>{
+    const writes=[0,24,15,1000,0,0,80,3000];
+    expect(screenEquivalent(screen(writes),screen(writes))).toBe(true);
+    expect(screenEquivalent(screen(writes),screen([0,24,15,1100,0,0,80,3100]))).toBe(false);
+    expect(screenEquivalent(screen(writes),screen([0,24,15,1000,0,0,80,2989]))).toBe(false);
     expect(screenEquivalent(screen([]),screen([]))).toBe(true);
   });
   it("requires audio for changed, missing, excessive-drift and truncated streams",()=>{
@@ -62,6 +65,37 @@ describe("native/WASM qualification",()=>{
 });
 
 describe("native stream terminal delivery",()=>{
+  it("compares halted references and variants through the horizon, but rejects infrastructure errors",async()=>{
+    const {mkdtempSync,writeFileSync,rmSync}=await import("node:fs"),{tmpdir}=await import("node:os"),{join}=await import("node:path");
+    const {runNativeEngine}=await import("../../../scripts/rom-audit/native-lanes.js");
+    const {validateRecord, CENSUS_SCHEMA}=await import("../../../scripts/rom-audit/methodology.js");
+    const directory=mkdtempSync(join(tmpdir(),"sidflow-native-halt-")),producer=join(directory,"producer.mjs");
+    const produce=(kind:string,variantEarly=false)=>writeFileSync(producer,`
+      const mask=Number(process.env.ROM_AUDIT_SCREEN_MASK);
+      const samples=${variantEarly}?mask===0?4096:16384:8192;
+      const h=Buffer.alloc(16);h.writeUInt32LE(samples);h.writeDoubleLE(0.01,8);
+      const pcm=Buffer.alloc(samples*2);for(let i=0;i<samples;i++)pcm.writeInt16LE(Math.round(12000*Math.sin(Math.floor(i/2)/10)),i*2);
+      const terminal=Buffer.from(JSON.stringify({cpuSeconds:0.02,traceComplete:true,
+        error:${JSON.stringify(kind)}==="cpu-halt"?"Illegal instruction $02 at address $1000":"allocation failure: bad_alloc",errorKind:${JSON.stringify(kind)}}));
+      const end=Buffer.alloc(8);end.writeUInt32LE(0xffffffff);end.writeUInt32LE(terminal.length,4);
+      process.stdout.write(Buffer.concat([h,pcm,end,terminal]));`);
+    try{
+      produce("cpu-halt");
+      const run=await runNativeEngine("sidlite",new Uint8Array(32),1,1,producer,"node",true);
+      expect(run.reference.outcome).toBe("clean");expect(run.reference.repeat).toBe("identical");
+      expect(run.reference.samples).toBe(96000);expect(run.reference.stoppedAtSample).toBe(8192);
+      expect(run.lanes.every(l=>l.outcome==="equivalent"&&l.stoppedAtSample===8192&&l.pcmSha256===run.reference.pcmSha256)).toBe(true);
+      const record={schema:CENSUS_SCHEMA,sha256:"a".repeat(64),song:1,seconds:1,sampleRate:48000,runs:[run]};
+      expect(()=>validateRecord(record,["sidlite"])).not.toThrow();
+      expect(()=>validateRecord({...record,runs:[{...run,reference:{...run.reference,stoppedAtSample:96001}}]},["sidlite"])).toThrow("reference stop position");
+      produce("cpu-halt",true);
+      const different=await runNativeEngine("sidlite",new Uint8Array(32),1,1,producer,"node",true);
+      expect(different.reference.repeat).toBe("identical");
+      expect(different.lanes.find(l=>l.set==="none")?.outcome).toBe("audible-difference");
+      produce("resource");
+      await expect(runNativeEngine("sidlite",new Uint8Array(32),1,1,producer,"node",true)).rejects.toThrow();
+    }finally{rmSync(directory,{recursive:true,force:true});}
+  });
   it("retains fragmented bytes after the producer has already ended",async()=>{
     const {PassThrough}=await import("node:stream"),{NativeBytes}=await import("../../../scripts/rom-audit/native-lanes.js");
     const stream=new PassThrough(),reader=new NativeBytes(stream);

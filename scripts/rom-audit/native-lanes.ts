@@ -49,6 +49,7 @@ export class NativeLane {
   readonly pcm = new BufferedDigest(); readonly trace = new BufferedDigest();
   samples = 0; writes = 0; dropped = false; message = "";
   cpuSeconds = 0;
+  cpuHalted = false;
   private ended = false;
   private stderr = "";
   private readonly reader: NativeBytes;
@@ -86,6 +87,7 @@ export class NativeLane {
       // silent. Only an explicitly diagnosed emulated CPU halt may be padded.
       if(end.error&&(end.errorKind!=="cpu-halt"||!end.error.startsWith("Illegal instruction $")))
         throw new Error(`Native measurement failed (${end.errorKind}): ${end.error}`);
+      this.cpuHalted=end.errorKind==="cpu-halt"&&end.error.startsWith("Illegal instruction $");
       this.cpuSeconds=end.cpuSeconds;
       this.message = end.error || this.stderr; this.dropped = !end.traceComplete; this.ended = true; return null;
     }
@@ -123,6 +125,8 @@ export async function runNativeEngine(engine: RomAuditEngine, bytes: Uint8Array,
   let repeatLane: NativeLane | undefined;
   let repeat: ReferenceResult["repeat"] = extended ? "identical" : "not-run";
   let outcome: ReferenceResult["outcome"] = "clean", message = "";
+  let referenceStoppedAtSample: number | undefined;
+  let repeatStoppedAtSample: number | undefined;
   try {
     if (extended) repeatLane = NativeLane.open(binary, directory, bytes, song, seconds, 7);
     for (const set of sets) lanes.push({ set, comparator: new ListenerComparator(), lane: NativeLane.open(binary, directory, bytes, song, seconds, set === "full" ? 3 : 0) });
@@ -133,7 +137,15 @@ export async function runNativeEngine(engine: RomAuditEngine, bytes: Uint8Array,
       if(result==="audible-difference")entry.lane.close();
     };
     while (reference.samples < wanted) {
-      const ref = await reference.pull();
+      let ref = referenceStoppedAtSample === undefined ? await reference.pull() : null;
+      if (!ref && reference.cpuHalted && !reference.dropped) {
+        referenceStoppedAtSample ??= reference.samples;
+        message=reference.message;
+        // The player emits silence after a diagnosed CPU halt. Compare that
+        // explicit playback tail on every lane, including the reference.
+        ref = {pcm:new Int16Array(Math.min(8192,wanted-reference.samples)),writes:new Float64Array()};
+        for (const entry of lanes) entry.comparator.forceAudio();
+      }
       if (!ref || reference.dropped) {
         outcome = reference.dropped ? "trace-dropped" : "failed"; message = reference.message;
         for (const entry of lanes) if (!entry.result) complete(entry, reference.dropped ? "trace-dropped" : "reference-failed", message);
@@ -141,9 +153,13 @@ export async function runNativeEngine(engine: RomAuditEngine, bytes: Uint8Array,
       }
       const take = Math.min(ref.pcm.length, wanted - reference.samples), target = reference.samples + take;
       if (repeatLane && repeat === "identical") {
-        const chunk = await repeatLane.pull();
+        let chunk = repeatStoppedAtSample === undefined ? await repeatLane.pull() : null;
+        if (!chunk && repeatLane.cpuHalted && !repeatLane.dropped) {
+          repeatStoppedAtSample ??= reference.samples;
+          chunk={pcm:new Int16Array(ref.pcm.length),writes:new Float64Array()};
+        }
         if (!chunk || repeatLane.dropped) repeat = "failed";
-        else if (!samePull(ref, chunk)) repeat = "different";
+        else if (referenceStoppedAtSample !== repeatStoppedAtSample || !samePull(ref, chunk)) repeat = "different";
       }
       for (const entry of lanes) {
         if (entry.result) continue;
@@ -156,6 +172,7 @@ export async function runNativeEngine(engine: RomAuditEngine, bytes: Uint8Array,
             : { pcm: new Int16Array(target - entry.lane.samples), writes: new Float64Array() };
           if (entry.lane.dropped) { complete(entry, "trace-dropped", entry.lane.message); break; }
           if (!chunk) {
+            if (!entry.lane.cpuHalted) throw new Error("Native variant ended before its requested horizon without a CPU halt");
             entry.stoppedAtSample = entry.lane.samples; entry.stopMessage = entry.lane.message;
             entry.comparator.forceAudio(); continue;
           }
@@ -168,8 +185,8 @@ export async function runNativeEngine(engine: RomAuditEngine, bytes: Uint8Array,
       reference.absorb(ref, take);
     }
     if(outcome==="clean"){
-      if(await reference.pull()||reference.dropped||reference.message){outcome="failed";message=reference.message||"Invalid reference terminal packet";}
-      if(repeatLane&&repeat==="identical"&&(await repeatLane.pull()||repeatLane.dropped||repeatLane.message))repeat="failed";
+      if(await reference.pull()||reference.dropped||reference.message&&!reference.cpuHalted){outcome="failed";message=reference.message||"Invalid reference terminal packet";}
+      if(repeatLane&&repeat==="identical"&&(await repeatLane.pull()||repeatLane.dropped||repeatLane.message&&!repeatLane.cpuHalted))repeat="failed";
     }
     for (const entry of lanes) if (!entry.result) {
       if(outcome!=="clean"){complete(entry,"reference-failed",message);continue;}
@@ -178,7 +195,7 @@ export async function runNativeEngine(engine: RomAuditEngine, bytes: Uint8Array,
       complete(entry, evidence.audible ? "audible-difference" : "equivalent");
     }
     if (outcome !== "clean" && repeatLane) repeat = "failed";
-    return { engine, comparison: "listener-v1", extended,cpuSeconds:reference.cpuSeconds+(repeatLane?.cpuSeconds??0)+lanes.reduce((n,e)=>n+e.lane.cpuSeconds,0), reference: { outcome, message, samples: reference.samples, writes: reference.writes,
+    return { engine, comparison: "listener-v1", extended,cpuSeconds:reference.cpuSeconds+(repeatLane?.cpuSeconds??0)+lanes.reduce((n,e)=>n+e.lane.cpuSeconds,0), reference: { outcome, message, samples: reference.samples, writes: reference.writes, ...(referenceStoppedAtSample===undefined?{}:{stoppedAtSample:referenceStoppedAtSample}),
       pcmSha256: reference.pcm.digest(), traceSha256: reference.trace.digest(), repeat }, lanes: lanes.map(entry => entry.result!) };
   } finally {
     for (const entry of lanes) entry.lane.close();

@@ -5,7 +5,7 @@ import { engineHashes } from "./wasm-lanes.js";
 import { REFERENCE_ROM_SHA256, romSetId } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 export const screenJson=(value:unknown):string=>stringifyDeterministic(value as JsonValue,0).trimEnd();
-export const SCREEN_METHODOLOGY="rom-audit-digital-screen-1";
+export const SCREEN_METHODOLOGY="rom-audit-digital-screen-2";
 export const screenSha=(value:string|Uint8Array):string=>createHash("sha256").update(value).digest("hex");
 /** Qualification binds controllers/publication/tests as well as rendering. */
 export function screenQualificationIdentity(): string {
@@ -18,13 +18,13 @@ export function screenQualificationIdentity(): string {
  * and rollout controllers: changing those cannot invalidate measured PCM. */
 export function screenIdentity():string {
   const names=["render.cpp","apply-basic-read-hook.py","apply-sid-write-hook.py","apply-digital-screen.py","apply-inline-filters.py","build-native.sh",
-    "digital-screen.ts","native-lanes.ts","listener.ts","register-comparison.ts","wasm-lanes.ts","screen-classifier.ts","screen-worker.ts","screen-inventory.ts","methodology.ts","inputs.ts"];
+    "digital-screen.ts","native-lanes.ts","listener.ts","wasm-lanes.ts","screen-classifier.ts","screen-worker.ts","screen-inventory.ts","methodology.ts","inputs.ts"];
   const sources=names.map(name=>[name,screenSha(readFileSync(path.join(import.meta.dir,name)))]);
   const common=["rom-eligibility.ts","json.ts","sid-header-conformance.ts"].map(name=>[name,screenSha(readFileSync(path.resolve(import.meta.dir,"../../packages/sidflow-common/src",name)))]);
   return screenSha(screenJson({sources,common,engineIds:{sidlite:screenEngineIdentity("sidlite"),residfp:screenEngineIdentity("residfp")}}));
 }
 export function screenEngineIdentity(engine:"sidlite"|"residfp"):string {
   return screenSha(screenJson({engine,...engineHashes(engine),methodology:SCREEN_METHODOLOGY,sampleRate:48000,stereo:true,powerOnDelay:8191,pullEvents:256,
-    reference:"KERNAL+BASIC+CHARGEN",masks:[0,3],absent:"KERNAL shim; BASIC/CHARGEN zero",sidModel:"header with MOS8580 fallback",screen:"native bus-only; 1024000-cycle warmup then bus-only with later OSC3/ENV3 abort; detailed clockSilent; listener-v1 register fast path; native audio fallback; inline filter tables; native/WASM parity qualified"}));
+    reference:"KERNAL+BASIC+CHARGEN",masks:[0,3],absent:"KERNAL shim; BASIC/CHARGEN zero",sidModel:"header with MOS8580 fallback",screen:"native bus-only; 1024000-cycle warmup then bus-only with later OSC3/ENV3 abort; detailed clockSilent; exact timed-write screen with digi density guard; listener-v1 native audio fallback; symmetric diagnosed CPU-halt silence tails; inline filter tables; native/WASM parity qualified"}));
 }
 export const screenRomSetId=romSetId;
