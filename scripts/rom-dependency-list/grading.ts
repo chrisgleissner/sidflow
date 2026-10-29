@@ -148,24 +148,24 @@ export function measuredGrades(grades: MaybeGrades): RomDepGrades | undefined {
 
 /**
  * Expected treatment of one graded subtune. `excluded` = some lane is unmeasured (developer output only): the
- * subtune is neither listed nor claimed to be >= 254.
+ * subtune is neither listed nor claimed to be above the listing ceiling.
  */
-export function expectedFor(input: GradingInput, md5: string, subtune: number): { kind: "listed"; grades: RomDepGrades } | { kind: "unlisted" } | { kind: "excluded" } | { kind: "absent" } {
+export function expectedFor(input: GradingInput, md5: string, subtune: number, listingCeiling: number): { kind: "listed"; grades: RomDepGrades } | { kind: "unlisted" } | { kind: "excluded" } | { kind: "absent" } {
   const g = input.rows.get(md5)?.get(subtune);
   if (!g) return { kind: "absent" };
   const m = measuredGrades(g);
   if (!m) return { kind: "excluded" };
-  return mustList(m) ? { kind: "listed", grades: m } : { kind: "unlisted" };
+  return mustList(m, listingCeiling) ? { kind: "listed", grades: m } : { kind: "unlisted" };
 }
 
-/** Listed subtunes (any measured lane <= 253), sorted by MD5 then subtune. */
-export function deriveEntries(input: GradingInput): RomDepEntry[] {
+/** Listed subtunes (any measured lane <= listingCeiling), sorted by MD5 then subtune. */
+export function deriveEntries(input: GradingInput, listingCeiling: number): RomDepEntry[] {
   const entries: RomDepEntry[] = [];
   for (const [md5, songs] of [...input.rows.entries()].sort(([a], [b]) => (a < b ? -1 : 1))) {
     const decisions = [];
     for (const [subtune, g] of [...songs.entries()].sort(([a], [b]) => a - b)) {
       const m = measuredGrades(g);
-      if (m && mustList(m)) decisions.push({ subtune, grades: m });
+      if (m && mustList(m, listingCeiling)) decisions.push({ subtune, grades: m });
     }
     if (decisions.length) entries.push({ md5, decisions });
   }

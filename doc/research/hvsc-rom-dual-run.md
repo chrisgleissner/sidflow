@@ -168,10 +168,10 @@ For applications that embed the result (for example the C64 Commander APK), comp
 ROM fidelity grades (one byte per subtune and engine/ROM lane; see
 [hvsc-rom-fidelity-grading.md](hvsc-rom-fidelity-grading.md)) are condensed into the
 allow-by-default **SID ROM Dependency List** (`sidromdep-1`, about 40 KiB): full-MD5
-keyed records of the subtunes with a lane graded 253 or lower, no inventory and no
+keyed records of the subtunes with a lane graded at or below the listing ceiling (191 in the release), no inventory and no
 horizon table. The generator refuses incomplete grading results, and the verifier
-round-trips every graded subtune (every unlisted subtune must have all four lanes at
-254 or above). The format is specified in
+round-trips every graded subtune (every unlisted subtune must have all four lanes above the
+listing ceiling). The format is specified in
 [doc/rom-dependency-list.md](../rom-dependency-list.md).
 
 ## Verify and distribute

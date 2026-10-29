@@ -2,7 +2,7 @@
  * SID ROM Dependency List, format id `sidromdep-1`.
  *
  * A tiny, allow-by-default list of the HVSC subtunes whose playback fidelity without (some of) the
- * C64 ROMs was graded 0..253 in at least one engine/ROM lane. Normative specification:
+ * C64 ROMs was graded at or below the list's listing ceiling in at least one engine/ROM lane. Normative specification:
  * doc/rom-dependency-list.md.
  *
  * This module is dependency-free apart from node:crypto so other projects can lift it verbatim.
@@ -33,15 +33,15 @@ export type RomDepLaneName = (typeof ROM_DEP_LANE_NAMES)[number];
 export const ROM_DEP_GRADE_NO_PLAYBACK = 0;
 export const ROM_DEP_GRADE_RETIMED = 254;
 export const ROM_DEP_GRADE_BIT_EXACT = 255;
-/** A subtune is listed iff some lane grade is <= this. Unlisted therefore means every lane >= 254. */
-export const ROM_DEP_LISTING_CEILING = 253;
+/** Largest valid listing ceiling: grades 254 and 255 both mean "same music" and are never listed. */
+export const ROM_DEP_MAX_LISTING_CEILING = 253;
 
 export type RomDepGrades = Record<RomDepLaneName, number>;
 
 export interface RomDepDecision {
   /** One-based subtune number, 1..256. */
   subtune: number;
-  /** Grade 0..255 per lane; at least one lane must be <= the listing ceiling (253). */
+  /** Grade 0..255 per lane; at least one lane must be <= the list's listing ceiling. */
   grades: RomDepGrades;
 }
 
@@ -69,7 +69,9 @@ export interface RomDepContent {
   /** Number of subtunes graded in the source (informational). */
   sourceSubtunes: number;
   incompleteSource: boolean;
-  /** Consumer default skip threshold, 1..254: skip when the lane grade is below it. Consumers may choose their own. */
+  /** A subtune is listed iff some lane grade is <= this; 1..253. Unlisted therefore means every lane > ceiling. */
+  listingCeiling: number;
+  /** Consumer default skip threshold, 1..listingCeiling+1: skip when the lane grade is below it. Consumers may choose their own. */
   recommendedMinGrade: number;
   provenance: RomDepProvenance;
   entries: readonly RomDepEntry[];
@@ -99,14 +101,14 @@ export interface RomDepHeader {
 }
 
 export interface RomDepLookup {
-  /** True when the subtune has a DECISION record (some lane graded <= 253). */
+  /** True when the subtune has a DECISION record (some lane graded <= the list's listing ceiling). */
   listed: boolean;
   /**
-   * Exact grades when listed. When unlisted every lane is 254, which is a LOWER BOUND: the true grade is 254 or 255
-   * (the list does not distinguish them) and never a restriction.
+   * Exact grades when listed. When unlisted every lane is reported as ceiling+1, which is a LOWER BOUND: the true
+   * grade is anything above the ceiling (the list does not say) and never a restriction.
    */
   grades: RomDepGrades;
-  /** Lowest lane grade (254 when unlisted). */
+  /** Lowest lane grade (ceiling+1 when unlisted). */
   minGrade: number;
 }
 
@@ -151,9 +153,9 @@ export function sha256Hex(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** True when some lane is below the listing ceiling, i.e. the subtune must be listed. */
-export function mustList(grades: RomDepGrades): boolean {
-  return ROM_DEP_LANE_NAMES.some((lane) => grades[lane] <= ROM_DEP_LISTING_CEILING);
+/** True when some lane is at or below the listing ceiling, i.e. the subtune must be listed. */
+export function mustList(grades: RomDepGrades, listingCeiling: number): boolean {
+  return ROM_DEP_LANE_NAMES.some((lane) => grades[lane] <= listingCeiling);
 }
 
 /** Lowest grade across lanes. */
@@ -161,12 +163,10 @@ export function minGradeOf(grades: RomDepGrades): number {
   return Math.min(...ROM_DEP_LANE_NAMES.map((lane) => grades[lane]));
 }
 
-const UNLISTED_GRADES: Readonly<RomDepGrades> = Object.freeze({
-  sidliteNone: ROM_DEP_GRADE_RETIMED,
-  sidliteKernalBasic: ROM_DEP_GRADE_RETIMED,
-  residfpNone: ROM_DEP_GRADE_RETIMED,
-  residfpKernalBasic: ROM_DEP_GRADE_RETIMED,
-});
+function unlistedGrades(listingCeiling: number): RomDepGrades {
+  const floor = listingCeiling + 1;
+  return { sidliteNone: floor, sidliteKernalBasic: floor, residfpNone: floor, residfpKernalBasic: floor };
+}
 
 export function md5ToBytes(md5: string | Uint8Array): Uint8Array {
   if (typeof md5 !== "string") {
@@ -189,21 +189,25 @@ function assertHex256(value: string, name: string): void {
   if (!HEX_SHA256.test(value)) throw new RomDependencyListError(`${name} must be 64 lowercase hex characters`);
 }
 
-function assertRecommended(value: number): void {
-  if (!Number.isInteger(value) || value < 1 || value > ROM_DEP_GRADE_RETIMED) {
-    throw new RomDependencyListError("recommended_min_grade must be 1..254 (the list cannot express thresholds above its unlisted floor)");
+function assertCeiling(value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > ROM_DEP_MAX_LISTING_CEILING) throw new RomDependencyListError("listing_ceiling must be 1..253");
+}
+
+function assertRecommended(value: number, listingCeiling: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > listingCeiling + 1) {
+    throw new RomDependencyListError("recommended_min_grade must be 1..listing_ceiling+1 (the list cannot express thresholds above its unlisted floor)");
   }
 }
 
 /** Validate one decision. Shared by encoder and decoder so both enforce the same canonical form. */
-function assertDecision(decision: RomDepDecision, context: string): void {
+function assertDecision(decision: RomDepDecision, listingCeiling: number, context: string): void {
   const { subtune, grades } = decision;
   if (!Number.isInteger(subtune) || subtune < 1 || subtune > ROM_DEP_MAX_SUBTUNE) throw new RomDependencyListError(`${context}: subtune out of range 1..256`);
   for (const lane of ROM_DEP_LANE_NAMES) {
     const grade = grades[lane];
     if (!Number.isInteger(grade) || grade < 0 || grade > 255) throw new RomDependencyListError(`${context}: ${lane} grade out of range 0..255`);
   }
-  if (!mustList(grades)) throw new RomDependencyListError(`${context}: every lane is >= 254, so the subtune must be unlisted`);
+  if (!mustList(grades, listingCeiling)) throw new RomDependencyListError(`${context}: every lane is above the listing ceiling ${listingCeiling}, so the subtune must be unlisted`);
 }
 
 function writeDigest(target: Buffer, offset: number, hex: string, name: string): void {
@@ -217,7 +221,8 @@ export function encodeRomDependencyList(content: RomDepContent): Uint8Array {
   if (content.hvscRelease < 1) throw new RomDependencyListError("hvscRelease must be >= 1");
   assertUint32(content.sourceFiles, "sourceFiles");
   assertUint32(content.sourceSubtunes, "sourceSubtunes");
-  assertRecommended(content.recommendedMinGrade);
+  assertCeiling(content.listingCeiling);
+  assertRecommended(content.recommendedMinGrade, content.listingCeiling);
   const entries = [...content.entries].sort((a, b) => (a.md5 < b.md5 ? -1 : a.md5 > b.md5 ? 1 : 0));
   let decisionCount = 0;
   entries.forEach((entry, index) => {
@@ -226,7 +231,7 @@ export function encodeRomDependencyList(content: RomDepContent): Uint8Array {
     if (entry.decisions.length < 1 || entry.decisions.length > ROM_DEP_MAX_SUBTUNE) throw new RomDependencyListError(`${entry.md5}: needs 1..256 decisions`);
     const seen = new Set<number>();
     for (const decision of entry.decisions) {
-      assertDecision(decision, `${entry.md5}#${decision.subtune}`);
+      assertDecision(decision, content.listingCeiling, `${entry.md5}#${decision.subtune}`);
       if (seen.has(decision.subtune)) throw new RomDependencyListError(`${entry.md5}: duplicate subtune ${decision.subtune}`);
       seen.add(decision.subtune);
     }
@@ -268,7 +273,7 @@ export function encodeRomDependencyList(content: RomDepContent): Uint8Array {
   // 52: header_crc32, filled in last
   out.writeUInt16LE(ROM_DEP_FILE_RECORD_BYTES, 56);
   out.writeUInt16LE(ROM_DEP_DECISION_RECORD_BYTES, 58);
-  out[60] = ROM_DEP_LISTING_CEILING;
+  out[60] = content.listingCeiling;
   out[61] = content.recommendedMinGrade;
   // 62..63 reserved, zero
   writeDigest(out, 64, sha256Hex(out.subarray(ROM_DEP_HEADER_BYTES)), "payloadSha256");
@@ -344,8 +349,8 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
   };
   if (header.hvscRelease < 1) throw new RomDependencyListError("hvsc_release must be >= 1");
   if (header.fileRecordBytes !== ROM_DEP_FILE_RECORD_BYTES || header.decisionRecordBytes !== ROM_DEP_DECISION_RECORD_BYTES) throw new RomDependencyListError("unsupported record sizes");
-  if (header.listingCeiling !== ROM_DEP_LISTING_CEILING) throw new RomDependencyListError(`listing_ceiling must be ${ROM_DEP_LISTING_CEILING}`);
-  assertRecommended(header.recommendedMinGrade);
+  assertCeiling(header.listingCeiling);
+  assertRecommended(header.recommendedMinGrade, header.listingCeiling);
   const fileBytes = header.fileCount * ROM_DEP_FILE_RECORD_BYTES;
   const decisionBytes = header.decisionCount * ROM_DEP_DECISION_RECORD_BYTES;
   if (header.fileSectionOffset !== ROM_DEP_HEADER_BYTES || header.fileSectionBytes !== fileBytes ||
@@ -373,7 +378,7 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
     let previous = 0;
     for (let d = firstDecision[i]!; d < firstDecision[i + 1]!; d++) {
       const decision = readDecision(bytes, header.decisionSectionOffset + d * ROM_DEP_DECISION_RECORD_BYTES);
-      assertDecision(decision, `file ${i}`);
+      assertDecision(decision, header.listingCeiling, `file ${i}`);
       if (decision.subtune <= previous) throw new RomDependencyListError(`file ${i}: subtunes are not strictly ascending`);
       previous = decision.subtune;
     }
@@ -396,7 +401,7 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
     header,
     bytes,
     lookup(md5, subtune) {
-      const unlisted: RomDepLookup = { listed: false, grades: { ...UNLISTED_GRADES }, minGrade: ROM_DEP_GRADE_RETIMED };
+      const unlisted: RomDepLookup = { listed: false, grades: unlistedGrades(header.listingCeiling), minGrade: header.listingCeiling + 1 };
       if (!Number.isInteger(subtune) || subtune < 1 || subtune > ROM_DEP_MAX_SUBTUNE) return unlisted;
       const index = find(md5ToBytes(md5));
       if (index < 0) return unlisted;
@@ -429,7 +434,7 @@ export function lookupRomDependency(list: RomDependencyList, md5: string | Uint8
   return list.lookup(md5, subtune);
 }
 
-/** True when a consumer using `threshold` (1..254) should skip the subtune in the given lane: grade < threshold. */
+/** True when a consumer using `threshold` (1..listing_ceiling+1) should skip the subtune in the given lane: grade < threshold. */
 export function romDepBelowThreshold(lookup: RomDepLookup, lane: RomDepLaneName, threshold: number): boolean {
   return lookup.grades[lane] < threshold;
 }

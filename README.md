@@ -262,12 +262,12 @@ explain the binary layout and native/WASM qualification.
 application that only needs to skip or warn about the tunes that lose fidelity
 without ROMs should embed the ~40 KiB **SID ROM Dependency List** (`sidromdep-1`)
 derived from complete ROM fidelity grades instead: an allow-by-default, full-MD5
-keyed list of the subtunes with a lane graded 253 or lower (grade 0-255 per
+keyed list of the subtunes with a lane graded at or below a listing ceiling (the release uses 191; grade 0-255 per
 engine/ROM lane, see the
 [grading design](doc/research/hvsc-rom-fidelity-grading.md)), with its own
 manifest and verifier. It is independent of the similarity exports. See the
 [normative specification](doc/rom-dependency-list.md) and generate/verify it with
-`bun scripts/rom-dependency-list/generate.ts --results <grading-results.jsonl> --recommended-min-grade <1..254>`
+`bun scripts/rom-dependency-list/generate.ts --results <grading-results.jsonl> --listing-ceiling 191 --recommended-min-grade 128`
 and `bun scripts/rom-dependency-list/verify.ts --bin <file.bin> --results <grading-results.jsonl>`.
 
 | Decision for the selected engine/configuration | Commander behavior |

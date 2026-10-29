@@ -9,7 +9,7 @@
  * Checks: header CRC-32, payload SHA-256, structure and canonical ordering (decoder); manifest agreement
  * (digests, counts, sizes, flags, threshold); provenance digests against the results; and a round trip of EVERY
  * graded subtune: listed subtunes decode to exactly the graded values, every unlisted subtune has all four lanes
- * >= 254 in the results. Prints the bin and manifest SHA-256.
+ * above the list's listing ceiling in the results. Prints the bin and manifest SHA-256.
  */
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -17,7 +17,6 @@ import path from "node:path";
 import process from "node:process";
 import {
   ROM_DEP_LANE_NAMES,
-  ROM_DEP_LISTING_CEILING,
   decodeRomDependencyList,
   minGradeOf,
   sha256Hex,
@@ -42,7 +41,7 @@ export interface VerifyReport {
   listedFiles: number;
   listedSubtunes: number;
   checkedSubtunes: number;
-  unlistedAtLeast254: number;
+  unlistedAboveCeiling: number;
   excludedUnmeasured: number;
   complete: boolean;
 }
@@ -53,36 +52,36 @@ function check(valid: unknown, message: string): asserts valid {
 
 /**
  * Exhaustive round trip over every graded subtune, listed or not: a listed subtune decodes to exactly the graded
- * values; every unlisted subtune has all four lanes >= 254 in the input; an unmeasured subtune (developer output
+ * values; every unlisted subtune has all four lanes above the listing ceiling in the input; an unmeasured subtune (developer output
  * only) is excluded. Every list record must exist in the input.
  */
-export function roundTripAgainstResults(list: RomDependencyList, input: GradingInput): { checked: number; listed: number; unlistedAtLeast254: number; excluded: number } {
+export function roundTripAgainstResults(list: RomDependencyList, input: GradingInput): { checked: number; listed: number; unlistedAboveCeiling: number; excluded: number } {
   for (const entry of list.entries()) {
     for (const d of entry.decisions) {
-      const expected = expectedFor(input, entry.md5, d.subtune);
+      const expected = expectedFor(input, entry.md5, d.subtune, list.header.listingCeiling);
       check(expected.kind !== "absent", `listed ${entry.md5}#${d.subtune} is not in the grading results`);
     }
   }
-  let checked = 0, listed = 0, unlistedAtLeast254 = 0, excluded = 0;
+  let checked = 0, listed = 0, unlistedAboveCeiling = 0, excluded = 0;
   for (const [md5, songs] of input.rows) {
     for (const subtune of songs.keys()) {
-      const expected = expectedFor(input, md5, subtune);
+      const expected = expectedFor(input, md5, subtune, list.header.listingCeiling);
       const got = list.lookup(md5, subtune);
       checked++;
       if (expected.kind === "listed") {
         check(got.listed && ROM_DEP_LANE_NAMES.every((lane) => got.grades[lane] === expected.grades[lane]), `${md5}#${subtune} differs from the grading results`);
-        check(minGradeOf(got.grades) <= ROM_DEP_LISTING_CEILING, `${md5}#${subtune} listed above the ceiling`);
+        check(minGradeOf(got.grades) <= list.header.listingCeiling, `${md5}#${subtune} listed above the ceiling`);
         listed++;
       } else if (expected.kind === "unlisted") {
-        check(!got.listed, `${md5}#${subtune} has every lane >= 254 but is listed`);
-        unlistedAtLeast254++;
+        check(!got.listed, `${md5}#${subtune} has every lane above the listing ceiling but is listed`);
+        unlistedAboveCeiling++;
       } else {
         check(!got.listed, `${md5}#${subtune} has an unmeasured lane but is listed`);
         excluded++;
       }
     }
   }
-  return { checked, listed, unlistedAtLeast254, excluded };
+  return { checked, listed, unlistedAboveCeiling, excluded };
 }
 
 export async function verifyRomDependencyListFiles(options: VerifyOptions): Promise<VerifyReport> {
@@ -153,7 +152,7 @@ export async function verifyRomDependencyListFiles(options: VerifyOptions): Prom
     listedFiles: header.fileCount,
     listedSubtunes: header.decisionCount,
     checkedSubtunes: round.checked,
-    unlistedAtLeast254: round.unlistedAtLeast254,
+    unlistedAboveCeiling: round.unlistedAboveCeiling,
     excludedUnmeasured: round.excluded,
     complete: !header.incompleteSource,
   };
@@ -180,7 +179,7 @@ export async function main(argv: string[]): Promise<number> {
   if (exit !== undefined) return exit;
   const o = parsed.options;
   const report = await verifyRomDependencyListFiles({ binPath: o.bin!, resultsPath: o.results!, manifestPath: o.manifest, jsonPath: o.json, songlengthsPath: o.songlengths, allowIncomplete: o.allowIncomplete === true });
-  console.log(`Verified ${report.complete ? "release" : "NON-RELEASABLE developer"} list: ${report.listedFiles} files, ${report.listedSubtunes} listed subtunes, ${report.checkedSubtunes} graded subtunes round-tripped (${report.unlistedAtLeast254} unlisted = all lanes >= 254, ${report.excludedUnmeasured} excluded unmeasured).`);
+  console.log(`Verified ${report.complete ? "release" : "NON-RELEASABLE developer"} list: ${report.listedFiles} files, ${report.listedSubtunes} listed subtunes, ${report.checkedSubtunes} graded subtunes round-tripped (${report.unlistedAboveCeiling} unlisted = all lanes above the listing ceiling, ${report.excludedUnmeasured} excluded unmeasured).`);
   console.log(`bin sha256:      ${report.binSha256}`);
   console.log(`manifest sha256: ${report.manifestSha256}`);
   return 0;

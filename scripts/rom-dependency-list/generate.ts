@@ -24,7 +24,6 @@ import {
   ROM_DEP_HEADER_BYTES,
   ROM_DEP_HORIZON_RULE,
   ROM_DEP_LANE_NAMES,
-  ROM_DEP_LISTING_CEILING,
   decodeRomDependencyList,
   encodeRomDependencyList,
   minGradeOf,
@@ -40,7 +39,9 @@ import { REFERENCE_ROMS, deriveEntries, loadGradingResults, measuredGrades, prov
 export interface GenerateOptions {
   resultsPath: string;
   outDir: string;
-  /** Consumer default skip threshold, 1..254. Required: it is calibrated, not guessed. */
+  /** A subtune is listed iff some lane grade is <= this (1..253). Required: it is a release decision, not a default. */
+  listingCeiling: number;
+  /** Consumer default skip threshold, 1..listingCeiling+1. Required: it is calibrated, not guessed. */
   recommendedMinGrade: number;
   songlengthsPath?: string;
   allowIncomplete?: boolean;
@@ -72,7 +73,7 @@ export function songlengthsPaths(input: GradingInput, text: string): Map<string,
 }
 
 /** Deterministic human-readable view: release asset only, never consumed by the runtime. */
-export function humanReadableList(entries: readonly RomDepEntry[], input: GradingInput, paths: ReadonlyMap<string, string> | undefined, recommendedMinGrade: number, complete: boolean): string {
+export function humanReadableList(entries: readonly RomDepEntry[], input: GradingInput, paths: ReadonlyMap<string, string> | undefined, recommendedMinGrade: number, listingCeiling: number, complete: boolean): string {
   const records = entries.flatMap((entry) => entry.decisions.map((d) => ({
     md5: entry.md5,
     hvscPath: paths?.get(entry.md5) ?? null,
@@ -86,8 +87,8 @@ export function humanReadableList(entries: readonly RomDepEntry[], input: Gradin
     hvscRelease: input.header.hvscRelease,
     complete,
     recommendedMinGrade,
-    listingCeiling: ROM_DEP_LISTING_CEILING,
-    note: "Unlisted subtunes have every lane >= 254 (no restriction). Grades: 255 bit-exact, 254 same music re-timed, 1-253 graded, 0 no playback.",
+    listingCeiling,
+    note: "Unlisted subtunes have every lane above listingCeiling (no restriction). Full per-subtune grades are published separately. Grades: 255 bit-exact, 254 same music re-timed, 1-253 graded, 0 no playback.",
     lanes: ROM_DEP_LANE_NAMES,
     records,
   });
@@ -112,9 +113,9 @@ export function buildManifest(args: { input: GradingInput; entries: readonly Rom
     complete,
     releasable: complete,
     status: complete ? "release" : "developer-incomplete-source-NOT-RELEASABLE",
-    semantics: "allow-by-default: only listed file/subtune records (some lane graded <= 253) are recorded; unlisted means every lane >= 254",
+    semantics: `allow-by-default: only listed file/subtune records (some lane graded <= ${list.header.listingCeiling}) are recorded; unlisted means every lane > ${list.header.listingCeiling}`,
     lanes: ROM_DEP_LANE_NAMES,
-    listingCeiling: ROM_DEP_LISTING_CEILING,
+    listingCeiling: list.header.listingCeiling,
     recommendedMinGrade,
     counts: {
       listedFiles: list.header.fileCount,
@@ -167,18 +168,19 @@ async function writeAtomic(target: string, bytes: Uint8Array | string): Promise<
 export async function generateRomDependencyList(options: GenerateOptions): Promise<GenerateResult> {
   const input = await loadGradingResults(options.resultsPath, { allowIncomplete: options.allowIncomplete === true });
   const paths = options.songlengthsPath ? songlengthsPaths(input, await readFile(options.songlengthsPath, "utf8")) : undefined;
-  const entries = deriveEntries(input);
+  const entries = deriveEntries(input, options.listingCeiling);
   const bin = encodeRomDependencyList({
     hvscRelease: input.header.hvscRelease,
     sourceFiles: input.header.files,
     sourceSubtunes: input.header.subtunes,
     incompleteSource: !input.complete,
+    listingCeiling: options.listingCeiling,
     recommendedMinGrade: options.recommendedMinGrade,
     provenance: provenanceOf(input),
     entries,
   });
   const names = outputNames(input.header.hvscRelease);
-  const json = humanReadableList(entries, input, paths, options.recommendedMinGrade, input.complete);
+  const json = humanReadableList(entries, input, paths, options.recommendedMinGrade, options.listingCeiling, input.complete);
   const manifest = asJson(buildManifest({ input, entries, bin, names, jsonSha256: sha256Hex(json), recommendedMinGrade: options.recommendedMinGrade, songlengthsVerified: paths !== undefined }));
   await mkdir(options.outDir, { recursive: true });
   const result: GenerateResult = {
@@ -200,6 +202,7 @@ export async function generateRomDependencyList(options: GenerateOptions): Promi
 
 interface CliOptions {
   results?: string;
+  listingCeiling?: number;
   recommendedMinGrade?: number;
   songlengths?: string;
   out?: string;
@@ -208,16 +211,17 @@ interface CliOptions {
 
 const ARG_DEFS: ArgDef[] = [
   { name: "--results", type: "string", description: "ROM fidelity grading results (JSONL, sidflow-rom-grading-results-1)", required: true },
-  { name: "--recommended-min-grade", type: "integer", description: "Consumer default skip threshold 1..254 (skip when a lane grade is below it); calibrated, so required", required: true, constraints: { min: 1, max: 254 } },
+  { name: "--listing-ceiling", type: "integer", description: "List a subtune iff some lane grade is <= this (1..253); unlisted means every lane is above it", required: true, constraints: { min: 1, max: 253 } },
+  { name: "--recommended-min-grade", type: "integer", description: "Consumer default skip threshold 1..listing-ceiling+1 (skip when a lane grade is below it); calibrated, so required", required: true, constraints: { min: 1, max: 254 } },
   { name: "--songlengths", type: "string", description: "HVSC Songlengths.md5 matching the digest pinned in the results; adds HVSC paths to the JSON view" },
   { name: "--out", type: "string", description: "Output directory", defaultValue: "workspace/rom-dependency-list" },
   { name: "--allow-incomplete", type: "boolean", description: "DEVELOPER ONLY: accept results with unmeasured lanes; those subtunes are excluded and the output is flagged non-releasable" },
 ];
 const HELP_TEXT = formatHelp(
-  "bun scripts/rom-dependency-list/generate.ts --results <grading-results.jsonl> --recommended-min-grade <1..254> [--songlengths <Songlengths.md5>] [--out <dir>]",
+  "bun scripts/rom-dependency-list/generate.ts --results <grading-results.jsonl> --listing-ceiling <1..253> --recommended-min-grade <1..ceiling+1> [--songlengths <Songlengths.md5>] [--out <dir>]",
   "Generate the sidromdep-1 ROM dependency list from complete ROM fidelity grading results.",
   ARG_DEFS,
-  ["bun scripts/rom-dependency-list/generate.ts --results workspace/rom-grading/grading-results.jsonl --recommended-min-grade 128"],
+  ["bun scripts/rom-dependency-list/generate.ts --results workspace/rom-grading/grading-results.jsonl --listing-ceiling 191 --recommended-min-grade 128"],
 );
 
 export async function main(argv: string[]): Promise<number> {
@@ -228,6 +232,7 @@ export async function main(argv: string[]): Promise<number> {
   const result = await generateRomDependencyList({
     resultsPath: o.results!,
     outDir: o.out ?? "workspace/rom-dependency-list",
+    listingCeiling: o.listingCeiling!,
     recommendedMinGrade: o.recommendedMinGrade!,
     songlengthsPath: o.songlengths,
     allowIncomplete: o.allowIncomplete === true,

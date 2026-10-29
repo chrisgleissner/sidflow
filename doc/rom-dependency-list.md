@@ -20,7 +20,8 @@ It is intended for weak-device runtimes (for example an Android APK that embeds 
 any other project that plays SID files with an engine that is not given KERNAL, BASIC and CHARGEN.
 
 The list is **allow-by-default**. A file or subtune that is not listed is playable: every lane of
-an unlisted subtune graded 254 or 255 ("same music"). Only listed records can change behaviour.
+an unlisted subtune graded above the list's **listing ceiling** (the shipped release uses 191, i.e.
+`Q >= 0.5`: only playback that is mostly wrong is listed). Only listed records can change behaviour.
 The list is therefore a deny/warn list, not an inventory and not a compatibility certificate.
 
 Non-goals:
@@ -30,6 +31,8 @@ Non-goals:
 - carrying similarity, style, rating or duration data
 - carrying per-subtune playback horizons (§9.3, §17.6)
 - enumerating the graded collection
+- carrying the full per-subtune grades: those are published separately (the complete grading results
+  in the sidflow-data release) for consumers that need more than the list's ceiling
 - representing unmeasured lanes (§13.2)
 
 sidromdep-1 is completely independent of the similarity exports (`sidcorr-*`). It shares no
@@ -55,10 +58,13 @@ The on-disk format is little-endian and byte-aligned. Consumers MAY widen fields
   is equivalent to itself by definition and is never graded.
 - **grade** = one byte `G`, 0 to 255, per (file MD5, subtune, lane). It measures playback fidelity
   against the reference over the observation horizon (§9.1). Higher is never audibly worse.
-- **listed** = the (file, subtune) has a DECISION record, i.e. some lane grade is at most 253.
-- **listing ceiling** = 253. The largest grade that forces a record.
+- **listed** = the (file, subtune) has a DECISION record, i.e. some lane grade is at most the
+  listing ceiling.
+- **listing ceiling** `C` = a per-list parameter, `1..253` (header `listing_ceiling`). A subtune is
+  listed iff some lane grade is `<= C`; an unlisted subtune has every lane `> C`. The release uses
+  `C = 191`.
 - **recommended minimum grade** = a consumer default skip threshold recorded by the generator
-  (`recommended_min_grade`, §5.2). Consumers MAY choose their own.
+  (`recommended_min_grade`, `1 <= value <= C + 1`, §5.2). Consumers MAY choose their own (§10.1).
 - **graded** = covered by the grading run that produced the list. Not recorded in the binary; the
   binary carries only the graded counts (§5.2).
 - **observation horizon** = how long the grading compared a subtune with its reference (§9.3).
@@ -144,7 +150,7 @@ with exactly 256 subtunes). On disk the value is stored minus one in a `u8` (§7
 ## 4.3 No inventory
 
 The list does not enumerate graded files. Absence has exactly one meaning: **no record**. For a
-graded file it means every lane graded 254 or 255. For a file the grading never saw (for example a
+graded file it means every lane graded above the listing ceiling. For a file the grading never saw (for example a
 file that is new in a later HVSC release) it means nothing is known, and the file is playable by
 default.
 
@@ -176,8 +182,8 @@ default.
 | 52 | header_crc32 | u32 | CRC-32 of bytes `0..223` with this field taken as zero (§5.3) |
 | 56 | file_record_bytes | u16 | MUST be `17` |
 | 58 | decision_record_bytes | u16 | MUST be `5` |
-| 60 | listing_ceiling | u8 | MUST be `253` (§7) |
-| 61 | recommended_min_grade | u8 | consumer default skip threshold, `1..254` (§10.1) |
+| 60 | listing_ceiling | u8 | `C`, `1..253`: a subtune is listed iff some lane grade is `<= C` (§7) |
+| 61 | recommended_min_grade | u8 | consumer default skip threshold, `1 <= value <= listing_ceiling + 1` (§10.1) |
 | 62 | reserved | u16 | MUST be `0` |
 | 64 | payload_sha256 | 32 bytes | SHA-256 of every byte from offset 224 to the end of the file |
 | 96 | source_sha256 | 32 bytes | SHA-256 of the grading results JSONL (§3.2) |
@@ -267,9 +273,10 @@ are **strictly ascending** by subtune.
 | 3 | grade_residfp_none | u8 | grade `0..255` |
 | 4 | grade_residfp_kernal_basic | u8 | grade `0..255` |
 
-Record rule, which a reader MUST check: **at least one of the four grades is `<= 253`**
-(`listing_ceiling`). A record whose four grades are all 254 or 255 is not representable. This is
-what makes "unlisted" mean "every lane at least 254" (§17.2).
+Record rule, which a reader MUST check: **at least one of the four grades is `<= C`**
+(`listing_ceiling`). A record whose four grades are all above `C` is not representable. This is
+what makes "unlisted" mean "every lane above `C`" (§17.2). `C` is at most 253 because grades 254
+and 255 both mean "same music" and are never listed.
 
 There is no value reserved for "unknown" or "not measured". A lane that was not measured has no
 grade and cannot be encoded (§13.2).
@@ -285,9 +292,9 @@ To look up `(md5, subtune)`:
 3. Scan that file's decisions for `subtune`. Absent: **unlisted**.
 4. Otherwise read the four grade bytes.
 
-An unlisted subtune has, for every lane, a grade of **254 or 255**; the list does not distinguish
-the two, and a consumer MUST NOT assume either. Reference implementations report 254 for every
-lane of an unlisted subtune, as a lower bound.
+An unlisted subtune has, for every lane, a grade **above `C`**; the list does not say which, and
+a consumer MUST NOT assume a value. Reference implementations report `C + 1` for every lane of an
+unlisted subtune, as a lower bound.
 
 Rules:
 
@@ -305,7 +312,7 @@ decodeRomDependencyList(bytes: Uint8Array): RomDependencyList   // validates eve
 list.lookup(md5: string | Uint8Array, subtune: number): {
   listed: boolean;
   grades: Record<"sidliteNone" | "sidliteKernalBasic" | "residfpNone" | "residfpKernalBasic", number>;
-  minGrade: number;                    // 254 when unlisted (lower bound)
+  minGrade: number;                    // listing_ceiling + 1 when unlisted (lower bound)
 }
 romDepBelowThreshold(lookup, lane, threshold): boolean   // grade < threshold
 ```
@@ -392,18 +399,21 @@ A consumer whose engine build, ROM images or ROM subset match neither the refere
 four lanes has no applicable measurement: it MUST NOT claim measured fidelity from the list, and it
 MAY use the lowest grade across the four lanes as a conservative hint.
 
-A consumer chooses a **skip threshold** `t` in `1..254`: a lane grade below `t` is "low fidelity".
-The header's `recommended_min_grade` is the generator's calibrated default; a consumer MAY choose
-a different `t`. Thresholds above 254 cannot be honoured, because the list does not distinguish an
-unlisted 254 from an unlisted 255.
+A consumer chooses a **skip threshold** `t`: a lane grade below `t` is "low fidelity". The list
+can honour any `t` with `1 <= t <= C + 1`, because every grade below `C + 1` is either recorded or
+(unlisted) at least `C + 1`. The header's `recommended_min_grade` is the generator's calibrated
+default (the release uses 128, `Q >= 0.5`, which skips only playback that is mostly wrong); a
+consumer MAY pick any `t <= C + 1`. A consumer that needs a threshold above `C + 1`, or per-subtune
+grades above the ceiling, uses the full grading results published separately in the sidflow-data
+release; this list cannot express them.
 
 ## 10.2 Required behaviour
 
 | Grade `G` of the consumer's lane | Autoplay / radio / queue | Explicit user selection |
 |--|--|--|
 | `G < t` (including 0) | MUST skip | MUST warn before playing; MAY allow after confirmation |
-| `t <= G <= 253` (listed) | MAY play | MAY play; MAY show a fidelity notice |
-| unlisted (`G >= 254`) | MAY play | MAY play |
+| `t <= G <= C` (listed) | MAY play | MAY play; MAY show a fidelity notice |
+| unlisted (`G > C`) | MAY play | MAY play |
 | consumer runs the reference ROM set | MUST NOT skip because of the list | MUST NOT warn because of the list |
 
 Additional obligations:
@@ -420,7 +430,7 @@ Additional obligations:
 
 ## 10.3 Why unlisted is not "faithful"
 
-The list cannot distinguish a file the grading found faithful (254 or 255) from a file the grading
+The list cannot distinguish a file the grading found faithful (a grade above `C`) from a file the grading
 never saw (for example a file that is new in a later HVSC release). Both are unlisted and therefore
 playable by default. This is deliberate (§17.1): the alternative would make every unseen file
 unplayable or warned. The consequence is that the unlisted default is a policy, not evidence.
@@ -443,7 +453,7 @@ yields identical bytes. Top-level fields:
 | `semantics` | the allow-by-default rule in one sentence |
 | `lanes` | the lane order of §5.5 |
 | `listingCeiling`, `recommendedMinGrade` | the thresholds of the header |
-| `counts` | `listedFiles`, `listedSubtunes`, `subtunesBelowRecommended` (any lane below `recommendedMinGrade`), `excludedUnmeasuredSubtunes`, `sourceFiles`, `sourceSubtunes`, and per lane `{belowRecommended, bands}` where `bands` counts listed grades in `0`, `1-63`, `64-127`, `128-191`, `192-253` |
+| `counts` | `listedFiles`, `listedSubtunes`, `subtunesBelowRecommended` (any lane below `recommendedMinGrade`), `excludedUnmeasuredSubtunes`, `sourceFiles`, `sourceSubtunes`, and per lane `{belowRecommended, bands}` where `bands` counts listed grades in `0`, `1-63`, `64-127`, `128-191`, `192-253` (listed grades are at most `listingCeiling`) |
 | `binary` | `file`, `bytes`, `sha256`, `payloadSha256`, record sizes and the two sections' `{offset, bytes}` |
 | `humanReadable` | `file` and `sha256` of the optional JSON view (§12) |
 | `provenance` | `sourceSha256`, `songlengthsSha256`, `corpusId`, `gradingMethodologySha256` |
@@ -465,7 +475,7 @@ It MUST NOT be embedded in a product and MUST NOT be required by a consumer. Sha
   "hvscRelease": 85,
   "complete": true,
   "recommendedMinGrade": 128,
-  "listingCeiling": 253,
+  "listingCeiling": 191,
   "lanes": ["sidliteNone", "sidliteKernalBasic", "residfpNone", "residfpKernalBasic"],
   "records": [
     { "md5": "...", "hvscPath": "MUSICIANS/X/Name.sid", "subtune": 2, "minGrade": 120,
@@ -489,13 +499,14 @@ A conforming reader MUST reject the input (and not return a partial result) unle
 1. length `>= 224`, magic `SIDROMDP`, `binary_format_version == 1`, `header_bytes == 224`
 2. `header_crc32` matches
 3. no flag bit other than bit 0, `reserved == 0`, `hvsc_release >= 1`
-4. record sizes are 17 and 5, `listing_ceiling == 253`, `recommended_min_grade` in `1..254`, section
+4. record sizes are 17 and 5, `listing_ceiling` in `1..253`, `recommended_min_grade` in
+   `1..listing_ceiling + 1`, section
    offsets and lengths are the canonical values (§5.2), and the file length is exactly
    `224 + file_table_bytes + decision_table_bytes` (no truncation, no trailing bytes)
 5. `payload_sha256` matches
 6. file records are strictly ascending, their counts sum to `decision_count`
 7. within each file, subtunes are strictly ascending
-8. every decision has at least one grade `<= 253` (§7)
+8. every decision has at least one grade `<= listing_ceiling` (§7)
 
 ## 13.2 Generator rules
 
@@ -504,11 +515,12 @@ The generator (`scripts/rom-dependency-list/generate.ts`) MUST:
 1. parse the grading results strictly (§3.2) and refuse any input in which a lane is unmeasured
    (`null`), a file or subtune count differs from the header, a subtune number is missing, or a
    record repeats. `--allow-incomplete` is the only exception: subtunes with an unmeasured lane are
-   **excluded** (neither listed nor claimed to be `>= 254`), header flag bit 0 is set, and the
+   **excluded** (neither listed nor claimed to be above the ceiling), header flag bit 0 is set, and the
    manifest says `complete: false`, `releasable: false`
-2. take `recommended_min_grade` from a required command-line argument (`--recommended-min-grade`,
-   `1..254`); there is no default, because the value is calibrated, not guessed
-3. emit one decision per subtune that has some lane grade `<= 253`, and nothing else
+2. take `listing_ceiling` from a required command-line argument (`--listing-ceiling`, `1..253`) and
+   `recommended_min_grade` from a required argument (`--recommended-min-grade`,
+   `1..listing_ceiling + 1`); there are no defaults, because both are release decisions
+3. emit one decision per subtune that has some lane grade `<= listing_ceiling`, and nothing else
 4. when given `Songlengths.md5`, require its SHA-256 to equal the digest pinned in the input
 5. require a `profile.romSetId`, if present, to equal the reference ROM set id
 6. be deterministic: the same inputs produce byte-identical binary, manifest and JSON
@@ -524,9 +536,9 @@ The generator (`scripts/rom-dependency-list/generate.ts`) MUST:
    SHA-256, methodology id, Songlengths digest, corpus id, HVSC release and population equal the
    header values
 4. every listed subtune exists in the grading results
-5. for **every** subtune of **every** graded file: if all four graded lanes are `>= 254` the
+5. for **every** subtune of **every** graded file: if all four graded lanes are `> listing_ceiling` the
    subtune MUST be unlisted (this is the proof that "absent from the list" means "every lane at
-   least 254"); if some lane is `<= 253` the list's four grades MUST equal the input's; an
+   above the ceiling"); if some lane is `<= listing_ceiling` the list's four grades MUST equal the input's; an
    unmeasured subtune (developer output only) MUST be unlisted
 6. optionally (`--songlengths`) check the file's digest and the HVSC paths in the JSON view
 7. if the human-readable JSON exists, its digest and records match the binary
@@ -539,13 +551,13 @@ A consumer pins the printed manifest SHA-256 from a trusted release, then checks
 
 # 14. Worked Example
 
-A list for HVSC #85 with `recommended_min_grade = 128`, containing two files:
+A list for HVSC #85 with `listing_ceiling = 191` and `recommended_min_grade = 128`, containing two files:
 
 - `0123456789abcdef0123456789abcdef`:
   - subtune 1: grades `0, 254, 120, 253` (`sidliteNone` no playback; `residfpNone` degraded)
-  - subtune 3: grades `255, 255, 200, 255` (`residfpNone` mildly degraded)
+  - subtune 3: grades `255, 255, 150, 255` (`residfpNone` degraded)
 - `fedcba9876543210fedcba9876543210`:
-  - subtune 256: grades `253, 255, 254, 255`
+  - subtune 256: grades `191, 255, 254, 255` (exactly at the ceiling, so it is listed)
 
 Provenance digests are `a1…a1` (source), `b2…b2` (Songlengths), `c3…c3` (corpus) and `d4…d4`
 (grading methodology), 32 bytes each. Total size `224 + 2*17 + 3*5 = 273` bytes.
@@ -564,16 +576,16 @@ Provenance digests are `a1…a1` (source), `b2…b2` (Songlengths), `c3…c3` (c
 0028  22 00 00 00              file_table_bytes = 34
 002c  02 01 00 00              decision_table_offset = 258
 0030  0f 00 00 00              decision_table_bytes = 15
-0034  a9 c1 5a 5b              header_crc32 = 0x5b5ac1a9
+0034  41 f6 c4 55              header_crc32 = 0x55c4f641
 0038  11 00                    file_record_bytes = 17
 003a  05 00                    decision_record_bytes = 5
-003c  fd                       listing_ceiling = 253
+003c  bf                       listing_ceiling = 191
 003d  80                       recommended_min_grade = 128
 003e  00 00                    reserved
-0040  dc 22 af b4 44 43 bf 05  payload_sha256 (32 bytes)
-0048  4f 09 c8 73 86 39 aa 20
-0050  72 17 8f e6 36 7a 52 ad
-0058  4d 44 4d 29 5c f4 25 14
+0040  10 d1 e7 a3 eb bc 93 0c  payload_sha256 (32 bytes)
+0048  77 96 ca e6 b4 eb 8f 8b
+0050  d0 8e 1c 16 18 64 db b9
+0058  0d c2 ad 7c ef 4d a5 bc
 0060  a1 ... a1 (32 bytes)     source_sha256
 0080  b2 ... b2 (32 bytes)     songlengths_sha256
 00a0  c3 ... c3 (32 bytes)     corpus_id
@@ -585,8 +597,8 @@ Provenance digests are `a1…a1` (source), `b2…b2` (Songlengths), `c3…c3` (c
 00f9  fe dc ba 98 76 54 32 10
 0101  00                       decision_count_minus_1 = 0 (1 decision)
 0102  00 00 fe 78 fd           file 0, subtune 1: grades 0, 254, 120, 253
-0107  02 ff ff c8 ff           file 0, subtune 3: grades 255, 255, 200, 255
-010c  ff fd ff fe ff           file 1, subtune 256: grades 253, 255, 254, 255
+0107  02 ff ff 96 ff           file 0, subtune 3: grades 255, 255, 150, 255
+010c  ff bf ff fe ff           file 1, subtune 256: grades 191, 255, 254, 255
 ```
 
 (The `payload_sha256` and `header_crc32` bytes in the listing are those produced by the reference
@@ -598,10 +610,10 @@ Lookups, with skip threshold `t = 128`:
 |--|--:|--|--:|--|
 | `0123…cdef` | 1 | `sidliteNone` | 0 | listed; skip in autoplay, warn on explicit play |
 | `0123…cdef` | 1 | `residfpNone` | 120 | listed; `120 < 128`, skip |
-| `0123…cdef` | 1 | `residfpKernalBasic` | 253 | listed; not below `t`, play |
-| `0123…cdef` | 2 | any | — | unlisted (every lane `>= 254`); play |
-| `0123…cdef` | 3 | `residfpNone` | 200 | listed; not below `t`, play |
-| `fedc…3210` | 256 | `sidliteNone` | 253 | listed; play |
+| `0123…cdef` | 1 | `residfpKernalBasic` | 253 | listed (its other lanes are low); this lane is not below `t`, play |
+| `0123…cdef` | 2 | any | — | unlisted (every lane `> 191`; decoders report 192); play |
+| `0123…cdef` | 3 | `residfpNone` | 150 | listed; not below `t`, play |
+| `fedc…3210` | 256 | `sidliteNone` | 191 | listed; not below `t`, play |
 | any other MD5 | any | any | — | unlisted; play |
 
 ---
@@ -631,19 +643,20 @@ bytes = 224 + 17 * listed_files + 5 * listed_subtunes
 
 | Listed files | Listed subtunes | Bytes | KiB |
 |--:|--:|--:|--:|
-| 1,560 | 2,636 (3 % of 87,868) | 39,924 | 39.0 |
+| 1,560 | 2,636 (about 3 % of 87,868) | 39,924 | 39.0 |
 | 1,600 | 2,700 | 40,924 | 40.0 |
 | 3,000 | 5,000 | 76,224 | 74.4 |
 
-The design target is about 40 KiB for about 1,600 files and 2,700 subtunes. Each additional
-listed file adds 17 bytes and each additional listed subtune 5 bytes. The listing ceiling keeps the
-count of listed subtunes small: only subtunes graded 253 or lower are listed, so the expected
-share is the roughly 3 % of subtunes whose execution changes without ROMs, and not the larger share
-of subtunes that are merely re-timed (grade 254).
+The design target is about 40 KiB. Each additional listed file adds 17 bytes and each additional
+listed subtune 5 bytes. The listing ceiling is what bounds the count of listed subtunes: the
+calibration showed that ceiling 253 would list about 7 % of HVSC (about 90 KiB), mostly
+near-perfect grades of 250 to 253. With the release ceiling of 191 (`Q >= 0.5`) about 2 % of the
+subtunes are listed, which is about 40 KiB. Lowering the ceiling shrinks the file, raising it grows
+it; the full per-subtune grades stay available in the separately published grading results.
 
 Test coverage at scale: a synthetic grading of 61,157 files and about 80,000 subtunes with a 3 %
 listed share, spread uniformly over files, generates and verifies in well under a second
-(2,400 files, 2,444 subtunes, 53,244 bytes; real data clusters subtunes in fewer files).
+(ceiling 191: 2,121 files, 2,152 subtunes, 47,041 bytes; real data clusters subtunes in fewer files).
 
 Compared with the earlier 4-bit mask design (2-byte decision records), grades cost 3 more bytes
 per listed subtune, about 8 KB at 2,700 subtunes.
@@ -660,14 +673,18 @@ consumers to choose a policy for files absent from it. Allow-by-default makes th
 of the collection's growth: a new file is playable until a later list says otherwise. The cost,
 stated plainly in §10.3, is that unlisted is a policy and not evidence.
 
-## 17.2 Why grades 0–255 and a listing ceiling of 253
+## 17.2 Why grades 0–255 and a listing ceiling parameter
 
 A binary verdict mixed two different things: tunes that play the same music at slightly shifted
 timing, and tunes that play different music or nothing. A one-byte grade (§9.1) separates them, and
 lets each consumer choose its own tolerance. 255 and 254 both mean "same music", so neither
-requires a record; 253 is the largest value that denotes a measured, graded difference. Listing
-exactly the subtunes with some lane at most 253 gives the invariant "unlisted implies every lane at
-least 254" with no extra table. One byte per lane keeps a decision at 5 bytes. No value is reserved
+requires a record; 253 is the largest value that denotes a measured, graded difference, hence the
+upper bound of the ceiling. Listing exactly the subtunes with some lane at most `C` gives the
+invariant "unlisted implies every lane above `C`" with no extra table. The ceiling is a generator
+parameter rather than a constant because the calibration showed that listing every difference
+(`C = 253`) would add thousands of near-perfect 250 to 253 grades that no consumer wants to skip
+and would double the size; the release picks `C = 191` and publishes the full grades separately.
+One byte per lane keeps a decision at 5 bytes. No value is reserved
 for "unknown": an unmeasured lane is not a fidelity statement, so it cannot be a grade and the
 generator refuses it (§13.2).
 
@@ -682,11 +699,11 @@ used because it is the identity of HVSC `Songlengths.md5` and of C64 Commander; 
 cryptographic weakness is irrelevant here because the list is an integrity-protected input
 supplied by the application, not a security boundary.
 
-## 17.4 Why a recommended threshold in the header, and why at most 254
+## 17.4 Why a recommended threshold in the header, and why at most ceiling + 1
 
 Consumers need a sensible default, but the right cut-off is a calibration result, not a constant of
 the format; the generator therefore takes it as a required argument. The format cannot express
-thresholds above 254, because 254 and 255 are indistinguishable once unlisted.
+thresholds above `C + 1`, because grades above the ceiling are indistinguishable once unlisted.
 
 ## 17.5 Why implicit first-decision indices and `n-1` counts
 
@@ -721,8 +738,8 @@ grading input.
 sidromdep-1:
 
 - is a 224-byte header, a FILE_TABLE of full-MD5 records, and a DECISION_TABLE of 5-byte records
-- is allow-by-default: a subtune is listed iff some lane grade is at most 253; unlisted means every
-  lane at least 254
+- is allow-by-default: a subtune is listed iff some lane grade is at most the list's listing ceiling
+  `C` (1..253; the release uses 191); unlisted means every lane above `C`
 - identifies files by full-file MD5 and subtunes by one-based number
 - records, per listed subtune, one fidelity grade (0 no playback ... 254 re-timed, 255 bit-exact)
   for each of four engine/ROM lanes

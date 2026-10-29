@@ -33,7 +33,7 @@ const md5Of = (text: string): string => createHash("md5").update(text).digest("h
 const g = (a: number, b: number, c: number, d: number): RomDepGrades => ({ sidliteNone: a, sidliteKernalBasic: b, residfpNone: c, residfpKernalBasic: d });
 const PROVENANCE = { sourceSha256: "11".repeat(32), songlengthsSha256: "22".repeat(32), corpusId: "33".repeat(32), gradingMethodologySha256: "44".repeat(32) };
 const content = (entries: RomDepEntry[], extra: Partial<RomDepContent> = {}): RomDepContent =>
-  ({ hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource: false, recommendedMinGrade: 128, provenance: PROVENANCE, entries, ...extra });
+  ({ hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource: false, listingCeiling: 253, recommendedMinGrade: 128, provenance: PROVENANCE, entries, ...extra });
 const one = (md5: string, subtune: number, grades: RomDepGrades): RomDepEntry => ({ md5, decisions: [{ subtune, grades }] });
 
 /** Re-sign a tampered buffer so structural validation (not the checksums) is what rejects it. */
@@ -167,8 +167,11 @@ describe("codec", () => {
     expect(() => decodeRomDependencyList(patch((_, v) => v.setUint16(56, 18, true)))).toThrow(/record sizes/);
     expect(() => decodeRomDependencyList(patch((_, v) => v.setUint16(58, 2, true)))).toThrow(/record sizes/);
     expect(() => decodeRomDependencyList(patch((b) => { b[60] = 254; }))).toThrow(/listing_ceiling/);
+    expect(() => decodeRomDependencyList(patch((b) => { b[60] = 0; }))).toThrow(/listing_ceiling/);
     expect(() => decodeRomDependencyList(patch((b) => { b[61] = 0; }))).toThrow(/recommended_min_grade/);
     expect(() => decodeRomDependencyList(patch((b) => { b[61] = 255; }))).toThrow(/recommended_min_grade/);
+    // an unlistable record under a lowered ceiling: decision 1 of the first file has min grade 1, so ceiling 0 is invalid and 1 is fine
+    expect(() => decodeRomDependencyList(patch((b) => { b[60] = 100; b[61] = 50; }))).toThrow(/above the listing ceiling/); // file 1 / subtune 3 has min 253
     expect(() => decodeRomDependencyList(patch((_, v) => v.setUint32(44, 300, true)))).toThrow(/canonical tightly packed/);
     // swap the first two file records -> not strictly ascending
     expect(() => decodeRomDependencyList(patch((b) => { const a = b.slice(224, 241); b.copyWithin(224, 241, 258); b.set(a, 241); }))).toThrow(/strictly ascending/);
@@ -182,21 +185,64 @@ describe("codec", () => {
 
   test("worked example from doc/rom-dependency-list.md section 14", () => {
     const bin = encodeRomDependencyList({
-      hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource: false, recommendedMinGrade: 128,
+      hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource: false, listingCeiling: 191, recommendedMinGrade: 128,
       provenance: { sourceSha256: "a1".repeat(32), songlengthsSha256: "b2".repeat(32), corpusId: "c3".repeat(32), gradingMethodologySha256: "d4".repeat(32) },
       entries: [
-        { md5: "0123456789abcdef0123456789abcdef", decisions: [{ subtune: 1, grades: g(0, 254, 120, 253) }, { subtune: 3, grades: g(255, 255, 200, 255) }] },
-        one("fedcba9876543210fedcba9876543210", 256, g(253, 255, 254, 255)),
+        { md5: "0123456789abcdef0123456789abcdef", decisions: [{ subtune: 1, grades: g(0, 254, 120, 253) }, { subtune: 3, grades: g(255, 255, 150, 255) }] },
+        one("fedcba9876543210fedcba9876543210", 256, g(191, 255, 254, 255)),
       ],
     });
     expect(bin.length).toBe(224 + 34 + 15);
     expect(Buffer.from(bin.subarray(0, 64)).toString("hex")).toBe(
       "53494452" + "4f4d4450" + "0100" + "e000" + "00000000" + "55000000" + "e5ee0000" + "3c570100" + "02000000" + "03000000" +
-      "e0000000" + "22000000" + "02010000" + "0f000000" + "a9c15a5b" + "1100" + "0500" + "fd" + "80" + "0000");
-    expect(Buffer.from(bin.subarray(64, 96)).toString("hex")).toBe("dc22afb44443bf054f09c8738639aa2072178fe6367a52ad4d444d295cf42514");
+      "e0000000" + "22000000" + "02010000" + "0f000000" + "41f6c455" + "1100" + "0500" + "bf" + "80" + "0000");
+    expect(Buffer.from(bin.subarray(64, 96)).toString("hex")).toBe("10d1e7a3ebbc930c7796cae6b4eb8f8bd08e1c161864dbb90dc2ad7cef4da5bc");
     expect(Buffer.from(bin.subarray(224)).toString("hex")).toBe(
       "0123456789abcdef0123456789abcdef" + "01" + "fedcba9876543210fedcba9876543210" + "00" +
-      "0000fe78fd" + "02ffffc8ff" + "fffdfffeff");
+      "0000fe78fd" + "02ffff96ff" + "ffbfff" + "feff");
+  });
+
+  test("listing ceiling is a parameter: lists iff some lane <= ceiling; unlisted lower bound is ceiling+1", () => {
+    for (const ceiling of [1, 100, 191, 252, 253]) {
+      const md5 = md5Of(`ceil-${ceiling}`);
+      const at = g(255, 255, ceiling, 255);
+      const above = g(255, 255, ceiling + 1, 255);
+      const list = decodeRomDependencyList(encodeRomDependencyList(content([one(md5, 1, at)], { listingCeiling: ceiling, recommendedMinGrade: 1 })));
+      expect(list.header.listingCeiling).toBe(ceiling);
+      expect(list.lookup(md5, 1)).toEqual({ listed: true, grades: at, minGrade: ceiling });
+      const unlisted = list.lookup(md5, 2);
+      expect(unlisted).toEqual({ listed: false, grades: g(ceiling + 1, ceiling + 1, ceiling + 1, ceiling + 1), minGrade: ceiling + 1 });
+      expect(() => encodeRomDependencyList(content([one(md5, 1, above)], { listingCeiling: ceiling, recommendedMinGrade: 1 }))).toThrow(/above the listing ceiling/);
+    }
+  });
+
+  test("listing ceiling and recommended threshold validity (generator and decoder)", () => {
+    const base = one(md5Of("v"), 1, g(0, 255, 255, 255));
+    for (const bad of [0, 254, 255, -1, 1.5, Number.NaN]) {
+      expect(() => encodeRomDependencyList(content([base], { listingCeiling: bad }))).toThrow(/listing_ceiling/);
+    }
+    // recommended_min_grade must satisfy 1 <= value <= ceiling + 1
+    for (const [ceiling, ok, bad] of [[191, 192, 193], [1, 2, 3], [253, 254, 255]] as const) {
+      expect(decodeRomDependencyList(encodeRomDependencyList(content([base], { listingCeiling: ceiling, recommendedMinGrade: ok }))).header.recommendedMinGrade).toBe(ok);
+      expect(decodeRomDependencyList(encodeRomDependencyList(content([base], { listingCeiling: ceiling, recommendedMinGrade: 1 }))).header.recommendedMinGrade).toBe(1);
+      expect(() => encodeRomDependencyList(content([base], { listingCeiling: ceiling, recommendedMinGrade: bad }))).toThrow(/recommended_min_grade/);
+      expect(() => encodeRomDependencyList(content([base], { listingCeiling: ceiling, recommendedMinGrade: 0 }))).toThrow(/recommended_min_grade/);
+    }
+    // the decoder enforces the same relation, on a re-signed header
+    const good = encodeRomDependencyList(content([base], { listingCeiling: 191, recommendedMinGrade: 128 }));
+    const patch = (fn: (b: Uint8Array) => void): Uint8Array => { const b = Uint8Array.from(good); fn(b); return resign(b); };
+    expect(() => decodeRomDependencyList(patch((b) => { b[60] = 100; }))).toThrow(/recommended_min_grade/); // 128 > 101
+    expect(() => decodeRomDependencyList(patch((b) => { b[61] = 193; }))).toThrow(/recommended_min_grade/);
+    expect(decodeRomDependencyList(patch((b) => { b[61] = 192; })).header.recommendedMinGrade).toBe(192);
+    expect(() => decodeRomDependencyList(patch((b) => { b[60] = 0; }))).toThrow(/listing_ceiling/);
+    expect(() => decodeRomDependencyList(patch((b) => { b[60] = 254; }))).toThrow(/listing_ceiling/);
+    // lowering the ceiling under an existing record makes that record unlistable
+    expect(() => decodeRomDependencyList(patch((b) => { b[60] = 1; b[61] = 1; }))).not.toThrow(); // grade 0 <= 1
+    const high = encodeRomDependencyList(content([one(md5Of("w"), 1, g(150, 255, 255, 255))], { listingCeiling: 191, recommendedMinGrade: 100 }));
+    const lowered = Uint8Array.from(high);
+    lowered[60] = 149;
+    lowered[61] = 100;
+    expect(() => decodeRomDependencyList(resign(lowered))).toThrow(/above the listing ceiling/);
   });
 });
 
@@ -290,7 +336,7 @@ describe("grading results input", () => {
     const input = parseGradingResults(new TextEncoder().encode(text), { allowIncomplete: false });
     expect(input.complete).toBe(true);
     expect(input.rowCount).toBe(13);
-    const entries = deriveEntries(input);
+    const entries = deriveEntries(input, 253);
     expect(entries.map((e) => e.decisions.length).reduce((a, b) => a + b, 0)).toBe(6);
     expect(entries).toHaveLength(4);
   });
@@ -329,7 +375,7 @@ describe("grading results input", () => {
 describe("generator and verifier", () => {
   test("release generation, determinism, verification and round trip", async () => {
     const input = await writeResults();
-    const base = { resultsPath: input.results, songlengthsPath: input.songlengthsPath, recommendedMinGrade: 128 };
+    const base = { resultsPath: input.results, songlengthsPath: input.songlengthsPath, listingCeiling: 253, recommendedMinGrade: 128 };
     const runA = await generateRomDependencyList({ ...base, outDir: path.join(root, "outA") });
     const runB = await generateRomDependencyList({ ...base, outDir: path.join(root, "outB") });
     const names = outputNames(85);
@@ -375,20 +421,20 @@ describe("generator and verifier", () => {
     expect(report.manifestSha256).toBe(runA.manifestSha256);
     expect(report.checkedSubtunes).toBe(13);
     expect(report.listedSubtunes).toBe(6);
-    expect(report.unlistedAtLeast254).toBe(7);
+    expect(report.unlistedAboveCeiling).toBe(7);
     expect(report.excludedUnmeasured).toBe(0);
   });
 
   test("round trip detects a dropped record, an extra record and a changed grade", async () => {
     const { text } = resultsText();
     const input = parseGradingResults(new TextEncoder().encode(text), { allowIncomplete: false });
-    const entries = deriveEntries(input);
+    const entries = deriveEntries(input, 253);
     const build = (e: RomDepEntry[]) => decodeRomDependencyList(encodeRomDependencyList(content(e)));
     expect(() => roundTripAgainstResults(build(entries), input)).not.toThrow();
     expect(() => roundTripAgainstResults(build(entries.slice(1)), input)).toThrow(/differs from the grading results/);
     // a subtune whose four graded lanes are all >= 254 must not be listed
     const extra = [...entries, one(md5Of("MUSICIANS/A/Alpha.sid"), 1, g(10, 255, 255, 255))];
-    expect(() => roundTripAgainstResults(build(extra), input)).toThrow(/every lane >= 254 but is listed/);
+    expect(() => roundTripAgainstResults(build(extra), input)).toThrow(/every lane above the listing ceiling but is listed/);
     const changed = entries.map((e, i) => (i === 0 ? { ...e, decisions: [{ ...e.decisions[0]!, grades: { ...e.decisions[0]!.grades, sidliteNone: 77 } }, ...e.decisions.slice(1)] } : e));
     expect(() => roundTripAgainstResults(build(changed), input)).toThrow(/differs from the grading results/);
     expect(() => roundTripAgainstResults(build([...entries, one(md5Of("not in input"), 1, g(1, 1, 1, 1))]), input)).toThrow(/not in the grading results/);
@@ -397,7 +443,7 @@ describe("generator and verifier", () => {
 
   test("the verifier rejects a modified binary and a different results file", async () => {
     const input = await writeResults();
-    const run = await generateRomDependencyList({ resultsPath: input.results, songlengthsPath: input.songlengthsPath, recommendedMinGrade: 100, outDir: path.join(root, "out-tamper") });
+    const run = await generateRomDependencyList({ resultsPath: input.results, songlengthsPath: input.songlengthsPath, listingCeiling: 253, recommendedMinGrade: 100, outDir: path.join(root, "out-tamper") });
     const bytes = new Uint8Array(await readFile(run.binPath));
     await writeFile(run.binPath, resign(Uint8Array.from(bytes, (b, i) => (i === bytes.length - 1 ? b ^ 0x01 : b))));
     await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results })).rejects.toThrow(/manifest does not describe this binary/);
@@ -414,13 +460,13 @@ describe("generator and verifier", () => {
   test("generation refuses bad thresholds, wrong Songlengths and incomplete results", async () => {
     const input = await writeResults();
     for (const bad of [0, 255, 300]) {
-      await expect(generateRomDependencyList({ resultsPath: input.results, recommendedMinGrade: bad, outDir: fresh() })).rejects.toThrow(/recommended_min_grade/);
+      await expect(generateRomDependencyList({ resultsPath: input.results, listingCeiling: 253, recommendedMinGrade: bad, outDir: fresh() })).rejects.toThrow(/recommended_min_grade/);
     }
     const wrong = path.join(input.dir, "Songlengths.other");
     await writeFile(wrong, input.songlengths + "\n; changed\n");
-    await expect(generateRomDependencyList({ resultsPath: input.results, songlengthsPath: wrong, recommendedMinGrade: 128, outDir: fresh() })).rejects.toThrow(/does not match the digest/);
+    await expect(generateRomDependencyList({ resultsPath: input.results, songlengthsPath: wrong, listingCeiling: 253, recommendedMinGrade: 128, outDir: fresh() })).rejects.toThrow(/does not match the digest/);
     const incomplete = await writeResults({ mutateRows: (rows) => rows.map((r, i) => (i === 0 ? { ...r, grades: { ...(r.grades as object), sidliteNone: null } } : r)) });
-    await expect(generateRomDependencyList({ resultsPath: incomplete.results, recommendedMinGrade: 128, outDir: fresh() })).rejects.toThrow(/incomplete/);
+    await expect(generateRomDependencyList({ resultsPath: incomplete.results, listingCeiling: 253, recommendedMinGrade: 128, outDir: fresh() })).rejects.toThrow(/incomplete/);
   });
 
   test("--allow-incomplete output excludes unmeasured subtunes and is flagged non-releasable in header and manifest", async () => {
@@ -431,7 +477,7 @@ describe("generator and verifier", () => {
     ];
     const input = await writeResults({ files });
     const out = path.join(root, "out-incomplete");
-    const run = await generateRomDependencyList({ resultsPath: input.results, recommendedMinGrade: 128, outDir: out, allowIncomplete: true });
+    const run = await generateRomDependencyList({ resultsPath: input.results, listingCeiling: 253, recommendedMinGrade: 128, outDir: out, allowIncomplete: true });
     expect(run.complete).toBe(false);
     const manifest = JSON.parse(await readFile(run.manifestPath, "utf8"));
     expect(manifest.complete).toBe(false);
@@ -452,6 +498,58 @@ describe("generator and verifier", () => {
     expect(report.complete).toBe(false);
     expect(report.excludedUnmeasured).toBe(2);
     await expect(loadGradingResults(input.results, { allowIncomplete: false })).rejects.toThrow(/incomplete/);
+  });
+});
+
+describe("release ceiling 191 / recommended 128", () => {
+  test("lists only subtunes with a lane <= 191; unlisted subtunes are > 191 in every lane and verify", async () => {
+    const input = await writeResults();
+    const base = { resultsPath: input.results, songlengthsPath: input.songlengthsPath, recommendedMinGrade: 128, outDir: path.join(root, "out-191") };
+    const run = await generateRomDependencyList({ ...base, listingCeiling: 191 });
+    // Beta#1 (0), Beta#4 (1), Gamma#2 (128), Delta#1 (90); Beta#2 (253) and Zeta#1 (253) are above the ceiling
+    expect(run.listedSubtunes).toBe(4);
+    expect(run.listedFiles).toBe(3);
+    expect(run.bytes).toBe(224 + 17 * 3 + 5 * 4);
+    const list = decodeRomDependencyList(new Uint8Array(await readFile(run.binPath)));
+    expect(list.header.listingCeiling).toBe(191);
+    const beta = md5Of("MUSICIANS/B/Beta.sid");
+    expect(list.lookup(beta, 2)).toEqual({ listed: false, grades: g(192, 192, 192, 192), minGrade: 192 });
+    expect(list.lookup(beta, 1).grades).toEqual(g(0, 254, 255, 255));
+    const manifest = JSON.parse(await readFile(run.manifestPath, "utf8"));
+    expect(manifest.listingCeiling).toBe(191);
+    expect(manifest.semantics).toContain("191");
+    const report = await verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results });
+    expect(report.listedSubtunes).toBe(4);
+    expect(report.unlistedAboveCeiling).toBe(9);
+    // a list built for another ceiling (here 253) does not verify against... itself only; mixing is caught by the round trip
+    const other = await generateRomDependencyList({ ...base, outDir: path.join(root, "out-253"), listingCeiling: 253 });
+    expect(other.listedSubtunes).toBe(6);
+    const lowered = decodeRomDependencyList(new Uint8Array(await readFile(other.binPath)));
+    const source = parseGradingResults(new TextEncoder().encode(resultsText().text), { allowIncomplete: false });
+    expect(() => roundTripAgainstResults(lowered, source)).not.toThrow();
+    expect(() => roundTripAgainstResults(list, source)).not.toThrow();
+  });
+
+  test("threshold rules at the generator: recommended <= ceiling + 1, ceiling 1..253", async () => {
+    const input = await writeResults();
+    const base = { resultsPath: input.results };
+    await expect(generateRomDependencyList({ ...base, listingCeiling: 191, recommendedMinGrade: 192, outDir: fresh() })).resolves.toBeDefined();
+    await expect(generateRomDependencyList({ ...base, listingCeiling: 191, recommendedMinGrade: 193, outDir: fresh() })).rejects.toThrow(/recommended_min_grade/);
+    await expect(generateRomDependencyList({ ...base, listingCeiling: 0, recommendedMinGrade: 1, outDir: fresh() })).rejects.toThrow(/listing_ceiling/);
+    await expect(generateRomDependencyList({ ...base, listingCeiling: 254, recommendedMinGrade: 1, outDir: fresh() })).rejects.toThrow(/listing_ceiling/);
+  });
+
+  test("the verifier rejects a list whose records differ from the input at the list's own ceiling", async () => {
+    const input = await writeResults();
+    const run = await generateRomDependencyList({ resultsPath: input.results, listingCeiling: 191, recommendedMinGrade: 128, outDir: fresh() });
+    const parsed = parseGradingResults(new TextEncoder().encode(resultsText().text), { allowIncomplete: false });
+    const entries = deriveEntries(parsed, 191);
+    const withBeta2 = [...entries, ...[]];
+    const betaIndex = entries.findIndex((e) => e.md5 === md5Of("MUSICIANS/B/Beta.sid"));
+    withBeta2[betaIndex] = { ...entries[betaIndex]!, decisions: [...entries[betaIndex]!.decisions, { subtune: 2, grades: g(253, 255, 254, 255) }] };
+    // listing Beta#2 (min 253) is legal only for ceiling 253, but the list is built at 191 and must not carry it
+    expect(() => encodeRomDependencyList(content(withBeta2, { listingCeiling: 191, recommendedMinGrade: 128 }))).toThrow(/above the listing ceiling/);
+    expect(run.listedSubtunes).toBe(4);
   });
 });
 
@@ -485,11 +583,11 @@ describe("size model and scale", () => {
     }
     const input = await writeResults({ files, songlengths: "; /placeholder.sid\n" + md5Of("placeholder") + "=1:00\n" });
     expect(subtunes).toBeGreaterThan(75_000);
-    const run = await generateRomDependencyList({ resultsPath: input.results, recommendedMinGrade: 128, outDir: path.join(root, "out-scale") });
+    const run = await generateRomDependencyList({ resultsPath: input.results, listingCeiling: 191, recommendedMinGrade: 128, outDir: path.join(root, "out-scale") });
     expect(run.bytes).toBe(224 + 17 * run.listedFiles + 5 * run.listedSubtunes);
     const report = await verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results });
     expect(report.checkedSubtunes).toBe(subtunes);
-    expect(report.listedSubtunes + report.unlistedAtLeast254).toBe(subtunes);
+    expect(report.listedSubtunes + report.unlistedAboveCeiling).toBe(subtunes);
     console.log(`[rom-dependency-list scale] ${61157} files / ${subtunes} subtunes graded -> ${run.listedFiles} files / ${run.listedSubtunes} subtunes listed -> ${run.bytes} bytes`);
   }, 120_000);
 });
