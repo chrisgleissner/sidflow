@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import type { RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import { nativeSeverity } from "./audio-severity.js";
-import { gradeFromQuality, type GradeBasis } from "./grade-core.js";
+import { DEFAULT_GAMMA, gradeFromQuality, type GradeBasis } from "./grade-core.js";
 import { nativePaths, traceLane, type RomMask, type TraceRun } from "./native.js";
 import { sidInfo, type SidInfo } from "./sid-info.js";
 import { qualityFromSummary, WINDOW_FRAMES, type SeveritySummary } from "./severity-core.js";
@@ -87,7 +87,7 @@ function roundFeatures(f: TraceFeatures): TraceFeatures {
 
 /** Grade one engine; `cpu` accumulates CPU seconds. */
 export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job: GradeJob, info: SidInfo, options: GradeOptions): Promise<{ result: EngineGrade; cpuSeconds: number }> {
-  const toleranceMs = options.toleranceMs ?? DEFAULT_TOLERANCE_MS, gamma = options.gamma ?? 1;
+  const toleranceMs = options.toleranceMs ?? DEFAULT_TOLERANCE_MS, gamma = options.gamma ?? DEFAULT_GAMMA;
   const clockHz = clockHzOf(info.clock), tolerance = toleranceCycles(clockHz, toleranceMs);
   let cpuSeconds = 0;
   const reference = await traceLane(engine, bytes, job.song, job.seconds, 7);
@@ -154,7 +154,7 @@ export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job
 export async function gradeSubtune(job: GradeJob, options: GradeOptions = {}): Promise<SubtuneGrade> {
   const bytes = readFileSync(job.path);
   const info = sidInfo(bytes);
-  const toleranceMs = options.toleranceMs ?? DEFAULT_TOLERANCE_MS, gamma = options.gamma ?? 1;
+  const toleranceMs = options.toleranceMs ?? DEFAULT_TOLERANCE_MS, gamma = options.gamma ?? DEFAULT_GAMMA;
   const engines: Partial<Record<RomAuditEngine, EngineGrade>> = {};
   const cpu: Record<string, number> = {};
   const wanted = options.engines ?? ENGINES;

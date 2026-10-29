@@ -16,3 +16,10 @@ export function gradeFromQuality(q: number): number {
 }
 
 export type GradeBasis = "trace-bit-exact" | "chargen-unread" | "trace-retimed" | "trace-no-playback" | "audio" | "unmeasurable";
+
+/** Perceptual exponent Q' = Q^gamma, frozen at 1 by the calibration (no evidence supported another value). */
+export const DEFAULT_GAMMA = 1;
+/** Consumer policy decided with the calibration: C64 Commander skips a lane graded below this ("plays acceptably" boundary). */
+export const RECOMMENDED_MIN_GRADE = 128;
+/** A subtune is listed in the consumer dependency list iff some lane grades at or below this. */
+export const CONSUMER_LIST_CEILING = 191;

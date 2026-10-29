@@ -35,7 +35,7 @@ function corpusJobs(): Array<GradeJob & CorpusEntry> {
 
 const POOL_WORKERS = Number(process.env.ROM_GRADE_POOL ?? 18);
 async function gradeAll(jobs: Array<GradeJob & { sha256: string }>, validateAudio: boolean, checkpoint: string): Promise<{ grades: SubtuneGrade[]; stats: PoolStats; jsCpuSeconds: number; wallSeconds: number }> {
-  const { records, stats } = await runPool(jobs, { validateAudio }, file(checkpoint), POOL_WORKERS, validateAudio ? "corpus" : "benchmark");
+  const { records, stats } = await runPool(jobs, { validateAudio }, { checkpoint: file(checkpoint), workers: POOL_WORKERS, label: validateAudio ? "corpus" : "benchmark" });
   return { grades: records.map(r => r.grade), stats, jsCpuSeconds: stats.workerCpuSeconds, wallSeconds: stats.wallSeconds };
 }
 

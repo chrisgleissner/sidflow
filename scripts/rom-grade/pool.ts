@@ -1,48 +1,113 @@
 /** Reusable, resumable grading pool: N worker processes, one subtune at a time each, so the JavaScript side
  * (PCM transfer, FFT, JSON) is parallel as well as the native renders.
  *
- *  - Checkpoint: append-only JSONL, one line per finished job keyed by "<sha256>#<song>"; the first line records the options.
- *    On resume, finished keys are skipped; a checkpoint written with different options is refused.
- *  - Determinism: a job's output depends only on the job and options, never on scheduling; results are returned in input order.
- *  - Fail fast: the first job error or worker crash kills the pool and rejects (finished jobs stay in the checkpoint).
+ *  - Checkpoint: append-only JSONL, one line per finished job keyed by "<sha256>#<song>"; the first line records the options and the
+ *    methodology identity. On resume, finished keys are skipped; a checkpoint written with different options or identity is refused.
+ *    A torn final line (the process was killed mid-write) is cut off before resuming.
+ *  - Determinism: a job's output depends only on the job and options, never on scheduling; records returned in input order.
+ *  - Fail fast: the first job error, failed validation or worker crash kills the pool and rejects (finished jobs stay in the checkpoint).
  *  - Scheduling: longest horizon first, so the tail of the run is made of short jobs.
- *  - Progress: done/total, accumulated CPU seconds and achieved parallel efficiency. */
+ *  - Progress: callbacks every `progressEvery` completed jobs with done/total, CPU seconds and achieved parallel efficiency. */
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, createReadStream, existsSync, fstatSync, ftruncateSync, mkdirSync, openSync, readSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import type { GradeJob, GradeOptions, SubtuneGrade } from "./grade.js";
 
-export const jobKey = (job: GradeJob & { sha256: string }): string => `${job.sha256}#${job.song}`;
+export const jobKey = (job: { sha256: string; song: number }): string => `${job.sha256}#${job.song}`;
 
 export interface PoolRecord { key: string; grade: SubtuneGrade; jsCpuSeconds: number; wallSeconds: number }
 export interface PoolStats { workers: number; jobs: number; ran: number; resumed: number; wallSeconds: number; nativeCpuSeconds: number; workerCpuSeconds: number; efficiency: number; efficiencyOf20Threads: number }
+export interface PoolProgress { done: number; total: number; resumed: number; wallSeconds: number; cpuSeconds: number; workers: number; efficiency: number }
+export interface PoolConfig {
+  checkpoint: string;
+  workers?: number;
+  label?: string;
+  /** methodology identity recorded in the checkpoint header; resume refuses a different one */
+  identity?: string;
+  /** keep every record in memory and return it (default true; the full run streams instead) */
+  keepRecords?: boolean;
+  workerScript?: string;
+  progressEvery?: number;
+  /** called for every record, resumed ones first */
+  onRecord?: (record: PoolRecord, resumed: boolean) => void;
+  onProgress?: (progress: PoolProgress) => void;
+  /** a non-null return value fails the pool with that message */
+  validate?: (record: PoolRecord) => string | null;
+}
 
-export async function runPool(jobs: Array<GradeJob & { sha256: string }>, options: GradeOptions, checkpoint: string, workers = 18, label = "grade"): Promise<{ records: PoolRecord[]; stats: PoolStats }> {
+const cpuOf = (record: PoolRecord): number => Object.values(record.grade.cpu).reduce((a, b) => a + b, 0) + record.jsCpuSeconds;
+
+/** Cut a torn final line (no trailing newline) so appends start on a line boundary. Returns the bytes removed. */
+export function repairTail(file: string): number {
+  const fd = openSync(file, "r+");
+  try {
+    const size = fstatSync(fd).size;
+    if (size === 0) return 0;
+    const buffer = Buffer.alloc(1);
+    readSync(fd, buffer, 0, 1, size - 1);
+    if (buffer[0] === 10) return 0;
+    const chunk = Buffer.alloc(65536);
+    let end = size, cut = 0;
+    while (end > 0) {
+      const start = Math.max(0, end - chunk.length);
+      readSync(fd, chunk, 0, end - start, start);
+      const at = chunk.subarray(0, end - start).lastIndexOf(10);
+      if (at >= 0) { cut = start + at + 1; break; }
+      end = start;
+    }
+    console.error(`pool: removing ${size - cut} bytes of a torn final line from ${file}`);
+    ftruncateSync(fd, cut);
+    return size - cut;
+  } finally { closeSync(fd); }
+}
+
+export async function runPool(jobs: Array<GradeJob & { sha256: string }>, options: GradeOptions, config: PoolConfig): Promise<{ records: PoolRecord[]; stats: PoolStats }> {
+  const { checkpoint, workers = 18, label = "grade", keepRecords = true, progressEvery = 5 } = config;
   mkdirSync(path.dirname(checkpoint), { recursive: true });
-  const optionsLine = JSON.stringify({ options });
-  const done = new Map<string, PoolRecord>();
-  if (existsSync(checkpoint)) {
-    const lines = readFileSync(checkpoint, "utf8").split("\n").filter(Boolean);
-    if (lines[0] !== optionsLine) throw new Error(`Checkpoint ${checkpoint} was written with different options; delete it to start over`);
-    for (const line of lines.slice(1)) { const record = JSON.parse(line) as PoolRecord; done.set(record.key, record); }
-  } else writeFileSync(checkpoint, optionsLine + "\n");
+  const header = JSON.stringify({ options, identity: config.identity ?? null });
   const keys = new Set(jobs.map(jobKey));
   if (keys.size !== jobs.length) throw new Error("Duplicate job keys");
-  const todo = jobs.filter(j => !done.has(jobKey(j))).sort((a, b) => b.seconds - a.seconds || (jobKey(a) < jobKey(b) ? -1 : 1));
+  const done = new Map<string, PoolRecord>(), doneKeys = new Set<string>();
+  let nativeCpu = 0, workerCpu = 0;
+  const accept = (record: PoolRecord, resumed: boolean): void => {
+    doneKeys.add(record.key);
+    if (keepRecords) done.set(record.key, record);
+    if (keys.has(record.key)) { nativeCpu += Object.values(record.grade.cpu).reduce((a, b) => a + b, 0); workerCpu += record.jsCpuSeconds; }
+    config.onRecord?.(record, resumed);
+  };
+  if (existsSync(checkpoint)) {
+    repairTail(checkpoint);
+    let first = true;
+    for await (const line of createInterface({ input: createReadStream(checkpoint, { encoding: "utf8" }), crlfDelay: Infinity })) {
+      if (!line) continue;
+      if (first) {
+        first = false;
+        if (line !== header) throw new Error(`Checkpoint ${checkpoint} was written with different options or methodology identity; use a new output directory or delete it\n  have: ${line.slice(0, 200)}\n  want: ${header.slice(0, 200)}`);
+        continue;
+      }
+      accept(JSON.parse(line) as PoolRecord, true);
+    }
+    if (first) writeFileSync(checkpoint, header + "\n");
+  } else writeFileSync(checkpoint, header + "\n");
+  const todo = jobs.filter(j => !doneKeys.has(jobKey(j))).sort((a, b) => b.seconds - a.seconds || (jobKey(a) < jobKey(b) ? -1 : 1));
   const resumed = jobs.length - todo.length;
-  const started = performance.now();
-  let nativeCpu = 0, workerCpu = 0, finished = 0;
-  for (const r of done.values()) if (keys.has(r.key)) { nativeCpu += Object.values(r.grade.cpu).reduce((a, b) => a + b, 0); workerCpu += r.jsCpuSeconds; }
   const resumedNative = nativeCpu, resumedWorker = workerCpu;
+  const started = performance.now();
+  const sessionCpu = (): number => nativeCpu + workerCpu - resumedNative - resumedWorker;
+  const progress = (): PoolProgress => {
+    const wall = (performance.now() - started) / 1000, cpu = sessionCpu();
+    return { done: jobs.length - todo.length + finished, total: jobs.length, resumed, wallSeconds: wall, cpuSeconds: cpu, workers, efficiency: wall ? cpu / (wall * workers) : 0 };
+  };
+  let finished = 0, lastBucket = Math.floor(resumed / progressEvery);
   const children: ChildProcess[] = [];
   let failure: Error | null = null;
   const stop = (): void => { for (const c of children) c.kill("SIGKILL"); };
-  const bunPath = process.execPath, worker = path.join(import.meta.dir, "grade-worker.ts");
+  const bunPath = process.execPath, worker = config.workerScript ?? path.join(import.meta.dir, "grade-worker.ts");
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(workers, todo.length) }, () => new Promise<void>((resolve, reject) => {
-    const child = spawn(bunPath, [worker], { stdio: ["pipe", "pipe", "inherit"] });
+    const child = spawn(bunPath, [worker], { stdio: ["pipe", "pipe", "inherit"], env: { ...process.env, ROM_GRADE_WORKERS: "3" } });
     children.push(child);
     const dispatch = (): void => {
       if (failure || next >= todo.length) { child.stdin!.end(); return; }
@@ -51,28 +116,34 @@ export async function runPool(jobs: Array<GradeJob & { sha256: string }>, option
     };
     const fail = (error: Error): void => { failure ??= error; stop(); reject(failure); };
     createInterface({ input: child.stdout! }).on("line", line => {
+      if (failure) return;
       const message = JSON.parse(line) as { key: string; ok: boolean; error?: string; grade?: SubtuneGrade; jsCpuSeconds?: number; wallSeconds?: number };
       if (!message.ok) { fail(new Error(`${label}: job ${message.key} failed: ${message.error}`)); return; }
       const record: PoolRecord = { key: message.key, grade: message.grade!, jsCpuSeconds: message.jsCpuSeconds!, wallSeconds: message.wallSeconds! };
+      const problem = config.validate?.(record) ?? null;
+      if (problem) { fail(new Error(`${label}: job ${record.key} rejected: ${problem}`)); return; }
       appendFileSync(checkpoint, JSON.stringify(record) + "\n");
-      done.set(record.key, record);
-      nativeCpu += Object.values(record.grade.cpu).reduce((a, b) => a + b, 0); workerCpu += record.jsCpuSeconds;
+      accept(record, false);
       finished++;
-      if (finished % 5 === 0 || finished === todo.length) {
-        const wall = (performance.now() - started) / 1000, cpu = nativeCpu + workerCpu - resumedNative - resumedWorker;
-        console.error(`${label} ${finished + resumed}/${jobs.length} wall ${wall.toFixed(0)} s, CPU ${cpu.toFixed(0)} s, efficiency ${(cpu / (wall * workers) * 100).toFixed(0)}% of ${workers} workers`);
+      const state = progress();
+      const bucket = Math.floor(state.done / progressEvery);
+      if (bucket > lastBucket || state.done === state.total) {
+        lastBucket = bucket;
+        console.error(`${label} ${state.done}/${state.total} wall ${state.wallSeconds.toFixed(0)} s, CPU ${state.cpuSeconds.toFixed(0)} s, efficiency ${(state.efficiency * 100).toFixed(0)}% of ${workers} workers`);
+        config.onProgress?.(state);
       }
       dispatch();
     });
     child.on("error", fail);
-    child.on("exit", (code, signal) => { if (failure) resolve(); else if (code === 0) resolve(); else fail(new Error(`${label}: worker exited (${code}/${signal})`)); });
+    child.on("exit", (code, signal) => { if (failure || code === 0) resolve(); else fail(new Error(`${label}: worker exited (${code}/${signal})`)); });
     dispatch();
   }))).catch(error => { stop(); throw error; });
   if (failure) throw failure;
-  const wallSeconds = (performance.now() - started) / 1000, cpu = nativeCpu + workerCpu - resumedNative - resumedWorker;
-  const records = jobs.map(j => done.get(jobKey(j))!);
+  const wallSeconds = (performance.now() - started) / 1000, cpu = sessionCpu();
+  const records = keepRecords ? jobs.map(j => done.get(jobKey(j))!) : [];
   return { records, stats: { workers, jobs: jobs.length, ran: todo.length, resumed, wallSeconds, nativeCpuSeconds: nativeCpu - resumedNative, workerCpuSeconds: workerCpu - resumedWorker,
     efficiency: wallSeconds ? cpu / (wallSeconds * workers) : 0, efficiencyOf20Threads: wallSeconds ? cpu / (wallSeconds * 20) : 0 } };
 }
 
 export const stringifyRecords = (records: PoolRecord[]): string => stringifyDeterministic(JSON.parse(JSON.stringify(records)) as JsonValue);
+export { cpuOf };
