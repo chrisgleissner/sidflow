@@ -117,6 +117,9 @@ describe("trace classes", () => {
     const f = features(trace(reference), halted);
     expect(f.cls).toBe("H");
     expect(traceGrade(f, 1970)).toBeNull();
+    // a jam after more than half of the horizon has played identically is late divergence
+    const late = features(trace(reference), trace(reference.slice(0, 800), true, "Illegal instruction $02 at address $bf54"));
+    expect(late.cls).toBe("F");
     // identical failure in the reference is not a variant defect
     const both = features(trace(reference.slice(0, 300), true, "Illegal instruction $02 at address $bf54"), halted);
     expect(both.cls).toBe("A");

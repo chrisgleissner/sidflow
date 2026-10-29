@@ -275,7 +275,8 @@ export function bSubclassOf(maxDriftCycles: number, clockHz: number): BSubclass 
  *     or the trace buffer overflowed (no claim about the music is made from the trace; audio decides).
  *  A  bit-exact: identical (chip, address, value, cycle) sequence, same error text.
  *  G  no playback: the variant has at most MAX_INIT_WRITES writes, the reference at least 8 more.
- *  H  the variant (not the reference) stopped on an illegal instruction after more than init writes.
+ *  H  the variant (not the reference) stopped on an illegal instruction after more than init writes, within the first half of the
+ *     horizon (a later jam falls through to the divergence rules, normally F).
  *  I  identical value prefix covering the whole shorter trace, |cumulative drift| > TEMPO_DRIFT_MS.
  *  B  identical value sequence and write count, only timing differs; subclass by max drift.
  *  C  the values are identical apart from a few extra or missing writes (trailing or interior): the alignment
@@ -293,7 +294,9 @@ export function classify(f: TraceFeatures): { cls: TraceClass; bSubclass: BSubcl
   if (!f.traceComplete) return none("X", "trace-truncated");
   if (f.bitExact) return none("A", "bit-exact");
   if (m <= MAX_INIT_WRITES && n - m >= 8) return none("G", "init-writes-only");
-  if (f.variantErrorKind === "cpu-halt" && !f.referenceError) return none("H", "variant-cpu-halt");
+  // A jam in the second half of the horizon leaves more than half of it playing identically: that is late divergence (F), not H.
+  if (f.variantErrorKind === "cpu-halt" && !f.referenceError && (f.firstValueDivergenceSeconds === null || f.firstValueDivergenceSeconds <= LATE_DIVERGENCE_FRACTION * f.horizonSeconds))
+    return none("H", "variant-cpu-halt");
   const prefixFull = f.matchingValuePrefix === Math.min(n, m);
   const tempo = TEMPO_DRIFT_MS * f.clockHz / 1000;
   if (prefixFull && Math.abs(f.finalDriftCycles) > tempo && f.matchingValuePrefix > 0) return none("I", "cumulative-drift");
