@@ -258,6 +258,16 @@ engine, model or ROM change. The
 [bundle format and limitations](doc/research/hvsc-rom-dual-run.md#commander-bundle)
 explain the binary layout and native/WASM qualification.
 
+**Embeddable dependency list.** The ~15 MB bundle is for review and audit. An
+application that only needs to skip or warn about the tunes that break without
+ROMs should embed the ~32 KiB **SID ROM Dependency List** (`sidromdep-1`) derived
+from a complete verified bundle instead: an allow-by-default, full-MD5 keyed
+list of incompatible/unknown subtunes with its own manifest and verifier. It is
+independent of the similarity exports. See the
+[normative specification](doc/rom-dependency-list.md) and generate/verify it with
+`bun scripts/rom-dependency-list/generate.ts --bundle workspace/rom-audit-dual/published --songlengths <Songlengths.md5>`
+and `bun scripts/rom-dependency-list/verify.ts --bin <file.bin> --bundle <published>`.
+
 | Decision for the selected engine/configuration | Commander behavior |
 |---|---|
 | Measured incompatible (exception bit set) | Hide/skip in autoplay/radio. For an explicit selection, warn and offer appropriate ROM installation, another supported playback route, play anyway, or cancel. |

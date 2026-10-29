@@ -162,6 +162,18 @@ not prove the engine cannot play the tune with CHARGEN as well. No automatic
 release/tag/upload is performed. The local bundle is ready for review and for
 Commander's generator after a complete qualified census.
 
+### Embeddable dependency list
+
+For applications that embed the result (for example the C64 Commander APK), the
+bundle is condensed into the allow-by-default **SID ROM Dependency List**
+(`sidromdep-1`, about 32 KiB): full-MD5 keyed records of the subtunes with an
+incompatible or unknown lane, no inventory and no horizon table. The generator
+refuses anything but a complete, `releaseReady` bundle accepted by
+`verify-publication.ts`, proves that every published horizon follows from the
+pinned `Songlengths.md5`, and the verifier round-trips every audited subtune
+(every unlisted subtune must be measured compatible in all four lanes). The format
+is specified in [doc/rom-dependency-list.md](../rom-dependency-list.md).
+
 ## Verify and distribute
 
 The full launcher finishes with:
