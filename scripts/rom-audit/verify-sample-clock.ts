@@ -6,8 +6,9 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { NativeLane } from "./native-lanes.js";
-import { delayedRomFixture, seedReadRomFixture } from "./fixtures.js";
+import { NativeLane, runNativeEngine } from "./native-lanes.js";
+import { delayedRomFixture, seedReadRomFixture, syntheticFixture } from "./fixtures.js";
+import { sampleClockScreen } from "./sample-screen.js";
 import { screenJson, screenSha } from "./screen-identity.js";
 import { readVerifiedSid } from "./inputs.js";
 import { RolloutLedger } from "./ledger.js";
@@ -22,6 +23,14 @@ const cases:{name:string;bytes:Buffer;song:number;seconds:number;masks:number[]}
   {name:"early-osc3",bytes:seedReadRomFixture(0x1b),song:1,seconds:3.123,masks:[7,0,3]},
   {name:"late-env3",bytes:seedReadRomFixture(0x1c,100),song:1,seconds:3.123,masks:[7,0,3]},
 ];
+for(const kind of ["silence","silent-tail","silent-divergence","osc3-reader","second-sid-late","third-sid-late","busy-writes"] as const)
+  cases.push({name:kind,bytes:syntheticFixture(kind,{frames:100}),song:1,seconds:3.123,masks:[7,0,3]});
+for(const mask of [1,2,4])cases.push({name:`delayed-${mask}-after-4s`,bytes:delayedRomFixture(mask,{frames:200,songs:2,dependentSong:2}),song:2,seconds:6.123,masks:[7,0,3]});
+for(const item of [...cases])for(const model of [0x10,0x20])for(const clock of [4,8]){
+  const bytes=Buffer.from(item.bytes);
+  bytes.writeUInt16BE((bytes.readUInt16BE(0x76)&~0x3c)|model|clock,0x76);
+  cases.push({...item,name:`${item.name}-${model===0x10?"6581":"8580"}-${clock===4?"PAL":"NTSC"}`,bytes});
+}
 if(benchmark){
   const limit=Number(limitArg);
   if(!Number.isSafeInteger(limit)||limit<1||limit>16)throw new Error("Limit must be 1..16");
@@ -30,6 +39,14 @@ if(benchmark){
   const jobs=prior.measured.slice(0,limit).map(r=>r.job);
   if(jobs.length!==limit||jobs.some(j=>!ledger.has(j)))throw new Error("Only existing counted jobs allowed");
   cases.push(...jobs.map(j=>({name:j.path,bytes:readVerifiedSid(j.path,j.sha256),song:j.song,seconds:j.seconds,masks:[7]})));
+}
+// Diagnosed halts must not become a register-only compatibility grant. Check
+// these and the synthetic PCM/trace controls against actual listener decisions.
+const grantCases=[...cases.filter(c=>!c.name.includes("/")),...["halt-without-basic","silent-halt"].map(kind=>({name:kind,bytes:syntheticFixture(kind as "halt-without-basic"|"silent-halt"),song:1,seconds:3.123,masks:[7,0,3]}))];
+for(const item of grantCases){
+  const sampled=sampleClockScreen(binary,roms,item.bytes,item.song,item.seconds);
+  const audio=await runNativeEngine("residfp",item.bytes,item.song,item.seconds,roms,path.resolve("workspace/rom-audit-screen-residfp/render"),true,["none","full"]);
+  for(const set of ["none","full"] as const)if(sampled.screen[set]&&(audio.reference.outcome!=="clean"||audio.reference.repeat!=="identical"||audio.lanes.find(l=>l.set===set)?.outcome!=="equivalent"))throw new Error(`Synthetic false grant: ${item.name} ${set}`);
 }
 const rows:unknown[]=[];
 for(const item of cases)for(const mask of item.masks){
@@ -57,3 +74,5 @@ for(const item of cases)for(const mask of item.masks){
   }
   writeFileSync(report,screenJson({schema:"sidflow-sample-clock-parity-1",binarySha256:screenSha(readFileSync(binary)),rows})+"\n");
 }
+
+console.log(`${rows.length} packet/trace controls and ${grantCases.length} forced-audio synthetic grant controls passed.`);

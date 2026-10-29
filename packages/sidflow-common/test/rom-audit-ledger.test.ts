@@ -14,6 +14,16 @@ async function withDirectory(body:(dir:string)=>Promise<void>|void):Promise<void
  try{await body(dir);}finally{await rm(dir,{recursive:true,force:true});}
 }
 describe("rollout reservation ledger",()=>{
+ it("allows concurrent read-only scopes while excluding census writers",()=>withDirectory(dir=>{
+  const file=path.join(dir,"scope.lock"),a=new ProcessLock(file,"reader A"),b=new ProcessLock(file,"reader B"),writer=new ProcessLock(file,"writer");
+  try{
+   a.acquire(0,true);b.acquire(0,true);
+   expect(()=>writer.acquire()).toThrow("already held");
+   a.release();expect(()=>writer.acquire()).toThrow("already held");
+   b.release();writer.acquire();
+   expect(()=>a.acquire(0,true)).toThrow("already held");
+  }finally{a.release();b.release();writer.release();}
+ }));
  it("computes 5% ceilings from both denominators",()=>{
   expect(ceilings(61157,87868)).toEqual({maxFiles:3057,maxSongs:4393});
  });

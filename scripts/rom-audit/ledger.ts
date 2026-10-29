@@ -25,17 +25,17 @@ export const WORKSPACE = path.join(root, "workspace");
  * unlink race. The file only carries diagnostics about the current holder.
  */
 const libc = dlopen("libc.so.6", { flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } });
-const LOCK_EX = 2, LOCK_NB = 4, LOCK_UN = 8;
+const LOCK_SH = 1, LOCK_EX = 2, LOCK_NB = 4, LOCK_UN = 8;
 export class ProcessLock {
   private fd: number | undefined;
   constructor(readonly file: string, readonly label: string) {}
-  acquire(timeoutMs = 0): void {
+  acquire(timeoutMs = 0, shared = false): void {
     if (this.fd !== undefined) throw new Error(`${this.label} lock is already held by this object`);
     mkdirSync(path.dirname(this.file), { recursive: true });
     const fd = openSync(this.file, "a+");
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      if (libc.symbols.flock(fd, LOCK_EX | LOCK_NB) === 0) break;
+      if (libc.symbols.flock(fd, (shared ? LOCK_SH : LOCK_EX) | LOCK_NB) === 0) break;
       if (Date.now() >= deadline) {
         const holder = readFileSync(this.file, "utf8").trim() || "unknown holder";
         closeSync(fd);
@@ -44,8 +44,10 @@ export class ProcessLock {
       Bun.sleepSync(25);
     }
     this.fd = fd;
-    ftruncateSync(fd, 0);
-    writeSync(fd, `pid=${process.pid} started=${new Date().toISOString()} cmd=${process.argv.slice(1).join(" ").slice(0, 200)}\n`, 0);
+    if (!shared) {
+      ftruncateSync(fd, 0);
+      writeSync(fd, `pid=${process.pid} started=${new Date().toISOString()} cmd=${process.argv.slice(1).join(" ").slice(0, 200)}\n`, 0);
+    }
   }
   release(): void {
     if (this.fd === undefined) return;

@@ -21,7 +21,7 @@ headroom for dense multi-SID audio fallbacks. No Docker is used.
 
 `ROM_AUDIT_WORKERS=N` selects processes (default logical CPUs minus one).
 `ROM_AUDIT_MAX_HOURS` defaults to a hard 12-hour command budget; it can be raised
-to 16 hours, but larger values are rejected. `ROM_AUDIT_OUT=workspace/rom-audit-dual` selects the checkpoint directory.
+to 24 hours, but larger values are rejected. `ROM_AUDIT_OUT=workspace/rom-audit-dual` selects the checkpoint directory.
 `ROM_AUDIT_BENCHMARK_JOBS` selects the target-machine benchmark size (default 320,
 minimum 80); the default sample uses less than 1.5% of HVSC85.
 `ROM_AUDIT_STAGE_ONLY=setup|qualify|bench|full` runs one stage. Repeating the command

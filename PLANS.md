@@ -1,3 +1,217 @@
+## Complete PR #112, full accelerated HVSC census and standalone Commander ROM list (2026-10-29) — active
+
+User decisions (2026-10-29): merge PR #112 first, then run a **fresh** accelerated
+census (`ROM_AUDIT_SAMPLE_CLOCK=1`) from merged main on this i5-14600K in one
+<=24h invocation; the 12,888-row original-identity checkpoint stays historical.
+Commander embeds the result in its APK: a tiny, formally specified, standalone
+ROM-dependency list (independent of the similarity exports), with the same
+due diligence/presentation as the similarity formats. Authorized: merge PR #112
++ tag `rom-audit-tooling-2026-10-29`; create a sidflow-data release; commit the
+compact export/spec to sidflow (follow-up PR) and merge it.
+
+Methodology check (principal review): the sample-clock build calls reSIDfp's
+upstream `clockSilent` (voices/envelopes still clocked, so OSC3/ENV3 readback is
+preserved) and only skips filter/resampler output while keeping exact resampler
+readiness counts, so event-pull timing is unchanged. Grants require identical
+cycle-timed write traces; everything else retains native PCM listening.
+
+- [x] Final qualification of the review-fix sources against proof
+  `workspace/rom-sample-320-reviewed-v1/` (3 full suites); previous certificate
+  copied to `workspace/rom-audit-sample-qualification-ed5eb30/`.
+  Reviewed proof: 320/320 A/B matches, 467 audio-verified grants, 0 unknown/errors,
+  all three native binaries unchanged; 257.31 vs 526.95 projected core-hours.
+  Log `workspace/rom-pr112-final-qualification.log`; literal output:
+
+  ```text
+  Full run 1: 3005 pass / 0 fail / 0 skip
+  Full run 2: 3005 pass / 0 fail / 0 skip
+  Full run 3: 3005 pass / 0 fail / 0 skip
+  Qualified 9d1fe14fbe04b2d235076be7c882f30aa050221310415ae541b164997b7e43fc
+  ```
+
+  Focused heartbeat E2E (`--retries=0`): 5/5 consecutive passes.
+- [ ] Focused heartbeat E2E repeats; commit (excluding user `station-analysis/`), push,
+  green CI, Codex re-review, resolve threads, merge, push annotated tag.
+- [ ] Fresh accelerated census from merged main (`workspace/rom-audit-sample/`), machine idle.
+- [ ] Design/spec/generator/verifier for the standalone compact ROM list (during census,
+  light CPU only); full 3x suites after census completes.
+  User chose an **exact inventory** (~400 KiB budget). Format `sidromdep-1`
+  ("SID ROM Dependency List"): LE binary + deterministic manifest; header with
+  provenance digests and payload checksum; INVENTORY (sorted md5_48 + subtune
+  count, collisions rejected; absent = not audited); DECISION records only for
+  subtunes with any incompatible/unknown lane (4-bit lanes as in the existing
+  exceptions); horizons by the normative Songlengths rule, verified, with an
+  explicit override section. Code lives in `@sidflow/common` and
+  `scripts/rom-dependency-list/` (never `scripts/rom-audit/`, which is hashed
+  into the qualification identity); spec `doc/rom-dependency-list.md`.
+  Implementation delegated to a Sonnet implementer in an isolated worktree.
+  **Revised by user (2026-10-29):** APK is ~8 MiB, so no inventory. Allow by
+  default: unlisted files/subtunes (incl. files new in later HVSC releases) are
+  playable; zero false positives permitted, so files are keyed by the FULL MD5
+  (shorter than HVSC paths). Grouped FILE (md5[16]+count) + DECISION (subtune +
+  4-bit incompatible / 4-bit unknown masks) sections, ~33 KiB expected.
+- [ ] Verify publication, generate compact export, sidflow-data release, follow-up PR merged.
+
+## Qualify sample-clock acceleration and allow 24-hour ROM runs (2026-10-28) — active
+
+- [x] Raise launcher/census ceiling to 24h, retain the 12h default, test boundaries and update current documentation.
+- [x] Broaden adversarial sample-clock packet/write controls and validate every compatibility grant against native audio.
+- [x] Run the complete existing 320-job stratified sample against the current classifier; record mismatches, unknowns and CPU costs by stratum.
+- [x] Add selectable acceleration after correctness/benefit gates passed; preserve the original measurement identity and checkpoints.
+- [x] Build/typecheck, qualify sources and obtain three consecutive clean full test runs; document outcomes and remaining census work.
+
+User explicitly authorizes the qualification work and 24h maximum. Keep both
+engines independent, retain full horizons, repeated references and audio fallback.
+Do not mistake the 16-input pilot for representative evidence. Preserve all
+pre-existing changes and raw checkpoints.
+
+Additional user authorization (2026-10-29): continue through the new PR,
+adversarial review and fixes, green CI, merge and an annotated tooling tag.
+Use the existing scoped tag convention: `rom-audit-tooling-2026-10-29`.
+
+Adversarial review of `ed5eb300de1bb7e1f5098725dff51c06e014c55a` completed
+with three valid findings; do not merge yet:
+
+- [x] Implement P1 `PRRT_kwDOQN40Ts6xdCpM`: replace reliance on optional procfs children
+  files with verified PID/PPID/start-time descendant discovery and regressions.
+- [x] Implement P2 `PRRT_kwDOQN40Ts6xdCpQ`: validate retained reference/lane outcomes for
+  every grant and digest all retained proof files, not just report.json.
+- [x] Implement P2 `PRRT_kwDOQN40Ts6xdCpT`: bind the SIDLite native executable and check
+  all measured executables before/after the complete representative experiment.
+- [ ] Rerun the complete 320-job proof after metadata/source changes, requalify,
+  achieve three clean full suites, push fixes and request final-head review.
+
+Initial PR CI has passed build/unit/export fixture checks; E2E/performance is
+still running. Original 3x3003 results remain historical evidence for ed5eb30,
+not qualification of the forthcoming fixes. Preserve the v3 raw proof and report.
+
+Fixes implemented; targeted checks: 4 pass / 0 fail, strict typecheck passed.
+P1 uses core procfs stat parent/start-time records (including nested descendants)
+and rechecks process identity before signalling. P2 validates clean references,
+complete observations, compatible lane outcomes/sample counts, source/input links
+and digests all 101 retained proof files. Tampered outcomes, samples and log bytes
+are covered by regression tests. P3 captures/rechecks native SIDLite, reSIDfp and
+sample-clock hashes at the child and coordinator levels.
+Fresh representative run (16 workers; no other heavy local work):
+`workspace/rom-sample-320-reviewed-v1/`, log with the same prefix and `.log`.
+No final-head merge or tag is permitted until this proof, fresh qualification,
+three full suites, remote CI and a clean follow-up review all pass.
+
+Initial remote CI failed one heartbeat E2E assertion (all three retries): eight
+one-second cached clips completed between 500ms polls, which observed only old
+completed snapshots. Preserve the active-observation assertion; use 30s WAVs
+matching the cache sidecar's 15s intro/15s analysis, one feature worker, 25ms
+condition polling tied to this POST's startedAt/request completion, and remove
+the three-inactive-poll early exit. Add error logging to the touched cleanup
+handlers. Run the focused browser case repeatedly after CPU measurement, then
+require the full remote E2E/performance checks on the fixed head.
+No application semver release or completed corpus publication is implied.
+
+- [x] Commit/push the task changes and open PR #112 (`ed5eb30`).
+- [ ] Obtain/process adversarial review, fix findings and require green CI.
+- [ ] Merge the reviewed head and push the annotated tooling tag.
+
+Progress: isolated build passed 3,200 readiness checks; expanded controls passed
+450 packet/frame/trace comparisons and 77 forced-audio synthetic grant checks.
+Focused regressions pass (20/20): timeout boundaries, protocol failures and shared
+read-only/exclusive-writer locking. The first parallel harness exposed exclusive
+scope-lock contention; read-only experiments now share kernel locks while census
+writers stay exclusive. The broader cohort then exposed fractional process timeout
+milliseconds; round upward, cover the reproducer, and restart against frozen sources.
+Prior incomplete runs remain preserved as failed evidence. Final representative run:
+`workspace/rom-sample-320-qualification-v3/`, log with the same prefix and `.log`.
+No candidate false compatibility grant has been observed so far. Production remains
+unchanged pending the complete correctness/benefit gate. User explicitly requests
+commit/push and a new PR; branch `perf/rom-sample-qualification-24h` is created.
+
+Representative gate passed on all 320 jobs, with 467 audio-verified grants,
+zero mismatches, unknowns or errors, and unchanged sources/binary. Weighted
+CPU work including per-job coordinator and unchanged SIDLite work: 523.830656
+versus 249.038757 core-hours (52.4582% lower), not a wall-time promise.
+Compact evidence is in `doc/research/hvsc-rom-sample-qualification.json`.
+The new `ROM_AUDIT_SAMPLE_CLOCK=1` mode binds a separate sample-clock binary,
+methodology and measurement identity; the original identity remains
+`a8803b971aeb79d7082c7259ea73c8b4820823b38988807085e793421abcea1b`.
+Its deployed dual-engine worker passed 14 synthetic/real controls, including
+repeats, checksum failures and natural shutdown. Integration fixtures use
+10.123s observations so they meet the production comparator's minimum horizon.
+Focused final checks: 42 pass / 0 fail. Final source qualification runs under
+`workspace/rom-sample-production-qualification.log`; its certificate/logs are
+kept separately in `workspace/rom-audit-sample-qualification/`.
+
+Cancellation audit: the sample worker can block in synchronous native execution.
+Its close path now pauses the owned worker, terminates its native children and
+closes all pipes without detaching from the launcher's watchdog process group.
+An active blocked-worker regression verifies renderer termination and idempotent
+close. A fixture's `/proc` exit race was corrected; focused identity/cancellation
+checks pass (3/3), and all 14 deployed-worker controls passed again. Final frozen
+qualification log is `workspace/rom-sample-production-final-v2.log`.
+The proof loader now also requires explicit source hashes and valid metadata,
+checks complete state/boolean domains, and recomputes weighted CPU projections
+from the measured shard rows. Its forged/incomplete-metadata regression passes.
+
+Final frozen source qualification succeeded. Literal terminal summaries:
+
+```text
+Full run 1: 3003 pass / 0 fail / 0 skip
+Full run 2: 3003 pass / 0 fail / 0 skip
+Full run 3: 3003 pass / 0 fail / 0 skip
+```
+
+Qualification identity `02d6725c93f2bb6cd55c7b6aa0557a1bf341575170b958cbdd6929a50df7c94f`;
+measurement identity `04aeba1ea9bf3f991208fecda99faaafe90a8775ee79b7124f136f7f7d1d743f`.
+Build/strict script typecheck, 192 native/WASM controls, original transport/ending
+controls, 450 sample-clock packet/trace controls, 77 audio-verified synthetic
+grants and 14 deployed dual-engine worker controls passed. The full-suite
+integration outputs were checked against the pre-validation station snapshot;
+unrelated station edits are preserved and excluded from the commit.
+
+
+## Resume ROM classification runtime investigation (2026-10-28) — runtime-boundary fix validated; throughput work remains
+
+- [x] Review PRs #107–111, required docs, checkpoint and current runtime guards.
+- [x] Preserve cancelled jobs as pending and include inventory/checkpoint startup in the census deadline.
+  Existing launcher already reserves one minute for publication.
+- [x] Add cancellation regressions; build/typecheck and run three clean full suites.
+- [x] Requalify unchanged measurement backend and exercise a bounded real resume.
+
+Evidence: PR #111 is merged locally; the 320-job target-host benchmark projects
+32.86h (41.07h with margin), beyond a single allowed invocation. No census is
+currently active. The checkpoint has 12,888 unique rows, including 13 native
+lane failures (not established to be cancellation failures). Audio fallback dominates measured sample CPU (81.48%);
+EZ/sample-clock remain experimental. Do not shorten horizons or transfer engine
+results to meet a runtime claim. Preserve station-analysis edits and checkpoints.
+
+Controller regression checks: 4 pass / 0 fail. Build, strict script typecheck,
+192 native/WASM controls and transport/full-horizon ending controls passed.
+Literal qualification output (all three consecutive full runs):
+
+```text
+Full run 1: 2991 pass / 0 fail / 0 skip
+Full run 2: 2991 pass / 0 fail / 0 skip
+Full run 3: 2991 pass / 0 fail / 0 skip
+```
+
+Certificate identity `1c4ceef1de8a51d56c254b3474ffceb4983ba9f789bd17f985e979a743ba2398`.
+Measurement identity remains `a8803b971aeb79d7082c7259ea73c8b4820823b38988807085e793421abcea1b`.
+Logs: `workspace/rom-runtime-qualification.log` and the source-bound qualification
+folder. The initial dual-3 resume correctly refused mismatching native binaries;
+no checkpoint was overwritten. The existing dual-4 plan matches this checkout's
+qualified binaries and measurement sources. Its 320-job / 19-worker benchmark
+has zero failures and projects 31.27h (39.08h with margin).
+
+Live deadline validation used `ROM_AUDIT_STAGE_ONLY=full ROM_AUDIT_WORKERS=19
+ROM_AUDIT_MAX_HOURS=0.06 ROM_AUDIT_MAX_JOBS=1000
+ROM_AUDIT_OUT=workspace/rom-audit-dual-4 bash scripts/rom-audit/run-dual.sh`.
+It exited 0 after the census deadline, preserving 17 new rows (337 total), with
+zero failed/unknown measured rows. Cancelled requests remained pending; partial
+publication reports 87,531 pending (its aggregate unknown includes these pending
+subtunes). Log: `workspace/rom-runtime-resume-4.log`. No census remains running.
+`git diff --check` passed. Full-corpus delivery and a substantial throughput
+improvement remain outstanding; no new speedup or complete export is claimed.
+
+
+
 ## Continue PR #111: validate fast ROM classification and complete HVSC export (2026-10-28) — active
 
 User requests an exceptionally fast but empirically defensible ROM classifier for

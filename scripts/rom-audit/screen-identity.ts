@@ -5,26 +5,32 @@ import { engineHashes } from "./wasm-lanes.js";
 import { REFERENCE_ROM_SHA256, romSetId } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 export const screenJson=(value:unknown):string=>stringifyDeterministic(value as JsonValue,0).trimEnd();
-export const SCREEN_METHODOLOGY="rom-audit-digital-screen-2";
+export function sampleClockEnabled():boolean {
+  const value=process.env.ROM_AUDIT_SAMPLE_CLOCK;
+  if(value!==undefined&&value!=="0"&&value!=="1")throw new Error("ROM_AUDIT_SAMPLE_CLOCK must be 0 or 1");
+  return value==="1";
+}
+export const SCREEN_METHODOLOGY=sampleClockEnabled()?"rom-audit-sample-clock-1":"rom-audit-digital-screen-2";
 export const screenSha=(value:string|Uint8Array):string=>createHash("sha256").update(value).digest("hex");
 /** Qualification binds controllers/publication/tests as well as rendering. */
 export function screenQualificationIdentity(): string {
   const directory=import.meta.dir;
   const files=readdirSync(directory).filter(f=>/\.(ts|mjs|cpp|sh|py)$/.test(f)).sort().map(f=>[f,screenSha(readFileSync(path.join(directory,f)))]);
-  const extra=["packages/sidflow-common/src/rom-eligibility.ts","packages/sidflow-common/src/json.ts","packages/sidflow-common/src/sid-header-conformance.ts","packages/sidflow-common/test/rom-screen.test.ts","packages/sidflow-common/test/rom-audit-adversarial.test.ts","packages/sidflow-classify/test/super-mario-stress.test.ts","package.json","scripts/run-unit-coverage-batches.mjs","scripts/run-bun.mjs","scripts/ensure-bun.mjs","bun.lock"].map(f=>[f,screenSha(readFileSync(path.resolve(directory,"../..",f)))]);
+  const extra=["packages/sidflow-common/src/rom-eligibility.ts","packages/sidflow-common/src/json.ts","packages/sidflow-common/src/sid-header-conformance.ts","packages/sidflow-common/test/rom-screen.test.ts","packages/sidflow-common/test/rom-audit-adversarial.test.ts","packages/sidflow-common/test/rom-audit-ledger.test.ts","packages/sidflow-common/test/rom-sample-screen.test.ts","packages/sidflow-common/test/rom-sample-identity.test.ts","packages/sidflow-common/test/rom-native-descendants.test.ts","packages/sidflow-common/test/rom-sample-proof.test.ts","packages/sidflow-common/test/rom-sample-worker-cancellation.test.ts","packages/sidflow-common/test/rom-runtime-budget.test.ts","packages/sidflow-common/test/rom-screen-cancellation.test.ts","packages/sidflow-classify/test/super-mario-stress.test.ts","package.json","scripts/run-unit-coverage-batches.mjs","scripts/run-bun.mjs","scripts/ensure-bun.mjs","bun.lock"].map(f=>[f,screenSha(readFileSync(path.resolve(directory,"../..",f)))]);
   return screenSha(screenJson({files,extra,engines:{sidlite:engineHashes("sidlite"),residfp:engineHashes("residfp")}}));
 }
 /** Renderer/decision identity deliberately excludes publication, qualification
  * and rollout controllers: changing those cannot invalidate measured PCM. */
-export function screenIdentity():string {
+export function screenIdentity(sampleClock=sampleClockEnabled()):string {
   const names=["render.cpp","apply-basic-read-hook.py","apply-sid-write-hook.py","apply-digital-screen.py","apply-inline-filters.py","build-native.sh",
     "digital-screen.ts","native-lanes.ts","listener.ts","wasm-lanes.ts","screen-classifier.ts","screen-worker.ts","screen-inventory.ts","methodology.ts","inputs.ts"];
+  if(sampleClock)names.push("sample-worker.ts","native-descendants.ts","sample-classifier.ts","sample-screen.ts","register-comparison.ts","build-sample-clock.sh","apply-sample-clock.py");
   const sources=names.map(name=>[name,screenSha(readFileSync(path.join(import.meta.dir,name)))]);
   const common=["rom-eligibility.ts","json.ts","sid-header-conformance.ts"].map(name=>[name,screenSha(readFileSync(path.resolve(import.meta.dir,"../../packages/sidflow-common/src",name)))]);
-  return screenSha(screenJson({sources,common,engineIds:{sidlite:screenEngineIdentity("sidlite"),residfp:screenEngineIdentity("residfp")}}));
+  return screenSha(screenJson({sources,common,engineIds:{sidlite:screenEngineIdentity("sidlite",sampleClock),residfp:screenEngineIdentity("residfp",sampleClock)}}));
 }
-export function screenEngineIdentity(engine:"sidlite"|"residfp"):string {
-  return screenSha(screenJson({engine,...engineHashes(engine),methodology:SCREEN_METHODOLOGY,sampleRate:48000,stereo:true,powerOnDelay:8191,pullEvents:256,
-    reference:"KERNAL+BASIC+CHARGEN",masks:[0,3],absent:"KERNAL shim; BASIC/CHARGEN zero",sidModel:"header with MOS8580 fallback",screen:"native bus-only; 1024000-cycle warmup then bus-only with later OSC3/ENV3 abort; detailed clockSilent; exact timed-write screen with digi density guard; listener-v1 native audio fallback; symmetric diagnosed CPU-halt silence tails; inline filter tables; native/WASM parity qualified"}));
+export function screenEngineIdentity(engine:"sidlite"|"residfp",sampleClock=sampleClockEnabled()):string {
+  return screenSha(screenJson({engine,...engineHashes(engine),methodology:engine==="residfp"&&sampleClock?"rom-audit-sample-clock-1":"rom-audit-digital-screen-2",sampleRate:48000,stereo:true,powerOnDelay:8191,pullEvents:256,
+    reference:"KERNAL+BASIC+CHARGEN",masks:[0,3],absent:"KERNAL shim; BASIC/CHARGEN zero",sidModel:"header with MOS8580 fallback",screen:engine==="residfp"&&sampleClock?"native sample-clock readiness and timed writes; bus-only with stateful read abort then detailed clockSilent; listener-v1 register predicate and digi safeguards; native PCM fallback; symmetric diagnosed CPU-halt silence tails; inline filter tables; native/WASM parity qualified":"native bus-only; 1024000-cycle warmup then bus-only with later OSC3/ENV3 abort; detailed clockSilent; exact timed-write screen with digi density guard; listener-v1 native audio fallback; symmetric diagnosed CPU-halt silence tails; inline filter tables; native/WASM parity qualified"}));
 }
 export const screenRomSetId=romSetId;

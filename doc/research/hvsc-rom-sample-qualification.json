@@ -1,0 +1,214 @@
+{
+  "benchmarkHash": "cb4362d3f013ac3b9f84b2bd8a1af7b6314fc53fc02bb3b53309347cab7ca19e",
+  "binaryHash": "9dcb8222d5132b2f37a909b1d664e2b0af5095367cfd72e19ca7a95a8656a7c8",
+  "changed": false,
+  "compared": 320,
+  "costScope": "dual-engine native CPU plus per-job coordinator CPU; unchanged SIDLite work reused in both totals; no wall-time projection",
+  "elapsedSeconds": 2308.510539708,
+  "errors": [],
+  "grantsChecked": 467,
+  "limitations": [
+    "CPU work, not a wall-time forecast; excludes worker startup/publication",
+    "Unchanged SIDLite work was measured once and included in both totals",
+    "The original experiment predates the thin selectable production adapter; that adapter is separately source-qualified"
+  ],
+  "newProjection": {
+    "budgetHours": 286.3945709281834,
+    "margin": 1.15,
+    "projectedHours": 249.03875732885516,
+    "strata": {
+      "BASIC/0-30": {
+        "measured": 22,
+        "population": 558,
+        "workerSeconds": 78.786539
+      },
+      "BASIC/120-300": {
+        "measured": 21,
+        "population": 58,
+        "workerSeconds": 566.230279
+      },
+      "BASIC/30-120": {
+        "measured": 21,
+        "population": 770,
+        "workerSeconds": 182.241605
+      },
+      "BASIC/300+": {
+        "measured": 4,
+        "population": 4,
+        "workerSeconds": 184.520805
+      },
+      "multiSID/0-30": {
+        "measured": 21,
+        "population": 50,
+        "workerSeconds": 38.310974
+      },
+      "multiSID/120-300": {
+        "measured": 21,
+        "population": 265,
+        "workerSeconds": 701.395841
+      },
+      "multiSID/30-120": {
+        "measured": 21,
+        "population": 107,
+        "workerSeconds": 200.79872699999999
+      },
+      "multiSID/300+": {
+        "measured": 21,
+        "population": 28,
+        "workerSeconds": 1376.643512
+      },
+      "PSID/0-30": {
+        "measured": 21,
+        "population": 17306,
+        "workerSeconds": 34.11882700000001
+      },
+      "PSID/120-300": {
+        "measured": 21,
+        "population": 30855,
+        "workerSeconds": 315.97813099999996
+      },
+      "PSID/30-120": {
+        "measured": 21,
+        "population": 28621,
+        "workerSeconds": 122.87937799999997
+      },
+      "PSID/300+": {
+        "measured": 21,
+        "population": 3362,
+        "workerSeconds": 606.4735349999999
+      },
+      "RSID/0-30": {
+        "measured": 21,
+        "population": 2244,
+        "workerSeconds": 67.36005999999999
+      },
+      "RSID/120-300": {
+        "measured": 21,
+        "population": 1791,
+        "workerSeconds": 700.342516
+      },
+      "RSID/30-120": {
+        "measured": 21,
+        "population": 1494,
+        "workerSeconds": 265.580068
+      },
+      "RSID/300+": {
+        "measured": 21,
+        "population": 355,
+        "workerSeconds": 1865.9149970000005
+      }
+    }
+  },
+  "oldProjection": {
+    "budgetHours": 602.4052546108098,
+    "margin": 1.15,
+    "projectedHours": 523.830656183313,
+    "strata": {
+      "BASIC/0-30": {
+        "measured": 22,
+        "population": 558,
+        "workerSeconds": 77.87052500000001
+      },
+      "BASIC/120-300": {
+        "measured": 21,
+        "population": 58,
+        "workerSeconds": 554.7917349999999
+      },
+      "BASIC/30-120": {
+        "measured": 21,
+        "population": 770,
+        "workerSeconds": 178.97226999999998
+      },
+      "BASIC/300+": {
+        "measured": 4,
+        "population": 4,
+        "workerSeconds": 182.49175300000005
+      },
+      "multiSID/0-30": {
+        "measured": 21,
+        "population": 50,
+        "workerSeconds": 97.89122800000001
+      },
+      "multiSID/120-300": {
+        "measured": 21,
+        "population": 265,
+        "workerSeconds": 1199.528583
+      },
+      "multiSID/30-120": {
+        "measured": 21,
+        "population": 107,
+        "workerSeconds": 513.634672
+      },
+      "multiSID/300+": {
+        "measured": 21,
+        "population": 28,
+        "workerSeconds": 2699.410256
+      },
+      "PSID/0-30": {
+        "measured": 21,
+        "population": 17306,
+        "workerSeconds": 73.71585699999999
+      },
+      "PSID/120-300": {
+        "measured": 21,
+        "population": 30855,
+        "workerSeconds": 735.0397659999999
+      },
+      "PSID/30-120": {
+        "measured": 21,
+        "population": 28621,
+        "workerSeconds": 251.61460500000004
+      },
+      "PSID/300+": {
+        "measured": 21,
+        "population": 3362,
+        "workerSeconds": 1482.2069609999999
+      },
+      "RSID/0-30": {
+        "measured": 21,
+        "population": 2244,
+        "workerSeconds": 85.365754
+      },
+      "RSID/120-300": {
+        "measured": 21,
+        "population": 1791,
+        "workerSeconds": 733.7663599999998
+      },
+      "RSID/30-120": {
+        "measured": 21,
+        "population": 1494,
+        "workerSeconds": 312.05993699999993
+      },
+      "RSID/300+": {
+        "measured": 21,
+        "population": 355,
+        "workerSeconds": 2312.7215309999997
+      }
+    }
+  },
+  "parallelism": 8,
+  "passed": true,
+  "rawReportSha256": "421e5e4badce43fe5176ac2e66dc7816581c276f02ced808a1d23736bd6a3324",
+  "schema": "sidflow-sample-screen-qualification-1",
+  "sourceIdentity": "035974db3a8177f7d336863eec9ccba37a968f239e6dfc5239bbf5542ee41531",
+  "strata": {
+    "BASIC/0-30": 22,
+    "BASIC/120-300": 21,
+    "BASIC/30-120": 21,
+    "BASIC/300+": 4,
+    "multiSID/0-30": 21,
+    "multiSID/120-300": 21,
+    "multiSID/30-120": 21,
+    "multiSID/300+": 21,
+    "PSID/0-30": 21,
+    "PSID/120-300": 21,
+    "PSID/30-120": 21,
+    "PSID/300+": 21,
+    "RSID/0-30": 21,
+    "RSID/120-300": 21,
+    "RSID/30-120": 21,
+    "RSID/300+": 21
+  },
+  "unknown": 0,
+  "weightedCpuReductionPercent": 52.458155247465164
+}
