@@ -190,9 +190,14 @@ export interface TraceFeatures {
   alignmentExact: boolean;
   /** alignedWrites / referenceWrites (1 when the reference has no writes). */
   alignmentSimilarity: number;
+  /** Reference writes to $D418 (volume / 4-bit sample register) and whether they form sample-playback bursts */
+  referenceVolumeWrites: number;
+  referenceDigi: boolean;
   referenceError: string;
+  referenceErrorKind: string;
   variantError: string;
   variantErrorKind: string;
+  /** false when either native trace overflowed its 2,000,000-write buffer (the music beyond is unobserved) */
   traceComplete: boolean;
   cls: TraceClass;
   bSubclass: BSubclass | null;
@@ -232,12 +237,27 @@ export function computeTraceFeatures(referenceFull: Trace, variantFull: Trace, o
     matchingValuePrefix: k, firstValueDivergenceSeconds: firstDivergence, startOffsetCycles: offsetCycles,
     maxDriftCycles: maxDrift, finalDriftCycles: finalDrift, alignedWrites: alignment.matched, alignmentExact: alignment.exact,
     alignmentSimilarity: n === 0 ? 1 : alignment.matched / n,
-    referenceError: referenceFull.error, variantError: variantFull.error, variantErrorKind: variantFull.errorKind,
+    ...volumeStats(reference),
+    referenceError: referenceFull.error, referenceErrorKind: referenceFull.errorKind, variantError: variantFull.error, variantErrorKind: variantFull.errorKind,
     traceComplete, cls: "X", bSubclass: null, rule: "",
   };
-  const verdict = classify(features, referenceFull);
+  const verdict = classify(features);
   features.cls = verdict.cls; features.bSubclass = verdict.bSubclass; features.rule = verdict.rule;
   return features;
+}
+
+export const DIGI_WINDOW_CYCLES = 100000;
+export const DIGI_MIN_WRITES = 100;
+/** Sample playback: more than DIGI_MIN_WRITES writes to $D418 (any chip) within DIGI_WINDOW_CYCLES (the listener-v1 density rule). */
+export function volumeStats(trace: Trace): { referenceVolumeWrites: number; referenceDigi: boolean } {
+  const cycles: number[] = [];
+  for (let i = 0; i < trace.sym.length; i++) if (((trace.sym[i]! >> 8) & 31) === 24) cycles.push(trace.cycle[i]!);
+  let digi = false;
+  for (let lo = 0, hi = 0; hi < cycles.length && !digi; hi++) {
+    while (cycles[hi]! - cycles[lo]! >= DIGI_WINDOW_CYCLES) lo++;
+    if (hi - lo + 1 > DIGI_MIN_WRITES) digi = true;
+  }
+  return { referenceVolumeWrites: cycles.length, referenceDigi: digi };
 }
 
 export function bSubclassOf(maxDriftCycles: number, clockHz: number): BSubclass {
@@ -262,11 +282,12 @@ export function bSubclassOf(maxDriftCycles: number, clockHz: number): BSubclass 
  *  D  values diverge within 50% of the horizon, min/max write-count ratio >= 0.9.
  *  E  values diverge within 50% of the horizon, write counts differ by more than 10%.
  */
-export function classify(f: TraceFeatures, referenceFull: Trace): { cls: TraceClass; bSubclass: BSubclass | null; rule: string } {
+export function classify(f: TraceFeatures): { cls: TraceClass; bSubclass: BSubclass | null; rule: string } {
   const none = (cls: TraceClass, rule: string) => ({ cls, bSubclass: null as BSubclass | null, rule });
   const n = f.referenceWrites, m = f.variantWrites;
-  if ((referenceFull.error && referenceFull.errorKind !== "cpu-halt") || (f.variantError && f.variantErrorKind !== "cpu-halt") || !f.traceComplete)
-    return none("X", "inadequate-evidence");
+  if (f.referenceError && f.referenceErrorKind !== "cpu-halt") return none("X", "reference-engine-error");
+  if (f.variantError && f.variantErrorKind !== "cpu-halt") return none("X", "variant-engine-error");
+  if (!f.traceComplete) return none("X", "trace-truncated");
   if (f.bitExact) return none("A", "bit-exact");
   if (m <= MAX_INIT_WRITES && n - m >= 8) return none("G", "init-writes-only");
   if (f.variantErrorKind === "cpu-halt" && !f.referenceError) return none("H", "variant-cpu-halt");
