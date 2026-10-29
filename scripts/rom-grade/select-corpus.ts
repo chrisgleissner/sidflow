@@ -37,6 +37,7 @@ export function cellsOf(row: ScanRow): string[] {
       cells.add(`class ${key} | kind ${row.kind}`);
       cells.add(`class ${key} | rom ${lane}`);
       cells.add(`class ${key} | engine ${engine}`);
+      if (features.referenceErrorKind === "cpu-halt") cells.add(`reference jams (CPU halt) | class ${key}`);
       const byEngine = perLane.get(lane) ?? new Map<string, string>(); byEngine.set(engine, key); perLane.set(lane, byEngine);
       if (group(key) === "divergent") worst = "divergent"; else if (group(key) === "retimed" && worst === "exact") worst = "retimed";
     }

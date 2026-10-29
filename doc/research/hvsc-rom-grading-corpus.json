@@ -35,11 +35,10 @@
       "satisfied": true
     },
     {
-      "available": 662,
+      "available": 666,
       "cell": "chips 1 | kind RSID",
       "exemplars": [
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/S-Z/This_Is_Not_America.sid#1",
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
         "DEMOS/S-Z/You_Can_Win_If_You_Want.sid#1",
@@ -48,6 +47,7 @@
         "GAMES/A-F/Fire_King.sid#1",
         "GAMES/G-L/Halcyon.sid#1",
         "GAMES/S-Z/Two_to_One.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/Beat_Dis_2.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/Bomb_Europe_Telephone-mix.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/M_U_S_I_C_Nonstop_Mix.sid#1",
@@ -60,21 +60,19 @@
         "MUSICIANS/C/Cobra/Shangai_Market.sid#1",
         "MUSICIANS/E/Electronic_Speech_Systems/Cave_of_the_Word_Wizard_Set_4.sid#1",
         "MUSICIANS/F/Finkel_Andy/Music_Maker.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
         "MUSICIANS/G/Green_David/Sentence.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
         "MUSICIANS/H/Hugenroth_Andre_and_Frank/Axel_F.sid#1",
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/L/Laxity/Sanxion_Loader_Remix.sid#1",
         "MUSICIANS/M/Madhacker/Fine_Time.sid#1",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/P/Pernet/Mega_Digi.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1",
         "MUSICIANS/S/Scout/Rave_da_Scene_part_2.sid#1",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
         "MUSICIANS/S/SoundLogic/Track_064.sid#1",
         "MUSICIANS/T/TC/Clean_Germany_2_part_1.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2",
         "MUSICIANS/W/Wacek/Acid_Flashback.sid#1",
         "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1",
@@ -120,7 +118,7 @@
       "satisfied": true
     },
     {
-      "available": 60,
+      "available": 61,
       "cell": "class A | engine residfp",
       "exemplars": [
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
@@ -130,19 +128,19 @@
         "MUSICIANS/B/Butterfield_Jim/Happy_Birthday_BASIC.sid#1",
         "MUSICIANS/F/Finkel_Andy/Music_Maker.sid#1",
         "MUSICIANS/G/Green_David/Sentence.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
         "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1",
         "MUSICIANS/W/Waz/Skate_or_Die-Lester_Forever_12.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 60,
+      "available": 61,
       "cell": "class A | engine sidlite",
       "exemplars": [
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
@@ -152,12 +150,12 @@
         "MUSICIANS/B/Butterfield_Jim/Happy_Birthday_BASIC.sid#1",
         "MUSICIANS/F/Finkel_Andy/Music_Maker.sid#1",
         "MUSICIANS/G/Green_David/Sentence.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
         "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1",
         "MUSICIANS/W/Waz/Skate_or_Die-Lester_Forever_12.sid#1"
       ],
@@ -172,7 +170,7 @@
       "satisfied": true
     },
     {
-      "available": 59,
+      "available": 60,
       "cell": "class A | kind RSID",
       "exemplars": [
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
@@ -181,12 +179,12 @@
         "MUSICIANS/B/Brandt_Georg/Tom_and_Jerry.sid#7",
         "MUSICIANS/F/Finkel_Andy/Music_Maker.sid#1",
         "MUSICIANS/G/Green_David/Sentence.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
         "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1",
         "MUSICIANS/W/Waz/Skate_or_Die-Lester_Forever_12.sid#1"
       ],
@@ -202,7 +200,7 @@
       "satisfied": true
     },
     {
-      "available": 60,
+      "available": 61,
       "cell": "class A | rom none",
       "exemplars": [
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
@@ -212,12 +210,12 @@
         "MUSICIANS/B/Butterfield_Jim/Happy_Birthday_BASIC.sid#1",
         "MUSICIANS/F/Finkel_Andy/Music_Maker.sid#1",
         "MUSICIANS/G/Green_David/Sentence.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
         "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1",
         "MUSICIANS/W/Waz/Skate_or_Die-Lester_Forever_12.sid#1"
       ],
@@ -448,7 +446,7 @@
       "satisfied": true
     },
     {
-      "available": 26,
+      "available": 27,
       "cell": "class C | engine residfp",
       "exemplars": [
         "MUSICIANS/B/Bain_David/Passage_of_Time.sid#1",
@@ -462,7 +460,7 @@
       "satisfied": true
     },
     {
-      "available": 27,
+      "available": 28,
       "cell": "class C | engine sidlite",
       "exemplars": [
         "MUSICIANS/C/Crisps/Missile_Defence_2SID.sid#5",
@@ -487,7 +485,7 @@
       "satisfied": true
     },
     {
-      "available": 17,
+      "available": 18,
       "cell": "class C | kind RSID",
       "exemplars": [
         "MUSICIANS/E/Electronic_Speech_Systems/Cave_of_the_Word_Wizard_Set_4.sid#1",
@@ -507,7 +505,7 @@
       "satisfied": true
     },
     {
-      "available": 28,
+      "available": 29,
       "cell": "class C | rom none",
       "exemplars": [
         "MUSICIANS/B/Bain_David/Passage_of_Time.sid#1",
@@ -523,11 +521,11 @@
       "satisfied": true
     },
     {
-      "available": 310,
+      "available": 311,
       "cell": "class D | engine residfp",
       "exemplars": [
         "DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/L/Leitch_Barry/Arcanum.sid#1",
         "MUSICIANS/T/Tinkler_Jason/Out-Space.sid#2",
         "MUSICIANS/W/Wacek/Acid_Flashback.sid#1",
@@ -536,12 +534,12 @@
       "satisfied": true
     },
     {
-      "available": 309,
+      "available": 310,
       "cell": "class D | engine sidlite",
       "exemplars": [
         "DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid#1",
         "MUSICIANS/B/Bain_David/Passage_of_Time.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/L/Leitch_Barry/Arcanum.sid#1",
         "MUSICIANS/W/Wacek/Acid_Flashback.sid#1"
       ],
@@ -558,10 +556,10 @@
       "satisfied": true
     },
     {
-      "available": 295,
+      "available": 296,
       "cell": "class D | kind RSID",
       "exemplars": [
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/W/Wacek/Acid_Flashback.sid#1",
         "MUSICIANS/W/Winterberg_Michael/Bonecruncher.sid#3"
       ],
@@ -584,12 +582,12 @@
       "satisfied": true
     },
     {
-      "available": 311,
+      "available": 312,
       "cell": "class D | rom none",
       "exemplars": [
         "DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid#1",
         "MUSICIANS/B/Bain_David/Passage_of_Time.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/L/Leitch_Barry/Arcanum.sid#1",
         "MUSICIANS/T/Tinkler_Jason/Out-Space.sid#2",
         "MUSICIANS/W/Wacek/Acid_Flashback.sid#1",
@@ -696,27 +694,27 @@
       "satisfied": true
     },
     {
-      "available": 119,
+      "available": 120,
       "cell": "class G | engine residfp",
       "exemplars": [
         "DEMOS/0-9/128_Byte_Blues_BASIC.sid#1",
         "DEMOS/G-L/Gabooto_Bach_BASIC.sid#1",
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/S-Z/Swan_BASIC.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/P/Pernet/Mega_Digi.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 119,
+      "available": 120,
       "cell": "class G | engine sidlite",
       "exemplars": [
         "DEMOS/0-9/128_Byte_Blues_BASIC.sid#1",
         "DEMOS/G-L/Gabooto_Bach_BASIC.sid#1",
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/S-Z/Swan_BASIC.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/P/Pernet/Mega_Digi.sid#1"
       ],
       "satisfied": true
@@ -732,83 +730,47 @@
       "satisfied": true
     },
     {
-      "available": 3,
+      "available": 4,
       "cell": "class G | kind RSID",
       "exemplars": [
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/P/Pernet/Mega_Digi.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 119,
+      "available": 120,
       "cell": "class G | rom none",
       "exemplars": [
         "DEMOS/0-9/128_Byte_Blues_BASIC.sid#1",
         "DEMOS/G-L/Gabooto_Bach_BASIC.sid#1",
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/S-Z/Swan_BASIC.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/P/Pernet/Mega_Digi.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 2,
-      "cell": "class H | engine residfp",
-      "exemplars": [
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
-        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
-      ],
-      "satisfied": true
-    },
-    {
-      "available": 2,
-      "cell": "class H | engine sidlite",
-      "exemplars": [
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
-        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
-      ],
-      "satisfied": true
-    },
-    {
-      "available": 2,
-      "cell": "class H | kind RSID",
-      "exemplars": [
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
-        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
-      ],
-      "satisfied": true
-    },
-    {
-      "available": 2,
-      "cell": "class H | rom none",
-      "exemplars": [
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
-        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
-      ],
-      "satisfied": true
-    },
-    {
-      "available": 11,
+      "available": 12,
       "cell": "class I | engine residfp",
       "exemplars": [
         "DEMOS/S-Z/This_Is_Not_America.sid#1",
         "DEMOS/S-Z/You_Can_Win_If_You_Want.sid#1",
         "MUSICIANS/J/Joseph_Richard/Barbarian.sid#2",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1"
+        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 11,
+      "available": 12,
       "cell": "class I | engine sidlite",
       "exemplars": [
         "DEMOS/S-Z/This_Is_Not_America.sid#1",
         "DEMOS/S-Z/You_Can_Win_If_You_Want.sid#1",
         "MUSICIANS/J/Joseph_Richard/Barbarian.sid#2",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1"
+        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
       ],
       "satisfied": true
     },
@@ -821,28 +783,28 @@
       "satisfied": true
     },
     {
-      "available": 10,
+      "available": 11,
       "cell": "class I | kind RSID",
       "exemplars": [
         "DEMOS/S-Z/This_Is_Not_America.sid#1",
         "DEMOS/S-Z/You_Can_Win_If_You_Want.sid#1",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1"
+        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 11,
+      "available": 12,
       "cell": "class I | rom none",
       "exemplars": [
         "DEMOS/S-Z/This_Is_Not_America.sid#1",
         "DEMOS/S-Z/You_Can_Win_If_You_Want.sid#1",
         "MUSICIANS/J/Joseph_Richard/Barbarian.sid#2",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1"
+        "MUSICIANS/W/Warlock/Edge_of_Panic.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 92,
+      "available": 93,
       "cell": "class X(trace-truncated) | engine residfp",
       "exemplars": [
         "MUSICIANS/B/Bad_Rat/Iron_Mix.sid#1",
@@ -858,7 +820,7 @@
       "satisfied": true
     },
     {
-      "available": 92,
+      "available": 93,
       "cell": "class X(trace-truncated) | engine sidlite",
       "exemplars": [
         "MUSICIANS/B/Bad_Rat/Iron_Mix.sid#1",
@@ -884,7 +846,7 @@
       "satisfied": true
     },
     {
-      "available": 82,
+      "available": 83,
       "cell": "class X(trace-truncated) | kind RSID",
       "exemplars": [
         "MUSICIANS/B/Bad_Rat/Iron_Mix.sid#1",
@@ -904,7 +866,7 @@
       "satisfied": true
     },
     {
-      "available": 92,
+      "available": 93,
       "cell": "class X(trace-truncated) | rom none",
       "exemplars": [
         "MUSICIANS/B/Bad_Rat/Iron_Mix.sid#1",
@@ -934,7 +896,6 @@
       "cell": "clock NTSC | has-nonexact-lane",
       "exemplars": [
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid#1",
         "DEMOS/S-Z/Swan_BASIC.sid#1",
         "DEMOS/UNKNOWN/Master_Composer/Swan_Lake.sid#1",
@@ -945,26 +906,27 @@
       "satisfied": true
     },
     {
-      "available": 44,
+      "available": 45,
       "cell": "clock PAL | all-exact",
       "exemplars": [
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
         "MUSICIANS/G/Green_David/Sentence.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
         "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 1013,
+      "available": 1016,
       "cell": "clock PAL | has-nonexact-lane",
       "exemplars": [
         "DEMOS/A-F/Devils_ReSIDence_3SID.sid#1",
         "GAMES/G-L/Halcyon.sid#1",
         "GAMES/S-Z/Two_to_One.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/Beat_Dis_2.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/Bomb_Europe_Telephone-mix.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/M_U_S_I_C_Nonstop_Mix.sid#1",
@@ -977,10 +939,9 @@
         "MUSICIANS/C/Cobra/Shangai_Market.sid#1",
         "MUSICIANS/C/Crisps/Missile_Defence_2SID.sid#5",
         "MUSICIANS/E/Et1999cc/Ploks_House_2SID.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
         "MUSICIANS/H/Hermit/3SID_Tracker_Demo_1_3SID.sid#1",
         "MUSICIANS/H/Hugenroth_Andre_and_Frank/Axel_F.sid#1",
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/J/Jellica/7funk44vers2_2SID.sid#1",
         "MUSICIANS/J/Jellica/Centre_Letters_Rmx_2SID.sid#1",
         "MUSICIANS/J/Joseph_Richard/Barbarian.sid#2",
@@ -1000,7 +961,6 @@
         "MUSICIANS/S/Sad/Wish.sid#1",
         "MUSICIANS/S/Schneider_Markus/Read_n_Blast_tune_1.sid#1",
         "MUSICIANS/S/Scout/Rave_da_Scene_part_2.sid#1",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1",
         "MUSICIANS/S/SounDemoN/Firelord_drifting.sid#2",
         "MUSICIANS/S/SoundLogic/Track_064.sid#1",
         "MUSICIANS/T/TC/Clean_Germany_2_part_1.sid#1",
@@ -1037,7 +997,7 @@
       "exemplars": [
         "MUSICIANS/B/Baron_Knoxburry/Tzar_Assassin.sid#1",
         "MUSICIANS/B/Brandt_Georg/Tom_and_Jerry.sid#7",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2"
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4"
       ],
       "satisfied": true
     },
@@ -1058,14 +1018,12 @@
       "exemplars": [
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
         "GAMES/A-F/Fire_King.sid#1",
-        "MUSICIANS/B/Baron_Knoxburry/Tzar_Assassin.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2"
+        "MUSICIANS/B/Baron_Knoxburry/Tzar_Assassin.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 548,
+      "available": 549,
       "cell": "digi | has-nonexact-lane",
       "exemplars": [
         "GAMES/S-Z/Two_to_One.sid#1",
@@ -1076,9 +1034,8 @@
         "MUSICIANS/B/Becher_Patrick/Drumming_Special.sid#1",
         "MUSICIANS/C/Cobra/Shangai_Market.sid#1",
         "MUSICIANS/E/Electronic_Speech_Systems/Cave_of_the_Word_Wizard_Set_4.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
         "MUSICIANS/H/Hugenroth_Andre_and_Frank/Axel_F.sid#1",
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/L/Laxity/Sanxion_Loader_Remix.sid#1",
         "MUSICIANS/M/Madhacker/Fine_Time.sid#1",
         "MUSICIANS/M/Mahoney/Stereophonik_6581_2SID.sid#1",
@@ -1103,22 +1060,21 @@
       "satisfied": true
     },
     {
-      "available": 27,
+      "available": 28,
       "cell": "horizon 120-300s | all-exact",
       "exemplars": [
         "MUSICIANS/B/Baron_Knoxburry/Tzar_Assassin.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
         "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2"
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 635,
+      "available": 636,
       "cell": "horizon 120-300s | has-nonexact-lane",
       "exemplars": [
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid#1",
         "DEMOS/S-Z/Swan_BASIC.sid#1",
         "GAMES/S-Z/Two_to_One.sid#1",
@@ -1130,9 +1086,8 @@
         "MUSICIANS/B/Bouchard_Gary/We_Are_the_World.sid#1",
         "MUSICIANS/C/Crisps/Missile_Defence_2SID.sid#5",
         "MUSICIANS/E/Et1999cc/Ploks_House_2SID.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
         "MUSICIANS/H/Hugenroth_Andre_and_Frank/Axel_F.sid#1",
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/J/Jellica/7funk44vers2_2SID.sid#1",
         "MUSICIANS/J/Jellica/Centre_Letters_Rmx_2SID.sid#1",
         "MUSICIANS/M/MCH/Acid_Storm_3SID.sid#1",
@@ -1154,7 +1109,7 @@
       "cell": "horizon 30-120s | all-exact",
       "exemplars": [
         "DEMOS/S-Z/Wamma_Kadellasi.sid#1",
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1"
       ],
@@ -1175,7 +1130,6 @@
         "MUSICIANS/L/Laxity/Sanxion_Loader_Remix.sid#1",
         "MUSICIANS/M/Madhacker/Fine_Time.sid#1",
         "MUSICIANS/M/Mahoney/Stereophonik_6581_2SID.sid#1",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1",
         "MUSICIANS/W/Wacek/Acid_Flashback.sid#1"
       ],
       "satisfied": true
@@ -1214,11 +1168,12 @@
       "satisfied": true
     },
     {
-      "available": 337,
+      "available": 339,
       "cell": "horizon >300s | has-nonexact-lane",
       "exemplars": [
         "DEMOS/A-F/Devils_ReSIDence_3SID.sid#1",
         "DEMOS/UNKNOWN/Master_Composer/Swan_Lake.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/B/Bad_Rat/Iron_Mix.sid#1",
         "MUSICIANS/B/Bain_David/Passage_of_Time.sid#1",
         "MUSICIANS/C/Cobra/Shangai_Market.sid#1",
@@ -1243,23 +1198,23 @@
         "MUSICIANS/B/Butterfield_Jim/Happy_Birthday_BASIC.sid#1",
         "MUSICIANS/F/Finkel_Andy/Music_Maker.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
-        "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid#2",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/W/Waz/Skate_or_Die-Lester_Forever_12.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 723,
+      "available": 725,
       "cell": "model 6581 | has-nonexact-lane",
       "exemplars": [
         "DEMOS/A-F/Devils_ReSIDence_3SID.sid#1",
         "DEMOS/G-L/Gabooto_Bach_BASIC.sid#1",
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/S-Z/Swan_BASIC.sid#1",
         "DEMOS/UNKNOWN/Master_Composer/Swan_Lake.sid#1",
         "GAMES/G-L/Halcyon.sid#1",
         "GAMES/S-Z/Two_to_One.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/Beat_Dis_2.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/Bomb_Europe_Telephone-mix.sid#1",
         "MUSICIANS/0-9/4753_Softcopy/M_U_S_I_C_Nonstop_Mix.sid#1",
@@ -1271,7 +1226,7 @@
         "MUSICIANS/B/Brodersen_Frank/Pacman_II.sid#6",
         "MUSICIANS/C/Cobra/Shangai_Market.sid#1",
         "MUSICIANS/E/Electronic_Speech_Systems/Cave_of_the_Word_Wizard_Set_4.sid#1",
-        "MUSICIANS/F/Future_Freak/Dexion_Demo.sid#1",
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1",
         "MUSICIANS/J/Joseph_Richard/Barbarian.sid#2",
         "MUSICIANS/L/Laxity/Sanxion_Loader_Remix.sid#1",
         "MUSICIANS/M/Madhacker/Fine_Time.sid#1",
@@ -1289,24 +1244,23 @@
       "satisfied": true
     },
     {
-      "available": 9,
+      "available": 10,
       "cell": "model 8580 | all-exact",
       "exemplars": [
-        "MUSICIANS/G/Gregfeel/Model_of_Me.sid#1",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
-        "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1"
+        "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 340,
+      "available": 341,
       "cell": "model 8580 | has-nonexact-lane",
       "exemplars": [
         "DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid#1",
         "MUSICIANS/C/Crisps/Missile_Defence_2SID.sid#5",
         "MUSICIANS/E/Et1999cc/Ploks_House_2SID.sid#1",
         "MUSICIANS/H/Hermit/3SID_Tracker_Demo_1_3SID.sid#1",
-        "MUSICIANS/J/JFK/Dupa_Jasiu.sid#1",
         "MUSICIANS/J/Jellica/7funk44vers2_2SID.sid#1",
         "MUSICIANS/J/Jellica/Centre_Letters_Rmx_2SID.sid#1",
         "MUSICIANS/M/MCH/Acid_Storm_3SID.sid#1",
@@ -1363,13 +1317,12 @@
         "DEMOS/UNKNOWN/Duelling_Banjos.sid#1",
         "GAMES/0-9/100_Mile_Race.sid#1",
         "MUSICIANS/B/Bain_David/Passage_of_Time.sid#1",
-        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Axel_F.sid#1",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1"
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Axel_F.sid#1"
       ],
       "satisfied": true
     },
     {
-      "available": 26,
+      "available": 27,
       "cell": "no digi | all-exact",
       "exemplars": [
         "MUSICIANS/B/Brandt_Georg/Tom_and_Jerry.sid#7",
@@ -1377,8 +1330,10 @@
         "MUSICIANS/F/Finkel_Andy/Music_Maker.sid#1",
         "MUSICIANS/G/Green_David/Sentence.sid#1",
         "MUSICIANS/H/Hubbard_Rob/Skate_or_Die_intro.sid#1",
+        "MUSICIANS/M/Mellberg_Bo/Point_X.sid#4",
         "MUSICIANS/O/Ocean/Analoque_2SID.sid#1",
         "MUSICIANS/O/Ocean/Get_Me_Eternal_2SID.sid#1",
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1",
         "MUSICIANS/S/SounDemoN/Vicious_SID_2-Escos.sid#1",
         "MUSICIANS/W/Warp_8/Jack_Voicebreaker.sid#1",
         "MUSICIANS/W/Waz/Skate_or_Die-Lester_Forever_12.sid#1"
@@ -1386,7 +1341,7 @@
       "satisfied": true
     },
     {
-      "available": 732,
+      "available": 734,
       "cell": "no digi | has-nonexact-lane",
       "exemplars": [
         "DEMOS/0-9/128_Byte_Blues_BASIC.sid#1",
@@ -1394,7 +1349,6 @@
         "DEMOS/A-F/Devils_ReSIDence_3SID.sid#1",
         "DEMOS/G-L/Gabooto_Bach_BASIC.sid#1",
         "DEMOS/M-R/Party_Songs.sid#1",
-        "DEMOS/M-R/Party_Songs.sid#16",
         "DEMOS/M-R/Prophet64_Sequencer_Demo_2SID.sid#1",
         "DEMOS/S-Z/Swan_BASIC.sid#1",
         "DEMOS/S-Z/This_Is_Not_America.sid#1",
@@ -1403,6 +1357,7 @@
         "DEMOS/UNKNOWN/Master_Composer/Swan_Lake.sid#1",
         "GAMES/0-9/100_Mile_Race.sid#1",
         "GAMES/G-L/Halcyon.sid#1",
+        "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid#1",
         "MUSICIANS/A/Atte/Blue_River_Floyd.sid#1",
         "MUSICIANS/B/Bain_David/Passage_of_Time.sid#1",
         "MUSICIANS/B/Bouchard_Gary/We_Are_the_World.sid#1",
@@ -1426,10 +1381,25 @@
         "MUSICIANS/P/Page_Jason/Eleventh.sid#1",
         "MUSICIANS/S/Sad/Wish.sid#1",
         "MUSICIANS/S/Schneider_Markus/Read_n_Blast_tune_1.sid#1",
-        "MUSICIANS/S/Sieslack_Joerg/OHG.sid#1",
         "MUSICIANS/S/SounDemoN/Firelord_drifting.sid#2",
         "MUSICIANS/T/Tinkler_Jason/Out-Space.sid#2",
         "MUSICIANS/W/Winterberg_Michael/Bonecruncher.sid#3"
+      ],
+      "satisfied": true
+    },
+    {
+      "available": 1,
+      "cell": "reference jams (CPU halt) | class A",
+      "exemplars": [
+        "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid#1"
+      ],
+      "satisfied": true
+    },
+    {
+      "available": 1,
+      "cell": "reference jams (CPU halt) | class D",
+      "exemplars": [
+        "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid#1"
       ],
       "satisfied": true
     },
@@ -1475,108 +1445,113 @@
     },
     {
       "cell": "class A | kind PSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class A | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B<=63cyc | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B<=1ms | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B<=1ms | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B<=2ms | kind PSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B<=2ms | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B<=2ms | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B>2ms | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class B>2ms | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class C | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class D | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class E | kind PSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class E | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class E | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class F | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class G | kind PSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class G | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class H | kind PSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+    },
+    {
+      "cell": "class H | kind RSID",
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class H | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class H | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class I | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class I | kind multiSID",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     },
     {
       "cell": "class X(trace-truncated) | kind BASIC",
-      "how": "not observed in the 1340 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
+      "how": "not observed in the 1344 scanned candidate subtunes (trace-only scan of both engines; an HVSC-wide proof would need the full run)"
     }
   ],
   "quota": 3,
   "scan": {
-    "candidates": 1340,
+    "candidates": 1344,
     "pools": {
       "benchmark": 320,
       "census-bad": 559,
       "census-bad-2": 142,
+      "census-jam": 4,
       "census-ok": 41,
       "chargen": 3,
       "inventory": 275
@@ -1761,42 +1736,6 @@
         },
         "sidlite": {
           "none": "B<=63cyc"
-        }
-      }
-    },
-    {
-      "band": "120-300s",
-      "chargenReads": {
-        "residfp": 0,
-        "sidlite": 0
-      },
-      "chips": 1,
-      "clock": "PAL",
-      "covers": [
-        "class D | kind RSID",
-        "chips 1 | kind RSID",
-        "class D | engine residfp",
-        "class D | engine sidlite",
-        "class D | rom none",
-        "clock PAL | has-nonexact-lane",
-        "digi | has-nonexact-lane",
-        "horizon 120-300s | has-nonexact-lane",
-        "model 6581 | has-nonexact-lane"
-      ],
-      "digi": true,
-      "kind": "RSID",
-      "model": "6581",
-      "path": "MUSICIANS/F/Future_Freak/Dexion_Demo.sid",
-      "pool": "benchmark",
-      "seconds": 250.293,
-      "sha256": "ec042b1cd8039493cbe13c1ffddc7e0f265b64f915af5db587b24a35055c6a84",
-      "song": 1,
-      "traceClasses": {
-        "residfp": {
-          "none": "D"
-        },
-        "sidlite": {
-          "none": "D"
         }
       }
     },
@@ -2349,42 +2288,6 @@
       "chips": 1,
       "clock": "PAL",
       "covers": [
-        "model 8580 | all-exact",
-        "chips 1 | kind RSID",
-        "class A | engine residfp",
-        "class A | engine sidlite",
-        "class A | kind RSID",
-        "class A | rom none",
-        "clock PAL | all-exact",
-        "digi | all-exact",
-        "horizon 30-120s | all-exact"
-      ],
-      "digi": true,
-      "kind": "RSID",
-      "model": "8580",
-      "path": "MUSICIANS/G/Gregfeel/Model_of_Me.sid",
-      "pool": "benchmark",
-      "seconds": 96,
-      "sha256": "a0942cfd9a1d3322baf5e9bb20f26fb53ce780cf75ba11b22bceacaf703c2060",
-      "song": 1,
-      "traceClasses": {
-        "residfp": {
-          "none": "A"
-        },
-        "sidlite": {
-          "none": "A"
-        }
-      }
-    },
-    {
-      "band": "30-120s",
-      "chargenReads": {
-        "residfp": 0,
-        "sidlite": 0
-      },
-      "chips": 1,
-      "clock": "PAL",
-      "covers": [
         "model either | all-exact",
         "chips 1 | kind RSID",
         "class A | engine residfp",
@@ -2445,42 +2348,6 @@
         },
         "sidlite": {
           "none": "B<=2ms"
-        }
-      }
-    },
-    {
-      "band": "30-120s",
-      "chargenReads": {
-        "residfp": 0,
-        "sidlite": 0
-      },
-      "chips": 1,
-      "clock": "PAL",
-      "covers": [
-        "class I | kind RSID",
-        "chips 1 | kind RSID",
-        "class I | engine residfp",
-        "class I | engine sidlite",
-        "class I | rom none",
-        "clock PAL | has-nonexact-lane",
-        "horizon 30-120s | has-nonexact-lane",
-        "model unknown | has-nonexact-lane",
-        "no digi | has-nonexact-lane"
-      ],
-      "digi": false,
-      "kind": "RSID",
-      "model": "unknown",
-      "path": "MUSICIANS/S/Sieslack_Joerg/OHG.sid",
-      "pool": "benchmark",
-      "seconds": 64,
-      "sha256": "9af6dc4238e09e6bdfac29bc4854a1ba3758ec764dd3d55e21d2f5ee12afb15b",
-      "song": 1,
-      "traceClasses": {
-        "residfp": {
-          "none": "I"
-        },
-        "sidlite": {
-          "none": "I"
         }
       }
     },
@@ -2637,11 +2504,11 @@
       "chips": 1,
       "clock": "PAL",
       "covers": [
-        "class H | engine residfp",
+        "class I | kind RSID",
         "chips 1 | kind RSID",
-        "class H | engine sidlite",
-        "class H | kind RSID",
-        "class H | rom none",
+        "class I | engine residfp",
+        "class I | engine sidlite",
+        "class I | rom none",
         "clock PAL | has-nonexact-lane",
         "digi | has-nonexact-lane",
         "horizon 120-300s | has-nonexact-lane",
@@ -2657,10 +2524,10 @@
       "song": 1,
       "traceClasses": {
         "residfp": {
-          "none": "H"
+          "none": "I"
         },
         "sidlite": {
-          "none": "H"
+          "none": "I"
         }
       }
     },
@@ -2989,38 +2856,38 @@
       }
     },
     {
-      "band": "120-300s",
+      "band": "30-120s",
       "chargenReads": {
         "residfp": 0,
         "sidlite": 0
       },
       "chips": 1,
-      "clock": "NTSC",
+      "clock": "unknown",
       "covers": [
-        "class G | kind RSID",
+        "clock unknown | all-exact",
         "chips 1 | kind RSID",
-        "class G | engine residfp",
-        "class G | engine sidlite",
-        "class G | rom none",
-        "clock NTSC | has-nonexact-lane",
-        "horizon 120-300s | has-nonexact-lane",
-        "model 6581 | has-nonexact-lane",
-        "no digi | has-nonexact-lane"
+        "class A | engine residfp",
+        "class A | engine sidlite",
+        "class A | kind RSID",
+        "class A | rom none",
+        "horizon 30-120s | all-exact",
+        "model 6581 | all-exact",
+        "no digi | all-exact"
       ],
       "digi": false,
       "kind": "RSID",
       "model": "6581",
-      "path": "DEMOS/M-R/Party_Songs.sid",
+      "path": "MUSICIANS/M/Mellberg_Bo/Point_X.sid",
       "pool": "inventory",
-      "seconds": 120.535,
-      "sha256": "8466a6b979f159b1145d30490cf8a281f32b39166b48a52e24b972e2db813c25",
-      "song": 16,
+      "seconds": 45,
+      "sha256": "f5f3808095eeea55b7fc7992f28e2e206a858379903195e7aed97a050d0b1035",
+      "song": 4,
       "traceClasses": {
         "residfp": {
-          "none": "G"
+          "none": "A"
         },
         "sidlite": {
-          "none": "G"
+          "none": "A"
         }
       }
     },
@@ -3574,42 +3441,6 @@
         "sidlite": 0
       },
       "chips": 1,
-      "clock": "unknown",
-      "covers": [
-        "clock unknown | all-exact",
-        "chips 1 | kind RSID",
-        "class A | engine residfp",
-        "class A | engine sidlite",
-        "class A | kind RSID",
-        "class A | rom none",
-        "digi | all-exact",
-        "horizon 120-300s | all-exact",
-        "model 6581 | all-exact"
-      ],
-      "digi": true,
-      "kind": "RSID",
-      "model": "6581",
-      "path": "MUSICIANS/T/Tjelta_Geir/Echofied_6581.sid",
-      "pool": "inventory",
-      "seconds": 235,
-      "sha256": "ce00ec7a57f3e33c49cb5c5ff9f3341ac9f81f7a95edda0a4dbccc9fb02bc46b",
-      "song": 2,
-      "traceClasses": {
-        "residfp": {
-          "none": "A"
-        },
-        "sidlite": {
-          "none": "A"
-        }
-      }
-    },
-    {
-      "band": "120-300s",
-      "chargenReads": {
-        "residfp": 0,
-        "sidlite": 0
-      },
-      "chips": 1,
       "clock": "PAL",
       "covers": [
         "class B<=2ms | engine residfp",
@@ -3982,6 +3813,42 @@
       "chips": 1,
       "clock": "PAL",
       "covers": [
+        "class G | kind RSID",
+        "chips 1 | kind RSID",
+        "class G | engine residfp",
+        "class G | engine sidlite",
+        "class G | rom none",
+        "clock PAL | has-nonexact-lane",
+        "horizon >300s | has-nonexact-lane",
+        "model 6581 | has-nonexact-lane",
+        "no digi | has-nonexact-lane"
+      ],
+      "digi": false,
+      "kind": "RSID",
+      "model": "6581",
+      "path": "MUSICIANS/0-9/4-Mat/MiniSEQ_Demo_Songs.sid",
+      "pool": "census-jam",
+      "seconds": 379.489,
+      "sha256": "70e31f1fb7aad6a1664e6afb79421d7cb251dc2833393d05b8be4550a73955f6",
+      "song": 1,
+      "traceClasses": {
+        "residfp": {
+          "none": "G"
+        },
+        "sidlite": {
+          "none": "G"
+        }
+      }
+    },
+    {
+      "band": ">300s",
+      "chargenReads": {
+        "residfp": 0,
+        "sidlite": 0
+      },
+      "chips": 1,
+      "clock": "PAL",
+      "covers": [
         "horizon >300s | all-exact",
         "chips 1 | kind RSID",
         "class A | engine residfp",
@@ -4045,6 +3912,43 @@
         },
         "sidlite": {
           "kernal+basic": "D",
+          "none": "D"
+        }
+      }
+    },
+    {
+      "band": "120-300s",
+      "chargenReads": {
+        "residfp": 0,
+        "sidlite": 0
+      },
+      "chips": 1,
+      "clock": "PAL",
+      "covers": [
+        "reference jams (CPU halt) | class D",
+        "chips 1 | kind RSID",
+        "class D | engine residfp",
+        "class D | engine sidlite",
+        "class D | kind RSID",
+        "class D | rom none",
+        "clock PAL | has-nonexact-lane",
+        "digi | has-nonexact-lane",
+        "horizon 120-300s | has-nonexact-lane",
+        "model 6581 | has-nonexact-lane"
+      ],
+      "digi": true,
+      "kind": "RSID",
+      "model": "6581",
+      "path": "MUSICIANS/H/Hugenroth_Andre_and_Frank/Populous_Tune.sid",
+      "pool": "census-jam",
+      "seconds": 208,
+      "sha256": "cd51e50a86e928cfd2ff7a147f8d32e7db3cb85f361097cfb0d42e80eb2242d2",
+      "song": 1,
+      "traceClasses": {
+        "residfp": {
+          "none": "D"
+        },
+        "sidlite": {
           "none": "D"
         }
       }
@@ -4157,6 +4061,43 @@
         },
         "sidlite": {
           "kernal+basic": "A",
+          "none": "A"
+        }
+      }
+    },
+    {
+      "band": "120-300s",
+      "chargenReads": {
+        "residfp": 0,
+        "sidlite": 0
+      },
+      "chips": 1,
+      "clock": "PAL",
+      "covers": [
+        "reference jams (CPU halt) | class A",
+        "chips 1 | kind RSID",
+        "class A | engine residfp",
+        "class A | engine sidlite",
+        "class A | kind RSID",
+        "class A | rom none",
+        "clock PAL | all-exact",
+        "horizon 120-300s | all-exact",
+        "model 8580 | all-exact",
+        "no digi | all-exact"
+      ],
+      "digi": false,
+      "kind": "RSID",
+      "model": "8580",
+      "path": "MUSICIANS/R/Rosenbaum_Thorsten_and_Thomas/Bullet_in_the_Head.sid",
+      "pool": "census-jam",
+      "seconds": 279,
+      "sha256": "157ca8a89a7ad48a629c9541827271602d69e2586c963818398e77ef3b8c313b",
+      "song": 1,
+      "traceClasses": {
+        "residfp": {
+          "none": "A"
+        },
+        "sidlite": {
           "none": "A"
         }
       }
@@ -4338,42 +4279,6 @@
         },
         "sidlite": {
           "none": "F"
-        }
-      }
-    },
-    {
-      "band": "120-300s",
-      "chargenReads": {
-        "residfp": 0,
-        "sidlite": 0
-      },
-      "chips": 1,
-      "clock": "PAL",
-      "covers": [
-        "class H | engine residfp",
-        "chips 1 | kind RSID",
-        "class H | engine sidlite",
-        "class H | kind RSID",
-        "class H | rom none",
-        "clock PAL | has-nonexact-lane",
-        "digi | has-nonexact-lane",
-        "horizon 120-300s | has-nonexact-lane",
-        "model 8580 | has-nonexact-lane"
-      ],
-      "digi": true,
-      "kind": "RSID",
-      "model": "8580",
-      "path": "MUSICIANS/J/JFK/Dupa_Jasiu.sid",
-      "pool": "census-bad-2",
-      "seconds": 137,
-      "sha256": "1f59fb458293244f9ca37f024b8e35f8a569411694aee1159733817c417f0c9e",
-      "song": 1,
-      "traceClasses": {
-        "residfp": {
-          "none": "H"
-        },
-        "sidlite": {
-          "none": "H"
         }
       }
     }

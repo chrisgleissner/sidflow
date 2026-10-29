@@ -63,6 +63,9 @@ export function buildCandidates(inventory: Inventory): Candidate[] {
   for (const r of ordered(ok).slice(0, 150)) add(make(r.sha256, r.song, "census-ok"));
   // Second wave: more of the (short-horizon) census rows with a flagged no-ROM lane, for the rare trace classes.
   for (const r of ordered(bad).slice(700).filter(x => x.seconds <= 150).slice(0, 600)) add(make(r.sha256, r.song, "census-bad-2"));
+  // Every census row in which some lane ended on an illegal instruction (reference jams, early and late variant jams).
+  const jammed = readFileSync(path.join(workspace, "rom-audit-sample/census.jsonl"), "utf8").trim().split("\n").filter(l => l.includes("Illegal instruction")).map(l => (JSON.parse(l) as { row: CensusRow }).row);
+  for (const r of ordered(jammed)) add(make(r.sha256, r.song, "census-jam"));
   // CHARGEN readers found by chargenScan (reference renders only).
   if (existsSync(chargenPath())) {
     for (const line of readFileSync(chargenPath(), "utf8").trim().split("\n").filter(Boolean)) {
