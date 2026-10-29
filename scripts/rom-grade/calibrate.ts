@@ -96,22 +96,18 @@ async function listening(): Promise<void> {
     if (grade === null || grade === 255) continue;
     pool.push({ g, engine, lane: lane.name, grade, key: createHash("sha256").update(`${g.sha256}#${g.song}#${engine}#${lane.name}`).digest("hex") });
   }
-  pool.sort((a, b) => a.key < b.key ? -1 : 1);
-  const chosen: typeof pool = [];
-  const perBand = [3, 3, 2, 2, 2, 2, 2, 2, 3, 3]; // 24 pairs
-  bands.forEach(([, lo, hi], index) => {
-    const members = pool.filter(p => p.grade >= lo && p.grade <= hi);
-    // diversity: prefer distinct trace classes and files within a band
-    const used = new Set<string>(), usedFiles = new Set<string>();
-    for (let round = 0; round < 2 && chosen.filter(c => c.grade >= lo && c.grade <= hi).length < perBand[index]!; round++) {
-      for (const m of members) {
-        const cls = m.g.engines[m.engine]!.lanes[m.lane].traceClass;
-        if (chosen.includes(m) || usedFiles.has(m.g.path) || (round === 0 && used.has(cls))) continue;
-        chosen.push(m); used.add(cls); usedFiles.add(m.g.path);
-        if (chosen.filter(c => c.grade >= lo && c.grade <= hi).length >= perBand[index]!) break;
-      }
+  // 24 pairs spread evenly over the grade-ordered lanes (grades 254 and 0 included), one lane per file and distinct trace classes preferred.
+  pool.sort((a, b) => a.grade - b.grade || (a.key < b.key ? -1 : 1));
+  const chosen: typeof pool = [], files = new Set<string>();
+  const pairs = 24;
+  for (let i = 0; i < pairs; i++) {
+    const target = Math.round(i * (pool.length - 1) / (pairs - 1));
+    for (let d = 0; d < pool.length; d++) {
+      const candidate = [pool[target + d], pool[target - d]].find(c => c && !chosen.includes(c) && !files.has(c.g.path));
+      if (candidate) { chosen.push(candidate); files.add(candidate.g.path); break; }
     }
-  });
+  }
+  void bands;
   const dir = path.join(out, "listening");
   mkdirSync(dir, { recursive: true });
   const items: ListeningItem[] = [];

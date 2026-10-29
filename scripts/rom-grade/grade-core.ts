@@ -15,4 +15,4 @@ export function gradeFromQuality(q: number): number {
   return Math.max(1, Math.round(GRADE_AUDIO_MAX * clamped));
 }
 
-export type GradeBasis = "trace-bit-exact" | "trace-retimed" | "trace-no-playback" | "audio" | "unmeasurable";
+export type GradeBasis = "trace-bit-exact" | "chargen-unread" | "trace-retimed" | "trace-no-playback" | "audio" | "unmeasurable";

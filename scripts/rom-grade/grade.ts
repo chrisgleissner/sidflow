@@ -104,6 +104,7 @@ export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job
   // Which lanes need audio?
   const needAudio: Array<{ name: LaneName; mask: number }> = [];
   for (const lane of LANES) {
+    if (runs.get(lane.name)!.shortcut) continue; // identical by construction, no render
     const f = features.get(lane.name)!;
     const decided = traceGrade(f, tolerance) ?? (f.cls === "G" && !options.noShortcuts ? 0 : null);
     const bitExact = f.cls === "A";
@@ -132,6 +133,11 @@ export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job
     const f = features.get(lane.name)!, severity = audio.get(lane.name) ?? null, audioGrade = audioGrades.get(lane.name) ?? null;
     let grade: number | null, basis: GradeBasis;
     const byTrace = traceGrade(f, tolerance);
+    if (runs.get(lane.name)!.shortcut) {
+      // CHARGEN never read by the reference: the KERNAL+BASIC program path is the reference's own, whatever the trace cap kept.
+      lanes[lane.name] = { grade: 255, basis: "chargen-unread", traceClass: "A", bSubclass: null, rule: "chargen-never-read", features: roundFeatures({ ...f, bitExact: true, cls: "A", rule: "chargen-never-read" }), severity: null, audioGrade: null, audioError: null };
+      continue;
+    }
     if (byTrace === 255) { grade = 255; basis = "trace-bit-exact"; }
     else if (byTrace === 254) { grade = 254; basis = "trace-retimed"; }
     else if (f.cls === "G" && !options.noShortcuts) { grade = 0; basis = "trace-no-playback"; }
