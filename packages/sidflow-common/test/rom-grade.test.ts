@@ -68,6 +68,15 @@ describe("trace classes", () => {
     expect(missing.cls).toBe("C");
     const extra = features(trace(reference), trace([...reference, [0, 1, 2, 950000], [0, 1, 3, 950900]]));
     expect(extra.cls).toBe("C");
+    expect(extra.rule).toBe("trailing-writes");
+    // an interior insertion or deletion is the same music with one write more or less
+    const inserted = [...reference.slice(0, 100), [0, 7, 7, reference[100]![3] - 1] as W, ...reference.slice(100)];
+    const interior = features(trace(reference), trace(inserted));
+    expect(interior.cls).toBe("C");
+    expect(interior.rule).toBe("few-extra-or-missing-writes");
+    expect(features(trace(reference), trace(reference.filter((_, i) => i !== 500))).cls).toBe("C");
+    // but 5% of the writes missing is not "a few"
+    expect(features(trace(reference), trace(reference.filter((_, i) => i % 20 !== 3))).cls).not.toBe("C");
   });
   it("D: value divergence early with near-equal write count", () => {
     const variant = reference.map(([c, a, v, t], i): W => i >= 100 && i % 3 === 0 ? [c, a, (v + 1) & 0xff, t] : [c, a, v, t]);
@@ -81,6 +90,12 @@ describe("trace classes", () => {
     const f = features(trace(reference), trace(variant));
     expect(f.cls).toBe("E");
     expect(f.firstValueDivergenceSeconds!).toBeLessThan(0.1);
+  });
+  it("E: near-equal counts but unrelated values are different music, not D", () => {
+    const unrelated = reference.map(([c, a, v, t]): W => [c, a, (v * 5 + 3) & 0xff ^ 0x55, t]);
+    const f = features(trace(reference), trace(unrelated));
+    expect(f.cls).toBe("E");
+    expect(f.alignmentSimilarity).toBeLessThan(0.5);
   });
   it("F: late divergence (more than half the horizon plays identically)", () => {
     const variant = reference.map(([c, a, v, t], i): W => i >= 800 ? [c, a, (v + 9) & 0xff, t] : [c, a, v, t]);

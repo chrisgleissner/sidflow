@@ -15,7 +15,7 @@ import type { RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligi
 import { horizonBand, loadInventory, type HorizonBand, type Inventory } from "./inventory.js";
 import { nativePaths, readSid, traceLane, workspaceRoot, type RomMask } from "./native.js";
 import { sidInfo } from "./sid-info.js";
-import { clockHzOf, computeTraceFeatures, type TraceFeatures } from "./trace-core.js";
+import { classify, clockHzOf, computeTraceFeatures, type TraceFeatures } from "./trace-core.js";
 
 export interface Candidate {
   path: string; song: number; seconds: number; sha256: string; pool: string;
@@ -91,9 +91,15 @@ async function scanOne(c: Candidate): Promise<ScanRow> {
   return { ...c, engines, censusStates: null };
 }
 
+/** Rows as scanned, with the trace class re-derived from the stored features by the current rules. */
 export function loadScan(): ScanRow[] {
   if (!existsSync(scanPath())) return [];
-  return readFileSync(scanPath(), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l) as ScanRow);
+  const rows = readFileSync(scanPath(), "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l) as ScanRow);
+  for (const row of rows) for (const engine of Object.values(row.engines)) for (const lane of Object.values(engine.lanes)) {
+    const verdict = classify(lane.features);
+    lane.features = { ...lane.features, cls: verdict.cls, bSubclass: verdict.bSubclass, rule: verdict.rule };
+  }
+  return rows;
 }
 
 if (import.meta.main) {

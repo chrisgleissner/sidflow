@@ -21,6 +21,8 @@ export const MAX_INIT_WRITES = 32;
 export const LATE_DIVERGENCE_FRACTION = 0.5;
 /** Minimum min/max write-count ratio for "near-equal write count" (class D). */
 export const NEAR_EQUAL_COUNT_RATIO = 0.9;
+/** Minimum alignment similarity for class D; below it, an early divergence is "substantially different music" (E). */
+export const MIN_SIMILAR_MUSIC = 0.5;
 
 export type TraceClass = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "X";
 export type BSubclass = "<=63cyc" | "<=1ms" | "<=2ms" | ">2ms";
@@ -276,11 +278,12 @@ export function bSubclassOf(maxDriftCycles: number, clockHz: number): BSubclass 
  *  H  the variant (not the reference) stopped on an illegal instruction after more than init writes.
  *  I  identical value prefix covering the whole shorter trace, |cumulative drift| > TEMPO_DRIFT_MS.
  *  B  identical value sequence and write count, only timing differs; subclass by max drift.
- *  C  one trace is a value-prefix of the other and they differ by at most max(8, 0.1%) writes.
- *  F  values diverge, but after more than 50% of the horizon (or the shorter trace is a prefix of the longer
- *     one with a larger tail after more than 50% of the horizon).
- *  D  values diverge within 50% of the horizon, min/max write-count ratio >= 0.9.
- *  E  values diverge within 50% of the horizon, write counts differ by more than 10%.
+ *  C  the values are identical apart from a few extra or missing writes (trailing or interior): the alignment
+ *     leaves at most max(8, 0.1% of the longer trace) writes unmatched.
+ *  F  values diverge, but after more than 50% of the horizon.
+ *  D  values diverge within 50% of the horizon, min/max write-count ratio >= 0.9 and alignment similarity >= 0.5.
+ *  E  values diverge within 50% of the horizon and either the write counts differ by more than 10% or less than
+ *     half of the reference writes align (substantially different music).
  */
 export function classify(f: TraceFeatures): { cls: TraceClass; bSubclass: BSubclass | null; rule: string } {
   const none = (cls: TraceClass, rule: string) => ({ cls, bSubclass: null as BSubclass | null, rule });
@@ -295,11 +298,12 @@ export function classify(f: TraceFeatures): { cls: TraceClass; bSubclass: BSubcl
   const tempo = TEMPO_DRIFT_MS * f.clockHz / 1000;
   if (prefixFull && Math.abs(f.finalDriftCycles) > tempo && f.matchingValuePrefix > 0) return none("I", "cumulative-drift");
   if (f.valueSequenceIdentical) return { cls: "B", bSubclass: bSubclassOf(f.maxDriftCycles, f.clockHz), rule: "values-identical" };
-  const tail = Math.abs(n - m);
-  if (prefixFull && tail <= Math.max(8, Math.ceil(0.001 * Math.max(n, m)))) return none("C", "trailing-writes");
+  // Edit distance (insertions + deletions) implied by the alignment; with an inexact alignment this is an upper bound.
+  const edits = n + m - 2 * f.alignedWrites;
+  if (edits <= Math.max(8, Math.ceil(0.001 * Math.max(n, m)))) return none("C", prefixFull ? "trailing-writes" : "few-extra-or-missing-writes");
   const late = f.firstValueDivergenceSeconds !== null && f.firstValueDivergenceSeconds > LATE_DIVERGENCE_FRACTION * f.horizonSeconds;
   if (late) return none("F", "late-divergence");
-  if (Math.min(n, m) / Math.max(n, m, 1) >= NEAR_EQUAL_COUNT_RATIO) return none("D", "value-divergence-near-equal-count");
+  if (Math.min(n, m) / Math.max(n, m, 1) >= NEAR_EQUAL_COUNT_RATIO && f.alignmentSimilarity >= MIN_SIMILAR_MUSIC) return none("D", "value-divergence-near-equal-count");
   return none("E", "early-divergence");
 }
 
