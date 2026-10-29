@@ -1,3 +1,57 @@
+## Complete PR #112, full accelerated HVSC census and standalone Commander ROM list (2026-10-29) — active
+
+User decisions (2026-10-29): merge PR #112 first, then run a **fresh** accelerated
+census (`ROM_AUDIT_SAMPLE_CLOCK=1`) from merged main on this i5-14600K in one
+<=24h invocation; the 12,888-row original-identity checkpoint stays historical.
+Commander embeds the result in its APK: a tiny, formally specified, standalone
+ROM-dependency list (independent of the similarity exports), with the same
+due diligence/presentation as the similarity formats. Authorized: merge PR #112
++ tag `rom-audit-tooling-2026-10-29`; create a sidflow-data release; commit the
+compact export/spec to sidflow (follow-up PR) and merge it.
+
+Methodology check (principal review): the sample-clock build calls reSIDfp's
+upstream `clockSilent` (voices/envelopes still clocked, so OSC3/ENV3 readback is
+preserved) and only skips filter/resampler output while keeping exact resampler
+readiness counts, so event-pull timing is unchanged. Grants require identical
+cycle-timed write traces; everything else retains native PCM listening.
+
+- [x] Final qualification of the review-fix sources against proof
+  `workspace/rom-sample-320-reviewed-v1/` (3 full suites); previous certificate
+  copied to `workspace/rom-audit-sample-qualification-ed5eb30/`.
+  Reviewed proof: 320/320 A/B matches, 467 audio-verified grants, 0 unknown/errors,
+  all three native binaries unchanged; 257.31 vs 526.95 projected core-hours.
+  Log `workspace/rom-pr112-final-qualification.log`; literal output:
+
+  ```text
+  Full run 1: 3005 pass / 0 fail / 0 skip
+  Full run 2: 3005 pass / 0 fail / 0 skip
+  Full run 3: 3005 pass / 0 fail / 0 skip
+  Qualified 9d1fe14fbe04b2d235076be7c882f30aa050221310415ae541b164997b7e43fc
+  ```
+
+  Focused heartbeat E2E (`--retries=0`): 5/5 consecutive passes.
+- [ ] Focused heartbeat E2E repeats; commit (excluding user `station-analysis/`), push,
+  green CI, Codex re-review, resolve threads, merge, push annotated tag.
+- [ ] Fresh accelerated census from merged main (`workspace/rom-audit-sample/`), machine idle.
+- [ ] Design/spec/generator/verifier for the standalone compact ROM list (during census,
+  light CPU only); full 3x suites after census completes.
+  User chose an **exact inventory** (~400 KiB budget). Format `sidromdep-1`
+  ("SID ROM Dependency List"): LE binary + deterministic manifest; header with
+  provenance digests and payload checksum; INVENTORY (sorted md5_48 + subtune
+  count, collisions rejected; absent = not audited); DECISION records only for
+  subtunes with any incompatible/unknown lane (4-bit lanes as in the existing
+  exceptions); horizons by the normative Songlengths rule, verified, with an
+  explicit override section. Code lives in `@sidflow/common` and
+  `scripts/rom-dependency-list/` (never `scripts/rom-audit/`, which is hashed
+  into the qualification identity); spec `doc/rom-dependency-list.md`.
+  Implementation delegated to a Sonnet implementer in an isolated worktree.
+  **Revised by user (2026-10-29):** APK is ~8 MiB, so no inventory. Allow by
+  default: unlisted files/subtunes (incl. files new in later HVSC releases) are
+  playable; zero false positives permitted, so files are keyed by the FULL MD5
+  (shorter than HVSC paths). Grouped FILE (md5[16]+count) + DECISION (subtune +
+  4-bit incompatible / 4-bit unknown masks) sections, ~33 KiB expected.
+- [ ] Verify publication, generate compact export, sidflow-data release, follow-up PR merged.
+
 ## Qualify sample-clock acceleration and allow 24-hour ROM runs (2026-10-28) — active
 
 - [x] Raise launcher/census ceiling to 24h, retain the 12h default, test boundaries and update current documentation.
@@ -14,9 +68,46 @@ pre-existing changes and raw checkpoints.
 Additional user authorization (2026-10-29): continue through the new PR,
 adversarial review and fixes, green CI, merge and an annotated tooling tag.
 Use the existing scoped tag convention: `rom-audit-tooling-2026-10-29`.
+
+Adversarial review of `ed5eb300de1bb7e1f5098725dff51c06e014c55a` completed
+with three valid findings; do not merge yet:
+
+- [x] Implement P1 `PRRT_kwDOQN40Ts6xdCpM`: replace reliance on optional procfs children
+  files with verified PID/PPID/start-time descendant discovery and regressions.
+- [x] Implement P2 `PRRT_kwDOQN40Ts6xdCpQ`: validate retained reference/lane outcomes for
+  every grant and digest all retained proof files, not just report.json.
+- [x] Implement P2 `PRRT_kwDOQN40Ts6xdCpT`: bind the SIDLite native executable and check
+  all measured executables before/after the complete representative experiment.
+- [ ] Rerun the complete 320-job proof after metadata/source changes, requalify,
+  achieve three clean full suites, push fixes and request final-head review.
+
+Initial PR CI has passed build/unit/export fixture checks; E2E/performance is
+still running. Original 3x3003 results remain historical evidence for ed5eb30,
+not qualification of the forthcoming fixes. Preserve the v3 raw proof and report.
+
+Fixes implemented; targeted checks: 4 pass / 0 fail, strict typecheck passed.
+P1 uses core procfs stat parent/start-time records (including nested descendants)
+and rechecks process identity before signalling. P2 validates clean references,
+complete observations, compatible lane outcomes/sample counts, source/input links
+and digests all 101 retained proof files. Tampered outcomes, samples and log bytes
+are covered by regression tests. P3 captures/rechecks native SIDLite, reSIDfp and
+sample-clock hashes at the child and coordinator levels.
+Fresh representative run (16 workers; no other heavy local work):
+`workspace/rom-sample-320-reviewed-v1/`, log with the same prefix and `.log`.
+No final-head merge or tag is permitted until this proof, fresh qualification,
+three full suites, remote CI and a clean follow-up review all pass.
+
+Initial remote CI failed one heartbeat E2E assertion (all three retries): eight
+one-second cached clips completed between 500ms polls, which observed only old
+completed snapshots. Preserve the active-observation assertion; use 30s WAVs
+matching the cache sidecar's 15s intro/15s analysis, one feature worker, 25ms
+condition polling tied to this POST's startedAt/request completion, and remove
+the three-inactive-poll early exit. Add error logging to the touched cleanup
+handlers. Run the focused browser case repeatedly after CPU measurement, then
+require the full remote E2E/performance checks on the fixed head.
 No application semver release or completed corpus publication is implied.
 
-- [ ] Commit/push the task changes and open the new PR.
+- [x] Commit/push the task changes and open PR #112 (`ed5eb30`).
 - [ ] Obtain/process adversarial review, fix findings and require green CI.
 - [ ] Merge the reviewed head and push the annotated tooling tag.
 

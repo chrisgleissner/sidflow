@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from './test-hooks';
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, APIResponse } from '@playwright/test';
 import { withClassificationLock } from './utils/classification-lock';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -32,6 +32,7 @@ interface ProgressResponse {
   processedFiles?: number;
   totalFiles?: number;
   percentComplete?: number;
+  startedAt?: number;
 }
 
 interface ProgressSnapshot {
@@ -41,12 +42,12 @@ interface ProgressSnapshot {
   processedFiles?: number;
   totalFiles?: number;
   percentComplete?: number;
+  startedAt: number;
 }
 
 const ACTIVE_PHASES = new Set(['analyzing', 'building', 'metadata', 'tagging']);
-const POLL_INTERVAL_MS = 500;
+const POLL_INTERVAL_MS = 25;
 const MAX_POLL_MS = 15_000;
-const MAX_INACTIVE_POLLS = 3;
 
 const REPO_ROOT = path.resolve(process.cwd(), '..', '..');
 const TEST_DIR = 'C64Music/MUSICIANS/T/Test_E2E_Heartbeat';
@@ -124,7 +125,8 @@ async function waitForClassificationIdle(request: APIRequestContext, timeoutMs =
       } else {
         return;
       }
-    } catch {
+    } catch (error) {
+      console.debug('[heartbeat] idle check could not reach the server', error);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 750));
@@ -135,8 +137,8 @@ async function waitForClassificationIdle(request: APIRequestContext, timeoutMs =
 async function pauseClassification(request: APIRequestContext): Promise<void> {
   try {
     await request.post('/api/classify/control', { data: { action: 'pause' } });
-  } catch {
-    // Best-effort cleanup; ignore errors
+  } catch (error) {
+    console.debug('[heartbeat] pause cleanup could not reach the server', error);
   }
 }
 
@@ -167,21 +169,29 @@ test('Classification Heartbeat - threads should not become stale during feature 
         await seedClassificationCacheEntry({
           sidBuffer,
           wavFile: wavPath,
-          wavBuffer: createWavFile(1, 220 + i * 30),
+          // Match the sidecar's 30s render / 15s intro / 15s analysis policy.
+          wavBuffer: createWavFile(30, 220 + i * 30),
         });
       }
 
       console.log('[heartbeat] starting synchronous classification run in background');
+      const requestStartedAt = Date.now();
+      let requestSettled = false;
       classificationRequest = request.post('/api/classify', {
         data: {
           path: TEST_DIR,
           forceRebuild: false,
           deleteWavAfterClassification: false,
           skipAlreadyClassified: false,
+          threads: 1,
         },
         headers: { 'Content-Type': 'application/json' },
         timeout: 120_000,
       });
+      void classificationRequest.then(
+        () => { requestSettled = true; },
+        (error) => { requestSettled = true; console.error('[heartbeat] classification request failed', error); },
+      );
       console.log('[heartbeat] classification request started');
 
       const staleSnapshots: Array<{
@@ -192,12 +202,11 @@ test('Classification Heartbeat - threads should not become stale during feature 
 
       let activePolls = 0;
       let pollCount = 0;
-      let classificationComplete = false;
       let lastProgress: ProgressSnapshot | null = null;
       const startTime = Date.now();
 
-      while (Date.now() - startTime < MAX_POLL_MS && (!classificationComplete || activePolls === 0)) {
-        let progressResponse: any;
+      while (Date.now() - startTime < MAX_POLL_MS && !requestSettled) {
+        let progressResponse: APIResponse;
         try {
           progressResponse = await request.get('/api/classify/progress');
         } catch (error) {
@@ -220,7 +229,15 @@ test('Classification Heartbeat - threads should not become stale during feature 
           processedFiles: rawProgress.processedFiles,
           totalFiles: rawProgress.totalFiles,
           percentComplete: rawProgress.percentComplete,
+          startedAt: rawProgress.startedAt ?? 0,
         };
+
+        // A terminal snapshot from the preceding run is not completion of this
+        // POST. Keep observing until the current request actually settles.
+        if (progress.startedAt < requestStartedAt) {
+          await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+          continue;
+        }
 
         lastProgress = progress;
         pollCount += 1;
@@ -249,17 +266,6 @@ test('Classification Heartbeat - threads should not become stale during feature 
           });
         }
 
-        if (phase === 'completed' || phase === 'error' || progress.isActive === false) {
-          classificationComplete = true;
-          if (activePolls > 0) {
-            break;
-          }
-        }
-
-        if (!progress.isActive && activePolls === 0 && pollCount >= MAX_INACTIVE_POLLS) {
-          break;
-        }
-
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
       }
 
@@ -275,10 +281,8 @@ test('Classification Heartbeat - threads should not become stale during feature 
         `No threads should become stale during classification (incidents: ${JSON.stringify(activePhaseStales, null, 2)})`
       ).toBe(0);
 
-      expect(activePolls).toBeGreaterThan(0);
-
       const response = await classificationRequest;
-      const responseBody = ((await response.json().catch(() => ({}))) || {}) as {
+      const responseBody = (await response.json()) as {
         success?: boolean;
         error?: string;
         details?: string;
@@ -288,13 +292,14 @@ test('Classification Heartbeat - threads should not become stale during feature 
         `Classification request failed: ${JSON.stringify(responseBody)}`
       ).toBe(true);
       expect(responseBody.success).toBe(true);
+      expect(activePolls, 'The current classification run must be observed while active').toBeGreaterThan(0);
     } finally {
       // Always clean up so retries/other specs start from a known idle state.
       await pauseClassification(request);
-      await waitForClassificationIdle(request, 20_000).catch(() => {});
-      await classificationRequest?.catch(() => undefined);
-      await fs.rm(path.join(SID_BASE_DIR, TEST_DIR), { recursive: true, force: true }).catch(() => {});
-      await fs.rm(path.join(AUDIO_CACHE_DIR, TEST_DIR_REL), { recursive: true, force: true }).catch(() => {});
+      await waitForClassificationIdle(request, 20_000).catch(error => console.debug('[heartbeat] idle cleanup failed', error));
+      await classificationRequest?.catch(error => console.debug('[heartbeat] request ended during cleanup', error));
+      await fs.rm(path.join(SID_BASE_DIR, TEST_DIR), { recursive: true, force: true }).catch(error => console.debug('[heartbeat] SID fixture cleanup failed', error));
+      await fs.rm(path.join(AUDIO_CACHE_DIR, TEST_DIR_REL), { recursive: true, force: true }).catch(error => console.debug('[heartbeat] audio fixture cleanup failed', error));
     }
   });
 });

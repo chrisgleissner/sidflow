@@ -22,19 +22,22 @@ const jobs=prior.measured.slice(0,limit).map(r=>r.job);
 if(jobs.length!==limit)throw new Error("Insufficient jobs");
 scopeLock(prior.corpus,true);const ledger=RolloutLedger.open(prior.corpus);
 if(jobs.some(j=>!ledger.has(j)))throw new Error("Only already counted jobs allowed");
-const cold=path.resolve("workspace/rom-audit-screen-residfp/render"),sourceIdentity=screenIdentity(),rows:unknown[]=[];
+const cold=path.resolve("workspace/rom-audit-screen-residfp/render"),sourceIdentity=screenIdentity(false),rows:unknown[]=[];
 const romImages=loadRoms(roms);
+const binaries={sample:path.resolve(binary),audio:cold,sidlite:path.resolve("workspace/rom-audit-screen-sidlite/render")};
+const nativeHashes=Object.fromEntries(Object.entries(binaries).map(([name,file])=>[name,screenSha(readFileSync(file))]));
 const experimentSourceNames=["bench-sample-pipeline.ts","sample-screen.ts","register-comparison.ts","apply-sample-clock.py","build-sample-clock.sh"];
 const experimentSources=Object.fromEntries(experimentSourceNames.map(name=>[name,screenSha(readFileSync(path.join(import.meta.dir,name)))]));
 const assertSourcesUnchanged=():void=>{
-  if(screenIdentity()!==sourceIdentity)throw new Error("Renderer or screen source identity changed during pipeline experiment");
+  if(screenIdentity(false)!==sourceIdentity)throw new Error("Renderer or screen source identity changed during pipeline experiment");
+  for(const [name,file]of Object.entries(binaries))if(screenSha(readFileSync(file))!==nativeHashes[name])throw new Error(`Measured executable changed: ${name}`);
   for(const name of experimentSourceNames)if(screenSha(readFileSync(path.join(import.meta.dir,name)))!==experimentSources[name])throw new Error(`Experiment source changed during pipeline: ${name}`);
 };
 for(const job of jobs){
   const bytes=readVerifiedSid(job.path,job.sha256),extended=isExtendedSample(job.sha256,50);
   const cpu=(usage:NodeJS.CpuUsage)=>(usage.user+usage.system)/1000000;
   const sidStarted=process.cpuUsage();
-  const sidlite=await classifyScreen("sidlite",path.resolve("workspace/rom-audit-screen-sidlite/render"),roms,romImages,bytes,job.song,job.seconds,extended);
+  const sidlite=await classifyScreen("sidlite",binaries.sidlite,roms,romImages,bytes,job.song,job.seconds,extended);
   const unchangedCpuSeconds=(sidlite.cpuSeconds??0)+cpu(process.cpuUsage(sidStarted));
   if(Object.values(sidlite.states).includes("unknown"))throw new Error(`Unresolved SIDLite baseline: ${job.path}`);
   const oldStarted=process.cpuUsage();
@@ -50,6 +53,8 @@ for(const job of jobs){
   if(screenJson(before)!==screenJson(after))throw new Error(`A/B classification mismatch: ${job.path}: ${screenJson({before,after})}`);
   assertSourcesUnchanged();
   rows.push({job,extended,states:after,oldScreen:baseline.screen,newScreen:next.screen,oldSets,newSets,oldCpuSeconds,newCpuSeconds,unchangedCpuSeconds});
-  writeFileSync(report,screenJson({schema:"sidflow-sample-pipeline-ab-1",sourceIdentity,experimentSources,benchmarkSha256:screenSha(readFileSync(benchmark)),nativeHashes:{sample:screenSha(readFileSync(binary)),audio:screenSha(readFileSync(cold))},rows})+"\n");
+  writeFileSync(report,screenJson({schema:"sidflow-sample-pipeline-ab-1",sourceIdentity,experimentSources,benchmarkSha256:screenSha(readFileSync(benchmark)),nativeHashes,rows})+"\n");
   console.log(`${rows.length}/${limit}: exact states matched; CPU ${oldCpuSeconds.toFixed(3)} -> ${newCpuSeconds.toFixed(3)}s`);
 }
+
+assertSourcesUnchanged();

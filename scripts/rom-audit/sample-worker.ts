@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { classifyScreen, type ScreenClassification } from "./screen-classifier.js";
 import { classifySampleScreen } from "./sample-classifier.js";
+import { nativeDescendants, sameNativeProcess } from "./native-descendants.js";
 import { loadRoms } from "./census-worker.js";
 export interface ScreenJob {sha256: string; hex: string; song: number; seconds: number; repeat: boolean}
 export interface ScreenResult {engines: ScreenClassification[]; failure?: string;cpuSeconds?:number}
@@ -53,13 +54,12 @@ export class SampleScreenWorker {
           if(/[TtZ]/.test(stat.slice(stat.lastIndexOf(")")+2,stat.lastIndexOf(")")+3)))break;
           Bun.sleepSync(1);
         }
-        const children=readFileSync(`/proc/${pid}/task/${pid}/children`,"utf8").trim();
-        for(const value of children.split(/\s+/).filter(Boolean)){
-          try{process.kill(Number(value),"SIGKILL");}
-          catch(error){console.debug("Sample renderer already exited during cancellation",error);}
+        for(const child of nativeDescendants(pid)){
+          try{if(sameNativeProcess(child))process.kill(child.pid,"SIGKILL");}
+          catch(error){console.debug("Sample renderer exited or changed during cancellation",error);}
         }
       }
-    }catch(error){console.debug("Sample worker already exited during cancellation",error);}
+    }catch(error){console.error("Could not fully discover sample renderers during cancellation",error);}
     finally{
       this.child.kill("SIGKILL");
       this.child.stdin.destroy();this.child.stdout.destroy();this.child.stderr.destroy();

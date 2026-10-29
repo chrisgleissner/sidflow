@@ -29,6 +29,8 @@ const local=new Map(inventory.jobs.map(j=>[key(j),j]));
 const resolved=jobs.map(j=>local.get(key(j))!);
 mkdirSync(output,{recursive:true});
 const identity=screenQualificationIdentity(),binaryHash=screenSha(readFileSync(binary)),benchmarkHash=screenSha(readFileSync(benchmark));
+const binaries={sample:path.resolve(binary),audio:path.resolve("workspace/rom-audit-screen-residfp/render"),sidlite:path.resolve("workspace/rom-audit-screen-sidlite/render")};
+const nativeHashes=Object.fromEntries(Object.entries(binaries).map(([name,file])=>[name,screenSha(readFileSync(file))]));
 const started=performance.now(),errors:{shard:number;message:string}[]=[],rows:{job:BenchmarkCandidate;oldCpuSeconds:number;newCpuSeconds:number;states:Record<string,string>}[]=[];
 let next=0,grantsChecked=0;
 const shards=Array.from({length:20},(_,i)=>resolved.slice(i*16,(i+1)*16));
@@ -56,12 +58,12 @@ await Promise.all(Array.from({length:parallelism},async()=>{
     }catch(error){console.error("Sample qualification shard failed",error);errors.push({shard:index,message:error instanceof Error?error.message:String(error)});}
   }
 }));
-const changed=screenQualificationIdentity()!==identity||screenSha(readFileSync(binary))!==binaryHash;
+const changed=screenQualificationIdentity()!==identity||Object.entries(binaries).some(([name,file])=>screenSha(readFileSync(file))!==nativeHashes[name]);
 const unknown=rows.filter(r=>Object.values(r.states).includes("unknown")).length;
 const complete=rows.length===320&&!errors.length&&!changed&&!unknown;
 const oldProjection=complete?projectCensus(inventory.jobs,rows.map(r=>({job:r.job,seconds:r.oldCpuSeconds})),1):undefined;
 const newProjection=complete?projectCensus(inventory.jobs,rows.map(r=>({job:r.job,seconds:r.newCpuSeconds})),1):undefined;
-const report={schema:"sidflow-sample-screen-qualification-1",sourceIdentity:identity,binaryHash,benchmarkHash,parallelism,elapsedSeconds:(performance.now()-started)/1000,
+const report={schema:"sidflow-sample-screen-qualification-1",sourceIdentity:identity,binaryHash,nativeHashes,benchmarkHash,parallelism,elapsedSeconds:(performance.now()-started)/1000,
   passed:complete,unknown,errors,changed,grantsChecked,compared:rows.length,strata:Object.fromEntries([...new Set(resolved.map(benchmarkStratum))].map(s=>[s,rows.filter(r=>benchmarkStratum(r.job)===s).length])),
   costScope:"dual-engine native CPU plus per-job coordinator CPU; unchanged SIDLite work reused in both totals; no wall-time projection",oldProjection,newProjection,rows};
 writeFileSync(path.join(output,"report.json"),screenJson(report)+"\n");

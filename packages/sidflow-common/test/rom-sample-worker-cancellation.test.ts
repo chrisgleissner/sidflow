@@ -15,9 +15,12 @@ test("closing a worker blocked in sample-clock spawnSync terminates its native r
   try{
     const result=worker.request({sha256:screenSha(bytes),hex:bytes.toString("hex"),song:1,seconds:10,repeat:false}).then(()=>"resolved",error=>String(error));
     const deadline=Date.now()+10000;
-    while(!existsSync(pidFile)&&Date.now()<deadline)await Bun.sleep(10);
-    expect(existsSync(pidFile)).toBe(true);
-    const nativePid=Number(readFileSync(pidFile,"utf8"));
+    let nativePid=0;
+    while(!nativePid&&Date.now()<deadline){
+      if(existsSync(pidFile)){const value=Number(readFileSync(pidFile,"utf8"));if(Number.isSafeInteger(value)&&value>1)nativePid=value;}
+      if(!nativePid)await Bun.sleep(10);
+    }
+    expect(nativePid).toBeGreaterThan(1);
     worker.close();worker.close();
     expect(await result).toContain("Screen worker closed");
     const gone=()=>{
