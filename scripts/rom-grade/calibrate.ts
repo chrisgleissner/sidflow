@@ -33,23 +33,27 @@ function corpusJobs(): Array<GradeJob & CorpusEntry> {
   return corpus.subtunes.map(s => ({ ...s, path: path.join(nativePaths().hvsc, s.path) }));
 }
 
+const failures: Array<{ index: number; error: string }> = [];
 async function pool<T, R>(items: T[], work: (item: T, index: number) => Promise<R>, label: string): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0, done = 0;
   await Promise.all(Array.from({ length: Math.min(JOB_CONCURRENCY, items.length) }, async () => {
     for (let i = next++; i < items.length; i = next++) {
-      results[i] = await work(items[i]!, i);
+      try { results[i] = await work(items[i]!, i); } catch (error) {
+        console.error(`${label}: job ${i} failed:`, error);
+        failures.push({ index: i, error: error instanceof Error ? error.message.slice(0, 300) : String(error) });
+      }
       if (++done % 10 === 0 || done === items.length) console.error(`${label} ${done}/${items.length}`);
     }
   }));
   return results;
 }
 
-async function gradeAll(jobs: GradeJob[], validateAudio: boolean): Promise<{ grades: SubtuneGrade[]; wallSeconds: number; jsCpuSeconds: number }> {
+async function gradeAll(jobs: GradeJob[], validateAudio: boolean): Promise<{ grades: SubtuneGrade[]; failures: Array<{ index: number; error: string; job: string }>; wallSeconds: number; jsCpuSeconds: number }> {
   const before = process.cpuUsage(), started = performance.now();
   const grades = await pool(jobs, job => gradeSubtune(job, { validateAudio }), validateAudio ? "corpus" : "benchmark");
   const usage = process.cpuUsage(before);
-  return { grades, wallSeconds: (performance.now() - started) / 1000, jsCpuSeconds: (usage.user + usage.system) / 1e6 };
+  return { grades: grades.filter(Boolean), failures: failures.splice(0).map(f => ({ ...f, job: jobs[f.index]!.path + "#" + jobs[f.index]!.song })), wallSeconds: (performance.now() - started) / 1000, jsCpuSeconds: (usage.user + usage.system) / 1e6 };
 }
 
 function save(name: string, value: unknown): void {
@@ -324,12 +328,15 @@ async function main(): Promise<void> {
     for (const run of [1, 2]) {
       const result = await gradeAll(jobs, true);
       save(`corpus-run${run}.json`, result.grades);
+      if (result.failures.length) throw new Error(`corpus run ${run}: ${result.failures.length} job(s) failed: ${JSON.stringify(result.failures)}`);
       console.error(`corpus run ${run}: ${result.wallSeconds.toFixed(0)} s wall`);
     }
   } else if (command === "benchmark") {
     const benchmark = JSON.parse(readFileSync(path.join(workspaceRoot(), "rom-audit-sample/benchmark.json"), "utf8")) as { measured: Array<{ job: BenchmarkCandidate }> };
     const jobs = benchmark.measured.map(m => ({ path: m.job.path, song: m.job.song, seconds: m.job.seconds, sha256: m.job.sha256 }));
-    save("benchmark-run.json", await gradeAll(jobs, false));
+    const result = await gradeAll(jobs, false);
+    save("benchmark-run.json", result);
+    if (result.failures.length) console.error(`benchmark: ${result.failures.length} job(s) failed: ${JSON.stringify(result.failures)}`);
   } else if (command === "listening") await listening();
   else if (command === "report") report();
   else throw new Error("usage: calibrate.ts corpus|benchmark|listening|report");

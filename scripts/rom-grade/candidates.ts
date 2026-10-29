@@ -26,6 +26,7 @@ export interface ScanEngine { referenceWrites: number; referenceChargenReads: nu
 export interface ScanRow extends Candidate { engines: Record<string, ScanEngine>; censusStates: Record<string, string> | null }
 
 export const candidateKey = (c: { sha256: string; song: number }): string => createHash("sha256").update(`${c.sha256}#${c.song}`).digest("hex");
+export const chargenPath = (): string => path.join(nativePaths().output, "chargen-scan.jsonl");
 export const scanPath = (): string => path.join(nativePaths().output, "candidates.jsonl");
 
 interface CensusRow { sha256: string; song: number; seconds: number; result: { engines: Array<{ engine: string; states: Record<string, string> }> } }
@@ -60,6 +61,15 @@ export function buildCandidates(inventory: Inventory): Candidate[] {
   for (const r of ordered(bad).slice(0, 700)) add(make(r.sha256, r.song, "census-bad"));
   const ok = census.filter(r => r.result.engines.every(e => e.states.none === "compatible") && r.seconds <= 600);
   for (const r of ordered(ok).slice(0, 150)) add(make(r.sha256, r.song, "census-ok"));
+  // Second wave: more of the (short-horizon) census rows with a flagged no-ROM lane, for the rare trace classes.
+  for (const r of ordered(bad).slice(700).filter(x => x.seconds <= 150).slice(0, 600)) add(make(r.sha256, r.song, "census-bad-2"));
+  // CHARGEN readers found by chargenScan (reference renders only).
+  if (existsSync(chargenPath())) {
+    for (const line of readFileSync(chargenPath(), "utf8").trim().split("\n").filter(Boolean)) {
+      const hit = JSON.parse(line) as { sha256: string; song: number; chargenReads: number };
+      if (hit.chargenReads > 0) add(make(hit.sha256, hit.song, "chargen"));
+    }
+  }
   // Header/horizon stratified draws from the whole inventory.
   const groups = new Map<string, Candidate[]>();
   for (const tune of inventory.tunes) for (const s of tune.songsList) {
@@ -104,7 +114,29 @@ export function loadScan(): ScanRow[] {
 
 if (import.meta.main) {
   const command = process.argv[2];
-  if (command !== "scan") throw new Error("usage: candidates.ts scan [--limit N]");
+  if (command === "chargen-scan") {
+    // Does the reference ever read the character ROM? First subtune of every file of the given kinds, horizon capped at 30 s.
+    const inventory = await loadInventory();
+    const kinds = new Set((process.argv[3] ?? "RSID,BASIC").split(","));
+    const done = new Set(existsSync(chargenPath()) ? readFileSync(chargenPath(), "utf8").trim().split("\n").filter(Boolean).map(l => (JSON.parse(l) as { sha256: string }).sha256) : []);
+    const limit = Number(process.argv[4] ?? Infinity);
+    const todo = inventory.tunes.filter(t => kinds.has(t.kind) && !done.has(t.sha256)).sort((a, b) => a.sha256 < b.sha256 ? -1 : 1).slice(0, limit);
+    console.error(`chargen scan: ${todo.length} files`);
+    let next = 0, finished = 0;
+    await Promise.all(Array.from({ length: 14 }, async () => {
+      for (let i = next++; i < todo.length; i = next++) {
+        const t = todo[i]!;
+        try {
+          const song = t.songsList[0]!;
+          const reference = await traceLane("residfp", readSid(path.join(nativePaths().hvsc, t.path)), song.song, Math.min(30, song.seconds), 7);
+          appendFileSync(chargenPath(), JSON.stringify({ path: t.path, sha256: t.sha256, song: song.song, chargenReads: reference.chargenReads, error: reference.trace.error }) + "\n");
+        } catch (error) { console.error(`chargen scan failed ${t.path}:`, error); }
+        if (++finished % 200 === 0) console.error(`chargen ${finished}/${todo.length}`);
+      }
+    }));
+    process.exit(0);
+  }
+  if (command !== "scan") throw new Error("usage: candidates.ts scan [--limit N] | chargen-scan [kinds]");
   const limitIndex = process.argv.indexOf("--limit");
   const limit = limitIndex >= 0 ? Number(process.argv[limitIndex + 1]) : Infinity;
   const inventory = await loadInventory();

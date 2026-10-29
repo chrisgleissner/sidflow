@@ -52,6 +52,8 @@ export interface LaneGrade {
   severity: SeverityRecord | null;
   /** grade the audio alone would give (null when no audio was rendered) */
   audioGrade: number | null;
+  /** set when the audio render failed (infrastructure fault); the grade is then null unless the trace decided */
+  audioError: string | null;
 }
 export interface EngineGrade {
   referenceWrites: number;
@@ -109,15 +111,21 @@ export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job
   }
   const audio = new Map<LaneName, SeverityRecord>();
   const audioGrades = new Map<LaneName, number>();
+  let audioError: string | null = null;
   if (needAudio.length) {
-    const measured = await nativeSeverity(engine, bytes, job.song, job.seconds, needAudio.map(l => l.mask));
-    cpuSeconds += measured.referenceCpuSeconds;
-    measured.lanes.forEach((lane, i) => {
-      const name = needAudio[i]!.name;
-      cpuSeconds += lane.cpuSeconds;
-      audio.set(name, severityRecord(lane.summary, lane.producedSamples, lane.halted));
-      audioGrades.set(name, gradeFromQuality(qualityFromSummary(lane.summary, gamma)));
-    });
+    try {
+      const measured = await nativeSeverity(engine, bytes, job.song, job.seconds, needAudio.map(l => l.mask));
+      cpuSeconds += measured.referenceCpuSeconds;
+      measured.lanes.forEach((lane, i) => {
+        const name = needAudio[i]!.name;
+        cpuSeconds += lane.cpuSeconds;
+        audio.set(name, severityRecord(lane.summary, lane.producedSamples, lane.halted));
+        audioGrades.set(name, gradeFromQuality(qualityFromSummary(lane.summary, gamma)));
+      });
+    } catch (error) {
+      audioError = error instanceof Error ? error.message.slice(0, 300) : String(error);
+      console.error(`audio render failed for ${job.path}#${job.song} (${engine}): ${audioError}`);
+    }
   }
   const lanes = {} as Record<LaneName, LaneGrade>;
   for (const lane of LANES) {
@@ -129,7 +137,7 @@ export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job
     else if (f.cls === "G" && !options.noShortcuts) { grade = 0; basis = "trace-no-playback"; }
     else if (audioGrade !== null) { grade = audioGrade; basis = "audio"; }
     else { grade = null; basis = "unmeasurable"; }
-    lanes[lane.name] = { grade, basis, traceClass: f.cls, bSubclass: f.bSubclass, rule: f.rule, features: roundFeatures(f), severity, audioGrade };
+    lanes[lane.name] = { grade, basis, traceClass: f.cls, bSubclass: f.bSubclass, rule: f.rule, features: roundFeatures(f), severity, audioGrade, audioError: audioGrade === null && needAudio.some(l => l.name === lane.name) ? audioError : null };
   }
   return {
     cpuSeconds,

@@ -112,7 +112,12 @@ async function emptyCells(rows: ScanRow[], selection: Selection): Promise<Array<
     ...(["unknown", "PAL", "NTSC", "either"] as const).map(c => `clock ${c}`),
     ...[1, 2, 3].flatMap(n => (["PSID", "RSID", "BASIC", "multiSID"] as const).map(k => `chips ${n} | kind ${k}`)),
   ];
-  for (const cell of headerCells) if (!(headerCount.get(cell) ?? 0)) out.push({ cell, how: `no subtune among the ${subtunes} in the HVSC #85 inventory has this header value (exhaustive header scan)` });
+  for (const cell of headerCells) if (!(headerCount.get(cell) ?? 0)) {
+    // The audit classifies a PSID with a second SID as multiSID, so those (kind, chips) pairs are empty by definition.
+    const byDefinition = /^chips 1 \| kind multiSID$|^chips [23] \| kind PSID$/.test(cell);
+    out.push({ cell, how: byDefinition ? "empty by definition of the file kind (a PSID declaring a second or third SID is classed multiSID)"
+      : `no subtune among the ${subtunes} in the HVSC #85 inventory has this header value (exhaustive header scan)` });
+  }
   // Trace classes: absence is relative to the scanned candidates.
   const classes = ["A", "B<=63cyc", "B<=1ms", "B<=2ms", "B>2ms", "C", "D", "E", "F", "G", "H", "I", "X(trace-truncated)"];
   const seen = new Set([...selection.cells.keys()].filter(c => c.startsWith("class ")));
