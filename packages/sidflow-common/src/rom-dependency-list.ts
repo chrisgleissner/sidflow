@@ -1,47 +1,48 @@
 /**
  * SID ROM Dependency List, format id `sidromdep-1`.
  *
- * A tiny, allow-by-default deny/warn list of the HVSC subtunes whose playback was measured to
- * differ when the C64 ROMs are absent. Normative specification: doc/rom-dependency-list.md.
+ * A tiny, allow-by-default list of the HVSC subtunes whose playback fidelity without (some of) the
+ * C64 ROMs was graded 0..253 in at least one engine/ROM lane. Normative specification:
+ * doc/rom-dependency-list.md.
  *
  * This module is dependency-free apart from node:crypto so other projects can lift it verbatim.
  * It encodes, decodes (with full structural and checksum validation) and looks up; it does not
- * read the ROM audit bundle (see scripts/rom-dependency-list/).
+ * read grading results (see scripts/rom-dependency-list/).
  */
 import { createHash } from "node:crypto";
 
 export const ROM_DEP_FORMAT_ID = "sidromdep-1";
 export const ROM_DEP_MAGIC = "SIDROMDP";
 export const ROM_DEP_VERSION = 1;
-export const ROM_DEP_HEADER_BYTES = 192;
+export const ROM_DEP_HEADER_BYTES = 224;
 export const ROM_DEP_FILE_RECORD_BYTES = 17;
-export const ROM_DEP_DECISION_RECORD_BYTES = 2;
-/** Header flag bit 0: the source bundle was incomplete; the output is a developer artefact, never a release. */
+export const ROM_DEP_DECISION_RECORD_BYTES = 5;
+/**
+ * Header flag bit 0: the grading input was incomplete (unmeasured lanes). Subtunes with an unmeasured lane are
+ * excluded from the list, so for them "unlisted" says nothing. A developer artefact, never a release.
+ */
 export const ROM_DEP_FLAG_INCOMPLETE_SOURCE = 0x1;
 export const ROM_DEP_KNOWN_FLAGS = ROM_DEP_FLAG_INCOMPLETE_SOURCE;
 export const ROM_DEP_MAX_SUBTUNE = 256;
 
-/** Lane name to mask bit. Identical to the `bits` object of the ROM audit's commander-exceptions.json. */
-export const ROM_DEP_LANE_BITS = {
-  sidliteNone: 1,
-  sidliteKernalBasic: 2,
-  residfpNone: 4,
-  residfpKernalBasic: 8,
-} as const;
-export type RomDepLaneName = keyof typeof ROM_DEP_LANE_BITS;
-export const ROM_DEP_LANE_NAMES = Object.keys(ROM_DEP_LANE_BITS) as RomDepLaneName[];
-export const ROM_DEP_ALL_LANES = 0xf;
+/** Lane order of the four grade bytes of a DECISION record. */
+export const ROM_DEP_LANE_NAMES = ["sidliteNone", "sidliteKernalBasic", "residfpNone", "residfpKernalBasic"] as const;
+export type RomDepLaneName = (typeof ROM_DEP_LANE_NAMES)[number];
 
-/** `allowed` is the default: neither flagged incompatible nor unknown. It is NOT a compatibility proof for unlisted files. */
-export type RomDepLaneState = "allowed" | "incompatible" | "unknown";
+/** Grade meanings (doc/research/hvsc-rom-fidelity-grading.md). 1..253 are graded; there is no "unknown" grade. */
+export const ROM_DEP_GRADE_NO_PLAYBACK = 0;
+export const ROM_DEP_GRADE_RETIMED = 254;
+export const ROM_DEP_GRADE_BIT_EXACT = 255;
+/** A subtune is listed iff some lane grade is <= this. Unlisted therefore means every lane >= 254. */
+export const ROM_DEP_LISTING_CEILING = 253;
+
+export type RomDepGrades = Record<RomDepLaneName, number>;
 
 export interface RomDepDecision {
   /** One-based subtune number, 1..256. */
   subtune: number;
-  /** Lane bit mask (1/2/4/8) measured incompatible. */
-  incompatible: number;
-  /** Lane bit mask measured unknown (not measured, failed or unresolved). Never an incompatibility. */
-  unknown: number;
+  /** Grade 0..255 per lane; at least one lane must be <= the listing ceiling (253). */
+  grades: RomDepGrades;
 }
 
 export interface RomDepEntry {
@@ -51,21 +52,25 @@ export interface RomDepEntry {
 }
 
 export interface RomDepProvenance {
-  /** SHA-256 (64 hex) of the source bundle's manifest.json bytes. */
-  sourceManifestSha256: string;
-  /** SHA-256 (64 hex) of the HVSC Songlengths.md5 used by the audit. */
+  /** SHA-256 (64 hex) of the grading results file the list was derived from. */
+  sourceSha256: string;
+  /** SHA-256 (64 hex) of the HVSC Songlengths.md5 the grading used. */
   songlengthsSha256: string;
-  /** Census corpus id (64 hex) of the audited HVSC release. */
+  /** Corpus id (64 hex) of the graded HVSC release. */
   corpusId: string;
+  /** Frozen grading methodology identity (64 hex). */
+  gradingMethodologySha256: string;
 }
 
 export interface RomDepContent {
   hvscRelease: number;
-  /** Number of files audited in the source bundle (informational). */
+  /** Number of files graded in the source (informational). */
   sourceFiles: number;
-  /** Number of subtunes audited in the source bundle (informational). */
+  /** Number of subtunes graded in the source (informational). */
   sourceSubtunes: number;
   incompleteSource: boolean;
+  /** Consumer default skip threshold, 1..254: skip when the lane grade is below it. Consumers may choose their own. */
+  recommendedMinGrade: number;
   provenance: RomDepProvenance;
   entries: readonly RomDepEntry[];
 }
@@ -86,17 +91,23 @@ export interface RomDepHeader {
   decisionSectionBytes: number;
   fileRecordBytes: number;
   decisionRecordBytes: number;
+  listingCeiling: number;
+  recommendedMinGrade: number;
   headerCrc32: number;
   payloadSha256: string;
   provenance: RomDepProvenance;
 }
 
 export interface RomDepLookup {
-  /** True when the file/subtune has a decision record. Unlisted means "no objection", not "compatible". */
+  /** True when the subtune has a DECISION record (some lane graded <= 253). */
   listed: boolean;
-  incompatibleMask: number;
-  unknownMask: number;
-  lanes: Record<RomDepLaneName, RomDepLaneState>;
+  /**
+   * Exact grades when listed. When unlisted every lane is 254, which is a LOWER BOUND: the true grade is 254 or 255
+   * (the list does not distinguish them) and never a restriction.
+   */
+  grades: RomDepGrades;
+  /** Lowest lane grade (254 when unlisted). */
+  minGrade: number;
 }
 
 export interface RomDependencyList {
@@ -140,14 +151,22 @@ export function sha256Hex(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-export function laneStates(incompatible: number, unknown: number): Record<RomDepLaneName, RomDepLaneState> {
-  const out = {} as Record<RomDepLaneName, RomDepLaneState>;
-  for (const name of ROM_DEP_LANE_NAMES) {
-    const bit = ROM_DEP_LANE_BITS[name];
-    out[name] = incompatible & bit ? "incompatible" : unknown & bit ? "unknown" : "allowed";
-  }
-  return out;
+/** True when some lane is below the listing ceiling, i.e. the subtune must be listed. */
+export function mustList(grades: RomDepGrades): boolean {
+  return ROM_DEP_LANE_NAMES.some((lane) => grades[lane] <= ROM_DEP_LISTING_CEILING);
 }
+
+/** Lowest grade across lanes. */
+export function minGradeOf(grades: RomDepGrades): number {
+  return Math.min(...ROM_DEP_LANE_NAMES.map((lane) => grades[lane]));
+}
+
+const UNLISTED_GRADES: Readonly<RomDepGrades> = Object.freeze({
+  sidliteNone: ROM_DEP_GRADE_RETIMED,
+  sidliteKernalBasic: ROM_DEP_GRADE_RETIMED,
+  residfpNone: ROM_DEP_GRADE_RETIMED,
+  residfpKernalBasic: ROM_DEP_GRADE_RETIMED,
+});
 
 export function md5ToBytes(md5: string | Uint8Array): Uint8Array {
   if (typeof md5 !== "string") {
@@ -170,14 +189,21 @@ function assertHex256(value: string, name: string): void {
   if (!HEX_SHA256.test(value)) throw new RomDependencyListError(`${name} must be 64 lowercase hex characters`);
 }
 
+function assertRecommended(value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > ROM_DEP_GRADE_RETIMED) {
+    throw new RomDependencyListError("recommended_min_grade must be 1..254 (the list cannot express thresholds above its unlisted floor)");
+  }
+}
+
 /** Validate one decision. Shared by encoder and decoder so both enforce the same canonical form. */
 function assertDecision(decision: RomDepDecision, context: string): void {
-  const { subtune, incompatible, unknown } = decision;
+  const { subtune, grades } = decision;
   if (!Number.isInteger(subtune) || subtune < 1 || subtune > ROM_DEP_MAX_SUBTUNE) throw new RomDependencyListError(`${context}: subtune out of range 1..256`);
-  if (!Number.isInteger(incompatible) || incompatible < 0 || incompatible > ROM_DEP_ALL_LANES) throw new RomDependencyListError(`${context}: incompatible mask out of range`);
-  if (!Number.isInteger(unknown) || unknown < 0 || unknown > ROM_DEP_ALL_LANES) throw new RomDependencyListError(`${context}: unknown mask out of range`);
-  if (incompatible & unknown) throw new RomDependencyListError(`${context}: a lane cannot be both incompatible and unknown`);
-  if ((incompatible | unknown) === 0) throw new RomDependencyListError(`${context}: record carries no non-default lane`);
+  for (const lane of ROM_DEP_LANE_NAMES) {
+    const grade = grades[lane];
+    if (!Number.isInteger(grade) || grade < 0 || grade > 255) throw new RomDependencyListError(`${context}: ${lane} grade out of range 0..255`);
+  }
+  if (!mustList(grades)) throw new RomDependencyListError(`${context}: every lane is >= 254, so the subtune must be unlisted`);
 }
 
 function writeDigest(target: Buffer, offset: number, hex: string, name: string): void {
@@ -191,6 +217,7 @@ export function encodeRomDependencyList(content: RomDepContent): Uint8Array {
   if (content.hvscRelease < 1) throw new RomDependencyListError("hvscRelease must be >= 1");
   assertUint32(content.sourceFiles, "sourceFiles");
   assertUint32(content.sourceSubtunes, "sourceSubtunes");
+  assertRecommended(content.recommendedMinGrade);
   const entries = [...content.entries].sort((a, b) => (a.md5 < b.md5 ? -1 : a.md5 > b.md5 ? 1 : 0));
   let decisionCount = 0;
   entries.forEach((entry, index) => {
@@ -220,7 +247,7 @@ export function encodeRomDependencyList(content: RomDepContent): Uint8Array {
     fileCursor += ROM_DEP_FILE_RECORD_BYTES;
     for (const decision of [...entry.decisions].sort((a, b) => a.subtune - b.subtune)) {
       out[decisionCursor] = decision.subtune - 1;
-      out[decisionCursor + 1] = decision.incompatible | (decision.unknown << 4);
+      ROM_DEP_LANE_NAMES.forEach((lane, i) => { out[decisionCursor + 1 + i] = decision.grades[lane]; });
       decisionCursor += ROM_DEP_DECISION_RECORD_BYTES;
     }
   }
@@ -241,11 +268,14 @@ export function encodeRomDependencyList(content: RomDepContent): Uint8Array {
   // 52: header_crc32, filled in last
   out.writeUInt16LE(ROM_DEP_FILE_RECORD_BYTES, 56);
   out.writeUInt16LE(ROM_DEP_DECISION_RECORD_BYTES, 58);
-  // 60..63 reserved, zero
+  out[60] = ROM_DEP_LISTING_CEILING;
+  out[61] = content.recommendedMinGrade;
+  // 62..63 reserved, zero
   writeDigest(out, 64, sha256Hex(out.subarray(ROM_DEP_HEADER_BYTES)), "payloadSha256");
-  writeDigest(out, 96, content.provenance.sourceManifestSha256, "sourceManifestSha256");
+  writeDigest(out, 96, content.provenance.sourceSha256, "sourceSha256");
   writeDigest(out, 128, content.provenance.songlengthsSha256, "songlengthsSha256");
   writeDigest(out, 160, content.provenance.corpusId, "corpusId");
+  writeDigest(out, 192, content.provenance.gradingMethodologySha256, "gradingMethodologySha256");
   out.writeUInt32LE(crc32(out.subarray(0, ROM_DEP_HEADER_BYTES)), 52);
   return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
 }
@@ -258,9 +288,15 @@ function compareMd5(bytes: Uint8Array, offset: number, key: Uint8Array): number 
   return 0;
 }
 
+function readDecision(bytes: Uint8Array, at: number): RomDepDecision {
+  const grades = {} as RomDepGrades;
+  ROM_DEP_LANE_NAMES.forEach((lane, i) => { grades[lane] = bytes[at + 1 + i]!; });
+  return { subtune: bytes[at]! + 1, grades };
+}
+
 /**
  * Decode and fully validate. Throws RomDependencyListError on any deviation: truncation, trailing bytes,
- * checksum mismatch, unknown version/flags/reserved bits, non-canonical ordering, impossible masks.
+ * checksum mismatch, unknown version/flags/reserved bits, non-canonical ordering, unlistable records.
  */
 export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
   const bytes = input;
@@ -278,7 +314,7 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
   if (crc32(headerCopy) !== headerCrc32) throw new RomDependencyListError("header CRC-32 mismatch");
   const flags = view.getUint32(12, true);
   if (flags & ~ROM_DEP_KNOWN_FLAGS) throw new RomDependencyListError("unknown flag bits set");
-  if (view.getUint32(60, true) !== 0) throw new RomDependencyListError("reserved field is not zero");
+  if (view.getUint16(62, true) !== 0) throw new RomDependencyListError("reserved field is not zero");
   const header: RomDepHeader = {
     formatVersion,
     headerBytes,
@@ -295,16 +331,21 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
     decisionSectionBytes: view.getUint32(48, true),
     fileRecordBytes: view.getUint16(56, true),
     decisionRecordBytes: view.getUint16(58, true),
+    listingCeiling: bytes[60]!,
+    recommendedMinGrade: bytes[61]!,
     headerCrc32,
     payloadSha256: bytesToHex(bytes.subarray(64, 96)),
     provenance: {
-      sourceManifestSha256: bytesToHex(bytes.subarray(96, 128)),
+      sourceSha256: bytesToHex(bytes.subarray(96, 128)),
       songlengthsSha256: bytesToHex(bytes.subarray(128, 160)),
       corpusId: bytesToHex(bytes.subarray(160, 192)),
+      gradingMethodologySha256: bytesToHex(bytes.subarray(192, 224)),
     },
   };
   if (header.hvscRelease < 1) throw new RomDependencyListError("hvsc_release must be >= 1");
   if (header.fileRecordBytes !== ROM_DEP_FILE_RECORD_BYTES || header.decisionRecordBytes !== ROM_DEP_DECISION_RECORD_BYTES) throw new RomDependencyListError("unsupported record sizes");
+  if (header.listingCeiling !== ROM_DEP_LISTING_CEILING) throw new RomDependencyListError(`listing_ceiling must be ${ROM_DEP_LISTING_CEILING}`);
+  assertRecommended(header.recommendedMinGrade);
   const fileBytes = header.fileCount * ROM_DEP_FILE_RECORD_BYTES;
   const decisionBytes = header.decisionCount * ROM_DEP_DECISION_RECORD_BYTES;
   if (header.fileSectionOffset !== ROM_DEP_HEADER_BYTES || header.fileSectionBytes !== fileBytes ||
@@ -315,7 +356,7 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
   if (bytes.length > ROM_DEP_HEADER_BYTES + fileBytes + decisionBytes) throw new RomDependencyListError("trailing bytes after the last section");
   if (sha256Hex(bytes.subarray(ROM_DEP_HEADER_BYTES)) !== header.payloadSha256) throw new RomDependencyListError("payload SHA-256 mismatch");
 
-  // Structure: strictly ascending MD5s, per-file counts summing to the decision count, ascending subtunes, valid masks.
+  // Structure: strictly ascending MD5s, per-file counts summing to the decision count, ascending subtunes, listable records.
   const firstDecision = new Uint32Array(header.fileCount + 1);
   let running = 0;
   for (let i = 0; i < header.fileCount; i++) {
@@ -331,8 +372,7 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
   for (let i = 0; i < header.fileCount; i++) {
     let previous = 0;
     for (let d = firstDecision[i]!; d < firstDecision[i + 1]!; d++) {
-      const at = header.decisionSectionOffset + d * ROM_DEP_DECISION_RECORD_BYTES;
-      const decision = { subtune: bytes[at]! + 1, incompatible: bytes[at + 1]! & 0xf, unknown: bytes[at + 1]! >> 4 };
+      const decision = readDecision(bytes, header.decisionSectionOffset + d * ROM_DEP_DECISION_RECORD_BYTES);
       assertDecision(decision, `file ${i}`);
       if (decision.subtune <= previous) throw new RomDependencyListError(`file ${i}: subtunes are not strictly ascending`);
       previous = decision.subtune;
@@ -356,16 +396,15 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
     header,
     bytes,
     lookup(md5, subtune) {
-      const unlisted: RomDepLookup = { listed: false, incompatibleMask: 0, unknownMask: 0, lanes: laneStates(0, 0) };
+      const unlisted: RomDepLookup = { listed: false, grades: { ...UNLISTED_GRADES }, minGrade: ROM_DEP_GRADE_RETIMED };
       if (!Number.isInteger(subtune) || subtune < 1 || subtune > ROM_DEP_MAX_SUBTUNE) return unlisted;
       const index = find(md5ToBytes(md5));
       if (index < 0) return unlisted;
       for (let d = firstDecision[index]!; d < firstDecision[index + 1]!; d++) {
         const at = header.decisionSectionOffset + d * ROM_DEP_DECISION_RECORD_BYTES;
         if (bytes[at]! + 1 === subtune) {
-          const incompatibleMask = bytes[at + 1]! & 0xf;
-          const unknownMask = bytes[at + 1]! >> 4;
-          return { listed: true, incompatibleMask, unknownMask, lanes: laneStates(incompatibleMask, unknownMask) };
+          const decision = readDecision(bytes, at);
+          return { listed: true, grades: decision.grades, minGrade: minGradeOf(decision.grades) };
         }
       }
       return unlisted;
@@ -376,8 +415,7 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
         const at = header.fileSectionOffset + i * ROM_DEP_FILE_RECORD_BYTES;
         const decisions: RomDepDecision[] = [];
         for (let d = firstDecision[i]!; d < firstDecision[i + 1]!; d++) {
-          const dat = header.decisionSectionOffset + d * ROM_DEP_DECISION_RECORD_BYTES;
-          decisions.push({ subtune: bytes[dat]! + 1, incompatible: bytes[dat + 1]! & 0xf, unknown: bytes[dat + 1]! >> 4 });
+          decisions.push(readDecision(bytes, header.decisionSectionOffset + d * ROM_DEP_DECISION_RECORD_BYTES));
         }
         out.push({ md5: bytesToHex(bytes.subarray(at, at + 16)), decisions });
       }
@@ -391,9 +429,14 @@ export function lookupRomDependency(list: RomDependencyList, md5: string | Uint8
   return list.lookup(md5, subtune);
 }
 
+/** True when a consumer using `threshold` (1..254) should skip the subtune in the given lane: grade < threshold. */
+export function romDepBelowThreshold(lookup: RomDepLookup, lane: RomDepLaneName, threshold: number): boolean {
+  return lookup.grades[lane] < threshold;
+}
+
 // ---------------------------------------------------------------------------------------------
-// Informative measured-scope helpers (spec section 8). These document how the observation horizon
-// of the audit was derived; the list itself carries no per-subtune horizon.
+// Informative measured-scope helpers (spec section 9). The grading measures each subtune over an
+// observation horizon derived from Songlengths.md5; the list itself carries no horizon.
 // ---------------------------------------------------------------------------------------------
 
 export const ROM_DEP_HORIZON_RULE = {

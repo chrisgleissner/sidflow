@@ -164,15 +164,15 @@ Commander's generator after a complete qualified census.
 
 ### Embeddable dependency list
 
-For applications that embed the result (for example the C64 Commander APK), the
-bundle is condensed into the allow-by-default **SID ROM Dependency List**
-(`sidromdep-1`, about 32 KiB): full-MD5 keyed records of the subtunes with an
-incompatible or unknown lane, no inventory and no horizon table. The generator
-refuses anything but a complete, `releaseReady` bundle accepted by
-`verify-publication.ts`, proves that every published horizon follows from the
-pinned `Songlengths.md5`, and the verifier round-trips every audited subtune
-(every unlisted subtune must be measured compatible in all four lanes). The format
-is specified in [doc/rom-dependency-list.md](../rom-dependency-list.md).
+For applications that embed the result (for example the C64 Commander APK), complete
+ROM fidelity grades (one byte per subtune and engine/ROM lane; see
+[hvsc-rom-fidelity-grading.md](hvsc-rom-fidelity-grading.md)) are condensed into the
+allow-by-default **SID ROM Dependency List** (`sidromdep-1`, about 40 KiB): full-MD5
+keyed records of the subtunes with a lane graded 253 or lower, no inventory and no
+horizon table. The generator refuses incomplete grading results, and the verifier
+round-trips every graded subtune (every unlisted subtune must have all four lanes at
+254 or above). The format is specified in
+[doc/rom-dependency-list.md](../rom-dependency-list.md).
 
 ## Verify and distribute
 

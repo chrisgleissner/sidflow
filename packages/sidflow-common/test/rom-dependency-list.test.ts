@@ -1,38 +1,40 @@
 /**
  * Tests for the SID ROM Dependency List (sidromdep-1, doc/rom-dependency-list.md): codec, lookup,
- * generator and verifier. Uses a small synthetic but realistic ROM audit bundle written to a temp
- * directory. The "real partial bundle" test depends on a local workspace/rom-audit-dual-4 run and is
- * skipped explicitly (test.skipIf) when that evidence directory is absent; it is not a feature gap.
+ * generator and verifier, using small synthetic but realistic grading results written to a temp
+ * directory (schema: scripts/rom-dependency-list/grading.ts). No test is skipped.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
   ROM_DEP_FLAG_INCOMPLETE_SOURCE,
   ROM_DEP_HEADER_BYTES,
-  ROM_DEP_LANE_BITS,
+  ROM_DEP_LANE_NAMES,
   RomDependencyListError,
   crc32,
   decodeRomDependencyList,
   derivePlaybackHorizonMs,
   encodeRomDependencyList,
   parseSonglengthsMd5,
+  romDepBelowThreshold,
   sha256Hex,
   type RomDepContent,
   type RomDepEntry,
+  type RomDepGrades,
 } from "../src/rom-dependency-list.js";
 import { romSetId } from "../src/rom-eligibility.js";
-import { stringifyDeterministic, type JsonValue } from "../src/json.js";
-import { deriveEntries, loadSourceBundle, verifyHorizonRule } from "../../../scripts/rom-dependency-list/bundle.js";
+import { GRADING_RESULTS_SCHEMA, deriveEntries, loadGradingResults, parseGradingResults } from "../../../scripts/rom-dependency-list/grading.js";
 import { generateRomDependencyList, outputNames } from "../../../scripts/rom-dependency-list/generate.js";
-import { roundTripAgainstBundle, verifyRomDependencyListFiles } from "../../../scripts/rom-dependency-list/verify.js";
+import { roundTripAgainstResults, verifyRomDependencyListFiles } from "../../../scripts/rom-dependency-list/verify.js";
 
 const md5Of = (text: string): string => createHash("md5").update(text).digest("hex");
-const PROVENANCE = { sourceManifestSha256: "11".repeat(32), songlengthsSha256: "22".repeat(32), corpusId: "33".repeat(32) };
-const content = (entries: RomDepEntry[], incompleteSource = false): RomDepContent => ({ hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource, provenance: PROVENANCE, entries });
+const g = (a: number, b: number, c: number, d: number): RomDepGrades => ({ sidliteNone: a, sidliteKernalBasic: b, residfpNone: c, residfpKernalBasic: d });
+const PROVENANCE = { sourceSha256: "11".repeat(32), songlengthsSha256: "22".repeat(32), corpusId: "33".repeat(32), gradingMethodologySha256: "44".repeat(32) };
+const content = (entries: RomDepEntry[], extra: Partial<RomDepContent> = {}): RomDepContent =>
+  ({ hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource: false, recommendedMinGrade: 128, provenance: PROVENANCE, entries, ...extra });
+const one = (md5: string, subtune: number, grades: RomDepGrades): RomDepEntry => ({ md5, decisions: [{ subtune, grades }] });
 
 /** Re-sign a tampered buffer so structural validation (not the checksums) is what rejects it. */
 function resign(bytes: Uint8Array): Uint8Array {
@@ -46,226 +48,233 @@ function resign(bytes: Uint8Array): Uint8Array {
 
 describe("codec", () => {
   const entries: RomDepEntry[] = [
-    { md5: "ff" + "00".repeat(15), decisions: [{ subtune: 256, incompatible: 0, unknown: 15 }] },
-    { md5: "00" + "ab".repeat(15), decisions: [{ subtune: 3, incompatible: 5, unknown: 0 }, { subtune: 1, incompatible: 1, unknown: 2 }] },
-    { md5: "7f" + "01".repeat(15), decisions: [{ subtune: 1, incompatible: 15, unknown: 0 }] },
+    one("ff" + "00".repeat(15), 256, g(255, 255, 255, 0)),
+    { md5: "00" + "ab".repeat(15), decisions: [{ subtune: 3, grades: g(253, 255, 254, 255) }, { subtune: 1, grades: g(1, 254, 120, 255) }] },
+    one("7f" + "01".repeat(15), 1, g(0, 0, 0, 0)),
   ];
 
-  test("round trips every disjoint (incompatible, unknown) combination and sorts canonically", () => {
+  test("boundary grades 0/1/253/254/255 round trip in every lane and every lane position", () => {
     const all: RomDepEntry[] = [];
     let n = 0;
-    for (let inc = 0; inc < 16; inc++) {
-      for (let unk = 0; unk < 16; unk++) {
-        if ((inc & unk) || (inc | unk) === 0) continue;
-        all.push({ md5: md5Of(`combo-${n}`), decisions: [{ subtune: (n % 256) + 1, incompatible: inc, unknown: unk }] });
-        n++;
+    for (const lane of ROM_DEP_LANE_NAMES) {
+      for (const low of [0, 1, 127, 253]) {
+        for (const rest of [254, 255]) {
+          const grades = g(rest, rest, rest, rest);
+          grades[lane] = low;
+          all.push(one(md5Of(`b-${n}`), (n % 256) + 1, grades));
+          n++;
+        }
       }
     }
-    expect(n).toBe(80); // 3^4 - 1 non-empty disjoint pairs
+    expect(n).toBe(32);
     const list = decodeRomDependencyList(encodeRomDependencyList(content(all)));
     for (const entry of all) {
       const d = entry.decisions[0]!;
       const got = list.lookup(entry.md5, d.subtune);
       expect(got.listed).toBe(true);
-      expect(got.incompatibleMask).toBe(d.incompatible);
-      expect(got.unknownMask).toBe(d.unknown);
-      expect(list.lookup(entry.md5, d.subtune === 256 ? 255 : d.subtune + 1).listed).toBe(false);
+      expect(got.grades).toEqual(d.grades);
+      expect(got.minGrade).toBe(Math.min(...ROM_DEP_LANE_NAMES.map((l) => d.grades[l])));
     }
-    const decoded = list.entries();
-    expect(decoded.map((e) => e.md5)).toEqual([...all.map((e) => e.md5)].sort());
+    expect(list.entries().map((e) => e.md5)).toEqual([...all.map((e) => e.md5)].sort());
   });
 
-  test("lookup states, unlisted default and subtune boundaries", () => {
+  test("listing ceiling: a subtune with every lane 254/255 is unlistable, 253 is listed", () => {
+    for (const grades of [g(254, 254, 254, 254), g(255, 255, 255, 255), g(255, 254, 255, 254)]) {
+      expect(() => encodeRomDependencyList(content([one(md5Of("x"), 1, grades)]))).toThrow(/must be unlisted/);
+    }
+    for (const lane of ROM_DEP_LANE_NAMES) {
+      const grades = g(255, 255, 255, 255);
+      grades[lane] = 253;
+      expect(decodeRomDependencyList(encodeRomDependencyList(content([one(md5Of("x"), 1, grades)]))).lookup(md5Of("x"), 1).listed).toBe(true);
+    }
+  });
+
+  test("lookup: exact grades when listed, 254 lower bound when unlisted, full-MD5 matching only", () => {
     const list = decodeRomDependencyList(encodeRomDependencyList(content(entries)));
     expect(list.header.fileCount).toBe(3);
     expect(list.header.decisionCount).toBe(4);
+    expect(list.header.listingCeiling).toBe(253);
+    expect(list.header.recommendedMinGrade).toBe(128);
     expect(list.entries()[0]!.decisions.map((d) => d.subtune)).toEqual([1, 3]);
     const hit = list.lookup("00" + "ab".repeat(15), 1);
-    expect(hit.lanes).toEqual({ sidliteNone: "incompatible", sidliteKernalBasic: "unknown", residfpNone: "allowed", residfpKernalBasic: "allowed" });
-    expect(list.lookup("ff" + "00".repeat(15), 256).lanes.residfpKernalBasic).toBe("unknown");
-    expect(list.lookup("ff" + "00".repeat(15), 256).incompatibleMask).toBe(0); // unknown is never incompatible
+    expect(hit).toEqual({ listed: true, grades: g(1, 254, 120, 255), minGrade: 1 });
+    expect(list.lookup("ff" + "00".repeat(15), 256).grades.residfpKernalBasic).toBe(0);
     const miss = list.lookup("00" + "ab".repeat(15), 2);
-    expect(miss).toEqual({ listed: false, incompatibleMask: 0, unknownMask: 0, lanes: { sidliteNone: "allowed", sidliteKernalBasic: "allowed", residfpNone: "allowed", residfpKernalBasic: "allowed" } });
+    expect(miss).toEqual({ listed: false, grades: g(254, 254, 254, 254), minGrade: 254 });
     expect(list.lookup("12".repeat(16), 1).listed).toBe(false);
-    expect(list.lookup("7f" + "01".repeat(14) + "02", 1).listed).toBe(false); // full MD5, no prefix matching
-    expect(list.lookup(Uint8Array.from(Buffer.from("7f" + "01".repeat(15), "hex")), 1).incompatibleMask).toBe(15);
+    expect(list.lookup("7f" + "01".repeat(14) + "02", 1).listed).toBe(false); // no prefix matching
+    expect(list.lookup(Uint8Array.from(Buffer.from("7f" + "01".repeat(15), "hex")), 1).minGrade).toBe(0);
     expect(list.lookup("7f" + "01".repeat(15), 0).listed).toBe(false);
     expect(list.lookup("7f" + "01".repeat(15), 257).listed).toBe(false);
     expect(() => list.lookup("xyz", 1)).toThrow(RomDependencyListError);
+    // consumer thresholds: skip when grade < threshold; unlisted is never skipped for thresholds <= 254
+    expect(romDepBelowThreshold(hit, "sidliteNone", 128)).toBe(true);
+    expect(romDepBelowThreshold(hit, "residfpNone", 120)).toBe(false);
+    expect(romDepBelowThreshold(miss, "sidliteNone", 254)).toBe(false);
   });
 
-  test("encoding is size-exact: 192 + 17 per file + 2 per decision", () => {
-    expect(encodeRomDependencyList(content(entries)).length).toBe(192 + 17 * 3 + 2 * 4);
-    expect(encodeRomDependencyList(content([])).length).toBe(192);
+  test("encoding is size-exact: 224 + 17 per file + 5 per decision", () => {
+    expect(encodeRomDependencyList(content(entries)).length).toBe(224 + 17 * 3 + 5 * 4);
+    expect(encodeRomDependencyList(content([])).length).toBe(224);
     expect(decodeRomDependencyList(encodeRomDependencyList(content([]))).lookup("00".repeat(16), 1).listed).toBe(false);
   });
 
   test("encoder rejects non-canonical input", () => {
-    const base = { md5: md5Of("a"), decisions: [{ subtune: 1, incompatible: 1, unknown: 0 }] };
+    const base = one(md5Of("a"), 1, g(10, 255, 255, 255));
     expect(() => encodeRomDependencyList(content([base, base]))).toThrow(/duplicate MD5/);
     expect(() => encodeRomDependencyList(content([{ md5: base.md5.toUpperCase(), decisions: base.decisions }]))).toThrow();
-    expect(() => encodeRomDependencyList(content([{ md5: base.md5, decisions: [{ subtune: 1, incompatible: 1, unknown: 1 }] }]))).toThrow(/both incompatible and unknown/);
-    expect(() => encodeRomDependencyList(content([{ md5: base.md5, decisions: [{ subtune: 1, incompatible: 0, unknown: 0 }] }]))).toThrow(/no non-default lane/);
-    expect(() => encodeRomDependencyList(content([{ md5: base.md5, decisions: [{ subtune: 257, incompatible: 1, unknown: 0 }] }]))).toThrow(/subtune out of range/);
-    expect(() => encodeRomDependencyList(content([{ md5: base.md5, decisions: [{ subtune: 0, incompatible: 1, unknown: 0 }] }]))).toThrow(/subtune out of range/);
-    expect(() => encodeRomDependencyList(content([{ md5: base.md5, decisions: [{ subtune: 1, incompatible: 16, unknown: 0 }] }]))).toThrow(/mask/);
+    for (const bad of [-1, 256, 1.5, Number.NaN]) {
+      expect(() => encodeRomDependencyList(content([one(base.md5, 1, g(bad, 255, 255, 255))]))).toThrow(/grade out of range/);
+    }
+    expect(() => encodeRomDependencyList(content([one(base.md5, 257, g(1, 1, 1, 1))]))).toThrow(/subtune out of range/);
+    expect(() => encodeRomDependencyList(content([one(base.md5, 0, g(1, 1, 1, 1))]))).toThrow(/subtune out of range/);
     expect(() => encodeRomDependencyList(content([{ md5: base.md5, decisions: [base.decisions[0]!, base.decisions[0]!] }]))).toThrow(/duplicate subtune/);
     expect(() => encodeRomDependencyList(content([{ md5: base.md5, decisions: [] }]))).toThrow(/1..256/);
-    expect(() => encodeRomDependencyList({ ...content([base]), provenance: { ...PROVENANCE, corpusId: "zz" } })).toThrow(/corpusId/);
+    expect(() => encodeRomDependencyList(content([base], { provenance: { ...PROVENANCE, corpusId: "zz" } }))).toThrow(/corpusId/);
+    expect(() => encodeRomDependencyList(content([base], { provenance: { ...PROVENANCE, gradingMethodologySha256: "" } }))).toThrow(/gradingMethodologySha256/);
+    for (const bad of [0, 255, 256, -1, 1.5]) expect(() => encodeRomDependencyList(content([base], { recommendedMinGrade: bad }))).toThrow(/recommended_min_grade/);
+    for (const ok of [1, 254]) expect(decodeRomDependencyList(encodeRomDependencyList(content([base], { recommendedMinGrade: ok }))).header.recommendedMinGrade).toBe(ok);
   });
 
   test("a file may carry all 256 subtunes (count byte stores n-1)", () => {
-    const decisions = Array.from({ length: 256 }, (_, i) => ({ subtune: i + 1, incompatible: 1 << (i % 4), unknown: 0 }));
+    const decisions = Array.from({ length: 256 }, (_, i) => ({ subtune: i + 1, grades: g(i % 254, 255, 255, 255) }));
     const list = decodeRomDependencyList(encodeRomDependencyList(content([{ md5: md5Of("big"), decisions }])));
     expect(list.header.decisionCount).toBe(256);
-    expect(list.lookup(md5Of("big"), 256).incompatibleMask).toBe(8);
-    expect(list.lookup(md5Of("big"), 1).incompatibleMask).toBe(1);
+    expect(list.lookup(md5Of("big"), 256).grades.sidliteNone).toBe(255 % 254);
+    expect(list.lookup(md5Of("big"), 1).grades.sidliteNone).toBe(0);
+    expect(list.lookup(md5Of("big"), 129).grades.sidliteNone).toBe(128);
   });
 
   test("rejects truncated, extended, corrupted and structurally invalid binaries", () => {
     const good = encodeRomDependencyList(content(entries));
+    const decisionStart = ROM_DEP_HEADER_BYTES + 17 * 3;
     expect(() => decodeRomDependencyList(good.subarray(0, 100))).toThrow(/truncated header/);
     expect(() => decodeRomDependencyList(good.subarray(0, good.length - 1))).toThrow(/truncated payload/);
     expect(() => decodeRomDependencyList(Uint8Array.from([...good, 0]))).toThrow(/trailing bytes/);
     const flip = (offset: number): Uint8Array => { const b = Uint8Array.from(good); b[offset] = b[offset]! ^ 0x01; return b; };
     expect(() => decodeRomDependencyList(flip(ROM_DEP_HEADER_BYTES + 2))).toThrow(/payload SHA-256/);
+    expect(() => decodeRomDependencyList(flip(decisionStart + 1))).toThrow(/payload SHA-256/);
     expect(() => decodeRomDependencyList(flip(40))).toThrow(/header CRC-32/);
-    expect(() => decodeRomDependencyList(flip(100))).toThrow(/header CRC-32/); // digest bytes are covered by the header CRC
+    expect(() => decodeRomDependencyList(flip(100))).toThrow(/header CRC-32/); // provenance digests are covered by the header CRC
+    expect(() => decodeRomDependencyList(flip(200))).toThrow(/header CRC-32/); // so is the grading methodology digest
+    expect(() => decodeRomDependencyList(flip(61))).toThrow(/header CRC-32/); // and the recommended threshold
     expect(() => decodeRomDependencyList(flip(0))).toThrow(/bad magic/);
     const patch = (fn: (b: Uint8Array, v: DataView) => void): Uint8Array => { const b = Uint8Array.from(good); fn(b, new DataView(b.buffer)); return resign(b); };
     expect(() => decodeRomDependencyList(patch((_, v) => v.setUint16(8, 2, true)))).toThrow(/unsupported format version/);
+    expect(() => decodeRomDependencyList(patch((_, v) => v.setUint16(10, 192, true)))).toThrow(/header_bytes/);
     expect(() => decodeRomDependencyList(patch((_, v) => v.setUint32(12, 2, true)))).toThrow(/unknown flag bits/);
-    expect(() => decodeRomDependencyList(patch((_, v) => v.setUint32(60, 1, true)))).toThrow(/reserved/);
+    expect(() => decodeRomDependencyList(patch((_, v) => v.setUint16(62, 1, true)))).toThrow(/reserved/);
     expect(() => decodeRomDependencyList(patch((_, v) => v.setUint16(56, 18, true)))).toThrow(/record sizes/);
+    expect(() => decodeRomDependencyList(patch((_, v) => v.setUint16(58, 2, true)))).toThrow(/record sizes/);
+    expect(() => decodeRomDependencyList(patch((b) => { b[60] = 254; }))).toThrow(/listing_ceiling/);
+    expect(() => decodeRomDependencyList(patch((b) => { b[61] = 0; }))).toThrow(/recommended_min_grade/);
+    expect(() => decodeRomDependencyList(patch((b) => { b[61] = 255; }))).toThrow(/recommended_min_grade/);
     expect(() => decodeRomDependencyList(patch((_, v) => v.setUint32(44, 300, true)))).toThrow(/canonical tightly packed/);
     // swap the first two file records -> not strictly ascending
-    expect(() => decodeRomDependencyList(patch((b) => { const a = b.slice(192, 209); b.copyWithin(192, 209, 226); b.set(a, 209); }))).toThrow(/strictly ascending/);
+    expect(() => decodeRomDependencyList(patch((b) => { const a = b.slice(224, 241); b.copyWithin(224, 241, 258); b.set(a, 241); }))).toThrow(/strictly ascending/);
     // per-file count that no longer sums to decision_count
-    expect(() => decodeRomDependencyList(patch((b) => { b[192 + 16] = 5; }))).toThrow(/do not sum/);
-    // overlapping masks in a record
-    expect(() => decodeRomDependencyList(patch((b) => { b[192 + 17 * 3 + 1] = 0x11; }))).toThrow(/both incompatible and unknown/);
-    // all-zero record
-    expect(() => decodeRomDependencyList(patch((b) => { b[192 + 17 * 3 + 1] = 0x00; }))).toThrow(/no non-default lane/);
+    expect(() => decodeRomDependencyList(patch((b) => { b[224 + 16] = 5; }))).toThrow(/do not sum/);
+    // a record whose four lanes are all >= 254 may not exist
+    expect(() => decodeRomDependencyList(patch((b) => { b.fill(254, decisionStart + 1, decisionStart + 5); }))).toThrow(/must be unlisted/);
+    // out-of-order subtunes inside a file
+    expect(() => decodeRomDependencyList(patch((b) => { b[decisionStart] = 9; }))).toThrow(/strictly ascending/);
   });
 
   test("worked example from doc/rom-dependency-list.md section 14", () => {
     const bin = encodeRomDependencyList({
-      hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource: false,
-      provenance: { sourceManifestSha256: "a1".repeat(32), songlengthsSha256: "b2".repeat(32), corpusId: "c3".repeat(32) },
+      hvscRelease: 85, sourceFiles: 61157, sourceSubtunes: 87868, incompleteSource: false, recommendedMinGrade: 128,
+      provenance: { sourceSha256: "a1".repeat(32), songlengthsSha256: "b2".repeat(32), corpusId: "c3".repeat(32), gradingMethodologySha256: "d4".repeat(32) },
       entries: [
-        { md5: "0123456789abcdef0123456789abcdef", decisions: [{ subtune: 1, incompatible: 0b0101, unknown: 0 }, { subtune: 3, incompatible: 0, unknown: 0b1000 }] },
-        { md5: "fedcba9876543210fedcba9876543210", decisions: [{ subtune: 256, incompatible: 0b0011, unknown: 0 }] },
+        { md5: "0123456789abcdef0123456789abcdef", decisions: [{ subtune: 1, grades: g(0, 254, 120, 253) }, { subtune: 3, grades: g(255, 255, 200, 255) }] },
+        one("fedcba9876543210fedcba9876543210", 256, g(253, 255, 254, 255)),
       ],
     });
-    expect(bin.length).toBe(192 + 34 + 6);
-    const hex = Buffer.from(bin).toString("hex");
-    expect(hex.slice(2 * 192)).toBe(
-      "0123456789abcdef0123456789abcdef01" + "fedcba9876543210fedcba9876543210" + "00" + "00" + "05" + "02" + "80" + "ff" + "03");
+    expect(bin.length).toBe(224 + 34 + 15);
     expect(Buffer.from(bin.subarray(0, 64)).toString("hex")).toBe(
-      "53494452" + "4f4d4450" + "0100" + "c000" + "00000000" + "55000000" + "e5ee0000" + "3c570100" + "02000000" + "03000000" +
-      "c0000000" + "22000000" + "e2000000" + "06000000" + "ff03a359" + "1100" + "0200" + "00000000");
-    expect(Buffer.from(bin.subarray(64, 96)).toString("hex")).toBe("97e0a756d56f926ca91d658cc0a7700c5f04362c4e584ef49c0186ec083b582d");
+      "53494452" + "4f4d4450" + "0100" + "e000" + "00000000" + "55000000" + "e5ee0000" + "3c570100" + "02000000" + "03000000" +
+      "e0000000" + "22000000" + "02010000" + "0f000000" + "a9c15a5b" + "1100" + "0500" + "fd" + "80" + "0000");
+    expect(Buffer.from(bin.subarray(64, 96)).toString("hex")).toBe("dc22afb44443bf054f09c8738639aa2072178fe6367a52ad4d444d295cf42514");
+    expect(Buffer.from(bin.subarray(224)).toString("hex")).toBe(
+      "0123456789abcdef0123456789abcdef" + "01" + "fedcba9876543210fedcba9876543210" + "00" +
+      "0000fe78fd" + "02ffffc8ff" + "fffdfffeff");
   });
 });
 
 // ---------------------------------------------------------------------------------------------
-// Synthetic ROM audit bundle
+// Synthetic grading results
 // ---------------------------------------------------------------------------------------------
 
+type MaybeGrades = { [L in keyof RomDepGrades]: number | null };
 interface FixtureFile {
   name: string;
-  tokens: string[]; // Songlengths tokens; fewer tokens than subtunes = "no entry" subtunes
-  subtunes: number;
-  incompatible?: Record<number, number>;
-  unknown?: number[];
+  tokens: string[];
+  /** One entry per subtune. */
+  grades: MaybeGrades[];
 }
+const A = (a: number | null, b: number | null, c: number | null, d: number | null): MaybeGrades => ({ sidliteNone: a, sidliteKernalBasic: b, residfpNone: c, residfpKernalBasic: d });
+const SAME = A(255, 255, 255, 255);
+const RETIMED = A(254, 255, 254, 254);
 
 const FILES: FixtureFile[] = [
-  { name: "MUSICIANS/A/Alpha.sid", tokens: ["3:21"], subtunes: 1 },
-  { name: "MUSICIANS/B/Beta.sid", tokens: ["0:04", "1:00.385", "10:00", "2:30"], subtunes: 4, incompatible: { 1: 1, 2: 5, 4: 15 } },
-  { name: "GAMES/C/Gamma.sid", tokens: ["1:10", "bogus"], subtunes: 3, incompatible: { 2: 2 } },
-  { name: "GAMES/D/Delta.sid", tokens: ["0:30"], subtunes: 1, incompatible: { 1: 8 } },
-  { name: "DEMOS/E/Epsilon.sid", tokens: ["5:00", "5:00", "5:00"], subtunes: 3 },
-  { name: "DEMOS/F/Zeta.sid", tokens: ["0:00"], subtunes: 1, incompatible: { 1: 4 } },
+  { name: "MUSICIANS/A/Alpha.sid", tokens: ["3:21"], grades: [SAME] },
+  { name: "MUSICIANS/B/Beta.sid", tokens: ["0:04", "1:00.385", "10:00", "2:30"], grades: [A(0, 254, 255, 255), A(253, 255, 254, 255), RETIMED, A(1, 1, 1, 1)] },
+  { name: "GAMES/C/Gamma.sid", tokens: ["1:10", "bogus"], grades: [RETIMED, A(255, 128, 255, 255), SAME] },
+  { name: "GAMES/D/Delta.sid", tokens: ["0:30"], grades: [A(255, 255, 90, 255)] },
+  { name: "DEMOS/E/Epsilon.sid", tokens: ["5:00", "5:00", "5:00"], grades: [SAME, RETIMED, SAME] },
+  { name: "DEMOS/F/Zeta.sid", tokens: ["0:00"], grades: [A(254, 254, 254, 253)] },
 ];
+// 6 files, 13 subtunes; listed: Beta 1,2,4 ; Gamma 2 ; Delta 1 ; Zeta 1  => 4 files, 6 subtunes
 
-function fixtureSongs(files: FixtureFile[]): string {
-  return ["[Database]", "; comment", ...files.flatMap((f) => [`; /${f.name}`, `${md5Of(f.name)}=${f.tokens.join(" ")}`])].join("\n") + "\n";
-}
+const fixtureSongs = (files: FixtureFile[]): string =>
+  ["[Database]", "; comment", ...files.flatMap((f) => [`; /${f.name}`, `${md5Of(f.name)}=${f.tokens.join(" ")}`])].join("\n") + "\n";
 
-interface BundleOptions {
+interface ResultsOptions {
   files?: FixtureFile[];
-  complete?: boolean;
-  horizon?: (md5: string, ms: number[]) => number[];
-  extraManifest?: Record<string, unknown>;
-  exceptionsExtra?: Record<string, Record<string, number>>;
+  header?: Record<string, unknown>;
+  mutateRows?: (rows: Record<string, unknown>[]) => Record<string, unknown>[];
+  songlengths?: string;
 }
 
-async function writeBundle(dir: string, options: BundleOptions = {}): Promise<{ songlengths: string }> {
+function resultsText(options: ResultsOptions = {}): { text: string; songlengths: string } {
   const files = options.files ?? FILES;
-  const complete = options.complete ?? true;
-  await mkdir(dir, { recursive: true });
-  const songlengths = fixtureSongs(files);
-  const identities: Record<string, string> = {};
-  const horizons: Record<string, unknown> = {};
-  const entries: Record<string, Record<string, number>> = { ...(options.exceptionsExtra ?? {}) };
-  const unknown: Record<string, number[]> = {};
-  let subtunes = 0, exceptionSubtunes = 0, unknownSubtunes = 0;
-  for (const f of files) {
-    const md5 = md5Of(f.name);
-    identities[sha256Hex(f.name)] = md5;
-    const ms = Array.from({ length: f.subtunes }, (_, i) => derivePlaybackHorizonMs(f.tokens[i]));
-    horizons[md5] = { fallbackSidModel: "MOS8580", milliseconds: options.horizon ? options.horizon(md5, ms) : ms, modelFixed: false };
-    subtunes += f.subtunes;
-    if (f.incompatible) {
-      entries[md5] = Object.fromEntries(Object.entries(f.incompatible).map(([k, v]) => [k, v]));
-      exceptionSubtunes += Object.keys(f.incompatible).length;
-    }
-    if (f.unknown) { unknown[md5] = f.unknown; unknownSubtunes += f.unknown.length; }
-  }
-  const json = (v: unknown): string => stringifyDeterministic(v as JsonValue, 0);
-  const artifacts: Record<string, string> = {};
-  const put = async (name: string, text: string): Promise<void> => { await writeFile(path.join(dir, name), text); artifacts[name] = sha256Hex(text); };
-  await put("sha256-to-md5.json", json(identities));
-  await put("playback-horizons.json", json(horizons));
-  await put("commander-exceptions.json", json({ schema: "sidflow-commander-rom-exceptions-1", complete, bits: { sidliteNone: 1, sidliteKernalBasic: 2, residfpNone: 4, residfpKernalBasic: 8 }, entries }));
-  await put("unknown.json", json(unknown));
-  const manifest = {
-    schema: "sidflow-dual-rom-manifest-1", methodology: "rom-audit-digital-screen-2", complete, releaseReady: complete,
-    corpus: "4b".repeat(32), files: files.length, subtunes, measuredSubtunes: subtunes - unknownSubtunes, pendingSubtunes: unknownSubtunes, failedSubtunes: 0,
-    unknownSubtunes, exceptionSubtunes, counts: {}, artifacts,
-    engineIds: { sidlite: "aa".repeat(32), residfp: "bb".repeat(32) },
-    engines: { sidlite: { engineId: "aa".repeat(32), sourceSha256: "cc".repeat(32), wasmSha256: "dd".repeat(32) }, residfp: { engineId: "bb".repeat(32), sourceSha256: "cc".repeat(32), wasmSha256: "ee".repeat(32) } },
-    nativeHashes: { sidlite: "01".repeat(32), residfp: "02".repeat(32) },
-    romSetId: romSetId(), sourceIdentity: "5a".repeat(32),
-    documents: { "Songlengths.md5": sha256Hex(songlengths) },
-    scope: "Pinned engines; 48kHz stereo; default delay 8191; 256-event pulls; zero absent BASIC/CHARGEN; KERNAL shim when absent; header SID model/MOS8580 fallback; documented horizon plus 5s. Masks 0 and 3 against authentic three-ROM reference. Not hardware-fidelity proof or indefinite-loop authorization.",
-    ...options.extraManifest,
+  const songlengths = options.songlengths ?? fixtureSongs(files);
+  const header = {
+    record: "header", schema: GRADING_RESULTS_SCHEMA, methodologyId: "5e".repeat(32), hvscRelease: 85, corpusId: "4b".repeat(32),
+    songlengthsSha256: sha256Hex(songlengths), files: files.length, subtunes: files.reduce((s, f) => s + f.grades.length, 0),
+    profile: { romSetId: romSetId(), engines: ["sidlite", "residfp"] }, ...options.header,
   };
-  await writeFile(path.join(dir, "manifest.json"), json(manifest) + "\n");
-  return { songlengths };
+  let rows: Record<string, unknown>[] = files.flatMap((f) => f.grades.map((grades, i) => ({ record: "grade", md5: md5Of(f.name), song: i + 1, grades })));
+  if (options.mutateRows) rows = options.mutateRows(rows);
+  return { text: [header, ...rows].map((r) => JSON.stringify(r)).join("\n") + "\n", songlengths };
 }
 
 let root = "";
 let seq = 0;
 const fresh = (): string => path.join(root, `case-${seq++}`);
-const stubVerify = (dir: string): string => sha256Hex(readFileSync(path.join(dir, "manifest.json")));
+async function writeResults(options: ResultsOptions = {}): Promise<{ dir: string; results: string; songlengthsPath: string; songlengths: string }> {
+  const dir = fresh();
+  await mkdir(dir, { recursive: true });
+  const { text, songlengths } = resultsText(options);
+  const results = path.join(dir, "grading-results.jsonl");
+  const songlengthsPath = path.join(dir, "Songlengths.md5");
+  await writeFile(results, text);
+  await writeFile(songlengthsPath, songlengths);
+  return { dir, results, songlengthsPath, songlengths };
+}
 
 beforeAll(async () => { root = await mkdtemp(path.join(os.tmpdir(), "romdep-")); });
 afterAll(async () => { await rm(root, { recursive: true, force: true }); });
 
-describe("horizon rule and Songlengths parsing", () => {
+describe("horizon rule and Songlengths parsing (informative scope)", () => {
   test("rule: duration + 5 s, minimum 10 s, 300 s when no valid entry", () => {
     expect(derivePlaybackHorizonMs("3:21")).toBe(206_000);
     expect(derivePlaybackHorizonMs("1:00.385")).toBe(65_385);
     expect(derivePlaybackHorizonMs("0:04")).toBe(10_000);
-    expect(derivePlaybackHorizonMs("0:05")).toBe(10_000);
     expect(derivePlaybackHorizonMs("0:06")).toBe(11_000);
     expect(derivePlaybackHorizonMs("0:00")).toBe(300_000);
     expect(derivePlaybackHorizonMs(undefined)).toBe(300_000);
     expect(derivePlaybackHorizonMs("1:75")).toBe(300_000);
     expect(derivePlaybackHorizonMs("3:21(G)")).toBe(300_000);
-    expect(derivePlaybackHorizonMs("1:00.1")).toBe(65_100);
   });
   test("parser keeps path and tokens and rejects duplicates", () => {
     const parsed = parseSonglengthsMd5(fixtureSongs(FILES));
@@ -275,14 +284,54 @@ describe("horizon rule and Songlengths parsing", () => {
   });
 });
 
-describe("generator and verifier on a synthetic bundle", () => {
+describe("grading results input", () => {
+  test("parses, derives only subtunes with a lane <= 253", () => {
+    const { text } = resultsText();
+    const input = parseGradingResults(new TextEncoder().encode(text), { allowIncomplete: false });
+    expect(input.complete).toBe(true);
+    expect(input.rowCount).toBe(13);
+    const entries = deriveEntries(input);
+    expect(entries.map((e) => e.decisions.length).reduce((a, b) => a + b, 0)).toBe(6);
+    expect(entries).toHaveLength(4);
+  });
+
+  test("rejects malformed and incomplete input unless --allow-incomplete", () => {
+    const parse = (options: ResultsOptions, allowIncomplete = false) => parseGradingResults(new TextEncoder().encode(resultsText(options).text), { allowIncomplete });
+    const withRows = (mutateRows: ResultsOptions["mutateRows"]): ResultsOptions => ({ mutateRows });
+    // unmeasured lane
+    const unmeasured = withRows((rows) => rows.map((r, i) => (i === 3 ? { ...r, grades: { ...(r.grades as object), residfpNone: null } } : r)));
+    expect(() => parse(unmeasured)).toThrow(/incomplete.*unmeasured lane/);
+    expect(parse(unmeasured, true).complete).toBe(false);
+    // missing row (header declares more)
+    expect(() => parse(withRows((rows) => rows.slice(1)))).toThrow(/incomplete/);
+    // non-contiguous subtunes
+    expect(() => parse(withRows((rows) => rows.filter((r) => !(r.md5 === md5Of("MUSICIANS/B/Beta.sid") && r.song === 2)).concat([{ record: "grade", md5: md5Of("MUSICIANS/B/Beta.sid"), song: 9, grades: SAME }])))).toThrow(/not contiguous/);
+    // bad values
+    for (const bad of [256, -1, 1.5, "7", true]) {
+      expect(() => parse(withRows((rows) => rows.map((r, i) => (i === 0 ? { ...r, grades: { ...(r.grades as object), sidliteNone: bad } } : r))), true)).toThrow(/integer 0..255 or null/);
+    }
+    expect(() => parse(withRows((rows) => rows.map((r, i) => (i === 0 ? { ...r, grades: { sidliteNone: 1 } } : r))), true)).toThrow(/exactly the four lanes/);
+    expect(() => parse(withRows((rows) => rows.map((r, i) => (i === 0 ? { ...r, song: 257 } : r))), true)).toThrow(/song must be/);
+    expect(() => parse(withRows((rows) => rows.map((r, i) => (i === 0 ? { ...r, md5: "ABC" } : r))), true)).toThrow(/md5/);
+    expect(() => parse(withRows((rows) => [...rows, rows[0]!]), true)).toThrow(/duplicate/);
+    expect(() => parse(withRows((rows) => rows.map((r, i) => (i === 0 ? { ...r, methodologyId: "00".repeat(32) } : r))), true)).toThrow(/methodologyId differs/);
+    expect(() => parse(withRows((rows) => rows.map((r, i) => (i === 0 ? { ...r, record: "other" } : r))), true)).toThrow(/grade record/);
+    // header problems
+    expect(() => parse({ header: { schema: "other" } }, true)).toThrow(/first line/);
+    expect(() => parse({ header: { methodologyId: "xyz" } }, true)).toThrow(/64-hex/);
+    expect(() => parse({ header: { hvscRelease: 0 } }, true)).toThrow(/positive integer/);
+    expect(() => parse({ header: { profile: { romSetId: "00".repeat(32) } } }, true)).toThrow(/reference ROM set/);
+    expect(() => parseGradingResults(new TextEncoder().encode(""), { allowIncomplete: true })).toThrow(/empty/);
+    expect(() => parseGradingResults(new TextEncoder().encode("{not json\n"), { allowIncomplete: true })).toThrow();
+  });
+});
+
+describe("generator and verifier", () => {
   test("release generation, determinism, verification and round trip", async () => {
-    const bundle = fresh();
-    const { songlengths } = await writeBundle(bundle);
-    const songlengthsPath = path.join(bundle, "Songlengths.md5");
-    await writeFile(songlengthsPath, songlengths);
-    const runA = await generateRomDependencyList({ bundleDir: bundle, outDir: path.join(root, "outA"), songlengthsPath, verifyBundle: stubVerify });
-    const runB = await generateRomDependencyList({ bundleDir: bundle, outDir: path.join(root, "outB"), songlengthsPath, verifyBundle: stubVerify });
+    const input = await writeResults();
+    const base = { resultsPath: input.results, songlengthsPath: input.songlengthsPath, recommendedMinGrade: 128 };
+    const runA = await generateRomDependencyList({ ...base, outDir: path.join(root, "outA") });
+    const runB = await generateRomDependencyList({ ...base, outDir: path.join(root, "outB") });
     const names = outputNames(85);
     expect(names.bin).toBe("hvsc85-sidromdep-1.bin");
     expect(names.manifest).toBe("hvsc85-sidromdep-1.manifest.json");
@@ -292,189 +341,155 @@ describe("generator and verifier on a synthetic bundle", () => {
     expect(runA.binSha256).toBe(runB.binSha256);
     expect(runA.manifestSha256).toBe(runB.manifestSha256);
     expect(runA.complete).toBe(true);
-    // 5 incompatible subtunes in 4 files: Beta 1,2,4 ; Gamma 2 ; Delta 1 ; Zeta 1  => 4 files? count precisely below
     expect(runA.listedFiles).toBe(4);
     expect(runA.listedSubtunes).toBe(6);
-    expect(runA.bytes).toBe(192 + 17 * 4 + 2 * 6);
+    expect(runA.bytes).toBe(224 + 17 * 4 + 5 * 6);
 
     const manifest = JSON.parse(await readFile(runA.manifestPath, "utf8"));
     expect(manifest.complete).toBe(true);
     expect(manifest.releasable).toBe(true);
-    expect(manifest.measuredProfile.observationHorizon.reproducedFromSonglengths).toBe(true);
+    expect(manifest.recommendedMinGrade).toBe(128);
+    expect(manifest.listingCeiling).toBe(253);
+    expect(manifest.counts.subtunesBelowRecommended).toBe(3); // Beta#1 (0), Beta#4 (1), Delta#1 (90); Gamma#2 is exactly 128 and Beta#2/Zeta#1 are 253
+    expect(manifest.measuredProfile.songlengthsFileVerified).toBe(true);
     expect(manifest.measuredProfile.romSetId).toBe(romSetId());
-    expect(manifest.provenance.songlengthsSha256).toBe(sha256Hex(songlengths));
+    expect(manifest.provenance.songlengthsSha256).toBe(sha256Hex(input.songlengths));
+    expect(manifest.provenance.gradingMethodologySha256).toBe("5e".repeat(32));
     expect(manifest.binary.sha256).toBe(runA.binSha256);
 
     const list = decodeRomDependencyList(new Uint8Array(await readFile(runA.binPath)));
     expect(list.header.incompleteSource).toBe(false);
     const beta = md5Of("MUSICIANS/B/Beta.sid");
-    expect(list.lookup(beta, 2).incompatibleMask).toBe(5);
-    expect(list.lookup(beta, 3).listed).toBe(false);
+    expect(list.lookup(beta, 2).grades).toEqual(g(253, 255, 254, 255));
+    expect(list.lookup(beta, 3).listed).toBe(false); // retimed only
     expect(list.lookup(md5Of("MUSICIANS/A/Alpha.sid"), 1).listed).toBe(false);
+    expect(list.lookup(md5Of("DEMOS/F/Zeta.sid"), 1).grades.residfpKernalBasic).toBe(253);
 
     const human = JSON.parse(await readFile(runA.jsonPath, "utf8"));
     expect(human.records).toHaveLength(6);
     expect(human.records.map((r: { hvscPath: string }) => r.hvscPath)).toContain("MUSICIANS/B/Beta.sid");
-    expect(human.records.find((r: { md5: string; subtune: number }) => r.md5 === beta && r.subtune === 4).lanes.residfpKernalBasic).toBe("incompatible");
+    expect(human.records.find((r: { md5: string; subtune: number }) => r.md5 === beta && r.subtune === 1).grades.sidliteNone).toBe(0);
 
-    const report = await verifyRomDependencyListFiles({ binPath: runA.binPath, bundleDir: bundle, songlengthsPath, verifyBundle: stubVerify });
+    const report = await verifyRomDependencyListFiles({ binPath: runA.binPath, resultsPath: input.results, songlengthsPath: input.songlengthsPath });
     expect(report.binSha256).toBe(runA.binSha256);
     expect(report.manifestSha256).toBe(runA.manifestSha256);
     expect(report.checkedSubtunes).toBe(13);
     expect(report.listedSubtunes).toBe(6);
-    expect(report.unlistedCompatible).toBe(7);
-    expect(roundTripAgainstBundle(list, await loadSourceBundle(bundle, { allowIncomplete: false, verifyBundle: stubVerify })).unlistedCompatible).toBe(7);
+    expect(report.unlistedAtLeast254).toBe(7);
+    expect(report.excludedUnmeasured).toBe(0);
   });
 
-  test("round trip detects a dropped record, an extra record and a changed mask", async () => {
-    const bundle = fresh();
-    await writeBundle(bundle);
-    const source = await loadSourceBundle(bundle, { allowIncomplete: false, verifyBundle: stubVerify });
-    const entries = deriveEntries(source);
+  test("round trip detects a dropped record, an extra record and a changed grade", async () => {
+    const { text } = resultsText();
+    const input = parseGradingResults(new TextEncoder().encode(text), { allowIncomplete: false });
+    const entries = deriveEntries(input);
     const build = (e: RomDepEntry[]) => decodeRomDependencyList(encodeRomDependencyList(content(e)));
-    expect(() => roundTripAgainstBundle(build(entries), source)).not.toThrow();
-    expect(() => roundTripAgainstBundle(build(entries.slice(1)), source)).toThrow(/differs from the source bundle/);
-    const extra = [...entries, { md5: md5Of("MUSICIANS/A/Alpha.sid"), decisions: [{ subtune: 1, incompatible: 1, unknown: 0 }] }];
-    expect(() => roundTripAgainstBundle(build(extra), source)).toThrow(/measured compatible in all lanes but is listed/);
-    const changed = entries.map((e, i) => (i === 0 ? { ...e, decisions: [{ ...e.decisions[0]!, incompatible: e.decisions[0]!.incompatible ^ 8 }, ...e.decisions.slice(1)] } : e));
-    expect(() => roundTripAgainstBundle(build(changed), source)).toThrow(/differs from the source bundle/);
-    const foreign = [...entries, { md5: md5Of("not in bundle"), decisions: [{ subtune: 1, incompatible: 1, unknown: 0 }] }];
-    expect(() => roundTripAgainstBundle(build(foreign), source)).toThrow(/not in the source bundle/);
-    const tooFar = [...entries, { md5: md5Of("DEMOS/E/Epsilon.sid"), decisions: [{ subtune: 4, incompatible: 1, unknown: 0 }] }];
-    expect(() => roundTripAgainstBundle(build(tooFar), source)).toThrow(/exceeds the source subtune count/);
+    expect(() => roundTripAgainstResults(build(entries), input)).not.toThrow();
+    expect(() => roundTripAgainstResults(build(entries.slice(1)), input)).toThrow(/differs from the grading results/);
+    // a subtune whose four graded lanes are all >= 254 must not be listed
+    const extra = [...entries, one(md5Of("MUSICIANS/A/Alpha.sid"), 1, g(10, 255, 255, 255))];
+    expect(() => roundTripAgainstResults(build(extra), input)).toThrow(/every lane >= 254 but is listed/);
+    const changed = entries.map((e, i) => (i === 0 ? { ...e, decisions: [{ ...e.decisions[0]!, grades: { ...e.decisions[0]!.grades, sidliteNone: 77 } }, ...e.decisions.slice(1)] } : e));
+    expect(() => roundTripAgainstResults(build(changed), input)).toThrow(/differs from the grading results/);
+    expect(() => roundTripAgainstResults(build([...entries, one(md5Of("not in input"), 1, g(1, 1, 1, 1))]), input)).toThrow(/not in the grading results/);
+    expect(() => roundTripAgainstResults(build([...entries, one(md5Of("DEMOS/E/Epsilon.sid"), 4, g(1, 1, 1, 1))]), input)).toThrow(/not in the grading results/);
   });
 
-  test("verifier rejects a modified binary and a mismatched bundle", async () => {
-    const bundle = fresh();
-    const { songlengths } = await writeBundle(bundle);
-    const songlengthsPath = path.join(bundle, "Songlengths.md5");
-    await writeFile(songlengthsPath, songlengths);
-    const out = path.join(root, "out-tamper");
-    const run = await generateRomDependencyList({ bundleDir: bundle, outDir: out, songlengthsPath, verifyBundle: stubVerify });
+  test("the verifier rejects a modified binary and a different results file", async () => {
+    const input = await writeResults();
+    const run = await generateRomDependencyList({ resultsPath: input.results, songlengthsPath: input.songlengthsPath, recommendedMinGrade: 100, outDir: path.join(root, "out-tamper") });
     const bytes = new Uint8Array(await readFile(run.binPath));
     await writeFile(run.binPath, resign(Uint8Array.from(bytes, (b, i) => (i === bytes.length - 1 ? b ^ 0x01 : b))));
-    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, bundleDir: bundle, verifyBundle: stubVerify })).rejects.toThrow(/manifest does not describe this binary/);
+    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results })).rejects.toThrow(/manifest does not describe this binary/);
     await writeFile(run.binPath, bytes.subarray(0, bytes.length - 3));
-    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, bundleDir: bundle, verifyBundle: stubVerify })).rejects.toThrow(/truncated payload/);
+    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results })).rejects.toThrow(/truncated payload/);
     await writeFile(run.binPath, bytes);
-    const other = fresh();
-    await writeBundle(other, { files: FILES.slice(0, 5) });
-    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, bundleDir: other, verifyBundle: stubVerify })).rejects.toThrow(/source bundle manifest digest differs/);
+    const other = await writeResults({ files: FILES.slice(0, 5) });
+    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: other.results })).rejects.toThrow(/results digest differs/);
+    // same bytes, grade changed in a way that keeps the header consistent: caught by the digest of the results
+    const edited = await writeResults({ mutateRows: (rows) => rows.map((r, i) => (i === 1 ? { ...r, grades: A(7, 255, 255, 255) } : r)) });
+    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: edited.results })).rejects.toThrow(/results digest differs/);
   });
 
-  test("a release output requires the Songlengths file and reproducible horizons", async () => {
-    const bundle = fresh();
-    const { songlengths } = await writeBundle(bundle);
-    await expect(generateRomDependencyList({ bundleDir: bundle, outDir: fresh(), verifyBundle: stubVerify })).rejects.toThrow(/--songlengths is required/);
-    const wrong = path.join(bundle, "Songlengths.md5");
-    await writeFile(wrong, songlengths + "\n; changed\n");
-    await expect(generateRomDependencyList({ bundleDir: bundle, outDir: fresh(), songlengthsPath: wrong, verifyBundle: stubVerify })).rejects.toThrow(/does not match the digest/);
-
-    // A published horizon that the documented rule cannot reproduce (non-derivable) is refused.
-    const bad = fresh();
-    const { songlengths: text } = await writeBundle(bad, { horizon: (md5, ms) => (md5 === md5Of("GAMES/D/Delta.sid") ? [ms[0]! + 1] : ms) });
-    const badPath = path.join(bad, "Songlengths.md5");
-    await writeFile(badPath, text);
-    await expect(generateRomDependencyList({ bundleDir: bad, outDir: fresh(), songlengthsPath: badPath, verifyBundle: stubVerify })).rejects.toThrow(/not reproducible from Songlengths\.md5/);
+  test("generation refuses bad thresholds, wrong Songlengths and incomplete results", async () => {
+    const input = await writeResults();
+    for (const bad of [0, 255, 300]) {
+      await expect(generateRomDependencyList({ resultsPath: input.results, recommendedMinGrade: bad, outDir: fresh() })).rejects.toThrow(/recommended_min_grade/);
+    }
+    const wrong = path.join(input.dir, "Songlengths.other");
+    await writeFile(wrong, input.songlengths + "\n; changed\n");
+    await expect(generateRomDependencyList({ resultsPath: input.results, songlengthsPath: wrong, recommendedMinGrade: 128, outDir: fresh() })).rejects.toThrow(/does not match the digest/);
+    const incomplete = await writeResults({ mutateRows: (rows) => rows.map((r, i) => (i === 0 ? { ...r, grades: { ...(r.grades as object), sidliteNone: null } } : r)) });
+    await expect(generateRomDependencyList({ resultsPath: incomplete.results, recommendedMinGrade: 128, outDir: fresh() })).rejects.toThrow(/incomplete/);
   });
 
-  test("rejects incomplete bundles and unverified bundles, and uses the real verifier by default", async () => {
-    const incomplete = fresh();
-    const { songlengths } = await writeBundle(incomplete, { complete: false, files: [{ ...FILES[1]!, unknown: [3] }, FILES[0]!] });
-    const songlengthsPath = path.join(incomplete, "Songlengths.md5");
-    await writeFile(songlengthsPath, songlengths);
-    await expect(generateRomDependencyList({ bundleDir: incomplete, outDir: fresh(), songlengthsPath, verifyBundle: stubVerify })).rejects.toThrow(/not complete && releaseReady/);
-    // complete && releaseReady claims but failing verification
-    const claimed = fresh();
-    const { songlengths: claimedText } = await writeBundle(claimed);
-    const claimedPath = path.join(claimed, "Songlengths.md5");
-    await writeFile(claimedPath, claimedText);
-    await expect(generateRomDependencyList({ bundleDir: claimed, outDir: fresh(), songlengthsPath: claimedPath, verifyBundle: () => { throw new Error("Invalid Commander publication: stub"); } })).rejects.toThrow(/Invalid Commander publication/);
-    // default verifier is scripts/rom-audit/verify-publication.ts: a 6-file fixture is not the HVSC #85 census
-    await expect(generateRomDependencyList({ bundleDir: claimed, outDir: fresh(), songlengthsPath: claimedPath })).rejects.toThrow(/Invalid Commander publication/);
-    // a "complete" bundle that still lists unknown subtunes is contradictory
-    const contradictory = fresh();
-    await writeBundle(contradictory, { files: [{ ...FILES[1]!, unknown: [3] }] });
-    await expect(loadSourceBundle(contradictory, { allowIncomplete: false, verifyBundle: stubVerify })).rejects.toThrow(/cannot carry unknown/);
-    // tampered artifact: checksum mismatch
-    const tampered = fresh();
-    await writeBundle(tampered);
-    await writeFile(path.join(tampered, "unknown.json"), "{ }\n");
-    await expect(loadSourceBundle(tampered, { allowIncomplete: true })).rejects.toThrow(/checksum mismatch for unknown\.json/);
-    // exception bit meaning drift
-    const drift = fresh();
-    await writeBundle(drift, { exceptionsExtra: { [md5Of("MUSICIANS/A/Alpha.sid")]: { "9": 1 } } });
-    await expect(loadSourceBundle(drift, { allowIncomplete: true })).rejects.toThrow(/invalid exception/);
-  });
-
-  test("--allow-incomplete output is flagged non-releasable in header and manifest, carries unknown, and needs the flag to verify", async () => {
-    const bundle = fresh();
-    const files: FixtureFile[] = [{ ...FILES[1]!, unknown: [3] }, { ...FILES[0]!, unknown: [1] }, FILES[4]!];
-    await writeBundle(bundle, { complete: false, files });
+  test("--allow-incomplete output excludes unmeasured subtunes and is flagged non-releasable in header and manifest", async () => {
+    const files: FixtureFile[] = [
+      { ...FILES[1]!, grades: [A(0, 254, 255, 255), A(253, 255, 254, 255), A(255, null, 255, 255), A(1, 1, 1, 1)] },
+      { ...FILES[0]!, grades: [A(null, null, null, null)] },
+      FILES[4]!,
+    ];
+    const input = await writeResults({ files });
     const out = path.join(root, "out-incomplete");
-    const run = await generateRomDependencyList({ bundleDir: bundle, outDir: out, allowIncomplete: true });
+    const run = await generateRomDependencyList({ resultsPath: input.results, recommendedMinGrade: 128, outDir: out, allowIncomplete: true });
     expect(run.complete).toBe(false);
     const manifest = JSON.parse(await readFile(run.manifestPath, "utf8"));
     expect(manifest.complete).toBe(false);
     expect(manifest.releasable).toBe(false);
     expect(manifest.status).toContain("NOT-RELEASABLE");
-    expect(manifest.measuredProfile.observationHorizon.reproducedFromSonglengths).toBe(false);
+    expect(manifest.counts.excludedUnmeasuredSubtunes).toBe(2);
+    expect(manifest.measuredProfile.songlengthsFileVerified).toBe(false);
     const bin = new Uint8Array(await readFile(run.binPath));
     expect(new DataView(bin.buffer).getUint32(12, true) & ROM_DEP_FLAG_INCOMPLETE_SOURCE).toBe(1);
     const list = decodeRomDependencyList(bin);
     expect(list.header.incompleteSource).toBe(true);
     const beta = md5Of("MUSICIANS/B/Beta.sid");
-    // Beta#1 is incompatible in sidliteNone and #4 in all; #3 is unknown in every lane; unknown is never incompatible
-    expect(list.lookup(beta, 3)).toMatchObject({ listed: true, incompatibleMask: 0, unknownMask: 15 });
-    expect(list.lookup(beta, 1).incompatibleMask).toBe(1);
-    expect(list.lookup(md5Of("MUSICIANS/A/Alpha.sid"), 1)).toMatchObject({ incompatibleMask: 0, unknownMask: 15 });
-    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, bundleDir: bundle })).rejects.toThrow(/allow-incomplete/);
-    const report = await verifyRomDependencyListFiles({ binPath: run.binPath, bundleDir: bundle, allowIncomplete: true });
+    expect(list.lookup(beta, 3).listed).toBe(false); // excluded: nothing is claimed
+    expect(list.lookup(beta, 1).listed).toBe(true);
+    expect(list.lookup(md5Of("MUSICIANS/A/Alpha.sid"), 1).listed).toBe(false);
+    await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results })).rejects.toThrow(/allow-incomplete/);
+    const report = await verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results, allowIncomplete: true });
     expect(report.complete).toBe(false);
+    expect(report.excludedUnmeasured).toBe(2);
+    await expect(loadGradingResults(input.results, { allowIncomplete: false })).rejects.toThrow(/incomplete/);
   });
 });
 
-describe("size model", () => {
-  test("a list of ~1,600 files / ~2,700 subtunes is ~32 KiB, well inside the 30-40 KiB target", () => {
+describe("size model and scale", () => {
+  test("a list of ~1,600 files / ~2,700 subtunes is ~40 KiB: 224 + 17 f + 5 s", () => {
     const entries: RomDepEntry[] = [];
     for (let i = 0; i < 1600; i++) {
       const count = i < 1100 ? 2 : 1; // 1,100 x 2 + 500 x 1 = 2,700 subtunes
-      entries.push({ md5: md5Of(`size-${i}`), decisions: Array.from({ length: count }, (_, s) => ({ subtune: s + 1, incompatible: 1, unknown: 0 })) });
+      entries.push({ md5: md5Of(`size-${i}`), decisions: Array.from({ length: count }, (_, s) => ({ subtune: s + 1, grades: g(100, 255, 255, 255) })) });
     }
     const subtunes = entries.reduce((s, e) => s + e.decisions.length, 0);
     const bin = encodeRomDependencyList(content(entries));
     expect(subtunes).toBe(2700);
-    expect(bin.length).toBe(192 + 17 * 1600 + 2 * subtunes);
-    expect(bin.length).toBe(32_792);
-    expect(bin.length).toBeLessThan(40 * 1024);
-    expect(bin.length).toBeGreaterThan(30 * 1024);
+    expect(bin.length).toBe(224 + 17 * 1600 + 5 * 2700);
+    expect(bin.length).toBe(40_924);
+    expect(bin.length).toBeLessThan(42 * 1024);
   });
-});
 
-const REAL = "/mnt/data/dev/c64/sidflow/workspace/rom-audit-dual-4/published";
-describe("dry run against the partial real bundle", () => {
-  // Skipped explicitly when the local evidence directory is not present (CI, other machines).
-  test.skipIf(!existsSync(path.join(REAL, "manifest.json")))("--allow-incomplete dry run and size extrapolation", async () => {
-    const out = path.join(root, "out-real");
-    const run = await generateRomDependencyList({ bundleDir: REAL, outDir: out, allowIncomplete: true });
-    expect(run.complete).toBe(false);
-    const list = decodeRomDependencyList(new Uint8Array(await readFile(run.binPath)));
-    const source = await loadSourceBundle(REAL, { allowIncomplete: true });
-    expect(roundTripAgainstBundle(list, source).checked).toBe(87868);
-    const entries = list.entries();
-    const incompatibleOnly = entries.map((e) => ({ ...e, decisions: e.decisions.filter((d) => d.incompatible !== 0) })).filter((e) => e.decisions.length);
-    const incompatibleSubtunes = incompatibleOnly.reduce((s, e) => s + e.decisions.length, 0);
-    expect(incompatibleSubtunes).toBe(163);
-    const incompatibleBytes = 192 + 17 * incompatibleOnly.length + 2 * incompatibleSubtunes;
-    console.log(`[rom-dependency-list dry run] listed ${run.listedFiles} files / ${run.listedSubtunes} subtunes -> ${run.bytes} bytes (unknown pending subtunes dominate); incompatible-only: ${incompatibleOnly.length} files / ${incompatibleSubtunes} subtunes -> ${incompatibleBytes} bytes; extrapolated complete corpus (1,600 files / 2,700 subtunes): ${192 + 17 * 1600 + 2 * 2700} bytes; for 3% of 87,868 subtunes (~2,636) over ~1,560 files: ${192 + 17 * 1560 + 2 * 2636} bytes`);
-    expect(run.bytes).toBe(192 + 17 * run.listedFiles + 2 * run.listedSubtunes);
-    expect(Object.keys(ROM_DEP_LANE_BITS)).toHaveLength(4);
-  }, 120_000);
-
-  const SONGLENGTHS = "/mnt/data/dev/c64/sidflow/workspace/hvsc/C64Music/DOCUMENTS/Songlengths.md5";
-  test.skipIf(!existsSync(path.join(REAL, "manifest.json")) || !existsSync(SONGLENGTHS))("the horizon rule reproduces all 87,868 real published horizons from HVSC #85 Songlengths.md5", async () => {
-    const source = await loadSourceBundle(REAL, { allowIncomplete: true });
-    const paths = verifyHorizonRule(source, await readFile(SONGLENGTHS, "utf8"));
-    expect(paths.size).toBe(61157);
+  test("full-corpus scale (61,157 files / ~80k subtunes, ~3% listed) generates and verifies", async () => {
+    const files: FixtureFile[] = [];
+    let subtunes = 0;
+    for (let i = 0; i < 61_157; i++) {
+      const count = i % 13 === 0 ? 2 + (i % 5) : i % 13 === 1 ? 2 : 1; // ~87.9k subtunes in total
+      const grades: MaybeGrades[] = [];
+      for (let s = 0; s < count; s++) {
+        const h = createHash("sha1").update(`${i}/${s}`).digest()[0]!;
+        grades.push(h < 8 ? A(h * 30, 255, h % 2 ? 254 : 255, 255) : h < 40 ? RETIMED : SAME); // 8/256 = 3.1% listed
+      }
+      subtunes += count;
+      files.push({ name: `F/${i}.sid`, tokens: ["1:00"], grades });
+    }
+    const input = await writeResults({ files, songlengths: "; /placeholder.sid\n" + md5Of("placeholder") + "=1:00\n" });
+    expect(subtunes).toBeGreaterThan(75_000);
+    const run = await generateRomDependencyList({ resultsPath: input.results, recommendedMinGrade: 128, outDir: path.join(root, "out-scale") });
+    expect(run.bytes).toBe(224 + 17 * run.listedFiles + 5 * run.listedSubtunes);
+    const report = await verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results });
+    expect(report.checkedSubtunes).toBe(subtunes);
+    expect(report.listedSubtunes + report.unlistedAtLeast254).toBe(subtunes);
+    console.log(`[rom-dependency-list scale] ${61157} files / ${subtunes} subtunes graded -> ${run.listedFiles} files / ${run.listedSubtunes} subtunes listed -> ${run.bytes} bytes`);
   }, 120_000);
 });

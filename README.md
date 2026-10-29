@@ -259,14 +259,16 @@ engine, model or ROM change. The
 explain the binary layout and native/WASM qualification.
 
 **Embeddable dependency list.** The ~15 MB bundle is for review and audit. An
-application that only needs to skip or warn about the tunes that break without
-ROMs should embed the ~32 KiB **SID ROM Dependency List** (`sidromdep-1`) derived
-from a complete verified bundle instead: an allow-by-default, full-MD5 keyed
-list of incompatible/unknown subtunes with its own manifest and verifier. It is
-independent of the similarity exports. See the
+application that only needs to skip or warn about the tunes that lose fidelity
+without ROMs should embed the ~40 KiB **SID ROM Dependency List** (`sidromdep-1`)
+derived from complete ROM fidelity grades instead: an allow-by-default, full-MD5
+keyed list of the subtunes with a lane graded 253 or lower (grade 0-255 per
+engine/ROM lane, see the
+[grading design](doc/research/hvsc-rom-fidelity-grading.md)), with its own
+manifest and verifier. It is independent of the similarity exports. See the
 [normative specification](doc/rom-dependency-list.md) and generate/verify it with
-`bun scripts/rom-dependency-list/generate.ts --bundle workspace/rom-audit-dual/published --songlengths <Songlengths.md5>`
-and `bun scripts/rom-dependency-list/verify.ts --bin <file.bin> --bundle <published>`.
+`bun scripts/rom-dependency-list/generate.ts --results <grading-results.jsonl> --recommended-min-grade <1..254>`
+and `bun scripts/rom-dependency-list/verify.ts --bin <file.bin> --results <grading-results.jsonl>`.
 
 | Decision for the selected engine/configuration | Commander behavior |
 |---|---|

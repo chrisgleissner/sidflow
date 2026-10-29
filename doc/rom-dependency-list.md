@@ -9,26 +9,28 @@ Current binary_format_version: 1
 # 1. Purpose
 
 This specification defines a small, self-describing binary list of the HVSC subtunes whose
-playback was **measured to differ when the C64 system ROMs are absent**, for:
+**playback fidelity degrades when the C64 system ROMs are absent**, expressed as a graded score
+per engine and ROM configuration, for:
 
-- skipping such tunes in unattended playback (autoplay, radio, station queues)
+- skipping low-fidelity tunes in unattended playback (autoplay, radio, station queues)
 - warning before explicit playback of such tunes
-- distinguishing "measured incompatible" from "not measured" without ever confusing the two
+- letting each application choose its own fidelity threshold
 
 It is intended for weak-device runtimes (for example an Android APK that embeds the file) and for
 any other project that plays SID files with an engine that is not given KERNAL, BASIC and CHARGEN.
 
-The list is **allow-by-default**. A file or subtune that is not listed is playable. Only listed
-records change behaviour. The list is therefore a deny/warn list, not an inventory and not a
-compatibility certificate.
+The list is **allow-by-default**. A file or subtune that is not listed is playable: every lane of
+an unlisted subtune graded 254 or 255 ("same music"). Only listed records can change behaviour.
+The list is therefore a deny/warn list, not an inventory and not a compatibility certificate.
 
 Non-goals:
 
-- proving that an unlisted file is compatible (§10.3)
-- proving hardware fidelity or authorising indefinite playback (§9.3)
+- proving that an unlisted file is faithful (§10.3)
+- proving hardware fidelity or authorising indefinite playback (§9.4)
 - carrying similarity, style, rating or duration data
-- carrying per-subtune playback horizons (§9.2, §17.5)
-- enumerating the audited collection
+- carrying per-subtune playback horizons (§9.3, §17.6)
+- enumerating the graded collection
+- representing unmeasured lanes (§13.2)
 
 sidromdep-1 is completely independent of the similarity exports (`sidcorr-*`). It shares no
 section, no identifier and no tooling with them, and it can be consumed without them.
@@ -49,18 +51,17 @@ The on-disk format is little-endian and byte-aligned. Consumers MAY widen fields
 - **engine** = `sidlite` (SIDLite) or `residfp` (reSIDfp), both from the pinned `libsidplayfp-wasm`.
 - **ROM configuration** = `none` (no KERNAL, BASIC or CHARGEN supplied) or `kernalBasic`
   (KERNAL and BASIC supplied, CHARGEN not supplied).
-- **reference** = the same engine given all three authentic ROMs.
-- **incompatible** (lane) = the audible output differed from the reference within the observation
-  horizon, or playback stopped, in that lane.
-- **unknown** (lane) = the lane was not resolved (pending, failed or unresolved). Never an
-  incompatibility.
-- **allowed** (lane) = neither incompatible nor unknown. On a listed record this means measured
-  compatible; for an unlisted subtune it is the default (§10.3).
-- **listed** = the (file, subtune) has a DECISION record.
-- **audited** = covered by the ROM audit that produced the list. Not recorded in the binary; the
-  binary carries only the audited counts (§5.2).
-- **observation horizon** = how long the audit compared a subtune with its reference (§9.2).
-- **source bundle** = the ROM audit's `published/` directory the list was derived from (§3).
+- **reference** = the same engine given all three authentic ROMs. It is the unrestricted lane: it
+  is equivalent to itself by definition and is never graded.
+- **grade** = one byte `G`, 0 to 255, per (file MD5, subtune, lane). It measures playback fidelity
+  against the reference over the observation horizon (§9.1). Higher is never audibly worse.
+- **listed** = the (file, subtune) has a DECISION record, i.e. some lane grade is at most 253.
+- **listing ceiling** = 253. The largest grade that forces a record.
+- **recommended minimum grade** = a consumer default skip threshold recorded by the generator
+  (`recommended_min_grade`, §5.2). Consumers MAY choose their own.
+- **graded** = covered by the grading run that produced the list. Not recorded in the binary; the
+  binary carries only the graded counts (§5.2).
+- **observation horizon** = how long the grading compared a subtune with its reference (§9.3).
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119.
 
@@ -68,31 +69,58 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 
 # 3. Normative Sources
 
-The following repository surfaces are normative:
+## 3.1 Repository surfaces
 
 - `packages/sidflow-common/src/rom-dependency-list.ts` (encoder, decoder, lookup, horizon rule)
-- `scripts/rom-dependency-list/bundle.ts` (reading and interpreting the source bundle)
+- `scripts/rom-dependency-list/grading.ts` (reading and interpreting grading results)
 - `scripts/rom-dependency-list/generate.ts`
 - `scripts/rom-dependency-list/verify.ts`
-- `scripts/rom-audit/verify-publication.ts` (verification of the source bundle)
-- `scripts/rom-audit/screen-publication.ts` (meaning of the source bundle's files and bit masks)
-- `doc/research/hvsc-rom-dual-run.md`, section "Commander bundle" (audit methodology)
-
-Source bundle files used (all inside `<audit-out>/published/`):
-
-| File | Used for |
-|--|--|
-| `manifest.json` | `complete`, `releaseReady`, corpus id, document digests, engine/ROM identities, measured scope |
-| `commander-exceptions.json` | incompatible lane masks per full MD5 and one-based subtune |
-| `unknown.json` | subtunes with any unresolved lane (empty in a complete bundle) |
-| `sha256-to-md5.json` | the audited file population (full MD5s) |
-| `playback-horizons.json` | per-subtune subtune counts and the published observation horizons |
+- `doc/research/hvsc-rom-fidelity-grading.md` (definition, calibration and gates of the grade)
 
 Where this document and the source code disagree, the source code is authoritative and this
-document is wrong.
+document is wrong. Anyone who needs only to **read** a list needs nothing but this document: §5 to
+§10 are self-contained.
 
-Anyone who needs only to **read** a list needs nothing but this document: §5 to §10 are
-self-contained.
+## 3.2 Grading results input
+
+The generator consumes one UTF-8 JSONL file, `grading-results.jsonl`, with one JSON object per
+line. Keys are case-sensitive; unknown keys are ignored except where stated.
+
+Line 1, the header record:
+
+```json
+{"record":"header","schema":"sidflow-rom-grading-results-1","methodologyId":"<64 hex>","hvscRelease":85,
+ "corpusId":"<64 hex>","songlengthsSha256":"<64 hex>","files":61157,"subtunes":87868,
+ "profile":{"romSetId":"<64 hex>"}}
+```
+
+| Field | Meaning |
+|--|--|
+| `methodologyId` | the frozen grading methodology identity (SHA-256, 64 lowercase hex); copied into the header |
+| `hvscRelease` | HVSC release number, integer `>= 1` |
+| `corpusId` | identity of the graded path/content listing (64 hex); copied into the header |
+| `songlengthsSha256` | SHA-256 of the HVSC `Songlengths.md5` the grading used; copied into the header |
+| `files`, `subtunes` | the expected population; a complete input contains exactly this many files and grade records |
+| `profile` | optional free-form object describing engines and settings; copied verbatim into the manifest. If it contains `romSetId` it MUST equal the reference ROM set id (`romSetId()` of `packages/sidflow-common/src/rom-eligibility.ts`) |
+
+Every further line, a grade record:
+
+```json
+{"record":"grade","md5":"<32 hex>","song":2,"methodologyId":"<64 hex, optional>",
+ "grades":{"sidliteNone":254,"sidliteKernalBasic":255,"residfpNone":120,"residfpKernalBasic":255}}
+```
+
+| Field | Meaning |
+|--|--|
+| `md5` | complete-file MD5, 32 lowercase hex |
+| `song` | one-based subtune, integer `1..256` |
+| `methodologyId` | optional; if present it MUST equal the header's |
+| `grades` | exactly the four lane names of §5.5; each an integer `0..255`, or `null` for a lane that is not measured |
+
+Rules: `(md5, song)` is unique; the songs of a file are exactly `1..n`; the file digest of the
+whole JSONL (SHA-256) is stored as `source_sha256`. A grade record with any `null` lane, a file or
+subtune count that differs from the header, or a gap in the subtune numbers makes the input
+**incomplete**. A release requires a complete input (§13.2).
 
 ---
 
@@ -103,7 +131,7 @@ self-contained.
 A file is identified by the MD5 of its **complete file content** (the same value as the key in
 HVSC `Songlengths.md5`). The binary stores all 16 raw bytes. There is no truncated form.
 
-Rationale (§17.2): a deny/warn list must not produce false positives. A truncated prefix would
+Rationale (§17.3): a deny/warn list must not produce false positives. A truncated prefix would
 make a stranger's unrelated file match a listed record with non-zero probability, and the cost of
 exactness is about 10 bytes per listed file.
 
@@ -115,9 +143,10 @@ with exactly 256 subtunes). On disk the value is stored minus one in a `u8` (§7
 
 ## 4.3 No inventory
 
-The list does not enumerate audited files. Absence has exactly one meaning: **no record**. It does
-not mean "audited and compatible", and it does not mean "not audited". A file that appears in a
-later HVSC release is unlisted and therefore playable by default.
+The list does not enumerate graded files. Absence has exactly one meaning: **no record**. For a
+graded file it means every lane graded 254 or 255. For a file the grading never saw (for example a
+file that is new in a later HVSC release) it means nothing is known, and the file is playable by
+default.
 
 ---
 
@@ -127,47 +156,50 @@ later HVSC release is unlisted and therefore playable by default.
 
 - little-endian
 
-## 5.2 Header (192 bytes)
+## 5.2 Header (224 bytes)
 
 | Offset | Field | Type | Notes |
 |--|--|--|--|
 | 0 | magic | 8 bytes | ASCII `SIDROMDP` |
 | 8 | binary_format_version | u16 | `1`; readers MUST reject any other value |
-| 10 | header_bytes | u16 | MUST be `192` |
+| 10 | header_bytes | u16 | MUST be `224` |
 | 12 | flags | u32 | bit `0` = `INCOMPLETE_SOURCE` (§5.4); all other bits MUST be `0` |
 | 16 | hvsc_release | u32 | HVSC release number, `>= 1` (for example `85`) |
-| 20 | source_files | u32 | files audited in the source bundle (informational) |
-| 24 | source_subtunes | u32 | subtunes audited in the source bundle (informational) |
+| 20 | source_files | u32 | files in the grading input (informational) |
+| 24 | source_subtunes | u32 | subtunes in the grading input (informational) |
 | 28 | file_count | u32 | FILE_TABLE records (listed files) |
 | 32 | decision_count | u32 | DECISION_TABLE records (listed subtunes) |
-| 36 | file_table_offset | u32 | MUST be `192` |
+| 36 | file_table_offset | u32 | MUST be `224` |
 | 40 | file_table_bytes | u32 | MUST be `file_count * 17` |
-| 44 | decision_table_offset | u32 | MUST be `192 + file_table_bytes` |
-| 48 | decision_table_bytes | u32 | MUST be `decision_count * 2` |
-| 52 | header_crc32 | u32 | CRC-32 of bytes `0..191` with this field taken as zero (§5.3) |
+| 44 | decision_table_offset | u32 | MUST be `224 + file_table_bytes` |
+| 48 | decision_table_bytes | u32 | MUST be `decision_count * 5` |
+| 52 | header_crc32 | u32 | CRC-32 of bytes `0..223` with this field taken as zero (§5.3) |
 | 56 | file_record_bytes | u16 | MUST be `17` |
-| 58 | decision_record_bytes | u16 | MUST be `2` |
-| 60 | reserved | u32 | MUST be `0` |
-| 64 | payload_sha256 | 32 bytes | SHA-256 of every byte from offset 192 to the end of the file |
-| 96 | source_manifest_sha256 | 32 bytes | SHA-256 of the source bundle's `manifest.json` bytes |
-| 128 | songlengths_sha256 | 32 bytes | SHA-256 of the HVSC `Songlengths.md5` the audit pinned |
-| 160 | corpus_id | 32 bytes | the source manifest's `corpus` id (SHA-256 of the audited path/content listing) |
+| 58 | decision_record_bytes | u16 | MUST be `5` |
+| 60 | listing_ceiling | u8 | MUST be `253` (§7) |
+| 61 | recommended_min_grade | u8 | consumer default skip threshold, `1..254` (§10.1) |
+| 62 | reserved | u16 | MUST be `0` |
+| 64 | payload_sha256 | 32 bytes | SHA-256 of every byte from offset 224 to the end of the file |
+| 96 | source_sha256 | 32 bytes | SHA-256 of the grading results JSONL (§3.2) |
+| 128 | songlengths_sha256 | 32 bytes | SHA-256 of the HVSC `Songlengths.md5` the grading pinned |
+| 160 | corpus_id | 32 bytes | the grading input's `corpusId` |
+| 192 | grading_methodology_sha256 | 32 bytes | the frozen grading methodology identity (`methodologyId`) |
 
 `source_files` and `source_subtunes` (61,157 and 87,868 for HVSC #85) are statements about the
-audit, not about the list. Consumers MUST NOT use them to derive any playback decision.
+grading input, not about the list. Consumers MUST NOT use them to derive any playback decision.
 
 The offsets and lengths are redundant with the counts by design: a reader MUST check that they
 equal the canonical values above and MUST reject the file otherwise. The total file length MUST
-equal `192 + file_table_bytes + decision_table_bytes`.
+equal `224 + file_table_bytes + decision_table_bytes`.
 
 ## 5.3 Integrity fields
 
 Two independent checks are carried in the file so that truncation and corruption are detectable
 without the manifest:
 
-- `header_crc32` covers the header, including all three provenance digests and `payload_sha256`.
-  CRC-32 is the standard IEEE 802.3 polynomial (`0xEDB88320` reflected, initial value and final
-  XOR `0xFFFFFFFF`), as used by zlib and PNG.
+- `header_crc32` covers the header, including all four provenance digests, the thresholds and
+  `payload_sha256`. CRC-32 is the standard IEEE 802.3 polynomial (`0xEDB88320` reflected, initial
+  value and final XOR `0xFFFFFFFF`), as used by zlib and PNG.
 - `payload_sha256` covers both sections.
 
 A reader MUST verify both and MUST reject on mismatch. Neither field provides authenticity; an
@@ -178,25 +210,24 @@ from a trusted release (§13.3).
 
 | Bit | Name | Meaning |
 |--|--|--|
-| 0 | `INCOMPLETE_SOURCE` | The source bundle was not `complete && releaseReady`. The file is a developer artefact produced with `--allow-incomplete`. It MUST NOT be released or embedded in a product. A consumer MAY refuse to load a file with this bit set; a product build SHOULD. |
+| 0 | `INCOMPLETE_SOURCE` | The grading input was incomplete. Subtunes with an unmeasured lane were **excluded** from the list, so for them "unlisted" says nothing (§13.2). The file is a developer artefact produced with `--allow-incomplete`. It MUST NOT be released or embedded in a product. A consumer MAY refuse to load a file with this bit set; a product build SHOULD. |
 
-## 5.5 Lane bits
+## 5.5 Lanes
 
-Lane masks are 4-bit values with the same meaning as the `bits` object of the source bundle's
-`commander-exceptions.json`:
+The four grade bytes of a DECISION record are in this order:
 
-| Bit | Value | Lane name | Engine | ROM configuration |
-|--|--:|--|--|--|
-| 0 | 1 | `sidliteNone` | SIDLite | none |
-| 1 | 2 | `sidliteKernalBasic` | SIDLite | KERNAL + BASIC |
-| 2 | 4 | `residfpNone` | reSIDfp | none |
-| 3 | 8 | `residfpKernalBasic` | reSIDfp | KERNAL + BASIC |
+| Byte | Lane name | Engine | ROM configuration |
+|--:|--|--|--|
+| 0 | `sidliteNone` | SIDLite | none |
+| 1 | `sidliteKernalBasic` | SIDLite | KERNAL + BASIC |
+| 2 | `residfpNone` | reSIDfp | none |
+| 3 | `residfpKernalBasic` | reSIDfp | KERNAL + BASIC |
 
 ## 5.6 Section Order
 
 Sections MUST appear in this order and MUST be tightly packed:
 
-1. header (192 bytes)
+1. header (224 bytes)
 2. `FILE_TABLE`
 3. `DECISION_TABLE`
 
@@ -225,21 +256,23 @@ a count of 256 fits in the `u8`.
 
 # 7. DECISION_TABLE
 
-`decision_count` records of 2 bytes, grouped by file in FILE_TABLE order. Within a file the records
+`decision_count` records of 5 bytes, grouped by file in FILE_TABLE order. Within a file the records
 are **strictly ascending** by subtune.
 
 | Offset | Field | Type | Notes |
 |--|--|--|--|
 | 0 | subtune_minus_1 | u8 | one-based subtune `1..256` stored minus one |
-| 1 | masks | u8 | low nibble = `incompatible` lane mask, high nibble = `unknown` lane mask |
+| 1 | grade_sidlite_none | u8 | grade `0..255` (§9.1) |
+| 2 | grade_sidlite_kernal_basic | u8 | grade `0..255` |
+| 3 | grade_residfp_none | u8 | grade `0..255` |
+| 4 | grade_residfp_kernal_basic | u8 | grade `0..255` |
 
-Record rules, all of which a reader MUST check:
+Record rule, which a reader MUST check: **at least one of the four grades is `<= 253`**
+(`listing_ceiling`). A record whose four grades are all 254 or 255 is not representable. This is
+what makes "unlisted" mean "every lane at least 254" (§17.2).
 
-- `incompatible & unknown == 0` (a lane has exactly one state)
-- `incompatible | unknown != 0` (a record that says nothing is not representable)
-
-A lane that is in neither mask is `allowed`. On a listed record, `allowed` means the lane was
-measured compatible.
+There is no value reserved for "unknown" or "not measured". A lane that was not measured has no
+grade and cannot be encoded (§13.2).
 
 ---
 
@@ -250,7 +283,11 @@ To look up `(md5, subtune)`:
 1. Reject (treat as unlisted) any `subtune` outside `1..256`.
 2. Binary-search the FILE_TABLE for the 16-byte `md5`. Absent: **unlisted**.
 3. Scan that file's decisions for `subtune`. Absent: **unlisted**.
-4. Otherwise read `incompatible = masks & 0x0F` and `unknown = masks >> 4`.
+4. Otherwise read the four grade bytes.
+
+An unlisted subtune has, for every lane, a grade of **254 or 255**; the list does not distinguish
+the two, and a consumer MUST NOT assume either. Reference implementations report 254 for every
+lane of an unlisted subtune, as a lower bound.
 
 Rules:
 
@@ -258,7 +295,7 @@ Rules:
 - Matching is on the **content** MD5 of the file as played. A consumer MUST NOT substitute a
   path, a filename, a SHA-256 or a tune title.
 - A consumer that cannot compute a full-file MD5 for a file MUST treat it as unlisted.
-- The state of a lane is read only for the lane that matches the consumer's actual engine and ROM
+- The grade of a lane is read only for the lane that matches the consumer's actual engine and ROM
   configuration (§10.1).
 
 Reference API (`packages/sidflow-common/src/rom-dependency-list.ts`):
@@ -267,43 +304,48 @@ Reference API (`packages/sidflow-common/src/rom-dependency-list.ts`):
 decodeRomDependencyList(bytes: Uint8Array): RomDependencyList   // validates everything (§13.1)
 list.lookup(md5: string | Uint8Array, subtune: number): {
   listed: boolean;
-  incompatibleMask: number;
-  unknownMask: number;
-  lanes: Record<"sidliteNone" | "sidliteKernalBasic" | "residfpNone" | "residfpKernalBasic",
-                "allowed" | "incompatible" | "unknown">;
+  grades: Record<"sidliteNone" | "sidliteKernalBasic" | "residfpNone" | "residfpKernalBasic", number>;
+  minGrade: number;                    // 254 when unlisted (lower bound)
 }
+romDepBelowThreshold(lookup, lane, threshold): boolean   // grade < threshold
 ```
 
 ---
 
-# 9. Measured Scope
+# 9. Grades and Measured Scope
 
 The statements in a record are true **only within the scope in which they were measured**. The
 scope is recorded in the manifest (`measuredProfile`, §11) and summarised here. It is informative:
-the binary carries no per-subtune scope data (§17.5).
+the binary carries no per-subtune scope data (§17.6). The authoritative definition, calibration
+corpus and acceptance gates of the grade are in `doc/research/hvsc-rom-fidelity-grading.md`.
 
-## 9.1 Measured profile
+## 9.1 Grade meaning
 
-Authoritative values are copied from the source bundle's `manifest.json`; this table states what
-the current methodology (`rom-audit-digital-screen-2`) records.
+| G | Meaning | Evidence |
+|--:|--|--|
+| 255 | Bit-exact: identical (chip, register, value, cycle) write trace | trace |
+| 254 | Same music, re-timed: identical (chip, register, value) sequence and count; every write within the calibrated tolerance of the reference after the constant start offset | trace |
+| 1–253 | Graded: `max(1, round(253 · Q))` with `Q = 1 − mean severity` over spectrally analysed windows, used only when the trace is neither 255 nor 254 | audio |
+| 0 | No playback: for example only initialisation writes, an immediate CPU jam, or silence where the reference plays | trace or audio |
+
+Higher is never audibly worse within the calibration corpus. Grades 254 and 255 both mean "the
+same music"; neither is a reason to skip, warn or list.
+
+## 9.2 Measured profile
+
+Authoritative identities (engine builds, ROM hashes, methodology) are recorded in the manifest and
+in the header (`grading_methodology_sha256`); this table states the configuration.
 
 | Property | Value |
 |--|--|
-| Engines | SIDLite and reSIDfp from the pinned `libsidplayfp-wasm`; identities in the manifest (`engineIds`, `engines`, `nativeHashes`) |
-| Reference | the same engine with KERNAL, BASIC and CHARGEN (SHA-256 values in the manifest `referenceRoms`; `romSetId` binds them) |
+| Engines | SIDLite and reSIDfp from the pinned `libsidplayfp-wasm` |
+| Reference | the same engine with the authentic KERNAL, BASIC and CHARGEN (SHA-256 values in the manifest `referenceRoms`; `romSetId` binds them) |
 | Configurations | `none`: no ROMs supplied; `kernalBasic`: KERNAL and BASIC supplied, CHARGEN not supplied |
 | Absent banks | BASIC and CHARGEN zero-filled; a KERNAL shim when KERNAL is absent |
-| Audio | 48 kHz, stereo |
-| Power-on delay | 8191 |
-| Event pulls | 256 events per pull |
 | SID model | as selected by the SID header; MOS8580 where the header names none |
-| Comparison | audible-output difference against the reference ("listener" comparison), plus playback stopped |
+| Free-form detail | the grading input's `profile` object, copied verbatim into the manifest as `sourceProfile` |
 
-The `scope` string of the source manifest is copied verbatim into the output manifest, and the
-generator refuses a bundle whose `scope` does not state the sample rate, power-on delay, event
-pull size and SID-model rule above.
-
-## 9.2 Observation horizon
+## 9.3 Observation horizon
 
 Each subtune was compared with its reference for a bounded time, derived from the HVSC release's
 `Songlengths.md5` as follows (the function `derivePlaybackHorizonMs`):
@@ -319,25 +361,23 @@ horizon_ms = valid ? max(10000, D + 5000) : 300000
   range, or a zero duration). Such a subtune was observed for 300 s as an exploratory fallback.
 - Tokens are never partially parsed: a malformed token does not shift later subtunes.
 
-The generator reproduces **every published horizon of the source bundle** from the pinned
-`Songlengths.md5` using this rule and refuses a release output if any differs. The Songlengths
-SHA-256 is recorded in the header (`songlengths_sha256`).
+The Songlengths SHA-256 is part of the provenance (`songlengths_sha256`). A generator given the
+`Songlengths.md5` file checks its digest against the one the grading pinned.
 
-## 9.3 What a flag does and does not say
+## 9.4 What a grade does and does not say
 
-- **incompatible** was observed within the horizon. A divergence that appeared inside the horizon
-  is a divergence of the tune; the consumer does not need to observe the horizon itself.
-- **allowed on a listed record**, and the unlisted default for an audited subtune, mean "no
-  divergence found within the horizon, profile and engine build". They do not cover playback
-  beyond the horizon (a looping tune may diverge later), another SID model than the measured one,
-  another engine build, hardware fidelity, or interactive input.
-- **unknown** says nothing about compatibility.
+- A **low grade** was observed within the horizon. A divergence that appeared inside the horizon is
+  a divergence of the tune; the consumer does not need to observe the horizon itself.
+- A **high grade** (including the unlisted default for a graded subtune) means "no divergence found
+  within the horizon, profile and engine build". It does not cover playback beyond the horizon (a
+  looping tune may diverge later), another SID model than the measured one, another engine build,
+  hardware fidelity, or interactive input.
 
 ---
 
 # 10. Consumer Obligations
 
-## 10.1 Selecting the lane
+## 10.1 Selecting the lane and the threshold
 
 A consumer determines its lane from its actual configuration: engine (SIDLite or reSIDfp, built
 from the pinned source) and ROM configuration (`none`, or KERNAL and BASIC supplied without
@@ -349,36 +389,41 @@ reference by definition, so the list imposes no restriction and the consumer MUS
 because of it.
 
 A consumer whose engine build, ROM images or ROM subset match neither the reference nor one of the
-four lanes has no applicable measurement: it MUST NOT claim measured compatibility from the list,
-and it MAY use `incompatibleMask != 0` of any lane as a conservative hint.
+four lanes has no applicable measurement: it MUST NOT claim measured fidelity from the list, and it
+MAY use the lowest grade across the four lanes as a conservative hint.
+
+A consumer chooses a **skip threshold** `t` in `1..254`: a lane grade below `t` is "low fidelity".
+The header's `recommended_min_grade` is the generator's calibrated default; a consumer MAY choose
+a different `t`. Thresholds above 254 cannot be honoured, because the list does not distinguish an
+unlisted 254 from an unlisted 255.
 
 ## 10.2 Required behaviour
 
-| Lane state for the consumer's lane | Autoplay / radio / queue | Explicit user selection | Notes |
-|--|--|--|--|
-| `incompatible` | MUST skip | MUST warn before playing; MAY allow after confirmation | measured divergence from the three-ROM reference |
-| `unknown` | MAY play | SHOULD show an unverified-playback notice | MUST NOT be treated as incompatible; the consumer chooses its warning policy |
-| `allowed` on a listed record | MAY play | MAY play | measured compatible within the profile and horizon (§9.3) |
-| unlisted file or subtune | MAY play | MAY play | the default; not a compatibility claim |
+| Grade `G` of the consumer's lane | Autoplay / radio / queue | Explicit user selection |
+|--|--|--|
+| `G < t` (including 0) | MUST skip | MUST warn before playing; MAY allow after confirmation |
+| `t <= G <= 253` (listed) | MAY play | MAY play; MAY show a fidelity notice |
+| unlisted (`G >= 254`) | MAY play | MAY play |
+| consumer runs the reference ROM set | MUST NOT skip because of the list | MUST NOT warn because of the list |
 
 Additional obligations:
 
-1. A consumer MUST NOT treat `unknown` as `incompatible`, and MUST NOT treat `incompatible` as
-   `unknown`.
-2. A consumer MUST NOT present an unlisted or `allowed` result as proof of compatibility, and MUST
-   NOT use it to authorise playback beyond the horizon as "verified".
+1. A consumer MUST NOT treat a missing grade as a low grade: there is no "unknown" value in this
+   format, and an unlisted subtune is not a restriction.
+2. A consumer MUST NOT present an unlisted or high-grade result as proof of fidelity, and MUST NOT
+   use it to authorise playback beyond the horizon as "verified".
 3. A consumer SHOULD apply the list per subtune, not per file: other subtunes of a listed file are
    unlisted unless they have their own record.
 4. A list with header flag `INCOMPLETE_SOURCE` is a developer artefact (§5.4).
 5. A consumer SHOULD pin the manifest SHA-256 of a trusted release and compare the SHA-256 of the
    bundled binary with the manifest (§13.3).
 
-## 10.3 Why unlisted is not "compatible"
+## 10.3 Why unlisted is not "faithful"
 
-The list cannot distinguish a file the audit found compatible from a file the audit never saw
-(for example a file that is new in a later HVSC release). Both are unlisted and therefore playable
-by default. This is deliberate (§17.1): the alternative would make every unseen file unplayable or
-warned. The consequence is that the unlisted default is a policy, not evidence.
+The list cannot distinguish a file the grading found faithful (254 or 255) from a file the grading
+never saw (for example a file that is new in a later HVSC release). Both are unlisted and therefore
+playable by default. This is deliberate (§17.1): the alternative would make every unseen file
+unplayable or warned. The consequence is that the unlisted default is a policy, not evidence.
 
 ---
 
@@ -392,16 +437,17 @@ yields identical bytes. Top-level fields:
 |--|--|
 | `format` | `{ id: "sidromdep-1", version: 1, specification }` |
 | `hvscRelease` | HVSC release number |
-| `complete` | `true` only for a release output; `false` for `--allow-incomplete` developer output |
+| `complete` | `true` only for a release output; `false` for `--allow-incomplete` output from incomplete grading |
 | `releasable` | equals `complete`; a second field so that tooling cannot overlook a non-release |
 | `status` | `release` or `developer-incomplete-source-NOT-RELEASABLE` |
 | `semantics` | the allow-by-default rule in one sentence |
-| `laneBits` | the lane bit table of §5.5 |
-| `counts` | `listedFiles`, `listedSubtunes`, `sourceFiles`, `sourceSubtunes`, and per lane `{incompatible, unknown}` |
+| `lanes` | the lane order of §5.5 |
+| `listingCeiling`, `recommendedMinGrade` | the thresholds of the header |
+| `counts` | `listedFiles`, `listedSubtunes`, `subtunesBelowRecommended` (any lane below `recommendedMinGrade`), `excludedUnmeasuredSubtunes`, `sourceFiles`, `sourceSubtunes`, and per lane `{belowRecommended, bands}` where `bands` counts listed grades in `0`, `1-63`, `64-127`, `128-191`, `192-253` |
 | `binary` | `file`, `bytes`, `sha256`, `payloadSha256`, record sizes and the two sections' `{offset, bytes}` |
 | `humanReadable` | `file` and `sha256` of the optional JSON view (§12) |
-| `provenance` | `sourceManifestSha256`, `songlengthsSha256`, `corpusId`, `sourceIdentity`, source `schema`/`methodology`, `sourceDocuments` (HVSC document digests) |
-| `measuredProfile` | the source `scope` verbatim, configurations, audio/power-on/pull parameters, SID-model rule, `engineIds`, `engines`, `nativeHashes`, `romSetId`, `referenceRoms`, and `observationHorizon` (rule, constants, `reproducedFromSonglengths`) |
+| `provenance` | `sourceSha256`, `songlengthsSha256`, `corpusId`, `gradingMethodologySha256` |
+| `measuredProfile` | `gradingDesign`, reference and configuration descriptions, `referenceRoms`, `romSetId`, `observationHorizon` (rule and constants), `songlengthsFileVerified`, and `sourceProfile` (verbatim from the grading input) |
 
 The manifest carries the evidence; the binary carries the decision. A consumer that embeds the
 binary SHOULD also keep the manifest SHA-256 (§13.3).
@@ -418,12 +464,13 @@ It MUST NOT be embedded in a product and MUST NOT be required by a consumer. Sha
   "format": "sidromdep-1",
   "hvscRelease": 85,
   "complete": true,
-  "note": "...",
-  "laneBits": { "...": 1 },
+  "recommendedMinGrade": 128,
+  "listingCeiling": 253,
+  "lanes": ["sidliteNone", "sidliteKernalBasic", "residfpNone", "residfpKernalBasic"],
   "records": [
-    { "md5": "...", "hvscPath": "MUSICIANS/X/Name.sid", "subtune": 2,
-      "incompatible": ["sidliteNone"], "unknown": [],
-      "lanes": { "sidliteNone": "incompatible", "sidliteKernalBasic": "allowed", "residfpNone": "allowed", "residfpKernalBasic": "allowed" } }
+    { "md5": "...", "hvscPath": "MUSICIANS/X/Name.sid", "subtune": 2, "minGrade": 120,
+      "belowRecommended": true,
+      "grades": { "sidliteNone": 255, "sidliteKernalBasic": 255, "residfpNone": 120, "residfpKernalBasic": 255 } }
   ]
 }
 ```
@@ -439,53 +486,49 @@ It MUST NOT be embedded in a product and MUST NOT be required by a consumer. Sha
 
 A conforming reader MUST reject the input (and not return a partial result) unless all of:
 
-1. length `>= 192`, magic `SIDROMDP`, `binary_format_version == 1`, `header_bytes == 192`
+1. length `>= 224`, magic `SIDROMDP`, `binary_format_version == 1`, `header_bytes == 224`
 2. `header_crc32` matches
 3. no flag bit other than bit 0, `reserved == 0`, `hvsc_release >= 1`
-4. record sizes are 17 and 2, section offsets and lengths are the canonical values (§5.2), and the
-   file length is exactly `192 + file_table_bytes + decision_table_bytes` (no truncation, no
-   trailing bytes)
+4. record sizes are 17 and 5, `listing_ceiling == 253`, `recommended_min_grade` in `1..254`, section
+   offsets and lengths are the canonical values (§5.2), and the file length is exactly
+   `224 + file_table_bytes + decision_table_bytes` (no truncation, no trailing bytes)
 5. `payload_sha256` matches
 6. file records are strictly ascending, their counts sum to `decision_count`
 7. within each file, subtunes are strictly ascending
-8. every decision satisfies the record rules of §7
+8. every decision has at least one grade `<= 253` (§7)
 
 ## 13.2 Generator rules
 
 The generator (`scripts/rom-dependency-list/generate.ts`) MUST:
 
-1. refuse a source bundle unless its manifest has `complete == true` and `releaseReady == true`
-   **and** `scripts/rom-audit/verify-publication.ts` accepts it and returns the SHA-256 of the
-   manifest it read. `--allow-incomplete` is the only exception; it sets header flag bit 0 and
-   writes `complete: false`, `releasable: false`
-2. check the SHA-256 of the four consumed artefacts against the source manifest
-3. require the source `romSetId` to equal the reference ROM set id of
-   `packages/sidflow-common/src/rom-eligibility.ts`
-4. require the source manifest `scope` to state the measured profile (§9.1)
-5. for a release output, require `Songlengths.md5` whose SHA-256 equals the source manifest's
-   document digest and reproduce every published horizon from it (§9.2)
-6. emit one decision per subtune that has at least one incompatible or unknown lane, and nothing
-   else
-7. in a bundle that lists a subtune as unknown without saying which lane, mark every lane that is
-   not known incompatible as unknown (conservative; only possible in an incomplete bundle)
-8. be deterministic: the same inputs produce byte-identical binary, manifest and JSON
+1. parse the grading results strictly (§3.2) and refuse any input in which a lane is unmeasured
+   (`null`), a file or subtune count differs from the header, a subtune number is missing, or a
+   record repeats. `--allow-incomplete` is the only exception: subtunes with an unmeasured lane are
+   **excluded** (neither listed nor claimed to be `>= 254`), header flag bit 0 is set, and the
+   manifest says `complete: false`, `releasable: false`
+2. take `recommended_min_grade` from a required command-line argument (`--recommended-min-grade`,
+   `1..254`); there is no default, because the value is calibrated, not guessed
+3. emit one decision per subtune that has some lane grade `<= 253`, and nothing else
+4. when given `Songlengths.md5`, require its SHA-256 to equal the digest pinned in the input
+5. require a `profile.romSetId`, if present, to equal the reference ROM set id
+6. be deterministic: the same inputs produce byte-identical binary, manifest and JSON
 
 ## 13.3 Verification procedure
 
-`bun scripts/rom-dependency-list/verify.ts --bin hvsc85-sidromdep-1.bin --bundle <published-dir> [--songlengths <Songlengths.md5>]`
+`bun scripts/rom-dependency-list/verify.ts --bin hvsc85-sidromdep-1.bin --results grading-results.jsonl [--songlengths <Songlengths.md5>]`
 
 1. decode the binary with all checks of §13.1
 2. check the manifest: format id/version, binary SHA-256 and size, `payloadSha256`, `complete` vs
-   header flag, counts, and the three provenance digests against the header
-3. load the source bundle under the same acceptance rules as the generator (§13.2 items 1-4); check
-   that its manifest SHA-256, Songlengths digest and corpus id equal the header values
-4. every listed file exists in the source bundle and every listed subtune is within the file's
-   subtune count
-5. for **every** subtune of **every** audited file: if the source has no incompatible and no unknown
-   lane, the subtune MUST be unlisted (this is the proof that "absent from the list" means
-   "measured compatible in all four lanes"); otherwise the list's incompatible and unknown masks
-   MUST equal the source's
-6. optionally (`--songlengths`) reproduce every published horizon from `Songlengths.md5`
+   header flag, thresholds, counts, and the four provenance digests against the header
+3. load the grading results under the same rules as the generator (§13.2 item 1); check that their
+   SHA-256, methodology id, Songlengths digest, corpus id, HVSC release and population equal the
+   header values
+4. every listed subtune exists in the grading results
+5. for **every** subtune of **every** graded file: if all four graded lanes are `>= 254` the
+   subtune MUST be unlisted (this is the proof that "absent from the list" means "every lane at
+   least 254"); if some lane is `<= 253` the list's four grades MUST equal the input's; an
+   unmeasured subtune (developer output only) MUST be unlisted
+6. optionally (`--songlengths`) check the file's digest and the HVSC paths in the JSON view
 7. if the human-readable JSON exists, its digest and records match the binary
 8. print the SHA-256 of the binary and of the manifest
 
@@ -496,64 +539,70 @@ A consumer pins the printed manifest SHA-256 from a trusted release, then checks
 
 # 14. Worked Example
 
-A list for HVSC #85 containing two files:
+A list for HVSC #85 with `recommended_min_grade = 128`, containing two files:
 
-- `0123456789abcdef0123456789abcdef`: subtune 1 incompatible in `sidliteNone` and `residfpNone`
-  (mask `0b0101` = 5); subtune 3 unknown in `residfpKernalBasic` (mask `0b1000`, stored `0x80`)
-- `fedcba9876543210fedcba9876543210`: subtune 256 incompatible in `sidliteNone` and
-  `sidliteKernalBasic` (mask `0b0011` = 3)
+- `0123456789abcdef0123456789abcdef`:
+  - subtune 1: grades `0, 254, 120, 253` (`sidliteNone` no playback; `residfpNone` degraded)
+  - subtune 3: grades `255, 255, 200, 255` (`residfpNone` mildly degraded)
+- `fedcba9876543210fedcba9876543210`:
+  - subtune 256: grades `253, 255, 254, 255`
 
-Provenance digests are `a1…a1`, `b2…b2`, `c3…c3` (32 bytes each). Total size
-`192 + 2*17 + 3*2 = 232` bytes.
+Provenance digests are `a1…a1` (source), `b2…b2` (Songlengths), `c3…c3` (corpus) and `d4…d4`
+(grading methodology), 32 bytes each. Total size `224 + 2*17 + 3*5 = 273` bytes.
 
 ```text
 0000  53 49 44 52 4f 4d 44 50  magic "SIDROMDP"
 0008  01 00                    binary_format_version = 1
-000a  c0 00                    header_bytes = 192
+000a  e0 00                    header_bytes = 224
 000c  00 00 00 00              flags = 0
 0010  55 00 00 00              hvsc_release = 85
 0014  e5 ee 00 00              source_files = 61157
 0018  3c 57 01 00              source_subtunes = 87868
 001c  02 00 00 00              file_count = 2
 0020  03 00 00 00              decision_count = 3
-0024  c0 00 00 00              file_table_offset = 192
+0024  e0 00 00 00              file_table_offset = 224
 0028  22 00 00 00              file_table_bytes = 34
-002c  e2 00 00 00              decision_table_offset = 226
-0030  06 00 00 00              decision_table_bytes = 6
-0034  ff 03 a3 59              header_crc32 = 0x59a303ff
+002c  02 01 00 00              decision_table_offset = 258
+0030  0f 00 00 00              decision_table_bytes = 15
+0034  a9 c1 5a 5b              header_crc32 = 0x5b5ac1a9
 0038  11 00                    file_record_bytes = 17
-003a  02 00                    decision_record_bytes = 2
-003c  00 00 00 00              reserved
-0040  97 e0 a7 56 d5 6f 92 6c  payload_sha256 (32 bytes)
-0048  a9 1d 65 8c c0 a7 70 0c
-0050  5f 04 36 2c 4e 58 4e f4
-0058  9c 01 86 ec 08 3b 58 2d
-0060  a1 ... a1 (32 bytes)     source_manifest_sha256
+003a  05 00                    decision_record_bytes = 5
+003c  fd                       listing_ceiling = 253
+003d  80                       recommended_min_grade = 128
+003e  00 00                    reserved
+0040  dc 22 af b4 44 43 bf 05  payload_sha256 (32 bytes)
+0048  4f 09 c8 73 86 39 aa 20
+0050  72 17 8f e6 36 7a 52 ad
+0058  4d 44 4d 29 5c f4 25 14
+0060  a1 ... a1 (32 bytes)     source_sha256
 0080  b2 ... b2 (32 bytes)     songlengths_sha256
 00a0  c3 ... c3 (32 bytes)     corpus_id
-00c0  01 23 45 67 89 ab cd ef  FILE_TABLE[0].md5
-00c8  01 23 45 67 89 ab cd ef
-00d0  01                       decision_count_minus_1 = 1 (2 decisions)
-00d1  fe dc ba 98 76 54 32 10  FILE_TABLE[1].md5
-00d9  fe dc ba 98 76 54 32 10
-00e1  00                       decision_count_minus_1 = 0 (1 decision)
-00e2  00 05                    file 0, subtune 1, incompatible 5, unknown 0
-00e4  02 80                    file 0, subtune 3, incompatible 0, unknown 8
-00e6  ff 03                    file 1, subtune 256, incompatible 3, unknown 0
+00c0  d4 ... d4 (32 bytes)     grading_methodology_sha256
+00e0  01 23 45 67 89 ab cd ef  FILE_TABLE[0].md5
+00e8  01 23 45 67 89 ab cd ef
+00f0  01                       decision_count_minus_1 = 1 (2 decisions)
+00f1  fe dc ba 98 76 54 32 10  FILE_TABLE[1].md5
+00f9  fe dc ba 98 76 54 32 10
+0101  00                       decision_count_minus_1 = 0 (1 decision)
+0102  00 00 fe 78 fd           file 0, subtune 1: grades 0, 254, 120, 253
+0107  02 ff ff c8 ff           file 0, subtune 3: grades 255, 255, 200, 255
+010c  ff fd ff fe ff           file 1, subtune 256: grades 253, 255, 254, 255
 ```
 
 (The `payload_sha256` and `header_crc32` bytes in the listing are those produced by the reference
 encoder; `packages/sidflow-common/test/rom-dependency-list.test.ts` pins them.)
 
-Lookups:
+Lookups, with skip threshold `t = 128`:
 
-| md5 | subtune | result |
-|--|--:|--|
-| `0123…cdef` | 1 | listed; `sidliteNone` and `residfpNone` incompatible; the other lanes allowed |
-| `0123…cdef` | 2 | unlisted (default playable) |
-| `0123…cdef` | 3 | listed; `residfpKernalBasic` unknown; nothing incompatible |
-| `fedc…3210` | 256 | listed; `sidliteNone` and `sidliteKernalBasic` incompatible |
-| any other MD5 | any | unlisted (default playable) |
+| md5 | subtune | lane | grade | result |
+|--|--:|--|--:|--|
+| `0123…cdef` | 1 | `sidliteNone` | 0 | listed; skip in autoplay, warn on explicit play |
+| `0123…cdef` | 1 | `residfpNone` | 120 | listed; `120 < 128`, skip |
+| `0123…cdef` | 1 | `residfpKernalBasic` | 253 | listed; not below `t`, play |
+| `0123…cdef` | 2 | any | — | unlisted (every lane `>= 254`); play |
+| `0123…cdef` | 3 | `residfpNone` | 200 | listed; not below `t`, play |
+| `fedc…3210` | 256 | `sidliteNone` | 253 | listed; play |
+| any other MD5 | any | any | — | unlisted; play |
 
 ---
 
@@ -561,14 +610,14 @@ Lookups:
 
 - `binary_format_version` is `1`. A reader MUST reject any other value; there is no forward
   compatibility. The magic never changes between versions; the version field selects the layout.
-- Any change to the header, the record layouts, the lane bit meanings or the semantics of the
-  states requires a new version and a new schema id (`sidromdep-2`).
+- Any change to the header, the record layouts, the lane order, the meaning of a grade or the
+  listing ceiling requires a new version and a new schema id (`sidromdep-2`).
 - Adding fields to the manifest or the JSON view is not a format change; consumers MUST ignore
   unknown manifest fields.
-- Regenerating a list for a new HVSC release or a new audit methodology produces a new file with
+- Regenerating a list for a new HVSC release or a new grading methodology produces a new file with
   new provenance digests. The format version does not change.
-- The set of HVSC subtunes (`1..256`) and the `u8` counts are format limits. Exceeding them
-  requires a new version.
+- The range of subtunes (`1..256`) and the `u8` counts are format limits. Exceeding them requires a
+  new version.
 
 ---
 
@@ -577,30 +626,27 @@ Lookups:
 Size is exact and linear:
 
 ```text
-bytes = 192 + 17 * listed_files + 2 * listed_subtunes
+bytes = 224 + 17 * listed_files + 5 * listed_subtunes
 ```
 
 | Listed files | Listed subtunes | Bytes | KiB |
 |--:|--:|--:|--:|
-| 1,560 | 2,636 (3 % of 87,868) | 31,984 | 31.2 |
-| 1,600 | 2,700 | 32,792 | 32.0 |
-| 3,000 | 5,000 | 61,192 | 59.8 |
+| 1,560 | 2,636 (3 % of 87,868) | 39,924 | 39.0 |
+| 1,600 | 2,700 | 40,924 | 40.0 |
+| 3,000 | 5,000 | 76,224 | 74.4 |
 
-The design target is 30 to 40 KiB for about 1,600 files and 2,700 subtunes. Doubling the number of
-listed files adds about 27 KiB; each additional listed subtune adds 2 bytes.
+The design target is about 40 KiB for about 1,600 files and 2,700 subtunes. Each additional
+listed file adds 17 bytes and each additional listed subtune 5 bytes. The listing ceiling keeps the
+count of listed subtunes small: only subtunes graded 253 or lower are listed, so the expected
+share is the roughly 3 % of subtunes whose execution changes without ROMs, and not the larger share
+of subtunes that are merely re-timed (grade 254).
 
-Measured dry run against the partial census `workspace/rom-audit-dual-4` (337 of 87,868 subtunes
-measured, 163 incompatible subtunes in 147 files, 87,531 subtunes unresolved), generated with
-`--allow-incomplete`:
+Test coverage at scale: a synthetic grading of 61,157 files and about 80,000 subtunes with a 3 %
+listed share, spread uniformly over files, generates and verifies in well under a second
+(2,400 files, 2,444 subtunes, 53,244 bytes; real data clusters subtunes in fewer files).
 
-- incompatible-only content: 147 files / 163 subtunes, 3,017 bytes
-- full developer output, which also lists the 87,531 pending subtunes as unknown (61,056 files /
-  87,694 subtunes): 1,213,532 bytes. This is the expected cost of listing a mostly unmeasured
-  corpus and is why an incomplete output is never a release.
-
-For a complete census there are no unknown subtunes, so the list holds only incompatible
-subtunes. Compared with the previous design (a 61,157-record inventory at 6 bytes per file plus
-index and horizon sections, about 0.4 MB), the allow-by-default list is about 12 times smaller.
+Compared with the earlier 4-bit mask design (2-byte decision records), grades cost 3 more bytes
+per listed subtune, about 8 KB at 2,700 subtunes.
 
 ---
 
@@ -609,13 +655,23 @@ index and horizon sections, about 0.4 MB), the allow-by-default list is about 12
 ## 17.1 Why allow-by-default
 
 A deny/warn list needs only the exceptions. An inventory would double the size, would have to be
-regenerated for every HVSC release to avoid classifying new files as "not audited", and would
-force consumers to choose a policy for files absent from it. Allow-by-default makes the list
-independent of the collection's growth: a new file is playable until a later list says otherwise.
-The cost, stated plainly in §10.3, is that unlisted is a policy and not evidence. The manifest and
-this specification state that, and the consumer obligations forbid presenting it as proof.
+regenerated for every HVSC release to avoid classifying new files as "not graded", and would force
+consumers to choose a policy for files absent from it. Allow-by-default makes the list independent
+of the collection's growth: a new file is playable until a later list says otherwise. The cost,
+stated plainly in §10.3, is that unlisted is a policy and not evidence.
 
-## 17.2 Why the full MD5
+## 17.2 Why grades 0–255 and a listing ceiling of 253
+
+A binary verdict mixed two different things: tunes that play the same music at slightly shifted
+timing, and tunes that play different music or nothing. A one-byte grade (§9.1) separates them, and
+lets each consumer choose its own tolerance. 255 and 254 both mean "same music", so neither
+requires a record; 253 is the largest value that denotes a measured, graded difference. Listing
+exactly the subtunes with some lane at most 253 gives the invariant "unlisted implies every lane at
+least 254" with no extra table. One byte per lane keeps a decision at 5 bytes. No value is reserved
+for "unknown": an unmeasured lane is not a fidelity statement, so it cannot be a grade and the
+generator refuses it (§13.2).
+
+## 17.3 Why the full MD5
 
 False positives are not permitted: a wrongly matched file would be skipped or warned although
 nothing is wrong with it. A 48-bit prefix stored for 1,600 listed files and compared with a
@@ -626,42 +682,37 @@ used because it is the identity of HVSC `Songlengths.md5` and of C64 Commander; 
 cryptographic weakness is irrelevant here because the list is an integrity-protected input
 supplied by the application, not a security boundary.
 
-## 17.3 Why unknown is in the same record
+## 17.4 Why a recommended threshold in the header, and why at most 254
 
-Pending, failed or unresolved lanes exist in incomplete audits and may exist in future
-methodologies. Carrying them in the same 2-byte record (4 bits each) lets a consumer choose a
-warning policy without a second table, and keeps "not measured" distinguishable from "measured
-incompatible". A complete release carries none.
+Consumers need a sensible default, but the right cut-off is a calibration result, not a constant of
+the format; the generator therefore takes it as a required argument. The format cannot express
+thresholds above 254, because 254 and 255 are indistinguishable once unlisted.
 
-## 17.4 Why implicit first-decision indices and `n-1` counts
+## 17.5 Why implicit first-decision indices and `n-1` counts
 
 An explicit `u32` decision index per file would add 4 bytes per file (about 6.4 KB at 1,600
-files, 20 %). Prefix sums are computed once at load. Storing the counts and subtunes minus one
-fits 1..256 into a `u8` with no `u16` penalty; HVSC contains a file with 256 subtunes, so a plain
-`u8` of the one-based value would be insufficient.
+files). Prefix sums are computed once at load. Storing the counts and subtunes minus one fits
+1..256 into a `u8`; HVSC contains a file with 256 subtunes, so a plain `u8` of the one-based value
+would be insufficient.
 
-## 17.5 Why no horizon table
+## 17.6 Why no horizon table
 
-The source bundle's `playback-horizons.json` is 6.7 MB and is a pure function of the pinned
-`Songlengths.md5` (§9.2). The list therefore does not carry it. The generator proves the claim on
-every published horizon, the rule is stated normatively here, and the Songlengths digest is part of
-the provenance. A consumer that needs an horizon recomputes it from its own Songlengths data; a
-list never needs one to answer a lookup, because a recorded divergence (`incompatible`) is
-independent of the horizon (§9.3). No override section is therefore needed; if a future
-methodology publishes horizons that the rule cannot reproduce, the generator refuses them, and a
-new format version is the place to encode them.
+The horizon is a pure function of the pinned `Songlengths.md5` (§9.3), whose digest is part of the
+provenance, and a grade is a statement about a divergence that already happened inside it. The
+list therefore carries no horizon data. A consumer that needs one recomputes it from its own
+Songlengths data.
 
-## 17.6 Why a CRC-32 and a SHA-256
+## 17.7 Why a CRC-32 and a SHA-256
 
-The header carries the payload SHA-256, so the header itself needs its own check (CRC-32), and
-the payload needs a strong one. Together they detect any truncation or corruption without the
+The header carries the payload SHA-256, so the header itself needs its own check (CRC-32), and the
+payload needs a strong one. Together they detect any truncation or corruption without the
 manifest. They are not authenticity (§5.3).
 
-## 17.7 Why a manifest and a binary
+## 17.8 Why a manifest and a binary
 
-The binary stays small enough to embed. The manifest carries what a human or an audit needs: engine
-identities, ROM hashes, the measured scope, HVSC document digests, and the digests that bind the
-list to the source bundle.
+The binary stays small enough to embed. The manifest carries what a human or an audit needs: ROM
+hashes, the measured scope, the grade distribution, and the digests that bind the list to the
+grading input.
 
 ---
 
@@ -669,11 +720,14 @@ list to the source bundle.
 
 sidromdep-1:
 
-- is a 192-byte header, a FILE_TABLE of full-MD5 records, and a DECISION_TABLE of 2-byte records
-- is allow-by-default: only listed file/subtune records change behaviour
+- is a 224-byte header, a FILE_TABLE of full-MD5 records, and a DECISION_TABLE of 5-byte records
+- is allow-by-default: a subtune is listed iff some lane grade is at most 253; unlisted means every
+  lane at least 254
 - identifies files by full-file MD5 and subtunes by one-based number
-- records, per subtune, which of four engine/ROM lanes are incompatible or unknown
-- never treats unknown as incompatible, and never presents unlisted as proof of compatibility
-- carries SHA-256 provenance for the source bundle, `Songlengths.md5` and the audit corpus
-- is exactly `192 + 17 * files + 2 * subtunes` bytes; about 32 KiB for the expected corpus
-- is generated only from a complete, verified census and verified by an exhaustive round trip
+- records, per listed subtune, one fidelity grade (0 no playback ... 254 re-timed, 255 bit-exact)
+  for each of four engine/ROM lanes
+- has no "unknown" value; unmeasured lanes are refused (or, in developer output, excluded and flagged)
+- carries SHA-256 provenance for the grading results, `Songlengths.md5`, the corpus and the grading
+  methodology, plus the generator's recommended skip threshold
+- is exactly `224 + 17 * files + 5 * subtunes` bytes; about 40 KiB for the expected corpus
+- is generated only from complete grading results and verified by an exhaustive round trip
