@@ -292,6 +292,8 @@ function markdown(r: Record<string, unknown>): string {
     const c = bench.cost;
     lines.push("", `Native renderer CPU ${c.nativeCpuSeconds} s plus grader process CPU ${c.nodeCpuSeconds} s (factor ${c.jsOverheadFactor}); wall ${c.wallSeconds} s. Projected full HVSC: ${c.projectedCpuHoursAllHvsc} CPU-hours = ${c.projectedHoursOn19Workers} h on 19 workers, ${c.withMargin25} h with the 25% margin (limit ${c.limitHours} h).${bench.unmeasuredStrata.length ? ` Unmeasured strata (no benchmark job): ${bench.unmeasuredStrata.join(", ")}.` : ""}`);
   }
+  const analysis = path.join(repositoryRoot, "doc/research/hvsc-rom-grading-calibration-analysis.md");
+  if (existsSync(analysis)) lines.push(readFileSync(analysis, "utf8"));
   return lines.join("\n") + "\n";
 }
 
