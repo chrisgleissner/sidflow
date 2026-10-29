@@ -52,8 +52,9 @@ if (import.meta.main) {
   const progress = lastProgress(path.resolve(out));
   console.log(`methodology ${identity}`);
   console.log(formatSnapshot(accumulator.snapshot()));
-  if (progress) console.log(`\nlast progress line ${progress.time}: efficiency ${(progress.efficiency * 100).toFixed(0)}%, projected remaining ${progress.projectedRemainingHours?.toFixed(1) ?? "?"} h`);
-  const found = anomalies(accumulator.snapshot(), loadBenchmark(), progress ? progress.efficiency : null);
+  if (progress) console.log(`\nlast progress line ${progress.time}: efficiency ${(progress.efficiency * 100).toFixed(0)}%, projected remaining ${progress.projectedRemainingHours?.toFixed(2) ?? "?"} h`);
+  // Efficiency counts CPU only when a job finishes, so the first half hour of a run under-reports it; do not flag that.
+  const found = anomalies(accumulator.snapshot(), loadBenchmark(), progress && progress.elapsedSeconds >= 1800 ? progress.efficiency : null);
   console.log(found.length ? `\nANOMALIES\n${found.map(a => `  - ${a}`).join("\n")}` : "\nno anomalies");
   process.exitCode = found.length ? 2 : 0;
 }

@@ -28,7 +28,19 @@ const identity = await methodologyIdentity();
 console.error(`methodology identity ${identity.id}`);
 const scope = await fullScope();
 console.error(`scope: ${scope.files} files, ${scope.subtunes} subtunes, corpus ${scope.corpusId.slice(0, 12)}`);
-const selected = maxJobs === null ? scope.jobs : [...scope.jobs].sort((a, b) => candidateKey(a) < candidateKey(b) ? -1 : 1).slice(0, maxJobs);
+/** Validation subset: hash-ordered subtunes, or with ROM_GRADE_WHOLE_FILES=1 hash-ordered whole files until at least maxJobs subtunes
+ * (a subset the consumer parser accepts as a complete grading when finalized with --declare-scope). */
+function subset(): typeof scope.jobs {
+  if (maxJobs === null) return scope.jobs;
+  if (process.env.ROM_GRADE_WHOLE_FILES !== "1") return [...scope.jobs].sort((a, b) => candidateKey(a) < candidateKey(b) ? -1 : 1).slice(0, maxJobs);
+  const byFile = new Map<string, typeof scope.jobs>();
+  for (const job of scope.jobs) byFile.set(job.sha256, [...(byFile.get(job.sha256) ?? []), job]);
+  const files = [...byFile.values()].sort((a, b) => candidateKey({ sha256: a[0]!.sha256, song: 0 }) < candidateKey({ sha256: b[0]!.sha256, song: 0 }) ? -1 : 1);
+  const chosen: typeof scope.jobs = [];
+  for (const file of files) { if (chosen.length >= maxJobs) break; chosen.push(...file); }
+  return chosen;
+}
+const selected = subset();
 const totals = totalsOf(selected);
 writeFileSync(path.join(out, "methodology.json"), stringifyDeterministic(identity as unknown as JsonValue));
 writeFileSync(path.join(out, "scope.json"), stringifyDeterministic({ files: scope.files, subtunes: scope.subtunes, corpusId: scope.corpusId, songlengthsSha256: scope.songlengthsSha256, maxJobs, selected: selected.length, totals } as unknown as JsonValue));

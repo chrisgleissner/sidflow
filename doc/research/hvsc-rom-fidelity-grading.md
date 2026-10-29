@@ -33,12 +33,12 @@ ROMs, over the measured horizon (`Songlengths` duration + 5 s, minimum 10 s; 300
 | G | Meaning | Evidence |
 |---|---|---|
 | 255 | Bit-exact: identical (chip, register, value, cycle) write trace | Trace |
-| 254 | Same music, re-timed: identical (chip, register, value) sequence and count; every write within `T` cycles of the reference after the constant start offset | Trace |
+| 254 | Same music, re-timed: identical (chip, register, value) sequence and count; every write within `T` cycles of the reference after the constant start offset. Documented as "identical register values, re-timed <= 2 ms; audio-validated 235-253 on the corpus" | Trace |
 | 1–253 | `max(1, round(253 · Q))`, with `Q = 1 − mean severity` over the analysed windows (below) | Audio, only when the trace is neither 255 nor 254 |
 | 0 | No playback: Q below 1/506, e.g. only initialisation writes, an immediate CPU jam, or silence where the reference plays | Trace or audio |
 
-`T` (timing tolerance) is calibrated on the corpus. The starting value is 2 ms (1,970 PAL /
-2,045 NTSC cycles). It must stay well below the onset-asynchrony thresholds listeners can detect
+`T` (timing tolerance) was calibrated on the corpus and is frozen at 2 ms (1,970 PAL /
+2,045 NTSC cycles), with `gamma = 1`. It must stay well below the onset-asynchrony thresholds listeners can detect
 (several ms), and below real hardware jitter once badlines and IRQ latency accumulate. An
 identical value sequence re-timed within `T` is grade 254 without audio rendering. A gate
 below verifies that such cases also have near-zero audio severity.
@@ -46,8 +46,12 @@ below verifies that such cases also have near-zero audio severity.
 **Per-window severity** `s_w ∈ [0, 1]`:
 - Use 46.4 ms windows (2,048 frames at 44.1/48 kHz), stereo channels folded per the listener's
   existing preprocessing (DC removal, Hann window).
-- Spectral distance: magnitude spectra in about third-octave bands, normalised by the reference
-  window's energy.
+- Spectral distance (as implemented, calibration 2026-10-29): per channel and about-third-octave band, the band energy level
+  above a -60 dBFS white-noise floor is compared in dB with a 3 dB dead zone saturating at 15 dB; the distance of silence is the
+  same ramp applied to the reference level. The first implementation compared bin magnitudes inside each band (the listener-v1
+  form), which scored a pure 13-cycle re-timing at median 0.059 because upper-band bin magnitudes are dominated by resampler
+  aliasing that changes with the sample phase; band energies are insensitive to that. Windows are 2,048 frames (42.7 ms at 48 kHz;
+  46.4 ms is the same frames at 44.1 kHz).
 - Only windows where either player is above −60 dBFS are analysed. If neither is, the window is
   skipped and does not count.
 - `s_w = min(1, D_w / D_full)`, where `D_full` is the distance between the reference and silence
@@ -89,12 +93,17 @@ to be empty in HVSC:
 ## Gates (all must pass before a full run)
 
 1. Determinism: grading the corpus twice gives byte-identical grades.
-2. Timing class soundness: every grade-254 case has median `s_w` ≤ 0.02, and no window above 0.25.
+2. Timing class soundness: every grade-254 lane has audio grade >= 235, mean `s_w` <= 0.07 and at most 2% of its windows
+   above 0.25. (The first formulation, median `s_w` <= 0.02 and no window above 0.25, failed on 20 of 36 corpus lanes: isolated
+   onset windows differ by real, small waveform differences caused by ADSR/noise phase, not by timing aliasing, and a temporal
+   tolerance of up to 11 ms removed only some of them. The revised criterion is evidence-based: all 36 lanes have mean `s_w` <= 0.070,
+   audio grade >= 235 and at most 1.52% of windows above 0.25. See hvsc-rom-grading-calibration-analysis.md.)
 3. No-playback soundness: every class G case grades 0–5, and every class E/H case grades below
    the class F cases of similar length.
-4. Monotonicity: the principal engineer, and optionally the user, listens to a published listening
-   page of reference/variant pairs across grade bands. No pair is ranked inverted by more than
-   one band.
+4. Monotonicity: the user is offered a listening page of reference/variant pairs across grade bands (24 pairs prepared in
+   `workspace/rom-grade-calibration/listening/`). No pair may be ranked inverted by more than one band. Non-blocking for the full
+   run: the grades are threshold independent, so a listening result can only move the consumer thresholds (and, if a perceptual
+   curve is ever fitted, `gamma`), never require regrading the traces.
 5. Distribution: the grade histogram over the stratified 320-job benchmark is reported. The share
    of subtunes below the consumer threshold is plausible against earlier research (about 3% of
    subtunes with execution changes) and is explained if it differs.
@@ -103,7 +112,16 @@ to be empty in HVSC:
 
 ## Consumer format impact
 
-`sidromdep` changes from 4-bit masks to one grade byte per lane. Only subtunes with any lane
-`G ≤ 253` are listed, so an unlisted subtune means `G ≥ 254` in every lane. C64 Commander applies
-a single threshold, which defaults to the calibrated "plays acceptably" band and is skipped below
-it. The expected size is about 40 KiB.
+`sidromdep` changes from 4-bit masks to one grade byte per lane. Decided with the calibration: the consumer threshold
+`recommended_min_grade` is **128** (a lane graded below it is skipped by the player), and the list ceiling is **191**: only
+subtunes with any lane `G <= 191` are listed, so an unlisted subtune means `G >= 192` in every lane. On the 320-job benchmark,
+population-weighted, 2.0% of subtunes have a lane below 192 and 1.6% below 128 (about 1,750 and 1,400 of 87,868 subtunes); the
+grades are bimodal (0, or 128 and above), so any threshold between 1 and 127 selects the same subtunes. Grades 192-253 are
+audible-equivalent playback that is not provably identical (Q >= 0.76) and are not listed.
+
+## Full run
+
+`scripts/rom-grade/run-full.sh` grades all 87,868 subtunes (both engines x none/KERNAL+BASIC) under a methodology identity (SHA-256 over the
+grader sources and the modules they import, both renderer binaries, the ROM images and the frozen options); the identity is in the
+checkpoint header and every output, and a checkpoint written under another identity is refused. It writes `grading-results.jsonl`
+(schema `sidflow-rom-grading-results-1`) and a gzipped full-detail export when complete.

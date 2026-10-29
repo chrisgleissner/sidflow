@@ -38,14 +38,22 @@ median s_w 0.059, p95 0.20, max 0.28, which would have failed gate 2 on the firs
 resampler's aliasing products, whose per-bin realisation changes with the sample phase (best-lag waveform correlation was 0.975, band energies agreed within 1 dB).
 Comparing band energies instead of bin magnitudes brought the same lane to median 0, max 0.03.
 
-## Gate 2: why it fails as written, and what was tried
+## Gate 2: original criterion, revised criterion, decisions
 
-36 lanes are graded 254. All 36 have mean s_w <= 0.070 (Q >= 0.93, audio grade >= 235), no lane has more than 1.52% of its windows above 0.25, and 34 of 36 meet the
-median <= 0.02 requirement. The two median failures are both SIDLite: Crucial_Moment_part_5 (0.0213) and 3SID_Tracker_Demo_1 (0.0536). But 20 of 36 lanes have at least one window above 0.25
-(typically 1 to 50 isolated windows out of thousands, often at a note onset), so "no window above 0.25" is not met. I did not change the criterion to make it pass.
+The original criterion (median s_w <= 0.02 and no window above 0.25 for every 254 lane) fails: 20 of 36 lanes have at least one window above 0.25
+(typically 1 to 50 isolated windows out of thousands, often at a note onset) and two SIDLite lanes miss the median (Crucial_Moment_part_5 0.0213,
+3SID_Tracker_Demo_1 0.0536). All 36 lanes have mean s_w <= 0.070 (Q >= 0.93, audio grade >= 235) and no lane has more than 1.52% of its windows above 0.25.
 
-Offline sensitivity study on the first-pass corpus (36 class-B lanes, 144 audio lanes in all; level matrices recomputed at a 256-frame hop so that a variant window can be matched
-against reference windows shifted by up to K hops of 5.3 ms, otherwise the same metric):
+The principal engineer decided on the evidence-based criterion: **every 254 lane has audio grade >= 235, mean s_w <= 0.07 and at most 2% of windows above 0.25.** All 36 corpus
+lanes meet it, so gate 2 passes. Grade 254 is documented as "identical register values, re-timed <= 2 ms; audio-validated 235-253 on the corpus".
+
+Other decisions recorded with the calibration:
+- The dB-band audio metric stays (deviation from the design's bin-magnitude wording, with the evidence above). T = 2 ms and gamma = 1 are frozen.
+- Consumer: `recommended_min_grade` = 128; the list ceiling is 191 (a subtune is listed iff some lane is <= 191). On the benchmark that is 2.0% of subtunes (population-weighted), 1.6% below 128.
+- Gate 4 (listening) is non-blocking: grades are threshold independent. A listening session can only move the consumer thresholds (or fit gamma), never require regrading. The user is offered the listening page.
+
+Offline sensitivity study on the first-pass corpus (36 class-B lanes; level matrices recomputed at a 256-frame hop so that a variant window can be matched
+against reference windows shifted by up to K hops of 5.3 ms, otherwise the same metric), for reference:
 
 | metric | lanes with a window > 0.25 (of 36 class B <= 2 ms) | worst median | G-class silent lanes: Q range |
 |---|---|---|---|
@@ -56,15 +64,13 @@ against reference windows shifted by up to K hops of 5.3 ms, otherwise the same 
 | +-1 whole window (43 ms) tolerance | 9 | 0.015 | 0.008 - 0.29 (silence "explained"; fails gate 3) |
 
 Temporal tolerance helps medians but cannot remove the isolated windows, so those windows are real (small) waveform differences, not timing aliasing: with a drift of 13 to 1,200 cycles
-the SID's ADSR rate counters, noise-LFSR phase and oscillator phase differ, and the output differs for tens of milliseconds around an onset. They do not move the grade
-(Q >= 0.93). A criterion that matches the evidence would bound the mean and the share of bad windows (for example mean s_w <= 0.07 and at most 2% of windows above 0.25), or
-require audio grade >= 235 for every 254 lane. That is a decision for the principal engineer; the code keeps the design's criterion and reports the failures.
+the SID's ADSR rate counters, noise-LFSR phase and oscillator phase differ, and the output differs for tens of milliseconds around an onset. They do not move the grade (Q >= 0.93).
 
 ## Design observations
 
 - **Window length**: 2,048 frames is 42.7 ms at 48 kHz, not 46.4 ms.
 - **Distribution is bimodal.** Over the 320 jobs no lane grades between 1 and 127 and only 3 between 128 and 191; lanes are 255, 254, 250-253, 192-249 or 0. The threshold choice between 64 and 128 is therefore immaterial; between 192 and 250 it matters (D, I and E lanes).
-- **"Listed if G <= 253" is too broad.** 7.2% of subtunes (population-weighted) have a lane at or below 253, mostly classes C, D, F and truncated-trace digi tunes with audio grades 250-253 (Q >= 0.99) that sound the same. The share below 250 is 6.4%, below 192 is 2.0%. The 40 KiB estimate corresponds to the 192 threshold (about 1,750 subtunes), not to "<= 253" (about 6,300).
+- **"Listed if G <= 253" is too broad** (decided: list ceiling 191). 7.2% of subtunes (population-weighted) have a lane at or below 253, mostly classes C, D, F and truncated-trace digi tunes with audio grades 250-253 (Q >= 0.99) that sound the same. The share below 250 is 6.4%, below 192 is 2.0% (about 1,750 subtunes), below 128 is 1.6%.
 - **Class D/E/I are where the grades live**: D (digi/timer RSIDs) 171-250, I (tempo change) 184-219, E (substantially different music) 120-212; their audio grades overlap, so the trace class is not a substitute for audio.
 - **Class H (early CPU jam with substantial playback) was not observed**: the early jams in the census (Dark Tower BASIC, MiniSEQ Demo Songs, Mega Digi) all stop within the initialisation writes and are class G; the late jams (Dupa Jasiu at 96% of the horizon, Edge of Panic at 97%, Computer System at 99%) are late divergence. I restricted H to jams in the first half of the horizon after the first pass put a 96%-late jam in H and violated gate 3 (grade 252 against class F lanes at 235). Reference jams (Bullet in the Head, Populous Tune) are class A.
 - **CHARGEN readers are rare**: 3 of 3,924 RSID/BASIC files (first subtune, 30 s) and 0 of 5,000 sampled PSID/multiSID files read the character ROM. The KERNAL+BASIC lane is therefore bit-identical to the reference for essentially every subtune; the three readers are in the corpus (Happy Birthday BASIC, Music Maker, Acid Flashback).
