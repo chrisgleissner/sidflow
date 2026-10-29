@@ -5,7 +5,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { screenJson, screenSha, SCREEN_METHODOLOGY } from "./screen-identity.js";
+import { screenJson, screenSha } from "./screen-identity.js";
 import { commanderExceptions } from "./screen-publication.js";
 import type { ScreenTune } from "./screen-inventory.js";
 import type { ScreenRow } from "./screen-publication.js";
@@ -21,7 +21,8 @@ export function verifyPublication(directory:string):string {
   };
   const require=(valid:unknown,message:string):void=>{if(!valid)throw new Error(`Invalid Commander publication: ${message}`);};
   const hash=(v:unknown)=>typeof v==="string"&&/^[a-f0-9]{64}$/.test(v);
-  require(manifest.schema==="sidflow-dual-rom-manifest-1"&&manifest.methodology===SCREEN_METHODOLOGY,"schema/methodology");
+  require(manifest.schema==="sidflow-dual-rom-manifest-1"&&["rom-audit-digital-screen-2","rom-audit-sample-clock-1"].includes(manifest.methodology),"schema/methodology");
+  const sample=manifest.methodology==="rom-audit-sample-clock-1";
   require(manifest.complete===true&&manifest.releaseReady===true&&manifest.files===61157&&manifest.subtunes===87868&&manifest.measuredSubtunes===87868&&
     manifest.pendingSubtunes===0&&manifest.failedSubtunes===0&&manifest.unknownSubtunes===0,"incomplete or unqualified census");
   require(hash(manifest.sourceIdentity)&&hash(manifest.romSetId)&&["sidlite","residfp"].every(e=>hash(manifest.engineIds[e as "sidlite"])),"provenance identities");
@@ -29,10 +30,11 @@ export function verifyPublication(directory:string):string {
   require(screenJson(Object.keys(manifest.artifacts).sort())===screenJson([...names].sort()),"artifact set");
   for(const name of names)require(hash(manifest.artifacts[name])&&screenSha(read(name))===manifest.artifacts[name],`checksum ${name}`);
   const parse=(name:string)=>JSON.parse(read(name).toString());
-  const qualification=parse("qualification.json") as {schema:string;measurementIdentity:string;sourceIdentity:string;passed:boolean;nativeHashes:unknown;logs:Record<string,string>;fullRuns:{pass:number;fail:number;skip:number}[]};
+  const qualification=parse("qualification.json") as {schema:string;measurementIdentity:string;sourceIdentity:string;passed:boolean;nativeHashes:Record<string,string>;logs:Record<string,string>;fullRuns:{pass:number;fail:number;skip:number}[];sampleProofSha256?:string};
   require(qualification.schema==="sidflow-screen-qualification-1"&&qualification.passed===true&&qualification.measurementIdentity===manifest.sourceIdentity&&hash(qualification.sourceIdentity)&&
     screenJson(qualification.nativeHashes)===screenJson(manifest.nativeHashes)&&qualification.fullRuns.length===3&&qualification.fullRuns.every(r=>Number.isSafeInteger(r.pass)&&r.pass>0&&r.fail===0&&r.skip===0)&&
-    ["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log"].every(name=>hash(qualification.logs[name])),"qualification");
+    ["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log",...(sample?["sample.log","sample-worker.log"]:[])].every(name=>hash(qualification.logs[name]))&&
+    (!sample||(hash(qualification.sampleProofSha256)&&hash(qualification.nativeHashes.sample))),"qualification");
   const benchmark=parse("benchmark.json") as {sourceIdentity:string;passed:boolean};
   require(benchmark.passed===true&&benchmark.sourceIdentity===manifest.sourceIdentity,"benchmark");
   require(screenJson(parse("unknown.json"))==="{}","unknown decisions");

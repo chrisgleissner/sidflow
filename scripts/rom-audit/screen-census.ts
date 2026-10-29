@@ -9,7 +9,8 @@ import { cpus } from "node:os";
 import { screenInventory } from "./screen-inventory.js";
 import { orderScreenJobs, type ScreenCost } from "./screen-scheduling.js";
 import { ScreenWorker } from "./screen-worker.js";
-import { screenJson, screenIdentity, screenQualificationIdentity, screenSha, SCREEN_METHODOLOGY, screenEngineIdentity } from "./screen-identity.js";
+import { SampleScreenWorker } from "./sample-worker.js";
+import { screenJson, screenIdentity, screenQualificationIdentity, screenSha, SCREEN_METHODOLOGY, screenEngineIdentity, sampleClockEnabled } from "./screen-identity.js";
 import { publishScreen, resolvedScreenRow, type ScreenRow } from "./screen-publication.js";
 import { benchmarkSample, projectCensus, type BenchmarkCandidate } from "./benchmark-model.js";
 import { readVerifiedSid } from "./inputs.js";
@@ -18,6 +19,8 @@ import { scopeLock } from "./rollout.js";
 import { validateRecord, CENSUS_SCHEMA, assessMask, observationHorizon, isExtendedSample } from "./methodology.js";
 import { engineHashes } from "./wasm-lanes.js";
 import {audioSets,audioStates}from"./screen-classifier.js";
+import { requestUnlessStopped } from "./screen-cancellation.js";
+const invokedAt=Date.now();
 const [mode,hvsc,roms,directory,workerArg,maxArg]=process.argv.slice(2);
 if(!["bench","full"].includes(mode??"")||!hvsc||!roms||!directory||!workerArg)throw new Error("Expected bench|full HVSC roms output workers [maxHours]");
 const workers=Number(workerArg),maxHours=Number(maxArg??15);
@@ -25,8 +28,8 @@ const benchmarkJobs=Number(process.env.ROM_AUDIT_BENCHMARK_JOBS??320);
 if(!Number.isSafeInteger(benchmarkJobs)||benchmarkJobs<80||benchmarkJobs>512)throw new Error("ROM_AUDIT_BENCHMARK_JOBS must be an integer from 80 to 512");
 const maxJobs=process.env.ROM_AUDIT_MAX_JOBS===undefined?undefined:Number(process.env.ROM_AUDIT_MAX_JOBS);
 if(maxJobs!==undefined&&(!Number.isSafeInteger(maxJobs)||maxJobs<1))throw new Error("ROM_AUDIT_MAX_JOBS must be a positive integer");
-if(!Number.isSafeInteger(workers)||workers<1||!Number.isFinite(maxHours)||maxHours<=0||maxHours>16)throw new Error("Invalid workers/budget (maximum 16h)");
-const identity=screenIdentity(), binaries={sidlite:path.resolve("workspace/rom-audit-screen-sidlite/render"),residfp:path.resolve("workspace/rom-audit-screen-residfp/render")};
+if(!Number.isSafeInteger(workers)||workers<1||!Number.isFinite(maxHours)||maxHours<=0||maxHours>24)throw new Error("Invalid workers/budget (maximum 24h)");
+const identity=screenIdentity(), binaries:Record<string,string>&{sidlite:string;residfp:string}={sidlite:path.resolve("workspace/rom-audit-screen-sidlite/render"),residfp:path.resolve("workspace/rom-audit-screen-residfp/render"),...(sampleClockEnabled()?{sample:path.resolve("workspace/rom-audit-sample-clock/native/render")}:{})};
 const nativeHashes=Object.fromEntries(Object.entries(binaries).map(([e,f])=>[e,screenSha(readFileSync(f))]));
 const inventory=await screenInventory(hvsc);
 await mkdir(directory,{recursive:true});
@@ -83,11 +86,11 @@ const sample=benchmarkSample(inventory.jobs,benchmarkJobs), selected=mode==="ben
 let schedulingCosts: ScreenCost[] = [];
 let publicationEvidence:{qualification:string;benchmark:string}|undefined;
 if(mode==="full"){
-  const evidence="workspace/rom-audit-screen-qualification";
+  const evidence=sampleClockEnabled()?"workspace/rom-audit-sample-qualification":"workspace/rom-audit-screen-qualification";
   const qualification=JSON.parse(readFileSync(path.join(evidence,"certificate.json"),"utf8")) as {sourceIdentity:string;measurementIdentity:string;passed:boolean;nativeHashes:Record<string,string>;logs:Record<string,string>;fullRuns:{pass:number;fail:number;skip:number}[]};
   if(qualification.measurementIdentity!==identity||qualification.sourceIdentity!==screenQualificationIdentity()||!qualification.passed||qualification.fullRuns.length!==3||qualification.fullRuns.some(r=>!r.pass||r.fail||r.skip)||
     Object.entries(nativeHashes).some(([e,sha])=>qualification.nativeHashes?.[e]!==sha)||
-    ["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log"].some(name=>screenSha(readFileSync(path.join(evidence,name)))!==qualification.logs?.[name]))throw new Error("Missing source-bound three-suite qualification");
+    ["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log",...(sampleClockEnabled()?["sample.log","sample-worker.log"]:[])].some(name=>screenSha(readFileSync(path.join(evidence,name)))!==qualification.logs?.[name]))throw new Error("Missing source-bound three-suite qualification");
   const benchmark=JSON.parse(readFileSync(path.join(directory,"benchmark.json"),"utf8")) as {sourceIdentity:string;cpu:string;workers:number;budgetHours:number;sampleSize:number;passed:boolean;measured:ScreenCost[];benchmarkFailures:number};
   if(benchmark.sourceIdentity!==identity||benchmark.cpu!==cpus()[0]?.model||benchmark.workers!==workers||benchmark.sampleSize!==benchmarkJobs||
     (maxJobs===undefined&&(!benchmark.passed||benchmark.budgetHours>maxHours))||
@@ -101,19 +104,20 @@ const todo=orderScreenJobs(bounded,schedulingCosts);
 if(mode==="full"&&maxJobs!==undefined)console.log(`Bounded census: processing at most ${todo.length} pending subtunes; rerun without ROM_AUDIT_MAX_JOBS to continue the full inventory.`);
 const reservations=todo.map(j=>({sha256:j.sha256,song:j.song,path:path.relative(hvsc,j.path)}));
 if(!ledger.reserve(reservations,`dual-${mode}`,mode==="bench"?ceilings(61157,87868):undefined))throw new Error("Benchmark would exceed pilot ceiling");
-let next=0,completed=0,benchmarkFailures=0;const start=performance.now(),measured:{job:BenchmarkCandidate;seconds:number;cpuSeconds:number}[]=[], active=new Set<ScreenWorker>();
-const fd=openSync(checkpoint,"a"),deadline=Date.now()+maxHours*3600000;
+type CensusWorker=Pick<ScreenWorker,"request"|"close">;
+let next=0,completed=0,benchmarkFailures=0;const start=performance.now(),measured:{job:BenchmarkCandidate;seconds:number;cpuSeconds:number}[]=[], active=new Set<CensusWorker>();
+const fd=openSync(checkpoint,"a"),deadline=invokedAt+maxHours*3600000;
 let interrupted=false;
 const stop=():void=>{interrupted=true;for(const worker of active)worker.close();};
 process.once("SIGINT",stop);process.once("SIGTERM",stop);
-const deadlineTimer=setTimeout(stop,maxHours*3600000);
+const deadlineTimer=setTimeout(stop,Math.max(0,deadline-Date.now()));
 try{
   await Promise.all(Array.from({length:workers},async()=>{
-    let worker:ScreenWorker|undefined,used=0;
+    let worker:CensusWorker|undefined,used=0;
     try{for(let job=todo[next++];job&&!interrupted&&Date.now()<deadline;job=todo[next++]){
-      if(!worker||used>=20){if(worker){active.delete(worker);worker.close();}worker=new ScreenWorker(path.resolve(roms),binaries.sidlite,binaries.residfp);active.add(worker);used=0;}
+      if(!worker||used>=20){if(worker){active.delete(worker);worker.close();}worker=sampleClockEnabled()?new SampleScreenWorker(path.resolve(roms),binaries.sidlite,binaries.residfp,binaries.sample!):new ScreenWorker(path.resolve(roms),binaries.sidlite,binaries.residfp);active.add(worker);used=0;}
       const began=performance.now();let result:ScreenRow["result"];
-      try{const bytes=readVerifiedSid(job.path,job.sha256);result=await worker.request({sha256:job.sha256,song:job.song,seconds:job.seconds,hex:bytes.toString("hex"),repeat:isExtendedSample(job.sha256,50)});used++;}
+      try{const bytes=readVerifiedSid(job.path,job.sha256);const currentWorker=worker;const response=await requestUnlessStopped(()=>currentWorker.request({sha256:job.sha256,song:job.song,seconds:job.seconds,hex:bytes.toString("hex"),repeat:isExtendedSample(job.sha256,50)}),()=>interrupted);if(response===undefined)break;result=response;used++;}
       catch(error){console.error("Dual census job failed",error);result={engines:[],failure:error instanceof Error?error.message:String(error)};active.delete(worker);worker.close();worker=undefined;}
       const row:ScreenRow={sha256:job.sha256,song:job.song,seconds:job.seconds,result,workerSeconds:(performance.now()-began)/1000};validate(row);
       if(result.failure||result.engines.some(e=>e.states.none==="unknown"||e.states.full==="unknown"))benchmarkFailures++;

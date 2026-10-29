@@ -140,6 +140,25 @@ The full census is intended to run on your faster machine. See the
 [workflow review and validation](doc/research/hvsc-rom-merge-review.md) for the
 review findings and qualification evidence.
 
+### Accelerated analysis
+
+The selectable sample-clock path preserved all decisions in the complete
+320-subtune stratified comparison, with 467 grants independently audio-verified
+and 52.46% less population-weighted CPU work. This is a CPU comparison, not a
+whole-corpus completion promise. See the [qualification evidence and setup](doc/research/hvsc-rom-sample-qualification.md)
+for the required representative proof, then select it with:
+
+```bash
+ROM_AUDIT_SAMPLE_CLOCK=1 \
+  ROM_AUDIT_SAMPLE_PROOF=workspace/sample-clock-320-qualification \
+  ROM_AUDIT_MAX_HOURS=24 ROM_AUDIT_WORKERS=19 \
+  ROM_AUDIT_OUT=workspace/rom-audit-sample bash scripts/rom-audit/run-dual.sh
+```
+
+Use a separate output directory: accelerated measurements have their own
+provenance. The original classifier and its compatible checkpoints remain
+available with `ROM_AUDIT_SAMPLE_CLOCK` unset.
+
 ### Run or resume the classification
 
 Use Linux with the repository-pinned Bun runtime. The launcher installs it when
@@ -161,8 +180,8 @@ measured projection plus 25% margin exceeds the remaining budget. Performance
 on another CPU has to be measured there; completion within 12 hours is not promised.
 
 ```bash
-# Optional: choose worker count, output directory and up to 16 hours.
-ROM_AUDIT_WORKERS=12 ROM_AUDIT_MAX_HOURS=16 \
+# Optional: choose worker count, output directory and up to 24 hours.
+ROM_AUDIT_WORKERS=12 ROM_AUDIT_MAX_HOURS=24 \
   ROM_AUDIT_OUT=workspace/rom-audit-dual bash scripts/rom-audit/run-dual.sh
 ```
 
@@ -183,6 +202,23 @@ exceeds the machine budget, and saves a resumable checkpoint; its publication
 remains incomplete and must not be consumed. Starting an unbounded census still
 requires the full-census budget gate to pass. Resume with the same output directory
 and settings, omitting `ROM_AUDIT_MAX_JOBS` only after that gate passes.
+
+On the measured i5-14600K, the current 320-job sample projects 32.86 hours
+before margin, so use bounded resumable runs rather than expecting one invocation
+to finish. For example, after qualification and benchmarking:
+
+```bash
+ROM_AUDIT_STAGE_ONLY=full ROM_AUDIT_WORKERS=12 ROM_AUDIT_MAX_HOURS=3.5 \
+  ROM_AUDIT_MAX_JOBS=1000 ROM_AUDIT_OUT=workspace/rom-audit-dual \
+  bash scripts/rom-audit/run-dual.sh
+```
+
+Repeat while subtunes remain pending. The time limit can stop a chunk before
+its job limit; completed rows remain durable, while cancelled jobs stay pending.
+A genuine worker/engine failure remains a recorded failure and is retried on
+resume. The census time budget includes inventory/checkpoint loading. A bounded
+publication remains unsuitable for consumers until independently verified complete.
+
 
 To inspect one stage, set `ROM_AUDIT_STAGE_ONLY=setup`, `qualify`, `bench` or
 `full`. Run those in that order; `full` requires matching qualification and a

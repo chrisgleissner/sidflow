@@ -187,9 +187,9 @@ describe("Commander release verification",()=>{
         tunes.push({path:"fixture.sid",sha256,md5,modelFixed:true,jobs});
         for(const job of jobs){const measured=row();measured.sha256=sha256;measured.song=job.song;rows.set(`${sha256}#${job.song}`,measured);}
       }
-      const nativeHashes={sidlite:sha,residfp:sha},sourceIdentity=sha;
-      const qualification={schema:"sidflow-screen-qualification-1",sourceIdentity,measurementIdentity:sourceIdentity,passed:true,nativeHashes,
-        logs:Object.fromEntries(["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log"].map(n=>[n,sha])),fullRuns:Array.from({length:3},()=>({pass:1,fail:0,skip:0}))};
+      const nativeHashes={sidlite:sha,residfp:sha,sample:sha},sourceIdentity=sha;
+      const qualification={schema:"sidflow-screen-qualification-1",sourceIdentity,measurementIdentity:sourceIdentity,passed:true,nativeHashes,sampleProofSha256:sha,
+        logs:Object.fromEntries(["build.log","typecheck.log","parity.log","transport.log","full-1.log","full-2.log","full-3.log","sample.log","sample-worker.log"].map(n=>[n,sha])),fullRuns:Array.from({length:3},()=>({pass:1,fail:0,skip:0}))};
       const manifest=await publishScreen(directory,tunes,rows,{sourceIdentity,nativeHashes},{qualification:screenJson(qualification),benchmark:screenJson({sourceIdentity,passed:true})});
       expect(manifest.releaseReady).toBe(true);expect(verifyPublication(directory)).toBe(screenSha(await readFile(join(directory,"manifest.json"))));
       const packed=await readFile(join(directory,"commander-exceptions.bin"));packed[22]=0;

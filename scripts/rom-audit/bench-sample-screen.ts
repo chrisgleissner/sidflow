@@ -17,7 +17,7 @@ if(!benchmark||!roms||!binary||!report||!Number.isSafeInteger(limit)||limit<1||l
 const prior=JSON.parse(readFileSync(benchmark,"utf8")) as {corpus:string;measured:{job:BenchmarkCandidate}[]};
 const jobs=prior.measured.slice(0,limit).map(r=>r.job);
 if(jobs.length!==limit)throw new Error("Insufficient jobs");
-scopeLock(prior.corpus);const ledger=RolloutLedger.open(prior.corpus);
+scopeLock(prior.corpus,true);const ledger=RolloutLedger.open(prior.corpus);
 if(jobs.some(j=>!ledger.has(j)))throw new Error("Only already counted jobs allowed");
 const sourceIdentity=screenIdentity(),benchmarkSha256=screenSha(readFileSync(benchmark));
 const experimentSources=Object.fromEntries(["apply-sample-clock.py","build-sample-clock.sh","bench-sample-screen.ts","register-comparison.ts","sample-screen.ts"].map(name=>[name,screenSha(readFileSync(new URL(name,import.meta.url)))]));

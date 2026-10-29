@@ -104,9 +104,10 @@ export function verifyHardeningEvidence(c: HardeningCertificate, evidenceDir: st
   const approval = approvalOf(readFileSync(review, "utf8"));
   return !!approval && approval.identity === c.checks.adversarialReview.sourceIdentity && approval.reviewer.length > 0 && sha(approval.text) === c.checks.adversarialReview.sha256;
 }
-/** Serialize audit parents sharing a corpus; parallelism stays inside workers. */
-export function scopeLock(corpus: string): void {
-  new ProcessLock(path.join(WORKSPACE, `rom-audit-scope-${corpus}.lock`), "audit scope").acquire();
+/** Census writers remain exclusive. Read-only experiments may share the scope
+ * only when every input is already reserved and the ledger is never mutated. */
+export function scopeLock(corpus: string, readOnly = false): void {
+  new ProcessLock(path.join(WORKSPACE, `rom-audit-scope-${corpus}.lock`), "audit scope").acquire(0, readOnly);
 }
 /** Pure preview of the pilot allowance. Dispatch-time enforcement lives in the ledger. */
 export function pilotQueue<T extends { path: string; song: number }>(jobs: T[], completed: { path: string; song: number }[], files: number, songs: number): T[] {
