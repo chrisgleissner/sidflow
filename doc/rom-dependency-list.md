@@ -341,9 +341,16 @@ SHA-256 is recorded in the header (`songlengths_sha256`).
 
 A consumer determines its lane from its actual configuration: engine (SIDLite or reSIDfp, built
 from the pinned source) and ROM configuration (`none`, or KERNAL and BASIC supplied without
-CHARGEN). A consumer whose engine build, ROM set or CHARGEN supply does not match one of the four
-lanes has no applicable measurement: it MUST NOT claim compatibility from the list, and it MAY use
-`incompatibleMask != 0` of any lane as a conservative hint.
+CHARGEN).
+
+A consumer that supplies all three ROMs with SHA-256 values equal to the manifest's
+`referenceRoms` runs the **reference configuration** itself. Every subtune is equivalent to the
+reference by definition, so the list imposes no restriction and the consumer MUST NOT skip or warn
+because of it.
+
+A consumer whose engine build, ROM images or ROM subset match neither the reference nor one of the
+four lanes has no applicable measurement: it MUST NOT claim measured compatibility from the list,
+and it MAY use `incompatibleMask != 0` of any lane as a conservative hint.
 
 ## 10.2 Required behaviour
 
