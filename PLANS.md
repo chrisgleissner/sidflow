@@ -125,6 +125,15 @@ cycle-timed write traces; everything else retains native PCM listening.
   OPEN before the Commander PR: the SettingsPage test "stays silent when a newer device switch
   supersedes the discovered-device selection" failed once under load (169/169 when isolated).
   Reproduce and fix it during full Commander validation; do not dismiss it.
+  **Full grading run (started 2026-10-29 23:07Z):** pre-run gate done (all three branches pushed;
+  grading `e0f14d5`). `run-full.sh`, 18 workers, longest first, methodology
+  `bf3b3eff…`, out `workspace/rom-grade-full` (main checkout), log `workspace/rom-grade-full.log`.
+  - 1,000 checkpoint (23:37Z, 29.5 min, efficiency 108%, 7.8 h projected remaining, 0 errors):
+    KERNAL+BASIC 255 for all. None-lane grades are 254 for ~90%, 192–253 for ~10%,
+    128–191 for 2–3 lanes and <128 for 1 (`Merilyn_intro.sid`, RSID, class E, audio severity
+    0.54: a genuine difference). 126 lanes hit the 2 M-write trace cap (class X), so audio
+    decided them: 187–253, plausible. Identical-value drift cases (`Disco_Trax_87_tune_2`
+    159/161, `Paid_in_Full_part_2` 187/203) sit above the skip threshold, as intended. Accepted.
 - Census benchmark (2026-10-29 14:32Z): 15.22h projected, 19.02h with margin, budget 23.98h,
   296.08 core-hours, 19.46 cores measured; full stage started 14:32Z.
 
