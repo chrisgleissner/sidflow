@@ -19,7 +19,7 @@ Start with the outcome you need; each path is independent at first and leads to 
 | I want to… | Start here | What SIDFlow provides |
 |---|---|---|
 | **Reuse the published HVSC analysis** in another project | [Download a verified release bundle](#reuse-published-hvsc-analysis-data) | Ready-made similarity data, manifests, checksums, and formal format specifications—no rendering or classification required. |
-| **Determine ROM playback compatibility** for C64 Commander | [Run the HVSC ROM audit](#classify-rom-playback-compatibility-for-c64-commander) | Independent SIDLite/reSIDfp decisions, explicit unknowns, finite playback limits and a verified exception bundle. |
+| **Find the tunes that need C64 ROMs** for C64 Commander | [Grade ROM playback fidelity](#grade-rom-playback-fidelity-for-c64-commander) | Per-subtune 0–255 grades for SIDLite and reSIDfp, and an embeddable 19 KiB list of the tunes that play wrongly without ROMs. |
 | **Classify my own SID collection** | [Understand the analysis pipeline](#analyse-and-publish-a-sid-collection) | Fetch, classification, ratings, similarity exports, and optional publication to `sidflow-data`. |
 | **Listen to SID music** through a browser or terminal | [Run a player](#play-sid-music) | A local web player, a guided admin UI, and a terminal station with optional C64 Ultimate playback. |
 
@@ -125,194 +125,120 @@ that specifically need `features_json` or SQL access.
 
 ---
 
-## Classify ROM playback compatibility for C64 Commander
+## Grade ROM playback fidelity for C64 Commander
 
-The ROM audit compares each HVSC85 subtune with an authentic three-ROM reference,
-independently for **SIDLite and reSIDfp** from pinned `libsidplayfp-wasm@1.1.1`.
-It tests both no supplied ROMs and KERNAL+BASIC without CHARGEN. This is separate
-from audio-feature classification and similarity exports.
+Some SID tunes need the C64's ROMs (KERNAL, BASIC and CHARGEN) to play correctly. A phone player
+usually runs without them, because they are copyrighted, and those tunes then play wrongly or not
+at all. SIDFlow measures this for every HVSC subtune and publishes a small list that a player can
+embed to skip or warn about the affected tunes. This is independent of the similarity
+classification: it neither reads nor changes the `sidcorr` exports.
 
-**Status:** the workflow is available; a complete dual-engine HVSC result has
-not yet been produced or published. The checked-in
-[methodology-4 catalogue](doc/research/hvsc-rom-catalogue/v4/manifest.json) is an
-incomplete, historical SIDLite pilot. Do not ship it as a complete exception list.
-The full census is intended to run on your faster machine. See the
-[workflow review and validation](doc/research/hvsc-rom-merge-review.md) for the
-review findings and qualification evidence.
+**Status:** complete for HVSC #85. All 87,868 subtunes in 61,157 files are graded on **SIDLite and
+reSIDfp** (pinned `libsidplayfp-wasm@1.1.1`), each with no ROMs and with KERNAL+BASIC only, against
+the same engine with all three authentic ROMs. See the
+[full results](doc/research/hvsc-rom-grading-results.md).
 
-### Accelerated analysis
+### How a subtune is graded
 
-The selectable sample-clock path preserved all decisions in the complete
-320-subtune stratified comparison, with 467 grants independently audio-verified
-and 52.46% less population-weighted CPU work. This is a CPU comparison, not a
-whole-corpus completion promise. See the [qualification evidence and setup](doc/research/hvsc-rom-sample-qualification.md)
-for the required representative proof, then select it with:
+Each subtune gets one byte per engine and ROM configuration, called a *lane*:
 
-```bash
-ROM_AUDIT_SAMPLE_CLOCK=1 \
-  ROM_AUDIT_SAMPLE_PROOF=workspace/sample-clock-320-qualification \
-  ROM_AUDIT_MAX_HOURS=24 ROM_AUDIT_WORKERS=19 \
-  ROM_AUDIT_OUT=workspace/rom-audit-sample bash scripts/rom-audit/run-dual.sh
-```
-
-Use a separate output directory: accelerated measurements have their own
-provenance. The original classifier and its compatible checkpoints remain
-available with `ROM_AUDIT_SAMPLE_CLOCK` unset.
-
-### Run or resume the classification
-
-Use Linux with the repository-pinned Bun runtime. The launcher installs it when
-the system version differs. Also install Node/npm, git, Python 3, GNU coreutils
-(`timeout`, `nproc`), `g++`, make, autoconf/automake, libtool, pkg-config and
-xa65 (`xa`). Allow 16 GB RAM minimum; 32 GB is preferable. Use a clean checkout
-of the merged revision. From the repository root:
-
-```bash
-# Installs locked dependencies; fetches and verifies HVSC85 and the three ROMs;
-# builds and qualifies both engines; benchmarks this machine; runs and verifies.
-bash scripts/rom-audit/run-dual.sh
-```
-
-The default output is **`workspace/rom-audit-dual/`**, with the consumer bundle
-in **`workspace/rom-audit-dual/published/`**. The command has a hard 12-hour budget
-including setup, qualification and benchmark. It refuses the census if the
-measured projection plus 25% margin exceeds the remaining budget. Performance
-on another CPU has to be measured there; completion within 12 hours is not promised.
-
-```bash
-# Optional: choose worker count, output directory and up to 24 hours.
-ROM_AUDIT_WORKERS=12 ROM_AUDIT_MAX_HOURS=24 \
-  ROM_AUDIT_OUT=workspace/rom-audit-dual bash scripts/rom-audit/run-dual.sh
-```
-
-Repeat the **same command and settings** after an interruption to resume compatible
-checkpoints. Failed and unresolved measurements are retried. Qualification is
-reused only while its source, binaries and validation logs match. For a fresh
-rerun, select a new `ROM_AUDIT_OUT`; never delete old evidence to force reuse.
-Changing renderer/decision sources, engine binaries or corpus requires a new
-output directory. Moving machines rebuilds CPU-specific binaries and requalifies.
-If a census refuses to start because its saved plan differs, it now reports the
-identity category that changed and preserves that checkpoint; set ROM_AUDIT_OUT
-to a new directory for the newly qualified sources instead of deleting old evidence.
-
-For a bounded checkpoint after setup, qualification and a complete zero-failure
-benchmark sample, set `ROM_AUDIT_STAGE_ONLY=full ROM_AUDIT_MAX_JOBS=1000`. This
-processes at most 1,000 pending subtunes even when the full-census time projection
-exceeds the machine budget, and saves a resumable checkpoint; its publication
-remains incomplete and must not be consumed. Starting an unbounded census still
-requires the full-census budget gate to pass. Resume with the same output directory
-and settings, omitting `ROM_AUDIT_MAX_JOBS` only after that gate passes.
-
-On the measured i5-14600K, the current 320-job sample projects 32.86 hours
-before margin, so use bounded resumable runs rather than expecting one invocation
-to finish. For example, after qualification and benchmarking:
-
-```bash
-ROM_AUDIT_STAGE_ONLY=full ROM_AUDIT_WORKERS=12 ROM_AUDIT_MAX_HOURS=3.5 \
-  ROM_AUDIT_MAX_JOBS=1000 ROM_AUDIT_OUT=workspace/rom-audit-dual \
-  bash scripts/rom-audit/run-dual.sh
-```
-
-Repeat while subtunes remain pending. The time limit can stop a chunk before
-its job limit; completed rows remain durable, while cancelled jobs stay pending.
-A genuine worker/engine failure remains a recorded failure and is retried on
-resume. The census time budget includes inventory/checkpoint loading. A bounded
-publication remains unsuitable for consumers until independently verified complete.
-
-
-To inspect one stage, set `ROM_AUDIT_STAGE_ONLY=setup`, `qualify`, `bench` or
-`full`. Run those in that order; `full` requires matching qualification and a
-passing target-machine benchmark. A budget refusal or timeout is an unfinished
-run. See the [full operating guide](doc/research/hvsc-rom-dual-run.md) for the
-benchmark, checkpoint and correctness details.
-
-### Use the results safely
-
-A successful complete run ends by verifying the bundle. Recheck it at any time:
-
-```bash
-bun scripts/rom-audit/verify-publication.ts workspace/rom-audit-dual/published
-```
-
-The verifier requires all **61,157 files / 87,868 subtunes**, both engines and
-both configurations, zero pending/failed/unknown subtunes, bound qualification
-and matching checksums. It also checks the packed table against the JSON and
-inventory. It prints the manifest SHA-256 for the consumer to pin.
-
-| File in `published/` | Purpose |
+| Grade | Meaning |
 |---|---|
-| `manifest.json` | `complete`, `releaseReady`, counts, methodology, engine/ROM/native/source identities and artifact SHA-256 checksums. |
-| `commander-exceptions.json` / `.bin` | Measured incompatibilities keyed by **complete-file MD5** and **one-based subtune**. Bits 1/2: SIDLite without ROMs / with KERNAL+BASIC; bits 4/8: reSIDfp in those configurations. |
-| `unknown.json` | Pending, failed or unresolved subtunes; these are never asserted incompatible. |
-| `playback-horizons.json` | Per-file SID model scope and per-subtune playback limit in milliseconds. |
-| `sha256-to-md5.json` | Full-file identity map, including every inventoried SID. |
-| `qualification.json` / `benchmark.json` | Source/binary-bound qualification certificate and target-machine runtime evidence. |
+| 255 | Identical: the same SID register writes at the same CPU cycles |
+| 254 | The same register values, re-timed by at most 2 ms |
+| 1–253 | Measured audio difference, `max(1, round(253 × Q))`; lower is worse |
+| 0 | No playback |
 
-Commander must verify the trusted manifest and all asset checksums before
-importing the table. Match the engine build/profile, ROM hashes, zeroed absent
-banks, SID model and subtune. The scope is 48 kHz stereo, power-on delay 8191,
-256-event pulls, header-selected SID models with MOS8580 fallback, and the
-Songlengths.md5 duration plus five seconds (minimum ten seconds). Honor
-`playback-horizons.json`: stop or reset at the limit, and re-evaluate after an
-engine, model or ROM change. The
-[bundle format and limitations](doc/research/hvsc-rom-dual-run.md#commander-bundle)
-explain the binary layout and native/WASM qualification.
+The recommended skip threshold is **128** (`Q < 0.5`: the playback is mostly wrong). The
+[grading design](doc/research/hvsc-rom-fidelity-grading.md) defines the trace classes, the audio
+metric, the calibration corpus and the acceptance gates, including a listening test.
 
-**Embeddable dependency list.** The ~15 MB bundle is for review and audit. An
-application that only needs to skip or warn about the tunes that lose fidelity
-without ROMs should embed the 19.4 KiB **SID ROM Dependency List** (`sidromdep-1`)
-derived from complete ROM fidelity grades instead: an allow-by-default, full-MD5
-keyed list of the subtunes with a lane graded at or below a listing ceiling (the release uses 191; grade 0-255 per
-engine/ROM lane, see the
-[grading design](doc/research/hvsc-rom-fidelity-grading.md)), with its own
-manifest and verifier. It is independent of the similarity exports. See the
-[normative specification](doc/rom-dependency-list.md) and generate/verify it with
-`bun scripts/rom-dependency-list/generate.ts --results <grading-results.jsonl> --listing-ceiling 191 --recommended-min-grade 128`
-and `bun scripts/rom-dependency-list/verify.ts --bin <file.bin> --results <grading-results.jsonl>`.
+### Results at a glance
 
-| Decision for the selected engine/configuration | Commander behavior |
-|---|---|
-| Measured incompatible (exception bit set) | Hide/skip in autoplay/radio. For an explicit selection, warn and offer appropriate ROM installation, another supported playback route, play anyway, or cancel. |
-| Measured compatible, within the matching profile and horizon | Permit ordinary playback within that measured scope. |
-| Unknown, missing identity/subtune, partial catalogue, mismatched profile, or expired horizon | Do not label it compatible or broken. Keep it out of a guaranteed-compatible queue; an explicit play needs an unverified-playback warning. |
+- Without ROMs, **1,469 subtunes in 628 files** grade below 128 in at least one engine, 1.67% of
+  HVSC. Nearly all of them are BASIC programs (RSID files with the BASIC flag); only 54 other RSID
+  and 28 PSID subtunes are affected.
+- With KERNAL+BASIC supplied, every subtune grades 255 except one, which reads the character ROM
+  (Wacek/Acid_Flashback, 242/243).
+- The two engines agree on which side of 128 a subtune falls for all but 4 subtunes.
 
-**Absence from an exception table alone proves nothing.** Infer compatibility
-from an unset bit only after verifying a complete qualified bundle, the file and
-subtune inventory, the matching profile and the horizon. With a partial bundle,
-consult `unknown.json` first. An incompatibility with KERNAL+BASIC can indicate a
-CHARGEN dependency; it does not establish that the tune cannot play with all
-three ROMs. Compatibility means bounded equivalence to the pinned emulator's
-reference under documented engineering thresholds, not proof of correct music on
-every C64, universal human audibility, or indefinite looping.
+### Use the SID ROM Dependency List
+
+The **SID ROM Dependency List** (format `sidromdep-1`) is the embeddable result: 19,836 bytes for
+HVSC #85, keyed by full-file MD5 and one-based subtune, with the four lane grades of every subtune
+that has a lane at or below the listing ceiling 191. It is checked in at
+[`data/exports/hvsc85-sidromdep-1.bin`](data/exports/hvsc85-sidromdep-1.bin) with its
+[manifest](data/exports/hvsc85-sidromdep-1.manifest.json). It does not need the similarity exports.
+
+A player applies four rules:
+
+1. **Allow by default.** A file or subtune that is not listed plays normally.
+2. **Read your own lane.** Pick the grade for the engine you run and the ROMs you supply.
+3. **Skip below the threshold** in autoplay, radio and shuffle; **warn before playing** when the
+   listener picks the tune explicitly.
+4. **No restriction with all three authentic ROMs**: that is the reference itself.
+
+The [normative specification](doc/rom-dependency-list.md) defines the binary layout, validation,
+matching rules and consumer obligations, with a worked example, so other projects can implement a
+reader from it alone. Verify a list against the grading results it came from:
+
+```bash
+bun scripts/rom-dependency-list/verify.ts \
+  --bin data/exports/hvsc85-sidromdep-1.bin --results grading-results.jsonl
+```
 
 ### Where results are published
 
-The launcher publishes **locally** to `workspace/rom-audit-dual/published/`; it
-does not create a GitHub release. After the full run passes verification, publish
-the verified bundle as a **separate ROM-audit release** in
-[sidflow-data releases](https://github.com/chrisgleissner/sidflow-data/releases).
-Do not substitute similarity exports or a historical pilot. For example, with
-GitHub CLI authentication and a new immutable release tag:
+The grading results and the list are published as a
+[sidflow-data release](https://github.com/chrisgleissner/sidflow-data/releases/tag/rom-audit-hvsc85-20261030),
+next to the similarity exports but as a separate release: data releases are immutable and carry
+the evidence needed to audit every grade.
+
+| Asset | Purpose |
+|---|---|
+| `hvsc85-sidromdep-1.bin` / `.manifest.json` | The embeddable list and its manifest (also checked in here) |
+| `hvsc85-sidromdep-1.json` | The same records in readable JSON, with HVSC paths |
+| `hvsc85-rom-grading-results.jsonl.gz` | All 87,868 subtunes × 4 lanes, the input the list is derived from |
+| `hvsc85-rom-grading-research-export.jsonl.gz` | Per-lane trace features and audio severities behind every grade |
+| `hvsc85-rom-grading-evidence.tgz` | Checkpoint, scope, methodology identity, progress log and calibration report |
+| `SHA256SUMS` | Checksums of all assets |
+
+### Reproduce the grading
+
+Use Linux with Node/npm, git, Python 3, `g++`, make, autoconf/automake, libtool, pkg-config and
+xa65 (`xa`). Allow 16 GB RAM; 32 GB is preferable. From a clean checkout:
 
 ```bash
-ROM_OUT=workspace/rom-audit-dual
-bun scripts/rom-audit/verify-publication.ts "$ROM_OUT/published" && \
-  tar -czf "$ROM_OUT/rom-audit-evidence.tgz" \
-    workspace/rom-audit-screen-qualification \
-    "$ROM_OUT/plan.json" "$ROM_OUT/benchmark.json" "$ROM_OUT/census.jsonl" && \
-  rom_manifest_sha=$(sha256sum "$ROM_OUT/published/manifest.json" | cut -d ' ' -f1) && \
-  gh release create rom-audit-hvsc85-YYYYMMDD \
-    --repo chrisgleissner/sidflow-data \
-    --title "HVSC85 dual-engine ROM audit" \
-    --notes "Complete qualified HVSC85 ROM audit. Manifest SHA-256: $rom_manifest_sha; source revision: $(git rev-parse HEAD)." \
-    "$ROM_OUT"/published/*.json "$ROM_OUT"/published/*.bin \
-    "$ROM_OUT/rom-audit-evidence.tgz"
+# Install, build, fetch and verify HVSC #85 and the three ROMs, build both native renderers.
+ROM_AUDIT_STAGE_ONLY=setup bash scripts/rom-audit/run-dual.sh
+
+# Grade every subtune. Rerun the same command to resume after an interruption.
+ROM_GRADE_WORKERS=18 bash scripts/rom-grade/run-full.sh
+
+# Derive and verify the list.
+bun scripts/rom-dependency-list/generate.ts --results workspace/rom-grade-full/grading-results.jsonl \
+  --listing-ceiling 191 --recommended-min-grade 128 \
+  --songlengths workspace/hvsc/C64Music/DOCUMENTS/Songlengths.md5 --out workspace/rom-dependency-list
+bun scripts/rom-dependency-list/verify.ts --bin workspace/rom-dependency-list/hvsc85-sidromdep-1.bin \
+  --results workspace/rom-grade-full/grading-results.jsonl
 ```
 
-Replace `YYYYMMDD` with the run date. The command records the manifest SHA-256
-in the release notes; pin that value in Commander's generator configuration. Keep the source revision,
-checkpoint and qualification logs with the release so decisions can be audited
-and reproduced. No final ROM-audit release is claimed by merging the tooling PR.
+The full run took 8.4 hours with 18 workers on an i5-14600K. Every output carries a methodology
+identity, a SHA-256 over the grader sources, both renderer binaries, the ROM images and the frozen
+options. A checkpoint written under a different identity is refused rather than mixed. The
+[grading design](doc/research/hvsc-rom-fidelity-grading.md#full-run) documents the options and
+outputs.
+
+### Earlier pass/fail ROM audit
+
+Before grading, `scripts/rom-audit/run-dual.sh` produced a compatible/incompatible decision per
+lane. A binary verdict cannot tell a tune that is re-timed by a few cycles from one that does not
+play, so grading replaced it. The audit tooling and its documentation remain for reproducibility:
+the [operating guide](doc/research/hvsc-rom-dual-run.md), the
+[merge review](doc/research/hvsc-rom-merge-review.md) and the
+[sample-clock qualification](doc/research/hvsc-rom-sample-qualification.md). The checked-in
+[methodology-4 catalogue](doc/research/hvsc-rom-catalogue/v4/manifest.json) is an incomplete,
+historical SIDLite pilot. Do not ship it.
 
 ---
 

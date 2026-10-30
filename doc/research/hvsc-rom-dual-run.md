@@ -187,9 +187,10 @@ qualification bindings, and re-encodes the packed table from JSON to check every
 record and aggregate count. Checksums establish consistency, not authenticity:
 consumers must pin the manifest hash obtained from a trusted release. Source
 qualification logs must be archived alongside the bundle for an evidence audit.
-The [main README](../../README.md#where-results-are-published) gives the explicit
-post-census release command for `chrisgleissner/sidflow-data`. Publication there
-is manual; a merge of this tooling does not claim a completed HVSC classification.
+No complete bundle from this pass/fail audit was released: graded ROM fidelity
+superseded it before a full census ran. The published HVSC #85 result is the
+graded one; the [main README](../../README.md#where-results-are-published) lists
+its sidflow-data release.
 
 For Commander, an exception is a measured incompatibility only for its selected
 engine, ROM configuration, model and horizon. Autoplay should skip those entries;
