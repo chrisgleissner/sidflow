@@ -112,12 +112,18 @@ jobs:
         if: success()
         run: |
           cd packages/sidflow-web
-          # Keep logs for debugging; stop in a later step.
+          # Keep logs for debugging; stop in a later step (the always() stop step prints the log tail).
+          # KEEP_ALIVE_TIMEOUT: Node closes idle keep-alive sockets after keepAliveTimeout + 1 s (default 5 s + 1 s = 6 s).
+          # The play-start-stream journey idles the k6 connection for exactly 6 s (2 steps x 3 s pacing) before
+          # POST /api/play, so the server's close raced the client's reuse and k6 saw `Post ...: EOF` (Go only retries
+          # idempotent requests on a dead reused connection). A 65 s timeout (above typical 60 s proxy idle timeouts)
+          # removes the race instead of retrying around it.
           # IMPORTANT: Bind explicitly to loopback inside the CI container; otherwise Next may bind to the
           # container hostname only (making http://localhost:3000 unreachable and flapping the health wait).
           SIDFLOW_LIBSIDPLAYFP_WASM_PATH="$PWD/public/wasm/libsidplayfp.wasm" \
           SIDFLOW_CONFIG="$PWD/../../.sidflow.json" \
           HOSTNAME="127.0.0.1" PORT="3000" \
+          KEEP_ALIVE_TIMEOUT=65000 \
           node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-ci-server.log 2>&1 &
           echo $! > /tmp/perf-ci-server.pid
 

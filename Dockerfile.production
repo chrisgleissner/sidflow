@@ -218,6 +218,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
+    KEEP_ALIVE_TIMEOUT=65000 \
     NEXT_TELEMETRY_DISABLED=1 \
     SIDFLOW_ROOT=/sidflow \
     SIDFLOW_CONFIG=/sidflow/app/.sidflow.json \
