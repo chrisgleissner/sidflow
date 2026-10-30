@@ -201,6 +201,15 @@ export class WindowAssembler {
     this.size -= need;
     return out;
   }
+  /** Remove and return the buffered remainder (less than a window) zero-padded to a full window, or null when empty. */
+  takePadded(): Int16Array | null {
+    if (!this.size) return null;
+    const out = new Int16Array(WINDOW_FRAMES * 2);
+    let filled = 0;
+    for (const chunk of this.pending) { out.set(chunk.subarray(0, out.length - filled), filled); filled = Math.min(out.length, filled + chunk.length); }
+    this.pending = []; this.size = 0;
+    return out;
+  }
 }
 
 /** Grade-quality Q from the mean severity with the optional perceptual exponent gamma (Q' = Q^gamma). */

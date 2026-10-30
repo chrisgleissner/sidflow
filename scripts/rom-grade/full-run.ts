@@ -3,17 +3,19 @@
  *   bun scripts/rom-grade/full-run.ts <output dir>
  *
  * Environment: ROM_GRADE_WORKERS (pool size, default 18), ROM_GRADE_MAX_JOBS (deterministic hash-ordered subset for validation;
- * the run is then bounded and not publishable), ROM_GRADE_PROGRESS_EVERY (default 1000).
+ * the run is then bounded and not publishable), ROM_GRADE_KEYS (a file of `<sha256>#<song>` keys, one per line: grade exactly
+ * those subtunes, for example to re-grade a subset under a revised methodology and compare; also bounded and not publishable),
+ * ROM_GRADE_PROGRESS_EVERY (default 1000).
  * Output directory: checkpoint.jsonl (append-only, resumable), progress.jsonl, scope.json, methodology.json, and on completion
  * grading-results.jsonl + research-export.jsonl.gz (see finalize.ts). */
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
 import { candidateKey } from "./candidates.js";
 import { finalize } from "./finalize.js";
 import { fullScope } from "./full-scope.js";
 import { methodologyIdentity } from "./methodology-id.js";
-import { runPool } from "./pool.js";
+import { jobKey, runPool } from "./pool.js";
 import { Accumulator, LANE_FIELDS, laneGrades, totalsOf, type ProgressLine } from "./summary.js";
 
 const out = path.resolve(process.argv[2] ?? "");
@@ -21,6 +23,9 @@ if (!process.argv[2]) throw new Error("usage: full-run.ts <output dir>");
 const workers = Number(process.env.ROM_GRADE_WORKERS ?? 18);
 const progressEvery = Number(process.env.ROM_GRADE_PROGRESS_EVERY ?? 1000);
 const maxJobs = process.env.ROM_GRADE_MAX_JOBS ? Number(process.env.ROM_GRADE_MAX_JOBS) : null;
+const keysFile = process.env.ROM_GRADE_KEYS || null;
+if (keysFile && maxJobs !== null) throw new Error("ROM_GRADE_KEYS and ROM_GRADE_MAX_JOBS are mutually exclusive");
+const bounded = maxJobs !== null || keysFile !== null;
 if (!Number.isSafeInteger(workers) || workers < 1 || (maxJobs !== null && (!Number.isSafeInteger(maxJobs) || maxJobs < 1))) throw new Error("Invalid ROM_GRADE_WORKERS or ROM_GRADE_MAX_JOBS");
 
 mkdirSync(out, { recursive: true });
@@ -31,6 +36,12 @@ console.error(`scope: ${scope.files} files, ${scope.subtunes} subtunes, corpus $
 /** Validation subset: hash-ordered subtunes, or with ROM_GRADE_WHOLE_FILES=1 hash-ordered whole files until at least maxJobs subtunes
  * (a subset the consumer parser accepts as a complete grading when finalized with --declare-scope). */
 function subset(): typeof scope.jobs {
+  if (keysFile) {
+    const wanted = new Set(readFileSync(keysFile, "utf8").split("\n").map(k => k.trim()).filter(Boolean));
+    const chosen = scope.jobs.filter(job => wanted.has(jobKey(job)));
+    if (chosen.length !== wanted.size) throw new Error(`ROM_GRADE_KEYS: ${wanted.size - chosen.length} of ${wanted.size} keys are not in the HVSC scope`);
+    return chosen;
+  }
   if (maxJobs === null) return scope.jobs;
   if (process.env.ROM_GRADE_WHOLE_FILES !== "1") return [...scope.jobs].sort((a, b) => candidateKey(a) < candidateKey(b) ? -1 : 1).slice(0, maxJobs);
   const byFile = new Map<string, typeof scope.jobs>();
@@ -43,7 +54,7 @@ function subset(): typeof scope.jobs {
 const selected = subset();
 const totals = totalsOf(selected);
 writeFileSync(path.join(out, "methodology.json"), stringifyDeterministic(identity as unknown as JsonValue));
-writeFileSync(path.join(out, "scope.json"), stringifyDeterministic({ files: scope.files, subtunes: scope.subtunes, corpusId: scope.corpusId, songlengthsSha256: scope.songlengthsSha256, maxJobs, selected: selected.length, totals } as unknown as JsonValue));
+writeFileSync(path.join(out, "scope.json"), stringifyDeterministic({ files: scope.files, subtunes: scope.subtunes, corpusId: scope.corpusId, songlengthsSha256: scope.songlengthsSha256, maxJobs, keysFile, selected: selected.length, totals } as unknown as JsonValue));
 
 const accumulator = new Accumulator(totals);
 const progressFile = path.join(out, "progress.jsonl");
@@ -67,5 +78,5 @@ const result = await runPool(selected, { validateAudio: false }, {
   },
 });
 console.error(`pool finished: ran ${result.stats.ran}, resumed ${result.stats.resumed}, wall ${result.stats.wallSeconds.toFixed(0)} s, efficiency ${(result.stats.efficiency * 100).toFixed(0)}%`);
-if (maxJobs === null) await finalize(out, { allowPartial: false, declareScope: false });
-else console.error("Bounded run (ROM_GRADE_MAX_JOBS): checkpoint saved; no consumer results file is produced. Resume without ROM_GRADE_MAX_JOBS to grade the rest.");
+if (!bounded) await finalize(out, { allowPartial: false, declareScope: false });
+else console.error("Bounded run (ROM_GRADE_MAX_JOBS or ROM_GRADE_KEYS): checkpoint saved; no consumer results file is produced.");

@@ -18,6 +18,7 @@ import { NativeLane } from "../rom-audit/native-lanes.js";
 import { CORPUS_PATH } from "./select-corpus.js";
 import { ENGINES, gradeSubtune, LANES, stringifyGrade, withoutCpu, type GradeJob, type LaneName, type SeverityRecord, type SubtuneGrade } from "./grade.js";
 import { loadInventory, horizonBand } from "./inventory.js";
+import { methodologyIdentity } from "./methodology-id.js";
 import { runPool, type PoolStats } from "./pool.js";
 import { nativePaths, readSid, repositoryRoot, withSlots, workspaceRoot } from "./native.js";
 
@@ -35,8 +36,12 @@ function corpusJobs(): Array<GradeJob & CorpusEntry> {
 
 const POOL_WORKERS = Number(process.env.ROM_GRADE_POOL ?? 18);
 async function gradeAll(jobs: Array<GradeJob & { sha256: string }>, validateAudio: boolean, checkpoint: string): Promise<{ grades: SubtuneGrade[]; stats: PoolStats; jsCpuSeconds: number; wallSeconds: number }> {
-  const { records, stats } = await runPool(jobs, { validateAudio }, { checkpoint: file(checkpoint), workers: POOL_WORKERS, label: validateAudio ? "corpus" : "benchmark" });
-  return { grades: records.map(r => r.grade), stats, jsCpuSeconds: stats.workerCpuSeconds, wallSeconds: stats.wallSeconds };
+  // Bound to the methodology identity: a checkpoint graded by other grader sources, renderers or ROMs is refused, never reused.
+  const identity = (await methodologyIdentity()).id;
+  const { records, stats } = await runPool(jobs, { validateAudio }, { checkpoint: file(checkpoint), workers: POOL_WORKERS, label: validateAudio ? "corpus" : "benchmark", identity });
+  // JavaScript CPU of every record, resumed ones included (stats.workerCpuSeconds covers only this invocation).
+  const jsCpuSeconds = records.reduce((sum, r) => sum + r.jsCpuSeconds, 0);
+  return { grades: records.map(r => r.grade), stats, jsCpuSeconds, wallSeconds: stats.wallSeconds };
 }
 
 function save(name: string, value: unknown): void {

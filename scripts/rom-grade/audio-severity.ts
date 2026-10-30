@@ -19,6 +19,8 @@ export interface PcmSource {
   next(): Promise<Int16Array | null>;
   /** true once the source ended early because the emulated CPU halted */
   readonly halted: boolean;
+  /** Consume the rest of the source and validate its terminal evidence; rejects on any failure. */
+  finish?(): Promise<void>;
 }
 
 export interface LaneSeverity {
@@ -34,16 +36,21 @@ class Stream {
   produced = 0;
   ended = false;
   constructor(readonly source: PcmSource, readonly wanted: number) {}
-  /** Next full window; silence once the source has ended. */
+  /** Next full window. A source that ended early (a diagnosed CPU halt) contributes the PCM it produced, with only the
+   * missing tail zero-padded, then silence; an early end without a halt is an infrastructure fault and rejects. */
   async window(): Promise<Int16Array> {
     while (!this.assembler.available && !this.ended) {
       const chunk = this.produced < this.wanted ? await this.source.next() : null;
-      if (!chunk) { this.ended = true; break; }
+      if (!chunk) {
+        this.ended = true;
+        if (this.produced < this.wanted && !this.source.halted) throw new Error(`PCM source ended after ${this.produced} of ${this.wanted} samples without a CPU halt`);
+        break;
+      }
       const take = Math.min(chunk.length, this.wanted - this.produced);
       this.assembler.push(chunk.subarray(0, take));
       this.produced += take;
     }
-    return this.assembler.take() ?? new Int16Array(WINDOW_FRAMES * 2);
+    return this.assembler.take() ?? this.assembler.takePadded() ?? new Int16Array(WINDOW_FRAMES * 2);
   }
 }
 
@@ -57,6 +64,8 @@ export async function severityFromSources(reference: PcmSource, variants: PcmSou
     const spectrum = windowSpectrum(await ref.window());
     for (let i = 0; i < vars.length; i++) stats[i]!.add(windowSeverityFromSpectra(spectrum, windowSpectrum(await vars[i]!.window())));
   }
+  // A failure after the last analysed window must still reject the measurement, so every source is drained to its end.
+  for (const stream of [ref, ...vars]) await stream.source.finish?.();
   return vars.map((stream, i) => ({ summary: stats[i]!.summary(), perWindow: stats[i]!.perWindow, producedSamples: stream.produced, halted: stream.source.halted }));
 }
 
@@ -66,6 +75,10 @@ class NativeSource implements PcmSource {
   async next(): Promise<Int16Array | null> {
     const chunk = await this.lane.pull();
     return chunk ? chunk.pcm : null;
+  }
+  /** Read to the terminal packet; NativeLane.pull rejects on missing or failed terminal evidence. */
+  async finish(): Promise<void> {
+    while (await this.lane.pull());
   }
 }
 

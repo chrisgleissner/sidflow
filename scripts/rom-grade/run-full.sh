@@ -10,6 +10,7 @@
 #   ROM_GRADE_OUT=workspace/rom-grade-full   output directory; rerunning resumes it (idempotent)
 #   ROM_GRADE_MAX_HOURS=24           hard budget for the whole command (maximum 24)
 #   ROM_GRADE_MAX_JOBS=N             validation only: grade a deterministic subset of N subtunes, publish nothing
+#   ROM_GRADE_KEYS=<file>            grade exactly the listed <sha256>#<song> keys (e.g. an equivalence re-grade), publish nothing
 #   ROM_GRADE_PROGRESS_EVERY=1000    progress.jsonl cadence
 # Output: checkpoint.jsonl (append-only), progress.jsonl, scope.json, methodology.json and, once complete,
 #   grading-results.jsonl (schema sidflow-rom-grading-results-1) and research-export.jsonl.gz.

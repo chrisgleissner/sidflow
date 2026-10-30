@@ -293,6 +293,33 @@ describe("window severity", () => {
     expect(stopped!.summary.mean).toBe(0.5);
     expect(stopped!.halted).toBe(true);
   });
+  const finite = (pcm: Int16Array, chunk: number, halted = false, finish?: () => Promise<void>): PcmSource => {
+    let at = 0;
+    return { halted, finish, next: async () => { if (at >= pcm.length) return null; const out = pcm.subarray(at, at + chunk); at += chunk; return out; } };
+  };
+  it("keeps the PCM a halted source produced inside its last partial window", async () => {
+    const half = WINDOW_FRAMES; // interleaved samples: half a stereo window
+    const reference = new Int16Array(WINDOW_FRAMES * 2 * 4);
+    reference.set(tone(WINDOW_FRAMES).subarray(0, half));
+    const [lane] = await severityFromSources(finite(reference, 1000), [finite(reference.subarray(0, half), 300, true)], 4 * WINDOW_FRAMES / rate);
+    expect(lane!.summary.mean).toBe(0);
+    expect(lane!.producedSamples).toBe(half);
+  });
+  it("rejects a source that ends early without a diagnosed CPU halt", async () => {
+    const reference = tone(frames * 2);
+    await expect(severityFromSources(finite(reference, 4096), [finite(reference.subarray(0, reference.length / 2), 999)], frames * 2 / rate))
+      .rejects.toThrow("without a CPU halt");
+  });
+  it("drains every source after the last window and rejects on failed terminal evidence", async () => {
+    const reference = tone(frames * 2);
+    const finished: string[] = [];
+    const ok = (name: string) => async () => { finished.push(name); };
+    await severityFromSources(finite(reference, 4096, false, ok("ref")), [finite(reference, 999, false, ok("var"))], frames * 2 / rate);
+    expect(finished).toEqual(["ref", "var"]);
+    const failing = async () => { throw new Error("Native measurement failed (resource): out of memory"); };
+    await expect(severityFromSources(finite(reference, 4096), [finite(reference, 999, false, failing)], frames * 2 / rate))
+      .rejects.toThrow("out of memory");
+  });
   it("is deterministic", () => {
     const a = voice(WINDOW_FRAMES, 220), b = voice(WINDOW_FRAMES, 223, 2);
     expect(windowSeverity(a, b)).toBe(windowSeverity(a, b));
