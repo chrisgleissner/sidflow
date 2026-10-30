@@ -138,6 +138,32 @@ cycle-timed write traces; everything else retains native PCM listening.
     `Wacek/Acid_Flashback.sid` (CHARGEN reader, 242/243). 15 PSIDs <128, all early value
     divergence with audio severity 0.54–0.99 (genuine). BASIC ≈100% <128, RSID 0.5–1.4%.
   - Gate 4 listening (user, 2026-10-30): PASS, no inversions (see design doc gate 4 result).
+  - Full run COMPLETE 2026-10-30 07:29Z: 87,868 subtunes, 0 errors, 0 unmeasured, 30,126 s wall,
+    108% efficiency. No ROMs: 94.8% grade 254–255, 1.67% <128 (1,468 SIDLite / 1,466 reSIDfp,
+    4 subtunes straddle engines). KERNAL+BASIC: all 255 except Acid_Flashback (242/243).
+  - `sidromdep-1` generated and verified (87,868 round-trips): 19,836 bytes, 696 files, 1,556
+    subtunes, manifest `712dcbd2…`, bin `cc1ede22…`. Committed on `feat/sid-rom-dependency-list`
+    (`data/exports/`, results doc `doc/research/hvsc-rom-grading-results.md`).
+  - sidflow-data release `rom-audit-hvsc85-20261030` (not Latest): list, all grades, research
+    export, evidence, equivalence evidence, SHA256SUMS.
+  - PR #113 review (Codex, 4 × P2) fixed in `d98c98e`: halted partial window kept, native
+    terminal evidence drained, calibration bound to identity, resumed CPU counted. Equivalence
+    re-grade of all 3,213 audio-graded subtunes under the fixed methodology `103910af…`:
+    12,850/12,852 grades identical, 2 +1 (unlisted, >191), no threshold/ceiling crossing → the
+    published list stands (provenance: methodology `bf3b3eff…`, sidflow `e0f14d5`). Codex re-review
+    clean on `fbc9105`.
+  - Load-sensitive tests fixed: alignment tests' timeouts now match their own bounds (`fbc9105`);
+    quadratic missing-voice test and JSC automatic-thread counting in the classify stress test
+    (`8921ae5`). The persona-station integration test needs `workspace/hvsc` (symlinked in the
+    worktree; it rewrites `station-analysis/`, which was discarded there).
+  - Final qualification of `8921ae5` (`npm run test`, includes build), literal output:
+    ```text
+    Full run 1: 3055 pass / 0 fail / 0 skip
+    Full run 2: 3055 pass / 0 fail / 0 skip
+    Full run 3: 3055 pass / 0 fail / 0 skip
+    ```
+  - Commander PR #615 open (real list pinned; origin/main 1.1.5-rc1 merged; SettingsPage flake
+    fixed; PlayFilesPage size ceiling lowered to 3,137 after extracting the config prompt).
 - Census benchmark (2026-10-29 14:32Z): 15.22h projected, 19.02h with margin, budget 23.98h,
   296.08 core-hours, 19.46 cores measured; full stage started 14:32Z.
 
