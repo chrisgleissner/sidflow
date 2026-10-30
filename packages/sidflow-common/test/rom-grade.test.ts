@@ -260,7 +260,8 @@ describe("window severity", () => {
     expect(windowSeverity(voice(WINDOW_FRAMES, 220), voice(WINDOW_FRAMES, 330))).toBeGreaterThan(0.6);
   });
   it("a missing voice scores about half", () => {
-    const two = Int16Array.from(voice(WINDOW_FRAMES, 220), (v, i) => v + voice(WINDOW_FRAMES, 1000)[i]!);
+    const high = voice(WINDOW_FRAMES, 1000);
+    const two = Int16Array.from(voice(WINDOW_FRAMES, 220), (v, i) => v + high[i]!);
     const severity = windowSeverity(two, voice(WINDOW_FRAMES, 220))!;
     expect(severity).toBeGreaterThan(0.2);
     expect(severity).toBeLessThan(0.9);
