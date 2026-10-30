@@ -104,6 +104,13 @@ to be empty in HVSC:
    `workspace/rom-grade-calibration/listening/`). No pair may be ranked inverted by more than one band. Non-blocking for the full
    run: the grades are threshold independent, so a listening result can only move the consumer thresholds (and, if a perceptual
    curve is ever fitted, `gamma`), never require regrading the traces.
+   **Result (2026-10-30, user, blind):** PASS, no inversions. All 21 pairs graded 171–254 were rated
+   "Same", including the lowest-graded audible pair (`Prophet64_Sequencer_Demo_2SID`, 171, class D; listed but
+   above the skip threshold). Both audible grade-0 pairs (`Party_Songs`, `MiniSEQ_Demo_Songs`, class G) were
+   rated "Broken". The third grade-0 pair (`Swan_BASIC`) was heard as silent on both sides: its reference
+   excerpt is a sparse BASIC tune (mean -38 dBFS, peaks -8.9 dBFS, isolated notes), while the no-ROM side is
+   digital silence (-91 dBFS), so the grade is right and the excerpt was a poor listening choice. Grades 1–170
+   were not represented among the listened pairs.
 5. Distribution: the grade histogram over the stratified 320-job benchmark is reported. The share
    of subtunes below the consumer threshold is plausible against earlier research (about 3% of
    subtunes with execution changes) and is explained if it differs.

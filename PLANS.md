@@ -134,6 +134,10 @@ cycle-timed write traces; everything else retains native PCM listening.
     0.54: a genuine difference). 126 lanes hit the 2 M-write trace cap (class X), so audio
     decided them: 187–253, plausible. Identical-value drift cases (`Disco_Trax_87_tune_2`
     159/161, `Paid_in_Full_part_2` 187/203) sit above the skip threshold, as intended. Accepted.
+  - 61,422 checkpoint (06:54Z, 0 errors, no anomalies): KERNAL+BASIC 255 except
+    `Wacek/Acid_Flashback.sid` (CHARGEN reader, 242/243). 15 PSIDs <128, all early value
+    divergence with audio severity 0.54–0.99 (genuine). BASIC ≈100% <128, RSID 0.5–1.4%.
+  - Gate 4 listening (user, 2026-10-30): PASS, no inversions (see design doc gate 4 result).
 - Census benchmark (2026-10-29 14:32Z): 15.22h projected, 19.02h with margin, budget 23.98h,
   296.08 core-hours, 19.46 cores measured; full stage started 14:32Z.
 
