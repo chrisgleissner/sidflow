@@ -5,9 +5,12 @@ import {
   SeverityStats, WINDOW_FRAMES, WindowAssembler, qualityFromSummary, windowSeverity,
 } from "../../../scripts/rom-grade/severity-core.js";
 import {
-  NTSC_CLOCK_HZ, PAL_CLOCK_HZ, alignWrites, bSubclassOf, computeTraceFeatures, lcsMyers, toleranceCycles, traceFromFlat, traceGrade,
+  NTSC_CLOCK_HZ, PAL_CLOCK_HZ, alignWrites, bSubclassOf, computeTraceFeatures, driftAligned, driftOffsetFrames, lcsMyers, toleranceCycles, traceFromFlat, traceGrade,
   type Trace, type TraceFeatures,
 } from "../../../scripts/rom-grade/trace-core.js";
+import { gradeEngine, type GradeDeps } from "../../../scripts/rom-grade/grade.js";
+import type { TraceRun } from "../../../scripts/rom-grade/native.js";
+import type { SidInfo } from "../../../scripts/rom-grade/sid-info.js";
 
 type W = [number, number, number, number];
 const trace = (writes: W[], complete = true, error = ""): Trace => traceFromFlat(writes.flat(), complete, error);
@@ -224,6 +227,8 @@ describe("alignment similarity", () => {
     const elapsed = performance.now() - started;
     expect(result.matched).toBeGreaterThanOrEqual(n / 2);
     expect(result.matched / n).toBeLessThan(0.75);
+    // the blocked fallback sums per-block LCS lengths: a lower bound, never reported as exact
+    expect(result.exact).toBe(false);
     expect(elapsed).toBeLessThan(20000);
   }, 30_000); // the 20 s bound above is the check; bun's 5 s default would fail a loaded machine first
 });
@@ -247,6 +252,26 @@ describe("window severity", () => {
   it("a tone against silence scores 1, in both directions of normalisation", () => {
     expect(windowSeverity(tone(WINDOW_FRAMES), new Int16Array(WINDOW_FRAMES * 2))).toBe(1);
     expect(windowSeverity(tone(WINDOW_FRAMES, 440, 300), new Int16Array(WINDOW_FRAMES * 2))).toBe(1);
+    // silent reference, loud variant: e_full is 0, so the window is fully different (the full <= 0 branch)
+    expect(windowSeverity(new Int16Array(WINDOW_FRAMES * 2), tone(WINDOW_FRAMES))).toBe(1);
+    expect(windowSeverity(new Int16Array(WINDOW_FRAMES * 2), tone(WINDOW_FRAMES, 440, 300))).toBe(1);
+  });
+  /** deterministic white noise at `dbfs` RMS */
+  function noise(frames: number, dbfs: number, seed: number): Int16Array {
+    let x = seed >>> 0;
+    const amplitude = 32768 * Math.pow(10, dbfs / 20) * Math.sqrt(3);
+    return Int16Array.from({ length: frames * 2 }, () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return Math.round(amplitude * (x / 2 ** 31 - 1)); });
+  }
+  it("near-floor noise of the same music does not saturate the severity (bands must clear the floor by 15 dB)", () => {
+    // Two independent realisations of the same noise level: what a few cycles of re-timing do to a noise voice.
+    for (const dbfs of [-58, -55, -50]) {
+      const s = windowSeverity(noise(WINDOW_FRAMES, dbfs, 1), noise(WINDOW_FRAMES, dbfs, 2));
+      expect(s === null || s < 0.25).toBe(true);
+    }
+    expect(windowSeverity(noise(WINDOW_FRAMES, -20, 1), noise(WINDOW_FRAMES, -20, 2))!).toBeLessThan(0.15);
+    // but loud noise against silence, or a missing quiet tone, still counts fully
+    expect(windowSeverity(noise(WINDOW_FRAMES, -30, 1), new Int16Array(WINDOW_FRAMES * 2))).toBe(1);
+    expect(windowSeverity(tone(WINDOW_FRAMES, 440, 60), new Int16Array(WINDOW_FRAMES * 2))).toBe(1);
   });
   it("a quiet window on both sides is skipped", () => {
     expect(windowSeverity(new Int16Array(WINDOW_FRAMES * 2), new Int16Array(WINDOW_FRAMES * 2))).toBeNull();
@@ -350,5 +375,169 @@ describe("grade mapping", () => {
     const summary = { q: 0.5 } as Parameters<typeof qualityFromSummary>[0];
     expect(qualityFromSummary(summary, 2)).toBe(0.25);
     expect(gradeFromQuality(qualityFromSummary(summary, 2))).toBe(63);
+  });
+});
+
+describe("trace rules revised 2026-10-30", () => {
+  const reference = song(1000);
+  it("digi references are proven re-timed only up to one raster line (63 cycles)", () => {
+    const burst = (jitter: (i: number) => number): W[] => Array.from({ length: 1200 }, (_, i): W => [0, 24, i & 15, 10000 + i * 600 + jitter(i)]);
+    const at63 = features(trace(burst(() => 0)), trace(burst(i => (i % 2) * 63)));
+    const at64 = features(trace(burst(() => 0)), trace(burst(i => (i % 2) * 64)));
+    const at1000 = features(trace(burst(() => 0)), trace(burst(i => (i % 2) * 1000)));
+    for (const f of [at63, at64, at1000]) { expect(f.referenceDigi).toBe(true); expect(f.cls).toBe("B"); }
+    expect(traceGrade(at63, 1970)).toBe(254);
+    expect(traceGrade(at64, 1970)).toBeNull();
+    expect(traceGrade(at1000, 1970)).toBeNull();
+    expect(driftAligned(at1000, 1970)).toBe(true);
+    // a non-digi reference keeps the 2 ms proof
+    expect(traceGrade(features(trace(reference), trace(shifted(reference, i => (i % 2) * 1000))), 1970)).toBe(254);
+  });
+  it("C requires more than initialisation writes", () => {
+    const short = song(30);
+    const f = features(trace(short), trace(short.slice(0, 26)));
+    expect(f.variantWrites).toBeLessThanOrEqual(32);
+    expect(f.cls).not.toBe("C");
+    expect(f.cls).not.toBe("G"); // the reference has fewer than 8 writes more
+  });
+  it("drift alignment applies to B and I lanes the trace does not decide, never to A, decided B, C-H or X", () => {
+    const slow = features(trace(reference), trace(shifted(reference, i => Math.round(i * 40))));
+    expect(slow.cls).toBe("I");
+    expect(driftAligned(slow, 1970)).toBe(true);
+    const jitter = features(trace(reference), trace(shifted(reference, i => (i % 2) * 5000)));
+    expect(jitter.cls).toBe("B");
+    expect(driftAligned(jitter, 1970)).toBe(true);
+    expect(driftAligned(features(trace(reference), trace(shifted(reference, i => (i % 2) * 900))), 1970)).toBe(false); // 254
+    expect(driftAligned(features(trace(reference), trace(reference)), 1970)).toBe(false); // A
+    expect(driftAligned(features(trace(reference), trace(reference.slice(0, 997))), 1970)).toBe(false); // C
+    expect(driftAligned(features(trace(reference, false), trace(reference, false)), 1970)).toBe(false); // X
+  });
+});
+
+describe("drift offsets", () => {
+  const options = { clockHz: 960000, sampleRate: 48000, windowFrames: 100, windows: 6 }; // 20 cycles per frame, 2,000 cycles per window
+  it("uses the last matched write at or before each window start, the first write before it", () => {
+    // reference writes at 500, 2500, 4000, 9000; variant +40, +60, -100, +400 cycles
+    const ref = trace([[0, 1, 1, 500], [0, 1, 2, 2500], [0, 1, 3, 4000], [0, 1, 4, 9000]]);
+    const vr = trace([[0, 1, 1, 540], [0, 1, 2, 2560], [0, 1, 3, 3900], [0, 1, 4, 9400]]);
+    // window starts 0, 2000, 4000, 6000, 8000, 10000 cycles
+    expect([...driftOffsetFrames(ref, vr, 4, options)]).toEqual([2, 2, -5, -5, -5, 20]);
+    // only the matched prefix counts: beyond it the last matched offset holds
+    expect([...driftOffsetFrames(ref, vr, 2, options)]).toEqual([2, 2, 3, 3, 3, 3]);
+  });
+  it("is zero without matched writes and rounds to the nearest frame", () => {
+    expect([...driftOffsetFrames(trace([]), trace([]), 0, options)]).toEqual([0, 0, 0, 0, 0, 0]);
+    const ref = trace([[0, 1, 1, 0]]), vr = trace([[0, 1, 1, 29]]);
+    expect([...driftOffsetFrames(ref, vr, 1, options)]).toEqual([1, 1, 1, 1, 1, 1]); // 29 cycles = 1.45 frames
+    expect([...driftOffsetFrames(ref, trace([[0, 1, 1, -31]]), 1, options)]).toEqual([-2, -2, -2, -2, -2, -2]);
+  });
+});
+
+describe("drift-aligned comparison", () => {
+  const rate = 48000, clock = PAL_CLOCK_HZ, seconds = 8;
+  const NOTE_CYCLES = 120000; // ~122 ms per note
+  const notes = Array.from({ length: Math.floor(7.5 * clock / NOTE_CYCLES) }, (_, i) => ({ cycle: 20000 + i * NOTE_CYCLES, value: (i * 37) % 48 }));
+  /** Music rendered from (cycle, note) writes: each note a few harmonics, phase restarting at the onset. */
+  function render(writes: Array<{ cycle: number; value: number }>): Int16Array {
+    const frames = seconds * rate, pcm = new Int16Array(frames * 2);
+    let k = -1;
+    for (let t = 0; t < frames; t++) {
+      const cycle = t * clock / rate;
+      while (k + 1 < writes.length && writes[k + 1]!.cycle <= cycle) k++;
+      if (k < 0) continue;
+      const f0 = 110 * Math.pow(2, writes[k]!.value / 12), since = (cycle - writes[k]!.cycle) / clock;
+      let v = 0;
+      for (let h = 1; h <= 7; h += 2) v += Math.sin(2 * Math.PI * f0 * h * since) / h;
+      pcm[2 * t] = pcm[2 * t + 1] = Math.round(6000 * v);
+    }
+    return pcm;
+  }
+  // the same notes in the same order, 13 cycles late and 0.1% faster (Funky_Drummer's tempo deviation is 0.07%): 7.5 ms ahead at the end
+  const warped = notes.map(n => ({ cycle: Math.round(13 + n.cycle * 0.999), value: n.value }));
+  const asTrace = (w: Array<{ cycle: number; value: number }>): Trace => trace(w.map((n): W => [0, 1, n.value, n.cycle]));
+  const source = (pcm: Int16Array, chunk = 3001): PcmSource => {
+    let at = 0;
+    return { halted: false, next: async () => { if (at >= pcm.length) return null; const out = pcm.subarray(at, at + chunk); at += chunk; return out; } };
+  };
+  const info: SidInfo = { kind: "PSID", clock: "PAL", clockDeclared: "PAL", model: "6581", chips: 1, songs: 1, version: 2 };
+  const run = (t: Trace, chargenReads = 0): TraceRun => ({ trace: t, chargenReads, cpuSeconds: 0 });
+  const deps = (traces: Record<number, TraceRun>, pcm: Record<number, Int16Array>, calls: number[][] = [], forceLockStep = false): GradeDeps => ({
+    traceLane: async (_e, _b, _s, _sec, mask) => { calls.push([mask]); return traces[mask]!; },
+    measure: async (_e, _b, _s, sec, masks, alignments) => {
+      const lanes = await severityFromSources(source(pcm[7]!), masks.map(m => source(pcm[m]!)), sec, forceLockStep ? [] : alignments);
+      return { lanes: lanes.map((l, i) => ({ ...l, mask: masks[i]!, cpuSeconds: 0 })), referenceCpuSeconds: 0, referenceHalted: false };
+    },
+  });
+  const job = { path: "synthetic.sid", song: 1, seconds };
+  it("grades a re-timed copy of the same notes high, where lock-step reads the accumulated offset as different music", async () => {
+    const pcm = { 7: render(notes), 0: render(warped) };
+    const traces = { 7: run(asTrace(notes)), 0: run(asTrace(warped)) };
+    const aligned = (await gradeEngine("residfp", new Uint8Array(0), job, info, {}, deps(traces, pcm))).result.lanes.none;
+    expect(aligned.traceClass).toBe("B");
+    expect(aligned.bSubclass).toBe(">2ms");
+    expect(aligned.features.valueSequenceIdentical).toBe(true);
+    expect(aligned.severity!.alignment).toBe("trace-drift");
+    expect(aligned.severity!.offsetRangeSeconds![0]).toBeLessThan(-0.007);
+    expect(aligned.grade!).toBeGreaterThanOrEqual(250);
+    const lockStep = (await gradeEngine("residfp", new Uint8Array(0), job, info, {}, deps(traces, pcm, [], true))).result.lanes.none;
+    expect(lockStep.grade!).toBeLessThan(aligned.grade! - 20);
+  });
+  it("zero offsets compare exactly like lock-step, and the aligned buffer stays bounded", async () => {
+    const a = render(notes), b = render(warped);
+    const windows = Math.floor(seconds * rate / WINDOW_FRAMES);
+    const [lock] = await severityFromSources(source(a), [source(b)], seconds);
+    const [zero] = await severityFromSources(source(a), [source(b)], seconds, [new Int32Array(windows)]);
+    expect(zero!.perWindow).toEqual(lock!.perWindow);
+    expect(zero!.producedSamples).toBe(lock!.producedSamples);
+    const offsets = driftOffsetFrames(asTrace(notes), asTrace(warped), notes.length, { clockHz: clock, sampleRate: rate, windowFrames: WINDOW_FRAMES, windows });
+    const [aligned] = await severityFromSources(source(a), [source(b)], seconds, [offsets]);
+    expect(aligned!.summary.mean).toBeLessThan(0.005);
+    expect(aligned!.producedSamples).toBe(seconds * rate * 2);
+    await expect(severityFromSources(source(a), [source(b)], seconds, [new Int32Array(3)])).rejects.toThrow("offsets");
+  });
+  it("zero-pads outside the produced frames and keeps the halt semantics", async () => {
+    const a = render(notes), windows = Math.floor(seconds * rate / WINDOW_FRAMES);
+    // a variant read one second ahead of a source that stopped (diagnosed CPU halt) after half the horizon
+    const half = a.subarray(0, a.length / 2);
+    const halted: PcmSource = { ...source(half), halted: true };
+    const [lane] = await severityFromSources(source(a), [halted], seconds, [new Int32Array(windows).fill(rate)]);
+    expect(lane!.halted).toBe(true);
+    expect(lane!.producedSamples).toBe(half.length);
+    expect(lane!.summary.mean).toBeGreaterThan(0.6);
+    // without a halt, an early end is an infrastructure fault
+    await expect(severityFromSources(source(a), [source(half)], seconds, [new Int32Array(windows)])).rejects.toThrow("without a CPU halt");
+  });
+  it("the CHARGEN shortcut needs a reference that ran to its end", async () => {
+    const pcm = { 7: render(notes), 0: render(notes), 3: render(notes) };
+    const ok = asTrace(notes);
+    const calls: number[][] = [];
+    const clean = (await gradeEngine("sidlite", new Uint8Array(0), job, info, {}, deps({ 7: run(ok), 0: run(ok) }, pcm, calls))).result;
+    expect(clean.lanes["kernal+basic"].basis).toBe("chargen-unread");
+    expect(calls.flat()).toEqual([7, 0]);
+    const failed: Trace = { ...ok, error: "64 consecutive empty renders", errorKind: "engine" };
+    const refused: number[][] = [];
+    const result = (await gradeEngine("sidlite", new Uint8Array(0), job, info, {}, deps({ 7: run(failed), 0: run(ok), 3: run(ok) }, pcm, refused))).result;
+    expect(refused.flat()).toEqual([7, 0, 3]);
+    expect(result.lanes["kernal+basic"].basis).not.toBe("chargen-unread");
+    expect(result.lanes["kernal+basic"].traceClass).toBe("X");
+    // a diagnosed CPU halt of the reference does not void the counter
+    const halt: Trace = { ...ok, error: "Illegal instruction $02 at address $1000", errorKind: "cpu-halt" };
+    const haltCalls: number[][] = [];
+    const halted = (await gradeEngine("sidlite", new Uint8Array(0), job, info, {}, deps({ 7: run(halt), 0: run(halt) }, pcm, haltCalls))).result;
+    expect(halted.lanes["kernal+basic"].basis).toBe("chargen-unread");
+    expect(haltCalls.flat()).toEqual([7, 0]);
+  });
+  it("a digi reference re-timed by more than 63 cycles is graded from drift-aligned audio, not 254", async () => {
+    const digi = Array.from({ length: 9000 }, (_, i) => ({ cycle: 20000 + i * 800, value: i & 15 }));
+    const jittered = digi.map((n, i) => ({ cycle: n.cycle + (i % 2) * 700, value: n.value }));
+    const toTrace = (w: typeof digi): Trace => trace(w.map((n): W => [0, 24, n.value, n.cycle]));
+    const pcm = { 7: render(notes), 0: render(notes) };
+    const lane = (await gradeEngine("residfp", new Uint8Array(0), job, info, {}, deps({ 7: run(toTrace(digi)), 0: run(toTrace(jittered)) }, pcm))).result.lanes.none;
+    expect(lane.features.referenceDigi).toBe(true);
+    expect(lane.traceClass).toBe("B");
+    expect(lane.basis).toBe("audio");
+    expect(lane.severity!.alignment).toBe("trace-drift");
+    expect(lane.grade!).toBeGreaterThan(0);
+    expect(lane.grade!).toBeLessThanOrEqual(253);
   });
 });

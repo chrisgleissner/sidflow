@@ -12,9 +12,9 @@ import path from "node:path";
 import { REFERENCE_ROM_SHA256 } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { CONSUMER_LIST_CEILING, DEFAULT_GAMMA, NO_PLAYBACK_Q, RECOMMENDED_MIN_GRADE } from "./grade-core.js";
 import { nativePaths, repositoryRoot } from "./native.js";
-import { BAND_RATIO, DEAD_ZONE_DB, FFT_SIZE, QUIET, SATURATION_DB, WINDOW_FRAMES } from "./severity-core.js";
+import { BAND_ACTIVE_DB, BAND_RATIO, DEAD_ZONE_DB, FFT_SIZE, QUIET, SATURATION_DB, WINDOW_FRAMES } from "./severity-core.js";
 import {
-  ALIGN_BLOCK_MAX_D, ALIGN_BLOCK_WRITES, ALIGN_GLOBAL_MAX_D, ALIGN_WORK_BUDGET, DEFAULT_TOLERANCE_MS, DIGI_MIN_WRITES, DIGI_WINDOW_CYCLES, LATE_DIVERGENCE_FRACTION,
+  ALIGN_BLOCK_MAX_D, ALIGN_BLOCK_WRITES, ALIGN_GLOBAL_MAX_D, ALIGN_WORK_BUDGET, DEFAULT_TOLERANCE_MS, DIGI_MIN_WRITES, DIGI_RETIMED_MAX_DRIFT_CYCLES, DIGI_WINDOW_CYCLES, LATE_DIVERGENCE_FRACTION,
   MAX_ALIGNABLE_OFFSET_CYCLES, MAX_INIT_WRITES, MIN_SIMILAR_MUSIC, NEAR_EQUAL_COUNT_RATIO, NTSC_CLOCK_HZ, PAL_CLOCK_HZ, TEMPO_DRIFT_MS,
 } from "./trace-core.js";
 
@@ -33,11 +33,13 @@ export function frozenOptions(): Record<string, unknown> {
   return {
     toleranceMs: DEFAULT_TOLERANCE_MS, gamma: DEFAULT_GAMMA, tempoDriftMs: TEMPO_DRIFT_MS, maxAlignableOffsetCycles: MAX_ALIGNABLE_OFFSET_CYCLES, maxInitWrites: MAX_INIT_WRITES,
     lateDivergenceFraction: LATE_DIVERGENCE_FRACTION, nearEqualCountRatio: NEAR_EQUAL_COUNT_RATIO, minSimilarMusic: MIN_SIMILAR_MUSIC,
-    digi: { windowCycles: DIGI_WINDOW_CYCLES, minWrites: DIGI_MIN_WRITES }, clocks: { PAL: PAL_CLOCK_HZ, NTSC: NTSC_CLOCK_HZ },
+    digi: { windowCycles: DIGI_WINDOW_CYCLES, minWrites: DIGI_MIN_WRITES, retimedMaxDriftCycles: DIGI_RETIMED_MAX_DRIFT_CYCLES }, clocks: { PAL: PAL_CLOCK_HZ, NTSC: NTSC_CLOCK_HZ },
     alignment: { globalMaxD: ALIGN_GLOBAL_MAX_D, blockMaxD: ALIGN_BLOCK_MAX_D, blockWrites: ALIGN_BLOCK_WRITES, workBudget: ALIGN_WORK_BUDGET },
-    severity: { windowFrames: WINDOW_FRAMES, fftSize: FFT_SIZE, quiet: QUIET, bandRatio: BAND_RATIO, deadZoneDb: DEAD_ZONE_DB, saturationDb: SATURATION_DB, noPlaybackQ: NO_PLAYBACK_Q },
+    severity: { windowFrames: WINDOW_FRAMES, fftSize: FFT_SIZE, quiet: QUIET, bandRatio: BAND_RATIO, deadZoneDb: DEAD_ZONE_DB, bandActiveDb: BAND_ACTIVE_DB, saturationDb: SATURATION_DB, noPlaybackQ: NO_PLAYBACK_Q },
     consumer: { recommendedMinGrade: RECOMMENDED_MIN_GRADE, listCeiling: CONSUMER_LIST_CEILING },
-    nativeProfile: { sampleRate: 48000, powerOnDelay: 8191, pullEvents: 256, lanes: ["none=mask0", "kernal+basic=mask3"], reference: "mask7", chargenUnreadShortcut: true },
+    nativeProfile: { sampleRate: 48000, powerOnDelay: 8191, pullEvents: 256, lanes: ["none=mask0", "kernal+basic=mask3"], reference: "mask7",
+      chargenUnreadShortcut: "reference chargenReads === 0 and no reference error other than a diagnosed CPU halt" },
+    driftAlignment: "class B/I lanes not decided by the trace: variant window w read at round(d_w * 48000 / clockHz) frames, d_w = variant - reference cycle of the last matched write at or before the window start (first write before it); zero outside produced PCM",
     horizonRule: "Songlengths.md5 duration + 5 s, minimum 10 s; 300 s when the length is absent (scripts/rom-audit/methodology.ts observationHorizon)",
   };
 }

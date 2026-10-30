@@ -25,7 +25,8 @@ export function nativePaths(): NativePaths {
   return {
     roms: path.join(root, "roms"), hvsc: path.join(root, "hvsc/C64Music"),
     renderer: { residfp: path.join(root, "rom-audit-screen-residfp/render"), sidlite: path.join(root, "rom-audit-screen-sidlite/render") },
-    output: path.join(root, "rom-grade-calibration"),
+    // ROM_GRADE_CALIBRATION_OUT: a separate calibration directory, e.g. to re-run the gates under a revised methodology
+    output: process.env.ROM_GRADE_CALIBRATION_OUT ? path.resolve(process.env.ROM_GRADE_CALIBRATION_OUT) : path.join(root, "rom-grade-calibration"),
   };
 }
 

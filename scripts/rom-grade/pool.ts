@@ -1,11 +1,13 @@
 /** Reusable, resumable grading pool: N worker processes, one subtune at a time each, so the JavaScript side
  * (PCM transfer, FFT, JSON) is parallel as well as the native renders.
  *
- *  - Checkpoint: append-only JSONL, one line per finished job keyed by "<sha256>#<song>"; the first line records the options and the
- *    methodology identity. On resume, finished keys are skipped; a checkpoint written with different options or identity is refused.
+ *  - Checkpoint: append-only JSONL, one line per finished job keyed by "<sha256>#<song>"; the first line records the options, the
+ *    methodology identity and (when given) the input binding, e.g. the HVSC corpus and Songlengths.md5 digests. On resume, finished keys are skipped; a checkpoint written with different options or identity is refused.
  *    A torn final line (the process was killed mid-write) is cut off before resuming.
  *  - Determinism: a job's output depends only on the job and options, never on scheduling; records returned in input order.
- *  - Fail fast: the first job error, failed validation or worker crash kills the pool and rejects (finished jobs stay in the checkpoint).
+ *  - Fail fast: the first job error, failed validation or worker crash stops the pool and rejects (finished jobs stay in the checkpoint).
+ *    Workers get SIGTERM first, so their handler (scripts/rom-audit/digital-screen.ts) kills the native renderers they started, and
+ *    SIGKILL only if they are still alive after STOP_GRACE_MS.
  *  - Scheduling: longest horizon first, so the tail of the run is made of short jobs.
  *  - Progress: callbacks every `progressEvery` completed jobs with done/total, CPU seconds and achieved parallel efficiency. */
 import { spawn, type ChildProcess } from "node:child_process";
@@ -26,6 +28,8 @@ export interface PoolConfig {
   label?: string;
   /** methodology identity recorded in the checkpoint header; resume refuses a different one */
   identity?: string;
+  /** input digests recorded in the checkpoint header (e.g. corpusId, songlengthsSha256); resume refuses different ones */
+  binding?: Record<string, string>;
   /** keep every record in memory and return it (default true; the full run streams instead) */
   keepRecords?: boolean;
   workerScript?: string;
@@ -35,6 +39,19 @@ export interface PoolConfig {
   onProgress?: (progress: PoolProgress) => void;
   /** a non-null return value fails the pool with that message */
   validate?: (record: PoolRecord) => string | null;
+}
+
+export const STOP_GRACE_MS = 3000;
+
+/** Terminate worker processes: SIGTERM now, SIGKILL for any still running after `graceMs`. Idempotent per child. */
+export function terminateChildren(children: readonly ChildProcess[], graceMs = STOP_GRACE_MS): void {
+  const alive = (c: ChildProcess): boolean => c.exitCode === null && c.signalCode === null;
+  const running = children.filter(alive);
+  if (!running.length) return;
+  for (const c of running) c.kill("SIGTERM");
+  const timer = setTimeout(() => { for (const c of running) if (alive(c)) c.kill("SIGKILL"); }, graceMs);
+  let pending = running.length;
+  for (const c of running) c.once("exit", () => { if (--pending === 0) clearTimeout(timer); });
 }
 
 const cpuOf = (record: PoolRecord): number => Object.values(record.grade.cpu).reduce((a, b) => a + b, 0) + record.jsCpuSeconds;
@@ -66,7 +83,7 @@ export function repairTail(file: string): number {
 export async function runPool(jobs: Array<GradeJob & { sha256: string }>, options: GradeOptions, config: PoolConfig): Promise<{ records: PoolRecord[]; stats: PoolStats }> {
   const { checkpoint, workers = 18, label = "grade", keepRecords = true, progressEvery = 5 } = config;
   mkdirSync(path.dirname(checkpoint), { recursive: true });
-  const header = JSON.stringify({ options, identity: config.identity ?? null });
+  const header = JSON.stringify(config.binding ? { options, identity: config.identity ?? null, binding: config.binding } : { options, identity: config.identity ?? null });
   const keys = new Set(jobs.map(jobKey));
   if (keys.size !== jobs.length) throw new Error("Duplicate job keys");
   const done = new Map<string, PoolRecord>(), doneKeys = new Set<string>();
@@ -103,7 +120,8 @@ export async function runPool(jobs: Array<GradeJob & { sha256: string }>, option
   let finished = 0, lastBucket = Math.floor(resumed / progressEvery);
   const children: ChildProcess[] = [];
   let failure: Error | null = null;
-  const stop = (): void => { for (const c of children) c.kill("SIGKILL"); };
+  let stopped = false;
+  const stop = (): void => { if (!stopped) { stopped = true; terminateChildren(children); } };
   const bunPath = process.execPath, worker = config.workerScript ?? path.join(import.meta.dir, "grade-worker.ts");
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(workers, todo.length) }, () => new Promise<void>((resolve, reject) => {

@@ -5,21 +5,24 @@
  *
  * Flow per engine: trace the reference (mask 7) and the "none" (mask 0) and "kernal+basic"
  * (mask 3) lanes digitally; derive trace features and the class; grade 255/254 from the trace
- * alone when it proves them; otherwise render audio and grade from the severity. CHARGEN readers
- * are not special-cased: a KERNAL+BASIC lane of a program that never reads CHARGEN is identical
- * to the reference by construction (the audit's rule), unless --no-shortcuts. */
+ * alone when it proves them; otherwise render audio and grade from the severity. A lane whose trace
+ * proves the same notes in the same order (class B or I) but not the grade is compared drift-aligned:
+ * each audio window is read at the trace-measured re-timing offset. CHARGEN readers are not
+ * special-cased: a KERNAL+BASIC lane of a program that never reads CHARGEN is identical to the
+ * reference by construction (the audit's rule), provided the reference ran to its end (no error
+ * other than a diagnosed CPU halt), unless --no-shortcuts. */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import type { RomAuditEngine } from "../../packages/sidflow-common/src/rom-eligibility.js";
 import { stringifyDeterministic, type JsonValue } from "../../packages/sidflow-common/src/json.js";
-import { nativeSeverity } from "./audio-severity.js";
+import { nativeSeverity, SAMPLE_RATE, type NativeSeverity } from "./audio-severity.js";
 import { DEFAULT_GAMMA, gradeFromQuality, type GradeBasis } from "./grade-core.js";
 import { nativePaths, traceLane, type RomMask, type TraceRun } from "./native.js";
 import { sidInfo, type SidInfo } from "./sid-info.js";
 import { qualityFromSummary, WINDOW_FRAMES, type SeveritySummary } from "./severity-core.js";
 import {
-  clockHzOf, computeTraceFeatures, toleranceCycles, traceGrade, DEFAULT_TOLERANCE_MS, type Trace, type TraceFeatures,
+  clockHzOf, computeTraceFeatures, driftAligned, driftOffsetFrames, toleranceCycles, traceGrade, DEFAULT_TOLERANCE_MS, type TraceFeatures,
 } from "./trace-core.js";
 
 export type LaneName = "none" | "kernal+basic";
@@ -40,7 +43,18 @@ export interface GradeOptions {
 export interface SeverityRecord {
   windows: number; analysed: number; skipped: number; mean: number; median: number; p95: number; max: number; aboveQuarter: number;
   q: number; firstBadWindowSeconds: number | null; producedSeconds: number; halted: boolean;
+  /** "trace-drift": the variant was read at the trace-measured per-window offsets; "lock-step" otherwise */
+  alignment: "lock-step" | "trace-drift";
+  /** smallest and largest variant read offset in seconds (drift-aligned lanes only) */
+  offsetRangeSeconds: [number, number] | null;
 }
+
+/** Native access, injectable for tests. */
+export interface GradeDeps {
+  traceLane: (engine: RomAuditEngine, bytes: Uint8Array, song: number, seconds: number, mask: RomMask) => Promise<TraceRun>;
+  measure: (engine: RomAuditEngine, bytes: Uint8Array, song: number, seconds: number, masks: number[], alignments: ReadonlyArray<Int32Array | null>) => Promise<NativeSeverity>;
+}
+export const NATIVE_DEPS: GradeDeps = { traceLane, measure: (engine, bytes, song, seconds, masks, alignments) => nativeSeverity(engine, bytes, song, seconds, masks, alignments) };
 export interface LaneGrade {
   grade: number | null;
   basis: GradeBasis;
@@ -72,8 +86,11 @@ export interface SubtuneGrade {
 
 const round6 = (value: number): number => Math.round(value * 1e6) / 1e6;
 
-function severityRecord(summary: SeveritySummary, produced: number, halted: boolean): SeverityRecord {
+function severityRecord(summary: SeveritySummary, produced: number, halted: boolean, offsets: Int32Array | null): SeverityRecord {
+  let lo = 0, hi = 0;
+  if (offsets) for (const o of offsets) { if (o < lo) lo = o; if (o > hi) hi = o; }
   return {
+    alignment: offsets ? "trace-drift" : "lock-step", offsetRangeSeconds: offsets ? [round6(lo / SAMPLE_RATE), round6(hi / SAMPLE_RATE)] : null,
     windows: summary.windows, analysed: summary.analysed, skipped: summary.skipped, mean: round6(summary.mean), median: round6(summary.median),
     p95: round6(summary.p95), max: round6(summary.max), aboveQuarter: summary.aboveQuarter, q: round6(summary.q),
     firstBadWindowSeconds: summary.firstBadWindow === null ? null : round6(summary.firstBadWindow * WINDOW_FRAMES / 48000),
@@ -86,41 +103,50 @@ function roundFeatures(f: TraceFeatures): TraceFeatures {
 }
 
 /** Grade one engine; `cpu` accumulates CPU seconds. */
-export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job: GradeJob, info: SidInfo, options: GradeOptions): Promise<{ result: EngineGrade; cpuSeconds: number }> {
+export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job: GradeJob, info: SidInfo, options: GradeOptions,
+  deps: GradeDeps = NATIVE_DEPS): Promise<{ result: EngineGrade; cpuSeconds: number }> {
   const toleranceMs = options.toleranceMs ?? DEFAULT_TOLERANCE_MS, gamma = options.gamma ?? DEFAULT_GAMMA;
   const clockHz = clockHzOf(info.clock), tolerance = toleranceCycles(clockHz, toleranceMs);
   let cpuSeconds = 0;
-  const reference = await traceLane(engine, bytes, job.song, job.seconds, 7);
+  const reference = await deps.traceLane(engine, bytes, job.song, job.seconds, 7);
   cpuSeconds += reference.cpuSeconds;
+  // The CHARGEN counter is evidence only when the reference ran to its end: no error, or a diagnosed CPU halt (a truncated trace
+  // buffer does not matter, the counter keeps counting).
+  const chargenUnread = reference.chargenReads === 0 && (!reference.trace.error || reference.trace.errorKind === "cpu-halt");
   const runs = new Map<LaneName, { run: TraceRun; shortcut: boolean }>();
   for (const lane of LANES) {
-    if (lane.mask === 3 && reference.chargenReads === 0 && !options.noShortcuts) { runs.set(lane.name, { run: reference, shortcut: true }); continue; }
-    const run = await traceLane(engine, bytes, job.song, job.seconds, lane.mask as RomMask);
+    if (lane.mask === 3 && chargenUnread && !options.noShortcuts) { runs.set(lane.name, { run: reference, shortcut: true }); continue; }
+    const run = await deps.traceLane(engine, bytes, job.song, job.seconds, lane.mask as RomMask);
     cpuSeconds += run.cpuSeconds;
     runs.set(lane.name, { run, shortcut: false });
   }
   const features = new Map<LaneName, TraceFeatures>();
   for (const lane of LANES) features.set(lane.name, computeTraceFeatures(reference.trace, runs.get(lane.name)!.run.trace, { clockHz, horizonSeconds: job.seconds, toleranceMs }));
-  // Which lanes need audio?
-  const needAudio: Array<{ name: LaneName; mask: number }> = [];
+  // Which lanes need audio, and which of them are compared drift-aligned?
+  const needAudio: Array<{ name: LaneName; mask: number; offsets: Int32Array | null }> = [];
+  const windows = Math.floor(Math.round(job.seconds * SAMPLE_RATE) / WINDOW_FRAMES);
   for (const lane of LANES) {
     if (runs.get(lane.name)!.shortcut) continue; // identical by construction, no render
     const f = features.get(lane.name)!;
     const decided = traceGrade(f, tolerance) ?? (f.cls === "G" && !options.noShortcuts ? 0 : null);
     const bitExact = f.cls === "A";
-    if (!bitExact && (decided === null || options.validateAudio)) needAudio.push({ name: lane.name, mask: lane.mask });
+    if (bitExact || (decided !== null && !options.validateAudio)) continue;
+    const offsets = driftAligned(f, tolerance)
+      ? driftOffsetFrames(reference.trace, runs.get(lane.name)!.run.trace, f.matchingValuePrefix, { clockHz, sampleRate: SAMPLE_RATE, windowFrames: WINDOW_FRAMES, windows })
+      : null;
+    needAudio.push({ name: lane.name, mask: lane.mask, offsets });
   }
   const audio = new Map<LaneName, SeverityRecord>();
   const audioGrades = new Map<LaneName, number>();
   let audioError: string | null = null;
   if (needAudio.length) {
     try {
-      const measured = await nativeSeverity(engine, bytes, job.song, job.seconds, needAudio.map(l => l.mask));
+      const measured = await deps.measure(engine, bytes, job.song, job.seconds, needAudio.map(l => l.mask), needAudio.map(l => l.offsets));
       cpuSeconds += measured.referenceCpuSeconds;
       measured.lanes.forEach((lane, i) => {
         const name = needAudio[i]!.name;
         cpuSeconds += lane.cpuSeconds;
-        audio.set(name, severityRecord(lane.summary, lane.producedSamples, lane.halted));
+        audio.set(name, severityRecord(lane.summary, lane.producedSamples, lane.halted, needAudio[i]!.offsets));
         audioGrades.set(name, gradeFromQuality(qualityFromSummary(lane.summary, gamma)));
       });
     } catch (error) {
@@ -151,14 +177,14 @@ export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job
   };
 }
 
-export async function gradeSubtune(job: GradeJob, options: GradeOptions = {}): Promise<SubtuneGrade> {
+export async function gradeSubtune(job: GradeJob, options: GradeOptions = {}, deps: GradeDeps = NATIVE_DEPS): Promise<SubtuneGrade> {
   const bytes = readFileSync(job.path);
   const info = sidInfo(bytes);
   const toleranceMs = options.toleranceMs ?? DEFAULT_TOLERANCE_MS, gamma = options.gamma ?? DEFAULT_GAMMA;
   const engines: Partial<Record<RomAuditEngine, EngineGrade>> = {};
   const cpu: Record<string, number> = {};
   const wanted = options.engines ?? ENGINES;
-  const results = await Promise.all(wanted.map(engine => gradeEngine(engine, bytes, job, info, options)));
+  const results = await Promise.all(wanted.map(engine => gradeEngine(engine, bytes, job, info, options, deps)));
   wanted.forEach((engine, i) => { engines[engine] = results[i]!.result; cpu[engine] = round6(results[i]!.cpuSeconds); });
   const relative = job.path.startsWith(nativePaths().hvsc) ? path.relative(nativePaths().hvsc, job.path) : job.path;
   return {

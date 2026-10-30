@@ -5,7 +5,9 @@
  * Environment: ROM_GRADE_WORKERS (pool size, default 18), ROM_GRADE_MAX_JOBS (deterministic hash-ordered subset for validation;
  * the run is then bounded and not publishable), ROM_GRADE_KEYS (a file of `<sha256>#<song>` keys, one per line: grade exactly
  * those subtunes, for example to re-grade a subset under a revised methodology and compare; also bounded and not publishable),
- * ROM_GRADE_PROGRESS_EVERY (default 1000).
+ * ROM_GRADE_PROGRESS_EVERY (default 1000), ROM_GRADE_VALIDATE_AUDIO=1 (with ROM_GRADE_KEYS only: also render audio for lanes the trace
+ * decided, recording their audio grade next to the trace grade; null-set qualification).
+ * The checkpoint header binds the methodology identity, the HVSC corpus identity and the Songlengths.md5 digest; resume refuses others.
  * Output directory: checkpoint.jsonl (append-only, resumable), progress.jsonl, scope.json, methodology.json, and on completion
  * grading-results.jsonl + research-export.jsonl.gz (see finalize.ts). */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -26,6 +28,8 @@ const maxJobs = process.env.ROM_GRADE_MAX_JOBS ? Number(process.env.ROM_GRADE_MA
 const keysFile = process.env.ROM_GRADE_KEYS || null;
 if (keysFile && maxJobs !== null) throw new Error("ROM_GRADE_KEYS and ROM_GRADE_MAX_JOBS are mutually exclusive");
 const bounded = maxJobs !== null || keysFile !== null;
+const validateAudio = process.env.ROM_GRADE_VALIDATE_AUDIO === "1";
+if (validateAudio && !keysFile) throw new Error("ROM_GRADE_VALIDATE_AUDIO requires ROM_GRADE_KEYS (qualification subsets only)");
 if (!Number.isSafeInteger(workers) || workers < 1 || (maxJobs !== null && (!Number.isSafeInteger(maxJobs) || maxJobs < 1))) throw new Error("Invalid ROM_GRADE_WORKERS or ROM_GRADE_MAX_JOBS");
 
 mkdirSync(out, { recursive: true });
@@ -58,8 +62,9 @@ writeFileSync(path.join(out, "scope.json"), stringifyDeterministic({ files: scop
 
 const accumulator = new Accumulator(totals);
 const progressFile = path.join(out, "progress.jsonl");
-const result = await runPool(selected, { validateAudio: false }, {
+const result = await runPool(selected, { validateAudio }, {
   checkpoint: path.join(out, "checkpoint.jsonl"), workers, label: "full", identity: identity.id, keepRecords: false, progressEvery,
+  binding: { corpusId: scope.corpusId, songlengthsSha256: scope.songlengthsSha256 },
   onRecord: record => accumulator.add(record),
   // A lane without a grade, or a failed audio render, is an error: the run stops and can be resumed after the cause is fixed.
   validate: record => {

@@ -14,13 +14,20 @@
  *   ramp(x) = clamp((x - DEAD_ZONE_DB) / (SATURATION_DB - DEAD_ZONE_DB), 0, 1),
  *   e_cb      = ramp(|L_R - L_Q|)        distance of the variant's band level from the reference,
  *   e_full_cb = ramp(L_R)                distance of silence (level 0) from the reference.
- * The active set U holds the (channel, band) pairs with R >= floor or Q >= floor.
+ * The active set U holds the (channel, band) pairs whose louder side clears the floor by a margin:
+ * max(L_R, L_Q) >= BAND_ACTIVE_DB. A window with an empty U is skipped like a quiet window.
  *   D_w = mean over U of e_cb, D_full = mean over U of e_full_cb, s_w = min(1, D_w / D_full).
  * Why band energies and not bin magnitudes (the listener-v1 form): bin magnitudes in the upper
  * bands are dominated by the resampler's aliasing products, whose per-bin realisation changes
  * with the sample phase; a 13-cycle shift of the same music then reads as 30-90% different.
  * Band energies average that out; the dead zone absorbs the residual few-dB band fluctuation,
  * which is far below what a listener can compare window by window.
+ * Why the margin: near the floor, the band energy of noise-like content (a noise or oscillator
+ * phase changed by a few cycles of re-timing) fluctuates by several dB between two renders of the
+ * same music, and the ratio to the small e_full of such a band saturates s_w (independent white
+ * noise scores about 0.2 at -50 dBFS and 1 at -55 dBFS without it). A band whose louder side is
+ * at least BAND_ACTIVE_DB (the ramp's saturation level) above the floor has e_full = 1 whenever the
+ * reference is the louder side, so a fluctuation of a few dB there stays a small fraction.
  * Each active band counts equally (log frequency), so a loud bass cannot hide a missing quiet
  * voice. A window is analysed only when either player has an AC RMS >= QUIET (-60 dBFS) on some
  * channel; otherwise it is skipped and does not count.
@@ -32,6 +39,8 @@ export const QUIET = 0.001;
 export const BAND_RATIO = 1.26;
 export const DEAD_ZONE_DB = 3;
 export const SATURATION_DB = 15;
+/** A (channel, band) pair is compared only when its louder side is at least this far above the band floor, dB. */
+export const BAND_ACTIVE_DB = 15;
 const ramp = (db: number): number => Math.min(1, Math.max(0, (db - DEAD_ZONE_DB) / (SATURATION_DB - DEAD_ZONE_DB)));
 const FLOOR_PER_BIN = QUIET * QUIET * FFT_SIZE * 3 / 8;
 
@@ -116,8 +125,8 @@ export function windowSeverityFromSpectra(ref: WindowSpectrum, variant: WindowSp
       let r = 0, q = 0;
       for (let i = start; i < end; i++) { r += x[i]! * x[i]!; q += y[i]! * y[i]!; }
       const floor = (end - start) * FLOOR_PER_BIN;
-      if (r < floor && q < floor) continue;
       const levelR = 10 * Math.log10(Math.max(r, floor) / floor), levelQ = 10 * Math.log10(Math.max(q, floor) / floor);
+      if (Math.max(levelR, levelQ) < BAND_ACTIVE_DB) continue;
       active++;
       distance += ramp(Math.abs(levelR - levelQ));
       full += ramp(levelR);

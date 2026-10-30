@@ -17,6 +17,9 @@ export const TEMPO_DRIFT_MS = 10;
 export const MAX_ALIGNABLE_OFFSET_CYCLES = 20000;
 /** Largest variant write count still considered "only initialisation writes" (SID init clears ~25 registers). */
 export const MAX_INIT_WRITES = 32;
+/** Largest drift (cycles, one PAL raster line) at which a digi-playback reference's identical-value variant is still proven
+ * re-timed (254) by the trace; above it, sample-timing jitter at 4-8 kHz sample rates may be audible and audio decides. */
+export const DIGI_RETIMED_MAX_DRIFT_CYCLES = 63;
 /** Fraction of the horizon that must replay identically for "late divergence" (class F). */
 export const LATE_DIVERGENCE_FRACTION = 0.5;
 /** Minimum min/max write-count ratio for "near-equal write count" (class D). */
@@ -154,17 +157,18 @@ export function alignWrites(reference: Trace, variant: Trace, offsetCycles: numb
   if (exactMiddle !== null) return { matched: p + s + exactMiddle, exact: true };
   // Time-synchronous block fallback (lower bound).
   const alignable = Math.abs(offsetCycles) <= MAX_ALIGNABLE_OFFSET_CYCLES ? offsetCycles : 0;
-  let matched = 0, exact = true, varPos = 0;
+  // A sum of per-block LCS lengths is a lower bound of the global LCS, never the exact value.
+  let matched = 0, varPos = 0;
   for (let start = 0; start < n; start += ALIGN_BLOCK_WRITES) {
     const end = Math.min(n, start + ALIGN_BLOCK_WRITES);
     const last = end === n;
     const varEnd = last ? m : Math.max(varPos, lowerBound(variant.cycle, reference.cycle[end]! + alignable, varPos));
     const aff = affixMatch(a, start, end, b, varPos, varEnd);
     const block = budget.steps > 0 ? lcsMyers(a, start, end, b, varPos, varEnd, ALIGN_BLOCK_MAX_D, budget) : null;
-    if (block === null) { matched += aff; exact = false; } else matched += block;
+    matched += block === null ? aff : block;
     varPos = varEnd;
   }
-  return { matched, exact };
+  return { matched, exact: false };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -275,12 +279,13 @@ export function bSubclassOf(maxDriftCycles: number, clockHz: number): BSubclass 
  *     or the trace buffer overflowed (no claim about the music is made from the trace; audio decides).
  *  A  bit-exact: identical (chip, address, value, cycle) sequence, same error text.
  *  G  no playback: the variant has at most MAX_INIT_WRITES writes, the reference at least 8 more.
- *  H  the variant (not the reference) stopped on an illegal instruction after more than init writes, within the first half of the
- *     horizon (a later jam falls through to the divergence rules, normally F).
+ *  H  the variant (not the reference) stopped on an illegal instruction, and its write values first diverge from the reference
+ *     within the first half of the horizon, or never (the trace has no halt time, so the first value divergence stands in for it:
+ *     a variant whose values match beyond half of the horizon falls through to the divergence rules, normally F).
  *  I  identical value prefix covering the whole shorter trace, |cumulative drift| > TEMPO_DRIFT_MS.
  *  B  identical value sequence and write count, only timing differs; subclass by max drift.
- *  C  the values are identical apart from a few extra or missing writes (trailing or interior): the alignment
- *     leaves at most max(8, 0.1% of the longer trace) writes unmatched.
+ *  C  the variant made more than MAX_INIT_WRITES writes and its values are identical apart from a few extra or missing writes
+ *     (trailing or interior): the alignment leaves at most max(8, 0.1% of the longer trace) writes unmatched.
  *  F  values diverge, but after more than 50% of the horizon.
  *  D  values diverge within 50% of the horizon, min/max write-count ratio >= 0.9 and alignment similarity >= 0.5.
  *  E  values diverge within 50% of the horizon and either the write counts differ by more than 10% or less than
@@ -303,7 +308,7 @@ export function classify(f: TraceFeatures): { cls: TraceClass; bSubclass: BSubcl
   if (f.valueSequenceIdentical) return { cls: "B", bSubclass: bSubclassOf(f.maxDriftCycles, f.clockHz), rule: "values-identical" };
   // Edit distance (insertions + deletions) implied by the alignment; with an inexact alignment this is an upper bound.
   const edits = n + m - 2 * f.alignedWrites;
-  if (edits <= Math.max(8, Math.ceil(0.001 * Math.max(n, m)))) return none("C", prefixFull ? "trailing-writes" : "few-extra-or-missing-writes");
+  if (m > MAX_INIT_WRITES && edits <= Math.max(8, Math.ceil(0.001 * Math.max(n, m)))) return none("C", prefixFull ? "trailing-writes" : "few-extra-or-missing-writes");
   const late = f.firstValueDivergenceSeconds !== null && f.firstValueDivergenceSeconds > LATE_DIVERGENCE_FRACTION * f.horizonSeconds;
   if (late) return none("F", "late-divergence");
   if (Math.min(n, m) / Math.max(n, m, 1) >= NEAR_EQUAL_COUNT_RATIO && f.alignmentSimilarity >= MIN_SIMILAR_MUSIC) return none("D", "value-divergence-near-equal-count");
@@ -311,10 +316,38 @@ export function classify(f: TraceFeatures): { cls: TraceClass; bSubclass: BSubcl
 }
 
 /** Whether the trace alone proves grade 255/254 at tolerance T (cycles). A variant that fails in
- * exactly the way the reference does (same error text) is as faithful as its trace. */
+ * exactly the way the reference does (same error text) is as faithful as its trace. For a digi-playback
+ * reference the re-timing proof is limited to DIGI_RETIMED_MAX_DRIFT_CYCLES. */
 export function traceGrade(f: TraceFeatures, toleranceCyclesValue: number): 255 | 254 | null {
   if (!f.traceComplete) return null;
   if (f.cls === "A") return 255;
-  if (f.cls === "B" && f.variantError === f.referenceError && f.maxDriftCycles <= toleranceCyclesValue) return 254;
+  if (f.cls === "B" && f.variantError === f.referenceError && f.maxDriftCycles <= toleranceCyclesValue && (!f.referenceDigi || f.maxDriftCycles <= DIGI_RETIMED_MAX_DRIFT_CYCLES)) return 254;
   return null;
+}
+
+/** Whether the lane's audio is compared drift-aligned: the trace proves the same notes in the same order (class B: identical
+ * value sequence and count; class I: identical value prefix covering the whole shorter trace), but does not decide the grade.
+ * Comparing such a variant in lock-step would read an accumulated re-timing as different music. */
+export function driftAligned(f: TraceFeatures, toleranceCyclesValue: number): boolean {
+  return (f.cls === "B" || f.cls === "I") && f.matchingValuePrefix > 0 && traceGrade(f, toleranceCyclesValue) === null;
+}
+
+export interface DriftOffsetOptions { clockHz: number; sampleRate: number; windowFrames: number; windows: number }
+
+/** Per-window variant read offset in frames for a drift-aligned comparison. For reference window w (reference frames
+ * [w*N, (w+1)*N)), d_w = variantCycle[k] - referenceCycle[k] for the last matched write k whose reference cycle is at or before the
+ * window's start cycle w*N*clockHz/sampleRate (the first write's offset before it; 0 without matched writes), and the variant is read
+ * from frame w*N + round(d_w * sampleRate / clockHz). Writes 0..pairs-1 must be matched (identical values) in both traces. */
+export function driftOffsetFrames(reference: Trace, variant: Trace, pairs: number, options: DriftOffsetOptions): Int32Array {
+  const { clockHz, sampleRate, windowFrames, windows } = options;
+  const out = new Int32Array(windows);
+  const count = Math.min(pairs, reference.cycle.length, variant.cycle.length);
+  if (count <= 0) return out;
+  let k = 0;
+  for (let w = 0; w < windows; w++) {
+    const startCycle = w * windowFrames * clockHz / sampleRate;
+    while (k + 1 < count && reference.cycle[k + 1]! <= startCycle) k++;
+    out[w] = Math.round((variant.cycle[k]! - reference.cycle[k]!) * sampleRate / clockHz);
+  }
+  return out;
 }

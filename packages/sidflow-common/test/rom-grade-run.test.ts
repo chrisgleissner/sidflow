@@ -3,7 +3,10 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { importClosure, frozenOptions } from "../../../scripts/rom-grade/methodology-id.js";
-import { jobKey, repairTail, runPool, type PoolRecord } from "../../../scripts/rom-grade/pool.js";
+import { jobKey, repairTail, runPool, terminateChildren, type PoolRecord } from "../../../scripts/rom-grade/pool.js";
+import { finalize } from "../../../scripts/rom-grade/finalize.js";
+import type { Scope } from "../../../scripts/rom-grade/full-scope.js";
+import { spawn } from "node:child_process";
 import { Accumulator, anomalies, bucketOf, totalsOf } from "../../../scripts/rom-grade/summary.js";
 import type { SubtuneGrade } from "../../../scripts/rom-grade/grade.js";
 
@@ -56,6 +59,27 @@ describe("pool", () => {
     await runPool(jobs.slice(0, 3), {}, { checkpoint, workers: 1, workerScript: worker, identity: "a".repeat(64) });
     await expect(runPool(jobs, {}, { checkpoint, workers: 1, workerScript: worker, identity: "b".repeat(64) })).rejects.toThrow("different options or methodology identity");
     await expect(runPool(jobs, { validateAudio: true }, { checkpoint, workers: 1, workerScript: worker, identity: "a".repeat(64) })).rejects.toThrow("different options");
+  });
+  it("refuses to resume with a different input binding (corpus or Songlengths.md5 digest)", async () => {
+    const checkpoint = path.join(scratch(), "c.jsonl");
+    const binding = { corpusId: "c".repeat(64), songlengthsSha256: "1".repeat(64) };
+    await runPool(jobs.slice(0, 2), {}, { checkpoint, workers: 1, workerScript: worker, identity: "a".repeat(64), binding });
+    await expect(runPool(jobs, {}, { checkpoint, workers: 1, workerScript: worker, identity: "a".repeat(64), binding: { ...binding, songlengthsSha256: "2".repeat(64) } }))
+      .rejects.toThrow("different options or methodology identity");
+    const resumed = await runPool(jobs, {}, { checkpoint, workers: 1, workerScript: worker, identity: "a".repeat(64), binding });
+    expect(resumed.stats.resumed).toBe(2);
+  });
+  it("stops workers with SIGTERM first and SIGKILL only after the grace period", async () => {
+    const polite = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    const stubborn = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000)"], { stdio: ["ignore", "pipe", "ignore"] });
+    await new Promise<void>(resolve => stubborn.stdout!.once("data", () => resolve()));
+    const exited = (c: typeof polite) => new Promise<string | null>(resolve => c.once("exit", (_code, signal) => resolve(signal)));
+    const [a, b] = [exited(polite), exited(stubborn)];
+    const started = performance.now();
+    terminateChildren([polite, stubborn], 300);
+    expect(await a).toBe("SIGTERM");
+    expect(await b).toBe("SIGKILL");
+    expect(performance.now() - started).toBeGreaterThanOrEqual(250);
   });
   it("cuts a torn final line before resuming", async () => {
     const checkpoint = path.join(scratch(), "c.jsonl");
@@ -129,5 +153,69 @@ describe("methodology identity inputs", () => {
     expect(frozen.toleranceMs).toBe(2);
     expect(frozen.gamma).toBe(1);
     expect(frozen.consumer).toEqual({ recommendedMinGrade: 128, listCeiling: 191 });
+  });
+});
+
+describe("finalize", () => {
+  const identity = { id: "d".repeat(64), binaries: { residfp: "r", sidlite: "s" } };
+  const sha = (i: number): string => (i + 1).toString(16).padStart(64, "0");
+  const scope: Scope = {
+    jobs: [{ path: "/h/a.sid", song: 1, seconds: 40, sha256: sha(0), md5: "a".repeat(32), kind: "PSID" }, { path: "/h/a.sid", song: 2, seconds: 25, sha256: sha(0), md5: "a".repeat(32), kind: "PSID" },
+      { path: "/h/b.sid", song: 1, seconds: 300, sha256: sha(1), md5: "b".repeat(32), kind: "RSID" }],
+    files: 2, subtunes: 3, corpusId: "c".repeat(64), songlengthsSha256: "5".repeat(64),
+  };
+  const lane = (grade: number | null) => ({ grade, basis: "audio", traceClass: "D", bSubclass: null, rule: "r", features: {}, severity: null, audioGrade: grade, audioError: null });
+  const record = (job: { sha256: string; song: number; seconds: number }, grades: Array<number | null> = [254, 255, 254, 255]): PoolRecord => ({
+    key: jobKey(job), jsCpuSeconds: 1, wallSeconds: 1, grade: {
+      path: "p", song: job.song, seconds: job.seconds, sha256: job.sha256, info: { kind: "PSID" }, cpu: {},
+      engines: { sidlite: { lanes: { none: lane(grades[0]!), "kernal+basic": lane(grades[1]!) } }, residfp: { lanes: { none: lane(grades[2]!), "kernal+basic": lane(grades[3]!) } } },
+    } as unknown as SubtuneGrade,
+  });
+  const header = { options: { validateAudio: false }, identity: identity.id, binding: { corpusId: scope.corpusId, songlengthsSha256: scope.songlengthsSha256 } };
+  function setup(records: PoolRecord[], overrides: { header?: Record<string, unknown>; sidecar?: Record<string, unknown> } = {}): string {
+    const out = scratch();
+    writeFileSync(path.join(out, "scope.json"), JSON.stringify({ corpusId: scope.corpusId, songlengthsSha256: scope.songlengthsSha256, maxJobs: null, ...overrides.sidecar }));
+    writeFileSync(path.join(out, "checkpoint.jsonl"), [JSON.stringify({ ...header, ...overrides.header }), ...records.map(r => JSON.stringify(r))].join("\n") + "\n");
+    return out;
+  }
+  const all = (): PoolRecord[] => scope.jobs.map(j => record(j));
+  const run = (out: string, options = { allowPartial: false, declareScope: false }) => finalize(out, options, { identity, scope });
+  it("writes the results for a complete, consistent checkpoint", async () => {
+    const out = setup(all());
+    const result = await run(out);
+    expect(result).toMatchObject({ rows: 3, complete: true });
+    const lines = readFileSync(result.resultsFile, "utf8").trim().split("\n").map(l => JSON.parse(l) as Record<string, unknown>);
+    expect(lines[0]).toMatchObject({ record: "header", methodologyId: identity.id, songlengthsSha256: scope.songlengthsSha256, subtunes: 3 });
+    expect(lines.slice(1).map(l => [l.md5, l.song])).toEqual([["a".repeat(32), 1], ["a".repeat(32), 2], ["b".repeat(32), 1]]);
+  });
+  it("refuses another methodology identity", async () => {
+    await expect(run(setup(all(), { header: { identity: "e".repeat(64) } }))).rejects.toThrow("methodology");
+  });
+  it("refuses another Songlengths.md5, in scope.json or in the checkpoint header", async () => {
+    await expect(run(setup(all(), { sidecar: { songlengthsSha256: "6".repeat(64) } }))).rejects.toThrow("Songlengths");
+    await expect(run(setup(all(), { sidecar: { songlengthsSha256: undefined } }))).rejects.toThrow("Songlengths");
+    await expect(run(setup(all(), { header: { binding: { corpusId: scope.corpusId, songlengthsSha256: "6".repeat(64) } } }))).rejects.toThrow("Songlengths");
+    await expect(run(setup(all(), { header: { binding: undefined } }))).rejects.toThrow("Songlengths");
+  });
+  it("refuses a record graded over another horizon than its scope job", async () => {
+    const records = all();
+    records[1] = record({ ...scope.jobs[1]!, seconds: 30 });
+    await expect(run(setup(records))).rejects.toThrow("graded over 30 s");
+  });
+  it("refuses a record outside the scope, a duplicate and an unmeasured lane", async () => {
+    await expect(run(setup([...all(), record({ sha256: sha(0), song: 3, seconds: 40 })]))).rejects.toThrow("not in the HVSC scope");
+    await expect(run(setup([...all(), record({ sha256: sha(7), song: 1, seconds: 40 })]))).rejects.toThrow("not in the HVSC scope");
+    await expect(run(setup([...all(), record(scope.jobs[0]!)]))).rejects.toThrow("Duplicate");
+    const unmeasured = all();
+    unmeasured[2] = record(scope.jobs[2]!, [254, 255, null, 255]);
+    await expect(run(setup(unmeasured))).rejects.toThrow("Unmeasured lane residfpNone");
+  });
+  it("refuses an incomplete checkpoint unless a partial or declared scope is asked for", async () => {
+    await expect(run(setup(all().slice(0, 2)))).rejects.toThrow("Grading incomplete: 2 of 3");
+    const partial = await run(setup(all().slice(0, 2)), { allowPartial: true, declareScope: false });
+    expect(partial).toMatchObject({ rows: 2, complete: false });
+    const header = JSON.parse(readFileSync(partial.resultsFile, "utf8").split("\n")[0]!) as { subtunes: number; profile: { scope: string } };
+    expect(header.subtunes).toBe(3);
+    expect(header.profile.scope).toBe("partial");
   });
 });
