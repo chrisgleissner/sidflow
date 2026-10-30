@@ -654,6 +654,11 @@ near-perfect grades of 250 to 253. With the release ceiling of 191 (`Q >= 0.5`) 
 subtunes are listed, which is about 40 KiB. Lowering the ceiling shrinks the file, raising it grows
 it; the full per-subtune grades stay available in the separately published grading results.
 
+Measured (HVSC #85 release list): 696 files and 1,556 subtunes are listed, 224 + 17 * 696 + 5 * 1,556 =
+19,836 bytes (19.4 KiB), about half the design estimate, because the real data clusters listed subtunes
+in fewer files than the estimate assumed. See
+[hvsc-rom-grading-results.md](research/hvsc-rom-grading-results.md).
+
 Test coverage at scale: a synthetic grading of 61,157 files and about 80,000 subtunes with a 3 %
 listed share, spread uniformly over files, generates and verifies in well under a second
 (ceiling 191: 2,121 files, 2,152 subtunes, 47,041 bytes; real data clusters subtunes in fewer files).
@@ -746,5 +751,5 @@ sidromdep-1:
 - has no "unknown" value; unmeasured lanes are refused (or, in developer output, excluded and flagged)
 - carries SHA-256 provenance for the grading results, `Songlengths.md5`, the corpus and the grading
   methodology, plus the generator's recommended skip threshold
-- is exactly `224 + 17 * files + 5 * subtunes` bytes; about 40 KiB for the expected corpus
+- is exactly `224 + 17 * files + 5 * subtunes` bytes; 19,836 bytes for HVSC #85 (696 files, 1,556 subtunes)
 - is generated only from complete grading results and verified by an exhaustive round trip

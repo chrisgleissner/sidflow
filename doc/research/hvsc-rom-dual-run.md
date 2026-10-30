@@ -167,7 +167,7 @@ Commander's generator after a complete qualified census.
 For applications that embed the result (for example the C64 Commander APK), complete
 ROM fidelity grades (one byte per subtune and engine/ROM lane; see
 [hvsc-rom-fidelity-grading.md](hvsc-rom-fidelity-grading.md)) are condensed into the
-allow-by-default **SID ROM Dependency List** (`sidromdep-1`, about 40 KiB): full-MD5
+allow-by-default **SID ROM Dependency List** (`sidromdep-1`; 19,836 bytes for HVSC #85, committed as `data/exports/hvsc85-sidromdep-1.bin`): full-MD5
 keyed records of the subtunes with a lane graded at or below the listing ceiling (191 in the release), no inventory and no
 horizon table. The generator refuses incomplete grading results, and the verifier
 round-trips every graded subtune (every unlisted subtune must have all four lanes above the
