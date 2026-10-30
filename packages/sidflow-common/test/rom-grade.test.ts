@@ -213,7 +213,7 @@ describe("alignment similarity", () => {
     expect(result.matched).toBeGreaterThan(n - 200);
     expect(result.matched).toBeLessThanOrEqual(n - 99);
     expect(elapsed).toBeLessThan(10000);
-  });
+  }, 20_000); // the 10 s bound above is the check, not bun's 5 s default
   it("total divergence of two million writes returns a bounded lower bound quickly", () => {
     const n = 2_000_000, a = symbols(n, 1);
     const b = symbols(n, 2);
@@ -225,7 +225,7 @@ describe("alignment similarity", () => {
     expect(result.matched).toBeGreaterThanOrEqual(n / 2);
     expect(result.matched / n).toBeLessThan(0.75);
     expect(elapsed).toBeLessThan(20000);
-  });
+  }, 30_000); // the 20 s bound above is the check; bun's 5 s default would fail a loaded machine first
 });
 
 describe("window severity", () => {
