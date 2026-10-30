@@ -25,6 +25,7 @@ import {
   type RomDepGrades,
 } from "../src/rom-dependency-list.js";
 import { romSetId } from "../src/rom-eligibility.js";
+import { stringifyDeterministic } from "../src/json.js";
 import { GRADING_RESULTS_SCHEMA, deriveEntries, loadGradingResults, parseGradingResults } from "../../../scripts/rom-dependency-list/grading.js";
 import { generateRomDependencyList, outputNames } from "../../../scripts/rom-dependency-list/generate.js";
 import { roundTripAgainstResults, verifyRomDependencyListFiles } from "../../../scripts/rom-dependency-list/verify.js";
@@ -108,9 +109,14 @@ describe("codec", () => {
     expect(list.lookup("7f" + "01".repeat(15), 257).listed).toBe(false);
     expect(() => list.lookup("xyz", 1)).toThrow(RomDependencyListError);
     // consumer thresholds: skip when grade < threshold; unlisted is never skipped for thresholds <= 254
-    expect(romDepBelowThreshold(hit, "sidliteNone", 128)).toBe(true);
-    expect(romDepBelowThreshold(hit, "residfpNone", 120)).toBe(false);
-    expect(romDepBelowThreshold(miss, "sidliteNone", 254)).toBe(false);
+    expect(romDepBelowThreshold(list, hit, "sidliteNone", 128)).toBe(true);
+    expect(romDepBelowThreshold(list, hit, "residfpNone", 120)).toBe(false);
+    expect(romDepBelowThreshold(list, miss, "sidliteNone", 254)).toBe(false);
+    // the list cannot honour a threshold above ceiling + 1: refusing beats skipping every unlisted tune
+    expect(() => romDepBelowThreshold(list, miss, "sidliteNone", 255)).toThrow(/outside 1\.\.254/);
+    expect(() => romDepBelowThreshold(list, miss, "sidliteNone", 0)).toThrow(RomDependencyListError);
+    // hex MD5 input is case-insensitive
+    expect(list.lookup(("00" + "ab".repeat(15)).toUpperCase(), 1)).toEqual(hit);
   });
 
   test("encoding is size-exact: 224 + 17 per file + 5 per decision", () => {
@@ -455,6 +461,27 @@ describe("generator and verifier", () => {
     // same bytes, grade changed in a way that keeps the header consistent: caught by the digest of the results
     const edited = await writeResults({ mutateRows: (rows) => rows.map((r, i) => (i === 1 ? { ...r, grades: A(7, 255, 255, 255) } : r)) });
     await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: edited.results })).rejects.toThrow(/results digest differs/);
+  });
+
+  test("the verifier rejects a manifest whose evidence fields were edited", async () => {
+    const input = await writeResults();
+    const run = await generateRomDependencyList({ resultsPath: input.results, songlengthsPath: input.songlengthsPath, listingCeiling: 253, recommendedMinGrade: 100, outDir: path.join(root, "out-manifest-tamper") });
+    const original = await readFile(run.manifestPath, "utf8");
+    const edits: ((m: Record<string, any>) => void)[] = [
+      (m) => { m.measuredProfile.referenceRoms.kernal = "0".repeat(64); },
+      (m) => { m.measuredProfile.romSetId = "0".repeat(64); },
+      (m) => { m.status = "bogus"; },
+      (m) => { m.counts.subtunesBelowRecommended += 1; },
+      (m) => { m.counts.perLane.sidliteNone.bands["0"] += 1; },
+    ];
+    for (const edit of edits) {
+      const manifest = JSON.parse(original) as Record<string, any>;
+      edit(manifest);
+      await writeFile(run.manifestPath, stringifyDeterministic(manifest));
+      await expect(verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results })).rejects.toThrow(/manifest differs from the manifest regenerated/);
+    }
+    await writeFile(run.manifestPath, original);
+    await verifyRomDependencyListFiles({ binPath: run.binPath, resultsPath: input.results });
   });
 
   test("generation refuses bad thresholds, wrong Songlengths and incomplete results", async () => {

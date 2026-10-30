@@ -20,8 +20,11 @@ It is intended for weak-device runtimes (for example an Android APK that embeds 
 any other project that plays SID files with an engine that is not given KERNAL, BASIC and CHARGEN.
 
 The list is **allow-by-default**. A file or subtune that is not listed is playable: every lane of
-an unlisted subtune graded above the list's **listing ceiling** (the shipped release uses 191, i.e.
-`Q >= 0.5`: only playback that is mostly wrong is listed). Only listed records can change behaviour.
+an unlisted subtune is graded above the list's **listing ceiling** `C`. The shipped release uses
+`C = 191` (audio quality `Q` of about 0.76 or better): every subtune with a clearly measurable
+difference in some lane is listed, together with its exact grades. Which of those a consumer skips
+is a separate choice, its **skip threshold** (§10.1); the release recommends 128 (`Q >= 0.5`), which
+skips only playback that is mostly wrong. Only listed records can change behaviour.
 The list is therefore a deny/warn list, not an inventory and not a compatibility certificate.
 
 Non-goals:
@@ -83,9 +86,12 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 - `scripts/rom-dependency-list/verify.ts`
 - `doc/research/hvsc-rom-fidelity-grading.md` (definition, calibration and gates of the grade)
 
-Where this document and the source code disagree, the source code is authoritative and this
-document is wrong. Anyone who needs only to **read** a list needs nothing but this document: §5 to
-§10 are self-contained.
+The binary format (§5 to §8) and the consumer rules (§10) are normative: an implementation that
+disagrees with them is defective. Anyone who needs only to **read** a list needs nothing but this
+document, and an independent generator can reproduce the binary byte for byte from it. The
+manifest (§11) is deterministic but its exact bytes depend on the reference generator's
+serialisation and descriptive strings; independent tooling verifies a list against the manifest's
+fields, not by regenerating the manifest.
 
 ## 3.2 Grading results input
 
@@ -292,6 +298,9 @@ To look up `(md5, subtune)`:
 3. Scan that file's decisions for `subtune`. Absent: **unlisted**.
 4. Otherwise read the four grade bytes.
 
+A key given as hex text is compared case-insensitively. Text that is not 32 hex digits is a caller
+error, not a lookup result; a consumer that cannot compute a file's MD5 treats the file as unlisted.
+
 An unlisted subtune has, for every lane, a grade **above `C`**; the list does not say which, and
 a consumer MUST NOT assume a value. Reference implementations report `C + 1` for every lane of an
 unlisted subtune, as a lower bound.
@@ -314,7 +323,7 @@ list.lookup(md5: string | Uint8Array, subtune: number): {
   grades: Record<"sidliteNone" | "sidliteKernalBasic" | "residfpNone" | "residfpKernalBasic", number>;
   minGrade: number;                    // listing_ceiling + 1 when unlisted (lower bound)
 }
-romDepBelowThreshold(lookup, lane, threshold): boolean   // grade < threshold
+romDepBelowThreshold(list, lookup, lane, threshold): boolean   // grade < threshold; throws unless 1 <= threshold <= C + 1
 ```
 
 ---
@@ -412,9 +421,14 @@ release; this list cannot express them.
 | Grade `G` of the consumer's lane | Autoplay / radio / queue | Explicit user selection |
 |--|--|--|
 | `G < t` (including 0) | MUST skip | MUST warn before playing; MAY allow after confirmation |
-| `t <= G <= C` (listed) | MAY play | MAY play; MAY show a fidelity notice |
-| unlisted (`G > C`) | MAY play | MAY play |
+| `t <= G <= C` | MAY play | MAY play; MAY show a fidelity notice |
+| `G > C` (unlisted, or listed for another lane only) | MAY play | MAY play; MUST NOT show a fidelity notice |
 | consumer runs the reference ROM set | MUST NOT skip because of the list | MUST NOT warn because of the list |
+
+The rows are keyed on the grade of the consumer's own lane, never on whether the subtune is listed.
+A record is listed because *some* lane is at most `C`; its other lanes are often 254 or 255. For
+example, almost every listed subtune is graded 255 in both KERNAL+BASIC lanes, so a consumer that
+supplies KERNAL and BASIC plays it with no notice.
 
 Additional obligations:
 
@@ -453,9 +467,9 @@ yields identical bytes. Top-level fields:
 | `semantics` | the allow-by-default rule in one sentence |
 | `lanes` | the lane order of §5.5 |
 | `listingCeiling`, `recommendedMinGrade` | the thresholds of the header |
-| `counts` | `listedFiles`, `listedSubtunes`, `subtunesBelowRecommended` (any lane below `recommendedMinGrade`), `excludedUnmeasuredSubtunes`, `sourceFiles`, `sourceSubtunes`, and per lane `{belowRecommended, bands}` where `bands` counts listed grades in `0`, `1-63`, `64-127`, `128-191`, `192-253` (listed grades are at most `listingCeiling`) |
+| `counts` | `listedFiles`, `listedSubtunes`, `subtunesBelowRecommended` (any lane below `recommendedMinGrade`), `excludedUnmeasuredSubtunes`, `sourceFiles`, `sourceSubtunes`, and per lane `{belowRecommended, bands}` where `bands` counts listed grades in `0`, `1-63`, `64-127`, `128-191`, `192-253`. A listed record has at least one lane at most `listingCeiling`; its other lanes may be higher, and grades 254 and 255 fall in no band |
 | `binary` | `file`, `bytes`, `sha256`, `payloadSha256`, record sizes and the two sections' `{offset, bytes}` |
-| `humanReadable` | `file` and `sha256` of the optional JSON view (§12) |
+| `humanReadable` | `file` and `sha256` of the optional JSON view (§12), which is published with the release but need not accompany an embedded copy |
 | `provenance` | `sourceSha256`, `songlengthsSha256`, `corpusId`, `gradingMethodologySha256` |
 | `measuredProfile` | `gradingDesign`, reference and configuration descriptions, `referenceRoms`, `romSetId`, `observationHorizon` (rule and constants), `songlengthsFileVerified`, and `sourceProfile` (verbatim from the grading input) |
 
@@ -647,12 +661,12 @@ bytes = 224 + 17 * listed_files + 5 * listed_subtunes
 | 1,600 | 2,700 | 40,924 | 40.0 |
 | 3,000 | 5,000 | 76,224 | 74.4 |
 
-The design target is about 40 KiB. Each additional listed file adds 17 bytes and each additional
-listed subtune 5 bytes. The listing ceiling is what bounds the count of listed subtunes: the
-calibration showed that ceiling 253 would list about 7 % of HVSC (about 90 KiB), mostly
-near-perfect grades of 250 to 253. With the release ceiling of 191 (`Q >= 0.5`) about 2 % of the
-subtunes are listed, which is about 40 KiB. Lowering the ceiling shrinks the file, raising it grows
-it; the full per-subtune grades stay available in the separately published grading results.
+The design target was at most about 40 KiB. Each additional listed file adds 17 bytes and each
+additional listed subtune 5 bytes. The listing ceiling is what bounds the count of listed subtunes.
+On the HVSC #85 grades, ceiling 253 would list 4,618 subtunes (5.3 %) in 3,252 files, 78,598 bytes,
+most of them near-perfect grades of 250 to 253; the release ceiling of 191 lists 1.8 %. Lowering the
+ceiling shrinks the file, raising it grows it; the full per-subtune grades stay available in the
+separately published grading results.
 
 Measured (HVSC #85 release list): 696 files and 1,556 subtunes are listed, 224 + 17 * 696 + 5 * 1,556 =
 19,836 bytes (19.4 KiB), about half the design estimate, because the real data clusters listed subtunes
@@ -687,8 +701,9 @@ requires a record; 253 is the largest value that denotes a measured, graded diff
 upper bound of the ceiling. Listing exactly the subtunes with some lane at most `C` gives the
 invariant "unlisted implies every lane above `C`" with no extra table. The ceiling is a generator
 parameter rather than a constant because the calibration showed that listing every difference
-(`C = 253`) would add thousands of near-perfect 250 to 253 grades that no consumer wants to skip
-and would double the size; the release picks `C = 191` and publishes the full grades separately.
+(`C = 253`) would add about 3,000 near-perfect 250 to 253 grades that no consumer wants to skip and would make
+the HVSC #85 list four times larger (78,598 instead of 19,836 bytes); the release picks `C = 191`
+and publishes the full grades separately.
 One byte per lane keeps a decision at 5 bytes. No value is reserved
 for "unknown": an unmeasured lane is not a fidelity statement, so it cannot be a grade and the
 generator refuses it (§13.2).

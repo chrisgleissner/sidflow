@@ -5,6 +5,7 @@
  *
  *   bun scripts/rom-dependency-list/generate.ts \
  *     --results workspace/rom-grading/grading-results.jsonl \
+ *     --listing-ceiling 191 \
  *     --recommended-min-grade 128 \
  *     --songlengths workspace/hvsc/C64Music/DOCUMENTS/Songlengths.md5 \
  *     --out workspace/rom-dependency-list
@@ -64,12 +65,12 @@ export function outputNames(hvscRelease: number): { bin: string; manifest: strin
   return { bin: `${base}.bin`, manifest: `${base}.manifest.json`, json: `${base}.json` };
 }
 
-const asJson = (value: unknown): string => stringifyDeterministic(value as JsonValue);
+export const asJson = (value: unknown): string => stringifyDeterministic(value as JsonValue);
 
 /** Check the supplied Songlengths.md5 against the digest the grading pinned; return md5 -> HVSC path. */
-export function songlengthsPaths(input: GradingInput, text: string): Map<string, string> {
-  if (sha256Hex(text) !== input.header.songlengthsSha256) throw new Error("Songlengths.md5 does not match the digest pinned in the grading results");
-  return new Map([...parseSonglengthsMd5(text)].map(([md5, record]) => [md5, record.path]));
+export function songlengthsPaths(input: GradingInput, bytes: Uint8Array): Map<string, string> {
+  if (sha256Hex(bytes) !== input.header.songlengthsSha256) throw new Error("Songlengths.md5 does not match the digest pinned in the grading results");
+  return new Map([...parseSonglengthsMd5(Buffer.from(bytes).toString("utf8"))].map(([md5, record]) => [md5, record.path]));
 }
 
 /** Deterministic human-readable view: release asset only, never consumed by the runtime. */
@@ -167,7 +168,7 @@ async function writeAtomic(target: string, bytes: Uint8Array | string): Promise<
 
 export async function generateRomDependencyList(options: GenerateOptions): Promise<GenerateResult> {
   const input = await loadGradingResults(options.resultsPath, { allowIncomplete: options.allowIncomplete === true });
-  const paths = options.songlengthsPath ? songlengthsPaths(input, await readFile(options.songlengthsPath, "utf8")) : undefined;
+  const paths = options.songlengthsPath ? songlengthsPaths(input, new Uint8Array(await readFile(options.songlengthsPath))) : undefined;
   const entries = deriveEntries(input, options.listingCeiling);
   const bin = encodeRomDependencyList({
     hvscRelease: input.header.hvscRelease,

@@ -403,7 +403,7 @@ export function decodeRomDependencyList(input: Uint8Array): RomDependencyList {
     lookup(md5, subtune) {
       const unlisted: RomDepLookup = { listed: false, grades: unlistedGrades(header.listingCeiling), minGrade: header.listingCeiling + 1 };
       if (!Number.isInteger(subtune) || subtune < 1 || subtune > ROM_DEP_MAX_SUBTUNE) return unlisted;
-      const index = find(md5ToBytes(md5));
+      const index = find(md5ToBytes(typeof md5 === "string" ? md5.toLowerCase() : md5));
       if (index < 0) return unlisted;
       for (let d = firstDecision[index]!; d < firstDecision[index + 1]!; d++) {
         const at = header.decisionSectionOffset + d * ROM_DEP_DECISION_RECORD_BYTES;
@@ -434,8 +434,16 @@ export function lookupRomDependency(list: RomDependencyList, md5: string | Uint8
   return list.lookup(md5, subtune);
 }
 
-/** True when a consumer using `threshold` (1..listing_ceiling+1) should skip the subtune in the given lane: grade < threshold. */
-export function romDepBelowThreshold(lookup: RomDepLookup, lane: RomDepLaneName, threshold: number): boolean {
+/**
+ * True when a consumer using `threshold` should skip the subtune in the given lane: grade < threshold. The list can
+ * only honour thresholds 1..listing_ceiling+1 (unlisted grades are a lower bound of ceiling+1), so any other
+ * threshold throws instead of silently classifying every unlisted subtune as low fidelity.
+ */
+export function romDepBelowThreshold(list: RomDependencyList, lookup: RomDepLookup, lane: RomDepLaneName, threshold: number): boolean {
+  const max = list.header.listingCeiling + 1;
+  if (!Number.isInteger(threshold) || threshold < 1 || threshold > max) {
+    throw new RomDependencyListError(`threshold ${threshold} is outside 1..${max}, the range this list can honour`);
+  }
   return lookup.grades[lane] < threshold;
 }
 

@@ -24,7 +24,7 @@ import {
 } from "../../packages/sidflow-common/src/rom-dependency-list.js";
 import { formatHelp, handleParseResult, parseArgs, type ArgDef } from "../../packages/sidflow-common/src/cli-parser.js";
 import { expectedFor, loadGradingResults, provenanceOf, type GradingInput } from "./grading.js";
-import { songlengthsPaths } from "./generate.js";
+import { asJson, buildManifest, outputNames, songlengthsPaths } from "./generate.js";
 
 export interface VerifyOptions {
   binPath: string;
@@ -102,6 +102,7 @@ export async function verifyRomDependencyListFiles(options: VerifyOptions): Prom
     binary: { bytes: number; sha256: string; payloadSha256: string; file: string };
     humanReadable?: { file: string; sha256: string };
     provenance: { sourceSha256: string; songlengthsSha256: string; corpusId: string; gradingMethodologySha256: string };
+    measuredProfile?: { songlengthsFileVerified?: boolean };
   };
 
   check(manifest.format.id === "sidromdep-1" && manifest.format.version === header.formatVersion, "format id/version");
@@ -126,11 +127,25 @@ export async function verifyRomDependencyListFiles(options: VerifyOptions): Prom
   check(input.complete === !header.incompleteSource, "source completeness differs from the list flag");
 
   let paths: Map<string, string> | undefined;
-  if (options.songlengthsPath) paths = songlengthsPaths(input, await readFile(options.songlengthsPath, "utf8"));
+  if (options.songlengthsPath) paths = songlengthsPaths(input, new Uint8Array(await readFile(options.songlengthsPath)));
 
   const round = roundTripAgainstResults(list, input);
   check(round.listed === header.decisionCount && round.checked === input.rowCount, "listed/checked subtune totals");
   const entries = list.entries();
+
+  // Every remaining manifest field (per-lane bands, status, semantics, reference ROM hashes, romSetId, horizon)
+  // must equal what the generator derives from this binary and these grading results. Only the JSON digest and
+  // the songlengths flag are taken from the manifest; the JSON digest is checked below when the JSON is present.
+  const regenerated = asJson(buildManifest({
+    input,
+    entries,
+    bin,
+    names: outputNames(header.hvscRelease),
+    jsonSha256: manifest.humanReadable?.sha256 ?? "",
+    recommendedMinGrade: header.recommendedMinGrade,
+    songlengthsVerified: manifest.measuredProfile?.songlengthsFileVerified === true,
+  }));
+  check(regenerated === manifestBytes.toString("utf8"), "manifest differs from the manifest regenerated from this binary and the grading results");
 
   // Optional human-readable companion.
   const jsonPath = options.jsonPath ?? (manifest.humanReadable ? path.join(path.dirname(options.binPath), manifest.humanReadable.file) : undefined);
