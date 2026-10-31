@@ -86,6 +86,7 @@ jobs:
           SIDFLOW_LIBSIDPLAYFP_WASM_PATH="$PWD/public/wasm/libsidplayfp.wasm" \
           SIDFLOW_RELAXED_CSP=1 SIDFLOW_CONFIG="$PWD/../../.sidflow.json" \
           HOSTNAME="127.0.0.1" PORT="3000" \
+          KEEP_ALIVE_TIMEOUT=65000 \
           node .next/standalone/packages/sidflow-web/server.js > /tmp/perf-server.log 2>&1 &
           echo $! > /tmp/perf-server.pid
           
