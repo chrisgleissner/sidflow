@@ -7,7 +7,8 @@
   §16 and `hvsc-rom-dual-run.md`; point the release link at `rom-grading-hvsc85-20261031`.
 - [x] Release assets and notes prepared outside the repository (`workspace/rom-grade-release-v2/`).
 - [x] Bump all packages to 1.0.0 and add the CHANGES.md entry.
-- [ ] Three consecutive full test runs; push; PR to main (merge after #113); `@codex review`.
+- [x] Three consecutive full test runs (`node scripts/run-bun.mjs run test`): 3030 pass / 0 fail each (75 batches).
+- [ ] Push; PR to main (merge after #113); `@codex review`.
 
 ## Complete PR #112, full accelerated HVSC census and standalone Commander ROM list (2026-10-29) — active
 
