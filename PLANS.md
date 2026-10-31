@@ -12,6 +12,8 @@
 
 ## Complete PR #112, full accelerated HVSC census and standalone Commander ROM list (2026-10-29) — active
 
+**Handover/resume prompt:** `doc/plans/rom-dependency-list-handover.md`.
+
 User decisions (2026-10-29): merge PR #112 first, then run a **fresh** accelerated
 census (`ROM_AUDIT_SAMPLE_CLOCK=1`) from merged main on this i5-14600K in one
 <=24h invocation; the 12,888-row original-identity checkpoint stays historical.
@@ -42,9 +44,15 @@ cycle-timed write traces; everything else retains native PCM listening.
   ```
 
   Focused heartbeat E2E (`--retries=0`): 5/5 consecutive passes.
-- [ ] Focused heartbeat E2E repeats; commit (excluding user `station-analysis/`), push,
+- [x] Focused heartbeat E2E repeats; commit (excluding user `station-analysis/`), push,
   green CI, Codex re-review, resolve threads, merge, push annotated tag.
+  Review fixes `a59f94c`; Codex re-review: no major issues; CI green. Squash-merged
+  as `a8208a1`; tag `rom-audit-tooling-2026-10-29` pushed.
 - [ ] Fresh accelerated census from merged main (`workspace/rom-audit-sample/`), machine idle.
+  Main tree is byte-identical to the qualified head; identities match the certificate
+  (source `9d1fe14f…`, measurement `3e383758…`), so qualification was not repeated.
+  Started 2026-10-29T14:24Z via `workspace/rom-census-sample-run.sh` (bench then full,
+  19 workers, 24h cap per stage), log `workspace/rom-census-sample.log`.
 - [ ] Design/spec/generator/verifier for the standalone compact ROM list (during census,
   light CPU only); full 3x suites after census completes.
   User chose an **exact inventory** (~400 KiB budget). Format `sidromdep-1`
@@ -63,6 +71,113 @@ cycle-timed write traces; everything else retains native PCM listening.
   (shorter than HVSC paths). Grouped FILE (md5[16]+count) + DECISION (subtune +
   4-bit incompatible / 4-bit unknown masks) sections, ~33 KiB expected.
 - [ ] Verify publication, generate compact export, sidflow-data release, follow-up PR merged.
+- [ ] User request (2026-10-29): raise a PR against C64 Commander that embeds the
+  `sidromdep-1` list in the music player (skip listed subtunes in autoplay/radio for the
+  active engine/ROM lane; warn on explicit play; full authentic ROM set = unrestricted).
+  Prepare against a synthetic list during the census; swap in the released list at the end.
+  UX (user, binding): clear and easy to understand; new setting default **skip** songs that
+  need the ROMs, user can enforce playback ("Play anyway" per song, or the setting). Extends
+  Commander's existing `romFallbackDecision`/"rom-on-c64" routing (#378, #539, #540): with a
+  connected C64 such songs still play on the C64; reference ROM set/hardware route = no effect;
+  unknown never skipped.
+  Status: implemented locally in `/mnt/data/dev/c64/c64commander-romdep` (branch
+  `feat/sid-rom-dependency-list`, first commit `c687a854e`); 535 focused tests pass; placeholder
+  empty list shipped until the real one lands (drop-in: `src/lib/romDependency/data/` + the
+  `PINNED_MANIFEST_SHA256` line). Principal decisions: libSidplayEZ and non-authentic
+  KERNAL/BASIC use the nearest lane as an approximate conservative hint; Next/Previous pass
+  over like auto-advance, only a direct tap opens the "Needs the C64 ROMs" dialog; no "Add ROMs"
+  button (ROMs come only from a connected C64, which already plays the song). Both changes are in
+  `ebf4df8a8`; 538 focused tests pass. The 7 `usePlaybackPersistence` failures came from a
+  symlinked stale node_modules: after a clean `npm ci`, 82/82 pass on the branch and on pristine
+  main. Still to do after the census: `npm run build` (`.bin?inline` import), full Commander
+  validation. Queue badge: asked the user.
+- **Census stopped by user decision (2026-10-29 17:55Z)** at 5,736/87,868 rows (checkpoint
+  kept in `workspace/rom-audit-sample/`, resumable; 1 failed row during shutdown, to inspect).
+  Reason: the no-ROM lane was flagged incompatible for ~39% of measured rows (~22%
+  stratified HVSC estimate, PSID 15/84). A trace probe showed 12 of 14 flagged PSIDs write
+  identical value sequences with only 13–66 cycles of IRQ timing shift from the KERNAL
+  shim, which is within real C64 IRQ jitter. Meanwhile BASIC tunes that produce only 1 SID
+  write score just 1–12% differing listener windows. Binary listener-v1 verdicts and
+  differing-window fractions are therefore not a usable severity measure for Commander.
+  Lesson: validate the result distribution on the 320 benchmark against expectations
+  BEFORE any full run. Probe script:
+  scratchpad `probe/trace_probe.py` (to be moved into the repo with the new grading work).
+- [ ] NEW: graded 0–255 per-lane fidelity (user request), trace-first, calibrated on a
+  small exhaustive corpus before any full run; `sidromdep` format and Commander branches
+  must switch from masks to grades.
+  Design: `doc/research/hvsc-rom-fidelity-grading.md` on branch `feat/rom-fidelity-grading`
+  (worktree `/mnt/data/dev/c64/sidflow-grading`). Calibration tooling delegated to a Sonnet
+  implementer. Run protocol (user, binding): full grading starts ONLY when all corpus gates
+  pass. Watch the first 1,000 subtunes closely, then check about every 10,000. On any issue,
+  fail fast, refine, rerun. Do not stop until all is done and the Commander PR has the
+  real data. **Pre-run gate (user):** commit and push ALL work (grading branch with PLANS.md +
+  handover, sidflow format branch, Commander branch) before the full-scale grading run starts.
+  Format switched to grades (`c78ff8e` on `feat/sid-rom-dependency-list`): 224-byte header
+  with `listing_ceiling=253`, `recommended_min_grade` and `grading_methodology_sha256`; 5-byte
+  decision records with four lane grades; unlisted ⇒ every lane ≥254; input is a grading results
+  JSONL; about 40 KiB. Merge order: the grading branch lands before the format PR (spec links the
+  grading design). Commander switched to grade + threshold (`1fd091b9e`, branch
+  `feat/sid-rom-dependency-list` in `/mnt/data/dev/c64/c64commander-romdep`): skip iff
+  active-lane grade < list `recommended_min_grade`; unknown removed; 545 focused tests.
+  **Calibration (2026-10-29, 75-subtune corpus + 320 benchmark):** gate 1 determinism PASS;
+  gate 3 PASS (12/12 no-playback = 0); gate 6 cost 9.7 h on 19 workers (12.1 h with margin);
+  gate 5: bimodal none-lane grades, population-weighted <128 = 1.6%, <192 = 2.0%, ≤253 = 7.2%.
+  Principal decisions:
+  - Gate 2 passes under the evidence-based criterion (every 254 lane has audio grade ≥235,
+    mean s_w ≤0.07, ≤2% windows >0.25); the original "no window >0.25" rule was too strict
+    for real ADSR/noise phase flips from 13-cycle shifts.
+  - The audio metric is dB band energy with a 3–15 dB dead zone; T = 2 ms; γ = 1 (frozen).
+  - `recommended_min_grade` = 128; listing ceiling = 191 (~40 KiB).
+  - Gate 4: the principal cannot listen. A blind A/B listening page for the user,
+    https://claude.ai/artifact/NCGhZVdioCzRaEzac2sVYu, saves ratings to its `ratings` db
+    collection. It does not block the run because grades are threshold-independent; any
+    inversion triggers a re-grade of the audio-graded lanes only.
+  Full-run launcher, methodology identity and monitoring are delegated. Format ceiling is
+  configurable (`3cd291b`, 24 focused tests); Commander adopted it (`95f7ea79c`).
+  OPEN before the Commander PR: the SettingsPage test "stays silent when a newer device switch
+  supersedes the discovered-device selection" failed once under load (169/169 when isolated).
+  Reproduce and fix it during full Commander validation; do not dismiss it.
+  **Full grading run (started 2026-10-29 23:07Z):** pre-run gate done (all three branches pushed;
+  grading `e0f14d5`). `run-full.sh`, 18 workers, longest first, methodology
+  `bf3b3eff…`, out `workspace/rom-grade-full` (main checkout), log `workspace/rom-grade-full.log`.
+  - 1,000 checkpoint (23:37Z, 29.5 min, efficiency 108%, 7.8 h projected remaining, 0 errors):
+    KERNAL+BASIC 255 for all. None-lane grades are 254 for ~90%, 192–253 for ~10%,
+    128–191 for 2–3 lanes and <128 for 1 (`Merilyn_intro.sid`, RSID, class E, audio severity
+    0.54: a genuine difference). 126 lanes hit the 2 M-write trace cap (class X), so audio
+    decided them: 187–253, plausible. Identical-value drift cases (`Disco_Trax_87_tune_2`
+    159/161, `Paid_in_Full_part_2` 187/203) sit above the skip threshold, as intended. Accepted.
+  - 61,422 checkpoint (06:54Z, 0 errors, no anomalies): KERNAL+BASIC 255 except
+    `Wacek/Acid_Flashback.sid` (CHARGEN reader, 242/243). 15 PSIDs <128, all early value
+    divergence with audio severity 0.54–0.99 (genuine). BASIC ≈100% <128, RSID 0.5–1.4%.
+  - Gate 4 listening (user, 2026-10-30): PASS, no inversions (see design doc gate 4 result).
+  - Full run COMPLETE 2026-10-30 07:29Z: 87,868 subtunes, 0 errors, 0 unmeasured, 30,126 s wall,
+    108% efficiency. No ROMs: 94.8% grade 254–255, 1.67% <128 (1,468 SIDLite / 1,466 reSIDfp,
+    4 subtunes straddle engines). KERNAL+BASIC: all 255 except Acid_Flashback (242/243).
+  - `sidromdep-1` generated and verified (87,868 round-trips): 19,836 bytes, 696 files, 1,556
+    subtunes, manifest `712dcbd2…`, bin `cc1ede22…`. Committed on `feat/sid-rom-dependency-list`
+    (`data/exports/`, results doc `doc/research/hvsc-rom-grading-results.md`).
+  - sidflow-data release `rom-audit-hvsc85-20261030` (not Latest): list, all grades, research
+    export, evidence, equivalence evidence, SHA256SUMS.
+  - PR #113 review (Codex, 4 × P2) fixed in `d98c98e`: halted partial window kept, native
+    terminal evidence drained, calibration bound to identity, resumed CPU counted. Equivalence
+    re-grade of all 3,213 audio-graded subtunes under the fixed methodology `103910af…`:
+    12,850/12,852 grades identical, 2 +1 (unlisted, >191), no threshold/ceiling crossing → the
+    published list stands (provenance: methodology `bf3b3eff…`, sidflow `e0f14d5`). Codex re-review
+    clean on `fbc9105`.
+  - Load-sensitive tests fixed: alignment tests' timeouts now match their own bounds (`fbc9105`);
+    quadratic missing-voice test and JSC automatic-thread counting in the classify stress test
+    (`8921ae5`). The persona-station integration test needs `workspace/hvsc` (symlinked in the
+    worktree; it rewrites `station-analysis/`, which was discarded there).
+  - Final qualification of `8921ae5` (`npm run test`, includes build), literal output:
+    ```text
+    Full run 1: 3055 pass / 0 fail / 0 skip
+    Full run 2: 3055 pass / 0 fail / 0 skip
+    Full run 3: 3055 pass / 0 fail / 0 skip
+    ```
+  - Commander PR #615 open (real list pinned; origin/main 1.1.5-rc1 merged; SettingsPage flake
+    fixed; PlayFilesPage size ceiling lowered to 3,137 after extracting the config prompt).
+- Census benchmark (2026-10-29 14:32Z): 15.22h projected, 19.02h with margin, budget 23.98h,
+  296.08 core-hours, 19.46 cores measured; full stage started 14:32Z.
 
 ## Qualify sample-clock acceleration and allow 24-hour ROM runs (2026-10-28) — active
 
@@ -2745,6 +2860,11 @@ Follow-up gate before default activation or any full classification: broaden
 adversarial coverage, qualify the exact backend/profile and failure behavior,
 and measure a representative stratified sample under target worker load with
 coordinator CPU included. No full census was started or authorized by this work.
+- 2026-10-31: full HVSC #85 re-grade under the revised, qualified methodology `f256dd98…` (run commit `ae90b9c`) complete:
+  87,868 subtunes, 0 errors, 30,581 s. All 61,157 SID SHA-256s re-verified after the run. List at ceiling 191: 672 files /
+  1,516 subtunes / 19,228 bytes; 1,468 subtunes below 128. Codex P2s on `ae90b9c` (verify rendered SID bytes; reject resumed
+  records with another horizon) implemented with tests; both are input guards that cannot change a grade of this run.
+
 
 ## Fix intermittent k6 perf-smoke `POST /api/play: EOF` (2026-10-30) — fix in review
 

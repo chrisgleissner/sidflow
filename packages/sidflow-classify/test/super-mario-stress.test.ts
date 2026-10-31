@@ -30,7 +30,7 @@ const CLASSIFY_THREADS = 4;
 const THREAD_GROWTH_BUDGET = 20;
 const PEAK_RSS_GROWTH_MB = 768;
 const ROUND_RSS_DRIFT_MB = 128;
-// Bun and the WebAssembly runtime may create a small number of process-wide
+// Bun and the WebAssembly runtime may create a small number of other process-wide
 // helper threads lazily between rounds; per-round growth remains separately
 // bounded by THREAD_GROWTH_BUDGET above.
 const ROUND_THREAD_DRIFT = 8;
@@ -39,6 +39,14 @@ const THROUGHPUT_SLOWDOWN_GRACE_MS = 75;
 const COMPLETION_GAP_FACTOR = 8;
 const COMPLETION_GAP_GRACE_MS = 4_000;
 const SAMPLE_INTERVAL_MS = 100;
+// JavaScriptCore's process-wide automatic threads (the parallel GC helper pool sized to the core
+// count, heap helpers, JIT workers, the collector and signal threads). They exit when idle and are
+// re-created on demand, so whether they exist at a round's first sample depends on timing: under CPU
+// contention a round could start with the 19-thread parallel helper pool idled out and "grow" by it
+// without the classifier creating a thread. They are the runtime's, not a classification leak, so
+// thread counts exclude them. Linux truncates thread names to their last 15 characters
+// ("t Helper Thread" is "Parallel Helper Thread").
+const RUNTIME_AUTOMATIC_THREAD = /Helper Thread$|^HeapHelper$|^JITWorker$|Collector Thread$|Signal Sender$|^JSCWarmUp$/;
 
 interface ProcessSample {
   rssMb: number;
@@ -59,16 +67,26 @@ interface RoundSummary {
   completionGapsMs: number[];
 }
 
+/** A thread's name; a thread that exited since the directory was listed reads as unnamed and is counted. */
+function threadName(task: string): string {
+  try {
+    return readFileSync(`/proc/self/task/${task}/comm`, "utf8").trim();
+  } catch (error) {
+    console.debug(`[Classification stability] thread ${task} exited before its name was read`, error);
+    return "";
+  }
+}
+
 function readProcessSample(): ProcessSample {
   if (existsSync("/proc/self/status")) {
     const status = readFileSync("/proc/self/status", "utf8");
     const rssMatch = status.match(/^VmRSS:\s+(\d+)\s+kB$/m);
     const threadMatch = status.match(/^Threads:\s+(\d+)$/m);
     const rssMb = rssMatch ? Math.round(Number.parseInt(rssMatch[1], 10) / 1024) : Math.round(process.memoryUsage().rss / (1024 * 1024));
-    const threadCount = threadMatch
-      ? Number.parseInt(threadMatch[1], 10)
-      : existsSync("/proc/self/task")
-        ? readdirSync("/proc/self/task").length
+    const threadCount = existsSync("/proc/self/task")
+      ? readdirSync("/proc/self/task").filter((task) => !RUNTIME_AUTOMATIC_THREAD.test(threadName(task))).length
+      : threadMatch
+        ? Number.parseInt(threadMatch[1], 10)
         : 0;
     return { rssMb, threadCount, timestampMs: Date.now() };
   }
