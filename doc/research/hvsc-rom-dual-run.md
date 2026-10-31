@@ -162,6 +162,18 @@ not prove the engine cannot play the tune with CHARGEN as well. No automatic
 release/tag/upload is performed. The local bundle is ready for review and for
 Commander's generator after a complete qualified census.
 
+### Embeddable dependency list
+
+For applications that embed the result (for example the C64 Commander APK), complete
+ROM fidelity grades (one byte per subtune and engine/ROM lane; see
+[hvsc-rom-fidelity-grading.md](hvsc-rom-fidelity-grading.md)) are condensed into the
+allow-by-default **SID ROM Dependency List** (`sidromdep-1`; 19,228 bytes for HVSC #85, committed as `data/exports/hvsc85-sidromdep-1.bin`): full-MD5
+keyed records of the subtunes with a lane graded at or below the listing ceiling (191 in the release), no inventory and no
+horizon table. The generator refuses incomplete grading results, and the verifier
+round-trips every graded subtune (every unlisted subtune must have all four lanes above the
+listing ceiling). The format is specified in
+[doc/rom-dependency-list.md](../rom-dependency-list.md).
+
 ## Verify and distribute
 
 The full launcher finishes with:
@@ -175,9 +187,10 @@ qualification bindings, and re-encodes the packed table from JSON to check every
 record and aggregate count. Checksums establish consistency, not authenticity:
 consumers must pin the manifest hash obtained from a trusted release. Source
 qualification logs must be archived alongside the bundle for an evidence audit.
-The [main README](../../README.md#where-results-are-published) gives the explicit
-post-census release command for `chrisgleissner/sidflow-data`. Publication there
-is manual; a merge of this tooling does not claim a completed HVSC classification.
+No complete bundle from this pass/fail audit was released: graded ROM fidelity
+superseded it before a full census ran. The published HVSC #85 result is the
+graded one; the [main README](../../README.md#where-results-are-published) lists
+its sidflow-data release.
 
 For Commander, an exception is a measured incompatibility only for its selected
 engine, ROM configuration, model and horizon. Autoplay should skip those entries;

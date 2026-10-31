@@ -1,5 +1,90 @@
 # Changelog
 
+## 1.0.0 (2026-10-31)
+
+### No change to the similarity classification or its exports
+
+`sidcorr-1`, `sidcorr-lite-1` and `sidcorr-tiny-1` keep their schema versions, their binary
+format versions, their section layouts and their column sets. The similarity exports already
+published to sidflow-data are unchanged and stay valid. This release does not touch how a track
+is rendered, classified, embedded or ranked; it only adds ROM fidelity grading and its export,
+which are separate from the similarity data and read none of it.
+
+### Why 1.0.0
+
+The pipeline now covers both questions a player asks about a SID collection. For the whole of
+HVSC #85, 87,868 subtunes in 61,157 files, it answers which tunes sound like each other and
+which tunes cannot be played faithfully without the C64's own ROMs. Both answers are published,
+versioned and reproducible from a checkout, so the first stable version number marks that the
+data and the tools that produce it are complete rather than a change in any API.
+
+### ROM fidelity grading
+
+Some tunes read the KERNAL, BASIC or CHARGEN ROM while they play. A player that does not ship
+those copyrighted images renders such a tune wrongly, often as silence. Every subtune is now
+graded per engine (SIDLite and reSIDfp) and per ROM lane (no ROMs, and KERNAL+BASIC without
+CHARGEN) against the same engine with all three authentic ROMs. The grade is one byte per
+subtune and lane. 255 is a bit-exact SID register write trace, 254 is the same register values
+re-timed by at most 2 ms, 1 to 253 is `max(1, round(253 * Q))` where `Q` is the measured audio
+similarity, and 0 is no playback at all.
+
+The metric was frozen before the full run, after calibration gates covering determinism, timing
+class soundness, no-playback soundness and a blind listening test. In that test every pair
+graded 171 to 254 was rated "Same" and every audible grade-0 pair was rated "Broken", with no
+inversions.
+The recommended threshold is 128, where the playback is mostly wrong; a player skips a lane
+graded below it in autoplay and warns before playing it on request. The grades are bimodal, so
+any threshold between 1 and 127 selects the same subtunes.
+
+### The SID ROM Dependency List `sidromdep-1`
+
+The list condenses the grades into an embeddable file for players such as C64 Commander. It is
+standalone and allow-by-default: a file or subtune that is not listed plays normally. Records
+are keyed by the full-file MD5 and the one-based subtune and carry the four lane grades of every
+subtune with a lane at or below the listing ceiling of 191. The binary is exactly
+`224 + 17 * files + 5 * subtunes` bytes; for HVSC #85 that is 672 files, 1,516 subtunes and
+19,228 bytes. The normative specification is `doc/rom-dependency-list.md`, with a worked
+example, so another project can write a reader from it alone. `scripts/rom-dependency-list/`
+holds the generator, which refuses incomplete grading results, and a verifier that round-trips
+every graded subtune against the grading results the list came from.
+
+### Results for HVSC #85
+
+All 87,868 subtunes were graded with 0 errors in 30,581 s on 18 workers. Without ROMs, 94.6%
+of subtunes play an identical register value sequence (254) or a bit-exact trace (255), and
+1,468 subtunes in 627 files, 1.67%, grade below 128 on at least one engine. Nearly all are BASIC
+programs; the rest are 53 RSID and 28 PSID subtunes. The engines agree on which side of 128 a
+subtune falls for all but 3 subtunes. With KERNAL+BASIC supplied every subtune is bit-exact
+except `Wacek/Acid_Flashback`, which reads the character ROM and grades 242 and 243. The
+methodology identity is `f256dd987eb81af427731400b505c4470e6c423aa0f583198f5f99171a3b4d83`, and
+after the run all 61,157 SID files were re-hashed and matched the hashes the run recorded.
+
+### Where it is published
+
+The canonical copy is the sidflow-data release `rom-grading-hvsc85-20261031`: the list, its
+manifest, the full per-subtune grades, the per-lane research export and the run evidence. It is
+not marked Latest, so consumers that fetch the latest sidflow-data release for the similarity
+exports are unaffected. The list is also committed here as `data/exports/hvsc85-sidromdep-1.bin`
+with its manifest, which pins the SHA-256 `bc3bd291...94b482`.
+
+### The methodology was corrected before release
+
+An adversarial review of the first full grading found three defects. Lock-step audio
+comparison graded pure re-timing as broken: `Funky_Drummer` #1 writes all 380,932 register
+values identically at a 0.07% faster tempo, and graded 127. Noise near the floor saturated the
+per-window severity, so a few quiet windows could decide a grade. The 254 shortcut on digitized
+samples had never been validated. These were fixed and qualified on 2,961 targeted subtunes
+before one full re-run. The first published grading, `rom-audit-hvsc85-20261030`, is superseded:
+`Funky_Drummer` #1 left the below-128 set, 39 subtunes left the 128 to 191 band for above 191,
+and nothing moved down.
+
+### CI and test reliability
+
+The k6 perf-smoke failure `POST /api/play: EOF` was a Node keep-alive race: the server closed an
+idle connection at the very moment a virtual user reused it after its 6 s journey gap, so the
+request met a closed socket. The perf-smoke run now sets `KEEP_ALIVE_TIMEOUT=65000`, far above
+the gap (PR #114). Tests whose outcome depended on machine load were made deterministic
+(PR #113).
 
 ## 0.8.4 (2026-07-31)
 
