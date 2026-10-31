@@ -189,10 +189,12 @@ bun scripts/rom-dependency-list/verify.ts \
 
 ### Where results are published
 
-The grading results and the list are published as a
-[sidflow-data release](https://github.com/chrisgleissner/sidflow-data/releases/tag/rom-grading-hvsc85-20261031),
-next to the similarity exports but as a separate release: data releases are immutable and carry
-the evidence needed to audit every grade.
+The grading results and the list are published in the
+[sidflow-data release `1.0.0`](https://github.com/chrisgleissner/sidflow-data/releases/tag/1.0.0),
+next to the similarity exports: every sidflow-data release carries every classification, and the
+[latest](https://github.com/chrisgleissner/sidflow-data/releases/latest) always has all of them.
+Data releases are immutable and carry the evidence needed to audit every grade. Its notes break
+the affected subtunes down by the ROMs they need.
 
 | Asset | Purpose |
 |---|---|
