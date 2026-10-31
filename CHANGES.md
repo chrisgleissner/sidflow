@@ -52,8 +52,11 @@ every graded subtune against the grading results the list came from.
 
 All 87,868 subtunes were graded with 0 errors in 30,581 s on 18 workers. Without ROMs, 94.6%
 of subtunes play an identical register value sequence (254) or a bit-exact trace (255), and
-1,468 subtunes in 627 files, 1.67%, grade below 128 on at least one engine. Nearly all are BASIC
-programs; the rest are 53 RSID and 28 PSID subtunes. The engines agree on which side of 128 a
+1,468 subtunes in 627 files, 1.67%, grade below 128 on at least one engine: 1,387 BASIC
+programs, 53 RSID and 28 PSID subtunes. 64 need only the KERNAL, 89 only BASIC and 1,315 both;
+none needs CHARGEN. The table per SID type is in the "ROM fidelity" section of the
+[sidflow-data 1.0.0 release notes](https://github.com/chrisgleissner/sidflow-data/releases/tag/1.0.0).
+The engines agree on which side of 128 a
 subtune falls for all but 3 subtunes. With KERNAL+BASIC supplied every subtune is bit-exact
 except `Wacek/Acid_Flashback`, which reads the character ROM and grades 242 and 243. The
 methodology identity is `f256dd987eb81af427731400b505c4470e6c423aa0f583198f5f99171a3b4d83`, and
@@ -61,10 +64,10 @@ after the run all 61,157 SID files were re-hashed and matched the hashes the run
 
 ### Where it is published
 
-The canonical copy is the sidflow-data release `rom-grading-hvsc85-20261031`: the list, its
-manifest, the full per-subtune grades, the per-lane research export and the run evidence. It is
-not marked Latest, so consumers that fetch the latest sidflow-data release for the similarity
-exports are unaffected. The list is also committed here as `data/exports/hvsc85-sidromdep-1.bin`
+The sidflow-data release [`1.0.0`](https://github.com/chrisgleissner/sidflow-data/releases/tag/1.0.0)
+carries the list, its manifest, the full per-subtune grades, the per-lane research export and the
+run evidence, next to the similarity exports, which are byte-identical to `0.8.2`. The standalone
+release `rom-grading-hvsc85-20261031` holds the same ROM assets. The list is also committed here as `data/exports/hvsc85-sidromdep-1.bin`
 with its manifest, which pins the SHA-256 `bc3bd291...94b482`.
 
 ### The methodology was corrected before release
