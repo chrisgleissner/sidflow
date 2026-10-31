@@ -20,7 +20,7 @@ data and the tools that produce it are complete rather than a change in any API.
 
 ### ROM fidelity grading
 
-Many tunes read the KERNAL, BASIC or CHARGEN ROM while they play. A player that does not ship
+Some tunes read the KERNAL, BASIC or CHARGEN ROM while they play. A player that does not ship
 those copyrighted images renders such a tune wrongly, often as silence. Every subtune is now
 graded per engine (SIDLite and reSIDfp) and per ROM lane (no ROMs, and KERNAL+BASIC without
 CHARGEN) against the same engine with all three authentic ROMs. The grade is one byte per
@@ -28,7 +28,7 @@ subtune and lane. 255 is a bit-exact SID register write trace, 254 is the same r
 re-timed by at most 2 ms, 1 to 253 is `max(1, round(253 * Q))` where `Q` is the measured audio
 similarity, and 0 is no playback at all.
 
-The metric was fixed before the full run by calibration gates covering determinism, timing
+The metric was frozen before the full run, after calibration gates covering determinism, timing
 class soundness, no-playback soundness and a blind listening test. In that test every pair
 graded 171 to 254 was rated "Same" and every audible grade-0 pair was rated "Broken", with no
 inversions.
