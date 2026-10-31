@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { buildInventory } from "../../../scripts/rom-grade/inventory.js";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { importClosure, frozenOptions } from "../../../scripts/rom-grade/methodology-id.js";
@@ -65,6 +67,18 @@ describe("pool", () => {
     writeFileSync(file, "PSID changed after scheduling");
     const deps = new Proxy({}, { get: () => { throw new Error("rendered although the input changed"); } }) as GradeDeps;
     await expect(gradeSubtune({ path: file, song: 1, seconds: 10, sha256: "0".repeat(64) }, {}, deps)).rejects.toThrow(/changed after scheduling/);
+  });
+  it("refuses a Songlengths entry whose duration count differs from the SID header's subtune count", async () => {
+    const root = scratch();
+    const header = Buffer.alloc(0x7c + 2);
+    header.write("PSID", 0, "latin1");
+    header.writeUInt16BE(2, 0x04); header.writeUInt16BE(0x7c, 0x06); header.writeUInt16BE(0x1000, 0x08);
+    header.writeUInt16BE(0x1000, 0x0a); header.writeUInt16BE(0x1003, 0x0c); header.writeUInt16BE(2, 0x0e); header.writeUInt16BE(1, 0x10);
+    mkdirSync(path.join(root, "DOCUMENTS"), { recursive: true });
+    writeFileSync(path.join(root, "Two.sid"), header);
+    const md5 = createHash("md5").update(header).digest("hex");
+    writeFileSync(path.join(root, "DOCUMENTS/Songlengths.md5"), `[Database]\n; /Two.sid\n${md5}=0:30\n`);
+    await expect(buildInventory(root, 1)).rejects.toThrow(/has 1 durations, the SID header declares 2 subtunes/);
   });
   it("refuses to resume under a different methodology identity or options", async () => {
     const checkpoint = path.join(scratch(), "c.jsonl");

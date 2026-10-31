@@ -28,6 +28,8 @@ export async function buildInventory(hvscRoot = nativePaths().hvsc, concurrency 
       const relative = files[i]!, bytes = await readFile(path.join(hvscRoot, relative)), entry = lengths.get(relative);
       if (!entry) throw new Error(`No Songlengths entry for ${relative}`);
       const info = sidInfo(bytes);
+      // One duration token per subtune the header declares; a short entry would silently drop subtunes from the scope.
+      if (entry.tokens.length !== info.songs) throw new Error(`Songlengths entry for ${relative} has ${entry.tokens.length} durations, the SID header declares ${info.songs} subtunes`);
       tunes[i] = {
         ...info, path: relative, sha256: createHash("sha256").update(bytes).digest("hex"), md5: createHash("md5").update(bytes).digest("hex"),
         songsList: entry.tokens.map((token, index) => {
