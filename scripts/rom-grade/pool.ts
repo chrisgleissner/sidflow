@@ -94,6 +94,7 @@ export async function runPool(jobs: Array<GradeJob & { sha256: string }>, option
     if (keys.has(record.key)) { nativeCpu += Object.values(record.grade.cpu).reduce((a, b) => a + b, 0); workerCpu += record.jsCpuSeconds; }
     config.onRecord?.(record, resumed);
   };
+  const wantedSeconds = new Map(jobs.map(j => [jobKey(j), j.seconds]));
   if (existsSync(checkpoint)) {
     repairTail(checkpoint);
     let first = true;
@@ -104,7 +105,11 @@ export async function runPool(jobs: Array<GradeJob & { sha256: string }>, option
         if (line !== header) throw new Error(`Checkpoint ${checkpoint} was written with different options or methodology identity; use a new output directory or delete it\n  have: ${line.slice(0, 200)}\n  want: ${header.slice(0, 200)}`);
         continue;
       }
-      accept(JSON.parse(line) as PoolRecord, true);
+      const record = JSON.parse(line) as PoolRecord;
+      // A record measured over another horizon is not evidence for this job (the identity binds sources, not inputs).
+      const wanted = wantedSeconds.get(record.key);
+      if (wanted !== undefined && record.grade.seconds !== wanted) throw new Error(`Checkpoint ${checkpoint} record ${record.key} was measured over ${record.grade.seconds} s, but the job requests ${wanted} s; use a new output directory`);
+      accept(record, true);
     }
     if (first) writeFileSync(checkpoint, header + "\n");
   } else writeFileSync(checkpoint, header + "\n");

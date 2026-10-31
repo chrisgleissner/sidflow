@@ -2848,3 +2848,7 @@ Follow-up gate before default activation or any full classification: broaden
 adversarial coverage, qualify the exact backend/profile and failure behavior,
 and measure a representative stratified sample under target worker load with
 coordinator CPU included. No full census was started or authorized by this work.
+- 2026-10-31: full HVSC #85 re-grade under the revised, qualified methodology `f256dd98…` (run commit `ae90b9c`) complete:
+  87,868 subtunes, 0 errors, 30,581 s. All 61,157 SID SHA-256s re-verified after the run. List at ceiling 191: 672 files /
+  1,516 subtunes / 19,228 bytes; 1,468 subtunes below 128. Codex P2s on `ae90b9c` (verify rendered SID bytes; reject resumed
+  records with another horizon) implemented with tests; both are input guards that cannot change a grade of this run.

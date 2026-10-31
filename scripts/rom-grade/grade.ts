@@ -179,6 +179,9 @@ export async function gradeEngine(engine: RomAuditEngine, bytes: Uint8Array, job
 
 export async function gradeSubtune(job: GradeJob, options: GradeOptions = {}, deps: GradeDeps = NATIVE_DEPS): Promise<SubtuneGrade> {
   const bytes = readFileSync(job.path);
+  // Attribute the measurement only to the bytes actually rendered: a SID changed after scheduling is refused.
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  if (job.sha256 !== undefined && job.sha256 !== sha256) throw new Error(`SID input ${job.path} changed after scheduling: SHA-256 ${sha256}, scheduled ${job.sha256}`);
   const info = sidInfo(bytes);
   const toleranceMs = options.toleranceMs ?? DEFAULT_TOLERANCE_MS, gamma = options.gamma ?? DEFAULT_GAMMA;
   const engines: Partial<Record<RomAuditEngine, EngineGrade>> = {};
@@ -188,7 +191,7 @@ export async function gradeSubtune(job: GradeJob, options: GradeOptions = {}, de
   wanted.forEach((engine, i) => { engines[engine] = results[i]!.result; cpu[engine] = round6(results[i]!.cpuSeconds); });
   const relative = job.path.startsWith(nativePaths().hvsc) ? path.relative(nativePaths().hvsc, job.path) : job.path;
   return {
-    path: relative, song: job.song, seconds: job.seconds, sha256: job.sha256 ?? createHash("sha256").update(bytes).digest("hex"), info,
+    path: relative, song: job.song, seconds: job.seconds, sha256, info,
     toleranceMs, toleranceCycles: toleranceCycles(clockHzOf(info.clock), toleranceMs), gamma, engines, cpu,
   };
 }

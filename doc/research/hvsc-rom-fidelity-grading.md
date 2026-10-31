@@ -215,3 +215,18 @@ whose horizon differs from its scope job's, an unmeasured lane, and an incomplet
 reference ran to its end: no error, or a diagnosed CPU halt (the audit's `digital-screen.ts` rule). A truncated trace buffer does
 not matter, because the CHARGEN counter keeps counting; a reference engine or resource error voids the counter, and the lane is
 traced and graded like any other.
+
+### HVSC #85 result under the revised methodology (2026-10-31)
+
+Run commit `ae90b9c`, methodology identity `f256dd987eb81af427731400b505c4470e6c423aa0f583198f5f99171a3b4d83` (the qualified
+one): 87,868 of 87,868 subtunes, 0 errors, 30,581 s wall time on 18 workers (591,595 CPU-seconds). After the run, all 61,157
+graded SID files were re-hashed: every SHA-256 equals the one the run recorded. The list derived from it at ceiling 191 has
+672 files and 1,516 subtunes (19,228 bytes); 1,468 subtunes in 627 files have a lane below 128, exactly as extrapolated above.
+Against the superseded run `bf3b3eff…`, one subtune left the below-128 set (`Funky_Drummer` #1), 39 left the 128–191 band for
+above 191, and none moved down. Per-lane distributions, strata and the list are in
+[hvsc-rom-grading-results.md](hvsc-rom-grading-results.md).
+
+The two input guards added after the run (the SHA-256 of the bytes actually rendered must equal the scheduled one; a resumed
+record must have the job's horizon) cannot change a grade of an unchanged corpus. For this run both are shown to hold
+directly: the re-hash above, and `finalize.ts`, which already refused any record whose horizon differs from its scope job.
+They change the methodology identity of later runs only.

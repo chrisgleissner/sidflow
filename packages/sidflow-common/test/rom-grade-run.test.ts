@@ -8,7 +8,7 @@ import { finalize } from "../../../scripts/rom-grade/finalize.js";
 import type { Scope } from "../../../scripts/rom-grade/full-scope.js";
 import { spawn } from "node:child_process";
 import { Accumulator, anomalies, bucketOf, totalsOf } from "../../../scripts/rom-grade/summary.js";
-import type { SubtuneGrade } from "../../../scripts/rom-grade/grade.js";
+import { gradeSubtune, type GradeDeps, type SubtuneGrade } from "../../../scripts/rom-grade/grade.js";
 
 const worker = path.join(import.meta.dir, "fixtures/rom-grade-fake-worker.ts");
 const dirs: string[] = [];
@@ -53,6 +53,18 @@ describe("pool", () => {
   });
   it("rejects a record that fails validation", async () => {
     await expect(runPool(jobs, {}, { checkpoint: path.join(scratch(), "c.jsonl"), workers: 2, workerScript: worker, validate: r => r.key === jobKey(jobs[2]!) ? "bad lane" : null })).rejects.toThrow("bad lane");
+  });
+  it("refuses to resume a record measured over a different horizon than the job requests", async () => {
+    const checkpoint = path.join(scratch(), "c.jsonl");
+    await runPool(jobs.slice(0, 3), {}, { checkpoint, workers: 1, workerScript: worker, identity: "a".repeat(64) });
+    const longer = jobs.map((j, i) => (i === 1 ? { ...j, seconds: j.seconds + 20 } : j));
+    await expect(runPool(longer, {}, { checkpoint, workers: 1, workerScript: worker, identity: "a".repeat(64) })).rejects.toThrow(/measured over 11 s, but the job requests 31 s/);
+  });
+  it("refuses to grade SID bytes that differ from the scheduled SHA-256, before rendering", async () => {
+    const file = path.join(scratch(), "changed.sid");
+    writeFileSync(file, "PSID changed after scheduling");
+    const deps = new Proxy({}, { get: () => { throw new Error("rendered although the input changed"); } }) as GradeDeps;
+    await expect(gradeSubtune({ path: file, song: 1, seconds: 10, sha256: "0".repeat(64) }, {}, deps)).rejects.toThrow(/changed after scheduling/);
   });
   it("refuses to resume under a different methodology identity or options", async () => {
     const checkpoint = path.join(scratch(), "c.jsonl");
